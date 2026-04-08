@@ -11,11 +11,17 @@ export interface FilterState {
 
 export const DEFAULT_FILTERS: FilterState = {
   layers: {
+    provider: true,
     agent: true,
     server: true,
     sharedServer: true,
     package: true,
+    model: true,
+    dataset: true,
+    container: true,
+    cloudResource: true,
     vulnerability: true,
+    misconfiguration: true,
     credential: true,
     tool: true,
   },
@@ -31,10 +37,16 @@ interface FilterPanelProps {
 }
 
 const LAYER_LABELS: { key: LineageNodeType; label: string; color: string }[] = [
+  { key: "provider", label: "Providers", color: "bg-zinc-500" },
   { key: "agent", label: "Agents", color: "bg-emerald-500" },
   { key: "server", label: "Servers", color: "bg-blue-500" },
   { key: "package", label: "Packages", color: "bg-zinc-500" },
+  { key: "model", label: "Models", color: "bg-violet-500" },
+  { key: "dataset", label: "Datasets", color: "bg-cyan-500" },
+  { key: "container", label: "Containers", color: "bg-indigo-500" },
+  { key: "cloudResource", label: "Cloud", color: "bg-sky-500" },
   { key: "vulnerability", label: "CVEs", color: "bg-red-500" },
+  { key: "misconfiguration", label: "Misconfigs", color: "bg-orange-500" },
   { key: "credential", label: "Credentials", color: "bg-amber-500" },
   { key: "tool", label: "Tools", color: "bg-purple-500" },
 ];

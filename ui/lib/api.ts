@@ -3,6 +3,8 @@
  * Connects to the FastAPI backend at NEXT_PUBLIC_API_URL (default: same origin)
  */
 
+import type { UnifiedGraphData } from "./graph-schema";
+
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -89,6 +91,25 @@ export interface ScanResult {
   has_mcp_context?: boolean;
   has_agent_context?: boolean;
   scan_sources?: string[];
+}
+
+export interface GraphPagination {
+  total: number;
+  offset: number;
+  limit: number;
+  has_more: boolean;
+}
+
+export interface GraphSnapshot {
+  scan_id: string;
+  created_at: string;
+  node_count: number;
+  edge_count: number;
+  risk_summary: Record<string, number>;
+}
+
+export interface UnifiedGraphResponse extends UnifiedGraphData {
+  pagination: GraphPagination;
 }
 
 export interface RemediationItem {
@@ -740,6 +761,39 @@ export const api = {
     if (agent) params.set("agent", agent);
     const qs = params.toString();
     return get<ContextGraphResponse>(`/v1/scan/${jobId}/context-graph${qs ? `?${qs}` : ""}`);
+  },
+
+  /** List persisted unified graph snapshots */
+  getGraphSnapshots: (limit = 50) => get<GraphSnapshot[]>(`/v1/graph/snapshots?limit=${limit}`),
+
+  /** Load the unified graph for a specific snapshot or the latest persisted state */
+  getGraph: (filters?: {
+    scanId?: string;
+    entityTypes?: string[];
+    minSeverity?: string;
+    relationships?: string[];
+    staticOnly?: boolean;
+    dynamicOnly?: boolean;
+    maxDepth?: number;
+    offset?: number;
+    limit?: number;
+  }) => {
+    const params = new URLSearchParams();
+    if (filters?.scanId) params.set("scan_id", filters.scanId);
+    if (filters?.entityTypes && filters.entityTypes.length > 0) {
+      params.set("entity_types", filters.entityTypes.join(","));
+    }
+    if (filters?.minSeverity) params.set("min_severity", filters.minSeverity);
+    if (filters?.relationships && filters.relationships.length > 0) {
+      params.set("relationships", filters.relationships.join(","));
+    }
+    if (filters?.staticOnly) params.set("static_only", "true");
+    if (filters?.dynamicOnly) params.set("dynamic_only", "true");
+    if (filters?.maxDepth != null) params.set("max_depth", String(filters.maxDepth));
+    if (filters?.offset != null) params.set("offset", String(filters.offset));
+    if (filters?.limit != null) params.set("limit", String(filters.limit));
+    const qs = params.toString();
+    return get<UnifiedGraphResponse>(`/v1/graph${qs ? `?${qs}` : ""}`);
   },
 
   /** Connect to SSE stream for real-time progress */

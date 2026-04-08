@@ -1,46 +1,71 @@
 "use client";
 
+import type { ReactNode } from "react";
 import {
-  X,
-  ExternalLink,
-  ShieldAlert,
-  Server,
-  Package,
+  Brain,
   Bug,
+  Building2,
+  Cloud,
+  Database,
+  ExternalLink,
   KeyRound,
+  Package,
+  Server,
+  ShieldAlert,
+  TriangleAlert,
   Wrench,
+  X,
 } from "lucide-react";
+
 import { severityColor } from "@/lib/api";
 import type { LineageNodeData } from "./lineage-nodes";
 
-const TYPE_ICON: Record<string, typeof ShieldAlert> = {
+const TYPE_ICON = {
+  provider: Building2,
   agent: ShieldAlert,
   server: Server,
   sharedServer: Server,
   package: Package,
   vulnerability: Bug,
+  misconfiguration: TriangleAlert,
   credential: KeyRound,
   tool: Wrench,
-};
+  model: Brain,
+  dataset: Database,
+  container: Package,
+  cloudResource: Cloud,
+} as const;
 
-const TYPE_LABELS: Record<string, string> = {
+const TYPE_LABELS: Record<LineageNodeData["nodeType"], string> = {
+  provider: "Provider",
   agent: "Agent",
   server: "MCP Server",
   sharedServer: "Shared MCP Server",
   package: "Package",
   vulnerability: "Vulnerability",
+  misconfiguration: "Misconfiguration",
   credential: "Credential",
   tool: "Tool",
+  model: "Model",
+  dataset: "Dataset",
+  container: "Container",
+  cloudResource: "Cloud Resource",
 };
 
-const TYPE_BORDER: Record<string, string> = {
+const TYPE_BORDER: Record<LineageNodeData["nodeType"], string> = {
+  provider: "border-zinc-700",
   agent: "border-emerald-700",
   server: "border-blue-700",
   sharedServer: "border-cyan-700",
   package: "border-zinc-700",
   vulnerability: "border-red-700",
+  misconfiguration: "border-orange-700",
   credential: "border-amber-700",
   tool: "border-purple-700",
+  model: "border-violet-700",
+  dataset: "border-cyan-700",
+  container: "border-indigo-700",
+  cloudResource: "border-sky-700",
 };
 
 export function LineageDetailPanel({
@@ -51,13 +76,42 @@ export function LineageDetailPanel({
   onClose: () => void;
 }) {
   const Icon = TYPE_ICON[data.nodeType];
+  const extraAttributes = Object.entries(data.attributes ?? {}).filter(([key]) => {
+    return !new Set([
+      "agent_type",
+      "status",
+      "version",
+      "ecosystem",
+      "description",
+      "framework",
+      "source",
+      "hash",
+      "verified",
+      "container_image",
+      "cloud_provider",
+      "resource_id",
+      "source_section",
+      "rule_id",
+      "check_id",
+      "recommendation",
+      "evidence",
+      "path",
+      "file_path",
+      "line",
+      "start_line",
+      "end_line",
+      "cvss_score",
+      "epss_score",
+      "is_kev",
+      "fixed_version",
+    ]).has(key);
+  });
 
   return (
     <div
       className={`absolute right-0 top-0 bottom-0 w-80 bg-zinc-950/95 backdrop-blur-sm border-l ${TYPE_BORDER[data.nodeType]} z-50 overflow-y-auto`}
     >
       <div className="p-4 space-y-4">
-        {/* Header */}
         <div className="flex items-start justify-between">
           <div>
             <span className="text-[10px] uppercase tracking-wider text-zinc-500">
@@ -76,12 +130,13 @@ export function LineageDetailPanel({
           </button>
         </div>
 
-        {/* Agent */}
+        {data.nodeType === "provider" && data.agentCount !== undefined && (
+          <Row label="Hosted agents" value={data.agentCount} />
+        )}
+
         {data.nodeType === "agent" && (
           <div className="space-y-3">
-            {data.agentType && (
-              <Row label="Type" value={data.agentType} />
-            )}
+            {data.agentType && <Row label="Type" value={data.agentType} />}
             {data.agentStatus && (
               <div
                 className={`text-xs px-2 py-1 rounded border font-mono ${
@@ -93,35 +148,29 @@ export function LineageDetailPanel({
                 {data.agentStatus === "installed-not-configured" ? "Not Configured" : "Configured"}
               </div>
             )}
-            <Row label="Servers" value={data.serverCount ?? 0} />
-            <Row label="Packages" value={data.packageCount ?? 0} />
+            {data.serverCount !== undefined && <Row label="Servers" value={data.serverCount} />}
+            {data.packageCount !== undefined && <Row label="Packages" value={data.packageCount} />}
             {(data.vulnCount ?? 0) > 0 && (
-              <Row label="Vulnerabilities" value={data.vulnCount!} className="text-red-400" />
+              <Row label="Findings" value={data.vulnCount ?? 0} className="text-red-400" />
             )}
           </div>
         )}
 
-        {/* Server */}
         {data.nodeType === "server" && (
           <div className="space-y-3">
             {data.command && (
-              <div>
-                <Label>Command</Label>
-                <div className="text-xs font-mono text-zinc-300 bg-zinc-900 rounded px-2 py-1 break-all">
-                  {data.command}
-                </div>
-              </div>
+              <CodeBlock label="Connection" value={data.command} />
             )}
-            {(data.toolCount ?? 0) > 0 && (
-              <Row label="Tools" value={data.toolCount!} />
+            {data.toolCount !== undefined && data.toolCount > 0 && <Row label="Tools" value={data.toolCount} />}
+            {data.credentialCount !== undefined && data.credentialCount > 0 && (
+              <Row label="Credentials" value={data.credentialCount} className="text-amber-400" />
             )}
-            {(data.credentialCount ?? 0) > 0 && (
-              <Row label="Credentials" value={data.credentialCount!} className="text-amber-400" />
+            {data.packageCount !== undefined && data.packageCount > 0 && (
+              <Row label="Packages" value={data.packageCount} />
             )}
           </div>
         )}
 
-        {/* Shared Server */}
         {data.nodeType === "sharedServer" && (
           <div className="space-y-3">
             {data.sharedBy && (
@@ -130,60 +179,24 @@ export function LineageDetailPanel({
               </div>
             )}
             {data.sharedAgents && data.sharedAgents.length > 0 && (
-              <div>
-                <Label>Connected Agents</Label>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {data.sharedAgents?.map((a) => (
-                    <span key={a} className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
-                      {a}
-                    </span>
-                  ))}
-                </div>
-              </div>
+              <TagList label="Connected Agents" tags={data.sharedAgents} />
             )}
-            {data.command && (
-              <div>
-                <Label>Command</Label>
-                <div className="text-xs font-mono text-zinc-300 bg-zinc-900 rounded px-2 py-1 break-all">
-                  {data.command}
-                </div>
-              </div>
-            )}
-            {(data.toolCount ?? 0) > 0 && (
-              <Row label="Tools" value={data.toolCount!} />
-            )}
-            {(data.credentialCount ?? 0) > 0 && (
-              <Row label="Credentials" value={data.credentialCount!} className="text-amber-400" />
-            )}
-            {(data.packageCount ?? 0) > 0 && (
-              <Row label="Packages" value={data.packageCount!} />
-            )}
+            {data.command && <CodeBlock label="Connection" value={data.command} />}
           </div>
         )}
 
-        {/* Package */}
         {data.nodeType === "package" && (
           <div className="space-y-3">
             {data.ecosystem && <Row label="Ecosystem" value={data.ecosystem} />}
             {data.version && <Row label="Version" value={data.version} />}
-            {data.versionSource && (
-              <Row label="Version source" value={data.versionSource} />
-            )}
-            {data.registryVersion && data.registryVersion !== data.version && (
-              <div className="text-xs">
-                <span className="text-zinc-500">Registry latest: </span>
-                <span className="text-amber-400 font-mono">{data.registryVersion}</span>
-              </div>
-            )}
             {(data.vulnCount ?? 0) > 0 ? (
-              <Row label="Vulnerabilities" value={data.vulnCount!} className="text-red-400" />
+              <Row label="Findings" value={data.vulnCount ?? 0} className="text-red-400" />
             ) : (
-              <div className="text-xs text-emerald-400">No known vulnerabilities</div>
+              <div className="text-xs text-emerald-400">No known findings on this package node</div>
             )}
           </div>
         )}
 
-        {/* Vulnerability */}
         {data.nodeType === "vulnerability" && (
           <div className="space-y-3">
             {data.severity && (
@@ -193,9 +206,7 @@ export function LineageDetailPanel({
                 {data.severity}
               </span>
             )}
-            {data.cvssScore !== undefined && (
-              <Row label="CVSS" value={data.cvssScore.toFixed(1)} />
-            )}
+            {data.cvssScore !== undefined && <Row label="CVSS" value={data.cvssScore.toFixed(1)} />}
             {data.epssScore !== undefined && data.epssScore > 0 && (
               <Row label="EPSS" value={`${(data.epssScore * 100).toFixed(1)}%`} />
             )}
@@ -204,33 +215,9 @@ export function LineageDetailPanel({
                 CISA Known Exploited
               </div>
             )}
-            {data.fixedVersion && (
-              <Row label="Fix version" value={data.fixedVersion} className="text-emerald-400" />
-            )}
-            {data.owaspTags && data.owaspTags.length > 0 && (
-              <div>
-                <Label>OWASP</Label>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {data.owaspTags?.map((t) => (
-                    <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {data.atlasTags && data.atlasTags.length > 0 && (
-              <div>
-                <Label>MITRE ATLAS</Label>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {data.atlasTags?.map((t) => (
-                    <span key={t} className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+            {data.fixedVersion && <Row label="Fix version" value={data.fixedVersion} className="text-emerald-400" />}
+            {data.owaspTags && data.owaspTags.length > 0 && <TagList label="OWASP" tags={data.owaspTags} />}
+            {data.atlasTags && data.atlasTags.length > 0 && <TagList label="ATLAS" tags={data.atlasTags} />}
             <a
               href={`https://osv.dev/vulnerability/${data.label}`}
               target="_blank"
@@ -243,22 +230,80 @@ export function LineageDetailPanel({
           </div>
         )}
 
-        {/* Credential */}
-        {data.nodeType === "credential" && (
+        {data.nodeType === "misconfiguration" && (
           <div className="space-y-3">
-            <div className="text-xs text-amber-400">
-              Environment variable exposed in MCP server configuration
-            </div>
-            {data.serverName && <Row label="Server" value={data.serverName} />}
+            {data.severity && (
+              <span
+                className={`inline-block text-xs px-2 py-1 rounded border font-mono uppercase ${severityColor(data.severity)}`}
+              >
+                {data.severity}
+              </span>
+            )}
+            {data.description && <div className="text-xs text-zinc-400">{data.description}</div>}
           </div>
         )}
 
-        {/* Tool */}
-        {data.nodeType === "tool" && (
+        {data.nodeType === "credential" && (
           <div className="space-y-3">
-            {data.description && (
-              <div className="text-xs text-zinc-400">{data.description}</div>
-            )}
+            <div className="text-xs text-amber-400">Environment variable or credential-like secret exposed in configuration.</div>
+            {data.serverName && <Row label="Linked server" value={data.serverName} />}
+          </div>
+        )}
+
+        {data.nodeType === "tool" && data.description && (
+          <div className="text-xs text-zinc-400">{data.description}</div>
+        )}
+
+        {data.nodeType === "model" && (
+          <GenericAssetSection
+            description={data.description}
+            version={data.version}
+            attributes={data.attributes}
+          />
+        )}
+
+        {data.nodeType === "dataset" && (
+          <GenericAssetSection
+            description={data.description}
+            version={data.version}
+            attributes={data.attributes}
+          />
+        )}
+
+        {data.nodeType === "container" && (
+          <GenericAssetSection description={data.description} attributes={data.attributes} />
+        )}
+
+        {data.nodeType === "cloudResource" && (
+          <GenericAssetSection description={data.description} attributes={data.attributes} />
+        )}
+
+        {(data.status || data.riskScore != null || data.firstSeen || data.lastSeen) && (
+          <div className="space-y-2">
+            <Label>Lifecycle</Label>
+            {data.status && <Row label="Status" value={data.status} />}
+            {data.riskScore != null && <Row label="Risk score" value={data.riskScore.toFixed(1)} />}
+            {data.firstSeen && <Row label="First seen" value={shortDate(data.firstSeen)} />}
+            {data.lastSeen && <Row label="Last seen" value={shortDate(data.lastSeen)} />}
+          </div>
+        )}
+
+        {data.dataSources && data.dataSources.length > 0 && (
+          <TagList label="Data Sources" tags={data.dataSources} tone="blue" />
+        )}
+
+        {data.complianceTags && data.complianceTags.length > 0 && (
+          <TagList label="Compliance Tags" tags={data.complianceTags} />
+        )}
+
+        {extraAttributes.length > 0 && (
+          <div className="space-y-2">
+            <Label>Attributes</Label>
+            <div className="space-y-1.5">
+              {extraAttributes.slice(0, 10).map(([key, value]) => (
+                <Row key={key} label={prettifyKey(key)} value={formatValue(value)} />
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -266,9 +311,65 @@ export function LineageDetailPanel({
   );
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+function GenericAssetSection({
+  description,
+  version,
+  attributes,
+}: {
+  description?: string;
+  version?: string;
+  attributes?: Record<string, unknown>;
+}) {
+  return (
+    <div className="space-y-3">
+      {description && <div className="text-xs text-zinc-400">{description}</div>}
+      {version && <Row label="Version / hash" value={version} />}
+      {typeof attributes?.verified === "boolean" && (
+        <Row label="Verified" value={attributes.verified ? "yes" : "no"} />
+      )}
+    </div>
+  );
+}
 
-function Label({ children }: { children: React.ReactNode }) {
+function TagList({
+  label,
+  tags,
+  tone = "zinc",
+}: {
+  label: string;
+  tags: string[];
+  tone?: "zinc" | "blue";
+}) {
+  const toneClass =
+    tone === "blue"
+      ? "bg-blue-950 text-blue-300 border-blue-800"
+      : "bg-zinc-800 text-zinc-400 border-zinc-700";
+  return (
+    <div>
+      <Label>{label}</Label>
+      <div className="flex flex-wrap gap-1 mt-1">
+        {tags.map((tag) => (
+          <span key={tag} className={`text-[10px] px-1.5 py-0.5 rounded border ${toneClass}`}>
+            {tag}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CodeBlock({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <Label>{label}</Label>
+      <div className="text-xs font-mono text-zinc-300 bg-zinc-900 rounded px-2 py-1 break-all">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function Label({ children }: { children: ReactNode }) {
   return <div className="text-[10px] uppercase tracking-wider text-zinc-500 mb-0.5">{children}</div>;
 }
 
@@ -282,9 +383,29 @@ function Row({
   className?: string;
 }) {
   return (
-    <div className="flex items-center justify-between text-xs">
+    <div className="flex items-center justify-between gap-4 text-xs">
       <span className="text-zinc-500">{label}</span>
-      <span className={`text-zinc-300 font-mono ${className}`}>{value}</span>
+      <span className={`text-zinc-300 font-mono text-right break-all ${className}`}>{value}</span>
     </div>
   );
+}
+
+function shortDate(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString();
+}
+
+function formatValue(value: unknown): string {
+  if (value == null) return "—";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.slice(0, 4).map((item) => String(item)).join(", ");
+  return JSON.stringify(value);
+}
+
+function prettifyKey(value: string): string {
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (match) => match.toUpperCase());
 }

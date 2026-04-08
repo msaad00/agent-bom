@@ -18,13 +18,19 @@ export const BACKGROUND_GAP = 24;
 // ─── MiniMap Node Color Map ──────────────────────────────────────────────────
 
 export const NODE_COLOR_MAP: Record<LineageNodeType, string> = {
+  provider: "#71717a",
   agent: "#10b981",
   server: "#3b82f6",
   sharedServer: "#22d3ee",
   package: "#52525b",
   vulnerability: "#ef4444",
+  misconfiguration: "#f97316",
   credential: "#f59e0b",
   tool: "#a855f7",
+  model: "#8b5cf6",
+  dataset: "#06b6d4",
+  container: "#6366f1",
+  cloudResource: "#0ea5e9",
 };
 
 export function minimapNodeColor(n: { data: Record<string, unknown> }): string {

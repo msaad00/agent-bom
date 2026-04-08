@@ -2,30 +2,30 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ReactFlow,
   Background,
   Controls,
   MiniMap,
-  type Node,
+  ReactFlow,
   type Edge,
-  MarkerType,
+  type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import {
-  ShieldAlert,
-  Loader2,
-  AlertTriangle,
-} from "lucide-react";
-import { api, type ScanJob, type ScanResult } from "@/lib/api";
-import { applyDagreLayout } from "@/lib/dagre-layout";
-import { lineageNodeTypes, type LineageNodeData, type LineageNodeType } from "@/components/lineage-nodes";
-import { FilterPanel, DEFAULT_FILTERS, type FilterState } from "@/components/lineage-filter";
-import { LineageDetailPanel } from "@/components/lineage-detail";
-import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, minimapNodeColor } from "@/lib/graph-utils";
-import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
-import { STANDARD_LEGEND } from "@/lib/graph-utils";
+import { AlertTriangle, Loader2, ShieldAlert } from "lucide-react";
 
-// ─── Pulse Animation Styles ──────────────────────────────────────────────────
+import { GraphLegend, FullscreenButton } from "@/components/graph-chrome";
+import { LineageDetailPanel } from "@/components/lineage-detail";
+import { FilterPanel, DEFAULT_FILTERS, type FilterState } from "@/components/lineage-filter";
+import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nodes";
+import { applyDagreLayout } from "@/lib/dagre-layout";
+import {
+  BACKGROUND_COLOR,
+  BACKGROUND_GAP,
+  CONTROLS_CLASS,
+  MINIMAP_CLASS,
+  minimapNodeColor,
+} from "@/lib/graph-utils";
+import { api, type GraphSnapshot, type UnifiedGraphResponse } from "@/lib/api";
+import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 
 function PulseStyles() {
   return (
@@ -41,410 +41,132 @@ function PulseStyles() {
   );
 }
 
-// ─── Graph Builder ───────────────────────────────────────────────────────────
-
-function buildLineageGraph(
-  result: ScanResult,
-  filters: FilterState
-): { nodes: Node[]; edges: Edge[]; agentNames: string[] } {
-  const nodes: Node[] = [];
-  const edges: Edge[] = [];
-  const seen = new Set<string>();
-  const agentNames: string[] = [];
-
-  // Collect vulnerable package keys for vulnOnly filter
-  const vulnPkgKeys = new Set<string>();
-  for (const agent of result.agents) {
-    for (const server of agent.mcp_servers) {
-      for (const pkg of server.packages) {
-        if (pkg.vulnerabilities && pkg.vulnerabilities.length > 0) {
-          vulnPkgKeys.add(`${pkg.name}@${pkg.version}`);
-        }
-      }
-    }
-  }
-
-  // Collect vulnerable server keys
-  const vulnServerKeys = new Set<string>();
-  for (const agent of result.agents) {
-    for (const server of agent.mcp_servers) {
-      for (const pkg of server.packages) {
-        if (vulnPkgKeys.has(`${pkg.name}@${pkg.version}`)) {
-          vulnServerKeys.add(`${agent.name}:${server.name}`);
-        }
-      }
-    }
-  }
-
-  for (const agent of result.agents) {
-    agentNames.push(agent.name);
-
-    // Agent name filter
-    if (filters.agentName && agent.name !== filters.agentName) continue;
-
-    // Vuln-only: skip agents with no vulnerable servers
-    const agentHasVulns = agent.mcp_servers.some((s) =>
-      vulnServerKeys.has(`${agent.name}:${s.name}`)
-    );
-    if (filters.vulnOnly && !agentHasVulns) continue;
-
-    const agentId = `agent:${agent.name}`;
-
-    if (filters.layers.agent && !seen.has(agentId)) {
-      seen.add(agentId);
-      const totalPkgs = agent.mcp_servers.reduce((s, srv) => s + srv.packages.length, 0);
-      const totalVulns = agent.mcp_servers.reduce(
-        (s, srv) => s + srv.packages.reduce((vs, p) => vs + (p.vulnerabilities?.length ?? 0), 0),
-        0
-      );
-
-      nodes.push({
-        id: agentId,
-        type: "agentNode",
-        position: { x: 0, y: 0 },
-        data: {
-          label: agent.name,
-          nodeType: "agent",
-          agentType: agent.agent_type,
-          agentStatus: agent.status,
-          serverCount: agent.mcp_servers.length,
-          packageCount: totalPkgs,
-          vulnCount: totalVulns,
-        } satisfies LineageNodeData,
-      });
-    }
-
-    for (const server of agent.mcp_servers) {
-      const serverHasVulns = vulnServerKeys.has(`${agent.name}:${server.name}`);
-      if (filters.vulnOnly && !serverHasVulns) continue;
-
-      const serverId = `server:${agent.name}:${server.name}`;
-      const credKeys = server.env
-        ? Object.keys(server.env).filter((k) =>
-            /key|token|secret|password|credential|auth/i.test(k)
-          )
-        : [];
-
-      if (filters.layers.server && !seen.has(serverId)) {
-        seen.add(serverId);
-        nodes.push({
-          id: serverId,
-          type: "serverNode",
-          position: { x: 0, y: 0 },
-          data: {
-            label: server.name,
-            nodeType: "server",
-            command: server.command || server.transport || "",
-            toolCount: server.tools?.length ?? 0,
-            credentialCount: credKeys.length,
-          } satisfies LineageNodeData,
-        });
-      }
-
-      // Agent → Server edge
-      if (filters.layers.agent && filters.layers.server) {
-        const edgeId = `${agentId}->${serverId}`;
-        if (!seen.has(edgeId)) {
-          seen.add(edgeId);
-          edges.push({
-            id: edgeId,
-            source: agentId,
-            target: serverId,
-            type: "smoothstep",
-            animated: true,
-            style: { stroke: "#10b981", strokeWidth: 2.5, opacity: 0.85 },
-            markerEnd: { type: MarkerType.ArrowClosed, color: "#10b981", width: 16, height: 12 },
-          });
-        }
-      }
-
-      // Credential nodes
-      if (filters.layers.credential && credKeys.length > 0) {
-        for (const cred of credKeys) {
-          const credId = `cred:${server.name}:${cred}`;
-          if (!seen.has(credId)) {
-            seen.add(credId);
-            nodes.push({
-              id: credId,
-              type: "credentialNode",
-              position: { x: 0, y: 0 },
-              data: {
-                label: cred,
-                nodeType: "credential",
-                serverName: server.name,
-              } satisfies LineageNodeData,
-            });
-          }
-          const credEdgeId = `${serverId}->${credId}`;
-          if (filters.layers.server && !seen.has(credEdgeId)) {
-            seen.add(credEdgeId);
-            edges.push({
-              id: credEdgeId,
-              source: serverId,
-              target: credId,
-              type: "smoothstep",
-              animated: true,
-              style: { stroke: "#f59e0b", strokeWidth: 1.8, strokeDasharray: "6 3", opacity: 0.9 },
-              markerEnd: { type: MarkerType.ArrowClosed, color: "#f59e0b", width: 14, height: 10 },
-            });
-          }
-        }
-      }
-
-      // Tool nodes (limit to 8 per server to avoid clutter)
-      if (filters.layers.tool && server.tools && server.tools.length > 0) {
-        const displayTools = server.tools.slice(0, 8);
-        for (const tool of displayTools) {
-          const toolId = `tool:${server.name}:${tool.name}`;
-          if (!seen.has(toolId)) {
-            seen.add(toolId);
-            nodes.push({
-              id: toolId,
-              type: "toolNode",
-              position: { x: 0, y: 0 },
-              data: {
-                label: tool.name,
-                nodeType: "tool",
-                description: tool.description,
-              } satisfies LineageNodeData,
-            });
-          }
-          const toolEdgeId = `${serverId}->${toolId}`;
-          if (filters.layers.server && !seen.has(toolEdgeId)) {
-            seen.add(toolEdgeId);
-            edges.push({
-              id: toolEdgeId,
-              source: serverId,
-              target: toolId,
-              type: "smoothstep",
-              style: { stroke: "#a855f7", strokeWidth: 1.2, opacity: 0.8 },
-              markerEnd: { type: MarkerType.ArrowClosed, color: "#a855f7", width: 12, height: 8 },
-            });
-          }
-        }
-      }
-
-      // Package nodes
-      for (const pkg of server.packages) {
-        const pkgKey = `${pkg.name}@${pkg.version}`;
-        const pkgHasVulns = vulnPkgKeys.has(pkgKey);
-        if (filters.vulnOnly && !pkgHasVulns) continue;
-
-        const pkgId = `pkg:${pkgKey}`;
-        const vulnCount = pkg.vulnerabilities?.length ?? 0;
-
-        if (filters.layers.package && !seen.has(pkgId)) {
-          seen.add(pkgId);
-          nodes.push({
-            id: pkgId,
-            type: "packageNode",
-            position: { x: 0, y: 0 },
-            data: {
-              label: pkgKey,
-              nodeType: "package",
-              ecosystem: pkg.ecosystem,
-              version: pkg.version,
-              vulnCount,
-            } satisfies LineageNodeData,
-          });
-        }
-
-        // Server → Package edge
-        if (filters.layers.server && filters.layers.package) {
-          const pkgEdgeId = `${serverId}->${pkgId}`;
-          if (!seen.has(pkgEdgeId)) {
-            seen.add(pkgEdgeId);
-            edges.push({
-              id: pkgEdgeId,
-              source: serverId,
-              target: pkgId,
-              type: "smoothstep",
-              style: { stroke: "#3b82f6", strokeWidth: 1.8, opacity: 0.8 },
-              markerEnd: { type: MarkerType.ArrowClosed, color: "#3b82f6", width: 14, height: 10 },
-            });
-          }
-        }
-
-        // Vulnerability nodes
-        if (filters.layers.vulnerability && pkg.vulnerabilities) {
-          for (const vuln of pkg.vulnerabilities) {
-            // Severity filter
-            if (filters.severity && vuln.severity !== filters.severity) continue;
-
-            const vulnId = `vuln:${vuln.id}`;
-            if (!seen.has(vulnId)) {
-              seen.add(vulnId);
-              // Find blast radius info
-              const br = result.blast_radius?.find((b) => b.vulnerability_id === vuln.id);
-              const isCriticalNode = vuln.severity === "critical" || (vuln.is_kev ?? vuln.cisa_kev) === true || br?.is_kev === true;
-              nodes.push({
-                id: vulnId,
-                type: "vulnNode",
-                position: { x: 0, y: 0 },
-                data: {
-                  label: vuln.id,
-                  nodeType: "vulnerability",
-                  severity: vuln.severity,
-                  cvssScore: vuln.cvss_score ?? br?.cvss_score,
-                  epssScore: vuln.epss_score ?? br?.epss_score,
-                  isKev: (vuln.is_kev ?? vuln.cisa_kev) ?? br?.is_kev,
-                  fixedVersion: vuln.fixed_version ?? br?.fixed_version,
-                  owaspTags: br?.owasp_tags,
-                  atlasTags: br?.atlas_tags,
-                  isCritical: isCriticalNode,
-                } satisfies LineageNodeData,
-                className: isCriticalNode ? "node-critical-pulse" : undefined,
-              });
-            }
-
-            // Package → Vuln edge
-            if (filters.layers.package) {
-              const vulnEdgeId = `${pkgId}->${vulnId}`;
-              if (!seen.has(vulnEdgeId)) {
-                seen.add(vulnEdgeId);
-                const color =
-                  vuln.severity === "critical" ? "#ef4444" :
-                  vuln.severity === "high" ? "#f97316" :
-                  vuln.severity === "medium" ? "#eab308" : "#3b82f6";
-                const brCount = result.blast_radius?.find((b) => b.vulnerability_id === vuln.id)?.affected_agents.length ?? 1;
-                const isCritical = vuln.severity === "critical" || vuln.severity === "high";
-                edges.push({
-                  id: vulnEdgeId,
-                  source: pkgId,
-                  target: vulnId,
-                  type: "smoothstep",
-                  animated: isCritical,
-                  style: { stroke: color, strokeWidth: Math.min(1.5 + brCount, 4.5), opacity: isCritical ? 1 : 0.75 },
-                  markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 12 },
-                });
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return { nodes, edges, agentNames };
-}
-
-// ─── Hover Highlighting ──────────────────────────────────────────────────────
-
 function getConnectedIds(nodeId: string, edges: Edge[]): Set<string> {
-  const connected = new Set<string>([nodeId]);
-  // Walk outgoing
-  const queue = [nodeId];
+  const adjacency = new Map<string, Set<string>>();
+  for (const edge of edges) {
+    addNeighbor(adjacency, edge.source, edge.target);
+    addNeighbor(adjacency, edge.target, edge.source);
+  }
+
   const visited = new Set<string>([nodeId]);
+  const queue = [nodeId];
   while (queue.length > 0) {
     const current = queue.shift()!;
-    for (const e of edges) {
-      if (e.source === current && !visited.has(e.target)) {
-        visited.add(e.target);
-        connected.add(e.target);
-        queue.push(e.target);
-      }
+    for (const neighbor of adjacency.get(current) ?? []) {
+      if (visited.has(neighbor)) continue;
+      visited.add(neighbor);
+      queue.push(neighbor);
     }
   }
-  // Walk incoming
-  const queue2 = [nodeId];
-  const visited2 = new Set<string>([nodeId]);
-  while (queue2.length > 0) {
-    const current = queue2.shift()!;
-    for (const e of edges) {
-      if (e.target === current && !visited2.has(e.source)) {
-        visited2.add(e.source);
-        connected.add(e.source);
-        queue2.push(e.source);
-      }
-    }
-  }
-  return connected;
+
+  return visited;
 }
 
-// ─── Page ────────────────────────────────────────────────────────────────────
+function addNeighbor(map: Map<string, Set<string>>, source: string, target: string): void {
+  const existing = map.get(source);
+  if (existing) {
+    existing.add(target);
+  } else {
+    map.set(source, new Set([target]));
+  }
+}
 
 export default function GraphPage() {
-  const [jobs, setJobs] = useState<ScanJob[]>([]);
-  const [selectedJob, setSelectedJob] = useState<string>("");
-  const [loading, setLoading] = useState(true);
+  const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
+  const [selectedScanId, setSelectedScanId] = useState("");
+  const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
+  const [loadingSnapshots, setLoadingSnapshots] = useState(true);
+  const [loadingGraph, setLoadingGraph] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
 
   useEffect(() => {
+    setLoadingSnapshots(true);
     api
-      .listJobs()
-      .then(async (res) => {
-        const fullJobs: ScanJob[] = [];
-        for (const j of res.jobs) {
-          if (j.status === "done") {
-            try {
-              const full = await api.getScan(j.job_id);
-              if (full.result) fullJobs.push(full);
-            } catch {
-              /* skip */
-            }
-          }
+      .getGraphSnapshots(40)
+      .then((items) => {
+        setSnapshots(items);
+        if (items.length > 0) {
+          setSelectedScanId((current) => current || items[0].scan_id);
         }
-        setJobs(fullJobs);
-        if (fullJobs.length > 0) setSelectedJob(fullJobs[0].job_id);
       })
       .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+      .finally(() => setLoadingSnapshots(false));
   }, []);
 
-  const activeResult = useMemo(
-    () => jobs.find((j) => j.job_id === selectedJob)?.result ?? null,
-    [jobs, selectedJob]
+  useEffect(() => {
+    if (!selectedScanId) {
+      setGraphData(null);
+      return;
+    }
+
+    setLoadingGraph(true);
+    setSelectedNode(null);
+    api
+      .getGraph({ scanId: selectedScanId, limit: 5000, offset: 0 })
+      .then((result) => {
+        setGraphData(result);
+        setError(null);
+      })
+      .catch((e) => {
+        setError(e.message);
+        setGraphData(null);
+      })
+      .finally(() => setLoadingGraph(false));
+  }, [selectedScanId]);
+
+  const activeSnapshot = useMemo(
+    () => snapshots.find((snapshot) => snapshot.scan_id === selectedScanId) ?? null,
+    [snapshots, selectedScanId],
   );
 
-  const { rawNodes, rawEdges, agentNames } = useMemo(() => {
-    if (!activeResult) return { rawNodes: [], rawEdges: [], agentNames: [] };
-    const { nodes, edges, agentNames } = buildLineageGraph(activeResult, filters);
-    return { rawNodes: nodes, rawEdges: edges, agentNames };
-  }, [activeResult, filters]);
+  const flow = useMemo(() => {
+    if (!graphData) {
+      return { nodes: [], edges: [], agentNames: [], legend: [], summary: null as null | ReturnType<typeof buildUnifiedFlowGraph>["summary"] };
+    }
+    return buildUnifiedFlowGraph(graphData, filters);
+  }, [graphData, filters]);
 
-  // Apply dagre layout
   const { nodes: layoutNodes, edges: layoutEdges } = useMemo(
     () =>
-      rawNodes.length > 0
-        ? applyDagreLayout(rawNodes, rawEdges, {
+      flow.nodes.length > 0
+        ? applyDagreLayout(flow.nodes, flow.edges, {
             direction: "LR",
             nodeWidth: 180,
-            nodeHeight: 60,
-            rankSep: 100,
-            nodeSep: 25,
+            nodeHeight: 64,
+            rankSep: 110,
+            nodeSep: 28,
           })
         : { nodes: [], edges: [] },
-    [rawNodes, rawEdges]
+    [flow.nodes, flow.edges],
   );
 
-  // Apply hover highlighting
   const connectedIds = useMemo(
     () => (hoveredNodeId ? getConnectedIds(hoveredNodeId, layoutEdges) : null),
-    [hoveredNodeId, layoutEdges]
+    [hoveredNodeId, layoutEdges],
   );
 
   const displayNodes = useMemo(() => {
     if (!connectedIds) return layoutNodes;
-    return layoutNodes?.map((n) => ({
-      ...n,
+    return layoutNodes.map((node) => ({
+      ...node,
       data: {
-        ...n.data,
-        dimmed: !connectedIds.has(n.id),
-        highlighted: connectedIds.has(n.id),
+        ...node.data,
+        dimmed: !connectedIds.has(node.id),
+        highlighted: connectedIds.has(node.id),
       },
     }));
   }, [layoutNodes, connectedIds]);
 
   const displayEdges = useMemo(() => {
     if (!connectedIds) return layoutEdges;
-    return layoutEdges?.map((e) => ({
-      ...e,
+    return layoutEdges.map((edge) => ({
+      ...edge,
       style: {
-        ...e.style,
-        opacity: connectedIds.has(e.source) && connectedIds.has(e.target) ? 1 : 0.15,
+        ...edge.style,
+        opacity: connectedIds.has(edge.source) && connectedIds.has(edge.target) ? 1 : 0.12,
       },
     }));
   }, [layoutEdges, connectedIds]);
@@ -461,45 +183,32 @@ export default function GraphPage() {
   const onNodeMouseLeave = useCallback(() => {
     setHoveredNodeId(null);
   }, []);
-  const activeSummary = useMemo(() => {
-    if (!activeResult) return null;
-    const vulnerabilities = activeResult.blast_radius ?? [];
-    const critical = vulnerabilities.filter((item) => item.severity === "critical").length;
-    const credentialed = vulnerabilities.filter((item) => item.exposed_credentials.length > 0).length;
-    return {
-      agents: activeResult.agents.length,
-      servers: activeResult.agents.reduce((sum, agent) => sum + agent.mcp_servers.length, 0),
-      vulnerabilities: vulnerabilities.length,
-      critical,
-      credentialed,
-    };
-  }, [activeResult]);
 
-  if (loading) {
+  if (loadingSnapshots) {
     return (
       <div className="flex items-center justify-center h-[80vh] text-zinc-400">
         <Loader2 className="w-5 h-5 animate-spin mr-2" />
-        Loading scan data...
+        Loading persisted graph snapshots...
       </div>
     );
   }
 
-  if (error) {
+  if (error && snapshots.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
         <AlertTriangle className="w-8 h-8 text-amber-500" />
-        <p className="text-sm">Could not connect to agent-bom API</p>
-        <p className="text-xs text-zinc-500">Make sure the API is running at localhost:8422</p>
+        <p className="text-sm">Could not load the unified graph</p>
+        <p className="text-xs text-zinc-500">Run a scan first so the API can persist graph snapshots.</p>
       </div>
     );
   }
 
-  if (jobs.length === 0) {
+  if (snapshots.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
         <ShieldAlert className="w-8 h-8 text-zinc-600" />
-        <p className="text-sm">No completed scans found</p>
-        <p className="text-xs text-zinc-500">Run a scan first to visualize the lineage graph</p>
+        <p className="text-sm">No graph snapshots found</p>
+        <p className="text-xs text-zinc-500">Run a scan to persist the unified inventory and security graph.</p>
       </div>
     );
   }
@@ -507,57 +216,69 @@ export default function GraphPage() {
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col">
       <PulseStyles />
-      {/* Header */}
-      <div className="border-b border-zinc-800 bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.12),transparent_28%),linear-gradient(180deg,rgba(24,24,27,0.96),rgba(9,9,11,0.96))] px-4 py-4">
+
+      <div className="border-b border-zinc-800 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_26%),linear-gradient(180deg,rgba(24,24,27,0.96),rgba(9,9,11,0.96))] px-4 py-4">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <p className="text-[10px] uppercase tracking-[0.24em] text-sky-400">Graph view</p>
-            <h1 className="mt-1 text-lg font-semibold text-zinc-100">Lineage Graph</h1>
+            <p className="text-[10px] uppercase tracking-[0.24em] text-sky-400">Unified graph</p>
+            <h1 className="mt-1 text-lg font-semibold text-zinc-100">Security Graph</h1>
             <p className="text-xs text-zinc-500">
-            Agent → Server → Package → CVE · Credentials · Tools
+              Provider → Agent → Server → Package → Findings · Models · Datasets · Containers · Cloud resources · Runtime edges
             </p>
           </div>
+
           <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-            {activeSummary && (
+            {flow.summary && (
               <>
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300">
-                  <span className="font-mono text-zinc-100">{activeSummary.agents}</span> agents
-                </div>
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300">
-                  <span className="font-mono text-zinc-100">{activeSummary.servers}</span> servers
-                </div>
-                <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-1.5 text-xs text-red-200">
-                  <span className="font-mono text-red-100">{activeSummary.critical}</span> critical
-                </div>
-                <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-200">
-                  <span className="font-mono text-amber-100">{activeSummary.credentialed}</span> credentialed
-                </div>
+                <MetricCard value={flow.summary.agents} label="agents" />
+                <MetricCard value={flow.summary.servers} label="servers" />
+                <MetricCard value={flow.summary.findings} label="findings" accent="orange" />
+                <MetricCard value={flow.summary.critical} label="critical" accent="red" />
+                <MetricCard value={flow.summary.attackPaths} label="paths" accent="blue" />
               </>
             )}
+
             <select
-              value={selectedJob}
-              onChange={(e) => setSelectedJob(e.target.value)}
-              className="rounded-xl border border-zinc-700 bg-zinc-900/90 px-3 py-2 text-sm text-zinc-300 focus:border-emerald-600 focus:outline-none"
+              value={selectedScanId}
+              onChange={(event) => setSelectedScanId(event.target.value)}
+              className="rounded-xl border border-zinc-700 bg-zinc-900/90 px-3 py-2 text-sm text-zinc-300 focus:border-sky-600 focus:outline-none"
             >
-              {jobs?.map((j) => (
-                <option key={j.job_id} value={j.job_id}>
-                  Scan {j.job_id.slice(0, 8)} — {new Date(j.created_at).toLocaleDateString()}
+              {snapshots.map((snapshot) => (
+                <option key={snapshot.scan_id} value={snapshot.scan_id}>
+                  {snapshot.scan_id.slice(0, 12)} · {new Date(snapshot.created_at).toLocaleString()}
                 </option>
               ))}
             </select>
+
             <FullscreenButton />
-            <GraphLegend items={STANDARD_LEGEND} />
+            <GraphLegend items={flow.legend} />
           </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-zinc-500">
+          {activeSnapshot && (
+            <>
+              <span>{activeSnapshot.node_count} nodes</span>
+              <span>{activeSnapshot.edge_count} edges</span>
+              <span>captured {new Date(activeSnapshot.created_at).toLocaleString()}</span>
+            </>
+          )}
+          {graphData?.pagination.has_more && (
+            <span className="text-amber-400">
+              Showing {graphData.pagination.limit} of {graphData.pagination.total} nodes in this snapshot
+            </span>
+          )}
+          {loadingGraph && (
+            <span className="flex items-center gap-1 text-sky-400">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              refreshing graph
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Body: Filter + Graph + Detail */}
       <div className="flex-1 flex relative overflow-hidden">
-        <FilterPanel
-          filters={filters}
-          onChange={setFilters}
-          agentNames={agentNames}
-        />
+        <FilterPanel filters={filters} onChange={setFilters} agentNames={flow.agentNames} />
 
         <div className="flex-1 relative">
           <ReactFlow
@@ -572,7 +293,10 @@ export default function GraphPage() {
             onNodeClick={onNodeClick}
             onNodeMouseEnter={onNodeMouseEnter}
             onNodeMouseLeave={onNodeMouseLeave}
-            onPaneClick={() => { setSelectedNode(null); setHoveredNodeId(null); }}
+            onPaneClick={() => {
+              setSelectedNode(null);
+              setHoveredNodeId(null);
+            }}
           >
             <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
             <Controls className={CONTROLS_CLASS} />
@@ -580,13 +304,35 @@ export default function GraphPage() {
           </ReactFlow>
 
           {selectedNode && (
-            <LineageDetailPanel
-              data={selectedNode}
-              onClose={() => setSelectedNode(null)}
-            />
+            <LineageDetailPanel data={selectedNode} onClose={() => setSelectedNode(null)} />
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function MetricCard({
+  value,
+  label,
+  accent = "zinc",
+}: {
+  value: number;
+  label: string;
+  accent?: "zinc" | "red" | "orange" | "blue";
+}) {
+  const accentClass =
+    accent === "red"
+      ? "border-red-500/20 bg-red-500/10 text-red-200"
+      : accent === "orange"
+        ? "border-orange-500/20 bg-orange-500/10 text-orange-200"
+        : accent === "blue"
+          ? "border-sky-500/20 bg-sky-500/10 text-sky-200"
+          : "border-zinc-800 bg-zinc-900/80 text-zinc-300";
+
+  return (
+    <div className={`rounded-xl border px-3 py-1.5 text-xs ${accentClass}`}>
+      <span className="font-mono text-zinc-100">{value}</span> {label}
     </div>
   );
 }

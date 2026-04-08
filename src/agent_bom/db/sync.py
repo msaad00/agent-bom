@@ -226,7 +226,7 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
     fixed_version: Optional[str] = None
     affected_rows: list[dict] = []
 
-    from agent_bom.models import normalize_package_name
+    from agent_bom.package_utils import normalize_package_name
 
     for aff in data.get("affected", []):
         pkg = aff.get("package", {})
@@ -681,7 +681,7 @@ def sync_ghsa(
     per_page = 100
     eco_counts: dict[str, int] = {}
 
-    from agent_bom.models import normalize_package_name
+    from agent_bom.package_utils import normalize_package_name
 
     for ecosystem in target_ecosystems:
         if count >= max_entries:

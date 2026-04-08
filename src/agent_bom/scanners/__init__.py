@@ -37,13 +37,14 @@ from agent_bom.http_client import OfflineModeError, create_client, request_with_
 from agent_bom.iso_27001 import tag_blast_radius as tag_iso_27001
 from agent_bom.malicious import check_dependency_confusion, check_typosquat, flag_malicious_from_vulns
 from agent_bom.mitre_attack import tag_blast_radius as tag_attack_techniques
-from agent_bom.models import Agent, BlastRadius, MCPServer, Package, Severity, Vulnerability, normalize_package_name
+from agent_bom.models import Agent, BlastRadius, MCPServer, Package, Severity, Vulnerability
 from agent_bom.nist_800_53 import tag_blast_radius as tag_nist_800_53
 from agent_bom.nist_ai_rmf import tag_blast_radius as tag_nist_ai_rmf
 from agent_bom.nist_csf import tag_blast_radius as tag_nist_csf
 from agent_bom.owasp import tag_blast_radius
 from agent_bom.owasp_agentic import tag_blast_radius as tag_owasp_agentic
 from agent_bom.owasp_mcp import tag_blast_radius as tag_owasp_mcp
+from agent_bom.package_utils import normalize_package_name
 from agent_bom.soc2 import tag_blast_radius as tag_soc2
 from agent_bom.vuln_compliance import tag_vulnerability as _tag_vuln
 

@@ -3,65 +3,25 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
-from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from agent_bom.finding import Finding
 
 from agent_bom.advisory_sources import merge_advisory_sources
-
-# ─── Package name normalization ──────────────────────────────────────────────
-# PEP 503: https://peps.python.org/pep-0503/#normalized-names
-# Ensures consistent matching across parsers, scanners, and cache.
-_NORMALIZE_RE = re.compile(r"[-_.]+")
-
-
-def _reference_host_and_path(reference: str) -> tuple[str, str]:
-    """Return normalized hostname and path for a reference URL."""
-    try:
-        parsed = urlparse(reference)
-    except ValueError:
-        return "", ""
-    return (parsed.hostname or "").lower(), (parsed.path or "").lower()
-
-
-def _host_matches_domain(host: str, domain: str) -> bool:
-    """Return True when host equals domain or is a subdomain of it."""
-    return host == domain or host.endswith(f".{domain}")
-
-
-def normalize_package_name(name: str, ecosystem: str = "") -> str:
-    """Normalize a package name for consistent matching.
-
-    - **PyPI**: PEP 503 — lowercases and collapses ``-``, ``_``, ``.`` runs
-      to a single ``-``.  (e.g. ``Requests_OAuthlib`` → ``requests-oauthlib``)
-    - **npm**: lowercases only (scoped names preserved, e.g. ``@scope/Pkg`` → ``@scope/pkg``)
-    - **Other ecosystems**: lowercases only.
-
-    This is the single source of truth for name normalization across the
-    entire scanner pipeline (parsers → cache → OSV queries → result matching).
-    """
-    if not name:
-        return name
-    eco = ecosystem.lower()
-    if eco == "pypi":
-        return _NORMALIZE_RE.sub("-", name).lower()
-    return name.lower()
-
-
-def parse_debian_source_name(source_field: str) -> Optional[str]:
-    """Extract the Debian source package name from a ``Source:`` field."""
-    if not source_field:
-        return None
-    source_name = source_field.split("(", 1)[0].strip()
-    if source_name.startswith("${") and source_name.endswith("}"):
-        return None
-    return source_name or None
+from agent_bom.package_utils import (
+    host_matches_domain as _host_matches_domain,
+)
+from agent_bom.package_utils import (
+    normalize_package_name,
+)
+from agent_bom.package_utils import parse_debian_source_name as parse_debian_source_name  # noqa: F401
+from agent_bom.package_utils import (
+    reference_host_and_path as _reference_host_and_path,
+)
 
 
 class Severity(str, Enum):

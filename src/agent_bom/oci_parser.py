@@ -44,7 +44,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from agent_bom.models import Package, parse_debian_source_name
+from agent_bom.models import Package
+from agent_bom.package_utils import parse_debian_source_name
 
 _logger = logging.getLogger(__name__)
 

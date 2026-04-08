@@ -319,7 +319,7 @@ def rescan_command(baseline: str, output: Optional[str], md: Optional[str], enri
         con.print(f"  [red]OSV query failed: {exc}[/red]")
         sys.exit(2)
 
-    from agent_bom.models import normalize_package_name
+    from agent_bom.package_utils import normalize_package_name
 
     # ── Optional NVD/EPSS/KEV enrichment ─────────────────────────────────────
     if enrich:

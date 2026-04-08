@@ -13,7 +13,8 @@ import logging
 import httpx
 
 from agent_bom.http_client import create_client, request_with_retry
-from agent_bom.models import Package, Severity, Vulnerability, normalize_package_name
+from agent_bom.models import Package, Severity, Vulnerability
+from agent_bom.package_utils import normalize_package_name
 
 logger = logging.getLogger(__name__)
 

@@ -127,7 +127,7 @@ def _matches_blast_radius(entry: dict[str, Any], br: "BlastRadius") -> bool:
         else:
             name_part, ver_spec = pkg_spec, None
 
-        from agent_bom.models import normalize_package_name
+        from agent_bom.package_utils import normalize_package_name
 
         if normalize_package_name(pkg.name) != normalize_package_name(name_part):
             return False

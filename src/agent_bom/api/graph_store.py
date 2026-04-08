@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from agent_bom.db import graph_store as sqlite_graph_store
-from agent_bom.graph import UnifiedGraph
+from agent_bom.graph import EntityType, NodeDimensions, NodeStatus, UnifiedGraph, UnifiedNode
 
 _CREATE_PRESET_TABLE_SQLITE = """\
 CREATE TABLE IF NOT EXISTS graph_filter_presets (
@@ -49,6 +49,16 @@ class GraphStoreProtocol(Protocol):
     def diff_snapshots(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]: ...
 
     def list_snapshots(self, *, tenant_id: str = "", limit: int = 50) -> list[dict[str, Any]]: ...
+
+    def search_nodes(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        query: str,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[UnifiedNode], int]: ...
 
     def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict[str, Any], created_at: str) -> None: ...
 
@@ -87,6 +97,27 @@ class SQLiteGraphStore:
         conn.execute(_CREATE_PRESET_TABLE_SQLITE)
         conn.commit()
         return conn
+
+    @staticmethod
+    def _node_from_row(row: sqlite3.Row) -> UnifiedNode:
+        return UnifiedNode(
+            id=row["id"],
+            entity_type=EntityType(row["entity_type"]),
+            label=row["label"],
+            category_uid=row["category_uid"],
+            class_uid=row["class_uid"],
+            type_uid=row["type_uid"],
+            status=NodeStatus(row["status"]),
+            risk_score=row["risk_score"],
+            severity=row["severity"] or "",
+            severity_id=row["severity_id"],
+            first_seen=row["first_seen"],
+            last_seen=row["last_seen"],
+            attributes=json.loads(row["attributes"]),
+            compliance_tags=json.loads(row["compliance_tags"]),
+            data_sources=json.loads(row["data_sources"]),
+            dimensions=NodeDimensions.from_dict(json.loads(row["dimensions"])),
+        )
 
     def latest_snapshot_id(self, *, tenant_id: str = "") -> str:
         conn = self._open_ro_conn()
@@ -154,6 +185,58 @@ class SQLiteGraphStore:
             return []
         try:
             return sqlite_graph_store.list_snapshots(conn, tenant_id=tenant_id, limit=limit)
+        finally:
+            conn.close()
+
+    def search_nodes(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        query: str,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[list[UnifiedNode], int]:
+        conn = self._open_ro_conn()
+        if conn is None:
+            return [], 0
+        try:
+            effective_scan_id = scan_id or sqlite_graph_store.latest_snapshot_id(conn, tenant_id=tenant_id)
+            if not effective_scan_id:
+                return [], 0
+
+            like = f"%{query.lower()}%"
+            where = """
+                FROM graph_nodes
+                WHERE tenant_id = ? AND scan_id = ?
+                  AND (
+                    lower(id) LIKE ? OR
+                    lower(label) LIKE ? OR
+                    lower(entity_type) LIKE ? OR
+                    lower(severity) LIKE ? OR
+                    lower(compliance_tags) LIKE ? OR
+                    lower(data_sources) LIKE ? OR
+                    lower(attributes) LIKE ? OR
+                    lower(dimensions) LIKE ?
+                  )
+            """
+            params: list[Any] = [tenant_id, effective_scan_id, like, like, like, like, like, like, like, like]
+            total_row = conn.execute("SELECT COUNT(*) " + where, params).fetchone()
+            rows = conn.execute(
+                """
+                SELECT
+                    id, entity_type, label, category_uid, class_uid, type_uid,
+                    status, risk_score, severity, severity_id, first_seen, last_seen,
+                    attributes, compliance_tags, data_sources, dimensions
+                """
+                + where
+                + """
+                ORDER BY severity_id DESC, risk_score DESC, label ASC
+                LIMIT ? OFFSET ?
+                """,
+                [*params, limit, offset],
+            ).fetchall()
+            return [self._node_from_row(row) for row in rows], int(total_row[0] if total_row else 0)
         finally:
             conn.close()
 

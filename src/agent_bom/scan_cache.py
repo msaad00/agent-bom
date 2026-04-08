@@ -170,6 +170,6 @@ class ScanCache:
 
     @staticmethod
     def _key(ecosystem: str, name: str, version: str) -> str:
-        from agent_bom.models import normalize_package_name
+        from agent_bom.package_utils import normalize_package_name
 
         return f"{ecosystem}:{normalize_package_name(name, ecosystem)}@{version}"

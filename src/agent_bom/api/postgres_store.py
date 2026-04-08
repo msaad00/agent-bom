@@ -1259,6 +1259,29 @@ class PostgresGraphStore:
             ).fetchone()
             return str(row[0]) if row else ""
 
+    @staticmethod
+    def _node_from_row(row):
+        from agent_bom.graph import EntityType, NodeDimensions, NodeStatus, UnifiedNode
+
+        return UnifiedNode(
+            id=row[0],
+            entity_type=EntityType(row[1]),
+            label=row[2],
+            category_uid=row[3],
+            class_uid=row[4],
+            type_uid=row[5],
+            status=NodeStatus(row[6]),
+            risk_score=row[7],
+            severity=row[8] or "",
+            severity_id=row[9],
+            first_seen=row[10],
+            last_seen=row[11],
+            attributes=json.loads(row[12]),
+            compliance_tags=json.loads(row[13]),
+            data_sources=json.loads(row[14]),
+            dimensions=NodeDimensions.from_dict(json.loads(row[15])),
+        )
+
     def previous_snapshot_id(self, *, tenant_id: str = "", before_scan_id: str = "") -> str:
         if not before_scan_id:
             return ""
@@ -1459,14 +1482,10 @@ class PostgresGraphStore:
         from agent_bom.graph import (
             SEVERITY_RANK,
             AttackPath,
-            EntityType,
             InteractionRisk,
-            NodeDimensions,
-            NodeStatus,
             RelationshipType,
             UnifiedEdge,
             UnifiedGraph,
-            UnifiedNode,
         )
 
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
@@ -1496,26 +1515,7 @@ class PostgresGraphStore:
                 severity = row[8] or ""
                 if min_severity_rank and SEVERITY_RANK.get(severity, 0) < min_severity_rank:
                     continue
-                graph.add_node(
-                    UnifiedNode(
-                        id=row[0],
-                        entity_type=EntityType(row[1]),
-                        label=row[2],
-                        category_uid=row[3],
-                        class_uid=row[4],
-                        type_uid=row[5],
-                        status=NodeStatus(row[6]),
-                        risk_score=row[7],
-                        severity=severity,
-                        severity_id=row[9],
-                        first_seen=row[10],
-                        last_seen=row[11],
-                        attributes=json.loads(row[12]),
-                        compliance_tags=json.loads(row[13]),
-                        data_sources=json.loads(row[14]),
-                        dimensions=NodeDimensions.from_dict(json.loads(row[15])),
-                    )
-                )
+                graph.add_node(self._node_from_row(row))
                 node_ids.add(row[0])
 
             for row in conn.execute(
@@ -1646,6 +1646,53 @@ class PostgresGraphStore:
                 for row in rows
             ]
 
+    def search_nodes(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        query: str,
+        offset: int = 0,
+        limit: int = 50,
+    ):
+        effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
+        if not effective_scan_id:
+            return [], 0
+
+        like = f"%{query.lower()}%"
+        with _tenant_connection(self._pool) as conn:
+            where = """
+                FROM graph_nodes
+                WHERE tenant_id = %s AND scan_id = %s
+                  AND (
+                    LOWER(id) LIKE %s OR
+                    LOWER(label) LIKE %s OR
+                    LOWER(entity_type) LIKE %s OR
+                    LOWER(severity) LIKE %s OR
+                    LOWER(compliance_tags) LIKE %s OR
+                    LOWER(data_sources) LIKE %s OR
+                    LOWER(attributes) LIKE %s OR
+                    LOWER(dimensions) LIKE %s
+                  )
+            """
+            params: list[Any] = [tenant_id, effective_scan_id, like, like, like, like, like, like, like, like]
+            total_row = conn.execute("SELECT COUNT(*) " + where, params).fetchone()
+            rows = conn.execute(
+                """
+                SELECT
+                    id, entity_type, label, category_uid, class_uid, type_uid,
+                    status, risk_score, severity, severity_id, first_seen, last_seen,
+                    attributes, compliance_tags, data_sources, dimensions
+                """
+                + where
+                + """
+                ORDER BY severity_id DESC, risk_score DESC, label ASC
+                LIMIT %s OFFSET %s
+                """,
+                [*params, limit, offset],
+            ).fetchall()
+            return [self._node_from_row(row) for row in rows], int(total_row[0] if total_row else 0)
+
     def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict[str, Any], created_at: str) -> None:
         with _tenant_connection(self._pool) as conn:
             conn.execute(
@@ -1758,6 +1805,6 @@ class PostgresScanCache:
 
     @staticmethod
     def _key(ecosystem: str, name: str, version: str) -> str:
-        from agent_bom.models import normalize_package_name
+        from agent_bom.package_utils import normalize_package_name
 
         return f"{ecosystem}:{normalize_package_name(name, ecosystem)}@{version}"

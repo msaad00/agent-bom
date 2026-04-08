@@ -66,6 +66,7 @@ CREATE INDEX IF NOT EXISTS idx_gn_entity_type ON graph_nodes(entity_type);
 CREATE INDEX IF NOT EXISTS idx_gn_severity ON graph_nodes(severity);
 CREATE INDEX IF NOT EXISTS idx_gn_risk ON graph_nodes(risk_score DESC);
 CREATE INDEX IF NOT EXISTS idx_gn_scan ON graph_nodes(scan_id);
+CREATE INDEX IF NOT EXISTS idx_gn_tenant_scan ON graph_nodes(tenant_id, scan_id);
 
 -- ── Graph edges (one row per edge per scan) ──
 CREATE TABLE IF NOT EXISTS graph_edges (
@@ -88,6 +89,7 @@ CREATE INDEX IF NOT EXISTS idx_ge_source ON graph_edges(source_id);
 CREATE INDEX IF NOT EXISTS idx_ge_target ON graph_edges(target_id);
 CREATE INDEX IF NOT EXISTS idx_ge_rel ON graph_edges(relationship);
 CREATE INDEX IF NOT EXISTS idx_ge_scan ON graph_edges(scan_id);
+CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan ON graph_edges(tenant_id, scan_id);
 
 -- ── Snapshots ──
 CREATE TABLE IF NOT EXISTS graph_snapshots (
@@ -99,6 +101,7 @@ CREATE TABLE IF NOT EXISTS graph_snapshots (
     risk_summary    TEXT DEFAULT '{}',
     PRIMARY KEY (scan_id, tenant_id)
 );
+CREATE INDEX IF NOT EXISTS idx_gs_recent ON graph_snapshots(tenant_id, created_at DESC);
 
 -- ── Attack paths (per scan) ──
 CREATE TABLE IF NOT EXISTS attack_paths (

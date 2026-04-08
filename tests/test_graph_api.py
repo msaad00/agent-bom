@@ -9,6 +9,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api import stores as api_stores
+from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.server import app
 from agent_bom.api.stores import set_graph_store
 from agent_bom.db.graph_store import _init_db, load_graph, save_graph
@@ -214,6 +215,36 @@ class TestGraphEndpointLogic:
         assert snaps[0]["scan_id"] == "test-scan-001"
         assert snaps[0]["node_count"] == 4
 
+    def test_sqlite_graph_store_search_is_server_side(self, tmp_path):
+        store = SQLiteGraphStore(tmp_path / "graph.db")
+        graph = UnifiedGraph(scan_id="search-scan", tenant_id="default")
+        graph.add_node(
+            UnifiedNode(
+                id="server:acme:vector",
+                entity_type=EntityType.SERVER,
+                label="Acme Vector Server",
+                severity="high",
+                risk_score=8.4,
+                compliance_tags=["OWASP-A01"],
+                data_sources=["runtime-proxy"],
+                attributes={"description": "Vector retrieval service"},
+            )
+        )
+        graph.add_node(
+            UnifiedNode(
+                id="dataset:kb",
+                entity_type=EntityType.DATASET,
+                label="Knowledge Base",
+                data_sources=["mcp-scan"],
+            )
+        )
+        store.save_graph(graph)
+
+        results, total = store.search_nodes(tenant_id="default", query="vector", offset=0, limit=10)
+
+        assert total == 1
+        assert [node.id for node in results] == ["server:acme:vector"]
+
 
 class TestBackendDirectionality:
     """Regression: graph_backend must respect edge direction from unified graph."""
@@ -283,6 +314,11 @@ class _RecordingGraphStore:
         self.calls.append(("list_snapshots", tenant_id, limit))
         return [{"scan_id": self.graph.scan_id, "created_at": self.graph.created_at, "node_count": 1, "edge_count": 0, "risk_summary": {}}]
 
+    def search_nodes(self, *, tenant_id: str = "", scan_id: str = "", query: str, offset: int = 0, limit: int = 50):
+        self.calls.append(("search_nodes", tenant_id, scan_id, query, offset, limit))
+        matches = [node for node in self.graph.nodes.values() if query.lower() in node.label.lower()]
+        return matches[offset : offset + limit], len(matches)
+
     def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict, created_at: str) -> None:
         self.calls.append(("save_preset", tenant_id, name))
         self.presets[name] = {"name": name, "description": description, "filters": filters, "created_at": created_at}
@@ -348,3 +384,15 @@ class TestGraphStoreBackendSelection:
         _persist_graph_snapshot(job, {"scan_id": "job-123"})
 
         assert ("save_graph", "job-123", "default") in recording_graph_store.calls
+
+    def test_graph_search_uses_store_native_query(self, recording_graph_store):
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:a", entity_type=EntityType.SERVER, label="agent-a server"))
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/search", params={"q": "server"})
+
+        assert response.status_code == 200
+        assert response.json()["pagination"]["total"] == 1
+        assert response.json()["results"][0]["id"] == "server:a"
+        assert any(call[0] == "search_nodes" for call in recording_graph_store.calls)
+        assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)

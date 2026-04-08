@@ -256,8 +256,8 @@ def _scan_file(file_path: Path, rel_path: str) -> list[SecretFinding]:
                 )
                 break
 
-        # PII patterns (MEDIUM) — only in non-code files
-        if file_path.suffix in (".env", ".yaml", ".yml", ".json", ".txt", ".md", ".conf"):
+        # PII patterns (MEDIUM) — only in text/config files
+        if file_path.suffix in (".env", ".yaml", ".yml", ".json", ".txt", ".md", ".conf") or file_path.name in _SCAN_FILENAMES:
             for name, pattern in PII_PATTERNS:
                 if pattern.search(line):
                     findings.append(

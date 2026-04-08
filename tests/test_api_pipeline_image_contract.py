@@ -138,3 +138,32 @@ def test_api_pipeline_persists_clickhouse_analytics(monkeypatch):
     assert analytics.fleet_calls[0]["agent_name"] == "image:agentbom/agent-bom:latest"
     assert analytics.fleet_calls[0]["lifecycle_state"] == "discovered"
     assert any(control["framework"] == "owasp-llm-top10" for control in analytics.compliance_calls)
+
+
+def test_api_pipeline_persists_unified_graph_snapshot(monkeypatch):
+    store = _DummyStore()
+    job = ScanJob(
+        job_id="graph-123",
+        tenant_id="tenant-blue",
+        created_at="2026-03-25T12:00:00Z",
+        request=ScanRequest(images=["agentbom/agent-bom:latest"], enrich=False),
+    )
+    persisted: list[tuple[str, str]] = []
+
+    monkeypatch.setattr("agent_bom.api.pipeline._get_store", lambda: store)
+    monkeypatch.setattr("agent_bom.api.pipeline._sync_scan_agents_to_fleet", lambda _agents: None)
+    monkeypatch.setattr(
+        "agent_bom.api.pipeline._persist_graph_snapshot",
+        lambda j, report_json, lock=None: persisted.append((j.tenant_id, report_json["scan_id"])),
+    )
+    monkeypatch.setattr("agent_bom.discovery.discover_all", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        "agent_bom.image.scan_image",
+        lambda image_ref: ([Package(name="openssl", version="3.0.16", ecosystem="deb")], "native"),
+    )
+    monkeypatch.setattr("agent_bom.scanners.scan_agents_sync", lambda agents, enable_enrichment=False: [])
+
+    _run_scan_sync(job)
+
+    assert job.status == JobStatus.DONE
+    assert persisted == [("tenant-blue", "graph-123")]

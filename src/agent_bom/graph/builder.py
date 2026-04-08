@@ -1,12 +1,8 @@
-"""Full inventory + security graph builder from AIBOMReport JSON.
+"""Unified graph builder from serialized AIBOM report data.
 
-Produces a :class:`UnifiedGraph` with ALL entity types — agents, servers,
-packages, tools, credentials, vulnerabilities, models, containers, cloud
-resources, and misconfigurations.  This is the primary ingestion path that
-replaces the ContextGraph-only bridge for persistence and querying.
-
-The graph supports every view: inventory, attack paths, lateral movement,
-privilege escalation, and compliance.
+This ingests the JSON contract emitted by ``output.json_fmt.to_json()``
+and builds the core inventory, finding, runtime, and compliance entities
+used for current-state views, traversal, attack paths, and temporal diffs.
 """
 
 from __future__ import annotations
@@ -35,10 +31,7 @@ def build_unified_graph_from_report(
     scan_id: str = "",
     tenant_id: str = "",
 ) -> UnifiedGraph:
-    """Build a complete UnifiedGraph from an AIBOMReport JSON dict.
-
-    This reads the full ``to_json()`` output and produces nodes + edges
-    for every entity type, not just the lateral-movement subset.
+    """Build a UnifiedGraph from the persisted AIBOM report JSON contract.
 
     Args:
         report_json: The dict produced by ``output.json_fmt.to_json(report)``.
@@ -67,6 +60,18 @@ def build_unified_graph_from_report(
         agent_name = agent_dict.get("name", "unknown")
         agent_id = f"agent:{agent_name}"
         agent_type = agent_dict.get("type", "")
+        provider_name = str(agent_dict.get("source") or "local").strip() or "local"
+        provider_id = f"provider:{provider_name}"
+
+        graph.add_node(
+            UnifiedNode(
+                id=provider_id,
+                entity_type=EntityType.PROVIDER,
+                label=provider_name,
+                attributes={"provider": provider_name},
+                data_sources=[data_source_tag],
+            )
+        )
 
         graph.add_node(
             UnifiedNode(
@@ -78,11 +83,18 @@ def build_unified_graph_from_report(
                     "status": agent_dict.get("status", ""),
                     "stable_id": agent_dict.get("stable_id", ""),
                     "config_path": agent_dict.get("config_path", ""),
-                    "source": agent_dict.get("source", ""),
+                    "source": provider_name,
                     "server_count": len(agent_dict.get("mcp_servers", [])),
                 },
                 dimensions=NodeDimensions(agent_type=agent_type),
                 data_sources=[data_source_tag],
+            )
+        )
+        graph.add_edge(
+            UnifiedEdge(
+                source=provider_id,
+                target=agent_id,
+                relationship=RelationshipType.HOSTS,
             )
         )
 
@@ -332,23 +344,85 @@ def build_unified_graph_from_report(
             )
         )
 
+    # ── Dataset cards ────────────────────────────────────────────────
+    dataset_cards = report_json.get("dataset_cards")
+    if isinstance(dataset_cards, dict):
+        for dataset_dict in dataset_cards.get("datasets", []):
+            dataset_name = dataset_dict.get("name") or dataset_dict.get("source_file") or "unknown-dataset"
+            graph.add_node(
+                UnifiedNode(
+                    id=f"dataset:{dataset_name}",
+                    entity_type=EntityType.DATASET,
+                    label=dataset_name,
+                    attributes={
+                        "description": dataset_dict.get("description", ""),
+                        "license": dataset_dict.get("license", ""),
+                        "source_url": dataset_dict.get("source_url", ""),
+                        "version": dataset_dict.get("version", ""),
+                        "features": dataset_dict.get("features", []),
+                        "splits": dataset_dict.get("splits", {}),
+                        "size_bytes": dataset_dict.get("size_bytes", 0),
+                        "source_file": dataset_dict.get("source_file", ""),
+                        "languages": dataset_dict.get("languages", []),
+                        "task_categories": dataset_dict.get("task_categories", []),
+                        "security_flags": dataset_dict.get("security_flags", []),
+                    },
+                    compliance_tags=_flatten_compliance_tags(dataset_dict.get("compliance_tags")),
+                    data_sources=["dataset-cards"],
+                )
+            )
+
+    # ── Serving configs / containers ────────────────────────────────
+    for serving_dict in report_json.get("serving_configs", []):
+        container_image = serving_dict.get("container_image", "")
+        if not container_image:
+            continue
+        container_id = f"container:{container_image}"
+        graph.add_node(
+            UnifiedNode(
+                id=container_id,
+                entity_type=EntityType.CONTAINER,
+                label=serving_dict.get("name") or container_image,
+                attributes={
+                    "container_image": container_image,
+                    "framework": serving_dict.get("framework", ""),
+                    "source_file": serving_dict.get("source_file", ""),
+                    "model_uri": serving_dict.get("model_uri", ""),
+                    "endpoint_url": serving_dict.get("endpoint_url", ""),
+                    "security_flags": serving_dict.get("security_flags", []),
+                },
+                dimensions=NodeDimensions(surface="container"),
+                data_sources=["training-pipeline"],
+            )
+        )
+        model_id = _resolve_model_id(graph, serving_dict.get("model_uri", ""))
+        if model_id:
+            graph.add_edge(
+                UnifiedEdge(
+                    source=container_id,
+                    target=model_id,
+                    relationship=RelationshipType.SERVES_MODEL,
+                )
+            )
+
     # ── CIS benchmark misconfigurations ──────────────────────────────
-    for section_key in (
-        "cis_benchmark_data",
-        "snowflake_cis_benchmark_data",
-        "azure_cis_benchmark_data",
-        "gcp_cis_benchmark_data",
-        "databricks_cis_benchmark_data",
+    for section_key, legacy_key, cloud_provider in (
+        ("cis_benchmark", "cis_benchmark_data", ""),
+        ("snowflake_cis_benchmark", "snowflake_cis_benchmark_data", "snowflake"),
+        ("azure_cis_benchmark", "azure_cis_benchmark_data", "azure"),
+        ("gcp_cis_benchmark", "gcp_cis_benchmark_data", "gcp"),
+        ("databricks_cis_benchmark", "databricks_cis_benchmark_data", "databricks"),
     ):
-        cis_data = report_json.get(section_key)
+        cis_data = report_json.get(section_key) or report_json.get(legacy_key)
         if not cis_data:
             continue
         checks = cis_data.get("checks", [])
         for check in checks:
-            if check.get("status") != "FAIL":
+            if str(check.get("status", "")).upper() != "FAIL":
                 continue
             check_id = check.get("check_id", "unknown")
             misconfig_id = f"misconfig:{section_key}:{check_id}"
+            resource_ids = list(check.get("resource_ids", []))
             graph.add_node(
                 UnifiedNode(
                     id=misconfig_id,
@@ -360,15 +434,40 @@ def build_unified_graph_from_report(
                         "cis_section": check.get("cis_section", ""),
                         "evidence": check.get("evidence", ""),
                         "recommendation": check.get("recommendation", ""),
-                        "resource_ids": check.get("resource_ids", []),
+                        "resource_ids": resource_ids,
+                        "cloud_provider": cloud_provider,
                     },
                     compliance_tags=[f"CIS-{check_id}"],
-                    data_sources=["cloud-cis"],
+                    data_sources=[section_key],
+                    dimensions=NodeDimensions(cloud_provider=cloud_provider),
                 )
             )
+            for resource_id in sorted(set(resource_ids)):
+                resource_node_id = f"cloud_resource:{cloud_provider or 'generic'}:{resource_id}"
+                graph.add_node(
+                    UnifiedNode(
+                        id=resource_node_id,
+                        entity_type=EntityType.CLOUD_RESOURCE,
+                        label=resource_id,
+                        attributes={
+                            "resource_id": resource_id,
+                            "cloud_provider": cloud_provider,
+                            "source_section": section_key,
+                        },
+                        data_sources=[section_key],
+                        dimensions=NodeDimensions(cloud_provider=cloud_provider),
+                    )
+                )
+                graph.add_edge(
+                    UnifiedEdge(
+                        source=misconfig_id,
+                        target=resource_node_id,
+                        relationship=RelationshipType.AFFECTS,
+                    )
+                )
 
     # ── SAST findings as misconfiguration nodes ──────────────────────
-    sast_data = report_json.get("sast_data")
+    sast_data = report_json.get("sast") or report_json.get("sast_data")
     if sast_data:
         for finding in sast_data.get("findings", []):
             rule_id = finding.get("rule_id", "unknown")
@@ -438,13 +537,28 @@ def build_unified_graph_from_report(
         for combo in toxic_data if isinstance(toxic_data, list) else toxic_data.get("combinations", []):
             combo_vulns = combo.get("vulnerability_ids", combo.get("vulns", []))
             combo_label = combo.get("name", combo.get("label", "toxic_combo"))
+            toxic_node_id = f"toxic:{combo_label}"
+            graph.add_node(
+                UnifiedNode(
+                    id=toxic_node_id,
+                    entity_type=EntityType.MISCONFIGURATION,
+                    label=combo_label,
+                    risk_score=float(combo.get("risk_score", 0) or 0),
+                    attributes={
+                        "combo": combo_label,
+                        "risk_score": combo.get("risk_score", 0),
+                        "vulnerability_ids": combo_vulns,
+                    },
+                    data_sources=["toxic-combinations"],
+                )
+            )
             for vuln_id in combo_vulns:
                 vuln_node_id = f"vuln:{vuln_id}"
                 if graph.has_node(vuln_node_id):
                     graph.add_edge(
                         UnifiedEdge(
                             source=vuln_node_id,
-                            target=f"toxic:{combo_label}",
+                            target=toxic_node_id,
                             relationship=RelationshipType.TRIGGERS,
                             evidence={"combo": combo_label, "risk": combo.get("risk_score", 0)},
                         )
@@ -521,4 +635,33 @@ def _collect_compliance_tags(br_dict: dict[str, Any]) -> list[str]:
         "cis_tags",
     ):
         tags.extend(br_dict.get(key, []))
-    return tags
+    return sorted(set(tags))
+
+
+def _flatten_compliance_tags(raw: Any) -> list[str]:
+    """Normalize arbitrary compliance-tag payloads into a simple list."""
+    if not raw:
+        return []
+    if isinstance(raw, list):
+        return sorted({str(tag) for tag in raw if tag})
+    if isinstance(raw, dict):
+        tags: set[str] = set()
+        for value in raw.values():
+            if isinstance(value, list):
+                tags.update(str(tag) for tag in value if tag)
+            elif value:
+                tags.add(str(value))
+        return sorted(tags)
+    return [str(raw)]
+
+
+def _resolve_model_id(graph: UnifiedGraph, model_uri: str) -> str:
+    """Best-effort link from a serving config model URI to a known model node."""
+    if not model_uri:
+        return ""
+    candidates = [part for part in model_uri.replace("://", "/").replace(":", "/").split("/") if part]
+    for candidate in reversed(candidates):
+        model_id = f"model:{candidate}"
+        if graph.has_node(model_id):
+            return model_id
+    return ""

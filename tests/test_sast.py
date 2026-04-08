@@ -386,6 +386,20 @@ def test_scan_code_clean(monkeypatch, tmp_path):
     assert sast_result.total_findings == 0
 
 
+def test_scan_code_imports_sarif_without_semgrep(monkeypatch, tmp_path):
+    """Existing SARIF files import through the same result model without Semgrep."""
+    monkeypatch.setattr("agent_bom.sast.shutil.which", lambda _: None)
+    sarif_path = tmp_path / "results.sarif"
+    sarif_path.write_text(json.dumps(SAMPLE_SARIF), encoding="utf-8")
+
+    packages, sast_result = scan_code(str(sarif_path))
+
+    assert len(packages) == 2
+    assert sast_result.total_findings == 2
+    assert sast_result.config_used == "sarif-import"
+    assert sast_result.semgrep_version is None
+
+
 # ── CWE mapping ────────────────────────────────────────────────────────────
 
 

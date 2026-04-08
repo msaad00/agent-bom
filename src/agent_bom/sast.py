@@ -1,4 +1,4 @@
-"""SAST scanning via Semgrep — static analysis for source code.
+"""SAST scanning via Semgrep or SARIF import for source code.
 
 Runs Semgrep with SARIF output, normalizes findings into the agent-bom
 data model (Package + Vulnerability objects), and provides structured
@@ -12,7 +12,8 @@ Usage::
     from agent_bom.sast import scan_code, SASTScanError
     packages, sast_result = scan_code("/path/to/project")
 
-If Semgrep is not installed, raises SASTScanError with install guidance.
+If Semgrep is not installed, direct scans raise SASTScanError with install
+guidance. Existing SARIF files can be imported without Semgrep.
 """
 
 from __future__ import annotations
@@ -127,6 +128,11 @@ _SARIF_LEVEL_MAP: dict[str, Severity] = {
 
 def _semgrep_available() -> bool:
     return shutil.which("semgrep") is not None
+
+
+def _is_sarif_input(path: Path) -> bool:
+    name = path.name.lower()
+    return name.endswith(".sarif") or name.endswith(".sarif.json")
 
 
 def _get_semgrep_version() -> Optional[str]:
@@ -255,6 +261,34 @@ def _findings_to_packages(findings: list[SASTFinding]) -> list[Package]:
     return packages
 
 
+def _import_sarif(path: Path) -> tuple[list[Package], SASTResult]:
+    start = time.monotonic()
+    try:
+        sarif = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise SASTScanError(f"could not read SARIF file {path}: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise SASTScanError(f"invalid SARIF file {path}: {exc}") from exc
+
+    findings, rules_loaded, files_scanned = _parse_sarif_findings(sarif)
+    packages = _findings_to_packages(findings)
+    result = SASTResult(
+        findings=findings,
+        files_scanned=files_scanned,
+        rules_loaded=rules_loaded,
+        scan_time_seconds=round(time.monotonic() - start, 2),
+        semgrep_version=None,
+        config_used="sarif-import",
+    )
+    _logger.info(
+        "Imported SARIF SAST results: %d finding(s) in %d file(s) from %s",
+        result.total_findings,
+        files_scanned,
+        path,
+    )
+    return packages, result
+
+
 # ── Public API ──────────────────────────────────────────────────────────────
 
 
@@ -263,10 +297,10 @@ def scan_code(
     config: str = "auto",
     timeout: int = 600,
 ) -> tuple[list[Package], SASTResult]:
-    """Run Semgrep SAST scan on source code.
+    """Run Semgrep SAST scan on source code or import a SARIF file.
 
     Args:
-        path: Directory or file to scan.
+        path: Directory or file to scan, or an existing ``.sarif`` / ``.sarif.json`` file.
         config: Semgrep config (default ``"auto"`` = Semgrep Registry).
                 Can be a path to custom rules YAML or registry string.
         timeout: Subprocess timeout in seconds.
@@ -277,12 +311,17 @@ def scan_code(
     Raises:
         SASTScanError: If Semgrep is not installed or scan fails.
     """
+    resolved = Path(path).resolve()
+    if _is_sarif_input(resolved):
+        if not resolved.exists():
+            raise SASTScanError(f"Path does not exist: {path}")
+        return _import_sarif(resolved)
+
     if not _semgrep_available():
         raise SASTScanError(
             "semgrep not found on PATH. Install with: pip install semgrep (or see https://semgrep.dev/docs/getting-started/)"
         )
 
-    resolved = Path(path).resolve()
     if not resolved.exists():
         raise SASTScanError(f"Path does not exist: {path}")
 

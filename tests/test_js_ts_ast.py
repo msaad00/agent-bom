@@ -54,3 +54,25 @@ def test_analyze_js_ts_block_collects_dynamic_code_constructors():
     )
 
     assert "Function" in analysis.call_names
+
+
+def test_analyze_js_ts_block_collects_tool_handlers_and_imports():
+    analysis = analyze_js_ts_block(
+        """
+        import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+        import { execSync as run } from "node:child_process";
+
+        function executeCommand(input) {
+          return run(input);
+        }
+
+        server.tool("run_cmd", "Run a command", async () => executeCommand(userInput));
+        """,
+        language_hint="typescript",
+    )
+
+    assert "@modelcontextprotocol/sdk/server/index.js" in analysis.imported_modules
+    assert "executeCommand" in analysis.functions
+    assert analysis.functions["executeCommand"].dangerous_call_sites[0].name == "child_process.execSync"
+    assert analysis.tool_registrations[0].tool_name == "run_cmd"
+    assert analysis.tool_registrations[0].handler_name == "tool:run_cmd"

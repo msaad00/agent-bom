@@ -246,6 +246,23 @@ async def get_context_graph(request: Request, job_id: str, agent: str | None = N
             if node.kind == NodeKind.AGENT:
                 paths.extend(find_lateral_paths(graph, nid))
     risks = compute_interaction_risks(graph)
+
+    # Persist unified graph for cross-scan queries
+    scan_id = job.result.get("scan_id", job_id)
+    try:
+        from agent_bom.context_graph import to_unified_graph
+        from agent_bom.db.graph_store import open_graph_db, save_graph
+
+        ug = to_unified_graph(graph, paths, risks, scan_id=scan_id)
+        from pathlib import Path as _GraphPath
+
+        _gdb = _GraphPath.home() / ".agent-bom" / "db"
+        _gdb.mkdir(parents=True, exist_ok=True)
+        with open_graph_db(_gdb / "graph.db") as gconn:
+            save_graph(gconn, ug)
+    except Exception:  # noqa: BLE001
+        pass  # Graph persistence is best-effort
+
     return to_serializable(graph, paths, risks)
 
 

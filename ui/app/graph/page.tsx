@@ -12,12 +12,18 @@ import {
 import "@xyflow/react/dist/style.css";
 import { AlertTriangle, Loader2, ShieldAlert } from "lucide-react";
 
+import { AttackPathCard } from "@/components/attack-path-card";
 import { GraphLegend, FullscreenButton } from "@/components/graph-chrome";
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import { FilterPanel, DEFAULT_FILTERS, type FilterState } from "@/components/lineage-filter";
 import { lineageNodeTypes, type LineageNodeData, type LineageNodeType } from "@/components/lineage-nodes";
 import { applyDagreLayout } from "@/lib/dagre-layout";
-import { EntityType, RelationshipType } from "@/lib/graph-schema";
+import {
+  EntityType,
+  RelationshipType,
+  type AttackPath,
+  type UnifiedNode,
+} from "@/lib/graph-schema";
 import {
   BACKGROUND_COLOR,
   BACKGROUND_GAP,
@@ -25,7 +31,12 @@ import {
   MINIMAP_CLASS,
   minimapNodeColor,
 } from "@/lib/graph-utils";
-import { api, type GraphSnapshot, type UnifiedGraphResponse } from "@/lib/api";
+import {
+  api,
+  type GraphNodeDetailResponse,
+  type GraphSnapshot,
+  type UnifiedGraphResponse,
+} from "@/lib/api";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
 
 function PulseStyles() {
@@ -160,6 +171,147 @@ function emptyGraphResponse(scanId: string): UnifiedGraphResponse {
   };
 }
 
+function lineageTypeForEntity(entityType: string): LineageNodeType {
+  return LAYER_ENTITY_TYPES.find(([, current]) => current === entityType)?.[0] ?? "server";
+}
+
+function stringAttribute(attributes: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = attributes?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function buildFallbackNodeData(node: UnifiedNode): LineageNodeData {
+  const attributes = { ...(node.attributes ?? {}), node_id: node.id };
+  return {
+    label: node.label,
+    nodeType: lineageTypeForEntity(String(node.entity_type)),
+    entityType: String(node.entity_type),
+    status: String(node.status ?? ""),
+    riskScore: node.risk_score,
+    severity: node.severity,
+    firstSeen: node.first_seen,
+    lastSeen: node.last_seen,
+    dataSources: node.data_sources ?? [],
+    complianceTags: node.compliance_tags ?? [],
+    attributes,
+    description:
+      stringAttribute(attributes, "description") ||
+      stringAttribute(attributes, "recommendation") ||
+      stringAttribute(attributes, "framework") ||
+      stringAttribute(attributes, "source"),
+    version: stringAttribute(attributes, "version") || stringAttribute(attributes, "hash"),
+    ecosystem: stringAttribute(attributes, "ecosystem"),
+    command:
+      stringAttribute(attributes, "command") ||
+      stringAttribute(attributes, "transport") ||
+      stringAttribute(attributes, "url"),
+    agentType: stringAttribute(attributes, "agent_type"),
+    agentStatus: stringAttribute(attributes, "status"),
+  };
+}
+
+function mergeNodeDetail(base: LineageNodeData, detail: GraphNodeDetailResponse): LineageNodeData {
+  const mergedAttributes = {
+    ...(base.attributes ?? {}),
+    ...(detail.node.attributes ?? {}),
+    node_id: detail.node.id,
+  };
+  return {
+    ...base,
+    entityType: String(detail.node.entity_type),
+    status: String(detail.node.status ?? base.status ?? ""),
+    riskScore: detail.node.risk_score ?? base.riskScore,
+    severity: detail.node.severity || base.severity,
+    firstSeen: detail.node.first_seen || base.firstSeen,
+    lastSeen: detail.node.last_seen || base.lastSeen,
+    dataSources: detail.node.data_sources?.length ? detail.node.data_sources : base.dataSources,
+    complianceTags: detail.node.compliance_tags?.length ? detail.node.compliance_tags : base.complianceTags,
+    attributes: mergedAttributes,
+    neighborCount: detail.neighbors.length,
+    sourceCount: detail.sources.length,
+    incomingEdgeCount: detail.edges_in.length,
+    outgoingEdgeCount: detail.edges_out.length,
+    impactCount: detail.impact.affected_count,
+    maxImpactDepth: detail.impact.max_depth_reached,
+    impactByType: detail.impact.affected_by_type,
+    description:
+      base.description ||
+      stringAttribute(mergedAttributes, "description") ||
+      stringAttribute(mergedAttributes, "recommendation") ||
+      stringAttribute(mergedAttributes, "framework") ||
+      stringAttribute(mergedAttributes, "source"),
+    version: base.version || stringAttribute(mergedAttributes, "version") || stringAttribute(mergedAttributes, "hash"),
+    ecosystem: base.ecosystem || stringAttribute(mergedAttributes, "ecosystem"),
+    command:
+      base.command ||
+      stringAttribute(mergedAttributes, "command") ||
+      stringAttribute(mergedAttributes, "transport") ||
+      stringAttribute(mergedAttributes, "url"),
+    agentType: base.agentType || stringAttribute(mergedAttributes, "agent_type"),
+    agentStatus: base.agentStatus || stringAttribute(mergedAttributes, "status"),
+  };
+}
+
+type AttackPathCardNode = {
+  type: "cve" | "package" | "server" | "agent" | "credential";
+  label: string;
+  severity?: string;
+};
+
+function attackPathKey(path: AttackPath): string {
+  return `${path.source}::${path.target}::${path.hops.join("->")}`;
+}
+
+function mapAttackPathNodeType(entityType: string): AttackPathCardNode["type"] | null {
+  switch (entityType) {
+    case EntityType.VULNERABILITY:
+    case EntityType.MISCONFIGURATION:
+      return "cve";
+    case EntityType.PACKAGE:
+      return "package";
+    case EntityType.SERVER:
+    case EntityType.CONTAINER:
+    case EntityType.CLOUD_RESOURCE:
+      return "server";
+    case EntityType.AGENT:
+    case EntityType.USER:
+    case EntityType.GROUP:
+    case EntityType.SERVICE_ACCOUNT:
+      return "agent";
+    case EntityType.CREDENTIAL:
+      return "credential";
+    default:
+      return null;
+  }
+}
+
+function toAttackCardNodes(path: AttackPath, nodeById: Map<string, UnifiedNode>): AttackPathCardNode[] {
+  const nodes: AttackPathCardNode[] = [];
+  for (const hop of path.hops) {
+    const node = nodeById.get(hop);
+    if (!node) continue;
+    const type = mapAttackPathNodeType(String(node.entity_type));
+    if (!type) continue;
+    nodes.push({
+      type,
+      label: node.label,
+      severity: node.severity,
+    });
+  }
+  return nodes;
+}
+
+function buildPathEdgeKeys(hops: string[]): Set<string> {
+  const keys = new Set<string>();
+  for (let index = 0; index < hops.length - 1; index += 1) {
+    const source = hops[index];
+    const target = hops[index + 1];
+    keys.add(`${source}=>${target}`);
+    keys.add(`${target}=>${source}`);
+  }
+  return keys;
+}
+
 export default function GraphPage() {
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
@@ -169,6 +321,11 @@ export default function GraphPage() {
   const [loadingGraph, setLoadingGraph] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedAttackPathKey, setSelectedAttackPathKey] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<UnifiedNode[]>([]);
+  const [searching, setSearching] = useState(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
 
@@ -210,6 +367,12 @@ export default function GraphPage() {
   useEffect(() => {
     setPageOffset(0);
   }, [serverFilterKey]);
+
+  useEffect(() => {
+    setSearchResults([]);
+    setSearchQuery("");
+    setSelectedAttackPathKey(null);
+  }, [selectedScanId]);
 
   useEffect(() => {
     if (!selectedScanId) {
@@ -263,12 +426,69 @@ export default function GraphPage() {
     [snapshots, selectedScanId],
   );
 
+  useEffect(() => {
+    if (!selectedNodeId || !selectedScanId) return;
+    let cancelled = false;
+    api
+      .getGraphNode(selectedNodeId, selectedScanId)
+      .then((detail) => {
+        if (cancelled) return;
+        setSelectedNode((current) => {
+          const currentId = current?.attributes?.node_id;
+          if (currentId && currentId !== selectedNodeId) return current;
+          if (!current) return buildFallbackNodeData(detail.node);
+          return mergeNodeDetail(current, detail);
+        });
+      })
+      .catch(() => {
+        // Keep the lightweight node view if enrichment fails.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedNodeId, selectedScanId]);
+
+  const graphNodeById = useMemo(
+    () => new Map((graphData?.nodes ?? []).map((node) => [node.id, node])),
+    [graphData?.nodes],
+  );
+
+  const attackPaths = useMemo(
+    () =>
+      [...(graphData?.attack_paths ?? [])].sort(
+        (left, right) =>
+          right.composite_risk - left.composite_risk || right.hops.length - left.hops.length,
+      ),
+    [graphData?.attack_paths],
+  );
+
+  const selectedAttackPath = useMemo(
+    () =>
+      selectedAttackPathKey
+        ? attackPaths.find((path) => attackPathKey(path) === selectedAttackPathKey) ?? null
+        : null,
+    [attackPaths, selectedAttackPathKey],
+  );
+
+  useEffect(() => {
+    if (!selectedAttackPathKey) return;
+    if (!attackPaths.some((path) => attackPathKey(path) === selectedAttackPathKey)) {
+      setSelectedAttackPathKey(null);
+    }
+  }, [attackPaths, selectedAttackPathKey]);
+
   const flow = useMemo(() => {
     if (!graphData) {
       return { nodes: [], edges: [], agentNames: [], legend: [], summary: null as null | ReturnType<typeof buildUnifiedFlowGraph>["summary"] };
     }
     return buildUnifiedFlowGraph(graphData, filters);
   }, [graphData, filters]);
+
+  const flowNodeDataById = useMemo(
+    () => new Map(flow.nodes.map((node) => [node.id, node.data])),
+    [flow.nodes],
+  );
 
   const { nodes: layoutNodes, edges: layoutEdges } = useMemo(
     () =>
@@ -289,7 +509,27 @@ export default function GraphPage() {
     [hoveredNodeId, layoutEdges],
   );
 
+  const attackPathNodeIds = useMemo(
+    () => (selectedAttackPath ? new Set(selectedAttackPath.hops) : null),
+    [selectedAttackPath],
+  );
+
+  const attackPathEdgeKeys = useMemo(
+    () => (selectedAttackPath ? buildPathEdgeKeys(selectedAttackPath.hops) : null),
+    [selectedAttackPath],
+  );
+
   const displayNodes = useMemo(() => {
+    if (attackPathNodeIds) {
+      return layoutNodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          dimmed: !attackPathNodeIds.has(node.id),
+          highlighted: attackPathNodeIds.has(node.id),
+        },
+      }));
+    }
     if (!connectedIds) return layoutNodes;
     return layoutNodes.map((node) => ({
       ...node,
@@ -299,9 +539,26 @@ export default function GraphPage() {
         highlighted: connectedIds.has(node.id),
       },
     }));
-  }, [layoutNodes, connectedIds]);
+  }, [layoutNodes, connectedIds, attackPathNodeIds]);
 
   const displayEdges = useMemo(() => {
+    if (attackPathEdgeKeys) {
+      return layoutEdges.map((edge) => {
+        const inPath = attackPathEdgeKeys.has(`${edge.source}=>${edge.target}`);
+        return {
+          ...edge,
+          animated: inPath || edge.animated,
+          style: {
+            ...edge.style,
+            opacity: inPath ? 1 : 0.08,
+            strokeWidth: inPath
+              ? Math.max(typeof edge.style?.strokeWidth === "number" ? edge.style.strokeWidth : 2, 3.2)
+              : 1,
+            filter: inPath ? "drop-shadow(0 0 6px rgba(249,115,22,0.55))" : undefined,
+          },
+        };
+      });
+    }
     if (!connectedIds) return layoutEdges;
     return layoutEdges.map((edge) => ({
       ...edge,
@@ -310,10 +567,19 @@ export default function GraphPage() {
         opacity: connectedIds.has(edge.source) && connectedIds.has(edge.target) ? 1 : 0.12,
       },
     }));
-  }, [layoutEdges, connectedIds]);
+  }, [layoutEdges, connectedIds, attackPathEdgeKeys]);
 
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
-    setSelectedNode(node.data as LineageNodeData);
+    const data = node.data as LineageNodeData;
+    setSelectedNode({
+      ...data,
+      attributes: {
+        ...(data.attributes ?? {}),
+        node_id: node.id,
+      },
+    });
+    setSelectedNodeId(node.id);
+    setSelectedAttackPathKey(null);
     setHoveredNodeId(null);
   }, []);
 
@@ -324,6 +590,42 @@ export default function GraphPage() {
   const onNodeMouseLeave = useCallback(() => {
     setHoveredNodeId(null);
   }, []);
+
+  const runSearch = useCallback(async () => {
+    const query = searchQuery.trim();
+    if (!query || !selectedScanId) {
+      setSearchResults([]);
+      return;
+    }
+    setSearching(true);
+    try {
+      const response = await api.searchGraph(query, { scanId: selectedScanId, limit: 8 });
+      setSearchResults(response.results);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }, [searchQuery, selectedScanId]);
+
+  const focusSearchResult = useCallback(
+    (node: UnifiedNode) => {
+      const fallback = flowNodeDataById.get(node.id) ?? buildFallbackNodeData(node);
+      setSelectedNode({
+        ...fallback,
+        attributes: {
+          ...(fallback.attributes ?? {}),
+          node_id: node.id,
+        },
+      });
+      setSelectedNodeId(node.id);
+      setHoveredNodeId(node.id);
+      setSelectedAttackPathKey(null);
+      setSearchResults([]);
+      setSearchQuery(node.label);
+    },
+    [flowNodeDataById],
+  );
 
   const pageStart = graphData && graphData.pagination.total > 0 ? graphData.pagination.offset + 1 : 0;
   const pageEnd =
@@ -410,6 +712,54 @@ export default function GraphPage() {
           </div>
         </div>
 
+        <div className="mt-3">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void runSearch();
+            }}
+            className="flex flex-wrap items-center gap-2"
+          >
+            <input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search nodes, tags, severities, or attributes"
+              className="min-w-[260px] flex-1 rounded-xl border border-zinc-700 bg-zinc-900/90 px-3 py-2 text-sm text-zinc-300 placeholder:text-zinc-500 focus:border-sky-600 focus:outline-none"
+            />
+            <button
+              type="submit"
+              disabled={searching || !selectedScanId}
+              className="rounded-xl border border-zinc-700 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {searching ? "Searching..." : "Search"}
+            </button>
+          </form>
+
+          {searchResults.length > 0 && (
+            <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-950/90 p-2">
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                {searchResults.map((result) => (
+                  <button
+                    key={result.id}
+                    type="button"
+                    onClick={() => focusSearchResult(result)}
+                    className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-left transition hover:border-zinc-600 hover:bg-zinc-900"
+                  >
+                    <p className="truncate text-sm font-medium text-zinc-100">{result.label}</p>
+                    <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                      {String(result.entity_type)}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-zinc-500">
+                      {result.severity && <span>{result.severity}</span>}
+                      <span>risk {result.risk_score.toFixed(1)}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-zinc-500">
           {activeSnapshot && (
             <>
@@ -455,6 +805,83 @@ export default function GraphPage() {
             <span className="text-amber-400">Large snapshot: narrow the graph or keep paging.</span>
           )}
         </div>
+
+        {attackPaths.length > 0 && (
+          <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.24em] text-orange-400">Attack paths</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Focus the current graph on a precomputed exploit chain in this filtered snapshot page.
+                </p>
+              </div>
+              {selectedAttackPath && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedAttackPathKey(null)}
+                  className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+                >
+                  Clear path focus
+                </button>
+              )}
+            </div>
+
+            <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
+              {attackPaths.slice(0, 6).map((path) => {
+                const key = attackPathKey(path);
+                const pathNodes = toAttackCardNodes(path, graphNodeById);
+                if (pathNodes.length === 0) return null;
+                const isActive = selectedAttackPathKey === key;
+                return (
+                  <div
+                    key={key}
+                    className={`min-w-[360px] rounded-2xl transition ${isActive ? "ring-2 ring-orange-400/70 ring-offset-2 ring-offset-zinc-950" : ""}`}
+                  >
+                    <AttackPathCard
+                      nodes={pathNodes}
+                      riskScore={path.composite_risk}
+                      onClick={() => setSelectedAttackPathKey((current) => (current === key ? null : key))}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            {selectedAttackPath && (
+              <div className="mt-3 grid gap-2 lg:grid-cols-4">
+                <PathStat
+                  label="Composite risk"
+                  value={selectedAttackPath.composite_risk.toFixed(1)}
+                  tone="red"
+                />
+                <PathStat
+                  label="Hop count"
+                  value={String(Math.max(0, selectedAttackPath.hops.length - 1))}
+                />
+                <PathStat
+                  label="Credential exposure"
+                  value={selectedAttackPath.credential_exposure.length > 0 ? selectedAttackPath.credential_exposure.length.toString() : "none"}
+                  tone={selectedAttackPath.credential_exposure.length > 0 ? "amber" : "zinc"}
+                />
+                <PathStat
+                  label="Tool exposure"
+                  value={selectedAttackPath.tool_exposure.length > 0 ? selectedAttackPath.tool_exposure.length.toString() : "none"}
+                  tone={selectedAttackPath.tool_exposure.length > 0 ? "blue" : "zinc"}
+                />
+                <PathTagList label="Summary" tags={[selectedAttackPath.summary || "No summary provided"]} wide />
+                {selectedAttackPath.vuln_ids.length > 0 && (
+                  <PathTagList label="Findings" tags={selectedAttackPath.vuln_ids} />
+                )}
+                {selectedAttackPath.credential_exposure.length > 0 && (
+                  <PathTagList label="Credentials" tags={selectedAttackPath.credential_exposure} />
+                )}
+                {selectedAttackPath.tool_exposure.length > 0 && (
+                  <PathTagList label="Tools" tags={selectedAttackPath.tool_exposure} />
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 flex relative overflow-hidden">
@@ -475,6 +902,7 @@ export default function GraphPage() {
             onNodeMouseLeave={onNodeMouseLeave}
             onPaneClick={() => {
               setSelectedNode(null);
+              setSelectedNodeId(null);
               setHoveredNodeId(null);
             }}
           >
@@ -484,7 +912,13 @@ export default function GraphPage() {
           </ReactFlow>
 
           {selectedNode && (
-            <LineageDetailPanel data={selectedNode} onClose={() => setSelectedNode(null)} />
+            <LineageDetailPanel
+              data={selectedNode}
+              onClose={() => {
+                setSelectedNode(null);
+                setSelectedNodeId(null);
+              }}
+            />
           )}
         </div>
       </div>
@@ -513,6 +947,58 @@ function MetricCard({
   return (
     <div className={`rounded-xl border px-3 py-1.5 text-xs ${accentClass}`}>
       <span className="font-mono text-zinc-100">{value}</span> {label}
+    </div>
+  );
+}
+
+function PathStat({
+  label,
+  value,
+  tone = "zinc",
+}: {
+  label: string;
+  value: string;
+  tone?: "zinc" | "red" | "amber" | "blue";
+}) {
+  const toneClass =
+    tone === "red"
+      ? "border-red-500/20 bg-red-500/10 text-red-200"
+      : tone === "amber"
+        ? "border-amber-500/20 bg-amber-500/10 text-amber-200"
+        : tone === "blue"
+          ? "border-sky-500/20 bg-sky-500/10 text-sky-200"
+          : "border-zinc-800 bg-zinc-900/80 text-zinc-300";
+
+  return (
+    <div className={`rounded-xl border px-3 py-2 ${toneClass}`}>
+      <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</p>
+      <p className="mt-1 font-mono text-sm text-zinc-100">{value}</p>
+    </div>
+  );
+}
+
+function PathTagList({
+  label,
+  tags,
+  wide = false,
+}: {
+  label: string;
+  tags: string[];
+  wide?: boolean;
+}) {
+  return (
+    <div className={`rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 ${wide ? "lg:col-span-4" : ""}`}>
+      <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {tags.map((tag) => (
+          <span
+            key={`${label}-${tag}`}
+            className="rounded-lg border border-zinc-700 bg-zinc-800/80 px-2 py-1 text-[11px] text-zinc-300"
+          >
+            {tag}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

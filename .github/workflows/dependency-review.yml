@@ -20,14 +20,23 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fetch base branch for bootstrap detection
-        run: git fetch --no-tags --prune --depth=1 origin "${{ github.base_ref }}:${{ github.base_ref }}"
-
       - name: Detect dependency-workflow bootstrap PR
         id: bootstrap
         shell: bash
         run: |
-          CHANGED="$(git diff --name-only "${{ github.base_ref }}"...HEAD)"
+          # pull_request runs check out GitHub's synthetic merge commit.
+          # Diffing its two parents is more reliable than comparing against a
+          # shallow local base branch, which can lose the merge base entirely.
+          if git rev-parse --verify HEAD^1 >/dev/null 2>&1 && git rev-parse --verify HEAD^2 >/dev/null 2>&1; then
+            CHANGED="$(git diff --name-only HEAD^1 HEAD^2)"
+          else
+            git fetch --no-tags --prune origin \
+              "${{ github.event.pull_request.base.sha }}" \
+              "${{ github.event.pull_request.head.sha }}"
+            CHANGED="$(git diff --name-only \
+              "${{ github.event.pull_request.base.sha }}" \
+              "${{ github.event.pull_request.head.sha }}")"
+          fi
           if echo "$CHANGED" | grep -qx ".github/workflows/dependency-submission.yml"; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0

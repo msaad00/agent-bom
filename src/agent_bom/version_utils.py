@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
+from functools import lru_cache
 from urllib.parse import quote as _url_quote
 
 from agent_bom.http_client import request_with_retry
@@ -390,6 +391,7 @@ def _compare_apk_versions(left: str, right: str) -> int:
     return (left_rev > right_rev) - (left_rev < right_rev)
 
 
+@lru_cache(maxsize=65536)
 def compare_version_order(left: str, right: str, ecosystem: str) -> int | None:
     """Compare two versions using ecosystem-specific semantics.
 
@@ -430,6 +432,7 @@ def compare_version_order(left: str, right: str, ecosystem: str) -> int | None:
         return None
 
 
+@lru_cache(maxsize=65536)
 def version_in_range(
     version: str,
     introduced: str | None,

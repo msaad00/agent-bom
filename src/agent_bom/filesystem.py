@@ -31,7 +31,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from agent_bom.models import Package, parse_debian_source_name
+from agent_bom.models import Package
+from agent_bom.package_utils import parse_debian_source_name
 from agent_bom.sbom import parse_cyclonedx
 from agent_bom.security import validate_path
 

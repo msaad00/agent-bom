@@ -55,7 +55,7 @@ def lookup_package(
     affected range.  Version matching is a simple lexicographic check — for exact
     semver semantics use ``lookup_package_strict()``.
     """
-    from agent_bom.models import normalize_package_name
+    from agent_bom.package_utils import normalize_package_name
 
     norm_name = normalize_package_name(name, ecosystem)
     eco_lower = ecosystem.lower()
@@ -315,7 +315,7 @@ def package_in_db(conn: sqlite3.Connection, ecosystem: str, name: str) -> bool:
     Used to decide whether the DB is authoritative for a package (and OSV fallback
     can be skipped) vs. the package simply not being indexed yet.
     """
-    from agent_bom.models import normalize_package_name
+    from agent_bom.package_utils import normalize_package_name
 
     norm_name = normalize_package_name(name, ecosystem)
     row = conn.execute(

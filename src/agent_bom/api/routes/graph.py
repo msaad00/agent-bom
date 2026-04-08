@@ -214,14 +214,23 @@ async def search_graph(
     offset: int = Query(0, ge=0, description="Pagination offset"),
     limit: int = Query(50, ge=1, le=500, description="Max results"),
 ) -> dict:
-    """Search graph nodes by label, entity type, severity, or compliance tag."""
-    graph = _get_graph_store_or_503().load_graph(scan_id=scan_id or "", tenant_id=_tenant(request))
-    all_results = graph.search_nodes(q, limit=offset + limit)
-    paged, pagination = _paginate(all_results, offset, limit)
+    """Search graph nodes by label, type, tags, and attributes."""
+    results, total = _get_graph_store_or_503().search_nodes(
+        scan_id=scan_id or "",
+        tenant_id=_tenant(request),
+        query=q,
+        offset=offset,
+        limit=limit,
+    )
     return {
         "query": q,
-        "results": [n.to_dict() for n in paged],
-        "pagination": pagination,
+        "results": [n.to_dict() for n in results],
+        "pagination": {
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "has_more": offset + limit < total,
+        },
     }
 
 

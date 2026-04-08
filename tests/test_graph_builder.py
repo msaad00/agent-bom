@@ -244,13 +244,27 @@ class TestSASTNodes:
         report = _minimal_report()
         report["sast_data"] = {
             "findings": [
-                {"rule_id": "CWE-79", "message": "XSS in template", "severity": "high", "path": "app.py", "line": 42},
+                {
+                    "rule_id": "CWE-79",
+                    "message": "XSS in template",
+                    "severity": "high",
+                    "file_path": "app.py",
+                    "start_line": 42,
+                    "end_line": 42,
+                    "cwe_ids": ["CWE-79"],
+                    "owasp_ids": ["A03:2021"],
+                    "rule_url": "https://semgrep.dev/r/cwe-79",
+                },
             ]
         }
         g = build_unified_graph_from_report(report)
         misconfigs = g.nodes_by_type(EntityType.MISCONFIGURATION)
         assert len(misconfigs) == 1
         assert "XSS" in misconfigs[0].label
+        assert misconfigs[0].attributes["file_path"] == "app.py"
+        assert misconfigs[0].attributes["start_line"] == 42
+        assert "CWE-79" in misconfigs[0].compliance_tags
+        assert "A03:2021" in misconfigs[0].compliance_tags
 
 
 class TestModelProvenance:

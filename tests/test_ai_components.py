@@ -475,6 +475,14 @@ class TestAIComponentReport:
         models = report.unique_models
         assert "gpt-4o" in models
 
+    def test_to_dict(self, tmp_project: Path):
+        report = scan_source(str(tmp_project))
+        data = report.to_dict()
+        assert data["files_scanned"] == report.files_scanned
+        assert data["stats"]["total_components"] == report.total
+        assert data["stats"]["by_language"]["javascript"] >= 1
+        assert any(component["language"] == "python" for component in data["components"])
+
 
 # ── Edge cases ───────────────────────────────────────────────────────────────
 

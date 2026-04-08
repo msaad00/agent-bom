@@ -25,7 +25,7 @@ class GraphBackend(Protocol):
     """Protocol for graph backend implementations."""
 
     def add_node(self, node_id: str, kind: str, label: str, **metadata: object) -> None: ...
-    def add_edge(self, source: str, target: str, kind: str, weight: float = 1.0, **metadata: object) -> None: ...
+    def add_edge(self, source: str, target: str, kind: str, weight: float = 1.0, *, directed: bool = False, **metadata: object) -> None: ...
     def has_node(self, node_id: str) -> bool: ...
     def has_edge(self, source: str, target: str) -> bool: ...
     def neighbors(self, node_id: str) -> list[str]: ...
@@ -49,9 +49,10 @@ class InMemoryBackend:
     def add_node(self, node_id: str, kind: str, label: str, **metadata: object) -> None:
         self._nodes[node_id] = {"kind": kind, "label": label, **metadata}
 
-    def add_edge(self, source: str, target: str, kind: str, weight: float = 1.0, **metadata: object) -> None:
+    def add_edge(self, source: str, target: str, kind: str, weight: float = 1.0, *, directed: bool = False, **metadata: object) -> None:
         self._adj[source][target] = {"kind": kind, "weight": weight, **metadata}
-        self._adj[target][source] = {"kind": kind, "weight": weight, **metadata}
+        if not directed:
+            self._adj[target][source] = {"kind": kind, "weight": weight, **metadata}
         self._edge_count += 1
 
     def has_node(self, node_id: str) -> bool:
@@ -169,9 +170,10 @@ class NetworkXBackend:
     def add_node(self, node_id: str, kind: str, label: str, **metadata: object) -> None:
         self._graph.add_node(node_id, kind=kind, label=label, **metadata)
 
-    def add_edge(self, source: str, target: str, kind: str, weight: float = 1.0, **metadata: object) -> None:
+    def add_edge(self, source: str, target: str, kind: str, weight: float = 1.0, *, directed: bool = False, **metadata: object) -> None:
         self._graph.add_edge(source, target, kind=kind, weight=weight, **metadata)
-        self._graph.add_edge(target, source, kind=kind, weight=weight, **metadata)
+        if not directed:
+            self._graph.add_edge(target, source, kind=kind, weight=weight, **metadata)
 
     def has_node(self, node_id: str) -> bool:
         return self._graph.has_node(node_id)
@@ -277,7 +279,11 @@ def from_context_graph(context_graph_data: dict, backend: str = "auto") -> Graph
 
 
 def from_unified_graph(ug: UnifiedGraph, backend: str = "auto") -> GraphBackend:
-    """Convert a :class:`UnifiedGraph` into a GraphBackend for centrality analysis."""
+    """Convert a :class:`UnifiedGraph` into a GraphBackend for analysis.
+
+    Respects edge direction: directed edges are one-way in the backend,
+    bidirectional edges get reverse adjacency entries.
+    """
     graph = get_backend(backend)
     for node in ug.nodes.values():
         et = node.entity_type.value if isinstance(node.entity_type, EntityType) else node.entity_type
@@ -295,5 +301,6 @@ def from_unified_graph(ug: UnifiedGraph, backend: str = "auto") -> GraphBackend:
             target=edge.target,
             kind=rel,
             weight=edge.weight,
+            directed=not edge.is_bidirectional,
         )
     return graph

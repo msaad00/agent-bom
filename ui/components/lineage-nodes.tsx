@@ -51,6 +51,13 @@ export type LineageNodeData = {
   dataSources?: string[];
   complianceTags?: string[];
   attributes?: Record<string, unknown>;
+  neighborCount?: number;
+  sourceCount?: number;
+  incomingEdgeCount?: number;
+  outgoingEdgeCount?: number;
+  impactCount?: number;
+  maxImpactDepth?: number;
+  impactByType?: Record<string, number>;
   // Agent / provider
   agentType?: string;
   agentStatus?: string;

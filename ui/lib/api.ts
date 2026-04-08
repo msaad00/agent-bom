@@ -3,7 +3,7 @@
  * Connects to the FastAPI backend at NEXT_PUBLIC_API_URL (default: same origin)
  */
 
-import type { UnifiedGraphData } from "./graph-schema";
+import type { UnifiedEdge, UnifiedGraphData, UnifiedNode } from "./graph-schema";
 
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
@@ -109,6 +109,29 @@ export interface GraphSnapshot {
 }
 
 export interface UnifiedGraphResponse extends UnifiedGraphData {
+  pagination: GraphPagination;
+}
+
+export interface GraphImpactResponse {
+  node_id: string;
+  affected_nodes: string[];
+  affected_by_type: Record<string, number>;
+  affected_count: number;
+  max_depth_reached: number;
+}
+
+export interface GraphNodeDetailResponse {
+  node: UnifiedNode;
+  edges_out: UnifiedEdge[];
+  edges_in: UnifiedEdge[];
+  neighbors: string[];
+  sources: string[];
+  impact: GraphImpactResponse;
+}
+
+export interface GraphSearchResponse {
+  query: string;
+  results: UnifiedNode[];
   pagination: GraphPagination;
 }
 
@@ -794,6 +817,24 @@ export const api = {
     if (filters?.limit != null) params.set("limit", String(filters.limit));
     const qs = params.toString();
     return get<UnifiedGraphResponse>(`/v1/graph${qs ? `?${qs}` : ""}`);
+  },
+
+  /** Search graph nodes within a snapshot */
+  searchGraph: (query: string, filters?: { scanId?: string; offset?: number; limit?: number }) => {
+    const params = new URLSearchParams();
+    params.set("q", query);
+    if (filters?.scanId) params.set("scan_id", filters.scanId);
+    if (filters?.offset != null) params.set("offset", String(filters.offset));
+    if (filters?.limit != null) params.set("limit", String(filters.limit));
+    return get<GraphSearchResponse>(`/v1/graph/search?${params.toString()}`);
+  },
+
+  /** Load one graph node plus impact and neighbor context */
+  getGraphNode: (nodeId: string, scanId?: string) => {
+    const params = new URLSearchParams();
+    if (scanId) params.set("scan_id", scanId);
+    const qs = params.toString();
+    return get<GraphNodeDetailResponse>(`/v1/graph/node/${encodeURIComponent(nodeId)}${qs ? `?${qs}` : ""}`);
   },
 
   /** Connect to SSE stream for real-time progress */

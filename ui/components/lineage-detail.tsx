@@ -319,6 +319,40 @@ export function LineageDetailPanel({
           </div>
         )}
 
+        {(data.neighborCount != null ||
+          data.sourceCount != null ||
+          data.incomingEdgeCount != null ||
+          data.outgoingEdgeCount != null ||
+          data.impactCount != null) && (
+          <div className="space-y-2">
+            <Label>Graph Context</Label>
+            {data.neighborCount != null && <Row label="Neighbors" value={data.neighborCount} />}
+            {data.sourceCount != null && <Row label="Sources" value={data.sourceCount} />}
+            {data.incomingEdgeCount != null && <Row label="Incoming edges" value={data.incomingEdgeCount} />}
+            {data.outgoingEdgeCount != null && <Row label="Outgoing edges" value={data.outgoingEdgeCount} />}
+            {data.impactCount != null && <Row label="Affected nodes" value={data.impactCount} className="text-orange-300" />}
+            {data.maxImpactDepth != null && <Row label="Impact depth" value={data.maxImpactDepth} />}
+          </div>
+        )}
+
+        {data.impactByType && Object.keys(data.impactByType).length > 0 && (
+          <div>
+            <Label>Impact By Type</Label>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {Object.entries(data.impactByType)
+                .sort((left, right) => right[1] - left[1])
+                .map(([key, value]) => (
+                  <span
+                    key={key}
+                    className="rounded border border-orange-800 bg-orange-950 px-1.5 py-0.5 text-[10px] text-orange-300"
+                  >
+                    {prettifyKey(key)}: {value}
+                  </span>
+                ))}
+            </div>
+          </div>
+        )}
+
         {data.dataSources && data.dataSources.length > 0 && (
           <TagList label="Data Sources" tags={data.dataSources} tone="blue" />
         )}

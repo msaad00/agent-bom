@@ -20,7 +20,7 @@ from enum import Enum
 from typing import Any
 
 from agent_bom.api.models import JobStatus, ScanJob, StepStatus
-from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_store, _job_lock
+from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_graph_store, _get_store, _job_lock
 from agent_bom.security import sanitize_error
 
 _logger = logging.getLogger(__name__)
@@ -52,13 +52,6 @@ def _persist_graph_snapshot(
     This path also evaluates graph deltas against the tenant's previous
     snapshot so later webhook/SIEM wiring has a single source of truth.
     """
-    from agent_bom.db.graph_store import (
-        default_graph_db_path,
-        latest_snapshot_id,
-        load_graph,
-        open_graph_db,
-        save_graph,
-    )
     from agent_bom.graph.builder import build_unified_graph_from_report
     from agent_bom.graph.webhooks import compute_delta_alerts
 
@@ -66,15 +59,12 @@ def _persist_graph_snapshot(
     scan_id = report_json.get("scan_id") or job.job_id
     graph = build_unified_graph_from_report(report_json, scan_id=scan_id, tenant_id=tenant_id)
 
-    graph_db_path = default_graph_db_path()
-    graph_db_path.parent.mkdir(parents=True, exist_ok=True)
-
     previous_graph = None
-    with open_graph_db(graph_db_path) as conn:
-        previous_scan_id = latest_snapshot_id(conn, tenant_id=tenant_id)
-        if previous_scan_id and previous_scan_id != scan_id:
-            previous_graph = load_graph(conn, tenant_id=tenant_id, scan_id=previous_scan_id)
-        save_graph(conn, graph)
+    graph_store = _get_graph_store()
+    previous_scan_id = graph_store.latest_snapshot_id(tenant_id=tenant_id)
+    if previous_scan_id and previous_scan_id != scan_id:
+        previous_graph = graph_store.load_graph(tenant_id=tenant_id, scan_id=previous_scan_id)
+    graph_store.save_graph(graph)
 
     alerts = compute_delta_alerts(previous_graph, graph)
     _logger.info(

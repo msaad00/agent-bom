@@ -46,6 +46,7 @@ from agent_bom.api.stores import (
     set_analytics_store,
     set_exception_store,
     set_fleet_store,
+    set_graph_store,
     set_job_store,
     set_policy_store,
     set_schedule_store,
@@ -134,6 +135,7 @@ async def _lifespan(app_instance: FastAPI):
             PostgresAuditLog,
             PostgresExceptionStore,
             PostgresFleetStore,
+            PostgresGraphStore,
             PostgresJobStore,
             PostgresKeyStore,
             PostgresPolicyStore,
@@ -150,6 +152,8 @@ async def _lifespan(app_instance: FastAPI):
             set_exception_store(PostgresExceptionStore())
         if _stores._trend_store is None:
             set_trend_store(PostgresTrendStore())
+        if _stores._graph_store is None:
+            set_graph_store(PostgresGraphStore())
         if _auth._key_store is None:
             set_key_store(PostgresKeyStore())
         if _audit_log_mod._audit_log is None:
@@ -175,6 +179,10 @@ async def _lifespan(app_instance: FastAPI):
             from agent_bom.baseline import SQLiteTrendStore
 
             set_trend_store(SQLiteTrendStore(db_path))
+        if _stores._graph_store is None:
+            from agent_bom.api.graph_store import SQLiteGraphStore
+
+            set_graph_store(SQLiteGraphStore())
         if _audit_log_mod._audit_log is None:
             set_audit_log(SQLiteAuditLog(db_path))
 

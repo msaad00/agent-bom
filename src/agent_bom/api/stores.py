@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from agent_bom.config import API_MAX_IN_MEMORY_JOBS as _MAX_IN_MEMORY_JOBS
 
 if TYPE_CHECKING:
+    from agent_bom.api.graph_store import GraphStoreProtocol
     from agent_bom.api.models import ScanJob
     from agent_bom.api.schedule_store import ScheduleStore
 
@@ -220,6 +221,33 @@ def set_trend_store(store: Any) -> None:
     """Switch the trend store backend. Call before server startup."""
     global _trend_store
     _trend_store = store
+
+
+# ─── Graph store (pluggable) ───────────────────────────────────────────────
+_graph_store: GraphStoreProtocol | None = None
+
+
+def _get_graph_store() -> GraphStoreProtocol:
+    """Get the active graph store, selecting the configured backend lazily."""
+    global _graph_store
+    if _graph_store is None:
+        with _store_lock:
+            if _graph_store is None:
+                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                    from agent_bom.api.postgres_store import PostgresGraphStore
+
+                    _graph_store = PostgresGraphStore()
+                else:
+                    from agent_bom.api.graph_store import SQLiteGraphStore
+
+                    _graph_store = SQLiteGraphStore()
+    return _graph_store
+
+
+def set_graph_store(store: GraphStoreProtocol) -> None:
+    """Switch the graph store backend. Call before server startup."""
+    global _graph_store
+    _graph_store = store
 
 
 def get_last_scan_report() -> dict | None:

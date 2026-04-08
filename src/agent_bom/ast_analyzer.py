@@ -80,6 +80,17 @@ class CallEdge:
 
 
 @dataclass
+class ControlFlowEdge:
+    """A coarse control-flow edge inside a function."""
+
+    source: str
+    target: str
+    edge_type: str
+    file_path: str
+    function_name: str
+
+
+@dataclass
 class FlowFinding:
     """A lightweight control-flow or inter-procedural finding."""
 
@@ -91,6 +102,7 @@ class FlowFinding:
     entrypoint: str
     sink: str
     call_path: list[str] = field(default_factory=list)
+    source: str = ""
 
 
 @dataclass
@@ -101,6 +113,7 @@ class ASTAnalysisResult:
     guardrails: list[DetectedGuardrail] = field(default_factory=list)
     tools: list[ToolSignature] = field(default_factory=list)
     call_edges: list[CallEdge] = field(default_factory=list)
+    cfg_edges: list[ControlFlowEdge] = field(default_factory=list)
     flow_findings: list[FlowFinding] = field(default_factory=list)
     frameworks_detected: list[str] = field(default_factory=list)
     files_analyzed: int = 0
@@ -153,6 +166,16 @@ class ASTAnalysisResult:
                 }
                 for edge in self.call_edges
             ],
+            "cfg_edges": [
+                {
+                    "source": edge.source,
+                    "target": edge.target,
+                    "type": edge.edge_type,
+                    "file": edge.file_path,
+                    "function": edge.function_name,
+                }
+                for edge in self.cfg_edges
+            ],
             "flow_findings": [
                 {
                     "category": finding.category,
@@ -163,6 +186,7 @@ class ASTAnalysisResult:
                     "entrypoint": finding.entrypoint,
                     "sink": finding.sink,
                     "call_path": finding.call_path,
+                    "source": finding.source,
                 }
                 for finding in self.flow_findings
             ],
@@ -174,6 +198,7 @@ class ASTAnalysisResult:
                 "total_guardrails": len(self.guardrails),
                 "total_tools": len(self.tools),
                 "total_call_edges": len(self.call_edges),
+                "total_cfg_edges": len(self.cfg_edges),
                 "total_flow_findings": len(self.flow_findings),
                 "prompts_with_risks": sum(1 for p in self.prompts if p.risk_flags),
             },
@@ -299,6 +324,32 @@ _FILE_MUTATION_CALLS = {
     "Path.rename",
     "Path.replace",
 }
+_SQL_CALLS = {"execute", "executemany", "cursor.execute", "cursor.executemany"}
+_LLM_CALL_SUBSTRINGS = (
+    "chat.completions.create",
+    "responses.create",
+    "messages.create",
+    "completions.create",
+    "generate_content",
+    "generatecontent",
+    "ollama.chat",
+    "ollama.generate",
+)
+_UNTRUSTED_SOURCE_CALLS = {
+    "input",
+    "request.get_json",
+    "request.args.get",
+    "request.form.get",
+    "request.values.get",
+    "request.headers.get",
+    "sys.argv",
+}
+_SANITIZER_CALLS = {
+    "html.escape",
+    "markupsafe.escape",
+    "shlex.quote",
+    "urllib.parse.quote",
+}
 
 # ── Skip directories ─────────────────────────────────────────────────────────
 
@@ -344,6 +395,7 @@ _SKIP_FILE_PATTERNS = frozenset(
 _MAX_FILE_SIZE = 512 * 1024  # 512KB
 _MAX_FILES = 500
 _JS_TS_EXTS = frozenset({".js", ".jsx", ".ts", ".tsx"})
+_GO_EXTS = frozenset({".go"})
 _VALIDATION_HINTS = (
     "allow",
     "approve",
@@ -370,6 +422,32 @@ _JS_PROMPT_ASSIGN_RE = re.compile(
     """,
     re.VERBOSE | re.IGNORECASE,
 )
+_JS_FALLBACK_DANGEROUS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("eval", re.compile(r"\beval\s*\(")),
+    ("Function", re.compile(r"\bnew\s+Function\s*\(")),
+    ("child_process.exec", re.compile(r"\b(?:child_process|cp)\.exec(?:Sync)?\s*\(")),
+    ("fs.writeFile", re.compile(r"\b(?:fs\.)?writeFile(?:Sync)?\s*\(")),
+]
+_GO_PROMPT_ASSIGN_RE = re.compile(
+    r"""
+    (?P<name>systemPrompt|system_prompt|instructions|promptTemplate|prompt_template|template|prefix|preamble|persona|backstory|role)\s*
+    (?::=|=)\s*(?P<quote>`|"|')(?P<text>[\s\S]{0,2000}?)(?P=quote)
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+_GO_TOOL_CALL_RE = re.compile(
+    r"""\b(?:AddTool|RegisterTool|NewTool|Tool)\s*\(\s*(?P<quote>`|"|')(?P<name>[^`"']+)(?P=quote)""",
+    re.IGNORECASE,
+)
+_GO_DANGEROUS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("exec.Command", re.compile(r"\bexec\.Command(?:Context)?\s*\(")),
+    ("os.WriteFile", re.compile(r"\bos\.WriteFile\s*\(")),
+    ("ioutil.WriteFile", re.compile(r"\bioutil\.WriteFile\s*\(")),
+]
+_GO_LLM_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("openai.ChatCompletion", re.compile(r"\bCreateChatCompletion\b")),
+    ("anthropic.Messages", re.compile(r"\bMessages\.Create\b")),
+]
 
 
 @dataclass
@@ -381,6 +459,10 @@ class _FunctionAnalysis:
     file_path: str
     line_number: int
     is_tool: bool
+    param_names: list[str] = field(default_factory=list)
+    node: ast.FunctionDef | ast.AsyncFunctionDef | None = None
+    parent_map: dict[ast.AST, ast.AST] = field(default_factory=dict, repr=False)
+    cfg_edges: list[ControlFlowEdge] = field(default_factory=list)
     called_names: list[tuple[str, int]] = field(default_factory=list)
     dangerous_calls: list[tuple[str, int, bool]] = field(default_factory=list)
 
@@ -461,19 +543,176 @@ def _is_guarded_call(node: ast.AST, parent_map: dict[ast.AST, ast.AST]) -> bool:
     return False
 
 
-def _scan_js_ts_file(file_path: Path, rel_path: str) -> tuple[list[ExtractedPrompt], list[DetectedGuardrail], list[ToolSignature]]:
+def _target_names(node: ast.AST) -> set[str]:
+    """Extract assigned identifier names from a target expression."""
+    if isinstance(node, ast.Name):
+        return {node.id}
+    if isinstance(node, (ast.Tuple, ast.List)):
+        names: set[str] = set()
+        for child in node.elts:
+            names.update(_target_names(child))
+        return names
+    return set()
+
+
+def _names_in_expr(node: ast.AST | None) -> set[str]:
+    """Collect identifier names used by an expression."""
+    if node is None:
+        return set()
+    return {child.id for child in ast.walk(node) if isinstance(child, ast.Name)}
+
+
+def _cfg_node_id(rel_path: str, function_name: str, label: str) -> str:
+    return f"{rel_path}:{function_name}:{label}"
+
+
+def _stmt_cfg_node_id(rel_path: str, function_name: str, stmt: ast.stmt) -> str:
+    return _cfg_node_id(rel_path, function_name, f"L{getattr(stmt, 'lineno', 0)}")
+
+
+def _first_stmt_cfg_node_id(rel_path: str, function_name: str, statements: list[ast.stmt]) -> str | None:
+    if not statements:
+        return None
+    return _stmt_cfg_node_id(rel_path, function_name, statements[0])
+
+
+def _build_function_cfg_edges(func_node: ast.FunctionDef | ast.AsyncFunctionDef, rel_path: str) -> list[ControlFlowEdge]:
+    """Build a coarse CFG for a function body."""
+    function_name = func_node.name
+    entry_id = _cfg_node_id(rel_path, function_name, "entry")
+    exit_id = _cfg_node_id(rel_path, function_name, "exit")
+    edges: list[ControlFlowEdge] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    def add_edge(source: str | None, target: str | None, edge_type: str) -> None:
+        if not source or not target:
+            return
+        key = (source, target, edge_type)
+        if key in seen:
+            return
+        seen.add(key)
+        edges.append(
+            ControlFlowEdge(
+                source=source,
+                target=target,
+                edge_type=edge_type,
+                file_path=rel_path,
+                function_name=function_name,
+            )
+        )
+
+    def walk_block(statements: list[ast.stmt], next_node: str) -> None:
+        for index, stmt in enumerate(statements):
+            stmt_id = _stmt_cfg_node_id(rel_path, function_name, stmt)
+            after_id = _stmt_cfg_node_id(rel_path, function_name, statements[index + 1]) if index + 1 < len(statements) else next_node
+            if isinstance(stmt, ast.If):
+                body_first = _first_stmt_cfg_node_id(rel_path, function_name, stmt.body) or after_id
+                orelse_first = _first_stmt_cfg_node_id(rel_path, function_name, stmt.orelse) or after_id
+                add_edge(stmt_id, body_first, "branch_true")
+                add_edge(stmt_id, orelse_first, "branch_false")
+                walk_block(stmt.body, after_id)
+                walk_block(stmt.orelse, after_id)
+                continue
+            if isinstance(stmt, (ast.For, ast.AsyncFor, ast.While)):
+                loop_body_first = _first_stmt_cfg_node_id(rel_path, function_name, stmt.body)
+                if loop_body_first:
+                    add_edge(stmt_id, loop_body_first, "loop_true")
+                    walk_block(stmt.body, stmt_id)
+                add_edge(stmt_id, after_id, "loop_false")
+                if stmt.orelse:
+                    orelse_first = _first_stmt_cfg_node_id(rel_path, function_name, stmt.orelse) or after_id
+                    add_edge(stmt_id, orelse_first, "loop_orelse")
+                    walk_block(stmt.orelse, after_id)
+                continue
+            if isinstance(stmt, ast.Try):
+                body_first = _first_stmt_cfg_node_id(rel_path, function_name, stmt.body) or after_id
+                add_edge(stmt_id, body_first, "try_body")
+                walk_block(stmt.body, after_id)
+                for handler in stmt.handlers:
+                    handler_first = _first_stmt_cfg_node_id(rel_path, function_name, handler.body) or after_id
+                    add_edge(stmt_id, handler_first, "except")
+                    walk_block(handler.body, after_id)
+                if stmt.orelse:
+                    orelse_first = _first_stmt_cfg_node_id(rel_path, function_name, stmt.orelse) or after_id
+                    add_edge(stmt_id, orelse_first, "try_else")
+                    walk_block(stmt.orelse, after_id)
+                if stmt.finalbody:
+                    final_first = _first_stmt_cfg_node_id(rel_path, function_name, stmt.finalbody) or after_id
+                    add_edge(stmt_id, final_first, "finally")
+                    walk_block(stmt.finalbody, after_id)
+                continue
+            if isinstance(stmt, ast.Return):
+                add_edge(stmt_id, exit_id, "return")
+                continue
+            if isinstance(stmt, ast.Break):
+                add_edge(stmt_id, next_node, "break")
+                continue
+            if isinstance(stmt, ast.Continue):
+                add_edge(stmt_id, next_node, "continue")
+                continue
+            add_edge(stmt_id, after_id, "next")
+
+    if func_node.body:
+        add_edge(entry_id, _stmt_cfg_node_id(rel_path, function_name, func_node.body[0]), "entry")
+        walk_block(func_node.body, exit_id)
+    else:
+        add_edge(entry_id, exit_id, "entry")
+
+    return edges
+
+
+def _is_llm_call_name(call_name: str) -> bool:
+    lower_name = call_name.lower()
+    if any(fragment in lower_name for fragment in _LLM_CALL_SUBSTRINGS):
+        return True
+    if lower_name.endswith((".invoke", ".ainvoke", ".predict", ".apredict")) and any(
+        hint in lower_name for hint in ("llm", "model", "chain", "agent")
+    ):
+        return True
+    return False
+
+
+def _is_sql_call_name(call_name: str) -> bool:
+    lower_name = call_name.lower()
+    return lower_name in _SQL_CALLS or lower_name.endswith(".execute") or lower_name.endswith(".executemany")
+
+
+def _is_untrusted_source_call(call_name: str) -> bool:
+    lower_name = call_name.lower()
+    return lower_name in _UNTRUSTED_SOURCE_CALLS or lower_name.endswith(".get_json")
+
+
+def _is_sanitizer_call_name(call_name: str) -> bool:
+    lower_name = call_name.lower()
+    if lower_name in _SANITIZER_CALLS:
+        return True
+    return any(hint in lower_name for hint in _VALIDATION_HINTS)
+
+
+def _first_match_line(source: str, pattern: str) -> int:
+    index = source.find(pattern)
+    if index < 0:
+        return 1
+    return source[:index].count("\n") + 1
+
+
+def _scan_js_ts_file(
+    file_path: Path,
+    rel_path: str,
+) -> tuple[list[ExtractedPrompt], list[DetectedGuardrail], list[ToolSignature], list[FlowFinding]]:
     """Extract prompt/tool/guardrail signals from JS/TS source files."""
     try:
         source = file_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return [], [], []
+        return [], [], [], []
 
     if len(source) > _MAX_FILE_SIZE:
-        return [], [], []
+        return [], [], [], []
 
     prompts: list[ExtractedPrompt] = []
     guardrails: list[DetectedGuardrail] = []
     tools: list[ToolSignature] = []
+    flow_findings: list[FlowFinding] = []
 
     for match in _JS_PROMPT_ASSIGN_RE.finditer(source):
         text = match.group("text").strip()
@@ -533,13 +772,141 @@ def _scan_js_ts_file(file_path: Path, rel_path: str) -> tuple[list[ExtractedProm
             )
         )
 
-    return prompts, guardrails, tools
+    tool_name = tools[0].name if tools else "module"
+    dangerous_call_names: set[str] = set()
+    try:
+        from agent_bom.js_ts_ast import JSTSAstUnavailableError, analyze_js_ts_block
+
+        language_hint = {
+            ".ts": "typescript",
+            ".tsx": "tsx",
+        }.get(file_path.suffix.lower(), "javascript")
+        dangerous_call_names.update(analyze_js_ts_block(source, language_hint=language_hint).call_names)
+    except (ImportError, JSTSAstUnavailableError):
+        for call_name, pattern in _JS_FALLBACK_DANGEROUS_PATTERNS:
+            if pattern.search(source):
+                dangerous_call_names.add(call_name)
+
+    for call_name in sorted(dangerous_call_names):
+        flow_findings.append(
+            FlowFinding(
+                category="js_ts_dangerous_call",
+                title="JS/TS source invokes a dangerous capability",
+                detail=f"{rel_path} invokes `{call_name}` in code that may be reachable from tool handlers.",
+                file_path=rel_path,
+                line_number=_first_match_line(source, call_name.split(".")[-1].replace("Sync", "")),
+                entrypoint=tool_name,
+                sink=call_name,
+                call_path=[tool_name, call_name] if tools else [call_name],
+            )
+        )
+
+    return prompts, guardrails, tools, flow_findings
+
+
+def _scan_go_file(
+    file_path: Path,
+    rel_path: str,
+) -> tuple[list[ExtractedPrompt], list[DetectedGuardrail], list[ToolSignature], list[FlowFinding]]:
+    """Extract prompt/tool/guardrail/dangerous-call signals from Go source files."""
+    try:
+        source = file_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return [], [], [], []
+
+    if len(source) > _MAX_FILE_SIZE:
+        return [], [], [], []
+
+    prompts: list[ExtractedPrompt] = []
+    guardrails: list[DetectedGuardrail] = []
+    tools: list[ToolSignature] = []
+    flow_findings: list[FlowFinding] = []
+
+    for match in _GO_PROMPT_ASSIGN_RE.finditer(source):
+        text = match.group("text").strip()
+        if len(text) <= 10:
+            continue
+        var_name = match.group("name")
+        prompts.append(
+            ExtractedPrompt(
+                text=text[:2000],
+                variable_name=var_name,
+                file_path=rel_path,
+                line_number=source[: match.start()].count("\n") + 1,
+                framework="generic-go",
+                prompt_type=_classify_prompt_type(var_name),
+                risk_flags=_check_prompt_risks(text),
+            )
+        )
+
+    for match in _GO_TOOL_CALL_RE.finditer(source):
+        tool_name = match.group("name").strip()
+        if not tool_name:
+            continue
+        tools.append(
+            ToolSignature(
+                name=tool_name,
+                parameters=[],
+                return_type="unknown",
+                description="Go MCP/tool registration",
+                file_path=rel_path,
+                line_number=source[: match.start()].count("\n") + 1,
+                decorators=["go-tool"],
+                is_async=False,
+            )
+        )
+
+    seen_guardrails: set[tuple[str, int]] = set()
+    for match in _GUARDRAIL_CALL_PATTERNS.finditer(source):
+        line_num = source[: match.start()].count("\n") + 1
+        guard_name = match.group(0)
+        dedup_key = (guard_name.lower(), line_num)
+        if dedup_key in seen_guardrails:
+            continue
+        seen_guardrails.add(dedup_key)
+        guardrails.append(
+            DetectedGuardrail(
+                name=guard_name,
+                guardrail_type="content_filter",
+                file_path=rel_path,
+                line_number=line_num,
+                framework="generic-go",
+                description=f"Function/method call: {guard_name}",
+            )
+        )
+
+    entrypoint = tools[0].name if tools else "module"
+    for sink_name, pattern in [*_GO_DANGEROUS_PATTERNS, *_GO_LLM_PATTERNS]:
+        for match in pattern.finditer(source):
+            category = "go_llm_call" if sink_name.startswith(("openai", "anthropic")) else "go_dangerous_call"
+            title = "Go source invokes an LLM client" if category == "go_llm_call" else "Go source invokes a dangerous capability"
+            flow_findings.append(
+                FlowFinding(
+                    category=category,
+                    title=title,
+                    detail=f"{rel_path} invokes `{sink_name}` in Go source.",
+                    file_path=rel_path,
+                    line_number=source[: match.start()].count("\n") + 1,
+                    entrypoint=entrypoint,
+                    sink=sink_name,
+                    call_path=[entrypoint, sink_name] if tools else [sink_name],
+                )
+            )
+
+    return prompts, guardrails, tools, flow_findings
 
 
 def _analyze_file(
     file_path: Path,
     rel_path: str,
-) -> tuple[list[ExtractedPrompt], list[DetectedGuardrail], list[ToolSignature], list[str], list[_FunctionAnalysis], list[FlowFinding]]:
+) -> tuple[
+    list[ExtractedPrompt],
+    list[DetectedGuardrail],
+    list[ToolSignature],
+    list[str],
+    list[_FunctionAnalysis],
+    list[FlowFinding],
+]:
     """Analyze a single Python file with full AST parsing."""
     try:
         source = file_path.read_text(encoding="utf-8", errors="replace")
@@ -661,6 +1028,10 @@ def _analyze_file(
                 file_path=rel_path,
                 line_number=node.lineno,
                 is_tool=is_tool,
+                param_names=[arg.arg for arg in node.args.args if arg.arg != "self"],
+                node=node,
+                parent_map=parent_map,
+                cfg_edges=_build_function_cfg_edges(node, rel_path),
             )
             for inner in ast.walk(node):
                 if not isinstance(inner, ast.Call):
@@ -795,6 +1166,31 @@ def _annotation_to_str(node: ast.expr) -> str:
     return "Any"
 
 
+def _build_flow_finding(
+    *,
+    category: str,
+    title: str,
+    detail: str,
+    file_path: str,
+    line_number: int,
+    entrypoint: str,
+    sink: str,
+    call_path: list[str],
+    source: str = "",
+) -> FlowFinding:
+    return FlowFinding(
+        category=category,
+        title=title,
+        detail=detail,
+        file_path=file_path,
+        line_number=line_number,
+        entrypoint=entrypoint,
+        sink=sink,
+        call_path=call_path,
+        source=source,
+    )
+
+
 def _resolve_called_function(
     caller: _FunctionAnalysis,
     raw_name: str,
@@ -812,6 +1208,328 @@ def _resolve_called_function(
     if len(candidates) == 1:
         return candidates[0]
     return None
+
+
+def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFinding]:
+    """Build taint/data-flow findings from tool entrypoints into sinks and LLM calls."""
+    by_name: dict[str, list[_FunctionAnalysis]] = {}
+    for func in functions:
+        by_name.setdefault(func.simple_name, []).append(func)
+
+    seen_findings: set[tuple[str, str, str, int, str]] = set()
+
+    def analyze_function(
+        func: _FunctionAnalysis,
+        tainted_params: set[str],
+        call_path: list[str],
+        visited: set[tuple[str, tuple[str, ...]]],
+    ) -> tuple[list[FlowFinding], bool]:
+        visit_key = (func.qualified_name, tuple(sorted(tainted_params)))
+        if visit_key in visited or func.node is None:
+            return [], False
+        visited = set(visited)
+        visited.add(visit_key)
+
+        tainted_vars = set(tainted_params)
+        sanitized_vars: set[str] = set()
+        findings: list[FlowFinding] = []
+        returns_tainted = False
+
+        def expr_taint(expr: ast.AST | None, current_sanitized: set[str]) -> tuple[bool, list[FlowFinding]]:
+            if expr is None:
+                return False, []
+            if isinstance(expr, ast.Name):
+                return expr.id in tainted_vars and expr.id not in current_sanitized, []
+            if isinstance(expr, ast.Constant):
+                return False, []
+            if isinstance(expr, ast.Attribute):
+                return expr_taint(expr.value, current_sanitized)
+            if isinstance(expr, ast.Subscript):
+                return expr_taint(expr.value, current_sanitized)
+            if isinstance(expr, ast.JoinedStr):
+                findings_acc: list[FlowFinding] = []
+                tainted = False
+                for value in expr.values:
+                    child_tainted, child_findings = expr_taint(value, current_sanitized)
+                    findings_acc.extend(child_findings)
+                    tainted |= child_tainted
+                return tainted, findings_acc
+            if isinstance(expr, ast.FormattedValue):
+                return expr_taint(expr.value, current_sanitized)
+            if isinstance(expr, ast.BinOp):
+                left_tainted, left_findings = expr_taint(expr.left, current_sanitized)
+                right_tainted, right_findings = expr_taint(expr.right, current_sanitized)
+                return left_tainted or right_tainted, left_findings + right_findings
+            if isinstance(expr, (ast.List, ast.Tuple, ast.Set)):
+                sequence_findings: list[FlowFinding] = []
+                tainted = False
+                for elt in expr.elts:
+                    child_tainted, child_findings = expr_taint(elt, current_sanitized)
+                    sequence_findings.extend(child_findings)
+                    tainted |= child_tainted
+                return tainted, sequence_findings
+            if isinstance(expr, ast.Dict):
+                dict_findings: list[FlowFinding] = []
+                tainted = False
+                for key, value in zip(expr.keys, expr.values, strict=False):
+                    for child in (key, value):
+                        child_tainted, child_findings = expr_taint(child, current_sanitized)
+                        dict_findings.extend(child_findings)
+                        tainted |= child_tainted
+                return tainted, dict_findings
+            if isinstance(expr, ast.BoolOp):
+                bool_findings: list[FlowFinding] = []
+                tainted = False
+                for value in expr.values:
+                    child_tainted, child_findings = expr_taint(value, current_sanitized)
+                    bool_findings.extend(child_findings)
+                    tainted |= child_tainted
+                return tainted, bool_findings
+            if isinstance(expr, ast.Compare):
+                compare_findings: list[FlowFinding] = []
+                left_tainted, left_findings = expr_taint(expr.left, current_sanitized)
+                compare_findings.extend(left_findings)
+                tainted = left_tainted
+                for comparator in expr.comparators:
+                    child_tainted, child_findings = expr_taint(comparator, current_sanitized)
+                    compare_findings.extend(child_findings)
+                    tainted |= child_tainted
+                return tainted, compare_findings
+            if isinstance(expr, ast.Call):
+                return call_taint(expr, current_sanitized)
+            return any(name in tainted_vars and name not in current_sanitized for name in _names_in_expr(expr)), []
+
+        def call_taint(call: ast.Call, current_sanitized: set[str]) -> tuple[bool, list[FlowFinding]]:
+            call_name = _call_name(call.func)
+            arg_results = [expr_taint(arg, current_sanitized) for arg in call.args]
+            kw_results = [(kw.arg, *expr_taint(kw.value, current_sanitized)) for kw in call.keywords]
+            arg_tainted = any(result[0] for result in arg_results) or any(result[1] for result in kw_results)
+            nested_findings: list[FlowFinding] = []
+            for _, child_findings in arg_results:
+                nested_findings.extend(child_findings)
+            for _, _, child_findings in kw_results:
+                nested_findings.extend(child_findings)
+
+            if _is_untrusted_source_call(call_name):
+                return True, nested_findings
+            if _is_sanitizer_call_name(call_name):
+                return False, nested_findings
+
+            source_names: set[str] = set()
+            for arg, (is_tainted, _) in zip(call.args, arg_results, strict=False):
+                if is_tainted:
+                    source_names.update(name for name in _names_in_expr(arg) if name in tainted_vars)
+            for kw in call.keywords:
+                kw_tainted, _ = expr_taint(kw.value, current_sanitized)
+                if kw_tainted:
+                    source_names.update(name for name in _names_in_expr(kw.value) if name in tainted_vars)
+            source_label = ", ".join(sorted(source_names)) or "untrusted input"
+            guarded = _is_guarded_call(call, func.parent_map)
+
+            if call_name and arg_tainted and not guarded:
+                line_number = getattr(call, "lineno", func.line_number)
+                if call_name in _DANGEROUS_CALLS:
+                    nested_findings.append(
+                        _build_flow_finding(
+                            category="tainted_dangerous_sink",
+                            title="Untrusted data reaches a dangerous sink",
+                            detail=f"Untrusted data ({source_label}) reaches `{call_name}` in {func.file_path}.",
+                            file_path=func.file_path,
+                            line_number=line_number,
+                            entrypoint=call_path[0],
+                            sink=call_name,
+                            call_path=call_path + [call_name],
+                            source=source_label,
+                        )
+                    )
+                elif _is_sql_call_name(call_name):
+                    nested_findings.append(
+                        _build_flow_finding(
+                            category="tainted_sql_query",
+                            title="Untrusted data reaches SQL execution",
+                            detail=f"Untrusted data ({source_label}) reaches `{call_name}` in {func.file_path}.",
+                            file_path=func.file_path,
+                            line_number=line_number,
+                            entrypoint=call_path[0],
+                            sink=call_name,
+                            call_path=call_path + [call_name],
+                            source=source_label,
+                        )
+                    )
+                elif _is_llm_call_name(call_name):
+                    nested_findings.append(
+                        _build_flow_finding(
+                            category="tainted_llm_prompt",
+                            title="Untrusted data reaches an LLM invocation",
+                            detail=f"Untrusted data ({source_label}) reaches `{call_name}` in {func.file_path}.",
+                            file_path=func.file_path,
+                            line_number=line_number,
+                            entrypoint=call_path[0],
+                            sink=call_name,
+                            call_path=call_path + [call_name],
+                            source=source_label,
+                        )
+                    )
+
+            callee = _resolve_called_function(func, call_name, by_name) if call_name else None
+            if callee is not None:
+                callee_tainted_params: set[str] = set()
+                for param_name, (is_tainted, _) in zip(callee.param_names, arg_results, strict=False):
+                    if is_tainted:
+                        callee_tainted_params.add(param_name)
+                for kw_name, is_tainted, _ in kw_results:
+                    if kw_name and is_tainted and kw_name in callee.param_names:
+                        callee_tainted_params.add(kw_name)
+                if callee_tainted_params:
+                    sub_findings, callee_returns_tainted = analyze_function(
+                        callee,
+                        callee_tainted_params,
+                        call_path + [callee.simple_name],
+                        visited,
+                    )
+                    nested_findings.extend(sub_findings)
+                    return callee_returns_tainted, nested_findings
+            return False, nested_findings
+
+        def walk_statements(statements: list[ast.stmt], current_sanitized: set[str]) -> tuple[set[str], list[FlowFinding], bool]:
+            local_tainted = set(tainted_vars)
+            findings_acc: list[FlowFinding] = []
+            local_returns_tainted = False
+
+            for statement in statements:
+                if isinstance(statement, ast.Assign):
+                    value_tainted, value_findings = expr_taint(statement.value, current_sanitized)
+                    findings_acc.extend(value_findings)
+                    target_names: set[str] = set()
+                    for target in statement.targets:
+                        target_names.update(_target_names(target))
+                    if value_tainted:
+                        local_tainted.update(target_names)
+                        tainted_vars.update(target_names)
+                    else:
+                        local_tainted.difference_update(target_names)
+                        tainted_vars.difference_update(target_names)
+                        current_sanitized.difference_update(target_names)
+                    continue
+                if isinstance(statement, ast.AnnAssign):
+                    value_tainted, value_findings = expr_taint(statement.value, current_sanitized)
+                    findings_acc.extend(value_findings)
+                    target_names = _target_names(statement.target)
+                    if value_tainted:
+                        local_tainted.update(target_names)
+                        tainted_vars.update(target_names)
+                    else:
+                        local_tainted.difference_update(target_names)
+                        tainted_vars.difference_update(target_names)
+                        current_sanitized.difference_update(target_names)
+                    continue
+                if isinstance(statement, ast.AugAssign):
+                    target_names = _target_names(statement.target)
+                    value_tainted, value_findings = expr_taint(statement.value, current_sanitized)
+                    findings_acc.extend(value_findings)
+                    target_tainted = any(name in tainted_vars for name in target_names)
+                    if value_tainted or target_tainted:
+                        local_tainted.update(target_names)
+                        tainted_vars.update(target_names)
+                    continue
+                if isinstance(statement, ast.Expr):
+                    _, value_findings = expr_taint(statement.value, current_sanitized)
+                    findings_acc.extend(value_findings)
+                    continue
+                if isinstance(statement, ast.Assert):
+                    _, test_findings = expr_taint(statement.test, current_sanitized)
+                    findings_acc.extend(test_findings)
+                    if _expr_contains_validation_hint(statement.test):
+                        current_sanitized.update(_names_in_expr(statement.test))
+                    continue
+                if isinstance(statement, ast.If):
+                    _, test_findings = expr_taint(statement.test, current_sanitized)
+                    findings_acc.extend(test_findings)
+                    guarded_names = _names_in_expr(statement.test) if _expr_contains_validation_hint(statement.test) else set()
+                    body_tainted, body_findings, body_returns_tainted = walk_statements(statement.body, current_sanitized | guarded_names)
+                    orelse_tainted, orelse_findings, orelse_returns_tainted = walk_statements(statement.orelse, set(current_sanitized))
+                    findings_acc.extend(body_findings)
+                    findings_acc.extend(orelse_findings)
+                    tainted_vars.update(body_tainted | orelse_tainted)
+                    local_tainted.update(body_tainted | orelse_tainted)
+                    local_returns_tainted |= body_returns_tainted or orelse_returns_tainted
+                    continue
+                if isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):
+                    iter_expr = statement.iter if isinstance(statement, (ast.For, ast.AsyncFor)) else statement.test
+                    iter_tainted, iter_findings = expr_taint(iter_expr, current_sanitized)
+                    findings_acc.extend(iter_findings)
+                    body_sanitized = set(current_sanitized)
+                    if isinstance(statement, (ast.For, ast.AsyncFor)) and iter_tainted:
+                        tainted_loop_names = _target_names(statement.target)
+                        body_sanitized.difference_update(tainted_loop_names)
+                        tainted_vars.update(tainted_loop_names)
+                    body_tainted, body_findings, body_returns_tainted = walk_statements(statement.body, body_sanitized)
+                    orelse_tainted, orelse_findings, orelse_returns_tainted = walk_statements(statement.orelse, set(current_sanitized))
+                    findings_acc.extend(body_findings)
+                    findings_acc.extend(orelse_findings)
+                    tainted_vars.update(body_tainted | orelse_tainted)
+                    local_tainted.update(body_tainted | orelse_tainted)
+                    local_returns_tainted |= body_returns_tainted or orelse_returns_tainted
+                    continue
+                if isinstance(statement, ast.With):
+                    for item in statement.items:
+                        context_tainted, context_findings = expr_taint(item.context_expr, current_sanitized)
+                        findings_acc.extend(context_findings)
+                        if context_tainted and item.optional_vars is not None:
+                            names = _target_names(item.optional_vars)
+                            tainted_vars.update(names)
+                            local_tainted.update(names)
+                    body_tainted, body_findings, body_returns_tainted = walk_statements(statement.body, set(current_sanitized))
+                    findings_acc.extend(body_findings)
+                    tainted_vars.update(body_tainted)
+                    local_tainted.update(body_tainted)
+                    local_returns_tainted |= body_returns_tainted
+                    continue
+                if isinstance(statement, ast.Try):
+                    body_tainted, body_findings, body_returns_tainted = walk_statements(statement.body, set(current_sanitized))
+                    findings_acc.extend(body_findings)
+                    local_returns_tainted |= body_returns_tainted
+                    branch_tainted: set[str] = set(body_tainted)
+                    for handler in statement.handlers:
+                        handler_tainted, handler_findings, handler_returns_tainted = walk_statements(handler.body, set(current_sanitized))
+                        findings_acc.extend(handler_findings)
+                        branch_tainted.update(handler_tainted)
+                        local_returns_tainted |= handler_returns_tainted
+                    orelse_tainted, orelse_findings, orelse_returns_tainted = walk_statements(statement.orelse, set(current_sanitized))
+                    findings_acc.extend(orelse_findings)
+                    branch_tainted.update(orelse_tainted)
+                    local_returns_tainted |= orelse_returns_tainted
+                    final_tainted, final_findings, final_returns_tainted = walk_statements(statement.finalbody, set(current_sanitized))
+                    findings_acc.extend(final_findings)
+                    branch_tainted.update(final_tainted)
+                    local_returns_tainted |= final_returns_tainted
+                    tainted_vars.update(branch_tainted)
+                    local_tainted.update(branch_tainted)
+                    continue
+                if isinstance(statement, ast.Return):
+                    ret_tainted, ret_findings = expr_taint(statement.value, current_sanitized)
+                    findings_acc.extend(ret_findings)
+                    local_returns_tainted |= ret_tainted
+                    continue
+
+            return local_tainted, findings_acc, local_returns_tainted
+
+        _, findings, returns_tainted = walk_statements(func.node.body, sanitized_vars)
+        return findings, returns_tainted
+
+    aggregated_findings: list[FlowFinding] = []
+    for func in functions:
+        if not func.is_tool or not func.param_names:
+            continue
+        tool_findings, _ = analyze_function(func, set(func.param_names), [func.simple_name], set())
+        for finding in tool_findings:
+            dedup_key = (finding.category, finding.file_path, finding.sink, finding.line_number, finding.entrypoint)
+            if dedup_key in seen_findings:
+                continue
+            seen_findings.add(dedup_key)
+            aggregated_findings.append(finding)
+
+    return aggregated_findings
 
 
 def _build_call_graph(functions: list[_FunctionAnalysis]) -> tuple[list[CallEdge], list[FlowFinding]]:
@@ -884,10 +1602,10 @@ def _build_call_graph(functions: list[_FunctionAnalysis]) -> tuple[list[CallEdge
 def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     """Analyze a project directory for prompts, tools, and risky call paths.
 
-    Extracts system prompts, guardrails, tool signatures, and a lightweight
-    call graph from Python source code. Also performs prompt/tool/guardrail
-    extraction for JS/TS source files so Node-based MCP projects show up in
-    the same analysis path.
+    Extracts system prompts, guardrails, tool signatures, taint/data-flow
+    findings, and a lightweight CFG/call graph from Python source code. Also
+    performs prompt/tool/guardrail and dangerous-call extraction for JS/TS and
+    Go source files so non-Python MCP projects show up in the same path.
 
     Args:
         project_path: Root directory to scan.
@@ -921,9 +1639,18 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
             continue
         js_ts_files.append(f)
 
+    go_files = []
+    for f in sorted(project.rglob("*.go")):
+        if any(part in _SKIP_DIRS for part in f.parts):
+            continue
+        if any(skip in f.name.lower() for skip in _SKIP_FILE_PATTERNS):
+            continue
+        go_files.append(f)
+
     py_files = py_files[:_MAX_FILES]
     js_ts_files = js_ts_files[: max(0, _MAX_FILES - len(py_files))]
-    result.files_analyzed = len(py_files) + len(js_ts_files)
+    go_files = go_files[: max(0, _MAX_FILES - len(py_files) - len(js_ts_files))]
+    result.files_analyzed = len(py_files) + len(js_ts_files) + len(go_files)
     function_analyses: list[_FunctionAnalysis] = []
 
     for py_file in py_files:
@@ -935,16 +1662,28 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
         result.frameworks_detected.extend(frameworks)
         result.flow_findings.extend(flow_findings)
         function_analyses.extend(file_functions)
+        for function in file_functions:
+            result.cfg_edges.extend(function.cfg_edges)
 
     for js_ts_file in js_ts_files:
         rel = str(js_ts_file.relative_to(project))
-        prompts, guardrails, tools = _scan_js_ts_file(js_ts_file, rel)
+        prompts, guardrails, tools, flow_findings = _scan_js_ts_file(js_ts_file, rel)
         result.prompts.extend(prompts)
         result.guardrails.extend(guardrails)
         result.tools.extend(tools)
+        result.flow_findings.extend(flow_findings)
+
+    for go_file in go_files:
+        rel = str(go_file.relative_to(project))
+        prompts, guardrails, tools, flow_findings = _scan_go_file(go_file, rel)
+        result.prompts.extend(prompts)
+        result.guardrails.extend(guardrails)
+        result.tools.extend(tools)
+        result.flow_findings.extend(flow_findings)
 
     result.call_edges, interprocedural_findings = _build_call_graph(function_analyses)
     result.flow_findings.extend(interprocedural_findings)
+    result.flow_findings.extend(_build_taint_findings(function_analyses))
 
     # Deduplicate frameworks
     result.frameworks_detected = sorted(set(result.frameworks_detected))

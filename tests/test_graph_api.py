@@ -141,6 +141,18 @@ class TestScanPipelineWiring:
         assert "agent:c" in s2.nodes
         assert "agent:a" not in s2.nodes
 
+    def test_load_without_scan_id_returns_latest_snapshot(self, graph_db):
+        _build_persisted_graph(graph_db, scan_id="s1")
+
+        g2 = UnifiedGraph(scan_id="s2")
+        g2.add_node(UnifiedNode(id="agent:latest", entity_type=EntityType.AGENT, label="latest-agent"))
+        save_graph(graph_db, g2)
+
+        latest = load_graph(graph_db)
+        assert latest.scan_id == "s2"
+        assert "agent:latest" in latest.nodes
+        assert "agent:a" not in latest.nodes
+
 
 class TestGraphEndpointLogic:
     """Test the endpoint logic directly (no HTTP, just function calls)."""

@@ -18,13 +18,13 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
 
 from agent_bom.db.graph_store import (
+    default_graph_db_path,
     diff_snapshots,
     list_snapshots,
     load_graph,
@@ -32,8 +32,6 @@ from agent_bom.db.graph_store import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-
-_GRAPH_DB_PATH = Path.home() / ".agent-bom" / "db" / "graph.db"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -43,11 +41,12 @@ _GRAPH_DB_PATH = Path.home() / ".agent-bom" / "db" / "graph.db"
 
 def _get_conn():
     """Open graph DB connection. Raises 503 if not available."""
-    if not _GRAPH_DB_PATH.exists():
+    graph_db_path = default_graph_db_path()
+    if not graph_db_path.exists():
         raise HTTPException(status_code=503, detail="Graph database not found. Run a scan first.")
     import sqlite3
 
-    conn = sqlite3.connect(str(_GRAPH_DB_PATH), timeout=10)
+    conn = sqlite3.connect(str(graph_db_path), timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -152,14 +151,19 @@ async def get_graph(
         # Filter edges to paged nodes
         paged_edges = [e for e in graph.edges if e.source in paged_ids and e.target in paged_ids]
 
+        attack_paths = [p.to_dict() for p in graph.attack_paths if p.hops and all(hop in paged_ids for hop in p.hops)]
+        interaction_risks = [
+            r.to_dict() for r in graph.interaction_risks if r.agents and all(f"agent:{agent_name}" in paged_ids for agent_name in r.agents)
+        ]
+
         return {
             "scan_id": graph.scan_id,
             "tenant_id": graph.tenant_id,
             "created_at": graph.created_at,
             "nodes": [n.to_dict() for n in paged_nodes],
             "edges": [e.to_dict() for e in paged_edges],
-            "attack_paths": [p.to_dict() for p in graph.attack_paths],
-            "interaction_risks": [r.to_dict() for r in graph.interaction_risks],
+            "attack_paths": attack_paths,
+            "interaction_risks": interaction_risks,
             "stats": stats,
             "pagination": pagination,
         }
@@ -353,7 +357,7 @@ async def get_graph_compliance(
             }
 
         return {
-            "scan_id": scan_id or "",
+            "scan_id": graph.scan_id,
             "framework_count": len(result),
             "total_tagged_findings": sum(s["total_findings"] for s in result.values()),
             "frameworks": result,

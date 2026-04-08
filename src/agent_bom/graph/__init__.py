@@ -33,6 +33,7 @@ from agent_bom.graph.severity import (
 )
 from agent_bom.graph.types import EntityType, GraphLayout, NodeStatus, RelationshipType
 from agent_bom.graph.util import _now_iso
+from agent_bom.graph.webhooks import compute_delta_alerts, format_alerts_for_siem
 
 __all__ = [
     # Types

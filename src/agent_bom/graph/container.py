@@ -489,12 +489,33 @@ class UnifiedGraph:
 
     # ── OCSF export (findings only) ──────────────────────────────────────
 
-    def to_ocsf_events(self, product_version: str = "0.0.0") -> list[dict[str, Any]]:
-        """Export ONLY finding-type nodes as OCSF events.
+    def to_ocsf_events(self, product_version: str = "0.0.0", *, enrich_neighbors: bool = True) -> list[dict[str, Any]]:
+        """Export finding-type nodes as OCSF events.
 
-        Credentials are inventory, not findings — they are excluded.
+        When ``enrich_neighbors=True`` (default), each event includes a
+        ``graph_context`` block with affected agents, servers, credentials,
+        and attack path depth — so SOC analysts see blast radius in the SIEM
+        without querying the graph API separately.
         """
-        return [node.to_ocsf_event(product_version) for node in self.nodes.values() if node.entity_type in FINDING_ENTITY_TYPES]
+        events = []
+        for node in self.nodes.values():
+            if node.entity_type not in FINDING_ENTITY_TYPES:
+                continue
+            event = node.to_ocsf_event(product_version)
+            if enrich_neighbors:
+                sources = self.sources_of(node.id)
+                impact = self.impact_of(node.id)
+                source_nodes = [self.nodes[s] for s in sources if s in self.nodes]
+                event["graph_context"] = {
+                    "affected_agents": [n.label for n in source_nodes if n.entity_type == EntityType.AGENT],
+                    "affected_servers": [n.label for n in source_nodes if n.entity_type == EntityType.SERVER],
+                    "affected_packages": [n.label for n in source_nodes if n.entity_type == EntityType.PACKAGE],
+                    "exposed_credentials": [n.label for n in source_nodes if n.entity_type == EntityType.CREDENTIAL],
+                    "blast_radius": impact["affected_count"],
+                    "blast_by_type": impact["affected_by_type"],
+                }
+            events.append(event)
+        return events
 
     # ── Graph views (subgraphs) ──────────────────────────────────────────
 

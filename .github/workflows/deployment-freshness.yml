@@ -38,12 +38,14 @@ jobs:
           RAILWAY_MCP_BEARER_TOKEN: ${{ secrets.RAILWAY_MCP_BEARER_TOKEN }}
         run: |
           DEPLOY_URL="${RAILWAY_MCP_URL:-https://agent-bom-mcp.up.railway.app}"
-          CURL_ARGS=(--max-time 15)
-          if [ -n "${RAILWAY_MCP_BEARER_TOKEN:-}" ]; then
-            CURL_ARGS+=(-H "Authorization: Bearer $RAILWAY_MCP_BEARER_TOKEN")
-          fi
-          echo "Checking $DEPLOY_URL/health ..."
-          RESPONSE=$(curl -sf "${CURL_ARGS[@]}" "$DEPLOY_URL/health" 2>/dev/null || echo '{}')
+          HEALTH_URL=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe --base-url "$DEPLOY_URL" --resolve-only)
+          echo "Checking $HEALTH_URL ..."
+          RESPONSE=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe \
+            --base-url "$DEPLOY_URL" \
+            --bearer-token "${RAILWAY_MCP_BEARER_TOKEN:-}" \
+            --attempts 3 \
+            --backoff-seconds 5 \
+            --timeout 15 2>/dev/null || echo '{}')
           DEPLOYED=$(echo "$RESPONSE" | python3 -c "
           import sys, json
           try:
@@ -54,7 +56,10 @@ jobs:
           ")
           echo "railway_version=$DEPLOYED" >> "$GITHUB_OUTPUT"
           echo "Railway version: $DEPLOYED (expected: ${{ steps.expected.outputs.version }})"
-          if [ "$DEPLOYED" != "${{ steps.expected.outputs.version }}" ]; then
+          if [ "$DEPLOYED" = "unknown" ] || [ "$DEPLOYED" = "unreachable" ]; then
+            echo "probe_failed=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Could not verify Railway version from $HEALTH_URL"
+          elif [ "$DEPLOYED" != "${{ steps.expected.outputs.version }}" ]; then
             echo "stale=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -66,11 +71,12 @@ jobs:
           RAILWAY_MCP_BEARER_TOKEN: ${{ secrets.RAILWAY_MCP_BEARER_TOKEN }}
         run: |
           DEPLOY_URL="${RAILWAY_MCP_URL:-https://agent-bom-mcp.up.railway.app}"
-          CURL_ARGS=(--max-time 15)
-          if [ -n "${RAILWAY_MCP_BEARER_TOKEN:-}" ]; then
-            CURL_ARGS+=(-H "Authorization: Bearer $RAILWAY_MCP_BEARER_TOKEN")
-          fi
-          RESPONSE=$(curl -sf "${CURL_ARGS[@]}" "$DEPLOY_URL/health" 2>/dev/null || echo '{}')
+          RESPONSE=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe \
+            --base-url "$DEPLOY_URL" \
+            --bearer-token "${RAILWAY_MCP_BEARER_TOKEN:-}" \
+            --attempts 3 \
+            --backoff-seconds 5 \
+            --timeout 15 2>/dev/null || echo '{}')
           TOOL_COUNT=$(echo "$RESPONSE" | python3 -c "
           import sys, json
           try:
@@ -133,7 +139,7 @@ jobs:
           )"
 
       - name: Close supply-chain drift issue when deployment is fresh
-        if: steps.railway.outputs.stale != 'true'
+        if: steps.railway.outputs.stale != 'true' && steps.railway.outputs.probe_failed != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

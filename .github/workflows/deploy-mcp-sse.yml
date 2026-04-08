@@ -90,16 +90,17 @@ jobs:
           echo "Waiting 60s for Railway to rebuild and start..."
           sleep 60
           DEPLOY_URL="${RAILWAY_MCP_URL:-https://agent-bom-mcp.up.railway.app}"
-          CURL_ARGS=()
-          if [ -n "${RAILWAY_MCP_BEARER_TOKEN:-}" ]; then
-            CURL_ARGS=(-H "Authorization: Bearer $RAILWAY_MCP_BEARER_TOKEN")
-          fi
-          echo "Checking $DEPLOY_URL/health"
-          for attempt in 1 2 3 4 5; do
-            RESPONSE=$(curl -sf "${CURL_ARGS[@]}" "$DEPLOY_URL/health" 2>/dev/null || true)
-            if [ -n "$RESPONSE" ]; then
-              echo "Health response: $RESPONSE"
-              DEPLOYED_VERSION=$(echo "$RESPONSE" | python3 -c "
+          HEALTH_URL=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe --base-url "$DEPLOY_URL" --resolve-only)
+          echo "Checking $HEALTH_URL"
+          RESPONSE=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe \
+            --base-url "$DEPLOY_URL" \
+            --bearer-token "${RAILWAY_MCP_BEARER_TOKEN:-}" \
+            --attempts 5 \
+            --backoff-seconds 30 \
+            --timeout 15 2>/dev/null || true)
+          if [ -n "$RESPONSE" ]; then
+            echo "Health response: $RESPONSE"
+            DEPLOYED_VERSION=$(echo "$RESPONSE" | python3 -c "
           import sys, json
           try:
               data = json.load(sys.stdin)
@@ -107,19 +108,17 @@ jobs:
           except Exception:
               print('unknown')
           " 2>/dev/null || echo "unknown")
-              echo "Deployed version: $DEPLOYED_VERSION"
-              echo "Expected version: $repo_version"
-              if [ "$DEPLOYED_VERSION" = "$repo_version" ]; then
-                echo "✅ Version match confirmed"
-                exit 0
-              elif [ "$DEPLOYED_VERSION" = "unknown" ]; then
-                echo "⚠️ Could not extract version from health endpoint — auth or startup may still be incomplete"
-              else
-                echo "::warning::Version mismatch — deployed=$DEPLOYED_VERSION expected=$repo_version"
-              fi
-              break
+            echo "Deployed version: $DEPLOYED_VERSION"
+            echo "Expected version: $repo_version"
+            if [ "$DEPLOYED_VERSION" = "$repo_version" ]; then
+              echo "✅ Version match confirmed"
+              exit 0
+            elif [ "$DEPLOYED_VERSION" = "unknown" ]; then
+              echo "⚠️ Could not extract version from health endpoint — auth or startup may still be incomplete"
+            else
+              echo "::warning::Version mismatch — deployed=$DEPLOYED_VERSION expected=$repo_version"
             fi
-            echo "Attempt $attempt: health endpoint not ready, waiting 30s..."
-            sleep 30
-          done
+          else
+            echo "::warning::Health endpoint not ready after retries"
+          fi
           echo "::warning::Could not verify deployed version — check Railway manually"

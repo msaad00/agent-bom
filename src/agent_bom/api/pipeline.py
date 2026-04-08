@@ -40,6 +40,58 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _persist_graph_snapshot(
+    job: ScanJob,
+    report_json: dict[str, Any],
+    *,
+    lock: threading.Lock | None = None,
+) -> None:
+    """Persist the unified graph snapshot produced by a completed scan.
+
+    Persistence is best-effort: graph failures should not fail the scan job.
+    This path also evaluates graph deltas against the tenant's previous
+    snapshot so later webhook/SIEM wiring has a single source of truth.
+    """
+    from agent_bom.db.graph_store import (
+        default_graph_db_path,
+        latest_snapshot_id,
+        load_graph,
+        open_graph_db,
+        save_graph,
+    )
+    from agent_bom.graph.builder import build_unified_graph_from_report
+    from agent_bom.graph.webhooks import compute_delta_alerts
+
+    tenant_id = job.tenant_id or "default"
+    scan_id = report_json.get("scan_id") or job.job_id
+    graph = build_unified_graph_from_report(report_json, scan_id=scan_id, tenant_id=tenant_id)
+
+    graph_db_path = default_graph_db_path()
+    graph_db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    previous_graph = None
+    with open_graph_db(graph_db_path) as conn:
+        previous_scan_id = latest_snapshot_id(conn, tenant_id=tenant_id)
+        if previous_scan_id and previous_scan_id != scan_id:
+            previous_graph = load_graph(conn, tenant_id=tenant_id, scan_id=previous_scan_id)
+        save_graph(conn, graph)
+
+    alerts = compute_delta_alerts(previous_graph, graph)
+    _logger.info(
+        "Graph persisted for scan=%s tenant=%s nodes=%d edges=%d delta_alerts=%d",
+        scan_id,
+        tenant_id,
+        len(graph.nodes),
+        len(graph.edges),
+        len(alerts),
+    )
+    if lock:
+        with lock:
+            job.progress.append(f"Graph persisted: {len(graph.nodes)} nodes, {len(graph.edges)} edges")
+            if alerts:
+                job.progress.append(f"Graph delta alerts: {len(alerts)}")
+
+
 # ─── ScanPipeline ────────────────────────────────────────────────────────────
 
 
@@ -505,6 +557,15 @@ def _run_scan_sync(job: ScanJob) -> None:
         with lock:
             job.result = report_json
             job.status = JobStatus.DONE
+
+        try:
+            pipeline.update_step("output", "Persisting unified graph...")
+            _persist_graph_snapshot(job, report_json, lock=lock)
+        except Exception as graph_exc:  # noqa: BLE001
+            _logger.warning("Unified graph persistence failed: %s", graph_exc)
+            with lock:
+                job.progress.append(f"Graph persistence skipped: {sanitize_error(graph_exc)}")
+
         pipeline.complete_step("output", "Report ready")
 
         # Auto-sync discovered agents to fleet registry

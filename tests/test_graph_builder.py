@@ -113,6 +113,13 @@ class TestBuildUnifiedGraphFromReport:
         names = {a.label for a in agents}
         assert names == {"claude-desktop", "cursor"}
 
+    def test_provider_nodes_and_hosts_edges(self):
+        g = build_unified_graph_from_report(_minimal_report())
+        providers = g.nodes_by_type(EntityType.PROVIDER)
+        assert len(providers) == 1
+        assert providers[0].label == "local"
+        assert g.has_edge("provider:local", "agent:claude-desktop")
+
     def test_server_nodes(self):
         g = build_unified_graph_from_report(_minimal_report())
         servers = g.nodes_by_type(EntityType.SERVER)
@@ -224,9 +231,15 @@ class TestBuildUnifiedGraphFromReport:
 class TestCISMisconfigNodes:
     def test_cis_failures_become_misconfig_nodes(self):
         report = _minimal_report()
-        report["cis_benchmark_data"] = {
+        report["cis_benchmark"] = {
             "checks": [
-                {"check_id": "1.1", "title": "Ensure MFA is enabled", "status": "FAIL", "severity": "high"},
+                {
+                    "check_id": "1.1",
+                    "title": "Ensure MFA is enabled",
+                    "status": "FAIL",
+                    "severity": "high",
+                    "resource_ids": ["bucket/prod-secrets"],
+                },
                 {"check_id": "1.2", "title": "Ensure logging", "status": "PASS", "severity": "medium"},
             ]
         }
@@ -237,12 +250,16 @@ class TestCISMisconfigNodes:
         assert misconfigs[0].severity == "high"
         assert misconfigs[0].category_uid == 2
         assert misconfigs[0].class_uid == 2003
+        resources = g.nodes_by_type(EntityType.CLOUD_RESOURCE)
+        assert len(resources) == 1
+        assert resources[0].label == "bucket/prod-secrets"
+        assert g.has_edge("misconfig:cis_benchmark:1.1", "cloud_resource:generic:bucket/prod-secrets")
 
 
 class TestSASTNodes:
     def test_sast_findings_become_misconfig_nodes(self):
         report = _minimal_report()
-        report["sast_data"] = {
+        report["sast"] = {
             "findings": [
                 {
                     "rule_id": "CWE-79",
@@ -277,3 +294,42 @@ class TestModelProvenance:
         models = g.nodes_by_type(EntityType.MODEL)
         assert len(models) == 1
         assert models[0].label == "gpt-4"
+
+    def test_dataset_and_container_nodes_created(self):
+        report = _minimal_report()
+        report["model_provenance"] = [
+            {"model_name": "gpt-4", "framework": "openai", "source": "api", "verified": True},
+        ]
+        report["dataset_cards"] = {
+            "datasets": [
+                {
+                    "name": "hf/acme-support",
+                    "license": "apache-2.0",
+                    "source_file": "datasets/support/README.md",
+                    "compliance_tags": {"nist": ["NIST-AI-RMF-MAP-1.1"]},
+                }
+            ]
+        }
+        report["serving_configs"] = [
+            {
+                "name": "support-api",
+                "framework": "mlflow",
+                "container_image": "ghcr.io/acme/support-api:1.2.3",
+                "model_uri": "models:/gpt-4/Production",
+                "endpoint_url": "https://support.example/api",
+            }
+        ]
+        report["toxic_combinations"] = [{"name": "rce_chain", "vulnerability_ids": ["CVE-2024-1234"], "risk_score": 9.5}]
+
+        g = build_unified_graph_from_report(report)
+
+        datasets = g.nodes_by_type(EntityType.DATASET)
+        containers = g.nodes_by_type(EntityType.CONTAINER)
+        assert len(datasets) == 1
+        assert datasets[0].label == "hf/acme-support"
+        assert "NIST-AI-RMF-MAP-1.1" in datasets[0].compliance_tags
+        assert len(containers) == 1
+        assert containers[0].attributes["container_image"] == "ghcr.io/acme/support-api:1.2.3"
+        assert g.has_edge("container:ghcr.io/acme/support-api:1.2.3", "model:gpt-4")
+        assert "toxic:rce_chain" in g.nodes
+        assert g.has_edge("vuln:CVE-2024-1234", "toxic:rce_chain")

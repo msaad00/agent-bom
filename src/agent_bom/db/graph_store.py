@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -142,6 +143,20 @@ CREATE TABLE IF NOT EXISTS graph_schema_version (
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def default_graph_db_path() -> Path:
+    """Resolve the graph DB path from the active deployment configuration.
+
+    Preference order:
+    1. ``AGENT_BOM_GRAPH_DB`` explicit graph database path
+    2. ``AGENT_BOM_DB`` shared SQLite database used by the API
+    3. ``~/.agent-bom/db/graph.db`` local default
+    """
+    configured = os.environ.get("AGENT_BOM_GRAPH_DB") or os.environ.get("AGENT_BOM_DB")
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".agent-bom" / "db" / "graph.db"
+
+
 def _init_db(conn: sqlite3.Connection) -> None:
     """Ensure tables exist and schema is current."""
     conn.execute("PRAGMA journal_mode=WAL")
@@ -167,6 +182,61 @@ def open_graph_db(db_path: str | Path) -> Generator[sqlite3.Connection, None, No
         yield conn
     finally:
         conn.close()
+
+
+def latest_snapshot_id(conn: sqlite3.Connection, *, tenant_id: str = "") -> str:
+    """Return the newest snapshot ID for a tenant, or ``""`` when absent."""
+    row = conn.execute(
+        """\
+        SELECT scan_id
+        FROM graph_snapshots
+        WHERE tenant_id = ?
+        ORDER BY created_at DESC, scan_id DESC
+        LIMIT 1
+        """,
+        (tenant_id,),
+    ).fetchone()
+    return str(row["scan_id"]) if row else ""
+
+
+def previous_snapshot_id(conn: sqlite3.Connection, *, tenant_id: str = "", before_scan_id: str = "") -> str:
+    """Return the snapshot immediately before ``before_scan_id`` for a tenant."""
+    if not before_scan_id:
+        return ""
+    current = conn.execute(
+        "SELECT created_at FROM graph_snapshots WHERE tenant_id = ? AND scan_id = ?",
+        (tenant_id, before_scan_id),
+    ).fetchone()
+    if not current:
+        return ""
+    row = conn.execute(
+        """\
+        SELECT scan_id
+        FROM graph_snapshots
+        WHERE tenant_id = ? AND created_at < ?
+        ORDER BY created_at DESC, scan_id DESC
+        LIMIT 1
+        """,
+        (tenant_id, current["created_at"]),
+    ).fetchone()
+    return str(row["scan_id"]) if row else ""
+
+
+def _resolve_snapshot(
+    conn: sqlite3.Connection,
+    *,
+    tenant_id: str = "",
+    scan_id: str = "",
+) -> tuple[str, str]:
+    """Resolve the requested or latest snapshot and return ``(scan_id, created_at)``."""
+    effective_scan_id = scan_id or latest_snapshot_id(conn, tenant_id=tenant_id)
+    if not effective_scan_id:
+        return "", ""
+    row = conn.execute(
+        "SELECT created_at FROM graph_snapshots WHERE scan_id = ? AND tenant_id = ?",
+        (effective_scan_id, tenant_id),
+    ).fetchone()
+    return effective_scan_id, (str(row["created_at"]) if row else "")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -316,13 +386,13 @@ def load_graph(
     min_severity_rank: int = 0,
 ) -> UnifiedGraph:
     """Load a UnifiedGraph from a specific scan snapshot."""
-    graph = UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id)
+    effective_scan_id, created_at = _resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
+    graph = UnifiedGraph(scan_id=effective_scan_id, tenant_id=tenant_id, created_at=created_at)
+    if not effective_scan_id:
+        return graph
 
-    query = "SELECT * FROM graph_nodes WHERE tenant_id = ?"
-    params: list[Any] = [tenant_id]
-    if scan_id:
-        query += " AND scan_id = ?"
-        params.append(scan_id)
+    query = "SELECT * FROM graph_nodes WHERE tenant_id = ? AND scan_id = ?"
+    params: list[Any] = [tenant_id, effective_scan_id]
     if entity_types:
         placeholders = ",".join("?" * len(entity_types))
         query += f" AND entity_type IN ({placeholders})"
@@ -355,11 +425,8 @@ def load_graph(
         )
         node_ids.add(row["id"])
 
-    eq = "SELECT * FROM graph_edges WHERE tenant_id = ?"
-    eparams: list[Any] = [tenant_id]
-    if scan_id:
-        eq += " AND scan_id = ?"
-        eparams.append(scan_id)
+    eq = "SELECT * FROM graph_edges WHERE tenant_id = ? AND scan_id = ?"
+    eparams: list[Any] = [tenant_id, effective_scan_id]
     for row in conn.execute(eq, eparams):
         if row["source_id"] not in node_ids or row["target_id"] not in node_ids:
             continue
@@ -378,11 +445,8 @@ def load_graph(
             )
         )
 
-    apq = "SELECT * FROM attack_paths WHERE tenant_id = ?"
-    apparams: list[Any] = [tenant_id]
-    if scan_id:
-        apq += " AND scan_id = ?"
-        apparams.append(scan_id)
+    apq = "SELECT * FROM attack_paths WHERE tenant_id = ? AND scan_id = ?"
+    apparams: list[Any] = [tenant_id, effective_scan_id]
     for row in conn.execute(apq, apparams):
         graph.attack_paths.append(
             AttackPath(
@@ -396,11 +460,8 @@ def load_graph(
             )
         )
 
-    irq = "SELECT * FROM interaction_risks WHERE tenant_id = ?"
-    irparams: list[Any] = [tenant_id]
-    if scan_id:
-        irq += " AND scan_id = ?"
-        irparams.append(scan_id)
+    irq = "SELECT * FROM interaction_risks WHERE tenant_id = ? AND scan_id = ?"
+    irparams: list[Any] = [tenant_id, effective_scan_id]
     for row in conn.execute(irq, irparams):
         graph.interaction_risks.append(
             InteractionRisk(

@@ -25,37 +25,52 @@ class EntityType(str, Enum):
     # Inventory but security-relevant (OCSF Category 5, NOT findings)
     CREDENTIAL = "credential"
 
-    # Grouping (virtual)
+    # Identity & governance (OCSF Category 5)
+    USER = "user"
+    GROUP = "group"
+    SERVICE_ACCOUNT = "service_account"
+
+    # Organizational hierarchy
     PROVIDER = "provider"
     ENVIRONMENT = "environment"
+    FLEET = "fleet"
+    CLUSTER = "cluster"
 
 
 class RelationshipType(str, Enum):
     """Edge relationship types across all graph surfaces."""
 
-    # Static inventory
-    HOSTS = "hosts"
-    USES = "uses"
-    DEPENDS_ON = "depends_on"
-    PROVIDES_TOOL = "provides_tool"
-    EXPOSES_CRED = "exposes_cred"
-    SERVES_MODEL = "serves_model"
-    CONTAINS = "contains"
+    # ── Static inventory ──
+    HOSTS = "hosts"  # provider → agent
+    USES = "uses"  # agent → server
+    DEPENDS_ON = "depends_on"  # server → package
+    PROVIDES_TOOL = "provides_tool"  # server → tool
+    EXPOSES_CRED = "exposes_cred"  # server → credential
+    SERVES_MODEL = "serves_model"  # server → model
+    CONTAINS = "contains"  # container → package
 
-    # Vulnerability
-    AFFECTS = "affects"
-    VULNERABLE_TO = "vulnerable_to"
-    EXPLOITABLE_VIA = "exploitable_via"
+    # ── Vulnerability ──
+    AFFECTS = "affects"  # vulnerability → package (reverse)
+    VULNERABLE_TO = "vulnerable_to"  # package/server → vulnerability
+    EXPLOITABLE_VIA = "exploitable_via"  # vulnerability → tool/credential
+    REMEDIATES = "remediates"  # fix_version → vulnerability
+    TRIGGERS = "triggers"  # vulnerability → toxic_combination
 
-    # Lateral movement (computed)
-    SHARES_SERVER = "shares_server"
-    SHARES_CRED = "shares_cred"
-    LATERAL_PATH = "lateral_path"
+    # ── Lateral movement (computed) ──
+    SHARES_SERVER = "shares_server"  # agent ↔ agent
+    SHARES_CRED = "shares_cred"  # agent ↔ agent
+    LATERAL_PATH = "lateral_path"  # agent → agent (precomputed)
 
-    # Runtime events (dynamic)
-    INVOKED = "invoked"
-    ACCESSED = "accessed"
-    DELEGATED_TO = "delegated_to"
+    # ── Ownership & governance ──
+    MANAGES = "manages"  # user/team → agent/fleet
+    OWNS = "owns"  # org/team → environment/resource
+    PART_OF = "part_of"  # agent → fleet, server → cluster
+    MEMBER_OF = "member_of"  # user → group, package → dependency_group
+
+    # ── Runtime events (dynamic) ──
+    INVOKED = "invoked"  # agent → tool (runtime)
+    ACCESSED = "accessed"  # tool → resource (runtime)
+    DELEGATED_TO = "delegated_to"  # agent → agent (runtime)
 
 
 class NodeStatus(str, Enum):

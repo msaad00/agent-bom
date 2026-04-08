@@ -96,6 +96,7 @@ class UnifiedGraph:
     nodes: dict[str, UnifiedNode] = field(default_factory=dict)
     edges: list[UnifiedEdge] = field(default_factory=list)
     adjacency: dict[str, list[UnifiedEdge]] = field(default_factory=lambda: defaultdict(list))
+    reverse_adjacency: dict[str, list[UnifiedEdge]] = field(default_factory=lambda: defaultdict(list))
     _edge_keys: set[tuple[str, str, str]] = field(default_factory=set, repr=False)
 
     attack_paths: list[AttackPath] = field(default_factory=list)
@@ -154,7 +155,9 @@ class UnifiedGraph:
         self._edge_keys.add(key)
         self.edges.append(edge)
         self.adjacency[edge.source].append(edge)
-        # Only add reverse adjacency for bidirectional edges
+        # Reverse index: "what points at this node?" — always populated
+        self.reverse_adjacency[edge.target].append(edge)
+        # Forward adjacency for bidirectional edges (traversal both ways)
         if edge.is_bidirectional:
             reverse = UnifiedEdge(
                 source=edge.target,
@@ -169,6 +172,7 @@ class UnifiedGraph:
                 activity_id=edge.activity_id,
             )
             self.adjacency[edge.target].append(reverse)
+            self.reverse_adjacency[edge.source].append(reverse)
 
     # ── Query ────────────────────────────────────────────────────────────
 
@@ -189,6 +193,98 @@ class UnifiedGraph:
 
     def has_edge(self, source: str, target: str) -> bool:
         return any(e.target == target for e in self.adjacency.get(source, []))
+
+    # ── Reverse queries ("what points at X?") ────────────────────────────
+
+    def edges_to(self, node_id: str) -> list[UnifiedEdge]:
+        """All edges whose target is this node (O(1) via reverse index)."""
+        return self.reverse_adjacency.get(node_id, [])
+
+    def sources_of(self, node_id: str) -> list[str]:
+        """All node IDs that have an edge pointing at this node."""
+        return [e.source for e in self.reverse_adjacency.get(node_id, [])]
+
+    def impact_of(self, node_id: str, max_depth: int = 4) -> dict:
+        """Compute blast radius / impact stats for a node.
+
+        Follows edges IN REVERSE: "what is affected by this node?"
+        Uses reverse_adjacency for directed edges, forward adjacency
+        for bidirectional edges.
+
+        Returns:
+            {
+                "node_id": str,
+                "affected_nodes": [str],
+                "affected_by_type": {"agent": N, "server": N, ...},
+                "affected_count": int,
+                "max_depth_reached": int,
+            }
+        """
+        if node_id not in self.nodes:
+            return {"node_id": node_id, "affected_nodes": [], "affected_by_type": {}, "affected_count": 0, "max_depth_reached": 0}
+
+        # BFS in reverse direction
+        visited: set[str] = {node_id}
+        queue: deque[tuple[str, int]] = deque([(node_id, 0)])
+        max_depth_reached = 0
+
+        while queue:
+            current, depth = queue.popleft()
+            if depth >= max_depth:
+                continue
+            # Follow reverse edges (who depends on / points to current?)
+            for edge in self.reverse_adjacency.get(current, []):
+                if edge.source not in visited:
+                    visited.add(edge.source)
+                    queue.append((edge.source, depth + 1))
+                    max_depth_reached = max(max_depth_reached, depth + 1)
+
+        visited.discard(node_id)
+        by_type: dict[str, int] = defaultdict(int)
+        for nid in visited:
+            node = self.nodes.get(nid)
+            if node:
+                et = node.entity_type.value if isinstance(node.entity_type, EntityType) else node.entity_type
+                by_type[et] += 1
+
+        return {
+            "node_id": node_id,
+            "affected_nodes": sorted(visited),
+            "affected_by_type": dict(by_type),
+            "affected_count": len(visited),
+            "max_depth_reached": max_depth_reached,
+        }
+
+    def search_nodes(self, query: str, limit: int = 50) -> list[UnifiedNode]:
+        """Search nodes by label, attributes, or compliance tags.
+
+        Case-insensitive substring match across label, entity_type,
+        severity, data_sources, compliance_tags, and string attribute values.
+        """
+        q = query.lower()
+        results: list[UnifiedNode] = []
+        for node in self.nodes.values():
+            if len(results) >= limit:
+                break
+            if q in node.label.lower():
+                results.append(node)
+                continue
+            if q in (node.entity_type.value if isinstance(node.entity_type, EntityType) else node.entity_type):
+                results.append(node)
+                continue
+            if q in node.severity.lower():
+                results.append(node)
+                continue
+            if any(q in ds.lower() for ds in node.data_sources):
+                results.append(node)
+                continue
+            if any(q in tag.lower() for tag in node.compliance_tags):
+                results.append(node)
+                continue
+            if any(q in str(v).lower() for v in node.attributes.values() if isinstance(v, str)):
+                results.append(node)
+                continue
+        return results
 
     # ── Filtering ────────────────────────────────────────────────────────
 
@@ -591,17 +687,42 @@ ENTITY_LEGEND: list[LegendEntry] = [
     LegendEntry(key="model", label="Model", color="#8b5cf6", shape="square"),
     LegendEntry(key="container", label="Container", color="#6366f1", shape="square"),
     LegendEntry(key="cloud_resource", label="Cloud Resource", color="#0ea5e9", shape="square"),
+    LegendEntry(key="user", label="User", color="#14b8a6", shape="circle"),
+    LegendEntry(key="group", label="Group", color="#0d9488", shape="circle"),
+    LegendEntry(key="service_account", label="Service Account", color="#0f766e", shape="circle"),
+    LegendEntry(key="fleet", label="Fleet", color="#6b7280", shape="square"),
+    LegendEntry(key="cluster", label="Cluster", color="#4b5563", shape="square"),
+    LegendEntry(key="dataset", label="Dataset", color="#06b6d4", shape="square"),
+    LegendEntry(key="environment", label="Environment", color="#9ca3af", shape="square"),
+    LegendEntry(key="provider", label="Provider", color="#d1d5db", shape="square"),
 ]
 
 RELATIONSHIP_LEGEND: list[LegendEntry] = [
+    # Static inventory
+    LegendEntry(key="hosts", label="Hosts", color="#6b7280"),
     LegendEntry(key="uses", label="Uses", color="#10b981"),
     LegendEntry(key="depends_on", label="Depends On", color="#52525b"),
     LegendEntry(key="provides_tool", label="Provides Tool", color="#a855f7"),
     LegendEntry(key="exposes_cred", label="Exposes Credential", color="#f59e0b"),
+    LegendEntry(key="serves_model", label="Serves Model", color="#8b5cf6"),
+    LegendEntry(key="contains", label="Contains", color="#6366f1"),
+    # Vulnerability
     LegendEntry(key="vulnerable_to", label="Vulnerable To", color="#ef4444"),
+    LegendEntry(key="affects", label="Affects", color="#dc2626"),
+    LegendEntry(key="exploitable_via", label="Exploitable Via", color="#b91c1c"),
+    LegendEntry(key="remediates", label="Remediates", color="#22c55e"),
+    LegendEntry(key="triggers", label="Triggers", color="#f97316"),
+    # Lateral movement
     LegendEntry(key="shares_server", label="Shares Server", color="#22d3ee"),
     LegendEntry(key="shares_cred", label="Shares Credential", color="#f97316"),
     LegendEntry(key="lateral_path", label="Lateral Path", color="#ea580c"),
+    # Ownership
+    LegendEntry(key="manages", label="Manages", color="#14b8a6"),
+    LegendEntry(key="owns", label="Owns", color="#0d9488"),
+    LegendEntry(key="part_of", label="Part Of", color="#6b7280"),
+    LegendEntry(key="member_of", label="Member Of", color="#4b5563"),
+    # Runtime
     LegendEntry(key="invoked", label="Invoked (runtime)", color="#10b981"),
     LegendEntry(key="accessed", label="Accessed (runtime)", color="#3b82f6"),
+    LegendEntry(key="delegated_to", label="Delegated To (runtime)", color="#a855f7"),
 ]

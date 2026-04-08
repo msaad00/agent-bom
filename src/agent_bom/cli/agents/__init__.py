@@ -1582,6 +1582,23 @@ def scan(
             f"{_n_risks} risk pattern(s), {_n_bottlenecks} bottleneck(s)"
         )
 
+        # ── Persist unified graph ────────────────────────────────────
+        try:
+            from agent_bom.context_graph import to_unified_graph as _to_ug
+            from agent_bom.db.graph_store import open_graph_db, save_graph
+
+            _ug = _to_ug(_cg, _all_paths, _cg_risks, scan_id=_scan_id)
+            _graph_db_dir = Path.home() / ".agent-bom" / "db"
+            _graph_db_dir.mkdir(parents=True, exist_ok=True)
+            _graph_db_path = _graph_db_dir / "graph.db"
+            with open_graph_db(_graph_db_path) as _gconn:
+                save_graph(_gconn, _ug)
+            con.print(f"  [green]✓[/green] Graph persisted ({len(_ug.nodes)} nodes, scan {_scan_id[:8]}…)")
+        except Exception as _graph_err:  # noqa: BLE001
+            import logging as _glog
+
+            _glog.getLogger(__name__).debug("Graph persistence skipped: %s", _graph_err)
+
     # ── License compliance check ─────────────────────────────────────
     if license_check and agents:
         from agent_bom.license_policy import evaluate_license_policy, print_license_report

@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
+from agent_bom import __version__
 from agent_bom.api.models import JobStatus, ScanJob, StepStatus
 from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_graph_store, _get_store, _job_lock
 from agent_bom.security import sanitize_error
@@ -50,10 +51,11 @@ def _persist_graph_snapshot(
 
     Persistence is best-effort: graph failures should not fail the scan job.
     This path also evaluates graph deltas against the tenant's previous
-    snapshot so later webhook/SIEM wiring has a single source of truth.
+    snapshot so current-state views, diff views, alert delivery, and OCSF
+    export all derive from the same persisted graph state.
     """
     from agent_bom.graph.builder import build_unified_graph_from_report
-    from agent_bom.graph.webhooks import compute_delta_alerts
+    from agent_bom.graph.webhooks import compute_delta_alerts, dispatch_delta_alerts
 
     tenant_id = job.tenant_id or "default"
     scan_id = report_json.get("scan_id") or job.job_id
@@ -67,19 +69,29 @@ def _persist_graph_snapshot(
     graph_store.save_graph(graph)
 
     alerts = compute_delta_alerts(previous_graph, graph)
+    delivery = dispatch_delta_alerts(alerts, product_version=__version__) if alerts else None
     _logger.info(
-        "Graph persisted for scan=%s tenant=%s nodes=%d edges=%d delta_alerts=%d",
+        "Graph persisted for scan=%s tenant=%s nodes=%d edges=%d delta_alerts=%d delta_delivered=%d",
         scan_id,
         tenant_id,
         len(graph.nodes),
         len(graph.edges),
         len(alerts),
+        delivery["delivered"] if delivery else 0,
     )
     if lock:
         with lock:
             job.progress.append(f"Graph persisted: {len(graph.nodes)} nodes, {len(graph.edges)} edges")
             if alerts:
                 job.progress.append(f"Graph delta alerts: {len(alerts)}")
+                if delivery and delivery["configured"]:
+                    summary = (
+                        f"Graph delta delivery: {delivery['delivered']}/{delivery['attempted']} "
+                        f"via {delivery['outbound_channels']} outbound channel(s)"
+                    )
+                    job.progress.append(summary)
+                else:
+                    job.progress.append(f"Graph delta export ready: {delivery['ocsf_event_count'] if delivery else 0} OCSF event(s)")
 
 
 # ─── ScanPipeline ────────────────────────────────────────────────────────────

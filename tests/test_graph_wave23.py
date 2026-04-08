@@ -188,6 +188,89 @@ class TestDeltaAlerts:
         assert ocsf_events[0]["severity_id"] == 5
         assert ocsf_events[0]["metadata"]["product"]["version"] == "0.75.14"
 
+    def test_delta_alerts_include_dispatch_fields(self):
+        from agent_bom.graph.webhooks import compute_delta_alerts
+
+        new = UnifiedGraph(scan_id="s1")
+        new.add_node(
+            UnifiedNode(
+                id="vuln:CVE-1",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-1",
+                severity="critical",
+                risk_score=9.5,
+                attributes={"cvss_score": 9.8},
+            )
+        )
+
+        alerts = compute_delta_alerts(None, new)
+        assert alerts
+        first = alerts[0]
+        assert first["detector"] == "graph_new_vulnerability"
+        assert first["message"] == first["title"]
+        assert first["details"]["risk_score"] == 9.5
+        assert first["details"]["cvss_score"] == 9.8
+
+    def test_dispatch_delta_alerts_without_outbound_channels(self, monkeypatch):
+        from agent_bom.graph.webhooks import compute_delta_alerts, dispatch_delta_alerts
+
+        monkeypatch.delenv("AGENT_BOM_GRAPH_DELTA_WEBHOOK", raising=False)
+        monkeypatch.delenv("AGENT_BOM_ALERT_WEBHOOK", raising=False)
+        monkeypatch.delenv("AGENT_BOM_GRAPH_DELTA_SLACK_WEBHOOK", raising=False)
+        monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
+
+        new = UnifiedGraph(scan_id="s1")
+        new.add_node(UnifiedNode(id="vuln:CVE-1", entity_type=EntityType.VULNERABILITY, label="CVE-1", severity="critical"))
+
+        alerts = compute_delta_alerts(None, new)
+        result = dispatch_delta_alerts(alerts, product_version="0.75.15")
+        assert result["configured"] is False
+        assert result["attempted"] == len(alerts)
+        assert result["delivered"] == 0
+        assert result["ocsf_event_count"] == len(alerts)
+
+    def test_dispatch_delta_alerts_to_configured_channels(self, monkeypatch):
+        import agent_bom.alerts.dispatcher as dispatcher_mod
+        from agent_bom.graph.webhooks import compute_delta_alerts, dispatch_delta_alerts
+
+        class FakeDispatcher:
+            last = None
+
+            def __init__(self):
+                self.webhooks = []
+                self.slacks = []
+                self.dispatched = []
+                FakeDispatcher.last = self
+
+            def add_webhook(self, url, headers=None):
+                self.webhooks.append((url, headers))
+
+            def add_slack(self, webhook_url):
+                self.slacks.append(webhook_url)
+
+            async def dispatch(self, alert):
+                self.dispatched.append(alert)
+                return 1 + len(self.webhooks) + len(self.slacks)
+
+        monkeypatch.setattr(dispatcher_mod, "AlertDispatcher", FakeDispatcher)
+        monkeypatch.setenv("AGENT_BOM_GRAPH_DELTA_WEBHOOK", "https://hooks.example.test/graph")
+        monkeypatch.setenv("AGENT_BOM_GRAPH_DELTA_SLACK_WEBHOOK", "https://hooks.slack.test/services/example")
+
+        new = UnifiedGraph(scan_id="s1")
+        new.add_node(UnifiedNode(id="vuln:CVE-1", entity_type=EntityType.VULNERABILITY, label="CVE-1", severity="critical"))
+
+        alerts = compute_delta_alerts(None, new)
+        result = dispatch_delta_alerts(alerts, product_version="0.75.15")
+
+        assert result["configured"] is True
+        assert result["outbound_channels"] == 2
+        assert result["delivered"] == len(alerts) * 2
+        assert FakeDispatcher.last is not None
+        assert FakeDispatcher.last.webhooks == [("https://hooks.example.test/graph", None)]
+        assert FakeDispatcher.last.slacks == ["https://hooks.slack.test/services/example"]
+        assert FakeDispatcher.last.dispatched
+        assert FakeDispatcher.last.dispatched[0]["type"] == "new_vulnerability"
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Wave 3B: OCSF neighbor enrichment

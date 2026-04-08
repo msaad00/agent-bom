@@ -1,14 +1,19 @@
-"""Graph delta webhooks — alert when critical changes appear between scans.
+"""Graph delta alerts, outbound delivery, and OCSF-ready export.
 
-After a scan persists a new graph snapshot, ``check_and_notify()`` compares
-it to the previous snapshot.  If new critical vulnerabilities, attack paths,
-or lateral movement risks appear, it emits a webhook event compatible with
-the existing SIEM push infrastructure.
+After a scan persists a new graph snapshot, the graph delta helpers compare
+it to the previous snapshot and produce alerts for new critical findings,
+attack paths, lateral movement risk, and drift. Those alerts can be:
+
+- rendered as persisted current-state and diff views
+- exported as OCSF-ready events for SIEM workflows
+- dispatched to configured webhook or Slack channels
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 from typing import Any
 
 from agent_bom.graph.container import UnifiedGraph
@@ -36,14 +41,26 @@ def compute_delta_alerts(
     for nid in new_node_ids - old_node_ids:
         node = new_graph.nodes[nid]
         if node.entity_type == EntityType.VULNERABILITY and SEVERITY_RANK.get(node.severity, 0) >= 4:
+            details = {
+                "node_ids": [nid],
+                "scan_id": new_graph.scan_id,
+                "delta_type": "new_vulnerability",
+                "risk_score": node.risk_score,
+                "cvss_score": node.attributes.get("cvss_score"),
+                "is_kev": node.attributes.get("is_kev", False),
+                "affected_agent_count": node.attributes.get("affected_agent_count", 0),
+            }
             alerts.append(
                 {
                     "type": "new_vulnerability",
+                    "detector": "graph_new_vulnerability",
                     "severity": node.severity,
+                    "message": f"New {node.severity} vulnerability: {node.label}",
                     "title": f"New {node.severity} vulnerability: {node.label}",
                     "description": f"Vulnerability {node.label} appeared in scan {new_graph.scan_id}",
                     "node_ids": [nid],
                     "scan_id": new_graph.scan_id,
+                    "details": details,
                     "attributes": {
                         "cvss_score": node.attributes.get("cvss_score"),
                         "is_kev": node.attributes.get("is_kev", False),
@@ -56,14 +73,23 @@ def compute_delta_alerts(
     for nid in new_node_ids - old_node_ids:
         node = new_graph.nodes[nid]
         if node.entity_type == EntityType.MISCONFIGURATION and SEVERITY_RANK.get(node.severity, 0) >= 4:
+            details = {
+                "node_ids": [nid],
+                "scan_id": new_graph.scan_id,
+                "delta_type": "new_misconfiguration",
+                "risk_score": node.risk_score,
+            }
             alerts.append(
                 {
                     "type": "new_misconfiguration",
+                    "detector": "graph_new_misconfiguration",
                     "severity": node.severity,
+                    "message": f"New {node.severity} misconfiguration: {node.label}",
                     "title": f"New {node.severity} misconfiguration: {node.label}",
                     "description": f"CIS/SAST finding appeared in scan {new_graph.scan_id}",
                     "node_ids": [nid],
                     "scan_id": new_graph.scan_id,
+                    "details": details,
                 }
             )
 
@@ -73,14 +99,26 @@ def compute_delta_alerts(
         old_path_keys = {(p.source, p.target) for p in old_graph.attack_paths}
     for path in new_graph.attack_paths:
         if (path.source, path.target) not in old_path_keys and path.composite_risk >= 7.0:
+            details = {
+                "node_ids": path.hops,
+                "scan_id": new_graph.scan_id,
+                "delta_type": "new_attack_path",
+                "risk_score": path.composite_risk,
+                "composite_risk": path.composite_risk,
+                "credential_exposure": path.credential_exposure,
+                "vuln_ids": path.vuln_ids,
+            }
             alerts.append(
                 {
                     "type": "new_attack_path",
+                    "detector": "graph_new_attack_path",
                     "severity": "critical" if path.composite_risk >= 9.0 else "high",
+                    "message": f"New high-risk attack path: {path.summary or f'{path.source} → {path.target}'}",
                     "title": f"New high-risk attack path: {path.summary or f'{path.source} → {path.target}'}",
                     "description": f"Composite risk {path.composite_risk}/10, {len(path.hops)} hops",
                     "node_ids": path.hops,
                     "scan_id": new_graph.scan_id,
+                    "details": details,
                     "attributes": {
                         "composite_risk": path.composite_risk,
                         "credential_exposure": path.credential_exposure,
@@ -96,14 +134,26 @@ def compute_delta_alerts(
     for risk in new_graph.interaction_risks:
         key = (risk.pattern, tuple(sorted(risk.agents)))
         if key not in old_risk_keys and risk.risk_score >= 7.0:
+            node_ids = [f"agent:{a}" for a in risk.agents]
+            details = {
+                "node_ids": node_ids,
+                "scan_id": new_graph.scan_id,
+                "delta_type": "new_interaction_risk",
+                "risk_score": risk.risk_score,
+                "pattern": risk.pattern,
+                "owasp_agentic_tag": risk.owasp_agentic_tag,
+            }
             alerts.append(
                 {
                     "type": "new_interaction_risk",
+                    "detector": "graph_new_interaction_risk",
                     "severity": "critical" if risk.risk_score >= 9.0 else "high",
+                    "message": f"New interaction risk: {risk.pattern}",
                     "title": f"New interaction risk: {risk.pattern}",
                     "description": risk.description,
-                    "node_ids": [f"agent:{a}" for a in risk.agents],
+                    "node_ids": node_ids,
                     "scan_id": new_graph.scan_id,
+                    "details": details,
                     "attributes": {
                         "risk_score": risk.risk_score,
                         "pattern": risk.pattern,
@@ -117,18 +167,81 @@ def compute_delta_alerts(
     if removed and old_graph:
         agent_removed = [nid for nid in removed if old_graph.nodes[nid].entity_type == EntityType.AGENT]
         if agent_removed:
+            details = {
+                "node_ids": agent_removed,
+                "scan_id": new_graph.scan_id,
+                "delta_type": "agent_removed",
+            }
             alerts.append(
                 {
                     "type": "agent_removed",
+                    "detector": "graph_agent_removed",
                     "severity": "medium",
+                    "message": f"{len(agent_removed)} agent(s) no longer detected",
                     "title": f"{len(agent_removed)} agent(s) no longer detected",
                     "description": f"Agents removed: {', '.join(sorted(agent_removed))}",
                     "node_ids": agent_removed,
                     "scan_id": new_graph.scan_id,
+                    "details": details,
                 }
             )
 
     return alerts
+
+
+def _graph_delta_webhook_url() -> str:
+    return os.environ.get("AGENT_BOM_GRAPH_DELTA_WEBHOOK", "").strip() or os.environ.get("AGENT_BOM_ALERT_WEBHOOK", "").strip()
+
+
+def _graph_delta_slack_webhook_url() -> str:
+    return os.environ.get("AGENT_BOM_GRAPH_DELTA_SLACK_WEBHOOK", "").strip() or os.environ.get("SLACK_WEBHOOK_URL", "").strip()
+
+
+def dispatch_delta_alerts(
+    alerts: list[dict[str, Any]],
+    *,
+    product_version: str = "0.0.0",
+) -> dict[str, Any]:
+    """Dispatch graph delta alerts to configured outbound channels.
+
+    Uses dedicated graph delta webhook/slack env vars when present and falls
+    back to the generic scan/runtime webhook env vars. Returns delivery
+    metadata plus OCSF-ready events for downstream export.
+    """
+    from agent_bom.alerts.dispatcher import AlertDispatcher
+
+    webhook_url = _graph_delta_webhook_url()
+    slack_webhook_url = _graph_delta_slack_webhook_url()
+    outbound_channels = int(bool(webhook_url)) + int(bool(slack_webhook_url))
+    ocsf_events = format_alerts_for_siem(alerts, product_version)
+    result = {
+        "configured": outbound_channels > 0,
+        "attempted": len(alerts),
+        "delivered": 0,
+        "outbound_channels": outbound_channels,
+        "ocsf_event_count": len(ocsf_events),
+        "ocsf_events": ocsf_events,
+    }
+    if not alerts or outbound_channels == 0:
+        return result
+
+    dispatcher = AlertDispatcher()
+    if webhook_url:
+        dispatcher.add_webhook(webhook_url)
+    if slack_webhook_url:
+        dispatcher.add_slack(slack_webhook_url)
+
+    delivered = 0
+    for alert in alerts:
+        try:
+            successes = asyncio.run(dispatcher.dispatch(alert))
+        except RuntimeError:
+            dispatcher.dispatch_sync(alert)
+            successes = 1 + outbound_channels
+        delivered += max(0, successes - 1)
+
+    result["delivered"] = delivered
+    return result
 
 
 def format_alerts_for_siem(alerts: list[dict[str, Any]], product_version: str = "0.0.0") -> list[dict[str, Any]]:

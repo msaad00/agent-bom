@@ -263,7 +263,9 @@ def code_cmd(path: str, output_format: str, output_path: Optional[str], quiet: b
     """Analyze source code for AI components — prompts, guardrails, tools.
 
     AST-based analysis of Python AI framework code. Extracts system
-    prompts, detects guardrails, and maps tool signatures.
+    prompts, detects guardrails, and maps tool signatures. Also reuses the
+    multi-language AI component source scan to surface SDK/model usage across
+    Python, JavaScript/TypeScript, Go, Java, Rust, and Ruby.
 
     \b
     Examples:
@@ -275,13 +277,17 @@ def code_cmd(path: str, output_format: str, output_path: Optional[str], quiet: b
 
     from rich.console import Console
 
+    from agent_bom.ai_components import scan_source
     from agent_bom.ast_analyzer import analyze_project
 
     con = Console(stderr=True, quiet=quiet)
     result = analyze_project(path)
+    ai_report = scan_source(path)
 
     if output_format == "json":
-        output = _json.dumps(result.to_dict(), indent=2)
+        payload = result.to_dict()
+        payload["ai_components"] = ai_report.to_dict()
+        output = _json.dumps(payload, indent=2)
         if output_path:
             from pathlib import Path as _Path
 
@@ -311,6 +317,28 @@ def code_cmd(path: str, output_format: str, output_path: Optional[str], quiet: b
         for t in result.tools:
             params = ", ".join(f"{p['name']}: {p['type']}" for p in t.parameters)
             con.print(f"  {t.file_path}:{t.line_number}  {t.name}({params}) → {t.return_type}")
+
+    if ai_report.total:
+        con.print(f"\n[bold]AI Components ({ai_report.total} across {ai_report.files_scanned} files):[/bold]")
+        for comp in ai_report.components[:12]:
+            extra = " [yellow](shadow)[/yellow]" if comp.is_shadow else ""
+            con.print(
+                f"  {comp.file_path}:{comp.line_number}  [{comp.language}] {comp.component_type.value}  [bold]{comp.name}[/bold]{extra}"
+            )
+        if ai_report.total > 12:
+            con.print(f"  [dim]... {ai_report.total - 12} more component finding(s)[/dim]")
+
+    if ai_report.warnings:
+        con.print("\n[yellow]Warnings:[/yellow]")
+        for warning in ai_report.warnings:
+            con.print(f"  [yellow]-[/yellow] {warning}")
+
+    if result.flow_findings:
+        con.print(f"\n[bold]Flow Findings ({len(result.flow_findings)}):[/bold]")
+        for finding in result.flow_findings[:8]:
+            path = " -> ".join(finding.call_path) if finding.call_path else finding.sink
+            con.print(f"  {finding.file_path}:{finding.line_number}  [red]{finding.title}[/red]")
+            con.print(f"    [dim]{path}[/dim]")
 
     stats = result.to_dict()["stats"]
     risky = stats["prompts_with_risks"]

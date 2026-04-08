@@ -371,19 +371,30 @@ def build_unified_graph_from_report(
     sast_data = report_json.get("sast_data")
     if sast_data:
         for finding in sast_data.get("findings", []):
-            sast_id = f"misconfig:sast:{finding.get('rule_id', 'unknown')}:{finding.get('path', '')}"
+            rule_id = finding.get("rule_id", "unknown")
+            finding_path = finding.get("file_path") or finding.get("path", "")
+            finding_line = finding.get("start_line") or finding.get("line", 0)
+            cwe_ids = list(finding.get("cwe_ids", []))
+            owasp_ids = list(finding.get("owasp_ids", []))
+            sast_id = f"misconfig:sast:{rule_id}:{finding_path}:{finding_line}"
             graph.add_node(
                 UnifiedNode(
                     id=sast_id,
                     entity_type=EntityType.MISCONFIGURATION,
-                    label=finding.get("message", finding.get("rule_id", "SAST finding")),
+                    label=finding.get("message", rule_id or "SAST finding"),
                     severity=finding.get("severity", "medium").lower(),
                     attributes={
-                        "rule_id": finding.get("rule_id", ""),
-                        "path": finding.get("path", ""),
-                        "line": finding.get("line", 0),
-                        "cwe_ids": finding.get("cwe_ids", []),
+                        "rule_id": rule_id,
+                        "path": finding_path,
+                        "file_path": finding_path,
+                        "line": finding_line,
+                        "start_line": finding.get("start_line", finding_line),
+                        "end_line": finding.get("end_line", finding_line),
+                        "cwe_ids": cwe_ids,
+                        "owasp_ids": owasp_ids,
+                        "rule_url": finding.get("rule_url", ""),
                     },
+                    compliance_tags=sorted(set(cwe_ids + owasp_ids)),
                     data_sources=["sast"],
                 )
             )

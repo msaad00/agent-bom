@@ -67,6 +67,25 @@ class AIComponent:
             str(self.line_number),
         )
 
+    def to_dict(self) -> dict:
+        """Serialize a detected component for JSON/API consumers."""
+        return {
+            "stable_id": self.stable_id,
+            "component_type": self.component_type.value,
+            "name": self.name,
+            "language": self.language,
+            "file_path": self.file_path,
+            "line_number": self.line_number,
+            "matched_text": self.matched_text,
+            "severity": self.severity.value,
+            "package_name": self.package_name,
+            "ecosystem": self.ecosystem,
+            "description": self.description,
+            "is_shadow": self.is_shadow,
+            "deprecated_replacement": self.deprecated_replacement,
+            "tags": list(self.tags),
+        }
+
 
 @dataclass
 class AIComponentReport:
@@ -109,3 +128,25 @@ class AIComponentReport:
     @property
     def unique_models(self) -> set[str]:
         return {c.name for c in self.components if c.component_type in (AIComponentType.MODEL_REFERENCE, AIComponentType.DEPRECATED_MODEL)}
+
+    def to_dict(self) -> dict:
+        """Serialize the full source-scan report."""
+        return {
+            "components": [c.to_dict() for c in self.components],
+            "shadow_ai": [c.to_dict() for c in self.shadow_ai],
+            "deprecated_models": [c.to_dict() for c in self.deprecated_models],
+            "api_keys": [c.to_dict() for c in self.api_keys],
+            "scan_paths": list(self.scan_paths),
+            "files_scanned": self.files_scanned,
+            "warnings": list(self.warnings),
+            "stats": {
+                "total_components": self.total,
+                "shadow_ai": len(self.shadow_ai),
+                "deprecated_models": len(self.deprecated_models),
+                "api_keys": len(self.api_keys),
+                "unique_sdks": sorted(self.unique_sdks),
+                "unique_models": sorted(self.unique_models),
+                "by_language": {lang: len(items) for lang, items in self.by_language.items()},
+                "by_type": {component_type.value: len(items) for component_type, items in self.by_type.items()},
+            },
+        }

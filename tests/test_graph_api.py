@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 import sqlite3
+from types import SimpleNamespace
 
 import pytest
+from starlette.testclient import TestClient
 
+from agent_bom.api import stores as api_stores
+from agent_bom.api.server import app
+from agent_bom.api.stores import set_graph_store
 from agent_bom.db.graph_store import _init_db, load_graph, save_graph
 from agent_bom.graph import (
     AttackPath,
@@ -245,3 +250,101 @@ class TestBackendDirectionality:
         backend = from_unified_graph(g, backend="memory")
         assert "a2" in backend.neighbors("a1")
         assert "a1" in backend.neighbors("a2")
+
+
+class _RecordingGraphStore:
+    def __init__(self):
+        self.calls: list[tuple] = []
+        self.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        self.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        self.presets: dict[str, dict] = {}
+
+    def latest_snapshot_id(self, *, tenant_id: str = "") -> str:
+        self.calls.append(("latest_snapshot_id", tenant_id))
+        return self.graph.scan_id
+
+    def previous_snapshot_id(self, *, tenant_id: str = "", before_scan_id: str = "") -> str:
+        self.calls.append(("previous_snapshot_id", tenant_id, before_scan_id))
+        return ""
+
+    def save_graph(self, graph: UnifiedGraph) -> None:
+        self.calls.append(("save_graph", graph.scan_id, graph.tenant_id))
+        self.graph = graph
+
+    def load_graph(self, *, tenant_id: str = "", scan_id: str = "", entity_types=None, min_severity_rank: int = 0) -> UnifiedGraph:
+        self.calls.append(("load_graph", tenant_id, scan_id, entity_types, min_severity_rank))
+        return self.graph
+
+    def diff_snapshots(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict:
+        self.calls.append(("diff_snapshots", tenant_id, scan_id_old, scan_id_new))
+        return {"nodes_added": [], "nodes_removed": [], "nodes_changed": [], "edges_added": [], "edges_removed": []}
+
+    def list_snapshots(self, *, tenant_id: str = "", limit: int = 50) -> list[dict]:
+        self.calls.append(("list_snapshots", tenant_id, limit))
+        return [{"scan_id": self.graph.scan_id, "created_at": self.graph.created_at, "node_count": 1, "edge_count": 0, "risk_summary": {}}]
+
+    def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict, created_at: str) -> None:
+        self.calls.append(("save_preset", tenant_id, name))
+        self.presets[name] = {"name": name, "description": description, "filters": filters, "created_at": created_at}
+
+    def list_presets(self, *, tenant_id: str) -> list[dict]:
+        self.calls.append(("list_presets", tenant_id))
+        return list(self.presets.values())
+
+    def delete_preset(self, *, tenant_id: str, name: str) -> bool:
+        self.calls.append(("delete_preset", tenant_id, name))
+        return self.presets.pop(name, None) is not None
+
+
+@pytest.fixture
+def recording_graph_store():
+    original = api_stores._graph_store
+    store = _RecordingGraphStore()
+    set_graph_store(store)
+    try:
+        yield store
+    finally:
+        set_graph_store(original)
+
+
+class TestGraphStoreBackendSelection:
+    def test_graph_routes_use_pluggable_store(self, recording_graph_store):
+        client = TestClient(app)
+
+        response = client.get("/v1/graph")
+        assert response.status_code == 200
+        assert response.json()["scan_id"] == "store-scan"
+        assert any(call[0] == "latest_snapshot_id" for call in recording_graph_store.calls)
+        assert any(call[0] == "load_graph" for call in recording_graph_store.calls)
+
+    def test_graph_presets_use_pluggable_store(self, recording_graph_store):
+        client = TestClient(app)
+
+        create = client.post(
+            "/v1/graph/presets",
+            json={"name": "critical", "description": "Critical only", "filters": {"severity": "critical"}},
+        )
+        assert create.status_code == 200
+        listed = client.get("/v1/graph/presets")
+        assert listed.status_code == 200
+        assert listed.json()[0]["name"] == "critical"
+        deleted = client.delete("/v1/graph/presets/critical")
+        assert deleted.status_code == 200
+        assert any(call[0] == "save_preset" for call in recording_graph_store.calls)
+        assert any(call[0] == "list_presets" for call in recording_graph_store.calls)
+        assert any(call[0] == "delete_preset" for call in recording_graph_store.calls)
+
+    def test_scan_pipeline_persists_via_graph_store(self, monkeypatch, recording_graph_store):
+        from agent_bom.api.pipeline import _persist_graph_snapshot
+
+        persisted = UnifiedGraph(scan_id="job-123", tenant_id="default")
+        persisted.add_node(UnifiedNode(id="agent:scan", entity_type=EntityType.AGENT, label="scan-agent"))
+
+        monkeypatch.setattr("agent_bom.api.pipeline._get_graph_store", lambda: recording_graph_store)
+        monkeypatch.setattr("agent_bom.graph.builder.build_unified_graph_from_report", lambda report_json, scan_id, tenant_id: persisted)
+        monkeypatch.setattr("agent_bom.graph.webhooks.compute_delta_alerts", lambda previous, current: [])
+
+        job = SimpleNamespace(job_id="job-123", tenant_id="default", progress=[])
+        _persist_graph_snapshot(job, {"scan_id": "job-123"})
+
+        assert ("save_graph", "job-123", "default") in recording_graph_store.calls

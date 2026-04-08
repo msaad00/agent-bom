@@ -3,6 +3,7 @@
 Provides pluggable PostgreSQL persistence for all store protocols:
 - ``PostgresJobStore``       — scan job persistence
 - ``PostgresFleetStore``     — fleet agent lifecycle
+- ``PostgresGraphStore``     — unified graph persistence and queries
 - ``PostgresKeyStore``       — persistent API key storage
 - ``PostgresExceptionStore`` — exception and false-positive storage
 - ``PostgresPolicyStore``    — gateway policies + audit log
@@ -24,6 +25,7 @@ import time
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from datetime import datetime, timezone
+from typing import Any
 
 from agent_bom.api.audit_log import AuditEntry
 from agent_bom.api.auth import ApiKey, Role, verify_api_key
@@ -1117,6 +1119,572 @@ class PostgresTrendStore:
 
 
 # ── PostgresScanCache ─────────────────────────────────────────────────────
+
+
+class PostgresGraphStore:
+    """PostgreSQL-backed unified graph persistence and query store."""
+
+    def __init__(self, pool=None) -> None:
+        self._pool = pool or _get_pool()
+        self._init_tables()
+
+    def _init_tables(self) -> None:
+        with self._pool.connection() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS graph_nodes (
+                    id TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    label TEXT NOT NULL,
+                    category_uid INTEGER DEFAULT 0,
+                    class_uid INTEGER DEFAULT 0,
+                    type_uid INTEGER DEFAULT 0,
+                    status TEXT DEFAULT 'active',
+                    risk_score DOUBLE PRECISION DEFAULT 0.0,
+                    severity TEXT DEFAULT '',
+                    severity_id INTEGER DEFAULT 0,
+                    first_seen TEXT NOT NULL,
+                    last_seen TEXT NOT NULL,
+                    attributes TEXT DEFAULT '{}',
+                    compliance_tags TEXT DEFAULT '[]',
+                    data_sources TEXT DEFAULT '[]',
+                    dimensions TEXT DEFAULT '{}',
+                    scan_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    PRIMARY KEY (id, scan_id, tenant_id)
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_nodes_entity_type ON graph_nodes(entity_type)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_nodes_scan ON graph_nodes(tenant_id, scan_id)")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS graph_edges (
+                    source_id TEXT NOT NULL,
+                    target_id TEXT NOT NULL,
+                    relationship TEXT NOT NULL,
+                    direction TEXT DEFAULT 'directed',
+                    weight DOUBLE PRECISION DEFAULT 1.0,
+                    traversable INTEGER DEFAULT 1,
+                    first_seen TEXT NOT NULL,
+                    last_seen TEXT NOT NULL,
+                    evidence TEXT DEFAULT '{}',
+                    activity_id INTEGER DEFAULT 1,
+                    scan_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    PRIMARY KEY (source_id, target_id, relationship, scan_id, tenant_id)
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan ON graph_edges(tenant_id, scan_id)")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS graph_snapshots (
+                    scan_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    created_at TEXT NOT NULL,
+                    node_count INTEGER DEFAULT 0,
+                    edge_count INTEGER DEFAULT 0,
+                    risk_summary TEXT DEFAULT '{}',
+                    PRIMARY KEY (scan_id, tenant_id)
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_snapshots_recent ON graph_snapshots(tenant_id, created_at DESC)")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS attack_paths (
+                    source_node TEXT NOT NULL,
+                    target_node TEXT NOT NULL,
+                    hop_count INTEGER DEFAULT 0,
+                    composite_risk DOUBLE PRECISION DEFAULT 0.0,
+                    path_nodes TEXT DEFAULT '[]',
+                    path_edges TEXT DEFAULT '[]',
+                    credential_exposure TEXT DEFAULT '[]',
+                    vuln_ids TEXT DEFAULT '[]',
+                    scan_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    computed_at TEXT NOT NULL,
+                    PRIMARY KEY (source_node, target_node, scan_id, tenant_id)
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_attack_paths_scan ON attack_paths(tenant_id, scan_id)")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS interaction_risks (
+                    pattern TEXT NOT NULL,
+                    agents TEXT NOT NULL,
+                    risk_score DOUBLE PRECISION DEFAULT 0.0,
+                    description TEXT DEFAULT '',
+                    owasp_agentic_tag TEXT DEFAULT NULL,
+                    scan_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    PRIMARY KEY (pattern, agents, scan_id, tenant_id)
+                )
+                """
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_interaction_risks_scan ON interaction_risks(tenant_id, scan_id)")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS graph_filter_presets (
+                    name TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    description TEXT DEFAULT '',
+                    filters TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    PRIMARY KEY (name, tenant_id)
+                )
+                """
+            )
+            _ensure_tenant_rls(conn, "graph_nodes", "tenant_id")
+            _ensure_tenant_rls(conn, "graph_edges", "tenant_id")
+            _ensure_tenant_rls(conn, "graph_snapshots", "tenant_id")
+            _ensure_tenant_rls(conn, "attack_paths", "tenant_id")
+            _ensure_tenant_rls(conn, "interaction_risks", "tenant_id")
+            _ensure_tenant_rls(conn, "graph_filter_presets", "tenant_id")
+            conn.commit()
+
+    def latest_snapshot_id(self, *, tenant_id: str = "") -> str:
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute(
+                """
+                SELECT scan_id
+                FROM graph_snapshots
+                WHERE tenant_id = %s
+                ORDER BY created_at DESC, scan_id DESC
+                LIMIT 1
+                """,
+                (tenant_id,),
+            ).fetchone()
+            return str(row[0]) if row else ""
+
+    def previous_snapshot_id(self, *, tenant_id: str = "", before_scan_id: str = "") -> str:
+        if not before_scan_id:
+            return ""
+        with _tenant_connection(self._pool) as conn:
+            current = conn.execute(
+                "SELECT created_at FROM graph_snapshots WHERE tenant_id = %s AND scan_id = %s",
+                (tenant_id, before_scan_id),
+            ).fetchone()
+            if not current:
+                return ""
+            row = conn.execute(
+                """
+                SELECT scan_id
+                FROM graph_snapshots
+                WHERE tenant_id = %s AND created_at < %s
+                ORDER BY created_at DESC, scan_id DESC
+                LIMIT 1
+                """,
+                (tenant_id, current[0]),
+            ).fetchone()
+            return str(row[0]) if row else ""
+
+    def save_graph(self, graph) -> None:
+        from agent_bom.graph import RelationshipType
+
+        scan = graph.scan_id or ""
+        tenant = graph.tenant_id or "default"
+        now = graph.created_at or datetime.now(timezone.utc).isoformat()
+
+        with _tenant_connection(self._pool) as conn:
+            for node in graph.nodes.values():
+                conn.execute(
+                    """
+                    INSERT INTO graph_nodes (
+                        id, entity_type, label, category_uid, class_uid, type_uid,
+                        status, risk_score, severity, severity_id,
+                        first_seen, last_seen, attributes, compliance_tags,
+                        data_sources, dimensions, scan_id, tenant_id
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id, scan_id, tenant_id) DO UPDATE SET
+                        entity_type = EXCLUDED.entity_type,
+                        label = EXCLUDED.label,
+                        category_uid = EXCLUDED.category_uid,
+                        class_uid = EXCLUDED.class_uid,
+                        type_uid = EXCLUDED.type_uid,
+                        status = EXCLUDED.status,
+                        risk_score = EXCLUDED.risk_score,
+                        severity = EXCLUDED.severity,
+                        severity_id = EXCLUDED.severity_id,
+                        first_seen = EXCLUDED.first_seen,
+                        last_seen = EXCLUDED.last_seen,
+                        attributes = EXCLUDED.attributes,
+                        compliance_tags = EXCLUDED.compliance_tags,
+                        data_sources = EXCLUDED.data_sources,
+                        dimensions = EXCLUDED.dimensions
+                    """,
+                    (
+                        node.id,
+                        node.entity_type.value if hasattr(node.entity_type, "value") else node.entity_type,
+                        node.label,
+                        node.category_uid,
+                        node.class_uid,
+                        node.type_uid,
+                        node.status.value if hasattr(node.status, "value") else node.status,
+                        node.risk_score,
+                        node.severity,
+                        node.severity_id,
+                        node.first_seen,
+                        node.last_seen,
+                        json.dumps(node.attributes, default=str),
+                        json.dumps(node.compliance_tags),
+                        json.dumps(node.data_sources),
+                        json.dumps(node.dimensions.to_dict()),
+                        scan,
+                        tenant,
+                    ),
+                )
+
+            for edge in graph.edges:
+                rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else edge.relationship
+                conn.execute(
+                    """
+                    INSERT INTO graph_edges (
+                        source_id, target_id, relationship, direction, weight,
+                        traversable, first_seen, last_seen, evidence,
+                        activity_id, scan_id, tenant_id
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (source_id, target_id, relationship, scan_id, tenant_id) DO UPDATE SET
+                        direction = EXCLUDED.direction,
+                        weight = EXCLUDED.weight,
+                        traversable = EXCLUDED.traversable,
+                        first_seen = EXCLUDED.first_seen,
+                        last_seen = EXCLUDED.last_seen,
+                        evidence = EXCLUDED.evidence,
+                        activity_id = EXCLUDED.activity_id
+                    """,
+                    (
+                        edge.source,
+                        edge.target,
+                        rel,
+                        edge.direction,
+                        edge.weight,
+                        1 if edge.traversable else 0,
+                        edge.first_seen,
+                        edge.last_seen,
+                        json.dumps(edge.evidence, default=str),
+                        edge.activity_id,
+                        scan,
+                        tenant,
+                    ),
+                )
+
+            for ap in graph.attack_paths:
+                conn.execute(
+                    """
+                    INSERT INTO attack_paths (
+                        source_node, target_node, hop_count, composite_risk,
+                        path_nodes, path_edges, credential_exposure, vuln_ids,
+                        scan_id, tenant_id, computed_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (source_node, target_node, scan_id, tenant_id) DO UPDATE SET
+                        hop_count = EXCLUDED.hop_count,
+                        composite_risk = EXCLUDED.composite_risk,
+                        path_nodes = EXCLUDED.path_nodes,
+                        path_edges = EXCLUDED.path_edges,
+                        credential_exposure = EXCLUDED.credential_exposure,
+                        vuln_ids = EXCLUDED.vuln_ids,
+                        computed_at = EXCLUDED.computed_at
+                    """,
+                    (
+                        ap.source,
+                        ap.target,
+                        len(ap.hops),
+                        ap.composite_risk,
+                        json.dumps(ap.hops),
+                        json.dumps(ap.edges),
+                        json.dumps(ap.credential_exposure),
+                        json.dumps(ap.vuln_ids),
+                        scan,
+                        tenant,
+                        now,
+                    ),
+                )
+
+            for ir in graph.interaction_risks:
+                conn.execute(
+                    """
+                    INSERT INTO interaction_risks (
+                        pattern, agents, risk_score, description,
+                        owasp_agentic_tag, scan_id, tenant_id
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (pattern, agents, scan_id, tenant_id) DO UPDATE SET
+                        risk_score = EXCLUDED.risk_score,
+                        description = EXCLUDED.description,
+                        owasp_agentic_tag = EXCLUDED.owasp_agentic_tag
+                    """,
+                    (
+                        ir.pattern,
+                        json.dumps(sorted(ir.agents)),
+                        ir.risk_score,
+                        ir.description,
+                        ir.owasp_agentic_tag,
+                        scan,
+                        tenant,
+                    ),
+                )
+
+            stats = graph.stats()
+            conn.execute(
+                """
+                INSERT INTO graph_snapshots (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (scan_id, tenant_id) DO UPDATE SET
+                    created_at = EXCLUDED.created_at,
+                    node_count = EXCLUDED.node_count,
+                    edge_count = EXCLUDED.edge_count,
+                    risk_summary = EXCLUDED.risk_summary
+                """,
+                (
+                    scan,
+                    tenant,
+                    now,
+                    stats["total_nodes"],
+                    stats["total_edges"],
+                    json.dumps(stats.get("severity_counts", {})),
+                ),
+            )
+            conn.commit()
+
+    def load_graph(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        entity_types: set[str] | None = None,
+        min_severity_rank: int = 0,
+    ):
+        from agent_bom.graph import (
+            SEVERITY_RANK,
+            AttackPath,
+            EntityType,
+            InteractionRisk,
+            NodeDimensions,
+            NodeStatus,
+            RelationshipType,
+            UnifiedEdge,
+            UnifiedGraph,
+            UnifiedNode,
+        )
+
+        effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
+        if not effective_scan_id:
+            return UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id)
+
+        with _tenant_connection(self._pool) as conn:
+            snapshot_row = conn.execute(
+                "SELECT created_at FROM graph_snapshots WHERE scan_id = %s AND tenant_id = %s",
+                (effective_scan_id, tenant_id),
+            ).fetchone()
+            graph = UnifiedGraph(scan_id=effective_scan_id, tenant_id=tenant_id, created_at=str(snapshot_row[0]) if snapshot_row else "")
+
+            query = (
+                "SELECT id, entity_type, label, category_uid, class_uid, type_uid, status, risk_score, severity, severity_id, "
+                "first_seen, last_seen, attributes, compliance_tags, data_sources, dimensions "
+                "FROM graph_nodes WHERE tenant_id = %s AND scan_id = %s"
+            )
+            params: list[Any] = [tenant_id, effective_scan_id]
+            if entity_types:
+                placeholders = ",".join(["%s"] * len(entity_types))
+                query += f" AND entity_type IN ({placeholders})"
+                params.extend(sorted(entity_types))
+
+            node_ids: set[str] = set()
+            for row in conn.execute(query, params).fetchall():
+                severity = row[8] or ""
+                if min_severity_rank and SEVERITY_RANK.get(severity, 0) < min_severity_rank:
+                    continue
+                graph.add_node(
+                    UnifiedNode(
+                        id=row[0],
+                        entity_type=EntityType(row[1]),
+                        label=row[2],
+                        category_uid=row[3],
+                        class_uid=row[4],
+                        type_uid=row[5],
+                        status=NodeStatus(row[6]),
+                        risk_score=row[7],
+                        severity=severity,
+                        severity_id=row[9],
+                        first_seen=row[10],
+                        last_seen=row[11],
+                        attributes=json.loads(row[12]),
+                        compliance_tags=json.loads(row[13]),
+                        data_sources=json.loads(row[14]),
+                        dimensions=NodeDimensions.from_dict(json.loads(row[15])),
+                    )
+                )
+                node_ids.add(row[0])
+
+            for row in conn.execute(
+                """
+                SELECT source_id, target_id, relationship, direction, weight, traversable,
+                       first_seen, last_seen, evidence, activity_id
+                FROM graph_edges
+                WHERE tenant_id = %s AND scan_id = %s
+                """,
+                (tenant_id, effective_scan_id),
+            ).fetchall():
+                if row[0] not in node_ids or row[1] not in node_ids:
+                    continue
+                graph.add_edge(
+                    UnifiedEdge(
+                        source=row[0],
+                        target=row[1],
+                        relationship=RelationshipType(row[2]),
+                        direction=row[3],
+                        weight=row[4],
+                        traversable=bool(row[5]),
+                        first_seen=row[6],
+                        last_seen=row[7],
+                        evidence=json.loads(row[8]),
+                        activity_id=row[9],
+                    )
+                )
+
+            for row in conn.execute(
+                """
+                SELECT source_node, target_node, path_nodes, path_edges, composite_risk, credential_exposure, vuln_ids
+                FROM attack_paths
+                WHERE tenant_id = %s AND scan_id = %s
+                """,
+                (tenant_id, effective_scan_id),
+            ).fetchall():
+                graph.attack_paths.append(
+                    AttackPath(
+                        source=row[0],
+                        target=row[1],
+                        hops=json.loads(row[2]),
+                        edges=json.loads(row[3]),
+                        composite_risk=row[4],
+                        credential_exposure=json.loads(row[5]),
+                        vuln_ids=json.loads(row[6]),
+                    )
+                )
+
+            for row in conn.execute(
+                """
+                SELECT pattern, agents, risk_score, description, owasp_agentic_tag
+                FROM interaction_risks
+                WHERE tenant_id = %s AND scan_id = %s
+                """,
+                (tenant_id, effective_scan_id),
+            ).fetchall():
+                graph.interaction_risks.append(
+                    InteractionRisk(
+                        pattern=row[0],
+                        agents=json.loads(row[1]),
+                        risk_score=row[2],
+                        description=row[3],
+                        owasp_agentic_tag=row[4],
+                    )
+                )
+
+            return graph
+
+    def diff_snapshots(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]:
+        with _tenant_connection(self._pool) as conn:
+            old_nodes = {
+                row[0]: {"severity": row[1], "risk_score": row[2]}
+                for row in conn.execute(
+                    "SELECT id, severity, risk_score FROM graph_nodes WHERE scan_id = %s AND tenant_id = %s",
+                    (scan_id_old, tenant_id),
+                ).fetchall()
+            }
+            new_nodes = {
+                row[0]: {"severity": row[1], "risk_score": row[2]}
+                for row in conn.execute(
+                    "SELECT id, severity, risk_score FROM graph_nodes WHERE scan_id = %s AND tenant_id = %s",
+                    (scan_id_new, tenant_id),
+                ).fetchall()
+            }
+            old_ids, new_ids = set(old_nodes), set(new_nodes)
+            old_edges = {
+                (row[0], row[1], row[2])
+                for row in conn.execute(
+                    "SELECT source_id, target_id, relationship FROM graph_edges WHERE scan_id = %s AND tenant_id = %s",
+                    (scan_id_old, tenant_id),
+                ).fetchall()
+            }
+            new_edges = {
+                (row[0], row[1], row[2])
+                for row in conn.execute(
+                    "SELECT source_id, target_id, relationship FROM graph_edges WHERE scan_id = %s AND tenant_id = %s",
+                    (scan_id_new, tenant_id),
+                ).fetchall()
+            }
+            return {
+                "nodes_added": sorted(new_ids - old_ids),
+                "nodes_removed": sorted(old_ids - new_ids),
+                "nodes_changed": sorted(nid for nid in (old_ids & new_ids) if old_nodes[nid] != new_nodes[nid]),
+                "edges_added": sorted(new_edges - old_edges),
+                "edges_removed": sorted(old_edges - new_edges),
+            }
+
+    def list_snapshots(self, *, tenant_id: str = "", limit: int = 50) -> list[dict[str, Any]]:
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                """
+                SELECT scan_id, created_at, node_count, edge_count, risk_summary
+                FROM graph_snapshots
+                WHERE tenant_id = %s
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                (tenant_id, limit),
+            ).fetchall()
+            return [
+                {
+                    "scan_id": row[0],
+                    "created_at": row[1],
+                    "node_count": row[2],
+                    "edge_count": row[3],
+                    "risk_summary": json.loads(row[4]),
+                }
+                for row in rows
+            ]
+
+    def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict[str, Any], created_at: str) -> None:
+        with _tenant_connection(self._pool) as conn:
+            conn.execute(
+                """
+                INSERT INTO graph_filter_presets (name, tenant_id, description, filters, created_at)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (name, tenant_id) DO UPDATE SET
+                    description = EXCLUDED.description,
+                    filters = EXCLUDED.filters,
+                    created_at = EXCLUDED.created_at
+                """,
+                (name, tenant_id, description, json.dumps(filters), created_at),
+            )
+            conn.commit()
+
+    def list_presets(self, *, tenant_id: str) -> list[dict[str, Any]]:
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                "SELECT name, description, filters, created_at FROM graph_filter_presets WHERE tenant_id = %s ORDER BY name",
+                (tenant_id,),
+            ).fetchall()
+            return [
+                {
+                    "name": row[0],
+                    "description": row[1],
+                    "filters": json.loads(row[2]),
+                    "created_at": row[3],
+                }
+                for row in rows
+            ]
+
+    def delete_preset(self, *, tenant_id: str, name: str) -> bool:
+        with _tenant_connection(self._pool) as conn:
+            cursor = conn.execute(
+                "DELETE FROM graph_filter_presets WHERE name = %s AND tenant_id = %s",
+                (name, tenant_id),
+            )
+            conn.commit()
+            return (cursor.rowcount or 0) > 0
 
 
 class PostgresScanCache:

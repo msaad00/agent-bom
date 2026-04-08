@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
 
@@ -9,6 +10,14 @@ from click.testing import CliRunner
 
 from agent_bom.ast_analyzer import analyze_project
 from agent_bom.cli import main
+
+
+def _js_ts_parser_available() -> bool:
+    return (
+        importlib.util.find_spec("tree_sitter") is not None
+        and importlib.util.find_spec("tree_sitter_javascript") is not None
+        and importlib.util.find_spec("tree_sitter_typescript") is not None
+    )
 
 
 def test_analyze_project_scans_js_ts_prompts_tools_and_guardrails(tmp_path: Path):
@@ -27,6 +36,33 @@ def test_analyze_project_scans_js_ts_prompts_tools_and_guardrails(tmp_path: Path
     assert any(tool.name == "read_file" and tool.file_path == "server.ts" for tool in result.tools)
     assert any(guard.file_path == "server.ts" for guard in result.guardrails)
     assert any(finding.category == "js_ts_dangerous_call" for finding in result.flow_findings)
+
+
+def test_analyze_project_builds_js_ts_call_edges_and_tool_flow(tmp_path: Path):
+    (tmp_path / "server.ts").write_text(
+        'import { execSync as run } from "node:child_process";\n'
+        'import { Server } from "@modelcontextprotocol/sdk/server/index.js";\n\n'
+        "function runShell(command) {\n"
+        "  return run(command);\n"
+        "}\n\n"
+        "function executeCommand(command) {\n"
+        "  return runShell(command);\n"
+        "}\n\n"
+        'server.tool("run_cmd", "Run a command", async () => executeCommand(userInput));\n'
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert "MCP" in result.frameworks_detected
+    if _js_ts_parser_available():
+        assert any(edge.caller == "executeCommand" and edge.callee == "runShell" for edge in result.call_edges)
+        assert any(edge.caller == "run_cmd" and edge.callee == "tool:run_cmd" for edge in result.call_edges)
+        assert any(
+            finding.category == "js_ts_interprocedural_dangerous_flow"
+            and finding.entrypoint == "run_cmd"
+            and finding.sink == "child_process.execSync"
+            for finding in result.flow_findings
+        )
 
 
 def test_analyze_project_builds_interprocedural_dangerous_flow(tmp_path: Path):

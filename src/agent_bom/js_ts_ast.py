@@ -33,6 +33,37 @@ class JSTSAstAnalysis:
     call_names: set[str] = field(default_factory=set)
     function_aliases: dict[str, str] = field(default_factory=dict)
     namespace_aliases: dict[str, str] = field(default_factory=dict)
+    imported_modules: set[str] = field(default_factory=set)
+    functions: dict[str, "JSTSFunction"] = field(default_factory=dict)
+    tool_registrations: list["JSTSToolRegistration"] = field(default_factory=list)
+
+
+@dataclass
+class JSTSCallSite:
+    """A function or capability call found in JS/TS source."""
+
+    name: str
+    line_number: int
+
+
+@dataclass
+class JSTSFunction:
+    """A lightweight JS/TS function inventory entry."""
+
+    name: str
+    line_number: int
+    param_names: list[str] = field(default_factory=list)
+    call_sites: list[JSTSCallSite] = field(default_factory=list)
+    dangerous_call_sites: list[JSTSCallSite] = field(default_factory=list)
+
+
+@dataclass
+class JSTSToolRegistration:
+    """A JS/TS MCP tool registration with its handler target."""
+
+    tool_name: str
+    handler_name: str
+    line_number: int
 
 
 _IMPORTABLE_SUBPROCESS_CALLS = {
@@ -113,6 +144,12 @@ def _normalize_module_name(module_name: str) -> str:
     if module_name.startswith("node:"):
         module_name = module_name[5:]
     return module_name
+
+
+def _line_number(node: TreeSitterNode | None) -> int:
+    if node is None or not hasattr(node, "start_point"):
+        return 1
+    return int(node.start_point[0]) + 1
 
 
 def _canonical_function_call(module_name: str, imported_name: str) -> str | None:
@@ -200,6 +237,7 @@ def _collect_import_aliases(root: TreeSitterNode, source: bytes, analysis: JSTSA
         module_name = _string_literal_value(module_node, source)
         if not module_name:
             continue
+        analysis.imported_modules.add(_normalize_module_name(module_name))
 
         clause = next((child for child in node.named_children if child.type == "import_clause"), None)
         if clause is None:
@@ -264,6 +302,7 @@ def _collect_require_aliases(root: TreeSitterNode, source: bytes, analysis: JSTS
         module_name = _require_module_name(value_node, source)
         if not module_name:
             continue
+        analysis.imported_modules.add(_normalize_module_name(module_name))
 
         if name_node.type == "object_pattern":
             for child in name_node.named_children:
@@ -322,8 +361,133 @@ def _collect_call_names(root: TreeSitterNode, source: bytes, analysis: JSTSAstAn
                 analysis.call_names.add(canonical)
 
 
+def _identifier_names(node: TreeSitterNode | None, source: bytes) -> list[str]:
+    if node is None:
+        return []
+    names: list[str] = []
+    for child in _iter_nodes(node):
+        if child.type in {"identifier", "property_identifier", "shorthand_property_identifier_pattern"}:
+            names.append(_identifier_like_text(child, source))
+    return names
+
+
+def _call_sites(root: TreeSitterNode | None, source: bytes, analysis: JSTSAstAnalysis) -> list[JSTSCallSite]:
+    if root is None:
+        return []
+    call_sites: list[JSTSCallSite] = []
+    for node in _iter_nodes(root):
+        canonical = ""
+        if node.type == "call_expression":
+            raw_name = _expression_name(node.child_by_field_name("function"), source)
+            canonical = _canonicalize_reference_name(raw_name, analysis.function_aliases, analysis.namespace_aliases)
+        elif node.type == "new_expression":
+            raw_name = _expression_name(node.child_by_field_name("constructor"), source)
+            canonical = _canonicalize_reference_name(raw_name, analysis.function_aliases, analysis.namespace_aliases)
+        if canonical:
+            call_sites.append(JSTSCallSite(name=canonical, line_number=_line_number(node)))
+    return call_sites
+
+
+def _register_function(
+    *,
+    function_name: str,
+    line_number: int,
+    parameter_node: TreeSitterNode | None,
+    body_node: TreeSitterNode | None,
+    source: bytes,
+    analysis: JSTSAstAnalysis,
+) -> None:
+    if not function_name or function_name in analysis.functions:
+        return
+    call_sites = _call_sites(body_node, source, analysis)
+    analysis.functions[function_name] = JSTSFunction(
+        name=function_name,
+        line_number=line_number,
+        param_names=_identifier_names(parameter_node, source),
+        call_sites=call_sites,
+        dangerous_call_sites=[site for site in call_sites if _is_dangerous_reference(site.name)],
+    )
+
+
+def _collect_functions(root: TreeSitterNode, source: bytes, analysis: JSTSAstAnalysis) -> None:
+    for node in _iter_nodes(root):
+        if node.type == "function_declaration":
+            name_node = node.child_by_field_name("name")
+            params_node = node.child_by_field_name("parameters")
+            body_node = node.child_by_field_name("body")
+            _register_function(
+                function_name=_identifier_like_text(name_node, source),
+                line_number=_line_number(node),
+                parameter_node=params_node,
+                body_node=body_node,
+                source=source,
+                analysis=analysis,
+            )
+            continue
+
+        if node.type != "variable_declarator":
+            continue
+        name_node = node.child_by_field_name("name")
+        value_node = node.child_by_field_name("value")
+        if name_node is None or value_node is None:
+            continue
+        if value_node.type not in {"arrow_function", "function", "function_expression"}:
+            continue
+        params_node = value_node.child_by_field_name("parameters")
+        body_node = value_node.child_by_field_name("body")
+        _register_function(
+            function_name=_identifier_like_text(name_node, source),
+            line_number=_line_number(name_node),
+            parameter_node=params_node,
+            body_node=body_node,
+            source=source,
+            analysis=analysis,
+        )
+
+
+def _collect_tool_registrations(root: TreeSitterNode, source: bytes, analysis: JSTSAstAnalysis) -> None:
+    for node in _iter_nodes(root):
+        if node.type != "call_expression":
+            continue
+        function_name = _expression_name(node.child_by_field_name("function"), source)
+        if function_name.split(".")[-1] != "tool":
+            continue
+
+        args_node = node.child_by_field_name("arguments")
+        if args_node is None:
+            continue
+        arguments = list(args_node.named_children)
+        tool_name_node = next((child for child in arguments if child.type == "string"), None)
+        tool_name = _string_literal_value(tool_name_node, source)
+        if not tool_name:
+            continue
+
+        handler_name = f"tool:{tool_name}"
+        if arguments:
+            handler_node = arguments[-1]
+            if handler_node.type in {"identifier", "property_identifier"}:
+                handler_name = _identifier_like_text(handler_node, source)
+            elif handler_node.type in {"arrow_function", "function", "function_expression"}:
+                _register_function(
+                    function_name=handler_name,
+                    line_number=_line_number(handler_node),
+                    parameter_node=handler_node.child_by_field_name("parameters"),
+                    body_node=handler_node.child_by_field_name("body"),
+                    source=source,
+                    analysis=analysis,
+                )
+
+        analysis.tool_registrations.append(
+            JSTSToolRegistration(
+                tool_name=tool_name,
+                handler_name=handler_name,
+                line_number=_line_number(node),
+            )
+        )
+
+
 def analyze_js_ts_block(source: str, *, language_hint: str = "javascript") -> JSTSAstAnalysis:
-    """Parse a JS/TS block and return canonicalized dangerous call names."""
+    """Parse a JS/TS block and return canonicalized capability + structure data."""
     _language_cls, parser_cls, _javascript, _typescript = _load_tree_sitter_runtime()
     parser = parser_cls(_language_for_hint(language_hint))
     source_bytes = source.encode("utf-8", errors="replace")
@@ -333,5 +497,7 @@ def analyze_js_ts_block(source: str, *, language_hint: str = "javascript") -> JS
     _collect_import_aliases(tree.root_node, source_bytes, analysis)
     _collect_require_aliases(tree.root_node, source_bytes, analysis)
     _propagate_alias_assignments(tree.root_node, source_bytes, analysis)
+    _collect_functions(tree.root_node, source_bytes, analysis)
+    _collect_tool_registrations(tree.root_node, source_bytes, analysis)
     _collect_call_names(tree.root_node, source_bytes, analysis)
     return analysis

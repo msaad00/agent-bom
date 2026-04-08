@@ -11,7 +11,8 @@ Extends the regex-based scanner with semantic analysis:
 - **Inter-procedural flow findings** — helper-chain reachability to dangerous sinks
 
 Python files use full AST parsing. JS/TS files contribute prompt/tool/guardrail
-signals through lightweight source extraction. Zero external dependencies.
+signals plus parser-backed import, handler, and call-chain extraction so
+non-Python agent projects participate in the same inventory and flow model.
 
 Compliance mapping:
 - OWASP LLM01 (Prompt Injection) — prompt extraction enables review
@@ -26,6 +27,12 @@ import ast
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping, Sequence
+
+    from agent_bom.js_ts_ast import JSTSFunction, JSTSToolRegistration
 
 # ── Data models ──────────────────────────────────────────────────────────────
 
@@ -414,6 +421,14 @@ _JS_TOOL_CALL_RE = re.compile(
     r"""\b(?:[A-Za-z_$][\w$]*\.)?tool\s*\(\s*["'`](?P<name>[^"'`]+)["'`]""",
     re.IGNORECASE,
 )
+_JS_IMPORT_MODULE_RE = re.compile(
+    r"""\bimport\s+(?:[\s\S]{0,200}?\s+from\s+)?["'`](?P<module>[^"'`]+)["'`]""",
+    re.IGNORECASE,
+)
+_JS_REQUIRE_MODULE_RE = re.compile(
+    r"""\brequire\s*\(\s*["'`](?P<module>[^"'`]+)["'`]\s*\)""",
+    re.IGNORECASE,
+)
 _JS_PROMPT_ASSIGN_RE = re.compile(
     r"""
     (?P<name>system_prompt|systemPrompt|system_message|systemMessage|instructions|systemInstructions|
@@ -428,6 +443,18 @@ _JS_FALLBACK_DANGEROUS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("child_process.exec", re.compile(r"\b(?:child_process|cp)\.exec(?:Sync)?\s*\(")),
     ("fs.writeFile", re.compile(r"\b(?:fs\.)?writeFile(?:Sync)?\s*\(")),
 ]
+_JS_TS_FRAMEWORK_HINTS: dict[str, str] = {
+    "@modelcontextprotocol/sdk": "MCP",
+    "@anthropic-ai/sdk": "Anthropic",
+    "anthropic": "Anthropic",
+    "@langchain": "LangChain",
+    "langchain": "LangChain",
+    "@openai/agents": "OpenAI Agents",
+    "openai": "OpenAI",
+    "@mastra/core": "Mastra",
+    "mastra": "Mastra",
+    "@vercel/ai": "Vercel AI SDK",
+}
 _GO_PROMPT_ASSIGN_RE = re.compile(
     r"""
     (?P<name>systemPrompt|system_prompt|instructions|promptTemplate|prompt_template|template|prefix|preamble|persona|backstory|role)\s*
@@ -696,23 +723,142 @@ def _first_match_line(source: str, pattern: str) -> int:
     return source[:index].count("\n") + 1
 
 
+def _frameworks_from_js_modules(module_names: set[str]) -> list[str]:
+    frameworks: set[str] = set()
+    for module_name in module_names:
+        normalized = module_name.strip().lower()
+        for prefix, framework in _JS_TS_FRAMEWORK_HINTS.items():
+            if normalized == prefix or normalized.startswith(f"{prefix}/"):
+                frameworks.add(framework)
+    return sorted(frameworks)
+
+
+def _source_js_modules(source: str) -> set[str]:
+    modules = {match.group("module").strip() for match in _JS_IMPORT_MODULE_RE.finditer(source)}
+    modules.update(match.group("module").strip() for match in _JS_REQUIRE_MODULE_RE.finditer(source))
+    return {module for module in modules if module}
+
+
+def _local_js_ts_callee(reference_name: str, function_names: set[str]) -> str | None:
+    if reference_name in function_names:
+        return reference_name
+    tail = reference_name.split(".")[-1]
+    if tail in function_names:
+        return tail
+    return None
+
+
+def _build_js_ts_flow_findings(
+    *,
+    rel_path: str,
+    functions: Mapping[str, JSTSFunction],
+    tool_registrations: Sequence[JSTSToolRegistration],
+) -> tuple[list[CallEdge], list[FlowFinding]]:
+    adjacency: dict[str, set[str]] = {name: set() for name in functions}
+    call_edges: list[CallEdge] = []
+    seen_edges: set[tuple[str, str, int]] = set()
+    function_names = set(functions)
+
+    for function_name, function in functions.items():
+        for call_site in getattr(function, "call_sites", []):
+            callee = _local_js_ts_callee(call_site.name, function_names)
+            if not callee or callee == function_name:
+                continue
+            adjacency[function_name].add(callee)
+            edge_key = (function_name, callee, call_site.line_number)
+            if edge_key in seen_edges:
+                continue
+            seen_edges.add(edge_key)
+            call_edges.append(
+                CallEdge(
+                    caller=function_name,
+                    callee=callee,
+                    file_path=rel_path,
+                    line_number=call_site.line_number,
+                )
+            )
+
+    for registration in tool_registrations:
+        edge_key = (registration.tool_name, registration.handler_name, registration.line_number)
+        if edge_key in seen_edges:
+            continue
+        seen_edges.add(edge_key)
+        call_edges.append(
+            CallEdge(
+                caller=registration.tool_name,
+                callee=registration.handler_name,
+                file_path=rel_path,
+                line_number=registration.line_number,
+            )
+        )
+
+    findings: list[FlowFinding] = []
+    seen_findings: set[tuple[str, str, int, str]] = set()
+    for registration in tool_registrations:
+        if registration.handler_name not in functions:
+            continue
+        queue: list[tuple[str, list[str]]] = [(registration.handler_name, [registration.handler_name])]
+        visited: set[str] = set()
+        while queue:
+            current_name, path = queue.pop(0)
+            if current_name in visited:
+                continue
+            visited.add(current_name)
+            current = functions[current_name]
+            for sink in getattr(current, "dangerous_call_sites", []):
+                dedup_key = (registration.tool_name, sink.name, sink.line_number, current_name)
+                if dedup_key in seen_findings:
+                    continue
+                seen_findings.add(dedup_key)
+                is_interprocedural = len(path) > 1
+                findings.append(
+                    FlowFinding(
+                        category=("js_ts_interprocedural_dangerous_flow" if is_interprocedural else "js_ts_tool_dangerous_flow"),
+                        title=(
+                            "JS/TS tool reaches dangerous sink through helper flow"
+                            if is_interprocedural
+                            else "JS/TS tool handler reaches dangerous sink"
+                        ),
+                        detail=f"Tool `{registration.tool_name}` reaches `{sink.name}` through JS/TS code in {rel_path}.",
+                        file_path=rel_path,
+                        line_number=sink.line_number,
+                        entrypoint=registration.tool_name,
+                        sink=sink.name,
+                        call_path=[registration.tool_name] + path + [sink.name],
+                    )
+                )
+            for callee in sorted(adjacency.get(current_name, ())):
+                queue.append((callee, path + [callee]))
+
+    return call_edges, findings
+
+
 def _scan_js_ts_file(
     file_path: Path,
     rel_path: str,
-) -> tuple[list[ExtractedPrompt], list[DetectedGuardrail], list[ToolSignature], list[FlowFinding]]:
+) -> tuple[
+    list[ExtractedPrompt],
+    list[DetectedGuardrail],
+    list[ToolSignature],
+    list[FlowFinding],
+    list[str],
+    list[CallEdge],
+]:
     """Extract prompt/tool/guardrail signals from JS/TS source files."""
     try:
         source = file_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return [], [], [], []
+        return [], [], [], [], [], []
 
     if len(source) > _MAX_FILE_SIZE:
-        return [], [], [], []
+        return [], [], [], [], [], []
 
     prompts: list[ExtractedPrompt] = []
     guardrails: list[DetectedGuardrail] = []
     tools: list[ToolSignature] = []
     flow_findings: list[FlowFinding] = []
+    frameworks: list[str] = _frameworks_from_js_modules(_source_js_modules(source))
+    call_edges: list[CallEdge] = []
 
     for match in _JS_PROMPT_ASSIGN_RE.finditer(source):
         text = match.group("text").strip()
@@ -772,7 +918,6 @@ def _scan_js_ts_file(
             )
         )
 
-    tool_name = tools[0].name if tools else "module"
     dangerous_call_names: set[str] = set()
     try:
         from agent_bom.js_ts_ast import JSTSAstUnavailableError, analyze_js_ts_block
@@ -781,12 +926,41 @@ def _scan_js_ts_file(
             ".ts": "typescript",
             ".tsx": "tsx",
         }.get(file_path.suffix.lower(), "javascript")
-        dangerous_call_names.update(analyze_js_ts_block(source, language_hint=language_hint).call_names)
+        analysis = analyze_js_ts_block(source, language_hint=language_hint)
+        dangerous_call_names.update(analysis.call_names)
+        frameworks = sorted(set(frameworks) | set(_frameworks_from_js_modules(analysis.imported_modules)))
+
+        seen_tool_signatures = {(tool.name, tool.line_number) for tool in tools}
+        for registration in analysis.tool_registrations:
+            dedup_key = (registration.tool_name, registration.line_number)
+            if dedup_key in seen_tool_signatures:
+                continue
+            seen_tool_signatures.add(dedup_key)
+            tools.append(
+                ToolSignature(
+                    name=registration.tool_name,
+                    parameters=[],
+                    return_type="unknown",
+                    description="JS/TS MCP tool definition",
+                    file_path=rel_path,
+                    line_number=registration.line_number,
+                    decorators=["tool()"],
+                    is_async=False,
+                )
+            )
+
+        call_edges, js_ts_flow_findings = _build_js_ts_flow_findings(
+            rel_path=rel_path,
+            functions=analysis.functions,
+            tool_registrations=analysis.tool_registrations,
+        )
+        flow_findings.extend(js_ts_flow_findings)
     except (ImportError, JSTSAstUnavailableError):
         for call_name, pattern in _JS_FALLBACK_DANGEROUS_PATTERNS:
             if pattern.search(source):
                 dangerous_call_names.add(call_name)
 
+    tool_name = tools[0].name if tools else "module"
     for call_name in sorted(dangerous_call_names):
         flow_findings.append(
             FlowFinding(
@@ -801,7 +975,7 @@ def _scan_js_ts_file(
             )
         )
 
-    return prompts, guardrails, tools, flow_findings
+    return prompts, guardrails, tools, flow_findings, frameworks, call_edges
 
 
 def _scan_go_file(
@@ -1667,11 +1841,13 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
 
     for js_ts_file in js_ts_files:
         rel = str(js_ts_file.relative_to(project))
-        prompts, guardrails, tools, flow_findings = _scan_js_ts_file(js_ts_file, rel)
+        prompts, guardrails, tools, flow_findings, frameworks, js_ts_call_edges = _scan_js_ts_file(js_ts_file, rel)
         result.prompts.extend(prompts)
         result.guardrails.extend(guardrails)
         result.tools.extend(tools)
         result.flow_findings.extend(flow_findings)
+        result.frameworks_detected.extend(frameworks)
+        result.call_edges.extend(js_ts_call_edges)
 
     for go_file in go_files:
         rel = str(go_file.relative_to(project))
@@ -1681,9 +1857,20 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
         result.tools.extend(tools)
         result.flow_findings.extend(flow_findings)
 
-    result.call_edges, interprocedural_findings = _build_call_graph(function_analyses)
+    python_call_edges, interprocedural_findings = _build_call_graph(function_analyses)
+    result.call_edges.extend(python_call_edges)
     result.flow_findings.extend(interprocedural_findings)
     result.flow_findings.extend(_build_taint_findings(function_analyses))
+
+    deduped_call_edges: list[CallEdge] = []
+    seen_call_edges: set[tuple[str, str, str, int]] = set()
+    for edge in result.call_edges:
+        key = (edge.caller, edge.callee, edge.file_path, edge.line_number)
+        if key in seen_call_edges:
+            continue
+        seen_call_edges.add(key)
+        deduped_call_edges.append(edge)
+    result.call_edges = deduped_call_edges
 
     # Deduplicate frameworks
     result.frameworks_detected = sorted(set(result.frameworks_detected))

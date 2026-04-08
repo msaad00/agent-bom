@@ -1582,16 +1582,15 @@ def scan(
             f"{_n_risks} risk pattern(s), {_n_bottlenecks} bottleneck(s)"
         )
 
-        # ── Persist unified graph ────────────────────────────────────
+        # ── Persist full unified graph (all entity types) ────────────
         try:
-            from agent_bom.context_graph import to_unified_graph as _to_ug
             from agent_bom.db.graph_store import open_graph_db, save_graph
+            from agent_bom.graph.builder import build_unified_graph_from_report
 
-            _ug = _to_ug(_cg, _all_paths, _cg_risks, scan_id=_scan_id)
+            _ug = build_unified_graph_from_report(_graph_json, scan_id=_scan_id)
             _graph_db_dir = Path.home() / ".agent-bom" / "db"
             _graph_db_dir.mkdir(parents=True, exist_ok=True)
-            _graph_db_path = _graph_db_dir / "graph.db"
-            with open_graph_db(_graph_db_path) as _gconn:
+            with open_graph_db(_graph_db_dir / "graph.db") as _gconn:
                 save_graph(_gconn, _ug)
             con.print(f"  [green]✓[/green] Graph persisted ({len(_ug.nodes)} nodes, scan {_scan_id[:8]}…)")
         except Exception as _graph_err:  # noqa: BLE001

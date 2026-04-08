@@ -194,6 +194,61 @@ class TestDeltaAlerts:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+class TestComplianceAggregation:
+    def test_compliance_tags_aggregated_by_framework(self):
+        g = UnifiedGraph(scan_id="compliance-test")
+        g.add_node(
+            UnifiedNode(
+                id="vuln:CVE-1",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-1",
+                severity="critical",
+                compliance_tags=["OWASP-A06", "MITRE-T1059", "NIST-AI-RMF-MAP-1.1"],
+            )
+        )
+        g.add_node(
+            UnifiedNode(
+                id="vuln:CVE-2",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-2",
+                severity="high",
+                compliance_tags=["OWASP-A01", "CIS-1.1"],
+            )
+        )
+        g.add_node(
+            UnifiedNode(
+                id="misconfig:cis:2.1",
+                entity_type=EntityType.MISCONFIGURATION,
+                label="MFA not enabled",
+                severity="high",
+                compliance_tags=["CIS-2.1", "NIST-AC-2"],
+            )
+        )
+
+        # Verify tags exist on nodes
+        assert len(g.nodes["vuln:CVE-1"].compliance_tags) == 3
+
+        # Test compliance_view filter
+        owasp_view = g.compliance_view(framework="OWASP")
+        owasp_nodes = list(owasp_view.nodes.values())
+        assert len(owasp_nodes) == 2  # CVE-1 and CVE-2 both have OWASP tags
+
+        cis_view = g.compliance_view(framework="CIS")
+        cis_nodes = list(cis_view.nodes.values())
+        assert len(cis_nodes) == 2  # CVE-2 and misconfig both have CIS tags
+
+    def test_compliance_view_all_frameworks(self):
+        g = UnifiedGraph()
+        g.add_node(UnifiedNode(id="v1", entity_type=EntityType.VULNERABILITY, label="v1", compliance_tags=["OWASP-A01"]))
+        g.add_node(UnifiedNode(id="v2", entity_type=EntityType.VULNERABILITY, label="v2", compliance_tags=[]))
+        g.add_node(UnifiedNode(id="a1", entity_type=EntityType.AGENT, label="a1"))
+
+        all_compliance = g.compliance_view()
+        # Only v1 has tags
+        assert len(all_compliance.nodes) == 1
+        assert "v1" in all_compliance.nodes
+
+
 class TestOCSFNeighborEnrichment:
     def test_ocsf_event_includes_graph_context(self):
         report = {

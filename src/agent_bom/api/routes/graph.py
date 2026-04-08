@@ -295,6 +295,73 @@ async def get_graph_snapshots(
         conn.close()
 
 
+@router.get("/v1/graph/compliance", tags=["graph"])
+async def get_graph_compliance(
+    request: Request,
+    scan_id: Optional[str] = Query(None, description="Scan ID"),
+    framework: Optional[str] = Query(None, description="Filter by framework prefix (e.g. OWASP, NIST, MITRE, CIS, SOC2)"),
+) -> dict:
+    """Compliance posture across all frameworks — aggregated from graph nodes.
+
+    Returns per-framework finding counts, severity breakdown, affected entity
+    counts, and the list of tagged findings. Filter by framework to drill down.
+    """
+    conn = _get_conn()
+    try:
+        from collections import defaultdict
+
+        graph = load_graph(conn, scan_id=scan_id or "", tenant_id=_tenant(request))
+
+        # Collect all compliance-tagged nodes
+        framework_stats: dict[str, dict] = defaultdict(
+            lambda: {
+                "total_findings": 0,
+                "by_severity": defaultdict(int),
+                "by_entity_type": defaultdict(int),
+                "tags": set(),
+                "node_ids": [],
+            }
+        )
+
+        for node in graph.nodes.values():
+            if not node.compliance_tags:
+                continue
+            for tag in node.compliance_tags:
+                # Extract framework prefix (e.g. "OWASP" from "OWASP-A06")
+                prefix = tag.split("-")[0].upper() if "-" in tag else tag.upper()
+                if framework and framework.upper() != prefix:
+                    continue
+                stats = framework_stats[prefix]
+                stats["total_findings"] += 1
+                stats["by_severity"][node.severity or "unknown"] += 1
+                et = node.entity_type.value if hasattr(node.entity_type, "value") else node.entity_type
+                stats["by_entity_type"][et] += 1
+                stats["tags"].add(tag)
+                if node.id not in stats["node_ids"]:
+                    stats["node_ids"].append(node.id)
+
+        # Convert sets to sorted lists for JSON serialization
+        result = {}
+        for fw, stats in sorted(framework_stats.items()):
+            result[fw] = {
+                "total_findings": stats["total_findings"],
+                "by_severity": dict(stats["by_severity"]),
+                "by_entity_type": dict(stats["by_entity_type"]),
+                "tags": sorted(stats["tags"]),
+                "node_count": len(stats["node_ids"]),
+                "node_ids": stats["node_ids"][:100],  # Cap to prevent huge responses
+            }
+
+        return {
+            "scan_id": scan_id or "",
+            "framework_count": len(result),
+            "total_tagged_findings": sum(s["total_findings"] for s in result.values()),
+            "frameworks": result,
+        }
+    finally:
+        conn.close()
+
+
 @router.get("/v1/graph/legend", tags=["graph"])
 async def get_graph_legend() -> dict:
     """Return entity and relationship legends for UI rendering."""

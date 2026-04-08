@@ -399,6 +399,69 @@ def build_unified_graph_from_report(
                 )
             )
 
+    # ── Runtime session graph (dynamic edges) ──────────────────────
+    runtime_graph = report_json.get("runtime_session_graph")
+    if runtime_graph:
+        for edge_dict in runtime_graph.get("edges", []):
+            rel_str = edge_dict.get("interaction_type", edge_dict.get("relation", ""))
+            rel_map = {
+                "tool_call": RelationshipType.INVOKED,
+                "invoked": RelationshipType.INVOKED,
+                "resource_access": RelationshipType.ACCESSED,
+                "accessed": RelationshipType.ACCESSED,
+                "delegation": RelationshipType.DELEGATED_TO,
+                "delegated_to": RelationshipType.DELEGATED_TO,
+            }
+            rel = rel_map.get(rel_str.lower())
+            if not rel:
+                continue
+            src = edge_dict.get("source_node_id", edge_dict.get("source", ""))
+            tgt = edge_dict.get("target_node_id", edge_dict.get("target", ""))
+            if src and tgt:
+                graph.add_edge(
+                    UnifiedEdge(
+                        source=src,
+                        target=tgt,
+                        relationship=rel,
+                        evidence={
+                            "timestamp": edge_dict.get("timestamp", ""),
+                            "tool_capability": edge_dict.get("tool_capability", ""),
+                            "risk_score": edge_dict.get("risk_score", 0),
+                            "data_source": "runtime-proxy",
+                        },
+                    )
+                )
+
+    # ── Toxic combinations as TRIGGERS edges ─────────────────────────
+    toxic_data = report_json.get("toxic_combinations")
+    if toxic_data:
+        for combo in toxic_data if isinstance(toxic_data, list) else toxic_data.get("combinations", []):
+            combo_vulns = combo.get("vulnerability_ids", combo.get("vulns", []))
+            combo_label = combo.get("name", combo.get("label", "toxic_combo"))
+            for vuln_id in combo_vulns:
+                vuln_node_id = f"vuln:{vuln_id}"
+                if graph.has_node(vuln_node_id):
+                    graph.add_edge(
+                        UnifiedEdge(
+                            source=vuln_node_id,
+                            target=f"toxic:{combo_label}",
+                            relationship=RelationshipType.TRIGGERS,
+                            evidence={"combo": combo_label, "risk": combo.get("risk_score", 0)},
+                        )
+                    )
+
+    # ── Enrich vulnerability nodes with blast radius stats ───────────
+    for br_dict in blast_data:
+        vuln_id_str = br_dict.get("vulnerability_id", "")
+        vuln_node = graph.get_node(f"vuln:{vuln_id_str}") if vuln_id_str else None
+        if vuln_node:
+            vuln_node.attributes["affected_agent_count"] = len(br_dict.get("affected_agents", []))
+            vuln_node.attributes["affected_server_count"] = len(br_dict.get("affected_servers", []))
+            vuln_node.attributes["exposed_credential_count"] = len(br_dict.get("exposed_credentials", []))
+            vuln_node.attributes["exposed_tool_count"] = len(br_dict.get("exposed_tools", []))
+            vuln_node.attributes["reachability"] = br_dict.get("reachability", "")
+            vuln_node.attributes["actionable"] = br_dict.get("actionable", False)
+
     return graph
 
 

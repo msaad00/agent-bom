@@ -11,7 +11,8 @@ from agent_bom.graph.types import EntityType
 
 # ── Entity → OCSF mapping ────────────────────────────────────────────────
 # Inventory entities → Category 5 (Discovery), Class 4001 (Device Inventory)
-# Finding entities  → Category 2 (Findings), Class 2001/2003
+# Identity entities  → Category 3 (Identity & Access), Class 3001 (Account)
+# Finding entities   → Category 2 (Findings), Class 2001/2003
 
 ENTITY_OCSF_MAP: dict[str, dict[str, int]] = {
     # Inventory (Category 5)
@@ -23,15 +24,19 @@ ENTITY_OCSF_MAP: dict[str, dict[str, int]] = {
     EntityType.DATASET: {"category_uid": 5, "class_uid": 4001},
     EntityType.CONTAINER: {"category_uid": 5, "class_uid": 4001},
     EntityType.CLOUD_RESOURCE: {"category_uid": 5, "class_uid": 4001},
-    # Credentials are INVENTORY — the presence of a credential env var
-    # is not a finding.  Only credential_exposure (leak/misconfig) is.
     EntityType.CREDENTIAL: {"category_uid": 5, "class_uid": 4001},
+    # Identity & access (Category 3)
+    EntityType.USER: {"category_uid": 3, "class_uid": 3001},
+    EntityType.GROUP: {"category_uid": 3, "class_uid": 3001},
+    EntityType.SERVICE_ACCOUNT: {"category_uid": 3, "class_uid": 3001},
     # Findings (Category 2)
     EntityType.VULNERABILITY: {"category_uid": 2, "class_uid": 2001},
     EntityType.MISCONFIGURATION: {"category_uid": 2, "class_uid": 2003},
-    # Grouping (virtual)
+    # Organizational (virtual)
     EntityType.PROVIDER: {"category_uid": 0, "class_uid": 0},
     EntityType.ENVIRONMENT: {"category_uid": 0, "class_uid": 0},
+    EntityType.FLEET: {"category_uid": 5, "class_uid": 4001},
+    EntityType.CLUSTER: {"category_uid": 5, "class_uid": 4001},
 }
 
 # Entity types that represent actual security findings (for SIEM export)

@@ -23,11 +23,18 @@ export enum EntityType {
   CLOUD_RESOURCE = "cloud_resource",
   // Finding entities (OCSF Category 2)
   VULNERABILITY = "vulnerability",
-  CREDENTIAL = "credential",
   MISCONFIGURATION = "misconfiguration",
-  // Grouping (virtual)
+  // Inventory but security-relevant (OCSF Category 5)
+  CREDENTIAL = "credential",
+  // Identity & governance (OCSF Category 3)
+  USER = "user",
+  GROUP = "group",
+  SERVICE_ACCOUNT = "service_account",
+  // Organizational hierarchy
   PROVIDER = "provider",
   ENVIRONMENT = "environment",
+  FLEET = "fleet",
+  CLUSTER = "cluster",
 }
 
 export enum RelationshipType {
@@ -43,10 +50,17 @@ export enum RelationshipType {
   AFFECTS = "affects",
   VULNERABLE_TO = "vulnerable_to",
   EXPLOITABLE_VIA = "exploitable_via",
+  REMEDIATES = "remediates",
+  TRIGGERS = "triggers",
   // Lateral movement
   SHARES_SERVER = "shares_server",
   SHARES_CRED = "shares_cred",
   LATERAL_PATH = "lateral_path",
+  // Ownership & governance
+  MANAGES = "manages",
+  OWNS = "owns",
+  PART_OF = "part_of",
+  MEMBER_OF = "member_of",
   // Runtime
   INVOKED = "invoked",
   ACCESSED = "accessed",
@@ -139,8 +153,15 @@ export const ENTITY_OCSF_MAP: Record<
   // Credentials are INVENTORY — presence of env var is not a finding
   [EntityType.CREDENTIAL]: { category_uid: 5, class_uid: 4001 },
   [EntityType.MISCONFIGURATION]: { category_uid: 2, class_uid: 2003 },
+  // Identity (Category 3)
+  [EntityType.USER]: { category_uid: 3, class_uid: 3001 },
+  [EntityType.GROUP]: { category_uid: 3, class_uid: 3001 },
+  [EntityType.SERVICE_ACCOUNT]: { category_uid: 3, class_uid: 3001 },
+  // Organizational
   [EntityType.PROVIDER]: { category_uid: 0, class_uid: 0 },
   [EntityType.ENVIRONMENT]: { category_uid: 0, class_uid: 0 },
+  [EntityType.FLEET]: { category_uid: 5, class_uid: 4001 },
+  [EntityType.CLUSTER]: { category_uid: 5, class_uid: 4001 },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

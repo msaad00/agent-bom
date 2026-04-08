@@ -32,6 +32,12 @@ export type LineageNodeType =
   | "dataset"
   | "container"
   | "cloudResource"
+  | "user"
+  | "group"
+  | "serviceAccount"
+  | "environment"
+  | "fleet"
+  | "cluster"
   | "sharedServer";
 
 export type LineageNodeData = {
@@ -162,6 +168,151 @@ function ProviderNode({ data }: { data: LineageNodeData }) {
           <div className="mt-1 text-[10px] text-zinc-500">{data.agentCount} agents</div>
         ) : undefined
       }
+    />
+  );
+}
+
+function IdentityNode({
+  data,
+  borderClass,
+  bgClass,
+  ringClass,
+  icon,
+  iconClass,
+  subtitle,
+}: {
+  data: LineageNodeData;
+  borderClass: string;
+  bgClass: string;
+  ringClass: string;
+  icon: ComponentType<{ className?: string }>;
+  iconClass: string;
+  subtitle?: ReactNode;
+}) {
+  return (
+    <NodeCard
+      data={data}
+      borderClass={borderClass}
+      bgClass={bgClass}
+      ringClass={ringClass}
+      icon={icon}
+      iconClass={iconClass}
+      subtitle={subtitle}
+    />
+  );
+}
+
+function UserNode({ data }: { data: LineageNodeData }) {
+  return (
+    <IdentityNode
+      data={data}
+      borderClass="border-emerald-700"
+      bgClass="bg-emerald-950/60"
+      ringClass="ring-emerald-400"
+      icon={ShieldAlert}
+      iconClass="text-emerald-300"
+      subtitle={data.description}
+    />
+  );
+}
+
+function GroupNode({ data }: { data: LineageNodeData }) {
+  return (
+    <IdentityNode
+      data={data}
+      borderClass="border-fuchsia-700"
+      bgClass="bg-fuchsia-950/55"
+      ringClass="ring-fuchsia-400"
+      icon={Building2}
+      iconClass="text-fuchsia-300"
+      subtitle={data.description}
+    />
+  );
+}
+
+function ServiceAccountNode({ data }: { data: LineageNodeData }) {
+  return (
+    <IdentityNode
+      data={data}
+      borderClass="border-amber-700"
+      bgClass="bg-amber-950/55"
+      ringClass="ring-amber-400"
+      icon={KeyRound}
+      iconClass="text-amber-300"
+      subtitle={data.description}
+    />
+  );
+}
+
+function StructureNode({
+  data,
+  borderClass,
+  bgClass,
+  ringClass,
+  icon,
+  iconClass,
+}: {
+  data: LineageNodeData;
+  borderClass: string;
+  bgClass: string;
+  ringClass: string;
+  icon: ComponentType<{ className?: string }>;
+  iconClass: string;
+}) {
+  return (
+    <NodeCard
+      data={data}
+      borderClass={borderClass}
+      bgClass={bgClass}
+      ringClass={ringClass}
+      icon={icon}
+      iconClass={iconClass}
+      subtitle={data.description}
+      footer={
+        <div className="flex gap-2 mt-1 text-[10px] text-zinc-500">
+          {data.agentCount !== undefined && <span>{data.agentCount} agents</span>}
+          {data.serverCount !== undefined && <span>{data.serverCount} servers</span>}
+        </div>
+      }
+    />
+  );
+}
+
+function EnvironmentNode({ data }: { data: LineageNodeData }) {
+  return (
+    <StructureNode
+      data={data}
+      borderClass="border-teal-700"
+      bgClass="bg-teal-950/55"
+      ringClass="ring-teal-400"
+      icon={Cloud}
+      iconClass="text-teal-300"
+    />
+  );
+}
+
+function FleetNode({ data }: { data: LineageNodeData }) {
+  return (
+    <StructureNode
+      data={data}
+      borderClass="border-cyan-700"
+      bgClass="bg-cyan-950/55"
+      ringClass="ring-cyan-400"
+      icon={Building2}
+      iconClass="text-cyan-300"
+    />
+  );
+}
+
+function ClusterNode({ data }: { data: LineageNodeData }) {
+  return (
+    <StructureNode
+      data={data}
+      borderClass="border-sky-700"
+      bgClass="bg-sky-950/55"
+      ringClass="ring-sky-400"
+      icon={Server}
+      iconClass="text-sky-300"
     />
   );
 }
@@ -400,6 +551,12 @@ function SharedServerNode({ data }: { data: LineageNodeData }) {
 export const lineageNodeTypes = {
   providerNode: ProviderNode,
   agentNode: AgentNode,
+  userNode: UserNode,
+  groupNode: GroupNode,
+  serviceAccountNode: ServiceAccountNode,
+  environmentNode: EnvironmentNode,
+  fleetNode: FleetNode,
+  clusterNode: ClusterNode,
   serverNode: ServerNode,
   packageNode: PackageNode,
   vulnNode: VulnNode,

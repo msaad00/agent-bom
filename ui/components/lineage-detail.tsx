@@ -23,6 +23,12 @@ import type { LineageNodeData } from "./lineage-nodes";
 const TYPE_ICON = {
   provider: Building2,
   agent: ShieldAlert,
+  user: ShieldAlert,
+  group: Building2,
+  serviceAccount: KeyRound,
+  environment: Cloud,
+  fleet: Building2,
+  cluster: Server,
   server: Server,
   sharedServer: Server,
   package: Package,
@@ -39,6 +45,12 @@ const TYPE_ICON = {
 const TYPE_LABELS: Record<LineageNodeData["nodeType"], string> = {
   provider: "Provider",
   agent: "Agent",
+  user: "User",
+  group: "Group",
+  serviceAccount: "Service Account",
+  environment: "Environment",
+  fleet: "Fleet",
+  cluster: "Cluster",
   server: "MCP Server",
   sharedServer: "Shared MCP Server",
   package: "Package",
@@ -55,6 +67,12 @@ const TYPE_LABELS: Record<LineageNodeData["nodeType"], string> = {
 const TYPE_BORDER: Record<LineageNodeData["nodeType"], string> = {
   provider: "border-zinc-700",
   agent: "border-emerald-700",
+  user: "border-emerald-700",
+  group: "border-fuchsia-700",
+  serviceAccount: "border-amber-700",
+  environment: "border-teal-700",
+  fleet: "border-cyan-700",
+  cluster: "border-sky-700",
   server: "border-blue-700",
   sharedServer: "border-cyan-700",
   package: "border-zinc-700",
@@ -154,6 +172,19 @@ export function LineageDetailPanel({
               <Row label="Findings" value={data.vulnCount ?? 0} className="text-red-400" />
             )}
           </div>
+        )}
+
+        {(data.nodeType === "user" ||
+          data.nodeType === "group" ||
+          data.nodeType === "serviceAccount" ||
+          data.nodeType === "environment" ||
+          data.nodeType === "fleet" ||
+          data.nodeType === "cluster") && (
+          <GenericAssetSection
+            description={data.description}
+            version={data.version}
+            attributes={data.attributes}
+          />
         )}
 
         {data.nodeType === "server" && (

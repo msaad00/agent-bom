@@ -7,6 +7,10 @@ export interface FilterState {
   severity: string | null;
   agentName: string | null;
   vulnOnly: boolean;
+  runtimeMode: "all" | "static" | "dynamic";
+  relationshipScope: "all" | "inventory" | "attack" | "runtime" | "governance";
+  maxDepth: number;
+  pageSize: number;
 }
 
 export const DEFAULT_FILTERS: FilterState = {
@@ -20,6 +24,12 @@ export const DEFAULT_FILTERS: FilterState = {
     dataset: true,
     container: true,
     cloudResource: true,
+    environment: true,
+    fleet: true,
+    cluster: true,
+    user: true,
+    group: true,
+    serviceAccount: true,
     vulnerability: true,
     misconfiguration: true,
     credential: true,
@@ -28,6 +38,10 @@ export const DEFAULT_FILTERS: FilterState = {
   severity: null,
   agentName: null,
   vulnOnly: false,
+  runtimeMode: "all",
+  relationshipScope: "all",
+  maxDepth: 6,
+  pageSize: 1000,
 };
 
 interface FilterPanelProps {
@@ -45,6 +59,12 @@ const LAYER_LABELS: { key: LineageNodeType; label: string; color: string }[] = [
   { key: "dataset", label: "Datasets", color: "bg-cyan-500" },
   { key: "container", label: "Containers", color: "bg-indigo-500" },
   { key: "cloudResource", label: "Cloud", color: "bg-sky-500" },
+  { key: "environment", label: "Environments", color: "bg-teal-500" },
+  { key: "fleet", label: "Fleets", color: "bg-cyan-500" },
+  { key: "cluster", label: "Clusters", color: "bg-sky-400" },
+  { key: "user", label: "Users", color: "bg-emerald-400" },
+  { key: "group", label: "Groups", color: "bg-fuchsia-500" },
+  { key: "serviceAccount", label: "Svc Accounts", color: "bg-amber-400" },
   { key: "vulnerability", label: "CVEs", color: "bg-red-500" },
   { key: "misconfiguration", label: "Misconfigs", color: "bg-orange-500" },
   { key: "credential", label: "Credentials", color: "bg-amber-500" },
@@ -90,6 +110,63 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
         </select>
       </div>
 
+      <div>
+        <h3 className="font-semibold text-zinc-300 mb-2 uppercase tracking-wider text-[10px]">Edges</h3>
+        <select
+          value={filters.relationshipScope}
+          onChange={(e) =>
+            onChange({
+              ...filters,
+              relationshipScope: e.target.value as FilterState["relationshipScope"],
+            })
+          }
+          className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
+        >
+          <option value="all">All relationships</option>
+          <option value="inventory">Inventory only</option>
+          <option value="attack">Attack / lateral</option>
+          <option value="runtime">Runtime only</option>
+          <option value="governance">Governance only</option>
+        </select>
+      </div>
+
+      <div>
+        <h3 className="font-semibold text-zinc-300 mb-2 uppercase tracking-wider text-[10px]">Traversal</h3>
+        <div className="space-y-2">
+          <select
+            value={filters.runtimeMode}
+            onChange={(e) =>
+              onChange({
+                ...filters,
+                runtimeMode: e.target.value as FilterState["runtimeMode"],
+              })
+            }
+            className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
+          >
+            <option value="all">Static + runtime</option>
+            <option value="static">Static only</option>
+            <option value="dynamic">Runtime only</option>
+          </select>
+
+          <select
+            value={String(filters.maxDepth)}
+            onChange={(e) =>
+              onChange({
+                ...filters,
+                maxDepth: Number(e.target.value),
+              })
+            }
+            className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
+          >
+            <option value="2">Depth 2</option>
+            <option value="4">Depth 4</option>
+            <option value="6">Depth 6</option>
+            <option value="8">Depth 8</option>
+            <option value="10">Depth 10</option>
+          </select>
+        </div>
+      </div>
+
       {agentNames.length > 1 && (
         <div>
           <h3 className="font-semibold text-zinc-300 mb-2 uppercase tracking-wider text-[10px]">Agent</h3>
@@ -116,6 +193,20 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
           />
           Vulnerable only
         </label>
+      </div>
+
+      <div>
+        <h3 className="font-semibold text-zinc-300 mb-2 uppercase tracking-wider text-[10px]">Page Size</h3>
+        <select
+          value={String(filters.pageSize)}
+          onChange={(e) => onChange({ ...filters, pageSize: Number(e.target.value) })}
+          className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
+        >
+          <option value="500">500 nodes</option>
+          <option value="1000">1,000 nodes</option>
+          <option value="2500">2,500 nodes</option>
+          <option value="5000">5,000 nodes</option>
+        </select>
       </div>
     </div>
   );

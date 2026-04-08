@@ -15,8 +15,9 @@ import { AlertTriangle, Loader2, ShieldAlert } from "lucide-react";
 import { GraphLegend, FullscreenButton } from "@/components/graph-chrome";
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import { FilterPanel, DEFAULT_FILTERS, type FilterState } from "@/components/lineage-filter";
-import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nodes";
+import { lineageNodeTypes, type LineageNodeData, type LineageNodeType } from "@/components/lineage-nodes";
 import { applyDagreLayout } from "@/lib/dagre-layout";
+import { EntityType, RelationshipType } from "@/lib/graph-schema";
 import {
   BACKGROUND_COLOR,
   BACKGROUND_GAP,
@@ -71,10 +72,99 @@ function addNeighbor(map: Map<string, Set<string>>, source: string, target: stri
   }
 }
 
+const LAYER_ENTITY_TYPES: Array<[LineageNodeType, EntityType]> = [
+  ["provider", EntityType.PROVIDER],
+  ["agent", EntityType.AGENT],
+  ["user", EntityType.USER],
+  ["group", EntityType.GROUP],
+  ["serviceAccount", EntityType.SERVICE_ACCOUNT],
+  ["environment", EntityType.ENVIRONMENT],
+  ["fleet", EntityType.FLEET],
+  ["cluster", EntityType.CLUSTER],
+  ["server", EntityType.SERVER],
+  ["package", EntityType.PACKAGE],
+  ["model", EntityType.MODEL],
+  ["dataset", EntityType.DATASET],
+  ["container", EntityType.CONTAINER],
+  ["cloudResource", EntityType.CLOUD_RESOURCE],
+  ["vulnerability", EntityType.VULNERABILITY],
+  ["misconfiguration", EntityType.MISCONFIGURATION],
+  ["credential", EntityType.CREDENTIAL],
+  ["tool", EntityType.TOOL],
+];
+
+const RELATIONSHIP_SCOPE_MAP: Record<FilterState["relationshipScope"], RelationshipType[] | undefined> = {
+  all: undefined,
+  inventory: [
+    RelationshipType.HOSTS,
+    RelationshipType.USES,
+    RelationshipType.DEPENDS_ON,
+    RelationshipType.PROVIDES_TOOL,
+    RelationshipType.EXPOSES_CRED,
+    RelationshipType.SERVES_MODEL,
+    RelationshipType.CONTAINS,
+  ],
+  attack: [
+    RelationshipType.AFFECTS,
+    RelationshipType.VULNERABLE_TO,
+    RelationshipType.EXPLOITABLE_VIA,
+    RelationshipType.REMEDIATES,
+    RelationshipType.TRIGGERS,
+    RelationshipType.SHARES_SERVER,
+    RelationshipType.SHARES_CRED,
+    RelationshipType.LATERAL_PATH,
+  ],
+  runtime: [
+    RelationshipType.INVOKED,
+    RelationshipType.ACCESSED,
+    RelationshipType.DELEGATED_TO,
+  ],
+  governance: [
+    RelationshipType.MANAGES,
+    RelationshipType.OWNS,
+    RelationshipType.PART_OF,
+    RelationshipType.MEMBER_OF,
+  ],
+};
+
+function entityTypesForLayers(filters: FilterState): EntityType[] {
+  return LAYER_ENTITY_TYPES.filter(([layer]) => filters.layers[layer]).map(([, entityType]) => entityType);
+}
+
+function emptyGraphResponse(scanId: string): UnifiedGraphResponse {
+  return {
+    scan_id: scanId,
+    tenant_id: "",
+    created_at: "",
+    nodes: [],
+    edges: [],
+    attack_paths: [],
+    interaction_risks: [],
+    stats: {
+      total_nodes: 0,
+      total_edges: 0,
+      node_types: {},
+      severity_counts: {},
+      relationship_types: {},
+      attack_path_count: 0,
+      interaction_risk_count: 0,
+      max_attack_path_risk: 0,
+      highest_interaction_risk: 0,
+    },
+    pagination: {
+      total: 0,
+      offset: 0,
+      limit: 0,
+      has_more: false,
+    },
+  };
+}
+
 export default function GraphPage() {
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
   const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
+  const [pageOffset, setPageOffset] = useState(0);
   const [loadingSnapshots, setLoadingSnapshots] = useState(true);
   const [loadingGraph, setLoadingGraph] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,16 +186,58 @@ export default function GraphPage() {
       .finally(() => setLoadingSnapshots(false));
   }, []);
 
+  const serverEntityTypes = useMemo(() => entityTypesForLayers(filters), [filters.layers]);
+
+  const serverRelationships = useMemo(
+    () => RELATIONSHIP_SCOPE_MAP[filters.relationshipScope],
+    [filters.relationshipScope],
+  );
+
+  const serverFilterKey = useMemo(
+    () =>
+      JSON.stringify({
+        scanId: selectedScanId,
+        entityTypes: serverEntityTypes,
+        relationships: serverRelationships,
+        runtimeMode: filters.runtimeMode,
+        maxDepth: filters.maxDepth,
+        severity: filters.severity,
+        pageSize: filters.pageSize,
+      }),
+    [selectedScanId, serverEntityTypes, serverRelationships, filters.runtimeMode, filters.maxDepth, filters.severity, filters.pageSize],
+  );
+
+  useEffect(() => {
+    setPageOffset(0);
+  }, [serverFilterKey]);
+
   useEffect(() => {
     if (!selectedScanId) {
       setGraphData(null);
       return;
     }
 
+    if (serverEntityTypes.length === 0) {
+      setGraphData(emptyGraphResponse(selectedScanId));
+      setSelectedNode(null);
+      setError(null);
+      return;
+    }
+
     setLoadingGraph(true);
     setSelectedNode(null);
     api
-      .getGraph({ scanId: selectedScanId, limit: 5000, offset: 0 })
+      .getGraph({
+        scanId: selectedScanId,
+        entityTypes: serverEntityTypes,
+        minSeverity: filters.severity ?? undefined,
+        relationships: serverRelationships,
+        staticOnly: filters.runtimeMode === "static",
+        dynamicOnly: filters.runtimeMode === "dynamic",
+        maxDepth: filters.maxDepth,
+        offset: pageOffset,
+        limit: filters.pageSize,
+      })
       .then((result) => {
         setGraphData(result);
         setError(null);
@@ -115,7 +247,16 @@ export default function GraphPage() {
         setGraphData(null);
       })
       .finally(() => setLoadingGraph(false));
-  }, [selectedScanId]);
+  }, [
+    selectedScanId,
+    serverEntityTypes,
+    serverRelationships,
+    filters.runtimeMode,
+    filters.maxDepth,
+    filters.severity,
+    filters.pageSize,
+    pageOffset,
+  ]);
 
   const activeSnapshot = useMemo(
     () => snapshots.find((snapshot) => snapshot.scan_id === selectedScanId) ?? null,
@@ -183,6 +324,20 @@ export default function GraphPage() {
   const onNodeMouseLeave = useCallback(() => {
     setHoveredNodeId(null);
   }, []);
+
+  const pageStart = graphData && graphData.pagination.total > 0 ? graphData.pagination.offset + 1 : 0;
+  const pageEnd =
+    graphData && graphData.pagination.total > 0
+      ? Math.min(graphData.pagination.offset + graphData.pagination.limit, graphData.pagination.total)
+      : 0;
+  const pageNumber =
+    graphData && graphData.pagination.limit > 0
+      ? Math.floor(graphData.pagination.offset / graphData.pagination.limit) + 1
+      : 1;
+  const totalPages =
+    graphData && graphData.pagination.limit > 0
+      ? Math.max(1, Math.ceil(graphData.pagination.total / graphData.pagination.limit))
+      : 1;
 
   if (loadingSnapshots) {
     return (
@@ -263,9 +418,9 @@ export default function GraphPage() {
               <span>captured {new Date(activeSnapshot.created_at).toLocaleString()}</span>
             </>
           )}
-          {graphData?.pagination.has_more && (
-            <span className="text-amber-400">
-              Showing {graphData.pagination.limit} of {graphData.pagination.total} nodes in this snapshot
+          {graphData && graphData.pagination.total > 0 && (
+            <span>
+              showing {pageStart}-{pageEnd} of {graphData.pagination.total} nodes
             </span>
           )}
           {loadingGraph && (
@@ -273,6 +428,31 @@ export default function GraphPage() {
               <Loader2 className="w-3 h-3 animate-spin" />
               refreshing graph
             </span>
+          )}
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => setPageOffset((current) => Math.max(0, current - filters.pageSize))}
+            disabled={loadingGraph || pageOffset === 0}
+            className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Previous page
+          </button>
+          <button
+            type="button"
+            onClick={() => setPageOffset((current) => current + filters.pageSize)}
+            disabled={loadingGraph || !graphData?.pagination.has_more}
+            className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-1.5 text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Next page
+          </button>
+          <span className="text-zinc-500">
+            Page {pageNumber} of {totalPages}
+          </span>
+          {graphData?.pagination.has_more && (
+            <span className="text-amber-400">Large snapshot: narrow the graph or keep paging.</span>
           )}
         </div>
       </div>

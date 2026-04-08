@@ -31,6 +31,12 @@ export const NODE_COLOR_MAP: Record<LineageNodeType, string> = {
   dataset: "#06b6d4",
   container: "#6366f1",
   cloudResource: "#0ea5e9",
+  user: "#34d399",
+  group: "#d946ef",
+  serviceAccount: "#fbbf24",
+  environment: "#14b8a6",
+  fleet: "#22d3ee",
+  cluster: "#38bdf8",
 };
 
 export function minimapNodeColor(n: { data: Record<string, unknown> }): string {

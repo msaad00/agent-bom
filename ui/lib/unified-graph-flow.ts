@@ -38,6 +38,12 @@ export interface UnifiedGraphFlowResult {
 const ENTITY_TO_NODE_TYPE: Partial<Record<EntityType | string, LineageNodeType>> = {
   [EntityType.PROVIDER]: "provider",
   [EntityType.AGENT]: "agent",
+  [EntityType.USER]: "user",
+  [EntityType.GROUP]: "group",
+  [EntityType.SERVICE_ACCOUNT]: "serviceAccount",
+  [EntityType.ENVIRONMENT]: "environment",
+  [EntityType.FLEET]: "fleet",
+  [EntityType.CLUSTER]: "cluster",
   [EntityType.SERVER]: "server",
   [EntityType.PACKAGE]: "package",
   [EntityType.TOOL]: "tool",
@@ -53,6 +59,12 @@ const ENTITY_TO_NODE_TYPE: Partial<Record<EntityType | string, LineageNodeType>>
 const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
   provider: "providerNode",
   agent: "agentNode",
+  user: "userNode",
+  group: "groupNode",
+  serviceAccount: "serviceAccountNode",
+  environment: "environmentNode",
+  fleet: "fleetNode",
+  cluster: "clusterNode",
   server: "serverNode",
   sharedServer: "sharedServerNode",
   package: "packageNode",
@@ -69,6 +81,12 @@ const FLOW_NODE_TYPES: Record<LineageNodeType, string> = {
 const NODE_LABELS: Record<LineageNodeType, string> = {
   provider: "Provider",
   agent: "Agent",
+  user: "User",
+  group: "Group",
+  serviceAccount: "Service Account",
+  environment: "Environment",
+  fleet: "Fleet",
+  cluster: "Cluster",
   server: "Server",
   sharedServer: "Shared Server",
   package: "Package",
@@ -85,6 +103,12 @@ const NODE_LABELS: Record<LineageNodeType, string> = {
 const NODE_COLORS: Record<LineageNodeType, string> = {
   provider: "#71717a",
   agent: "#10b981",
+  user: "#34d399",
+  group: "#d946ef",
+  serviceAccount: "#fbbf24",
+  environment: "#14b8a6",
+  fleet: "#22d3ee",
+  cluster: "#38bdf8",
   server: "#3b82f6",
   sharedServer: "#22d3ee",
   package: "#52525b",
@@ -251,6 +275,25 @@ function toLineageData(
         5,
       );
       break;
+    case "user":
+    case "group":
+    case "serviceAccount":
+      data.description =
+        stringAttr(node, "owner") ||
+        stringAttr(node, "email") ||
+        stringAttr(node, "description");
+      break;
+    case "environment":
+    case "fleet":
+    case "cluster":
+      data.description =
+        stringAttr(node, "environment") ||
+        stringAttr(node, "provider") ||
+        stringAttr(node, "cluster_type") ||
+        stringAttr(node, "description");
+      data.agentCount = countReachableTypes(node.id, outgoing, nodeById, new Set([EntityType.AGENT]), 4);
+      data.serverCount = countReachableTypes(node.id, outgoing, nodeById, new Set([EntityType.SERVER]), 4);
+      break;
     case "server":
       data.command = stringAttr(node, "command") || stringAttr(node, "transport") || stringAttr(node, "url");
       data.toolCount = countOutgoing(node.id, outgoing, RelationshipType.PROVIDES_TOOL);
@@ -370,6 +413,12 @@ function legendForNodeTypes(nodeTypes: Set<LineageNodeType>): LegendItem[] {
   return [
     "provider",
     "agent",
+    "user",
+    "group",
+    "serviceAccount",
+    "environment",
+    "fleet",
+    "cluster",
     "server",
     "package",
     "model",

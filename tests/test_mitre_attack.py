@@ -355,6 +355,12 @@ def test_unknown_cwe_no_error():
     assert isinstance(tags, list)
 
 
+def test_high_severity_without_direct_cwe_mapping_falls_back_to_initial_access():
+    with _mock_catalog():
+        tags = tag_blast_radius(_br(cwe_ids=["CWE-99999"], severity=Severity.HIGH))
+    assert len(tags) > 0
+
+
 # ─── tag_blast_radius — context-based signals ─────────────────────────────────
 
 

@@ -23,6 +23,18 @@ from agent_bom.graph.types import EntityType
 logger = logging.getLogger(__name__)
 
 
+def _dispatch_outbound_alert(dispatcher: Any, alert: dict[str, Any], outbound_channels: int) -> tuple[int, int]:
+    """Dispatch one alert, returning delivered and queued outbound counts."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        successes = asyncio.run(dispatcher.dispatch(alert))
+        return max(0, successes - 1), 0
+
+    dispatcher.dispatch_sync(alert)
+    return 0, outbound_channels
+
+
 def compute_delta_alerts(
     old_graph: UnifiedGraph | None,
     new_graph: UnifiedGraph,
@@ -218,6 +230,7 @@ def dispatch_delta_alerts(
         "configured": outbound_channels > 0,
         "attempted": len(alerts),
         "delivered": 0,
+        "queued": 0,
         "outbound_channels": outbound_channels,
         "ocsf_event_count": len(ocsf_events),
         "ocsf_events": ocsf_events,
@@ -232,15 +245,14 @@ def dispatch_delta_alerts(
         dispatcher.add_slack(slack_webhook_url)
 
     delivered = 0
+    queued = 0
     for alert in alerts:
-        try:
-            successes = asyncio.run(dispatcher.dispatch(alert))
-        except RuntimeError:
-            dispatcher.dispatch_sync(alert)
-            successes = 1 + outbound_channels
-        delivered += max(0, successes - 1)
+        dispatched, scheduled = _dispatch_outbound_alert(dispatcher, alert, outbound_channels)
+        delivered += dispatched
+        queued += scheduled
 
     result["delivered"] = delivered
+    result["queued"] = queued
     return result
 
 

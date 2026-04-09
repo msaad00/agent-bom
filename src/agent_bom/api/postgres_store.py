@@ -30,6 +30,7 @@ from typing import Any
 from agent_bom.api.audit_log import AuditEntry
 from agent_bom.api.auth import ApiKey, Role, verify_api_key
 from agent_bom.api.exception_store import ExceptionStatus, VulnException
+from agent_bom.api.graph_store import _escape_like_query
 from agent_bom.baseline import TrendPoint
 
 logger = logging.getLogger(__name__)
@@ -1659,20 +1660,20 @@ class PostgresGraphStore:
         if not effective_scan_id:
             return [], 0
 
-        like = f"%{query.lower()}%"
+        like = f"%{_escape_like_query(query.lower())}%"
         with _tenant_connection(self._pool) as conn:
             where = """
                 FROM graph_nodes
                 WHERE tenant_id = %s AND scan_id = %s
                   AND (
-                    LOWER(id) LIKE %s OR
-                    LOWER(label) LIKE %s OR
-                    LOWER(entity_type) LIKE %s OR
-                    LOWER(severity) LIKE %s OR
-                    LOWER(compliance_tags) LIKE %s OR
-                    LOWER(data_sources) LIKE %s OR
-                    LOWER(attributes) LIKE %s OR
-                    LOWER(dimensions) LIKE %s
+                    LOWER(id) LIKE %s ESCAPE '\\' OR
+                    LOWER(label) LIKE %s ESCAPE '\\' OR
+                    LOWER(entity_type) LIKE %s ESCAPE '\\' OR
+                    LOWER(severity) LIKE %s ESCAPE '\\' OR
+                    LOWER(compliance_tags) LIKE %s ESCAPE '\\' OR
+                    LOWER(data_sources) LIKE %s ESCAPE '\\' OR
+                    LOWER(attributes) LIKE %s ESCAPE '\\' OR
+                    LOWER(dimensions) LIKE %s ESCAPE '\\'
                   )
             """
             params: list[Any] = [tenant_id, effective_scan_id, like, like, like, like, like, like, like, like]

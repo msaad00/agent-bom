@@ -228,7 +228,8 @@ def tag_provenance_finding(finding: dict) -> list[str]:
 def tag_blast_radius(br: BlastRadius) -> list[str]:
     """Return MITRE ATT&CK Enterprise technique IDs for a CVE blast radius.
 
-    Combines two signal sources — all resolved against the live MITRE catalog:
+    Combines two signal sources — all resolved against the shipped MITRE
+    ATT&CK catalog and STIX-derived mappings bundled with agent-bom:
 
     1. **CWE-based**: maps each CWE weakness ID on the vulnerability to
        ATT&CK techniques via the official CAPEC bridge
@@ -237,8 +238,8 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
        reachable exec tools, CISA KEV status, severity) to tactic phases, then
        resolves those phases to catalog techniques.
 
-    No technique IDs are hardcoded here — every mapping resolves through the
-    fetched MITRE data.
+    The scan path does not fetch framework catalogs at runtime. Catalog refreshes
+    happen out of band so scans remain deterministic and offline-friendly.
 
     Only MITRE ATT&CK Enterprise techniques (T-codes) are returned here.
     MITRE ATLAS techniques (AML.T-codes) are handled by :func:`atlas.tag_blast_radius`.
@@ -247,9 +248,8 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
         br: A :class:`~agent_bom.models.BlastRadius` instance.
 
     Returns:
-        Sorted list of ATT&CK technique IDs from the live catalog.
-        Empty list when the catalog could not be fetched and no context
-        signals apply.
+        Sorted list of ATT&CK technique IDs from the pinned local catalog.
+        Empty list when no CWE or context signals apply.
     """
     from agent_bom.constants import high_risk_severities
     from agent_bom.mitre_fetch import get_cwe_to_attack

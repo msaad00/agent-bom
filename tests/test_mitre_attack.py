@@ -1,7 +1,7 @@
 """Tests for mitre_attack.py — MITRE ATT&CK Enterprise technique mapping.
 
-All technique IDs come from the live MITRE catalog (mitre_fetch.py).
-Tests mock the catalog fetch so they work offline and are fast.
+Technique IDs come from the shipped ATT&CK catalog and STIX-derived mappings.
+Tests mock catalog helpers so they work offline and stay deterministic.
 """
 
 from __future__ import annotations

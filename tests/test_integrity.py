@@ -170,7 +170,7 @@ def test_check_npm_provenance_non_slsa():
 def test_check_npm_provenance_none():
     with patch("agent_bom.integrity.request_with_retry", new_callable=AsyncMock, return_value=None):
         result = asyncio.run(check_npm_provenance("pkg", "1.0.0", AsyncMock()))
-        assert result is None
+        assert result == {"has_provenance": False, "status": "unavailable"}
 
 
 # ---------------------------------------------------------------------------
@@ -198,4 +198,4 @@ def test_check_pypi_provenance_success():
 def test_check_pypi_provenance_no_attestations():
     with patch("agent_bom.integrity.request_with_retry", new_callable=AsyncMock, return_value=None):
         result = asyncio.run(check_pypi_provenance("pkg", "1.0.0", AsyncMock()))
-        assert result is None
+        assert result == {"has_provenance": False, "status": "unavailable"}

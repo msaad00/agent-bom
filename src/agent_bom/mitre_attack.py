@@ -257,6 +257,7 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
 
     cwe_map = get_cwe_to_attack()
     techniques: set[str] = set()
+    mapped_from_cwe = False
 
     # 1. CWE → ATT&CK via CAPEC official data
     for cwe in br.vulnerability.cwe_ids:
@@ -264,7 +265,10 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
         cwe_norm = cwe.strip().upper()
         if not cwe_norm.startswith("CWE-"):
             cwe_norm = f"CWE-{cwe_norm}"
-        for tech in cwe_map.get(cwe_norm, []):
+        direct_mappings = cwe_map.get(cwe_norm, [])
+        if direct_mappings:
+            mapped_from_cwe = True
+        for tech in direct_mappings:
             techniques.add(tech)
 
     # 2. Context-based signals → tactic phases → catalog techniques
@@ -289,7 +293,7 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
             break
 
     # HIGH+ with no CWE IDs → initial-access is the baseline tactic
-    if is_high and not br.vulnerability.cwe_ids:
+    if is_high and not mapped_from_cwe:
         tactic_phases.add("initial-access")
 
     # Resolve tactic phases to catalog techniques

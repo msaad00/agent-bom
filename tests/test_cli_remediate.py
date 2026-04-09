@@ -208,3 +208,23 @@ def test_remediate_output_file(tmp_path):
     assert out_file.exists()
     data = json.loads(out_file.read_text())
     assert "remediation_plan" in data
+
+
+def test_remediate_quiet_suppresses_scan_chatter():
+    from agent_bom.cli._scan_runner import ScanResult
+    from agent_bom.models import AIBOMReport
+
+    blast_radii = [_make_mock_blast_radius()]
+    report = AIBOMReport(agents=[MagicMock()], blast_radii=blast_radii, findings=[])
+
+    def _fake_run_default_scan(config, con):  # noqa: ARG001
+        con.print("scan chatter that should stay hidden")
+        return ScanResult(agents=[MagicMock()], blast_radii=blast_radii, report=report, total_packages=1)
+
+    runner = CliRunner()
+    with patch("agent_bom.cli._remediate.run_default_scan", side_effect=_fake_run_default_scan):
+        result = runner.invoke(remediate_cmd, ["--demo", "--offline", "--quiet"])
+
+    assert result.exit_code == 0, result.output
+    assert "scan chatter" not in result.output
+    assert "flask" in result.output

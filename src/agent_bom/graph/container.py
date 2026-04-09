@@ -385,7 +385,14 @@ class UnifiedGraph:
                     queue.append((edge.target, path + [edge.target]))
         return None
 
-    def reachable_from(self, source: str, max_depth: int = 6) -> set[str]:
+    def reachable_from(
+        self,
+        source: str,
+        max_depth: int = 6,
+        *,
+        traversable_only: bool = False,
+        include_source: bool = True,
+    ) -> set[str]:
         """All node IDs reachable from source, direction-aware."""
         if source not in self.nodes:
             return set()
@@ -396,9 +403,13 @@ class UnifiedGraph:
             if depth >= max_depth:
                 continue
             for edge in self.adjacency.get(current, []):
+                if traversable_only and not edge.traversable:
+                    continue
                 if edge.target not in visited:
                     visited.add(edge.target)
                     queue.append((edge.target, depth + 1))
+        if not include_source:
+            visited.discard(source)
         return visited
 
     # ── Centrality ───────────────────────────────────────────────────────

@@ -28,6 +28,11 @@ CREATE TABLE IF NOT EXISTS graph_filter_presets (
 """
 
 
+def _escape_like_query(query: str) -> str:
+    """Escape SQL LIKE wildcards so search terms are treated literally."""
+    return query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 class GraphStoreProtocol(Protocol):
     """Shared graph store contract used by the API pipeline and routes."""
 
@@ -205,19 +210,19 @@ class SQLiteGraphStore:
             if not effective_scan_id:
                 return [], 0
 
-            like = f"%{query.lower()}%"
+            like = f"%{_escape_like_query(query.lower())}%"
             where = """
                 FROM graph_nodes
                 WHERE tenant_id = ? AND scan_id = ?
                   AND (
-                    lower(id) LIKE ? OR
-                    lower(label) LIKE ? OR
-                    lower(entity_type) LIKE ? OR
-                    lower(severity) LIKE ? OR
-                    lower(compliance_tags) LIKE ? OR
-                    lower(data_sources) LIKE ? OR
-                    lower(attributes) LIKE ? OR
-                    lower(dimensions) LIKE ?
+                    lower(id) LIKE ? ESCAPE '\\' OR
+                    lower(label) LIKE ? ESCAPE '\\' OR
+                    lower(entity_type) LIKE ? ESCAPE '\\' OR
+                    lower(severity) LIKE ? ESCAPE '\\' OR
+                    lower(compliance_tags) LIKE ? ESCAPE '\\' OR
+                    lower(data_sources) LIKE ? ESCAPE '\\' OR
+                    lower(attributes) LIKE ? ESCAPE '\\' OR
+                    lower(dimensions) LIKE ? ESCAPE '\\'
                   )
             """
             params: list[Any] = [tenant_id, effective_scan_id, like, like, like, like, like, like, like, like]

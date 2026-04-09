@@ -95,7 +95,7 @@ wandb = ["wandb>=0.16"]
 openai = ["openai>=1.12"]
 ai-enrich = ["litellm>=1.30"]
 graph = ["networkx>=3.0"]
-pdf = ["weasyprint>=62.0"]
+pdf = []
 postgres = ["psycopg[binary]>=3.1", "psycopg-pool>=3.1"]
 watch = ["watchdog>=4.0"]
 runtime = ["psutil>=5.9"]  # Process + container discovery (--include-processes)

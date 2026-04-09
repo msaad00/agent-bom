@@ -6,8 +6,8 @@ help:  ## Show this help message
 	@echo 'Available targets:'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-install:  ## Install agent-bom in development mode
-	pip install -e ".[dev]"
+install:  ## Install agent-bom with the full contributor test extras
+	pip install -e ".[dev-all]"
 
 install-all:  ## Install agent-bom with all development extras
 	pip install -e ".[dev-all]"

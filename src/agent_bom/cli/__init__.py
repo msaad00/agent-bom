@@ -53,6 +53,7 @@ def main():
     Quick start:
       agent-bom agents                               discover + scan local agents and MCP servers
       agent-bom agents -p .                          scan project manifests plus agent/MCP context
+      agent-bom where                                show MCP discovery paths checked on this machine
       agent-bom mesh --project .                     show the live agent/MCP topology
       agent-bom skills scan .                        scan skills and instruction files
       agent-bom skills rescan                        revisit previously cataloged skills
@@ -90,12 +91,13 @@ main.commands["scan"] = _scan_hidden
 
 from agent_bom.cli._inventory import completions_cmd, inventory, validate, where  # noqa: E402
 
-# inventory + where are under `mcp` group — no top-level duplicate
+# inventory remains under `mcp`; `where` is also exposed top-level for discovery.
 _validate_hidden = _copy.copy(validate)
 _validate_hidden.hidden = True  # Use `mcp validate` or `iac validate`
 _validate_hidden.name = "validate"
 main.commands["validate"] = _validate_hidden
 main.add_command(completions_cmd, "completions")
+main.add_command(where)
 
 from agent_bom.cli._check import check, guard_cmd, verify  # noqa: E402
 

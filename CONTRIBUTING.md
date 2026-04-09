@@ -22,12 +22,13 @@ agent-bom has 7,000+ monthly installs. Every contribution directly improves secu
 git clone https://github.com/msaad00/agent-bom.git
 cd agent-bom
 python3 -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -e ".[dev]"
+pip install -e ".[dev-all]"
 pre-commit install                                  # wires ruff + ruff-format hooks
 pytest tests/ -x -q                                # must be green before you start
 ```
 
 That's it. `agent-bom scan` now runs from your local checkout.
+Use `.[dev]` only for a lighter core workflow; `.[dev-all]` is the supported full-suite contributor setup.
 
 ---
 

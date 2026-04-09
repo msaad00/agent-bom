@@ -32,6 +32,9 @@ from agent_bom.models import Package, Severity, Vulnerability
 _logger = logging.getLogger(__name__)
 
 _LOCAL_SAST_CONFIG_CANDIDATES = (
+    ".agent-bom/rules",
+    ".agent-bom/rules.yaml",
+    ".agent-bom/rules.yml",
     ".agent-bom/sast-rules",
     ".agent-bom/sast-rules.yaml",
     ".agent-bom/sast-rules.yml",
@@ -195,7 +198,10 @@ def _resolve_sast_configs(scan_target: Path, config: str) -> list[str]:
         if not part:
             continue
         if part.startswith(("http://", "https://", "ftp://")):
-            raise SASTScanError("Remote semgrep config URLs are not allowed. Use 'auto', 'default', 'p/<ruleset>', or a local file path.")
+            raise SASTScanError(
+                "Remote semgrep config URLs are not allowed. Use 'auto', 'default', "
+                "'p/<ruleset>', a local file path, or ~/.agent-bom/rules/."
+            )
         if part == "default":
             resolved_configs.extend(_resolve_sast_configs(scan_target, "default"))
             continue

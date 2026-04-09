@@ -488,6 +488,16 @@ _JS_XSS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("dangerouslySetInnerHTML", re.compile(r"\bdangerouslySetInnerHTML\b")),
     ("innerHTML", re.compile(r"\.innerHTML\s*=")),
 ]
+_JS_TS_SQL_SINK_RE = re.compile(r"\b(?:query|execute|queryRawUnsafe|raw)\s*\(", re.IGNORECASE)
+_JS_TS_PATH_SINK_RE = re.compile(
+    r"\b(?:path\.(?:join|resolve|normalize)|(?:fs|fsp|fs\.promises)\.(?:readFile|readFileSync|writeFile|writeFileSync|open))\s*\(",
+    re.IGNORECASE,
+)
+_JS_TS_UNTRUSTED_DATA_RE = re.compile(
+    r"\b(?:user[A-Z_]\w*|user\w*|input|payload|req(?:uest)?\.(?:body|query|params)|ctx\.(?:body|query|params)|process\.env)\b",
+    re.IGNORECASE,
+)
+_JS_TS_DYNAMIC_STRING_RE = re.compile(r"\$\{|(?:^|[^=])[+]\s*|\.concat\s*\(", re.IGNORECASE)
 _JS_TS_FRAMEWORK_HINTS: dict[str, str] = {
     "@modelcontextprotocol/sdk": "MCP",
     "@anthropic-ai/sdk": "Anthropic",
@@ -1668,6 +1678,50 @@ def _scan_js_ts_file(
                     entrypoint=tool_name,
                     sink="require",
                     call_path=[tool_name, "require"] if tools else ["require"],
+                )
+            )
+
+    seen_js_sql_lines: set[int] = set()
+    seen_js_path_lines: set[int] = set()
+    for line_number, line in enumerate(source.splitlines(), start=1):
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        if (
+            line_number not in seen_js_sql_lines
+            and _JS_TS_SQL_SINK_RE.search(stripped)
+            and _JS_TS_DYNAMIC_STRING_RE.search(stripped)
+            and _JS_TS_UNTRUSTED_DATA_RE.search(stripped)
+        ):
+            seen_js_sql_lines.add(line_number)
+            flow_findings.append(
+                FlowFinding(
+                    category="js_ts_sql_query_construction",
+                    title="JS/TS source builds a dynamic SQL query",
+                    detail=(f"{rel_path} constructs a SQL-like query with dynamic or untrusted data before sending it to a database sink."),
+                    file_path=rel_path,
+                    line_number=line_number,
+                    entrypoint=tool_name,
+                    sink="query",
+                    call_path=[tool_name, "query"] if tools else ["query"],
+                )
+            )
+
+        if line_number not in seen_js_path_lines and _JS_TS_PATH_SINK_RE.search(stripped) and _JS_TS_UNTRUSTED_DATA_RE.search(stripped):
+            seen_js_path_lines.add(line_number)
+            flow_findings.append(
+                FlowFinding(
+                    category="js_ts_path_traversal_sink",
+                    title="JS/TS source uses untrusted input in a filesystem path sink",
+                    detail=(
+                        f"{rel_path} sends dynamic or untrusted path data into a filesystem operation, which can enable path traversal."
+                    ),
+                    file_path=rel_path,
+                    line_number=line_number,
+                    entrypoint=tool_name,
+                    sink="path",
+                    call_path=[tool_name, "path"] if tools else ["path"],
                 )
             )
 

@@ -466,6 +466,7 @@ _GO_TOOL_CALL_RE = re.compile(
     r"""\b(?:AddTool|RegisterTool|NewTool|Tool)\s*\(\s*(?P<quote>`|"|')(?P<name>[^`"']+)(?P=quote)""",
     re.IGNORECASE,
 )
+_GO_TOOL_START_RE = re.compile(r"""\b(?:AddTool|RegisterTool|NewTool|Tool)\s*\(""", re.IGNORECASE)
 _GO_DANGEROUS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("exec.Command", re.compile(r"\bexec\.Command(?:Context)?\s*\(")),
     ("os.WriteFile", re.compile(r"\bos\.WriteFile\s*\(")),
@@ -475,6 +476,46 @@ _GO_LLM_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("openai.ChatCompletion", re.compile(r"\bCreateChatCompletion\b")),
     ("anthropic.Messages", re.compile(r"\bMessages\.Create\b")),
 ]
+_GO_DANGEROUS_NAMES = frozenset(name for name, _ in [*_GO_DANGEROUS_PATTERNS, *_GO_LLM_PATTERNS])
+_GO_FRAMEWORK_HINTS: dict[str, str] = {
+    "github.com/modelcontextprotocol": "MCP",
+    "github.com/openai/openai-go": "OpenAI",
+    "github.com/anthropics/anthropic-sdk-go": "Anthropic",
+    "github.com/tmc/langchaingo": "LangChain",
+}
+_GO_IMPORT_SINGLE_RE = re.compile(
+    r"""^\s*import(?:\s+[A-Za-z_][\w]*)?\s+(?P<quote>`|"|')(?P<module>[^`"']+)(?P=quote)""",
+    re.MULTILINE,
+)
+_GO_IMPORT_BLOCK_RE = re.compile(r"""^\s*import\s*\((?P<body>[\s\S]*?)^\s*\)""", re.MULTILINE)
+_GO_IMPORT_LITERAL_RE = re.compile(r"""(?:(?P<alias>[A-Za-z_][\w]*)\s+)?(?P<quote>`|"|')(?P<module>[^`"']+)(?P=quote)""")
+_GO_FUNC_DECL_RE = re.compile(
+    r"""\bfunc\s+(?:\([^)]+\)\s*)?(?P<name>[A-Za-z_]\w*)\s*\([^)]*\)\s*(?:\([^)]*\)\s*)?(?:[A-Za-z_][\w\.\*\[\]]*\s*)?\{""",
+    re.MULTILINE,
+)
+_GO_CALL_RE = re.compile(r"""\b(?P<name>[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)\s*\(""")
+_GO_CALL_SKIP = frozenset({"if", "for", "switch", "select", "return", "defer", "go", "func", "make", "append", "len", "cap"})
+
+
+@dataclass
+class _GoCallSite:
+    name: str
+    line_number: int
+
+
+@dataclass
+class _GoFunctionAnalysis:
+    name: str
+    line_number: int
+    call_sites: list[_GoCallSite] = field(default_factory=list)
+    dangerous_call_sites: list[_GoCallSite] = field(default_factory=list)
+
+
+@dataclass
+class _GoToolRegistration:
+    tool_name: str
+    handler_name: str
+    line_number: int
 
 
 @dataclass
@@ -546,14 +587,27 @@ def _build_parent_map(tree: ast.AST) -> dict[ast.AST, ast.AST]:
 
 def _expr_contains_validation_hint(node: ast.AST) -> bool:
     """Return True when an expression contains validation/authorization hints."""
+
+    def is_literal_allowlist(expr: ast.AST) -> bool:
+        if isinstance(expr, (ast.Set, ast.List, ast.Tuple)):
+            return bool(expr.elts) and all(isinstance(elt, ast.Constant) for elt in expr.elts)
+        return False
+
     for child in ast.walk(node):
         if isinstance(child, ast.Name) and any(hint in child.id.lower() for hint in _VALIDATION_HINTS):
             return True
         if isinstance(child, ast.Attribute) and any(hint in child.attr.lower() for hint in _VALIDATION_HINTS):
             return True
+        if isinstance(child, ast.Compare):
+            if any(isinstance(op, ast.In) for op in child.ops) and any(
+                is_literal_allowlist(expr) for expr in [child.left, *child.comparators]
+            ):
+                return True
         if isinstance(child, ast.Call):
             call_name = _call_name(child.func).lower()
             if any(hint in call_name for hint in _VALIDATION_HINTS):
+                return True
+            if call_name in {"re.fullmatch", "re.match"} or call_name.endswith((".fullmatch", ".match")):
                 return True
     return False
 
@@ -737,6 +791,303 @@ def _source_js_modules(source: str) -> set[str]:
     modules = {match.group("module").strip() for match in _JS_IMPORT_MODULE_RE.finditer(source)}
     modules.update(match.group("module").strip() for match in _JS_REQUIRE_MODULE_RE.finditer(source))
     return {module for module in modules if module}
+
+
+def _frameworks_from_go_modules(module_names: set[str]) -> list[str]:
+    frameworks: set[str] = set()
+    for module_name in module_names:
+        normalized = module_name.strip().lower()
+        for prefix, framework in _GO_FRAMEWORK_HINTS.items():
+            if normalized == prefix or normalized.startswith(f"{prefix}/"):
+                frameworks.add(framework)
+    return sorted(frameworks)
+
+
+def _balanced_segment(source: str, open_index: int, *, open_char: str, close_char: str) -> tuple[str, int] | None:
+    if open_index < 0 or open_index >= len(source) or source[open_index] != open_char:
+        return None
+    depth = 0
+    in_quote = ""
+    escaped = False
+    for index in range(open_index, len(source)):
+        char = source[index]
+        if in_quote:
+            if in_quote != "`" and char == "\\" and not escaped:
+                escaped = True
+                continue
+            if char == in_quote and (in_quote == "`" or not escaped):
+                in_quote = ""
+            escaped = False
+            continue
+        if char in {'"', "'", "`"}:
+            in_quote = char
+            escaped = False
+            continue
+        if char == open_char:
+            depth += 1
+        elif char == close_char:
+            depth -= 1
+            if depth == 0:
+                return source[open_index : index + 1], index
+    return None
+
+
+def _line_number_from_index(source: str, index: int) -> int:
+    return source[:index].count("\n") + 1
+
+
+def _go_import_aliases(source: str) -> tuple[dict[str, str], set[str]]:
+    alias_map: dict[str, str] = {}
+    modules: set[str] = set()
+
+    def register(module_name: str, alias: str | None) -> None:
+        normalized = module_name.strip()
+        if not normalized:
+            return
+        modules.add(normalized)
+        module_tail = normalized.rsplit("/", 1)[-1]
+        canonical = module_tail.split(".", 1)[0]
+        if alias and alias not in {".", "_"}:
+            alias_map[alias] = canonical
+        alias_map.setdefault(canonical, canonical)
+
+    for match in _GO_IMPORT_SINGLE_RE.finditer(source):
+        register(match.group("module"), None)
+    for match in _GO_IMPORT_BLOCK_RE.finditer(source):
+        body = match.group("body")
+        for item in _GO_IMPORT_LITERAL_RE.finditer(body):
+            register(item.group("module"), item.group("alias"))
+
+    return alias_map, modules
+
+
+def _canonicalize_go_call_name(raw_name: str, alias_map: dict[str, str]) -> str:
+    if "." not in raw_name:
+        return raw_name
+    base, remainder = raw_name.split(".", 1)
+    canonical_base = alias_map.get(base, base)
+    return f"{canonical_base}.{remainder}"
+
+
+def _go_call_sites(body: str, *, line_offset: int, alias_map: dict[str, str]) -> list[_GoCallSite]:
+    call_sites: list[_GoCallSite] = []
+    for match in _GO_CALL_RE.finditer(body):
+        raw_name = match.group("name")
+        if raw_name in _GO_CALL_SKIP:
+            continue
+        canonical = _canonicalize_go_call_name(raw_name, alias_map)
+        if canonical in _GO_CALL_SKIP:
+            continue
+        call_sites.append(
+            _GoCallSite(
+                name=canonical,
+                line_number=line_offset + body[: match.start()].count("\n"),
+            )
+        )
+    return call_sites
+
+
+def _collect_go_functions(source: str, alias_map: dict[str, str]) -> dict[str, _GoFunctionAnalysis]:
+    functions: dict[str, _GoFunctionAnalysis] = {}
+    for match in _GO_FUNC_DECL_RE.finditer(source):
+        function_name = match.group("name")
+        brace_index = source.find("{", match.end() - 1)
+        if brace_index < 0:
+            continue
+        body_segment = _balanced_segment(source, brace_index, open_char="{", close_char="}")
+        if body_segment is None:
+            continue
+        body_text, _ = body_segment
+        line_number = _line_number_from_index(source, match.start())
+        body_line_offset = _line_number_from_index(source, brace_index) - 1
+        call_sites = _go_call_sites(body_text, line_offset=body_line_offset, alias_map=alias_map)
+        functions[function_name] = _GoFunctionAnalysis(
+            name=function_name,
+            line_number=line_number,
+            call_sites=call_sites,
+            dangerous_call_sites=[site for site in call_sites if site.name in _GO_DANGEROUS_NAMES],
+        )
+    return functions
+
+
+def _split_top_level_args(args_body: str) -> list[str]:
+    parts: list[str] = []
+    current: list[str] = []
+    paren_depth = brace_depth = bracket_depth = 0
+    in_quote = ""
+    escaped = False
+    for char in args_body:
+        if in_quote:
+            current.append(char)
+            if in_quote != "`" and char == "\\" and not escaped:
+                escaped = True
+                continue
+            if char == in_quote and (in_quote == "`" or not escaped):
+                in_quote = ""
+            escaped = False
+            continue
+        if char in {'"', "'", "`"}:
+            in_quote = char
+            current.append(char)
+            escaped = False
+            continue
+        if char == "(":
+            paren_depth += 1
+        elif char == ")":
+            paren_depth -= 1
+        elif char == "{":
+            brace_depth += 1
+        elif char == "}":
+            brace_depth -= 1
+        elif char == "[":
+            bracket_depth += 1
+        elif char == "]":
+            bracket_depth -= 1
+        elif char == "," and paren_depth == 0 and brace_depth == 0 and bracket_depth == 0:
+            part = "".join(current).strip()
+            if part:
+                parts.append(part)
+            current = []
+            continue
+        current.append(char)
+    tail = "".join(current).strip()
+    if tail:
+        parts.append(tail)
+    return parts
+
+
+def _collect_go_tool_registrations(
+    source: str,
+    *,
+    alias_map: dict[str, str],
+    functions: dict[str, _GoFunctionAnalysis],
+) -> list[_GoToolRegistration]:
+    registrations: list[_GoToolRegistration] = []
+    for match in _GO_TOOL_START_RE.finditer(source):
+        open_index = source.find("(", match.start())
+        args_segment = _balanced_segment(source, open_index, open_char="(", close_char=")")
+        if args_segment is None:
+            continue
+        args_text, _ = args_segment
+        args = _split_top_level_args(args_text[1:-1])
+        if not args:
+            continue
+        tool_name = ""
+        if args[0] and args[0][0] in {'"', "'", "`"} and args[0][-1] == args[0][0]:
+            tool_name = args[0][1:-1]
+        if not tool_name:
+            continue
+
+        handler_name = f"tool:{tool_name}"
+        inline_func_index = args_text.rfind("func(")
+        if inline_func_index >= 0:
+            inline_global_index = open_index + inline_func_index
+            brace_index = source.find("{", inline_global_index)
+            body_segment = _balanced_segment(source, brace_index, open_char="{", close_char="}") if brace_index >= 0 else None
+            if body_segment is not None:
+                body_text, _ = body_segment
+                body_line_offset = _line_number_from_index(source, brace_index) - 1
+                call_sites = _go_call_sites(body_text, line_offset=body_line_offset, alias_map=alias_map)
+                functions[handler_name] = _GoFunctionAnalysis(
+                    name=handler_name,
+                    line_number=_line_number_from_index(source, inline_global_index),
+                    call_sites=call_sites,
+                    dangerous_call_sites=[site for site in call_sites if site.name in _GO_DANGEROUS_NAMES],
+                )
+        else:
+            for candidate in reversed(args[1:]):
+                bare = candidate.strip().lstrip("&").strip()
+                if re.fullmatch(r"[A-Za-z_]\w*", bare):
+                    handler_name = bare
+                    break
+
+        registrations.append(
+            _GoToolRegistration(
+                tool_name=tool_name,
+                handler_name=handler_name,
+                line_number=_line_number_from_index(source, match.start()),
+            )
+        )
+    return registrations
+
+
+def _build_go_flow_findings(
+    *,
+    rel_path: str,
+    functions: dict[str, _GoFunctionAnalysis],
+    tool_registrations: list[_GoToolRegistration],
+) -> tuple[list[CallEdge], list[FlowFinding]]:
+    adjacency: dict[str, set[str]] = {name: set() for name in functions}
+    call_edges: list[CallEdge] = []
+    seen_edges: set[tuple[str, str, int]] = set()
+    function_names = set(functions)
+    for function_name, function in functions.items():
+        for call_site in function.call_sites:
+            tail = call_site.name.split(".")[-1]
+            callee = call_site.name if call_site.name in function_names else tail if tail in function_names else None
+            if not callee or callee == function_name:
+                continue
+            adjacency[function_name].add(callee)
+            edge_key = (function_name, callee, call_site.line_number)
+            if edge_key in seen_edges:
+                continue
+            seen_edges.add(edge_key)
+            call_edges.append(CallEdge(caller=function_name, callee=callee, file_path=rel_path, line_number=call_site.line_number))
+
+    for registration in tool_registrations:
+        edge_key = (registration.tool_name, registration.handler_name, registration.line_number)
+        if edge_key not in seen_edges:
+            seen_edges.add(edge_key)
+            call_edges.append(
+                CallEdge(
+                    caller=registration.tool_name,
+                    callee=registration.handler_name,
+                    file_path=rel_path,
+                    line_number=registration.line_number,
+                )
+            )
+
+    findings: list[FlowFinding] = []
+    seen_findings: set[tuple[str, str, int, str]] = set()
+    for registration in tool_registrations:
+        if registration.handler_name not in functions:
+            continue
+        queue: list[tuple[str, list[str]]] = [(registration.handler_name, [registration.handler_name])]
+        visited: set[str] = set()
+        while queue:
+            current_name, path = queue.pop(0)
+            if current_name in visited:
+                continue
+            visited.add(current_name)
+            current = functions[current_name]
+            for sink in current.dangerous_call_sites:
+                if sink.name not in _GO_DANGEROUS_NAMES:
+                    continue
+                dedup_key = (registration.tool_name, sink.name, sink.line_number, current_name)
+                if dedup_key in seen_findings:
+                    continue
+                seen_findings.add(dedup_key)
+                is_interprocedural = len(path) > 1
+                findings.append(
+                    FlowFinding(
+                        category="go_interprocedural_dangerous_flow" if is_interprocedural else "go_tool_dangerous_flow",
+                        title=(
+                            "Go tool reaches dangerous sink through helper flow"
+                            if is_interprocedural
+                            else "Go tool handler reaches dangerous sink"
+                        ),
+                        detail=f"Tool `{registration.tool_name}` reaches `{sink.name}` through Go code in {rel_path}.",
+                        file_path=rel_path,
+                        line_number=sink.line_number,
+                        entrypoint=registration.tool_name,
+                        sink=sink.name,
+                        call_path=[registration.tool_name] + path + [sink.name],
+                    )
+                )
+            for callee in sorted(adjacency.get(current_name, ())):
+                queue.append((callee, path + [callee]))
+
+    return call_edges, findings
 
 
 def _local_js_ts_callee(reference_name: str, function_names: set[str]) -> str | None:
@@ -981,20 +1332,34 @@ def _scan_js_ts_file(
 def _scan_go_file(
     file_path: Path,
     rel_path: str,
-) -> tuple[list[ExtractedPrompt], list[DetectedGuardrail], list[ToolSignature], list[FlowFinding]]:
+) -> tuple[
+    list[ExtractedPrompt],
+    list[DetectedGuardrail],
+    list[ToolSignature],
+    list[FlowFinding],
+    list[str],
+    list[CallEdge],
+]:
     """Extract prompt/tool/guardrail/dangerous-call signals from Go source files."""
     try:
         source = file_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return [], [], [], []
+        return [], [], [], [], [], []
 
     if len(source) > _MAX_FILE_SIZE:
-        return [], [], [], []
+        return [], [], [], [], [], []
 
     prompts: list[ExtractedPrompt] = []
     guardrails: list[DetectedGuardrail] = []
     tools: list[ToolSignature] = []
     flow_findings: list[FlowFinding] = []
+    frameworks: list[str] = []
+    call_edges: list[CallEdge] = []
+
+    alias_map, imported_modules = _go_import_aliases(source)
+    frameworks = _frameworks_from_go_modules(imported_modules)
+    functions = _collect_go_functions(source, alias_map)
+    tool_registrations = _collect_go_tool_registrations(source, alias_map=alias_map, functions=functions)
 
     for match in _GO_PROMPT_ASSIGN_RE.finditer(source):
         text = match.group("text").strip()
@@ -1013,10 +1378,13 @@ def _scan_go_file(
             )
         )
 
-    for match in _GO_TOOL_CALL_RE.finditer(source):
-        tool_name = match.group("name").strip()
-        if not tool_name:
+    seen_tool_names: set[tuple[str, int]] = set()
+    for registration in tool_registrations:
+        tool_name = registration.tool_name.strip()
+        dedup_key = (tool_name, registration.line_number)
+        if not tool_name or dedup_key in seen_tool_names:
             continue
+        seen_tool_names.add(dedup_key)
         tools.append(
             ToolSignature(
                 name=tool_name,
@@ -1024,7 +1392,7 @@ def _scan_go_file(
                 return_type="unknown",
                 description="Go MCP/tool registration",
                 file_path=rel_path,
-                line_number=source[: match.start()].count("\n") + 1,
+                line_number=registration.line_number,
                 decorators=["go-tool"],
                 is_async=False,
             )
@@ -1067,7 +1435,15 @@ def _scan_go_file(
                 )
             )
 
-    return prompts, guardrails, tools, flow_findings
+    go_call_edges, go_flow_findings = _build_go_flow_findings(
+        rel_path=rel_path,
+        functions=functions,
+        tool_registrations=tool_registrations,
+    )
+    call_edges.extend(go_call_edges)
+    flow_findings.extend(go_flow_findings)
+
+    return prompts, guardrails, tools, flow_findings, frameworks, call_edges
 
 
 def _analyze_file(
@@ -1851,11 +2227,13 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
 
     for go_file in go_files:
         rel = str(go_file.relative_to(project))
-        prompts, guardrails, tools, flow_findings = _scan_go_file(go_file, rel)
+        prompts, guardrails, tools, flow_findings, frameworks, go_call_edges = _scan_go_file(go_file, rel)
         result.prompts.extend(prompts)
         result.guardrails.extend(guardrails)
         result.tools.extend(tools)
         result.flow_findings.extend(flow_findings)
+        result.frameworks_detected.extend(frameworks)
+        result.call_edges.extend(go_call_edges)
 
     python_call_edges, interprocedural_findings = _build_call_graph(function_analyses)
     result.call_edges.extend(python_call_edges)

@@ -766,7 +766,10 @@ def iac_sast_options(fn):
                 default="auto",
                 show_default=True,
                 metavar="CONFIG",
-                help="Semgrep config for --code scans (e.g. 'p/security-audit'). Default: auto.",
+                help=(
+                    "Semgrep config for --code scans. Use 'auto', 'default' (local rules + auto), "
+                    "'p/<ruleset>', a local file/directory, or a comma-separated list."
+                ),
             ),
             click.option(
                 "--iac",

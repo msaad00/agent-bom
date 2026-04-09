@@ -102,6 +102,37 @@ def test_analyze_project_treats_validation_branch_as_guard(tmp_path: Path):
     assert not [finding for finding in result.flow_findings if finding.category == "tainted_dangerous_sink"]
 
 
+def test_analyze_project_treats_allowlist_branch_as_guard(tmp_path: Path):
+    (tmp_path / "agent.py").write_text(
+        "import subprocess\n\n"
+        "@tool\n"
+        "def execute(cmd):\n"
+        "    if cmd in {'ls', 'pwd'}:\n"
+        "        return subprocess.run(cmd, shell=True)\n"
+        "    return None\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert not [finding for finding in result.flow_findings if finding.category == "tainted_dangerous_sink"]
+
+
+def test_analyze_project_treats_regex_branch_as_guard(tmp_path: Path):
+    (tmp_path / "agent.py").write_text(
+        "import re\n"
+        "import subprocess\n\n"
+        "@tool\n"
+        "def execute(cmd):\n"
+        "    if re.fullmatch(r'[a-z]+', cmd):\n"
+        "        return subprocess.run(cmd, shell=True)\n"
+        "    return None\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert not [finding for finding in result.flow_findings if finding.category == "tainted_dangerous_sink"]
+
+
 def test_analyze_project_reports_tainted_prompt_and_sink_flows(tmp_path: Path):
     (tmp_path / "agent.py").write_text(
         "import subprocess\n\n"
@@ -158,6 +189,35 @@ def test_analyze_project_scans_go_source_for_tools_prompts_and_exec(tmp_path: Pa
     assert any(prompt.file_path == "server.go" for prompt in result.prompts)
     assert any(tool.name == "run_cmd" and tool.file_path == "server.go" for tool in result.tools)
     assert any(finding.category == "go_dangerous_call" and finding.sink == "exec.Command" for finding in result.flow_findings)
+
+
+def test_analyze_project_builds_go_call_edges_and_tool_flow(tmp_path: Path):
+    (tmp_path / "server.go").write_text(
+        "package main\n\n"
+        "import (\n"
+        '    "os/exec"\n'
+        '    "github.com/modelcontextprotocol/go-sdk/mcp"\n'
+        ")\n\n"
+        "func runShell(cmd string) error {\n"
+        '    return exec.Command("sh", "-c", cmd).Run()\n'
+        "}\n\n"
+        "func executeCommand(cmd string) error {\n"
+        "    return runShell(cmd)\n"
+        "}\n\n"
+        "func register(server *mcp.Server) {\n"
+        '    server.AddTool("run_cmd", executeCommand)\n'
+        "}\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert "MCP" in result.frameworks_detected
+    assert any(edge.caller == "executeCommand" and edge.callee == "runShell" for edge in result.call_edges)
+    assert any(edge.caller == "run_cmd" and edge.callee == "executeCommand" for edge in result.call_edges)
+    assert any(
+        finding.category == "go_interprocedural_dangerous_flow" and finding.entrypoint == "run_cmd" and finding.sink == "exec.Command"
+        for finding in result.flow_findings
+    )
 
 
 def test_code_command_json_includes_ai_component_inventory(tmp_path: Path):

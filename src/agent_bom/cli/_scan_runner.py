@@ -144,7 +144,7 @@ def run_default_scan(cfg: ScanConfig, con: "Console") -> ScanResult:
         image_tars=(),
         filesystem_paths=(),
         code_paths=(),
-        sast_config="default",
+        sast_config="auto",
         ai_inventory_paths=(),
         tf_dirs=(),
         gha_path=None,

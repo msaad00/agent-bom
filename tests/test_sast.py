@@ -370,6 +370,51 @@ def test_scan_code_happy_path(monkeypatch, tmp_path):
         assert len(pkg.vulnerabilities) > 0
 
 
+def test_scan_code_default_uses_local_rules_and_auto(monkeypatch, tmp_path):
+    """default config should prefer local rule bundles and still include Semgrep auto."""
+    monkeypatch.setattr("agent_bom.sast.shutil.which", lambda _: "/usr/bin/semgrep")
+    monkeypatch.setattr("agent_bom.sast._get_semgrep_version", lambda: "1.50.0")
+    rules_dir = tmp_path / ".agent-bom" / "sast-rules"
+    rules_dir.mkdir(parents=True)
+    (rules_dir / "custom.yaml").write_text("rules: []", encoding="utf-8")
+
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = json.dumps(EMPTY_SARIF)
+    run_mock = MagicMock(return_value=mock_result)
+    monkeypatch.setattr("agent_bom.sast.subprocess.run", run_mock)
+
+    _, sast_result = scan_code(str(tmp_path), config="default")
+
+    cmd = run_mock.call_args.args[0]
+    assert "--config" in cmd
+    assert str(rules_dir.resolve()) in cmd
+    assert "auto" in cmd
+    assert sast_result.config_used == f"{rules_dir.resolve()},auto"
+
+
+def test_scan_code_accepts_multiple_configs(monkeypatch, tmp_path):
+    """comma-separated configs should expand into multiple semgrep --config flags."""
+    monkeypatch.setattr("agent_bom.sast.shutil.which", lambda _: "/usr/bin/semgrep")
+    monkeypatch.setattr("agent_bom.sast._get_semgrep_version", lambda: "1.50.0")
+    custom_rule = tmp_path / "custom.yaml"
+    custom_rule.write_text("rules: []", encoding="utf-8")
+
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = json.dumps(EMPTY_SARIF)
+    run_mock = MagicMock(return_value=mock_result)
+    monkeypatch.setattr("agent_bom.sast.subprocess.run", run_mock)
+
+    _, sast_result = scan_code(str(tmp_path), config=f"p/security-audit,{custom_rule.name}")
+
+    cmd = run_mock.call_args.args[0]
+    assert cmd.count("--config") == 2
+    assert "p/security-audit" in cmd
+    assert str(custom_rule.resolve()) in cmd
+    assert sast_result.config_used == f"p/security-audit,{custom_rule.resolve()}"
+
+
 def test_scan_code_clean(monkeypatch, tmp_path):
     """scan_code with no findings returns empty packages."""
     monkeypatch.setattr("agent_bom.sast.shutil.which", lambda _: "/usr/bin/semgrep")

@@ -31,6 +31,15 @@ from agent_bom.models import Package, Severity, Vulnerability
 
 _logger = logging.getLogger(__name__)
 
+_LOCAL_SAST_CONFIG_CANDIDATES = (
+    ".agent-bom/sast-rules",
+    ".agent-bom/sast-rules.yaml",
+    ".agent-bom/sast-rules.yml",
+    ".semgrep",
+    ".semgrep.yaml",
+    ".semgrep.yml",
+)
+
 
 class SASTScanError(Exception):
     """Raised when SAST scanning fails."""
@@ -147,6 +156,75 @@ def _get_semgrep_version() -> Optional[str]:
     except Exception as exc:  # noqa: BLE001
         _logger.debug("Could not determine semgrep version: %s", exc)
         return None
+
+
+def _discover_local_sast_configs(scan_root: Path) -> list[str]:
+    search_roots = [scan_root]
+    home_root = Path.home()
+    if home_root not in search_roots:
+        search_roots.append(home_root)
+
+    discovered: list[str] = []
+    seen: set[Path] = set()
+    for root in search_roots:
+        for candidate in _LOCAL_SAST_CONFIG_CANDIDATES:
+            path = (root / candidate).expanduser()
+            if not path.exists():
+                continue
+            resolved = path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            discovered.append(str(resolved))
+    return discovered
+
+
+def _resolve_sast_configs(scan_target: Path, config: str) -> list[str]:
+    project_root = scan_target if scan_target.is_dir() else scan_target.parent
+    normalized = config.strip()
+
+    if normalized in {"default", ""}:
+        local_configs = _discover_local_sast_configs(project_root)
+        return [*local_configs, "auto"] if local_configs else ["auto"]
+    if normalized == "auto":
+        return ["auto"]
+
+    resolved_configs: list[str] = []
+    for raw_part in normalized.split(","):
+        part = raw_part.strip()
+        if not part:
+            continue
+        if part.startswith(("http://", "https://", "ftp://")):
+            raise SASTScanError("Remote semgrep config URLs are not allowed. Use 'auto', 'default', 'p/<ruleset>', or a local file path.")
+        if part == "default":
+            resolved_configs.extend(_resolve_sast_configs(scan_target, "default"))
+            continue
+        if part == "auto" or part.startswith("p/"):
+            resolved_configs.append(part)
+            continue
+
+        config_path = Path(part).expanduser()
+        if not config_path.is_absolute():
+            project_relative = (project_root / config_path).resolve()
+            cwd_relative = (Path.cwd() / config_path).resolve()
+            if project_relative.exists():
+                config_path = project_relative
+            elif cwd_relative.exists():
+                config_path = cwd_relative
+        if config_path.exists():
+            resolved_configs.append(str(config_path.resolve()))
+            continue
+
+        raise SASTScanError(f"SAST config does not exist: {part}")
+
+    deduped: list[str] = []
+    seen_parts: set[str] = set()
+    for part in resolved_configs:
+        if part in seen_parts:
+            continue
+        seen_parts.add(part)
+        deduped.append(part)
+    return deduped or ["auto"]
 
 
 def _parse_sarif_findings(sarif: dict) -> tuple[list[SASTFinding], int, int]:
@@ -301,8 +379,10 @@ def scan_code(
 
     Args:
         path: Directory or file to scan, or an existing ``.sarif`` / ``.sarif.json`` file.
-        config: Semgrep config (default ``"auto"`` = Semgrep Registry).
-                Can be a path to custom rules YAML or registry string.
+        config: Semgrep config selection. ``"auto"`` uses the Semgrep registry.
+                ``"default"`` prefers local rule bundles when present and falls
+                back to ``auto``. Can also be a local file/directory, a
+                ``p/<ruleset>`` registry ref, or a comma-separated list.
         timeout: Subprocess timeout in seconds.
 
     Returns:
@@ -325,20 +405,14 @@ def scan_code(
     if not resolved.exists():
         raise SASTScanError(f"Path does not exist: {path}")
 
-    # Validate config: only allow safe values (no URLs that could exfiltrate code)
-    if config.startswith(("http://", "https://", "ftp://")):
-        raise SASTScanError("Remote semgrep config URLs are not allowed. Use 'auto', 'p/<ruleset>', or a local file path.")
+    resolved_configs = _resolve_sast_configs(resolved, config)
 
     start = time.monotonic()
 
-    cmd = [
-        "semgrep",
-        "--sarif",
-        "--config",
-        config,
-        "--quiet",
-        str(resolved),
-    ]
+    cmd = ["semgrep", "--sarif"]
+    for resolved_config in resolved_configs:
+        cmd.extend(["--config", resolved_config])
+    cmd.extend(["--quiet", str(resolved)])
 
     _logger.info("Running SAST scan: %s", " ".join(cmd))
 
@@ -376,7 +450,7 @@ def scan_code(
         rules_loaded=rules_loaded,
         scan_time_seconds=round(elapsed, 2),
         semgrep_version=_get_semgrep_version(),
-        config_used=config,
+        config_used=",".join(resolved_configs),
     )
 
     _logger.info(

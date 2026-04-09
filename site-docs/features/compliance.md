@@ -2,6 +2,10 @@
 
 agent-bom maps scan findings to 10 security and compliance frameworks.
 
+Framework catalogs are pinned in-repo by default so scans stay deterministic,
+offline-friendly, and reproducible. Catalog refreshes can happen out of band;
+the scan hot path does not fetch MITRE or other framework data at runtime.
+
 ## Supported frameworks
 
 | Framework | Module | Focus |

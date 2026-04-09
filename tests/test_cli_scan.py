@@ -8,8 +8,6 @@ no network or filesystem side-effects escape the test.
 from __future__ import annotations
 
 import json
-import sys
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
@@ -261,26 +259,9 @@ def test_scan_format_html(tmp_path):
 
 
 def test_scan_format_pdf(tmp_path):
-    """--format pdf should produce a PDF file when the optional renderer is available."""
+    """--format pdf should produce a PDF file."""
     out = tmp_path / "report.pdf"
-
-    class _FakeHTML:
-        def __init__(self, string: str, base_url: str | None = None):
-            self.string = string
-            self.base_url = base_url
-
-        def write_pdf(self, target=None):
-            data = b"%PDF-1.7\nfake-report\n"
-            if target is None:
-                return data
-            from pathlib import Path
-
-            Path(target).write_bytes(data)
-            return None
-
-    fake_weasyprint = SimpleNamespace(HTML=_FakeHTML)
     with (
-        patch.dict(sys.modules, {"weasyprint": fake_weasyprint}),
         patch("agent_bom.cli.agents.discover_all", return_value=[]),
         patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
         patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),

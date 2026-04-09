@@ -19,6 +19,7 @@ from agent_bom.output import (
     export_json,
     export_junit,
     export_markdown,
+    export_pdf,
     export_prometheus,
     export_sarif,
     export_spdx,
@@ -88,6 +89,9 @@ def render_output(
             from agent_bom.output import to_html
 
             sys.stdout.write(to_html(report, blast_radii))
+        elif output_format == "pdf":
+            click.echo("Error: --format pdf requires --output/-o (cannot write PDF to stdout)", err=True)
+            sys.exit(2)
         elif output_format == "prometheus":
             sys.stdout.write(to_prometheus(report, blast_radii))
         elif output_format == "graph":
@@ -239,6 +243,10 @@ def render_output(
             webbrowser.open(f"file://{Path(out_path).resolve()}")
         else:
             con.print(f"  [dim]Open with:[/dim] open {out_path}")
+    elif output_format == "pdf":
+        out_path = output or "agent-bom-report.pdf"
+        export_pdf(report, out_path, blast_radii)
+        con.print(f"\n  [green]✓[/green] PDF report: {out_path}")
     elif output_format == "prometheus":
         out_path = output or "agent-bom-metrics.prom"
         export_prometheus(report, out_path, blast_radii)
@@ -305,6 +313,8 @@ def render_output(
             export_spdx(report, output)
         elif output.endswith(".html"):
             export_html(report, output, blast_radii)
+        elif output.endswith(".pdf"):
+            export_pdf(report, output, blast_radii)
         elif output.endswith(".xml"):
             export_junit(report, output, blast_radii)
         elif output.endswith(".csv"):

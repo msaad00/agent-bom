@@ -331,7 +331,27 @@ _FILE_MUTATION_CALLS = {
     "Path.rename",
     "Path.replace",
 }
+_PATH_ACCESS_CALLS = {
+    "open",
+    "Path.open",
+    "Path.read_text",
+    "Path.read_bytes",
+    "Path.write_text",
+    "Path.write_bytes",
+    "send_file",
+    "send_from_directory",
+}
 _SQL_CALLS = {"execute", "executemany", "cursor.execute", "cursor.executemany"}
+_UNSAFE_DESERIALIZATION_CALLS = {
+    "pickle.load",
+    "pickle.loads",
+    "yaml.load",
+    "yaml.unsafe_load",
+    "marshal.loads",
+    "dill.loads",
+    "jsonpickle.decode",
+}
+_XSS_CALLS = {"render_template_string", "Markup", "markupsafe.Markup"}
 _LLM_CALL_SUBSTRINGS = (
     "chat.completions.create",
     "responses.create",
@@ -356,6 +376,11 @@ _SANITIZER_CALLS = {
     "markupsafe.escape",
     "shlex.quote",
     "urllib.parse.quote",
+    "secure_filename",
+    "werkzeug.utils.secure_filename",
+    "safe_join",
+    "werkzeug.utils.safe_join",
+    "os.path.basename",
 }
 
 # ── Skip directories ─────────────────────────────────────────────────────────
@@ -442,6 +467,10 @@ _JS_FALLBACK_DANGEROUS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("Function", re.compile(r"\bnew\s+Function\s*\(")),
     ("child_process.exec", re.compile(r"\b(?:child_process|cp)\.exec(?:Sync)?\s*\(")),
     ("fs.writeFile", re.compile(r"\b(?:fs\.)?writeFile(?:Sync)?\s*\(")),
+]
+_JS_XSS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("dangerouslySetInnerHTML", re.compile(r"\bdangerouslySetInnerHTML\b")),
+    ("innerHTML", re.compile(r"\.innerHTML\s*=")),
 ]
 _JS_TS_FRAMEWORK_HINTS: dict[str, str] = {
     "@modelcontextprotocol/sdk": "MCP",
@@ -758,6 +787,54 @@ def _is_sql_call_name(call_name: str) -> bool:
     return lower_name in _SQL_CALLS or lower_name.endswith(".execute") or lower_name.endswith(".executemany")
 
 
+def _is_path_access_call_name(call_name: str) -> bool:
+    lower_name = call_name.lower()
+    if lower_name in {name.lower() for name in _PATH_ACCESS_CALLS}:
+        return True
+    return lower_name.endswith((".read_text", ".read_bytes", ".write_text", ".write_bytes", ".open"))
+
+
+def _is_unsafe_deserialization_call_name(call_name: str) -> bool:
+    lower_name = call_name.lower()
+    return lower_name in {name.lower() for name in _UNSAFE_DESERIALIZATION_CALLS}
+
+
+def _expr_name(expr: ast.AST | None) -> str:
+    if expr is None:
+        return ""
+    if isinstance(expr, ast.Name):
+        return expr.id
+    if isinstance(expr, ast.Attribute):
+        base = _expr_name(expr.value)
+        return f"{base}.{expr.attr}" if base else expr.attr
+    return ""
+
+
+def _uses_safe_yaml_loader(call: ast.Call) -> bool:
+    call_name = _call_name(call.func).lower()
+    if call_name != "yaml.load":
+        return False
+    safe_loader_names = {
+        "yaml.safeloader",
+        "safeloader",
+        "yaml.csafeloader",
+        "csafeloader",
+    }
+    for keyword in call.keywords:
+        if keyword.arg != "Loader":
+            continue
+        if _expr_name(keyword.value).lower() in safe_loader_names:
+            return True
+    if len(call.args) >= 2 and _expr_name(call.args[1]).lower() in safe_loader_names:
+        return True
+    return False
+
+
+def _is_xss_sink_call_name(call_name: str) -> bool:
+    lower_name = call_name.lower()
+    return lower_name in {name.lower() for name in _XSS_CALLS}
+
+
 def _is_untrusted_source_call(call_name: str) -> bool:
     lower_name = call_name.lower()
     return lower_name in _UNTRUSTED_SOURCE_CALLS or lower_name.endswith(".get_json")
@@ -775,6 +852,18 @@ def _first_match_line(source: str, pattern: str) -> int:
     if index < 0:
         return 1
     return source[:index].count("\n") + 1
+
+
+def _expr_uses_dynamic_string(expr: ast.AST | None) -> bool:
+    if expr is None:
+        return False
+    if isinstance(expr, ast.JoinedStr):
+        return True
+    if isinstance(expr, ast.BinOp) and isinstance(expr.op, (ast.Add, ast.Mod)):
+        return True
+    if isinstance(expr, ast.Call) and isinstance(expr.func, ast.Attribute) and expr.func.attr == "format":
+        return True
+    return False
 
 
 def _frameworks_from_js_modules(module_names: set[str]) -> list[str]:
@@ -1326,6 +1415,26 @@ def _scan_js_ts_file(
             )
         )
 
+    seen_xss_lines: set[int] = set()
+    for sink_name, pattern in _JS_XSS_PATTERNS:
+        for match in pattern.finditer(source):
+            line_number = source[: match.start()].count("\n") + 1
+            if line_number in seen_xss_lines:
+                continue
+            seen_xss_lines.add(line_number)
+            flow_findings.append(
+                FlowFinding(
+                    category="js_ts_xss_sink",
+                    title="JS/TS source writes dynamic HTML into the DOM",
+                    detail=f"{rel_path} uses `{sink_name}` in a pattern that can enable DOM XSS if fed untrusted input.",
+                    file_path=rel_path,
+                    line_number=line_number,
+                    entrypoint=tool_name,
+                    sink=sink_name,
+                    call_path=[tool_name, sink_name] if tools else [sink_name],
+                )
+            )
+
     return prompts, guardrails, tools, flow_findings, frameworks, call_edges
 
 
@@ -1583,6 +1692,13 @@ def _analyze_file(
                 parent_map=parent_map,
                 cfg_edges=_build_function_cfg_edges(node, rel_path),
             )
+            dynamic_string_names: set[str] = set()
+            for inner_stmt in ast.walk(node):
+                if isinstance(inner_stmt, ast.Assign) and _expr_uses_dynamic_string(inner_stmt.value):
+                    for target in inner_stmt.targets:
+                        dynamic_string_names.update(_target_names(target))
+                elif isinstance(inner_stmt, ast.AnnAssign) and _expr_uses_dynamic_string(inner_stmt.value):
+                    dynamic_string_names.update(_target_names(inner_stmt.target))
             for inner in ast.walk(node):
                 if not isinstance(inner, ast.Call):
                     continue
@@ -1605,6 +1721,42 @@ def _analyze_file(
                                 ),
                                 file_path=rel_path,
                                 line_number=line_num,
+                                entrypoint=node.name,
+                                sink=call_name,
+                                call_path=[node.name, call_name],
+                            )
+                        )
+                if _is_unsafe_deserialization_call_name(call_name) and not _uses_safe_yaml_loader(inner):
+                    flow_findings.append(
+                        FlowFinding(
+                            category="unsafe_deserialization",
+                            title="Unsafe deserialization primitive detected",
+                            detail=(
+                                f"{rel_path} calls `{call_name}` which can deserialize attacker-controlled content without a safe loader."
+                            ),
+                            file_path=rel_path,
+                            line_number=getattr(inner, "lineno", node.lineno),
+                            entrypoint=node.name,
+                            sink=call_name,
+                            call_path=[node.name, call_name],
+                        )
+                    )
+                if _is_sql_call_name(call_name):
+                    query_expr = inner.args[0] if inner.args else None
+                    query_is_dynamic = _expr_uses_dynamic_string(query_expr)
+                    if isinstance(query_expr, ast.Name) and query_expr.id in dynamic_string_names:
+                        query_is_dynamic = True
+                    if query_is_dynamic:
+                        flow_findings.append(
+                            FlowFinding(
+                                category="sql_string_construction",
+                                title="SQL query is built through string interpolation",
+                                detail=(
+                                    f"{rel_path} builds a SQL query dynamically before calling `{call_name}`, "
+                                    "which is a common SQL injection pattern."
+                                ),
+                                file_path=rel_path,
+                                line_number=getattr(inner, "lineno", node.lineno),
                                 entrypoint=node.name,
                                 sink=call_name,
                                 call_path=[node.name, call_name],
@@ -1853,8 +2005,14 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
             call_name = _call_name(call.func)
             arg_results = [expr_taint(arg, current_sanitized) for arg in call.args]
             kw_results = [(kw.arg, *expr_taint(kw.value, current_sanitized)) for kw in call.keywords]
-            arg_tainted = any(result[0] for result in arg_results) or any(result[1] for result in kw_results)
+            receiver_tainted = False
+            receiver_findings: list[FlowFinding] = []
+            if isinstance(call.func, ast.Attribute):
+                receiver_tainted, receiver_findings = expr_taint(call.func.value, current_sanitized)
+
+            arg_tainted = receiver_tainted or any(result[0] for result in arg_results) or any(result[1] for result in kw_results)
             nested_findings: list[FlowFinding] = []
+            nested_findings.extend(receiver_findings)
             for _, child_findings in arg_results:
                 nested_findings.extend(child_findings)
             for _, _, child_findings in kw_results:
@@ -1866,6 +2024,8 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
                 return False, nested_findings
 
             source_names: set[str] = set()
+            if receiver_tainted and isinstance(call.func, ast.Attribute):
+                source_names.update(name for name in _names_in_expr(call.func.value) if name in tainted_vars)
             for arg, (is_tainted, _) in zip(call.args, arg_results, strict=False):
                 if is_tainted:
                     source_names.update(name for name in _names_in_expr(arg) if name in tainted_vars)
@@ -1878,11 +2038,39 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
 
             if call_name and arg_tainted and not guarded:
                 line_number = getattr(call, "lineno", func.line_number)
-                if call_name in _DANGEROUS_CALLS:
+                if _is_path_access_call_name(call_name):
+                    nested_findings.append(
+                        _build_flow_finding(
+                            category="tainted_path_access",
+                            title="Untrusted data reaches a file-system path sink",
+                            detail=f"Untrusted data ({source_label}) reaches `{call_name}` in {func.file_path}.",
+                            file_path=func.file_path,
+                            line_number=line_number,
+                            entrypoint=call_path[0],
+                            sink=call_name,
+                            call_path=call_path + [call_name],
+                            source=source_label,
+                        )
+                    )
+                elif call_name in _DANGEROUS_CALLS:
                     nested_findings.append(
                         _build_flow_finding(
                             category="tainted_dangerous_sink",
                             title="Untrusted data reaches a dangerous sink",
+                            detail=f"Untrusted data ({source_label}) reaches `{call_name}` in {func.file_path}.",
+                            file_path=func.file_path,
+                            line_number=line_number,
+                            entrypoint=call_path[0],
+                            sink=call_name,
+                            call_path=call_path + [call_name],
+                            source=source_label,
+                        )
+                    )
+                elif _is_xss_sink_call_name(call_name):
+                    nested_findings.append(
+                        _build_flow_finding(
+                            category="tainted_xss_sink",
+                            title="Untrusted data reaches an HTML rendering sink",
                             detail=f"Untrusted data ({source_label}) reaches `{call_name}` in {func.file_path}.",
                             file_path=func.file_path,
                             line_number=line_number,

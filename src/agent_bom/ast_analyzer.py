@@ -26,13 +26,13 @@ from __future__ import annotations
 import ast
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
-    from agent_bom.js_ts_ast import JSTSFunction, JSTSToolRegistration
+    from agent_bom.js_ts_ast import JSTSAstAnalysis, JSTSFunction, JSTSToolRegistration
 
 # ── Data models ──────────────────────────────────────────────────────────────
 
@@ -1287,10 +1287,42 @@ def _build_go_flow_findings(
                         call_path=[registration.tool_name] + path + [sink.name],
                     )
                 )
-            for callee in sorted(adjacency.get(current_name, ())):
-                queue.append((callee, path + [callee]))
+            for next_callee_key in sorted(adjacency.get(current_name, ())):
+                queue.append((next_callee_key, path + [next_callee_key]))
 
     return call_edges, findings
+
+
+def _js_ts_module_name_for_rel_path(rel_path: str) -> str:
+    path = PurePosixPath(rel_path)
+    without_suffix = path.with_suffix("")
+    if without_suffix.name == "index" and len(without_suffix.parts) > 1:
+        without_suffix = without_suffix.parent
+    return without_suffix.as_posix()
+
+
+def _resolve_js_ts_import_module(module_name: str, current_module: str) -> str:
+    normalized = module_name.strip()
+    if not normalized.startswith("."):
+        return normalized
+
+    current_path = PurePosixPath(current_module)
+    candidate = (current_path.parent / normalized).as_posix()
+    if candidate.endswith((".js", ".jsx", ".ts", ".tsx")):
+        candidate = str(PurePosixPath(candidate).with_suffix(""))
+    if candidate.endswith("/index"):
+        candidate = candidate[: -len("/index")]
+    return PurePosixPath(candidate).as_posix()
+
+
+def _js_ts_function_key(module_name: str, function_name: str) -> str:
+    return f"{module_name}:{function_name}"
+
+
+def _js_ts_function_display_name(module_name: str, function_name: str, name_counts: Mapping[str, int]) -> str:
+    if not module_name or name_counts.get(function_name, 0) <= 1:
+        return function_name
+    return f"{module_name}.{function_name}"
 
 
 def _local_js_ts_callee(reference_name: str, function_names: set[str]) -> str | None:
@@ -1302,46 +1334,95 @@ def _local_js_ts_callee(reference_name: str, function_names: set[str]) -> str | 
     return None
 
 
+def _resolve_js_ts_callee_key(
+    reference_name: str,
+    function: JSTSFunction,
+    same_module_names: set[str],
+    function_registry: Mapping[str, JSTSFunction],
+) -> str | None:
+    local_callee = _local_js_ts_callee(reference_name, same_module_names)
+    if local_callee:
+        key = _js_ts_function_key(function.module_name, local_callee)
+        if key in function_registry:
+            return key
+
+    imported_function_ref = function.imported_function_refs.get(reference_name)
+    if imported_function_ref and imported_function_ref.exported_name:
+        key = _js_ts_function_key(imported_function_ref.module_name, imported_function_ref.exported_name)
+        if key in function_registry:
+            return key
+
+    if "." not in reference_name:
+        return None
+
+    alias, remainder = reference_name.split(".", 1)
+    imported_module_ref = function.imported_module_refs.get(alias)
+    if not imported_module_ref:
+        return None
+    exported_name = remainder.split(".", 1)[0]
+    key = _js_ts_function_key(imported_module_ref.module_name, exported_name)
+    if key in function_registry:
+        return key
+    return None
+
+
 def _build_js_ts_flow_findings(
     *,
-    rel_path: str,
     functions: Mapping[str, JSTSFunction],
     tool_registrations: Sequence[JSTSToolRegistration],
 ) -> tuple[list[CallEdge], list[FlowFinding]]:
     adjacency: dict[str, set[str]] = {name: set() for name in functions}
     call_edges: list[CallEdge] = []
     seen_edges: set[tuple[str, str, int]] = set()
-    function_names = set(functions)
+    name_counts: dict[str, int] = {}
+    same_module_names: dict[str, set[str]] = {}
+    for function in functions.values():
+        name_counts[function.name] = name_counts.get(function.name, 0) + 1
+        same_module_names.setdefault(function.module_name, set()).add(function.name)
 
-    for function_name, function in functions.items():
+    for function_key, function in functions.items():
         for call_site in getattr(function, "call_sites", []):
-            callee = _local_js_ts_callee(call_site.name, function_names)
-            if not callee or callee == function_name:
+            callee_key = _resolve_js_ts_callee_key(
+                call_site.name,
+                function,
+                same_module_names.get(function.module_name, set()),
+                functions,
+            )
+            if not callee_key or callee_key == function_key:
                 continue
-            adjacency[function_name].add(callee)
-            edge_key = (function_name, callee, call_site.line_number)
+            adjacency[function_key].add(callee_key)
+            caller_name = _js_ts_function_display_name(function.module_name, function.name, name_counts)
+            callee = functions[callee_key]
+            callee_name = _js_ts_function_display_name(callee.module_name, callee.name, name_counts)
+            edge_key = (caller_name, callee_name, call_site.line_number)
             if edge_key in seen_edges:
                 continue
             seen_edges.add(edge_key)
             call_edges.append(
                 CallEdge(
-                    caller=function_name,
-                    callee=callee,
-                    file_path=rel_path,
+                    caller=caller_name,
+                    callee=callee_name,
+                    file_path=function.file_path,
                     line_number=call_site.line_number,
                 )
             )
 
     for registration in tool_registrations:
-        edge_key = (registration.tool_name, registration.handler_name, registration.line_number)
+        handler = functions.get(registration.handler_name)
+        handler_name = registration.handler_name
+        file_path = ""
+        if handler is not None:
+            handler_name = _js_ts_function_display_name(handler.module_name, handler.name, name_counts)
+            file_path = handler.file_path
+        edge_key = (registration.tool_name, handler_name, registration.line_number)
         if edge_key in seen_edges:
             continue
         seen_edges.add(edge_key)
         call_edges.append(
             CallEdge(
                 caller=registration.tool_name,
-                callee=registration.handler_name,
-                file_path=rel_path,
+                callee=handler_name,
+                file_path=file_path,
                 line_number=registration.line_number,
             )
         )
@@ -1359,8 +1440,9 @@ def _build_js_ts_flow_findings(
                 continue
             visited.add(current_name)
             current = functions[current_name]
+            current_display_name = _js_ts_function_display_name(current.module_name, current.name, name_counts)
             for sink in getattr(current, "dangerous_call_sites", []):
-                dedup_key = (registration.tool_name, sink.name, sink.line_number, current_name)
+                dedup_key = (registration.tool_name, sink.name, sink.line_number, current_display_name)
                 if dedup_key in seen_findings:
                     continue
                 seen_findings.add(dedup_key)
@@ -1373,16 +1455,23 @@ def _build_js_ts_flow_findings(
                             if is_interprocedural
                             else "JS/TS tool handler reaches dangerous sink"
                         ),
-                        detail=f"Tool `{registration.tool_name}` reaches `{sink.name}` through JS/TS code in {rel_path}.",
-                        file_path=rel_path,
+                        detail=f"Tool `{registration.tool_name}` reaches `{sink.name}` through JS/TS code in {current.file_path}.",
+                        file_path=current.file_path,
                         line_number=sink.line_number,
                         entrypoint=registration.tool_name,
                         sink=sink.name,
-                        call_path=[registration.tool_name] + path + [sink.name],
+                        call_path=[
+                            registration.tool_name,
+                            *[
+                                _js_ts_function_display_name(functions[name].module_name, functions[name].name, name_counts)
+                                for name in path
+                            ],
+                            sink.name,
+                        ],
                     )
                 )
-            for callee in sorted(adjacency.get(current_name, ())):
-                queue.append((callee, path + [callee]))
+            for next_callee_key in sorted(adjacency.get(current_name, ())):
+                queue.append((next_callee_key, path + [next_callee_key]))
 
     return call_edges, findings
 
@@ -1397,15 +1486,16 @@ def _scan_js_ts_file(
     list[FlowFinding],
     list[str],
     list[CallEdge],
+    JSTSAstAnalysis | None,
 ]:
     """Extract prompt/tool/guardrail signals from JS/TS source files."""
     try:
         source = file_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return [], [], [], [], [], []
+        return [], [], [], [], [], [], None
 
     if len(source) > _MAX_FILE_SIZE:
-        return [], [], [], [], [], []
+        return [], [], [], [], [], [], None
 
     prompts: list[ExtractedPrompt] = []
     guardrails: list[DetectedGuardrail] = []
@@ -1413,6 +1503,7 @@ def _scan_js_ts_file(
     flow_findings: list[FlowFinding] = []
     frameworks: list[str] = _frameworks_from_js_modules(_source_js_modules(source))
     call_edges: list[CallEdge] = []
+    analysis_result = None
 
     for match in _JS_PROMPT_ASSIGN_RE.finditer(source):
         text = match.group("text").strip()
@@ -1474,13 +1565,52 @@ def _scan_js_ts_file(
 
     dangerous_call_names: set[str] = set()
     try:
-        from agent_bom.js_ts_ast import JSTSAstUnavailableError, analyze_js_ts_block
+        from agent_bom.js_ts_ast import JSImportRef, JSTSAstUnavailableError, JSTSToolRegistration, analyze_js_ts_block
 
         language_hint = {
             ".ts": "typescript",
             ".tsx": "tsx",
         }.get(file_path.suffix.lower(), "javascript")
         analysis = analyze_js_ts_block(source, language_hint=language_hint)
+        module_name = _js_ts_module_name_for_rel_path(rel_path)
+        analysis.imported_function_refs = {
+            alias: JSImportRef(
+                module_name=_resolve_js_ts_import_module(ref.module_name, module_name),
+                exported_name=ref.exported_name,
+            )
+            for alias, ref in analysis.imported_function_refs.items()
+        }
+        analysis.imported_module_refs = {
+            alias: JSImportRef(module_name=_resolve_js_ts_import_module(ref.module_name, module_name))
+            for alias, ref in analysis.imported_module_refs.items()
+        }
+        for function in analysis.functions.values():
+            function.module_name = module_name
+            function.file_path = rel_path
+            function.imported_function_refs = dict(analysis.imported_function_refs)
+            function.imported_module_refs = dict(analysis.imported_module_refs)
+        resolved_registrations: list[JSTSToolRegistration] = []
+        for registration in analysis.tool_registrations:
+            handler_name = registration.handler_name
+            imported_function_ref = analysis.imported_function_refs.get(handler_name)
+            if handler_name in analysis.functions:
+                handler_name = _js_ts_function_key(module_name, handler_name)
+            elif imported_function_ref and imported_function_ref.exported_name:
+                handler_name = _js_ts_function_key(imported_function_ref.module_name, imported_function_ref.exported_name)
+            elif "." in handler_name:
+                alias, remainder = handler_name.split(".", 1)
+                imported_module_ref = analysis.imported_module_refs.get(alias)
+                if imported_module_ref:
+                    handler_name = _js_ts_function_key(imported_module_ref.module_name, remainder.split(".", 1)[0])
+            resolved_registrations.append(
+                JSTSToolRegistration(
+                    tool_name=registration.tool_name,
+                    handler_name=handler_name,
+                    line_number=registration.line_number,
+                )
+            )
+        analysis.tool_registrations = resolved_registrations
+        analysis_result = analysis
         dangerous_call_names.update(analysis.call_names)
         frameworks = sorted(set(frameworks) | set(_frameworks_from_js_modules(analysis.imported_modules)))
 
@@ -1503,12 +1633,6 @@ def _scan_js_ts_file(
                 )
             )
 
-        call_edges, js_ts_flow_findings = _build_js_ts_flow_findings(
-            rel_path=rel_path,
-            functions=analysis.functions,
-            tool_registrations=analysis.tool_registrations,
-        )
-        flow_findings.extend(js_ts_flow_findings)
     except (ImportError, JSTSAstUnavailableError):
         for call_name, pattern in _JS_FALLBACK_DANGEROUS_PATTERNS:
             if pattern.search(source):
@@ -1528,6 +1652,24 @@ def _scan_js_ts_file(
                 call_path=[tool_name, call_name] if tools else [call_name],
             )
         )
+
+    if analysis_result is not None:
+        for line_number in analysis_result.dynamic_require_lines:
+            flow_findings.append(
+                FlowFinding(
+                    category="js_ts_dynamic_require",
+                    title="JS/TS source resolves a module name dynamically",
+                    detail=(
+                        f"{rel_path} uses `require(...)` with a non-literal module name, "
+                        "which weakens code review and can hide unsafe dependency loading."
+                    ),
+                    file_path=rel_path,
+                    line_number=line_number,
+                    entrypoint=tool_name,
+                    sink="require",
+                    call_path=[tool_name, "require"] if tools else ["require"],
+                )
+            )
 
     seen_xss_lines: set[int] = set()
     for sink_name, pattern in _JS_XSS_PATTERNS:
@@ -1549,7 +1691,7 @@ def _scan_js_ts_file(
                 )
             )
 
-    return prompts, guardrails, tools, flow_findings, frameworks, call_edges
+    return prompts, guardrails, tools, flow_findings, frameworks, call_edges, analysis_result
 
 
 def _scan_go_file(
@@ -2612,6 +2754,8 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     go_files = go_files[: max(0, _MAX_FILES - len(py_files) - len(js_ts_files))]
     result.files_analyzed = len(py_files) + len(js_ts_files) + len(go_files)
     function_analyses: list[_FunctionAnalysis] = []
+    js_ts_functions: dict[str, JSTSFunction] = {}
+    js_ts_tool_registrations: list[JSTSToolRegistration] = []
 
     for py_file in py_files:
         rel = str(py_file.relative_to(project))
@@ -2627,13 +2771,17 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
 
     for js_ts_file in js_ts_files:
         rel = str(js_ts_file.relative_to(project))
-        prompts, guardrails, tools, flow_findings, frameworks, js_ts_call_edges = _scan_js_ts_file(js_ts_file, rel)
+        prompts, guardrails, tools, flow_findings, frameworks, js_ts_call_edges, js_ts_analysis = _scan_js_ts_file(js_ts_file, rel)
         result.prompts.extend(prompts)
         result.guardrails.extend(guardrails)
         result.tools.extend(tools)
         result.flow_findings.extend(flow_findings)
         result.frameworks_detected.extend(frameworks)
         result.call_edges.extend(js_ts_call_edges)
+        if js_ts_analysis is not None:
+            for js_ts_function in js_ts_analysis.functions.values():
+                js_ts_functions[_js_ts_function_key(js_ts_function.module_name, js_ts_function.name)] = js_ts_function
+            js_ts_tool_registrations.extend(js_ts_analysis.tool_registrations)
 
     for go_file in go_files:
         rel = str(go_file.relative_to(project))
@@ -2649,6 +2797,12 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
     result.call_edges.extend(python_call_edges)
     result.flow_findings.extend(interprocedural_findings)
     result.flow_findings.extend(_build_taint_findings(function_analyses))
+    js_ts_call_edges, js_ts_interprocedural_findings = _build_js_ts_flow_findings(
+        functions=js_ts_functions,
+        tool_registrations=js_ts_tool_registrations,
+    )
+    result.call_edges.extend(js_ts_call_edges)
+    result.flow_findings.extend(js_ts_interprocedural_findings)
 
     deduped_call_edges: list[CallEdge] = []
     seen_call_edges: set[tuple[str, str, str, int]] = set()

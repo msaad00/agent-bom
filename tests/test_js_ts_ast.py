@@ -15,6 +15,8 @@ def test_analyze_js_ts_block_resolves_named_import_alias():
 
     assert "child_process.execSync" in analysis.call_names
     assert analysis.function_aliases["run"] == "child_process.execSync"
+    assert analysis.imported_function_refs["run"].module_name == "child_process"
+    assert analysis.imported_function_refs["run"].exported_name == "execSync"
 
 
 def test_analyze_js_ts_block_resolves_namespace_alias():
@@ -25,6 +27,7 @@ def test_analyze_js_ts_block_resolves_namespace_alias():
 
     assert "fs.promises.writeFile" in analysis.call_names
     assert analysis.namespace_aliases["fsp"] == "fs.promises"
+    assert analysis.imported_module_refs["fsp"].module_name == "fs/promises"
 
 
 def test_analyze_js_ts_block_resolves_destructured_require_alias():
@@ -76,3 +79,12 @@ def test_analyze_js_ts_block_collects_tool_handlers_and_imports():
     assert analysis.functions["executeCommand"].dangerous_call_sites[0].name == "child_process.execSync"
     assert analysis.tool_registrations[0].tool_name == "run_cmd"
     assert analysis.tool_registrations[0].handler_name == "tool:run_cmd"
+
+
+def test_analyze_js_ts_block_flags_dynamic_require():
+    analysis = analyze_js_ts_block(
+        "const moduleName = process.env.PLUGIN_NAME; const plugin = require(moduleName);",
+        language_hint="javascript",
+    )
+
+    assert analysis.dynamic_require_lines == [1]

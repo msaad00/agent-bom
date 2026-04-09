@@ -34,8 +34,19 @@ class JSTSAstAnalysis:
     function_aliases: dict[str, str] = field(default_factory=dict)
     namespace_aliases: dict[str, str] = field(default_factory=dict)
     imported_modules: set[str] = field(default_factory=set)
+    imported_function_refs: dict[str, "JSImportRef"] = field(default_factory=dict)
+    imported_module_refs: dict[str, "JSImportRef"] = field(default_factory=dict)
     functions: dict[str, "JSTSFunction"] = field(default_factory=dict)
     tool_registrations: list["JSTSToolRegistration"] = field(default_factory=list)
+    dynamic_require_lines: list[int] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class JSImportRef:
+    """A JS/TS import reference that can be resolved by higher layers."""
+
+    module_name: str
+    exported_name: str | None = None
 
 
 @dataclass
@@ -52,7 +63,11 @@ class JSTSFunction:
 
     name: str
     line_number: int
+    module_name: str = ""
+    file_path: str = ""
     param_names: list[str] = field(default_factory=list)
+    imported_function_refs: dict[str, JSImportRef] = field(default_factory=dict)
+    imported_module_refs: dict[str, JSImportRef] = field(default_factory=dict)
     call_sites: list[JSTSCallSite] = field(default_factory=list)
     dangerous_call_sites: list[JSTSCallSite] = field(default_factory=list)
 
@@ -257,6 +272,10 @@ def _collect_import_aliases(root: TreeSitterNode, source: bytes, analysis: JSTSA
                         continue
                     imported_name = identifiers[0]
                     alias = identifiers[-1]
+                    analysis.imported_function_refs[alias] = JSImportRef(
+                        module_name=_normalize_module_name(module_name),
+                        exported_name=imported_name,
+                    )
                     canonical = _canonical_function_call(module_name, imported_name)
                     if canonical:
                         analysis.function_aliases[alias] = canonical
@@ -266,10 +285,16 @@ def _collect_import_aliases(root: TreeSitterNode, source: bytes, analysis: JSTSA
                 ]
                 if not alias_nodes:
                     continue
+                analysis.imported_module_refs[_identifier_like_text(alias_nodes[-1], source)] = JSImportRef(
+                    module_name=_normalize_module_name(module_name)
+                )
                 canonical = _canonical_namespace(module_name)
                 if canonical:
                     analysis.namespace_aliases[_identifier_like_text(alias_nodes[-1], source)] = canonical
             elif child.type == "identifier":
+                analysis.imported_module_refs[_identifier_like_text(child, source)] = JSImportRef(
+                    module_name=_normalize_module_name(module_name)
+                )
                 canonical = _canonical_namespace(module_name)
                 if canonical:
                     analysis.namespace_aliases[_identifier_like_text(child, source)] = canonical
@@ -301,6 +326,7 @@ def _collect_require_aliases(root: TreeSitterNode, source: bytes, analysis: JSTS
 
         module_name = _require_module_name(value_node, source)
         if not module_name:
+            analysis.dynamic_require_lines.append(_line_number(value_node))
             continue
         analysis.imported_modules.add(_normalize_module_name(module_name))
 
@@ -316,15 +342,26 @@ def _collect_require_aliases(root: TreeSitterNode, source: bytes, analysis: JSTS
                         continue
                     imported_name = identifiers[0]
                     alias = identifiers[-1]
+                    analysis.imported_function_refs[alias] = JSImportRef(
+                        module_name=_normalize_module_name(module_name),
+                        exported_name=imported_name,
+                    )
                     canonical = _canonical_function_call(module_name, imported_name)
                     if canonical:
                         analysis.function_aliases[alias] = canonical
                 elif child.type in {"identifier", "shorthand_property_identifier_pattern"}:
                     imported_name = _identifier_like_text(child, source)
+                    analysis.imported_function_refs[imported_name] = JSImportRef(
+                        module_name=_normalize_module_name(module_name),
+                        exported_name=imported_name,
+                    )
                     canonical = _canonical_function_call(module_name, imported_name)
                     if canonical:
                         analysis.function_aliases[imported_name] = canonical
         elif name_node.type == "identifier":
+            analysis.imported_module_refs[_identifier_like_text(name_node, source)] = JSImportRef(
+                module_name=_normalize_module_name(module_name)
+            )
             canonical = _canonical_namespace(module_name)
             if canonical:
                 analysis.namespace_aliases[_identifier_like_text(name_node, source)] = canonical
@@ -403,7 +440,10 @@ def _register_function(
     analysis.functions[function_name] = JSTSFunction(
         name=function_name,
         line_number=line_number,
+        module_name="",
         param_names=_identifier_names(parameter_node, source),
+        imported_function_refs=dict(analysis.imported_function_refs),
+        imported_module_refs=dict(analysis.imported_module_refs),
         call_sites=call_sites,
         dangerous_call_sites=[site for site in call_sites if _is_dangerous_reference(site.name)],
     )

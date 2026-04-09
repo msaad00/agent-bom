@@ -130,7 +130,7 @@ cis_benchmark(provider="aws", region="us-east-1")
 
 - name: Upload to GitHub Security
   if: always()
-  uses: github/codeql-action/upload-sarif@v3
+  uses: github/codeql-action/upload-sarif@v4
   with:
     sarif_file: cis-results.sarif
 ```

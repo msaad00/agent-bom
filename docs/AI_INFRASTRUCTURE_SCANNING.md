@@ -132,7 +132,7 @@ agent-bom agents --nebius -f json -o nebius-ai-scan.json
     format: sarif
     output-file: gpu-scan.sarif
 
-- uses: github/codeql-action/upload-sarif@v3
+- uses: github/codeql-action/upload-sarif@v4
   with:
     sarif_file: gpu-scan.sarif
 ```

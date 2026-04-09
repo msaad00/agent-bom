@@ -17,8 +17,8 @@
   <rect width="960" height="520" rx="12" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/>
 
   <!-- Title -->
-  <text x="480" y="30" text-anchor="middle" class="title">What agent-bom discovers on your machine</text>
-  <text x="480" y="46" text-anchor="middle" class="subtitle">Auto-detected MCP topology: agents, servers, tools, and credential exposure</text>
+  <text x="480" y="30" text-anchor="middle" class="title">Unified graph explorer — current environment topology</text>
+  <text x="480" y="46" text-anchor="middle" class="subtitle">Persisted graph view of agents, MCP servers, tools, and credential exposure with shared-infrastructure context</text>
 
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <!-- LAYER LABELS                                                            -->
@@ -178,7 +178,7 @@
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <rect x="24" y="452" width="912" height="52" rx="10" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
 
-  <text x="52" y="474" font-size="10" font-weight="600" fill="#18181b">Key findings:</text>
+  <text x="52" y="472" font-size="10" font-weight="600" fill="#18181b">What this view tells you:</text>
 
   <circle cx="166" cy="471" r="4" fill="#f59e0b" opacity="0.5"/>
   <text x="178" y="475" class="legend-label">filesystem-mcp shared by 3 agents — single point of failure</text>
@@ -188,4 +188,5 @@
 
   <circle cx="806" cy="471" r="4" fill="#3b82f6" opacity="0.5"/>
   <text x="818" y="475" class="legend-label">3 credentials exposed</text>
+  <text x="52" y="493" class="legend-label">From the same graph you can pivot into diff, attack-path drilldown, impact, search, and compliance views.</text>
 </svg>

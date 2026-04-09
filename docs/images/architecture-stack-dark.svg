@@ -1,137 +1,133 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 440" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" fill="none">
   <style>
     text { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
-    .title { font-size: 16px; font-weight: 700; fill: #f4f4f5; }
-    .layer-name { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; }
-    .item { font-size: 9.5px; font-weight: 600; fill: #e4e4e7; }
-    .detail { font-size: 8px; font-weight: 400; fill: #71717a; }
-    .arrow-up { font-size: 12px; fill: #3f3f46; }
-    .side-label { font-size: 8px; font-weight: 700; letter-spacing: 0.08em; fill: #3f3f46; }
+    .title { font-size: 19px; font-weight: 800; fill: #f9fafb; }
+    .subtitle { font-size: 11px; font-weight: 500; fill: #9ca3af; }
+    .col-title { font-size: 11px; font-weight: 800; letter-spacing: 0.12em; }
+    .card-title { font-size: 12px; font-weight: 750; fill: #f3f4f6; }
+    .card-text { font-size: 9.5px; font-weight: 500; fill: #9ca3af; }
+    .chip { font-size: 8.5px; font-weight: 700; fill: #e5e7eb; }
+    .note-title { font-size: 10px; font-weight: 800; letter-spacing: 0.08em; fill: #f9fafb; }
+    .note-text { font-size: 9px; font-weight: 500; fill: #9ca3af; }
+    .metric { font-size: 10px; font-weight: 700; fill: #f3f4f6; }
   </style>
 
-  <rect width="800" height="440" rx="12" fill="#09090b"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="960" y2="560" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#09090b"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0L8 4L0 8Z" fill="#334155"/>
+    </marker>
+  </defs>
 
-  <text x="400" y="28" text-anchor="middle" class="title">Architecture stack</text>
+  <rect width="960" height="560" rx="16" fill="url(#bg)" stroke="#27272a"/>
 
-  <!-- ═══ LAYER 5 (top): INTERFACES ═══ -->
-  <rect x="100" y="48" width="600" height="48" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
-  <rect x="100" y="48" width="600" height="4" rx="2" fill="#3b82f6"/>
-  <text x="120" y="78" class="layer-name" fill="#3b82f6">INTERFACES</text>
+  <text x="480" y="34" text-anchor="middle" class="title">Architecture at a glance</text>
+  <text x="480" y="52" text-anchor="middle" class="subtitle">One pipeline from discovery and runtime inspection into a persisted graph, policy, and operator surfaces</text>
 
-  <rect x="230" y="60" width="56" height="24" rx="5" fill="#1e293b" stroke="#1e3a5f" stroke-width="0.5"/>
-  <text x="258" y="76" text-anchor="middle" class="item">CLI</text>
-  <rect x="294" y="60" width="72" height="24" rx="5" fill="#1e293b" stroke="#1e3a5f" stroke-width="0.5"/>
-  <text x="330" y="76" text-anchor="middle" class="item">MCP Server</text>
-  <rect x="374" y="60" width="64" height="24" rx="5" fill="#1e293b" stroke="#1e3a5f" stroke-width="0.5"/>
-  <text x="406" y="76" text-anchor="middle" class="item">REST API</text>
-  <rect x="446" y="60" width="56" height="24" rx="5" fill="#1e293b" stroke="#1e3a5f" stroke-width="0.5"/>
-  <text x="474" y="76" text-anchor="middle" class="item">Action</text>
-  <rect x="510" y="60" width="56" height="24" rx="5" fill="#1e293b" stroke="#1e3a5f" stroke-width="0.5"/>
-  <text x="538" y="76" text-anchor="middle" class="item">Proxy</text>
-  <rect x="574" y="60" width="76" height="24" rx="5" fill="#1e293b" stroke="#1e3a5f" stroke-width="0.5"/>
-  <text x="612" y="76" text-anchor="middle" class="item">Dashboard</text>
+  <path d="M242 214H268" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M472 214H498" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M702 214H728" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
 
-  <!-- Arrow -->
-  <text x="400" y="110" text-anchor="middle" class="arrow-up">&#x25B2;</text>
+  <rect x="28" y="78" width="202" height="354" rx="16" fill="#111827" stroke="#27272a"/>
+  <rect x="258" y="78" width="202" height="354" rx="16" fill="#111827" stroke="#27272a"/>
+  <rect x="488" y="78" width="202" height="354" rx="16" fill="#111827" stroke="#27272a"/>
+  <rect x="718" y="78" width="214" height="354" rx="16" fill="#111827" stroke="#27272a"/>
 
-  <!-- ═══ LAYER 4: CONTROL PLANE ═══ -->
-  <rect x="100" y="118" width="600" height="48" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
-  <rect x="100" y="118" width="600" height="4" rx="2" fill="#10b981"/>
-  <text x="120" y="148" class="layer-name" fill="#10b981">CONTROL PLANE</text>
+  <text x="44" y="106" class="col-title" fill="#c4b5fd">DISCOVERY + RUNTIME</text>
+  <text x="274" y="106" class="col-title" fill="#fb7185">SCANNERS + ANALYZERS</text>
+  <text x="504" y="106" class="col-title" fill="#34d399">UNIFIED GRAPH + CONTROL PLANE</text>
+  <text x="734" y="106" class="col-title" fill="#60a5fa">OPERATOR SURFACES</text>
 
-  <rect x="188" y="130" width="96" height="24" rx="5" fill="#14261e" stroke="#065f46" stroke-width="0.5"/>
-  <text x="236" y="146" text-anchor="middle" class="item">Postgres / Supabase</text>
-  <rect x="292" y="130" width="70" height="24" rx="5" fill="#14261e" stroke="#065f46" stroke-width="0.5"/>
-  <text x="327" y="146" text-anchor="middle" class="item">13x RLS</text>
-  <rect x="370" y="130" width="70" height="24" rx="5" fill="#14261e" stroke="#065f46" stroke-width="0.5"/>
-  <text x="405" y="146" text-anchor="middle" class="item">Audit HMAC</text>
-  <rect x="448" y="130" width="76" height="24" rx="5" fill="#14261e" stroke="#065f46" stroke-width="0.5"/>
-  <text x="486" y="146" text-anchor="middle" class="item">ClickHouse</text>
-  <rect x="532" y="130" width="54" height="24" rx="5" fill="#14261e" stroke="#065f46" stroke-width="0.5"/>
-  <text x="559" y="146" text-anchor="middle" class="item">OTLP</text>
-  <rect x="594" y="130" width="62" height="24" rx="5" fill="#14261e" stroke="#065f46" stroke-width="0.5"/>
-  <text x="625" y="146" text-anchor="middle" class="item">Metrics</text>
+  <rect x="44" y="122" width="170" height="58" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="58" y="144" class="card-title">Agents and MCP discovery</text>
+  <text x="58" y="160" class="card-text">Claude, Cursor, Windsurf, VS Code, Codex CLI, local configs, servers, tools, creds</text>
+  <rect x="58" y="166" width="52" height="18" rx="9" fill="#312e81"/><text x="84" y="178" text-anchor="middle" class="chip">agents</text>
+  <rect x="116" y="166" width="42" height="18" rx="9" fill="#312e81"/><text x="137" y="178" text-anchor="middle" class="chip">MCP</text>
+  <rect x="164" y="166" width="38" height="18" rx="9" fill="#312e81"/><text x="183" y="178" text-anchor="middle" class="chip">tools</text>
 
-  <text x="400" y="180" text-anchor="middle" class="arrow-up">&#x25B2;</text>
+  <rect x="44" y="194" width="170" height="58" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="58" y="216" class="card-title">Project and supply chain</text>
+  <text x="58" y="232" class="card-text">Lockfiles, manifests, SBOMs, model weights, images, IaC, cloud AI posture</text>
+  <rect x="58" y="238" width="62" height="18" rx="9" fill="#312e81"/><text x="89" y="250" text-anchor="middle" class="chip">lockfiles</text>
+  <rect x="126" y="238" width="48" height="18" rx="9" fill="#312e81"/><text x="150" y="250" text-anchor="middle" class="chip">images</text>
+  <rect x="180" y="238" width="24" height="18" rx="9" fill="#312e81"/><text x="192" y="250" text-anchor="middle" class="chip">IaC</text>
 
-  <!-- ═══ LAYER 3: ANALYSIS ENGINE ═══ -->
-  <rect x="100" y="188" width="600" height="48" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
-  <rect x="100" y="188" width="600" height="4" rx="2" fill="#f43f5e"/>
-  <text x="120" y="218" class="layer-name" fill="#f43f5e">ANALYSIS</text>
+  <rect x="44" y="266" width="170" height="76" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="58" y="288" class="card-title">Runtime protection paths</text>
+  <text x="58" y="304" class="card-text">MCP proxy detectors, Shield SDK hooks, drift / credential / response / sequence checks</text>
+  <rect x="58" y="312" width="42" height="18" rx="9" fill="#312e81"/><text x="79" y="324" text-anchor="middle" class="chip">proxy</text>
+  <rect x="106" y="312" width="44" height="18" rx="9" fill="#312e81"/><text x="128" y="324" text-anchor="middle" class="chip">Shield</text>
+  <rect x="156" y="312" width="44" height="18" rx="9" fill="#312e81"/><text x="178" y="324" text-anchor="middle" class="chip">policy</text>
 
-  <rect x="210" y="200" width="72" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
-  <text x="246" y="216" text-anchor="middle" class="item">Blast Radius</text>
-  <rect x="288" y="200" width="68" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
-  <text x="322" y="216" text-anchor="middle" class="item">Compliance</text>
-  <rect x="362" y="200" width="48" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
-  <text x="386" y="216" text-anchor="middle" class="item">Policy</text>
-  <rect x="416" y="200" width="70" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
-  <text x="451" y="216" text-anchor="middle" class="item">Enforcement</text>
-  <rect x="492" y="200" width="50" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
-  <text x="517" y="216" text-anchor="middle" class="item">Posture</text>
-  <rect x="548" y="200" width="48" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
-  <text x="572" y="216" text-anchor="middle" class="item">Assets</text>
-  <rect x="602" y="200" width="86" height="24" rx="5" fill="#2a1520" stroke="#881337" stroke-width="0.5"/>
-  <text x="645" y="216" text-anchor="middle" class="item">Context Graph</text>
+  <rect x="44" y="356" width="170" height="58" rx="12" fill="#1f172a" stroke="#3b0764"/>
+  <text x="58" y="378" class="note-title">What comes in</text>
+  <text x="58" y="394" class="note-text">Static inventory, runtime observations, findings, config posture, evidence bundles</text>
 
-  <text x="400" y="250" text-anchor="middle" class="arrow-up">&#x25B2;</text>
+  <rect x="274" y="122" width="170" height="58" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="288" y="144" class="card-title">Core scanning</text>
+  <text x="288" y="160" class="card-text">Package CVEs, malicious indicators, secrets, IaC, container and cloud posture</text>
+  <rect x="288" y="166" width="36" height="18" rx="9" fill="#4c0519"/><text x="306" y="178" text-anchor="middle" class="chip">CVE</text>
+  <rect x="330" y="166" width="52" height="18" rx="9" fill="#4c0519"/><text x="356" y="178" text-anchor="middle" class="chip">secrets</text>
+  <rect x="388" y="166" width="44" height="18" rx="9" fill="#4c0519"/><text x="410" y="178" text-anchor="middle" class="chip">cloud</text>
 
-  <!-- ═══ LAYER 2: VULNERABILITY DATABASES ═══ -->
-  <rect x="100" y="258" width="600" height="48" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
-  <rect x="100" y="258" width="600" height="4" rx="2" fill="#f59e0b"/>
-  <text x="120" y="288" class="layer-name" fill="#f59e0b">VULN DATA</text>
+  <rect x="274" y="194" width="170" height="76" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="288" y="216" class="card-title">AST and SAST depth</text>
+  <text x="288" y="232" class="card-text">Python, JS/TS, and Go structure; cross-file helper chains; taint-aware sink findings; SARIF import</text>
+  <rect x="288" y="240" width="34" height="18" rx="9" fill="#4c0519"/><text x="305" y="252" text-anchor="middle" class="chip">AST</text>
+  <rect x="328" y="240" width="40" height="18" rx="9" fill="#4c0519"/><text x="348" y="252" text-anchor="middle" class="chip">SAST</text>
+  <rect x="374" y="240" width="56" height="18" rx="9" fill="#4c0519"/><text x="402" y="252" text-anchor="middle" class="chip">taint</text>
 
-  <rect x="240" y="270" width="52" height="24" rx="5" fill="#292524" stroke="#78350f" stroke-width="0.5"/>
-  <text x="266" y="286" text-anchor="middle" class="item">OSV</text>
-  <rect x="300" y="270" width="48" height="24" rx="5" fill="#292524" stroke="#78350f" stroke-width="0.5"/>
-  <text x="324" y="286" text-anchor="middle" class="item">NVD</text>
-  <rect x="356" y="270" width="48" height="24" rx="5" fill="#292524" stroke="#78350f" stroke-width="0.5"/>
-  <text x="380" y="286" text-anchor="middle" class="item">EPSS</text>
-  <rect x="412" y="270" width="48" height="24" rx="5" fill="#292524" stroke="#78350f" stroke-width="0.5"/>
-  <text x="436" y="286" text-anchor="middle" class="item">KEV</text>
-  <rect x="468" y="270" width="52" height="24" rx="5" fill="#292524" stroke="#78350f" stroke-width="0.5"/>
-  <text x="494" y="286" text-anchor="middle" class="item">GHSA</text>
-  <rect x="528" y="270" width="58" height="24" rx="5" fill="#292524" stroke="#78350f" stroke-width="0.5"/>
-  <text x="557" y="286" text-anchor="middle" class="item">OWASP</text>
-  <rect x="594" y="270" width="68" height="24" rx="5" fill="#292524" stroke="#78350f" stroke-width="0.5"/>
-  <text x="628" y="286" text-anchor="middle" class="item">Scorecard</text>
+  <rect x="274" y="284" width="170" height="58" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="288" y="306" class="card-title">Risk interpretation</text>
+  <text x="288" y="322" class="card-text">Blast radius, CWE-aware impact, compliance mappings, trust posture, policy hooks</text>
 
-  <text x="400" y="320" text-anchor="middle" class="arrow-up">&#x25B2;</text>
+  <rect x="274" y="356" width="170" height="58" rx="12" fill="#3f1d0a" stroke="#7c2d12"/>
+  <text x="288" y="378" class="note-title">What gets produced</text>
+  <text x="288" y="394" class="note-text">Entities, relationships, findings, runtime events, compliance tags, attack-path facts</text>
 
-  <!-- ═══ LAYER 1 (bottom): INPUT SOURCES ═══ -->
-  <rect x="100" y="328" width="600" height="48" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
-  <rect x="100" y="328" width="600" height="4" rx="2" fill="#a78bfa"/>
-  <text x="120" y="358" class="layer-name" fill="#a78bfa">SOURCES</text>
+  <rect x="504" y="122" width="170" height="76" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="518" y="144" class="card-title">Canonical graph contract</text>
+  <text x="518" y="160" class="card-text">Entities, edges, findings, events, paths, snapshots with stable IDs, timestamps, OCSF alignment</text>
+  <rect x="518" y="168" width="54" height="18" rx="9" fill="#052e16"/><text x="545" y="180" text-anchor="middle" class="chip">entities</text>
+  <rect x="578" y="168" width="42" height="18" rx="9" fill="#052e16"/><text x="599" y="180" text-anchor="middle" class="chip">edges</text>
+  <rect x="626" y="168" width="38" height="18" rx="9" fill="#052e16"/><text x="645" y="180" text-anchor="middle" class="chip">diffs</text>
 
-  <rect x="178" y="340" width="64" height="24" rx="5" fill="#1a1028" stroke="#3a1e5f" stroke-width="0.5"/>
-  <text x="210" y="356" text-anchor="middle" class="item">MCP</text>
-  <rect x="250" y="340" width="72" height="24" rx="5" fill="#1a1028" stroke="#3a1e5f" stroke-width="0.5"/>
-  <text x="286" y="356" text-anchor="middle" class="item">Lockfiles</text>
-  <rect x="330" y="340" width="56" height="24" rx="5" fill="#1a1028" stroke="#3a1e5f" stroke-width="0.5"/>
-  <text x="358" y="356" text-anchor="middle" class="item">Docker</text>
-  <rect x="394" y="340" width="42" height="24" rx="5" fill="#1a1028" stroke="#3a1e5f" stroke-width="0.5"/>
-  <text x="415" y="356" text-anchor="middle" class="item">K8s</text>
-  <rect x="444" y="340" width="50" height="24" rx="5" fill="#1a1028" stroke="#3a1e5f" stroke-width="0.5"/>
-  <text x="469" y="356" text-anchor="middle" class="item">Cloud</text>
-  <rect x="502" y="340" width="58" height="24" rx="5" fill="#1a1028" stroke="#3a1e5f" stroke-width="0.5"/>
-  <text x="531" y="356" text-anchor="middle" class="item">Models</text>
-  <rect x="568" y="340" width="56" height="24" rx="5" fill="#1a1028" stroke="#3a1e5f" stroke-width="0.5"/>
-  <text x="596" y="356" text-anchor="middle" class="item">SBOMs</text>
-  <rect x="632" y="340" width="50" height="24" rx="5" fill="#1a1028" stroke="#3a1e5f" stroke-width="0.5"/>
-  <text x="657" y="356" text-anchor="middle" class="item">IaC</text>
+  <rect x="504" y="212" width="170" height="58" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="518" y="234" class="card-title">Persistence and tenancy</text>
+  <text x="518" y="250" class="card-text">SQLite or Postgres graph store, tenant-aware snapshots, presets, current-state resolution</text>
 
-  <!-- ═══ SECURITY SIDEBAR ═══ -->
-  <rect x="24" y="48" width="56" height="328" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
-  <rect x="24" y="48" width="4" height="328" rx="2" fill="#ef4444"/>
-  <text x="52" y="140" text-anchor="middle" class="side-label" fill="#ef4444" transform="rotate(-90, 52, 140)">SECURITY LAYER</text>
-  <text x="52" y="260" text-anchor="middle" class="detail" transform="rotate(-90, 52, 260)">redaction · validation · rate limits · signing</text>
+  <rect x="504" y="284" width="170" height="58" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="518" y="306" class="card-title">Control plane and analytics</text>
+  <text x="518" y="322" class="card-text">API keys, OIDC, RLS, audit log, ClickHouse analytics, OTEL tracing, health contracts</text>
 
-  <!-- ═══ RUNTIME SIDEBAR ═══ -->
-  <rect x="720" y="48" width="56" height="328" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
-  <rect x="772" y="48" width="4" height="328" rx="2" fill="#7c3aed"/>
-  <text x="748" y="130" text-anchor="middle" class="side-label" fill="#c4b5fd" transform="rotate(90, 748, 130)">DEPLOYMENT</text>
-  <text x="748" y="260" text-anchor="middle" class="detail" transform="rotate(90, 748, 260)">proxy · protect · watch · Helm · Docker · Action</text>
+  <rect x="504" y="356" width="170" height="58" rx="12" fill="#052e16" stroke="#065f46"/>
+  <text x="518" y="378" class="note-title">Graph views</text>
+  <text x="518" y="394" class="note-text">Current state, snapshot diff, attack paths, search, impact, compliance, delta alerts, OCSF-ready export</text>
 
-  <!-- ═══ BOTTOM LABEL ═══ -->
-  <text x="400" y="406" text-anchor="middle" font-size="9" font-weight="500" fill="#3f3f46" font-family="system-ui, sans-serif">Data flows bottom → top. Postgres RLS, analytics, tracing, and deployment are explicit parts of the stack.</text>
+  <rect x="734" y="122" width="182" height="58" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="748" y="144" class="card-title">CLI and CI</text>
+  <text x="748" y="160" class="card-text">Local scans, GitHub Action gates, Docker, SARIF, SBOM, badges, policy-friendly exit codes</text>
+
+  <rect x="734" y="194" width="182" height="58" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="748" y="216" class="card-title">API, dashboard, MCP server</text>
+  <text x="748" y="232" class="card-text">Unified graph explorer, search, node detail, attack-path drilldown, remote MCP tool surface</text>
+
+  <rect x="734" y="266" width="182" height="76" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="748" y="288" class="card-title">Operator workflows</text>
+  <text x="748" y="304" class="card-text">Current-state review, diff triage, runtime inspection, compliance evidence, release drift detection</text>
+  <rect x="748" y="312" width="48" height="18" rx="9" fill="#172554"/><text x="772" y="324" text-anchor="middle" class="chip">graph</text>
+  <rect x="802" y="312" width="46" height="18" rx="9" fill="#172554"/><text x="825" y="324" text-anchor="middle" class="chip">delta</text>
+  <rect x="854" y="312" width="46" height="18" rx="9" fill="#172554"/><text x="877" y="324" text-anchor="middle" class="chip">OCSF</text>
+
+  <rect x="734" y="356" width="182" height="58" rx="12" fill="#172554" stroke="#1d4ed8"/>
+  <text x="748" y="378" class="note-title">What users see</text>
+  <text x="748" y="394" class="note-text">One product path across CLI, API, dashboard, report export, and MCP integrations</text>
+
+  <rect x="28" y="454" width="904" height="78" rx="16" fill="#030712" stroke="#27272a"/>
+  <text x="52" y="482" font-size="10.5" font-weight="800" fill="#f9fafb" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">Why this matters</text>
+  <text x="52" y="502" class="metric">The same canonical graph now powers persisted scans, search, impact, diff, attack-path drilldown, OCSF export, and runtime-aware review.</text>
+  <text x="52" y="520" class="note-text">That keeps the CLI, API, dashboard, and integrations aligned instead of rebuilding separate graph models for each surface.</text>
 </svg>

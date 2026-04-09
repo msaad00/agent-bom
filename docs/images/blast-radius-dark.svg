@@ -26,8 +26,8 @@
   <rect width="960" height="500" rx="12" fill="#09090b"/>
 
   <!-- Title -->
-  <text x="480" y="30" text-anchor="middle" class="title">How one vulnerable package reaches your entire AI stack</text>
-  <text x="480" y="46" text-anchor="middle" class="subtitle">agent-bom maps the full blast radius: package → vulnerability → server → agent → credentials → tools</text>
+  <text x="480" y="30" text-anchor="middle" class="title">Attack-path drilldown from one vulnerable package</text>
+  <text x="480" y="46" text-anchor="middle" class="subtitle">The graph follows package → vulnerability → server → agent → credentials → tools so remediation can be fix-first, not guess-first</text>
 
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <!-- EDGES (drawn first so nodes sit on top)                                -->

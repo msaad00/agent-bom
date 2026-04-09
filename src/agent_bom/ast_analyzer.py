@@ -799,6 +799,37 @@ def _is_unsafe_deserialization_call_name(call_name: str) -> bool:
     return lower_name in {name.lower() for name in _UNSAFE_DESERIALIZATION_CALLS}
 
 
+def _expr_name(expr: ast.AST | None) -> str:
+    if expr is None:
+        return ""
+    if isinstance(expr, ast.Name):
+        return expr.id
+    if isinstance(expr, ast.Attribute):
+        base = _expr_name(expr.value)
+        return f"{base}.{expr.attr}" if base else expr.attr
+    return ""
+
+
+def _uses_safe_yaml_loader(call: ast.Call) -> bool:
+    call_name = _call_name(call.func).lower()
+    if call_name != "yaml.load":
+        return False
+    safe_loader_names = {
+        "yaml.safeloader",
+        "safeloader",
+        "yaml.csafeloader",
+        "csafeloader",
+    }
+    for keyword in call.keywords:
+        if keyword.arg != "Loader":
+            continue
+        if _expr_name(keyword.value).lower() in safe_loader_names:
+            return True
+    if len(call.args) >= 2 and _expr_name(call.args[1]).lower() in safe_loader_names:
+        return True
+    return False
+
+
 def _is_xss_sink_call_name(call_name: str) -> bool:
     lower_name = call_name.lower()
     return lower_name in {name.lower() for name in _XSS_CALLS}
@@ -1695,7 +1726,7 @@ def _analyze_file(
                                 call_path=[node.name, call_name],
                             )
                         )
-                if _is_unsafe_deserialization_call_name(call_name):
+                if _is_unsafe_deserialization_call_name(call_name) and not _uses_safe_yaml_loader(inner):
                     flow_findings.append(
                         FlowFinding(
                             category="unsafe_deserialization",

@@ -185,6 +185,14 @@ def test_analyze_project_reports_unsafe_deserialization(tmp_path: Path):
     assert any(finding.category == "unsafe_deserialization" and finding.sink == "yaml.load" for finding in result.flow_findings)
 
 
+def test_analyze_project_skips_safe_yaml_loader(tmp_path: Path):
+    (tmp_path / "agent.py").write_text("import yaml\n\ndef load_payload(data):\n    return yaml.load(data, Loader=yaml.SafeLoader)\n")
+
+    result = analyze_project(tmp_path)
+
+    assert not any(finding.category == "unsafe_deserialization" for finding in result.flow_findings)
+
+
 def test_analyze_project_tracks_helper_return_taint_and_cfg_edges(tmp_path: Path):
     (tmp_path / "agent.py").write_text(
         "import subprocess\n\n"

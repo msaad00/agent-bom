@@ -45,16 +45,16 @@ jobs:
             exit 1
           fi
 
-          # Fetch all tags sorted by last_updated (newest first)
+          # Fetch all tags sorted by last_updated, then keep the highest semver tags.
           ALL_TAGS=$(curl -sf "https://hub.docker.com/v2/repositories/${REPO}/tags/?page_size=100&ordering=-last_updated" \
             -H "Authorization: Bearer $TOKEN" | jq -r '.results[].name')
 
           # Tags to always keep
           KEEP_PATTERNS="^(latest|0)$"
 
-          # Build keep list: floating tags + last N semver tags
-          SEMVER_TAGS=$(echo "$ALL_TAGS" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
-          KEEP_SEMVER=$(echo "$SEMVER_TAGS" | head -n "${KEEP_COUNT}")
+          # Build keep list: floating tags + highest N semver tags
+          SEMVER_TAGS=$(printf '%s\n' "$ALL_TAGS" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -Vr || true)
+          KEEP_SEMVER=$(printf '%s\n' "$SEMVER_TAGS" | head -n "${KEEP_COUNT}")
 
           echo "=== Tags to KEEP ==="
           echo "  latest, 0 (floating)"
@@ -64,7 +64,8 @@ jobs:
           echo ""
           echo "=== Tags to DELETE ==="
 
-          for tag in $ALL_TAGS; do
+          while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
             # Skip floating tags
             if echo "$tag" | grep -qE "$KEEP_PATTERNS"; then
               continue
@@ -89,7 +90,7 @@ jobs:
                 echo "    ✗ failed (HTTP $HTTP_CODE)"
               fi
             fi
-          done
+          done <<< "$ALL_TAGS"
 
           echo ""
           if [ "$DRY_RUN" = "true" ]; then

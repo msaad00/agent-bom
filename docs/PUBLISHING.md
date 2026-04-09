@@ -94,8 +94,10 @@ clawhub install agent-bom
 Automated via `.github/workflows/release.yml` on each tag push.
 
 Images published:
-- `agentbom/agent-bom:v{version}`
+- `agentbom/agent-bom:{version}`
 - `agentbom/agent-bom:latest`
+
+The Git tag remains `v{version}`. Docker Hub image tags are published without the `v` prefix.
 
 ---
 

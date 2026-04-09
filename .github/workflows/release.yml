@@ -144,6 +144,8 @@ jobs:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
+          set -euo pipefail
+          SHORT_DESCRIPTION="Open security scanner for agentic infrastructure: agents, MCP, containers, cloud, and runtime."
           TOKEN=$(curl -sf -X POST "https://hub.docker.com/v2/users/login" \
             -H "Content-Type: application/json" \
             -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
@@ -153,19 +155,29 @@ jobs:
             exit 1
           fi
           echo "::add-mask::$TOKEN"
-          DESCRIPTION=$(cat DOCKER_HUB_README.md | jq -Rs .)
-          curl -s -o /dev/null -w "%{http_code}" -X PATCH \
+          DESCRIPTION=$(jq -Rs . < DOCKER_HUB_README.md)
+          SHORT_DESCRIPTION_JSON=$(printf '%s' "$SHORT_DESCRIPTION" | jq -Rs .)
+          RESPONSE_FILE=$(mktemp)
+          HTTP_CODE=$(curl -sS -o "$RESPONSE_FILE" -w "%{http_code}" -X PATCH \
             "https://hub.docker.com/v2/repositories/agentbom/agent-bom/" \
             -H "Authorization: Bearer ${TOKEN}" \
             -H "Content-Type: application/json" \
-            -d "{\"full_description\": ${DESCRIPTION}, \"description\": \"Open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime.\"}"
+            -d "{\"full_description\": ${DESCRIPTION}, \"description\": ${SHORT_DESCRIPTION_JSON}}")
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Docker Hub README sync failed (HTTP $HTTP_CODE)"
+            cat "$RESPONSE_FILE"
+            exit 1
+          fi
+          rm -f "$RESPONSE_FILE"
 
       - name: Clean up old Docker Hub tags (keep last 10)
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
+          set -euo pipefail
           REPO="agentbom/agent-bom"
+          CURRENT_VERSION="${{ steps.meta.outputs.version }}"
           TOKEN=$(curl -sf -X POST "https://hub.docker.com/v2/users/login" \
             -H "Content-Type: application/json" \
             -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
@@ -175,17 +187,23 @@ jobs:
 
           ALL_TAGS=$(curl -sf "https://hub.docker.com/v2/repositories/${REPO}/tags/?page_size=100&ordering=-last_updated" \
             -H "Authorization: Bearer $TOKEN" | jq -r '.results[].name')
-          SEMVER_TAGS=$(echo "$ALL_TAGS" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' || true)
-          KEEP=$(echo "$SEMVER_TAGS" | head -n 10)
+          SEMVER_TAGS=$(printf '%s\n' "$ALL_TAGS" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -Vr || true)
+          KEEP=$(printf '%s\n%s\n' "$CURRENT_VERSION" "$SEMVER_TAGS" | awk 'NF && !seen[$0]++' | head -n 10)
 
-          for tag in $ALL_TAGS; do
+          echo "Keeping Docker Hub tags:"
+          printf '  %s\n' latest 0
+          printf '%s\n' "$KEEP" | sed '/^$/d;s/^/  /'
+
+          while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
             echo "$tag" | grep -qE '^(latest|0)$' && continue
+            [ "$tag" = "$CURRENT_VERSION" ] && continue
             echo "$KEEP" | grep -qxF "$tag" && continue
             echo "Deleting $tag"
             curl -sf -o /dev/null -X DELETE \
               "https://hub.docker.com/v2/repositories/${REPO}/tags/${tag}" \
               -H "Authorization: Bearer $TOKEN" || true
-          done
+          done <<< "$ALL_TAGS"
 
   container-gate:
     name: Container release gate

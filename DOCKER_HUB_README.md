@@ -113,7 +113,7 @@ It covers:
 | Tag | Description |
 |-----|-------------|
 | `latest` | Most recent stable release |
-| `v0.76.0` | Current stable version (pinned) |
+| `0.76.0` | Current stable version (pinned) |
 
 ## Links
 

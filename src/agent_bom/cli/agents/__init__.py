@@ -424,9 +424,7 @@ def scan(
     _out.console = con
 
     if demo:
-        con.print(
-            "\n[bold yellow]Demo mode[/bold yellow] — scanning a curated sample agent + MCP environment with known-vulnerable packages.\n"
-        )
+        con.print("\n[bold yellow]Demo mode[/bold yellow] — curated agent + MCP sample with known-vulnerable packages.\n")
 
     # ── Offline mode: disable all network calls ──────────────────────────────
     if offline:
@@ -439,7 +437,7 @@ def scan(
         deps_dev = False
         snyk_flag = False
         if not quiet:
-            con.print("[dim]Offline mode — scanning against local DB only[/dim]")
+            con.print("[dim]Offline mode — local vulnerability DB only[/dim]")
 
     # ── Auto-offline: use local DB if synced recently (saves ~10s network) ──
     if not offline and not no_scan:
@@ -1202,6 +1200,7 @@ def scan(
                             blast_radius_depth=blast_radius_depth,
                             compliance_enabled=compliance,
                             resolve_transitive=transitive,
+                            show_scan_banner=False,
                         )
                     except IncompleteScanError as exc:
                         con.print(f"  [yellow]⚠[/yellow] {exc}")

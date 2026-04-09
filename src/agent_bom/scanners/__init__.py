@@ -1648,11 +1648,18 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
     return total_vulns
 
 
-async def scan_agents(agents: list[Agent], *, compliance_enabled: bool = False, resolve_transitive: bool = False) -> list[BlastRadius]:
+async def scan_agents(
+    agents: list[Agent],
+    *,
+    compliance_enabled: bool = False,
+    resolve_transitive: bool = False,
+    show_scan_banner: bool = True,
+) -> list[BlastRadius]:
     """Scan all agents' MCP server packages for vulnerabilities."""
     global compliance_mode  # noqa: PLW0603
     compliance_mode = compliance_enabled
-    console.print("\n[bold blue]🛡️  Scanning for vulnerabilities...[/bold blue]\n")
+    if show_scan_banner:
+        console.print("\n[bold blue]🛡️  Scanning for vulnerabilities...[/bold blue]\n")
 
     def _pkg_key(pkg: Package) -> str:
         return f"{pkg.ecosystem.lower()}:{normalize_package_name(pkg.name, pkg.ecosystem)}@{pkg.version}"
@@ -1681,7 +1688,8 @@ async def scan_agents(agents: list[Agent], *, compliance_enabled: bool = False, 
     # which normalizes by (ecosystem, normalized_name, version) fingerprint.
     unique_packages = deduplicate_packages(all_packages)
 
-    console.print(f"  Scanning {len(unique_packages)} unique packages across {len(agents)} agent(s)...")
+    if show_scan_banner:
+        console.print(f"  Scanning {len(unique_packages)} unique packages across {len(agents)} agent(s)...")
 
     total_vulns = await scan_packages(unique_packages, resolve_transitive=resolve_transitive)
 
@@ -1867,10 +1875,15 @@ async def scan_agents_with_enrichment(
     nvd_api_key: Optional[str] = None,
     enable_enrichment: bool = True,
     compliance_enabled: bool = False,
+    show_scan_banner: bool = True,
 ) -> list[BlastRadius]:
     """Scan agents and enrich vulnerabilities with NVD/EPSS/KEV data."""
     # First, do normal OSV scan
-    blast_radii = await scan_agents(agents, compliance_enabled=compliance_enabled)
+    blast_radii = await scan_agents(
+        agents,
+        compliance_enabled=compliance_enabled,
+        show_scan_banner=show_scan_banner,
+    )
 
     # Then enrich with external data
     if enable_enrichment and blast_radii:
@@ -2052,6 +2065,7 @@ def scan_agents_sync(
     blast_radius_depth: int = 1,
     compliance_enabled: bool = False,
     resolve_transitive: bool = False,
+    show_scan_banner: bool = True,
 ) -> list[BlastRadius]:
     """Synchronous wrapper for scan_agents."""
     if enable_enrichment:
@@ -2061,10 +2075,18 @@ def scan_agents_sync(
                 nvd_api_key,
                 enable_enrichment,
                 compliance_enabled=compliance_enabled,
+                show_scan_banner=show_scan_banner,
             )
         )
     else:
-        blast_radii = asyncio.run(scan_agents(agents, compliance_enabled=compliance_enabled, resolve_transitive=resolve_transitive))
+        blast_radii = asyncio.run(
+            scan_agents(
+                agents,
+                compliance_enabled=compliance_enabled,
+                resolve_transitive=resolve_transitive,
+                show_scan_banner=show_scan_banner,
+            )
+        )
     if blast_radius_depth > 1:
         expand_blast_radius_hops(blast_radii, agents, max_depth=blast_radius_depth)
     return blast_radii

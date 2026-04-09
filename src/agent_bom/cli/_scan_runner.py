@@ -89,10 +89,7 @@ def run_default_scan(cfg: ScanConfig, con: "Console") -> ScanResult:
             agent_data.setdefault("config_path", f"~/.config/{agent_data.get('agent_type', 'agent')}/config.json")
         iac_paths = (project,)
         if not cfg.quiet:
-            con.print(
-                "\n[bold yellow]Demo mode[/bold yellow] — scanning a curated sample"
-                " agent + MCP environment with known-vulnerable packages.\n"
-            )
+            con.print("\n[bold yellow]Demo mode[/bold yellow] — curated agent + MCP sample with known-vulnerable packages.\n")
 
     # ── Offline mode ─────────────────────────────────────────────────
     if cfg.offline:
@@ -101,7 +98,7 @@ def run_default_scan(cfg: ScanConfig, con: "Console") -> ScanResult:
         set_offline_mode(True)
         enrich = False
         if not cfg.quiet:
-            con.print("[dim]Offline mode — scanning against local DB only[/dim]")
+            con.print("[dim]Offline mode — local vulnerability DB only[/dim]")
 
     # ── Discovery ────────────────────────────────────────────────────
     ctx = ScanContext(con=con)

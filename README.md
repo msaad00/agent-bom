@@ -43,7 +43,13 @@ For the canonical product brief and verified repo-derived metrics, see [docs/PRO
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom blast radius demo" width="900" />
 </p>
 
-30-second terminal demo: a real `agent-bom` scan showing blast radius, fix-first remediation, and integrity verification in one flow. The GIF uses the built-in curated sample environment so the output stays reproducible across releases. For real scans, run `agent-bom agents` on your machine, or add `-p .` when you want project lockfiles and manifests folded into the same scan.
+Try the built-in demo first:
+
+```bash
+agent-bom agents --demo --offline
+```
+
+The GIF uses that curated sample so the output stays reproducible across releases. For real scans, run `agent-bom agents`, or add `-p .` to fold project lockfiles and manifests into the same scan.
 
 Current repo-derived counts live in [docs/PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md). The README keeps the product story stable and leaves fast-moving counts in the generated metrics appendix.
 
@@ -101,13 +107,11 @@ agent-bom serve                         # API + Next.js dashboard
 
 ## Why teams use it
 
-- MCP-aware blast radius instead of flat package CVE lists
-- AI-focused scanning across agents, instruction files, skills, runtime proxy traffic, and cloud AI surfaces
-- Unified graph explorer with persisted snapshots, current-state and diff views, attack-path drilldown, delta alert generation, OCSF-ready export, graph search, and impact views over the same OCSF-aligned graph contract
-- Project lockfile and manifest inventory with direct/transitive dependency visibility plus lockfile-backed versus declaration-only advisory depth in CLI and JSON output
-- Model and weight supply-chain checks with signed-artifact detection, bundle manifest and lineage visibility, HuggingFace provenance, and hash-verification visibility in CLI and JSON output
-- Real operator outputs: SARIF, CycloneDX, HTML, graphs, badges, JSON, API, dashboard, and MCP tools
-- Works as local CLI, CI gate, authenticated remote service, and enterprise deployment base
+- Blast radius that maps `CVE -> package -> MCP server -> agent -> credentials -> tools`
+- AI-native coverage across agents, skills, instruction files, runtime proxy traffic, containers, cloud, and IaC
+- Unified graph explorer with snapshots, diff, search, impact, attack paths, and OCSF-ready export
+- Supply-chain depth across lockfiles, transitive dependencies, model artifacts, provenance, and hash verification
+- One operator path across CLI, CI, API, dashboard, reports, and MCP tools
 
 ## Graph explorer
 
@@ -130,7 +134,7 @@ agent-bom mesh --project .         # Quick local topology view from the CLI
 
 ## Architecture at a glance
 
-The shipped product path is now one pipeline: discovery and runtime inspection feed the scanners, the scanners feed the unified graph, and the same graph powers CLI, API, dashboard, search, diff, impact, attack-path drilldown, and OCSF-ready export.
+One pipeline: discovery and runtime inspection feed the scanners, the scanners feed the unified graph, and the same graph powers CLI, API, dashboard, search, diff, impact, attack-path drilldown, and OCSF-ready export.
 
 <p align="center">
   <picture>

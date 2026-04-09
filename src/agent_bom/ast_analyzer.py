@@ -493,6 +493,25 @@ _JS_TS_PATH_SINK_RE = re.compile(
     r"\b(?:path\.(?:join|resolve|normalize)|(?:fs|fsp|fs\.promises)\.(?:readFile|readFileSync|writeFile|writeFileSync|open))\s*\(",
     re.IGNORECASE,
 )
+_JS_TS_SQL_CALL_SUFFIXES = ("query", "execute", "raw", "queryRawUnsafe")
+_JS_TS_HTTP_CALL_NAMES = frozenset(
+    {
+        "fetch",
+        "axios",
+        "axios.get",
+        "axios.post",
+        "axios.put",
+        "axios.delete",
+        "axios.request",
+        "got",
+        "got.get",
+        "got.post",
+        "got.put",
+        "got.delete",
+        "http.request",
+        "https.request",
+    }
+)
 _JS_TS_UNTRUSTED_DATA_RE = re.compile(
     r"\b(?:user[A-Z_]\w*|user\w*|input|payload|req(?:uest)?\.(?:body|query|params)|ctx\.(?:body|query|params)|process\.env)\b",
     re.IGNORECASE,
@@ -1344,6 +1363,35 @@ def _local_js_ts_callee(reference_name: str, function_names: set[str]) -> str | 
     return None
 
 
+def _js_ts_identifier_looks_untrusted(name: str) -> bool:
+    return bool(name and _JS_TS_UNTRUSTED_DATA_RE.search(name))
+
+
+def _is_js_ts_command_sink_call_name(call_name: str) -> bool:
+    lower_name = call_name.lower()
+    return lower_name == "eval" or lower_name == "function" or lower_name.startswith("child_process.")
+
+
+def _is_js_ts_dangerous_call_name(call_name: str) -> bool:
+    lower_name = call_name.lower()
+    return _is_js_ts_command_sink_call_name(call_name) or lower_name.startswith(("fs.", "fs.promises.", "bun.", "deno."))
+
+
+def _is_js_ts_http_sink_call_name(call_name: str) -> bool:
+    lower_name = call_name.lower()
+    return lower_name in _JS_TS_HTTP_CALL_NAMES
+
+
+def _is_js_ts_sql_sink_call_name(call_name: str) -> bool:
+    lower_name = call_name.lower()
+    return any(lower_name == suffix or lower_name.endswith(f".{suffix}") for suffix in _JS_TS_SQL_CALL_SUFFIXES)
+
+
+def _is_js_ts_path_sink_call_name(call_name: str) -> bool:
+    lower_name = call_name.lower()
+    return lower_name.startswith("fs.") or lower_name.startswith("fs.promises.") or lower_name.endswith(".open")
+
+
 def _resolve_js_ts_callee_key(
     reference_name: str,
     function: JSTSFunction,
@@ -1439,6 +1487,11 @@ def _build_js_ts_flow_findings(
 
     findings: list[FlowFinding] = []
     seen_findings: set[tuple[str, str, int, str]] = set()
+
+    def display_name(function_key: str) -> str:
+        function = functions[function_key]
+        return _js_ts_function_display_name(function.module_name, function.name, name_counts)
+
     for registration in tool_registrations:
         if registration.handler_name not in functions:
             continue
@@ -1450,7 +1503,7 @@ def _build_js_ts_flow_findings(
                 continue
             visited.add(current_name)
             current = functions[current_name]
-            current_display_name = _js_ts_function_display_name(current.module_name, current.name, name_counts)
+            current_display_name = display_name(current_name)
             for sink in getattr(current, "dangerous_call_sites", []):
                 dedup_key = (registration.tool_name, sink.name, sink.line_number, current_display_name)
                 if dedup_key in seen_findings:
@@ -1472,16 +1525,135 @@ def _build_js_ts_flow_findings(
                         sink=sink.name,
                         call_path=[
                             registration.tool_name,
-                            *[
-                                _js_ts_function_display_name(functions[name].module_name, functions[name].name, name_counts)
-                                for name in path
-                            ],
+                            *[display_name(name) for name in path],
                             sink.name,
                         ],
                     )
                 )
             for next_callee_key in sorted(adjacency.get(current_name, ())):
                 queue.append((next_callee_key, path + [next_callee_key]))
+
+    seen_taint_findings: set[tuple[str, str, str, int, str]] = set()
+    for registration in tool_registrations:
+        handler = functions.get(registration.handler_name)
+        if handler is None:
+            continue
+
+        initial_tainted = set(handler.param_names)
+        if not initial_tainted:
+            for call_site in handler.call_sites:
+                for arg_names in call_site.argument_names:
+                    initial_tainted.update(name for name in arg_names if _js_ts_identifier_looks_untrusted(name))
+        if not initial_tainted:
+            continue
+
+        taint_queue: list[tuple[str, list[str], frozenset[str]]] = [
+            (registration.handler_name, [registration.handler_name], frozenset(initial_tainted))
+        ]
+        visited_states: set[tuple[str, tuple[str, ...]]] = set()
+        while taint_queue:
+            current_name, path, tainted_params = taint_queue.pop(0)
+            visit_key = (current_name, tuple(sorted(tainted_params)))
+            if visit_key in visited_states:
+                continue
+            visited_states.add(visit_key)
+            current = functions[current_name]
+            current_tainted = set(tainted_params)
+            current_display_name = display_name(current_name)
+
+            for call_site in current.call_sites:
+                tainted_sources = sorted(
+                    {
+                        name
+                        for arg_names in call_site.argument_names
+                        for name in arg_names
+                        if name in current_tainted or _js_ts_identifier_looks_untrusted(name)
+                    }
+                )
+                if not tainted_sources:
+                    continue
+
+                sink_category = ""
+                title = ""
+                if _is_js_ts_command_sink_call_name(call_site.name):
+                    sink_category = "js_ts_tainted_command_execution"
+                    title = "JS/TS tool routes tainted input into command execution"
+                elif _is_js_ts_http_sink_call_name(call_site.name):
+                    sink_category = "js_ts_tainted_ssrf_sink"
+                    title = "JS/TS tool routes tainted input into an outbound HTTP sink"
+                elif _is_js_ts_sql_sink_call_name(call_site.name):
+                    sink_category = "js_ts_tainted_sql_query"
+                    title = "JS/TS tool routes tainted input into a SQL sink"
+                elif _is_js_ts_path_sink_call_name(call_site.name):
+                    sink_category = "js_ts_tainted_path_access"
+                    title = "JS/TS tool routes tainted input into a filesystem path sink"
+
+                if sink_category:
+                    taint_dedup_key = (sink_category, registration.tool_name, call_site.name, call_site.line_number, current_display_name)
+                    if taint_dedup_key not in seen_taint_findings:
+                        seen_taint_findings.add(taint_dedup_key)
+                        findings.append(
+                            FlowFinding(
+                                category=sink_category,
+                                title=title,
+                                detail=(
+                                    f"Tool `{registration.tool_name}` passes tainted JS/TS input into `{call_site.name}` "
+                                    f"in {current.file_path}."
+                                ),
+                                file_path=current.file_path,
+                                line_number=call_site.line_number,
+                                entrypoint=registration.tool_name,
+                                sink=call_site.name,
+                                call_path=[registration.tool_name, *[display_name(name) for name in path], call_site.name],
+                                source=", ".join(tainted_sources),
+                            )
+                        )
+
+                if _is_js_ts_dangerous_call_name(call_site.name):
+                    taint_dedup_key = (
+                        "js_ts_tainted_dangerous_sink",
+                        registration.tool_name,
+                        call_site.name,
+                        call_site.line_number,
+                        current_display_name,
+                    )
+                    if taint_dedup_key not in seen_taint_findings:
+                        seen_taint_findings.add(taint_dedup_key)
+                        findings.append(
+                            FlowFinding(
+                                category="js_ts_tainted_dangerous_sink",
+                                title="JS/TS tool routes tainted input into a dangerous sink",
+                                detail=(
+                                    f"Tool `{registration.tool_name}` passes tainted JS/TS input into `{call_site.name}` "
+                                    f"in {current.file_path}."
+                                ),
+                                file_path=current.file_path,
+                                line_number=call_site.line_number,
+                                entrypoint=registration.tool_name,
+                                sink=call_site.name,
+                                call_path=[registration.tool_name, *[display_name(name) for name in path], call_site.name],
+                                source=", ".join(tainted_sources),
+                            )
+                        )
+
+                callee_key = _resolve_js_ts_callee_key(
+                    call_site.name,
+                    current,
+                    same_module_names.get(current.module_name, set()),
+                    functions,
+                )
+                if not callee_key or callee_key == current_name:
+                    continue
+
+                callee = functions[callee_key]
+                tainted_callee_params: set[str] = set()
+                for index, arg_names in enumerate(call_site.argument_names):
+                    if index >= len(callee.param_names):
+                        break
+                    if any(name in current_tainted or _js_ts_identifier_looks_untrusted(name) for name in arg_names):
+                        tainted_callee_params.add(callee.param_names[index])
+                if tainted_callee_params:
+                    taint_queue.append((callee_key, path + [callee_key], frozenset(tainted_callee_params)))
 
     return call_edges, findings
 

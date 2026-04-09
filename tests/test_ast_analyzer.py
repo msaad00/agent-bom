@@ -105,6 +105,76 @@ def test_analyze_project_builds_cross_file_js_ts_module_alias_flow(tmp_path: Pat
         )
 
 
+def test_analyze_project_reports_js_ts_tainted_command_execution(tmp_path: Path):
+    (tmp_path / "helpers.ts").write_text(
+        'import { execSync as run } from "node:child_process";\nexport function runShell(command) {\n  return run(command);\n}\n'
+    )
+    (tmp_path / "server.ts").write_text(
+        'import { runShell } from "./helpers";\nserver.tool("run_cmd", "Run a command", async (userInput) => runShell(userInput));\n'
+    )
+
+    result = analyze_project(tmp_path)
+
+    if _js_ts_parser_available():
+        assert any(
+            finding.category == "js_ts_tainted_command_execution"
+            and finding.entrypoint == "run_cmd"
+            and finding.sink == "child_process.execSync"
+            for finding in result.flow_findings
+        )
+        assert any(
+            finding.category == "js_ts_tainted_dangerous_sink" and finding.entrypoint == "run_cmd" and finding.source == "userInput"
+            for finding in result.flow_findings
+        )
+
+
+def test_analyze_project_reports_js_ts_tainted_ssrf_sink(tmp_path: Path):
+    (tmp_path / "http.ts").write_text("export function fetchRemote(url) {\n  return fetch(url);\n}\n")
+    (tmp_path / "server.ts").write_text(
+        'import { fetchRemote } from "./http";\nserver.tool("probe_url", "Probe a URL", async (inputUrl) => fetchRemote(inputUrl));\n'
+    )
+
+    result = analyze_project(tmp_path)
+
+    if _js_ts_parser_available():
+        assert any(
+            finding.category == "js_ts_tainted_ssrf_sink" and finding.entrypoint == "probe_url" and finding.sink == "fetch"
+            for finding in result.flow_findings
+        )
+
+
+def test_analyze_project_reports_js_ts_tainted_sql_query(tmp_path: Path):
+    (tmp_path / "db.ts").write_text("export function queryUser(db, userInput) {\n  return db.query(userInput);\n}\n")
+    (tmp_path / "server.ts").write_text(
+        'import { queryUser } from "./db";\nserver.tool("lookup", "Lookup a user", async (inputValue) => queryUser(db, inputValue));\n'
+    )
+
+    result = analyze_project(tmp_path)
+
+    if _js_ts_parser_available():
+        assert any(
+            finding.category == "js_ts_tainted_sql_query" and finding.entrypoint == "lookup" and finding.sink == "db.query"
+            for finding in result.flow_findings
+        )
+
+
+def test_analyze_project_reports_js_ts_tainted_path_access(tmp_path: Path):
+    (tmp_path / "fs.ts").write_text(
+        'import * as fs from "node:fs";\nexport function readTarget(targetPath) {\n  return fs.readFile(targetPath);\n}\n'
+    )
+    (tmp_path / "server.ts").write_text(
+        'import { readTarget } from "./fs";\nserver.tool("read_any", "Read a file", async (requestedPath) => readTarget(requestedPath));\n'
+    )
+
+    result = analyze_project(tmp_path)
+
+    if _js_ts_parser_available():
+        assert any(
+            finding.category == "js_ts_tainted_path_access" and finding.entrypoint == "read_any" and finding.sink == "fs.readFile"
+            for finding in result.flow_findings
+        )
+
+
 def test_analyze_project_builds_interprocedural_dangerous_flow(tmp_path: Path):
     (tmp_path / "agent.py").write_text(
         "import subprocess\n\n"

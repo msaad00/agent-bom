@@ -100,6 +100,7 @@ nav:
   - Reference:
       - MCP Tools: reference/mcp-tools.md
       - CLI Commands: reference/cli.md
+      - CLI Debug Guide: reference/cli-debug.md
       - Configuration: reference/configuration.md
   - API Reference:
       - Models: api/models.md

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import logging
 import threading
 from pathlib import Path
@@ -38,6 +39,24 @@ def _make_console(quiet: bool = False, output_format: str = "console", no_color:
     if output_format != "console":
         return Console(stderr=True, no_color=no_color)
     return Console(no_color=no_color)
+
+
+def _sync_runtime_consoles(console: Console) -> None:
+    """Point shared module-level consoles at the active CLI console."""
+    for module_name in (
+        "agent_bom.scanners",
+        "agent_bom.enrichment",
+        "agent_bom.resolver",
+        "agent_bom.transitive",
+        "agent_bom.parsers",
+    ):
+        try:
+            module = importlib.import_module(module_name)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("Could not sync console for %s: %s", module_name, exc)
+            continue
+        if hasattr(module, "console"):
+            setattr(module, "console", console)
 
 
 def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list:

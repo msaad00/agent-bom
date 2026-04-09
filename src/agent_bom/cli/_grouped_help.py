@@ -20,7 +20,7 @@ COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
         ),
         (
             "MCP",
-            ["mcp"],
+            ["mcp", "where"],
         ),
         (
             "Reporting",

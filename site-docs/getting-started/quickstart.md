@@ -38,9 +38,9 @@ instruction surfaces.
 ## Check a specific package before installing
 
 ```bash
-agent-bom check langchain --ecosystem pypi
-agent-bom check express --ecosystem npm
-agent-bom check tensorflow --ecosystem pypi
+agent-bom check langchain@0.2.17 --ecosystem pypi
+agent-bom check express@4.18.2 --ecosystem npm
+agent-bom check tensorflow@2.17.0 --ecosystem pypi
 ```
 
 ## Export machine-readable output
@@ -79,9 +79,11 @@ agent-bom iac Dockerfile k8s/ infra/main.tf
 ## Inspect discovery paths
 
 ```bash
-agent-bom mcp where
+agent-bom where
 agent-bom mcp inventory
 ```
+
+`agent-bom mcp where` still works when you want the grouped MCP subcommand form.
 
 ## Output formats
 
@@ -91,4 +93,6 @@ agent-bom agents -f json     # JSON report
 agent-bom agents -f html     # HTML dashboard
 agent-bom agents -f sarif    # SARIF for GitHub Code Scanning
 agent-bom agents -f csv      # CSV export
+agent-bom check requests@2.33.0 -e pypi -f json   # single-package JSON verdict
+agent-bom report history -f json                  # saved scan metadata for CI
 ```

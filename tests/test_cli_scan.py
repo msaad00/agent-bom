@@ -44,6 +44,7 @@ def test_main_help():
     result = _run(["--help"])
     assert result.exit_code == 0
     assert "scan" in result.output
+    assert "where" in result.output
 
 
 def test_main_version():
@@ -130,6 +131,29 @@ def test_scan_quiet_flag():
     with patch("agent_bom.cli.agents.discover_all", return_value=[]):
         result = _run(["scan", "--quiet", "--no-scan"])
     assert result.exit_code == 0
+
+
+def test_scan_quiet_uses_error_log_level(monkeypatch):
+    captured = {}
+
+    def _fake_setup_logging(*, level, json_output=None, log_file=None):
+        captured["level"] = level
+        captured["json_output"] = json_output
+        captured["log_file"] = log_file
+
+    monkeypatch.setattr("agent_bom.logging_config.setup_logging", _fake_setup_logging)
+    monkeypatch.setattr("agent_bom.cli.agents.discover_all", lambda *args, **kwargs: [])
+
+    result = _run(["scan", "--quiet", "--no-scan"])
+
+    assert result.exit_code == 0
+    assert captured["level"] == "ERROR"
+
+
+def test_where_help():
+    result = _run(["where", "--help"])
+    assert result.exit_code == 0
+    assert "MCP configurations" in result.output
 
 
 def test_scan_output_to_file(tmp_path):

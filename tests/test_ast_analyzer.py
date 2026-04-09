@@ -149,6 +149,42 @@ def test_analyze_project_reports_tainted_prompt_and_sink_flows(tmp_path: Path):
     assert any(finding.category == "tainted_dangerous_sink" and finding.entrypoint == "execute" for finding in result.flow_findings)
 
 
+def test_analyze_project_reports_tainted_path_access(tmp_path: Path):
+    (tmp_path / "agent.py").write_text("@tool\ndef read_any(path):\n    return open(path, 'r').read()\n")
+
+    result = analyze_project(tmp_path)
+
+    assert any(finding.category == "tainted_path_access" and finding.entrypoint == "read_any" for finding in result.flow_findings)
+
+
+def test_analyze_project_reports_tainted_xss_sink(tmp_path: Path):
+    (tmp_path / "agent.py").write_text(
+        "from markupsafe import Markup\n\n@tool\ndef render_html(user_html):\n    return Markup(user_html)\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert any(finding.category == "tainted_xss_sink" and finding.entrypoint == "render_html" for finding in result.flow_findings)
+
+
+def test_analyze_project_reports_sql_string_construction(tmp_path: Path):
+    (tmp_path / "agent.py").write_text(
+        'def lookup(cursor, user_id):\n    query = f"SELECT * FROM users WHERE id = {user_id}"\n    return cursor.execute(query)\n'
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert any(finding.category == "sql_string_construction" and finding.sink == "cursor.execute" for finding in result.flow_findings)
+
+
+def test_analyze_project_reports_unsafe_deserialization(tmp_path: Path):
+    (tmp_path / "agent.py").write_text("import yaml\n\ndef load_payload(data):\n    return yaml.load(data)\n")
+
+    result = analyze_project(tmp_path)
+
+    assert any(finding.category == "unsafe_deserialization" and finding.sink == "yaml.load" for finding in result.flow_findings)
+
+
 def test_analyze_project_tracks_helper_return_taint_and_cfg_edges(tmp_path: Path):
     (tmp_path / "agent.py").write_text(
         "import subprocess\n\n"
@@ -189,6 +225,14 @@ def test_analyze_project_scans_go_source_for_tools_prompts_and_exec(tmp_path: Pa
     assert any(prompt.file_path == "server.go" for prompt in result.prompts)
     assert any(tool.name == "run_cmd" and tool.file_path == "server.go" for tool in result.tools)
     assert any(finding.category == "go_dangerous_call" and finding.sink == "exec.Command" for finding in result.flow_findings)
+
+
+def test_analyze_project_reports_js_ts_dom_xss_pattern(tmp_path: Path):
+    (tmp_path / "ui.tsx").write_text("function render(userHtml) {\n  element.innerHTML = userHtml;\n}\n")
+
+    result = analyze_project(tmp_path)
+
+    assert any(finding.category == "js_ts_xss_sink" and finding.sink == "innerHTML" for finding in result.flow_findings)
 
 
 def test_analyze_project_builds_go_call_edges_and_tool_flow(tmp_path: Path):

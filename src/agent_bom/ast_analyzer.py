@@ -341,6 +341,22 @@ _PATH_ACCESS_CALLS = {
     "send_file",
     "send_from_directory",
 }
+_HTTP_CLIENT_CALLS = {
+    "requests.get",
+    "requests.post",
+    "requests.put",
+    "requests.delete",
+    "requests.request",
+    "httpx.get",
+    "httpx.post",
+    "httpx.put",
+    "httpx.delete",
+    "httpx.request",
+    "urllib.request.urlopen",
+    "aiohttp.ClientSession.get",
+    "aiohttp.ClientSession.post",
+    "aiohttp.ClientSession.request",
+}
 _SQL_CALLS = {"execute", "executemany", "cursor.execute", "cursor.executemany"}
 _UNSAFE_DESERIALIZATION_CALLS = {
     "pickle.load",
@@ -556,12 +572,15 @@ class _FunctionAnalysis:
     file_path: str
     line_number: int
     is_tool: bool
+    module_name: str = ""
     param_names: list[str] = field(default_factory=list)
     node: ast.FunctionDef | ast.AsyncFunctionDef | None = None
     parent_map: dict[ast.AST, ast.AST] = field(default_factory=dict, repr=False)
     cfg_edges: list[ControlFlowEdge] = field(default_factory=list)
     called_names: list[tuple[str, int]] = field(default_factory=list)
     dangerous_calls: list[tuple[str, int, bool]] = field(default_factory=list)
+    imported_modules: dict[str, str] = field(default_factory=dict, repr=False)
+    imported_functions: dict[str, tuple[str, str]] = field(default_factory=dict, repr=False)
 
 
 # ── AST extraction ───────────────────────────────────────────────────────────
@@ -593,6 +612,61 @@ def _call_name(node: ast.AST) -> str:
     if isinstance(node, ast.Call):
         return _call_name(node.func)
     return ""
+
+
+def _module_name_for_rel_path(rel_path: str) -> str:
+    path = Path(rel_path)
+    parts = list(path.with_suffix("").parts)
+    if parts and parts[-1] == "__init__":
+        parts = parts[:-1]
+    return ".".join(parts)
+
+
+def _package_name_for_module(module_name: str, rel_path: str) -> str:
+    if Path(rel_path).name == "__init__.py":
+        return module_name
+    if "." not in module_name:
+        return ""
+    return module_name.rsplit(".", 1)[0]
+
+
+def _resolve_imported_module(module: str | None, level: int, current_module: str, rel_path: str) -> str:
+    if level <= 0:
+        return module or ""
+    package_name = _package_name_for_module(current_module, rel_path)
+    package_parts = package_name.split(".") if package_name else []
+    trim = max(level - 1, 0)
+    if trim:
+        package_parts = package_parts[: max(0, len(package_parts) - trim)]
+    resolved_parts = [*package_parts]
+    if module:
+        resolved_parts.append(module)
+    return ".".join(part for part in resolved_parts if part)
+
+
+def _collect_python_import_aliases(
+    tree: ast.AST,
+    *,
+    current_module: str,
+    rel_path: str,
+) -> tuple[dict[str, str], dict[str, tuple[str, str]]]:
+    imported_modules: dict[str, str] = {}
+    imported_functions: dict[str, tuple[str, str]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                visible_name = alias.asname or alias.name
+                imported_modules[visible_name] = alias.name
+        elif isinstance(node, ast.ImportFrom):
+            resolved_module = _resolve_imported_module(node.module, node.level, current_module, rel_path)
+            if not resolved_module:
+                continue
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                visible_name = alias.asname or alias.name
+                imported_functions[visible_name] = (resolved_module, alias.name)
+    return imported_modules, imported_functions
 
 
 def _open_mode_is_mutating(call: ast.Call) -> bool:
@@ -787,6 +861,11 @@ def _is_sql_call_name(call_name: str) -> bool:
     return lower_name in _SQL_CALLS or lower_name.endswith(".execute") or lower_name.endswith(".executemany")
 
 
+def _is_http_client_call_name(call_name: str) -> bool:
+    lower_name = call_name.lower()
+    return lower_name in _HTTP_CLIENT_CALLS
+
+
 def _is_path_access_call_name(call_name: str) -> bool:
     lower_name = call_name.lower()
     if lower_name in {name.lower() for name in _PATH_ACCESS_CALLS}:
@@ -828,6 +907,41 @@ def _uses_safe_yaml_loader(call: ast.Call) -> bool:
     if len(call.args) >= 2 and _expr_name(call.args[1]).lower() in safe_loader_names:
         return True
     return False
+
+
+def _call_keyword_bool(call: ast.Call, name: str) -> bool:
+    for keyword in call.keywords:
+        if keyword.arg == name and isinstance(keyword.value, ast.Constant) and isinstance(keyword.value.value, bool):
+            return keyword.value.value
+    return False
+
+
+def _call_argument_expr(call: ast.Call, *, primary_arg_names: set[str] | None = None) -> ast.AST | None:
+    if call.args:
+        return call.args[0]
+    if primary_arg_names:
+        for keyword in call.keywords:
+            if keyword.arg in primary_arg_names:
+                return keyword.value
+    return None
+
+
+def _is_command_execution_call_name(call_name: str) -> bool:
+    lower_name = call_name.lower()
+    return lower_name in {name.lower() for name in _SUBPROCESS_CALLS}
+
+
+def _is_shell_execution_call(call_name: str, call: ast.Call) -> bool:
+    lower_name = call_name.lower()
+    if lower_name in {"os.system", "os.popen"}:
+        return True
+    return _call_keyword_bool(call, "shell")
+
+
+def _expr_is_dynamic_or_tracked(expr: ast.AST | None, tracked_names: set[str]) -> bool:
+    if _expr_uses_dynamic_string(expr):
+        return True
+    return isinstance(expr, ast.Name) and expr.id in tracked_names
 
 
 def _is_xss_sink_call_name(call_name: str) -> bool:
@@ -1587,6 +1701,12 @@ def _analyze_file(
     function_analyses: list[_FunctionAnalysis] = []
     flow_findings: list[FlowFinding] = []
     parent_map = _build_parent_map(tree)
+    current_module = _module_name_for_rel_path(rel_path)
+    imported_modules, imported_functions = _collect_python_import_aliases(
+        tree,
+        current_module=current_module,
+        rel_path=rel_path,
+    )
 
     # Pass 1: Detect frameworks and guardrails from imports
     for node in ast.walk(tree):
@@ -1687,10 +1807,13 @@ def _analyze_file(
                 file_path=rel_path,
                 line_number=node.lineno,
                 is_tool=is_tool,
+                module_name=current_module,
                 param_names=[arg.arg for arg in node.args.args if arg.arg != "self"],
                 node=node,
                 parent_map=parent_map,
                 cfg_edges=_build_function_cfg_edges(node, rel_path),
+                imported_modules=dict(imported_modules),
+                imported_functions=dict(imported_functions),
             )
             dynamic_string_names: set[str] = set()
             for inner_stmt in ast.walk(node):
@@ -1741,6 +1864,42 @@ def _analyze_file(
                             call_path=[node.name, call_name],
                         )
                     )
+                if _is_command_execution_call_name(call_name) and _is_shell_execution_call(call_name, inner):
+                    command_expr = _call_argument_expr(inner, primary_arg_names={"args", "command"})
+                    if _expr_is_dynamic_or_tracked(command_expr, dynamic_string_names):
+                        flow_findings.append(
+                            FlowFinding(
+                                category="command_string_construction",
+                                title="Shell command is built through string interpolation",
+                                detail=(
+                                    f"{rel_path} builds a shell command dynamically before calling `{call_name}`, "
+                                    "which is a common command injection pattern."
+                                ),
+                                file_path=rel_path,
+                                line_number=getattr(inner, "lineno", node.lineno),
+                                entrypoint=node.name,
+                                sink=call_name,
+                                call_path=[node.name, call_name],
+                            )
+                        )
+                if _is_http_client_call_name(call_name):
+                    url_expr = _call_argument_expr(inner, primary_arg_names={"url", "uri", "endpoint"})
+                    if _expr_is_dynamic_or_tracked(url_expr, dynamic_string_names):
+                        flow_findings.append(
+                            FlowFinding(
+                                category="ssrf_url_construction",
+                                title="Outbound URL is built through string interpolation",
+                                detail=(
+                                    f"{rel_path} builds an outbound URL dynamically before calling `{call_name}`, "
+                                    "which is a common SSRF pattern."
+                                ),
+                                file_path=rel_path,
+                                line_number=getattr(inner, "lineno", node.lineno),
+                                entrypoint=node.name,
+                                sink=call_name,
+                                call_path=[node.name, call_name],
+                            )
+                        )
                 if _is_sql_call_name(call_name):
                     query_expr = inner.args[0] if inner.args else None
                     query_is_dynamic = _expr_uses_dynamic_string(query_expr)
@@ -1897,8 +2056,23 @@ def _resolve_called_function(
     caller: _FunctionAnalysis,
     raw_name: str,
     by_name: dict[str, list[_FunctionAnalysis]],
+    by_module_and_name: dict[tuple[str, str], _FunctionAnalysis],
 ) -> _FunctionAnalysis | None:
     """Resolve a call target using same-file preference, then unique global match."""
+    imported_target = caller.imported_functions.get(raw_name)
+    if imported_target:
+        resolved = by_module_and_name.get(imported_target)
+        if resolved is not None:
+            return resolved
+
+    for alias, module_name in sorted(caller.imported_modules.items(), key=lambda item: len(item[0]), reverse=True):
+        if not raw_name.startswith(f"{alias}."):
+            continue
+        target_name = raw_name[len(alias) + 1 :].split(".")[-1]
+        resolved = by_module_and_name.get((module_name, target_name))
+        if resolved is not None:
+            return resolved
+
     simple_name = raw_name.split(".")[-1]
     candidates = by_name.get(simple_name, [])
     if not candidates:
@@ -1915,8 +2089,11 @@ def _resolve_called_function(
 def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFinding]:
     """Build taint/data-flow findings from tool entrypoints into sinks and LLM calls."""
     by_name: dict[str, list[_FunctionAnalysis]] = {}
+    by_module_and_name: dict[tuple[str, str], _FunctionAnalysis] = {}
     for func in functions:
         by_name.setdefault(func.simple_name, []).append(func)
+        if func.module_name:
+            by_module_and_name[(func.module_name, func.simple_name)] = func
 
     seen_findings: set[tuple[str, str, str, int, str]] = set()
 
@@ -2052,6 +2229,48 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
                             source=source_label,
                         )
                     )
+                elif _is_http_client_call_name(call_name):
+                    nested_findings.append(
+                        _build_flow_finding(
+                            category="tainted_ssrf_sink",
+                            title="Untrusted data reaches an outbound URL sink",
+                            detail=f"Untrusted data ({source_label}) reaches `{call_name}` in {func.file_path}.",
+                            file_path=func.file_path,
+                            line_number=line_number,
+                            entrypoint=call_path[0],
+                            sink=call_name,
+                            call_path=call_path + [call_name],
+                            source=source_label,
+                        )
+                    )
+                elif _is_command_execution_call_name(call_name) and _is_shell_execution_call(call_name, call):
+                    nested_findings.append(
+                        _build_flow_finding(
+                            category="tainted_command_execution",
+                            title="Untrusted data reaches shell command execution",
+                            detail=f"Untrusted data ({source_label}) reaches `{call_name}` with shell execution in {func.file_path}.",
+                            file_path=func.file_path,
+                            line_number=line_number,
+                            entrypoint=call_path[0],
+                            sink=call_name,
+                            call_path=call_path + [call_name],
+                            source=source_label,
+                        )
+                    )
+                    if call_name in _DANGEROUS_CALLS:
+                        nested_findings.append(
+                            _build_flow_finding(
+                                category="tainted_dangerous_sink",
+                                title="Untrusted data reaches a dangerous sink",
+                                detail=f"Untrusted data ({source_label}) reaches `{call_name}` in {func.file_path}.",
+                                file_path=func.file_path,
+                                line_number=line_number,
+                                entrypoint=call_path[0],
+                                sink=call_name,
+                                call_path=call_path + [call_name],
+                                source=source_label,
+                            )
+                        )
                 elif call_name in _DANGEROUS_CALLS:
                     nested_findings.append(
                         _build_flow_finding(
@@ -2109,7 +2328,7 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
                         )
                     )
 
-            callee = _resolve_called_function(func, call_name, by_name) if call_name else None
+            callee = _resolve_called_function(func, call_name, by_name, by_module_and_name) if call_name else None
             if callee is not None:
                 callee_tainted_params: set[str] = set()
                 for param_name, (is_tainted, _) in zip(callee.param_names, arg_results, strict=False):
@@ -2273,14 +2492,17 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
 def _build_call_graph(functions: list[_FunctionAnalysis]) -> tuple[list[CallEdge], list[FlowFinding]]:
     """Build a lightweight call graph and inter-procedural findings."""
     by_name: dict[str, list[_FunctionAnalysis]] = {}
+    by_module_and_name: dict[tuple[str, str], _FunctionAnalysis] = {}
     for func in functions:
         by_name.setdefault(func.simple_name, []).append(func)
+        if func.module_name:
+            by_module_and_name[(func.module_name, func.simple_name)] = func
 
     adjacency: dict[str, list[_FunctionAnalysis]] = {func.qualified_name: [] for func in functions}
     edges: list[CallEdge] = []
     for func in functions:
         for raw_name, line_num in func.called_names:
-            callee = _resolve_called_function(func, raw_name, by_name)
+            callee = _resolve_called_function(func, raw_name, by_name, by_module_and_name)
             if callee is None:
                 continue
             adjacency[func.qualified_name].append(callee)

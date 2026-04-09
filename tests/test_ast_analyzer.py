@@ -177,6 +177,29 @@ def test_analyze_project_reports_sql_string_construction(tmp_path: Path):
     assert any(finding.category == "sql_string_construction" and finding.sink == "cursor.execute" for finding in result.flow_findings)
 
 
+def test_analyze_project_reports_command_string_construction(tmp_path: Path):
+    (tmp_path / "agent.py").write_text(
+        "import subprocess\n\n"
+        "def execute(user_cmd):\n"
+        '    command = f"bash -lc {user_cmd}"\n'
+        "    return subprocess.run(command, shell=True)\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert any(finding.category == "command_string_construction" and finding.sink == "subprocess.run" for finding in result.flow_findings)
+
+
+def test_analyze_project_reports_ssrf_url_construction(tmp_path: Path):
+    (tmp_path / "agent.py").write_text(
+        'import requests\n\ndef fetch(host):\n    url = f"http://{host}/admin"\n    return requests.get(url)\n'
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert any(finding.category == "ssrf_url_construction" and finding.sink == "requests.get" for finding in result.flow_findings)
+
+
 def test_analyze_project_reports_unsafe_deserialization(tmp_path: Path):
     (tmp_path / "agent.py").write_text("import yaml\n\ndef load_payload(data):\n    return yaml.load(data)\n")
 
@@ -215,6 +238,24 @@ def test_analyze_project_tracks_helper_return_taint_and_cfg_edges(tmp_path: Path
     assert "branch_true" in cfg_types
     assert "branch_false" in cfg_types
     assert result.to_dict()["stats"]["total_cfg_edges"] >= 1
+
+
+def test_analyze_project_reports_tainted_command_execution(tmp_path: Path):
+    (tmp_path / "agent.py").write_text(
+        "import subprocess\n\n@tool\ndef execute(user_cmd):\n    return subprocess.run(user_cmd, shell=True)\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert any(finding.category == "tainted_command_execution" and finding.entrypoint == "execute" for finding in result.flow_findings)
+
+
+def test_analyze_project_reports_tainted_ssrf_sink(tmp_path: Path):
+    (tmp_path / "agent.py").write_text("import requests\n\n@tool\ndef fetch(target_url):\n    return requests.get(target_url)\n")
+
+    result = analyze_project(tmp_path)
+
+    assert any(finding.category == "tainted_ssrf_sink" and finding.entrypoint == "fetch" for finding in result.flow_findings)
 
 
 def test_analyze_project_scans_go_source_for_tools_prompts_and_exec(tmp_path: Path):
@@ -268,6 +309,35 @@ def test_analyze_project_builds_go_call_edges_and_tool_flow(tmp_path: Path):
     assert any(edge.caller == "run_cmd" and edge.callee == "executeCommand" for edge in result.call_edges)
     assert any(
         finding.category == "go_interprocedural_dangerous_flow" and finding.entrypoint == "run_cmd" and finding.sink == "exec.Command"
+        for finding in result.flow_findings
+    )
+
+
+def test_analyze_project_resolves_cross_file_import_alias_flow(tmp_path: Path):
+    (tmp_path / "helpers.py").write_text("import subprocess\n\ndef run_shell(cmd):\n    return subprocess.run(cmd, shell=True)\n")
+    (tmp_path / "agent.py").write_text("from helpers import run_shell as runner\n\n@tool\ndef execute(cmd):\n    return runner(cmd)\n")
+
+    result = analyze_project(tmp_path)
+
+    assert any(edge.caller == "execute" and edge.callee == "run_shell" for edge in result.call_edges)
+    assert any(
+        finding.category == "interprocedural_dangerous_flow" and finding.entrypoint == "execute" and finding.sink == "subprocess.run"
+        for finding in result.flow_findings
+    )
+
+
+def test_analyze_project_resolves_cross_file_module_alias_when_names_are_ambiguous(tmp_path: Path):
+    (tmp_path / "helpers.py").write_text("import subprocess\n\ndef run_shell(cmd):\n    return subprocess.run(cmd, shell=True)\n")
+    (tmp_path / "other.py").write_text("def run_shell(cmd):\n    return cmd\n")
+    (tmp_path / "agent.py").write_text(
+        "import helpers as h\nimport other\n\n@tool\ndef execute(cmd):\n    other.run_shell('safe')\n    return h.run_shell(cmd)\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert any(edge.caller == "execute" and edge.callee == "run_shell" for edge in result.call_edges)
+    assert any(
+        finding.category == "interprocedural_dangerous_flow" and finding.entrypoint == "execute" and finding.sink == "subprocess.run"
         for finding in result.flow_findings
     )
 

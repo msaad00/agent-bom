@@ -450,6 +450,92 @@ def test_analyze_project_builds_go_call_edges_and_tool_flow(tmp_path: Path):
     )
 
 
+def test_analyze_project_builds_cross_file_go_call_edges_and_tainted_command_flow(tmp_path: Path):
+    (tmp_path / "register.go").write_text(
+        "package main\n\n"
+        'import "github.com/modelcontextprotocol/go-sdk/mcp"\n\n'
+        "func register(server *mcp.Server) {\n"
+        '    server.AddTool("run_cmd", executeCommand)\n'
+        "}\n"
+    )
+    (tmp_path / "helpers.go").write_text(
+        "package main\n\n"
+        'import "os/exec"\n\n'
+        "func runShell(cmd string) error {\n"
+        '    return exec.Command("sh", "-c", cmd).Run()\n'
+        "}\n\n"
+        "func executeCommand(cmd string) error {\n"
+        "    return runShell(cmd)\n"
+        "}\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert any(edge.caller == "executeCommand" and edge.callee == "runShell" for edge in result.call_edges)
+    assert any(edge.caller == "run_cmd" and edge.callee == "executeCommand" for edge in result.call_edges)
+    assert any(
+        finding.category == "go_tainted_command_execution" and finding.entrypoint == "run_cmd" and finding.sink == "exec.Command"
+        for finding in result.flow_findings
+    )
+
+
+def test_analyze_project_reports_go_tainted_ssrf_sink_across_local_package(tmp_path: Path):
+    helpers_dir = tmp_path / "helpers"
+    helpers_dir.mkdir()
+    (tmp_path / "server.go").write_text(
+        "package main\n\n"
+        "import (\n"
+        '    "example/helpers"\n'
+        '    "github.com/modelcontextprotocol/go-sdk/mcp"\n'
+        ")\n\n"
+        "func fetchURL(target string) error {\n"
+        "    return helpers.Fetch(target)\n"
+        "}\n\n"
+        "func register(server *mcp.Server) {\n"
+        '    server.AddTool("fetch_url", fetchURL)\n'
+        "}\n"
+    )
+    (helpers_dir / "http.go").write_text(
+        'package helpers\n\nimport "net/http"\n\nfunc Fetch(target string) error {\n    _, err := http.Get(target)\n    return err\n}\n'
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert any(edge.caller == "fetchURL" and edge.callee == "Fetch" for edge in result.call_edges)
+    assert any(
+        finding.category == "go_tainted_ssrf_sink" and finding.entrypoint == "fetch_url" and finding.sink == "http.Get"
+        for finding in result.flow_findings
+    )
+
+
+def test_analyze_project_reports_go_tainted_sql_and_path_sinks(tmp_path: Path):
+    (tmp_path / "db.go").write_text(
+        "package main\n\n"
+        'import "github.com/modelcontextprotocol/go-sdk/mcp"\n\n'
+        "func queryUsers(query string) error {\n"
+        "    return db.Query(query)\n"
+        "}\n\n"
+        "func readUserFile(path string) ([]byte, error) {\n"
+        "    return os.ReadFile(path)\n"
+        "}\n\n"
+        "func register(server *mcp.Server) {\n"
+        '    server.AddTool("query_users", queryUsers)\n'
+        '    server.AddTool("read_user_file", readUserFile)\n'
+        "}\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert any(
+        finding.category == "go_tainted_sql_query" and finding.entrypoint == "query_users" and finding.sink == "db.Query"
+        for finding in result.flow_findings
+    )
+    assert any(
+        finding.category == "go_tainted_path_access" and finding.entrypoint == "read_user_file" and finding.sink == "os.ReadFile"
+        for finding in result.flow_findings
+    )
+
+
 def test_analyze_project_resolves_cross_file_import_alias_flow(tmp_path: Path):
     (tmp_path / "helpers.py").write_text("import subprocess\n\ndef run_shell(cmd):\n    return subprocess.run(cmd, shell=True)\n")
     (tmp_path / "agent.py").write_text("from helpers import run_shell as runner\n\n@tool\ndef execute(cmd):\n    return runner(cmd)\n")

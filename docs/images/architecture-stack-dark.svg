@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" fill="none">
   <style>
     text { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
     .title { font-size: 20px; font-weight: 800; fill: #f8fafc; }
@@ -14,7 +14,7 @@
   </style>
 
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="960" y2="540" gradientUnits="userSpaceOnUse">
+    <linearGradient id="bg" x1="0" y1="0" x2="960" y2="560" gradientUnits="userSpaceOnUse">
       <stop stop-color="#09090b"/>
       <stop offset="1" stop-color="#111827"/>
     </linearGradient>
@@ -23,114 +23,150 @@
     </marker>
   </defs>
 
-  <rect width="960" height="540" rx="18" fill="url(#bg)" stroke="#27272a"/>
+  <rect width="960" height="560" rx="18" fill="url(#bg)" stroke="#27272a"/>
 
-  <text x="480" y="36" text-anchor="middle" class="title">Architecture at a glance</text>
-  <text x="480" y="56" text-anchor="middle" class="subtitle">Discovery and runtime inspection feed one persisted graph that powers the product surfaces.</text>
+  <text x="480" y="38" text-anchor="middle" class="title">Architecture at a glance</text>
+  <text x="480" y="58" text-anchor="middle" class="subtitle">Discovery and runtime inspection feed one persisted graph that powers the product surfaces.</text>
 
-  <path d="M232 230H254" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
-  <path d="M464 230H486" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
-  <path d="M696 230H718" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M232 238H254" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M464 238H486" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M696 238H718" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
 
-  <rect x="32" y="88" width="200" height="340" rx="18" fill="#0f172a" stroke="#1f2937"/>
-  <rect x="264" y="88" width="200" height="340" rx="18" fill="#111827" stroke="#1f2937"/>
-  <rect x="496" y="88" width="200" height="340" rx="18" fill="#0b1720" stroke="#1f2937"/>
-  <rect x="728" y="88" width="200" height="340" rx="18" fill="#0f172a" stroke="#1f2937"/>
+  <rect x="32" y="90" width="200" height="352" rx="18" fill="#0f172a" stroke="#1f2937"/>
+  <rect x="264" y="90" width="200" height="352" rx="18" fill="#111827" stroke="#1f2937"/>
+  <rect x="496" y="90" width="200" height="352" rx="18" fill="#0b1720" stroke="#1f2937"/>
+  <rect x="728" y="90" width="200" height="352" rx="18" fill="#0f172a" stroke="#1f2937"/>
 
-  <text x="52" y="116" class="col-title" fill="#c4b5fd">DISCOVERY + RUNTIME</text>
-  <text x="284" y="116" class="col-title" fill="#fb7185">SCANNERS + ANALYZERS</text>
-  <text x="516" y="116" class="col-title" fill="#34d399">UNIFIED GRAPH</text>
-  <text x="748" y="116" class="col-title" fill="#60a5fa">OPERATOR SURFACES</text>
+  <text x="52" y="118" class="col-title" fill="#c4b5fd">DISCOVERY + RUNTIME</text>
+  <text x="284" y="118" class="col-title" fill="#fb7185">SCANNERS + ANALYZERS</text>
+  <text x="516" y="118" class="col-title" fill="#34d399">UNIFIED GRAPH</text>
+  <text x="748" y="118" class="col-title" fill="#60a5fa">OPERATOR SURFACES</text>
 
-  <rect x="48" y="132" width="168" height="58" rx="12" fill="#18181b" stroke="#27272a"/>
-  <text x="62" y="154" class="card-title">Agents and MCP</text>
-  <text x="62" y="170" class="card-copy">Claude, Cursor, Windsurf, VS Code, local configs</text>
-  <rect x="62" y="172" width="48" height="16" rx="8" fill="#312e81"/><text x="86" y="183" text-anchor="middle" class="chip">agents</text>
-  <rect x="116" y="172" width="40" height="16" rx="8" fill="#312e81"/><text x="136" y="183" text-anchor="middle" class="chip">MCP</text>
-  <rect x="162" y="172" width="38" height="16" rx="8" fill="#312e81"/><text x="181" y="183" text-anchor="middle" class="chip">tools</text>
+  <rect x="48" y="134" width="168" height="66" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="62" y="156" class="card-title">Agents and MCP</text>
+  <text x="62" y="172" class="card-copy">
+    <tspan x="62" dy="0">Claude, Cursor, Windsurf,</tspan>
+    <tspan x="62" dy="11">VS Code, local configs</tspan>
+  </text>
+  <rect x="62" y="182" width="48" height="16" rx="8" fill="#312e81"/><text x="86" y="193" text-anchor="middle" class="chip">agents</text>
+  <rect x="116" y="182" width="40" height="16" rx="8" fill="#312e81"/><text x="136" y="193" text-anchor="middle" class="chip">MCP</text>
+  <rect x="162" y="182" width="38" height="16" rx="8" fill="#312e81"/><text x="181" y="193" text-anchor="middle" class="chip">tools</text>
 
-  <rect x="48" y="206" width="168" height="58" rx="12" fill="#18181b" stroke="#27272a"/>
-  <text x="62" y="228" class="card-title">Supply-chain inputs</text>
-  <text x="62" y="244" class="card-copy">Lockfiles, images, IaC, model artifacts, cloud posture</text>
-  <rect x="62" y="246" width="56" height="16" rx="8" fill="#312e81"/><text x="90" y="257" text-anchor="middle" class="chip">lockfiles</text>
-  <rect x="124" y="246" width="42" height="16" rx="8" fill="#312e81"/><text x="145" y="257" text-anchor="middle" class="chip">images</text>
-  <rect x="172" y="246" width="24" height="16" rx="8" fill="#312e81"/><text x="184" y="257" text-anchor="middle" class="chip">IaC</text>
+  <rect x="48" y="214" width="168" height="66" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="62" y="236" class="card-title">Supply-chain inputs</text>
+  <text x="62" y="252" class="card-copy">
+    <tspan x="62" dy="0">Lockfiles, images, IaC,</tspan>
+    <tspan x="62" dy="11">model artifacts, cloud posture</tspan>
+  </text>
+  <rect x="62" y="262" width="56" height="16" rx="8" fill="#312e81"/><text x="90" y="273" text-anchor="middle" class="chip">lockfiles</text>
+  <rect x="124" y="262" width="42" height="16" rx="8" fill="#312e81"/><text x="145" y="273" text-anchor="middle" class="chip">images</text>
+  <rect x="172" y="262" width="24" height="16" rx="8" fill="#312e81"/><text x="184" y="273" text-anchor="middle" class="chip">IaC</text>
 
-  <rect x="48" y="280" width="168" height="68" rx="12" fill="#18181b" stroke="#27272a"/>
-  <text x="62" y="302" class="card-title">Runtime signals</text>
-  <text x="62" y="318" class="card-copy">Proxy traffic, Shield hooks, drift, credential, and sequence checks</text>
-  <rect x="62" y="326" width="40" height="16" rx="8" fill="#312e81"/><text x="82" y="337" text-anchor="middle" class="chip">proxy</text>
-  <rect x="108" y="326" width="42" height="16" rx="8" fill="#312e81"/><text x="129" y="337" text-anchor="middle" class="chip">Shield</text>
-  <rect x="156" y="326" width="40" height="16" rx="8" fill="#312e81"/><text x="176" y="337" text-anchor="middle" class="chip">policy</text>
+  <rect x="48" y="294" width="168" height="74" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="62" y="316" class="card-title">Runtime signals</text>
+  <text x="62" y="332" class="card-copy">
+    <tspan x="62" dy="0">Proxy traffic, Shield hooks,</tspan>
+    <tspan x="62" dy="11">drift, credential, and sequence checks</tspan>
+  </text>
+  <rect x="62" y="346" width="40" height="16" rx="8" fill="#312e81"/><text x="82" y="357" text-anchor="middle" class="chip">proxy</text>
+  <rect x="108" y="346" width="42" height="16" rx="8" fill="#312e81"/><text x="129" y="357" text-anchor="middle" class="chip">Shield</text>
+  <rect x="156" y="346" width="40" height="16" rx="8" fill="#312e81"/><text x="176" y="357" text-anchor="middle" class="chip">policy</text>
 
-  <rect x="48" y="366" width="168" height="44" rx="12" fill="#1f172a" stroke="#4c1d95"/>
-  <text x="62" y="385" class="note-title">INPUTS</text>
-  <text x="62" y="401" class="note-copy">Inventory, findings, runtime evidence, config posture</text>
+  <rect x="48" y="382" width="168" height="44" rx="12" fill="#1f172a" stroke="#4c1d95"/>
+  <text x="62" y="401" class="note-title">INPUTS</text>
+  <text x="62" y="417" class="note-copy">Inventory, findings, runtime evidence, config posture</text>
 
-  <rect x="280" y="132" width="168" height="58" rx="12" fill="#18181b" stroke="#27272a"/>
-  <text x="294" y="154" class="card-title">Core scanning</text>
-  <text x="294" y="170" class="card-copy">Package CVEs, secrets, containers, IaC, cloud posture</text>
-  <rect x="294" y="172" width="34" height="16" rx="8" fill="#4c0519"/><text x="311" y="183" text-anchor="middle" class="chip">CVE</text>
-  <rect x="334" y="172" width="46" height="16" rx="8" fill="#4c0519"/><text x="357" y="183" text-anchor="middle" class="chip">secrets</text>
-  <rect x="386" y="172" width="40" height="16" rx="8" fill="#4c0519"/><text x="406" y="183" text-anchor="middle" class="chip">cloud</text>
+  <rect x="280" y="134" width="168" height="66" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="294" y="156" class="card-title">Core scanning</text>
+  <text x="294" y="172" class="card-copy">
+    <tspan x="294" dy="0">Package CVEs, secrets,</tspan>
+    <tspan x="294" dy="11">containers, IaC, cloud posture</tspan>
+  </text>
+  <rect x="294" y="182" width="34" height="16" rx="8" fill="#4c0519"/><text x="311" y="193" text-anchor="middle" class="chip">CVE</text>
+  <rect x="334" y="182" width="46" height="16" rx="8" fill="#4c0519"/><text x="357" y="193" text-anchor="middle" class="chip">secrets</text>
+  <rect x="386" y="182" width="40" height="16" rx="8" fill="#4c0519"/><text x="406" y="193" text-anchor="middle" class="chip">cloud</text>
 
-  <rect x="280" y="206" width="168" height="68" rx="12" fill="#18181b" stroke="#27272a"/>
-  <text x="294" y="228" class="card-title">AST + SAST depth</text>
-  <text x="294" y="244" class="card-copy">Python, JS/TS, Go, cross-file flows, taint, SARIF</text>
-  <rect x="294" y="252" width="32" height="16" rx="8" fill="#4c0519"/><text x="310" y="263" text-anchor="middle" class="chip">AST</text>
-  <rect x="332" y="252" width="38" height="16" rx="8" fill="#4c0519"/><text x="351" y="263" text-anchor="middle" class="chip">SAST</text>
-  <rect x="376" y="252" width="42" height="16" rx="8" fill="#4c0519"/><text x="397" y="263" text-anchor="middle" class="chip">taint</text>
+  <rect x="280" y="214" width="168" height="66" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="294" y="236" class="card-title">AST + SAST depth</text>
+  <text x="294" y="252" class="card-copy">
+    <tspan x="294" dy="0">Python, JS/TS, Go,</tspan>
+    <tspan x="294" dy="11">cross-file flows, taint, SARIF</tspan>
+  </text>
+  <rect x="294" y="262" width="32" height="16" rx="8" fill="#4c0519"/><text x="310" y="273" text-anchor="middle" class="chip">AST</text>
+  <rect x="332" y="262" width="38" height="16" rx="8" fill="#4c0519"/><text x="351" y="273" text-anchor="middle" class="chip">SAST</text>
+  <rect x="376" y="262" width="42" height="16" rx="8" fill="#4c0519"/><text x="397" y="273" text-anchor="middle" class="chip">taint</text>
 
-  <rect x="280" y="290" width="168" height="58" rx="12" fill="#18181b" stroke="#27272a"/>
-  <text x="294" y="312" class="card-title">Risk interpretation</text>
-  <text x="294" y="328" class="card-copy">Blast radius, CWE impact, compliance tags, trust posture</text>
+  <rect x="280" y="294" width="168" height="74" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="294" y="316" class="card-title">Risk interpretation</text>
+  <text x="294" y="332" class="card-copy">
+    <tspan x="294" dy="0">Blast radius, CWE impact,</tspan>
+    <tspan x="294" dy="11">compliance tags, trust posture</tspan>
+  </text>
 
-  <rect x="280" y="366" width="168" height="44" rx="12" fill="#3f1d0a" stroke="#9a3412"/>
-  <text x="294" y="385" class="note-title">OUTPUT</text>
-  <text x="294" y="401" class="note-copy">Entities, findings, attack-path facts, remediation context</text>
+  <rect x="280" y="382" width="168" height="44" rx="12" fill="#3f1d0a" stroke="#9a3412"/>
+  <text x="294" y="401" class="note-title">OUTPUT</text>
+  <text x="294" y="417" class="note-copy">Entities, findings, attack-path facts, remediation context</text>
 
-  <rect x="512" y="132" width="168" height="58" rx="12" fill="#18181b" stroke="#27272a"/>
-  <text x="526" y="154" class="card-title">Canonical contract</text>
-  <text x="526" y="170" class="card-copy">Entities, edges, findings, events, paths, snapshots</text>
-  <rect x="526" y="172" width="52" height="16" rx="8" fill="#052e16"/><text x="552" y="183" text-anchor="middle" class="chip">entities</text>
-  <rect x="584" y="172" width="38" height="16" rx="8" fill="#052e16"/><text x="603" y="183" text-anchor="middle" class="chip">edges</text>
-  <rect x="628" y="172" width="36" height="16" rx="8" fill="#052e16"/><text x="646" y="183" text-anchor="middle" class="chip">diffs</text>
+  <rect x="512" y="134" width="168" height="66" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="526" y="156" class="card-title">Canonical contract</text>
+  <text x="526" y="172" class="card-copy">
+    <tspan x="526" dy="0">Entities, edges, findings,</tspan>
+    <tspan x="526" dy="11">events, paths, snapshots</tspan>
+  </text>
+  <rect x="526" y="182" width="52" height="16" rx="8" fill="#052e16"/><text x="552" y="193" text-anchor="middle" class="chip">entities</text>
+  <rect x="584" y="182" width="38" height="16" rx="8" fill="#052e16"/><text x="603" y="193" text-anchor="middle" class="chip">edges</text>
+  <rect x="628" y="182" width="36" height="16" rx="8" fill="#052e16"/><text x="646" y="193" text-anchor="middle" class="chip">diffs</text>
 
-  <rect x="512" y="206" width="168" height="58" rx="12" fill="#18181b" stroke="#27272a"/>
-  <text x="526" y="228" class="card-title">Persistence + tenancy</text>
-  <text x="526" y="244" class="card-copy">SQLite or Postgres, tenant snapshots, presets, latest-state resolution</text>
+  <rect x="512" y="214" width="168" height="66" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="526" y="236" class="card-title">Persistence + tenancy</text>
+  <text x="526" y="252" class="card-copy">
+    <tspan x="526" dy="0">SQLite or Postgres, tenant snapshots,</tspan>
+    <tspan x="526" dy="11">presets, latest-state resolution</tspan>
+  </text>
 
-  <rect x="512" y="280" width="168" height="68" rx="12" fill="#18181b" stroke="#27272a"/>
-  <text x="526" y="302" class="card-title">Views and pivots</text>
-  <text x="526" y="318" class="card-copy">Current state, diff, search, impact, attack paths, compliance, OCSF export</text>
-  <rect x="526" y="326" width="40" height="16" rx="8" fill="#052e16"/><text x="546" y="337" text-anchor="middle" class="chip">graph</text>
-  <rect x="572" y="326" width="34" height="16" rx="8" fill="#052e16"/><text x="589" y="337" text-anchor="middle" class="chip">diff</text>
-  <rect x="612" y="326" width="44" height="16" rx="8" fill="#052e16"/><text x="634" y="337" text-anchor="middle" class="chip">paths</text>
+  <rect x="512" y="294" width="168" height="74" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="526" y="316" class="card-title">Views and pivots</text>
+  <text x="526" y="332" class="card-copy">
+    <tspan x="526" dy="0">Current state, diff, search, impact,</tspan>
+    <tspan x="526" dy="11">attack paths, compliance, OCSF export</tspan>
+  </text>
+  <rect x="526" y="346" width="40" height="16" rx="8" fill="#052e16"/><text x="546" y="357" text-anchor="middle" class="chip">graph</text>
+  <rect x="572" y="346" width="34" height="16" rx="8" fill="#052e16"/><text x="589" y="357" text-anchor="middle" class="chip">diff</text>
+  <rect x="612" y="346" width="44" height="16" rx="8" fill="#052e16"/><text x="634" y="357" text-anchor="middle" class="chip">paths</text>
 
-  <rect x="512" y="366" width="168" height="44" rx="12" fill="#052e16" stroke="#047857"/>
-  <text x="526" y="385" class="note-title">ONE GRAPH</text>
-  <text x="526" y="401" class="note-copy">Same contract across CLI, API, dashboard, exports, and policy</text>
+  <rect x="512" y="382" width="168" height="44" rx="12" fill="#052e16" stroke="#047857"/>
+  <text x="526" y="401" class="note-title">ONE GRAPH</text>
+  <text x="526" y="417" class="note-copy">Same contract across CLI, API, dashboard, exports, and policy</text>
 
-  <rect x="744" y="132" width="168" height="58" rx="12" fill="#18181b" stroke="#27272a"/>
-  <text x="758" y="154" class="card-title">CLI + CI</text>
-  <text x="758" y="170" class="card-copy">Local scans, GitHub Action gates, Docker, SARIF, SBOM</text>
+  <rect x="744" y="134" width="168" height="66" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="758" y="156" class="card-title">CLI + CI</text>
+  <text x="758" y="172" class="card-copy">
+    <tspan x="758" dy="0">Local scans, GitHub Action gates,</tspan>
+    <tspan x="758" dy="11">Docker, SARIF, SBOM</tspan>
+  </text>
 
-  <rect x="744" y="206" width="168" height="58" rx="12" fill="#18181b" stroke="#27272a"/>
-  <text x="758" y="228" class="card-title">API + dashboard</text>
-  <text x="758" y="244" class="card-copy">Unified graph explorer, search, node detail, diff, compliance</text>
+  <rect x="744" y="214" width="168" height="66" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="758" y="236" class="card-title">API + dashboard</text>
+  <text x="758" y="252" class="card-copy">
+    <tspan x="758" dy="0">Unified graph explorer, search,</tspan>
+    <tspan x="758" dy="11">node detail, diff, compliance</tspan>
+  </text>
 
-  <rect x="744" y="280" width="168" height="68" rx="12" fill="#18181b" stroke="#27272a"/>
-  <text x="758" y="302" class="card-title">Runtime + export</text>
-  <text x="758" y="318" class="card-copy">Proxy enforcement, OCSF, HTML/PDF reports, evidence bundles</text>
-  <rect x="758" y="326" width="40" height="16" rx="8" fill="#172554"/><text x="778" y="337" text-anchor="middle" class="chip">graph</text>
-  <rect x="804" y="326" width="38" height="16" rx="8" fill="#172554"/><text x="823" y="337" text-anchor="middle" class="chip">delta</text>
-  <rect x="848" y="326" width="40" height="16" rx="8" fill="#172554"/><text x="868" y="337" text-anchor="middle" class="chip">OCSF</text>
+  <rect x="744" y="294" width="168" height="74" rx="12" fill="#18181b" stroke="#27272a"/>
+  <text x="758" y="316" class="card-title">Runtime + export</text>
+  <text x="758" y="332" class="card-copy">
+    <tspan x="758" dy="0">Proxy enforcement, OCSF,</tspan>
+    <tspan x="758" dy="11">HTML/PDF reports, evidence bundles</tspan>
+  </text>
+  <rect x="758" y="346" width="40" height="16" rx="8" fill="#172554"/><text x="778" y="357" text-anchor="middle" class="chip">graph</text>
+  <rect x="804" y="346" width="38" height="16" rx="8" fill="#172554"/><text x="823" y="357" text-anchor="middle" class="chip">delta</text>
+  <rect x="848" y="346" width="40" height="16" rx="8" fill="#172554"/><text x="868" y="357" text-anchor="middle" class="chip">OCSF</text>
 
-  <rect x="744" y="366" width="168" height="44" rx="12" fill="#172554" stroke="#2563eb"/>
-  <text x="758" y="385" class="note-title">USER PATH</text>
-  <text x="758" y="401" class="note-copy">One product surface from local scan to central review</text>
+  <rect x="744" y="382" width="168" height="44" rx="12" fill="#172554" stroke="#2563eb"/>
+  <text x="758" y="401" class="note-title">USER PATH</text>
+  <text x="758" y="417" class="note-copy">One product surface from local scan to central review</text>
 
-  <rect x="32" y="452" width="896" height="56" rx="16" fill="#030712" stroke="#1f2937"/>
-  <text x="56" y="475" class="summary-title">Why this matters</text>
-  <text x="56" y="494" class="summary-copy">The same persisted graph powers search, impact, diff, attack-path drilldown, OCSF export, and runtime-aware review.</text>
+  <rect x="32" y="468" width="896" height="56" rx="16" fill="#030712" stroke="#1f2937"/>
+  <text x="56" y="491" class="summary-title">Why this matters</text>
+  <text x="56" y="510" class="summary-copy">The same persisted graph powers search, impact, diff, attack-path drilldown, OCSF export, and runtime-aware review.</text>
 </svg>

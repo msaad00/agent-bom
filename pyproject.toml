@@ -94,7 +94,11 @@ wandb = ["wandb>=0.16"]
 # MLflow discovery still works if users install `mlflow` separately.
 openai = ["openai>=1.12"]
 ai-enrich = ["litellm>=1.30"]
-graph = ["networkx>=3.0"]
+graph = [
+    "networkx>=3.0",
+    "numpy>=1.26",
+    "scipy>=1.13",
+]
 pdf = []
 postgres = ["psycopg[binary]>=3.1", "psycopg-pool>=3.1"]
 watch = ["watchdog>=4.0"]
@@ -140,6 +144,8 @@ dev-all = [
     "agent-bom[dev]",
     "agent-bom[ui]",
     "agent-bom[mcp-server]",
+    "agent-bom[graph]",
+    "agent-bom[postgres]",
 ]
 
 [project.scripts]

@@ -1426,11 +1426,12 @@ def print_export_hint(report: AIBOMReport) -> None:
     if report.total_servers > 0:
         lines.append("  [green]agent-bom runtime proxy -- npx @mcp/server ...[/green]  [dim]Enforce MCP traffic[/dim]")
     lines.append("  [green]agent-bom scan -f html -o report.html[/green]           [dim]Interactive HTML report[/dim]")
+    lines.append("  [green]agent-bom scan -f pdf -o report.pdf[/green]             [dim]Audit-ready PDF export[/dim]")
     lines.append("")
 
     # ── Export (compact) ──
     lines.append("[bold]Export[/bold]")
-    lines.append("  [green]-f[/green] json · cyclonedx · spdx · sarif · html · junit   [dim]18 formats[/dim]")
+    lines.append("  [green]-f[/green] json · cyclonedx · spdx · sarif · html · pdf · junit   [dim]19 formats[/dim]")
 
     console.print()
     console.print(Panel("\n".join(lines), border_style="blue", padding=(1, 2)))
@@ -2098,6 +2099,20 @@ def export_html(report: AIBOMReport, output_path: str, blast_radii: list | None 
     from agent_bom.output.html import export_html as _export_html
 
     _export_html(report, output_path, blast_radii or [])
+
+
+def to_pdf(report: AIBOMReport, blast_radii: list | None = None) -> bytes:
+    """Generate a PDF report using the optional PDF renderer."""
+    from agent_bom.output.pdf import to_pdf as _to_pdf
+
+    return _to_pdf(report, blast_radii or [])
+
+
+def export_pdf(report: AIBOMReport, output_path: str, blast_radii: list | None = None) -> None:
+    """Export report as a PDF file using the optional PDF renderer."""
+    from agent_bom.output.pdf import export_pdf as _export_pdf
+
+    _export_pdf(report, output_path, blast_radii or [])
 
 
 # ─── Prometheus Output (delegated to prometheus.py) ──────────────────────────

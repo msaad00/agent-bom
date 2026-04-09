@@ -45,7 +45,25 @@ For the canonical product brief and verified repo-derived metrics, see [docs/PRO
 
 30-second terminal demo: a real `agent-bom` scan showing blast radius, fix-first remediation, and integrity verification in one flow. The GIF uses the built-in curated sample environment so the output stays reproducible across releases. For real scans, run `agent-bom agents` on your machine, or add `-p .` when you want project lockfiles and manifests folded into the same scan.
 
-Shipped today: `9` threat-intel sources, `16` lockfile formats, `13` model formats, `36` MCP tools, `13` PostgreSQL RLS-backed tenant tables, and `8` runtime detector classes.
+Current repo-derived counts live in [docs/PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md). The README keeps the product story stable and leaves fast-moving counts in the generated metrics appendix.
+
+## First commands after install
+
+If you only run three commands, make them these:
+
+```bash
+agent-bom agents -p .              # Local agent + MCP + project package scan
+agent-bom serve                    # API + dashboard + unified graph explorer
+agent-bom proxy "npx @mcp/server-fs /workspace"   # Runtime MCP inspection path
+```
+
+Pick the one that matches your first goal:
+
+| Goal | Run | What you get |
+|---|---|---|
+| Find what is installed and reachable | `agent-bom agents -p .` | Agent discovery, MCP mapping, project dependency findings, blast radius |
+| Review findings in a persistent graph | `agent-bom serve` | API, dashboard, unified graph, current-state and diff views |
+| Inspect live MCP traffic | `agent-bom proxy "<server command>"` | Inline runtime inspection, detector chaining, response/argument review |
 
 ## Quick start
 
@@ -90,6 +108,25 @@ agent-bom serve                         # API + Next.js dashboard
 - Model and weight supply-chain checks with signed-artifact detection, bundle manifest and lineage visibility, HuggingFace provenance, and hash-verification visibility in CLI and JSON output
 - Real operator outputs: SARIF, CycloneDX, HTML, graphs, badges, JSON, API, dashboard, and MCP tools
 - Works as local CLI, CI gate, authenticated remote service, and enterprise deployment base
+
+## Graph explorer
+
+The graph is now a first-class product path, not a side export. The same persisted graph supports current-state review, snapshot diffs, attack-path drilldown, search, impact, compliance posture, and OCSF-ready export.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/topology-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/topology-light.svg" alt="agent-bom unified graph explorer" width="900" />
+  </picture>
+</p>
+
+Use whichever entrypoint fits your workflow:
+
+```bash
+agent-bom serve                    # Persist scans and explore them in the dashboard
+agent-bom graph report.json        # Generate graph-facing output from an existing report
+agent-bom mesh --project .         # Quick local topology view from the CLI
+```
 
 ## Proof points
 
@@ -437,7 +474,7 @@ See [docs/ENTERPRISE_DEPLOYMENT.md](docs/ENTERPRISE_DEPLOYMENT.md) for rollout p
 </details>
 
 <details>
-<summary><b>Output formats (19)</b></summary>
+<summary><b>Output formats</b></summary>
 
 JSON, SARIF, CycloneDX 1.6 (with ML BOM), SPDX 3.0, HTML, Graph JSON, Graph HTML, GraphML, Neo4j Cypher, JUnit XML, CSV, Markdown, Mermaid, SVG, Prometheus, Badge, OCSF, Attack Flow, plain text.
 

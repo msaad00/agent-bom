@@ -179,7 +179,7 @@ async def get_graph_paths(
 
     all_paths = graph.bfs(source, max_depth=max_depth, traversable_only=True)
     paged_paths, pagination = _paginate(all_paths, offset, limit)
-    reachable = graph.reachable_from(source, max_depth=max_depth)
+    reachable = graph.reachable_from(source, max_depth=max_depth, traversable_only=True, include_source=False)
 
     return {
         "source": source,

@@ -245,6 +245,22 @@ class TestGraphEndpointLogic:
         assert total == 1
         assert [node.id for node in results] == ["server:acme:vector"]
 
+    def test_sqlite_graph_store_search_escapes_like_wildcards(self, tmp_path):
+        store = SQLiteGraphStore(tmp_path / "graph.db")
+        graph = UnifiedGraph(scan_id="search-scan", tenant_id="default")
+        graph.add_node(UnifiedNode(id="server:percent", entity_type=EntityType.SERVER, label="100% Secure Server"))
+        graph.add_node(UnifiedNode(id="dataset:underscore", entity_type=EntityType.DATASET, label="data_set"))
+        graph.add_node(UnifiedNode(id="agent:plain", entity_type=EntityType.AGENT, label="plain agent"))
+        store.save_graph(graph)
+
+        percent_results, percent_total = store.search_nodes(tenant_id="default", query="%", offset=0, limit=10)
+        underscore_results, underscore_total = store.search_nodes(tenant_id="default", query="_", offset=0, limit=10)
+
+        assert percent_total == 1
+        assert [node.id for node in percent_results] == ["server:percent"]
+        assert underscore_total == 1
+        assert [node.id for node in underscore_results] == ["dataset:underscore"]
+
 
 class TestBackendDirectionality:
     """Regression: graph_backend must respect edge direction from unified graph."""
@@ -396,3 +412,24 @@ class TestGraphStoreBackendSelection:
         assert response.json()["results"][0]["id"] == "server:a"
         assert any(call[0] == "search_nodes" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
+
+    def test_graph_paths_reachable_nodes_follow_traversable_edges_only(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="tool:t", entity_type=EntityType.TOOL, label="tool-t"))
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES, traversable=True)
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="server:s", target="tool:t", relationship=RelationshipType.PROVIDES_TOOL, traversable=False)
+        )
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/paths", params={"source": "agent:a", "max_depth": 4})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["reachable_count"] == 1
+        assert body["reachable_nodes"] == ["server:s"]
+        assert [path["target"] for path in body["paths"]] == ["server:s"]

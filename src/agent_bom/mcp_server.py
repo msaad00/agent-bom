@@ -2107,10 +2107,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             {
                 "name": "agent-bom",
                 "version": __version__,
-                "description": (
-                    "Open security scanner and graph for agentic infrastructure — "
-                    "discover agents and MCP, map blast radius, and inspect runtime."
-                ),
+                "description": ("Security scanner and graph for agentic infrastructure — agents, MCP, runtime, and blast radius."),
                 "homepage": "https://github.com/msaad00/agent-bom",
                 "source": "https://github.com/msaad00/agent-bom",
                 "license": "Apache-2.0",
@@ -2322,9 +2319,7 @@ def build_server_card() -> dict:
     return {
         "name": "agent-bom",
         "version": __version__,
-        "description": (
-            "Open security scanner and graph for agentic infrastructure — discover agents and MCP, map blast radius, and inspect runtime."
-        ),
+        "description": ("Security scanner and graph for agentic infrastructure — agents, MCP, runtime, and blast radius."),
         "repository": "https://github.com/msaad00/agent-bom",
         "transport": ["stdio", "sse", "streamable-http"],
         "tools": _SERVER_CARD_TOOLS,

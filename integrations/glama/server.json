@@ -1,6 +1,6 @@
 {
   "name": "agent-bom",
-  "description": "Open security scanner and graph for agentic infrastructure — discover agents and MCP, map blast radius, and inspect runtime.",
+  "description": "Security scanner and graph for agentic infrastructure — agents, MCP, runtime, and blast radius.",
   "version": "0.76.0",
   "license": "Apache-2.0",
   "repository": "https://github.com/msaad00/agent-bom",

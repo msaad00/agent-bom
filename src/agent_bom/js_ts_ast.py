@@ -55,6 +55,7 @@ class JSTSCallSite:
 
     name: str
     line_number: int
+    argument_names: list[list[str]] = field(default_factory=list)
 
 
 @dataclass
@@ -414,14 +415,27 @@ def _call_sites(root: TreeSitterNode | None, source: bytes, analysis: JSTSAstAna
     call_sites: list[JSTSCallSite] = []
     for node in _iter_nodes(root):
         canonical = ""
+        arguments_node = None
         if node.type == "call_expression":
             raw_name = _expression_name(node.child_by_field_name("function"), source)
             canonical = _canonicalize_reference_name(raw_name, analysis.function_aliases, analysis.namespace_aliases)
+            arguments_node = node.child_by_field_name("arguments")
         elif node.type == "new_expression":
             raw_name = _expression_name(node.child_by_field_name("constructor"), source)
             canonical = _canonicalize_reference_name(raw_name, analysis.function_aliases, analysis.namespace_aliases)
+            arguments_node = node.child_by_field_name("arguments")
         if canonical:
-            call_sites.append(JSTSCallSite(name=canonical, line_number=_line_number(node)))
+            argument_names: list[list[str]] = []
+            if arguments_node is not None:
+                for argument in arguments_node.named_children:
+                    argument_names.append(_identifier_names(argument, source))
+            call_sites.append(
+                JSTSCallSite(
+                    name=canonical,
+                    line_number=_line_number(node),
+                    argument_names=argument_names,
+                )
+            )
     return call_sites
 
 

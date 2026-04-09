@@ -77,6 +77,7 @@ def test_analyze_js_ts_block_collects_tool_handlers_and_imports():
     assert "@modelcontextprotocol/sdk/server/index.js" in analysis.imported_modules
     assert "executeCommand" in analysis.functions
     assert analysis.functions["executeCommand"].dangerous_call_sites[0].name == "child_process.execSync"
+    assert analysis.functions["executeCommand"].dangerous_call_sites[0].argument_names == [["input"]]
     assert analysis.tool_registrations[0].tool_name == "run_cmd"
     assert analysis.tool_registrations[0].handler_name == "tool:run_cmd"
 

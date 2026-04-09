@@ -13,7 +13,7 @@ from agent_bom.models import AIBOMReport
 
 
 def _report() -> AIBOMReport:
-    return AIBOMReport(generated_at=datetime(2026, 1, 1, tzinfo=timezone.utc), tool_version="0.75.15")
+    return AIBOMReport(generated_at=datetime(2026, 1, 1, tzinfo=timezone.utc), tool_version="0.76.0")
 
 
 def test_to_pdf_uses_weasyprint_renderer():

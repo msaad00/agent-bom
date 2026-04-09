@@ -1,6 +1,6 @@
 # agent-bom
 
-**Open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime.**
+**Open security scanner and graph for agentic infrastructure — discover agents and MCP, map blast radius, and inspect runtime.**
 
 Package risk is only the start. What matters is what it can reach.
 
@@ -113,7 +113,7 @@ It covers:
 | Tag | Description |
 |-----|-------------|
 | `latest` | Most recent stable release |
-| `v0.75.15` | Current stable version (pinned) |
+| `v0.76.0` | Current stable version (pinned) |
 
 ## Links
 

@@ -2,7 +2,7 @@
 
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
-**Open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime.**
+**Open security scanner and graph for agentic infrastructure — discover agents and MCP, map blast radius, and inspect runtime.**
 
 Package risk is only the start. What matters is what it can reach.
 

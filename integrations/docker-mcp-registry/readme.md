@@ -1,6 +1,6 @@
 # agent-bom
 
-Open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime.
+Open security scanner and graph for agentic infrastructure — discover agents and MCP, map blast radius, and inspect runtime.
 
 Discovers AI agents and MCP servers, scans packages, images, filesystems, IaC, and cloud AI infrastructure, maps blast radius showing which credentials and tools each CVE reaches, enforces policy in real time, and generates compliance evidence.
 

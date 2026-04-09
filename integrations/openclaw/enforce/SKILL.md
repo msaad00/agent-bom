@@ -4,7 +4,7 @@ description: >-
   Enforce security policies on MCP tool calls and block dangerous operations at
   runtime. Use when: "block risky calls", "apply policy", "proxy",
   "runtime protection", "policy enforcement", "intercept MCP calls".
-version: 0.75.15
+version: 0.76.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required.
@@ -19,7 +19,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.75.15
+    docker: ghcr.io/msaad00/agent-bom:0.76.0
   openclaw:
     requires:
       bins: []

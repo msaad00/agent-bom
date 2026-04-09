@@ -11,6 +11,31 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.76.0] – 2026-04-09
+
+### Added
+- **Unified graph product path** — persisted snapshots, current-state and diff views, attack-path drilldown, search, impact, delta alert delivery, and Postgres-backed graph persistence are now part of the shipped CLI/API/dashboard flow
+- **Multi-language AST/SAST depth** — Python, JS/TS, and Go analysis now include stronger cross-file and taint-aware coverage, plus SARIF import and cleaner custom-rule handling
+- **Container layer attribution** — image findings now retain per-layer package provenance so output can show which layer introduced a vulnerable package
+- **PDF report export** — `agent-bom scan -f pdf -o report.pdf` now renders the existing HTML report through an optional WeasyPrint-backed export path
+
+### Changed
+- **README and architecture visuals** — product positioning, hero commands, and architecture diagrams were shortened and tightened to match the current shipped path without overflowing cards or stale counts
+- **Demo CLI polish** — demo and offline copy are shorter, and the scan path no longer prints redundant inner vulnerability banners when the outer progress bar is already rendering the step
+- **Release-managed versioning** — docs, deployment files, Helm, OpenClaw, registry metadata, and action examples now align on `0.76.0`
+
+### Fixed
+- **Graph correctness and scale** — snapshot isolation, tenant propagation, search escaping, delta dispatch semantics, and direction-aware traversal/reporting were hardened across the recent graph lane
+- **Scanner concurrency** — shared cache and scanner-global thread-safety issues were fixed and regression-tested
+- **Container evidence depth** — package metadata now tracks layer/package occurrences instead of flattening away provenance
+- **Release automation drift** — CodeQL SARIF upload is on v4 and no longer fails when a SARIF file was not actually produced
+
+### Security
+- **Release dependency refresh** — cryptography was bumped to `46.0.7`, clearing the active moderate buffer-overflow advisory on the locked release path
+- **Graph delta delivery** — delta alerts now flow through the existing dispatcher/webhook surfaces instead of only being computed/export-ready
+
+---
+
 ## [0.75.15] – 2026-04-04
 
 ### Added
@@ -486,7 +511,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.75.15...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.76.0...HEAD
+[0.76.0]: https://github.com/msaad00/agent-bom/compare/v0.75.15...v0.76.0
 [0.75.15]: https://github.com/msaad00/agent-bom/compare/v0.75.14...v0.75.15
 [0.75.14]: https://github.com/msaad00/agent-bom/compare/v0.75.13...v0.75.14
 [0.75.13]: https://github.com/msaad00/agent-bom/compare/v0.75.12...v0.75.13

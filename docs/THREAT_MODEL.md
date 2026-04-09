@@ -110,4 +110,4 @@ agent-bom operates in four modes:
 ## Review cadence
 
 This threat model is reviewed with each major release (x.0) and after any
-security advisory. Last reviewed: v0.75.15 (April 2026).
+security advisory. Last reviewed: v0.76.0 (April 2026).

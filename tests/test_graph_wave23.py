@@ -225,7 +225,7 @@ class TestDeltaAlerts:
         new.add_node(UnifiedNode(id="vuln:CVE-1", entity_type=EntityType.VULNERABILITY, label="CVE-1", severity="critical"))
 
         alerts = compute_delta_alerts(None, new)
-        result = dispatch_delta_alerts(alerts, product_version="0.75.15")
+        result = dispatch_delta_alerts(alerts, product_version="0.76.0")
         assert result["configured"] is False
         assert result["attempted"] == len(alerts)
         assert result["delivered"] == 0
@@ -263,7 +263,7 @@ class TestDeltaAlerts:
         new.add_node(UnifiedNode(id="vuln:CVE-1", entity_type=EntityType.VULNERABILITY, label="CVE-1", severity="critical"))
 
         alerts = compute_delta_alerts(None, new)
-        result = dispatch_delta_alerts(alerts, product_version="0.75.15")
+        result = dispatch_delta_alerts(alerts, product_version="0.76.0")
 
         assert result["configured"] is True
         assert result["outbound_channels"] == 2
@@ -309,7 +309,7 @@ class TestDeltaAlerts:
         alerts = compute_delta_alerts(None, new)
 
         async def _run():
-            result = dispatch_delta_alerts(alerts, product_version="0.75.15")
+            result = dispatch_delta_alerts(alerts, product_version="0.76.0")
             await asyncio.sleep(0)
             return result
 

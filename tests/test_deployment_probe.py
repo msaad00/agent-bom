@@ -39,7 +39,7 @@ def test_fetch_health_retries_normalized_url(monkeypatch):
         if len(calls) == 1:
             raise urllib.error.URLError("temporary failure")
         assert timeout == 12
-        return _Response(b'{"version":"0.75.15","tool_count":0}')
+        return _Response(b'{"version":"0.76.0","tool_count":0}')
 
     monkeypatch.setattr("agent_bom.deployment_probe.urllib.request.urlopen", fake_urlopen)
     monkeypatch.setattr("agent_bom.deployment_probe.time.sleep", lambda *_args: None)
@@ -53,7 +53,7 @@ def test_fetch_health_retries_normalized_url(monkeypatch):
     )
 
     assert url == "https://agent-bom-mcp.up.railway.app/health"
-    assert payload["version"] == "0.75.15"
+    assert payload["version"] == "0.76.0"
     assert calls == [
         "https://agent-bom-mcp.up.railway.app/health",
         "https://agent-bom-mcp.up.railway.app/health",

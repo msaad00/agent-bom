@@ -87,7 +87,7 @@ This is the right path because it improves product trust without diluting the MC
 
 Good external phrasing:
 
-- Open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime
+- Open security scanner and graph for agentic infrastructure — discover agents and MCP, map blast radius, and inspect runtime
 - Context-aware security for agents, MCP, runtime, and AI supply chain
 - Blast radius from package risk to agents, credentials, tools, and runtime
 

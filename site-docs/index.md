@@ -1,6 +1,6 @@
 # agent-bom
 
-**Open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime.**
+**Open security scanner and graph for agentic infrastructure — discover agents and MCP, map blast radius, and inspect runtime.**
 
 Scan agents, MCP, packages, containers, Kubernetes, cloud, and GPU workloads with blast-radius context.
 
@@ -51,6 +51,6 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 | CLI | `pip install agent-bom` |
 | MCP server | `agent-bom mcp server` |
 | Docker | `docker run ghcr.io/msaad00/agent-bom agents` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.75.15` |
+| GitHub Action | `uses: msaad00/agent-bom@v0.76.0` |
 | Kubernetes | Helm chart + CronJob + DaemonSet |
 | Remote SSE | Self-host or use hosted endpoint |

@@ -4,7 +4,7 @@ description: >-
   Discover AI agents, MCP servers, and configurations on this machine or
   environment. Use when: "find agents", "what's configured", "doctor",
   "what MCP servers", "show me what's installed", "mcp inventory".
-version: 0.75.15
+version: 0.76.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required.
@@ -19,7 +19,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.75.15
+    docker: ghcr.io/msaad00/agent-bom:0.76.0
   openclaw:
     requires:
       bins: []

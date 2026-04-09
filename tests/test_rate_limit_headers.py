@@ -167,12 +167,12 @@ def test_tracing_preserves_baggage():
         "/health",
         headers={
             "traceparent": "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
-            "baggage": "tenant=acme,release=v0.75.15",
+            "baggage": "tenant=acme,release=v0.76.0",
         },
     )
     assert resp.status_code == 200
-    assert resp.headers["baggage"] == "tenant=acme,release=v0.75.15"
-    assert resp.json()["baggage"] == "tenant=acme,release=v0.75.15"
+    assert resp.headers["baggage"] == "tenant=acme,release=v0.76.0"
+    assert resp.json()["baggage"] == "tenant=acme,release=v0.76.0"
 
 
 def test_tracing_invalid_traceparent_falls_back_to_new_trace():

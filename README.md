@@ -14,7 +14,7 @@
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
-<p align="center"><b>Open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime.</b></p>
+<p align="center"><b>Open security scanner and graph for agentic infrastructure — discover agents and MCP, map blast radius, and inspect runtime.</b></p>
 
 <p align="center">Security and visibility for agentic infrastructure should be open, transparent, and accessible — not reserved for teams with enterprise budgets.</p>
 
@@ -153,7 +153,7 @@ docker run --rm agentbom/agent-bom agents    # Docker
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom agents` | Local audit + project scan |
-| GitHub Action | `uses: msaad00/agent-bom@v0.75.15` | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.76.0` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom` | Isolated scans |
 | MCP Server | `agent-bom mcp server` | Claude Desktop, Claude Code, Cursor, Codex, Windsurf, Cortex |
 | Runtime proxy | `agent-bom proxy` | MCP traffic enforcement |
@@ -167,7 +167,7 @@ Use the GitHub Action when you want a fast CI gate: one step, one gate, SARIF in
 **Repo + MCP + instruction files**
 
 ```yaml
-- uses: msaad00/agent-bom@v0.75.15
+- uses: msaad00/agent-bom@v0.76.0
   with:
     scan-type: scan
     severity-threshold: high
@@ -179,7 +179,7 @@ Use the GitHub Action when you want a fast CI gate: one step, one gate, SARIF in
 **Container image gate**
 
 ```yaml
-- uses: msaad00/agent-bom@v0.75.15
+- uses: msaad00/agent-bom@v0.76.0
   with:
     scan-type: image
     scan-ref: ghcr.io/acme/agent-runtime:sha-abcdef
@@ -189,7 +189,7 @@ Use the GitHub Action when you want a fast CI gate: one step, one gate, SARIF in
 **IaC gate**
 
 ```yaml
-- uses: msaad00/agent-bom@v0.75.15
+- uses: msaad00/agent-bom@v0.76.0
   with:
     scan-type: iac
     iac: Dockerfile,k8s/,infra/main.tf
@@ -199,7 +199,7 @@ Use the GitHub Action when you want a fast CI gate: one step, one gate, SARIF in
 **Air-gapped / pre-synced CI**
 
 ```yaml
-- uses: msaad00/agent-bom@v0.75.15
+- uses: msaad00/agent-bom@v0.76.0
   with:
     auto-update-db: false
     enrich: false

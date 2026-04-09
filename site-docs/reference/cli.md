@@ -4,8 +4,10 @@
 
 | Command | Description |
 |---------|-------------|
-| `scan` | Discover MCP clients + scan for vulnerabilities |
+| `agents` | Discover MCP clients + scan for vulnerabilities |
 | `check` | Check a specific package for CVEs |
+| `verify` | Verify package integrity / provenance or self-verify `agent-bom` |
+| `where` | Show MCP discovery paths checked on this machine |
 | `image` | Container image scan |
 | `fs` | Filesystem / VM scan |
 | `iac` | Infrastructure-as-code misconfigurations |
@@ -21,40 +23,56 @@
 | `guard` | Pre-install CVE check |
 | `registry` | Registry management (list, search, update) |
 
+## Command contracts
+
+- `check` supports terminal output by default plus `--format json` for machine-readable pre-install verdicts.
+- `report history` and `report diff` support `--format json` for CI and automation.
+- Use `agent-bom agents -f <format> -o <path>` for SARIF, HTML, SBOM, and richer environment exports.
+- Use `agent-bom agents -f sarif -o -` when you need SARIF on stdout for piping.
+- `where` is available both as `agent-bom where` and `agent-bom mcp where`.
+- `agent-bom verify` and `agent-bom verify agent-bom` both self-verify the installed package.
+
 ## Common flags
 
 ```bash
 # Output format
-agent-bom scan -f json|table|html|sarif|csv
+agent-bom agents -f json|html|sarif|csv|cyclonedx|spdx
 
 # Output file
-agent-bom scan -o report.json
+agent-bom agents -o report.json
+agent-bom check requests@2.33.0 -e pypi -f json -o check.json
+agent-bom report diff before.json after.json -f json -o diff.json
 
 # Compliance
-agent-bom scan --compliance owasp-llm,eu-ai-act,all
+agent-bom agents --compliance owasp-llm,eu-ai-act,all
 
 # SBOM
-agent-bom scan --sbom cyclonedx|spdx
+agent-bom agents -f cyclonedx -o bom.json
+agent-bom agents -f spdx -o bom.spdx.json
 
 # Image scanning
-agent-bom scan --image python:3.12-slim
+agent-bom agents --image python:3.12-slim
 
 # Policy
-agent-bom scan --policy policy.json
+agent-bom agents --policy policy.json
 
 # Enrichment
-agent-bom scan --enrich    # NVD CVSS v4 + EPSS
+agent-bom agents --enrich    # NVD CVSS v4 + EPSS
 
 # Prometheus
-agent-bom scan --push-gateway http://pushgateway:9091
+agent-bom agents --push-gateway http://pushgateway:9091
 
 # VEX
-agent-bom scan --vex vex.json
-agent-bom scan --generate-vex --vex-output vex.json
+agent-bom agents --vex vex.json
+agent-bom agents --generate-vex --vex-output vex.json
 
 # Config directory
-agent-bom scan --config-dir /path/to/configs
+agent-bom agents --config-dir /path/to/configs
 ```
+
+## Troubleshooting
+
+See [CLI Debug Guide](cli-debug.md) for quiet/logging behavior, stdout vs file output, discovery triage, and package verification workflows.
 
 ## Environment variables
 

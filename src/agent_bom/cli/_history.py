@@ -136,17 +136,88 @@ def _report_from_json(data: dict) -> "_NarrativeReport":
     )
 
 
+def _write_cli_output(payload: dict, output_path: str | None) -> None:
+    """Write JSON payload to stdout or a file."""
+    text = _json.dumps(payload, indent=2)
+    if output_path and output_path != "-":
+        Path(output_path).write_text(text, encoding="utf-8")
+        return
+    click.echo(text)
+
+
 @click.command("history")
 @click.option("--limit", "-n", type=int, default=10, help="Number of recent scans to show")
-def history_cmd(limit: int):
+@click.option(
+    "--format",
+    "-f",
+    "output_format",
+    type=click.Choice(["console", "json"], case_sensitive=False),
+    default="console",
+    show_default=True,
+    help="Output format.",
+)
+@click.option("--output", "-o", type=str, default=None, help="Write JSON output to a file (use '-' for stdout).")
+def history_cmd(limit: int, output_format: str, output: str | None):
     """List saved scan reports from ~/.agent-bom/history/."""
     from agent_bom.history import list_reports, load_report
+
+    if output and output_format != "json":
+        raise click.ClickException("`report history --output` requires `--format json`.")
 
     console = Console()
 
     reports = list_reports()
     if not reports:
+        if output_format == "json":
+            _write_cli_output(
+                {
+                    "history_dir": str(Path.home() / ".agent-bom" / "history"),
+                    "total_reports": 0,
+                    "reports": [],
+                },
+                output,
+            )
+            return
         console.print("\n  [dim]No saved scans yet. Run with --save to start tracking history.[/dim]\n")
+        return
+
+    rows: list[dict[str, object]] = []
+    for path in reports[:limit]:
+        row: dict[str, object] = {
+            "path": str(path),
+            "file": path.name,
+            "generated_at": None,
+            "total_agents": None,
+            "total_packages": None,
+            "total_vulnerabilities": None,
+            "critical_findings": None,
+        }
+        try:
+            data = load_report(path)
+            summary = data.get("summary", {})
+            row.update(
+                {
+                    "generated_at": data.get("generated_at", "unknown"),
+                    "total_agents": summary.get("total_agents"),
+                    "total_packages": summary.get("total_packages"),
+                    "total_vulnerabilities": summary.get("total_vulnerabilities"),
+                    "critical_findings": summary.get("critical_findings"),
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            row["error"] = str(exc)
+        rows.append(row)
+
+    if output_format == "json":
+        _write_cli_output(
+            {
+                "history_dir": str(reports[0].parent),
+                "total_reports": len(reports),
+                "returned_reports": len(rows),
+                "reports": rows,
+            },
+            output,
+        )
         return
 
     console.print(f"\n[bold blue]📂 Scan History[/bold blue]  ({len(reports)} total, showing {min(limit, len(reports))})\n")
@@ -161,20 +232,20 @@ def history_cmd(limit: int):
     table.add_column("Vulns", width=6, justify="center")
     table.add_column("Critical", width=9, justify="center")
 
-    for path in reports[:limit]:
-        try:
-            data = load_report(path)
-            summary = data.get("summary", {})
-            table.add_row(
-                path.name,
-                data.get("generated_at", "unknown")[:19].replace("T", " "),
-                str(summary.get("total_agents", "?")),
-                str(summary.get("total_packages", "?")),
-                str(summary.get("total_vulnerabilities", "?")),
-                str(summary.get("critical_findings", "?")),
-            )
-        except Exception:
-            table.add_row(path.name, "—", "—", "—", "—", "—")
+    for row in rows:
+        generated_at = row.get("generated_at")
+        if isinstance(generated_at, str) and generated_at not in {"", "unknown"}:
+            generated = generated_at[:19].replace("T", " ")
+        else:
+            generated = "—"
+        table.add_row(
+            str(row["file"]),
+            generated,
+            str(row.get("total_agents", "?") if row.get("total_agents") is not None else "—"),
+            str(row.get("total_packages", "?") if row.get("total_packages") is not None else "—"),
+            str(row.get("total_vulnerabilities", "?") if row.get("total_vulnerabilities") is not None else "—"),
+            str(row.get("critical_findings", "?") if row.get("critical_findings") is not None else "—"),
+        )
 
     console.print(table)
     console.print(f"\n  [dim]History directory: {reports[0].parent}[/dim]\n")
@@ -183,7 +254,17 @@ def history_cmd(limit: int):
 @click.command("diff")
 @click.argument("baseline", type=click.Path(exists=True))
 @click.argument("current", type=click.Path(exists=True), required=False)
-def diff_cmd(baseline: str, current: Optional[str]):
+@click.option(
+    "--format",
+    "-f",
+    "output_format",
+    type=click.Choice(["console", "json"], case_sensitive=False),
+    default="console",
+    show_default=True,
+    help="Output format.",
+)
+@click.option("--output", "-o", type=str, default=None, help="Write JSON output to a file (use '-' for stdout).")
+def diff_cmd(baseline: str, current: Optional[str], output_format: str, output: str | None):
     """Diff two scan reports to see what changed.
 
     \b
@@ -200,21 +281,36 @@ def diff_cmd(baseline: str, current: Optional[str]):
     """
     from agent_bom.history import diff_reports, latest_report, load_report_or_sbom
 
+    if output and output_format != "json":
+        raise click.ClickException("`report diff --output` requires `--format json`.")
+
     console = Console()
 
     baseline_data = load_report_or_sbom(Path(baseline))
 
     if current:
-        current_data = load_report_or_sbom(Path(current))
+        current_path = Path(current)
+        current_data = load_report_or_sbom(current_path)
     else:
         latest = latest_report()
         if not latest:
             console.print("[red]No saved scans in history. Run: agent-bom scan --save[/red]")
             sys.exit(1)
-        current_data = load_report_or_sbom(latest)
+        current_path = latest
+        current_data = load_report_or_sbom(current_path)
 
     diff = diff_reports(baseline_data, current_data)
-    print_diff(diff)
+    if output_format == "json":
+        _write_cli_output(
+            {
+                "baseline_path": str(Path(baseline).resolve()),
+                "current_path": str(current_path.resolve()),
+                **diff,
+            },
+            output,
+        )
+    else:
+        print_diff(diff)
 
     if diff["summary"]["new_findings"] > 0:
         sys.exit(1)

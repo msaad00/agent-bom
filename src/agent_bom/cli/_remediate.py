@@ -14,7 +14,7 @@ from typing import Optional
 import click
 
 from agent_bom import __version__
-from agent_bom.cli._common import _make_console, logger
+from agent_bom.cli._common import _make_console, _sync_runtime_consoles, logger
 from agent_bom.cli._scan_runner import ScanConfig, run_default_scan
 
 # ---------------------------------------------------------------------------
@@ -188,6 +188,7 @@ def _plan_to_json(plan_items: list[dict]) -> dict:
     help="Filter to show only items at this priority or higher.",
 )
 @click.option("--fixable-only", is_flag=True, default=False, help="Hide items without a fix version.")
+@click.option("--quiet", "-q", is_flag=True, default=False, help="Suppress scan chatter and file-write status messages.")
 def remediate_cmd(
     demo: bool,
     offline: bool,
@@ -197,6 +198,7 @@ def remediate_cmd(
     output_path: Optional[str],
     min_priority: Optional[str],
     fixable_only: bool,
+    quiet: bool,
 ) -> None:
     """Generate a prioritized remediation plan for discovered vulnerabilities.
 
@@ -211,15 +213,18 @@ def remediate_cmd(
       agent-bom remediate --fixable-only --priority P2 show P1+P2 fixable items only
       agent-bom remediate --server-group               group by MCP server
     """
-    from agent_bom.output import build_remediation_plan, print_remediation_plan
+    import agent_bom.output as output_mod
 
-    con = _make_console(quiet=(output_format != "console"), output_format=output_format)
+    runtime_console = _make_console(quiet=quiet or (output_format != "console"), output_format=output_format)
+    output_console = _make_console()
+    _sync_runtime_consoles(runtime_console)
+    output_mod.console = output_console
 
     # Run the scan pipeline
     try:
         result = run_default_scan(
             ScanConfig(project=project, demo=demo, offline=offline),
-            con=con,
+            con=runtime_console,
         )
         blast_radii, report = result.blast_radii, result.report
     except SystemExit:
@@ -237,11 +242,11 @@ def remediate_cmd(
             else:
                 click.echo(_out_str)
             return
-        con.print("\n[green]No vulnerabilities found — no remediation needed.[/green]\n")
+        output_console.print("\n[green]No vulnerabilities found — no remediation needed.[/green]\n")
         return
 
     # Build the plan
-    plan = build_remediation_plan(blast_radii)
+    plan = output_mod.build_remediation_plan(blast_radii)
 
     # Enrich with blast_radius_score
     for item in plan:
@@ -264,7 +269,7 @@ def remediate_cmd(
             else:
                 click.echo(_out_str)
             return
-        con.print("\n[dim]No remediation items match the current filters.[/dim]\n")
+        output_console.print("\n[dim]No remediation items match the current filters.[/dim]\n")
         return
 
     # Render output
@@ -273,24 +278,24 @@ def remediate_cmd(
             groups = _group_by_server(plan, blast_radii)
             from rich.rule import Rule
 
-            con.print()
-            con.print(Rule("Remediation Plan (grouped by MCP server)", style="green"))
-            con.print()
+            output_console.print()
+            output_console.print(Rule("Remediation Plan (grouped by MCP server)", style="green"))
+            output_console.print()
             for srv_name, items in groups.items():
-                con.print(f"\n  [bold cyan]{srv_name}[/bold cyan]")
+                output_console.print(f"\n  [bold cyan]{srv_name}[/bold cyan]")
                 for item in items:
                     fix_str = f"[green]{item['fix']}[/green]" if item.get("fix") else "[dim]no fix[/dim]"
                     kev = " [red][KEV][/red]" if item.get("has_kev") else ""
-                    con.print(
+                    output_console.print(
                         f"    [{item['priority']}] {item['package']} "
                         f"[dim]{item['current']}[/dim] -> {fix_str}{kev}"
                         f"  ({len(item.get('vulns', []))} vuln(s))"
                     )
-            con.print()
+            output_console.print()
         else:
             # Use the existing print_remediation_plan for default console view
             assert report is not None  # guaranteed after successful scan
-            print_remediation_plan(report)
+            output_mod.print_remediation_plan(report)
 
     elif output_format == "json":
         if server_group:
@@ -302,8 +307,8 @@ def remediate_cmd(
         _out_str = json.dumps(json_out, indent=2)
         if output_path:
             Path(output_path).write_text(_out_str)
-            con_file = _make_console(quiet=False)
-            con_file.print(f"[green]Remediation plan written[/green] -> {output_path}")
+            if not quiet:
+                output_console.print(f"[green]Remediation plan written[/green] -> {output_path}")
         else:
             click.echo(_out_str)
 
@@ -311,7 +316,7 @@ def remediate_cmd(
         md = _render_markdown(plan, blast_radii)
         if output_path:
             Path(output_path).write_text(md)
-            con_file = _make_console(quiet=False)
-            con_file.print(f"[green]Remediation report written[/green] -> {output_path}")
+            if not quiet:
+                output_console.print(f"[green]Remediation report written[/green] -> {output_path}")
         else:
             click.echo(md)

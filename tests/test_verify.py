@@ -294,6 +294,12 @@ def test_verify_self_no_args():
     assert result.exit_code == 0 or "VERIFIED" in result.output
 
 
+def test_verify_agent_bom_shortcut_uses_self_verify():
+    record, integrity, provenance, pypi_meta = _mock_verify_all_pass()
+    result = _run_verify_with_mocks(["verify", "agent-bom"], record, integrity, provenance, pypi_meta)
+    assert result.exit_code == 0 or "VERIFIED" in result.output
+
+
 def test_verify_self_json_output():
     record, integrity, provenance, pypi_meta = _mock_verify_all_pass()
     result = _run_verify_with_mocks(["verify", "--json"], record, integrity, provenance, pypi_meta)

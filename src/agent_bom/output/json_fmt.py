@@ -35,6 +35,20 @@ def _risk_narrative(item: dict) -> str:
     return " ".join(parts) + "."
 
 
+def _package_occurrence_to_dict(occurrence) -> dict[str, object]:
+    """Serialize package provenance observations without importing parser internals."""
+    if hasattr(occurrence, "to_dict"):
+        return occurrence.to_dict()
+    return {
+        "layer_index": getattr(occurrence, "layer_index", None),
+        "layer_id": getattr(occurrence, "layer_id", None),
+        "layer_path": getattr(occurrence, "layer_path", None),
+        "package_path": getattr(occurrence, "package_path", None),
+        "created_by": getattr(occurrence, "created_by", None),
+        "dockerfile_instruction": getattr(occurrence, "dockerfile_instruction", None),
+    }
+
+
 def _build_remediation_json(report: AIBOMReport) -> list[dict]:
     """Build JSON-serializable remediation plan with named assets and percentages."""
     from agent_bom.output import build_remediation_plan
@@ -325,6 +339,8 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
                         "source_package": pkg.source_package,
                         "distro_name": pkg.distro_name,
                         "distro_version": pkg.distro_version,
+                        "occurrence_count": len(pkg.occurrences),
+                        "occurrences": [_package_occurrence_to_dict(occ) for occ in pkg.occurrences],
                         "vulnerability_count": len(pkg.vulnerabilities),
                     }
                 if pkg.stable_id not in servers[server.stable_id]["package_ids"]:
@@ -522,6 +538,11 @@ def to_json(report: AIBOMReport) -> dict:
                                 "source_package": pkg.source_package,
                                 "distro_name": pkg.distro_name,
                                 "distro_version": pkg.distro_version,
+                                "occurrence_count": len(pkg.occurrences),
+                                "occurrences": [_package_occurrence_to_dict(occ) for occ in pkg.occurrences],
+                                "introduced_in_layer": (
+                                    _package_occurrence_to_dict(pkg.primary_occurrence) if pkg.primary_occurrence else None
+                                ),
                                 "is_direct": pkg.is_direct,
                                 "parent_package": pkg.parent_package,
                                 "dependency_depth": pkg.dependency_depth,
@@ -624,6 +645,10 @@ def to_json(report: AIBOMReport) -> dict:
                 "compliance_tags": br.vulnerability.compliance_tags,
                 "package": f"{br.package.name}@{br.package.version}",
                 "ecosystem": br.package.ecosystem,
+                "layer_attribution": [_package_occurrence_to_dict(occ) for occ in br.layer_attribution],
+                "introduced_in_layer": (
+                    _package_occurrence_to_dict(br.package.primary_occurrence) if br.package.primary_occurrence else None
+                ),
                 "is_malicious": br.package.is_malicious,
                 "malicious_reason": br.package.malicious_reason,
                 "scorecard_score": br.package.scorecard_score,

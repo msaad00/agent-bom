@@ -149,7 +149,13 @@ async def check_npm_provenance(
         f"https://registry.npmjs.org/-/npm/v1/attestations/{encoded_name}@{version}",
     )
 
-    if response and response.status_code == 200:
+    if response is None:
+        return {"has_provenance": False, "status": "unavailable"}
+
+    if response.status_code == 404:
+        return {"has_provenance": False, "status": "not_published", "attestation_count": 0}
+
+    if response.status_code == 200:
         try:
             data = response.json()
             attestations = data.get("attestations", [])
@@ -158,6 +164,7 @@ async def check_npm_provenance(
                 if "slsa" in predicate_type.lower() or "provenance" in predicate_type.lower():
                     return {
                         "has_provenance": True,
+                        "status": "verified",
                         "predicate_type": predicate_type,
                         "attestation_count": len(attestations),
                     }
@@ -165,13 +172,20 @@ async def check_npm_provenance(
             if attestations:
                 return {
                     "has_provenance": False,
+                    "status": "not_provenance",
                     "attestation_count": len(attestations),
                     "predicate_types": [a.get("predicateType", "") for a in attestations],
                 }
+            return {
+                "has_provenance": False,
+                "status": "not_published",
+                "attestation_count": 0,
+            }
         except (ValueError, KeyError):
-            pass
+            logger.warning("npm provenance parse failed for %s@%s", package_name, version)
+            return {"has_provenance": False, "status": "unavailable"}
 
-    return None
+    return {"has_provenance": False, "status": "unavailable", "http_status": response.status_code}
 
 
 async def check_pypi_provenance(
@@ -193,18 +207,31 @@ async def check_pypi_provenance(
         f"https://pypi.org/integrity/{package_name}/{version}/",
     )
 
-    if response and response.status_code == 200:
+    if response is None:
+        return {"has_provenance": False, "status": "unavailable"}
+
+    if response.status_code == 404:
+        return {"has_provenance": False, "status": "not_published", "attestation_count": 0}
+
+    if response.status_code == 200:
         try:
             data = response.json()
             if data.get("attestations"):
                 return {
                     "has_provenance": True,
+                    "status": "verified",
                     "attestation_count": len(data["attestations"]),
                 }
+            return {
+                "has_provenance": False,
+                "status": "not_published",
+                "attestation_count": 0,
+            }
         except (ValueError, KeyError):
-            pass
+            logger.warning("PyPI provenance parse failed for %s@%s", package_name, version)
+            return {"has_provenance": False, "status": "unavailable"}
 
-    return None
+    return {"has_provenance": False, "status": "unavailable", "http_status": response.status_code}
 
 
 async def check_package_provenance(
@@ -254,18 +281,25 @@ async def check_go_provenance(
         f"https://sum.golang.org/lookup/{module_path}@{version}",
     )
 
-    if response and response.status_code == 200:
+    if response is None:
+        return {"has_provenance": False, "status": "unavailable"}
+
+    if response.status_code == 404:
+        return {"has_provenance": False, "status": "not_published"}
+
+    if response.status_code == 200:
         body = response.text.strip()
         # Response format: line 1 = id, line 2 = module@version hash, line 3 = go.sum hash
         lines = body.split("\n")
         if len(lines) >= 2:
             return {
                 "has_provenance": True,
+                "status": "verified",
                 "source": "sum.golang.org",
                 "checksum_db_entry": lines[0].strip() if lines else "",
             }
 
-    return None
+    return {"has_provenance": False, "status": "unavailable", "http_status": response.status_code}
 
 
 def verify_installed_record(package_name: str) -> dict:

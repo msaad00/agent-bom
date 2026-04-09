@@ -1841,13 +1841,11 @@ def print_compact_export_hint(report: AIBOMReport) -> None:
 # ─── Diff Output ─────────────────────────────────────────────────────────────
 
 
-def print_diff(diff: dict) -> None:
+def print_diff(diff: dict, *, quiet: bool = False) -> None:
     """Print a human-readable diff between two scan reports."""
     summary = diff["summary"]
     baseline_ts = diff["baseline_generated_at"]
     current_ts = diff["current_generated_at"]
-
-    console.print(f"\n[bold blue]📊 Scan Diff[/bold blue]  [dim]{baseline_ts}[/dim] → [dim]{current_ts}[/dim]\n")
 
     parts = []
     if summary["new_findings"]:
@@ -1880,6 +1878,15 @@ def print_diff(diff: dict) -> None:
         parts.append(f"[cyan]{inv_summary['new_relationships']} new relationship(s)[/cyan]")
     if inv_summary.get("removed_relationships"):
         parts.append(f"[dim]{inv_summary['removed_relationships']} removed relationship(s)[/dim]")
+
+    if quiet:
+        if parts:
+            console.print("  •  ".join(parts))
+        else:
+            console.print("No changes since baseline.")
+        return
+
+    console.print(f"\n[bold blue]📊 Scan Diff[/bold blue]  [dim]{baseline_ts}[/dim] → [dim]{current_ts}[/dim]\n")
 
     if parts:
         console.print("  " + "  •  ".join(parts) + "\n")

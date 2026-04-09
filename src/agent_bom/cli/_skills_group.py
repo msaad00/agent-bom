@@ -54,6 +54,7 @@ def skills_group(ctx: click.Context) -> None:
     help="Path to the local skills catalog (defaults to ~/.agent-bom/skills/catalog.json)",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Show all findings instead of only the default top findings summary")
+@click.option("--quiet", "-q", is_flag=True, help="Suppress headings, summaries, and recommendations in console output")
 def skills_scan_cmd(
     paths: tuple[Path, ...],
     output_format: str,
@@ -62,6 +63,7 @@ def skills_scan_cmd(
     intel_source: str | None,
     catalog_path: Path | None,
     verbose: bool,
+    quiet: bool,
 ) -> None:
     """Scan skill and instruction files for trust, risk, and provenance.
 
@@ -84,22 +86,25 @@ def skills_scan_cmd(
         console = Console()
         summary = payload["summary"]
 
-        console.print("\n[bold]agent-bom skills scan[/bold]\n")
         if not report.files:
+            if not quiet:
+                console.print("\n[bold]agent-bom skills scan[/bold]\n")
             console.print("  [yellow]⚠ No supported skill or instruction files found.[/yellow]\n")
             if output_path:
                 output_path.write_text("")
             sys.exit(2)
 
-        console.print(
-            "  "
-            f"[green]{summary['files_scanned']}[/green] file(s) · "
-            f"[green]{summary['packages_found']}[/green] package ref(s) · "
-            f"[green]{summary['servers_found']}[/green] server ref(s) · "
-            f"[yellow]{summary['credential_env_vars']}[/yellow] credential var(s)\n"
-        )
-        if report.catalog_path:
-            console.print(f"  [dim]Catalog updated:[/dim] {report.catalog_path}\n")
+        if not quiet:
+            console.print("\n[bold]agent-bom skills scan[/bold]\n")
+            console.print(
+                "  "
+                f"[green]{summary['files_scanned']}[/green] file(s) · "
+                f"[green]{summary['packages_found']}[/green] package ref(s) · "
+                f"[green]{summary['servers_found']}[/green] server ref(s) · "
+                f"[yellow]{summary['credential_env_vars']}[/yellow] credential var(s)\n"
+            )
+            if report.catalog_path:
+                console.print(f"  [dim]Catalog updated:[/dim] {report.catalog_path}\n")
 
         files_table = Table(title="Instruction Surface", expand=True)
         files_table.add_column("File")
@@ -151,7 +156,8 @@ def skills_scan_cmd(
                     finding.category,
                     finding.title,
                 )
-            console.print()
+            if not quiet:
+                console.print()
             console.print(finding_table)
 
         family_totals: dict[str, int] = {}
@@ -161,7 +167,7 @@ def skills_scan_cmd(
             for family, count in families.items():
                 family_totals[family] = family_totals.get(family, 0) + int(count)
 
-        if family_totals:
+        if family_totals and not quiet:
             behavior_table = Table(title="Behavior Profile", expand=True)
             behavior_table.add_column("Family")
             behavior_table.add_column("Signals", justify="right", no_wrap=True)
@@ -178,11 +184,12 @@ def skills_scan_cmd(
                     seen_recommendations.add(recommendation)
                     recommendations.append(recommendation)
 
-        if recommendations:
+        if recommendations and not quiet:
             console.print("\n[bold]Recommended next steps[/bold]")
             for recommendation in recommendations[:5]:
                 console.print(f"  • {recommendation}")
-        console.print()
+        if not quiet:
+            console.print()
 
         if output_path:
             output_path.write_text(json.dumps(payload, indent=2))

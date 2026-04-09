@@ -157,7 +157,8 @@ def _write_cli_output(payload: dict, output_path: str | None) -> None:
     help="Output format.",
 )
 @click.option("--output", "-o", type=str, default=None, help="Write JSON output to a file (use '-' for stdout).")
-def history_cmd(limit: int, output_format: str, output: str | None):
+@click.option("--quiet", "-q", is_flag=True, help="Suppress headings and footer metadata in console output.")
+def history_cmd(limit: int, output_format: str, output: str | None, quiet: bool):
     """List saved scan reports from ~/.agent-bom/history/."""
     from agent_bom.history import list_reports, load_report
 
@@ -220,7 +221,8 @@ def history_cmd(limit: int, output_format: str, output: str | None):
         )
         return
 
-    console.print(f"\n[bold blue]📂 Scan History[/bold blue]  ({len(reports)} total, showing {min(limit, len(reports))})\n")
+    if not quiet:
+        console.print(f"\n[bold blue]📂 Scan History[/bold blue]  ({len(reports)} total, showing {min(limit, len(reports))})\n")
 
     from rich.table import Table
 
@@ -248,7 +250,8 @@ def history_cmd(limit: int, output_format: str, output: str | None):
         )
 
     console.print(table)
-    console.print(f"\n  [dim]History directory: {reports[0].parent}[/dim]\n")
+    if not quiet:
+        console.print(f"\n  [dim]History directory: {reports[0].parent}[/dim]\n")
 
 
 @click.command("diff")
@@ -264,7 +267,8 @@ def history_cmd(limit: int, output_format: str, output: str | None):
     help="Output format.",
 )
 @click.option("--output", "-o", type=str, default=None, help="Write JSON output to a file (use '-' for stdout).")
-def diff_cmd(baseline: str, current: Optional[str], output_format: str, output: str | None):
+@click.option("--quiet", "-q", is_flag=True, help="Only print a compact summary in console output.")
+def diff_cmd(baseline: str, current: Optional[str], output_format: str, output: str | None, quiet: bool):
     """Diff two scan reports to see what changed.
 
     \b
@@ -310,7 +314,7 @@ def diff_cmd(baseline: str, current: Optional[str], output_format: str, output: 
             output,
         )
     else:
-        print_diff(diff)
+        print_diff(diff, quiet=quiet)
 
     if diff["summary"]["new_findings"] > 0:
         sys.exit(1)

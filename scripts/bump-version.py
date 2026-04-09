@@ -61,18 +61,12 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("docs/PUBLISHING.md", re.compile(r"(git tag v)\S+", re.M), r"\g<1>{v}"),
     ("docs/PUBLISHING.md", re.compile(r"(git push origin v)\S+", re.M), r"\g<1>{v}"),
     ("ui/tests/nav.test.tsx", re.compile(r"(version:\s*')\d+\.\d+\.\d+(')"), r"\g<1>{v}\g<2>"),
-    # tests/test_core.py — version assertions
-    ("tests/test_core.py", re.compile(r'(assert\s+__version__\s*==\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
-    # Only match version assertions that currently contain a semver pattern (avoids clobbering SARIF "2.1.0")
-    ("tests/test_core.py", re.compile(r'(assert\s+data\["version"\]\s*==\s*")0\.\d+\.\d+(")', re.M), r"\g<1>{v}\g<2>"),
     # cve-freshness.yml — SARIF fallback template version
     (".github/workflows/cve-freshness.yml", re.compile(r'("version":")\d+\.\d+\.\d+(")'), r"\g<1>{v}\g<2>"),
     # mcp-change-scan.yml — pinned agent-bom install version
     (".github/workflows/mcp-change-scan.yml", re.compile(r"(agent-bom==)\d+\.\d+\.\d+"), r"\g<1>{v}"),
-    # README.md — Sigstore verify line
-    ("README.md", re.compile(r"(agent-bom verify agent-bom@)\S+"), r"\g<1>{v}"),
     # docs/demo.tape — version header
-    ("docs/demo.tape", re.compile(r"^(# agent-bom v)\d+\.\d+\.\d+(\s+demo.*)$", re.M), r"\g<1>{v}\g<2>"),
+    ("docs/demo.tape", re.compile(r"^(# agent-bom v)\d+\.\d+\.\d+(\s+.*demo.*)$", re.M), r"\g<1>{v}\g<2>"),
 ]
 
 
@@ -85,7 +79,9 @@ def bump(new_version: str, *, dry_run: bool = False, check: bool = False) -> int
     all_locations = VERSION_LOCATIONS + DOC_TEST_LOCATIONS
     for glob_pattern, pattern, template in OPENCLAW_SKILL_PATTERNS:
         for path in sorted(ROOT.glob(glob_pattern)):
-            all_locations.append((str(path.relative_to(ROOT)), pattern, template))
+            text = path.read_text()
+            if pattern.search(text):
+                all_locations.append((str(path.relative_to(ROOT)), pattern, template))
     changed = 0
 
     for rel_path, pattern, template in all_locations:

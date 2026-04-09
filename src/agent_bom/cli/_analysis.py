@@ -38,7 +38,7 @@ def _load_mesh_source(scan_file: Optional[str], project_dir: Optional[str]) -> t
     return [asdict(agent) for agent in agents], None
 
 
-def _render_mesh_summary(con: Console, agents_data: list[dict], mesh: dict) -> None:
+def _render_mesh_summary(con: Console, agents_data: list[dict], mesh: dict, *, quiet: bool = False) -> None:
     """Print a compact human-readable topology summary."""
     stats = mesh.get("stats", {})
     shared_counts: Counter[str] = Counter()
@@ -46,12 +46,13 @@ def _render_mesh_summary(con: Console, agents_data: list[dict], mesh: dict) -> N
         for server in agent.get("mcp_servers", []):
             shared_counts[server.get("name", "unknown")] += 1
 
-    con.print()
-    con.print(
-        f"[bold]Mesh[/bold]  "
-        f"[dim]{stats.get('total_agents', 0)} agents · {stats.get('total_servers', 0)} servers · "
-        f"{stats.get('total_tools', 0)} tools · {stats.get('total_vulnerabilities', 0)} vulns[/dim]"
-    )
+    if not quiet:
+        con.print()
+        con.print(
+            f"[bold]Mesh[/bold]  "
+            f"[dim]{stats.get('total_agents', 0)} agents · {stats.get('total_servers', 0)} servers · "
+            f"{stats.get('total_tools', 0)} tools · {stats.get('total_vulnerabilities', 0)} vulns[/dim]"
+        )
 
     for agent in agents_data:
         servers = agent.get("mcp_servers", [])
@@ -68,7 +69,8 @@ def _render_mesh_summary(con: Console, agents_data: list[dict], mesh: dict) -> N
                 f"• [cyan]{server.get('name', 'unknown')}[/cyan]{shared} "
                 f"[dim]{len(packages)} pkg · {len(tools)} tool · {len(creds)} cred · {vuln_count} vuln[/dim]"
             )
-    con.print()
+    if not quiet:
+        con.print()
 
 
 @click.command("analytics")
@@ -206,7 +208,8 @@ def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url):
     help="Output format.",
 )
 @click.option("--output", "-o", "output_path", default=None, help="Write to file instead of stdout.")
-def graph_cmd(scan_file: str, fmt: str, output_path: Optional[str]) -> None:
+@click.option("--quiet", "-q", is_flag=True, help="Suppress success messages when writing files.")
+def graph_cmd(scan_file: str, fmt: str, output_path: Optional[str], quiet: bool) -> None:
     """Export the transitive dependency graph from a saved JSON scan report.
 
     \b
@@ -247,7 +250,8 @@ def graph_cmd(scan_file: str, fmt: str, output_path: Optional[str]) -> None:
 
     if output_path:
         Path(output_path).write_text(output)
-        _con.print(f"[green]Graph exported[/green] ({graph.node_count()} nodes, {graph.edge_count()} edges) → {output_path}")
+        if not quiet:
+            _con.print(f"[green]Graph exported[/green] ({graph.node_count()} nodes, {graph.edge_count()} edges) → {output_path}")
     else:
         click.echo(output)
 
@@ -271,7 +275,8 @@ def graph_cmd(scan_file: str, fmt: str, output_path: Optional[str]) -> None:
     help="Output format.",
 )
 @click.option("--output", "-o", "output_path", default=None, help="Write to file instead of stdout.")
-def mesh_cmd(scan_file: Optional[str], project_dir: Optional[str], fmt: str, output_path: Optional[str]) -> None:
+@click.option("--quiet", "-q", is_flag=True, help="Suppress summary headers and export notices.")
+def mesh_cmd(scan_file: Optional[str], project_dir: Optional[str], fmt: str, output_path: Optional[str], quiet: bool) -> None:
     """Show lightweight agent/MCP topology without the dashboard.
 
     \b
@@ -300,7 +305,8 @@ def mesh_cmd(scan_file: Optional[str], project_dir: Optional[str], fmt: str, out
         output = json.dumps(mesh, indent=2)
         if output_path:
             Path(output_path).write_text(output)
-            con.print(f"[green]Mesh exported[/green] → {output_path}")
+            if not quiet:
+                con.print(f"[green]Mesh exported[/green] → {output_path}")
         else:
             click.echo(output)
         return
@@ -309,7 +315,7 @@ def mesh_cmd(scan_file: Optional[str], project_dir: Optional[str], fmt: str, out
         con.print("[red]--output is only supported with --format json for mesh.[/red]")
         raise SystemExit(2)
 
-    _render_mesh_summary(con, agents_data, mesh)
+    _render_mesh_summary(con, agents_data, mesh, quiet=quiet)
 
 
 @click.command("dashboard")

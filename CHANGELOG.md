@@ -11,6 +11,29 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.76.1] – 2026-04-09
+
+### Added
+- **CLI output parity for reporting commands** — `check`, `report diff`, and `report history` now have clearer machine-readable behavior, and reporting surfaces that were still missing `--quiet` now support quiet scripting flows
+- **CLI troubleshooting coverage** — the shipped docs now include a dedicated debug guide for quiet mode, stdout vs file output, discovery triage, and verification workflows
+
+### Changed
+- **Patch release alignment** — release-managed files, Docker/Helm metadata, OpenClaw skills metadata, docs, registry surfaces, and action examples are now aligned on `0.76.1`
+- **Verification status wording** — package provenance verification now distinguishes missing attestations from service unavailability instead of collapsing both into a generic unknown state
+
+### Fixed
+- **Quiet mode consistency** — reporting and analysis commands now suppress headings/export chatter when `--quiet` is requested
+- **Verify JSON output** — `agent-bom verify --json` no longer prepends human console banners before the JSON payload
+- **Graph contributor install contract** — graph centrality dependencies and contributor install paths were aligned so graph analysis works in a clean optional-extra install
+- **Live MITRE/STIX parsing** — ATT&CK/CAPEC runtime parsing now handles the current upstream payload shape and restores live CWE→ATT&CK mapping
+- **Docker Hub release hardening** — release sync, cleanup retention, and version-alignment checks now match the real Docker tag contract and fail loudly on drift
+- **Release bump automation** — stale version-bump patterns were removed so dry-run and check mode only flag real managed release surfaces
+
+### Security
+- **Supply-chain verification clarity** — provenance verification now reports whether attestations are absent or temporarily unavailable, reducing ambiguous release-audit results for package verification
+
+---
+
 ## [0.76.0] – 2026-04-09
 
 ### Added
@@ -511,7 +534,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.76.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.76.1...HEAD
+[0.76.1]: https://github.com/msaad00/agent-bom/compare/v0.76.0...v0.76.1
 [0.76.0]: https://github.com/msaad00/agent-bom/compare/v0.75.15...v0.76.0
 [0.75.15]: https://github.com/msaad00/agent-bom/compare/v0.75.14...v0.75.15
 [0.75.14]: https://github.com/msaad00/agent-bom/compare/v0.75.13...v0.75.14

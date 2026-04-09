@@ -155,6 +155,26 @@ def test_graph_cmd_dot_with_output(tmp_path):
         assert out_file.exists()
 
 
+def test_graph_cmd_quiet_suppresses_export_message(tmp_path):
+    runner = CliRunner()
+    scan_file = tmp_path / "scan.json"
+    scan_file.write_text("{}")
+    out_file = tmp_path / "graph.dot"
+
+    mock_graph = MagicMock()
+    mock_graph.node_count.return_value = 2
+    mock_graph.edge_count.return_value = 1
+
+    with (
+        patch("agent_bom.output.graph_export.load_graph_from_scan", return_value=mock_graph),
+        patch("agent_bom.output.graph_export.to_dot", return_value="digraph {}"),
+    ):
+        result = runner.invoke(graph_cmd, [str(scan_file), "-f", "dot", "-o", str(out_file), "--quiet"])
+        assert result.exit_code == 0
+        assert out_file.exists()
+        assert "Graph exported" not in result.output
+
+
 def test_graph_cmd_mermaid(tmp_path):
     runner = CliRunner()
     scan_file = tmp_path / "scan.json"
@@ -256,6 +276,40 @@ def test_mesh_cmd_summary_rejects_output_path(tmp_path):
     scan_file.write_text(json.dumps({"agents": [{"name": "a", "mcp_servers": []}], "blast_radius": []}))
     result = runner.invoke(mesh_cmd, [str(scan_file), "--output", str(tmp_path / "mesh.txt")])
     assert result.exit_code == 2
+
+
+def test_mesh_cmd_quiet_suppresses_summary_heading():
+    runner = CliRunner()
+    server = MagicMock()
+    server.name = "filesystem"
+    server.packages = []
+    server.tools = [{"name": "read_file"}]
+    server.env = {}
+    agent = MagicMock()
+    agent.mcp_servers = [server]
+
+    with (
+        patch("agent_bom.discovery.discover_all", return_value=[agent]),
+        patch("agent_bom.parsers.extract_packages", return_value=[{"name": "pkg", "version": "1.0.0", "vulnerabilities": []}]),
+        patch(
+            "dataclasses.asdict",
+            return_value={
+                "name": "claude",
+                "mcp_servers": [
+                    {
+                        "name": "filesystem",
+                        "packages": [{"name": "pkg", "version": "1.0.0", "vulnerabilities": []}],
+                        "tools": [{"name": "read_file"}],
+                        "env": {},
+                    }
+                ],
+            },
+        ),
+    ):
+        result = runner.invoke(mesh_cmd, ["--quiet"])
+        assert result.exit_code == 0
+        assert "Mesh" not in result.output
+        assert "filesystem" in result.output
 
 
 # ---------------------------------------------------------------------------

@@ -1337,7 +1337,13 @@ def scan(
                             con.print(f"  [green]✓[/green] {pkg.name}@{pkg.version} — SLSA provenance attested")
                         elif provenance:
                             pkg.provenance_attested = False
-                            con.print(f"  [dim]  {pkg.name}@{pkg.version} — no SLSA provenance[/dim]")
+                            prov_status = str(provenance.get("status") or "")
+                            if prov_status == "unavailable":
+                                con.print(f"  [yellow]⚠[/yellow] {pkg.name}@{pkg.version} — provenance service unavailable")
+                            elif prov_status == "not_provenance":
+                                con.print(f"  [dim]  {pkg.name}@{pkg.version} — attestations present, but none were SLSA provenance[/dim]")
+                            else:
+                                con.print(f"  [dim]  {pkg.name}@{pkg.version} — no SLSA provenance[/dim]")
 
             if unique_pkgs:
                 con.print(f"\n[bold blue]🔐 Verifying integrity for {len(unique_pkgs)} package(s)...[/bold blue]\n")

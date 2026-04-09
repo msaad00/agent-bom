@@ -98,6 +98,37 @@ def _write_json_output(payload: dict, output_path: str | None) -> None:
     click.echo(text)
 
 
+def _render_provenance_check(provenance: dict | None) -> dict[str, str]:
+    """Normalize provenance verification into a stable CLI-facing status."""
+    if provenance and provenance.get("has_provenance"):
+        att_count = provenance.get("attestation_count", 0)
+        return {
+            "status": "pass",
+            "detail": f"Attestation found ({att_count} attestation(s))",
+        }
+
+    status = str((provenance or {}).get("status") or "")
+    if status == "not_published":
+        return {
+            "status": "missing",
+            "detail": "No provenance attestation published",
+        }
+    if status == "not_provenance":
+        return {
+            "status": "missing",
+            "detail": "Attestations found, but none were SLSA/provenance attestations",
+        }
+    if status == "unavailable":
+        return {
+            "status": "unavailable",
+            "detail": "Provenance service unavailable",
+        }
+    return {
+        "status": "unknown",
+        "detail": "Could not determine provenance status",
+    }
+
+
 def _check_result_payload(
     *,
     name: str,
@@ -658,14 +689,14 @@ def verify(
 
     if self_verify:
         name, version, eco = "agent-bom", __version__, "pypi"
-        if not quiet:
+        if not quiet and not as_json:
             console.print(f"\n[bold blue]Verifying agent-bom {version} installation...[/bold blue]\n")
         record_result = verify_installed_record("agent-bom")
     else:
         assert package_spec is not None
         name, version, eco = _parse_package_spec(package_spec, ecosystem)
         record_result = None
-        if not quiet:
+        if not quiet and not as_json:
             console.print(f"\n[bold blue]Verifying {name}@{version} ({eco})...[/bold blue]\n")
 
     if version in ("unknown", ""):
@@ -738,16 +769,7 @@ def verify(
         checks["registry_hash"] = {"status": "unknown", "detail": "Could not reach registry"}
 
     # Provenance check
-    if provenance and provenance.get("has_provenance"):
-        att_count = provenance.get("attestation_count", 0)
-        checks["provenance"] = {
-            "status": "pass",
-            "detail": f"Attestation found ({att_count} attestation(s))",
-        }
-    elif provenance:
-        checks["provenance"] = {"status": "unknown", "detail": "No provenance attestation"}
-    else:
-        checks["provenance"] = {"status": "unknown", "detail": "Could not check provenance"}
+    checks["provenance"] = _render_provenance_check(provenance)
 
     # Metadata consistency (self-verify with pypi_meta only)
     if pypi_meta and record_result:
@@ -792,7 +814,13 @@ def verify(
     # Rich table output
     from rich.table import Table
 
-    status_icons = {"pass": "[green]PASS[/green]", "fail": "[red]FAIL[/red]", "unknown": "[yellow]UNKNOWN[/yellow]"}
+    status_icons = {
+        "pass": "[green]PASS[/green]",
+        "fail": "[red]FAIL[/red]",
+        "missing": "[dim]MISSING[/dim]",
+        "unavailable": "[yellow]UNAVAILABLE[/yellow]",
+        "unknown": "[yellow]UNKNOWN[/yellow]",
+    }
     check_labels = {
         "record_integrity": "RECORD integrity",
         "registry_hash": "Registry SHA-256",

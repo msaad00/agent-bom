@@ -211,6 +211,32 @@ async def test_fetch_pypi_release_metadata_not_found():
     assert result is None
 
 
+@pytest.mark.asyncio
+async def test_check_pypi_provenance_not_published():
+    from agent_bom.integrity import check_pypi_provenance
+
+    mock_response = MagicMock()
+    mock_response.status_code = 404
+    mock_client = AsyncMock()
+
+    with patch("agent_bom.integrity.request_with_retry", return_value=mock_response):
+        result = await check_pypi_provenance("agent-bom", "0.76.0", mock_client)
+
+    assert result == {"has_provenance": False, "status": "not_published", "attestation_count": 0}
+
+
+@pytest.mark.asyncio
+async def test_check_pypi_provenance_unavailable():
+    from agent_bom.integrity import check_pypi_provenance
+
+    mock_client = AsyncMock()
+
+    with patch("agent_bom.integrity.request_with_retry", return_value=None):
+        result = await check_pypi_provenance("agent-bom", "0.76.0", mock_client)
+
+    assert result == {"has_provenance": False, "status": "unavailable"}
+
+
 # ─── CLI verify command ──────────────────────────────────────────────────────
 
 
@@ -357,6 +383,26 @@ def test_verify_record_not_available_still_passes():
         data = json.loads(result.output)
         record_check = data.get("checks", {}).get("record_integrity", {})
         assert record_check.get("status") == "unknown"
+
+
+def test_verify_provenance_missing_is_not_unknown():
+    record, integrity, _provenance, pypi_meta = _mock_verify_all_pass()
+    missing_provenance = {"has_provenance": False, "status": "not_published", "attestation_count": 0}
+
+    result = _run_verify_with_mocks(["verify", "--json"], record, integrity, missing_provenance, pypi_meta)
+
+    data = json.loads(result.output)
+    assert data["checks"]["provenance"]["status"] == "missing"
+
+
+def test_verify_provenance_unavailable_is_not_unknown():
+    record, integrity, _provenance, pypi_meta = _mock_verify_all_pass()
+    unavailable_provenance = {"has_provenance": False, "status": "unavailable"}
+
+    result = _run_verify_with_mocks(["verify", "--json"], record, integrity, unavailable_provenance, pypi_meta)
+
+    data = json.loads(result.output)
+    assert data["checks"]["provenance"]["status"] == "unavailable"
 
 
 def test_verify_record_tampered_fails():

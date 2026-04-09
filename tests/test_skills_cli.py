@@ -183,3 +183,15 @@ def test_skills_scan_verbose_flag_is_supported(tmp_path):
 
     assert result.exit_code == 0, result.output
     assert "agent-bom skills scan" in result.output
+
+
+def test_skills_scan_quiet_suppresses_heading(tmp_path):
+    skill_file = tmp_path / "CLAUDE.md"
+    skill_file.write_text("# Instructions\n\nUse API key OPENAI_API_KEY.\n")
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["skills", "scan", str(tmp_path), "--quiet"])
+
+    assert result.exit_code == 0, result.output
+    assert "agent-bom skills scan" not in result.output
+    assert "Instruction Surface" in result.output

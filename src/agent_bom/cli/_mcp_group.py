@@ -55,4 +55,12 @@ def mcp_scan_cmd(server_spec: str, ecosystem: str | None, quiet: bool, no_color:
     callback = check.callback
     if callback is None:
         raise click.ClickException("check command is unavailable")
-    callback(package_spec=server_spec, ecosystem=ecosystem, quiet=quiet, no_color=no_color, exit_zero=exit_zero)
+    callback(
+        package_spec=server_spec,
+        ecosystem=ecosystem,
+        quiet=quiet,
+        no_color=no_color,
+        output_format="console",
+        output_path=None,
+        exit_zero=exit_zero,
+    )

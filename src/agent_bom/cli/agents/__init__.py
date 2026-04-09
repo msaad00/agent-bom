@@ -16,11 +16,13 @@ from pathlib import Path
 from typing import Any, Optional
 
 import click
+from rich.console import Console
 
 from agent_bom.cli._common import (
     SEVERITY_ORDER,
     _build_agents_from_inventory,
     _make_console,
+    _sync_runtime_consoles,
     logger,
 )
 from agent_bom.cli.agents._cloud import run_benchmarks, run_cloud_discovery
@@ -323,7 +325,10 @@ def scan(
     _scan_start = _time.monotonic()
 
     # Configure logging — explicit --log-level overrides --verbose
-    _log_level = log_level or ("DEBUG" if verbose else "WARNING")
+    if quiet and log_level is None and not verbose and not log_json and not log_file:
+        _log_level = "ERROR"
+    else:
+        _log_level = log_level or ("DEBUG" if verbose else "WARNING")
     setup_logging(level=_log_level, json_output=log_json, log_file=log_file)
 
     # Load .agent-bom.yaml project config — CLI flags always win
@@ -417,6 +422,8 @@ def scan(
     # Route console output based on flags
     is_stdout = output == "-"
     con = _make_console(quiet=quiet or is_stdout, output_format=output_format, no_color=no_color)
+    runtime_console = Console(stderr=True, quiet=quiet or is_stdout, no_color=no_color)
+    _sync_runtime_consoles(runtime_console)
 
     # Also set the output module's console so print_summary etc. route correctly
     import agent_bom.output as _out

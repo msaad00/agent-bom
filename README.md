@@ -80,6 +80,7 @@ pip install agent-bom                  # Standard CLI install
 
 agent-bom agents                              # Discover + scan local AI agents and MCP servers
 agent-bom agents -p .                         # Scan project lockfiles/manifests plus agent/MCP context
+agent-bom where                               # Show MCP discovery paths checked on this machine
 agent-bom mesh --project .                    # Show the live agent / MCP topology
 agent-bom skills scan .                       # Scan CLAUDE.md, AGENTS.md, .cursorrules, skills/*
 agent-bom check flask@2.0.0 --ecosystem pypi  # Pre-install CVE gate
@@ -93,9 +94,12 @@ agent-bom iac Dockerfile k8s/ infra/main.tf   # IaC scan across one or more path
 ```bash
 agent-bom cloud aws                     # Cloud AI posture + CIS benchmarks
 agent-bom agents -f cyclonedx -o bom.json  # AI BOM / SBOM export
+agent-bom check requests@2.33.0 -e pypi -f json  # Machine-readable pre-install verdict
+agent-bom report diff before.json after.json -f json  # CI-friendly diff output
 agent-bom graph report.json                # Blast radius graph / graph HTML inputs
 agent-bom proxy "npx @mcp/server-fs /ws"   # MCP security proxy
 agent-bom secrets src/                  # Hardcoded secrets + PII
+agent-bom verify agent-bom              # Verify this installation
 agent-bom verify requests@2.33.0        # Package integrity verification
 agent-bom verify --model-dir ./models   # Model weight hash verification
 agent-bom serve                         # API + Next.js dashboard
@@ -273,11 +277,11 @@ No source code, config contents, or credential values are sent. No telemetry or 
 
 ```bash
 git clone https://github.com/msaad00/agent-bom.git && cd agent-bom
-pip install -e ".[dev]"
+pip install -e ".[dev-all]"
 pytest && ruff check src/
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) | [SECURITY.md](SECURITY.md) | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+See [CONTRIBUTING.md](CONTRIBUTING.md) | [docs/CLI_DEBUG_GUIDE.md](docs/CLI_DEBUG_GUIDE.md) | [SECURITY.md](SECURITY.md) | [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 
 ---
 

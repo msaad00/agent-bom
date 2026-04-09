@@ -58,6 +58,32 @@ def test_history_with_corrupt_report(tmp_path):
         assert result.exit_code == 0
 
 
+def test_history_json_output(tmp_path):
+    runner = CliRunner()
+    report_path = tmp_path / "scan_20250101.json"
+    report_data = {
+        "generated_at": "2025-01-01T00:00:00Z",
+        "summary": {
+            "total_agents": 2,
+            "total_packages": 10,
+            "total_vulnerabilities": 3,
+            "critical_findings": 1,
+        },
+    }
+    report_path.write_text(json.dumps(report_data))
+
+    with (
+        patch("agent_bom.history.list_reports", return_value=[report_path]),
+        patch("agent_bom.history.load_report", return_value=report_data),
+    ):
+        result = runner.invoke(history_cmd, ["--format", "json"])
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload["total_reports"] == 1
+        assert payload["reports"][0]["file"] == "scan_20250101.json"
+        assert payload["reports"][0]["total_vulnerabilities"] == 3
+
+
 # ---------------------------------------------------------------------------
 # diff_cmd
 # ---------------------------------------------------------------------------
@@ -214,6 +240,33 @@ def test_diff_accepts_two_sboms(tmp_path):
         assert result.exit_code == 0
         diff_payload = mock_print.call_args.args[0]
         assert diff_payload["summary"]["new_packages"] == 1
+
+
+def test_diff_json_output(tmp_path):
+    runner = CliRunner()
+    base = tmp_path / "base.json"
+    curr = tmp_path / "curr.json"
+    base.write_text(json.dumps(_make_report_data()))
+    curr.write_text(json.dumps(_make_report_data()))
+
+    diff_result = {
+        "baseline_generated_at": "2025-01-01T00:00:00Z",
+        "current_generated_at": "2025-01-02T00:00:00Z",
+        "new": [],
+        "resolved": [],
+        "unchanged": [],
+        "new_packages": [],
+        "removed_packages": [],
+        "inventory_diff": {},
+        "summary": {"new_findings": 0, "resolved_findings": 0, "unchanged_findings": 0, "new_packages": 0, "removed_packages": 0},
+    }
+    with patch("agent_bom.history.diff_reports", return_value=diff_result):
+        result = runner.invoke(diff_cmd, [str(base), str(curr), "--format", "json"])
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload["baseline_path"].endswith("base.json")
+        assert payload["current_path"].endswith("curr.json")
+        assert payload["summary"]["new_findings"] == 0
 
 
 # ---------------------------------------------------------------------------

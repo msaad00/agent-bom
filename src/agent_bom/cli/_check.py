@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Optional
 
@@ -11,6 +12,7 @@ import click
 from rich.console import Console
 
 from agent_bom import __version__
+from agent_bom.cli._common import _sync_runtime_consoles
 from agent_bom.ecosystems import SUPPORTED_PACKAGE_ECOSYSTEMS
 
 
@@ -85,6 +87,57 @@ def _parse_package_spec(
             ecosystem = _detect_ecosystem(name, version) or "pypi"
 
     return name, version, ecosystem
+
+
+def _write_json_output(payload: dict, output_path: str | None) -> None:
+    """Write JSON to stdout or a file."""
+    text = json.dumps(payload, indent=2)
+    if output_path and output_path != "-":
+        Path(output_path).write_text(text, encoding="utf-8")
+        return
+    click.echo(text)
+
+
+def _check_result_payload(
+    *,
+    name: str,
+    version: str,
+    ecosystems: list[str],
+    verdict: str,
+    message: str,
+    exit_code: int,
+    vulnerabilities: list | None = None,
+    warnings: list[str] | None = None,
+    exit_zero: bool = False,
+) -> dict:
+    """Build machine-readable check output."""
+    serialized_vulns = []
+    for vuln in vulnerabilities or []:
+        serialized_vulns.append(
+            {
+                "id": vuln.id,
+                "summary": vuln.summary,
+                "severity": vuln.severity.value,
+                "fixed_version": vuln.fixed_version,
+                "is_kev": vuln.is_kev,
+                "cwe_ids": list(vuln.cwe_ids),
+                "aliases": list(vuln.aliases),
+                "references": list(vuln.references),
+            }
+        )
+
+    return {
+        "package": name,
+        "version": version,
+        "ecosystems": ecosystems,
+        "verdict": verdict,
+        "message": message,
+        "exit_code": exit_code,
+        "exit_zero": exit_zero,
+        "vulnerability_count": len(serialized_vulns),
+        "scan_warnings": warnings or [],
+        "vulnerabilities": serialized_vulns,
+    }
 
 
 def _resolve_check_ecosystems(name: str, version: str, ecosystem: Optional[str], detected_eco: str) -> list[str]:
@@ -204,14 +257,32 @@ def _exit_model_verification(
     type=click.Choice(SUPPORTED_PACKAGE_ECOSYSTEMS),
     help="Package ecosystem (inferred from name/command if omitted)",
 )
-@click.option("--quiet", "-q", is_flag=True, help="Only print vuln count, no details")
+@click.option("--quiet", "-q", is_flag=True, help="Only print the final verdict, no details")
 @click.option("--no-color", is_flag=True, help="Disable colored output")
+@click.option(
+    "--format",
+    "-f",
+    "output_format",
+    type=click.Choice(["console", "json"], case_sensitive=False),
+    default="console",
+    show_default=True,
+    help="Output format.",
+)
+@click.option("--output", "-o", "output_path", type=str, default=None, help="Write JSON output to a file (use '-' for stdout).")
 @click.option(
     "--exit-zero",
     is_flag=True,
     help="Exit 0 even when vulnerabilities are found (useful for exploratory or parallel checks)",
 )
-def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bool, exit_zero: bool):
+def check(
+    package_spec: str,
+    ecosystem: Optional[str],
+    quiet: bool,
+    no_color: bool,
+    output_format: str,
+    output_path: str | None,
+    exit_zero: bool,
+):
     """Check a package for known vulnerabilities before installing.
 
     \b
@@ -229,10 +300,20 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
 
     \b
     Notes:
+      `check` supports terminal output by default and `--format json`
+      for machine-readable pre-install verdicts.
+      For SARIF, HTML, PDF, or SBOM output, use `agent-bom agents`
+      (or `agent-bom scan`) with `--format/--output`.
       Use --exit-zero for exploratory or parallel workflows where findings
       should be reported without failing the command.
     """
-    console = Console(no_color=no_color)
+    if output_path and output_format != "json":
+        raise click.ClickException("`check --output` requires `--format json`.")
+
+    structured_output = output_format == "json"
+    console = Console(no_color=no_color, stderr=structured_output or output_path is not None)
+    runtime_console = Console(stderr=True, quiet=quiet or structured_output or output_path is not None, no_color=no_color)
+    _sync_runtime_consoles(runtime_console)
 
     name, version, detected_eco = _parse_package_spec(package_spec, ecosystem)
 
@@ -240,8 +321,22 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
     from agent_bom.parsers.os_parsers import enrich_os_package_context
 
     if version == "unknown":
-        console.print(f"[yellow]⚠ No version specified for {name} — skipping OSV lookup.[/yellow]")
-        console.print("  Provide a version: agent-bom check name@version --ecosystem ecosystem")
+        message = f"No version specified for {name}; skipping OSV lookup."
+        if structured_output:
+            _write_json_output(
+                _check_result_payload(
+                    name=name,
+                    version=version,
+                    ecosystems=[detected_eco],
+                    verdict="skipped",
+                    message=message,
+                    exit_code=0,
+                ),
+                output_path,
+            )
+        else:
+            console.print(f"[yellow]⚠ No version specified for {name} — skipping OSV lookup.[/yellow]")
+            console.print("  Provide a version: agent-bom check name@version --ecosystem ecosystem")
         sys.exit(0)
 
     ecosystems = _resolve_check_ecosystems(name, version, ecosystem, detected_eco)
@@ -263,52 +358,124 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
                         return True
                 return False
 
-        with console.status("[bold]Resolving version from registry...[/bold]", spinner="dots"):
-            import asyncio
+        import asyncio
 
+        if quiet:
             resolved = asyncio.run(_resolve())
+        else:
+            with console.status("[bold]Resolving version from registry...[/bold]", spinner="dots"):
+                resolved = asyncio.run(_resolve())
         if resolved:
             version = next((p.version for p in pkgs if p.version not in ("unknown", "latest", "")), version)
             for p in pkgs:
                 p.version = version
-            console.print(f"  [green]✓ Resolved @latest → {version}[/green]")
+            if not quiet:
+                console.print(f"  [green]✓ Resolved @latest → {version}[/green]")
         else:
             eco_str = "/".join(ecosystems)
-            console.print(f"[yellow]⚠ Could not resolve latest version for {name} ({eco_str})[/yellow]")
-            console.print("  Provide an explicit version: agent-bom check name@1.2.3 -e ecosystem")
+            message = f"Could not resolve latest version for {name} ({eco_str})."
+            if structured_output:
+                _write_json_output(
+                    _check_result_payload(
+                        name=name,
+                        version=version,
+                        ecosystems=ecosystems,
+                        verdict="skipped",
+                        message=message,
+                        exit_code=0,
+                    ),
+                    output_path,
+                )
+            else:
+                console.print(f"[yellow]⚠ Could not resolve latest version for {name} ({eco_str})[/yellow]")
+                console.print("  Provide an explicit version: agent-bom check name@1.2.3 -e ecosystem")
             sys.exit(0)
 
     eco_display = "/".join(ecosystems)
-    console.print(f"\n[bold blue]🔍 Checking {name}@{version} ({eco_display})[/bold blue]\n")
+    if not quiet:
+        console.print(f"\n[bold blue]🔍 Checking {name}@{version} ({eco_display})[/bold blue]\n")
 
-    with console.status("[bold]Scanning package risk...[/bold]", spinner="dots"):
-        import asyncio
+    import asyncio
 
+    status_context = console.status("[bold]Scanning package risk...[/bold]", spinner="dots") if not quiet else nullcontext()
+
+    with status_context:
         from agent_bom.scanners import IncompleteScanError, consume_scan_warnings, scan_packages
 
         try:
             asyncio.run(scan_packages(pkgs))
         except IncompleteScanError as exc:
-            console.print(f"  [yellow]⚠[/yellow] {exc}")
+            if structured_output:
+                _write_json_output(
+                    _check_result_payload(
+                        name=name,
+                        version=version,
+                        ecosystems=ecosystems,
+                        verdict="incomplete",
+                        message=str(exc),
+                        exit_code=2,
+                    ),
+                    output_path,
+                )
+            else:
+                console.print(f"  [yellow]⚠[/yellow] {exc}")
             sys.exit(2)
 
     scan_warnings = consume_scan_warnings()
-    if scan_warnings:
+    if scan_warnings and not quiet:
         console.print(f"  [yellow]⚠[/yellow] Scan completed with {len(scan_warnings)} warning(s); results may be incomplete.")
 
     matched_pkg = next((p for p in pkgs if p.vulnerabilities), pkgs[0])
     vulns = matched_pkg.vulnerabilities
 
     if not vulns and matched_pkg.ecosystem in {"deb", "apk", "rpm"} and not os_context_complete:
-        console.print(f"  [yellow]⚠ Incomplete OS package context for {name}@{version}[/yellow]")
-        console.print(
-            "  Best-effort matching found no vulnerabilities, but source/distro metadata was "
-            "insufficient for a trustworthy clean verdict.\n"
+        message = (
+            f"Incomplete OS package context for {name}@{version}. "
+            "Best-effort matching found no vulnerabilities, but distro metadata was insufficient for a trustworthy clean verdict."
         )
+        if structured_output:
+            _write_json_output(
+                _check_result_payload(
+                    name=name,
+                    version=version,
+                    ecosystems=ecosystems,
+                    verdict="incomplete",
+                    message=message,
+                    exit_code=2,
+                    warnings=scan_warnings,
+                ),
+                output_path,
+            )
+            sys.exit(2)
+        if quiet:
+            click.echo(f"{name}@{version}: incomplete OS package context")
+        else:
+            console.print(f"  [yellow]⚠ Incomplete OS package context for {name}@{version}[/yellow]")
+            console.print(
+                "  Best-effort matching found no vulnerabilities, but source/distro metadata was "
+                "insufficient for a trustworthy clean verdict.\n"
+            )
         sys.exit(2)
 
     if not vulns:
-        console.print(f"  [green]✓ No known vulnerabilities in {name}@{version}[/green]\n")
+        if structured_output:
+            _write_json_output(
+                _check_result_payload(
+                    name=name,
+                    version=version,
+                    ecosystems=ecosystems,
+                    verdict="clean",
+                    message=f"No known vulnerabilities in {name}@{version}.",
+                    exit_code=0,
+                    warnings=scan_warnings,
+                ),
+                output_path,
+            )
+            sys.exit(0)
+        if quiet:
+            click.echo(f"{name}@{version}: CLEAN")
+        else:
+            console.print(f"  [green]✓ No known vulnerabilities in {name}@{version}[/green]\n")
         sys.exit(0)
 
     if not quiet:
@@ -367,10 +534,48 @@ def check(package_spec: str, ecosystem: Optional[str], quiet: bool, no_color: bo
         console.print()
 
     if exit_zero:
-        console.print(f"  [yellow]⚠ {len(vulns)} vulnerability/ies found — reported without failing due to --exit-zero.[/yellow]\n")
+        if structured_output:
+            _write_json_output(
+                _check_result_payload(
+                    name=name,
+                    version=version,
+                    ecosystems=ecosystems,
+                    verdict="unsafe",
+                    message=f"{len(vulns)} vulnerability/ies found in {name}@{version}; reported without failing due to --exit-zero.",
+                    exit_code=0,
+                    vulnerabilities=vulns,
+                    warnings=scan_warnings,
+                    exit_zero=True,
+                ),
+                output_path,
+            )
+            sys.exit(0)
+        if quiet:
+            click.echo(f"{name}@{version}: {len(vulns)} vulnerability/ies found (exit-zero)")
+        else:
+            console.print(f"  [yellow]⚠ {len(vulns)} vulnerability/ies found — reported without failing due to --exit-zero.[/yellow]\n")
         sys.exit(0)
 
-    console.print(f"  [red]✗ {len(vulns)} vulnerability/ies found — do not install without review.[/red]\n")
+    if structured_output:
+        _write_json_output(
+            _check_result_payload(
+                name=name,
+                version=version,
+                ecosystems=ecosystems,
+                verdict="unsafe",
+                message=f"{len(vulns)} vulnerability/ies found in {name}@{version}.",
+                exit_code=1,
+                vulnerabilities=vulns,
+                warnings=scan_warnings,
+            ),
+            output_path,
+        )
+        sys.exit(1)
+
+    if quiet:
+        click.echo(f"{name}@{version}: {len(vulns)} vulnerability/ies found")
+    else:
+        console.print(f"  [red]✗ {len(vulns)} vulnerability/ies found — do not install without review.[/red]\n")
     sys.exit(1)
 
 
@@ -410,8 +615,9 @@ def verify(
     """Verify package integrity and provenance against registries.
 
     \b
-    Self-verify (no arguments):
+    Self-verify (no arguments or explicit package name):
       agent-bom verify              check THIS installation of agent-bom
+      agent-bom verify agent-bom    same as above
 
     \b
     Verify any package:
@@ -446,22 +652,33 @@ def verify(
     console = Console()
 
     # Determine target
-    if package_spec is None:
+    self_verify = package_spec is None or (
+        package_spec is not None and package_spec.strip() in {"agent-bom", "agent_bom"} and ecosystem in (None, "pypi")
+    )
+
+    if self_verify:
         name, version, eco = "agent-bom", __version__, "pypi"
         if not quiet:
             console.print(f"\n[bold blue]Verifying agent-bom {version} installation...[/bold blue]\n")
         record_result = verify_installed_record("agent-bom")
     else:
+        assert package_spec is not None
         name, version, eco = _parse_package_spec(package_spec, ecosystem)
         record_result = None
         if not quiet:
             console.print(f"\n[bold blue]Verifying {name}@{version} ({eco})...[/bold blue]\n")
 
     if version in ("unknown", ""):
-        console.print(
-            "[red]Error: version required. Use name@version format, "
-            "for example requests@2.33.0 or @modelcontextprotocol/server-filesystem@2025.1.14.[/red]"
-        )
+        if name in {"agent-bom", "agent_bom"}:
+            console.print(
+                f"[red]Error: use `agent-bom verify` to self-verify this installation, or pass a version like "
+                f"`agent-bom verify agent-bom@{__version__} -e pypi`.[/red]"
+            )
+        else:
+            console.print(
+                "[red]Error: version required. Use name@version format, "
+                "for example requests@2.33.0 or @modelcontextprotocol/server-filesystem@2025.1.14.[/red]"
+            )
         sys.exit(2)
 
     checks: dict[str, dict] = {}

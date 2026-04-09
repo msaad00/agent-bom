@@ -4,7 +4,9 @@ graph delta webhooks, OCSF neighbor enrichment.
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
+import warnings
 
 import pytest
 
@@ -227,6 +229,7 @@ class TestDeltaAlerts:
         assert result["configured"] is False
         assert result["attempted"] == len(alerts)
         assert result["delivered"] == 0
+        assert result["queued"] == 0
         assert result["ocsf_event_count"] == len(alerts)
 
     def test_dispatch_delta_alerts_to_configured_channels(self, monkeypatch):
@@ -270,6 +273,56 @@ class TestDeltaAlerts:
         assert FakeDispatcher.last.slacks == ["https://hooks.slack.test/services/example"]
         assert FakeDispatcher.last.dispatched
         assert FakeDispatcher.last.dispatched[0]["type"] == "new_vulnerability"
+
+    def test_dispatch_delta_alerts_in_active_loop_is_queued_not_overcounted(self, monkeypatch):
+        import agent_bom.alerts.dispatcher as dispatcher_mod
+        from agent_bom.graph.webhooks import compute_delta_alerts, dispatch_delta_alerts
+
+        class FakeDispatcher:
+            last = None
+
+            def __init__(self):
+                self.webhooks = []
+                self.slacks = []
+                self.dispatched = []
+                FakeDispatcher.last = self
+
+            def add_webhook(self, url, headers=None):
+                self.webhooks.append((url, headers))
+
+            def add_slack(self, webhook_url):
+                self.slacks.append(webhook_url)
+
+            async def dispatch(self, alert):
+                self.dispatched.append(alert)
+                return 1 + len(self.webhooks) + len(self.slacks)
+
+            def dispatch_sync(self, alert):
+                asyncio.get_running_loop().create_task(self.dispatch(alert))
+
+        monkeypatch.setattr(dispatcher_mod, "AlertDispatcher", FakeDispatcher)
+        monkeypatch.setenv("AGENT_BOM_GRAPH_DELTA_WEBHOOK", "https://hooks.example.test/graph")
+        monkeypatch.setenv("AGENT_BOM_GRAPH_DELTA_SLACK_WEBHOOK", "https://hooks.slack.test/services/example")
+
+        new = UnifiedGraph(scan_id="s1")
+        new.add_node(UnifiedNode(id="vuln:CVE-1", entity_type=EntityType.VULNERABILITY, label="CVE-1", severity="critical"))
+        alerts = compute_delta_alerts(None, new)
+
+        async def _run():
+            result = dispatch_delta_alerts(alerts, product_version="0.75.15")
+            await asyncio.sleep(0)
+            return result
+
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            result = asyncio.run(_run())
+
+        assert result["configured"] is True
+        assert result["delivered"] == 0
+        assert result["queued"] == len(alerts) * 2
+        assert FakeDispatcher.last is not None
+        assert FakeDispatcher.last.dispatched
+        assert not any("was never awaited" in str(w.message) for w in caught)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

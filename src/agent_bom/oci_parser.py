@@ -44,7 +44,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from agent_bom.models import Package
+from agent_bom.models import Package, PackageOccurrence
 from agent_bom.package_utils import parse_debian_source_name
 
 _logger = logging.getLogger(__name__)
@@ -109,6 +109,102 @@ class OCIParseError(Exception):
     """Raised when an OCI image cannot be parsed."""
 
 
+@dataclass(frozen=True)
+class LayerMetadata:
+    """Build and filesystem provenance for a concrete image layer."""
+
+    layer_index: int
+    layer_id: str
+    layer_path: str
+    created_by: Optional[str] = None
+    dockerfile_instruction: Optional[str] = None
+
+
+def _normalize_layer_id(layer_path: str) -> str:
+    """Return a stable layer identifier from a tar/layout path."""
+    layer_path = layer_path.lstrip("./")
+    if layer_path.startswith("blobs/sha256/"):
+        return f"sha256:{layer_path.rsplit('/', 1)[-1]}"
+    if layer_path.endswith("/layer.tar"):
+        return layer_path[: -len("/layer.tar")]
+    return layer_path
+
+
+def _normalize_dockerfile_instruction(created_by: Optional[str]) -> Optional[str]:
+    """Convert raw OCI history ``created_by`` text into a Dockerfile-like instruction."""
+    if not created_by:
+        return None
+
+    raw = created_by.strip()
+    for prefix in ("/bin/sh -c #(nop) ", "cmd /S /C #(nop) "):
+        if raw.startswith(prefix):
+            return raw[len(prefix) :].strip() or raw
+
+    for prefix in ("/bin/sh -c ", "cmd /S /C "):
+        if raw.startswith(prefix):
+            command = raw[len(prefix) :].strip()
+            return f"RUN {command}" if command else "RUN"
+
+    return raw
+
+
+def _build_layer_metadata(layer_paths: list[str], config: dict | None = None) -> list[LayerMetadata]:
+    """Map image layers to normalized build-step metadata."""
+    histories = (config or {}).get("history", [])
+    metadata: list[LayerMetadata] = []
+    history_cursor = 0
+
+    for index, layer_path in enumerate(layer_paths, start=1):
+        created_by: str | None = None
+        dockerfile_instruction: str | None = None
+
+        while history_cursor < len(histories):
+            entry = histories[history_cursor]
+            history_cursor += 1
+            if entry.get("empty_layer"):
+                continue
+            created_by = entry.get("created_by")
+            dockerfile_instruction = _normalize_dockerfile_instruction(created_by)
+            break
+
+        metadata.append(
+            LayerMetadata(
+                layer_index=index,
+                layer_id=_normalize_layer_id(layer_path),
+                layer_path=layer_path,
+                created_by=created_by,
+                dockerfile_instruction=dockerfile_instruction,
+            )
+        )
+
+    return metadata
+
+
+def _resolve_tar_member(tf: tarfile.TarFile, member_path: str) -> tarfile.TarInfo | None:
+    """Resolve a tar member path with common Docker/OCI prefixes."""
+    normalized = member_path.lstrip("./")
+    for candidate in (member_path, normalized, f"./{normalized}"):
+        try:
+            return tf.getmember(candidate)
+        except KeyError:
+            continue
+    return None
+
+
+def _read_json_member_from_tar(tf: tarfile.TarFile, member_path: str) -> dict | None:
+    """Read and decode a JSON file from an outer tarball when present."""
+    member = _resolve_tar_member(tf, member_path)
+    if member is None:
+        return None
+    fileobj = tf.extractfile(member)
+    if fileobj is None:
+        return None
+    try:
+        return json.loads(fileobj.read().decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+
 # ─── RPM header parser ────────────────────────────────────────────────────────
 
 
@@ -168,26 +264,69 @@ def _parse_rpm_header_blob(blob: bytes) -> Optional[tuple[str, str]]:
 
 
 def _add_package(
-    seen: set[tuple[str, str]],
+    packages_by_key: dict[tuple[str, str], Package],
     packages: list[Package],
     name: str,
     version: str,
     ecosystem: str,
     purl: Optional[str] = None,
+    *,
+    source_package: str | None = None,
+    distro_name: str | None = None,
+    distro_version: str | None = None,
+    layer: LayerMetadata | None = None,
+    package_path: str | None = None,
 ) -> None:
     key = (name.lower(), ecosystem)
-    if key not in seen:
-        seen.add(key)
-        packages.append(
-            Package(
-                name=name,
-                version=version,
-                ecosystem=ecosystem,
-                purl=purl or f"pkg:{ecosystem}/{name}@{version}",
-                is_direct=False,
-                resolved_from_registry=False,
-            )
+    package = packages_by_key.get(key)
+    if package is None:
+        package = Package(
+            name=name,
+            version=version,
+            ecosystem=ecosystem,
+            purl=purl or f"pkg:{ecosystem}/{name}@{version}",
+            is_direct=False,
+            resolved_from_registry=False,
+            source_package=source_package,
+            distro_name=distro_name,
+            distro_version=distro_version,
         )
+        packages_by_key[key] = package
+        packages.append(package)
+    else:
+        # When a later layer rewrites package metadata (common for lockfiles and
+        # package DBs), keep the final image view aligned to the latest version.
+        if version and package.version != version:
+            package.version = version
+            package.purl = purl or f"pkg:{ecosystem}/{name}@{version}"
+            package.source_package = source_package
+            package.distro_name = distro_name or package.distro_name
+            package.distro_version = distro_version or package.distro_version
+            package.occurrences.clear()
+        elif purl and package.purl != purl:
+            package.purl = purl
+        if source_package is not None:
+            package.source_package = source_package
+        if distro_name is not None:
+            package.distro_name = distro_name
+        if distro_version is not None:
+            package.distro_version = distro_version
+
+    if layer is None:
+        return
+
+    occurrence = PackageOccurrence(
+        layer_index=layer.layer_index,
+        layer_id=layer.layer_id,
+        layer_path=layer.layer_path,
+        package_path=package_path,
+        created_by=layer.created_by,
+        dockerfile_instruction=layer.dockerfile_instruction,
+    )
+    occurrence_key = (occurrence.layer_index, occurrence.layer_id, occurrence.package_path or "")
+    existing_keys = {(occ.layer_index, occ.layer_id, occ.package_path or "") for occ in package.occurrences}
+    if occurrence_key not in existing_keys:
+        package.occurrences.append(occurrence)
 
 
 def _read_os_release_from_layer(layer_tf: tarfile.TarFile, deleted_paths: set[str]) -> tuple[str | None, str | None]:
@@ -219,17 +358,19 @@ def _read_os_release_from_layer(layer_tf: tarfile.TarFile, deleted_paths: set[st
 
 def _extract_packages_from_layer(
     layer_tf: tarfile.TarFile,
-    seen: set[tuple[str, str]],
+    packages_by_key: dict[tuple[str, str], Package],
     packages: list[Package],
     deleted_paths: set[str],
+    layer: LayerMetadata,
 ) -> set[str]:
     """Extract packages from an open layer TarFile.
 
     Args:
         layer_tf: Open TarFile for the layer.
-        seen: Mutable set of (name, ecosystem) already found — updated in place.
+        packages_by_key: Mutable package map keyed by (name, ecosystem).
         packages: Mutable list of packages — updated in place.
         deleted_paths: Set of paths deleted in LATER layers (whiteouts already processed).
+        layer: Layer provenance metadata for this concrete tar blob.
 
     Returns:
         Set of paths marked as whiteout in THIS layer (for caller to accumulate).
@@ -282,7 +423,7 @@ def _extract_packages_from_layer(
                 if pkg_name and pkg_version:
                     break
             if pkg_name and pkg_version:
-                _add_package(seen, packages, pkg_name, pkg_version, "pypi")
+                _add_package(packages_by_key, packages, pkg_name, pkg_version, "pypi", layer=layer, package_path=member_name)
         except Exception:
             _logger.debug("Skipped Python dist-info: %s", member_name)
 
@@ -302,7 +443,7 @@ def _extract_packages_from_layer(
             pkg_name = data.get("name", "")
             pkg_version = data.get("version", "unknown")
             if pkg_name:
-                _add_package(seen, packages, pkg_name, pkg_version, "npm")
+                _add_package(packages_by_key, packages, pkg_name, pkg_version, "npm", layer=layer, package_path=member_name)
         except Exception:
             _logger.debug("Skipped Node package.json: %s", member_name)
 
@@ -324,38 +465,32 @@ def _extract_packages_from_layer(
                     elif line.startswith("Source:"):
                         source_package = parse_debian_source_name(line.split(":", 1)[1].strip())
                     elif line == "" and pkg_name and pkg_version:
-                        key = (pkg_name.lower(), "deb")
-                        if key not in seen:
-                            seen.add(key)
-                            packages.append(
-                                Package(
-                                    name=pkg_name,
-                                    version=pkg_version,
-                                    ecosystem="deb",
-                                    purl=f"pkg:deb/debian/{pkg_name}@{pkg_version}",
-                                    is_direct=False,
-                                    resolved_from_registry=False,
-                                    source_package=source_package,
-                                )
-                            )
+                        _add_package(
+                            packages_by_key,
+                            packages,
+                            pkg_name,
+                            pkg_version,
+                            "deb",
+                            f"pkg:deb/debian/{pkg_name}@{pkg_version}",
+                            source_package=source_package,
+                            layer=layer,
+                            package_path=dpkg_path,
+                        )
                         pkg_name = pkg_version = ""
                         source_package = None
                 # Flush last entry
                 if pkg_name and pkg_version:
-                    key = (pkg_name.lower(), "deb")
-                    if key not in seen:
-                        seen.add(key)
-                        packages.append(
-                            Package(
-                                name=pkg_name,
-                                version=pkg_version,
-                                ecosystem="deb",
-                                purl=f"pkg:deb/debian/{pkg_name}@{pkg_version}",
-                                is_direct=False,
-                                resolved_from_registry=False,
-                                source_package=source_package,
-                            )
-                        )
+                    _add_package(
+                        packages_by_key,
+                        packages,
+                        pkg_name,
+                        pkg_version,
+                        "deb",
+                        f"pkg:deb/debian/{pkg_name}@{pkg_version}",
+                        source_package=source_package,
+                        layer=layer,
+                        package_path=dpkg_path,
+                    )
         except Exception:
             _logger.debug("Failed to parse dpkg status")
         break
@@ -375,10 +510,28 @@ def _extract_packages_from_layer(
                     elif line.startswith("V:"):
                         pkg_version = line[2:].strip()
                     elif line == "" and pkg_name and pkg_version:
-                        _add_package(seen, packages, pkg_name, pkg_version, "apk", f"pkg:apk/alpine/{pkg_name}@{pkg_version}")
+                        _add_package(
+                            packages_by_key,
+                            packages,
+                            pkg_name,
+                            pkg_version,
+                            "apk",
+                            f"pkg:apk/alpine/{pkg_name}@{pkg_version}",
+                            layer=layer,
+                            package_path=apk_path,
+                        )
                         pkg_name = pkg_version = ""
                 if pkg_name and pkg_version:
-                    _add_package(seen, packages, pkg_name, pkg_version, "apk", f"pkg:apk/alpine/{pkg_name}@{pkg_version}")
+                    _add_package(
+                        packages_by_key,
+                        packages,
+                        pkg_name,
+                        pkg_version,
+                        "apk",
+                        f"pkg:apk/alpine/{pkg_name}@{pkg_version}",
+                        layer=layer,
+                        package_path=apk_path,
+                    )
         except Exception:
             _logger.debug("Failed to parse Alpine apk db")
         break
@@ -404,7 +557,16 @@ def _extract_packages_from_layer(
                             if rpm_name == "gpg-pubkey":
                                 continue
                             rpm_ver = nvr[idx1 + 1 : idx2]
-                            _add_package(seen, packages, rpm_name, rpm_ver, "rpm", f"pkg:rpm/redhat/{rpm_name}@{rpm_ver}")
+                            _add_package(
+                                packages_by_key,
+                                packages,
+                                rpm_name,
+                                rpm_ver,
+                                "rpm",
+                                f"pkg:rpm/redhat/{rpm_name}@{rpm_ver}",
+                                layer=layer,
+                                package_path=rpm_path,
+                            )
         except Exception:
             _logger.debug("Failed to parse rpm manifest")
         break
@@ -432,7 +594,16 @@ def _extract_packages_from_layer(
                             if result:
                                 rpm_name, rpm_ver = result
                                 if rpm_name != "gpg-pubkey":
-                                    _add_package(seen, packages, rpm_name, rpm_ver, "rpm", f"pkg:rpm/redhat/{rpm_name}@{rpm_ver}")
+                                    _add_package(
+                                        packages_by_key,
+                                        packages,
+                                        rpm_name,
+                                        rpm_ver,
+                                        "rpm",
+                                        f"pkg:rpm/redhat/{rpm_name}@{rpm_ver}",
+                                        layer=layer,
+                                        package_path=sqlite_path,
+                                    )
                 except sqlite3.DatabaseError:
                     _logger.debug("Failed to query rpmdb.sqlite")
                 finally:
@@ -479,7 +650,7 @@ def _extract_packages_from_layer(
                     group_id = props.get("groupId", "")
                     if artifact_id and version:
                         purl = f"pkg:maven/{group_id}/{artifact_id}@{version}" if group_id else f"pkg:maven/{artifact_id}@{version}"
-                        _add_package(seen, packages, artifact_id, version, "maven", purl)
+                        _add_package(packages_by_key, packages, artifact_id, version, "maven", purl, layer=layer, package_path=member_name)
                         found = True
                 # Fallback: MANIFEST.MF Implementation-Title/Version or Bundle-*
                 if not found and "META-INF/MANIFEST.MF" in jar_names:
@@ -491,7 +662,7 @@ def _extract_packages_from_layer(
                     title = mf.get("Implementation-Title") or mf.get("Bundle-Name", "")
                     version = mf.get("Implementation-Version") or mf.get("Bundle-Version", "")
                     if title and version and not title.startswith("$") and not version.startswith("$"):
-                        _add_package(seen, packages, title, version, "maven")
+                        _add_package(packages_by_key, packages, title, version, "maven", layer=layer, package_path=member_name)
         except Exception:
             _logger.debug("Skipped JAR: %s", member_name)
 
@@ -516,7 +687,16 @@ def _extract_packages_from_layer(
                 mod_path = m.group(1).decode("utf-8", errors="ignore").strip()
                 mod_ver = m.group(2).decode("utf-8", errors="ignore").strip()
                 if mod_path and mod_ver:
-                    _add_package(seen, packages, mod_path, mod_ver, "golang", f"pkg:golang/{mod_path}@{mod_ver}")
+                    _add_package(
+                        packages_by_key,
+                        packages,
+                        mod_path,
+                        mod_ver,
+                        "golang",
+                        f"pkg:golang/{mod_path}@{mod_ver}",
+                        layer=layer,
+                        package_path=member_name,
+                    )
         except Exception:
             _logger.debug("Skipped Go binary: %s", member_name)
 
@@ -536,7 +716,16 @@ def _extract_packages_from_layer(
             if name_m and ver_m:
                 gem_name = name_m.group(1)
                 gem_ver = ver_m.group(1)
-                _add_package(seen, packages, gem_name, gem_ver, "gem", f"pkg:gem/{gem_name}@{gem_ver}")
+                _add_package(
+                    packages_by_key,
+                    packages,
+                    gem_name,
+                    gem_ver,
+                    "gem",
+                    f"pkg:gem/{gem_name}@{gem_ver}",
+                    layer=layer,
+                    package_path=member_name,
+                )
         except Exception:
             _logger.debug("Skipped gemspec: %s", member_name)
 
@@ -558,7 +747,16 @@ def _extract_packages_from_layer(
                 if "/" in lib_key:
                     pkg_name, _, pkg_ver = lib_key.rpartition("/")
                     if pkg_name and pkg_ver:
-                        _add_package(seen, packages, pkg_name, pkg_ver, "nuget", f"pkg:nuget/{pkg_name}@{pkg_ver}")
+                        _add_package(
+                            packages_by_key,
+                            packages,
+                            pkg_name,
+                            pkg_ver,
+                            "nuget",
+                            f"pkg:nuget/{pkg_name}@{pkg_ver}",
+                            layer=layer,
+                            package_path=member_name,
+                        )
         except Exception:
             _logger.debug("Skipped deps.json: %s", member_name)
 
@@ -585,7 +783,16 @@ def _extract_packages_from_layer(
                         name = pkg.get("name", "")
                         version = pkg.get("version", "unknown").lstrip("v")
                         if name:
-                            _add_package(seen, packages, name, version, "composer", f"pkg:composer/{name}@{version}")
+                            _add_package(
+                                packages_by_key,
+                                packages,
+                                name,
+                                version,
+                                "composer",
+                                f"pkg:composer/{name}@{version}",
+                                layer=layer,
+                                package_path=path,
+                            )
             except Exception:
                 _logger.debug("Failed to parse composer.lock: %s", path)
 
@@ -608,7 +815,14 @@ def _extract_packages_from_layer(
                     ver_m = _re.search(r'version\s*=\s*"([^"]+)"', block)
                     if name_m and ver_m:
                         _add_package(
-                            seen, packages, name_m.group(1), ver_m.group(1), "cargo", f"pkg:cargo/{name_m.group(1)}@{ver_m.group(1)}"
+                            packages_by_key,
+                            packages,
+                            name_m.group(1),
+                            ver_m.group(1),
+                            "cargo",
+                            f"pkg:cargo/{name_m.group(1)}@{ver_m.group(1)}",
+                            layer=layer,
+                            package_path=path,
                         )
             except Exception:
                 _logger.debug("Failed to parse Cargo.lock: %s", path)
@@ -633,7 +847,16 @@ def _extract_packages_from_layer(
                     version = pin.get("state", {}).get("version") or "unknown"
                     name = identity or (location.rstrip("/").rsplit("/", 1)[-1].removesuffix(".git") if location else "")
                     if name:
-                        _add_package(seen, packages, name, version, "swift", f"pkg:swift/{name}@{version}")
+                        _add_package(
+                            packages_by_key,
+                            packages,
+                            name,
+                            version,
+                            "swift",
+                            f"pkg:swift/{name}@{version}",
+                            layer=layer,
+                            package_path=path,
+                        )
             except Exception:
                 _logger.debug("Failed to parse Package.resolved: %s", path)
 
@@ -671,6 +894,7 @@ def _parse_docker_save_manifest(tf: tarfile.TarFile) -> list[OCIManifest]:
 def _parse_layers_from_tarball(
     outer_tf: tarfile.TarFile,
     layer_paths: list[str],
+    layer_metadata: list[LayerMetadata] | None = None,
 ) -> tuple[list[Package], list[str]]:
     """Open each layer tarball from the outer tarball and extract packages.
 
@@ -680,11 +904,12 @@ def _parse_layers_from_tarball(
     Returns:
         (packages, warnings)
     """
-    seen: set[tuple[str, str]] = set()
+    packages_by_key: dict[tuple[str, str], Package] = {}
     packages: list[Package] = []
     warnings: list[str] = []
     detected_distro_name: str | None = None
     detected_distro_version: str | None = None
+    layer_metadata = layer_metadata or _build_layer_metadata(layer_paths)
 
     # First pass: collect all whiteouts per layer (in order)
     # Then second pass: extract packages respecting accumulated deletions.
@@ -692,17 +917,8 @@ def _parse_layers_from_tarball(
     # only. Full whiteout handling would require two passes.
     all_deleted: set[str] = set()
 
-    for layer_path in layer_paths:
-        # Normalize path (docker save may use paths with leading ./)
-        layer_path_norm = layer_path.lstrip("./")
-        # Try normalized and original
-        member = None
-        for candidate in (layer_path, layer_path_norm, "./" + layer_path_norm):
-            try:
-                member = outer_tf.getmember(candidate)
-                break
-            except KeyError:
-                continue
+    for layer_path, layer in zip(layer_paths, layer_metadata, strict=False):
+        member = _resolve_tar_member(outer_tf, layer_path)
 
         if member is None:
             warnings.append(f"Layer not found in tarball: {layer_path}")
@@ -727,7 +943,7 @@ def _parse_layers_from_tarball(
                     detected_distro_name = layer_distro_name
                 if layer_distro_version:
                     detected_distro_version = layer_distro_version
-                whiteouts = _extract_packages_from_layer(layer_tf, seen, packages, all_deleted)
+                whiteouts = _extract_packages_from_layer(layer_tf, packages_by_key, packages, all_deleted, layer)
                 all_deleted.update(whiteouts)
         except tarfile.TarError as e:
             warnings.append(f"Failed to read layer {layer_path}: {e}")
@@ -745,20 +961,19 @@ def _parse_layers_from_tarball(
 # ─── OCI image layout format ──────────────────────────────────────────────────
 
 
-def _parse_oci_layout_index(tf: tarfile.TarFile) -> list[str]:
-    """Parse index.json from an OCI image layout tarball. Returns layer blob paths."""
+def _parse_oci_layout_manifest_from_tar(tf: tarfile.TarFile) -> tuple[dict, list[str], dict | None]:
+    """Parse index/manifest/config from an OCI image layout tarball."""
     try:
-        member = tf.getmember("index.json")
+        member = _resolve_tar_member(tf, "index.json")
+        if member is None:
+            raise OCIParseError("No index.json found — not an OCI image layout tarball")
         f = tf.extractfile(member)
         if f is None:
             raise OCIParseError("index.json is not a regular file")
         index = json.loads(f.read().decode("utf-8"))
-    except KeyError:
-        raise OCIParseError("No index.json found — not an OCI image layout tarball")
     except json.JSONDecodeError as e:
         raise OCIParseError(f"Invalid index.json: {e}")
 
-    # Get first manifest digest
     manifests = index.get("manifests", [])
     if not manifests:
         raise OCIParseError("No manifests in OCI index.json")
@@ -769,22 +984,22 @@ def _parse_oci_layout_index(tf: tarfile.TarFile) -> list[str]:
 
     manifest_hash = manifest_digest[len("sha256:") :]
     blob_path = f"blobs/sha256/{manifest_hash}"
-    try:
-        member = tf.getmember(blob_path)
-        f = tf.extractfile(member)
-        if f is None:
-            raise OCIParseError(f"Manifest blob not found: {blob_path}")
-        manifest = json.loads(f.read().decode("utf-8"))
-    except (KeyError, json.JSONDecodeError) as e:
-        raise OCIParseError(f"Failed to read OCI manifest blob: {e}")
+    manifest = _read_json_member_from_tar(tf, blob_path)
+    if manifest is None:
+        raise OCIParseError(f"Failed to read OCI manifest blob: {blob_path}")
 
-    layer_paths: list[str] = []
-    for layer in manifest.get("layers", []):
-        digest = layer.get("digest", "")
-        if digest.startswith("sha256:"):
-            layer_paths.append(f"blobs/sha256/{digest[len('sha256:') :]}")
+    layer_paths = [
+        f"blobs/sha256/{digest[len('sha256:') :]}"
+        for layer in manifest.get("layers", [])
+        if (digest := layer.get("digest", "")).startswith("sha256:")
+    ]
 
-    return layer_paths
+    config: dict | None = None
+    config_digest = manifest.get("config", {}).get("digest", "")
+    if config_digest.startswith("sha256:"):
+        config = _read_json_member_from_tar(tf, f"blobs/sha256/{config_digest[len('sha256:') :]}")
+
+    return manifest, layer_paths, config
 
 
 # ─── Public API ───────────────────────────────────────────────────────────────
@@ -827,7 +1042,9 @@ def parse_oci_tarball(path: Path) -> OCIParseResult:
                 return OCIParseResult(packages=[], strategy="oci-tarball", layer_count=0, warnings=["Empty manifest.json"])
             # Use first image (most users save one image)
             manifest = manifests[0]
-            packages, warnings = _parse_layers_from_tarball(outer_tf, manifest.layer_paths)
+            config = _read_json_member_from_tar(outer_tf, manifest.config_digest)
+            layer_metadata = _build_layer_metadata(manifest.layer_paths, config)
+            packages, warnings = _parse_layers_from_tarball(outer_tf, manifest.layer_paths, layer_metadata)
             return OCIParseResult(
                 packages=packages,
                 strategy="oci-tarball",
@@ -839,10 +1056,11 @@ def parse_oci_tarball(path: Path) -> OCIParseResult:
         elif "index.json" in names or "./index.json" in names:
             # OCI image layout format
             try:
-                layer_paths = _parse_oci_layout_index(outer_tf)
+                _manifest, layer_paths, config = _parse_oci_layout_manifest_from_tar(outer_tf)
             except OCIParseError:
                 raise
-            packages, warnings = _parse_layers_from_tarball(outer_tf, layer_paths)
+            layer_metadata = _build_layer_metadata(layer_paths, config)
+            packages, warnings = _parse_layers_from_tarball(outer_tf, layer_paths, layer_metadata)
             return OCIParseResult(
                 packages=packages,
                 strategy="oci-tarball",
@@ -898,25 +1116,34 @@ def parse_oci_layout_dir(path: Path) -> OCIParseResult:
     except (json.JSONDecodeError, OSError) as e:
         raise OCIParseError(f"Failed to read manifest blob: {e}")
 
-    layer_digests = []
-    for layer in manifest.get("layers", []):
-        digest = layer.get("digest", "")
-        if digest.startswith("sha256:"):
-            layer_digests.append(digest[len("sha256:") :])
+    layer_digests = [
+        digest[len("sha256:") :] for layer in manifest.get("layers", []) if (digest := layer.get("digest", "")).startswith("sha256:")
+    ]
+    layer_paths = [f"blobs/sha256/{layer_hash}" for layer_hash in layer_digests]
+    config: dict | None = None
+    config_digest = manifest.get("config", {}).get("digest", "")
+    if config_digest.startswith("sha256:"):
+        config_blob = path / "blobs" / "sha256" / config_digest[len("sha256:") :]
+        if config_blob.exists():
+            try:
+                config = json.loads(config_blob.read_text())
+            except (json.JSONDecodeError, OSError):
+                config = None
+    layer_metadata = _build_layer_metadata(layer_paths, config)
 
-    seen: set[tuple[str, str]] = set()
+    packages_by_key: dict[tuple[str, str], Package] = {}
     packages: list[Package] = []
     warnings: list[str] = []
     all_deleted: set[str] = set()
 
-    for layer_hash in layer_digests:
+    for layer_hash, layer in zip(layer_digests, layer_metadata, strict=False):
         blob_path = path / "blobs" / "sha256" / layer_hash
         if not blob_path.exists():
             warnings.append(f"Layer blob not found: {blob_path}")
             continue
         try:
             with tarfile.open(str(blob_path), mode="r:*") as layer_tf:
-                whiteouts = _extract_packages_from_layer(layer_tf, seen, packages, all_deleted)
+                whiteouts = _extract_packages_from_layer(layer_tf, packages_by_key, packages, all_deleted, layer)
                 all_deleted.update(whiteouts)
         except tarfile.TarError as e:
             warnings.append(f"Failed to read layer blob {layer_hash[:12]}: {e}")

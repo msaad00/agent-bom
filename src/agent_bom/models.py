@@ -235,6 +235,29 @@ def compute_confidence(vuln: Vulnerability) -> float:
 
 
 @dataclass
+class PackageOccurrence:
+    """Concrete package observation metadata for layered/container surfaces."""
+
+    layer_index: int
+    layer_id: str
+    package_path: Optional[str] = None
+    layer_path: Optional[str] = None
+    created_by: Optional[str] = None
+    dockerfile_instruction: Optional[str] = None
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a JSON-serializable representation."""
+        return {
+            "layer_index": self.layer_index,
+            "layer_id": self.layer_id,
+            "layer_path": self.layer_path,
+            "package_path": self.package_path,
+            "created_by": self.created_by,
+            "dockerfile_instruction": self.dockerfile_instruction,
+        }
+
+
+@dataclass
 class Package:
     """A software package dependency."""
 
@@ -284,6 +307,7 @@ class Package:
     auto_risk_justification: Optional[str] = None
     maintainer_count: Optional[int] = None
     source_repo: Optional[str] = None
+    occurrences: list[PackageOccurrence] = field(default_factory=list)  # Layer/file provenance for concrete package observations
 
     @property
     def stable_id(self) -> str:
@@ -312,6 +336,18 @@ class Package:
     @property
     def has_vulnerabilities(self) -> bool:
         return len(self.vulnerabilities) > 0
+
+    @property
+    def primary_occurrence(self) -> Optional[PackageOccurrence]:
+        """First observed occurrence in deterministic layer order."""
+        if not self.occurrences:
+            return None
+        return min(self.occurrences, key=lambda occ: (occ.layer_index, occ.layer_id, occ.package_path or ""))
+
+    @property
+    def layer_count(self) -> int:
+        """Number of unique image layers that contributed this package."""
+        return len({(occ.layer_index, occ.layer_id) for occ in self.occurrences})
 
     @property
     def max_severity(self) -> Severity:
@@ -734,6 +770,11 @@ class BlastRadius:
         if self.package.is_malicious:
             return True
         return False
+
+    @property
+    def layer_attribution(self) -> list[PackageOccurrence]:
+        """Concrete package occurrences that carry this vulnerability."""
+        return sorted(self.package.occurrences, key=lambda occ: (occ.layer_index, occ.layer_id, occ.package_path or ""))
 
 
 @dataclass

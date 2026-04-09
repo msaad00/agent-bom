@@ -13,6 +13,7 @@ from agent_bom.models import (
     MCPServer,
     MCPTool,
     Package,
+    PackageOccurrence,
     Severity,
     TransportType,
     Vulnerability,
@@ -771,12 +772,24 @@ def test_to_json_with_agents():
 def test_to_json_with_blast_radius():
     vuln = _make_vuln_cov2()
     pkg = _make_pkg_cov2(vulns=[vuln])
+    pkg.occurrences = [
+        PackageOccurrence(
+            layer_index=2,
+            layer_id="sha256:layer2",
+            layer_path="blobs/sha256/layer2",
+            package_path="usr/lib/node_modules/lodash/package.json",
+            created_by="/bin/sh -c npm install lodash@4.17.20",
+            dockerfile_instruction="RUN npm install lodash@4.17.20",
+        )
+    ]
     agent = _make_agent_cov2()
     br = _make_blast_radius_cov2(vuln=vuln, pkg=pkg, agents=[agent])
     report = _make_report_cov2(agents=[agent], blast_radii=[br])
     result = to_json(report)
     assert len(result["blast_radius"]) >= 1
     assert "threat_framework_summary" in result
+    assert result["blast_radius"][0]["introduced_in_layer"]["layer_index"] == 2
+    assert result["blast_radius"][0]["layer_attribution"][0]["dockerfile_instruction"] == "RUN npm install lodash@4.17.20"
 
 
 def test_to_json_with_optional_fields():

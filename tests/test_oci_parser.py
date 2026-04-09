@@ -39,10 +39,15 @@ def _make_layer_tar(files: dict[str, bytes]) -> bytes:
     return buf.getvalue()
 
 
-def _make_docker_save_tar(layers: list[dict[str, bytes]], repo_tags: list[str] | None = None) -> Path:
+def _make_docker_save_tar(
+    layers: list[dict[str, bytes]],
+    repo_tags: list[str] | None = None,
+    history: list[dict] | None = None,
+) -> Path:
     """Build a Docker save-style tarball with given filesystem layers."""
     tmp = tempfile.NamedTemporaryFile(suffix=".tar", delete=False)
     layer_paths: list[str] = []
+    config_path = "sha256:abc.json"
 
     with tarfile.open(fileobj=tmp, mode="w:") as outer:
         for i, layer_files in enumerate(layers):
@@ -56,7 +61,7 @@ def _make_docker_save_tar(layers: list[dict[str, bytes]], repo_tags: list[str] |
         # Write manifest.json
         manifest = [
             {
-                "Config": "sha256:abc.json",
+                "Config": config_path,
                 "RepoTags": repo_tags or ["myapp:latest"],
                 "Layers": layer_paths,
             }
@@ -66,11 +71,17 @@ def _make_docker_save_tar(layers: list[dict[str, bytes]], repo_tags: list[str] |
         info.size = len(manifest_bytes)
         outer.addfile(info, io.BytesIO(manifest_bytes))
 
+        if history is not None:
+            config_bytes = json.dumps({"history": history}).encode()
+            info = tarfile.TarInfo(name=config_path)
+            info.size = len(config_bytes)
+            outer.addfile(info, io.BytesIO(config_bytes))
+
     tmp.close()
     return Path(tmp.name)
 
 
-def _make_oci_layout_tar(layers: list[dict[str, bytes]]) -> Path:
+def _make_oci_layout_tar(layers: list[dict[str, bytes]], history: list[dict] | None = None) -> Path:
     """Build an OCI image layout tarball (index.json + blobs/sha256/)."""
     import hashlib
 
@@ -90,11 +101,22 @@ def _make_oci_layout_tar(layers: list[dict[str, bytes]]) -> Path:
                 {"mediaType": "application/vnd.oci.image.layer.v1.tar", "digest": f"sha256:{layer_hash}", "size": len(layer_data)}
             )
 
+        config_bytes = json.dumps({"history": history or []}).encode()
+        config_hash = hashlib.sha256(config_bytes).hexdigest()
+        config_blob_path = f"blobs/sha256/{config_hash}"
+        info = tarfile.TarInfo(name=config_blob_path)
+        info.size = len(config_bytes)
+        outer.addfile(info, io.BytesIO(config_bytes))
+
         # Write manifest blob
         manifest = {
             "schemaVersion": 2,
             "mediaType": "application/vnd.oci.image.manifest.v1+json",
-            "config": {"mediaType": "application/vnd.oci.image.config.v1+json", "digest": "sha256:config", "size": 0},
+            "config": {
+                "mediaType": "application/vnd.oci.image.config.v1+json",
+                "digest": f"sha256:{config_hash}",
+                "size": len(config_bytes),
+            },
             "layers": layer_descriptors,
         }
         manifest_bytes = json.dumps(manifest).encode()
@@ -124,7 +146,7 @@ def _make_oci_layout_tar(layers: list[dict[str, bytes]]) -> Path:
     return Path(tmp.name)
 
 
-def _make_oci_layout_dir(layers: list[dict[str, bytes]]) -> Path:
+def _make_oci_layout_dir(layers: list[dict[str, bytes]], history: list[dict] | None = None) -> Path:
     """Build an OCI image layout directory on disk."""
     import hashlib
 
@@ -141,9 +163,13 @@ def _make_oci_layout_dir(layers: list[dict[str, bytes]]) -> Path:
             {"mediaType": "application/vnd.oci.image.layer.v1.tar", "digest": f"sha256:{layer_hash}", "size": len(layer_data)}
         )
 
+    config_bytes = json.dumps({"history": history or []}).encode()
+    config_hash = hashlib.sha256(config_bytes).hexdigest()
+    (blobs_dir / config_hash).write_bytes(config_bytes)
+
     manifest = {
         "schemaVersion": 2,
-        "config": {"mediaType": "...", "digest": "sha256:config", "size": 0},
+        "config": {"mediaType": "...", "digest": f"sha256:{config_hash}", "size": len(config_bytes)},
         "layers": layer_descriptors,
     }
     manifest_bytes = json.dumps(manifest).encode()
@@ -245,6 +271,40 @@ def test_docker_save_multi_layer_dedup():
     assert names.count("requests") == 1
 
 
+def test_docker_save_tracks_layer_occurrences_and_instruction():
+    tar = _make_docker_save_tar(
+        [{"requests-2.31.0.dist-info/METADATA": _METADATA_REQUESTS}],
+        history=[{"created_by": "/bin/sh -c pip install requests==2.31.0"}],
+    )
+    result = parse_oci_tarball(tar)
+    pkg = next(p for p in result.packages if p.name == "requests")
+    assert len(pkg.occurrences) == 1
+    occ = pkg.occurrences[0]
+    assert occ.layer_index == 1
+    assert occ.package_path == "requests-2.31.0.dist-info/METADATA"
+    assert occ.created_by == "/bin/sh -c pip install requests==2.31.0"
+    assert occ.dockerfile_instruction == "RUN pip install requests==2.31.0"
+
+
+def test_docker_save_latest_layer_version_wins():
+    tar = _make_docker_save_tar(
+        [
+            {"requests-2.31.0.dist-info/METADATA": _METADATA_REQUESTS},
+            {"requests-2.32.0.dist-info/METADATA": b"Metadata-Version: 2.1\nName: requests\nVersion: 2.32.0\n"},
+        ],
+        history=[
+            {"created_by": "/bin/sh -c pip install requests==2.31.0"},
+            {"created_by": "/bin/sh -c pip install --upgrade requests==2.32.0"},
+        ],
+    )
+    result = parse_oci_tarball(tar)
+    pkg = next(p for p in result.packages if p.name == "requests")
+    assert pkg.version == "2.32.0"
+    assert len(pkg.occurrences) == 1
+    assert pkg.occurrences[0].layer_index == 2
+    assert pkg.occurrences[0].dockerfile_instruction == "RUN pip install --upgrade requests==2.32.0"
+
+
 def test_docker_save_multi_layer_multi_ecosystem():
     """Packages from different layers and ecosystems all collected."""
     tar = _make_docker_save_tar(
@@ -342,6 +402,17 @@ def test_oci_layout_dir_multi_layer():
     names = {p.name for p in result.packages}
     assert "busybox" in names
     assert "requests" in names
+
+
+def test_oci_layout_dir_tracks_layer_instruction():
+    layout_dir = _make_oci_layout_dir(
+        [{"usr/lib/node_modules/express/package.json": _PACKAGE_JSON_EXPRESS}],
+        history=[{"created_by": "/bin/sh -c #(nop)  RUN npm install express"}],
+    )
+    result = parse_oci_layout_dir(layout_dir)
+    pkg = next(p for p in result.packages if p.name == "express")
+    assert pkg.occurrences[0].layer_index == 1
+    assert pkg.occurrences[0].dockerfile_instruction == "RUN npm install express"
 
 
 # ── Error cases ───────────────────────────────────────────────────────────────

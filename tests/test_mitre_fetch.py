@@ -34,6 +34,21 @@ def _attack_bundle(techniques: list[dict]) -> dict:
     return {"type": "bundle", "id": "bundle--test", "objects": objects}
 
 
+def _attack_bundle_current_schema(techniques: list[dict]) -> dict:
+    """Build a minimal current-style enterprise ATT&CK bundle."""
+    objects = [
+        {
+            "type": "x-mitre-matrix",
+            "id": "x-mitre-matrix--test",
+            "name": "Enterprise ATT&CK",
+            "modified": "2025-04-25T14:41:40.982Z",
+            "x_mitre_attack_spec_version": "3.2.0",
+        }
+    ]
+    objects.extend(techniques)
+    return {"type": "bundle", "id": "bundle--current", "objects": objects}
+
+
 def _technique(
     stix_id: str,
     ext_id: str,
@@ -83,6 +98,12 @@ def test_parse_extracts_version():
     bundle = _attack_bundle([])
     version, _ = _parse_attack_stix(bundle)
     assert version == "16.1"
+
+
+def test_parse_extracts_snapshot_version_from_matrix():
+    bundle = _attack_bundle_current_schema([])
+    version, _ = _parse_attack_stix(bundle)
+    assert version == "snapshot 2025-04-25 (spec 3.2.0)"
 
 
 def test_parse_empty_bundle():
@@ -188,6 +209,27 @@ def test_capec_parse_derives_cwe_to_attack_mapping():
     mapping = _parse_capec_stix(bundle, attack_techniques)
     assert "CWE-78" in mapping
     assert "T1059" in mapping["CWE-78"]
+
+
+def test_capec_parse_current_direct_refs_schema():
+    attack_techniques = {"T1059": {"name": "Command and Scripting Interpreter", "tactics": ["execution"], "capec_refs": []}}
+    bundle = {
+        "type": "bundle",
+        "objects": [
+            {
+                "type": "attack-pattern",
+                "id": "attack-pattern--capec-88",
+                "name": "OS Command Injection",
+                "external_references": [
+                    {"source_name": "capec", "external_id": "CAPEC-88"},
+                    {"source_name": "cwe", "external_id": "CWE-78"},
+                    {"source_name": "ATTACK", "external_id": "T1059"},
+                ],
+            }
+        ],
+    }
+    mapping = _parse_capec_stix(bundle, attack_techniques)
+    assert mapping == {"CWE-78": ["T1059"]}
 
 
 def test_capec_parse_excludes_out_of_scope_techniques():

@@ -139,6 +139,7 @@ def _parse_attack_stix(stix_bundle: dict) -> tuple[str, dict[str, dict]]:
         scope are included.
     """
     version = "unknown"
+    fallback_version = "unknown"
     techniques: dict[str, dict] = {}
 
     for obj in stix_bundle.get("objects", []):
@@ -147,6 +148,15 @@ def _parse_attack_stix(stix_bundle: dict) -> tuple[str, dict[str, dict]]:
         # Extract ATT&CK version from the identity or x-mitre-collection object
         if obj_type == "x-mitre-collection":
             version = obj.get("x_mitre_version") or obj.get("name", "unknown")
+        elif obj_type == "x-mitre-matrix" and fallback_version == "unknown":
+            modified = (obj.get("modified") or "").split("T", 1)[0]
+            spec_version = obj.get("x_mitre_attack_spec_version")
+            if modified and spec_version:
+                fallback_version = f"snapshot {modified} (spec {spec_version})"
+            elif modified:
+                fallback_version = f"snapshot {modified}"
+            elif spec_version:
+                fallback_version = f"spec {spec_version}"
 
         if obj_type != "attack-pattern":
             continue
@@ -157,6 +167,9 @@ def _parse_attack_stix(stix_bundle: dict) -> tuple[str, dict[str, dict]]:
 
         # Technique ID (external_references[0].external_id, e.g. "T1059")
         ext_refs = obj.get("external_references", [])
+        capec_refs = sorted(
+            {ref.get("external_id", "").upper() for ref in ext_refs if ref.get("source_name") == "capec" and ref.get("external_id")}
+        )
         tech_id = next(
             (r.get("external_id", "") for r in ext_refs if r.get("source_name") == "mitre-attack"),
             "",
@@ -176,7 +189,11 @@ def _parse_attack_stix(stix_bundle: dict) -> tuple[str, dict[str, dict]]:
             "tactics": tactics,
             "description": (obj.get("description") or "")[:200],
             "platforms": obj.get("x_mitre_platforms", []),
+            "capec_refs": capec_refs,
         }
+
+    if version == "unknown":
+        version = fallback_version
 
     return version, techniques
 
@@ -194,95 +211,81 @@ def _parse_capec_stix(capec_bundle: dict, attack_techniques: dict[str, dict]) ->
     Only produces mappings for ATT&CK techniques already in our top-10 scope.
     """
     objects = capec_bundle.get("objects", [])
+    capec_stix_to_external: dict[str, str] = {}
+    capec_to_cwes: dict[str, set[str]] = {}
+    capec_to_attack: dict[str, set[str]] = {}
+    weakness_map: dict[str, str] = {}
+    embedded_attack_refs: dict[str, set[str]] = {}
 
-    # Build maps from CAPEC STIX IDs
-    # capec_to_cwes: capec_stix_id → [CWE-NNN, ...]
-    # capec_to_attack: capec_stix_id → [T-code, ...]
-    capec_to_cwes: dict[str, list[str]] = {}
-    capec_to_attack: dict[str, list[str]] = {}
+    def _normalize_cwe(raw_id: str) -> str:
+        value = (raw_id or "").strip().upper()
+        if not value:
+            return ""
+        return value if value.startswith("CWE-") else f"CWE-{value}"
 
-    # Index attack-pattern objects by STIX id for later lookup
-    capec_external: dict[str, str] = {}  # stix_id → CAPEC-NNN
     for obj in objects:
-        if obj.get("type") != "attack-pattern":
-            continue
-        stix_id = obj.get("id", "")
-        for ref in obj.get("external_references", []):
-            if ref.get("source_name") == "capec":
-                capec_external[stix_id] = ref["external_id"]
-
-    # Parse relationships
-    for obj in objects:
-        if obj.get("type") != "relationship":
-            continue
-        rel_type = obj.get("relationship_type", "")
-        source_id = obj.get("source_ref", "")
-        target_id = obj.get("target_ref", "")
-
-        # CAPEC → CWE (the CAPEC "exploits" or targets a CWE weakness)
-        if rel_type in ("exploits", "related-to") and target_id.startswith("weakness--"):
-            # CWE external_id lives on weakness objects
-            pass  # handled via weakness lookup below
-
-        # CAPEC attack-pattern → ATT&CK attack-pattern
-        if rel_type in ("uses", "maps-to") and source_id.startswith("attack-pattern--"):
-            # Determine if target is an ATT&CK technique (external_id starts with T)
-            pass  # handled via dedicated index below
-
-    # Rebuild with weakness objects included
-    weakness_map: dict[str, str] = {}  # stix_id → CWE-NNN
-    for obj in objects:
-        if obj.get("type") == "weakness":
+        obj_type = obj.get("type")
+        if obj_type == "weakness":
             stix_id = obj.get("id", "")
             for ref in obj.get("external_references", []):
                 if ref.get("source_name") == "cwe":
-                    cwe_id = ref["external_id"]
-                    if not cwe_id.upper().startswith("CWE-"):
-                        cwe_id = f"CWE-{cwe_id}"
-                    weakness_map[stix_id] = cwe_id.upper()
+                    cwe_id = _normalize_cwe(ref.get("external_id", ""))
+                    if cwe_id:
+                        weakness_map[stix_id] = cwe_id
+        elif obj_type == "attack-pattern":
+            stix_id = obj.get("id", "")
+            ext_refs = obj.get("external_references", [])
+            capec_ids = {
+                ref.get("external_id", "").upper() for ref in ext_refs if ref.get("source_name") == "capec" and ref.get("external_id")
+            }
+            cwe_ids = {_normalize_cwe(ref.get("external_id", "")) for ref in ext_refs if ref.get("source_name") == "cwe"}
+            cwe_ids.discard("")
+            attack_ids = {
+                ref.get("external_id", "").upper()
+                for ref in ext_refs
+                if ref.get("source_name") in {"ATTACK", "mitre-attack"} and ref.get("external_id", "").startswith("T")
+            }
+            attack_ids = {tech for tech in attack_ids if tech in attack_techniques}
 
-    # Index attack-pattern external IDs (ATT&CK techniques)
-    attack_external: dict[str, str] = {}  # stix_id → T-code
-    for obj in objects:
-        if obj.get("type") != "attack-pattern":
-            continue
-        stix_id = obj.get("id", "")
-        for ref in obj.get("external_references", []):
-            if ref.get("source_name") == "mitre-attack":
-                tech_id = ref.get("external_id", "")
-                if tech_id.startswith("T"):
-                    attack_external[stix_id] = tech_id
+            if capec_ids:
+                capec_id = sorted(capec_ids)[0]
+                capec_stix_to_external[stix_id] = capec_id
+                if cwe_ids:
+                    capec_to_cwes.setdefault(capec_id, set()).update(cwe_ids)
+                if attack_ids:
+                    capec_to_attack.setdefault(capec_id, set()).update(attack_ids)
+            elif attack_ids:
+                embedded_attack_refs[stix_id] = attack_ids
 
-    # Rebuild relationship maps with full index
+    # Enterprise ATT&CK now exposes CAPEC external refs on some techniques. Use
+    # those to bridge CAPEC CWE refs even when the CAPEC STIX object does not
+    # embed an ATT&CK external reference directly.
+    for tech_id, metadata in attack_techniques.items():
+        for capec_id in metadata.get("capec_refs", []) or []:
+            capec_to_attack.setdefault(capec_id.upper(), set()).add(tech_id)
+
     for obj in objects:
         if obj.get("type") != "relationship":
             continue
-        rel_type = obj.get("relationship_type", "")
-        source_id = obj.get("source_ref", "")
-        target_id = obj.get("target_ref", "")
+        source_ref = obj.get("source_ref", "")
+        target_ref = obj.get("target_ref", "")
+        capec_id = capec_stix_to_external.get(source_ref)
+        if not capec_id:
+            continue
+        if target_ref in weakness_map:
+            capec_to_cwes.setdefault(capec_id, set()).add(weakness_map[target_ref])
+        if target_ref in embedded_attack_refs:
+            capec_to_attack.setdefault(capec_id, set()).update(embedded_attack_refs[target_ref])
 
-        # CAPEC → CWE weakness
-        if target_id in weakness_map and source_id in capec_external:
-            cwe = weakness_map[target_id]
-            capec_to_cwes.setdefault(source_id, [])
-            if cwe not in capec_to_cwes[source_id]:
-                capec_to_cwes[source_id].append(cwe)
-
-        # CAPEC → ATT&CK technique
-        if target_id in attack_external and source_id in capec_external:
-            tech = attack_external[target_id]
-            if tech in attack_techniques:  # only our scoped techniques
-                capec_to_attack.setdefault(source_id, [])
-                if tech not in capec_to_attack[source_id]:
-                    capec_to_attack[source_id].append(tech)
-
-    # Chain: CWE → CAPEC → ATT&CK
     cwe_to_attack: dict[str, list[str]] = {}
-    for capec_stix_id, techs in capec_to_attack.items():
-        for cwe in capec_to_cwes.get(capec_stix_id, []):
-            existing = set(cwe_to_attack.get(cwe, []))
-            existing.update(techs)
-            cwe_to_attack[cwe] = sorted(existing)
+    for capec_id, cwe_ids in capec_to_cwes.items():
+        techniques = sorted(capec_to_attack.get(capec_id, set()))
+        if not techniques:
+            continue
+        for cwe_id in cwe_ids:
+            existing = set(cwe_to_attack.get(cwe_id, []))
+            existing.update(techniques)
+            cwe_to_attack[cwe_id] = sorted(existing)
 
     return cwe_to_attack
 

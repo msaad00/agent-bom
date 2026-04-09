@@ -333,6 +333,24 @@ def test_analyze_project_reports_js_ts_dynamic_require(tmp_path: Path):
         assert any(finding.category == "js_ts_dynamic_require" for finding in result.flow_findings)
 
 
+def test_analyze_project_reports_js_ts_dynamic_sql_query(tmp_path: Path):
+    (tmp_path / "db.ts").write_text("function lookup(userId) {\n  return db.query(`SELECT * FROM users WHERE id = ${userId}`);\n}\n")
+
+    result = analyze_project(tmp_path)
+
+    assert any(finding.category == "js_ts_sql_query_construction" for finding in result.flow_findings)
+
+
+def test_analyze_project_reports_js_ts_path_traversal_sink(tmp_path: Path):
+    (tmp_path / "fs.ts").write_text(
+        "import path from \"node:path\";\nfunction readUserFile(userInput) {\n  return fs.readFile(path.join('/srv/data', userInput));\n}\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert any(finding.category == "js_ts_path_traversal_sink" for finding in result.flow_findings)
+
+
 def test_analyze_project_builds_go_call_edges_and_tool_flow(tmp_path: Path):
     (tmp_path / "server.go").write_text(
         "package main\n\n"

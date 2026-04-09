@@ -763,12 +763,13 @@ def iac_sast_options(fn):
             ),
             click.option(
                 "--sast-config",
+                "--rules",
                 default="auto",
                 show_default=True,
                 metavar="CONFIG",
                 help=(
                     "Semgrep config for --code scans. Use 'auto', 'default' (local rules + auto), "
-                    "'p/<ruleset>', a local file/directory, or a comma-separated list."
+                    "'p/<ruleset>', a local file/directory, ~/.agent-bom/rules/, or a comma-separated list."
                 ),
             ),
             click.option(

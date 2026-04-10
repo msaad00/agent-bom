@@ -23,7 +23,7 @@
   <rect width="960" height="520" rx="18" fill="url(#bg)" stroke="#1f2937"/>
 
   <text x="480" y="38" text-anchor="middle" class="title">Architecture at a glance</text>
-  <text x="480" y="58" text-anchor="middle" class="subtitle">Discover surfaces, analyze findings, persist one graph, then operate across every surface.</text>
+  <text x="480" y="58" text-anchor="middle" class="subtitle">Discover, analyze, persist one graph, then operate across every surface.</text>
 
   <path d="M236 214H258" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
   <path d="M468 214H490" stroke="#334155" stroke-width="3" stroke-linecap="round" marker-end="url(#arrow)"/>
@@ -43,56 +43,56 @@
   <text x="64" y="168" class="card-title">Agents + MCP</text>
   <text x="64" y="188" class="copy">
     <tspan x="64" dy="0">Local clients, servers, tools,</tspan>
-    <tspan x="64" dy="14">trust posture, and config files.</tspan>
+    <tspan x="64" dy="14">configs, and trust posture.</tspan>
   </text>
 
   <rect x="48" y="242" width="172" height="82" rx="14" fill="#18181b" stroke="#374151"/>
-  <text x="64" y="268" class="card-title">Packages + infrastructure</text>
+  <text x="64" y="268" class="card-title">Packages + infra</text>
   <text x="64" y="288" class="copy">
     <tspan x="64" dy="0">Lockfiles, images, IaC, cloud,</tspan>
-    <tspan x="64" dy="14">model artifacts, and runtime logs.</tspan>
+    <tspan x="64" dy="14">models, and runtime logs.</tspan>
   </text>
 
   <rect x="280" y="142" width="172" height="82" rx="14" fill="#18181b" stroke="#374151"/>
   <text x="296" y="168" class="card-title">Findings</text>
   <text x="296" y="188" class="copy">
     <tspan x="296" dy="0">CVEs, secrets, misconfigurations,</tspan>
-    <tspan x="296" dy="14">posture checks, and runtime alerts.</tspan>
+    <tspan x="296" dy="14">posture checks, runtime alerts.</tspan>
   </text>
 
   <rect x="280" y="242" width="172" height="82" rx="14" fill="#18181b" stroke="#374151"/>
   <text x="296" y="268" class="card-title">Interpretation</text>
   <text x="296" y="288" class="copy">
-    <tspan x="296" dy="0">Blast radius, CWE-aware impact,</tspan>
-    <tspan x="296" dy="14">fix-first plans, and control mapping.</tspan>
+    <tspan x="296" dy="0">Blast radius, CWE impact,</tspan>
+    <tspan x="296" dy="14">fix-first plans, control mapping.</tspan>
   </text>
 
   <rect x="512" y="142" width="172" height="82" rx="14" fill="#18181b" stroke="#374151"/>
-  <text x="528" y="168" class="card-title">Unified graph model</text>
+  <text x="528" y="168" class="card-title">Graph model</text>
   <text x="528" y="188" class="copy">
     <tspan x="528" dy="0">Entities, edges, findings, paths,</tspan>
-    <tspan x="528" dy="14">events, snapshots, and diffs.</tspan>
+    <tspan x="528" dy="14">events, snapshots, diffs.</tspan>
   </text>
 
   <rect x="512" y="242" width="172" height="82" rx="14" fill="#18181b" stroke="#374151"/>
   <text x="528" y="268" class="card-title">State + storage</text>
   <text x="528" y="288" class="copy">
     <tspan x="528" dy="0">SQLite or Postgres, latest state,</tspan>
-    <tspan x="528" dy="14">history, and tenant separation.</tspan>
+    <tspan x="528" dy="14">history, and tenancy.</tspan>
   </text>
 
   <rect x="744" y="142" width="168" height="82" rx="14" fill="#18181b" stroke="#374151"/>
   <text x="760" y="168" class="card-title">CLI + CI</text>
   <text x="760" y="188" class="copy">
     <tspan x="760" dy="0">Local scans, GitHub Actions,</tspan>
-    <tspan x="760" dy="14">Docker, SARIF, and policy gates.</tspan>
+    <tspan x="760" dy="14">Docker, SARIF, policy gates.</tspan>
   </text>
 
   <rect x="744" y="242" width="168" height="82" rx="14" fill="#18181b" stroke="#374151"/>
   <text x="760" y="268" class="card-title">API + dashboard</text>
   <text x="760" y="288" class="copy">
     <tspan x="760" dy="0">Search, diff, node detail,</tspan>
-    <tspan x="760" dy="14">compliance, evidence, and review.</tspan>
+    <tspan x="760" dy="14">compliance, evidence, review.</tspan>
   </text>
 
   <rect x="32" y="436" width="896" height="54" rx="16" fill="#111827" stroke="#374151"/>

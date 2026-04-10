@@ -10,7 +10,6 @@ import {
   Bug,
   Activity,
   GitBranch,
-  Library,
   Shield,
   Lock,
   Users,
@@ -59,7 +58,6 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/agents", label: "Agents", icon: Server },
       { href: "/fleet", label: "Fleet", icon: Users },
-      { href: "/registry", label: "Registry", icon: Library },
     ],
   },
   {
@@ -121,7 +119,7 @@ interface RiskCounts {
   scan_count?: number;
 }
 
-const MCP_ONLY_PAGES = new Set(["/agents", "/fleet", "/registry", "/mesh", "/context"]);
+const MCP_ONLY_PAGES = new Set(["/agents", "/fleet", "/mesh", "/context"]);
 
 // ─── Sidebar Component ──────────────────────────────────────────────────────
 

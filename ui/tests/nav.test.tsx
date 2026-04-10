@@ -146,11 +146,11 @@ describe('Nav', () => {
     }
   })
 
-  it('contains links for all 23 pages across all groups', () => {
+  it('contains links for all primary pages across all groups', () => {
     render(<Nav />)
     const expectedHrefs = [
       '/', '/scan', '/jobs',
-      '/agents', '/vulns', '/fleet', '/registry',
+      '/agents', '/vulns', '/fleet',
       '/security-graph', '/graph', '/mesh', '/context', '/insights',
       '/proxy', '/audit', '/gateway',
       '/compliance', '/remediation', '/governance', '/traces', '/activity',

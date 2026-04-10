@@ -455,6 +455,7 @@ def to_json(report: AIBOMReport) -> dict:
     """Convert report to JSON-serializable dict."""
     inventory_snapshot = _build_inventory_snapshot(report)
     mcp_runtime_diff = _build_mcp_runtime_diff(report)
+    from agent_bom.mitre_fetch import get_catalog_metadata
     from agent_bom.scorecard import summarize_scorecard_coverage
 
     all_packages = [pkg for agent in report.agents for server in agent.mcp_servers for pkg in server.packages]
@@ -467,6 +468,9 @@ def to_json(report: AIBOMReport) -> dict:
         "scan_sources": report.scan_sources,
         "has_mcp_context": report.has_mcp_context,
         "has_agent_context": report.has_agent_context,
+        "framework_catalogs": {
+            "mitre_attack": get_catalog_metadata(),
+        },
         "ai_bom_entities": {
             "schema_version": "1.0",
             **inventory_snapshot,

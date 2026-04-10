@@ -1,4 +1,4 @@
-"""Tests for mitre_fetch.py — MITRE ATT&CK + CAPEC STIX fetching and caching."""
+"""Tests for mitre_fetch.py — bundled + refreshable MITRE ATT&CK catalogs."""
 
 from __future__ import annotations
 
@@ -13,8 +13,10 @@ from agent_bom.mitre_fetch import (
     _parse_attack_stix,
     _parse_capec_stix,
     build_catalog,
+    get_catalog_metadata,
     get_cwe_to_attack,
     get_techniques,
+    sync_catalog,
 )
 
 # ─── Minimal STIX fixtures ────────────────────────────────────────────────────
@@ -268,59 +270,120 @@ def test_capec_cwe_normalised_to_uppercase():
         assert key.startswith("CWE-"), f"CWE key not normalised: {key!r}"
 
 
-# ─── build_catalog ────────────────────────────────────────────────────────────
+# ─── build_catalog / sync_catalog ─────────────────────────────────────────────
 
 
-def test_build_catalog_uses_cache(tmp_path):
-    cache = {
+def _catalog(version: str, source: str = "bundled") -> dict:
+    return {
+        "schema_version": 1,
+        "catalog_id": "mitre_attack_enterprise_capec",
+        "catalog_type": "mitre_attack",
+        "source": source,
+        "attack_version": version,
+        "updated_at": "2026-04-10T00:00:00+00:00",
         "fetched_at": time.time(),
-        "attack_version": "cached",
-        "techniques": {"T1059": {"name": "Cached Technique", "tactics": ["execution"]}},
-        "cwe_to_attack": {},
+        "normalized_sha256": "sha",
+        "sources": {},
+        "techniques": {"T1059": {"name": "Command and Scripting Interpreter", "tactics": ["execution"]}},
+        "cwe_to_attack": {"CWE-78": ["T1059"]},
     }
-    cache_file = tmp_path / "mitre-attack-catalog.json"
-    cache_file.write_text(json.dumps(cache))
-
-    with patch("agent_bom.mitre_fetch._CACHE_PATH", cache_file):
-        catalog = build_catalog()
-
-    assert catalog["attack_version"] == "cached"
-    assert "T1059" in catalog["techniques"]
 
 
-def test_build_catalog_expired_cache_triggers_fetch(tmp_path):
-    old_cache = {
-        "fetched_at": 0.0,  # expired immediately
-        "attack_version": "old",
-        "techniques": {},
-        "cwe_to_attack": {},
-    }
-    cache_file = tmp_path / "mitre-attack-catalog.json"
-    cache_file.write_text(json.dumps(old_cache))
+def test_build_catalog_uses_bundled_by_default(tmp_path, monkeypatch):
+    bundled_file = tmp_path / "bundled.json"
+    bundled_file.write_text(json.dumps(_catalog("bundled-v1", source="bundled")))
+    monkeypatch.setattr("agent_bom.mitre_fetch._BUNDLED_CATALOG_PATH", bundled_file)
+    monkeypatch.delenv("AGENT_BOM_MITRE_CATALOG_PATH", raising=False)
+    monkeypatch.delenv("AGENT_BOM_MITRE_CATALOG_MODE", raising=False)
+
+    catalog = build_catalog()
+
+    assert catalog["attack_version"] == "bundled-v1"
+    assert catalog["source"] == "bundled"
+
+
+def test_build_catalog_auto_prefers_synced_catalog(tmp_path, monkeypatch):
+    bundled_file = tmp_path / "bundled.json"
+    bundled_file.write_text(json.dumps(_catalog("bundled-v1", source="bundled")))
+    synced_file = tmp_path / "synced.json"
+    synced_file.write_text(json.dumps(_catalog("synced-v2", source="synced")))
+
+    monkeypatch.setattr("agent_bom.mitre_fetch._BUNDLED_CATALOG_PATH", bundled_file)
+    monkeypatch.setenv("AGENT_BOM_MITRE_CATALOG_PATH", str(synced_file))
+    monkeypatch.setenv("AGENT_BOM_MITRE_CATALOG_MODE", "auto")
+
+    catalog = build_catalog()
+
+    assert catalog["attack_version"] == "synced-v2"
+    assert catalog["source"] == "synced"
+
+
+def test_sync_catalog_writes_normalized_override(tmp_path, monkeypatch):
+    bundled_file = tmp_path / "bundled.json"
+    bundled_file.write_text(json.dumps(_catalog("bundled-v1", source="bundled")))
+    out_file = tmp_path / "synced.json"
+    monkeypatch.setattr("agent_bom.mitre_fetch._BUNDLED_CATALOG_PATH", bundled_file)
+    monkeypatch.setenv("AGENT_BOM_MITRE_CATALOG_PATH", str(out_file))
 
     fresh_attack = _attack_bundle([_technique("attack-pattern--exec", "T1059", "Command and Scripting Interpreter", ["execution"])])
+    fresh_capec = _capec_bundle_with_mapping(
+        cwe_ext_id="CWE-78",
+        capec_stix_id="attack-pattern--capec-88",
+        capec_ext_id="CAPEC-88",
+        attack_stix_id="attack-pattern--t1059",
+        attack_ext_id="T1059",
+        technique_metadata={"name": "Command and Scripting Interpreter"},
+    )
 
-    with (
-        patch("agent_bom.mitre_fetch._CACHE_PATH", cache_file),
-        patch("agent_bom.mitre_fetch._fetch_json", side_effect=[fresh_attack, None]),
-    ):
-        catalog = build_catalog()
+    with patch("agent_bom.mitre_fetch._fetch_text", side_effect=[json.dumps(fresh_attack), json.dumps(fresh_capec)]):
+        catalog = sync_catalog()
 
-    assert "T1059" in catalog["techniques"]
+    assert out_file.exists()
+    assert catalog["source"] == "synced"
     assert catalog["attack_version"] == "16.1"
+    assert catalog["cwe_to_attack"]["CWE-78"] == ["T1059"]
 
 
-def test_build_catalog_network_failure_returns_empty(tmp_path):
-    cache_file = tmp_path / "mitre-attack-catalog.json"
+def test_sync_failure_uses_last_known_good_synced(tmp_path, monkeypatch):
+    bundled_file = tmp_path / "bundled.json"
+    bundled_file.write_text(json.dumps(_catalog("bundled-v1", source="bundled")))
+    synced_file = tmp_path / "synced.json"
+    synced_file.write_text(json.dumps(_catalog("synced-v2", source="synced")))
 
-    with (
-        patch("agent_bom.mitre_fetch._CACHE_PATH", cache_file),
-        patch("agent_bom.mitre_fetch._fetch_json", return_value=None),
-    ):
-        catalog = build_catalog()
+    monkeypatch.setattr("agent_bom.mitre_fetch._BUNDLED_CATALOG_PATH", bundled_file)
+    monkeypatch.setenv("AGENT_BOM_MITRE_CATALOG_PATH", str(synced_file))
 
-    assert catalog["techniques"] == {}
-    assert catalog["cwe_to_attack"] == {}
+    with patch("agent_bom.mitre_fetch._fetch_text", return_value=None):
+        catalog = sync_catalog()
+
+    assert catalog["attack_version"] == "synced-v2"
+    assert catalog["source"] == "synced"
+
+
+def test_sync_failure_without_synced_uses_bundled(tmp_path, monkeypatch):
+    bundled_file = tmp_path / "bundled.json"
+    bundled_file.write_text(json.dumps(_catalog("bundled-v1", source="bundled")))
+    monkeypatch.setattr("agent_bom.mitre_fetch._BUNDLED_CATALOG_PATH", bundled_file)
+    monkeypatch.setenv("AGENT_BOM_MITRE_CATALOG_PATH", str(tmp_path / "missing.json"))
+
+    with patch("agent_bom.mitre_fetch._fetch_text", return_value=None):
+        catalog = sync_catalog()
+
+    assert catalog["attack_version"] == "bundled-v1"
+    assert catalog["source"] == "bundled"
+
+
+def test_get_catalog_metadata_exposes_counts(tmp_path, monkeypatch):
+    bundled_file = tmp_path / "bundled.json"
+    bundled_file.write_text(json.dumps(_catalog("bundled-v1", source="bundled")))
+    monkeypatch.setattr("agent_bom.mitre_fetch._BUNDLED_CATALOG_PATH", bundled_file)
+    monkeypatch.delenv("AGENT_BOM_MITRE_CATALOG_PATH", raising=False)
+
+    metadata = get_catalog_metadata()
+
+    assert metadata["attack_version"] == "bundled-v1"
+    assert metadata["technique_count"] == 1
+    assert metadata["cwe_mapping_count"] == 1
 
 
 # ─── TOP_TACTIC_PHASE_NAMES coverage ─────────────────────────────────────────
@@ -372,64 +435,26 @@ def test_get_cwe_to_attack_returns_dict():
     assert "T1059" in result["CWE-78"]
 
 
-# ─── Offline fallback: stale cache on network failure (#409) ──────────────────
+def test_refresh_mode_uses_live_sync(tmp_path, monkeypatch):
+    bundled_file = tmp_path / "bundled.json"
+    bundled_file.write_text(json.dumps(_catalog("bundled-v1", source="bundled")))
+    out_file = tmp_path / "synced.json"
+    monkeypatch.setattr("agent_bom.mitre_fetch._BUNDLED_CATALOG_PATH", bundled_file)
+    monkeypatch.setenv("AGENT_BOM_MITRE_CATALOG_PATH", str(out_file))
+    monkeypatch.setenv("AGENT_BOM_MITRE_CATALOG_MODE", "refresh")
 
+    fresh_attack = _attack_bundle([_technique("attack-pattern--exec", "T1059", "Command and Scripting Interpreter", ["execution"])])
+    fresh_capec = _capec_bundle_with_mapping(
+        cwe_ext_id="CWE-78",
+        capec_stix_id="attack-pattern--capec-88",
+        capec_ext_id="CAPEC-88",
+        attack_stix_id="attack-pattern--t1059",
+        attack_ext_id="T1059",
+        technique_metadata={"name": "Command and Scripting Interpreter"},
+    )
 
-def test_network_failure_uses_stale_cache(tmp_path):
-    """When the cache is expired AND the network fetch fails, serve stale cache."""
-    stale_cache = {
-        "fetched_at": 1.0,  # expired long ago
-        "attack_version": "stale-v15",
-        "techniques": {"T1059": {"name": "Stale Technique", "tactics": ["execution"]}},
-        "cwe_to_attack": {"CWE-78": ["T1059"]},
-    }
-    cache_file = tmp_path / "mitre-attack-catalog.json"
-    cache_file.write_text(json.dumps(stale_cache))
-
-    with (
-        patch("agent_bom.mitre_fetch._CACHE_PATH", cache_file),
-        patch("agent_bom.mitre_fetch._fetch_json", return_value=None),
-    ):
+    with patch("agent_bom.mitre_fetch._fetch_text", side_effect=[json.dumps(fresh_attack), json.dumps(fresh_capec)]):
         catalog = build_catalog()
 
-    # Should return stale data rather than empty dict
-    assert catalog["attack_version"] == "stale-v15"
-    assert "T1059" in catalog["techniques"]
-    assert "CWE-78" in catalog["cwe_to_attack"]
-
-
-def test_network_failure_no_cache_returns_empty(tmp_path):
-    """When network fails AND no cache exists at all, return empty catalog."""
-    cache_file = tmp_path / "mitre-attack-catalog.json"
-    # cache_file does NOT exist
-
-    with (
-        patch("agent_bom.mitre_fetch._CACHE_PATH", cache_file),
-        patch("agent_bom.mitre_fetch._fetch_json", return_value=None),
-    ):
-        catalog = build_catalog()
-
-    assert catalog["techniques"] == {}
-    assert catalog["attack_version"] == "unavailable"
-
-
-def test_load_cache_ignore_ttl(tmp_path):
-    """_load_cache(ignore_ttl=True) returns stale cache even if expired."""
-    from agent_bom.mitre_fetch import _load_cache
-
-    stale = {
-        "fetched_at": 1.0,
-        "attack_version": "old",
-        "techniques": {"T9999": {}},
-        "cwe_to_attack": {},
-    }
-    cache_file = tmp_path / "mitre-attack-catalog.json"
-    cache_file.write_text(json.dumps(stale))
-
-    with patch("agent_bom.mitre_fetch._CACHE_PATH", cache_file):
-        # Normal load: expired → None
-        assert _load_cache() is None
-        # ignore_ttl: returns data anyway
-        result = _load_cache(ignore_ttl=True)
-        assert result is not None
-        assert result["attack_version"] == "old"
+    assert catalog["source"] == "synced"
+    assert catalog["attack_version"] == "16.1"

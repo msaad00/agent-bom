@@ -74,6 +74,17 @@ def test_version_endpoint():
     assert body["python_package"] == "agent-bom"
 
 
+def test_framework_catalogs_endpoint():
+    """GET /v1/frameworks/catalogs returns active framework metadata."""
+    client, _ = _fresh_client()
+    resp = client.get("/v1/frameworks/catalogs")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "frameworks" in body
+    assert "mitre_attack" in body["frameworks"]
+    assert "attack_version" in body["frameworks"]["mitre_attack"]
+
+
 # ---------------------------------------------------------------------------
 # 3. Root redirect
 # ---------------------------------------------------------------------------

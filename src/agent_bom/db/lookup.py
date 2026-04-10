@@ -43,6 +43,75 @@ class LocalVuln:
     cwe_ids: list[str] = field(default_factory=list)
 
 
+def _cve_candidates(vuln_id: str, raw_aliases: str) -> list[str]:
+    """Return unique CVE identifiers associated with one vulnerability row."""
+    candidates: list[str] = []
+    if vuln_id.startswith("CVE-"):
+        candidates.append(vuln_id)
+    for alias in (raw_aliases or "").split(","):
+        alias = alias.strip()
+        if alias.startswith("CVE-") and alias not in candidates:
+            candidates.append(alias)
+    return candidates
+
+
+def _load_cve_enrichment(
+    conn: sqlite3.Connection,
+    rows: list[sqlite3.Row],
+) -> tuple[dict[str, tuple[Optional[float], Optional[float]]], dict[str, str]]:
+    """Load EPSS and KEV data for any CVE aliases referenced by *rows*."""
+    cve_ids: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        for cve_id in _cve_candidates(row["id"], row["aliases"] or ""):
+            if cve_id not in seen:
+                seen.add(cve_id)
+                cve_ids.append(cve_id)
+
+    if not cve_ids:
+        return {}, {}
+
+    placeholders = ", ".join("?" for _ in cve_ids)
+    epss_query = f"""
+        SELECT cve_id, probability, percentile
+        FROM epss_scores
+        WHERE cve_id IN ({placeholders})
+    """  # nosec B608 - placeholders are generated solely from "?" markers
+    kev_query = f"""
+        SELECT cve_id, date_added
+        FROM kev_entries
+        WHERE cve_id IN ({placeholders})
+    """  # nosec B608 - placeholders are generated solely from "?" markers
+    epss_rows = conn.execute(epss_query, cve_ids).fetchall()
+    kev_rows = conn.execute(kev_query, cve_ids).fetchall()
+
+    epss_map = {row["cve_id"]: (row["probability"], row["percentile"]) for row in epss_rows}
+    kev_map = {row["cve_id"]: row["date_added"] for row in kev_rows}
+    return epss_map, kev_map
+
+
+def _resolve_row_enrichment(
+    row: sqlite3.Row,
+    epss_map: dict[str, tuple[Optional[float], Optional[float]]],
+    kev_map: dict[str, str],
+) -> tuple[Optional[float], Optional[float], Optional[str]]:
+    """Return EPSS probability/percentile and KEV date, falling back to CVE aliases."""
+    epss_prob = row["epss_prob"]
+    epss_pct = row["epss_pct"]
+    kev_date = row["kev_date"]
+    if epss_prob is not None and kev_date is not None:
+        return epss_prob, epss_pct, kev_date
+
+    for cve_id in _cve_candidates(row["id"], row["aliases"] or ""):
+        if epss_prob is None and cve_id in epss_map:
+            epss_prob, epss_pct = epss_map[cve_id]
+        if kev_date is None and cve_id in kev_map:
+            kev_date = kev_map[cve_id]
+        if epss_prob is not None and kev_date is not None:
+            break
+    return epss_prob, epss_pct, kev_date
+
+
 def lookup_package(
     conn: sqlite3.Connection,
     ecosystem: str,
@@ -78,6 +147,7 @@ def lookup_package(
         (eco_lower, norm_name),
     ).fetchall()
 
+    epss_map, kev_map = _load_cve_enrichment(conn, rows)
     results: list[LocalVuln] = []
     for row in _select_vulnerability_rows(rows, version):
         # Parse comma-separated CWE IDs from DB column
@@ -85,6 +155,7 @@ def lookup_package(
         cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []
         raw_aliases = row["aliases"] or ""
         alias_list = [a for a in raw_aliases.split(",") if a] if raw_aliases else []
+        epss_prob, epss_pct, kev_date = _resolve_row_enrichment(row, epss_map, kev_map)
 
         results.append(
             LocalVuln(
@@ -93,10 +164,10 @@ def lookup_package(
                 severity=row["severity"],
                 cvss_score=row["cvss_score"],
                 fixed_version=row["fixed_version"] or row["fixed"],
-                epss_probability=row["epss_prob"],
-                epss_percentile=row["epss_pct"],
-                is_kev=row["kev_date"] is not None,
-                kev_date_added=row["kev_date"],
+                epss_probability=epss_prob,
+                epss_percentile=epss_pct,
+                is_kev=kev_date is not None,
+                kev_date_added=kev_date,
                 published_at=row["published"],
                 modified_at=row["modified"],
                 source=row["source"],
@@ -264,6 +335,8 @@ def lookup_packages_batch(
         """  # nosec B608
         all_rows.extend(conn.execute(query, params).fetchall())
 
+    epss_map, kev_map = _load_cve_enrichment(conn, all_rows)
+
     # Group rows by (lower_ecosystem, package_name)
     grouped: dict[tuple[str, str], list[sqlite3.Row]] = defaultdict(list)
     for row in all_rows:
@@ -282,6 +355,7 @@ def lookup_packages_batch(
             cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []
             raw_aliases = row["aliases"] or ""
             alias_list = [a for a in raw_aliases.split(",") if a] if raw_aliases else []
+            epss_prob, epss_pct, kev_date = _resolve_row_enrichment(row, epss_map, kev_map)
 
             vulns.append(
                 LocalVuln(
@@ -290,10 +364,10 @@ def lookup_packages_batch(
                     severity=row["severity"],
                     cvss_score=row["cvss_score"],
                     fixed_version=row["fixed_version"] or row["fixed"],
-                    epss_probability=row["epss_prob"],
-                    epss_percentile=row["epss_pct"],
-                    is_kev=row["kev_date"] is not None,
-                    kev_date_added=row["kev_date"],
+                    epss_probability=epss_prob,
+                    epss_percentile=epss_pct,
+                    is_kev=kev_date is not None,
+                    kev_date_added=kev_date,
                     published_at=row["published"],
                     modified_at=row["modified"],
                     source=row["source"],

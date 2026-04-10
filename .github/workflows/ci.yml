@@ -26,6 +26,11 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: '22'
+
       - name: Install dependencies
         run: uv sync --extra dev
 
@@ -77,6 +82,9 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: '1'
           trivyignores: .trivyignore
+
+      - name: Validate npm lockfiles
+        run: python scripts/check_npm_lockfile.py ui/package-lock.json sdks/typescript/package-lock.json
 
       - name: npm audit (ui/ transitive deps)
         run: |

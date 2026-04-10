@@ -159,10 +159,11 @@ def serve_cmd(
     analytics_flush_interval: float,
     analytics_max_batch: int,
 ):
-    """Start the API server + Next.js dashboard.
+    """Start the API server and serve the dashboard when UI assets are built.
 
     \b
     Requires:  pip install 'agent-bom[ui]'
+               make build-ui   (for the bundled dashboard)
 
     \b
     Usage:

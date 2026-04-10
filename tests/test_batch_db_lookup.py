@@ -117,6 +117,25 @@ def test_batch_kev_and_epss(tmp_db):
     assert vuln.epss_percentile == pytest.approx(99.5)
 
 
+def test_batch_alias_cve_enrichment(tmp_db):
+    _insert_vuln(tmp_db, vuln_id="GHSA-test-alias", cvss_score=None)
+    tmp_db.execute("UPDATE vulns SET aliases='CVE-2024-TESTALIAS' WHERE id='GHSA-test-alias'")
+    _insert_affected(tmp_db, vuln_id="GHSA-test-alias")
+    tmp_db.execute(
+        "INSERT OR REPLACE INTO epss_scores(cve_id, probability, percentile, updated_at) "
+        "VALUES ('CVE-2024-TESTALIAS', 0.42, 88.0, '2024-01-01')"
+    )
+    tmp_db.execute("INSERT OR REPLACE INTO kev_entries(cve_id, date_added) VALUES ('CVE-2024-TESTALIAS', '2024-02-01')")
+    tmp_db.commit()
+
+    batch = lookup_packages_batch(tmp_db, [("pypi", "requests", "2.0.5")])
+    vuln = batch[("pypi", "requests", "2.0.5")][0]
+    assert vuln.epss_probability == pytest.approx(0.42)
+    assert vuln.epss_percentile == pytest.approx(88.0)
+    assert vuln.is_kev is True
+    assert vuln.kev_date_added == "2024-02-01"
+
+
 def test_batch_ecosystem_case_insensitive(tmp_db):
     """Batch lookup is case-insensitive on ecosystem."""
     _insert_vuln(tmp_db)

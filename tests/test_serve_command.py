@@ -44,3 +44,12 @@ def test_pyproject_streamlit_in_dashboard_only():
         assert "streamlit" not in ui_match.group(1).lower()
     # Dashboard extra should have streamlit
     assert 'dashboard = ["streamlit' in toml_text
+
+
+def test_serve_help_mentions_built_dashboard():
+    """serve help should not imply the dashboard is always bundled."""
+    runner = CliRunner()
+    result = runner.invoke(main, ["serve", "--help"])
+    assert result.exit_code == 0
+    assert "serve the dashboard when UI assets are built" in result.output
+    assert "make build-ui" in result.output

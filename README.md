@@ -14,11 +14,9 @@
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
-<p align="center"><b>Open security scanner and graph for agentic infrastructure — discover agents and MCP, map blast radius, and inspect runtime.</b></p>
+<p align="center"><b>Open security scanner for AI supply chain — agents, MCP servers, packages, containers, cloud, GPU, and runtime.</b></p>
 
-<p align="center">Security and visibility for agentic infrastructure should be open, transparent, and accessible — not reserved for teams with enterprise budgets.</p>
-
-<p align="center"><b>Package risk is only the start. What matters is what it can reach.</b></p>
+<p align="center">Find what is installed, see what it can reach, and understand what a vulnerable package can actually touch.</p>
 
 ```text
 CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
@@ -31,13 +29,9 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
  Fix: upgrade better-sqlite3 → 11.7.0
 ```
 
-**agent-bom maps the blast radius**: CVE → package → MCP server → AI agent → credentials → tools.
+**agent-bom maps blast radius**: `CVE -> package -> MCP server -> agent -> credentials -> tools`.
 
-Package risk is only the start. agent-bom maps what it can reach across MCP servers, agents, credentials, tools, and runtime context. CWE-aware impact classification keeps a DoS from being reported like credential compromise.
-
-`agent-bom` is now a real released product surface, not just a research repo: installable from PyPI, publishable through Docker, usable in GitHub Actions, deployable as an authenticated API and remote MCP service, and validated end to end through CLI, reports, API, dashboard, and policy gates.
-
-For the canonical product brief and verified repo-derived metrics, see [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) and [docs/PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md). For enterprise-control traceability, see [docs/ENTERPRISE.md](docs/ENTERPRISE.md).
+Scan local agent configs, MCP servers, instruction files, lockfiles, containers, cloud posture, GPU surfaces, and runtime evidence. CWE-aware impact keeps a DoS from being reported like credential compromise.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom blast radius demo" width="900" />
@@ -49,26 +43,23 @@ Try the built-in demo first:
 agent-bom agents --demo --offline
 ```
 
-The GIF uses that curated sample so the output stays reproducible across releases. For real scans, run `agent-bom agents`, or add `-p .` to fold project lockfiles and manifests into the same scan.
+The GIF uses that same curated sample so the output stays reproducible across releases. For real scans, run `agent-bom agents`, or add `-p .` to fold project manifests and lockfiles into the same result.
 
-Current repo-derived counts live in [docs/PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md). The README keeps the product story stable and leaves fast-moving counts in the generated metrics appendix.
+## First steps after the demo
 
-## First commands after install
+If you only do three things after the demo, start here:
 
-If you only run three commands, make them these:
-
-```bash
-agent-bom agents -p .              # Local agent + MCP + project package scan
-agent-bom serve                    # API + dashboard + unified graph explorer
-agent-bom proxy "npx @mcp/server-fs /workspace"   # Runtime MCP inspection path
-```
+1. Scan your repo: `agent-bom agents -p .`
+2. Generate a fix-first plan: `agent-bom agents -p . --remediate remediation.md`
+3. Add the dashboard when you want a persistent graph: `pip install 'agent-bom[ui]'` once, then `agent-bom serve`
 
 Pick the one that matches your first goal:
 
 | Goal | Run | What you get |
 |---|---|---|
 | Find what is installed and reachable | `agent-bom agents -p .` | Agent discovery, MCP mapping, project dependency findings, blast radius |
-| Review findings in a persistent graph | `agent-bom serve` | API, dashboard, unified graph, current-state and diff views |
+| Turn findings into a fix plan | `agent-bom agents -p . --remediate remediation.md` | Prioritized remediation plan with fix versions and reachable impact |
+| Review findings in a persistent graph | `agent-bom serve` | API, dashboard, unified graph, current-state and diff views. Requires `pip install 'agent-bom[ui]'` once. |
 | Inspect live MCP traffic | `agent-bom proxy "<server command>"` | Inline runtime inspection, detector chaining, response/argument review |
 
 ## Quick start
@@ -88,6 +79,15 @@ agent-bom image nginx:latest                  # Container image scan
 agent-bom iac Dockerfile k8s/ infra/main.tf   # IaC scan across one or more paths
 ```
 
+## What to do after the first scan
+
+```bash
+agent-bom agents -p . --remediate remediation.md                    # Fix-first plan with versions and reachable impact
+agent-bom agents -p . --compliance-export fedramp -o evidence.zip   # ZIP evidence bundle for auditors
+pip install 'agent-bom[ui]'                                         # once, for API + dashboard
+agent-bom serve                                                     # Review the same findings in the dashboard and graph
+```
+
 <details>
 <summary><b>More commands</b></summary>
 
@@ -96,6 +96,7 @@ agent-bom cloud aws                     # Cloud AI posture + CIS benchmarks
 agent-bom agents -f cyclonedx -o bom.json  # AI BOM / SBOM export
 agent-bom check requests@2.33.0 -e pypi -f json  # Machine-readable pre-install verdict
 agent-bom report diff before.json after.json -f json  # CI-friendly diff output
+agent-bom agents -p . --compliance-export fedramp -o fedramp-evidence.zip  # Auditor-ready evidence bundle
 agent-bom graph report.json                # Blast radius graph / graph HTML inputs
 agent-bom proxy "npx @mcp/server-fs /ws"   # MCP security proxy
 agent-bom secrets src/                  # Hardcoded secrets + PII
@@ -112,14 +113,15 @@ agent-bom serve                         # API + Next.js dashboard
 ## Why teams use it
 
 - Blast radius that maps `CVE -> package -> MCP server -> agent -> credentials -> tools`
-- AI-native coverage across agents, skills, instruction files, runtime proxy traffic, containers, cloud, and IaC
+- AI-native coverage across agents, MCP, instruction files, runtime proxy traffic, containers, cloud, IaC, and GPU surfaces
 - Unified graph explorer with snapshots, diff, search, impact, attack paths, and OCSF-ready export
 - Supply-chain depth across lockfiles, transitive dependencies, model artifacts, provenance, and hash verification
+- Compliance evidence bundles for `cmmc`, `fedramp`, and `nist-ai-rmf`
 - One operator path across CLI, CI, API, dashboard, reports, and MCP tools
 
 ## Graph explorer
 
-The graph is now a first-class product path, not a side export. The same persisted graph supports current-state review, snapshot diffs, attack-path drilldown, search, impact, compliance posture, and OCSF-ready export.
+The graph explorer is a real product surface, not concept art. The example below is aligned to the built-in demo so the structure and labels match actual `agent-bom` output.
 
 <p align="center">
   <picture>
@@ -136,9 +138,11 @@ agent-bom graph report.json        # Generate graph-facing output from an existi
 agent-bom mesh --project .         # Quick local topology view from the CLI
 ```
 
+If the dashboard says `API Offline`, install the UI extra and run `agent-bom serve`. If the UI is already running separately, start just the backend with `pip install 'agent-bom[api]'` and `agent-bom api`.
+
 ## Architecture at a glance
 
-One pipeline: discovery and runtime inspection feed the scanners, the scanners feed the unified graph, and the same graph powers CLI, API, dashboard, search, diff, impact, attack-path drilldown, and OCSF-ready export.
+One path: discover and observe -> scan and interpret -> persist one graph -> operate across CLI, CI, API, dashboard, exports, and runtime review.
 
 <p align="center">
   <picture>
@@ -162,7 +166,12 @@ docker run --rm agentbom/agent-bom agents    # Docker
 | MCP Server | `agent-bom mcp server` | Claude Desktop, Claude Code, Cursor, Codex, Windsurf, Cortex |
 | Runtime proxy | `agent-bom proxy` | MCP traffic enforcement |
 | Shield SDK | `from agent_bom.shield import Shield` | In-process protection |
-| API + dashboard | `agent-bom serve` | Fleet visibility, audit exports, and central review |
+| API + dashboard | `agent-bom serve` | Fleet visibility, audit exports, and central review. Requires `pip install 'agent-bom[ui]'` once. |
+
+Product references:
+- [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md)
+- [docs/PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md)
+- [docs/ENTERPRISE.md](docs/ENTERPRISE.md)
 
 ### CI/CD in 60 seconds
 

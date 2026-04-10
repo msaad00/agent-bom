@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { api, Vulnerability, ScanJob, ScanResult, severityColor, severityDot, OWASP_LLM_TOP10, MITRE_ATLAS } from "@/lib/api";
+import { ApiOfflineState } from "@/components/api-offline-state";
 import { Bug, Download, ExternalLink, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, Loader2, Package, Server, ShieldOff } from "lucide-react";
 
 function downloadJson(data: unknown, filename: string) {
@@ -291,9 +292,14 @@ function VulnsPage() {
           Loading vulnerabilities...
         </div>
       )}
-      {error && <p className="text-red-400 text-sm">{error}</p>}
+      {!loading && error && (
+        <ApiOfflineState
+          title="Vulnerabilities need the agent-bom API"
+          detail={error}
+        />
+      )}
 
-      {!loading && vulns.length === 0 && (
+      {!loading && !error && vulns.length === 0 && (
         <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
           <Bug className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
           <p className="text-zinc-500 text-sm">No vulnerabilities found.</p>
@@ -303,7 +309,7 @@ function VulnsPage() {
         </div>
       )}
 
-      {vulns.length > 0 && (
+      {!error && vulns.length > 0 && (
         <>
           {/* Controls */}
           <div className="flex flex-col gap-3">

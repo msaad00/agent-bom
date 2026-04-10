@@ -38,6 +38,7 @@ import {
 import Link from "next/link";
 import { ComplianceHeatmap } from "@/components/compliance-heatmap";
 import { ComplianceMatrix } from "@/components/compliance-matrix";
+import { ApiOfflineState } from "@/components/api-offline-state";
 
 // ─── Status helpers ──────────────────────────────────────────────────────────
 
@@ -295,14 +296,10 @@ export default function CompliancePage() {
 
   if (error) {
     return (
-      <div className="max-w-xl mx-auto mt-20 text-center space-y-4">
-        <ShieldX className="w-12 h-12 text-red-400 mx-auto" />
-        <h2 className="text-lg font-semibold text-zinc-200">Unable to load compliance data</h2>
-        <p className="text-sm text-zinc-500">
-          Make sure the API server is running: <code className="text-zinc-300">agent-bom api</code>
-        </p>
-        <p className="text-xs text-zinc-600">{error}</p>
-      </div>
+      <ApiOfflineState
+        title="Compliance view needs the agent-bom API"
+        detail={error}
+      />
     );
   }
 

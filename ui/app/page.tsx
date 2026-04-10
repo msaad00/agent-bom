@@ -3,13 +3,13 @@
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { api, ScanJob, ScanResult, BlastRadius, Agent, PostureResponse, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS } from "@/lib/api";
-import { checkFileSize, validateScanReport } from "@/lib/validators";
 import { AgentTopology } from "@/components/agent-topology";
 import { TrustStack } from "@/components/trust-stack";
 import { SeverityBadge } from "@/components/severity-badge";
 import { ActivityFeed } from "@/components/activity-feed";
 import { PostureGrade } from "@/components/posture-grade";
 import { AttackPathCard } from "@/components/attack-path-card";
+import { ApiOfflineState } from "@/components/api-offline-state";
 import {
   ShieldAlert, Server, Package, Bug, Zap, ArrowRight, Clock,
   AlertTriangle, Container, Layers, FileText, ExternalLink, GitBranch,
@@ -422,16 +422,16 @@ export default function Dashboard() {
     : agentCount;
   const isLoading = loading && !importedReport;
 
-  if (apiError && !importedReport) return <ApiDown onImport={setImportedReport} />;
+  if (apiError && !importedReport) return <ApiOfflineState onImport={setImportedReport} />;
 
   return (
     <div className="space-y-8">
       <section className="relative overflow-hidden rounded-[28px] border border-zinc-800/80 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(239,68,68,0.12),transparent_24%),linear-gradient(180deg,rgba(24,24,27,0.98),rgba(9,9,11,0.96))] p-6 shadow-2xl shadow-black/20">
         <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
-            <p className="text-[11px] uppercase tracking-[0.28em] text-emerald-400">Security command center</p>
+            <p className="text-[11px] uppercase tracking-[0.28em] text-emerald-400">Current state</p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-50 sm:text-4xl">
-              See the blast radius, not just the CVE list.
+              Risk across agents, MCP, packages, and runtime.
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300">
               Aggregated across {doneJobs.length} scan{doneJobs.length !== 1 ? "s" : ""}: {effectiveAgentCount} agent{effectiveAgentCount !== 1 ? "s" : ""}, {totalPackages} packages, and {uniqueCVEs} unique vulnerabilities with credential and tool exposure mapped into one operational view.
@@ -1038,81 +1038,5 @@ function CompoundIssueCard({ issue }: { issue: CompoundIssue }) {
         </div>
       </div>
     </Link>
-  );
-}
-
-function ApiDown({ onImport }: { onImport: (data: ScanResult) => void }) {
-  const [importError, setImportError] = useState<string | null>(null);
-
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImportError(null);
-
-    // Reject oversized files before loading into memory
-    const sizeCheck = checkFileSize(file);
-    if (!sizeCheck.ok) {
-      setImportError(sizeCheck.error);
-      e.target.value = "";
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onerror = () => setImportError("Failed to read file.");
-    reader.onload = (ev) => {
-      const text = ev.target?.result;
-      if (typeof text !== "string") {
-        setImportError("Could not read file contents.");
-        return;
-      }
-      const result = validateScanReport(text);
-      if (!result.ok) {
-        setImportError(result.error);
-        return;
-      }
-      onImport(result.data as ScanResult);
-    };
-    reader.readAsText(file);
-  };
-
-  return (
-    <div className="text-center py-16">
-      <AlertTriangle className="w-10 h-10 text-orange-400 mx-auto mb-4" />
-      <h2 className="text-lg font-semibold mb-2">Cannot connect to agent-bom API</h2>
-      <p className="text-zinc-500 text-sm mb-6">
-        Make sure the API server is running at{" "}
-        <code className="font-mono bg-zinc-900 px-1.5 py-0.5 rounded text-zinc-300">
-          {process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8422"}
-        </code>
-      </p>
-      <code className="block bg-zinc-900 border border-zinc-800 rounded-lg px-6 py-4 text-sm font-mono text-emerald-400 mb-8 inline-block">
-        pip install &apos;agent-bom[api]&apos;<br />
-        agent-bom api
-      </code>
-      <div className="border border-dashed border-zinc-700 rounded-xl p-8 max-w-md mx-auto">
-        <FileText className="w-8 h-8 text-zinc-500 mx-auto mb-3" />
-        <p className="text-sm text-zinc-400 mb-1 font-medium">Or import a local report</p>
-        <p className="text-xs text-zinc-600 mb-4">
-          Generated with{" "}
-          <code className="font-mono">agent-bom scan -f json -o report.json</code>
-          <span className="block mt-1 text-zinc-700">Max 10 MB · schema-validated</span>
-        </p>
-        {importError && (
-          <div className="mb-4 px-3 py-2 bg-red-950/40 border border-red-800/50 rounded-lg text-left">
-            <p className="text-xs text-red-400 font-mono break-words">{importError}</p>
-          </div>
-        )}
-        <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-sm text-zinc-300 transition-colors">
-          <FileText className="w-4 h-4" />
-          Choose report.json
-          <input
-            type="file"
-            accept=".json,application/json"
-            className="hidden"
-            onChange={handleFile}
-          />
-        </label>
-      </div>
-    </div>
   );
 }

@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# agent-bom dashboard
 
-## Getting Started
+This is the Next.js dashboard for `agent-bom`.
 
-First, run the development server:
+## Recommended local run
+
+If you want the same product surface users get from the CLI, run:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pip install 'agent-bom[ui]'
+agent-bom serve
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+That starts the API on `http://localhost:8422` and serves the bundled dashboard.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## UI development
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Run the dashboard and API separately when working on frontend changes:
 
-## Learn More
+```bash
+agent-bom api
+npm run dev
+```
 
-To learn more about Next.js, take a look at the following resources:
+The UI reads `NEXT_PUBLIC_API_URL`. If it is unset, the dev server proxies `/v1/*`, `/health`, and `/ws/*` to `http://localhost:8422`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+If you see `Failed to fetch`:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Make sure `agent-bom api` is running.
+2. Check the browser console for CORS or network errors.
+3. Confirm `NEXT_PUBLIC_API_URL` points at the backend you expect.
 
-## Deploy on Vercel
+## Offline demo path
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Use the built-in demo to exercise the dashboard without scanning a real project:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+agent-bom agents --demo --offline -f json -o report.json
+```
+
+Then import `report.json` from the dashboard home page.

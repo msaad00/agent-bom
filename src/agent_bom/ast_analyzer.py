@@ -765,6 +765,29 @@ def _expr_contains_validation_hint(node: ast.AST) -> bool:
     return False
 
 
+def _validation_source_names_from_expr(expr: ast.AST | None) -> set[str]:
+    """Return identifiers directly constrained by a validation expression."""
+    if expr is None:
+        return set()
+    if isinstance(expr, ast.Call):
+        names: set[str] = set()
+        if isinstance(expr.func, ast.Attribute):
+            names.update(_names_in_expr(expr.func.value))
+        for arg in expr.args:
+            names.update(_names_in_expr(arg))
+        for keyword in expr.keywords:
+            names.update(_names_in_expr(keyword.value))
+        return names
+    return _names_in_expr(expr)
+
+
+def _returns_boolean_constant(statements: list[ast.stmt], value: bool) -> bool:
+    return any(
+        isinstance(statement, ast.Return) and isinstance(statement.value, ast.Constant) and statement.value.value is value
+        for statement in statements
+    )
+
+
 def _is_guarded_call(node: ast.AST, parent_map: dict[ast.AST, ast.AST]) -> bool:
     """Return True when a dangerous call sits behind a validation-oriented branch."""
     current = parent_map.get(node)
@@ -2869,6 +2892,94 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
             by_module_and_name[(func.module_name, func.simple_name)] = func
 
     seen_findings: set[tuple[str, str, str, int, str]] = set()
+    validator_summary_cache: dict[str, set[str]] = {}
+
+    def validator_param_names(
+        func: _FunctionAnalysis,
+        seen: set[str] | None = None,
+    ) -> set[str]:
+        cached = validator_summary_cache.get(func.qualified_name)
+        if cached is not None:
+            return cached
+        if func.node is None:
+            validator_summary_cache[func.qualified_name] = set()
+            return set()
+
+        seen = set(seen or ())
+        if func.qualified_name in seen:
+            return set()
+        seen.add(func.qualified_name)
+
+        validated: set[str] = set()
+        body_statements = list(func.node.body)
+        for statement in ast.walk(func.node):
+            if isinstance(statement, ast.Return):
+                if statement.value is not None and _expr_contains_validation_hint(statement.value):
+                    validated.update(name for name in _validation_source_names_from_expr(statement.value) if name in func.param_names)
+                    continue
+                if isinstance(statement.value, ast.Call):
+                    call_name = _call_name(statement.value.func)
+                    callee = _resolve_called_function(func, call_name, by_name, by_module_and_name) if call_name else None
+                    if callee is not None:
+                        callee_validated = validator_param_names(callee, seen)
+                        for param_name, arg in zip(callee.param_names, statement.value.args, strict=False):
+                            if param_name in callee_validated:
+                                validated.update(name for name in _names_in_expr(arg) if name in func.param_names)
+                        for keyword in statement.value.keywords:
+                            if keyword.arg and keyword.arg in callee_validated:
+                                validated.update(name for name in _names_in_expr(keyword.value) if name in func.param_names)
+            if isinstance(statement, ast.If) and _expr_contains_validation_hint(statement.test):
+                branch_validated = {name for name in _validation_source_names_from_expr(statement.test) if name in func.param_names}
+                if branch_validated and (
+                    (_returns_boolean_constant(statement.body, True) and _returns_boolean_constant(statement.orelse, False))
+                    or (_returns_boolean_constant(statement.body, False) and _returns_boolean_constant(statement.orelse, True))
+                ):
+                    validated.update(branch_validated)
+        for index, statement in enumerate(body_statements):
+            if not isinstance(statement, ast.If) or not _expr_contains_validation_hint(statement.test):
+                continue
+            branch_validated = {name for name in _validation_source_names_from_expr(statement.test) if name in func.param_names}
+            if not branch_validated:
+                continue
+            tail_statements = body_statements[index + 1 :]
+            if (_returns_boolean_constant(statement.body, True) and _returns_boolean_constant(tail_statements, False)) or (
+                _returns_boolean_constant(statement.body, False) and _returns_boolean_constant(tail_statements, True)
+            ):
+                validated.update(branch_validated)
+
+        validator_summary_cache[func.qualified_name] = validated
+        return validated
+
+    def guarded_names_from_expr(
+        func: _FunctionAnalysis,
+        expr: ast.AST | None,
+    ) -> set[str]:
+        if expr is None:
+            return set()
+        if _expr_contains_validation_hint(expr):
+            return _validation_source_names_from_expr(expr)
+        if isinstance(expr, ast.Call):
+            call_name = _call_name(expr.func)
+            callee = _resolve_called_function(func, call_name, by_name, by_module_and_name) if call_name else None
+            if callee is None:
+                return set()
+            callee_validated = validator_param_names(callee)
+            guarded: set[str] = set()
+            for param_name, arg in zip(callee.param_names, expr.args, strict=False):
+                if param_name in callee_validated:
+                    guarded.update(_names_in_expr(arg))
+            for keyword in expr.keywords:
+                if keyword.arg and keyword.arg in callee_validated:
+                    guarded.update(_names_in_expr(keyword.value))
+            return guarded
+        if isinstance(expr, ast.BoolOp):
+            guarded_names: set[str] = set()
+            for value in expr.values:
+                guarded_names.update(guarded_names_from_expr(func, value))
+            return guarded_names
+        if isinstance(expr, ast.UnaryOp):
+            return guarded_names_from_expr(func, expr.operand)
+        return set()
 
     def analyze_function(
         func: _FunctionAnalysis,
@@ -3169,13 +3280,12 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
                 if isinstance(statement, ast.Assert):
                     _, test_findings = expr_taint(statement.test, current_sanitized)
                     findings_acc.extend(test_findings)
-                    if _expr_contains_validation_hint(statement.test):
-                        current_sanitized.update(_names_in_expr(statement.test))
+                    current_sanitized.update(guarded_names_from_expr(func, statement.test))
                     continue
                 if isinstance(statement, ast.If):
                     _, test_findings = expr_taint(statement.test, current_sanitized)
                     findings_acc.extend(test_findings)
-                    guarded_names = _names_in_expr(statement.test) if _expr_contains_validation_hint(statement.test) else set()
+                    guarded_names = guarded_names_from_expr(func, statement.test)
                     body_tainted, body_findings, body_returns_tainted = walk_statements(statement.body, current_sanitized | guarded_names)
                     orelse_tainted, orelse_findings, orelse_returns_tainted = walk_statements(statement.orelse, set(current_sanitized))
                     findings_acc.extend(body_findings)

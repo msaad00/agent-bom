@@ -5,6 +5,7 @@ import {
   api,
   ComplianceResponse,
   ComplianceControl,
+  FrameworkCatalogMetadata,
   OWASP_LLM_TOP10,
   OWASP_MCP_TOP10,
   OWASP_AGENTIC_TOP10,
@@ -361,6 +362,7 @@ function FrameworkSection({
 
 export default function CompliancePage() {
   const [data, setData] = useState<ComplianceResponse | null>(null);
+  const [mitreCatalog, setMitreCatalog] = useState<FrameworkCatalogMetadata | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"detail" | "heatmap" | "matrix">("detail");
@@ -368,10 +370,17 @@ export default function CompliancePage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "pass" | "warning" | "fail">("all");
 
   useEffect(() => {
-    api
-      .getCompliance()
-      .then(setData)
-      .catch((e) => setError(e.message))
+    Promise.allSettled([api.getCompliance(), api.getFrameworkCatalogs()])
+      .then(([complianceResult, catalogResult]) => {
+        if (complianceResult.status === "fulfilled") {
+          setData(complianceResult.value);
+        } else {
+          setError(complianceResult.reason?.message ?? "Failed to load compliance view");
+        }
+        if (catalogResult.status === "fulfilled") {
+          setMitreCatalog(catalogResult.value.frameworks?.mitre_attack ?? null);
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -527,6 +536,28 @@ export default function CompliancePage() {
         </div>
 
         {/* Framework mini-cards */}
+        {mitreCatalog ? (
+          <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-[0.24em] text-cyan-400">MITRE ATT&CK catalog</div>
+                <div className="text-sm text-zinc-300">
+                  {mitreCatalog.attack_version || "unknown version"} · {mitreCatalog.technique_count} techniques · {mitreCatalog.cwe_mapping_count} CWE mappings
+                </div>
+                <div className="text-xs text-zinc-500">
+                  Source: {mitreCatalog.source}
+                  {mitreCatalog.updated_at ? ` · updated ${formatDate(mitreCatalog.updated_at)}` : ""}
+                </div>
+              </div>
+              <div className="text-xs text-zinc-500 lg:max-w-sm">
+                Bundled by default for deterministic scans. Refresh explicitly with{" "}
+                <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-zinc-300">agent-bom db update-frameworks</code>{" "}
+                when you want a newer upstream snapshot.
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
           <div className="bg-zinc-950 rounded-xl p-4 border border-zinc-800">
             <div className="text-xs text-zinc-500 mb-1">OWASP LLM Top 10</div>

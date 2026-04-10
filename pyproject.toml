@@ -174,7 +174,7 @@ default-groups = []
 where = ["src"]
 
 [tool.setuptools.package-data]
-agent_bom = ["mcp_registry.json", "ui_dist/**"]
+agent_bom = ["mcp_registry.json", "ui_dist/**", "data/*.json"]
 
 [tool.smithery]
 server = "agent_bom.mcp_server:create_smithery_server"

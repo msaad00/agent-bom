@@ -2,6 +2,7 @@
 
 Commands:
     agent-bom db update   — sync from OSV / Alpine secdb / EPSS / KEV / GHSA / NVD
+    agent-bom db update-frameworks — refresh local MITRE framework catalogs
     agent-bom db status   — show DB stats and last-sync timestamps
     agent-bom db path     — print the DB file path
 """
@@ -158,6 +159,75 @@ def db_status(db_path: str | None) -> None:
         con.print(table)
     else:
         con.print("  [yellow]No sync data — run agent-bom db update to populate.[/yellow]")
+
+    from agent_bom.mitre_fetch import get_catalog_metadata
+
+    framework_meta = get_catalog_metadata()
+    con.print("\n[bold]Framework catalogs[/bold]")
+    con.print(
+        "  MITRE ATT&CK/CAPEC : "
+        f"{framework_meta.get('attack_version') or 'unknown'}"
+        f"  [dim]({framework_meta.get('source', 'unknown')}, "
+        f"{framework_meta.get('technique_count', 0)} techniques, "
+        f"{framework_meta.get('cwe_mapping_count', 0)} CWE mappings)[/dim]"
+    )
+    updated_at = framework_meta.get("updated_at") or "unknown"
+    con.print(f"  Updated at         : {updated_at}")
+
+
+@db_cmd.command("update-frameworks")
+@click.option(
+    "--framework",
+    "frameworks",
+    multiple=True,
+    type=click.Choice(["mitre"], case_sensitive=False),
+    help="Framework catalog to refresh (default: mitre). Repeatable.",
+)
+@click.option(
+    "--catalog-path",
+    type=click.Path(),
+    default=None,
+    help="Override the local MITRE catalog path (default: ~/.agent-bom/catalogs/mitre_attack_catalog.json).",
+)
+def db_update_frameworks(frameworks: tuple[str, ...], catalog_path: str | None) -> None:
+    """Refresh locally cached framework catalogs without touching the scan hot path."""
+    from pathlib import Path
+
+    from rich.console import Console
+
+    from agent_bom.mitre_fetch import get_catalog_metadata, sync_catalog
+
+    con = Console()
+    selected = list(frameworks) or ["mitre"]
+    if "mitre" not in selected:
+        con.print("[yellow]No supported framework catalogs selected.[/yellow]")
+        return
+
+    con.print("[bold]Refreshing framework catalogs[/bold] — mitre")
+    catalog = sync_catalog(output_path=Path(catalog_path) if catalog_path else None)
+    meta = (
+        get_catalog_metadata()
+        if catalog_path is None
+        else {
+            "path": str(Path(catalog_path)),
+            "source": catalog.get("source", "synced"),
+            "attack_version": catalog.get("attack_version", "unknown"),
+            "updated_at": catalog.get("updated_at", ""),
+            "technique_count": len(catalog.get("techniques", {})),
+            "cwe_mapping_count": len(catalog.get("cwe_to_attack", {})),
+            "normalized_sha256": catalog.get("normalized_sha256", ""),
+        }
+    )
+    con.print(
+        f"  [green]✓[/green] MITRE ATT&CK/CAPEC: {meta.get('attack_version', 'unknown')} "
+        f"[dim]({meta.get('technique_count', 0)} techniques, {meta.get('cwe_mapping_count', 0)} CWE mappings)[/dim]"
+    )
+    con.print(f"  [dim]Source:[/dim] {meta.get('source', 'unknown')}")
+    con.print(f"  [dim]Updated:[/dim] {meta.get('updated_at', '')}")
+    con.print(f"  [dim]SHA256:[/dim] {meta.get('normalized_sha256', '')}")
+    if meta.get("path"):
+        con.print(f"  [dim]Path:[/dim] {meta['path']}")
+    con.print("[bold green]Done.[/bold green]")
 
 
 @db_cmd.command("path")

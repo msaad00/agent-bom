@@ -360,6 +360,7 @@ from agent_bom.api.routes.connectors import router as _connectors_router  # noqa
 from agent_bom.api.routes.discovery import router as _discovery_router  # noqa: E402
 from agent_bom.api.routes.enterprise import router as _enterprise_router  # noqa: E402
 from agent_bom.api.routes.fleet import router as _fleet_router  # noqa: E402
+from agent_bom.api.routes.frameworks import router as _frameworks_router  # noqa: E402
 from agent_bom.api.routes.gateway import router as _gateway_router  # noqa: E402
 from agent_bom.api.routes.governance import router as _governance_router  # noqa: E402
 from agent_bom.api.routes.graph import router as _graph_router  # noqa: E402
@@ -374,6 +375,7 @@ app.include_router(_connectors_router)
 app.include_router(_discovery_router)
 app.include_router(_enterprise_router)
 app.include_router(_fleet_router)
+app.include_router(_frameworks_router)
 app.include_router(_gateway_router)
 app.include_router(_governance_router)
 app.include_router(_graph_router)

@@ -177,9 +177,14 @@ function RegistryDetail({ serverId }: { serverId: string }) {
         <div className={`rounded-xl border-2 p-4 ${riskBorderColor(server.risk_level)} bg-zinc-900`}>
           <div className="flex items-center gap-2 mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
             <Info className="w-3.5 h-3.5" />
-            Why {server.risk_level} risk?
+            Risk rationale
           </div>
           <p className="text-sm text-zinc-300 leading-relaxed">{server.risk_justification}</p>
+          {cves.length === 0 ? (
+            <p className="mt-2 text-xs text-zinc-500">
+              This classification is capability-based. No known CVEs are currently attached to this server in registry data.
+            </p>
+          ) : null}
         </div>
       )}
 

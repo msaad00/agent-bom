@@ -11,7 +11,6 @@ import {
   ChevronDown,
   ChevronUp,
   Loader2,
-  Info,
 } from "lucide-react";
 import {
   api,
@@ -20,7 +19,7 @@ import {
   formatDate,
 } from "@/lib/api";
 import type { GovernanceReport, GovernanceFinding } from "@/lib/api";
-import { ErrorBanner } from "@/components/empty-state";
+import { IntegrationRequiredState } from "@/components/integration-required-state";
 import {
   ResponsiveContainer,
   BarChart,
@@ -63,17 +62,19 @@ export default function GovernancePage() {
 
   if (error) {
     return (
-      <div className="space-y-4">
-        <div className="bg-blue-950 border border-blue-800 rounded-lg p-3 mb-4 flex items-center gap-2 text-sm text-blue-300">
-          <Info className="h-4 w-4 shrink-0" />
-          This feature requires a Snowflake connection. Set <code className="bg-blue-900 px-1 rounded">SNOWFLAKE_ACCOUNT</code> to enable.
-        </div>
-        <ErrorBanner
-          message={error}
-          hint="Governance requires SNOWFLAKE_ACCOUNT env var on the API server."
-          onRetry={load}
-        />
-      </div>
+      <IntegrationRequiredState
+        title="Governance integration is not configured"
+        summary="This page mines access history, grants, data classifications, and agent usage from a cloud telemetry source. Core agent-bom scans do not depend on it. The current backend integration for this page uses Snowflake."
+        requirement="Cloud governance integration on the API host"
+        command={"pip install 'agent-bom[cloud]'\nexport SNOWFLAKE_ACCOUNT=...\nagent-bom api"}
+        capabilities={[
+          "Access-history review across users, roles, and objects",
+          "Privilege and classification findings with severity filters",
+          "Cortex agent usage and governance-focused summaries",
+        ]}
+        detail={error}
+        onRetry={load}
+      />
     );
   }
 

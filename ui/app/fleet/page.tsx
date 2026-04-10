@@ -159,10 +159,10 @@ export default function FleetPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
             <Users className="w-6 h-6 text-emerald-400" />
-            Agent Fleet
+            Fleet
           </h1>
           <p className="text-zinc-400 text-sm mt-1">
-            Persistent agent inventory with lifecycle management and trust scoring
+            Persisted agent inventory, review state, and trust score from the fleet store
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -191,7 +191,7 @@ export default function FleetPage() {
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
         <div className="flex items-center gap-2 mb-3">
           <Settings className="w-4 h-4 text-zinc-400" />
-          <h3 className="text-sm font-semibold text-zinc-300">Trust Threshold</h3>
+          <h3 className="text-sm font-semibold text-zinc-300">Policy threshold</h3>
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <div className="flex-1">

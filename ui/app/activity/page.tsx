@@ -3,18 +3,16 @@
 import { useEffect, useState } from "react";
 import {
   Clock,
-  AlertTriangle,
   Bot,
   Terminal,
   Wrench,
   Zap,
   Search,
   Loader2,
-  Info,
 } from "lucide-react";
 import { api, formatDate } from "@/lib/api";
 import type { ActivityTimeline } from "@/lib/api";
-import { ErrorBanner } from "@/components/empty-state";
+import { IntegrationRequiredState } from "@/components/integration-required-state";
 import {
   ResponsiveContainer,
   BarChart,
@@ -56,17 +54,19 @@ export default function ActivityPage() {
 
   if (error) {
     return (
-      <div className="space-y-4">
-        <div className="bg-blue-950 border border-blue-800 rounded-lg p-3 mb-4 flex items-center gap-2 text-sm text-blue-300">
-          <Info className="h-4 w-4 shrink-0" />
-          This feature requires a Snowflake connection. Set <code className="bg-blue-900 px-1 rounded">SNOWFLAKE_ACCOUNT</code> to enable.
-        </div>
-        <ErrorBanner
-          message={error}
-          hint="Activity requires SNOWFLAKE_ACCOUNT env var on the API server."
-          onRetry={load}
-        />
-      </div>
+      <IntegrationRequiredState
+        title="Activity timeline integration is not configured"
+        summary="This page reconstructs agent and tool activity from query history and AI observability events. Core scanning and graph workflows work without it. The current cloud integration for this page uses Snowflake."
+        requirement="Cloud telemetry integration on the API host"
+        command={"pip install 'agent-bom[cloud]'\nexport SNOWFLAKE_ACCOUNT=...\nagent-bom api"}
+        capabilities={[
+          "Query history grouped by agent pattern and user",
+          "Tool-call and model-usage activity over time",
+          "Latency, status, and event volume from observability traces",
+        ]}
+        detail={error}
+        onRetry={load}
+      />
     );
   }
 

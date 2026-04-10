@@ -253,6 +253,38 @@ async def test_query_osv_batch_debian_fallbacks_when_distro_unknown():
 
 
 @pytest.mark.asyncio
+async def test_query_osv_batch_alpine_fallbacks_include_v323():
+    """Direct apk checks without distro metadata should include the current Alpine branch."""
+    from agent_bom.scanners import query_osv_batch
+
+    pkg = Package(name="util-linux", version="2.41.3-r0", ecosystem="apk")
+    captured_queries: list[dict] = []
+
+    async def mock_request_with_retry(client, method, url, json=None, **kwargs):
+        if json and "queries" in json:
+            captured_queries.extend(json["queries"])
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {"results": [{"vulns": []} for _ in captured_queries]}
+        return resp
+
+    with (
+        patch("agent_bom.scanners._get_scan_cache", return_value=None),
+        patch("agent_bom.scanners.request_with_retry", side_effect=mock_request_with_retry),
+        patch("agent_bom.scanners.create_client") as mock_create_client,
+    ):
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        mock_create_client.return_value = mock_client
+
+        await query_osv_batch([pkg])
+
+    ecosystems = {q["package"]["ecosystem"] for q in captured_queries}
+    assert "Alpine:v3.23" in ecosystems
+
+
+@pytest.mark.asyncio
 async def test_scan_packages_maven_vuln_attached():
     """Vulnerabilities from OSV are attached to Maven packages after scan."""
     from agent_bom.scanners import scan_packages

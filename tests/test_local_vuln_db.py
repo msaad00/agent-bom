@@ -12,9 +12,12 @@ import pytest
 from agent_bom.db.lookup import VulnDB, _version_affected, lookup_package
 from agent_bom.db.schema import DB_PATH, _validated_db_path, db_stats, init_db
 from agent_bom.db.sync import (
+    _ingest_alpine_secdb_payload,
     _ingest_osv_file,
+    _parse_alpine_secfix_tokens,
     _parse_osv_entry,
     _validate_sync_url,
+    sync_alpine_secdb,
     sync_epss,
     sync_kev,
     sync_osv,
@@ -647,6 +650,71 @@ def test_parse_osv_entry_with_cvss_severity_type():
     assert vuln_row["cvss_vector"] is not None
 
 
+def test_parse_alpine_secfix_tokens_splits_compound_entries():
+    assert _parse_alpine_secfix_tokens("CVE-2022-42333 CVE-2022-43334 XSA-428") == [
+        "CVE-2022-42333",
+        "CVE-2022-43334",
+        "XSA-428",
+    ]
+
+
+def test_ingest_alpine_secdb_payload_adds_affected_rows(tmp_db):
+    payload = {
+        "packages": [
+            {
+                "pkg": {
+                    "name": "util-linux",
+                    "secfixes": {
+                        "2.41.3-r1": ["CVE-2026-27456"],
+                    },
+                }
+            },
+            {
+                "pkg": {
+                    "name": "busybox",
+                    "secfixes": {
+                        "1.37.0-r28": ["CVE-2025-60876"],
+                    },
+                }
+            },
+        ]
+    }
+
+    count = _ingest_alpine_secdb_payload(tmp_db, payload, distro_version="v3.23", repository="main")
+    assert count == 2
+
+    util_vulns = lookup_package(tmp_db, "Alpine:v3.23", "util-linux", "2.41.3-r0")
+    busybox_vulns = lookup_package(tmp_db, "Alpine:v3.23", "busybox", "1.37.0-r0")
+
+    assert [v.id for v in util_vulns] == ["CVE-2026-27456"]
+    assert [v.fixed_version for v in util_vulns] == ["2.41.3-r1"]
+    assert [v.id for v in busybox_vulns] == ["CVE-2025-60876"]
+    assert [v.fixed_version for v in busybox_vulns] == ["1.37.0-r28"]
+
+
+def test_sync_alpine_secdb_downloads_selected_branches(tmp_db):
+    responses = {
+        "https://secdb.alpinelinux.org/v3.23/main.json": {
+            "packages": [
+                {
+                    "pkg": {
+                        "name": "util-linux",
+                        "secfixes": {"2.41.3-r1": ["CVE-2026-27456"]},
+                    }
+                }
+            ]
+        },
+        "https://secdb.alpinelinux.org/v3.23/community.json": {"packages": []},
+    }
+
+    with patch("agent_bom.http_client.fetch_json", side_effect=lambda url, timeout=30: responses[url]):
+        count = sync_alpine_secdb(tmp_db, branches=("v3.23",), repositories=("main", "community"))
+
+    assert count == 1
+    sync_row = tmp_db.execute("SELECT source, record_count FROM sync_meta WHERE source = 'alpine'").fetchone()
+    assert tuple(sync_row) == ("alpine", 1)
+
+
 # ---------------------------------------------------------------------------
 # sync_db — dispatcher with mocked sources
 # ---------------------------------------------------------------------------
@@ -670,6 +738,16 @@ def test_sync_db_single_epss_source(tmp_path):
         result = sync_db(path=tmp_path / "test.db", sources=["epss"])
     assert result == {"epss": 500}
     mock_epss.assert_called_once()
+
+
+def test_sync_db_single_alpine_source(tmp_path):
+    """sync_db with sources=['alpine'] only calls sync_alpine_secdb."""
+    from agent_bom.db.sync import sync_db
+
+    with patch("agent_bom.db.sync.sync_alpine_secdb", return_value=12) as mock_alpine:
+        result = sync_db(path=tmp_path / "test.db", sources=["alpine"])
+    assert result == {"alpine": 12}
+    mock_alpine.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

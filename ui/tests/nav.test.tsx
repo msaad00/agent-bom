@@ -29,7 +29,7 @@ vi.mock('@/lib/api', () => ({
       scan_sources: [],
       scan_count: 0,
     }),
-    health: vi.fn().mockResolvedValue({ status: 'ok', version: '0.76.1' }),
+    health: vi.fn().mockResolvedValue({ status: 'ok', version: '0.76.2' }),
   },
 }))
 

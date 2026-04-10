@@ -1,4 +1,4 @@
-# agent-bom v0.76.1 blast-radius demo
+# agent-bom v0.76.2 blast-radius demo
 # Shows: blast radius → fix-first remediation → integrity verify
 
 Output docs/images/demo-latest.gif

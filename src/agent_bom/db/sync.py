@@ -22,6 +22,7 @@ import csv
 import io
 import json
 import logging
+import re
 import sqlite3
 import zipfile
 from datetime import datetime, timezone
@@ -52,6 +53,9 @@ _EPSS_CSV_URL = "https://epss.cyentia.com/epss_scores-current.csv.gz"
 _KEV_JSON_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 _GHSA_REST_URL = "https://api.github.com/advisories"
 _NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+_ALPINE_SECDB_BASE_URL = "https://secdb.alpinelinux.org"
+_ALPINE_SECDB_BRANCHES = ("v3.18", "v3.19", "v3.20", "v3.21", "v3.22", "v3.23")
+_ALPINE_SECDB_REPOS = ("main", "community")
 
 # AI/ML package names — kept for reference/priority tracking, NOT used as a filter.
 # As of v0.71.0, GHSA ingestion fetches ALL advisories across supported ecosystems.
@@ -365,6 +369,154 @@ def sync_osv(conn: sqlite3.Connection, url: Optional[str] = None, max_entries: i
     conn.commit()
     _update_sync_meta(conn, "osv", count)
     _logger.info("OSV sync complete: %d advisories ingested", count)
+    return count
+
+
+def _parse_alpine_secfix_tokens(value: object) -> list[str]:
+    """Extract vulnerability identifiers from one Alpine secdb secfix value."""
+    if not isinstance(value, str):
+        return []
+    return re.findall(r"(?:CVE-\d{4}-\d+|ALPINE-\d+|XSA-\d+)", value)
+
+
+def _iter_alpine_secfix_ids(secfixes: object) -> dict[str, list[str]]:
+    """Return {fixed_version: [vuln_ids...]} for one Alpine secdb package."""
+    if not isinstance(secfixes, dict):
+        return {}
+
+    parsed: dict[str, list[str]] = {}
+    for fixed_version, raw_ids in secfixes.items():
+        if not isinstance(fixed_version, str):
+            continue
+        vuln_ids: list[str] = []
+        if isinstance(raw_ids, list):
+            for item in raw_ids:
+                vuln_ids.extend(_parse_alpine_secfix_tokens(item))
+        if vuln_ids:
+            parsed[fixed_version] = vuln_ids
+    return parsed
+
+
+def _upsert_alpine_vuln_stub(
+    conn: sqlite3.Connection,
+    vuln_id: str,
+    package_name: str,
+    fixed_version: str,
+) -> None:
+    """Insert a minimal vulnerability row unless a richer row already exists."""
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO vulns
+            (id, summary, severity, cvss_score, cvss_vector, fixed_version, published, modified, source, cwe_ids, aliases)
+        VALUES
+            (?, ?, 'unknown', NULL, NULL, ?, '', '', 'alpine-secdb', '', '')
+        """,
+        (
+            vuln_id,
+            f"Alpine Linux secdb advisory for {package_name}",
+            fixed_version,
+        ),
+    )
+    conn.execute(
+        """
+        UPDATE vulns
+        SET fixed_version = CASE
+            WHEN fixed_version IS NULL OR fixed_version = '' THEN ?
+            ELSE fixed_version
+        END
+        WHERE id = ?
+        """,
+        (fixed_version, vuln_id),
+    )
+
+
+def _ingest_alpine_secdb_payload(
+    conn: sqlite3.Connection,
+    payload: dict,
+    *,
+    distro_version: str,
+    repository: str,
+) -> int:
+    """Ingest one Alpine secdb JSON document into the local DB.
+
+    Returns the number of affected package/version mappings processed.
+    """
+    from agent_bom.package_utils import normalize_package_name
+
+    ecosystem = f"alpine:{distro_version}".lower()
+    processed = 0
+
+    for package_entry in payload.get("packages", []):
+        if not isinstance(package_entry, dict):
+            continue
+        pkg = package_entry.get("pkg", {})
+        if not isinstance(pkg, dict):
+            continue
+        package_name = pkg.get("name", "")
+        if not isinstance(package_name, str) or not package_name:
+            continue
+
+        normalized_name = normalize_package_name(package_name, "apk")
+        secfixes = _iter_alpine_secfix_ids(pkg.get("secfixes"))
+        for fixed_version, vuln_ids in secfixes.items():
+            for vuln_id in vuln_ids:
+                _upsert_alpine_vuln_stub(conn, vuln_id, normalized_name, fixed_version)
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO affected
+                        (vuln_id, ecosystem, package_name, introduced, fixed, last_affected)
+                    VALUES
+                        (?, ?, ?, '0', ?, '')
+                    """,
+                    (vuln_id, ecosystem, normalized_name, fixed_version),
+                )
+                processed += 1
+
+    _logger.debug(
+        "Ingested %d Alpine secdb mappings for %s/%s",
+        processed,
+        distro_version,
+        repository,
+    )
+    return processed
+
+
+def sync_alpine_secdb(
+    conn: sqlite3.Connection,
+    *,
+    base_url: Optional[str] = None,
+    branches: tuple[str, ...] = _ALPINE_SECDB_BRANCHES,
+    repositories: tuple[str, ...] = _ALPINE_SECDB_REPOS,
+) -> int:
+    """Download and ingest Alpine Linux secdb feeds.
+
+    Alpine secdb carries package-level fix metadata for apk packages and is often
+    fresher than OSV for distro-specific Alpine advisories.
+    """
+    from agent_bom.http_client import fetch_json
+
+    root = (base_url or _ALPINE_SECDB_BASE_URL).rstrip("/")
+    _validate_sync_url(root, "alpine secdb base url")
+
+    count = 0
+    for branch in branches:
+        for repository in repositories:
+            url = f"{root}/{branch}/{repository}.json"
+            _validate_sync_url(url, "alpine secdb url")
+            _logger.info("Downloading Alpine secdb from %s …", url)
+            data = fetch_json(url, timeout=30)
+            if not isinstance(data, dict):
+                raise ValueError(f"Unexpected Alpine secdb payload type for {url}: {type(data)!r}")
+            count += _ingest_alpine_secdb_payload(
+                conn,
+                data,
+                distro_version=branch,
+                repository=repository,
+            )
+            conn.commit()
+
+    _update_sync_meta(conn, "alpine", count)
+    _logger.info("Alpine secdb sync complete: %d package advisory mappings ingested", count)
     return count
 
 
@@ -932,7 +1084,7 @@ def sync_db(
 
     Args:
         path: DB file path (default: DB_PATH from schema.py).
-        sources: list of source names to sync, e.g. ["osv", "kev"]. Default: ["osv","epss","kev"].
+        sources: list of source names to sync, e.g. ["osv", "kev"]. Default: ["osv","alpine","epss","kev"].
                  Note: "nvd" is NOT in the default set — it is slow without an API key.
         osv_url / epss_url / kev_url / ghsa_url / nvd_url: URL overrides (for testing).
         max_osv_entries: limit for OSV entries (0 = unlimited; for tests).
@@ -950,12 +1102,14 @@ def sync_db(
 
     db_path = path or DB_PATH
     conn = init_db(db_path)
-    enabled = set(sources or ["osv", "epss", "kev"])
+    enabled = set(sources or ["osv", "alpine", "epss", "kev"])
     results: dict[str, int] = {}
 
     try:
         if "osv" in enabled:
             results["osv"] = sync_osv(conn, url=osv_url, max_entries=max_osv_entries)
+        if "alpine" in enabled:
+            results["alpine"] = sync_alpine_secdb(conn)
         if "epss" in enabled:
             results["epss"] = sync_epss(conn, url=epss_url)
         if "kev" in enabled:

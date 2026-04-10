@@ -11,6 +11,22 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.76.2] – 2026-04-09
+
+### Changed
+- **Patch release alignment** — managed release/version surfaces are now aligned on `0.76.2` for the next patch cut
+
+### Fixed
+- **Alpine package visibility** — local vulnerability DB sync now ingests Alpine secdb in addition to OSV, so Alpine package advisories like the recent `openssl` and `util-linux` fixes are detected without waiting on OSV lag
+- **Alpine scanner coverage** — Alpine OS-package fallback queries now include `v3.23`, matching the current container base branch
+- **Container hardening** — the Docker build now upgrades installed Alpine packages during both builder and runtime stages instead of only bumping `zlib`
+- **Release image gating** — CI and release image scans now fail on fixable `MEDIUM+` and `UNKNOWN` image vulnerabilities while ignoring upstream-unfixed image findings
+
+### Security
+- **Container CVE response** — the patch release closes the fixable Alpine `openssl` and `util-linux` image findings and adds stronger pre-release guardrails to stop similar Docker regressions from shipping unnoticed
+
+---
+
 ## [0.76.1] – 2026-04-09
 
 ### Added
@@ -534,7 +550,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.76.1...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.76.2...HEAD
+[0.76.2]: https://github.com/msaad00/agent-bom/compare/v0.76.1...v0.76.2
 [0.76.1]: https://github.com/msaad00/agent-bom/compare/v0.76.0...v0.76.1
 [0.76.0]: https://github.com/msaad00/agent-bom/compare/v0.75.15...v0.76.0
 [0.75.15]: https://github.com/msaad00/agent-bom/compare/v0.75.14...v0.75.15

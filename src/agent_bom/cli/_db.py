@@ -1,7 +1,7 @@
 """CLI commands for the local vulnerability database.
 
 Commands:
-    agent-bom db update   — sync from OSV / EPSS / KEV / GHSA / NVD
+    agent-bom db update   — sync from OSV / Alpine secdb / EPSS / KEV / GHSA / NVD
     agent-bom db status   — show DB stats and last-sync timestamps
     agent-bom db path     — print the DB file path
 """
@@ -21,8 +21,9 @@ def db_cmd() -> None:
     "--source",
     "sources",
     multiple=True,
-    type=click.Choice(["osv", "epss", "kev", "ghsa", "nvd"], case_sensitive=False),
-    help="Which sources to sync (default: osv, epss, kev). Repeatable. "
+    type=click.Choice(["osv", "alpine", "epss", "kev", "ghsa", "nvd"], case_sensitive=False),
+    help="Which sources to sync (default: osv, alpine, epss, kev). Repeatable. "
+    "Use --source alpine to sync Alpine package secfix data from Alpine secdb. "
     "Use --source ghsa to sync GitHub Security Advisories (all ecosystems). "
     "Use --source nvd to enrich unknown-severity CVEs from NVD (slow without NVD_API_KEY).",
 )
@@ -65,7 +66,7 @@ def db_update(
 ) -> None:
     """Download and sync the local vulnerability database.
 
-    Pulls from OSV.dev (bulk export), FIRST EPSS scores, and CISA KEV catalog by default.
+    Pulls from OSV.dev (bulk export), Alpine secdb, FIRST EPSS scores, and CISA KEV catalog by default.
     Pass --source ghsa to also fetch GitHub Security Advisories across all supported
     ecosystems (pip, npm, go, maven, nuget, rubygems, cargo).
     Pass --source nvd to enrich CVEs missing CVSS data from the NVD API (requires NVD_API_KEY
@@ -81,7 +82,7 @@ def db_update(
     from agent_bom.db.sync import sync_db
 
     con = Console()
-    selected = list(sources) or ["osv", "epss", "kev"]
+    selected = list(sources) or ["osv", "alpine", "epss", "kev"]
     con.print(f"[bold]Syncing local vuln DB[/bold] — sources: {', '.join(selected)}")
 
     try:

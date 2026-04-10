@@ -311,7 +311,8 @@ jobs:
         with:
           image-ref: agent-bom:test
           format: table
-          severity: HIGH,CRITICAL
+          severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
+          ignore-unfixed: true
           exit-code: '1'
           trivyignores: .trivyignore
 

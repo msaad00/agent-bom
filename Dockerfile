@@ -18,7 +18,9 @@ ENV HTTP_PROXY=${HTTP_PROXY} \
     PIP_CERT=${PIP_CERT}
 
 # Build-time deps for wheel compilation when musllinux wheels are unavailable.
-RUN apk add --no-cache build-base ca-certificates git linux-headers && update-ca-certificates
+RUN apk add --no-cache build-base ca-certificates git linux-headers \
+    && apk upgrade --no-cache --available \
+    && update-ca-certificates
 
 COPY pyproject.toml README.md LICENSE ./
 COPY src/ ./src/
@@ -28,7 +30,7 @@ RUN pip install --no-cache-dir --prefix=/install ".[api]"
 ## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.14.3-alpine3.23@sha256:faee120f7885a06fcc9677922331391fa690d911c020abb9e8025ff3d908e510
 
-ARG VERSION=0.76.1
+ARG VERSION=0.76.2
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY
@@ -47,7 +49,9 @@ LABEL org.opencontainers.image.licenses="Apache-2.0"
 COPY --from=builder /install /usr/local
 COPY --from=builder /app/LICENSE /app/LICENSE
 
-RUN apk add --no-cache ca-certificates && update-ca-certificates && apk upgrade --no-cache zlib
+RUN apk add --no-cache ca-certificates \
+    && apk upgrade --no-cache --available \
+    && update-ca-certificates
 COPY deploy/docker/pip-requirements.txt /tmp/pip-req.txt
 RUN pip install --no-cache-dir --require-hashes -r /tmp/pip-req.txt && rm /tmp/pip-req.txt
 

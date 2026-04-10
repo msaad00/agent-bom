@@ -118,7 +118,7 @@ agent-bom serve                         # API + Next.js dashboard
 
 ## Graph explorer
 
-The README shows a focused graph view from the built-in demo, not the entire topology at once. The product starts from that same scoped view and lets you expand by agent, depth, and finding scope.
+The README starts from the same scoped graph view as the product: one focused path first, then expand by agent, depth, or findings only when needed.
 
 <p align="center">
   <picture>
@@ -139,7 +139,7 @@ If the dashboard says `API Offline`, install the UI extra and run `agent-bom ser
 
 ## Architecture at a glance
 
-One path: discover surfaces, analyze findings, persist one graph, then operate across CLI, CI, API, dashboard, and exports.
+One graph, one path: discover, analyze, persist, then operate across CLI, CI, API, dashboard, and exports.
 
 <p align="center">
   <picture>

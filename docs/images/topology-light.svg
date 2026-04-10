@@ -39,17 +39,17 @@
   <text x="356" y="136" class="section" fill="#7c3aed">IN-SCOPE SERVERS</text>
   <text x="680" y="136" class="section" fill="#059669">REACHABLE SURFACES</text>
 
-  <path d="M268 192C304 192 316 188 350 188" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrow)"/>
-  <path d="M268 192C304 192 316 284 350 284" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrow)"/>
-  <path d="M620 188C648 188 648 188 676 188" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M268 216C304 216 316 208 350 208" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M268 216C304 216 316 284 350 284" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M620 208C648 208 648 208 676 208" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrow)"/>
   <path d="M620 284C648 284 648 284 676 284" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrow)"/>
 
   <rect x="48" y="150" width="220" height="88" rx="16" fill="#ffffff" stroke="#dbeafe"/>
   <rect x="48" y="150" width="6" height="88" rx="3" fill="#2563eb"/>
   <text x="68" y="176" class="card-title">cursor</text>
   <text x="68" y="194" class="copy">
-    <tspan x="68" dy="0">Selected by default in the README and dashboard.</tspan>
-    <tspan x="68" dy="13">Two servers in scope, highest-risk path highlighted.</tspan>
+    <tspan x="68" dy="0">Default focused agent.</tspan>
+    <tspan x="68" dy="13">Two servers in scope and the highest-risk path.</tspan>
   </text>
   <rect x="68" y="210" width="84" height="18" rx="9" fill="#dbeafe"/><text x="110" y="222" text-anchor="middle" class="pill">2 servers</text>
   <rect x="158" y="210" width="86" height="18" rx="9" fill="#fee2e2"/><text x="201" y="222" text-anchor="middle" class="pill">critical path</text>
@@ -57,16 +57,16 @@
   <rect x="48" y="254" width="220" height="64" rx="16" fill="#ffffff" stroke="#e5e7eb"/>
   <text x="68" y="278" class="card-title">Other agents stay available</text>
   <text x="68" y="296" class="copy">
-    <tspan x="68" dy="0">The graph starts focused, then expands by agent,</tspan>
-    <tspan x="68" dy="13">depth, or severity when the user asks for more.</tspan>
+    <tspan x="68" dy="0">Expand later by agent, depth, or severity.</tspan>
+    <tspan x="68" dy="13">The default stays scoped and readable.</tspan>
   </text>
 
   <rect x="350" y="150" width="270" height="76" rx="16" fill="#ffffff" stroke="#fca5a5"/>
   <rect x="350" y="150" width="6" height="76" rx="3" fill="#ef4444"/>
   <text x="372" y="176" class="card-title">database-server</text>
   <text x="372" y="194" class="copy">
-    <tspan x="372" dy="0">5 Python packages, 2 exposed credentials,</tspan>
-    <tspan x="372" dy="13">critical findings flow into reachable tools.</tspan>
+    <tspan x="372" dy="0">Critical server in scope.</tspan>
+    <tspan x="372" dy="13">5 packages and 2 creds feed reachable tools.</tspan>
   </text>
   <rect x="372" y="206" width="86" height="18" rx="9" fill="#fee2e2"/><text x="415" y="218" text-anchor="middle" class="pill">5 packages</text>
   <rect x="464" y="206" width="76" height="18" rx="9" fill="#fef3c7"/><text x="502" y="218" text-anchor="middle" class="pill">2 creds</text>
@@ -76,8 +76,8 @@
   <rect x="350" y="246" width="6" height="76" rx="3" fill="#6366f1"/>
   <text x="372" y="272" class="card-title">filesystem-server</text>
   <text x="372" y="290" class="copy">
-    <tspan x="372" dy="0">Local file tools stay visible because they are</tspan>
-    <tspan x="372" dy="13">reachable from the same selected agent scope.</tspan>
+    <tspan x="372" dy="0">Local file operations stay visible.</tspan>
+    <tspan x="372" dy="13">They are reachable in the same focused scope.</tspan>
   </text>
   <rect x="372" y="302" width="86" height="18" rx="9" fill="#e0e7ff"/><text x="415" y="314" text-anchor="middle" class="pill">3 packages</text>
   <rect x="464" y="302" width="70" height="18" rx="9" fill="#dcfce7"/><text x="499" y="314" text-anchor="middle" class="pill">3 tools</text>
@@ -94,8 +94,8 @@
   <rect x="676" y="246" width="236" height="76" rx="16" fill="#ffffff" stroke="#bbf7d0"/>
   <text x="698" y="272" class="card-title">Local file surface</text>
   <text x="698" y="290" class="copy">
-    <tspan x="698" dy="0">read_file, write_file, list_directory</tspan>
-    <tspan x="698" dy="13">stay attached to the same focused view.</tspan>
+    <tspan x="698" dy="0">Tools: read_file, write_file, list_directory</tspan>
+    <tspan x="698" dy="13">Same focused scope, no extra sprawl.</tspan>
   </text>
   <rect x="698" y="302" width="62" height="18" rx="9" fill="#dcfce7"/><text x="729" y="314" text-anchor="middle" class="pill">3 tools</text>
 
@@ -103,7 +103,7 @@
   <text x="72" y="384" class="footer-title">Why this is here</text>
   <text x="72" y="406" class="footer-copy">
     <tspan x="72" dy="0">The README should show the same operator pattern as the product: start with one scoped graph,</tspan>
-    <tspan x="72" dy="15">see the risky path clearly, then expand by agent, depth, or severity only when needed.</tspan>
+    <tspan x="72" dy="15">see the risky path clearly, then expand only when more context is needed.</tspan>
   </text>
   <rect x="72" y="428" width="202" height="20" rx="10" fill="#eff6ff" stroke="#bfdbfe"/>
   <text x="173" y="441" text-anchor="middle" class="pill">Default: one agent in focus</text>

@@ -13,36 +13,77 @@ export interface FilterState {
   pageSize: number;
 }
 
-export const DEFAULT_FILTERS: FilterState = {
-  layers: {
-    provider: true,
-    agent: true,
-    server: true,
-    sharedServer: true,
-    package: true,
-    model: true,
-    dataset: true,
-    container: true,
-    cloudResource: true,
-    environment: true,
-    fleet: true,
-    cluster: true,
-    user: true,
-    group: true,
-    serviceAccount: true,
-    vulnerability: true,
-    misconfiguration: true,
-    credential: true,
-    tool: true,
-  },
-  severity: null,
-  agentName: null,
-  vulnOnly: false,
-  runtimeMode: "all",
-  relationshipScope: "all",
-  maxDepth: 6,
-  pageSize: 1000,
+export const FOCUSED_LAYER_DEFAULTS: Record<LineageNodeType, boolean> = {
+  provider: false,
+  agent: true,
+  server: true,
+  sharedServer: true,
+  package: true,
+  model: false,
+  dataset: false,
+  container: false,
+  cloudResource: false,
+  environment: false,
+  fleet: false,
+  cluster: false,
+  user: false,
+  group: false,
+  serviceAccount: false,
+  vulnerability: true,
+  misconfiguration: true,
+  credential: true,
+  tool: true,
 };
+
+export const EXPANDED_LAYER_DEFAULTS: Record<LineageNodeType, boolean> = {
+  provider: true,
+  agent: true,
+  server: true,
+  sharedServer: true,
+  package: true,
+  model: true,
+  dataset: true,
+  container: true,
+  cloudResource: true,
+  environment: true,
+  fleet: true,
+  cluster: true,
+  user: true,
+  group: true,
+  serviceAccount: true,
+  vulnerability: true,
+  misconfiguration: true,
+  credential: true,
+  tool: true,
+};
+
+export function createFocusedGraphFilters(agentName: string | null = null): FilterState {
+  return {
+    layers: { ...FOCUSED_LAYER_DEFAULTS },
+    severity: "high",
+    agentName,
+    vulnOnly: true,
+    runtimeMode: "all",
+    relationshipScope: "all",
+    maxDepth: 3,
+    pageSize: 250,
+  };
+}
+
+export function createExpandedGraphFilters(agentName: string | null = null): FilterState {
+  return {
+    layers: { ...EXPANDED_LAYER_DEFAULTS },
+    severity: null,
+    agentName,
+    vulnOnly: false,
+    runtimeMode: "all",
+    relationshipScope: "all",
+    maxDepth: 6,
+    pageSize: 1000,
+  };
+}
+
+export const DEFAULT_FILTERS: FilterState = createFocusedGraphFilters();
 
 interface FilterPanelProps {
   filters: FilterState;
@@ -103,10 +144,10 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
           className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
         >
           <option value="">All</option>
-          <option value="critical">Critical</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
+          <option value="critical">Critical only</option>
+          <option value="high">High + critical</option>
+          <option value="medium">Medium + above</option>
+          <option value="low">Low + above</option>
         </select>
       </div>
 
@@ -159,6 +200,7 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
             className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
           >
             <option value="2">Depth 2</option>
+            <option value="3">Depth 3</option>
             <option value="4">Depth 4</option>
             <option value="6">Depth 6</option>
             <option value="8">Depth 8</option>
@@ -202,6 +244,7 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
           onChange={(e) => onChange({ ...filters, pageSize: Number(e.target.value) })}
           className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
         >
+          <option value="250">250 nodes</option>
           <option value="500">500 nodes</option>
           <option value="1000">1,000 nodes</option>
           <option value="2500">2,500 nodes</option>

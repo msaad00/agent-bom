@@ -40,9 +40,17 @@ import {
   type LateralPath,
   type InteractionRisk,
 } from "@/lib/context-graph";
-import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, minimapNodeColor } from "@/lib/graph-utils";
+import {
+  CONTROLS_CLASS,
+  MINIMAP_BG,
+  MINIMAP_CLASS,
+  MINIMAP_MASK,
+  BACKGROUND_COLOR,
+  BACKGROUND_GAP,
+  legendItemsForVisibleNodes,
+  minimapNodeColor,
+} from "@/lib/graph-utils";
 import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
-import { CONTEXT_LEGEND } from "@/lib/graph-utils";
 
 // ─── Stats Bar ──────────────────────────────────────────────────────────────
 
@@ -84,7 +92,10 @@ function LateralPanel({
   const filtered = selectedAgent
     ? paths.filter((p) => p.source === `agent:${selectedAgent}`)
     : paths;
-  const top10 = filtered.slice(0, 10);
+  const distinctPaths = Array.from(
+    new Map(filtered.map((path) => [`${path.hops.join("->")}::${path.vuln_ids.join(",")}`, path])).values(),
+  );
+  const topPaths = distinctPaths.slice(0, 6);
 
   return (
     <div className="w-72 border-l border-zinc-800 overflow-y-auto bg-zinc-950">
@@ -93,11 +104,11 @@ function LateralPanel({
         <h3 className="text-xs font-semibold text-zinc-300 mb-2">
           Lateral Movement{selectedAgent ? ` from ${selectedAgent}` : ""}
         </h3>
-        {top10.length === 0 ? (
+        {topPaths.length === 0 ? (
           <p className="text-[10px] text-zinc-600">No lateral paths found</p>
         ) : (
           <div className="space-y-2">
-            {top10?.map((p, i) => (
+            {topPaths?.map((p, i) => (
               <div
                 key={i}
                 className="bg-zinc-900 border border-zinc-800 rounded-lg p-2"
@@ -231,6 +242,24 @@ export default function ContextPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const activeJob = useMemo(
+    () => jobs.find((job) => job.job_id === selectedJobId) ?? null,
+    [jobs, selectedJobId],
+  );
+
+  const agentNames = useMemo(
+    () => activeJob?.result?.agents.map((agent) => agent.name).sort((left, right) => left.localeCompare(right)) ?? [],
+    [activeJob],
+  );
+
+  useEffect(() => {
+    if (agentNames.length === 0) {
+      setSelectedAgent(null);
+      return;
+    }
+    setSelectedAgent((current) => (current && agentNames.includes(current) ? current : agentNames[0]));
+  }, [agentNames]);
+
   // Fetch context graph when job changes
   useEffect(() => {
     if (!selectedJobId) return;
@@ -310,6 +339,14 @@ export default function ContextPage() {
     }));
   }, [layoutEdges, connectedIds, searchMatches]);
 
+  const legendItems = useMemo(() => {
+    const extras =
+      displayEdges.some((edge) => edge.animated || Boolean(edge.style?.strokeDasharray))
+        ? [{ label: "Lateral", color: "#f97316", dashed: true, shape: "diamond" as const }]
+        : [];
+    return legendItemsForVisibleNodes(displayNodes, extras);
+  }, [displayEdges, displayNodes]);
+
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
     setSelectedNode(node.data as LineageNodeData);
     setHoveredNodeId(null);
@@ -325,14 +362,6 @@ export default function ContextPage() {
   const onNodeMouseLeave = useCallback(() => {
     setHoveredNodeId(null);
   }, []);
-
-  // Agent names for the selector
-  const agentNames = useMemo(() => {
-    if (!graphData) return [];
-    return graphData.nodes
-      .filter((n) => n.kind === "agent")
-      .map((n) => n.label);
-  }, [graphData]);
 
   if (loading) {
     return (
@@ -377,7 +406,7 @@ export default function ContextPage() {
             Context Graph
           </h1>
           <p className="text-xs text-zinc-500">
-            Agent interaction graph — lateral movement analysis
+            Focused lateral-movement map for one agent scope at a time
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -418,13 +447,13 @@ export default function ContextPage() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search nodes..."
+              placeholder="Search agent, server, tool, or CVE"
               className="w-full bg-zinc-900 border border-zinc-700 rounded pl-7 pr-2 py-1.5 text-xs text-zinc-300 placeholder:text-zinc-600 focus:outline-none focus:border-emerald-600"
             />
           </div>
 
           <FullscreenButton />
-          <GraphLegend items={CONTEXT_LEGEND} />
+          <GraphLegend items={legendItems} />
         </div>
       </div>
 
@@ -446,8 +475,10 @@ export default function ContextPage() {
               edges={displayEdges}
               nodeTypes={lineageNodeTypes}
               fitView
-              minZoom={0.05}
+              fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
+              minZoom={0.16}
               maxZoom={2.5}
+              onlyRenderVisibleElements
               defaultEdgeOptions={{ type: "smoothstep" }}
               proOptions={{ hideAttribution: true }}
               onNodeClick={onNodeClick}
@@ -460,7 +491,12 @@ export default function ContextPage() {
             >
               <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
               <Controls className={CONTROLS_CLASS} />
-              <MiniMap nodeColor={minimapNodeColor} className={MINIMAP_CLASS} />
+              <MiniMap
+                nodeColor={minimapNodeColor}
+                className={MINIMAP_CLASS}
+                bgColor={MINIMAP_BG}
+                maskColor={MINIMAP_MASK}
+              />
             </ReactFlow>
           )}
 

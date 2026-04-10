@@ -131,6 +131,7 @@ function VulnsPage() {
         for (const job of fullJobs) {
           if (!job.result) continue;
           const result = job.result as ScanResult;
+          const blastById = new Map(result.blast_radius?.map((item) => [item.vulnerability_id, item]) ?? []);
 
           // Determine scan source labels
           const scanSources: string[] = [];
@@ -143,6 +144,7 @@ function VulnsPage() {
             for (const srv of agent.mcp_servers) {
               for (const pkg of srv.packages) {
                 for (const vuln of pkg.vulnerabilities ?? []) {
+                  const blast = blastById.get(vuln.id);
                   const existing = vulnMap.get(vuln.id);
                   if (existing) {
                     if (!existing.packages.includes(pkg.name)) existing.packages.push(pkg.name);
@@ -150,9 +152,17 @@ function VulnsPage() {
                     for (const src of scanSources) {
                       if (!existing.sources.includes(src)) existing.sources.push(src);
                     }
+                    existing.cvss_score = existing.cvss_score ?? blast?.cvss_score ?? vuln.cvss_score;
+                    existing.epss_score = existing.epss_score ?? blast?.epss_score ?? vuln.epss_score;
+                    existing.fixed_version = existing.fixed_version ?? blast?.fixed_version ?? vuln.fixed_version;
+                    existing.summary = existing.summary ?? blast?.attack_vector_summary ?? vuln.summary ?? vuln.description;
                   } else {
                     vulnMap.set(vuln.id, {
                       ...vuln,
+                      cvss_score: blast?.cvss_score ?? vuln.cvss_score,
+                      epss_score: blast?.epss_score ?? vuln.epss_score,
+                      fixed_version: blast?.fixed_version ?? vuln.fixed_version,
+                      summary: blast?.attack_vector_summary ?? vuln.summary ?? vuln.description,
                       packages: [pkg.name],
                       agents: [agent.name],
                       sources: [...scanSources],

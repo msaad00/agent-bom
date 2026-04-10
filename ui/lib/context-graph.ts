@@ -109,6 +109,17 @@ export function buildContextFlowGraph(
       }
     }
   }
+  if (selectedAgent && pathNodeIds.size === 0) {
+    const seedId = `agent:${selectedAgent}`;
+    pathNodeIds.add(seedId);
+    for (const edge of data.edges) {
+      if (edge.source === seedId) pathNodeIds.add(edge.target);
+      if (edge.target === seedId) pathNodeIds.add(edge.source);
+    }
+  }
+  const visibleIds = selectedAgent && pathNodeIds.size > 0
+    ? pathNodeIds
+    : new Set(data.nodes.map((node) => node.id));
 
   // Shared server IDs
   const sharedServerNames = new Set<string>();
@@ -119,7 +130,9 @@ export function buildContextFlowGraph(
     }
   }
 
-  const nodes: Node[] = data.nodes.map((n) => {
+  const nodes: Node[] = data.nodes
+    .filter((node) => visibleIds.has(node.id))
+    .map((n) => {
     let nodeType = KIND_TO_NODE_TYPE[n.kind] ?? "server";
     if (n.kind === "server" && sharedServerNames.has(n.label)) {
       nodeType = "sharedServer";
@@ -140,44 +153,46 @@ export function buildContextFlowGraph(
       serverCount: (n.metadata?.server_count as number) ?? undefined,
     };
 
-    return {
-      id: n.id,
-      type: nodeType,
-      data: nodeData,
-      position: { x: 0, y: 0 },
-    };
-  });
+      return {
+        id: n.id,
+        type: nodeType,
+        data: nodeData,
+        position: { x: 0, y: 0 },
+      };
+    });
 
-  const edges: Edge[] = data.edges.map((e, i) => {
+  const edges: Edge[] = data.edges
+    .filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target))
+    .map((e, i) => {
     const isOnPath = pathEdgePairs.has(`${e.source}→${e.target}`);
     const baseColor = EDGE_COLORS[e.kind] ?? "#52525b";
 
-    return {
-      id: `ctx-edge-${i}`,
-      source: e.source,
-      target: e.target,
-      type: "smoothstep",
-      animated: isOnPath,
-      style: {
-        stroke: isOnPath ? "#f97316" : baseColor,
-        strokeWidth: isOnPath ? 2.5 : 1.5,
-        strokeDasharray: isOnPath ? "8 4" : undefined,
-        opacity: selectedAgent && pathNodeIds.size > 0 && !isOnPath ? 0.15 : 1,
-      },
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color: isOnPath ? "#f97316" : baseColor,
-        width: 12,
-        height: 12,
-      },
-      label: e.kind === "shares_server"
-        ? `shared: ${(e.metadata?.server as string) ?? ""}`
-        : e.kind === "shares_credential"
-        ? `shared: ${(e.metadata?.credential as string) ?? ""}`
-        : undefined,
-      labelStyle: { fontSize: 9, fill: "#71717a" },
-    };
-  });
+      return {
+        id: `ctx-edge-${i}`,
+        source: e.source,
+        target: e.target,
+        type: "smoothstep",
+        animated: isOnPath,
+        style: {
+          stroke: isOnPath ? "#f97316" : baseColor,
+          strokeWidth: isOnPath ? 2.5 : 1.5,
+          strokeDasharray: isOnPath ? "8 4" : undefined,
+          opacity: selectedAgent && pathNodeIds.size > 0 && !isOnPath ? 0.15 : 1,
+        },
+        markerEnd: {
+          type: MarkerType.ArrowClosed,
+          color: isOnPath ? "#f97316" : baseColor,
+          width: 12,
+          height: 12,
+        },
+        label: e.kind === "shares_server"
+          ? `shared: ${(e.metadata?.server as string) ?? ""}`
+          : e.kind === "shares_credential"
+          ? `shared: ${(e.metadata?.credential as string) ?? ""}`
+          : undefined,
+        labelStyle: { fontSize: 9, fill: "#71717a" },
+      };
+    });
 
   return { nodes, edges };
 }

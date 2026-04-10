@@ -325,24 +325,40 @@ export function SupplyChainTreemap({
     name: agent.name,
     children: agent.mcp_servers?.map((srv) => ({
       name: srv.name,
-      children: srv.packages?.map((pkg) => {
-        const vulns = pkg.vulnerabilities ?? [];
-        const hasVuln = vulns.length > 0;
-        const worst = vulns.reduce(
-          (w, v) => {
-            const order: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
-            return (order[v.severity] ?? 0) > (order[w] ?? 0) ? v.severity : w;
-          },
-          "none" as string
-        );
-        const color = hasVuln
-          ? worst === "critical" ? "#ef4444"
-          : worst === "high" ? "#f97316"
-          : worst === "medium" ? "#eab308"
-          : "#3b82f6"
-          : "#22c55e";
-        return { name: `${pkg.name}@${pkg.version}`, size: Math.max(1, vulns.length || 1), color };
-      }),
+      children: (() => {
+        const vulnerablePackages = srv.packages
+          ?.filter((pkg) => (pkg.vulnerabilities?.length ?? 0) > 0)
+          .sort((left, right) => (right.vulnerabilities?.length ?? 0) - (left.vulnerabilities?.length ?? 0))
+          .map((pkg) => {
+            const vulns = pkg.vulnerabilities ?? [];
+            const worst = vulns.reduce(
+              (w, v) => {
+                const order: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
+                return (order[v.severity] ?? 0) > (order[w] ?? 0) ? v.severity : w;
+              },
+              "none" as string
+            );
+            const color = worst === "critical"
+              ? "#ef4444"
+              : worst === "high"
+                ? "#f97316"
+                : worst === "medium"
+                  ? "#eab308"
+                  : "#3b82f6";
+            return {
+              name: `${pkg.name}@${pkg.version}`,
+              size: Math.max(2, vulns.length * 3),
+              color,
+            };
+          }) ?? [];
+        const cleanCount = srv.packages?.filter((pkg) => (pkg.vulnerabilities?.length ?? 0) === 0).length ?? 0;
+        return [
+          ...vulnerablePackages,
+          ...(cleanCount > 0
+            ? [{ name: `Clean packages (${cleanCount})`, size: cleanCount, color: "#22c55e", aggregate: true }]
+            : []),
+        ];
+      })(),
     })),
   }));
 
@@ -352,7 +368,7 @@ export function SupplyChainTreemap({
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg shadow-zinc-950/50">
       <h3 className="text-sm font-semibold text-zinc-300 mb-1">Supply Chain Map</h3>
       <p className="text-[10px] text-zinc-600 mb-4">
-        Agent → Server → Package · green = clean · red/orange/yellow = vulnerable
+        Vulnerable packages stay expanded. Clean inventory is rolled up per server for readability.
       </p>
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
@@ -361,7 +377,13 @@ export function SupplyChainTreemap({
             dataKey="size"
             content={<TreemapCell />}
             onClick={(node: Record<string, unknown>) => {
-              if (onPackageClick && node && typeof node.name === "string" && node.size !== undefined) {
+              if (
+                onPackageClick &&
+                node &&
+                typeof node.name === "string" &&
+                node.size !== undefined &&
+                node.aggregate !== true
+              ) {
                 // Leaf node (package) — strip version suffix for package name
                 const name = node.name.replace(/@[^@]+$/, "");
                 onPackageClick(name);

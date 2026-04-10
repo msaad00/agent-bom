@@ -16,6 +16,7 @@ export interface UnifiedGraphFlowFilters {
   severity: string | null;
   agentName: string | null;
   vulnOnly: boolean;
+  maxDepth: number;
 }
 
 export interface UnifiedGraphFlowSummary {
@@ -174,16 +175,30 @@ export function buildUnifiedFlowGraph(
     });
   }
 
-  const visibleNodeIds = new Set(nodes.map((node) => node.id));
-  const edges: Edge[] = graph.edges
-    .filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target))
+  const prePrunedNodeIds = new Set(nodes.map((node) => node.id));
+  const prePrunedEdges: Edge[] = graph.edges
+    .filter((edge) => prePrunedNodeIds.has(edge.source) && prePrunedNodeIds.has(edge.target))
     .map((edge) => toFlowEdge(edge));
 
-  const visibleNodeTypes = new Set(nodes.map((node) => node.data.nodeType));
-  const summary = buildSummary(nodes, graph);
+  const connectedNodeIds = new Set<string>();
+  for (const edge of prePrunedEdges) {
+    connectedNodeIds.add(edge.source);
+    connectedNodeIds.add(edge.target);
+  }
+  const anchorNodeIds = new Set(
+    nodes
+      .filter((node) => node.data.nodeType === "agent" || FINDING_NODE_TYPES.has(node.data.nodeType))
+      .map((node) => node.id),
+  );
+  const prunedNodes = nodes.filter((node) => connectedNodeIds.has(node.id) || anchorNodeIds.has(node.id));
+  const visibleNodeIds = new Set(prunedNodes.map((node) => node.id));
+  const edges = prePrunedEdges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target));
+
+  const visibleNodeTypes = new Set(prunedNodes.map((node) => node.data.nodeType));
+  const summary = buildSummary(prunedNodes, graph);
   const legend = legendForNodeTypes(visibleNodeTypes);
 
-  return { nodes, edges, agentNames, legend, summary };
+  return { nodes: prunedNodes, edges, agentNames, legend, summary };
 }
 
 function deriveVisibleNodeIds(
@@ -198,7 +213,7 @@ function deriveVisibleNodeIds(
       .filter((node) => node.entity_type === EntityType.AGENT && node.label === filters.agentName)
       .map((node) => node.id);
     if (seeds.length > 0) {
-      visible = intersectSets(visible, collectNeighborhood(seeds, undirected, 6));
+      visible = intersectSets(visible, collectNeighborhood(seeds, undirected, Math.max(filters.maxDepth, 2)));
     }
   }
 
@@ -208,10 +223,16 @@ function deriveVisibleNodeIds(
         const nodeType = mapNodeType(node);
         if (!nodeType || !FINDING_NODE_TYPES.has(nodeType)) return false;
         if (!filters.severity) return true;
-        return node.severity?.toLowerCase() === filters.severity.toLowerCase();
+        return meetsSeverityThreshold(node.severity, filters.severity);
       })
+      .sort((left, right) => {
+        const severityDiff = severityRank(right.severity) - severityRank(left.severity);
+        if (severityDiff !== 0) return severityDiff;
+        return (right.risk_score ?? 0) - (left.risk_score ?? 0);
+      })
+      .slice(0, filters.agentName ? 14 : 18)
       .map((node) => node.id);
-    visible = intersectSets(visible, collectNeighborhood(findingSeeds, undirected, 4));
+    visible = intersectSets(visible, collectNeighborhood(findingSeeds, undirected, Math.max(2, filters.maxDepth - 1)));
   }
 
   visible = new Set(
@@ -224,7 +245,7 @@ function deriveVisibleNodeIds(
       if (
         filters.severity &&
         FINDING_NODE_TYPES.has(nodeType) &&
-        node.severity?.toLowerCase() !== filters.severity.toLowerCase()
+        !meetsSeverityThreshold(node.severity, filters.severity)
       ) {
         return false;
       }
@@ -434,6 +455,7 @@ function legendForNodeTypes(nodeTypes: Set<LineageNodeType>): LegendItem[] {
     .map((nodeType) => ({
       label: NODE_LABELS[nodeType],
       color: NODE_COLORS[nodeType],
+      shape: legendShapeForNodeType(nodeType),
     }));
 }
 
@@ -540,6 +562,27 @@ function intersectSets(left: Set<string>, right: Set<string>): Set<string> {
   return new Set([...left].filter((value) => right.has(value)));
 }
 
+const SEVERITY_RANK: Record<string, number> = {
+  critical: 4,
+  high: 3,
+  medium: 2,
+  low: 1,
+  unknown: 0,
+  none: 0,
+};
+
+function severityRank(severity: string | null | undefined): number {
+  return SEVERITY_RANK[String(severity ?? "unknown").toLowerCase()] ?? 0;
+}
+
+function meetsSeverityThreshold(
+  severity: string | null | undefined,
+  threshold: string | null | undefined,
+): boolean {
+  if (!threshold) return true;
+  return severityRank(severity) >= severityRank(threshold);
+}
+
 function addNeighbor(map: Map<string, Set<string>>, source: string, target: string): void {
   const existing = map.get(source);
   if (existing) {
@@ -547,6 +590,13 @@ function addNeighbor(map: Map<string, Set<string>>, source: string, target: stri
   } else {
     map.set(source, new Set([target]));
   }
+}
+
+function legendShapeForNodeType(nodeType: LineageNodeType): LegendItem["shape"] {
+  if (nodeType === "vulnerability" || nodeType === "misconfiguration") return "diamond";
+  if (nodeType === "server" || nodeType === "sharedServer" || nodeType === "container" || nodeType === "cloudResource") return "square";
+  if (nodeType === "package" || nodeType === "tool" || nodeType === "model" || nodeType === "dataset") return "pill";
+  return "dot";
 }
 
 function mapNodeType(node: UnifiedNode): LineageNodeType | null {

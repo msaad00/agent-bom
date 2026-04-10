@@ -13,9 +13,8 @@ import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nod
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import { MeshStats } from "@/components/mesh-stats";
 import { buildMeshGraph, getConnectedIds, type MeshStatsData } from "@/lib/mesh-graph";
-import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, minimapNodeColor } from "@/lib/graph-utils";
+import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, legendItemsForVisibleNodes, minimapNodeColor } from "@/lib/graph-utils";
 import { GraphLegend } from "@/components/graph-chrome";
-import { STANDARD_LEGEND } from "@/lib/graph-utils";
 
 export function ScanMeshView({ id }: { id: string }) {
   const [job, setJob] = useState<ScanJob | null>(null);
@@ -58,6 +57,8 @@ export function ScanMeshView({ id }: { id: string }) {
     return layoutEdges?.map((e) => ({ ...e, style: { ...e.style, opacity: connectedIds.has(e.source) && connectedIds.has(e.target) ? 1 : 0.12 } }));
   }, [layoutEdges, connectedIds]);
 
+  const legendItems = useMemo(() => legendItemsForVisibleNodes(displayNodes), [displayNodes]);
+
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => { setSelectedNode(node.data as LineageNodeData); setHoveredNodeId(null); }, []);
   const onNodeMouseEnter = useCallback((_event: React.MouseEvent, node: Node) => { setHoveredNodeId(node.id); }, []);
   const onNodeMouseLeave = useCallback(() => { setHoveredNodeId(null); }, []);
@@ -82,7 +83,7 @@ export function ScanMeshView({ id }: { id: string }) {
           </div>
           <p className="text-xs text-zinc-500 ml-6">Scan {id.slice(0, 8)} — {job.created_at ? new Date(job.created_at).toLocaleDateString() : ""}</p>
         </div>
-        <GraphLegend items={STANDARD_LEGEND} />
+        <GraphLegend items={legendItems} />
       </div>
       <MeshStats stats={stats} />
       <div className="flex-1 relative">

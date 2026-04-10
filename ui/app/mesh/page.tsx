@@ -24,9 +24,17 @@ import {
   type SeverityFilter,
   type MeshStatsData,
 } from "@/lib/mesh-graph";
-import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, minimapNodeColor } from "@/lib/graph-utils";
+import {
+  CONTROLS_CLASS,
+  MINIMAP_BG,
+  MINIMAP_CLASS,
+  MINIMAP_MASK,
+  BACKGROUND_COLOR,
+  BACKGROUND_GAP,
+  legendItemsForVisibleNodes,
+  minimapNodeColor,
+} from "@/lib/graph-utils";
 import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
-import { MESH_LEGEND } from "@/lib/graph-utils";
 
 // ─── Filter Toolbar ─────────────────────────────────────────────────────────
 
@@ -37,6 +45,11 @@ function MeshToolbar({
   setSeverityFilter,
   searchQuery,
   setSearchQuery,
+  vulnerableOnly,
+  setVulnerableOnly,
+  agentNames,
+  selectedAgents,
+  toggleAgent,
 }: {
   nodeFilter: NodeTypeFilter;
   setNodeFilter: (f: NodeTypeFilter) => void;
@@ -44,6 +57,11 @@ function MeshToolbar({
   setSeverityFilter: (f: SeverityFilter) => void;
   searchQuery: string;
   setSearchQuery: (q: string) => void;
+  vulnerableOnly: boolean;
+  setVulnerableOnly: (next: boolean) => void;
+  agentNames: string[];
+  selectedAgents: string[];
+  toggleAgent: (name: string) => void;
 }) {
   const toggles: { key: keyof NodeTypeFilter; label: string; color: string }[] = [
     { key: "packages", label: "Packages", color: "text-zinc-400" },
@@ -84,6 +102,16 @@ function MeshToolbar({
         <option value="low">Low+</option>
       </select>
 
+      <label className="flex items-center gap-1.5 text-zinc-400">
+        <input
+          type="checkbox"
+          checked={vulnerableOnly}
+          onChange={(event) => setVulnerableOnly(event.target.checked)}
+          className="w-3 h-3 rounded border-zinc-600 bg-zinc-800 text-emerald-500 focus:ring-0 focus:ring-offset-0"
+        />
+        Vulnerable only
+      </label>
+
       <div className="w-px h-4 bg-zinc-700" />
 
       {/* Search */}
@@ -105,6 +133,31 @@ function MeshToolbar({
           </button>
         )}
       </div>
+
+      {agentNames.length > 0 && (
+        <>
+          <div className="w-px h-4 bg-zinc-700" />
+          <div className="flex items-center gap-1.5 overflow-x-auto max-w-[28rem] pb-1">
+            {agentNames.map((name) => {
+              const active = selectedAgents.includes(name);
+              return (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => toggleAgent(name)}
+                  className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
+                    active
+                      ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-200"
+                      : "border-zinc-700 bg-zinc-900/70 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300"
+                  }`}
+                >
+                  {name}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -129,7 +182,9 @@ export default function MeshPage() {
     credentials: true,
     tools: true,
   });
-  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("all");
+  const [severityFilter, setSeverityFilter] = useState<SeverityFilter>("high");
+  const [vulnerableOnly, setVulnerableOnly] = useState(true);
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
@@ -159,6 +214,22 @@ export default function MeshPage() {
     [jobs, selectedJob]
   );
 
+  const agentNames = useMemo(
+    () => activeResult?.agents.map((agent) => agent.name).sort((left, right) => left.localeCompare(right)) ?? [],
+    [activeResult],
+  );
+
+  useEffect(() => {
+    if (agentNames.length === 0) {
+      setSelectedAgents([]);
+      return;
+    }
+    setSelectedAgents((current) => {
+      const retained = current.filter((name) => agentNames.includes(name));
+      return retained.length > 0 ? retained : [agentNames[0]];
+    });
+  }, [agentNames]);
+
   const { rawNodes, rawEdges, stats } = useMemo(() => {
     const empty: MeshStatsData = {
       totalAgents: 0, sharedServers: 0, uniqueCredentials: 0, toolOverlap: 0,
@@ -166,9 +237,12 @@ export default function MeshPage() {
       criticalCount: 0, highCount: 0, mediumCount: 0, lowCount: 0, kevCount: 0,
     };
     if (!activeResult) return { rawNodes: [] as Node[], rawEdges: [] as Edge[], stats: empty };
-    const { nodes, edges, stats } = buildMeshGraph(activeResult, nodeFilter, severityFilter);
+    const { nodes, edges, stats } = buildMeshGraph(activeResult, nodeFilter, severityFilter, {
+      selectedAgents,
+      vulnerableOnly,
+    });
     return { rawNodes: nodes, rawEdges: edges, stats };
-  }, [activeResult, nodeFilter, severityFilter]);
+  }, [activeResult, nodeFilter, severityFilter, selectedAgents, vulnerableOnly]);
 
   const { nodes: layoutNodes, edges: layoutEdges } = useMemo(
     () =>
@@ -189,6 +263,15 @@ export default function MeshPage() {
     () => (searchQuery ? searchNodes(layoutNodes, searchQuery) : null),
     [layoutNodes, searchQuery]
   );
+
+  const toggleAgent = useCallback((name: string) => {
+    setSelectedAgents((current) => {
+      if (current.includes(name)) {
+        return current.length === 1 ? current : current.filter((entry) => entry !== name);
+      }
+      return [...current, name];
+    });
+  }, []);
 
   // Hover highlighting
   const connectedIds = useMemo(
@@ -221,6 +304,8 @@ export default function MeshPage() {
       },
     }));
   }, [layoutEdges, connectedIds, searchMatches]);
+
+  const legendItems = useMemo(() => legendItemsForVisibleNodes(displayNodes), [displayNodes]);
 
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
     setSelectedNode(node.data as LineageNodeData);
@@ -271,7 +356,7 @@ export default function MeshPage() {
         <div>
           <h1 className="text-lg font-semibold text-zinc-100">Agent Mesh</h1>
           <p className="text-xs text-zinc-500">
-            Cross-agent topology — packages, vulnerabilities, credentials, tools
+            Selected agents, shared servers, packages, and findings
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -313,7 +398,7 @@ export default function MeshPage() {
             ))}
           </select>
           <FullscreenButton />
-          <GraphLegend items={MESH_LEGEND} />
+          <GraphLegend items={legendItems} />
         </div>
       </div>
 
@@ -328,6 +413,11 @@ export default function MeshPage() {
         setSeverityFilter={setSeverityFilter}
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
+        vulnerableOnly={vulnerableOnly}
+        setVulnerableOnly={setVulnerableOnly}
+        agentNames={agentNames}
+        selectedAgents={selectedAgents}
+        toggleAgent={toggleAgent}
       />
 
       {/* Graph */}
@@ -337,8 +427,10 @@ export default function MeshPage() {
           edges={displayEdges}
           nodeTypes={lineageNodeTypes}
           fitView
-          minZoom={0.05}
+          fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
+          minZoom={0.16}
           maxZoom={2.5}
+          onlyRenderVisibleElements
           defaultEdgeOptions={{ type: "smoothstep" }}
           proOptions={{ hideAttribution: true }}
           onNodeClick={onNodeClick}
@@ -348,7 +440,12 @@ export default function MeshPage() {
         >
           <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
           <Controls className={CONTROLS_CLASS} />
-          <MiniMap nodeColor={minimapNodeColor} className={MINIMAP_CLASS} />
+          <MiniMap
+            nodeColor={minimapNodeColor}
+            className={MINIMAP_CLASS}
+            bgColor={MINIMAP_BG}
+            maskColor={MINIMAP_MASK}
+          />
         </ReactFlow>
 
         {selectedNode && (

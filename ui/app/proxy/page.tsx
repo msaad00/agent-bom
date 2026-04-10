@@ -210,17 +210,30 @@ export default function ProxyDashboard() {
 
       {/* No proxy session */}
       {!loading && !error && !isActive && (
-        <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
+        <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/70 p-8">
           <Shield className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-          <p className="text-zinc-500 text-sm">No active proxy session</p>
-          <p className="text-zinc-600 text-xs mt-1 max-w-md mx-auto">
-            Start a proxy with{" "}
-            <code className="text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded text-[11px]">
-              agent-bom proxy -- npx @modelcontextprotocol/server-fs /workspace
-            </code>{" "}
-            or set <code className="text-zinc-400 bg-zinc-800 px-1.5 py-0.5 rounded text-[11px]">AGENT_BOM_LOG</code> to
-            read from an audit log.
+          <p className="text-zinc-300 text-sm text-center">No runtime telemetry connected</p>
+          <p className="text-zinc-500 text-xs mt-2 max-w-2xl mx-auto text-center">
+            Proxy is an optional runtime feed for live tool-call review, policy enforcement, and audit alerts. Core scanning,
+            graph analysis, and compliance workflows do not depend on it.
           </p>
+          <div className="mt-6 grid gap-3 md:grid-cols-3">
+            <SetupCard
+              title="Local proxy"
+              body="Start an inline MCP proxy for live tool-call telemetry during local testing."
+              command="agent-bom proxy -- npx @modelcontextprotocol/server-fs /workspace"
+            />
+            <SetupCard
+              title="Audit log replay"
+              body="Point the API at an existing runtime log if you already capture MCP activity elsewhere."
+              command="export AGENT_BOM_LOG=/path/to/proxy-audit.log"
+            />
+            <SetupCard
+              title="Hosted runtime feed"
+              body="Forward proxy events or audit logs into the API when running agent-bom behind a central service."
+              command="POST /v1/proxy/events or /ws/proxy/metrics"
+            />
+          </div>
         </div>
       )}
 
@@ -484,6 +497,26 @@ export default function ProxyDashboard() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function SetupCard({
+  title,
+  body,
+  command,
+}: {
+  title: string;
+  body: string;
+  command: string;
+}) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+      <p className="text-sm font-medium text-zinc-100">{title}</p>
+      <p className="mt-2 text-xs leading-5 text-zinc-500">{body}</p>
+      <code className="mt-3 block rounded-lg bg-zinc-950 px-3 py-2 text-[11px] text-zinc-300">
+        {command}
+      </code>
     </div>
   );
 }

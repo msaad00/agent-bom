@@ -15,7 +15,13 @@ import { AlertTriangle, Loader2, ShieldAlert } from "lucide-react";
 import { AttackPathCard } from "@/components/attack-path-card";
 import { GraphLegend, FullscreenButton } from "@/components/graph-chrome";
 import { LineageDetailPanel } from "@/components/lineage-detail";
-import { FilterPanel, DEFAULT_FILTERS, type FilterState } from "@/components/lineage-filter";
+import {
+  FilterPanel,
+  DEFAULT_FILTERS,
+  createExpandedGraphFilters,
+  createFocusedGraphFilters,
+  type FilterState,
+} from "@/components/lineage-filter";
 import { lineageNodeTypes, type LineageNodeData, type LineageNodeType } from "@/components/lineage-nodes";
 import { applyDagreLayout } from "@/lib/dagre-layout";
 import {
@@ -28,7 +34,9 @@ import {
   BACKGROUND_COLOR,
   BACKGROUND_GAP,
   CONTROLS_CLASS,
+  MINIMAP_BG,
   MINIMAP_CLASS,
+  MINIMAP_MASK,
   minimapNodeColor,
 } from "@/lib/graph-utils";
 import {
@@ -328,6 +336,7 @@ export default function GraphPage() {
   const [searching, setSearching] = useState(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  const [initializedFocus, setInitializedFocus] = useState(false);
 
   useEffect(() => {
     setLoadingSnapshots(true);
@@ -372,6 +381,8 @@ export default function GraphPage() {
     setSearchResults([]);
     setSearchQuery("");
     setSelectedAttackPathKey(null);
+    setFilters(DEFAULT_FILTERS);
+    setInitializedFocus(false);
   }, [selectedScanId]);
 
   useEffect(() => {
@@ -485,6 +496,12 @@ export default function GraphPage() {
     return buildUnifiedFlowGraph(graphData, filters);
   }, [graphData, filters]);
 
+  useEffect(() => {
+    if (initializedFocus || flow.agentNames.length === 0) return;
+    setFilters(createFocusedGraphFilters(flow.agentNames[0]));
+    setInitializedFocus(true);
+  }, [flow.agentNames, initializedFocus]);
+
   const flowNodeDataById = useMemo(
     () => new Map(flow.nodes.map((node) => [node.id, node.data])),
     [flow.nodes],
@@ -494,14 +511,14 @@ export default function GraphPage() {
     () =>
       flow.nodes.length > 0
         ? applyDagreLayout(flow.nodes, flow.edges, {
-            direction: "LR",
-            nodeWidth: 180,
-            nodeHeight: 64,
-            rankSep: 110,
-            nodeSep: 28,
+            direction: filters.agentName || filters.vulnOnly ? "TB" : "LR",
+            nodeWidth: filters.agentName ? 208 : 188,
+            nodeHeight: 72,
+            rankSep: filters.agentName ? 118 : 104,
+            nodeSep: filters.agentName ? 22 : 28,
           })
         : { nodes: [], edges: [] },
-    [flow.nodes, flow.edges],
+    [flow.nodes, flow.edges, filters.agentName, filters.vulnOnly],
   );
 
   const connectedIds = useMemo(
@@ -680,7 +697,7 @@ export default function GraphPage() {
             <p className="text-[10px] uppercase tracking-[0.24em] text-sky-400">Unified graph</p>
             <h1 className="mt-1 text-lg font-semibold text-zinc-100">Security Graph</h1>
             <p className="text-xs text-zinc-500">
-              Provider → Agent → Server → Package → Findings · Models · Datasets · Containers · Cloud resources · Runtime edges
+              Focused agent-to-finding graph with packages, credentials, tools, and runtime links.
             </p>
           </div>
 
@@ -735,6 +752,37 @@ export default function GraphPage() {
             </button>
           </form>
 
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+            <button
+              type="button"
+              onClick={() => setFilters(createFocusedGraphFilters(filters.agentName ?? flow.agentNames[0] ?? null))}
+              className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-sky-200 transition hover:border-sky-400/60"
+            >
+              Focused view
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilters(createExpandedGraphFilters(null))}
+              className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-2.5 py-1 text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+            >
+              Expanded view
+            </button>
+            <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-zinc-400">
+              {filters.agentName ? `agent ${filters.agentName}` : "all agents"}
+            </span>
+            <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-zinc-400">
+              {filters.severity ? `${filters.severity}+` : "all severities"}
+            </span>
+            <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-zinc-400">
+              depth {filters.maxDepth}
+            </span>
+            {filters.vulnOnly && (
+              <span className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">
+                vulnerable only
+              </span>
+            )}
+          </div>
+
           {searchResults.length > 0 && (
             <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-950/90 p-2">
               <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
@@ -751,7 +799,12 @@ export default function GraphPage() {
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2 text-[10px] text-zinc-500">
                       {result.severity && <span>{result.severity}</span>}
-                      <span>risk {result.risk_score.toFixed(1)}</span>
+                      <span>
+                        risk{" "}
+                        {typeof result.risk_score === "number" && Number.isFinite(result.risk_score)
+                          ? result.risk_score.toFixed(1)
+                          : "N/A"}
+                      </span>
                     </div>
                   </button>
                 ))}
@@ -893,8 +946,10 @@ export default function GraphPage() {
             edges={displayEdges}
             nodeTypes={lineageNodeTypes}
             fitView
-            minZoom={0.05}
+            fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
+            minZoom={0.16}
             maxZoom={2.5}
+            onlyRenderVisibleElements
             defaultEdgeOptions={{ type: "smoothstep" }}
             proOptions={{ hideAttribution: true }}
             onNodeClick={onNodeClick}
@@ -908,7 +963,12 @@ export default function GraphPage() {
           >
             <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
             <Controls className={CONTROLS_CLASS} />
-            <MiniMap nodeColor={minimapNodeColor} className={MINIMAP_CLASS} />
+            <MiniMap
+              nodeColor={minimapNodeColor}
+              className={MINIMAP_CLASS}
+              bgColor={MINIMAP_BG}
+              maskColor={MINIMAP_MASK}
+            />
           </ReactFlow>
 
           {selectedNode && (

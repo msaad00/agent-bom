@@ -4,7 +4,7 @@
  */
 
 import { type Node, type Edge, MarkerType } from "@xyflow/react";
-import type { ScanResult, MCPServer } from "@/lib/api";
+import type { ScanResult, MCPServer, Agent, Vulnerability } from "@/lib/api";
 import type { LineageNodeData } from "@/components/lineage-nodes";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -42,6 +42,12 @@ export type NodeTypeFilter = {
 };
 
 export type SeverityFilter = "all" | "critical" | "high" | "medium" | "low";
+type VulnerabilitySeverity = Vulnerability["severity"];
+
+export interface MeshGraphScope {
+  selectedAgents?: string[];
+  vulnerableOnly?: boolean;
+}
 
 // ─── Credential detection ───────────────────────────────────────────────────
 
@@ -53,10 +59,10 @@ function getCredKeys(server: MCPServer): string[] {
 
 // ─── Shared Server Detection ────────────────────────────────────────────────
 
-export function detectSharedServers(result: ScanResult): Map<string, ServerGroup> {
+export function detectSharedServers(agents: Agent[]): Map<string, ServerGroup> {
   const groups = new Map<string, ServerGroup>();
 
-  for (const agent of result.agents) {
+  for (const agent of agents) {
     for (const server of agent.mcp_servers) {
       const key = server.name;
       const existing = groups.get(key);
@@ -89,6 +95,10 @@ export function detectSharedServers(result: ScanResult): Map<string, ServerGroup
 
 const SEV_ORDER: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1, none: 0 };
 
+function severityWeight(sev: string | undefined): number {
+  return SEV_ORDER[sev ?? "none"] ?? 0;
+}
+
 function sevColor(sev: string): string {
   switch (sev) {
     case "critical": return "#ef4444";
@@ -104,12 +114,29 @@ function meetsSeverityFilter(sev: string, filter: SeverityFilter): boolean {
   return (SEV_ORDER[sev] ?? 0) >= (SEV_ORDER[filter] ?? 0);
 }
 
+function compareVulnerabilities(left: Vulnerability, right: Vulnerability): number {
+  const severityDiff = severityWeight(right.severity) - severityWeight(left.severity);
+  if (severityDiff !== 0) return severityDiff;
+  const cvssDiff = (right.cvss_score ?? 0) - (left.cvss_score ?? 0);
+  if (cvssDiff !== 0) return cvssDiff;
+  return (right.epss_score ?? 0) - (left.epss_score ?? 0);
+}
+
+function normalizeSeverity(severity: string | undefined): VulnerabilitySeverity {
+  const normalized = String(severity ?? "none").toLowerCase();
+  if (normalized === "critical" || normalized === "high" || normalized === "medium" || normalized === "low") {
+    return normalized;
+  }
+  return "none";
+}
+
 // ─── Graph Builder ──────────────────────────────────────────────────────────
 
 export function buildMeshGraph(
   result: ScanResult,
   nodeFilter?: NodeTypeFilter,
   severityFilter?: SeverityFilter,
+  scope?: MeshGraphScope,
 ): {
   nodes: Node[];
   edges: Edge[];
@@ -124,8 +151,15 @@ export function buildMeshGraph(
   const showCreds = nodeFilter?.credentials ?? true;
   const showTools = nodeFilter?.tools ?? true;
   const sevFilter = severityFilter ?? "all";
+  const selectedAgents = scope?.selectedAgents ?? [];
+  const vulnerableOnly = scope?.vulnerableOnly ?? false;
+  const activeAgents =
+    selectedAgents.length > 0
+      ? result.agents.filter((agent) => selectedAgents.includes(agent.name))
+      : result.agents;
+  const blastByVulnId = new Map(result.blast_radius?.map((item) => [item.vulnerability_id, item]) ?? []);
 
-  const serverGroups = detectSharedServers(result);
+  const serverGroups = detectSharedServers(activeAgents);
   const sharedServerNames = new Set(
     [...serverGroups.entries()]
       .filter(([, g]) => g.agents.size > 1)
@@ -151,7 +185,7 @@ export function buildMeshGraph(
 
   // Tool overlap: tools available to >1 agent
   const toolAgentMap = new Map<string, Set<string>>();
-  for (const agent of result.agents) {
+  for (const agent of activeAgents) {
     for (const server of agent.mcp_servers) {
       for (const tool of server.tools ?? []) {
         const existing = toolAgentMap.get(tool.name) ?? new Set<string>();
@@ -162,7 +196,7 @@ export function buildMeshGraph(
   }
   const toolOverlap = [...toolAgentMap.values()].filter((a) => a.size > 1).length;
 
-  // Vulnerability stats
+  // View stats
   let totalPackages = 0;
   let totalVulnerabilities = 0;
   let criticalCount = 0;
@@ -171,46 +205,37 @@ export function buildMeshGraph(
   let lowCount = 0;
   let kevCount = 0;
 
-  for (const agent of result.agents) {
-    for (const server of agent.mcp_servers) {
-      totalPackages += server.packages.length;
-      for (const pkg of server.packages) {
-        for (const vuln of pkg.vulnerabilities ?? []) {
-          totalVulnerabilities++;
-          switch (vuln.severity) {
-            case "critical": criticalCount++; break;
-            case "high": highCount++; break;
-            case "medium": mediumCount++; break;
-            case "low": lowCount++; break;
-          }
-          if (vuln.cisa_kev) kevCount++;
-        }
-      }
-    }
-  }
-
-  const stats: MeshStatsData = {
-    totalAgents: result.agents.length,
-    sharedServers: sharedServerNames.size,
-    uniqueCredentials: allCreds.size,
-    toolOverlap,
-    credentialBlast,
-    totalPackages,
-    totalVulnerabilities,
-    criticalCount,
-    highCount,
-    mediumCount,
-    lowCount,
-    kevCount,
-  };
-
   // ── Agent nodes ──
-  for (const agent of result.agents) {
+  for (const agent of activeAgents) {
     const agentId = `agent:${agent.name}`;
-    const totalVulns = agent.mcp_servers.reduce(
-      (s, srv) => s + srv.packages.reduce((vs, p) => vs + (p.vulnerabilities?.length ?? 0), 0),
-      0
-    );
+    const visibleServers = agent.mcp_servers.filter((server) => {
+      if (!vulnerableOnly) return true;
+      return server.packages.some((pkg) =>
+        (pkg.vulnerabilities ?? []).some((vuln) => {
+          const blast = blastByVulnId.get(vuln.id);
+          return meetsSeverityFilter(blast?.severity ?? vuln.severity, sevFilter);
+        }),
+      );
+    });
+    const visiblePackageCount = visibleServers.reduce((sum, server) => {
+      return sum + server.packages.filter((pkg) => {
+        const matching = (pkg.vulnerabilities ?? []).some((vuln) => {
+          const blast = blastByVulnId.get(vuln.id);
+          return meetsSeverityFilter(blast?.severity ?? vuln.severity, sevFilter);
+        });
+        return vulnerableOnly ? matching : true;
+      }).length;
+    }, 0);
+    const totalVulns = agent.mcp_servers.reduce((sum, server) => {
+      return sum + server.packages.reduce((packageSum, pkg) => {
+        const matching = (pkg.vulnerabilities ?? []).filter((vuln) => {
+          const blast = blastByVulnId.get(vuln.id);
+          const severity = blast?.severity ?? vuln.severity;
+          return meetsSeverityFilter(severity, sevFilter);
+        });
+        return packageSum + matching.length;
+      }, 0);
+    }, 0);
     nodes.push({
       id: agentId,
       type: "agentNode",
@@ -220,8 +245,8 @@ export function buildMeshGraph(
         nodeType: "agent",
         agentType: agent.agent_type,
         agentStatus: agent.status,
-        serverCount: agent.mcp_servers.length,
-        packageCount: agent.mcp_servers.reduce((s, srv) => s + srv.packages.length, 0),
+        serverCount: visibleServers.length,
+        packageCount: visiblePackageCount,
         vulnCount: totalVulns,
       } satisfies LineageNodeData,
     });
@@ -354,16 +379,43 @@ export function buildMeshGraph(
       }
 
       // Show vulnerable packages first, then top 3 non-vulnerable
-      const vulnPkgs = [...pkgMap.values()].filter((p) => (p.pkg.vulnerabilities?.length ?? 0) > 0);
-      const cleanPkgs = [...pkgMap.values()].filter((p) => (p.pkg.vulnerabilities?.length ?? 0) === 0).slice(0, 3);
-      const displayPkgs = [...vulnPkgs, ...cleanPkgs];
+      const rankedPackages = [...pkgMap.values()].map((entry) => {
+        const matchingVulns = (entry.pkg.vulnerabilities ?? [])
+          .map((vuln) => {
+            const blast = blastByVulnId.get(vuln.id);
+            return {
+              ...vuln,
+              severity: normalizeSeverity(blast?.severity ?? vuln.severity),
+              cvss_score: blast?.cvss_score ?? vuln.cvss_score,
+              epss_score: blast?.epss_score ?? vuln.epss_score,
+              cisa_kev: (blast?.is_kev ?? blast?.cisa_kev ?? vuln.cisa_kev) || false,
+              fixed_version: blast?.fixed_version ?? vuln.fixed_version,
+            } satisfies Vulnerability;
+          })
+          .filter((vuln) => meetsSeverityFilter(vuln.severity, sevFilter))
+          .sort(compareVulnerabilities);
+        return { ...entry, matchingVulns };
+      });
+      const vulnPkgs = rankedPackages
+        .filter((entry) => entry.matchingVulns.length > 0)
+        .sort((left, right) => {
+          const severityDiff = severityWeight(right.matchingVulns[0]?.severity) - severityWeight(left.matchingVulns[0]?.severity);
+          if (severityDiff !== 0) return severityDiff;
+          return right.matchingVulns.length - left.matchingVulns.length;
+        });
+      const cleanPkgs = rankedPackages
+        .filter((entry) => entry.matchingVulns.length === 0)
+        .slice(0, vulnerableOnly ? 0 : 2);
+      const displayPkgs = [...vulnPkgs.slice(0, vulnerableOnly ? 8 : 6), ...cleanPkgs];
 
-      for (const { pkg, serverName } of displayPkgs) {
+      for (const { pkg, serverName, matchingVulns } of displayPkgs) {
         const pkgId = `pkg:${serverName}:${pkg.ecosystem}:${pkg.name}`;
         if (seen.has(pkgId)) continue;
         seen.add(pkgId);
 
-        const vulnCount = pkg.vulnerabilities?.length ?? 0;
+        const vulnCount = matchingVulns.length;
+        if (vulnerableOnly && vulnCount === 0) continue;
+        totalPackages++;
         nodes.push({
           id: pkgId,
           type: "packageNode",
@@ -392,15 +444,23 @@ export function buildMeshGraph(
         });
 
         // ── Vulnerability nodes ──
-        if (showVulns && pkg.vulnerabilities) {
-          for (const vuln of pkg.vulnerabilities) {
-            if (!meetsSeverityFilter(vuln.severity, sevFilter)) continue;
+        if (showVulns && matchingVulns.length > 0) {
+          for (const vuln of matchingVulns.slice(0, vulnerableOnly ? 6 : 5)) {
             const vulnId = `vuln:${pkg.name}:${vuln.id}`;
             if (seen.has(vulnId)) continue;
             seen.add(vulnId);
+            totalVulnerabilities++;
+            switch (vuln.severity) {
+              case "critical": criticalCount++; break;
+              case "high": highCount++; break;
+              case "medium": mediumCount++; break;
+              case "low": lowCount++; break;
+              default: break;
+            }
+            if (vuln.cisa_kev) kevCount++;
 
             // Look up blast radius data for this vuln
-            const br = result.blast_radius?.find((b) => b.vulnerability_id === vuln.id);
+            const br = blastByVulnId.get(vuln.id);
 
             nodes.push({
               id: vulnId,
@@ -438,6 +498,21 @@ export function buildMeshGraph(
       }
     }
   }
+
+  const stats: MeshStatsData = {
+    totalAgents: activeAgents.length,
+    sharedServers: sharedServerNames.size,
+    uniqueCredentials: allCreds.size,
+    toolOverlap,
+    credentialBlast,
+    totalPackages,
+    totalVulnerabilities,
+    criticalCount,
+    highCount,
+    mediumCount,
+    lowCount,
+    kevCount,
+  };
 
   return { nodes, edges, stats };
 }

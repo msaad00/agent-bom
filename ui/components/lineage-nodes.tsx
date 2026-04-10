@@ -99,6 +99,7 @@ type CardProps = {
   borderClass: string;
   bgClass: string;
   ringClass: string;
+  shapeClass?: string;
   icon: ComponentType<{ className?: string }>;
   iconClass: string;
   source?: boolean;
@@ -112,6 +113,7 @@ function NodeCard({
   borderClass,
   bgClass,
   ringClass,
+  shapeClass = "rounded-xl",
   icon: Icon,
   iconClass,
   source = true,
@@ -121,7 +123,7 @@ function NodeCard({
 }: CardProps) {
   return (
     <div
-      className={`rounded-lg border-2 px-3 py-2 min-w-[148px] max-w-[220px] shadow-lg backdrop-blur transition-opacity ${borderClass} ${bgClass} ${
+      className={`${shapeClass} border-2 px-3 py-2 min-w-[148px] max-w-[220px] shadow-lg backdrop-blur transition-opacity ${borderClass} ${bgClass} ${
         data.dimmed ? "opacity-25" : ""
       } ${data.highlighted ? `ring-2 ${ringClass}` : ""}`}
     >
@@ -130,12 +132,37 @@ function NodeCard({
       <div className="flex items-center gap-1.5 mb-0.5">
         <Icon className={`w-3.5 h-3.5 shrink-0 ${iconClass}`} />
         <span className="text-xs font-semibold text-zinc-100 truncate">{data.label}</span>
+        <span className="ml-auto rounded border border-white/10 bg-black/20 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.16em] text-zinc-500">
+          {NODE_TYPE_BADGES[data.nodeType]}
+        </span>
       </div>
       {subtitle && <div className="text-[10px] text-zinc-400 truncate">{subtitle}</div>}
       {footer}
     </div>
   );
 }
+
+const NODE_TYPE_BADGES: Record<LineageNodeType, string> = {
+  provider: "Provider",
+  agent: "Agent",
+  server: "Server",
+  package: "Package",
+  vulnerability: "CVE",
+  misconfiguration: "Config",
+  credential: "Credential",
+  tool: "Tool",
+  model: "Model",
+  dataset: "Dataset",
+  container: "Container",
+  cloudResource: "Cloud",
+  user: "User",
+  group: "Group",
+  serviceAccount: "Service",
+  environment: "Env",
+  fleet: "Fleet",
+  cluster: "Cluster",
+  sharedServer: "Shared",
+};
 
 function AgentNode({ data }: { data: LineageNodeData }) {
   const notConfigured = data.agentStatus === "installed-not-configured";
@@ -397,6 +424,7 @@ function FindingNode({
       borderClass={borderClass}
       bgClass={bgClass}
       ringClass="ring-white/50"
+      shapeClass={data.nodeType === "misconfiguration" ? "rounded-md" : "rounded-lg"}
       icon={data.nodeType === "misconfiguration" ? TriangleAlert : Bug}
       iconClass={accentClass}
       source={false}
@@ -448,6 +476,7 @@ function CredentialNode({ data }: { data: LineageNodeData }) {
       borderClass="border-amber-500 border-dashed"
       bgClass="bg-amber-950/60"
       ringClass="ring-amber-400"
+      shapeClass="rounded-2xl"
       icon={KeyRound}
       iconClass="text-amber-400"
       source={false}
@@ -463,6 +492,7 @@ function ToolNode({ data }: { data: LineageNodeData }) {
       borderClass="border-purple-600"
       bgClass="bg-purple-950/60"
       ringClass="ring-purple-400"
+      shapeClass="rounded-2xl"
       icon={Wrench}
       iconClass="text-purple-400"
       source={false}
@@ -534,6 +564,7 @@ function SharedServerNode({ data }: { data: LineageNodeData }) {
       borderClass="border-cyan-400"
       bgClass="bg-cyan-950/80"
       ringClass="ring-cyan-300"
+      shapeClass="rounded-[18px]"
       icon={Server}
       iconClass="text-cyan-300"
       subtitle={data.command}

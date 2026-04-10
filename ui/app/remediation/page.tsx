@@ -135,15 +135,6 @@ function NarrativeRow({
                 <span className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-zinc-400">
                   current {item.current_version}
                 </span>
-                {item.fixed_version ? (
-                  <span className="rounded border border-emerald-900/70 bg-emerald-950/40 px-1.5 py-0.5 font-mono text-emerald-400">
-                    fix {item.fixed_version}
-                  </span>
-                ) : (
-                  <span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-zinc-600">
-                    no published fix
-                  </span>
-                )}
               </div>
             </div>
           </div>

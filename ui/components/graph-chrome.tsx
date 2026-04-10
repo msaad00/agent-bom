@@ -17,18 +17,33 @@ export function GraphLegend({ items }: { items: LegendItem[] }) {
     <div className="flex items-center gap-3 text-[10px] text-zinc-500">
       {items?.map((item) => (
         <span key={item.label} className="flex items-center gap-1">
-          <span
-            className="w-2 h-2 rounded-full"
-            style={{
-              backgroundColor: item.color,
-              border: item.dashed ? `1px dashed ${item.color}` : undefined,
-              background: item.dashed ? "transparent" : item.color,
-            }}
-          />
+          <LegendMarker item={item} />
           {item.label}
         </span>
       ))}
     </div>
+  );
+}
+
+function LegendMarker({ item }: { item: LegendItem }) {
+  const className =
+    item.shape === "square"
+      ? "h-2.5 w-2.5 rounded-[3px]"
+      : item.shape === "diamond"
+        ? "h-2.5 w-2.5 rotate-45 rounded-[2px]"
+        : item.shape === "pill"
+          ? "h-2 w-3.5 rounded-full"
+          : "h-2.5 w-2.5 rounded-full";
+
+  return (
+    <span
+      className={className}
+      style={{
+        backgroundColor: item.color,
+        border: item.dashed ? `1px dashed ${item.color}` : undefined,
+        background: item.dashed ? "transparent" : item.color,
+      }}
+    />
   );
 }
 

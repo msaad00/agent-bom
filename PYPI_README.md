@@ -4,7 +4,7 @@
 
 **Open security scanner for AI supply chain — agents, MCP servers, packages, containers, cloud, GPU, and runtime.**
 
-Find what is installed, see what it can reach, and understand what a vulnerable package can actually touch.
+Start with the demo, then choose the entrypoint that matches your first job: repo scan, image scan, cloud posture, fix plan, dashboard, or runtime review.
 
 ```text
 CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
@@ -17,7 +17,7 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
  Fix: upgrade better-sqlite3 → 11.7.0
 ```
 
-agent-bom maps blast radius: `CVE -> package -> MCP server -> agent -> credentials -> tools`.
+Blast radius is the core idea: `CVE -> package -> MCP server -> agent -> credentials -> tools`.
 
 Scan local agent configs, MCP servers, instruction files, lockfiles, containers, cloud posture, GPU surfaces, and runtime evidence.
 
@@ -31,15 +31,17 @@ The GIF uses that same curated sample so the output stays reproducible across re
 
 ![agent-bom demo](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif)
 
-## Quick start
+## Recommended starting points
 
 ```bash
 pip install agent-bom
 
-agent-bom agents -p .                            # Discover + scan local AI agents, MCP, and project packages
-agent-bom agents -p . --remediate remediation.md # Generate a fix-first remediation plan
+agent-bom agents -p .                            # Repo + MCP + package blast radius
+agent-bom check flask@2.2.0 --ecosystem pypi     # Pre-install package verdict
+agent-bom image nginx:latest                     # Container image scan
+agent-bom agents -p . --remediate remediation.md # Fix-first remediation plan
 pip install 'agent-bom[ui]'                      # once, if you want the dashboard
-agent-bom serve                                  # API + dashboard + unified graph explorer
+agent-bom serve                                  # API + dashboard + graph explorer
 ```
 
 ## What it scans

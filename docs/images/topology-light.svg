@@ -1,150 +1,114 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" fill="none">
   <style>
-    text { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
-    .title { font-size: 18px; font-weight: 800; fill: #111827; }
+    text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+    .title { font-size: 20px; font-weight: 800; fill: #111827; }
     .subtitle { font-size: 11px; font-weight: 500; fill: #64748b; }
-    .section { font-size: 10px; font-weight: 800; letter-spacing: 0.12em; }
-    .card-title { font-size: 12px; font-weight: 760; fill: #111827; }
-    .card-copy { font-size: 9.5px; font-weight: 500; fill: #475569; }
-    .chip { font-size: 8px; font-weight: 700; fill: #334155; }
-    .pill { font-size: 9px; font-weight: 700; fill: #334155; }
+    .section { font-size: 10px; font-weight: 800; letter-spacing: 0.14em; }
+    .card-title { font-size: 13px; font-weight: 760; fill: #111827; }
+    .copy { font-size: 10px; font-weight: 500; fill: #475569; }
+    .pill { font-size: 8.5px; font-weight: 700; fill: #334155; }
     .footer-title { font-size: 10px; font-weight: 800; fill: #111827; }
-    .footer-copy { font-size: 9.5px; font-weight: 600; fill: #475569; }
+    .footer-copy { font-size: 10px; font-weight: 600; fill: #475569; }
   </style>
 
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="960" y2="560" gradientUnits="userSpaceOnUse">
+    <linearGradient id="bg" x1="0" y1="0" x2="960" y2="520" gradientUnits="userSpaceOnUse">
       <stop stop-color="#ffffff"/>
       <stop offset="1" stop-color="#f8fafc"/>
     </linearGradient>
+    <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0L8 4L0 8Z" fill="#cbd5e1"/>
+    </marker>
   </defs>
 
-  <rect width="960" height="560" rx="18" fill="url(#bg)" stroke="#e5e7eb"/>
+  <rect width="960" height="520" rx="18" fill="url(#bg)" stroke="#e5e7eb"/>
 
-  <text x="480" y="36" text-anchor="middle" class="title">Graph explorer — built-in demo topology</text>
-  <text x="480" y="56" text-anchor="middle" class="subtitle">Real README example derived from `agent-bom agents --demo --offline`.</text>
+  <text x="480" y="38" text-anchor="middle" class="title">Focused graph view</text>
+  <text x="480" y="58" text-anchor="middle" class="subtitle">Built-in demo, scoped to one agent and the highest-risk reachable surfaces.</text>
 
-  <rect x="252" y="74" width="72" height="22" rx="11" fill="#eff6ff" stroke="#bfdbfe"/>
-  <text x="288" y="88" text-anchor="middle" class="pill">2 agents</text>
-  <rect x="336" y="74" width="92" height="22" rx="11" fill="#eef2ff" stroke="#c7d2fe"/>
-  <text x="382" y="88" text-anchor="middle" class="pill">4 MCP servers</text>
-  <rect x="440" y="74" width="92" height="22" rx="11" fill="#ecfeff" stroke="#a5f3fc"/>
-  <text x="486" y="88" text-anchor="middle" class="pill">12 packages</text>
-  <rect x="544" y="74" width="86" height="22" rx="11" fill="#fff7ed" stroke="#fdba74"/>
-  <text x="587" y="88" text-anchor="middle" class="pill">55 vulns</text>
-  <rect x="642" y="74" width="92" height="22" rx="11" fill="#fef2f2" stroke="#fca5a5"/>
-  <text x="688" y="88" text-anchor="middle" class="pill">2 critical</text>
+  <rect x="286" y="76" width="78" height="24" rx="12" fill="#eff6ff" stroke="#bfdbfe"/>
+  <text x="325" y="92" text-anchor="middle" class="pill">2 agents</text>
+  <rect x="376" y="76" width="92" height="24" rx="12" fill="#eef2ff" stroke="#c7d2fe"/>
+  <text x="422" y="92" text-anchor="middle" class="pill">4 MCP servers</text>
+  <rect x="480" y="76" width="92" height="24" rx="12" fill="#ecfeff" stroke="#a5f3fc"/>
+  <text x="526" y="92" text-anchor="middle" class="pill">12 packages</text>
+  <rect x="584" y="76" width="92" height="24" rx="12" fill="#fef2f2" stroke="#fca5a5"/>
+  <text x="630" y="92" text-anchor="middle" class="pill">2 critical</text>
 
-  <text x="52" y="124" class="section" fill="#2563eb">AGENTS</text>
-  <text x="336" y="124" class="section" fill="#7c3aed">MCP SERVERS</text>
-  <text x="744" y="124" class="section" fill="#059669">REACHABLE TOOLS + CREDS</text>
+  <text x="56" y="136" class="section" fill="#2563eb">STARTING SCOPE</text>
+  <text x="356" y="136" class="section" fill="#7c3aed">IN-SCOPE SERVERS</text>
+  <text x="680" y="136" class="section" fill="#059669">REACHABLE SURFACES</text>
 
-  <path d="M272 178C306 178 300 166 336 166" stroke="#cbd5e1" stroke-width="2" fill="none"/>
-  <path d="M272 178C306 178 300 270 336 270" stroke="#cbd5e1" stroke-width="2" fill="none"/>
-  <path d="M272 282C306 282 300 374 336 374" stroke="#cbd5e1" stroke-width="2" fill="none"/>
-  <path d="M272 282C306 282 300 478 336 478" stroke="#cbd5e1" stroke-width="2" fill="none"/>
+  <path d="M268 192C304 192 316 188 350 188" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M268 192C304 192 316 284 350 284" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M620 188C648 188 648 188 676 188" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrow)"/>
+  <path d="M620 284C648 284 648 284 676 284" stroke="#cbd5e1" stroke-width="2.5" stroke-linecap="round" marker-end="url(#arrow)"/>
 
-  <path d="M520 166C556 166 708 166 744 166" stroke="#d1d5db" stroke-width="2" fill="none"/>
-  <path d="M728 166C700 166 640 166 640 270" stroke="#d1d5db" stroke-width="2" fill="none" opacity="0.8"/>
-  <path d="M520 270C556 270 708 270 744 270" stroke="#d1d5db" stroke-width="2" fill="none"/>
-  <path d="M728 270C700 270 640 270 640 374" stroke="#d1d5db" stroke-width="2" fill="none" opacity="0.8"/>
-  <path d="M520 374C556 374 708 374 744 374" stroke="#d1d5db" stroke-width="2" fill="none"/>
-  <path d="M520 478C556 478 708 478 744 478" stroke="#d1d5db" stroke-width="2" fill="none"/>
-
-  <rect x="48" y="138" width="224" height="80" rx="14" fill="#ffffff" stroke="#dbeafe"/>
-  <rect x="48" y="138" width="5" height="80" rx="2.5" fill="#2563eb"/>
-  <text x="68" y="160" class="card-title">cursor</text>
-  <text x="68" y="177" class="card-copy">
-    <tspan x="68" dy="0">Uses the filesystem and database servers</tspan>
-    <tspan x="68" dy="12">and carries the highest blast-radius path in the demo.</tspan>
+  <rect x="48" y="150" width="220" height="88" rx="16" fill="#ffffff" stroke="#dbeafe"/>
+  <rect x="48" y="150" width="6" height="88" rx="3" fill="#2563eb"/>
+  <text x="68" y="176" class="card-title">cursor</text>
+  <text x="68" y="194" class="copy">
+    <tspan x="68" dy="0">Selected by default in the README and dashboard.</tspan>
+    <tspan x="68" dy="13">Two servers in scope, highest-risk path highlighted.</tspan>
   </text>
-  <rect x="68" y="190" width="84" height="16" rx="8" fill="#dbeafe"/><text x="110" y="201" text-anchor="middle" class="chip">2 servers</text>
-  <rect x="158" y="190" width="88" height="16" rx="8" fill="#fee2e2"/><text x="202" y="201" text-anchor="middle" class="chip">critical path</text>
+  <rect x="68" y="210" width="84" height="18" rx="9" fill="#dbeafe"/><text x="110" y="222" text-anchor="middle" class="pill">2 servers</text>
+  <rect x="158" y="210" width="86" height="18" rx="9" fill="#fee2e2"/><text x="201" y="222" text-anchor="middle" class="pill">critical path</text>
 
-  <rect x="48" y="242" width="224" height="80" rx="14" fill="#ffffff" stroke="#dbeafe"/>
-  <rect x="48" y="242" width="5" height="80" rx="2.5" fill="#2563eb"/>
-  <text x="68" y="264" class="card-title">claude-desktop</text>
-  <text x="68" y="281" class="card-copy">
-    <tspan x="68" dy="0">Uses the GitHub and team-chat servers</tspan>
-    <tspan x="68" dy="12">with token-backed tools and collaboration workflows.</tspan>
+  <rect x="48" y="254" width="220" height="64" rx="16" fill="#ffffff" stroke="#e5e7eb"/>
+  <text x="68" y="278" class="card-title">Other agents stay available</text>
+  <text x="68" y="296" class="copy">
+    <tspan x="68" dy="0">The graph starts focused, then expands by agent,</tspan>
+    <tspan x="68" dy="13">depth, or severity when the user asks for more.</tspan>
   </text>
-  <rect x="68" y="294" width="84" height="16" rx="8" fill="#dbeafe"/><text x="110" y="305" text-anchor="middle" class="chip">2 servers</text>
-  <rect x="158" y="294" width="78" height="16" rx="8" fill="#dcfce7"/><text x="197" y="305" text-anchor="middle" class="chip">review path</text>
 
-  <rect x="336" y="126" width="184" height="80" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
-  <rect x="336" y="126" width="5" height="80" rx="2.5" fill="#6366f1"/>
-  <text x="356" y="148" class="card-title">filesystem-server</text>
-  <text x="356" y="165" class="card-copy">
-    <tspan x="356" dy="0">3 npm packages powering local file operations</tspan>
-    <tspan x="356" dy="12">for `read_file`, `write_file`, and `list_directory`.</tspan>
+  <rect x="350" y="150" width="270" height="76" rx="16" fill="#ffffff" stroke="#fca5a5"/>
+  <rect x="350" y="150" width="6" height="76" rx="3" fill="#ef4444"/>
+  <text x="372" y="176" class="card-title">database-server</text>
+  <text x="372" y="194" class="copy">
+    <tspan x="372" dy="0">5 Python packages, 2 exposed credentials,</tspan>
+    <tspan x="372" dy="13">critical findings flow into reachable tools.</tspan>
   </text>
-  <rect x="356" y="178" width="84" height="16" rx="8" fill="#e0e7ff"/><text x="398" y="189" text-anchor="middle" class="chip">3 packages</text>
-  <rect x="446" y="178" width="54" height="16" rx="8" fill="#ede9fe"/><text x="473" y="189" text-anchor="middle" class="chip">local FS</text>
+  <rect x="372" y="206" width="86" height="18" rx="9" fill="#fee2e2"/><text x="415" y="218" text-anchor="middle" class="pill">5 packages</text>
+  <rect x="464" y="206" width="76" height="18" rx="9" fill="#fef3c7"/><text x="502" y="218" text-anchor="middle" class="pill">2 creds</text>
+  <rect x="546" y="206" width="56" height="18" rx="9" fill="#fee2e2"/><text x="574" y="218" text-anchor="middle" class="pill">critical</text>
 
-  <rect x="336" y="230" width="184" height="80" rx="14" fill="#ffffff" stroke="#fca5a5"/>
-  <rect x="336" y="230" width="5" height="80" rx="2.5" fill="#ef4444"/>
-  <text x="356" y="252" class="card-title">database-server</text>
-  <text x="356" y="269" class="card-copy">
-    <tspan x="356" dy="0">5 Python packages including `flask`, `requests`,</tspan>
-    <tspan x="356" dy="12">`cryptography`, and `pillow` in the critical path.</tspan>
+  <rect x="350" y="246" width="270" height="76" rx="16" fill="#ffffff" stroke="#cbd5e1"/>
+  <rect x="350" y="246" width="6" height="76" rx="3" fill="#6366f1"/>
+  <text x="372" y="272" class="card-title">filesystem-server</text>
+  <text x="372" y="290" class="copy">
+    <tspan x="372" dy="0">Local file tools stay visible because they are</tspan>
+    <tspan x="372" dy="13">reachable from the same selected agent scope.</tspan>
   </text>
-  <rect x="356" y="282" width="82" height="16" rx="8" fill="#fee2e2"/><text x="397" y="293" text-anchor="middle" class="chip">5 packages</text>
-  <rect x="444" y="282" width="56" height="16" rx="8" fill="#fef2f2"/><text x="472" y="293" text-anchor="middle" class="chip">2 creds</text>
+  <rect x="372" y="302" width="86" height="18" rx="9" fill="#e0e7ff"/><text x="415" y="314" text-anchor="middle" class="pill">3 packages</text>
+  <rect x="464" y="302" width="70" height="18" rx="9" fill="#dcfce7"/><text x="499" y="314" text-anchor="middle" class="pill">3 tools</text>
 
-  <rect x="336" y="334" width="184" height="80" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
-  <rect x="336" y="334" width="5" height="80" rx="2.5" fill="#6366f1"/>
-  <text x="356" y="356" class="card-title">github-server</text>
-  <text x="356" y="373" class="card-copy">
-    <tspan x="356" dy="0">2 npm packages with repo-writing actions like</tspan>
-    <tspan x="356" dy="12">`create_issue`, `search_repos`, and `push_files`.</tspan>
+  <rect x="676" y="150" width="236" height="76" rx="16" fill="#ffffff" stroke="#fecaca"/>
+  <text x="698" y="176" class="card-title">Database blast radius</text>
+  <text x="698" y="194" class="copy">
+    <tspan x="698" dy="0">Creds: DATABASE_URL, ANTHROPIC_API_KEY</tspan>
+    <tspan x="698" dy="13">Tools: run_query, execute_sql, export_csv</tspan>
   </text>
-  <rect x="356" y="386" width="82" height="16" rx="8" fill="#dcfce7"/><text x="397" y="397" text-anchor="middle" class="chip">repo ops</text>
-  <rect x="444" y="386" width="56" height="16" rx="8" fill="#fef3c7"/><text x="472" y="397" text-anchor="middle" class="chip">1 token</text>
+  <rect x="698" y="206" width="64" height="18" rx="9" fill="#fee2e2"/><text x="730" y="218" text-anchor="middle" class="pill">2 creds</text>
+  <rect x="768" y="206" width="62" height="18" rx="9" fill="#fee2e2"/><text x="799" y="218" text-anchor="middle" class="pill">3 tools</text>
 
-  <rect x="336" y="438" width="184" height="80" rx="14" fill="#ffffff" stroke="#cbd5e1"/>
-  <rect x="336" y="438" width="5" height="80" rx="2.5" fill="#6366f1"/>
-  <text x="356" y="460" class="card-title">team-chat-server</text>
-  <text x="356" y="477" class="card-copy">
-    <tspan x="356" dy="0">2 Python packages with collaboration actions like</tspan>
-    <tspan x="356" dy="12">`send_message` and `list_channels`.</tspan>
+  <rect x="676" y="246" width="236" height="76" rx="16" fill="#ffffff" stroke="#bbf7d0"/>
+  <text x="698" y="272" class="card-title">Local file surface</text>
+  <text x="698" y="290" class="copy">
+    <tspan x="698" dy="0">read_file, write_file, list_directory</tspan>
+    <tspan x="698" dy="13">stay attached to the same focused view.</tspan>
   </text>
-  <rect x="356" y="490" width="86" height="16" rx="8" fill="#fef3c7"/><text x="399" y="501" text-anchor="middle" class="chip">2 secrets</text>
-  <rect x="448" y="490" width="50" height="16" rx="8" fill="#e0f2fe"/><text x="473" y="501" text-anchor="middle" class="chip">chat ops</text>
+  <rect x="698" y="302" width="62" height="18" rx="9" fill="#dcfce7"/><text x="729" y="314" text-anchor="middle" class="pill">3 tools</text>
 
-  <rect x="744" y="126" width="168" height="80" rx="14" fill="#ffffff" stroke="#bbf7d0"/>
-  <text x="762" y="148" class="card-title">filesystem surface</text>
-  <text x="762" y="165" class="card-copy">
-    <tspan x="762" dy="0">`read_file`, `write_file`,</tspan>
-    <tspan x="762" dy="12">`list_directory`</tspan>
+  <rect x="48" y="356" width="864" height="112" rx="16" fill="#ffffff" stroke="#e5e7eb"/>
+  <text x="72" y="384" class="footer-title">Why this is here</text>
+  <text x="72" y="406" class="footer-copy">
+    <tspan x="72" dy="0">The README should show the same operator pattern as the product: start with one scoped graph,</tspan>
+    <tspan x="72" dy="15">see the risky path clearly, then expand by agent, depth, or severity only when needed.</tspan>
   </text>
-  <rect x="762" y="180" width="54" height="16" rx="8" fill="#dcfce7"/><text x="789" y="191" text-anchor="middle" class="chip">3 tools</text>
-
-  <rect x="744" y="230" width="168" height="80" rx="14" fill="#ffffff" stroke="#fecaca"/>
-  <text x="762" y="252" class="card-title">database blast radius</text>
-  <text x="762" y="269" class="card-copy">
-    <tspan x="762" dy="0">`DATABASE_URL`, `ANTHROPIC_API_KEY`,</tspan>
-    <tspan x="762" dy="12">`run_query`, `execute_sql`, `export_csv`</tspan>
-  </text>
-  <rect x="762" y="284" width="58" height="16" rx="8" fill="#fee2e2"/><text x="791" y="295" text-anchor="middle" class="chip">2 creds</text>
-  <rect x="826" y="284" width="58" height="16" rx="8" fill="#fee2e2"/><text x="855" y="295" text-anchor="middle" class="chip">3 tools</text>
-
-  <rect x="744" y="334" width="168" height="80" rx="14" fill="#ffffff" stroke="#bbf7d0"/>
-  <text x="762" y="356" class="card-title">GitHub reach</text>
-  <text x="762" y="373" class="card-copy">
-    <tspan x="762" dy="0">`GITHUB_TOKEN`, `create_issue`,</tspan>
-    <tspan x="762" dy="12">`search_repos`, `push_files`</tspan>
-  </text>
-  <rect x="762" y="388" width="58" height="16" rx="8" fill="#dcfce7"/><text x="791" y="399" text-anchor="middle" class="chip">1 token</text>
-
-  <rect x="744" y="438" width="168" height="80" rx="14" fill="#ffffff" stroke="#fde68a"/>
-  <text x="762" y="460" class="card-title">team-chat reach</text>
-  <text x="762" y="477" class="card-copy">
-    <tspan x="762" dy="0">`SLACK_BOT_TOKEN`,</tspan>
-    <tspan x="762" dy="12">`SLACK_SIGNING_SECRET`, `send_message`</tspan>
-  </text>
-  <rect x="762" y="492" width="58" height="16" rx="8" fill="#fef3c7"/><text x="791" y="503" text-anchor="middle" class="chip">2 secrets</text>
-
-  <rect x="48" y="534" width="864" height="14" rx="7" fill="#f8fafc"/>
-  <text x="60" y="544" class="footer-title">Why this matters</text>
-  <text x="168" y="544" class="footer-copy">The demo reaches from vulnerable packages to real tools and credentials, so the graph story in the README matches product output.</text>
+  <rect x="72" y="428" width="202" height="20" rx="10" fill="#eff6ff" stroke="#bfdbfe"/>
+  <text x="173" y="441" text-anchor="middle" class="pill">Default: one agent in focus</text>
+  <rect x="286" y="428" width="194" height="20" rx="10" fill="#ecfeff" stroke="#a5f3fc"/>
+  <text x="383" y="441" text-anchor="middle" class="pill">Expand by depth or agent</text>
+  <rect x="492" y="428" width="202" height="20" rx="10" fill="#f0fdf4" stroke="#86efac"/>
+  <text x="593" y="441" text-anchor="middle" class="pill">Readable before exhaustive</text>
 </svg>

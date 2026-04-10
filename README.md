@@ -16,7 +16,7 @@
 
 <p align="center"><b>Open security scanner for AI supply chain — agents, MCP servers, packages, containers, cloud, GPU, and runtime.</b></p>
 
-<p align="center">Find what is installed, see what it can reach, and understand what a vulnerable package can actually touch.</p>
+<p align="center">Start with the demo, then choose the entrypoint that matches your first job: repo scan, image scan, cloud posture, fix plan, dashboard, or runtime review.</p>
 
 ```text
 CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
@@ -29,9 +29,9 @@ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
  Fix: upgrade better-sqlite3 → 11.7.0
 ```
 
-**agent-bom maps blast radius**: `CVE -> package -> MCP server -> agent -> credentials -> tools`.
+Blast radius is the core idea: `CVE -> package -> MCP server -> agent -> credentials -> tools`.
 
-Scan local agent configs, MCP servers, instruction files, lockfiles, containers, cloud posture, GPU surfaces, and runtime evidence. CWE-aware impact keeps a DoS from being reported like credential compromise.
+`agent-bom` scans local agent configs, MCP servers, instruction files, lockfiles, containers, cloud posture, GPU surfaces, and runtime evidence. CWE-aware impact keeps a DoS from being reported like credential compromise.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom blast radius demo" width="900" />
@@ -45,20 +45,17 @@ agent-bom agents --demo --offline
 
 The GIF uses that same curated sample so the output stays reproducible across releases. For real scans, run `agent-bom agents`, or add `-p .` to fold project manifests and lockfiles into the same result.
 
-## First steps after the demo
+## Recommended starting points
 
-If you only do three things after the demo, start here:
-
-1. Scan your repo: `agent-bom agents -p .`
-2. Generate a fix-first plan: `agent-bom agents -p . --remediate remediation.md`
-3. Add the dashboard when you want a persistent graph: `pip install 'agent-bom[ui]'` once, then `agent-bom serve`
-
-Pick the one that matches your first goal:
+Pick the entrypoint that matches your first job:
 
 | Goal | Run | What you get |
 |---|---|---|
 | Find what is installed and reachable | `agent-bom agents -p .` | Agent discovery, MCP mapping, project dependency findings, blast radius |
 | Turn findings into a fix plan | `agent-bom agents -p . --remediate remediation.md` | Prioritized remediation plan with fix versions and reachable impact |
+| Check a package before install | `agent-bom check flask@2.2.0 --ecosystem pypi` | Machine-readable pre-install verdict |
+| Scan a container image | `agent-bom image nginx:latest` | OS and package CVEs with fixability |
+| Audit IaC or cloud posture | `agent-bom iac Dockerfile k8s/ infra/main.tf` | Misconfigurations and posture findings |
 | Review findings in a persistent graph | `agent-bom serve` | API, dashboard, unified graph, current-state and diff views. Requires `pip install 'agent-bom[ui]'` once. |
 | Inspect live MCP traffic | `agent-bom proxy "<server command>"` | Inline runtime inspection, detector chaining, response/argument review |
 
@@ -121,7 +118,7 @@ agent-bom serve                         # API + Next.js dashboard
 
 ## Graph explorer
 
-The graph explorer is a real product surface, not concept art. The example below is aligned to the built-in demo so the structure and labels match actual `agent-bom` output.
+The README shows a focused graph view from the built-in demo, not the entire topology at once. The product starts from that same scoped view and lets you expand by agent, depth, and finding scope.
 
 <p align="center">
   <picture>
@@ -142,7 +139,7 @@ If the dashboard says `API Offline`, install the UI extra and run `agent-bom ser
 
 ## Architecture at a glance
 
-One path: discover and observe -> scan and interpret -> persist one graph -> operate across CLI, CI, API, dashboard, exports, and runtime review.
+One path: discover surfaces, analyze findings, persist one graph, then operate across CLI, CI, API, dashboard, and exports.
 
 <p align="center">
   <picture>

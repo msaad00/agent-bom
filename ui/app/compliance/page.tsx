@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   api,
   ComplianceResponse,
@@ -34,6 +34,7 @@ import {
   Scan,
   Grid3X3,
   List,
+  Search,
 } from "lucide-react";
 import Link from "next/link";
 import { ComplianceHeatmap } from "@/components/compliance-heatmap";
@@ -270,6 +271,92 @@ function ControlCard({ control, catalog }: { control: ComplianceControl; catalog
   );
 }
 
+function FrameworkSection({
+  title,
+  subtitle,
+  accentClass,
+  controls,
+  catalog,
+  query,
+  statusFilter,
+  emptyMessage,
+  defaultOpen = true,
+}: {
+  title: string;
+  subtitle?: string;
+  accentClass: string;
+  controls: ComplianceControl[];
+  catalog?: Record<string, string>;
+  query: string;
+  statusFilter: "all" | "pass" | "warning" | "fail";
+  emptyMessage?: string;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleControls = useMemo(
+    () =>
+      controls.filter((control) => {
+        const matchesStatus = statusFilter === "all" || control.status === statusFilter;
+        const searchable = [
+          control.code,
+          control.name,
+          ...control.affected_packages,
+          ...control.affected_agents,
+        ]
+          .join(" ")
+          .toLowerCase();
+        const matchesQuery = !normalizedQuery || searchable.includes(normalizedQuery);
+        return matchesStatus && matchesQuery;
+      }),
+    [controls, normalizedQuery, statusFilter],
+  );
+  const failCount = controls.filter((control) => control.status === "fail").length;
+  const warningCount = controls.filter((control) => control.status === "warning").length;
+
+  return (
+    <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40">
+      <button
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
+      >
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <h2 className={`text-lg font-semibold ${accentClass}`}>{title}</h2>
+            {subtitle ? <span className="text-xs text-zinc-500">{subtitle}</span> : null}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-3 text-xs text-zinc-500">
+            <span>{controls.length} controls</span>
+            <span>{failCount} fail</span>
+            <span>{warningCount} warning</span>
+            {visibleControls.length !== controls.length ? <span>{visibleControls.length} shown</span> : null}
+          </div>
+        </div>
+        {open ? <ChevronDown className="h-4 w-4 text-zinc-500" /> : <ChevronRight className="h-4 w-4 text-zinc-500" />}
+      </button>
+      {open ? (
+        <div className="border-t border-zinc-800 px-5 py-5">
+          {controls.length === 0 && emptyMessage ? (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-5 text-sm text-zinc-500">
+              {emptyMessage}
+            </div>
+          ) : visibleControls.length === 0 ? (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-5 text-sm text-zinc-500">
+              No controls match the current filters.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {visibleControls.map((control) => (
+                <ControlCard key={control.code} control={control} catalog={catalog} />
+              ))}
+            </div>
+          )}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function CompliancePage() {
@@ -277,6 +364,8 @@ export default function CompliancePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"detail" | "heatmap" | "matrix">("detail");
+  const [controlQuery, setControlQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "pass" | "warning" | "fail">("all");
 
   useEffect(() => {
     api
@@ -307,6 +396,106 @@ export default function CompliancePage() {
 
   const { summary: s } = data;
   const hasMcp = data.has_mcp_context ?? false;
+  const detailSections: Array<{
+    id: string;
+    title: string;
+    subtitle?: string;
+    accentClass: string;
+    controls: ComplianceControl[];
+    catalog?: Record<string, string>;
+    emptyMessage?: string;
+  }> = [
+    {
+      id: "owasp-llm",
+      title: "OWASP LLM Top 10",
+      subtitle: "2025 Edition",
+      accentClass: "text-zinc-200",
+      controls: data.owasp_llm_top10,
+      catalog: OWASP_LLM_TOP10,
+    },
+    {
+      id: "owasp-mcp",
+      title: "OWASP MCP Top 10",
+      subtitle: "MCP security risks",
+      accentClass: hasMcp ? "text-zinc-200" : "text-zinc-500",
+      controls: hasMcp ? data.owasp_mcp_top10 : [],
+      catalog: OWASP_MCP_TOP10,
+      emptyMessage: "MCP-specific controls appear after a scan with MCP server context.",
+    },
+    {
+      id: "atlas",
+      title: "MITRE ATLAS",
+      subtitle: "Adversarial ML techniques",
+      accentClass: "text-zinc-200",
+      controls: data.mitre_atlas,
+      catalog: MITRE_ATLAS,
+    },
+    {
+      id: "nist-ai-rmf",
+      title: "NIST AI RMF 1.0",
+      subtitle: "Govern / Map / Measure / Manage",
+      accentClass: "text-zinc-200",
+      controls: data.nist_ai_rmf,
+      catalog: NIST_AI_RMF,
+    },
+    {
+      id: "owasp-agentic",
+      title: "OWASP Agentic Top 10",
+      subtitle: "2026 Edition",
+      accentClass: hasMcp ? "text-zinc-200" : "text-zinc-500",
+      controls: hasMcp ? data.owasp_agentic_top10 : [],
+      catalog: OWASP_AGENTIC_TOP10,
+      emptyMessage: "Agentic controls appear after a scan with agent and MCP context.",
+    },
+    {
+      id: "eu-ai-act",
+      title: "EU AI Act",
+      subtitle: "Regulation (EU) 2024/1689",
+      accentClass: "text-zinc-200",
+      controls: data.eu_ai_act,
+      catalog: EU_AI_ACT,
+    },
+    {
+      id: "nist-csf",
+      title: "NIST CSF 2.0",
+      subtitle: "Cybersecurity Framework",
+      accentClass: "text-zinc-200",
+      controls: data.nist_csf,
+      catalog: NIST_CSF,
+    },
+    {
+      id: "iso27001",
+      title: "ISO/IEC 27001:2022",
+      subtitle: "Annex A controls",
+      accentClass: "text-zinc-200",
+      controls: data.iso_27001,
+      catalog: ISO_27001,
+    },
+    {
+      id: "soc2",
+      title: "SOC 2",
+      subtitle: "Trust Services Criteria",
+      accentClass: "text-zinc-200",
+      controls: data.soc2,
+      catalog: SOC2_TSC,
+    },
+    {
+      id: "cis",
+      title: "CIS Controls v8",
+      subtitle: "Critical security controls",
+      accentClass: "text-zinc-200",
+      controls: data.cis_controls,
+      catalog: CIS_CONTROLS,
+    },
+    {
+      id: "cmmc",
+      title: "CMMC 2.0",
+      subtitle: "Level 2 practices",
+      accentClass: "text-zinc-200",
+      controls: data.cmmc,
+      catalog: CMMC_PRACTICES,
+    },
+  ];
 
   return (
     <div className="space-y-8">
@@ -538,185 +727,57 @@ export default function CompliancePage() {
         <FrameworkBar label="CMMC 2.0" pass={s.cmmc_pass} warn={s.cmmc_warn} fail={s.cmmc_fail} total={data.cmmc.length} />
       </div>
 
-      {/* ── OWASP LLM Top 10 ──────────────────────────────────────────── */}
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="w-5 h-5 text-emerald-400" />
-          <h2 className="text-lg font-semibold text-zinc-200">OWASP LLM Top 10</h2>
-          <span className="text-xs text-zinc-500 ml-2">2025 Edition</span>
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-zinc-200">Control explorer</h2>
+            <p className="mt-1 text-xs text-zinc-500">Filter once, then expand only the frameworks you need.</p>
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative min-w-[240px]">
+              <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" />
+              <input
+                type="text"
+                value={controlQuery}
+                onChange={(e) => setControlQuery(e.target.value)}
+                placeholder="Search control, package, or agent"
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-950 py-2 pl-9 pr-3 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              {(["all", "fail", "warning", "pass"] as const).map((value) => (
+                <button
+                  key={value}
+                  onClick={() => setStatusFilter(value)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                    statusFilter === value
+                      ? "bg-zinc-800 text-zinc-100"
+                      : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                  }`}
+                >
+                  {value === "all" ? "All" : value === "pass" ? "Passing" : value === "warning" ? "Warnings" : "Failing"}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.owasp_llm_top10?.map((c) => (
-            <ControlCard key={c.code} control={c} catalog={OWASP_LLM_TOP10} />
-          ))}
-        </div>
-      </section>
+      </div>
 
-      {/* ── OWASP MCP Top 10 ─────────────────────────────────────────── */}
-      {hasMcp ? (
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="w-5 h-5 text-amber-400" />
-          <h2 className="text-lg font-semibold text-zinc-200">OWASP MCP Top 10</h2>
-          <span className="text-xs text-zinc-500 ml-2">MCP Security Risks</span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.owasp_mcp_top10?.map((c) => (
-            <ControlCard key={c.code} control={c} catalog={OWASP_MCP_TOP10} />
-          ))}
-        </div>
-      </section>
-      ) : (
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="w-5 h-5 text-amber-400 opacity-40" />
-          <h2 className="text-lg font-semibold text-zinc-500">OWASP MCP Top 10</h2>
-        </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 text-center">
-          <p className="text-sm text-zinc-500">MCP framework analysis not applicable — no MCP servers detected</p>
-          <p className="text-xs text-zinc-600 mt-2">Run an agent discovery scan to include MCP server data</p>
-        </div>
-      </section>
-      )}
-
-      {/* ── MITRE ATLAS ───────────────────────────────────────────────── */}
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="w-5 h-5 text-blue-400" />
-          <h2 className="text-lg font-semibold text-zinc-200">MITRE ATLAS</h2>
-          <span className="text-xs text-zinc-500 ml-2">Adversarial ML Techniques</span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.mitre_atlas?.map((c) => (
-            <ControlCard key={c.code} control={c} catalog={MITRE_ATLAS} />
-          ))}
-        </div>
-      </section>
-
-      {/* ── NIST AI RMF ───────────────────────────────────────────────── */}
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="w-5 h-5 text-purple-400" />
-          <h2 className="text-lg font-semibold text-zinc-200">NIST AI RMF 1.0</h2>
-          <span className="text-xs text-zinc-500 ml-2">Govern / Map / Measure / Manage</span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.nist_ai_rmf?.map((c) => (
-            <ControlCard key={c.code} control={c} catalog={NIST_AI_RMF} />
-          ))}
-        </div>
-      </section>
-
-      {/* ── OWASP Agentic Top 10 ─────────────────────────────────────── */}
-      {hasMcp ? (
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="w-5 h-5 text-fuchsia-400" />
-          <h2 className="text-lg font-semibold text-zinc-200">OWASP Agentic Top 10</h2>
-          <span className="text-xs text-zinc-500 ml-2">2026 Edition</span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.owasp_agentic_top10?.map((c) => (
-            <ControlCard key={c.code} control={c} catalog={OWASP_AGENTIC_TOP10} />
-          ))}
-        </div>
-      </section>
-      ) : (
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="w-5 h-5 text-fuchsia-400 opacity-40" />
-          <h2 className="text-lg font-semibold text-zinc-500">OWASP Agentic Top 10</h2>
-        </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 text-center">
-          <p className="text-sm text-zinc-500">Agentic framework analysis not applicable — no AI agents detected</p>
-          <p className="text-xs text-zinc-600 mt-2">Run an agent discovery scan to include agent data</p>
-        </div>
-      </section>
-      )}
-
-      {/* ── EU AI Act ────────────────────────────────────────────────── */}
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="w-5 h-5 text-blue-400" />
-          <h2 className="text-lg font-semibold text-zinc-200">EU AI Act</h2>
-          <span className="text-xs text-zinc-500 ml-2">Regulation (EU) 2024/1689</span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.eu_ai_act?.map((c) => (
-            <ControlCard key={c.code} control={c} catalog={EU_AI_ACT} />
-          ))}
-        </div>
-      </section>
-
-      {/* ── NIST CSF 2.0 ─────────────────────────────────────────────── */}
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="w-5 h-5 text-teal-400" />
-          <h2 className="text-lg font-semibold text-zinc-200">NIST CSF 2.0</h2>
-          <span className="text-xs text-zinc-500 ml-2">Cybersecurity Framework</span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.nist_csf?.map((c) => (
-            <ControlCard key={c.code} control={c} catalog={NIST_CSF} />
-          ))}
-        </div>
-      </section>
-
-      {/* ── ISO 27001 ─────────────────────────────────────────────────── */}
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="w-5 h-5 text-sky-400" />
-          <h2 className="text-lg font-semibold text-zinc-200">ISO/IEC 27001:2022</h2>
-          <span className="text-xs text-zinc-500 ml-2">Annex A Controls</span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.iso_27001?.map((c) => (
-            <ControlCard key={c.code} control={c} catalog={ISO_27001} />
-          ))}
-        </div>
-      </section>
-
-      {/* ── SOC 2 ─────────────────────────────────────────────────────── */}
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="w-5 h-5 text-indigo-400" />
-          <h2 className="text-lg font-semibold text-zinc-200">SOC 2</h2>
-          <span className="text-xs text-zinc-500 ml-2">Trust Services Criteria</span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.soc2?.map((c) => (
-            <ControlCard key={c.code} control={c} catalog={SOC2_TSC} />
-          ))}
-        </div>
-      </section>
-
-      {/* ── CIS Controls v8 ──────────────────────────────────────────── */}
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="w-5 h-5 text-lime-400" />
-          <h2 className="text-lg font-semibold text-zinc-200">CIS Controls v8</h2>
-          <span className="text-xs text-zinc-500 ml-2">Critical Security Controls</span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.cis_controls?.map((c) => (
-            <ControlCard key={c.code} control={c} catalog={CIS_CONTROLS} />
-          ))}
-        </div>
-      </section>
-
-      {/* ── CMMC 2.0 ─────────────────────────────────────────────────── */}
-      <section>
-        <div className="flex items-center gap-2 mb-4">
-          <Shield className="w-5 h-5 text-rose-400" />
-          <h2 className="text-lg font-semibold text-zinc-200">CMMC 2.0</h2>
-          <span className="text-xs text-zinc-500 ml-2">Level 2 Practices</span>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {data.cmmc?.map((c) => (
-            <ControlCard key={c.code} control={c} catalog={CMMC_PRACTICES} />
-          ))}
-        </div>
-      </section>
+      <div className="space-y-4">
+        {detailSections.map((section) => (
+          <FrameworkSection
+            key={section.id}
+            title={section.title}
+            subtitle={section.subtitle}
+            accentClass={section.accentClass}
+            controls={section.controls}
+            catalog={section.catalog}
+            query={controlQuery}
+            statusFilter={statusFilter}
+            emptyMessage={section.emptyMessage}
+          />
+        ))}
+      </div>
 
       </>
       )}

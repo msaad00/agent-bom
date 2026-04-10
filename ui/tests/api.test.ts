@@ -36,7 +36,7 @@ describe('api.listJobs', () => {
 
   it('throws on non-ok response', async () => {
     global.fetch = mockFetch({ detail: 'Not found' }, false, 404)
-    await expect(api.listJobs()).rejects.toThrow('404')
+    await expect(api.listJobs()).rejects.toThrow('Not found')
   })
 })
 

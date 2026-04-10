@@ -98,16 +98,11 @@ function AgentsList() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
-  function toggleCollapse(idx: number) {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx);
-      else next.add(idx);
-      return next;
-    });
+  function toggleCollapse(agentName: string) {
+    setExpandedAgent((current) => (current === agentName ? null : agentName));
   }
 
   useEffect(() => {
@@ -130,7 +125,7 @@ function AgentsList() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Agents</h1>
           <p className="text-zinc-400 text-sm mt-1">
-            Auto-discovered local AI agent configurations
+            Discovered agent configurations and attached MCP servers
           </p>
         </div>
         <Link
@@ -141,6 +136,24 @@ function AgentsList() {
           Mesh View
         </Link>
       </div>
+
+      {!loading && agents.length > 0 && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-600" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search agents or agent type"
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 py-2 pl-9 pr-3 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+            />
+          </div>
+          <p className="text-xs text-zinc-500">
+            {filteredConfigured.length} configured · {installedOnly.length} installed only
+          </p>
+        </div>
+      )}
 
       {loading && (
         <div className="flex items-center justify-center py-20 text-zinc-400">
@@ -203,19 +216,21 @@ function AgentsList() {
       )}
 
       {/* Configured agents */}
-      <div className="space-y-4">
-        {configured?.map((agent, i) => (
-          <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+        <div className="space-y-4">
+        {filteredConfigured?.map((agent) => {
+          const isExpanded = expandedAgent === agent.name;
+          return (
+          <div key={agent.name} className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
             <button
               type="button"
-              onClick={() => toggleCollapse(i)}
+              onClick={() => toggleCollapse(agent.name)}
               className="w-full flex items-center justify-between"
             >
               <div className="flex items-center gap-2">
-                {collapsed.has(i) ? (
-                  <ChevronRight className="w-4 h-4 text-zinc-500" />
-                ) : (
+                {isExpanded ? (
                   <ChevronDown className="w-4 h-4 text-zinc-500" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-zinc-500" />
                 )}
                 <h2 className="font-semibold text-zinc-100">{agent.name}</h2>
                 <span className="text-[10px] font-mono bg-emerald-950 border border-emerald-800 text-emerald-400 rounded px-1.5 py-0.5">
@@ -241,7 +256,7 @@ function AgentsList() {
               </div>
             </button>
 
-            {!collapsed.has(i) && (
+            {isExpanded ? (
               <div className="space-y-2 mt-4">
                 {agent.mcp_servers?.map((srv, j) => (
                   <div key={j} className="bg-zinc-800 border border-zinc-700 rounded-lg p-3">
@@ -285,9 +300,14 @@ function AgentsList() {
                   </div>
                 ))}
               </div>
-            )}
+            ) : null}
           </div>
-        ))}
+        )})}
+        {!loading && filteredConfigured.length === 0 && configured.length > 0 && (
+          <div className="rounded-xl border border-dashed border-zinc-800 py-12 text-center">
+            <p className="text-sm text-zinc-500">No configured agents match the current search.</p>
+          </div>
+        )}
       </div>
 
       {/* Installed but not configured */}

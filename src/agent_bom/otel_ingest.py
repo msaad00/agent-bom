@@ -93,6 +93,8 @@ class ToolCallTrace:
     trace_id: str
     span_id: str
     tool_name: str
+    server_name: str = ""
+    package_name: str = ""
     parameters: dict = field(default_factory=dict)
     duration_ms: float = 0.0
     status: str = "ok"
@@ -105,7 +107,10 @@ class FlaggedCall:
     trace: ToolCallTrace
     reason: str
     severity: str = "medium"  # medium or high
+    server: str = ""
+    package_name: str = ""
     matched_cve: str = ""
+    matched_cves: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -238,9 +243,17 @@ def parse_otel_traces(trace_data: dict) -> list[ToolCallTrace]:
         if not tool_name:
             continue
 
-        # Extract parameters from attributes
+        # Extract parameters and common correlation attributes from span attrs.
+        attrs = span.get("attributes", [])
         params = {}
-        for attr in span.get("attributes", []):
+        server_name = _extract_attr(attrs, "mcp.server") or _extract_attr(attrs, "server.name") or _extract_attr(attrs, "tool.server")
+        package_name = (
+            _extract_attr(attrs, "package.name")
+            or _extract_attr(attrs, "tool.package")
+            or _extract_attr(attrs, "dependency.package")
+            or _extract_attr(attrs, "package")
+        )
+        for attr in attrs:
             key = attr.get("key", "")
             if key.startswith("tool.input."):
                 param_name = key[len("tool.input.") :]
@@ -261,6 +274,8 @@ def parse_otel_traces(trace_data: dict) -> list[ToolCallTrace]:
                 trace_id=span.get("traceId", ""),
                 span_id=span.get("spanId", ""),
                 tool_name=tool_name,
+                server_name=server_name,
+                package_name=package_name,
                 parameters=params,
                 duration_ms=duration_ms,
                 status=status,
@@ -388,44 +403,70 @@ def flag_deprecated_models(calls: list[LLMAPICall]) -> list[FlaggedMLCall]:
 def flag_vulnerable_tool_calls(
     traces: list[ToolCallTrace],
     vuln_packages: dict[str, list[str]] | None = None,
-    vuln_servers: set[str] | None = None,
+    vuln_servers: dict[str, list[str]] | set[str] | None = None,
 ) -> list[FlaggedCall]:
     """Cross-reference tool calls against known-vulnerable packages/servers.
 
     Args:
         traces: Parsed tool call traces.
         vuln_packages: Map of package name → list of CVE IDs.
-        vuln_servers: Set of server/tool names with known vulnerabilities.
+        vuln_servers: Mapping of server/tool name → CVE IDs, or a simple set.
     """
     flagged: list[FlaggedCall] = []
     vuln_packages = vuln_packages or {}
-    vuln_servers = vuln_servers or set()
+    vuln_server_map: dict[str, list[str]]
+    if isinstance(vuln_servers, set):
+        vuln_server_map = {name: [] for name in vuln_servers}
+    else:
+        vuln_server_map = vuln_servers or {}
+
+    def _lookup_name(mapping: dict[str, list[str]], candidate: str) -> tuple[str, list[str]] | None:
+        lowered = candidate.lower()
+        for name, cves in mapping.items():
+            if name.lower() == lowered:
+                return name, cves
+        return None
 
     for trace in traces:
         tool_lower = trace.tool_name.lower()
+        server_match = None
+        package_match = None
+        matched_cves: list[str] = []
 
-        # Check against vulnerable server/tool names
-        if tool_lower in vuln_servers or trace.tool_name in vuln_servers:
+        for candidate in (trace.server_name, trace.tool_name):
+            if not candidate:
+                continue
+            server_match = _lookup_name(vuln_server_map, candidate)
+            if server_match:
+                matched_cves.extend(server_match[1])
+                break
+
+        # Check against vulnerable package names (prefer explicit package attr, then fuzzy tool-name match)
+        for pkg_name, cves in vuln_packages.items():
+            explicit_match = trace.package_name and trace.package_name.lower() == pkg_name.lower()
+            fuzzy_match = pkg_name.lower() in tool_lower or tool_lower in pkg_name.lower()
+            if explicit_match or fuzzy_match:
+                package_match = pkg_name
+                matched_cves.extend(cves)
+                break
+
+        if server_match or package_match:
+            deduped_cves = list(dict.fromkeys(cve for cve in matched_cves if cve))
+            reason_parts = []
+            if server_match:
+                reason_parts.append(f"server '{server_match[0]}' has known vulnerabilities")
+            if package_match:
+                reason_parts.append(f"package '{package_match}' is vulnerable")
             flagged.append(
                 FlaggedCall(
                     trace=trace,
-                    reason=f"Tool '{trace.tool_name}' belongs to a server with known vulnerabilities",
-                    severity="high",
+                    reason="; ".join(reason_parts),
+                    severity="high" if server_match else "medium",
+                    server=server_match[0] if server_match else trace.server_name,
+                    package_name=package_match or trace.package_name,
+                    matched_cve=deduped_cves[0] if deduped_cves else "",
+                    matched_cves=deduped_cves,
                 )
             )
-            continue
-
-        # Check against vulnerable package names (fuzzy: tool name contains package)
-        for pkg_name, cves in vuln_packages.items():
-            if pkg_name.lower() in tool_lower or tool_lower in pkg_name.lower():
-                flagged.append(
-                    FlaggedCall(
-                        trace=trace,
-                        reason=f"Tool '{trace.tool_name}' may be associated with vulnerable package '{pkg_name}'",
-                        severity="medium",
-                        matched_cve=cves[0] if cves else "",
-                    )
-                )
-                break
 
     return flagged

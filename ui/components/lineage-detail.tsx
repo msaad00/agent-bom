@@ -237,8 +237,10 @@ export function LineageDetailPanel({
                 {data.severity}
               </span>
             )}
-            {data.cvssScore !== undefined && <Row label="CVSS" value={data.cvssScore.toFixed(1)} />}
-            {data.epssScore !== undefined && data.epssScore > 0 && (
+            {typeof data.cvssScore === "number" && Number.isFinite(data.cvssScore) && (
+              <Row label="CVSS" value={data.cvssScore.toFixed(1)} />
+            )}
+            {typeof data.epssScore === "number" && data.epssScore > 0 && (
               <Row label="EPSS" value={`${(data.epssScore * 100).toFixed(1)}%`} />
             )}
             {data.isKev && (

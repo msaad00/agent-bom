@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+from collections import defaultdict
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -42,26 +43,40 @@ async def ingest_traces(body: dict) -> dict:
             return {"traces": 0, "flagged": [], "message": "No tool call traces found"}
 
         # Gather vulnerable packages and servers from scan history
-        vuln_packages: list[str] = []
-        vuln_servers: list[str] = []
+        vuln_packages: dict[str, set[str]] = defaultdict(set)
+        vuln_servers: dict[str, set[str]] = defaultdict(set)
         for job in _get_store().list_all():
             if job.status == JobStatus.DONE and job.result:
                 for br in job.result.get("blast_radius", []):
+                    cve_id = br.get("vulnerability_id", "")
                     pkg = br.get("package", "")
                     if pkg:
-                        vuln_packages.append(pkg)
+                        if cve_id:
+                            vuln_packages[pkg].add(cve_id)
+                        else:
+                            vuln_packages[pkg]
                     for srv in br.get("affected_servers", []):
                         name = srv if isinstance(srv, str) else srv.get("name", "")
                         if name:
-                            vuln_servers.append(name)
+                            if cve_id:
+                                vuln_servers[name].add(cve_id)
+                            else:
+                                vuln_servers[name]
 
-        flagged = flag_vulnerable_tool_calls(traces, {p: [] for p in vuln_packages}, set(vuln_servers))
+        flagged = flag_vulnerable_tool_calls(
+            traces,
+            {pkg: sorted(cves) for pkg, cves in vuln_packages.items()},
+            {server: sorted(cves) for server, cves in vuln_servers.items()},
+        )
 
         return {
             "traces": len(traces),
             "flagged": [
                 {
                     "tool_name": f.trace.tool_name,
+                    "server": f.server or f.trace.server_name,
+                    "package_name": f.package_name or f.trace.package_name,
+                    "cve_ids": f.matched_cves,
                     "reason": f.reason,
                     "severity": f.severity,
                     "span_id": f.trace.span_id,

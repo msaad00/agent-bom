@@ -271,7 +271,7 @@ function VulnsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Vulnerabilities</h1>
           <p className="text-zinc-400 text-sm mt-1">
-            {vulns.length} unique CVEs aggregated across all scans
+            {vulns.length} unique CVEs aggregated across all scans. CVSS and EPSS appear only when the underlying advisory includes them.
           </p>
         </div>
         {vulns.length > 0 && (
@@ -483,10 +483,10 @@ function VulnTable({
                 </span>
               </td>
               <td className="px-4 py-3 text-xs font-mono text-zinc-400">
-                {v.cvss_score != null ? v.cvss_score.toFixed(1) : "—"}
+                {typeof v.cvss_score === "number" && Number.isFinite(v.cvss_score) ? v.cvss_score.toFixed(1) : "N/A"}
               </td>
               <td className="px-4 py-3 text-xs font-mono text-zinc-400">
-                {v.epss_score != null ? (v.epss_score * 100).toFixed(1) + "%" : "—"}
+                {typeof v.epss_score === "number" && Number.isFinite(v.epss_score) ? `${(v.epss_score * 100).toFixed(1)}%` : "N/A"}
               </td>
               <td className="px-4 py-3">
                 <div className="flex flex-wrap gap-1">
@@ -505,7 +505,7 @@ function VulnTable({
                 {v.agents.length > 2 && <span className="text-zinc-600"> +{v.agents.length - 2}</span>}
               </td>
               <td className="px-4 py-3 text-xs font-mono text-emerald-500">
-                {v.fixed_version ?? "—"}
+                {v.fixed_version ?? "N/A"}
               </td>
               <td className="px-4 py-3">
                 {suppressed.has(v.id) ? (

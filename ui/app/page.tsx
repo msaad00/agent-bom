@@ -429,12 +429,12 @@ export default function Dashboard() {
       <section className="relative overflow-hidden rounded-[28px] border border-zinc-800/80 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.16),transparent_24%),radial-gradient(circle_at_top_right,rgba(239,68,68,0.12),transparent_24%),linear-gradient(180deg,rgba(24,24,27,0.98),rgba(9,9,11,0.96))] p-6 shadow-2xl shadow-black/20">
         <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
           <div className="max-w-3xl">
-            <p className="text-[11px] uppercase tracking-[0.28em] text-emerald-400">Current state</p>
+            <p className="text-[11px] uppercase tracking-[0.24em] text-emerald-400">Overview</p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-50 sm:text-4xl">
-              Risk across agents, MCP, packages, and runtime.
+              Risk overview
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300">
-              Aggregated across {doneJobs.length} scan{doneJobs.length !== 1 ? "s" : ""}: {effectiveAgentCount} agent{effectiveAgentCount !== 1 ? "s" : ""}, {totalPackages} packages, and {uniqueCVEs} unique vulnerabilities with credential and tool exposure mapped into one operational view.
+              {doneJobs.length} scan{doneJobs.length !== 1 ? "s" : ""} · {effectiveAgentCount} agent{effectiveAgentCount !== 1 ? "s" : ""} · {totalPackages} packages · {uniqueCVEs} CVEs
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2">
@@ -451,7 +451,7 @@ export default function Dashboard() {
               </div>
               {topRisk && (
                 <div className="rounded-2xl border border-zinc-700 bg-zinc-900/80 px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Highest path risk</div>
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Top path</div>
                   <div className="mt-1 flex items-center gap-2">
                     <span className="font-mono text-lg font-semibold text-zinc-100">{(topRisk.risk_score ?? topRisk.blast_score).toFixed(1)}</span>
                     <span className="truncate text-xs text-zinc-400">{topRisk.vulnerability_id}</span>
@@ -465,14 +465,14 @@ export default function Dashboard() {
               href="/scan"
               className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500"
             >
-              New Scan
+              Run scan
               <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
               href="/graph"
               className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-500 hover:bg-zinc-800"
             >
-              Explore Graph
+              Open graph
               <GitBranch className="h-4 w-4" />
             </Link>
           </div>

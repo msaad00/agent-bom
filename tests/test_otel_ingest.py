@@ -63,6 +63,28 @@ def test_parse_generic_tool_name_attribute():
     assert traces[0].tool_name == "read_file"
 
 
+def test_parse_server_and_package_attributes():
+    data = _otlp_trace(
+        [
+            {
+                "traceId": "abc",
+                "spanId": "s2",
+                "name": "tool_call",
+                "attributes": [
+                    {"key": "tool.name", "value": {"stringValue": "query_db"}},
+                    {"key": "mcp.server", "value": {"stringValue": "sqlite-mcp"}},
+                    {"key": "package.name", "value": {"stringValue": "sqlite-utils"}},
+                ],
+                "status": {},
+            }
+        ]
+    )
+    traces = parse_otel_traces(data)
+    assert len(traces) == 1
+    assert traces[0].server_name == "sqlite-mcp"
+    assert traces[0].package_name == "sqlite-utils"
+
+
 def test_parse_skips_non_tool_spans():
     data = _otlp_trace(
         [
@@ -80,10 +102,12 @@ def test_parse_skips_non_tool_spans():
 
 
 def test_flag_vulnerable_server():
-    traces = [ToolCallTrace(trace_id="t1", span_id="s1", tool_name="evil_tool")]
-    flagged = flag_vulnerable_tool_calls(traces, vuln_servers={"evil_tool"})
+    traces = [ToolCallTrace(trace_id="t1", span_id="s1", tool_name="evil_tool", server_name="evil_tool")]
+    flagged = flag_vulnerable_tool_calls(traces, vuln_servers={"evil_tool": ["CVE-2026-1"]})
     assert len(flagged) == 1
     assert flagged[0].severity == "high"
+    assert flagged[0].server == "evil_tool"
+    assert flagged[0].matched_cves == ["CVE-2026-1"]
 
 
 def test_flag_no_match():
@@ -93,10 +117,11 @@ def test_flag_no_match():
 
 
 def test_flag_vulnerable_package():
-    traces = [ToolCallTrace(trace_id="t1", span_id="s1", tool_name="langchain_search")]
+    traces = [ToolCallTrace(trace_id="t1", span_id="s1", tool_name="langchain_search", package_name="langchain")]
     flagged = flag_vulnerable_tool_calls(traces, vuln_packages={"langchain": ["CVE-2025-1"]})
     assert len(flagged) == 1
     assert flagged[0].matched_cve == "CVE-2025-1"
+    assert flagged[0].package_name == "langchain"
 
 
 def test_parse_flat_spans_format():

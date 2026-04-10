@@ -408,9 +408,9 @@ function FindingNode({
               {data.severity}
             </span>
           )}
-          {data.cvssScore !== undefined && (
+          {typeof data.cvssScore === "number" && Number.isFinite(data.cvssScore) ? (
             <span className="text-[10px] text-zinc-400">CVSS {data.cvssScore.toFixed(1)}</span>
-          )}
+          ) : null}
           {data.isKev && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-900 text-red-300 border border-red-700 font-mono">
               KEV

@@ -700,9 +700,22 @@ function withTimeout(): AbortSignal {
   return AbortSignal.timeout(FETCH_TIMEOUT_MS);
 }
 
+async function errorMessage(res: Response): Promise<string> {
+  try {
+    const data = (await res.json()) as { detail?: unknown; message?: unknown; error?: unknown };
+    const detail = data.detail ?? data.message ?? data.error;
+    if (typeof detail === "string" && detail.trim()) {
+      return detail;
+    }
+  } catch {
+    // Fall back to status text when the body is empty or not JSON.
+  }
+  return `${res.status} ${res.statusText}`;
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { signal: withTimeout() });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(await errorMessage(res));
   return res.json() as Promise<T>;
 }
 
@@ -713,7 +726,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
     signal: withTimeout(),
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(await errorMessage(res));
   return res.json() as Promise<T>;
 }
 
@@ -724,13 +737,13 @@ async function put<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
     signal: withTimeout(),
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(await errorMessage(res));
   return res.json() as Promise<T>;
 }
 
 async function del(path: string): Promise<void> {
   const res = await fetch(`${BASE}${path}`, { method: "DELETE", signal: withTimeout() });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) throw new Error(await errorMessage(res));
 }
 
 // ─── API functions ────────────────────────────────────────────────────────────
@@ -931,6 +944,7 @@ export const api = {
 
   // Activity Timeline
   getActivity: (days = 30) => get<ActivityTimeline>(`/v1/activity?days=${days}`),
+  ingestTraces: (body: unknown) => post<TraceIngestResponse>("/v1/traces", body),
 
   // ── Proxy Runtime ──
   getProxyStatus: () => get<ProxyStatusResponse>("/v1/proxy/status"),
@@ -1277,6 +1291,22 @@ export interface ActivityTimeline {
     output_tokens: number;
   }>;
   warnings: string[];
+}
+
+export interface TraceFlaggedCall {
+  tool_name: string;
+  server: string;
+  package_name?: string;
+  cve_ids: string[];
+  severity: string;
+  reason: string;
+  span_id: string;
+}
+
+export interface TraceIngestResponse {
+  traces: number;
+  flagged: TraceFlaggedCall[];
+  message?: string;
 }
 
 // ─── Proxy Runtime types ─────────────────────────────────────────────────────

@@ -127,25 +127,42 @@ function NarrativeRow({
                 item.severity
               )}`}
             />
-            <div>
+          <div>
               <span className="font-mono text-xs text-zinc-200">
                 {item.package}
               </span>
-              <span className="text-zinc-600 text-xs mx-1">
-                {item.current_version}
-              </span>
-              {item.fixed_version && (
-                <>
-                  <span className="text-zinc-600 text-xs">→</span>
-                  <span className="font-mono text-xs text-emerald-500 ml-1">
-                    {item.fixed_version}
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px]">
+                <span className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-zinc-400">
+                  current {item.current_version}
+                </span>
+                {item.fixed_version ? (
+                  <span className="rounded border border-emerald-900/70 bg-emerald-950/40 px-1.5 py-0.5 font-mono text-emerald-400">
+                    fix {item.fixed_version}
                   </span>
-                </>
-              )}
-              {!item.fixed_version && (
-                <span className="text-xs text-zinc-600 ml-1">no fix yet</span>
-              )}
+                ) : (
+                  <span className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-0.5 text-zinc-600">
+                    no published fix
+                  </span>
+                )}
+              </div>
             </div>
+          </div>
+        </td>
+
+        {/* CVEs */}
+        <td className="px-4 py-3">
+          <div className="flex max-w-[220px] flex-wrap gap-1">
+            {item.vulnerabilities.slice(0, 2).map((cve) => (
+              <span
+                key={cve}
+                className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300"
+              >
+                {cve}
+              </span>
+            ))}
+            {item.vulnerabilities.length > 2 && (
+              <span className="text-[10px] text-zinc-500">+{item.vulnerabilities.length - 2}</span>
+            )}
           </div>
         </td>
 
@@ -162,6 +179,15 @@ function NarrativeRow({
             <span className="ml-1.5 text-xs font-mono bg-red-950 border border-red-800 text-red-400 rounded px-1.5 py-0.5">
               KEV
             </span>
+          )}
+        </td>
+
+        {/* Fix target */}
+        <td className="px-4 py-3 text-xs">
+          {item.fixed_version ? (
+            <span className="font-mono text-emerald-400">{item.fixed_version}</span>
+          ) : (
+            <span className="text-zinc-600">N/A</span>
           )}
         </td>
 
@@ -188,14 +214,10 @@ function NarrativeRow({
           </div>
         </td>
 
-        {/* Agents */}
+        {/* Reach */}
         <td className="px-4 py-3 text-xs text-zinc-400">
-          {item.affected_agents?.length ?? 0}
-        </td>
-
-        {/* Credentials */}
-        <td className="px-4 py-3 text-xs text-zinc-400">
-          {item.exposed_credentials?.length ?? 0}
+          <div>{item.affected_agents?.length ?? 0} agent{(item.affected_agents?.length ?? 0) !== 1 ? "s" : ""}</div>
+          <div className="text-zinc-600">{item.exposed_credentials?.length ?? 0} credential{(item.exposed_credentials?.length ?? 0) !== 1 ? "s" : ""}</div>
         </td>
 
         {/* Compliance tags */}
@@ -217,9 +239,9 @@ function NarrativeRow({
           </div>
         </td>
 
-        {/* Risk narrative toggle */}
+        {/* Details toggle */}
         <td className="px-4 py-3">
-          {item.risk_narrative ? (
+          {item.risk_narrative || item.command || item.verify_command ? (
             <button
               onClick={() => setExpanded((v) => !v)}
               className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 transition-colors"
@@ -229,7 +251,7 @@ function NarrativeRow({
               ) : (
                 <ChevronDown className="w-3 h-3" />
               )}
-              Narrative
+              Details
             </button>
           ) : (
             <span className="text-xs text-zinc-600">—</span>
@@ -250,27 +272,61 @@ function NarrativeRow({
       </tr>
 
       {/* Expanded narrative */}
-      {expanded && item.risk_narrative && (
+      {expanded && (item.risk_narrative || item.command || item.verify_command) && (
         <tr className="bg-zinc-900/50">
-          <td colSpan={8} className="px-6 py-3">
-            <div className="text-xs text-zinc-400 leading-relaxed border-l-2 border-emerald-800 pl-3">
-              {item.risk_narrative}
-            </div>
-            {(item.reachable_tools?.length ?? 0) > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                <span className="text-[10px] text-zinc-600 uppercase tracking-wide font-medium mr-1">
-                  Reachable tools:
-                </span>
-                {item.reachable_tools.map((t) => (
-                  <span
-                    key={t}
-                    className="text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-500"
-                  >
-                    {t}
-                  </span>
-                ))}
+          <td colSpan={9} className="px-6 py-4">
+            <div className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
+              <div className="space-y-3">
+                {item.risk_narrative ? (
+                  <div className="border-l-2 border-emerald-800 pl-3 text-xs leading-relaxed text-zinc-400">
+                    {item.risk_narrative}
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap gap-1">
+                  {item.vulnerabilities.map((cve) => (
+                    <span
+                      key={cve}
+                      className="rounded border border-zinc-700 bg-zinc-900 px-1.5 py-0.5 font-mono text-[10px] text-zinc-300"
+                    >
+                      {cve}
+                    </span>
+                  ))}
+                </div>
+                {(item.reachable_tools?.length ?? 0) > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    <span className="mr-1 text-[10px] font-medium uppercase tracking-wide text-zinc-600">
+                      Reachable tools
+                    </span>
+                    {item.reachable_tools.map((t) => (
+                      <span
+                        key={t}
+                        className="rounded border border-zinc-700 bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-500"
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
+              <div className="space-y-3">
+                {item.command ? (
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Recommended command</div>
+                    <code className="mt-2 block whitespace-pre-wrap font-mono text-xs leading-6 text-emerald-300">
+                      {item.command}
+                    </code>
+                  </div>
+                ) : null}
+                {item.verify_command ? (
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Verify</div>
+                    <code className="mt-2 block whitespace-pre-wrap font-mono text-xs leading-6 text-zinc-300">
+                      {item.verify_command}
+                    </code>
+                  </div>
+                ) : null}
+              </div>
+            </div>
           </td>
         </tr>
       )}
@@ -606,7 +662,7 @@ function RemediationPage() {
             Remediation
           </h1>
           <p className="text-zinc-400 text-sm mt-1">
-            {items.length} packages ranked by blast-radius impact score
+            {items.length} packages prioritized by reach, severity, and available fixes
           </p>
         </div>
         {items.length > 0 && (
@@ -743,6 +799,9 @@ function RemediationPage() {
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">
                     Package
                   </th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">
+                    CVEs
+                  </th>
                   <th className="text-left px-4 py-3">
                     <SortButton
                       label="Severity"
@@ -751,6 +810,9 @@ function RemediationPage() {
                       dir={sortDir}
                       onClick={handleSort}
                     />
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">
+                    Fix
                   </th>
                   <th className="text-left px-4 py-3">
                     <SortButton
@@ -761,29 +823,14 @@ function RemediationPage() {
                       onClick={handleSort}
                     />
                   </th>
-                  <th className="text-left px-4 py-3">
-                    <SortButton
-                      label="Agents"
-                      field="agents"
-                      current={sortKey}
-                      dir={sortDir}
-                      onClick={handleSort}
-                    />
-                  </th>
-                  <th className="text-left px-4 py-3">
-                    <SortButton
-                      label="Credentials"
-                      field="credentials"
-                      current={sortKey}
-                      dir={sortDir}
-                      onClick={handleSort}
-                    />
+                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">
+                    Reach
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">
                     Compliance
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">
-                    Narrative
+                    Details
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">
                     Actions

@@ -88,6 +88,26 @@ def test_scan_credential_detection(tmp_path: Path):
     assert "OPENAI_API_KEY" in server.env
 
 
+def test_scan_credential_detection_getenv_forms(tmp_path: Path):
+    """Detect os.getenv() and os.environ.get() credential access."""
+    nb = _make_notebook([_code_cell('import os\napi_key = os.getenv("OPENAI_API_KEY")\ngh = os.environ.get("GITHUB_TOKEN")\n')])
+    (tmp_path / "getenv.ipynb").write_text(json.dumps(nb))
+    agents, _ = scan_jupyter_notebooks(tmp_path)
+    server = agents[0].mcp_servers[0]
+    assert "OPENAI_API_KEY" in server.env
+    assert "GITHUB_TOKEN" in server.env
+
+
+def test_scan_credential_detection_notebook_secret_helpers(tmp_path: Path):
+    """Detect notebook-native secret access helpers."""
+    nb = _make_notebook([_code_cell('token = dbutils.secrets.get("prod", "OPENAI_API_KEY")\ngithub = userdata.get("GITHUB_TOKEN")\n')])
+    (tmp_path / "helpers.ipynb").write_text(json.dumps(nb))
+    agents, _ = scan_jupyter_notebooks(tmp_path)
+    server = agents[0].mcp_servers[0]
+    assert "OPENAI_API_KEY" in server.env
+    assert "GITHUB_TOKEN" in server.env
+
+
 def test_scan_hardcoded_key_warning(tmp_path: Path):
     """Hardcoded API key should produce a warning."""
     nb = _make_notebook([_code_cell('api_key = "sk-1234567890abcdefghijklmnop"')])

@@ -57,9 +57,15 @@ _AI_IMPORT_RE = re.compile(
 # Regex: pip install in notebook cells (! or % prefix)
 _PIP_INSTALL_RE = re.compile(r"[!%]pip\s+install\s+([^\n]+)", re.MULTILINE)
 
-# Regex: credential env vars
+# Regex: credential env vars and common notebook secret helpers
 _CRED_ENV_RE = re.compile(
-    r'os\.environ\s*[\[\.]\s*["\']([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)[A-Z0-9_]*)["\']',
+    r"(?:"
+    r'os\.environ\s*\[\s*["\']([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)[A-Z0-9_]*)["\']\s*\]'
+    r'|os\.environ\.get\(\s*["\']([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)[A-Z0-9_]*)["\']'
+    r'|os\.getenv\(\s*["\']([A-Z][A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL)[A-Z0-9_]*)["\']'
+    r'|dbutils\.secrets\.get\(\s*["\'][^"\']+["\']\s*,\s*["\']([^"\']+)["\']'
+    r'|userdata\.get\(\s*["\']([^"\']+)["\']'
+    r")"
 )
 
 # Regex: hardcoded API keys (warning)
@@ -162,7 +168,7 @@ def scan_jupyter_notebooks(
 
         # 3. Detect credential env vars
         for match in _CRED_ENV_RE.finditer(full_source):
-            env_name = match.group(1)
+            env_name = next((group for group in match.groups() if group), "")
             if env_name not in credential_env_vars:
                 credential_env_vars.append(env_name)
 

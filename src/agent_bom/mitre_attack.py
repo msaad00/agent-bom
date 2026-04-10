@@ -4,8 +4,8 @@ Maps three finding types to MITRE ATT&CK Enterprise techniques.  All technique
 IDs, names, and CWE mappings are loaded from MITRE's published data — nothing
 is hardcoded in this module.
 
-Data source: :mod:`agent_bom.mitre_fetch` (fetches from MITRE GitHub STIX,
-cached 30 days).
+Data source: :mod:`agent_bom.mitre_fetch` (bundled normalized ATT&CK/CAPEC
+catalog by default, with optional explicit refresh from upstream STIX).
 
 Finding types:
 
@@ -35,15 +35,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# ─── Public catalog accessors — always from fetched/cached MITRE data ─────────
+# ─── Public catalog accessors — always from the active MITRE catalog ──────────
 
 
 def get_attack_techniques() -> dict[str, str]:
-    """Return ``{technique_id: name}`` from the cached ATT&CK catalog.
-
-    Fetches from MITRE GitHub on first call; cached for 30 days.  Returns
-    empty dict on network failure so callers degrade gracefully.
-    """
+    """Return ``{technique_id: name}`` from the active ATT&CK catalog."""
     from agent_bom.mitre_fetch import get_techniques
 
     return {tid: meta["name"] for tid, meta in get_techniques().items()}
@@ -151,7 +147,7 @@ def _techniques_for_tactics(tactic_phases: list[str]) -> list[str]:
 def tag_cis_check(check: object) -> list[str]:
     """Return MITRE ATT&CK Enterprise technique IDs for a failed CIS check.
 
-    Resolves techniques from the live ATT&CK catalog (fetched from MITRE) by
+    Resolves techniques from the active ATT&CK catalog by
     mapping the check's section keywords and title keywords to tactic phases,
     then returning all techniques in those tactics.
 

@@ -547,6 +547,27 @@ export interface ComplianceResponse {
   };
 }
 
+export interface FrameworkCatalogMetadata {
+  schema_version: number;
+  catalog_id: string;
+  catalog_type: string;
+  source: string;
+  attack_version: string;
+  updated_at: string;
+  fetched_at: number;
+  normalized_sha256: string;
+  sources: Record<string, unknown>;
+  technique_count: number;
+  cwe_mapping_count: number;
+  path?: string;
+}
+
+export interface FrameworkCatalogsResponse {
+  frameworks: {
+    mitre_attack: FrameworkCatalogMetadata;
+  };
+}
+
 // ─── Agent Detail Types ──────────────────────────────────────────────────────
 
 export interface AgentDetailResponse {
@@ -893,6 +914,9 @@ export const api = {
 
   /** Compliance posture across all completed scans */
   getCompliance: () => get<ComplianceResponse>("/v1/compliance"),
+
+  /** Active framework catalog metadata surfaced by the API */
+  getFrameworkCatalogs: () => get<FrameworkCatalogsResponse>("/v1/frameworks/catalogs"),
 
   /** Auditor-ready compliance narrative for all 14 frameworks */
   getComplianceNarrative: () => get<ComplianceNarrativeResponse>("/v1/compliance/narrative"),

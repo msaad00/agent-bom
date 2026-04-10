@@ -137,6 +137,17 @@ agent-bom mesh --project .         # Quick local topology view from the CLI
 
 If the dashboard says `API Offline`, install the UI extra and run `agent-bom serve`. If the UI is already running separately, start just the backend with `pip install 'agent-bom[api]'` and `agent-bom api`.
 
+## Framework catalogs
+
+Default scans use the bundled MITRE ATT&CK + CAPEC catalog, so results stay deterministic and offline-friendly. Refresh to a newer upstream snapshot only when you want to:
+
+```bash
+agent-bom db update-frameworks
+agent-bom db status
+```
+
+The active catalog metadata is also surfaced in JSON output (`framework_catalogs`) and the API at `/v1/frameworks/catalogs`. Long-lived connected deployments can point at a synced catalog or opt into runtime refresh with `AGENT_BOM_MITRE_CATALOG_MODE`.
+
 ## Architecture at a glance
 
 One graph, one path: discover, analyze, persist, then operate across CLI, CI, API, dashboard, and exports.

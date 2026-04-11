@@ -39,6 +39,7 @@ class JSTSAstAnalysis:
     functions: dict[str, "JSTSFunction"] = field(default_factory=dict)
     tool_registrations: list["JSTSToolRegistration"] = field(default_factory=list)
     dynamic_require_lines: list[int] = field(default_factory=list)
+    default_export_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -296,12 +297,11 @@ def _collect_import_aliases(root: TreeSitterNode, source: bytes, analysis: JSTSA
                 if canonical:
                     analysis.namespace_aliases[_identifier_like_text(alias_nodes[-1], source)] = canonical
             elif child.type == "identifier":
-                analysis.imported_module_refs[_identifier_like_text(child, source)] = JSImportRef(
-                    module_name=_normalize_module_name(module_name)
+                alias = _identifier_like_text(child, source)
+                analysis.imported_function_refs[alias] = JSImportRef(
+                    module_name=_normalize_module_name(module_name),
+                    exported_name="default",
                 )
-                canonical = _canonical_namespace(module_name)
-                if canonical:
-                    analysis.namespace_aliases[_identifier_like_text(child, source)] = canonical
 
 
 def _is_require_call(node: TreeSitterNode, source: bytes) -> bool:
@@ -575,6 +575,13 @@ def _register_function(
 
 def _collect_functions(root: TreeSitterNode, source: bytes, analysis: JSTSAstAnalysis) -> None:
     for node in _iter_nodes(root):
+        if node.type == "export_statement":
+            default_child = next((child for child in node.named_children if child.type == "function_declaration"), None)
+            if default_child is not None:
+                name_node = default_child.child_by_field_name("name")
+                default_name = _identifier_like_text(name_node, source)
+                if default_name:
+                    analysis.default_export_name = default_name
         if node.type == "function_declaration":
             name_node = node.child_by_field_name("name")
             params_node = node.child_by_field_name("parameters")

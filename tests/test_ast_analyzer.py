@@ -105,6 +105,26 @@ def test_analyze_project_builds_cross_file_js_ts_module_alias_flow(tmp_path: Pat
         )
 
 
+def test_analyze_project_builds_cross_file_js_ts_default_export_flow(tmp_path: Path):
+    (tmp_path / "helpers.ts").write_text(
+        'import { execSync as run } from "node:child_process";\nexport default function runShell(command) {\n  return run(command);\n}\n'
+    )
+    (tmp_path / "server.ts").write_text(
+        'import runShell from "./helpers";\nserver.tool("run_cmd", "Run a command", async () => runShell(userInput));\n'
+    )
+
+    result = analyze_project(tmp_path)
+
+    if _js_ts_parser_available():
+        assert any(edge.caller == "tool:run_cmd" and edge.callee == "runShell" for edge in result.call_edges)
+        assert any(
+            finding.category == "js_ts_interprocedural_dangerous_flow"
+            and finding.entrypoint == "run_cmd"
+            and finding.sink == "child_process.execSync"
+            for finding in result.flow_findings
+        )
+
+
 def test_analyze_project_reports_js_ts_tainted_command_execution(tmp_path: Path):
     (tmp_path / "helpers.ts").write_text(
         'import { execSync as run } from "node:child_process";\nexport function runShell(command) {\n  return run(command);\n}\n'

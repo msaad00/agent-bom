@@ -3566,6 +3566,10 @@ def analyze_project(project_path: str | Path) -> ASTAnalysisResult:
         if js_ts_analysis is not None:
             for js_ts_function in js_ts_analysis.functions.values():
                 js_ts_functions[_js_ts_function_key(js_ts_function.module_name, js_ts_function.name)] = js_ts_function
+            if js_ts_analysis.default_export_name:
+                default_function = js_ts_analysis.functions.get(js_ts_analysis.default_export_name)
+                if default_function is not None:
+                    js_ts_functions[_js_ts_function_key(default_function.module_name, "default")] = default_function
             js_ts_tool_registrations.extend(js_ts_analysis.tool_registrations)
 
     for go_file in go_files:

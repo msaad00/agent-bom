@@ -99,6 +99,16 @@ Images published:
 
 The Git tag remains `v{version}`. Docker Hub image tags are published without the `v` prefix.
 
+`latest` is also refreshed independently by `.github/workflows/refresh-latest-container.yml`.
+That workflow checks out the newest released tag, rebuilds it with current Alpine packages,
+and republishes only `latest`. This keeps the floating tag current for base-image security
+fixes without rewriting immutable semver image tags.
+
+The daily `.github/workflows/container-rescan.yml` job should be treated as the alerting
+surface for post-release base-image drift. It scans `latest` for fixable `MEDIUM+` and
+`UNKNOWN` image findings, uploads SARIF into GitHub Security, and opens or updates the
+automated base-image vulnerability issue when new actionable findings appear.
+
 ---
 
 ## 6. GitHub Container Registry (GHCR)

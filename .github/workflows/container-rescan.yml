@@ -1,6 +1,6 @@
 name: Container Re-Scan
 
-# Weekly rescan of published multi-arch images for new CVEs.
+# Daily rescan of published multi-arch images for new fixable CVEs.
 # Trivy scans both linux/amd64 and linux/arm64 variants.
 # SARIF uploaded to GitHub Security tab. Never blocks main.
 
@@ -38,13 +38,14 @@ jobs:
       - name: Pull ${{ matrix.platform }} image
         run: docker pull --platform ${{ matrix.platform }} agentbom/agent-bom:latest
 
-      - name: Trivy scan — table (HIGH/CRITICAL)
+      - name: Trivy scan — table (fixable MEDIUM+/UNKNOWN)
         id: trivy-table
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
         with:
           image-ref: agentbom/agent-bom:latest
           format: table
-          severity: HIGH,CRITICAL
+          severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
+          ignore-unfixed: true
           exit-code: "1"
           trivyignores: .trivyignore
         continue-on-error: true
@@ -57,7 +58,8 @@ jobs:
           image-ref: agentbom/agent-bom:latest
           format: sarif
           output: trivy-${{ matrix.sarif_category }}.sarif
-          severity: HIGH,CRITICAL
+          severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
+          ignore-unfixed: true
           exit-code: "0"
           trivyignores: .trivyignore
 
@@ -85,10 +87,10 @@ jobs:
         run: |
           echo "::warning::Trivy SARIF was not generated for ${{ matrix.platform }}. Check the preceding Trivy step for workflow/config errors."
 
-      - name: Flag HIGH/CRITICAL CVEs found
+      - name: Flag actionable CVEs found
         if: steps.trivy-table.outcome == 'failure'
         run: |
-          echo "::warning::Trivy found HIGH/CRITICAL CVEs in agentbom/agent-bom:latest (${{ matrix.platform }}). Check SARIF in Security tab."
+          echo "::warning::Trivy found fixable MEDIUM+/UNKNOWN CVEs in agentbom/agent-bom:latest (${{ matrix.platform }}). Check SARIF in Security tab."
 
       - name: Open or close base image vulnerability issue
         if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
@@ -96,7 +98,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TITLE="base-image-vulnerability: agentbom/agent-bom:latest has HIGH/CRITICAL findings on ${{ matrix.platform }}"
+          TITLE="base-image-vulnerability: agentbom/agent-bom:latest has actionable findings on ${{ matrix.platform }}"
           gh label create base-image-vulnerability --color B60205 --description "Automated base image vulnerability findings" >/dev/null 2>&1 || true
           gh label create security-preventive --color 0E8A16 --description "Preventive daily security automation findings" >/dev/null 2>&1 || true
           gh label create automated --color 5319E7 --description "Opened or updated automatically by CI" >/dev/null 2>&1 || true
@@ -106,11 +108,12 @@ jobs:
             BODY=$(cat <<EOF
           ## Automated Base Image Vulnerability Alert
 
-          Daily image rescan found HIGH/CRITICAL findings in \`agentbom/agent-bom:latest\`.
+          Daily image rescan found fixable \`MEDIUM+\` or \`UNKNOWN\` findings in \`agentbom/agent-bom:latest\`.
 
           - Platform: \`${{ matrix.platform }}\`
           - SARIF category: \`${{ matrix.sarif_category }}\`
           - Source workflow: \`.github/workflows/container-rescan.yml\`
+          - Policy: Trivy scans with \`severity=MEDIUM,HIGH,CRITICAL,UNKNOWN\` and \`ignore-unfixed=true\`
 
           Review the GitHub Security tab and the workflow logs for the current image findings.
           EOF

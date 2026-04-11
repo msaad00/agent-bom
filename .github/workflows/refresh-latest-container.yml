@@ -1,0 +1,139 @@
+name: Refresh Docker Latest
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: refresh-docker-latest
+  cancel-in-progress: false
+
+jobs:
+  refresh-latest:
+    name: Rebuild and publish latest from latest release tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve latest release tag
+        id: release
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          TAG=$(git tag -l 'v*.*.*' --sort=-version:refname | head -n1)
+          if [ -z "$TAG" ]; then
+            echo "::error::No semver release tag found"
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          git checkout "$TAG"
+
+      - name: Verify pyproject version matches release tag
+        run: |
+          set -euo pipefail
+          VERSION=$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path("pyproject.toml").read_text()
+          m = re.search(r'^version\s*=\s*"([^"]+)"', text, re.M)
+          if not m:
+              raise SystemExit("pyproject.toml version not found")
+          print(m.group(1))
+          PY
+          )
+          if [ "$VERSION" != "${{ steps.release.outputs.version }}" ]; then
+            echo "::error::Checked out tag ${{ steps.release.outputs.tag }} but pyproject.toml reports $VERSION"
+            exit 1
+          fi
+
+      - name: Set up QEMU (multi-arch)
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build refresh candidate image
+        run: docker build -t agent-bom:latest-refresh-test .
+
+      - name: Smoke test refresh candidate
+        run: docker run --rm agent-bom:latest-refresh-test --version
+
+      - name: Trivy refresh gate
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0
+        with:
+          image-ref: agent-bom:latest-refresh-test
+          format: table
+          severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
+          ignore-unfixed: true
+          exit-code: "1"
+          trivyignores: .trivyignore
+
+      - name: Build and push refreshed latest
+        id: build-push
+        uses: docker/build-push-action@d08e5c354a6adb9ed34480a06d141179aa583294 # v7.0.0
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ steps.release.outputs.version }}
+          provenance: true
+          sbom: true
+          tags: |
+            agentbom/agent-bom:latest
+          labels: |
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=agent-bom
+            org.opencontainers.image.description=Open security scanner for agentic infrastructure — agents, MCP, packages, containers, cloud, and runtime.
+            org.opencontainers.image.created=${{ github.run_id }}
+            org.opencontainers.image.revision=${{ steps.release.outputs.tag }}
+
+      - name: Sync Docker Hub README
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHORT_DESCRIPTION="Open security scanner for agentic infrastructure: agents, MCP, containers, cloud, and runtime."
+          TOKEN=$(curl -sf -X POST "https://hub.docker.com/v2/users/login" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
+            | jq -r '.token')
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "::error::Docker Hub login failed"
+            exit 1
+          fi
+          echo "::add-mask::$TOKEN"
+          DESCRIPTION=$(jq -Rs . < DOCKER_HUB_README.md)
+          SHORT_DESCRIPTION_JSON=$(printf '%s' "$SHORT_DESCRIPTION" | jq -Rs .)
+          RESPONSE_FILE=$(mktemp)
+          HTTP_CODE=$(curl -sS -o "$RESPONSE_FILE" -w "%{http_code}" -X PATCH \
+            "https://hub.docker.com/v2/repositories/agentbom/agent-bom/" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"full_description\": ${DESCRIPTION}, \"description\": ${SHORT_DESCRIPTION_JSON}}")
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Docker Hub README sync failed (HTTP $HTTP_CODE)"
+            cat "$RESPONSE_FILE"
+            exit 1
+          fi
+          rm -f "$RESPONSE_FILE"

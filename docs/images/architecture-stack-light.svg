@@ -5,7 +5,7 @@
     .subtitle { font-size: 11px; font-weight: 500; fill: #64748b; }
     .section { font-size: 10px; font-weight: 800; letter-spacing: 0.14em; }
     .card-title { font-size: 13px; font-weight: 760; fill: #111827; }
-    .copy { font-size: 10px; font-weight: 500; fill: #475569; }
+    .copy { font-size: 9.25px; font-weight: 500; fill: #475569; }
     .footer-title { font-size: 10px; font-weight: 800; fill: #111827; }
     .footer-copy { font-size: 10px; font-weight: 600; fill: #475569; }
   </style>
@@ -39,60 +39,60 @@
   <text x="516" y="122" class="section" fill="#059669">PERSIST</text>
   <text x="748" y="122" class="section" fill="#2563eb">OPERATE</text>
 
-  <rect x="48" y="142" width="172" height="82" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="48" y="142" width="172" height="88" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
   <text x="64" y="168" class="card-title">Agents + MCP</text>
   <text x="64" y="188" class="copy">
     <tspan x="64" dy="0">Local clients, servers, tools,</tspan>
-    <tspan x="64" dy="14">configs, and trust posture.</tspan>
+    <tspan x="64" dy="14">configs, and trust review.</tspan>
   </text>
 
-  <rect x="48" y="242" width="172" height="82" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="48" y="242" width="172" height="88" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
   <text x="64" y="268" class="card-title">Packages + infra</text>
   <text x="64" y="288" class="copy">
     <tspan x="64" dy="0">Lockfiles, images, IaC, cloud,</tspan>
-    <tspan x="64" dy="14">models, and runtime logs.</tspan>
+    <tspan x="64" dy="14">models, and runtime evidence.</tspan>
   </text>
 
-  <rect x="280" y="142" width="172" height="82" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="280" y="142" width="172" height="88" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
   <text x="296" y="168" class="card-title">Findings</text>
   <text x="296" y="188" class="copy">
     <tspan x="296" dy="0">CVEs, secrets, misconfigurations,</tspan>
-    <tspan x="296" dy="14">posture checks, runtime alerts.</tspan>
+    <tspan x="296" dy="14">posture checks, and alerts.</tspan>
   </text>
 
-  <rect x="280" y="242" width="172" height="82" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="280" y="242" width="172" height="88" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
   <text x="296" y="268" class="card-title">Interpretation</text>
   <text x="296" y="288" class="copy">
     <tspan x="296" dy="0">Blast radius, CWE impact,</tspan>
     <tspan x="296" dy="14">fix-first plans, control mapping.</tspan>
   </text>
 
-  <rect x="512" y="142" width="172" height="82" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="512" y="142" width="172" height="88" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
   <text x="528" y="168" class="card-title">Graph model</text>
   <text x="528" y="188" class="copy">
     <tspan x="528" dy="0">Entities, edges, findings, paths,</tspan>
-    <tspan x="528" dy="14">events, snapshots, diffs.</tspan>
+    <tspan x="528" dy="14">events, snapshots, and diffs.</tspan>
   </text>
 
-  <rect x="512" y="242" width="172" height="82" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="512" y="242" width="172" height="88" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
   <text x="528" y="268" class="card-title">State + storage</text>
   <text x="528" y="288" class="copy">
     <tspan x="528" dy="0">SQLite or Postgres, latest state,</tspan>
     <tspan x="528" dy="14">history, and tenancy.</tspan>
   </text>
 
-  <rect x="744" y="142" width="168" height="82" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="744" y="142" width="168" height="88" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
   <text x="760" y="168" class="card-title">CLI + CI</text>
   <text x="760" y="188" class="copy">
     <tspan x="760" dy="0">Local scans, GitHub Actions,</tspan>
-    <tspan x="760" dy="14">Docker, SARIF, policy gates.</tspan>
+    <tspan x="760" dy="14">Docker, SARIF, and policy gates.</tspan>
   </text>
 
-  <rect x="744" y="242" width="168" height="82" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
+  <rect x="744" y="242" width="168" height="88" rx="14" fill="#ffffff" stroke="#e5e7eb"/>
   <text x="760" y="268" class="card-title">API + dashboard</text>
   <text x="760" y="288" class="copy">
     <tspan x="760" dy="0">Search, diff, node detail,</tspan>
-    <tspan x="760" dy="14">compliance, evidence, review.</tspan>
+    <tspan x="760" dy="14">compliance, evidence, and review.</tspan>
   </text>
 
   <rect x="32" y="436" width="896" height="54" rx="16" fill="#ffffff" stroke="#e5e7eb"/>

@@ -57,6 +57,7 @@ class JSTSCallSite:
     name: str
     line_number: int
     argument_names: list[list[str]] = field(default_factory=list)
+    argument_wrapper_names: list[str] = field(default_factory=list)
     guarded_names: frozenset[str] = field(default_factory=frozenset)
 
 
@@ -74,6 +75,7 @@ class JSTSFunction:
     call_sites: list[JSTSCallSite] = field(default_factory=list)
     dangerous_call_sites: list[JSTSCallSite] = field(default_factory=list)
     validator_params: frozenset[str] = field(default_factory=frozenset)
+    sanitizing_params: frozenset[str] = field(default_factory=frozenset)
     body_node: TreeSitterNode | None = None
 
 
@@ -363,12 +365,12 @@ def _collect_require_aliases(root: TreeSitterNode, source: bytes, analysis: JSTS
                     if canonical:
                         analysis.function_aliases[imported_name] = canonical
         elif name_node.type == "identifier":
-            analysis.imported_module_refs[_identifier_like_text(name_node, source)] = JSImportRef(
-                module_name=_normalize_module_name(module_name)
+            alias = _identifier_like_text(name_node, source)
+            analysis.imported_function_refs[alias] = JSImportRef(
+                module_name=_normalize_module_name(module_name),
+                exported_name="default",
             )
-            canonical = _canonical_namespace(module_name)
-            if canonical:
-                analysis.namespace_aliases[_identifier_like_text(name_node, source)] = canonical
+            analysis.imported_module_refs[alias] = JSImportRef(module_name=_normalize_module_name(module_name))
 
 
 def _propagate_alias_assignments(root: TreeSitterNode, source: bytes, analysis: JSTSAstAnalysis) -> None:
@@ -418,13 +420,61 @@ def _unwrap_expression(node: TreeSitterNode | None) -> TreeSitterNode | None:
     return node
 
 
-def _call_argument_names(arguments_node: TreeSitterNode | None, source: bytes) -> list[list[str]]:
+def _is_direct_js_ts_sanitizer_name(call_name: str) -> bool:
+    lower_name = call_name.strip().lower()
+    if lower_name in {
+        "dompurify.sanitize",
+        "validator.escape",
+        "he.encode",
+        "escapehtml",
+        "sanitizehtml",
+    }:
+        return True
+    return lower_name.endswith((".escape", ".sanitize"))
+
+
+def _sanitized_argument_names(
+    argument: TreeSitterNode,
+    source: bytes,
+    analysis: JSTSAstAnalysis,
+    sanitizer_function_names: set[str],
+) -> list[str]:
+    node = _unwrap_expression(argument)
+    if node is None or node.type != "call_expression":
+        return _identifier_names(argument, source)
+
+    function_node = node.child_by_field_name("function")
+    raw_name = _expression_name(function_node, source)
+    canonical_name = _canonicalize_reference_name(raw_name, analysis.function_aliases, analysis.namespace_aliases)
+    if (
+        canonical_name in sanitizer_function_names
+        or raw_name in sanitizer_function_names
+        or _is_direct_js_ts_sanitizer_name(canonical_name or raw_name)
+    ):
+        return []
+    return _identifier_names(argument, source)
+
+
+def _call_argument_metadata(
+    arguments_node: TreeSitterNode | None,
+    source: bytes,
+    analysis: JSTSAstAnalysis,
+    sanitizer_function_names: set[str],
+) -> tuple[list[list[str]], list[str]]:
     argument_names: list[list[str]] = []
+    argument_wrapper_names: list[str] = []
     if arguments_node is None:
-        return argument_names
+        return argument_names, argument_wrapper_names
     for argument in arguments_node.named_children:
-        argument_names.append(_identifier_names(argument, source))
-    return argument_names
+        argument_names.append(_sanitized_argument_names(argument, source, analysis, sanitizer_function_names))
+        wrapper_name = ""
+        node = _unwrap_expression(argument)
+        if node is not None and node.type == "call_expression":
+            function_node = node.child_by_field_name("function")
+            raw_name = _expression_name(function_node, source)
+            wrapper_name = _canonicalize_reference_name(raw_name, analysis.function_aliases, analysis.namespace_aliases)
+        argument_wrapper_names.append(wrapper_name)
+    return argument_names, argument_wrapper_names
 
 
 def _guarded_identifiers_from_condition(
@@ -439,7 +489,7 @@ def _guarded_identifiers_from_condition(
 
     function_node = node.child_by_field_name("function")
     arguments_node = node.child_by_field_name("arguments")
-    argument_names = _call_argument_names(arguments_node, source)
+    argument_names, _argument_wrapper_names = _call_argument_metadata(arguments_node, source, analysis, set())
     flattened_names = {name for names in argument_names for name in names}
     if not flattened_names:
         return set()
@@ -503,13 +553,65 @@ def _validator_param_names_from_body(
 
     param_names = set(function.param_names)
     guarded_names: set[str] = set()
-    for node in _iter_nodes(function.body_node):
+    current_guarded: set[str] = set()
+    body_nodes = list(function.body_node.named_children) if function.body_node.type == "statement_block" else [function.body_node]
+    for node in body_nodes:
+        if node.type == "if_statement":
+            children = node.named_children
+            condition_node = children[0] if children else None
+            consequence_node = children[1] if len(children) > 1 else None
+            current_guarded.update(
+                name
+                for name in _post_if_guarded_names(
+                    condition_node,
+                    consequence_node,
+                    source,
+                    analysis,
+                    validator_function_names,
+                )
+                if name in param_names
+            )
+            continue
         if node.type != "return_statement":
             continue
         expression_node = next(iter(node.named_children), None)
         validated_names = _guarded_identifiers_from_condition(expression_node, source, analysis, validator_function_names)
         guarded_names.update(name for name in validated_names if name in param_names)
+        returned_names = _returned_identifier_names(expression_node, source)
+        guarded_names.update(name for name in returned_names if name in current_guarded and name in param_names)
     return guarded_names
+
+
+def _returned_identifier_names(node: TreeSitterNode | None, source: bytes) -> set[str]:
+    expression = _unwrap_expression(node)
+    if expression is None:
+        return set()
+    if expression.type in {"identifier", "property_identifier"}:
+        return {_identifier_like_text(expression, source)}
+    return set()
+
+
+def _sanitizing_param_names_from_body(
+    function: JSTSFunction,
+    source: bytes,
+    analysis: JSTSAstAnalysis,
+    sanitizer_function_names: set[str],
+) -> set[str]:
+    if function.body_node is None or not function.validator_params:
+        return set()
+
+    validated_params = set(function.validator_params)
+    if not validated_params:
+        return set()
+
+    sanitized_params: set[str] = set()
+    for node in _iter_nodes(function.body_node):
+        if node.type != "return_statement":
+            continue
+        expression_node = next(iter(node.named_children), None)
+        returned_names = _returned_identifier_names(expression_node, source)
+        sanitized_params.update(name for name in returned_names if name in validated_params)
+    return sanitized_params
 
 
 def _populate_function_call_sites(source: bytes, analysis: JSTSAstAnalysis) -> None:
@@ -524,10 +626,55 @@ def _populate_function_call_sites(source: bytes, analysis: JSTSAstAnalysis) -> N
                 validator_function_names.add(function.name)
                 changed = True
 
+    sanitizer_function_names: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for function in analysis.functions.values():
+            sanitizing_params = _sanitizing_param_names_from_body(function, source, analysis, sanitizer_function_names)
+            if sanitizing_params and sanitizing_params != set(function.sanitizing_params):
+                function.sanitizing_params = frozenset(sanitizing_params)
+                sanitizer_function_names.add(function.name)
+                changed = True
+
     for function in analysis.functions.values():
-        call_sites = _call_sites(function.body_node, source, analysis, validator_function_names)
+        call_sites: list[JSTSCallSite] = []
+        if function.body_node is not None and function.body_node.type != "statement_block":
+            root_call_site = _call_site_from_node(function.body_node, source, analysis, frozenset(), sanitizer_function_names)
+            if root_call_site is not None:
+                call_sites.append(root_call_site)
+        call_sites.extend(_call_sites(function.body_node, source, analysis, validator_function_names, sanitizer_function_names))
         function.call_sites = call_sites
         function.dangerous_call_sites = [site for site in call_sites if _is_dangerous_reference(site.name)]
+
+
+def _call_site_from_node(
+    node: TreeSitterNode,
+    source: bytes,
+    analysis: JSTSAstAnalysis,
+    guarded_names: frozenset[str],
+    sanitizer_function_names: set[str],
+) -> JSTSCallSite | None:
+    canonical = ""
+    arguments_node = None
+    if node.type == "call_expression":
+        raw_name = _expression_name(node.child_by_field_name("function"), source)
+        canonical = _canonicalize_reference_name(raw_name, analysis.function_aliases, analysis.namespace_aliases)
+        arguments_node = node.child_by_field_name("arguments")
+    elif node.type == "new_expression":
+        raw_name = _expression_name(node.child_by_field_name("constructor"), source)
+        canonical = _canonicalize_reference_name(raw_name, analysis.function_aliases, analysis.namespace_aliases)
+        arguments_node = node.child_by_field_name("arguments")
+    if not canonical:
+        return None
+    argument_names, argument_wrapper_names = _call_argument_metadata(arguments_node, source, analysis, sanitizer_function_names)
+    return JSTSCallSite(
+        name=canonical,
+        line_number=_line_number(node),
+        argument_names=argument_names,
+        argument_wrapper_names=argument_wrapper_names,
+        guarded_names=guarded_names,
+    )
 
 
 def _call_sites(
@@ -535,6 +682,7 @@ def _call_sites(
     source: bytes,
     analysis: JSTSAstAnalysis,
     validator_function_names: set[str],
+    sanitizer_function_names: set[str],
     current_guarded: frozenset[str] = frozenset(),
 ) -> list[JSTSCallSite]:
     if root is None:
@@ -554,11 +702,21 @@ def _call_sites(
                     source,
                     analysis,
                     validator_function_names,
+                    sanitizer_function_names,
                     frozenset(inherited_guarded | guarded_names),
                 )
             )
             if alternative_node is not None:
-                call_sites.extend(_call_sites(alternative_node, source, analysis, validator_function_names, frozenset(inherited_guarded)))
+                call_sites.extend(
+                    _call_sites(
+                        alternative_node,
+                        source,
+                        analysis,
+                        validator_function_names,
+                        sanitizer_function_names,
+                        frozenset(inherited_guarded),
+                    )
+                )
             inherited_guarded.update(
                 _post_if_guarded_names(
                     condition_node,
@@ -570,26 +728,19 @@ def _call_sites(
             )
             continue
 
-        canonical = ""
-        arguments_node = None
-        if node.type == "call_expression":
-            raw_name = _expression_name(node.child_by_field_name("function"), source)
-            canonical = _canonicalize_reference_name(raw_name, analysis.function_aliases, analysis.namespace_aliases)
-            arguments_node = node.child_by_field_name("arguments")
-        elif node.type == "new_expression":
-            raw_name = _expression_name(node.child_by_field_name("constructor"), source)
-            canonical = _canonicalize_reference_name(raw_name, analysis.function_aliases, analysis.namespace_aliases)
-            arguments_node = node.child_by_field_name("arguments")
-        if canonical:
-            call_sites.append(
-                JSTSCallSite(
-                    name=canonical,
-                    line_number=_line_number(node),
-                    argument_names=_call_argument_names(arguments_node, source),
-                    guarded_names=frozenset(inherited_guarded),
-                )
+        call_site = _call_site_from_node(node, source, analysis, frozenset(inherited_guarded), sanitizer_function_names)
+        if call_site is not None:
+            call_sites.append(call_site)
+        call_sites.extend(
+            _call_sites(
+                node,
+                source,
+                analysis,
+                validator_function_names,
+                sanitizer_function_names,
+                frozenset(inherited_guarded),
             )
-        call_sites.extend(_call_sites(node, source, analysis, validator_function_names, frozenset(inherited_guarded)))
+        )
     return call_sites
 
 

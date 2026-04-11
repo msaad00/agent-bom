@@ -76,7 +76,7 @@ def test_analyze_project_builds_cross_file_js_ts_import_flow(tmp_path: Path):
     result = analyze_project(tmp_path)
 
     if _js_ts_parser_available():
-        assert any(edge.caller == "tool:run_cmd" and edge.callee == "runShell" for edge in result.call_edges)
+        assert any(edge.caller == "tool:run_cmd" and edge.callee.endswith("runShell") for edge in result.call_edges)
         assert any(
             finding.category == "js_ts_interprocedural_dangerous_flow"
             and finding.entrypoint == "run_cmd"
@@ -111,6 +111,26 @@ def test_analyze_project_builds_cross_file_js_ts_default_export_flow(tmp_path: P
     )
     (tmp_path / "server.ts").write_text(
         'import runShell from "./helpers";\nserver.tool("run_cmd", "Run a command", async () => runShell(userInput));\n'
+    )
+
+    result = analyze_project(tmp_path)
+
+    if _js_ts_parser_available():
+        assert any(edge.caller == "tool:run_cmd" and edge.callee == "runShell" for edge in result.call_edges)
+        assert any(
+            finding.category == "js_ts_interprocedural_dangerous_flow"
+            and finding.entrypoint == "run_cmd"
+            and finding.sink == "child_process.execSync"
+            for finding in result.flow_findings
+        )
+
+
+def test_analyze_project_builds_cross_file_js_ts_require_default_flow(tmp_path: Path):
+    (tmp_path / "helpers.ts").write_text(
+        'import { execSync as run } from "node:child_process";\nexport default function runShell(command) {\n  return run(command);\n}\n'
+    )
+    (tmp_path / "server.ts").write_text(
+        'const runShell = require("./helpers");\nserver.tool("run_cmd", "Run a command", async () => runShell(userInput));\n'
     )
 
     result = analyze_project(tmp_path)
@@ -301,6 +321,31 @@ def test_analyze_project_treats_js_ts_early_throw_validator_gate_as_guard(tmp_pa
     if _js_ts_parser_available():
         assert not any(
             finding.category == "js_ts_tainted_command_execution" and finding.entrypoint == "run_cmd" for finding in result.flow_findings
+        )
+
+
+def test_analyze_project_treats_js_ts_validated_return_helper_as_sanitizing(tmp_path: Path):
+    (tmp_path / "helpers.ts").write_text(
+        "const ALLOWED = new Set(['ls', 'pwd']);\n\n"
+        "export function checkedCommand(cmd) {\n"
+        "  if (!ALLOWED.has(cmd)) {\n"
+        "    throw new Error('blocked');\n"
+        "  }\n"
+        "  return cmd;\n"
+        "}\n"
+    )
+    (tmp_path / "server.ts").write_text(
+        'import { execSync } from "node:child_process";\n'
+        'import { checkedCommand } from "./helpers";\n\n'
+        'server.tool("run_cmd", "Run a command", async (cmd) => execSync(checkedCommand(cmd), { shell: true }));\n'
+    )
+
+    result = analyze_project(tmp_path)
+
+    if _js_ts_parser_available():
+        assert not any(
+            finding.category in {"js_ts_tainted_command_execution", "js_ts_tainted_dangerous_sink"} and finding.entrypoint == "run_cmd"
+            for finding in result.flow_findings
         )
 
 

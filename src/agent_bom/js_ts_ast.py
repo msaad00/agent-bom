@@ -56,6 +56,7 @@ class JSTSCallSite:
     name: str
     line_number: int
     argument_names: list[list[str]] = field(default_factory=list)
+    guarded_names: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass
@@ -71,6 +72,8 @@ class JSTSFunction:
     imported_module_refs: dict[str, JSImportRef] = field(default_factory=dict)
     call_sites: list[JSTSCallSite] = field(default_factory=list)
     dangerous_call_sites: list[JSTSCallSite] = field(default_factory=list)
+    validator_params: frozenset[str] = field(default_factory=frozenset)
+    body_node: TreeSitterNode | None = None
 
 
 @dataclass
@@ -409,11 +412,122 @@ def _identifier_names(node: TreeSitterNode | None, source: bytes) -> list[str]:
     return names
 
 
-def _call_sites(root: TreeSitterNode | None, source: bytes, analysis: JSTSAstAnalysis) -> list[JSTSCallSite]:
+def _unwrap_expression(node: TreeSitterNode | None) -> TreeSitterNode | None:
+    while node is not None and node.type in {"parenthesized_expression", "type_assertion", "as_expression"} and node.named_children:
+        node = node.named_children[-1]
+    return node
+
+
+def _call_argument_names(arguments_node: TreeSitterNode | None, source: bytes) -> list[list[str]]:
+    argument_names: list[list[str]] = []
+    if arguments_node is None:
+        return argument_names
+    for argument in arguments_node.named_children:
+        argument_names.append(_identifier_names(argument, source))
+    return argument_names
+
+
+def _guarded_identifiers_from_condition(
+    condition_node: TreeSitterNode | None,
+    source: bytes,
+    analysis: JSTSAstAnalysis,
+    validator_function_names: set[str],
+) -> set[str]:
+    node = _unwrap_expression(condition_node)
+    if node is None or node.type != "call_expression":
+        return set()
+
+    function_node = node.child_by_field_name("function")
+    arguments_node = node.child_by_field_name("arguments")
+    argument_names = _call_argument_names(arguments_node, source)
+    flattened_names = {name for names in argument_names for name in names}
+    if not flattened_names:
+        return set()
+
+    raw_name = _expression_name(function_node, source)
+    canonical_name = _canonicalize_reference_name(raw_name, analysis.function_aliases, analysis.namespace_aliases)
+    if canonical_name in validator_function_names or raw_name in validator_function_names:
+        return flattened_names
+
+    if function_node is not None and function_node.type == "member_expression":
+        property_name = _expression_name(function_node.child_by_field_name("property"), source)
+        object_text = _node_text(function_node.child_by_field_name("object"), source).strip()
+        if property_name == "has":
+            return flattened_names
+        if property_name == "test" and object_text.startswith("/"):
+            return flattened_names
+
+    return set()
+
+
+def _validator_param_names_from_body(
+    function: JSTSFunction,
+    source: bytes,
+    analysis: JSTSAstAnalysis,
+    validator_function_names: set[str],
+) -> set[str]:
+    if function.body_node is None or not function.param_names:
+        return set()
+
+    param_names = set(function.param_names)
+    guarded_names: set[str] = set()
+    for node in _iter_nodes(function.body_node):
+        if node.type != "return_statement":
+            continue
+        expression_node = next(iter(node.named_children), None)
+        validated_names = _guarded_identifiers_from_condition(expression_node, source, analysis, validator_function_names)
+        guarded_names.update(name for name in validated_names if name in param_names)
+    return guarded_names
+
+
+def _populate_function_call_sites(source: bytes, analysis: JSTSAstAnalysis) -> None:
+    validator_function_names: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for function in analysis.functions.values():
+            guarded_params = _validator_param_names_from_body(function, source, analysis, validator_function_names)
+            if guarded_params and guarded_params != set(function.validator_params):
+                function.validator_params = frozenset(guarded_params)
+                validator_function_names.add(function.name)
+                changed = True
+
+    for function in analysis.functions.values():
+        call_sites = _call_sites(function.body_node, source, analysis, validator_function_names)
+        function.call_sites = call_sites
+        function.dangerous_call_sites = [site for site in call_sites if _is_dangerous_reference(site.name)]
+
+
+def _call_sites(
+    root: TreeSitterNode | None,
+    source: bytes,
+    analysis: JSTSAstAnalysis,
+    validator_function_names: set[str],
+    current_guarded: frozenset[str] = frozenset(),
+) -> list[JSTSCallSite]:
     if root is None:
         return []
     call_sites: list[JSTSCallSite] = []
-    for node in _iter_nodes(root):
+    for node in root.named_children:
+        if node.type == "if_statement":
+            children = node.named_children
+            condition_node = children[0] if children else None
+            consequence_node = children[1] if len(children) > 1 else None
+            alternative_node = children[2] if len(children) > 2 else None
+            guarded_names = _guarded_identifiers_from_condition(condition_node, source, analysis, validator_function_names)
+            call_sites.extend(
+                _call_sites(
+                    consequence_node,
+                    source,
+                    analysis,
+                    validator_function_names,
+                    current_guarded | frozenset(guarded_names),
+                )
+            )
+            if alternative_node is not None:
+                call_sites.extend(_call_sites(alternative_node, source, analysis, validator_function_names, current_guarded))
+            continue
+
         canonical = ""
         arguments_node = None
         if node.type == "call_expression":
@@ -425,17 +539,15 @@ def _call_sites(root: TreeSitterNode | None, source: bytes, analysis: JSTSAstAna
             canonical = _canonicalize_reference_name(raw_name, analysis.function_aliases, analysis.namespace_aliases)
             arguments_node = node.child_by_field_name("arguments")
         if canonical:
-            argument_names: list[list[str]] = []
-            if arguments_node is not None:
-                for argument in arguments_node.named_children:
-                    argument_names.append(_identifier_names(argument, source))
             call_sites.append(
                 JSTSCallSite(
                     name=canonical,
                     line_number=_line_number(node),
-                    argument_names=argument_names,
+                    argument_names=_call_argument_names(arguments_node, source),
+                    guarded_names=current_guarded,
                 )
             )
+        call_sites.extend(_call_sites(node, source, analysis, validator_function_names, current_guarded))
     return call_sites
 
 
@@ -450,7 +562,6 @@ def _register_function(
 ) -> None:
     if not function_name or function_name in analysis.functions:
         return
-    call_sites = _call_sites(body_node, source, analysis)
     analysis.functions[function_name] = JSTSFunction(
         name=function_name,
         line_number=line_number,
@@ -458,8 +569,7 @@ def _register_function(
         param_names=_identifier_names(parameter_node, source),
         imported_function_refs=dict(analysis.imported_function_refs),
         imported_module_refs=dict(analysis.imported_module_refs),
-        call_sites=call_sites,
-        dangerous_call_sites=[site for site in call_sites if _is_dangerous_reference(site.name)],
+        body_node=body_node,
     )
 
 
@@ -553,5 +663,6 @@ def analyze_js_ts_block(source: str, *, language_hint: str = "javascript") -> JS
     _propagate_alias_assignments(tree.root_node, source_bytes, analysis)
     _collect_functions(tree.root_node, source_bytes, analysis)
     _collect_tool_registrations(tree.root_node, source_bytes, analysis)
+    _populate_function_call_sites(source_bytes, analysis)
     _collect_call_names(tree.root_node, source_bytes, analysis)
     return analysis

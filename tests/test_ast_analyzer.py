@@ -175,6 +175,70 @@ def test_analyze_project_reports_js_ts_tainted_path_access(tmp_path: Path):
         )
 
 
+def test_analyze_project_treats_js_ts_regex_branch_as_guard(tmp_path: Path):
+    (tmp_path / "server.ts").write_text(
+        'import { execSync } from "node:child_process";\n'
+        'server.tool("run_cmd", "Run a command", async (cmd) => {\n'
+        "  if (/^[a-z]+$/.test(cmd)) {\n"
+        "    return execSync(cmd);\n"
+        "  }\n"
+        "  return null;\n"
+        "});\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    if _js_ts_parser_available():
+        assert not any(
+            finding.category == "js_ts_tainted_command_execution" and finding.entrypoint == "run_cmd" for finding in result.flow_findings
+        )
+        assert not any(
+            finding.category == "js_ts_tainted_dangerous_sink" and finding.entrypoint == "run_cmd" for finding in result.flow_findings
+        )
+
+
+def test_analyze_project_treats_js_ts_allowlist_branch_as_guard(tmp_path: Path):
+    (tmp_path / "server.ts").write_text(
+        'import { execSync } from "node:child_process";\n'
+        "const allowed = new Set(['ls', 'pwd']);\n"
+        'server.tool("run_cmd", "Run a command", async (cmd) => {\n'
+        "  if (allowed.has(cmd)) {\n"
+        "    return execSync(cmd);\n"
+        "  }\n"
+        "  return null;\n"
+        "});\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    if _js_ts_parser_available():
+        assert not any(
+            finding.category == "js_ts_tainted_command_execution" and finding.entrypoint == "run_cmd" for finding in result.flow_findings
+        )
+
+
+def test_analyze_project_treats_js_ts_helper_validator_as_guard(tmp_path: Path):
+    (tmp_path / "server.ts").write_text(
+        'import { execSync } from "node:child_process";\n'
+        "function isSafe(cmd) {\n"
+        "  return /^[a-z]+$/.test(cmd);\n"
+        "}\n"
+        'server.tool("run_cmd", "Run a command", async (cmd) => {\n'
+        "  if (isSafe(cmd)) {\n"
+        "    return execSync(cmd);\n"
+        "  }\n"
+        "  return null;\n"
+        "});\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    if _js_ts_parser_available():
+        assert not any(
+            finding.category == "js_ts_tainted_command_execution" and finding.entrypoint == "run_cmd" for finding in result.flow_findings
+        )
+
+
 def test_analyze_project_builds_interprocedural_dangerous_flow(tmp_path: Path):
     (tmp_path / "agent.py").write_text(
         "import subprocess\n\n"

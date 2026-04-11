@@ -1990,7 +1990,7 @@ def _build_js_ts_flow_findings(
                         name
                         for arg_names in call_site.argument_names
                         for name in arg_names
-                        if name in current_tainted or _js_ts_identifier_looks_untrusted(name)
+                        if (name in current_tainted or _js_ts_identifier_looks_untrusted(name)) and name not in call_site.guarded_names
                     }
                 )
                 if not tainted_sources:
@@ -2073,7 +2073,10 @@ def _build_js_ts_flow_findings(
                 for index, arg_names in enumerate(call_site.argument_names):
                     if index >= len(callee.param_names):
                         break
-                    if any(name in current_tainted or _js_ts_identifier_looks_untrusted(name) for name in arg_names):
+                    if any(
+                        (name in current_tainted or _js_ts_identifier_looks_untrusted(name)) and name not in call_site.guarded_names
+                        for name in arg_names
+                    ):
                         tainted_callee_params.add(callee.param_names[index])
                 if tainted_callee_params:
                     taint_queue.append((callee_key, path + [callee_key], frozenset(tainted_callee_params)))

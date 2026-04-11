@@ -545,6 +545,8 @@ _GO_DANGEROUS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("exec.Command", re.compile(r"\bexec\.Command(?:Context)?\s*\(")),
     ("os.WriteFile", re.compile(r"\bos\.WriteFile\s*\(")),
     ("ioutil.WriteFile", re.compile(r"\bioutil\.WriteFile\s*\(")),
+    ("template.HTML", re.compile(r"\btemplate\.HTML\s*\(")),
+    ("template.JS", re.compile(r"\btemplate\.JS\s*\(")),
 ]
 _GO_LLM_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("openai.ChatCompletion", re.compile(r"\bCreateChatCompletion\b")),
@@ -1179,8 +1181,12 @@ def _is_go_path_sink_call_name(call_name: str) -> bool:
     return any(lower_name == suffix or lower_name.endswith(f".{suffix}") for suffix in _GO_PATH_CALL_SUFFIXES)
 
 
+def _is_go_xss_sink_call_name(call_name: str) -> bool:
+    return call_name in {"template.HTML", "template.JS"}
+
+
 def _is_go_dangerous_call_name(call_name: str) -> bool:
-    return _is_go_command_sink_call_name(call_name) or _is_go_path_sink_call_name(call_name)
+    return _is_go_command_sink_call_name(call_name) or _is_go_path_sink_call_name(call_name) or _is_go_xss_sink_call_name(call_name)
 
 
 def _balanced_segment(source: str, open_index: int, *, open_char: str, close_char: str) -> tuple[str, int] | None:
@@ -1672,6 +1678,9 @@ def _build_go_flow_findings(
                 elif _is_go_path_sink_call_name(call_site.name):
                     sink_category = "go_tainted_path_access"
                     title = "Go tool routes tainted input into a filesystem path sink"
+                elif _is_go_xss_sink_call_name(call_site.name):
+                    sink_category = "go_tainted_xss_sink"
+                    title = "Go tool routes tainted input into an HTML rendering sink"
 
                 if sink_category:
                     taint_dedup_key = (sink_category, registration.tool_name, call_site.name, call_site.line_number, current_display_name)

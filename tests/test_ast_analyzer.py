@@ -672,6 +672,29 @@ def test_analyze_project_reports_go_tainted_sql_and_path_sinks(tmp_path: Path):
     )
 
 
+def test_analyze_project_reports_go_tainted_html_sink(tmp_path: Path):
+    (tmp_path / "render.go").write_text(
+        "package main\n\n"
+        "import (\n"
+        '    "html/template"\n'
+        '    "github.com/modelcontextprotocol/go-sdk/mcp"\n'
+        ")\n\n"
+        "func renderHTML(userHTML string) template.HTML {\n"
+        "    return template.HTML(userHTML)\n"
+        "}\n\n"
+        "func register(server *mcp.Server) {\n"
+        '    server.AddTool("render_html", renderHTML)\n'
+        "}\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert any(
+        finding.category == "go_tainted_xss_sink" and finding.entrypoint == "render_html" and finding.sink == "template.HTML"
+        for finding in result.flow_findings
+    )
+
+
 def test_analyze_project_resolves_cross_file_import_alias_flow(tmp_path: Path):
     (tmp_path / "helpers.py").write_text("import subprocess\n\ndef run_shell(cmd):\n    return subprocess.run(cmd, shell=True)\n")
     (tmp_path / "agent.py").write_text("from helpers import run_shell as runner\n\n@tool\ndef execute(cmd):\n    return runner(cmd)\n")

@@ -259,6 +259,51 @@ def test_analyze_project_treats_js_ts_helper_validator_as_guard(tmp_path: Path):
         )
 
 
+def test_analyze_project_treats_js_ts_early_return_validator_gate_as_guard(tmp_path: Path):
+    (tmp_path / "server.ts").write_text(
+        'import { execSync } from "node:child_process";\n'
+        "function isSafe(cmd) {\n"
+        "  return /^[a-z]+$/.test(cmd);\n"
+        "}\n"
+        'server.tool("run_cmd", "Run a command", async (cmd) => {\n'
+        "  if (!isSafe(cmd)) {\n"
+        "    return null;\n"
+        "  }\n"
+        "  return execSync(cmd);\n"
+        "});\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    if _js_ts_parser_available():
+        assert not any(
+            finding.category == "js_ts_tainted_command_execution" and finding.entrypoint == "run_cmd" for finding in result.flow_findings
+        )
+        assert not any(
+            finding.category == "js_ts_tainted_dangerous_sink" and finding.entrypoint == "run_cmd" for finding in result.flow_findings
+        )
+
+
+def test_analyze_project_treats_js_ts_early_throw_validator_gate_as_guard(tmp_path: Path):
+    (tmp_path / "server.ts").write_text(
+        'import { execSync } from "node:child_process";\n'
+        "const allowed = new Set(['ls', 'pwd']);\n"
+        'server.tool("run_cmd", "Run a command", async (cmd) => {\n'
+        "  if (!allowed.has(cmd)) {\n"
+        "    throw new Error('bad command');\n"
+        "  }\n"
+        "  return execSync(cmd);\n"
+        "});\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    if _js_ts_parser_available():
+        assert not any(
+            finding.category == "js_ts_tainted_command_execution" and finding.entrypoint == "run_cmd" for finding in result.flow_findings
+        )
+
+
 def test_analyze_project_builds_interprocedural_dangerous_flow(tmp_path: Path):
     (tmp_path / "agent.py").write_text(
         "import subprocess\n\n"

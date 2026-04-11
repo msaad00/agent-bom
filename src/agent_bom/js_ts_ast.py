@@ -460,6 +460,38 @@ def _guarded_identifiers_from_condition(
     return set()
 
 
+def _branch_definitely_exits(node: TreeSitterNode | None) -> bool:
+    if node is None:
+        return False
+    if node.type in {"return_statement", "throw_statement"}:
+        return True
+    if node.type != "statement_block":
+        return False
+    statements = list(node.named_children)
+    if not statements:
+        return False
+    last = statements[-1]
+    return last.type in {"return_statement", "throw_statement"}
+
+
+def _post_if_guarded_names(
+    condition_node: TreeSitterNode | None,
+    consequence_node: TreeSitterNode | None,
+    source: bytes,
+    analysis: JSTSAstAnalysis,
+    validator_function_names: set[str],
+) -> set[str]:
+    condition = _unwrap_expression(condition_node)
+    if condition is None or condition.type != "unary_expression":
+        return set()
+    if not _node_text(condition, source).lstrip().startswith("!"):
+        return set()
+    if not _branch_definitely_exits(consequence_node):
+        return set()
+    operand = condition.named_children[-1] if condition.named_children else None
+    return _guarded_identifiers_from_condition(operand, source, analysis, validator_function_names)
+
+
 def _validator_param_names_from_body(
     function: JSTSFunction,
     source: bytes,
@@ -508,6 +540,7 @@ def _call_sites(
     if root is None:
         return []
     call_sites: list[JSTSCallSite] = []
+    inherited_guarded = set(current_guarded)
     for node in root.named_children:
         if node.type == "if_statement":
             children = node.named_children
@@ -521,11 +554,20 @@ def _call_sites(
                     source,
                     analysis,
                     validator_function_names,
-                    current_guarded | frozenset(guarded_names),
+                    frozenset(inherited_guarded | guarded_names),
                 )
             )
             if alternative_node is not None:
-                call_sites.extend(_call_sites(alternative_node, source, analysis, validator_function_names, current_guarded))
+                call_sites.extend(_call_sites(alternative_node, source, analysis, validator_function_names, frozenset(inherited_guarded)))
+            inherited_guarded.update(
+                _post_if_guarded_names(
+                    condition_node,
+                    consequence_node,
+                    source,
+                    analysis,
+                    validator_function_names,
+                )
+            )
             continue
 
         canonical = ""
@@ -544,10 +586,10 @@ def _call_sites(
                     name=canonical,
                     line_number=_line_number(node),
                     argument_names=_call_argument_names(arguments_node, source),
-                    guarded_names=current_guarded,
+                    guarded_names=frozenset(inherited_guarded),
                 )
             )
-        call_sites.extend(_call_sites(node, source, analysis, validator_function_names, current_guarded))
+        call_sites.extend(_call_sites(node, source, analysis, validator_function_names, frozenset(inherited_guarded)))
     return call_sites
 
 

@@ -1824,6 +1824,19 @@ def _is_js_ts_path_sink_call_name(call_name: str) -> bool:
     return lower_name.startswith("fs.") or lower_name.startswith("fs.promises.") or lower_name.endswith(".open")
 
 
+def _is_direct_js_ts_sanitizer_wrapper_name(call_name: str) -> bool:
+    lower_name = call_name.strip().lower()
+    if lower_name in {
+        "dompurify.sanitize",
+        "validator.escape",
+        "he.encode",
+        "escapehtml",
+        "sanitizehtml",
+    }:
+        return True
+    return lower_name.endswith((".escape", ".sanitize"))
+
+
 def _resolve_js_ts_callee_key(
     reference_name: str,
     function: JSTSFunction,
@@ -1854,6 +1867,24 @@ def _resolve_js_ts_callee_key(
     if key in function_registry:
         return key
     return None
+
+
+def _js_ts_argument_is_sanitized(
+    *,
+    wrapper_name: str,
+    function: JSTSFunction,
+    same_module_names: set[str],
+    function_registry: Mapping[str, JSTSFunction],
+) -> bool:
+    if not wrapper_name:
+        return False
+    if _is_direct_js_ts_sanitizer_wrapper_name(wrapper_name):
+        return True
+    callee_key = _resolve_js_ts_callee_key(wrapper_name, function, same_module_names, function_registry)
+    if not callee_key:
+        return False
+    callee = function_registry.get(callee_key)
+    return bool(callee and callee.sanitizing_params)
 
 
 def _build_js_ts_flow_findings(
@@ -1992,16 +2023,26 @@ def _build_js_ts_flow_findings(
             current = functions[current_name]
             current_tainted = set(tainted_params)
             current_display_name = display_name(current_name)
+            same_module = same_module_names.get(current.module_name, set())
 
             for call_site in current.call_sites:
-                tainted_sources = sorted(
-                    {
-                        name
-                        for arg_names in call_site.argument_names
-                        for name in arg_names
-                        if (name in current_tainted or _js_ts_identifier_looks_untrusted(name)) and name not in call_site.guarded_names
-                    }
-                )
+                tainted_sources: list[str] = []
+                for index, arg_names in enumerate(call_site.argument_names):
+                    wrapper_name = call_site.argument_wrapper_names[index] if index < len(call_site.argument_wrapper_names) else ""
+                    if _js_ts_argument_is_sanitized(
+                        wrapper_name=wrapper_name,
+                        function=current,
+                        same_module_names=same_module,
+                        function_registry=functions,
+                    ):
+                        continue
+                    for name in arg_names:
+                        if (
+                            (name in current_tainted or _js_ts_identifier_looks_untrusted(name))
+                            and name not in call_site.guarded_names
+                            and name not in tainted_sources
+                        ):
+                            tainted_sources.append(name)
                 if not tainted_sources:
                     continue
 
@@ -2071,7 +2112,7 @@ def _build_js_ts_flow_findings(
                 callee_key = _resolve_js_ts_callee_key(
                     call_site.name,
                     current,
-                    same_module_names.get(current.module_name, set()),
+                    same_module,
                     functions,
                 )
                 if not callee_key or callee_key == current_name:
@@ -2082,6 +2123,14 @@ def _build_js_ts_flow_findings(
                 for index, arg_names in enumerate(call_site.argument_names):
                     if index >= len(callee.param_names):
                         break
+                    wrapper_name = call_site.argument_wrapper_names[index] if index < len(call_site.argument_wrapper_names) else ""
+                    if _js_ts_argument_is_sanitized(
+                        wrapper_name=wrapper_name,
+                        function=current,
+                        same_module_names=same_module,
+                        function_registry=functions,
+                    ):
+                        continue
                     if any(
                         (name in current_tainted or _js_ts_identifier_looks_untrusted(name)) and name not in call_site.guarded_names
                         for name in arg_names

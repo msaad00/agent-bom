@@ -324,6 +324,31 @@ def test_analyze_project_treats_js_ts_early_throw_validator_gate_as_guard(tmp_pa
         )
 
 
+def test_analyze_project_treats_js_ts_validated_return_helper_as_sanitizing(tmp_path: Path):
+    (tmp_path / "helpers.ts").write_text(
+        "const ALLOWED = new Set(['ls', 'pwd']);\n\n"
+        "export function checkedCommand(cmd) {\n"
+        "  if (!ALLOWED.has(cmd)) {\n"
+        "    throw new Error('blocked');\n"
+        "  }\n"
+        "  return cmd;\n"
+        "}\n"
+    )
+    (tmp_path / "server.ts").write_text(
+        'import { execSync } from "node:child_process";\n'
+        'import { checkedCommand } from "./helpers";\n\n'
+        'server.tool("run_cmd", "Run a command", async (cmd) => execSync(checkedCommand(cmd), { shell: true }));\n'
+    )
+
+    result = analyze_project(tmp_path)
+
+    if _js_ts_parser_available():
+        assert not any(
+            finding.category in {"js_ts_tainted_command_execution", "js_ts_tainted_dangerous_sink"} and finding.entrypoint == "run_cmd"
+            for finding in result.flow_findings
+        )
+
+
 def test_analyze_project_builds_interprocedural_dangerous_flow(tmp_path: Path):
     (tmp_path / "agent.py").write_text(
         "import subprocess\n\n"

@@ -363,12 +363,12 @@ def _collect_require_aliases(root: TreeSitterNode, source: bytes, analysis: JSTS
                     if canonical:
                         analysis.function_aliases[imported_name] = canonical
         elif name_node.type == "identifier":
-            analysis.imported_module_refs[_identifier_like_text(name_node, source)] = JSImportRef(
-                module_name=_normalize_module_name(module_name)
+            alias = _identifier_like_text(name_node, source)
+            analysis.imported_function_refs[alias] = JSImportRef(
+                module_name=_normalize_module_name(module_name),
+                exported_name="default",
             )
-            canonical = _canonical_namespace(module_name)
-            if canonical:
-                analysis.namespace_aliases[_identifier_like_text(name_node, source)] = canonical
+            analysis.imported_module_refs[alias] = JSImportRef(module_name=_normalize_module_name(module_name))
 
 
 def _propagate_alias_assignments(root: TreeSitterNode, source: bytes, analysis: JSTSAstAnalysis) -> None:
@@ -525,9 +525,40 @@ def _populate_function_call_sites(source: bytes, analysis: JSTSAstAnalysis) -> N
                 changed = True
 
     for function in analysis.functions.values():
-        call_sites = _call_sites(function.body_node, source, analysis, validator_function_names)
+        call_sites: list[JSTSCallSite] = []
+        if function.body_node is not None and function.body_node.type != "statement_block":
+            root_call_site = _call_site_from_node(function.body_node, source, analysis, frozenset())
+            if root_call_site is not None:
+                call_sites.append(root_call_site)
+        call_sites.extend(_call_sites(function.body_node, source, analysis, validator_function_names))
         function.call_sites = call_sites
         function.dangerous_call_sites = [site for site in call_sites if _is_dangerous_reference(site.name)]
+
+
+def _call_site_from_node(
+    node: TreeSitterNode,
+    source: bytes,
+    analysis: JSTSAstAnalysis,
+    guarded_names: frozenset[str],
+) -> JSTSCallSite | None:
+    canonical = ""
+    arguments_node = None
+    if node.type == "call_expression":
+        raw_name = _expression_name(node.child_by_field_name("function"), source)
+        canonical = _canonicalize_reference_name(raw_name, analysis.function_aliases, analysis.namespace_aliases)
+        arguments_node = node.child_by_field_name("arguments")
+    elif node.type == "new_expression":
+        raw_name = _expression_name(node.child_by_field_name("constructor"), source)
+        canonical = _canonicalize_reference_name(raw_name, analysis.function_aliases, analysis.namespace_aliases)
+        arguments_node = node.child_by_field_name("arguments")
+    if not canonical:
+        return None
+    return JSTSCallSite(
+        name=canonical,
+        line_number=_line_number(node),
+        argument_names=_call_argument_names(arguments_node, source),
+        guarded_names=guarded_names,
+    )
 
 
 def _call_sites(
@@ -570,25 +601,9 @@ def _call_sites(
             )
             continue
 
-        canonical = ""
-        arguments_node = None
-        if node.type == "call_expression":
-            raw_name = _expression_name(node.child_by_field_name("function"), source)
-            canonical = _canonicalize_reference_name(raw_name, analysis.function_aliases, analysis.namespace_aliases)
-            arguments_node = node.child_by_field_name("arguments")
-        elif node.type == "new_expression":
-            raw_name = _expression_name(node.child_by_field_name("constructor"), source)
-            canonical = _canonicalize_reference_name(raw_name, analysis.function_aliases, analysis.namespace_aliases)
-            arguments_node = node.child_by_field_name("arguments")
-        if canonical:
-            call_sites.append(
-                JSTSCallSite(
-                    name=canonical,
-                    line_number=_line_number(node),
-                    argument_names=_call_argument_names(arguments_node, source),
-                    guarded_names=frozenset(inherited_guarded),
-                )
-            )
+        call_site = _call_site_from_node(node, source, analysis, frozenset(inherited_guarded))
+        if call_site is not None:
+            call_sites.append(call_site)
         call_sites.extend(_call_sites(node, source, analysis, validator_function_names, frozenset(inherited_guarded)))
     return call_sites
 

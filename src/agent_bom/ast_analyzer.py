@@ -788,6 +788,18 @@ def _returns_boolean_constant(statements: list[ast.stmt], value: bool) -> bool:
     )
 
 
+def _branch_definitely_exits(statements: list[ast.stmt]) -> bool:
+    """Return True when a branch definitely stops control flow."""
+    if not statements:
+        return False
+    last_statement = statements[-1]
+    if isinstance(last_statement, (ast.Return, ast.Raise)):
+        return True
+    if isinstance(last_statement, ast.If):
+        return _branch_definitely_exits(last_statement.body) and _branch_definitely_exits(last_statement.orelse)
+    return False
+
+
 def _is_guarded_call(node: ast.AST, parent_map: dict[ast.AST, ast.AST]) -> bool:
     """Return True when a dangerous call sits behind a validation-oriented branch."""
     current = parent_map.get(node)
@@ -2981,6 +2993,23 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
             return guarded_names_from_expr(func, expr.operand)
         return set()
 
+    def post_if_guarded_names(
+        func: _FunctionAnalysis,
+        statement: ast.If,
+    ) -> set[str]:
+        """Return names guarded on the path that continues after an if-statement."""
+        test = statement.test
+        if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+            guarded = guarded_names_from_expr(func, test.operand)
+            if guarded and _branch_definitely_exits(statement.body):
+                return guarded
+            return set()
+
+        guarded = guarded_names_from_expr(func, test)
+        if guarded and _branch_definitely_exits(statement.orelse):
+            return guarded
+        return set()
+
     def analyze_function(
         func: _FunctionAnalysis,
         tainted_params: set[str],
@@ -3292,6 +3321,7 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
                     findings_acc.extend(orelse_findings)
                     tainted_vars.update(body_tainted | orelse_tainted)
                     local_tainted.update(body_tainted | orelse_tainted)
+                    current_sanitized.update(post_if_guarded_names(func, statement))
                     local_returns_tainted |= body_returns_tainted or orelse_returns_tainted
                     continue
                 if isinstance(statement, (ast.For, ast.AsyncFor, ast.While)):

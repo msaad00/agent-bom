@@ -280,6 +280,41 @@ def test_analyze_project_treats_helper_allowlist_validator_as_guard(tmp_path: Pa
     assert not [finding for finding in result.flow_findings if finding.category == "tainted_dangerous_sink"]
 
 
+def test_analyze_project_treats_early_return_validator_gate_as_guard(tmp_path: Path):
+    (tmp_path / "agent.py").write_text(
+        "import subprocess\n\n"
+        "def ok(cmd):\n"
+        "    return cmd in {'ls', 'pwd'}\n\n"
+        "@tool\n"
+        "def execute(cmd):\n"
+        "    if not ok(cmd):\n"
+        "        return None\n"
+        "    return subprocess.run(cmd, shell=True)\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert not [finding for finding in result.flow_findings if finding.category == "tainted_dangerous_sink"]
+
+
+def test_analyze_project_treats_early_raise_validator_gate_as_guard(tmp_path: Path):
+    (tmp_path / "agent.py").write_text(
+        "import re\n"
+        "import subprocess\n\n"
+        "def ok(cmd):\n"
+        "    return re.fullmatch(r'[a-z]+', cmd) is not None\n\n"
+        "@tool\n"
+        "def execute(cmd):\n"
+        "    if not ok(cmd):\n"
+        "        raise ValueError('bad command')\n"
+        "    return subprocess.run(cmd, shell=True)\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    assert not [finding for finding in result.flow_findings if finding.category == "tainted_dangerous_sink"]
+
+
 def test_analyze_project_reports_tainted_prompt_and_sink_flows(tmp_path: Path):
     (tmp_path / "agent.py").write_text(
         "import subprocess\n\n"

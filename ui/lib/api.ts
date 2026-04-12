@@ -417,6 +417,9 @@ export interface VersionInfo {
 export interface JobsResponse {
   jobs: JobListItem[];
   count: number;
+  total?: number;
+  limit?: number;
+  offset?: number;
 }
 
 export interface JobListItem {
@@ -789,7 +792,14 @@ export const api = {
   deleteScan: (jobId: string) => del(`/v1/scan/${jobId}`),
 
   /** List all jobs */
-  listJobs: () => get<JobsResponse>("/v1/jobs"),
+  listJobs: (options?: { includeDetails?: boolean; limit?: number; offset?: number }) => {
+    const params = new URLSearchParams();
+    if (options?.includeDetails) params.set("include_details", "true");
+    if (typeof options?.limit === "number") params.set("limit", String(options.limit));
+    if (typeof options?.offset === "number") params.set("offset", String(options.offset));
+    const qs = params.toString();
+    return get<JobsResponse>(`/v1/jobs${qs ? `?${qs}` : ""}`);
+  },
 
   /** Quick agent discovery (no CVE scan) */
   listAgents: () => get<AgentsResponse>("/v1/agents"),

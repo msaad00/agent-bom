@@ -65,10 +65,14 @@ function jobsToEvents(jobs: JobListItem[]): ActivityEvent[] {
     if (job.status === "done" && job.completed_at) {
       const findingCount = job.summary?.total_vulnerabilities ?? 0;
       const critCount = job.summary?.critical_findings ?? 0;
+      const message =
+        job.summary == null
+          ? "Scan completed"
+          : `Scan completed: ${findingCount} findings${critCount > 0 ? `, ${critCount} critical` : ""}`;
       events.push({
         id: `${job.job_id}-done`,
         type: "scan_completed",
-        message: `Scan completed: ${findingCount} findings${critCount > 0 ? `, ${critCount} critical` : ""}`,
+        message,
         timestamp: job.completed_at,
         meta: {
           job_id: job.job_id,
@@ -95,9 +99,15 @@ interface ActivityFeedProps {
   maxItems?: number;
   className?: string;
   initialJobs?: JobListItem[];
+  refresh?: boolean;
 }
 
-export function ActivityFeed({ maxItems = 20, className, initialJobs = [] }: ActivityFeedProps) {
+export function ActivityFeed({
+  maxItems = 20,
+  className,
+  initialJobs = [],
+  refresh = true,
+}: ActivityFeedProps) {
   const [jobs, setJobs] = useState<JobListItem[]>(initialJobs);
   const [filter, setFilter] = useState<ActivityType | "all">("all");
   const [loading, setLoading] = useState(initialJobs.length === 0);
@@ -110,6 +120,11 @@ export function ActivityFeed({ maxItems = 20, className, initialJobs = [] }: Act
   }, [initialJobs]);
 
   useEffect(() => {
+    if (!refresh) {
+      setLoading(false);
+      return;
+    }
+
     async function load() {
       try {
         const jobsRes = await api.listJobs();
@@ -123,7 +138,7 @@ export function ActivityFeed({ maxItems = 20, className, initialJobs = [] }: Act
     load();
     const interval = setInterval(load, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [refresh]);
 
   const events = useMemo(() => jobsToEvents(jobs), [jobs]);
   const filtered = useMemo(

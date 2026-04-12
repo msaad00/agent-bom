@@ -246,5 +246,54 @@ async def test_create_scan_and_push_stamp_request_tenant(monkeypatch):
 
     listed = await scan_routes.list_jobs(req)
     pushed_summary = next(job for job in listed["jobs"] if job["job_id"] == pushed["job_id"])
-    assert pushed_summary["summary"]["total_packages"] == 12
+    assert "summary" not in pushed_summary
     assert listed["jobs"][0]["request"] == {}
+
+    hydrated = await scan_routes.list_jobs(req, include_details=True)
+    pushed_hydrated = next(job for job in hydrated["jobs"] if job["job_id"] == pushed["job_id"])
+    assert pushed_hydrated["summary"]["total_packages"] == 12
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_is_summary_first_and_opt_in_for_hydration():
+    class _Store:
+        def __init__(self) -> None:
+            self.get_calls = 0
+
+        def list_summary(self) -> list[dict]:
+            return [
+                {
+                    "job_id": "job-alpha",
+                    "tenant_id": "tenant-alpha",
+                    "status": JobStatus.DONE,
+                    "created_at": _now(),
+                    "completed_at": _now(),
+                }
+            ]
+
+        def get(self, job_id: str) -> ScanJob | None:
+            self.get_calls += 1
+            return ScanJob(
+                job_id=job_id,
+                tenant_id="tenant-alpha",
+                status=JobStatus.DONE,
+                created_at=_now(),
+                completed_at=_now(),
+                request=ScanRequest(images=["example:latest"]),
+                result={"summary": {"total_packages": 12, "total_vulnerabilities": 3}},
+            )
+
+    req = _request("tenant-alpha")
+    store = _Store()
+
+    with patch.object(scan_routes, "_get_store", return_value=store):
+        listed = await scan_routes.list_jobs(req)
+        assert store.get_calls == 0
+        assert listed["jobs"][0]["job_id"] == "job-alpha"
+        assert "request" not in listed["jobs"][0]
+        assert "summary" not in listed["jobs"][0]
+
+        hydrated = await scan_routes.list_jobs(req, include_details=True)
+        assert store.get_calls == 1
+        assert hydrated["jobs"][0]["request"] == {"images": ["example:latest"]}
+        assert hydrated["jobs"][0]["summary"]["total_packages"] == 12

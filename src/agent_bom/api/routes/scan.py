@@ -490,7 +490,12 @@ async def stream_scan(request: Request, job_id: str):
 
 
 @router.get("/v1/jobs", tags=["scan"])
-async def list_jobs(request: Request, limit: int = 50, offset: int = 0) -> dict:
+async def list_jobs(
+    request: Request,
+    limit: int = 50,
+    offset: int = 0,
+    include_details: bool = False,
+) -> dict:
     """List all scan jobs (for the UI job history panel).
 
     Supports pagination via ``limit`` (default 50, max 200) and ``offset``.
@@ -504,15 +509,24 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0) -> dict:
     page = summary[offset : offset + limit]
     enriched: list[dict[str, Any]] = []
     for item in page:
-        # Keep list surfaces compatible with lightweight stores and tests that
-        # only implement paged summaries. Hydrate when available, otherwise
-        # return the summary row unchanged.
-        try:
-            get_job = getattr(store, "get", None)
-            full_job = get_job(item["job_id"]) if callable(get_job) else None
-        except Exception:
-            full_job = None
-        enriched.append(_job_summary_payload(full_job) if isinstance(full_job, ScanJob) else item)
+        in_mem = _jobs_get(item["job_id"])
+        if isinstance(in_mem, ScanJob) and _visible_to_tenant(in_mem, tenant_id):
+            enriched.append(_job_summary_payload(in_mem))
+            continue
+
+        if include_details:
+            # Keep list surfaces compatible with lightweight stores and tests
+            # that only implement paged summaries. Hydrate only when the caller
+            # asks for details and the job is not already in memory.
+            try:
+                get_job = getattr(store, "get", None)
+                full_job = get_job(item["job_id"]) if callable(get_job) else None
+            except Exception:
+                full_job = None
+            enriched.append(_job_summary_payload(full_job) if isinstance(full_job, ScanJob) else item)
+            continue
+
+        enriched.append(item)
     return {
         "jobs": enriched,
         "count": len(enriched),

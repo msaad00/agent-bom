@@ -110,7 +110,7 @@ export function ActivityFeed({
 }: ActivityFeedProps) {
   const [jobs, setJobs] = useState<JobListItem[]>(initialJobs);
   const [filter, setFilter] = useState<ActivityType | "all">("all");
-  const [loading, setLoading] = useState(initialJobs.length === 0);
+  const [loading, setLoading] = useState(refresh && initialJobs.length === 0);
 
   useEffect(() => {
     if (initialJobs.length > 0) {

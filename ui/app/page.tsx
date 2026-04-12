@@ -319,7 +319,8 @@ export default function Dashboard() {
   const [detailJobs, setDetailJobs] = useState<ScanJob[]>([]);
   const [agentCount, setAgentCount] = useState<number>(0);
   const [agentList, setAgentList] = useState<Agent[]>([]);
-  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [jobsLoading, setJobsLoading] = useState(true);
+  const [agentsLoading, setAgentsLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(true);
   const [apiError, setApiError] = useState(false);
   const [importedReport, setImportedReport] = useState<ScanResult | null>(null);
@@ -331,41 +332,50 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    async function load() {
-      setSummaryLoading(true);
+    let cancelled = false;
+
+    async function loadJobs() {
+      setJobsLoading(true);
       try {
-        const [jobsRes, agentsRes] = await Promise.allSettled([api.listJobs(), api.listAgents()]);
-
-        if (jobsRes.status === "fulfilled") {
-          const jobsList = Array.isArray(jobsRes.value?.jobs)
-            ? [...jobsRes.value.jobs].sort((a, b) => b.created_at.localeCompare(a.created_at))
-            : [];
-          setJobs(jobsList);
-          setApiError(false);
-        } else {
-          setApiError(true);
-          setJobs([]);
-          setDetailJobs([]);
-        }
-
-        if (agentsRes.status === "fulfilled") {
-          setAgentCount(agentsRes.value?.count ?? 0);
-          setAgentList(Array.isArray(agentsRes.value?.agents) ? agentsRes.value.agents : []);
-        } else {
-          setAgentCount(0);
-          setAgentList([]);
-        }
+        const jobsRes = await api.listJobs();
+        if (cancelled) return;
+        const jobsList = Array.isArray(jobsRes?.jobs)
+          ? [...jobsRes.jobs].sort((a, b) => b.created_at.localeCompare(a.created_at))
+          : [];
+        setJobs(jobsList);
+        setApiError(false);
       } catch {
+        if (cancelled) return;
         setApiError(true);
         setJobs([]);
         setDetailJobs([]);
+      } finally {
+        if (!cancelled) setJobsLoading(false);
+      }
+    }
+
+    async function loadAgents() {
+      setAgentsLoading(true);
+      try {
+        const agentsRes = await api.listAgents();
+        if (cancelled) return;
+        setAgentCount(agentsRes?.count ?? 0);
+        setAgentList(Array.isArray(agentsRes?.agents) ? agentsRes.agents : []);
+      } catch {
+        if (cancelled) return;
         setAgentCount(0);
         setAgentList([]);
       } finally {
-        setSummaryLoading(false);
+        if (!cancelled) setAgentsLoading(false);
       }
     }
-    load();
+
+    loadJobs();
+    loadAgents();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -491,8 +501,10 @@ export default function Dashboard() {
     const latest = effectiveRecentJobs.find((job) => job.status === "done" && job.summary);
     return latest?.summary ?? null;
   }, [effectiveRecentJobs]);
-  const isLoading = summaryLoading && !importedReport;
-  const summaryReady = !summaryLoading || Boolean(importedReport);
+  const displayedAgentCount = importedReport ? (importedReport.agents?.length ?? 0) : (agentsLoading ? null : effectiveAgentCount);
+  const isLoading = jobsLoading && !importedReport;
+  const summaryReady = !jobsLoading || Boolean(importedReport);
+  const agentsReady = !agentsLoading || Boolean(importedReport);
   const detailsReady = !detailLoading || Boolean(importedReport);
 
   if (apiError && !importedReport) return <ApiOfflineState onImport={setImportedReport} />;
@@ -507,7 +519,7 @@ export default function Dashboard() {
               Risk overview
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300">
-              {effectiveRecentJobs.length} scan{effectiveRecentJobs.length !== 1 ? "s" : ""} · {effectiveAgentCount} agent{effectiveAgentCount !== 1 ? "s" : ""} · {detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0)} packages · {detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0)} CVEs
+              {effectiveRecentJobs.length} scan{effectiveRecentJobs.length !== 1 ? "s" : ""} · {(displayedAgentCount ?? "—")} agent{displayedAgentCount === 1 ? "" : "s"} · {detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0)} packages · {detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0)} CVEs
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2">
@@ -615,7 +627,7 @@ export default function Dashboard() {
       {/* Key stats bar */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <StatCard icon={Layers} label="Total scans" value={summaryReady ? String(effectiveRecentJobs.length) : "—"} color="zinc" href="/jobs" />
-        <StatCard icon={Server} label="Agents" value={summaryReady ? String(effectiveAgentCount) : "—"} color="blue" href="/agents" />
+        <StatCard icon={Server} label="Agents" value={agentsReady ? String(effectiveAgentCount) : "—"} color="blue" href="/agents" />
         <StatCard icon={Package} label="Packages" value={summaryReady ? String(detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0)) : "—"} color="orange" href="/vulns" />
         <StatCard icon={Bug} label="Unique CVEs" value={summaryReady ? String(detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0)) : "—"} color="red" href="/vulns" />
         <StatCard icon={Zap} label="Critical" value={summaryReady ? String(detailsReady ? severity.critical : (summaryStats?.critical_findings ?? 0)) : "—"} color="red" href="/vulns?severity=critical" />
@@ -788,7 +800,7 @@ export default function Dashboard() {
               </Link>
             )}
           </div>
-          {summaryLoading && !importedReport ? (
+          {jobsLoading && !importedReport ? (
             <div className="text-zinc-500 text-sm">Loading...</div>
           ) : effectiveRecentJobs.length === 0 ? (
             <EmptyState />

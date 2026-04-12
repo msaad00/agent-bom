@@ -33,17 +33,28 @@ Blast radius is the core idea: `CVE -> package -> MCP server -> agent -> credent
 
 `agent-bom` scans local agent configs, MCP servers, instruction files, lockfiles, containers, cloud posture, GPU surfaces, and runtime evidence. CWE-aware impact keeps a DoS from being reported like credential compromise.
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom blast radius demo" width="900" />
-</p>
-
 Try the built-in demo first:
 
 ```bash
 agent-bom agents --demo --offline
 ```
 
-The GIF uses that same curated sample so the output stays reproducible across releases. For real scans, run `agent-bom agents`, or add `-p .` to fold project manifests and lockfiles into the same result.
+The demo uses a curated sample so the output stays reproducible across releases. For real scans, run `agent-bom agents`, or add `-p .` to fold project manifests and lockfiles into the same result.
+
+Choose the view that matches what you need:
+
+- CLI: fast local proof that blast radius and remediation are real
+- Graph: one focused path first, then expand only when needed
+- Dashboard: persistent state, diff, and review
+
+<details>
+<summary><b>See the terminal demo</b></summary>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom terminal demo" width="820" />
+</p>
+
+</details>
 
 ## Recommended starting points
 
@@ -118,7 +129,7 @@ agent-bom serve                         # API + Next.js dashboard
 
 ## Graph explorer
 
-The README starts from the same scoped graph view as the product: one focused path first, then expand by agent, depth, or findings only when needed.
+The README should show the same pattern as the product: start from one scoped path, then expand by agent, depth, or findings only when you ask for more.
 
 <p align="center">
   <picture>
@@ -150,7 +161,7 @@ The active catalog metadata is also surfaced in JSON output (`framework_catalogs
 
 ## Architecture at a glance
 
-One graph, one path: discover, analyze, persist, then operate across CLI, CI, API, dashboard, and exports.
+One path: discover, analyze, persist, then operate across CLI, CI, API, dashboard, and exports.
 
 <p align="center">
   <picture>
@@ -275,7 +286,8 @@ Also on [Glama](https://glama.ai/mcp/servers/@msaad00/agent-bom), [Smithery](int
 
 ---
 
-## Trust & transparency
+<details>
+<summary><b>Trust & transparency</b></summary>
 
 | When | What's sent | Where | Opt out |
 |---|---|---|---|
@@ -287,6 +299,8 @@ Also on [Glama](https://glama.ai/mcp/servers/@msaad00/agent-bom), [Smithery](int
 | Optional push/integrations | Finding summaries or evidence bundles | Slack, Jira, Vanta, Drata | Don't pass those flags |
 
 No source code, config contents, or credential values are sent. No telemetry or analytics. [Sigstore-signed](docs/PERMISSIONS.md) releases. See [SECURITY_ARCHITECTURE.md](docs/SECURITY_ARCHITECTURE.md) and [PERMISSIONS.md](docs/PERMISSIONS.md) for the full trust model.
+
+</details>
 
 ---
 

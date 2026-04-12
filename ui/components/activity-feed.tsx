@@ -94,12 +94,20 @@ function jobsToEvents(jobs: JobListItem[]): ActivityEvent[] {
 interface ActivityFeedProps {
   maxItems?: number;
   className?: string;
+  initialJobs?: JobListItem[];
 }
 
-export function ActivityFeed({ maxItems = 20, className }: ActivityFeedProps) {
-  const [jobs, setJobs] = useState<JobListItem[]>([]);
+export function ActivityFeed({ maxItems = 20, className, initialJobs = [] }: ActivityFeedProps) {
+  const [jobs, setJobs] = useState<JobListItem[]>(initialJobs);
   const [filter, setFilter] = useState<ActivityType | "all">("all");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(initialJobs.length === 0);
+
+  useEffect(() => {
+    if (initialJobs.length > 0) {
+      setJobs(initialJobs);
+      setLoading(false);
+    }
+  }, [initialJobs]);
 
   useEffect(() => {
     async function load() {

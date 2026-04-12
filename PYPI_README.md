@@ -27,9 +27,14 @@ Try the built-in demo first:
 agent-bom agents --demo --offline
 ```
 
-The GIF uses that same curated sample so the output stays reproducible across releases. For real scans, run `agent-bom agents`, or add `-p .` to fold project manifests and lockfiles into the same result.
+The demo uses a curated sample so the output stays reproducible across releases. For real scans, run `agent-bom agents`, or add `-p .` to fold project manifests and lockfiles into the same result.
+
+<details>
+<summary><b>See the terminal demo</b></summary>
 
 ![agent-bom demo](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif)
+
+</details>
 
 ## Recommended starting points
 

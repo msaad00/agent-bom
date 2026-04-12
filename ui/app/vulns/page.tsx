@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import { api, Vulnerability, ScanJob, ScanResult, severityColor, severityDot, OWASP_LLM_TOP10, MITRE_ATLAS } from "@/lib/api";
+import { api, Vulnerability, ScanJob, ScanResult, severityColor, severityDot, OWASP_LLM_TOP10, MITRE_ATLAS, JobListItem } from "@/lib/api";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { Bug, Download, ExternalLink, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, Loader2, Package, Server, ShieldOff } from "lucide-react";
 
@@ -23,6 +23,7 @@ interface EnrichedVuln extends Vulnerability {
 type SeverityFilter = "all" | "critical" | "high" | "medium" | "low";
 type SortKey = "severity" | "cvss" | "epss" | "id";
 type GroupKey = "none" | "package" | "agent" | "severity";
+type ScanScope = "latest" | "all";
 
 const SEVERITY_ORDER: Record<string, number> = {
   critical: 4,
@@ -88,9 +89,12 @@ function VulnsPage() {
   const paramCve = searchParams.get("cve");
   const paramAgent = searchParams.get("agent");
 
+  const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [vulns, setVulns] = useState<EnrichedVuln[]>([]);
   const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
+  const [scope, setScope] = useState<ScanScope>("latest");
   const [filter, setFilter] = useState<SeverityFilter>(
     paramSeverity && ["critical", "high", "medium", "low"].includes(paramSeverity)
       ? (paramSeverity as SeverityFilter)
@@ -103,6 +107,55 @@ function VulnsPage() {
   const [suppressed, setSuppressed] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
+
+  const collectVulns = useCallback((fullJobs: ScanJob[]) => {
+    const vulnMap = new Map<string, EnrichedVuln>();
+    for (const job of fullJobs) {
+      if (!job.result) continue;
+      const result = job.result as ScanResult;
+      const blastById = new Map(result.blast_radius?.map((item) => [item.vulnerability_id, item]) ?? []);
+
+      const scanSources: string[] = [];
+      if (job.request.images?.length) scanSources.push(...job.request.images);
+      if (job.request.k8s) scanSources.push("kubernetes");
+      if (job.request.sbom) scanSources.push("sbom-import");
+      if (scanSources.length === 0) scanSources.push("local-agents");
+
+      for (const agent of result.agents) {
+        for (const srv of agent.mcp_servers) {
+          for (const pkg of srv.packages) {
+            for (const vuln of pkg.vulnerabilities ?? []) {
+              const blast = blastById.get(vuln.id);
+              const existing = vulnMap.get(vuln.id);
+              if (existing) {
+                if (!existing.packages.includes(pkg.name)) existing.packages.push(pkg.name);
+                if (!existing.agents.includes(agent.name)) existing.agents.push(agent.name);
+                for (const src of scanSources) {
+                  if (!existing.sources.includes(src)) existing.sources.push(src);
+                }
+                existing.cvss_score = existing.cvss_score ?? blast?.cvss_score ?? vuln.cvss_score;
+                existing.epss_score = existing.epss_score ?? blast?.epss_score ?? vuln.epss_score;
+                existing.fixed_version = existing.fixed_version ?? blast?.fixed_version ?? vuln.fixed_version;
+                existing.summary = existing.summary ?? blast?.attack_vector_summary ?? vuln.summary ?? vuln.description;
+              } else {
+                vulnMap.set(vuln.id, {
+                  ...vuln,
+                  cvss_score: blast?.cvss_score ?? vuln.cvss_score,
+                  epss_score: blast?.epss_score ?? vuln.epss_score,
+                  fixed_version: blast?.fixed_version ?? vuln.fixed_version,
+                  summary: blast?.attack_vector_summary ?? vuln.summary ?? vuln.description,
+                  packages: [pkg.name],
+                  agents: [agent.name],
+                  sources: [...scanSources],
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+    return Array.from(vulnMap.values());
+  }, []);
 
   const handleMarkFP = useCallback(async (vulnId: string, packageName: string) => {
     try {
@@ -118,70 +171,50 @@ function VulnsPage() {
   }, []);
 
   useEffect(() => {
-    async function load() {
+    async function loadSummaries() {
       try {
         const jobsResp = await api.listJobs();
-        const doneJobs = jobsResp.jobs.filter((j) => j.status === "done");
-
-        const fullJobs: ScanJob[] = await Promise.all(
-          doneJobs?.map((j) => api.getScan(j.job_id))
-        );
-
-        const vulnMap = new Map<string, EnrichedVuln>();
-        for (const job of fullJobs) {
-          if (!job.result) continue;
-          const result = job.result as ScanResult;
-          const blastById = new Map(result.blast_radius?.map((item) => [item.vulnerability_id, item]) ?? []);
-
-          // Determine scan source labels
-          const scanSources: string[] = [];
-          if (job.request.images?.length) scanSources.push(...job.request.images);
-          if (job.request.k8s) scanSources.push("kubernetes");
-          if (job.request.sbom) scanSources.push("sbom-import");
-          if (scanSources.length === 0) scanSources.push("local-agents");
-
-          for (const agent of result.agents) {
-            for (const srv of agent.mcp_servers) {
-              for (const pkg of srv.packages) {
-                for (const vuln of pkg.vulnerabilities ?? []) {
-                  const blast = blastById.get(vuln.id);
-                  const existing = vulnMap.get(vuln.id);
-                  if (existing) {
-                    if (!existing.packages.includes(pkg.name)) existing.packages.push(pkg.name);
-                    if (!existing.agents.includes(agent.name)) existing.agents.push(agent.name);
-                    for (const src of scanSources) {
-                      if (!existing.sources.includes(src)) existing.sources.push(src);
-                    }
-                    existing.cvss_score = existing.cvss_score ?? blast?.cvss_score ?? vuln.cvss_score;
-                    existing.epss_score = existing.epss_score ?? blast?.epss_score ?? vuln.epss_score;
-                    existing.fixed_version = existing.fixed_version ?? blast?.fixed_version ?? vuln.fixed_version;
-                    existing.summary = existing.summary ?? blast?.attack_vector_summary ?? vuln.summary ?? vuln.description;
-                  } else {
-                    vulnMap.set(vuln.id, {
-                      ...vuln,
-                      cvss_score: blast?.cvss_score ?? vuln.cvss_score,
-                      epss_score: blast?.epss_score ?? vuln.epss_score,
-                      fixed_version: blast?.fixed_version ?? vuln.fixed_version,
-                      summary: blast?.attack_vector_summary ?? vuln.summary ?? vuln.description,
-                      packages: [pkg.name],
-                      agents: [agent.name],
-                      sources: [...scanSources],
-                    });
-                  }
-                }
-              }
-            }
-          }
-        }
-        setVulns(Array.from(vulnMap.values()));
+        const doneJobs = jobsResp.jobs
+          .filter((j) => j.status === "done")
+          .sort((a, b) => b.created_at.localeCompare(a.created_at));
+        setJobs(doneJobs);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Failed to load");
       } finally {
         setLoading(false);
       }
     }
-    load();
+    loadSummaries();
   }, []);
+
+  useEffect(() => {
+    async function loadDetails() {
+      if (loading) return;
+      if (jobs.length === 0) {
+        setVulns([]);
+        setDetailLoading(false);
+        return;
+      }
+
+      setDetailLoading(true);
+      setError("");
+      try {
+        if (scope === "latest") {
+          const latestJob = await api.getScan(jobs[0].job_id);
+          setVulns(collectVulns([latestJob]));
+        } else {
+          const fullJobs = await Promise.all(jobs.map((job) => api.getScan(job.job_id).catch(() => null)));
+          setVulns(collectVulns(fullJobs.filter((job): job is ScanJob => Boolean(job))));
+        }
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Failed to load");
+      } finally {
+        setDetailLoading(false);
+      }
+    }
+
+    loadDetails();
+  }, [jobs, scope, loading, collectVulns]);
 
   function handleSort(field: SortKey) {
     if (sortKey === field) {
@@ -281,7 +314,10 @@ function VulnsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Vulnerabilities</h1>
           <p className="text-zinc-400 text-sm mt-1">
-            {vulns.length} unique CVEs aggregated across all scans. CVSS and EPSS appear only when the underlying advisory includes them.
+            {scope === "latest"
+              ? `${vulns.length} unique CVEs from the latest completed scan.`
+              : `${vulns.length} unique CVEs aggregated across all completed scans.`}{" "}
+            CVSS and EPSS appear only when the underlying advisory includes them.
           </p>
         </div>
         {vulns.length > 0 && (
@@ -299,7 +335,13 @@ function VulnsPage() {
       {loading && (
         <div className="flex items-center justify-center py-20 text-zinc-400">
           <Loader2 className="h-6 w-6 animate-spin mr-2" />
-          Loading vulnerabilities...
+          Loading scan summaries...
+        </div>
+      )}
+      {!loading && detailLoading && vulns.length === 0 && (
+        <div className="flex items-center justify-center py-20 text-zinc-400">
+          <Loader2 className="h-6 w-6 animate-spin mr-2" />
+          {scope === "latest" ? "Loading latest scan..." : "Aggregating completed scans..."}
         </div>
       )}
       {!loading && error && (
@@ -348,6 +390,30 @@ function VulnsPage() {
                 className="w-full sm:w-64 bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
               />
             </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-500 uppercase tracking-wide font-medium">Scope</span>
+                <select
+                  value={scope}
+                  onChange={(e) => setScope(e.target.value as ScanScope)}
+                  className="bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500"
+                >
+                  <option value="latest">Latest completed scan</option>
+                  <option value="all">All completed scans</option>
+                </select>
+              </div>
+              <p className="text-xs text-zinc-600">
+                Default stays scoped for speed. Expand to all scans only when you need history-wide aggregation.
+              </p>
+            </div>
+
+            {detailLoading && vulns.length > 0 && (
+              <div className="flex items-center gap-2 text-xs text-zinc-500">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {scope === "latest" ? "Refreshing latest scan..." : "Refreshing historical aggregation..."}
+              </div>
+            )}
 
             {/* Group by */}
             <div className="flex items-center gap-2">

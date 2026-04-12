@@ -217,6 +217,13 @@ class TestAccessHistory:
         assert len(records) == 0
         assert any("Enterprise edition" in w for w in warnings)
 
+    def test_mine_access_history_rejects_non_integer_days(self):
+        from agent_bom.cloud.snowflake import _mine_access_history
+
+        conn = _make_mock_conn()
+        with pytest.raises(ValueError, match="days must be an integer"):
+            _mine_access_history(conn, "7; DROP TABLE")
+
 
 class TestGrantsToRoles:
     def test_mine_grants(self):
@@ -339,6 +346,13 @@ class TestCortexAgentUsage:
         records, warnings = _mine_cortex_agent_usage(conn, 30)
         assert len(records) == 0
         assert any("CORTEX_AGENT_USAGE_HISTORY" in w for w in warnings)
+
+    def test_mine_cortex_agent_usage_rejects_invalid_days(self):
+        from agent_bom.cloud.snowflake import _mine_cortex_agent_usage
+
+        conn = _make_mock_conn()
+        with pytest.raises(ValueError, match="days must be >= 1"):
+            _mine_cortex_agent_usage(conn, 0)
 
 
 # ─── Finding derivation tests ────────────────────────────────────────────────

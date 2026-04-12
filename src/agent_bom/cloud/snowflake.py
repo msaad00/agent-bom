@@ -103,6 +103,7 @@ def _resolve_snowflake_auth(
 
 # Snowflake identifier safety: only allow alphanumeric, underscore, dot, dollar
 _SAFE_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.$]*$")
+_CONTROL_CHAR_RE = re.compile(r"[\x00-\x1F\x7F]")
 
 
 def _validate_sf_identifier(name: str) -> str:
@@ -110,6 +111,33 @@ def _validate_sf_identifier(name: str) -> str:
     if not _SAFE_IDENT_RE.match(name):
         raise ValueError(f"Unsafe Snowflake identifier: {name!r}")
     return name
+
+
+def _quote_sf_identifier(name: str) -> str:
+    """Safely quote a Snowflake identifier for SQL interpolation.
+
+    Unlike ``_validate_sf_identifier`` this supports legitimate quoted
+    identifiers such as notebook names containing spaces while still
+    preventing statement-breaking injection.
+    """
+    if not isinstance(name, str) or not name:
+        raise ValueError("Snowflake identifier must be a non-empty string")
+    if _CONTROL_CHAR_RE.search(name):
+        raise ValueError(f"Unsafe Snowflake identifier: {name!r}")
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _coerce_snowflake_days(days: Any, *, max_days: int | None = None) -> int:
+    """Validate and normalize day-window inputs used in SQL interpolation."""
+    try:
+        value = int(days)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"days must be an integer, got {days!r}") from exc
+    if value < 1:
+        raise ValueError(f"days must be >= 1, got {value!r}")
+    if max_days is not None:
+        value = min(value, max_days)
+    return value
 
 
 def discover(
@@ -434,7 +462,7 @@ def _discover_snowflake_notebooks(
             # Try to extract notebook package dependencies from metadata
             # Snowflake stores notebook runtime packages in INFORMATION_SCHEMA
             try:
-                fqn = f'"{nb_db}"."{nb_schema}"."{nb_name}"'
+                fqn = ".".join(_quote_sf_identifier(part) for part in (nb_db, nb_schema, nb_name))
                 cursor.execute(
                     f"DESCRIBE NOTEBOOK {fqn}"  # noqa: S608
                 )
@@ -483,6 +511,8 @@ def _discover_snowflake_notebooks(
                                     )
                                 )
 
+            except ValueError as exc:
+                warnings.append(f"Skipping Snowflake notebook with unsafe identifier: {sanitize_error(exc)}")
             except Exception:
                 # DESCRIBE NOTEBOOK may not be available on all editions
                 pass
@@ -884,6 +914,7 @@ def discover_governance(
     resolved_account = account or os.environ.get("SNOWFLAKE_ACCOUNT", "")
     resolved_user = user or os.environ.get("SNOWFLAKE_USER", "")
     report = GovernanceReport(account=resolved_account)
+    days = _coerce_snowflake_days(days)
 
     if not resolved_account:
         report.warnings.append("SNOWFLAKE_ACCOUNT not set.")
@@ -957,6 +988,7 @@ def _mine_access_history(
     records: list[AccessRecord] = []
     warnings: list[str] = []
     cursor = conn.cursor()
+    days = _coerce_snowflake_days(days)
 
     try:
         cursor.execute(
@@ -1134,6 +1166,7 @@ def _mine_cortex_agent_usage(
     records: list[AgentUsageRecord] = []
     warnings: list[str] = []
     cursor = conn.cursor()
+    days = _coerce_snowflake_days(days)
 
     try:
         cursor.execute(
@@ -1557,6 +1590,7 @@ def discover_activity(
     resolved_account = account or os.environ.get("SNOWFLAKE_ACCOUNT", "")
     resolved_user = user or os.environ.get("SNOWFLAKE_USER", "")
     timeline = ActivityTimeline(account=resolved_account)
+    days = _coerce_snowflake_days(days, max_days=365)
 
     if not resolved_account:
         timeline.warnings.append("SNOWFLAKE_ACCOUNT not set.")
@@ -1619,6 +1653,7 @@ def _mine_query_history_365(
     records: list[QueryHistoryRecord] = []
     warnings: list[str] = []
     cursor = conn.cursor()
+    days = _coerce_snowflake_days(days, max_days=365)
 
     try:
         cursor.execute(
@@ -1694,6 +1729,7 @@ def _mine_observability_events(
     events: list[ObservabilityEvent] = []
     warnings: list[str] = []
     cursor = conn.cursor()
+    days = _coerce_snowflake_days(days, max_days=365)
 
     try:
         cursor.execute(

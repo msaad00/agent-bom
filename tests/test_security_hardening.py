@@ -82,6 +82,55 @@ class TestSnowflakeIdentifierValidation:
             _validate_sf_identifier("123start")
 
 
+class TestSnowflakeQuotedIdentifier:
+    """Quoted identifiers should be escaped safely for SQL interpolation."""
+
+    def test_quotes_plain_identifier(self):
+        from agent_bom.cloud.snowflake import _quote_sf_identifier
+
+        assert _quote_sf_identifier("NOTEBOOK_ONE") == '"NOTEBOOK_ONE"'
+
+    def test_escapes_embedded_quotes(self):
+        from agent_bom.cloud.snowflake import _quote_sf_identifier
+
+        assert _quote_sf_identifier('weird"name') == '"weird""name"'
+
+    def test_rejects_control_characters(self):
+        from agent_bom.cloud.snowflake import _quote_sf_identifier
+
+        with pytest.raises(ValueError):
+            _quote_sf_identifier("bad\nname")
+
+
+class TestSnowflakeDaysValidation:
+    """Snowflake day windows should be normalized before SQL interpolation."""
+
+    def test_accepts_positive_int_like_values(self):
+        from agent_bom.cloud.snowflake import _coerce_snowflake_days
+
+        assert _coerce_snowflake_days("7") == 7
+        assert _coerce_snowflake_days(30, max_days=365) == 30
+
+    def test_rejects_non_integer_values(self):
+        from agent_bom.cloud.snowflake import _coerce_snowflake_days
+
+        with pytest.raises(ValueError, match="days must be an integer"):
+            _coerce_snowflake_days("7; DROP TABLE")
+
+    def test_rejects_zero_or_negative_values(self):
+        from agent_bom.cloud.snowflake import _coerce_snowflake_days
+
+        with pytest.raises(ValueError, match="days must be >= 1"):
+            _coerce_snowflake_days(0)
+        with pytest.raises(ValueError, match="days must be >= 1"):
+            _coerce_snowflake_days(-5)
+
+    def test_caps_values_when_max_days_is_provided(self):
+        from agent_bom.cloud.snowflake import _coerce_snowflake_days
+
+        assert _coerce_snowflake_days(999, max_days=365) == 365
+
+
 # ─── Error Sanitization ──────────────────────────────────────────────────────
 
 

@@ -412,6 +412,50 @@ def test_snowflake_snowpark_packages():
     assert all(p.ecosystem == "pypi" for p in packages)
 
 
+def test_snowflake_notebooks_escape_identifier_in_describe():
+    """Notebook DESCRIBE should quote identifiers safely instead of interpolating raw names."""
+    _install_mock_snowflake()
+    importlib.reload(importlib.import_module("agent_bom.cloud.snowflake"))
+    from agent_bom.cloud.snowflake import _discover_snowflake_notebooks
+
+    class _Cursor:
+        def __init__(self):
+            self.description = []
+            self._rows = []
+            self.executed: list[str] = []
+
+        def execute(self, sql):
+            self.executed.append(sql)
+            if sql == "SHOW NOTEBOOKS IN ACCOUNT":
+                self.description = [
+                    ("name",),
+                    ("database_name",),
+                    ("schema_name",),
+                    ("owner",),
+                    ("comment",),
+                ]
+                self._rows = [('bad"name', "DB", "SCHEMA", "owner", "comment")]
+            elif sql.startswith("DESCRIBE NOTEBOOK "):
+                self.description = [("property",), ("value",)]
+                self._rows = []
+
+        def fetchall(self):
+            return self._rows
+
+        def close(self):
+            return None
+
+    mock_conn = MagicMock()
+    cursor = _Cursor()
+    mock_conn.cursor.return_value = cursor
+
+    agents, warnings = _discover_snowflake_notebooks(mock_conn, "myorg.us-east-1")
+
+    assert len(agents) == 1
+    assert warnings == []
+    assert cursor.executed[1] == 'DESCRIBE NOTEBOOK "DB"."SCHEMA"."bad""name"'
+
+
 # ─── Graph Output Tests ──────────────────────────────────────────────────────
 
 

@@ -805,7 +805,7 @@ export default function Dashboard() {
           <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
             Activity
           </h2>
-          <ActivityFeed maxItems={15} initialJobs={effectiveRecentJobs.slice(0, 20)} />
+          <ActivityFeed maxItems={15} initialJobs={effectiveRecentJobs.slice(0, 20)} refresh={false} />
         </section>
       </div>
     </div>

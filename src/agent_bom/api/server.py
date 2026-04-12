@@ -65,6 +65,7 @@ try:
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import RedirectResponse
     from pydantic import BaseModel  # noqa: F401 — presence check for [api] extra
+    from starlette.middleware import Middleware
 except ImportError as exc:  # pragma: no cover
     raise ImportError("agent-bom API requires extra dependencies.\nInstall with:  pip install 'agent-bom[api]'") from exc
 
@@ -287,20 +288,39 @@ app = FastAPI(
     lifespan=_lifespan,
 )
 
-_default_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+_default_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+]
 _cors_env = os.environ.get("CORS_ORIGINS")
 _cors_origins: list[str] = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else _default_origins
 _api_key: str | None = None
 _rate_limit_rpm: int = 60
 
+
+def _apply_cors_middleware(origins: list[str]) -> None:
+    """Install or refresh the CORS middleware with the current origin policy."""
+    _replace_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials="*" not in origins,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "X-API-Key"],
+    )
+    if app.middleware_stack is not None:
+        app.middleware_stack = app.build_middleware_stack()
+
+
+def _replace_middleware(middleware_cls: type, /, **kwargs: object) -> None:
+    """Replace a middleware class in-place so runtime config updates actually apply."""
+    app.user_middleware = [m for m in app.user_middleware if m.cls is not middleware_cls]
+    app.user_middleware.insert(0, Middleware(middleware_cls, **kwargs))
+
+
 # CORS: defaults to localhost; configure via configure_api() before startup
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials="*" not in _cors_origins,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
-)
+_apply_cors_middleware(_cors_origins)
 
 
 # ─── Trust headers middleware ──────────────────────────────────────────────────
@@ -326,6 +346,8 @@ def configure_api(
     elif cors_origins:
         _cors_origins = cors_origins
 
+    _apply_cors_middleware(_cors_origins)
+
     _api_key = api_key
     _rate_limit_rpm = rate_limit_rpm
 
@@ -336,12 +358,16 @@ def configure_api(
             "Set AGENT_BOM_API_KEY environment variable for production deployments."
         )
 
-    # Add optional middleware
+    # Refresh runtime-configurable middleware
     if api_key:
-        app.add_middleware(APIKeyMiddleware, api_key=api_key)
+        _replace_middleware(APIKeyMiddleware, api_key=api_key)
+    else:
+        app.user_middleware = [m for m in app.user_middleware if m.cls is not APIKeyMiddleware]
 
-    app.add_middleware(RateLimitMiddleware, scan_rpm=rate_limit_rpm, read_rpm=rate_limit_rpm * 5)
-    app.add_middleware(MaxBodySizeMiddleware)
+    _replace_middleware(RateLimitMiddleware, scan_rpm=rate_limit_rpm, read_rpm=rate_limit_rpm * 5)
+    _replace_middleware(MaxBodySizeMiddleware)
+    if app.middleware_stack is not None:
+        app.middleware_stack = app.build_middleware_stack()
 
 
 # ─── Scan Pipeline (extracted to api/pipeline.py) ────────────────────────────

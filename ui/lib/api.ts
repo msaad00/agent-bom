@@ -415,13 +415,19 @@ export interface VersionInfo {
 }
 
 export interface JobsResponse {
-  jobs: Array<{
-    job_id: string;
-    status: JobStatus;
-    created_at: string;
-    completed_at?: string;
-  }>;
+  jobs: JobListItem[];
   count: number;
+}
+
+export interface JobListItem {
+  job_id: string;
+  status: JobStatus;
+  created_at: string;
+  completed_at?: string;
+  request?: ScanRequest;
+  summary?: Summary;
+  scan_timestamp?: string;
+  pushed?: boolean;
 }
 
 export interface AgentsResponse {

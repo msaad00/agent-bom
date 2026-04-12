@@ -199,6 +199,8 @@ async def test_scan_routes_are_tenant_scoped():
     listed = await scan_routes.list_jobs(req)
     assert [j["job_id"] for j in listed["jobs"]] == ["job-alpha"]
     assert listed["jobs"][0]["tenant_id"] == "tenant-alpha"
+    assert listed["jobs"][0]["request"] == {}
+    assert listed["jobs"][0]["summary"] is None
 
     got = await scan_routes.get_scan(req, "job-alpha")
     assert got.job_id == "job-alpha"
@@ -227,8 +229,22 @@ async def test_create_scan_and_push_stamp_request_tenant(monkeypatch):
 
     pushed = await observability_routes.receive_push(
         req,
-        PushPayload(source_id="source-a", agents=[], blast_radii=[], warnings=[]),
+        PushPayload(
+            source_id="source-a",
+            agents=[],
+            blast_radii=[],
+            warnings=[],
+            summary={"total_packages": 12, "total_vulnerabilities": 55},
+            posture_scorecard={"overall_score": 82},
+        ),
     )
     pushed_job = store.get(pushed["job_id"])
     assert pushed_job is not None
     assert pushed_job.tenant_id == "tenant-alpha"
+    assert pushed_job.result["summary"]["total_packages"] == 12
+    assert pushed_job.result["posture_scorecard"]["overall_score"] == 82
+
+    listed = await scan_routes.list_jobs(req)
+    pushed_summary = next(job for job in listed["jobs"] if job["job_id"] == pushed["job_id"])
+    assert pushed_summary["summary"]["total_packages"] == 12
+    assert listed["jobs"][0]["request"] == {}

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { api, ScanJob, ScanResult, BlastRadius, Agent, PostureResponse, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS } from "@/lib/api";
+import { api, ScanJob, ScanResult, BlastRadius, Agent, JobListItem, PostureResponse, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS } from "@/lib/api";
 import { AgentTopology } from "@/components/agent-topology";
 import { TrustStack } from "@/components/trust-stack";
 import { SeverityBadge } from "@/components/severity-badge";
@@ -315,10 +315,12 @@ function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const [jobs, setJobs] = useState<ScanJob[]>([]);
+  const [jobs, setJobs] = useState<JobListItem[]>([]);
+  const [detailJobs, setDetailJobs] = useState<ScanJob[]>([]);
   const [agentCount, setAgentCount] = useState<number>(0);
   const [agentList, setAgentList] = useState<Agent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(true);
   const [apiError, setApiError] = useState(false);
   const [importedReport, setImportedReport] = useState<ScanResult | null>(null);
   const [posture, setPosture] = useState<PostureResponse | null>(null);
@@ -330,31 +332,83 @@ export default function Dashboard() {
 
   useEffect(() => {
     async function load() {
+      setSummaryLoading(true);
       try {
-        const [jobsRes, agentsRes] = await Promise.all([
-          api.listJobs(),
-          api.listAgents(),
-        ]);
-        const jobsList = jobsRes?.jobs ?? [];
-        const fullJobs = await Promise.all(
-          jobsList?.map((j) => api.getScan(j.job_id))
-        );
-        setJobs(fullJobs.sort((a, b) => b.created_at.localeCompare(a.created_at)));
-        setAgentCount(agentsRes?.count ?? 0);
-        setAgentList(agentsRes?.agents ?? []);
+        const [jobsRes, agentsRes] = await Promise.allSettled([api.listJobs(), api.listAgents()]);
+
+        if (jobsRes.status === "fulfilled") {
+          const jobsList = Array.isArray(jobsRes.value?.jobs)
+            ? [...jobsRes.value.jobs].sort((a, b) => b.created_at.localeCompare(a.created_at))
+            : [];
+          setJobs(jobsList);
+          setApiError(false);
+        } else {
+          setApiError(true);
+          setJobs([]);
+          setDetailJobs([]);
+        }
+
+        if (agentsRes.status === "fulfilled") {
+          setAgentCount(agentsRes.value?.count ?? 0);
+          setAgentList(Array.isArray(agentsRes.value?.agents) ? agentsRes.value.agents : []);
+        } else {
+          setAgentCount(0);
+          setAgentList([]);
+        }
       } catch {
         setApiError(true);
+        setJobs([]);
+        setDetailJobs([]);
+        setAgentCount(0);
+        setAgentList([]);
       } finally {
-        setLoading(false);
+        setSummaryLoading(false);
       }
     }
     load();
   }, []);
 
+  useEffect(() => {
+    async function hydrateDetails() {
+      if (apiError) {
+        setDetailJobs([]);
+        setDetailLoading(false);
+        return;
+      }
+
+      const detailIds = jobs
+        .filter((job) => job.status === "done")
+        .slice(0, 10)
+        .map((job) => job.job_id);
+
+      if (detailIds.length === 0) {
+        setDetailJobs([]);
+        setDetailLoading(false);
+        return;
+      }
+
+      setDetailLoading(true);
+      try {
+        const fullJobs = await Promise.all(
+          detailIds.map((jobId) => api.getScan(jobId).catch(() => null))
+        );
+        const hydrated = fullJobs
+          .filter((job): job is ScanJob => Boolean(job))
+          .sort((a, b) => b.created_at.localeCompare(a.created_at));
+        setDetailJobs(hydrated);
+      } catch {
+        setDetailJobs([]);
+      } finally {
+        setDetailLoading(false);
+      }
+    }
+    hydrateDetails();
+  }, [jobs, apiError]);
+
   // When API is down but user imported a local report, synthesise a fake job
   // so all downstream useMemo aggregators work without changes.
   const effectiveJobs = useMemo<ScanJob[]>(() => {
-    if (!apiError || !importedReport) return jobs;
+    if (!apiError || !importedReport) return detailJobs;
     return [{
       job_id: "imported",
       status: "done",
@@ -363,6 +417,19 @@ export default function Dashboard() {
       progress: [],
       result: importedReport as unknown as Record<string, unknown>,
     } as unknown as ScanJob];
+  }, [detailJobs, apiError, importedReport]);
+
+  const effectiveRecentJobs = useMemo<JobListItem[]>(() => {
+    if (!apiError || !importedReport) return jobs;
+    return [{
+      job_id: "imported",
+      status: "done",
+      created_at: importedReport.scan_timestamp ?? new Date().toISOString(),
+      request: {},
+      summary: importedReport.summary,
+      scan_timestamp: importedReport.scan_timestamp,
+      pushed: false,
+    }];
   }, [jobs, apiError, importedReport]);
 
   const doneJobs = useMemo(
@@ -420,7 +487,12 @@ export default function Dashboard() {
   const effectiveAgentCount = importedReport
     ? (importedReport.agents?.length ?? 0)
     : agentCount;
-  const isLoading = loading && !importedReport;
+  const summaryStats = useMemo(() => {
+    const latest = effectiveRecentJobs.find((job) => job.status === "done" && job.summary);
+    return latest?.summary ?? null;
+  }, [effectiveRecentJobs]);
+  const isLoading = summaryLoading && !importedReport;
+  const detailsReady = !detailLoading || Boolean(importedReport);
 
   if (apiError && !importedReport) return <ApiOfflineState onImport={setImportedReport} />;
 
@@ -434,20 +506,20 @@ export default function Dashboard() {
               Risk overview
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300">
-              {doneJobs.length} scan{doneJobs.length !== 1 ? "s" : ""} · {effectiveAgentCount} agent{effectiveAgentCount !== 1 ? "s" : ""} · {totalPackages} packages · {uniqueCVEs} CVEs
+              {effectiveRecentJobs.length} scan{effectiveRecentJobs.length !== 1 ? "s" : ""} · {effectiveAgentCount} agent{effectiveAgentCount !== 1 ? "s" : ""} · {detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0)} packages · {detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0)} CVEs
             </p>
             <div className="mt-5 flex flex-wrap gap-2">
               <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-red-200/70">Actively exploited</div>
-                <div className="mt-1 font-mono text-lg font-semibold text-red-100">{kevCount}</div>
+                <div className="mt-1 font-mono text-lg font-semibold text-red-100">{detailsReady ? kevCount : 0}</div>
               </div>
               <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-3 py-2">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-amber-200/70">Credential exposed</div>
-                <div className="mt-1 font-mono text-lg font-semibold text-amber-100">{credentialExposureCount}</div>
+                <div className="mt-1 font-mono text-lg font-semibold text-amber-100">{detailsReady ? credentialExposureCount : 0}</div>
               </div>
               <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 px-3 py-2">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-sky-200/70">Reachable tools</div>
-                <div className="mt-1 font-mono text-lg font-semibold text-sky-100">{reachableToolCount}</div>
+                <div className="mt-1 font-mono text-lg font-semibold text-sky-100">{detailsReady ? reachableToolCount : 0}</div>
               </div>
               {topRisk && (
                 <div className="rounded-2xl border border-zinc-700 bg-zinc-900/80 px-3 py-2">
@@ -541,11 +613,11 @@ export default function Dashboard() {
 
       {/* Key stats bar */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <StatCard icon={Layers} label="Total scans" value={isLoading ? "—" : String(doneJobs.length)} color="zinc" href="/jobs" />
+        <StatCard icon={Layers} label="Total scans" value={isLoading ? "—" : String(effectiveRecentJobs.length)} color="zinc" href="/jobs" />
         <StatCard icon={Server} label="Agents" value={isLoading ? "—" : String(effectiveAgentCount)} color="blue" href="/agents" />
-        <StatCard icon={Package} label="Packages" value={isLoading ? "—" : String(totalPackages)} color="orange" href="/vulns" />
-        <StatCard icon={Bug} label="Unique CVEs" value={isLoading ? "—" : String(uniqueCVEs)} color="red" href="/vulns" />
-        <StatCard icon={Zap} label="Critical" value={isLoading ? "—" : String(severity.critical)} color="red" href="/vulns?severity=critical" />
+        <StatCard icon={Package} label="Packages" value={isLoading ? "—" : String(detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0))} color="orange" href="/vulns" />
+        <StatCard icon={Bug} label="Unique CVEs" value={isLoading ? "—" : String(detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0))} color="red" href="/vulns" />
+        <StatCard icon={Zap} label="Critical" value={isLoading ? "—" : String(detailsReady ? severity.critical : (summaryStats?.critical_findings ?? 0))} color="red" href="/vulns?severity=critical" />
       </div>
 
       {/* Severity distribution + Sources — side by side */}
@@ -709,7 +781,7 @@ export default function Dashboard() {
             <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
               Recent scans
             </h2>
-            {jobs.length > 8 && (
+            {effectiveRecentJobs.length > 8 && (
               <Link href="/jobs" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
                 View all <ArrowRight className="w-3 h-3" />
               </Link>
@@ -717,11 +789,11 @@ export default function Dashboard() {
           </div>
           {isLoading ? (
             <div className="text-zinc-500 text-sm">Loading...</div>
-          ) : effectiveJobs.length === 0 ? (
+          ) : effectiveRecentJobs.length === 0 ? (
             <EmptyState />
           ) : (
             <div className="space-y-2">
-              {effectiveJobs.slice(0, 8).map((job) => (
+              {effectiveRecentJobs.slice(0, 8).map((job) => (
                 <JobRow key={job.job_id} job={job} />
               ))}
             </div>
@@ -912,7 +984,7 @@ function BlastCard({ blast }: { blast: BlastRadius }) {
   );
 }
 
-function JobRow({ job }: { job: ScanJob }) {
+function JobRow({ job }: { job: JobListItem }) {
   const statusColors: Record<string, string> = {
     done: "bg-emerald-500",
     failed: "bg-red-500",
@@ -920,16 +992,15 @@ function JobRow({ job }: { job: ScanJob }) {
     pending: "bg-zinc-500",
     cancelled: "bg-zinc-600",
   };
-  const result = job.result as ScanResult | undefined;
-  const vulnCount = result?.summary?.total_vulnerabilities ?? 0;
-  const critCount = result?.summary?.critical_findings ?? 0;
+  const vulnCount = job.summary?.total_vulnerabilities ?? 0;
+  const critCount = job.summary?.critical_findings ?? 0;
 
   // Detect scan source tags
   const tags: string[] = [];
-  if (job.request.images && job.request.images.length > 0) tags.push(`${job.request.images.length} image${job.request.images.length > 1 ? "s" : ""}`);
-  if (job.request.k8s) tags.push("k8s");
-  if (job.request.sbom) tags.push("sbom");
-  if (job.request.inventory) tags.push("inventory");
+  if (job.request?.images && job.request.images.length > 0) tags.push(`${job.request.images.length} image${job.request.images.length > 1 ? "s" : ""}`);
+  if (job.request?.k8s) tags.push("k8s");
+  if (job.request?.sbom) tags.push("sbom");
+  if (job.request?.inventory) tags.push("inventory");
   if (tags.length === 0 && job.status === "done") tags.push("agents");
 
   return (

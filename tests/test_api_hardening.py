@@ -11,6 +11,7 @@ from agent_bom.api.server import (
     MaxBodySizeMiddleware,
     RateLimitMiddleware,
     app,
+    configure_api,
 )
 
 
@@ -27,6 +28,21 @@ def test_trust_headers_present():
     resp = client.get("/health")
     assert resp.headers.get("x-agent-bom-read-only") == "true"
     assert resp.headers.get("x-agent-bom-no-credential-storage") == "true"
+
+
+def test_configure_api_refreshes_cors_policy():
+    """configure_api() should update the live CORS middleware, not just a module variable."""
+    configure_api(cors_allow_all=True)
+    client = TestClient(app)
+    resp = client.get("/health", headers={"Origin": "http://127.0.0.1:3001"})
+    assert resp.status_code == 200
+    assert resp.headers.get("access-control-allow-origin") == "*"
+
+    configure_api(cors_origins=["http://127.0.0.1:3000"])
+    client = TestClient(app)
+    resp = client.get("/health", headers={"Origin": "http://127.0.0.1:3001"})
+    assert resp.status_code == 200
+    assert resp.headers.get("access-control-allow-origin") is None
 
 
 def test_api_key_middleware_blocks_without_key():

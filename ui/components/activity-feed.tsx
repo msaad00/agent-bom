@@ -7,7 +7,7 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { api } from "@/lib/api";
-import type { ScanJob } from "@/lib/api";
+import type { JobListItem } from "@/lib/api";
 import {
   Search,
   CheckCircle,
@@ -52,7 +52,7 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-function jobsToEvents(jobs: ScanJob[]): ActivityEvent[] {
+function jobsToEvents(jobs: JobListItem[]): ActivityEvent[] {
   const events: ActivityEvent[] = [];
   for (const job of jobs) {
     events.push({
@@ -63,17 +63,16 @@ function jobsToEvents(jobs: ScanJob[]): ActivityEvent[] {
       meta: { job_id: job.job_id },
     });
     if (job.status === "done" && job.completed_at) {
-      const result = job.result as Record<string, unknown> | undefined;
-      const blast = (result?.blast_radius as Array<Record<string, unknown>>) ?? [];
-      const critCount = blast.filter((b) => b.severity === "critical").length;
+      const findingCount = job.summary?.total_vulnerabilities ?? 0;
+      const critCount = job.summary?.critical_findings ?? 0;
       events.push({
         id: `${job.job_id}-done`,
         type: "scan_completed",
-        message: `Scan completed: ${blast.length} findings${critCount > 0 ? `, ${critCount} critical` : ""}`,
+        message: `Scan completed: ${findingCount} findings${critCount > 0 ? `, ${critCount} critical` : ""}`,
         timestamp: job.completed_at,
         meta: {
           job_id: job.job_id,
-          cve_count: blast.length,
+          cve_count: findingCount,
           critical_count: critCount,
         },
       });
@@ -98,7 +97,7 @@ interface ActivityFeedProps {
 }
 
 export function ActivityFeed({ maxItems = 20, className }: ActivityFeedProps) {
-  const [jobs, setJobs] = useState<ScanJob[]>([]);
+  const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [filter, setFilter] = useState<ActivityType | "all">("all");
   const [loading, setLoading] = useState(true);
 
@@ -106,10 +105,7 @@ export function ActivityFeed({ maxItems = 20, className }: ActivityFeedProps) {
     async function load() {
       try {
         const jobsRes = await api.listJobs();
-        const full = await Promise.all(
-          jobsRes.jobs.slice(0, 20).map((j) => api.getScan(j.job_id))
-        );
-        setJobs(full);
+        setJobs(jobsRes.jobs.slice(0, 20));
       } catch {
         /* ignore */
       } finally {

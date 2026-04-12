@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 # ─── Enums ─────────────────────────────────────────────────────────────────
 
@@ -248,6 +248,8 @@ class ModelFilesRequest(BaseModel):
 
 
 class PushPayload(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     source_id: str = ""
     agents: list = []
     blast_radii: list = []

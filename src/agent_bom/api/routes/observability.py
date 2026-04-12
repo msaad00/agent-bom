@@ -102,13 +102,9 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
         request=ScanRequest(),
     )
     job.status = JobStatus.DONE
-    job.result = {
-        "agents": body.agents,
-        "blast_radii": body.blast_radii,
-        "warnings": body.warnings,
-        "source_id": body.source_id,
-        "pushed": True,
-    }
+    job_result = body.model_dump()
+    job_result["pushed"] = True
+    job.result = job_result
     job.progress.append(f"Received via push from source={body.source_id}")
     _get_store().put(job)
     return {"job_id": job.job_id, "source_id": body.source_id, "status": "stored"}

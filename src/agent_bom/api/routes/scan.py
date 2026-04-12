@@ -120,6 +120,23 @@ def _visible_to_tenant(job: ScanJob, tenant_id: str) -> bool:
     return getattr(job, "tenant_id", "default") == tenant_id
 
 
+def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
+    """Build a lightweight summary payload for list surfaces."""
+    result = job.result if isinstance(job.result, dict) else {}
+    summary = result.get("summary") if isinstance(result.get("summary"), dict) else None
+    return {
+        "job_id": job.job_id,
+        "tenant_id": job.tenant_id,
+        "status": job.status,
+        "created_at": job.created_at,
+        "completed_at": job.completed_at,
+        "request": job.request.model_dump(exclude_defaults=True, exclude_none=True),
+        "summary": summary,
+        "scan_timestamp": result.get("scan_timestamp"),
+        "pushed": bool(result.get("pushed")),
+    }
+
+
 def _job_for_request(request: Request, job_id: str) -> ScanJob:
     tenant_id = _tenant_id(request)
     in_mem = _jobs_get(job_id)
@@ -484,9 +501,13 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0) -> dict:
     summary = [j for j in _get_store().list_summary() if j.get("tenant_id", "default") == tenant_id]
     total = len(summary)
     page = summary[offset : offset + limit]
+    enriched: list[dict[str, Any]] = []
+    for item in page:
+        full_job = _get_store().get(item["job_id"])
+        enriched.append(_job_summary_payload(full_job) if full_job is not None else item)
     return {
-        "jobs": page,
-        "count": len(page),
+        "jobs": enriched,
+        "count": len(enriched),
         "total": total,
         "limit": limit,
         "offset": offset,

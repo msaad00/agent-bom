@@ -25,7 +25,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
-import { api, type ScanJob } from "@/lib/api";
+import { api, type JobListItem, type ScanJob } from "@/lib/api";
 import { applyDagreLayout } from "@/lib/dagre-layout";
 import {
   lineageNodeTypes,
@@ -209,32 +209,24 @@ function LateralPanel({
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function ContextPage() {
-  const [jobs, setJobs] = useState<ScanJob[]>([]);
+  const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<string>("");
   const [graphData, setGraphData] = useState<ContextGraphData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeJob, setActiveJob] = useState<ScanJob | null>(null);
 
   // Load completed jobs
   useEffect(() => {
     api
       .listJobs()
-      .then(async (res) => {
-        const doneJobs: ScanJob[] = [];
-        for (const j of res.jobs) {
-          if (j.status === "done") {
-            try {
-              const full = await api.getScan(j.job_id);
-              if (full.result) doneJobs.push(full);
-            } catch {
-              /* skip */
-            }
-          }
-        }
+      .then((res) => {
+        const doneJobs = res.jobs.filter((j) => j.status === "done");
         setJobs(doneJobs);
         if (doneJobs.length > 0) setSelectedJobId(doneJobs[0].job_id);
       })
@@ -242,10 +234,34 @@ export default function ContextPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const activeJob = useMemo(
-    () => jobs.find((job) => job.job_id === selectedJobId) ?? null,
-    [jobs, selectedJobId],
-  );
+  useEffect(() => {
+    if (!selectedJobId) {
+      setActiveJob(null);
+      return;
+    }
+    let cancelled = false;
+    setDetailLoading(true);
+    api
+      .getScan(selectedJobId)
+      .then((job) => {
+        if (!cancelled) {
+          setActiveJob(job.result ? job : null);
+          setError(null);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setActiveJob(null);
+          setError(e.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedJobId]);
 
   const agentNames = useMemo(
     () => activeJob?.result?.agents.map((agent) => agent.name).sort((left, right) => left.localeCompare(right)) ?? [],
@@ -363,11 +379,11 @@ export default function ContextPage() {
     setHoveredNodeId(null);
   }, []);
 
-  if (loading) {
+  if (loading || (detailLoading && !graphData)) {
     return (
       <div className="flex items-center justify-center h-[80vh] text-zinc-400">
         <Loader2 className="w-5 h-5 animate-spin mr-2" />
-        Loading scan data...
+        Loading context view...
       </div>
     );
   }
@@ -464,6 +480,12 @@ export default function ContextPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Graph */}
         <div className="flex-1 relative">
+          {detailLoading && graphData && (
+            <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-center py-2 text-xs text-zinc-400 bg-zinc-950/70 backdrop-blur-sm">
+              <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />
+              Updating context graph...
+            </div>
+          )}
           {!graphData ? (
             <div className="flex items-center justify-center h-full text-zinc-400">
               <Loader2 className="w-5 h-5 animate-spin mr-2" />

@@ -102,6 +102,7 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
         request=ScanRequest(),
     )
     job.status = JobStatus.DONE
+    job.completed_at = _now()
     job_result = body.model_dump()
     job_result["pushed"] = True
     job.result = job_result

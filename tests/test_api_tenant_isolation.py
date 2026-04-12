@@ -241,6 +241,7 @@ async def test_create_scan_and_push_stamp_request_tenant(monkeypatch):
     pushed_job = store.get(pushed["job_id"])
     assert pushed_job is not None
     assert pushed_job.tenant_id == "tenant-alpha"
+    assert pushed_job.completed_at is not None
     assert pushed_job.result["summary"]["total_packages"] == 12
     assert pushed_job.result["posture_scorecard"]["overall_score"] == 82
 

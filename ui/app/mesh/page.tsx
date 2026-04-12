@@ -11,7 +11,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { ShieldAlert, Loader2, AlertTriangle, Search, SlidersHorizontal, Network, GitBranch } from "lucide-react";
-import { api, type ScanJob } from "@/lib/api";
+import { api, type JobListItem, type ScanJob } from "@/lib/api";
 import { applyDagreLayout } from "@/lib/dagre-layout";
 import { lineageNodeTypes, type LineageNodeData, type LineageNodeType } from "@/components/lineage-nodes";
 import { LineageDetailPanel } from "@/components/lineage-detail";
@@ -165,12 +165,14 @@ function MeshToolbar({
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function MeshPage() {
-  const [jobs, setJobs] = useState<ScanJob[]>([]);
+  const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [selectedJob, setSelectedJob] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [activeJob, setActiveJob] = useState<ScanJob | null>(null);
 
   // Layout direction: "LR" for topology, "TB" for spawn tree
   const [layoutMode, setLayoutMode] = useState<"LR" | "TB">("LR");
@@ -190,29 +192,45 @@ export default function MeshPage() {
   useEffect(() => {
     api
       .listJobs()
-      .then(async (res) => {
-        const fullJobs: ScanJob[] = [];
-        for (const j of res.jobs) {
-          if (j.status === "done") {
-            try {
-              const full = await api.getScan(j.job_id);
-              if (full.result) fullJobs.push(full);
-            } catch {
-              /* skip */
-            }
-          }
-        }
-        setJobs(fullJobs);
-        if (fullJobs.length > 0) setSelectedJob(fullJobs[0].job_id);
+      .then((res) => {
+        const doneJobs = res.jobs.filter((j) => j.status === "done");
+        setJobs(doneJobs);
+        if (doneJobs.length > 0) setSelectedJob(doneJobs[0].job_id);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
-  const activeResult = useMemo(
-    () => jobs.find((j) => j.job_id === selectedJob)?.result ?? null,
-    [jobs, selectedJob]
-  );
+  useEffect(() => {
+    if (!selectedJob) {
+      setActiveJob(null);
+      return;
+    }
+    let cancelled = false;
+    setDetailLoading(true);
+    api
+      .getScan(selectedJob)
+      .then((job) => {
+        if (!cancelled) {
+          setActiveJob(job.result ? job : null);
+          setError(null);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setActiveJob(null);
+          setError(e.message);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDetailLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedJob]);
+
+  const activeResult = useMemo(() => activeJob?.result ?? null, [activeJob]);
 
   const agentNames = useMemo(
     () => activeResult?.agents.map((agent) => agent.name).sort((left, right) => left.localeCompare(right)) ?? [],
@@ -320,11 +338,11 @@ export default function MeshPage() {
     setHoveredNodeId(null);
   }, []);
 
-  if (loading) {
+  if (loading || (detailLoading && !activeResult)) {
     return (
       <div className="flex items-center justify-center h-[80vh] text-zinc-400">
         <Loader2 className="w-5 h-5 animate-spin mr-2" />
-        Loading scan data...
+        Loading mesh view...
       </div>
     );
   }
@@ -422,6 +440,12 @@ export default function MeshPage() {
 
       {/* Graph */}
       <div className="flex-1 relative">
+        {detailLoading && activeResult && (
+          <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-center py-2 text-xs text-zinc-400 bg-zinc-950/70 backdrop-blur-sm">
+            <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />
+            Updating mesh...
+          </div>
+        )}
         <ReactFlow
           nodes={displayNodes}
           edges={displayEdges}

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   api,
+  JobListItem,
   ScanJob,
   ScanResult,
   Agent,
@@ -108,25 +109,39 @@ function buildTrendData(jobs: ScanJob[]): TrendDataPoint[] {
 
 export default function InsightsPage() {
   const router = useRouter();
-  const [jobs, setJobs] = useState<ScanJob[]>([]);
+  const [jobs, setJobs] = useState<JobListItem[]>([]);
+  const [latestJob, setLatestJob] = useState<ScanJob | null>(null);
+  const [trendJobs, setTrendJobs] = useState<ScanJob[]>([]);
   const [loading, setLoading] = useState(true);
+  const [trendLoading, setTrendLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchData = () => {
     setLoading(true);
     setError(null);
+    setLatestJob(null);
+    setTrendJobs([]);
+    setTrendLoading(false);
     api
       .listJobs()
       .then(async (res) => {
-        const doneIds = res.jobs
-          .filter((j) => j.status === "done")
-          .slice(0, 10)
-          .map((j) => j.job_id);
+        const doneJobs = res.jobs.filter((j) => j.status === "done");
+        setJobs(doneJobs);
+        if (doneJobs.length === 0) {
+          setLatestJob(null);
+          setTrendJobs([]);
+          return;
+        }
 
-        const fullJobs = await Promise.all(
-          doneIds?.map((id) => api.getScan(id).catch(() => null))
-        );
-        setJobs(fullJobs.filter(Boolean) as ScanJob[]);
+        const latest = await api.getScan(doneJobs[0].job_id);
+        setLatestJob(latest.result ? latest : null);
+
+        setTrendLoading(true);
+        Promise.all(doneJobs.slice(0, 10).map((job) => api.getScan(job.job_id).catch(() => null)))
+          .then((fullJobs) => {
+            setTrendJobs(fullJobs.filter((job): job is ScanJob => Boolean(job?.result)));
+          })
+          .finally(() => setTrendLoading(false));
       })
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
@@ -137,10 +152,7 @@ export default function InsightsPage() {
   }, []);
 
   // Use the most recent completed scan for single-scan charts
-  const latest = useMemo(
-    () => jobs.find((j) => j.status === "done" && j.result) ?? null,
-    [jobs]
-  );
+  const latest = latestJob;
   const result = latest?.result ?? null;
   const agents: Agent[] = result?.agents ?? [];
   const blasts: BlastRadius[] = result?.blast_radius ?? [];
@@ -151,7 +163,7 @@ export default function InsightsPage() {
   );
 
   const epssVsCvss = useMemo(() => buildEpssVsCvss(blasts), [blasts]);
-  const trendData = useMemo(() => buildTrendData(jobs), [jobs]);
+  const trendData = useMemo(() => buildTrendData(trendJobs), [trendJobs]);
 
   if (loading) {
     return (
@@ -237,7 +249,13 @@ export default function InsightsPage() {
         </div>
       )}
 
-      {trendData.length < 2 && (
+      {trendLoading && (
+        <div className="text-center py-6 text-zinc-600 text-xs border border-zinc-800 border-dashed rounded-xl">
+          Loading trend history...
+        </div>
+      )}
+
+      {!trendLoading && trendData.length < 2 && (
         <div className="text-center py-6 text-zinc-600 text-xs border border-zinc-800 border-dashed rounded-xl">
           Run 2+ scans to see vulnerability trend over time
         </div>

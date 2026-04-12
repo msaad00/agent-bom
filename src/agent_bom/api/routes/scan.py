@@ -498,13 +498,21 @@ async def list_jobs(request: Request, limit: int = 50, offset: int = 0) -> dict:
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
     tenant_id = _tenant_id(request)
-    summary = [j for j in _get_store().list_summary() if j.get("tenant_id", "default") == tenant_id]
+    store = _get_store()
+    summary = [j for j in store.list_summary() if j.get("tenant_id", "default") == tenant_id]
     total = len(summary)
     page = summary[offset : offset + limit]
     enriched: list[dict[str, Any]] = []
     for item in page:
-        full_job = _get_store().get(item["job_id"])
-        enriched.append(_job_summary_payload(full_job) if full_job is not None else item)
+        # Keep list surfaces compatible with lightweight stores and tests that
+        # only implement paged summaries. Hydrate when available, otherwise
+        # return the summary row unchanged.
+        try:
+            get_job = getattr(store, "get", None)
+            full_job = get_job(item["job_id"]) if callable(get_job) else None
+        except Exception:
+            full_job = None
+        enriched.append(_job_summary_payload(full_job) if isinstance(full_job, ScanJob) else item)
     return {
         "jobs": enriched,
         "count": len(enriched),

@@ -492,6 +492,7 @@ export default function Dashboard() {
     return latest?.summary ?? null;
   }, [effectiveRecentJobs]);
   const isLoading = summaryLoading && !importedReport;
+  const summaryReady = !summaryLoading || Boolean(importedReport);
   const detailsReady = !detailLoading || Boolean(importedReport);
 
   if (apiError && !importedReport) return <ApiOfflineState onImport={setImportedReport} />;
@@ -613,11 +614,11 @@ export default function Dashboard() {
 
       {/* Key stats bar */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <StatCard icon={Layers} label="Total scans" value={isLoading ? "—" : String(effectiveRecentJobs.length)} color="zinc" href="/jobs" />
-        <StatCard icon={Server} label="Agents" value={isLoading ? "—" : String(effectiveAgentCount)} color="blue" href="/agents" />
-        <StatCard icon={Package} label="Packages" value={isLoading ? "—" : String(detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0))} color="orange" href="/vulns" />
-        <StatCard icon={Bug} label="Unique CVEs" value={isLoading ? "—" : String(detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0))} color="red" href="/vulns" />
-        <StatCard icon={Zap} label="Critical" value={isLoading ? "—" : String(detailsReady ? severity.critical : (summaryStats?.critical_findings ?? 0))} color="red" href="/vulns?severity=critical" />
+        <StatCard icon={Layers} label="Total scans" value={summaryReady ? String(effectiveRecentJobs.length) : "—"} color="zinc" href="/jobs" />
+        <StatCard icon={Server} label="Agents" value={summaryReady ? String(effectiveAgentCount) : "—"} color="blue" href="/agents" />
+        <StatCard icon={Package} label="Packages" value={summaryReady ? String(detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0)) : "—"} color="orange" href="/vulns" />
+        <StatCard icon={Bug} label="Unique CVEs" value={summaryReady ? String(detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0)) : "—"} color="red" href="/vulns" />
+        <StatCard icon={Zap} label="Critical" value={summaryReady ? String(detailsReady ? severity.critical : (summaryStats?.critical_findings ?? 0)) : "—"} color="red" href="/vulns?severity=critical" />
       </div>
 
       {/* Severity distribution + Sources — side by side */}
@@ -787,7 +788,7 @@ export default function Dashboard() {
               </Link>
             )}
           </div>
-          {isLoading ? (
+          {summaryLoading && !importedReport ? (
             <div className="text-zinc-500 text-sm">Loading...</div>
           ) : effectiveRecentJobs.length === 0 ? (
             <EmptyState />
@@ -804,7 +805,7 @@ export default function Dashboard() {
           <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
             Activity
           </h2>
-          <ActivityFeed maxItems={15} />
+          <ActivityFeed maxItems={15} initialJobs={effectiveRecentJobs.slice(0, 20)} />
         </section>
       </div>
     </div>

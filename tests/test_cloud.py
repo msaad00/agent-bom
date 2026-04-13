@@ -188,6 +188,12 @@ def test_aws_bedrock_agents_discovered():
     assert origin["service"] == "bedrock"
     assert origin["resource_type"] == "agent"
     assert origin["raw_identity"]["agentId"] == "ABC123"
+    state = bedrock_agents[0].metadata["cloud_state"]
+    assert state["provider"] == "aws"
+    assert state["service"] == "bedrock"
+    assert state["lifecycle_state"] == "prepared"
+    assert state["raw_state"] == "PREPARED"
+    assert state["state_source"] == "agentStatus"
 
 
 def test_aws_no_credentials_returns_warning():
@@ -323,6 +329,47 @@ def test_databricks_cluster_packages():
     assert "openai" in pkg_names
     assert all(p.ecosystem == "pypi" for p in server.packages)
     assert agents[0].source == "databricks"
+    state = agents[0].metadata["cloud_state"]
+    assert state["provider"] == "databricks"
+    assert state["service"] == "clusters"
+    assert state["resource_type"] == "cluster"
+    assert state["lifecycle_state"] == "running"
+    assert state["raw_state"] == "RUNNING"
+    assert state["state_source"] == "cluster.state"
+
+
+def test_databricks_serving_endpoint_state_normalized():
+    """Serving endpoints carry normalized readiness state for downstream consumers."""
+    _install_mock_databricks()
+
+    mock_ws = MagicMock()
+    mock_ws.clusters.list.return_value = []
+
+    endpoint = MagicMock()
+    endpoint.name = "prod-endpoint"
+    endpoint_state = MagicMock()
+    endpoint_ready = MagicMock()
+    endpoint_ready.value = "READY"
+    endpoint_state.ready = endpoint_ready
+    endpoint.state = endpoint_state
+    mock_ws.serving_endpoints.list.return_value = [endpoint]
+
+    with patch("databricks.sdk.WorkspaceClient", return_value=mock_ws):
+        importlib.reload(importlib.import_module("agent_bom.cloud.databricks"))
+        from agent_bom.cloud.databricks import discover
+
+        agents, warnings = discover(host="https://my.databricks.com", token="fake")
+
+    assert warnings == []
+    assert len(agents) == 1
+    assert agents[0].name == "databricks-serving:prod-endpoint"
+    state = agents[0].metadata["cloud_state"]
+    assert state["provider"] == "databricks"
+    assert state["service"] == "model-serving"
+    assert state["resource_type"] == "serving-endpoint"
+    assert state["lifecycle_state"] == "ready"
+    assert state["raw_state"] == "READY"
+    assert state["state_source"] == "state.ready"
 
 
 def test_databricks_maven_packages():

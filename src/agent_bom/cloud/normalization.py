@@ -49,3 +49,31 @@ def build_cloud_origin(
             key: value for key, value in raw_identity.items() if isinstance(value, (str, int, float, bool)) and value not in ("", None)
         }
     return envelope
+
+
+def build_cloud_state(
+    *,
+    provider: str,
+    service: str,
+    resource_type: str,
+    lifecycle_state: str,
+    raw_state: str | None = None,
+    state_source: str | None = None,
+) -> dict[str, Any]:
+    """Return a stable cloud-state envelope for provider lifecycle metadata.
+
+    Only use this when the provider exposes a real lifecycle/status field that
+    can be normalized without guesswork.
+    """
+    envelope: dict[str, Any] = {
+        "normalization_version": "1",
+        "provider": provider,
+        "service": service,
+        "resource_type": resource_type,
+        "lifecycle_state": lifecycle_state,
+    }
+    if raw_state:
+        envelope["raw_state"] = raw_state
+    if state_source:
+        envelope["state_source"] = state_source
+    return envelope

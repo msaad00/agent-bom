@@ -28,6 +28,7 @@ from typing import Any, Optional
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
+from .normalization import build_cloud_state
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,16 @@ def discover(
             config_path=f"{resolved_host}/#/setting/clusters/{cluster_id}/configuration",
             source="databricks",
             mcp_servers=[server],
+            metadata={
+                "cloud_state": build_cloud_state(
+                    provider="databricks",
+                    service="clusters",
+                    resource_type="cluster",
+                    lifecycle_state=state_str.lower().replace("_", "-"),
+                    raw_state=state_str,
+                    state_source="cluster.state",
+                )
+            },
         )
         agents.append(agent)
 
@@ -134,6 +145,16 @@ def discover(
                 config_path=f"{resolved_host}/ml/endpoints/{ep_name}",
                 source="databricks",
                 mcp_servers=[server],
+                metadata={
+                    "cloud_state": build_cloud_state(
+                        provider="databricks",
+                        service="model-serving",
+                        resource_type="serving-endpoint",
+                        lifecycle_state=state_str.lower().replace("_", "-"),
+                        raw_state=state_str,
+                        state_source="state.ready",
+                    )
+                },
             )
             agents.append(agent)
 

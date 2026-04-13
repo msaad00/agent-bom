@@ -22,7 +22,7 @@ from typing import Any
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_cloud_origin
+from .normalization import build_cloud_origin, build_cloud_state
 
 logger = logging.getLogger(__name__)
 
@@ -249,7 +249,15 @@ def _discover_bedrock(session: Any, region: str) -> tuple[list[Agent], list[str]
                             "agentArn": agent_arn,
                             "agentName": agent_name,
                         },
-                    )
+                    ),
+                    "cloud_state": build_cloud_state(
+                        provider="aws",
+                        service="bedrock",
+                        resource_type="agent",
+                        lifecycle_state=agent_status.lower().replace("_", "-"),
+                        raw_state=agent_status,
+                        state_source="agentStatus",
+                    ),
                 },
             )
             agents.append(agent)

@@ -46,12 +46,21 @@ def test_json_includes_agent_metadata():
                 "resource_name": "prod-endpoint",
                 "location": "us-central1",
                 "scope": {"project_id": "test"},
-            }
+            },
+            "cloud_state": {
+                "provider": "gcp",
+                "service": "vertex-ai",
+                "resource_type": "endpoint",
+                "lifecycle_state": "ready",
+                "raw_state": "READY",
+                "state_source": "state",
+            },
         },
     )
     data = to_json(AIBOMReport(agents=[agent]))
     assert data["agents"][0]["metadata"]["cloud_origin"]["provider"] == "gcp"
     assert data["agents"][0]["metadata"]["cloud_origin"]["scope"]["project_id"] == "test"
+    assert data["agents"][0]["metadata"]["cloud_state"]["lifecycle_state"] == "ready"
 
 
 # ── Claude Code project parsing ──────────────────────────────────────────────

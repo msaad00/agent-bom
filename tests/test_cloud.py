@@ -4,6 +4,7 @@ import importlib
 import json
 import sys
 import types
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -1511,6 +1512,10 @@ def test_azure_container_apps_discovered():
     mock_app.name = "my-ai-agent-app"
     mock_app.id = "/subscriptions/sub-123/resourceGroups/rg-ai/providers/Microsoft.App/containerApps/my-ai-agent-app"
     mock_app.template = mock_template
+    mock_system_data = MagicMock()
+    mock_system_data.created_at = datetime(2026, 4, 10, 14, 30, tzinfo=timezone.utc)
+    mock_system_data.last_modified_at = datetime(2026, 4, 11, 16, 45, tzinfo=timezone.utc)
+    mock_app.system_data = mock_system_data
 
     mock_client.container_apps.list_by_subscription.return_value = [mock_app]
 
@@ -1528,6 +1533,10 @@ def test_azure_container_apps_discovered():
     assert origin["provider"] == "azure"
     assert origin["service"] == "container-apps"
     assert origin["scope"]["subscription_id"] == "sub-123"
+    timestamps = ca_agents[0].metadata["cloud_timestamps"]
+    assert timestamps["created_at"] == "2026-04-10T14:30:00Z"
+    assert timestamps["updated_at"] == "2026-04-11T16:45:00Z"
+    assert timestamps["sources"]["created_at"] == "system_data.created_at"
 
 
 def test_azure_ai_foundry_discovered():
@@ -1544,6 +1553,10 @@ def test_azure_ai_foundry_discovered():
     mock_workspace = MagicMock()
     mock_workspace.name = "my-ml-workspace"
     mock_workspace.id = "/subscriptions/sub-123/resourceGroups/rg-ai/providers/Microsoft.MachineLearningServices/workspaces/my-ml-workspace"
+    mock_system_data = MagicMock()
+    mock_system_data.created_at = "2026-04-01T12:00:00Z"
+    mock_system_data.last_modified_at = "2026-04-12T09:15:00Z"
+    mock_workspace.system_data = mock_system_data
     mock_rm_client.resources.list.return_value = [mock_workspace]
 
     with (
@@ -1560,6 +1573,9 @@ def test_azure_ai_foundry_discovered():
     assert origin["provider"] == "azure"
     assert origin["service"] == "ai-foundry"
     assert origin["resource_type"] == "workspace"
+    timestamps = ai_agents[0].metadata["cloud_timestamps"]
+    assert timestamps["created_at"] == "2026-04-01T12:00:00Z"
+    assert timestamps["updated_at"] == "2026-04-12T09:15:00Z"
 
 
 def test_azure_container_apps_by_resource_group():
@@ -1681,6 +1697,8 @@ def test_gcp_vertex_ai_endpoints_discovered():
     mock_endpoint.display_name = "prod-endpoint"
     mock_endpoint.resource_name = "projects/123/locations/us-central1/endpoints/456"
     mock_endpoint.gca_resource = mock_gca
+    mock_endpoint.create_time = "2026-04-05T08:00:00Z"
+    mock_endpoint.update_time = "2026-04-12T10:30:00Z"
 
     with patch("google.cloud.aiplatform.init"), patch("google.cloud.aiplatform.Endpoint.list", return_value=[mock_endpoint]):
         agents, warnings = discover(project_id="my-project", region="us-central1")
@@ -1694,6 +1712,10 @@ def test_gcp_vertex_ai_endpoints_discovered():
     assert origin["provider"] == "gcp"
     assert origin["service"] == "vertex-ai"
     assert origin["scope"]["project_id"] == "my-project"
+    timestamps = vertex_agents[0].metadata["cloud_timestamps"]
+    assert timestamps["created_at"] == "2026-04-05T08:00:00Z"
+    assert timestamps["updated_at"] == "2026-04-12T10:30:00Z"
+    assert timestamps["sources"]["updated_at"] == "update_time"
 
 
 def test_gcp_cloud_run_services_discovered():

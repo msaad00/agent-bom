@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -76,4 +77,65 @@ def build_cloud_state(
         envelope["raw_state"] = raw_state
     if state_source:
         envelope["state_source"] = state_source
+    return envelope
+
+
+def _normalize_timestamp(value: Any) -> str | None:
+    """Normalize provider timestamps into UTC ISO-8601 strings."""
+    if value in ("", None):
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        else:
+            value = value.astimezone(timezone.utc)
+        return value.isoformat().replace("+00:00", "Z")
+    if isinstance(value, str):
+        candidate = value.strip()
+        if not candidate:
+            return None
+        try:
+            parsed = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+        except ValueError:
+            return candidate
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        else:
+            parsed = parsed.astimezone(timezone.utc)
+        return parsed.isoformat().replace("+00:00", "Z")
+    return str(value)
+
+
+def build_cloud_timestamps(
+    *,
+    provider: str,
+    service: str,
+    resource_type: str,
+    created_at: Any = None,
+    updated_at: Any = None,
+    created_source: str | None = None,
+    updated_source: str | None = None,
+) -> dict[str, Any] | None:
+    """Return a stable cloud-timestamps envelope when provider timestamps exist."""
+    created = _normalize_timestamp(created_at)
+    updated = _normalize_timestamp(updated_at)
+    if not created and not updated:
+        return None
+    envelope: dict[str, Any] = {
+        "normalization_version": "1",
+        "provider": provider,
+        "service": service,
+        "resource_type": resource_type,
+    }
+    if created:
+        envelope["created_at"] = created
+    if updated:
+        envelope["updated_at"] = updated
+    sources: dict[str, str] = {}
+    if created and created_source:
+        sources["created_at"] = created_source
+    if updated and updated_source:
+        sources["updated_at"] = updated_source
+    if sources:
+        envelope["sources"] = sources
     return envelope

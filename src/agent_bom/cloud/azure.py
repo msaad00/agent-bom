@@ -17,7 +17,7 @@ from typing import Any
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_cloud_origin
+from .normalization import build_cloud_origin, build_cloud_timestamps
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +169,18 @@ def _discover_container_apps(
                             )
                         },
                     )
+                    system_data = getattr(app, "system_data", None)
+                    cloud_timestamps = build_cloud_timestamps(
+                        provider="azure",
+                        service="container-apps",
+                        resource_type="container-app",
+                        created_at=getattr(system_data, "created_at", None) if system_data else None,
+                        updated_at=getattr(system_data, "last_modified_at", None) if system_data else None,
+                        created_source="system_data.created_at",
+                        updated_source="system_data.last_modified_at",
+                    )
+                    if cloud_timestamps:
+                        agent.metadata["cloud_timestamps"] = cloud_timestamps
                     agents.append(agent)
 
     except Exception as exc:
@@ -225,6 +237,18 @@ def _discover_ai_foundry(
                     )
                 },
             )
+            system_data = getattr(resource, "system_data", None)
+            cloud_timestamps = build_cloud_timestamps(
+                provider="azure",
+                service="ai-foundry",
+                resource_type="workspace",
+                created_at=getattr(system_data, "created_at", None) if system_data else None,
+                updated_at=getattr(system_data, "last_modified_at", None) if system_data else None,
+                created_source="system_data.created_at",
+                updated_source="system_data.last_modified_at",
+            )
+            if cloud_timestamps:
+                agent.metadata["cloud_timestamps"] = cloud_timestamps
             agents.append(agent)
 
     except Exception as exc:

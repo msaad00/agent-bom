@@ -122,6 +122,23 @@ class TestVerifyApiKey:
         assert verify_api_key(raw2, [key1, key2]) is not None
         assert verify_api_key("abom_nope", [key1, key2]) is None
 
+    def test_prefix_narrows_candidates_before_scrypt(self, monkeypatch):
+        raw1, key1 = create_api_key("key1", Role.ADMIN)
+        _, key2 = create_api_key("key2", Role.VIEWER)
+        calls: list[str] = []
+
+        from agent_bom.api import auth as auth_module
+
+        original = auth_module._derive_key
+
+        def tracked(raw_key: str, salt: bytes) -> str:
+            calls.append(salt.hex())
+            return original(raw_key, salt)
+
+        monkeypatch.setattr(auth_module, "_derive_key", tracked)
+        assert verify_api_key(raw1, [key1, key2]) is not None
+        assert calls == [key1.key_salt]
+
 
 # ---------------------------------------------------------------------------
 # ApiKey.is_expired

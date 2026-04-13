@@ -27,6 +27,12 @@ from uuid import uuid4
 
 logger = logging.getLogger(__name__)
 
+
+def _env_enabled(name: str) -> bool:
+    value = os.environ.get(name, "")
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 # HMAC key for audit log tamper detection.  When unset, an ephemeral
 # per-process key is generated — signatures verify within the same process
 # but provide no cross-restart integrity.  Production deployments MUST set
@@ -35,6 +41,8 @@ _HMAC_ENV_KEY = os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY")
 if _HMAC_ENV_KEY is not None:
     _HMAC_KEY = _HMAC_ENV_KEY.encode()
 else:
+    if _env_enabled("AGENT_BOM_REQUIRE_AUDIT_HMAC"):
+        raise RuntimeError("AGENT_BOM_REQUIRE_AUDIT_HMAC is enabled but AGENT_BOM_AUDIT_HMAC_KEY is not set")
     import secrets as _secrets
 
     _HMAC_KEY = _secrets.token_bytes(32)

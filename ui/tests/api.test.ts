@@ -240,9 +240,14 @@ describe('api.createJiraTicket', () => {
     const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
     expect(url).toContain('/v1/findings/jira')
     expect(opts.method).toBe('POST')
+    expect(opts.headers).toMatchObject({
+      'Content-Type': 'application/json',
+      'X-Jira-Api-Token': 'token-abc',
+    })
     const sent = JSON.parse(opts.body as string)
     expect(sent.project_key).toBe('SEC')
     expect(sent.finding.cve).toBe('CVE-2024-1234')
+    expect(sent.api_token).toBeUndefined()
     expect(result.ticket_key).toBe('SEC-42')
     expect(result.status).toBe('created')
   })

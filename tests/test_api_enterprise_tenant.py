@@ -119,6 +119,53 @@ async def test_delete_exception_returns_404_for_cross_tenant(isolated_exception_
 
 
 @pytest.mark.asyncio
+async def test_create_jira_ticket_requires_header_token(monkeypatch):
+    req = enterprise.JiraTicketRequest(
+        jira_url="https://example.atlassian.net",
+        email="user@example.com",
+        project_key="SEC",
+        finding={"vulnerability_id": "CVE-1", "package": "pkg"},
+    )
+
+    with pytest.raises(HTTPException) as error:
+        await enterprise.create_jira_ticket_route(req, jira_api_token=None)
+
+    assert error.value.status_code == 400
+    assert "X-Jira-Api-Token" in error.value.detail
+
+
+@pytest.mark.asyncio
+async def test_create_jira_ticket_uses_header_token(monkeypatch):
+    req = enterprise.JiraTicketRequest(
+        jira_url="https://example.atlassian.net",
+        email="user@example.com",
+        project_key="SEC",
+        finding={"vulnerability_id": "CVE-1", "package": "pkg"},
+    )
+    captured: dict[str, str] = {}
+
+    async def fake_create_jira_ticket(*, jira_url: str, email: str, api_token: str, project_key: str, finding: dict):
+        captured.update(
+            {
+                "jira_url": jira_url,
+                "email": email,
+                "api_token": api_token,
+                "project_key": project_key,
+                "vuln_id": finding["vulnerability_id"],
+            }
+        )
+        return "SEC-42"
+
+    monkeypatch.setattr("agent_bom.integrations.jira.create_jira_ticket", fake_create_jira_ticket)
+
+    result = await enterprise.create_jira_ticket_route(req, jira_api_token="token-abc")
+
+    assert result == {"ticket_key": "SEC-42", "status": "created"}
+    assert captured["api_token"] == "token-abc"
+    assert captured["project_key"] == "SEC"
+
+
+@pytest.mark.asyncio
 async def test_remove_false_positive_returns_404_for_wrong_tenant(isolated_exception_store):
     exc = VulnException(
         vuln_id="CVE-1",

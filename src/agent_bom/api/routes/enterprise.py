@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request
 
 from agent_bom.api.models import CreateKeyRequest, ExceptionRequest, FalsePositiveRequest, JiraTicketRequest
 from agent_bom.api.stores import _get_exception_store, _get_store, _get_trend_store
@@ -312,11 +312,17 @@ async def test_siem_connection(siem_type: str = "", url: str = "", token: str = 
 
 
 @router.post("/v1/findings/jira", tags=["enterprise"], status_code=201)
-async def create_jira_ticket_route(req: JiraTicketRequest) -> dict:
+async def create_jira_ticket_route(
+    req: JiraTicketRequest,
+    jira_api_token: str | None = Header(default=None, alias="X-Jira-Api-Token"),
+) -> dict:
     """Create a Jira ticket from a finding (admin/analyst only)."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.integrations.jira import create_jira_ticket
     from agent_bom.security import validate_url
+
+    if not jira_api_token:
+        raise HTTPException(status_code=400, detail="Missing X-Jira-Api-Token header")
 
     # Validate Jira URL to prevent SSRF
     try:
@@ -328,7 +334,7 @@ async def create_jira_ticket_route(req: JiraTicketRequest) -> dict:
         ticket_key = await create_jira_ticket(
             jira_url=req.jira_url,
             email=req.email,
-            api_token=req.api_token,
+            api_token=jira_api_token,
             project_key=req.project_key,
             finding=req.finding,
         )

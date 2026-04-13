@@ -286,7 +286,6 @@ class JiraTicketRequest(BaseModel):
 
     jira_url: str
     email: str
-    api_token: str
     project_key: str
     finding: dict
 

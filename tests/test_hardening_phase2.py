@@ -220,8 +220,29 @@ class TestAuditHMAC:
         # Reload again without env var to restore ephemeral key
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("AGENT_BOM_AUDIT_HMAC_KEY", None)
+            os.environ.pop("AGENT_BOM_REQUIRE_AUDIT_HMAC", None)
             importlib.reload(audit_log)
             assert isinstance(audit_log._HMAC_KEY, bytes)
+
+    def test_require_audit_hmac_fails_closed(self):
+        """When production enforcement is enabled, missing HMAC key should fail closed."""
+        import importlib
+
+        from agent_bom.api import audit_log
+
+        with patch.dict(
+            os.environ,
+            {"AGENT_BOM_REQUIRE_AUDIT_HMAC": "1"},
+            clear=False,
+        ):
+            os.environ.pop("AGENT_BOM_AUDIT_HMAC_KEY", None)
+            with pytest.raises(RuntimeError, match="AGENT_BOM_REQUIRE_AUDIT_HMAC"):
+                importlib.reload(audit_log)
+
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("AGENT_BOM_AUDIT_HMAC_KEY", None)
+            os.environ.pop("AGENT_BOM_REQUIRE_AUDIT_HMAC", None)
+            importlib.reload(audit_log)
 
 
 # ── Exception Narrowing ────────────────────────────────────────────────────

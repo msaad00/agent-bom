@@ -16,7 +16,7 @@ import os
 from agent_bom.models import Agent, AgentType, MCPServer, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_cloud_origin
+from .normalization import build_cloud_origin, build_cloud_timestamps
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +186,17 @@ def _discover_vertex_ai(
                     ),
                 },
             )
+            cloud_timestamps = build_cloud_timestamps(
+                provider="gcp",
+                service="vertex-ai",
+                resource_type="endpoint",
+                created_at=getattr(endpoint, "create_time", None),
+                updated_at=getattr(endpoint, "update_time", None),
+                created_source="create_time",
+                updated_source="update_time",
+            )
+            if cloud_timestamps:
+                agent.metadata["cloud_timestamps"] = cloud_timestamps
             agents.append(agent)
 
     except Exception as exc:

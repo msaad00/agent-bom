@@ -194,7 +194,7 @@ class TestParseHostPort:
 
 class TestSyslogConnector:
     def test_send_event_mock(self):
-        config = SIEMConfig(name="syslog", url="syslog://localhost:1514")
+        config = SIEMConfig(name="syslog", url="syslog://localhost:1514", event_format="ocsf")
         conn = SyslogConnector(config)
 
         with patch.object(conn, "_send_tcp", return_value=True) as mock_tcp:
@@ -204,6 +204,29 @@ class TestSyslogConnector:
             sent_msg = mock_tcp.call_args[0][0]
             assert "agent-bom" in sent_msg
             assert "2004" in sent_msg  # class_uid in OCSF JSON
+
+    def test_send_event_raw_passthrough(self):
+        config = SIEMConfig(name="syslog", url="syslog://localhost:1514", event_format="raw")
+        conn = SyslogConnector(config)
+
+        with patch.object(conn, "_send_tcp", return_value=True) as mock_tcp:
+            result = conn.send_event(_sample_alert())
+            assert result is True
+            sent_msg = mock_tcp.call_args[0][0]
+            assert "Prompt injection detected in tool call" in sent_msg
+            assert '"class_uid": 2004' not in sent_msg
+
+    def test_send_event_ocsf_passthrough_when_already_formatted(self):
+        config = SIEMConfig(name="syslog", url="syslog://localhost:1514", event_format="ocsf")
+        conn = SyslogConnector(config)
+        event = to_ocsf_detection_finding(_sample_alert())
+
+        with patch.object(conn, "_send_tcp", return_value=True) as mock_tcp:
+            result = conn.send_event(event)
+            assert result is True
+            sent_msg = mock_tcp.call_args[0][0]
+            assert '"class_uid": 2004' in sent_msg
+            assert sent_msg.count('"class_uid": 2004') == 1
 
     def test_send_batch(self):
         config = SIEMConfig(name="syslog", url="localhost:514")

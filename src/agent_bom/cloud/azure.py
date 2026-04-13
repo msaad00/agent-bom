@@ -17,6 +17,7 @@ from typing import Any
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
+from .normalization import build_cloud_origin
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +157,17 @@ def _discover_container_apps(
                         config_path=app.id or f"azure://{app_name}",
                         source="azure-container-apps",
                         mcp_servers=[server],
+                        metadata={
+                            "cloud_origin": build_cloud_origin(
+                                provider="azure",
+                                service="container-apps",
+                                resource_type="container-app",
+                                resource_id=app.id or f"azure://{app_name}",
+                                resource_name=app_name,
+                                subscription_id=subscription_id,
+                                raw_identity={"id": app.id or "", "name": app_name},
+                            )
+                        },
                     )
                     agents.append(agent)
 
@@ -201,6 +213,17 @@ def _discover_ai_foundry(
                 config_path=resource.id or f"azure://{ws_name}",
                 source="azure-ai-foundry",
                 mcp_servers=[],
+                metadata={
+                    "cloud_origin": build_cloud_origin(
+                        provider="azure",
+                        service="ai-foundry",
+                        resource_type="workspace",
+                        resource_id=resource.id or f"azure://{ws_name}",
+                        resource_name=ws_name,
+                        subscription_id=subscription_id,
+                        raw_identity={"id": resource.id or "", "name": ws_name},
+                    )
+                },
             )
             agents.append(agent)
 

@@ -22,6 +22,7 @@ from typing import Any
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
 from .base import CloudDiscoveryError
+from .normalization import build_cloud_origin
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +178,17 @@ def discover(
                     transport=TransportType.STDIO,
                 )
             ],
+            metadata={
+                "cloud_origin": build_cloud_origin(
+                    provider="aws",
+                    service="ecs",
+                    resource_type="container-image",
+                    resource_id=img_ref,
+                    resource_name=img_ref.split("/")[-1],
+                    location=resolved_region,
+                    raw_identity={"image": img_ref},
+                )
+            },
         )
         agents.append(ecs_agent)
 
@@ -224,6 +236,21 @@ def _discover_bedrock(session: Any, region: str) -> tuple[list[Agent], list[str]
                 source="aws-bedrock",
                 version=foundation_model,
                 mcp_servers=mcp_servers,
+                metadata={
+                    "cloud_origin": build_cloud_origin(
+                        provider="aws",
+                        service="bedrock",
+                        resource_type="agent",
+                        resource_id=agent_arn,
+                        resource_name=agent_name,
+                        location=region,
+                        raw_identity={
+                            "agentId": agent_id,
+                            "agentArn": agent_arn,
+                            "agentName": agent_name,
+                        },
+                    )
+                },
             )
             agents.append(agent)
 

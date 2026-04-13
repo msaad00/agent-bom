@@ -139,3 +139,44 @@ def build_cloud_timestamps(
     if sources:
         envelope["sources"] = sources
     return envelope
+
+
+def build_cloud_principal(
+    *,
+    provider: str,
+    service: str,
+    resource_type: str,
+    principal_type: str,
+    principal_id: str | None = None,
+    principal_name: str | None = None,
+    tenant_id: str | None = None,
+    source_field: str | None = None,
+    raw_identity: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Return a stable execution-principal envelope for discovered resources.
+
+    This models the workload identity attached to the resource itself. It does
+    not attempt to infer an actor or event initiator from inventory APIs.
+    """
+    if not principal_id and not principal_name:
+        return None
+    envelope: dict[str, Any] = {
+        "normalization_version": "1",
+        "provider": provider,
+        "service": service,
+        "resource_type": resource_type,
+        "principal_type": principal_type,
+    }
+    if principal_id:
+        envelope["principal_id"] = principal_id
+    if principal_name:
+        envelope["principal_name"] = principal_name
+    if tenant_id:
+        envelope["tenant_id"] = tenant_id
+    if source_field:
+        envelope["source_field"] = source_field
+    if raw_identity:
+        envelope["raw_identity"] = {
+            key: value for key, value in raw_identity.items() if isinstance(value, (str, int, float, bool)) and value not in ("", None)
+        }
+    return envelope

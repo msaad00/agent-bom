@@ -1453,6 +1453,11 @@ def _install_mock_azure():
     azure_mgmt_resource.ResourceManagementClient = MagicMock
     azure_mgmt.resource = azure_mgmt_resource
 
+    # azure.mgmt.web
+    azure_mgmt_web = types.ModuleType("azure.mgmt.web")
+    azure_mgmt_web.WebSiteManagementClient = MagicMock
+    azure_mgmt.web = azure_mgmt_web
+
     # azure.ai.projects
     azure_ai = types.ModuleType("azure.ai")
     azure_ai_projects = types.ModuleType("azure.ai.projects")
@@ -1464,6 +1469,7 @@ def _install_mock_azure():
     sys.modules.setdefault("azure.mgmt", azure_mgmt)
     sys.modules.setdefault("azure.mgmt.appcontainers", azure_mgmt_appcontainers)
     sys.modules.setdefault("azure.mgmt.resource", azure_mgmt_resource)
+    sys.modules.setdefault("azure.mgmt.web", azure_mgmt_web)
     sys.modules.setdefault("azure.ai", azure_ai)
     sys.modules.setdefault("azure.ai.projects", azure_ai_projects)
     return azure
@@ -1512,6 +1518,11 @@ def test_azure_container_apps_discovered():
     mock_app.name = "my-ai-agent-app"
     mock_app.id = "/subscriptions/sub-123/resourceGroups/rg-ai/providers/Microsoft.App/containerApps/my-ai-agent-app"
     mock_app.template = mock_template
+    mock_identity = MagicMock()
+    mock_identity.type = "SystemAssigned"
+    mock_identity.principal_id = "11111111-2222-3333-4444-555555555555"
+    mock_identity.tenant_id = "tenant-123"
+    mock_app.identity = mock_identity
     mock_system_data = MagicMock()
     mock_system_data.created_at = datetime(2026, 4, 10, 14, 30, tzinfo=timezone.utc)
     mock_system_data.last_modified_at = datetime(2026, 4, 11, 16, 45, tzinfo=timezone.utc)
@@ -1537,6 +1548,10 @@ def test_azure_container_apps_discovered():
     assert timestamps["created_at"] == "2026-04-10T14:30:00Z"
     assert timestamps["updated_at"] == "2026-04-11T16:45:00Z"
     assert timestamps["sources"]["created_at"] == "system_data.created_at"
+    principal = ca_agents[0].metadata["cloud_principal"]
+    assert principal["principal_type"] == "system-assigned-managed-identity"
+    assert principal["principal_id"] == "11111111-2222-3333-4444-555555555555"
+    assert principal["tenant_id"] == "tenant-123"
 
 
 def test_azure_ai_foundry_discovered():
@@ -1729,6 +1744,7 @@ def test_gcp_cloud_run_services_discovered():
 
     mock_template = MagicMock()
     mock_template.containers = [mock_container]
+    mock_template.service_account = "run-sa@my-project.iam.gserviceaccount.com"
 
     mock_service = MagicMock()
     mock_service.name = "projects/my-project/locations/us-central1/services/ai-service"
@@ -1752,6 +1768,93 @@ def test_gcp_cloud_run_services_discovered():
     assert origin["provider"] == "gcp"
     assert origin["service"] == "cloud-run"
     assert origin["resource_type"] == "service"
+    principal = run_agents[0].metadata["cloud_principal"]
+    assert principal["principal_type"] == "service-account"
+    assert principal["principal_id"] == "run-sa@my-project.iam.gserviceaccount.com"
+    assert principal["source_field"] == "template.service_account"
+
+
+def test_gcp_cloud_functions_discovered_with_service_account():
+    """Cloud Functions capture workload service account metadata."""
+    _install_mock_gcp()
+    importlib.reload(importlib.import_module("agent_bom.cloud.gcp"))
+    from agent_bom.cloud.gcp import discover
+
+    mock_service_config = MagicMock()
+    mock_service_config.uri = "https://us-central1-my-project.cloudfunctions.net/hello"
+    mock_service_config.service_account_email = "functions-sa@my-project.iam.gserviceaccount.com"
+
+    mock_build_config = MagicMock()
+    mock_build_config.runtime = "python313"
+    mock_build_config.entry_point = "handler"
+
+    mock_function = MagicMock()
+    mock_function.name = "projects/my-project/locations/us-central1/functions/hello"
+    mock_function.build_config = mock_build_config
+    mock_function.service_config = mock_service_config
+
+    mock_fn_client = MagicMock()
+    mock_fn_client.list_functions.return_value = [mock_function]
+
+    with (
+        patch("google.cloud.aiplatform.init"),
+        patch("google.cloud.aiplatform.Endpoint.list", return_value=[]),
+        patch("google.cloud.functions_v2.FunctionServiceClient", return_value=mock_fn_client),
+    ):
+        agents, warnings = discover(project_id="my-project", region="us-central1")
+
+    fn_agents = [a for a in agents if a.source == "gcp-cloud-functions"]
+    assert len(fn_agents) == 1
+    principal = fn_agents[0].metadata["cloud_principal"]
+    assert principal["principal_type"] == "service-account"
+    assert principal["principal_id"] == "functions-sa@my-project.iam.gserviceaccount.com"
+    assert principal["source_field"] == "service_config.service_account_email"
+
+
+def test_azure_functions_discovered_with_managed_identity():
+    """Azure Function Apps capture managed identity metadata."""
+    _install_mock_azure()
+    importlib.reload(importlib.import_module("agent_bom.cloud.azure"))
+    from agent_bom.cloud.azure import discover
+
+    mock_credential = MagicMock()
+    mock_ca_client = MagicMock()
+    mock_ca_client.container_apps.list_by_subscription.return_value = []
+
+    mock_rm_client = MagicMock()
+    mock_rm_client.resources.list.return_value = []
+
+    mock_web_client = MagicMock()
+    mock_app = MagicMock()
+    mock_app.kind = "functionapp,linux"
+    mock_app.name = "my-func"
+    mock_app.id = "/subscriptions/sub-123/resourceGroups/rg-ai/providers/Microsoft.Web/sites/my-func"
+    mock_app.location = "eastus"
+    mock_identity = MagicMock()
+    mock_identity.type = "SystemAssigned"
+    mock_identity.principal_id = "principal-123"
+    mock_identity.tenant_id = "tenant-123"
+    mock_app.identity = mock_identity
+    mock_web_client.web_apps.list.return_value = [mock_app]
+
+    mock_config = MagicMock()
+    mock_config.python_version = "3.12"
+    mock_web_client.web_apps.get_configuration.return_value = mock_config
+
+    with (
+        patch("azure.identity.DefaultAzureCredential", return_value=mock_credential),
+        patch("azure.mgmt.appcontainers.ContainerAppsAPIClient", return_value=mock_ca_client),
+        patch("azure.mgmt.resource.ResourceManagementClient", return_value=mock_rm_client),
+        patch("azure.mgmt.web.WebSiteManagementClient", return_value=mock_web_client),
+    ):
+        agents, warnings = discover(subscription_id="sub-123")
+
+    fn_agents = [a for a in agents if a.source == "azure-functions"]
+    assert len(fn_agents) == 1
+    principal = fn_agents[0].metadata["cloud_principal"]
+    assert principal["principal_type"] == "system-assigned-managed-identity"
+    assert principal["principal_id"] == "principal-123"
+    assert principal["tenant_id"] == "tenant-123"
 
 
 def test_gcp_vertex_and_cloud_run_combined():

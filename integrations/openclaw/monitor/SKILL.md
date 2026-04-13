@@ -4,7 +4,7 @@ description: >-
   Monitor agent fleet, track trust scores, and manage lifecycle states. Use
   when: "fleet", "watch agents", "runtime status", "trust scores",
   "fleet sync", "agent lifecycle", "serve dashboard".
-version: 0.76.2
+version: 0.76.4
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required for
@@ -20,7 +20,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.76.2
+    docker: ghcr.io/msaad00/agent-bom:0.76.4
   openclaw:
     requires:
       bins: []

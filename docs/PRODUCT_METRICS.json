@@ -1,6 +1,6 @@
 {
-  "generated_on": "2026-04-10",
-  "version": "0.76.2",
+  "generated_on": "2026-04-13",
+  "version": "0.76.4",
   "metrics": [
     {
       "name": "MCP tools",
@@ -16,19 +16,19 @@
     },
     {
       "name": "GitHub workflow files",
-      "value": 23,
+      "value": 24,
       "source": ".github/workflows",
       "notes": "Counts .yml and .yaml workflow definitions."
     },
     {
       "name": "Test files",
-      "value": 312,
+      "value": 314,
       "source": "tests/",
       "notes": "Counts files matching test_*.py."
     },
     {
       "name": "API route modules",
-      "value": 14,
+      "value": 15,
       "source": "src/agent_bom/api/routes",
       "notes": "Counts Python files in the routes package, including __init__.py."
     },
@@ -40,7 +40,7 @@
     },
     {
       "name": "Python modules",
-      "value": 318,
+      "value": 319,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },

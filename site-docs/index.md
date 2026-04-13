@@ -51,6 +51,6 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 | CLI | `pip install agent-bom` |
 | MCP server | `agent-bom mcp server` |
 | Docker | `docker run ghcr.io/msaad00/agent-bom agents` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.76.2` |
+| GitHub Action | `uses: msaad00/agent-bom@v0.76.4` |
 | Kubernetes | Helm chart + CronJob + DaemonSet |
 | Remote SSE | Self-host or use hosted endpoint |

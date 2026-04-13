@@ -113,7 +113,7 @@ container inspection. Windows Server environments should use:
 
 1. **Python CLI** -- `pip install agent-bom` works on Windows natively
 2. **Docker Desktop** -- run the Linux container images on Windows via WSL 2
-3. **CI/CD** -- use the GitHub Action (`uses: msaad00/agent-bom@v0.76.2`) which
+3. **CI/CD** -- use the GitHub Action (`uses: msaad00/agent-bom@v0.76.4`) which
    runs on Linux runners
 
 ---

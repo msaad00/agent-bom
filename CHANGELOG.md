@@ -11,6 +11,29 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.76.4] – 2026-04-13
+
+### Added
+- **Release-surface refresh** — README, PyPI, and Docker Hub now show the current product path with real screenshots, tightened copy, clearer architecture/graph visuals, and a shorter demo flow
+- **CVE and graph drilldowns** — vulnerability rows and graph detail panels now provide richer fix, impact, compliance, and evidence context instead of acting like dead text
+
+### Changed
+- **Summary-first loading** — dashboard, jobs, activity, vulnerabilities, mesh, context, and insights now unlock from lightweight job summaries first and only hydrate deeper scan data when the active panel needs it
+- **Graph defaults and fallbacks** — focused graph views, empty states, findings fallbacks, and posture labels now favor scoped, readable investigation paths over dumping full topology state at once
+- **Docker freshness operations** — release automation now includes an explicit Docker `latest` refresh path so base-image fixes can be rebuilt and republished without waiting for a feature release
+
+### Fixed
+- **Snowflake SQL hardening** — notebook identifier quoting and `days` coercion now validate and escape values before SQL interpolation
+- **Jobs summary contract** — pushed and completed scan rows now keep `completed_at`, `error`, and summary metadata aligned across API, dashboard, and jobs surfaces
+- **App-router release build stability** — release pages that rely on search params now render safely under `Suspense`, fixing the current Next.js app-router build path
+- **AST/SAST depth wave** — validator-aware guards, transformed-return sanitizers, JS/TS early exits, and cross-file helper modeling reduce false positives while improving Python, JS/TS, and Go parity
+
+### Security
+- **Container rebuild response** — Docker refresh and rescan wiring now close the loop for newly published Alpine fixes instead of relying on manual Docker Hub inspection
+- **Snowflake query validation** — user-controlled notebook and date inputs are now coerced or quoted before execution, removing the identified injection and query-shape risks
+
+---
+
 ## [0.76.2] – 2026-04-09
 
 ### Changed
@@ -550,7 +573,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.76.2...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.76.4...HEAD
+[0.76.4]: https://github.com/msaad00/agent-bom/compare/v0.76.2...v0.76.4
 [0.76.2]: https://github.com/msaad00/agent-bom/compare/v0.76.1...v0.76.2
 [0.76.1]: https://github.com/msaad00/agent-bom/compare/v0.76.0...v0.76.1
 [0.76.0]: https://github.com/msaad00/agent-bom/compare/v0.75.15...v0.76.0

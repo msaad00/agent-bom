@@ -5,7 +5,7 @@ description: >-
   correlation with CVE findings, and vulnerability analytics queries. Use when
   the user mentions runtime monitoring, context graphs, lateral movement analysis,
   audit log correlation, or vulnerability analytics.
-version: 0.76.2
+version: 0.76.4
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. Optional: kubectl for

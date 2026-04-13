@@ -23,7 +23,7 @@ Start with a familiar adoption pattern: a single CI step that fails on policy, u
 
 ```yaml
 # GitHub Actions
-- uses: msaad00/agent-bom@v0.76.2
+- uses: msaad00/agent-bom@v0.76.4
   with:
     scan-type: agents        # auto-detect MCP configs + deps
     severity-threshold: high # fail PR on HIGH+ CVEs
@@ -41,21 +41,21 @@ Start with a familiar adoption pattern: a single CI step that fails on policy, u
 
 ```yaml
 # Container image gate
-- uses: msaad00/agent-bom@v0.76.2
+- uses: msaad00/agent-bom@v0.76.4
   with:
     scan-type: image
     scan-ref: ghcr.io/acme/agent-runtime:sha-abcdef
     severity-threshold: critical
 
 # IaC gate
-- uses: msaad00/agent-bom@v0.76.2
+- uses: msaad00/agent-bom@v0.76.4
   with:
     scan-type: iac
     iac: Dockerfile,k8s/,infra/main.tf
     severity-threshold: high
 
 # Air-gapped or fully cached CI
-- uses: msaad00/agent-bom@v0.76.2
+- uses: msaad00/agent-bom@v0.76.4
   with:
     auto-update-db: false
     enrich: false
@@ -173,7 +173,7 @@ AmazonEC2ReadOnlyAccess
 docker run --rm \
   -v ~/.config:/root/.config:ro \
   -v $(pwd):/workspace:ro \
-  agentbom/agent-bom:0.76.2 agents --format json
+  agentbom/agent-bom:0.76.4 agents --format json
 ```
 
 Multi-arch: `linux/amd64` + `linux/arm64`. Non-root container. SHA-pinned base image.

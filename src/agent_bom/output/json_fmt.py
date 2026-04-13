@@ -491,6 +491,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "config_path": agent.config_path,
                 "source": agent.source,
                 "status": agent.status.value,
+                "metadata": agent.metadata,
                 "automation_settings": agent.automation_settings,
                 "mcp_servers": [
                     {

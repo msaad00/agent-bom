@@ -28,6 +28,32 @@ def test_agent_installed_not_configured():
     assert len(agent.mcp_servers) == 0
 
 
+def test_json_includes_agent_metadata():
+    from agent_bom.models import AIBOMReport
+    from agent_bom.output import to_json
+
+    agent = Agent(
+        name="vertex-ai:prod-endpoint",
+        agent_type=AgentType.CUSTOM,
+        config_path="projects/test/locations/us-central1/endpoints/123",
+        source="gcp-vertex-ai",
+        metadata={
+            "cloud_origin": {
+                "provider": "gcp",
+                "service": "vertex-ai",
+                "resource_type": "endpoint",
+                "resource_id": "projects/test/locations/us-central1/endpoints/123",
+                "resource_name": "prod-endpoint",
+                "location": "us-central1",
+                "scope": {"project_id": "test"},
+            }
+        },
+    )
+    data = to_json(AIBOMReport(agents=[agent]))
+    assert data["agents"][0]["metadata"]["cloud_origin"]["provider"] == "gcp"
+    assert data["agents"][0]["metadata"]["cloud_origin"]["scope"]["project_id"] == "test"
+
+
 # ── Claude Code project parsing ──────────────────────────────────────────────
 
 

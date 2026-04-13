@@ -183,6 +183,11 @@ def test_aws_bedrock_agents_discovered():
     assert bedrock_agents[0].name == "bedrock:prod-agent"
     assert "arn:aws:bedrock" in bedrock_agents[0].config_path
     assert bedrock_agents[0].agent_type == AgentType.CUSTOM
+    origin = bedrock_agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "aws"
+    assert origin["service"] == "bedrock"
+    assert origin["resource_type"] == "agent"
+    assert origin["raw_identity"]["agentId"] == "ABC123"
 
 
 def test_aws_no_credentials_returns_warning():
@@ -1472,6 +1477,10 @@ def test_azure_container_apps_discovered():
     assert len(ca_agents) == 1
     assert "my-ai-agent-app" in ca_agents[0].name
     assert ca_agents[0].mcp_servers[0].args[1] == "myregistry.azurecr.io/ai-agent:v1.2"
+    origin = ca_agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "azure"
+    assert origin["service"] == "container-apps"
+    assert origin["scope"]["subscription_id"] == "sub-123"
 
 
 def test_azure_ai_foundry_discovered():
@@ -1500,6 +1509,10 @@ def test_azure_ai_foundry_discovered():
     ai_agents = [a for a in agents if a.source == "azure-ai-foundry"]
     assert len(ai_agents) == 1
     assert "my-ml-workspace" in ai_agents[0].name
+    origin = ai_agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "azure"
+    assert origin["service"] == "ai-foundry"
+    assert origin["resource_type"] == "workspace"
 
 
 def test_azure_container_apps_by_resource_group():
@@ -1630,6 +1643,10 @@ def test_gcp_vertex_ai_endpoints_discovered():
     assert "prod-endpoint" in vertex_agents[0].name
     assert len(vertex_agents[0].mcp_servers) == 1
     assert "bert-classifier" in vertex_agents[0].mcp_servers[0].name
+    origin = vertex_agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "gcp"
+    assert origin["service"] == "vertex-ai"
+    assert origin["scope"]["project_id"] == "my-project"
 
 
 def test_gcp_cloud_run_services_discovered():
@@ -1662,6 +1679,10 @@ def test_gcp_cloud_run_services_discovered():
     assert len(run_agents) == 1
     assert "ai-service" in run_agents[0].name
     assert "gcr.io/my-project/ai-service:v2" in run_agents[0].mcp_servers[0].args
+    origin = run_agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "gcp"
+    assert origin["service"] == "cloud-run"
+    assert origin["resource_type"] == "service"
 
 
 def test_gcp_vertex_and_cloud_run_combined():

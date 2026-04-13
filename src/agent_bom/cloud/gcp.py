@@ -16,6 +16,7 @@ import os
 from agent_bom.models import Agent, AgentType, MCPServer, TransportType
 
 from .base import CloudDiscoveryError
+from .normalization import build_cloud_origin
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +174,16 @@ def _discover_vertex_ai(
                     "gcp_project": project_id,
                     "region": region,
                     "resource_name": ep_resource,
+                    "cloud_origin": build_cloud_origin(
+                        provider="gcp",
+                        service="vertex-ai",
+                        resource_type="endpoint",
+                        resource_id=ep_resource,
+                        resource_name=ep_name,
+                        location=region,
+                        project_id=project_id,
+                        raw_identity={"resource_name": ep_resource, "display_name": ep_name},
+                    ),
                 },
             )
             agents.append(agent)
@@ -422,6 +433,16 @@ def _discover_cloud_run(
                             "gcp_project": project_id,
                             "region": region,
                             "image": image,
+                            "cloud_origin": build_cloud_origin(
+                                provider="gcp",
+                                service="cloud-run",
+                                resource_type="service",
+                                resource_id=service.name or f"gcp://{svc_name}",
+                                resource_name=svc_name,
+                                location=region,
+                                project_id=project_id,
+                                raw_identity={"name": service.name or "", "image": image},
+                            ),
                         },
                     )
                     agents.append(agent)

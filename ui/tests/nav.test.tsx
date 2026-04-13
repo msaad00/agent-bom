@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock next/link so it renders a plain anchor
@@ -74,60 +74,70 @@ describe('Nav', () => {
 
   it('contains link to New Scan (/scan)', () => {
     render(<Nav />)
+    fireEvent.click(screen.getByRole('button', { name: /scan/i }))
     const links = screen.getAllByRole('link', { name: /new scan/i })
     expect(links.some((l) => l.getAttribute('href') === '/scan')).toBe(true)
   })
 
   it('contains link to Scan Jobs (/jobs)', () => {
     render(<Nav />)
+    fireEvent.click(screen.getByRole('button', { name: /scan/i }))
     const links = screen.getAllByRole('link', { name: /scan jobs/i })
     expect(links.some((l) => l.getAttribute('href') === '/jobs')).toBe(true)
   })
 
   it('contains link to Vulnerabilities (/vulns)', () => {
     render(<Nav />)
+    fireEvent.click(screen.getByRole('button', { name: /scan/i }))
     const links = screen.getAllByRole('link', { name: /vulnerabilities/i })
     expect(links.some((l) => l.getAttribute('href') === '/vulns')).toBe(true)
   })
 
   it('contains Remediation link', () => {
     render(<Nav />)
+    fireEvent.click(screen.getByRole('button', { name: /govern/i }))
     const links = screen.getAllByRole('link', { name: /remediation/i })
     expect(links.some((l) => l.getAttribute('href') === '/remediation')).toBe(true)
   })
 
   it('contains Security Graph link', () => {
     render(<Nav />)
+    fireEvent.click(screen.getByRole('button', { name: /analyze/i }))
     const links = screen.getAllByRole('link', { name: /security graph/i })
     expect(links.some((l) => l.getAttribute('href') === '/security-graph')).toBe(true)
   })
 
   it('contains Lineage Graph link', () => {
     render(<Nav />)
+    fireEvent.click(screen.getByRole('button', { name: /analyze/i }))
     const links = screen.getAllByRole('link', { name: /lineage graph/i })
     expect(links.some((l) => l.getAttribute('href') === '/graph')).toBe(true)
   })
 
   it('contains Agent Mesh link', () => {
     render(<Nav />)
+    fireEvent.click(screen.getByRole('button', { name: /analyze/i }))
     const links = screen.getAllByRole('link', { name: /agent mesh/i })
     expect(links.some((l) => l.getAttribute('href') === '/mesh')).toBe(true)
   })
 
   it('contains Compliance link', () => {
     render(<Nav />)
+    fireEvent.click(screen.getByRole('button', { name: /govern/i }))
     const links = screen.getAllByRole('link', { name: /^compliance$/i })
     expect(links.some((l) => l.getAttribute('href') === '/compliance')).toBe(true)
   })
 
   it('contains Governance link', () => {
     render(<Nav />)
+    fireEvent.click(screen.getByRole('button', { name: /govern/i }))
     const links = screen.getAllByRole('link', { name: /^governance$/i })
     expect(links.some((l) => l.getAttribute('href') === '/governance')).toBe(true)
   })
 
   it('contains Audit Log link', () => {
     render(<Nav />)
+    fireEvent.click(screen.getByRole('button', { name: /protect/i }))
     const links = screen.getAllByRole('link', { name: /audit log/i })
     expect(links.some((l) => l.getAttribute('href') === '/audit')).toBe(true)
   })
@@ -148,6 +158,9 @@ describe('Nav', () => {
 
   it('contains links for all primary pages across all groups', () => {
     render(<Nav />)
+    for (const group of ['Scan', 'Analyze', 'Protect', 'Govern']) {
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(group, 'i') }))
+    }
     const expectedHrefs = [
       '/', '/scan', '/jobs',
       '/agents', '/vulns', '/fleet',

@@ -49,6 +49,13 @@ interface NavGroup {
   accent: string;
 }
 
+function activeGroupForPath(path: string | null): string {
+  const matched = NAV_GROUPS.find((group) =>
+    group.links.some((link) => (link.href === "/" ? path === "/" : Boolean(path?.startsWith(link.href))))
+  );
+  return matched?.label ?? NAV_GROUPS[0].label;
+}
+
 const NAV_GROUPS: NavGroup[] = [
   {
     label: "Discover",
@@ -127,7 +134,9 @@ export function Nav() {
   const path = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(NAV_GROUPS.map((g) => g.label)));
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
+    () => new Set([activeGroupForPath(path)])
+  );
   const [counts, setCounts] = useState<RiskCounts | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -136,6 +145,12 @@ export function Nav() {
   useEffect(() => {
     setMobileOpen(false);
   }, [path]);
+
+  useEffect(() => {
+    if (!collapsed) {
+      setExpandedGroups(new Set([activeGroupForPath(path)]));
+    }
+  }, [collapsed, path]);
 
   // Sync main content padding with sidebar collapsed state
   useEffect(() => {
@@ -166,10 +181,10 @@ export function Nav() {
 
   const toggleGroup = useCallback((label: string) => {
     setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(label)) next.delete(label);
-      else next.add(label);
-      return next;
+      if (prev.has(label) && prev.size === 1) {
+        return new Set();
+      }
+      return new Set([label]);
     });
   }, []);
 
@@ -206,7 +221,13 @@ export function Nav() {
   const sidebarContent = (
     <>
       {/* Logo */}
-      <div className={`flex items-center ${collapsed ? "justify-center" : "justify-between"} px-4 h-14 border-b border-zinc-800/60`}>
+      <div
+        className={`border-b border-zinc-800/60 ${
+          collapsed
+            ? "flex h-20 flex-col items-center justify-center gap-2 px-2 py-2"
+            : "flex h-14 items-center justify-between px-4"
+        }`}
+      >
         <Link href="/" className="flex items-center gap-2.5 group min-w-0">
           <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/20 transition-colors">
             <ShieldAlert className="w-4 h-4 text-emerald-400" />
@@ -218,15 +239,14 @@ export function Nav() {
             </div>
           )}
         </Link>
-        {!collapsed && (
-          <button
-            onClick={() => setCollapsed(true)}
-            className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60 transition-colors hidden lg:flex"
-            title="Collapse sidebar (⌘B)"
-          >
-            <PanelLeftClose className="w-4 h-4" />
-          </button>
-        )}
+        <button
+          onClick={() => setCollapsed((value) => !value)}
+          className="hidden rounded-md p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800/60 hover:text-zinc-300 lg:flex"
+          title={collapsed ? "Expand sidebar (⌘B)" : "Collapse sidebar (⌘B)"}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? <PanelLeft className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+        </button>
       </div>
 
       {/* Search */}
@@ -255,7 +275,7 @@ export function Nav() {
       )}
 
       {/* Navigation Groups */}
-      <nav className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5 scrollbar-thin">
+      <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-2 scrollbar-thin">
         {filteredGroups.map((group) => {
           const isExpanded = expandedGroups.has(group.label);
           const GroupIcon = group.icon;
@@ -264,13 +284,13 @@ export function Nav() {
           );
 
           return (
-            <div key={group.label}>
+            <div key={group.label} className="rounded-xl border border-zinc-900/80 bg-zinc-950/50">
               {/* Group Header */}
               <button
                 onClick={() => collapsed ? setCollapsed(false) : toggleGroup(group.label)}
-                className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors border-l-2 ${
+                className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-medium transition-colors border-l-2 ${
                   hasActiveChild
-                    ? "text-zinc-200"
+                    ? "text-zinc-200 bg-zinc-900/70"
                     : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40"
                 }`}
                 style={{ borderLeftColor: group.accent }}
@@ -296,7 +316,7 @@ export function Nav() {
 
               {/* Group Links */}
               {(isExpanded || collapsed) && !collapsed && (
-                <div className="ml-2 mt-0.5 space-y-0.5">
+                <div className="mx-2 mb-2 mt-1 space-y-0.5 border-l border-zinc-800/60 pl-2">
                   {group.links.map(({ href, label, icon: Icon, badge }) => {
                     const active = href === "/" ? path === "/" : path.startsWith(href);
                     const dimmed = isDimmed(href);
@@ -375,15 +395,6 @@ export function Nav() {
       {/* Bottom section */}
       <div className={`border-t border-zinc-800/60 ${collapsed ? "px-2 py-3" : "px-3 py-3"}`}>
         <ApiStatus collapsed={collapsed} />
-        {collapsed && (
-          <button
-            onClick={() => setCollapsed(false)}
-            className="mt-2 w-full p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40 transition-colors flex items-center justify-center"
-            title="Expand sidebar (⌘B)"
-          >
-            <PanelLeft className="w-4 h-4" />
-          </button>
-        )}
       </div>
     </>
   );

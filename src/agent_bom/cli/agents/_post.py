@@ -202,6 +202,7 @@ def run_integrations(
                 url=siem_url,
                 token=siem_token or "",
                 index=siem_index or "agent-bom-alerts",
+                event_format=siem_format,
             )
             connector = create_connector(siem_type, siem_config)
 

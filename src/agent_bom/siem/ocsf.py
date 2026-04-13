@@ -166,14 +166,25 @@ class SyslogConnector:
         self.use_tls = getattr(config, "verify_ssl", True)
         self.app_name = "agent-bom"
         self._product_version = os.environ.get("AGENT_BOM_VERSION", "0.0.0")
+        self._event_format = getattr(config, "event_format", "raw")
+
+    @staticmethod
+    def _looks_like_ocsf(event: dict[str, Any]) -> bool:
+        """Return True when the payload already looks like an OCSF event."""
+        return all(key in event for key in ("class_uid", "category_uid", "type_uid"))
 
     def send_event(self, event: dict) -> bool:
-        """Convert event to OCSF, format as RFC 5424, send over TCP."""
+        """Format event as RFC 5424 and send over TCP."""
         try:
-            ocsf = to_ocsf_detection_finding(event, self._product_version)
-            severity_id = ocsf.get("severity_id", 3)
+            if self._event_format == "ocsf":
+                payload = event if self._looks_like_ocsf(event) else to_ocsf_detection_finding(event, self._product_version)
+                severity_id = payload.get("severity_id", 3)
+            else:
+                payload = event
+                severity_str = str(event.get("severity", "medium")).lower()
+                severity_id = _SEVERITY_MAP.get(severity_str, 0)
             syslog_sev = _SYSLOG_SEVERITY.get(severity_id, 4)
-            msg = _format_rfc5424(_FACILITY, syslog_sev, self.app_name, json.dumps(ocsf))
+            msg = _format_rfc5424(_FACILITY, syslog_sev, self.app_name, json.dumps(payload))
             return self._send_tcp(msg)
         except Exception:
             logger.exception("Syslog send failed")

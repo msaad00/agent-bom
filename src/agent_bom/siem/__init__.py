@@ -41,6 +41,7 @@ class SIEMConfig:
     index: str = ""
     source_type: str = "agent-bom"
     verify_ssl: bool = True
+    event_format: str = "raw"
 
 
 class SplunkHEC:

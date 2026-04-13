@@ -97,6 +97,7 @@ nav:
   - Architecture:
       - Overview: architecture/overview.md
       - AI Infrastructure Scanning: architecture/ai-infrastructure.md
+      - Canonical Model vs OCSF: architecture/canonical-vs-ocsf.md
   - Reference:
       - MCP Tools: reference/mcp-tools.md
       - CLI Commands: reference/cli.md

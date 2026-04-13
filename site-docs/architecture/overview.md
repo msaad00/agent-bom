@@ -2,6 +2,8 @@
 
 For detailed architecture diagrams and module breakdown, see the [full architecture doc](https://github.com/msaad00/agent-bom/blob/main/docs/ARCHITECTURE.md).
 
+For the data-model contract between native `agent-bom` objects and optional OCSF projection, see [Canonical Model vs OCSF](canonical-vs-ocsf.md).
+
 ## Scanning pipeline
 
 ```mermaid

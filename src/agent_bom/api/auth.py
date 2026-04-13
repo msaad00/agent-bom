@@ -124,7 +124,9 @@ def verify_api_key(raw_key: str, stored_keys: list[ApiKey]) -> ApiKey | None:
     Uses scrypt KDF with per-key salt and constant-time comparison.
     Returns the matching ApiKey if found and not expired, else None.
     """
-    for stored in stored_keys:
+    key_prefix = raw_key[:12]
+    candidates = [stored for stored in stored_keys if stored.key_prefix == key_prefix]
+    for stored in candidates:
         salt = bytes.fromhex(stored.key_salt)
         candidate = _derive_key(raw_key, salt)
         if hmac.compare_digest(stored.key_hash, candidate):

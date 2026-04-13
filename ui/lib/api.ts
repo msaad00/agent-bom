@@ -750,10 +750,10 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function post<T>(path: string, body: unknown): Promise<T> {
+async function post<T>(path: string, body: unknown, headers: Record<string, string> = {}): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
     signal: withTimeout(),
   });
@@ -1014,7 +1014,17 @@ export const api = {
     api_token: string;
     project_key: string;
     finding: Record<string, unknown>;
-  }) => post<{ ticket_key: string; status: string }>("/v1/findings/jira", body),
+  }) =>
+    post<{ ticket_key: string; status: string }>(
+      "/v1/findings/jira",
+      {
+        jira_url: body.jira_url,
+        email: body.email,
+        project_key: body.project_key,
+        finding: body.finding,
+      },
+      { "X-Jira-Api-Token": body.api_token },
+    ),
 
   // ── False Positive Management ──
   markFalsePositive: (body: {

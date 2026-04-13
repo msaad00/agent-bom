@@ -16,7 +16,7 @@ import os
 from agent_bom.models import Agent, AgentType, MCPServer, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_cloud_origin, build_cloud_timestamps
+from .normalization import build_cloud_origin, build_cloud_principal, build_cloud_timestamps
 
 logger = logging.getLogger(__name__)
 
@@ -259,9 +259,11 @@ def _discover_cloud_functions(
 
             # Service config for URL and resource limits
             service_url = ""
+            service_account = ""
             service_config = getattr(function, "service_config", None)
             if service_config:
                 service_url = getattr(service_config, "uri", "") or ""
+                service_account = getattr(service_config, "service_account_email", "") or ""
 
             server = MCPServer(
                 name=f"cloud-function:{fn_name}",
@@ -284,6 +286,18 @@ def _discover_cloud_functions(
                     "source_uri": source_uri,
                 },
             )
+            cloud_principal = build_cloud_principal(
+                provider="gcp",
+                service="cloud-functions",
+                resource_type="function",
+                principal_type="service-account",
+                principal_id=service_account or None,
+                principal_name=service_account or None,
+                source_field="service_config.service_account_email",
+                raw_identity={"service_account_email": service_account},
+            )
+            if cloud_principal:
+                agent.metadata["cloud_principal"] = cloud_principal
             agents.append(agent)
 
             logger.debug(
@@ -428,6 +442,7 @@ def _discover_cloud_run(
             for container in template.containers:
                 image = container.image or ""
                 if image:
+                    service_account = getattr(template, "service_account", "") or ""
                     server = MCPServer(
                         name=f"cloud-run:{svc_name}",
                         command="docker",
@@ -456,6 +471,18 @@ def _discover_cloud_run(
                             ),
                         },
                     )
+                    cloud_principal = build_cloud_principal(
+                        provider="gcp",
+                        service="cloud-run",
+                        resource_type="service",
+                        principal_type="service-account",
+                        principal_id=service_account or None,
+                        principal_name=service_account or None,
+                        source_field="template.service_account",
+                        raw_identity={"service_account": service_account},
+                    )
+                    if cloud_principal:
+                        agent.metadata["cloud_principal"] = cloud_principal
                     agents.append(agent)
 
     except Exception as exc:

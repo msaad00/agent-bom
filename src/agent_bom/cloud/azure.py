@@ -17,9 +17,53 @@ from typing import Any
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_cloud_origin, build_cloud_timestamps
+from .normalization import build_cloud_origin, build_cloud_principal, build_cloud_timestamps
 
 logger = logging.getLogger(__name__)
+
+
+def _build_azure_principal(
+    *,
+    service: str,
+    resource_type: str,
+    identity: Any,
+) -> dict[str, Any] | None:
+    """Normalize Azure workload identity metadata when present."""
+    if not identity:
+        return None
+    identity_type = getattr(identity, "type", "") or ""
+    principal_id = getattr(identity, "principal_id", "") or ""
+    tenant_id = getattr(identity, "tenant_id", "") or ""
+    user_assigned = getattr(identity, "user_assigned_identities", None) or {}
+    principal_name = ""
+    if not principal_id and user_assigned:
+        first_identity = next(iter(user_assigned.keys()), "")
+        principal_id = first_identity
+        principal_name = first_identity
+    normalized_type = (
+        {
+            "SystemAssigned": "system-assigned-managed-identity",
+            "UserAssigned": "user-assigned-managed-identity",
+            "SystemAssigned, UserAssigned": "mixed-managed-identity",
+        }.get(identity_type)
+        or identity_type.lower().replace("_", "-").replace(" ", "-")
+        or "managed-identity"
+    )
+    return build_cloud_principal(
+        provider="azure",
+        service=service,
+        resource_type=resource_type,
+        principal_type=normalized_type,
+        principal_id=principal_id or None,
+        principal_name=principal_name or None,
+        tenant_id=tenant_id or None,
+        source_field="identity",
+        raw_identity={
+            "type": identity_type,
+            "principal_id": principal_id,
+            "tenant_id": tenant_id,
+        },
+    )
 
 
 def discover(
@@ -181,6 +225,13 @@ def _discover_container_apps(
                     )
                     if cloud_timestamps:
                         agent.metadata["cloud_timestamps"] = cloud_timestamps
+                    cloud_principal = _build_azure_principal(
+                        service="container-apps",
+                        resource_type="container-app",
+                        identity=getattr(app, "identity", None),
+                    )
+                    if cloud_principal:
+                        agent.metadata["cloud_principal"] = cloud_principal
                     agents.append(agent)
 
     except Exception as exc:
@@ -415,6 +466,13 @@ def _discover_azure_functions(
                 mcp_servers=[server],
                 metadata={"runtime": runtime_stack, "location": location},
             )
+            cloud_principal = _build_azure_principal(
+                service="functions",
+                resource_type="function-app",
+                identity=getattr(app, "identity", None),
+            )
+            if cloud_principal:
+                agent.metadata["cloud_principal"] = cloud_principal
             agents.append(agent)
 
     except Exception as exc:

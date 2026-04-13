@@ -134,6 +134,7 @@ def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
         "summary": summary,
         "scan_timestamp": result.get("scan_timestamp"),
         "pushed": bool(result.get("pushed")),
+        "error": job.error,
     }
 
 

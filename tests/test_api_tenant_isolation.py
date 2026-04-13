@@ -201,6 +201,7 @@ async def test_scan_routes_are_tenant_scoped():
     assert listed["jobs"][0]["tenant_id"] == "tenant-alpha"
     assert listed["jobs"][0]["request"] == {}
     assert listed["jobs"][0]["summary"] is None
+    assert listed["jobs"][0]["error"] is None
 
     got = await scan_routes.get_scan(req, "job-alpha")
     assert got.job_id == "job-alpha"
@@ -269,6 +270,7 @@ async def test_list_jobs_is_summary_first_and_opt_in_for_hydration():
                     "status": JobStatus.DONE,
                     "created_at": _now(),
                     "completed_at": _now(),
+                    "error": "summary error",
                 }
             ]
 
@@ -293,6 +295,7 @@ async def test_list_jobs_is_summary_first_and_opt_in_for_hydration():
         assert listed["jobs"][0]["job_id"] == "job-alpha"
         assert "request" not in listed["jobs"][0]
         assert "summary" not in listed["jobs"][0]
+        assert listed["jobs"][0]["error"] == "summary error"
 
         hydrated = await scan_routes.list_jobs(req, include_details=True)
         assert store.get_calls == 1

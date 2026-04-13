@@ -431,6 +431,7 @@ export interface JobListItem {
   summary?: Summary;
   scan_timestamp?: string;
   pushed?: boolean;
+  error?: string;
 }
 
 export interface AgentsResponse {

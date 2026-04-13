@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api, JobStatus, formatDate } from "@/lib/api";
@@ -53,7 +53,7 @@ function statusColor(s: JobStatus) {
 
 const STATUS_TABS = ["all", "pending", "running", "done", "failed", "cancelled"];
 
-export default function JobsPage() {
+function JobsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryParam = searchParams.get("q") ?? "";
@@ -298,5 +298,20 @@ export default function JobsPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function JobsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-20 text-zinc-400">
+          <Loader2 className="mr-2 h-6 w-6 animate-spin" />
+          Loading jobs...
+        </div>
+      }
+    >
+      <JobsPageContent />
+    </Suspense>
   );
 }

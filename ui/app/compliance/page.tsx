@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   api,
@@ -361,7 +361,7 @@ function FrameworkSection({
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
-export default function CompliancePage() {
+function CompliancePageContent() {
   const searchParams = useSearchParams();
   const queryParam = searchParams.get("q") ?? "";
   const [data, setData] = useState<ComplianceResponse | null>(null);
@@ -840,5 +840,20 @@ export default function CompliancePage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function CompliancePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-20 text-zinc-400">
+          <Loader2 className="mr-2 h-6 w-6 animate-spin" />
+          Loading compliance posture...
+        </div>
+      }
+    >
+      <CompliancePageContent />
+    </Suspense>
   );
 }

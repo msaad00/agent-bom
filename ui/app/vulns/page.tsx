@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState, useMemo } from "react";
+import { Fragment, Suspense, useCallback, useEffect, useState, useMemo } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api, Vulnerability, ScanJob, ScanResult, severityColor, severityDot, OWASP_LLM_TOP10, MITRE_ATLAS, JobListItem } from "@/lib/api";
 import { ApiOfflineState } from "@/components/api-offline-state";
@@ -105,6 +106,7 @@ function VulnsPage() {
   const [search, setSearch] = useState(paramCve ?? paramAgent ?? "");
   const [groupBy, setGroupBy] = useState<GroupKey>("none");
   const [suppressed, setSuppressed] = useState<Set<string>>(new Set());
+  const [expandedId, setExpandedId] = useState<string | null>(paramCve ?? null);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
 
@@ -446,12 +448,30 @@ function VulnsPage() {
                       {groupVulns.length}
                     </span>
                   </div>
-                  <VulnTable vulns={groupVulns} sortKey={sortKey} sortDir={sortDir} handleSort={handleSort} suppressed={suppressed} onMarkFP={handleMarkFP} />
+                  <VulnTable
+                    vulns={groupVulns}
+                    sortKey={sortKey}
+                    sortDir={sortDir}
+                    handleSort={handleSort}
+                    suppressed={suppressed}
+                    onMarkFP={handleMarkFP}
+                    expandedId={expandedId}
+                    onToggleExpanded={setExpandedId}
+                  />
                 </div>
               ))}
             </div>
           ) : (
-            <VulnTable vulns={paged} sortKey={sortKey} sortDir={sortDir} handleSort={handleSort} suppressed={suppressed} onMarkFP={handleMarkFP} />
+            <VulnTable
+              vulns={paged}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              handleSort={handleSort}
+              suppressed={suppressed}
+              onMarkFP={handleMarkFP}
+              expandedId={expandedId}
+              onToggleExpanded={setExpandedId}
+            />
           )}
 
           {/* Pagination controls (flat view only) */}
@@ -499,6 +519,8 @@ function VulnTable({
   handleSort,
   suppressed,
   onMarkFP,
+  expandedId,
+  onToggleExpanded,
 }: {
   vulns: EnrichedVuln[];
   sortKey: SortKey;
@@ -506,6 +528,8 @@ function VulnTable({
   handleSort: (f: SortKey) => void;
   suppressed: Set<string>;
   onMarkFP: (vulnId: string, packageName: string) => void;
+  expandedId: string | null;
+  onToggleExpanded: (vulnId: string | null) => void;
 }) {
   return (
     <div className="border border-zinc-800 rounded-xl overflow-hidden overflow-x-auto">
@@ -531,75 +555,106 @@ function VulnTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-zinc-800 bg-zinc-950">
-          {vulns?.map((v) => (
-            <tr key={v.id} className="hover:bg-zinc-900 transition-colors">
-              <td className="px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${severityDot(v.severity)}`} />
-                  <a
-                    href={`https://osv.dev/vulnerability/${v.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="font-mono text-xs text-zinc-200 hover:text-emerald-400 flex items-center gap-1 group"
-                  >
-                    {v.id}
-                    <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </a>
-                  {(v.is_kev ?? v.cisa_kev) && <CisaKevBadge />}
-                </div>
-                {(v.summary ?? v.description) && (
-                  <p className="text-xs text-zinc-600 mt-0.5 ml-3.5 line-clamp-1 max-w-xs">
-                    {v.summary ?? v.description}
-                  </p>
-                )}
-              </td>
-              <td className="px-4 py-3">
-                <span className={`text-xs font-medium px-2 py-0.5 rounded border ${severityColor(v.severity)}`}>
-                  {v.severity}
-                </span>
-              </td>
-              <td className="px-4 py-3 text-xs font-mono text-zinc-400">
-                {typeof v.cvss_score === "number" && Number.isFinite(v.cvss_score) ? v.cvss_score.toFixed(1) : "N/A"}
-              </td>
-              <td className="px-4 py-3 text-xs font-mono text-zinc-400">
-                {typeof v.epss_score === "number" && Number.isFinite(v.epss_score) ? `${(v.epss_score * 100).toFixed(1)}%` : "N/A"}
-              </td>
-              <td className="px-4 py-3">
-                <div className="flex flex-wrap gap-1">
-                  {v.packages.slice(0, 3).map((p) => (
-                    <span key={p} className="text-xs font-mono bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-400">
-                      {p}
+          {vulns?.map((v) => {
+            const isExpanded = expandedId === v.id;
+            return (
+              <Fragment key={v.id}>
+                <tr key={v.id} className={`transition-colors ${isExpanded ? "bg-zinc-900/80" : "hover:bg-zinc-900"}`}>
+                  <td className="px-4 py-3">
+                    <div className="flex items-start gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onToggleExpanded(isExpanded ? null : v.id)}
+                        className="mt-0.5 rounded p-0.5 text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+                        aria-label={isExpanded ? `Collapse ${v.id}` : `Expand ${v.id}`}
+                      >
+                        {isExpanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      </button>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${severityDot(v.severity)}`} />
+                          <button
+                            type="button"
+                            onClick={() => onToggleExpanded(isExpanded ? null : v.id)}
+                            className="font-mono text-xs text-zinc-200 transition-colors hover:text-emerald-400"
+                          >
+                            {v.id}
+                          </button>
+                          <a
+                            href={`https://osv.dev/vulnerability/${v.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 rounded-full border border-zinc-700 px-2 py-0.5 text-[11px] font-medium text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
+                          >
+                            OSV
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                          {(v.is_kev ?? v.cisa_kev) && <CisaKevBadge />}
+                        </div>
+                        {(v.summary ?? v.description) && (
+                          <p className="text-xs text-zinc-600 mt-0.5 ml-3.5 line-clamp-1 max-w-xs">
+                            {v.summary ?? v.description}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded border ${severityColor(v.severity)}`}>
+                      {v.severity}
                     </span>
-                  ))}
-                  {v.packages.length > 3 && (
-                    <span className="text-xs text-zinc-600">+{v.packages.length - 3}</span>
-                  )}
-                </div>
-              </td>
-              <td className="px-4 py-3 text-xs text-zinc-500">
-                {v.agents.slice(0, 2).join(", ")}
-                {v.agents.length > 2 && <span className="text-zinc-600"> +{v.agents.length - 2}</span>}
-              </td>
-              <td className="px-4 py-3 text-xs font-mono text-emerald-500">
-                {v.fixed_version ?? "N/A"}
-              </td>
-              <td className="px-4 py-3">
-                {suppressed.has(v.id) ? (
-                  <span className="text-xs font-medium px-2 py-0.5 rounded border bg-zinc-800 border-zinc-700 text-zinc-400">
-                    Suppressed
-                  </span>
-                ) : (
-                  <button
-                    onClick={() => onMarkFP(v.id, v.packages[0] ?? "")}
-                    className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-zinc-700 hover:bg-zinc-600 text-zinc-300 transition-colors"
-                  >
-                    <ShieldOff className="w-3 h-3" />
-                    Mark FP
-                  </button>
+                  </td>
+                  <td className="px-4 py-3 text-xs font-mono text-zinc-400">
+                    {renderScoreValue(v.cvss_score, "CVSS not published by the current advisory")}
+                  </td>
+                  <td className="px-4 py-3 text-xs font-mono text-zinc-400">
+                    {renderPercentValue(v.epss_score, "EPSS not available for this advisory")}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {v.packages.slice(0, 3).map((p) => (
+                        <span key={p} className="text-xs font-mono bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-400">
+                          {p}
+                        </span>
+                      ))}
+                      {v.packages.length > 3 && (
+                        <span className="text-xs text-zinc-600">+{v.packages.length - 3}</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-zinc-500">
+                    {v.agents.slice(0, 2).join(", ")}
+                    {v.agents.length > 2 && <span className="text-zinc-600"> +{v.agents.length - 2}</span>}
+                  </td>
+                  <td className="px-4 py-3 text-xs font-mono text-emerald-500">
+                    {v.fixed_version ?? "N/A"}
+                  </td>
+                  <td className="px-4 py-3">
+                    {suppressed.has(v.id) ? (
+                      <span className="text-xs font-medium px-2 py-0.5 rounded border bg-zinc-800 border-zinc-700 text-zinc-400">
+                        Suppressed
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => onMarkFP(v.id, v.packages[0] ?? "")}
+                        className="flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-zinc-700 hover:bg-zinc-600 text-zinc-300 transition-colors"
+                      >
+                        <ShieldOff className="w-3 h-3" />
+                        Mark FP
+                      </button>
+                    )}
+                  </td>
+                </tr>
+                {isExpanded && (
+                  <tr key={`${v.id}-detail`} className="bg-zinc-950">
+                    <td colSpan={8} className="px-4 pb-4">
+                      <VulnDetailPanel vuln={v} />
+                    </td>
+                  </tr>
                 )}
-              </td>
-            </tr>
-          ))}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
 
@@ -608,6 +663,102 @@ function VulnTable({
           No vulnerabilities match your filters.
         </div>
       )}
+    </div>
+  );
+}
+
+function renderScoreValue(value: number | undefined, missingLabel: string) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value.toFixed(1);
+  }
+  return (
+    <span className="rounded bg-zinc-900 px-1.5 py-0.5 text-zinc-500" title={missingLabel}>
+      N/A
+    </span>
+  );
+}
+
+function renderPercentValue(value: number | undefined, missingLabel: string) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return `${(value * 100).toFixed(1)}%`;
+  }
+  return (
+    <span className="rounded bg-zinc-900 px-1.5 py-0.5 text-zinc-500" title={missingLabel}>
+      N/A
+    </span>
+  );
+}
+
+function VulnDetailPanel({ vuln }: { vuln: EnrichedVuln }) {
+  const summary = vuln.summary ?? vuln.description ?? "No advisory summary available.";
+  const cweMatches = summary.match(/CWE-\d+/gi) ?? [];
+  const published = vuln.published ?? vuln.nvd_published;
+
+  return (
+    <div className="ml-6 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+      <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
+        <div className="space-y-4">
+          <div>
+            <h4 className="text-xs font-medium uppercase tracking-wide text-zinc-500">Attack summary</h4>
+            <p className="mt-2 text-sm leading-6 text-zinc-300">{summary}</p>
+            {cweMatches.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {[...new Set(cweMatches)].map((cwe) => (
+                  <span key={cwe} className="rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-xs font-mono text-zinc-400">
+                    {cwe}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            <DetailStat label="Severity" value={vuln.severity} accent={severityColor(vuln.severity)} />
+            <DetailStat label="CVSS" value={typeof vuln.cvss_score === "number" ? vuln.cvss_score.toFixed(1) : "Not published"} />
+            <DetailStat label="EPSS" value={typeof vuln.epss_score === "number" ? `${(vuln.epss_score * 100).toFixed(1)}%` : "Not available"} />
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+            <h4 className="text-xs font-medium uppercase tracking-wide text-zinc-500">Affected scope</h4>
+            <div className="mt-3 space-y-2 text-sm text-zinc-300">
+              <div><span className="text-zinc-500">Packages:</span> {vuln.packages.join(", ")}</div>
+              <div><span className="text-zinc-500">Agents:</span> {vuln.agents.join(", ")}</div>
+              {vuln.sources.length > 0 && <div><span className="text-zinc-500">Sources:</span> {vuln.sources.join(", ")}</div>}
+              <div><span className="text-zinc-500">Fix:</span> {vuln.fixed_version ?? "No published fix"}</div>
+              {published && <div><span className="text-zinc-500">Published:</span> {new Date(published).toLocaleDateString()}</div>}
+              {typeof vuln.confidence === "number" && <div><span className="text-zinc-500">Confidence:</span> {(vuln.confidence * 100).toFixed(0)}%</div>}
+              {vuln.severity_source && <div><span className="text-zinc-500">Severity source:</span> {vuln.severity_source}</div>}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={`https://osv.dev/vulnerability/${vuln.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:border-zinc-600 hover:text-zinc-100"
+            >
+              Open on OSV
+              <ExternalLink className="h-3 w-3" />
+            </a>
+            <Link
+              href={`/vulns?cve=${vuln.id}`}
+              className="inline-flex items-center gap-1 rounded-lg border border-emerald-800 bg-emerald-950/40 px-3 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-950/70"
+            >
+              Keep this CVE scoped
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DetailStat({ label, value, accent }: { label: string; value: string; accent?: string }) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+      <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">{label}</div>
+      <div className={`mt-2 text-sm font-medium text-zinc-100 ${accent ?? ""}`}>{value}</div>
     </div>
   );
 }

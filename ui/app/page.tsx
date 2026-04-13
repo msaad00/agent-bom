@@ -579,13 +579,28 @@ export default function Dashboard() {
               {posture.dimensions && Object.keys(posture.dimensions).length > 0 && (
                 <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
                   {Object.entries(posture.dimensions).map(([key, dim]) => (
-                    <div key={key} className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-2.5">
+                    <Link
+                      key={key}
+                      href={postureDimensionHref(key, dim.label)}
+                      className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-2.5 transition-colors hover:border-zinc-700 hover:bg-zinc-900"
+                    >
                       <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs text-zinc-400">{dim.label}</span>
-                        <span className={`h-2 w-2 rounded-full ${dim.score >= 80 ? "bg-emerald-500" : dim.score >= 60 ? "bg-yellow-500" : "bg-red-500"}`} />
+                        <span className="text-xs font-medium text-zinc-200">{dim.label}</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${postureDimensionTone(dim.score).badge}`}>
+                          {postureDimensionTone(dim.score).label}
+                        </span>
                       </div>
-                      <div className="mt-2 font-mono text-lg text-zinc-100">{dim.score}</div>
-                    </div>
+                      <div className="mt-2 flex items-baseline justify-between gap-3">
+                        <span className="font-mono text-lg text-zinc-100">{dim.score}/100</span>
+                        <span className="text-[11px] text-zinc-500">{postureDimensionHint(key, dim.label)}</span>
+                      </div>
+                      <div className="mt-2 h-1.5 w-full rounded-full bg-zinc-800">
+                        <div
+                          className={`h-full rounded-full ${postureDimensionTone(dim.score).bar}`}
+                          style={{ width: `${dim.score}%` }}
+                        />
+                      </div>
+                    </Link>
                   ))}
                 </div>
               )}
@@ -779,9 +794,11 @@ export default function Dashboard() {
               .sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score))
               .slice(0, 5)
               .map((b) => (
-                <Link key={b.vulnerability_id} href={`/vulns?cve=${b.vulnerability_id}`}>
-                  <BlastCard blast={b} />
-                </Link>
+                <BlastCard
+                  key={b.vulnerability_id}
+                  blast={b}
+                  detailHref={`/vulns?cve=${b.vulnerability_id}`}
+                />
               ))}
           </div>
         </section>
@@ -952,20 +969,28 @@ function SourceBreakdown({ sources }: { sources: ScanSource[] }) {
   );
 }
 
-function BlastCard({ blast }: { blast: BlastRadius }) {
+function BlastCard({ blast, detailHref }: { blast: BlastRadius; detailHref: string }) {
   return (
-    <div className="flex items-start gap-4 bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+    <div className="flex items-start gap-4 bg-zinc-900 border border-zinc-800 rounded-xl p-4 transition-colors hover:border-zinc-700">
       <SeverityBadge severity={blast.severity} />
       <div className="flex-1 min-w-0">
-        <a
-          href={`https://osv.dev/vulnerability/${blast.vulnerability_id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="font-mono text-sm font-semibold text-zinc-100 hover:text-emerald-400 flex items-center gap-1.5 group"
-        >
-          {blast.vulnerability_id}
-          <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-        </a>
+        <div className="flex items-center gap-2">
+          <Link
+            href={detailHref}
+            className="font-mono text-sm font-semibold text-zinc-100 hover:text-emerald-400"
+          >
+            {blast.vulnerability_id}
+          </Link>
+          <a
+            href={`https://osv.dev/vulnerability/${blast.vulnerability_id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded-full border border-zinc-700 px-2 py-0.5 text-[11px] font-medium text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
+          >
+            OSV
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
         <div className="flex flex-wrap gap-3 mt-1.5 text-xs text-zinc-500">
           <span>{blast.affected_agents.length} agent{blast.affected_agents.length !== 1 ? "s" : ""}</span>
           {blast.exposed_credentials.length > 0 && (
@@ -986,15 +1011,68 @@ function BlastCard({ blast }: { blast: BlastRadius }) {
             ))}
           </div>
         )}
+        {blast.attack_vector_summary && (
+          <p className="mt-2 line-clamp-2 text-xs leading-5 text-zinc-400">{blast.attack_vector_summary}</p>
+        )}
       </div>
-      {(blast.risk_score ?? blast.blast_score) > 0 && (
-        <div className="text-right">
-          <div className="text-lg font-bold font-mono text-red-400">{(blast.risk_score ?? blast.blast_score).toFixed(0)}</div>
-          <div className="text-xs text-zinc-600">score</div>
-        </div>
-      )}
+      <div className="flex flex-col items-end gap-2">
+        {(blast.risk_score ?? blast.blast_score) > 0 && (
+          <div className="text-right">
+            <div className="text-lg font-bold font-mono text-red-400">{(blast.risk_score ?? blast.blast_score).toFixed(0)}</div>
+            <div className="text-xs text-zinc-600">score</div>
+          </div>
+        )}
+        <Link
+          href={detailHref}
+          className="text-xs font-medium text-emerald-400 transition-colors hover:text-emerald-300"
+        >
+          Review evidence
+        </Link>
+      </div>
     </div>
   );
+}
+
+function postureDimensionTone(score: number) {
+  if (score >= 80) {
+    return {
+      label: "strong",
+      badge: "border border-emerald-800 bg-emerald-950/60 text-emerald-300",
+      bar: "bg-emerald-500",
+    };
+  }
+  if (score >= 60) {
+    return {
+      label: "watch",
+      badge: "border border-yellow-800 bg-yellow-950/60 text-yellow-300",
+      bar: "bg-yellow-500",
+    };
+  }
+  return {
+    label: "critical",
+    badge: "border border-red-800 bg-red-950/60 text-red-300",
+    bar: "bg-red-500",
+  };
+}
+
+function postureDimensionHref(key: string, label: string) {
+  const text = `${key} ${label}`.toLowerCase();
+  if (text.includes("vuln") || text.includes("package") || text.includes("fix")) return "/vulns";
+  if (text.includes("credential") || text.includes("tool")) return "/mesh";
+  if (text.includes("agent") || text.includes("server")) return "/agents";
+  if (text.includes("trust") || text.includes("framework") || text.includes("compliance")) return "/compliance";
+  if (text.includes("runtime") || text.includes("proxy") || text.includes("watch")) return "/proxy";
+  return "/graph";
+}
+
+function postureDimensionHint(key: string, label: string) {
+  const text = `${key} ${label}`.toLowerCase();
+  if (text.includes("vuln") || text.includes("package")) return "packages and CVEs";
+  if (text.includes("credential") || text.includes("tool")) return "reach and exposure";
+  if (text.includes("agent") || text.includes("server")) return "discovery and trust";
+  if (text.includes("trust") || text.includes("framework") || text.includes("compliance")) return "policy and controls";
+  if (text.includes("runtime") || text.includes("proxy")) return "live telemetry";
+  return "open evidence";
 }
 
 function JobRow({ job }: { job: JobListItem }) {

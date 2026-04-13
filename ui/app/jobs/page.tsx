@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api, JobStatus, formatDate } from "@/lib/api";
 import { ShieldAlert, Clock, CheckCircle2, XCircle, Loader2, Trash2, Download, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
@@ -55,14 +55,21 @@ const STATUS_TABS = ["all", "pending", "running", "done", "failed", "cancelled"]
 
 export default function JobsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const queryParam = searchParams.get("q") ?? "";
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(queryParam);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 25;
+
+  useEffect(() => {
+    setSearch(queryParam);
+    setPage(1);
+  }, [queryParam]);
 
   const load = () => {
     setLoading(true);

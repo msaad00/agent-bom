@@ -1,5 +1,8 @@
 "use client";
 
+import { useState } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
+
 import type { LineageNodeType } from "./lineage-nodes";
 
 export interface FilterState {
@@ -113,13 +116,27 @@ const LAYER_LABELS: { key: LineageNodeType; label: string; color: string }[] = [
 ];
 
 export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps) {
+  const [openSections, setOpenSections] = useState({
+    layers: true,
+    severity: true,
+    edges: false,
+    traversal: true,
+    agent: true,
+    pageSize: false,
+  });
   const toggle = (key: LineageNodeType) =>
     onChange({ ...filters, layers: { ...filters.layers, [key]: !filters.layers[key] } });
+  const toggleSection = (key: keyof typeof openSections) =>
+    setOpenSections((current) => ({ ...current, [key]: !current[key] }));
 
   return (
     <div className="w-48 bg-zinc-950/90 backdrop-blur-sm border-r border-zinc-800 p-3 space-y-4 overflow-y-auto text-xs">
-      <div>
-        <h3 className="font-semibold text-zinc-300 mb-2 uppercase tracking-wider text-[10px]">Layers</h3>
+      <FilterSection
+        title="Layers"
+        open={openSections.layers}
+        onToggle={() => toggleSection("layers")}
+        summary={`${Object.values(filters.layers).filter(Boolean).length} visible`}
+      >
         <div className="space-y-1.5">
           {LAYER_LABELS?.map(({ key, label, color }) => (
             <label key={key} className="flex items-center gap-2 cursor-pointer text-zinc-400 hover:text-zinc-200">
@@ -134,10 +151,14 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
             </label>
           ))}
         </div>
-      </div>
+      </FilterSection>
 
-      <div>
-        <h3 className="font-semibold text-zinc-300 mb-2 uppercase tracking-wider text-[10px]">Severity</h3>
+      <FilterSection
+        title="Severity"
+        open={openSections.severity}
+        onToggle={() => toggleSection("severity")}
+        summary={filters.severity ? `${filters.severity}+` : "all"}
+      >
         <select
           value={filters.severity ?? ""}
           onChange={(e) => onChange({ ...filters, severity: e.target.value || null })}
@@ -149,10 +170,14 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
           <option value="medium">Medium + above</option>
           <option value="low">Low + above</option>
         </select>
-      </div>
+      </FilterSection>
 
-      <div>
-        <h3 className="font-semibold text-zinc-300 mb-2 uppercase tracking-wider text-[10px]">Edges</h3>
+      <FilterSection
+        title="Edges"
+        open={openSections.edges}
+        onToggle={() => toggleSection("edges")}
+        summary={filters.relationshipScope === "all" ? "all" : filters.relationshipScope}
+      >
         <select
           value={filters.relationshipScope}
           onChange={(e) =>
@@ -169,10 +194,14 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
           <option value="runtime">Runtime only</option>
           <option value="governance">Governance only</option>
         </select>
-      </div>
+      </FilterSection>
 
-      <div>
-        <h3 className="font-semibold text-zinc-300 mb-2 uppercase tracking-wider text-[10px]">Traversal</h3>
+      <FilterSection
+        title="Traversal"
+        open={openSections.traversal}
+        onToggle={() => toggleSection("traversal")}
+        summary={`${filters.runtimeMode === "all" ? "static + runtime" : filters.runtimeMode} · depth ${filters.maxDepth}`}
+      >
         <div className="space-y-2">
           <select
             value={filters.runtimeMode}
@@ -207,11 +236,15 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
             <option value="10">Depth 10</option>
           </select>
         </div>
-      </div>
+      </FilterSection>
 
       {agentNames.length > 1 && (
-        <div>
-          <h3 className="font-semibold text-zinc-300 mb-2 uppercase tracking-wider text-[10px]">Agent</h3>
+        <FilterSection
+          title="Agent"
+          open={openSections.agent}
+          onToggle={() => toggleSection("agent")}
+          summary={filters.agentName ?? "all agents"}
+        >
           <select
             value={filters.agentName ?? ""}
             onChange={(e) => onChange({ ...filters, agentName: e.target.value || null })}
@@ -222,7 +255,7 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
               <option key={n} value={n}>{n}</option>
             ))}
           </select>
-        </div>
+        </FilterSection>
       )}
 
       <div>
@@ -237,8 +270,12 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
         </label>
       </div>
 
-      <div>
-        <h3 className="font-semibold text-zinc-300 mb-2 uppercase tracking-wider text-[10px]">Page Size</h3>
+      <FilterSection
+        title="Page size"
+        open={openSections.pageSize}
+        onToggle={() => toggleSection("pageSize")}
+        summary={`${filters.pageSize} nodes`}
+      >
         <select
           value={String(filters.pageSize)}
           onChange={(e) => onChange({ ...filters, pageSize: Number(e.target.value) })}
@@ -250,7 +287,38 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
           <option value="2500">2,500 nodes</option>
           <option value="5000">5,000 nodes</option>
         </select>
-      </div>
+      </FilterSection>
     </div>
+  );
+}
+
+function FilterSection({
+  title,
+  open,
+  onToggle,
+  summary,
+  children,
+}: {
+  title: string;
+  open: boolean;
+  onToggle: () => void;
+  summary?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border border-zinc-800 bg-zinc-950/50">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between px-3 py-2 text-left"
+      >
+        <div>
+          <h3 className="font-semibold text-zinc-300 uppercase tracking-wider text-[10px]">{title}</h3>
+          {summary ? <p className="mt-1 text-[10px] text-zinc-600">{summary}</p> : null}
+        </div>
+        {open ? <ChevronDown className="h-3.5 w-3.5 text-zinc-500" /> : <ChevronRight className="h-3.5 w-3.5 text-zinc-500" />}
+      </button>
+      {open ? <div className="border-t border-zinc-800 px-3 py-3">{children}</div> : null}
+    </section>
   );
 }

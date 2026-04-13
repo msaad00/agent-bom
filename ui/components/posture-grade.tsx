@@ -20,6 +20,9 @@ export function PostureGrade({ grade, score, dimensions }: PostureGradeProps) {
   const radius = 52;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference - (score / 100) * circumference;
+  const orderedDimensions = Object.entries(dimensions ?? {})
+    .sort((left, right) => right[1].score - left[1].score)
+    .slice(0, 6);
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -35,17 +38,30 @@ export function PostureGrade({ grade, score, dimensions }: PostureGradeProps) {
           <span className="text-xs text-zinc-500">{score}/100</span>
         </div>
       </div>
-      {dimensions && Object.keys(dimensions).length > 0 && (
-        <div className="grid grid-cols-3 gap-2 w-full max-w-xs">
-          {Object.entries(dimensions).map(([key, dim]) => (
-            <div key={key} className="flex flex-col items-center gap-1">
-              <div className="w-full h-1.5 rounded-full bg-zinc-800">
-                <div className="h-full rounded-full transition-all duration-500"
-                  style={{ width: `${dim.score}%`, backgroundColor: dim.score >= 80 ? "#22c55e" : dim.score >= 60 ? "#eab308" : "#ef4444" }} />
+      {orderedDimensions.length > 0 && (
+        <div className="w-full min-w-[240px] max-w-sm rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
+          <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+            Score breakdown
+          </div>
+          <div className="space-y-2">
+            {orderedDimensions.map(([key, dim]) => (
+              <div key={key} className="space-y-1">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-medium text-zinc-300">{dim.label}</span>
+                  <span className="font-mono text-xs text-zinc-400">{dim.score}/100</span>
+                </div>
+                <div className="h-1.5 rounded-full bg-zinc-800">
+                  <div
+                    className="h-full rounded-full transition-all duration-500"
+                    style={{
+                      width: `${dim.score}%`,
+                      backgroundColor: dim.score >= 80 ? "#22c55e" : dim.score >= 60 ? "#eab308" : "#ef4444",
+                    }}
+                  />
+                </div>
               </div>
-              <span className="text-[10px] text-zinc-500 truncate">{dim.label}</span>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       )}
     </div>

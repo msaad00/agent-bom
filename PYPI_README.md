@@ -49,6 +49,16 @@ pip install 'agent-bom[ui]'                      # once, if you want the dashboa
 agent-bom serve                                  # API + dashboard + graph explorer
 ```
 
+## Product views
+
+### Dashboard
+
+![agent-bom dashboard](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png)
+
+### Focused graph
+
+![agent-bom focused graph](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
+
 ## What it scans
 
 - **Agents + MCP** — MCP clients, servers, tools, transports, trust posture
@@ -71,7 +81,7 @@ agent-bom serve                                  # API + dashboard + graph explo
 
 Read-only. Agentless. No secrets leave your machine unless you explicitly enable an outbound integration.
 
-## How it works
+## How the data moves
 
 ![How agent-bom works](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-pipeline-light.svg)
 

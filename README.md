@@ -121,32 +121,31 @@ agent-bom serve                         # API + Next.js dashboard
 ## Why teams use it
 
 - Blast radius that maps `CVE -> package -> MCP server -> agent -> credentials -> tools`
-- AI-native coverage across agents, MCP, instruction files, runtime proxy traffic, containers, cloud, IaC, and GPU surfaces
-- Unified graph explorer with snapshots, diff, search, impact, attack paths, and OCSF-ready export
-- Supply-chain depth across lockfiles, transitive dependencies, model artifacts, provenance, and hash verification
+- One operator path across CLI, CI, API, dashboard, remediation, and MCP tools
+- AI-native coverage across agents, MCP, runtime, containers, cloud, IaC, and GPU surfaces
 - Compliance evidence bundles for `cmmc`, `fedramp`, and `nist-ai-rmf`
-- One operator path across CLI, CI, API, dashboard, reports, and MCP tools
 
-## Graph explorer
+## Product views
 
-The README should show the same pattern as the product: start from one scoped path, then expand by agent, depth, or findings only when you ask for more.
+These screenshots come from the live product path, using the built-in demo data pushed into the API.
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/topology-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/topology-light.svg" alt="agent-bom unified graph explorer" width="900" />
-  </picture>
-</p>
+### Dashboard
 
-Use whichever entrypoint fits your workflow:
+Risk summary, posture, and the highest-value attack paths without waiting on deep scan hydration.
 
-```bash
-agent-bom serve                    # Persist scans and explore them in the dashboard
-agent-bom graph report.json        # Generate graph-facing output from an existing report
-agent-bom mesh --project .         # Quick local topology view from the CLI
-```
+![agent-bom dashboard](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png)
 
-If the dashboard says `API Offline`, install the UI extra and run `agent-bom serve`. If the UI is already running separately, start just the backend with `pip install 'agent-bom[api]'` and `agent-bom api`.
+### Focused graph
+
+The graph starts scoped to one agent and the vulnerable path in view, then expands only when the operator asks for more.
+
+![agent-bom focused graph](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
+
+### Fix-first remediation
+
+Reach, severity, fix version, and framework context stay in one review table so the operator can act without jumping between pages.
+
+![agent-bom remediation view](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png)
 
 ## Framework catalogs
 
@@ -159,14 +158,23 @@ agent-bom db status
 
 The active catalog metadata is also surfaced in JSON output (`framework_catalogs`) and the API at `/v1/frameworks/catalogs`. Long-lived connected deployments can point at a synced catalog or opt into runtime refresh with `AGENT_BOM_MITRE_CATALOG_MODE`.
 
-## Architecture at a glance
+## How the data moves
 
 One path: discover, analyze, persist, then operate across CLI, CI, API, dashboard, and exports.
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-stack-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/architecture-stack-light.svg" alt="agent-bom architecture at a glance" width="900" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-pipeline-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-pipeline-light.svg" alt="agent-bom scan and analysis flow" width="900" />
+  </picture>
+</p>
+
+Blast radius stays explicit in the data model instead of being hand-waved as a generic finding list.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="agent-bom blast radius model" width="900" />
   </picture>
 </p>
 

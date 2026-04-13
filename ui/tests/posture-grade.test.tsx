@@ -62,19 +62,19 @@ describe('PostureGrade', () => {
     )
     expect(screen.getByText('Vulns')).toBeInTheDocument()
     expect(screen.getByText('Compliance')).toBeInTheDocument()
+    expect(screen.getByText('Score breakdown')).toBeInTheDocument()
   })
 
   it('does not render dimensions section when dimensions is undefined', () => {
     render(<PostureGrade grade="A" score={90} />)
     // No dimension labels should appear
     expect(screen.queryByText('Vulns')).not.toBeInTheDocument()
+    expect(screen.queryByText('Score breakdown')).not.toBeInTheDocument()
   })
 
   it('does not render dimensions section when dimensions is empty object', () => {
-    const { container } = render(<PostureGrade grade="A" score={90} dimensions={{}} />)
-    // No dimension bars rendered
-    const bars = container.querySelectorAll('.grid')
-    expect(bars.length).toBe(0)
+    render(<PostureGrade grade="A" score={90} dimensions={{}} />)
+    expect(screen.queryByText('Score breakdown')).not.toBeInTheDocument()
   })
 
   it('uses fallback color for unknown grade', () => {

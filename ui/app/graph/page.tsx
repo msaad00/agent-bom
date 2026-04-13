@@ -16,6 +16,11 @@ import { AttackPathCard } from "@/components/attack-path-card";
 import { GraphLegend, FullscreenButton } from "@/components/graph-chrome";
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import {
+  GraphControlGroup,
+  GraphEmptyState,
+  GraphFindingsFallback,
+} from "@/components/graph-state-panels";
+import {
   FilterPanel,
   DEFAULT_FILTERS,
   createExpandedGraphFilters,
@@ -586,6 +591,26 @@ export default function GraphPage() {
     }));
   }, [layoutEdges, connectedIds, attackPathEdgeKeys]);
 
+  const hasContextualGraph = useMemo(
+    () => displayNodes.some((node) => {
+      const nodeType = (node.data as LineageNodeData).nodeType;
+      return nodeType !== "vulnerability" && nodeType !== "misconfiguration";
+    }),
+    [displayNodes],
+  );
+
+  const graphOnlyFindings = displayNodes.length > 0 && !hasContextualGraph;
+  const findingNodes = useMemo(
+    () =>
+      displayNodes
+        .filter((node) => {
+          const nodeType = (node.data as LineageNodeData).nodeType;
+          return nodeType === "vulnerability" || nodeType === "misconfiguration";
+        })
+        .map((node) => ({ id: node.id, data: node.data as LineageNodeData })),
+    [displayNodes],
+  );
+
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
     const data = node.data as LineageNodeData;
     setSelectedNode({
@@ -606,6 +631,18 @@ export default function GraphPage() {
 
   const onNodeMouseLeave = useCallback(() => {
     setHoveredNodeId(null);
+  }, []);
+
+  const selectFindingCard = useCallback((id: string, data: LineageNodeData) => {
+    setSelectedNode({
+      ...data,
+      attributes: {
+        ...(data.attributes ?? {}),
+        node_id: id,
+      },
+    });
+    setSelectedNodeId(id);
+    setHoveredNodeId(id);
   }, []);
 
   const runSearch = useCallback(async () => {
@@ -752,35 +789,49 @@ export default function GraphPage() {
             </button>
           </form>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
-            <button
-              type="button"
-              onClick={() => setFilters(createFocusedGraphFilters(filters.agentName ?? flow.agentNames[0] ?? null))}
-              className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-sky-200 transition hover:border-sky-400/60"
-            >
-              Focused view
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilters(createExpandedGraphFilters(null))}
-              className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-2.5 py-1 text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
-            >
-              Expanded view
-            </button>
-            <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-zinc-400">
-              {filters.agentName ? `agent ${filters.agentName}` : "all agents"}
-            </span>
-            <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-zinc-400">
-              {filters.severity ? `${filters.severity}+` : "all severities"}
-            </span>
-            <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-zinc-400">
-              depth {filters.maxDepth}
-            </span>
-            {filters.vulnOnly && (
-              <span className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">
-                vulnerable only
+          <div className="mt-3 flex flex-wrap gap-4 text-[11px]">
+            <GraphControlGroup label="View">
+              <button
+                type="button"
+                onClick={() => setFilters(createFocusedGraphFilters(filters.agentName ?? flow.agentNames[0] ?? null))}
+                className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-sky-200 transition hover:border-sky-400/60"
+              >
+                Focused
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilters(createExpandedGraphFilters(null))}
+                className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-2.5 py-1 text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+              >
+                Expanded
+              </button>
+            </GraphControlGroup>
+            <GraphControlGroup label="Scope">
+              <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-zinc-400">
+                {filters.agentName ? `agent ${filters.agentName}` : "all agents"}
               </span>
-            )}
+            </GraphControlGroup>
+            <GraphControlGroup label="Filters">
+              <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-zinc-400">
+                {filters.severity ? `${filters.severity}+` : "all severities"}
+              </span>
+              <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-zinc-400">
+                depth {filters.maxDepth}
+              </span>
+              {filters.vulnOnly && (
+                <span className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">
+                  vulnerable only
+                </span>
+              )}
+            </GraphControlGroup>
+          </div>
+
+          <div className="mt-2 text-xs text-zinc-500">
+            {graphOnlyFindings
+              ? "This scope currently resolves to findings without surrounding context. Relax filters or expand the view to recover package, server, and agent relationships."
+              : filters.agentName
+                ? `Focused on ${filters.agentName}. Expand only when you need more of the surrounding graph.`
+                : "Focused view keeps the graph scoped. Use Expanded when you need broader topology."}
           </div>
 
           {searchResults.length > 0 && (
@@ -941,35 +992,49 @@ export default function GraphPage() {
         <FilterPanel filters={filters} onChange={setFilters} agentNames={flow.agentNames} />
 
         <div className="flex-1 relative">
-          <ReactFlow
-            nodes={displayNodes}
-            edges={displayEdges}
-            nodeTypes={lineageNodeTypes}
-            fitView
-            fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
-            minZoom={0.16}
-            maxZoom={2.5}
-            onlyRenderVisibleElements
-            defaultEdgeOptions={{ type: "smoothstep" }}
-            proOptions={{ hideAttribution: true }}
-            onNodeClick={onNodeClick}
-            onNodeMouseEnter={onNodeMouseEnter}
-            onNodeMouseLeave={onNodeMouseLeave}
-            onPaneClick={() => {
-              setSelectedNode(null);
-              setSelectedNodeId(null);
-              setHoveredNodeId(null);
-            }}
-          >
-            <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
-            <Controls className={CONTROLS_CLASS} />
-            <MiniMap
-              nodeColor={minimapNodeColor}
-              className={MINIMAP_CLASS}
-              bgColor={MINIMAP_BG}
-              maskColor={MINIMAP_MASK}
+          {displayNodes.length === 0 ? (
+            <GraphEmptyState
+              title="No nodes match the current graph scope"
+              detail="The current combination of layers, severity, agent, depth, and runtime scope filtered everything out."
+              suggestions={[
+                "Drop the severity threshold or turn off vulnerable-only.",
+                "Switch from Focused to Expanded when you need broader topology.",
+                "Re-enable the package or server layers to recover the path context.",
+              ]}
             />
-          </ReactFlow>
+          ) : graphOnlyFindings ? (
+            <GraphFindingsFallback nodes={findingNodes} onSelect={selectFindingCard} />
+          ) : (
+            <ReactFlow
+              nodes={displayNodes}
+              edges={displayEdges}
+              nodeTypes={lineageNodeTypes}
+              fitView
+              fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
+              minZoom={0.16}
+              maxZoom={2.5}
+              onlyRenderVisibleElements
+              defaultEdgeOptions={{ type: "smoothstep" }}
+              proOptions={{ hideAttribution: true }}
+              onNodeClick={onNodeClick}
+              onNodeMouseEnter={onNodeMouseEnter}
+              onNodeMouseLeave={onNodeMouseLeave}
+              onPaneClick={() => {
+                setSelectedNode(null);
+                setSelectedNodeId(null);
+                setHoveredNodeId(null);
+              }}
+            >
+              <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
+              <Controls className={CONTROLS_CLASS} />
+              <MiniMap
+                nodeColor={minimapNodeColor}
+                className={MINIMAP_CLASS}
+                bgColor={MINIMAP_BG}
+                maskColor={MINIMAP_MASK}
+              />
+            </ReactFlow>
+          )}
 
           {selectedNode && (
             <LineageDetailPanel

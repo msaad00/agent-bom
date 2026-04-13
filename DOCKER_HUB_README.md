@@ -1,13 +1,12 @@
 # agent-bom
 
-**Open security scanner and graph for agentic infrastructure — discover agents and MCP, map blast radius, and inspect runtime.**
+**Open security scanner for AI supply chain — agents, MCP servers, packages, containers, cloud, GPU, and runtime.**
 
 Package risk is only the start. What matters is what it can reach.
 
-agent-bom helps developers, security teams, and enterprises discover AI agent and MCP environments,
-map CVEs into real blast radius, scan packages, container images, Kubernetes, IaC, and cloud AI infrastructure, and protect MCP traffic at runtime.
+agent-bom helps developers, security teams, and enterprises discover AI agents and MCP environments, map CVEs into real blast radius, scan packages, container images, Kubernetes, IaC, and cloud AI infrastructure, and protect MCP traffic at runtime.
 
-Canonical references:
+References:
 
 - Product brief: https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_BRIEF.md
 - Verified metrics: https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_METRICS.md
@@ -70,26 +69,20 @@ docker run --rm agentbom/agent-bom:latest doctor
 
 ## Why Teams Use It
 
-Package risk is only the start.
-
-agent-bom maps what it can reach across MCP servers, agents, credentials, tools, and runtime context.
-
-It answers the higher-value questions:
-
-- Which AI agents are affected?
-- Which MCP servers load the vulnerable package?
-- Which credentials are exposed?
-- Which tools are reachable?
-- What should be fixed first?
-- Which local AI infrastructure should be scanned next?
-
-It covers:
-
-- MCP client discovery across Claude Desktop, Claude Code, Cursor, Windsurf, VS Code Copilot, Cline, Continue, Zed, Cortex CoCo / Cortex Code, and more
-- Packages, container images, IaC, secrets, AI source code, and cloud AI environments
 - Blast radius from package to server to agent to credentials and tools
-- Runtime MCP proxy plus the broader runtime protection engine
-- API + dashboard for fleet-wide visibility
+- AI-native coverage across agents, MCP, runtime, containers, cloud, IaC, and GPU surfaces
+- One operator path across CLI, CI, API, dashboard, remediation, and MCP tools
+- Runtime MCP protection plus broader review and evidence exports
+
+## Product views
+
+### Dashboard
+
+![agent-bom dashboard](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png)
+
+### Focused graph
+
+![agent-bom focused graph](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
 
 ## Coverage At A Glance
 

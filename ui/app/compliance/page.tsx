@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   api,
   ComplianceResponse,
@@ -361,13 +362,19 @@ function FrameworkSection({
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function CompliancePage() {
+  const searchParams = useSearchParams();
+  const queryParam = searchParams.get("q") ?? "";
   const [data, setData] = useState<ComplianceResponse | null>(null);
   const [mitreCatalog, setMitreCatalog] = useState<FrameworkCatalogMetadata | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"detail" | "heatmap" | "matrix">("detail");
-  const [controlQuery, setControlQuery] = useState("");
+  const [controlQuery, setControlQuery] = useState(queryParam);
   const [statusFilter, setStatusFilter] = useState<"all" | "pass" | "warning" | "fail">("all");
+
+  useEffect(() => {
+    setControlQuery(queryParam);
+  }, [queryParam]);
 
   useEffect(() => {
     Promise.allSettled([api.getCompliance(), api.getFrameworkCatalogs()])

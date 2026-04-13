@@ -31,13 +31,10 @@ run_step() {
   sleep 1
 }
 
-# ── Demo: blast radius → fix-first gate → integrity verify ──
+# ── Demo: blast radius → quick package gate ──
 
 # 1. Full agent scan — blast radius, severity, remediation
 run_step "agent-bom agents --demo --offline" agent-bom agents --demo --offline
 
 # 2. Pre-install CVE gate
-run_step "agent-bom check pillow@9.0.0" agent-bom check pillow@9.0.0 --ecosystem pypi
-
-# 3. Package integrity verification
-run_step "agent-bom verify requests@2.33.0" agent-bom verify requests@2.33.0 --ecosystem pypi
+run_step "agent-bom check pillow@9.0.0" agent-bom check pillow@9.0.0 --ecosystem pypi --quiet

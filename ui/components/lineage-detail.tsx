@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 import {
   Brain,
   Bug,
@@ -344,23 +345,33 @@ export function LineageDetailPanel({
               {Object.entries(data.impactByType)
                 .sort((left, right) => right[1] - left[1])
                 .map(([key, value]) => (
-                  <span
+                  <Link
                     key={key}
-                    className="rounded border border-orange-800 bg-orange-950 px-1.5 py-0.5 text-[10px] text-orange-300"
+                    href={`/graph?q=${encodeURIComponent(key)}`}
+                    className="rounded border border-orange-800 bg-orange-950 px-1.5 py-0.5 text-[10px] text-orange-300 transition-colors hover:bg-orange-900"
                   >
                     {prettifyKey(key)}: {value}
-                  </span>
+                  </Link>
                 ))}
             </div>
           </div>
         )}
 
         {data.dataSources && data.dataSources.length > 0 && (
-          <TagList label="Data Sources" tags={data.dataSources} tone="blue" />
+          <TagList
+            label="Data Sources"
+            tags={data.dataSources}
+            tone="blue"
+            linkBuilder={(tag) => `/jobs?q=${encodeURIComponent(tag)}`}
+          />
         )}
 
         {data.complianceTags && data.complianceTags.length > 0 && (
-          <TagList label="Compliance Tags" tags={data.complianceTags} />
+          <TagList
+            label="Compliance Tags"
+            tags={data.complianceTags}
+            linkBuilder={(tag) => `/compliance?q=${encodeURIComponent(tag)}`}
+          />
         )}
 
         {extraAttributes.length > 0 && (
@@ -402,10 +413,12 @@ function TagList({
   label,
   tags,
   tone = "zinc",
+  linkBuilder,
 }: {
   label: string;
   tags: string[];
   tone?: "zinc" | "blue";
+  linkBuilder?: (tag: string) => string;
 }) {
   const toneClass =
     tone === "blue"
@@ -416,9 +429,19 @@ function TagList({
       <Label>{label}</Label>
       <div className="flex flex-wrap gap-1 mt-1">
         {tags.map((tag) => (
-          <span key={tag} className={`text-[10px] px-1.5 py-0.5 rounded border ${toneClass}`}>
-            {tag}
-          </span>
+          linkBuilder ? (
+            <Link
+              key={tag}
+              href={linkBuilder(tag)}
+              className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors hover:brightness-110 ${toneClass}`}
+            >
+              {tag}
+            </Link>
+          ) : (
+            <span key={tag} className={`text-[10px] px-1.5 py-0.5 rounded border ${toneClass}`}>
+              {tag}
+            </span>
+          )
         ))}
       </div>
     </div>

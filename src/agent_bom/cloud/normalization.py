@@ -5,6 +5,42 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+_LIFECYCLE_STATE_MAPS: dict[tuple[str, str, str], dict[str, str]] = {
+    ("aws", "bedrock", "agent"): {
+        "PREPARED": "prepared",
+        "NOT_PREPARED": "not-prepared",
+    },
+    ("databricks", "clusters", "cluster"): {
+        "RUNNING": "running",
+        "RESIZING": "resizing",
+        "RESTARTING": "restarting",
+        "TERMINATED": "terminated",
+    },
+    ("databricks", "model-serving", "serving-endpoint"): {
+        "READY": "ready",
+        "NOT_READY": "not-ready",
+    },
+}
+
+
+def normalize_cloud_lifecycle_state(
+    *,
+    provider: str,
+    service: str,
+    resource_type: str,
+    raw_state: Any,
+) -> str | None:
+    """Map raw provider lifecycle values to canonical states.
+
+    Returns ``None`` when a source value is not part of the verified mapping.
+    That lets discovery code skip unknown states until the mapping is reviewed
+    and explicitly added, instead of silently guessing.
+    """
+    if raw_state in ("", None):
+        return None
+    mapping = _LIFECYCLE_STATE_MAPS.get((provider, service, resource_type), {})
+    return mapping.get(str(raw_state).strip().upper())
+
 
 def build_cloud_origin(
     *,

@@ -72,6 +72,7 @@ def auto_configure_proxies(
     agents: list[Agent],
     policy_path: Optional[str] = None,
     log_dir: Optional[str] = None,
+    secure_defaults: bool = True,
     detect_credentials: bool = False,
     block_undeclared: bool = False,
 ) -> list[ProxyConfig]:
@@ -86,6 +87,9 @@ def auto_configure_proxies(
         policy_path: Optional policy JSON file to pass to each proxy instance.
         log_dir: Directory for per-server audit logs.  Each server gets a file
             named ``<server_name_slug>.jsonl`` inside this directory.
+        secure_defaults: When True, inject the recommended protective flags
+            (currently ``--detect-credentials`` and ``--block-undeclared``)
+            even if they are not explicitly requested by the caller.
         detect_credentials: Pass ``--detect-credentials`` to each proxy.
         block_undeclared: Pass ``--block-undeclared`` to each proxy.
 
@@ -111,10 +115,10 @@ def auto_configure_proxies(
                 log_file = str(Path(log_dir) / f"{slug}.jsonl")
                 proxy_flags += ["--log", log_file]
 
-            if detect_credentials:
+            if secure_defaults or detect_credentials:
                 proxy_flags.append("--detect-credentials")
 
-            if block_undeclared:
+            if secure_defaults or block_undeclared:
                 proxy_flags.append("--block-undeclared")
 
             proxied_args = [*proxy_flags, "--", server.command, *server.args]

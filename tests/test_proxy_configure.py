@@ -66,6 +66,8 @@ def test_generates_config_for_stdio_server():
     assert "--" in cfg.proxied_args
     assert "npx" in cfg.proxied_args
     assert "@modelcontextprotocol/server-fs" in cfg.proxied_args
+    assert "--detect-credentials" in cfg.proxied_args
+    assert "--block-undeclared" in cfg.proxied_args
 
 
 def test_skips_sse_server():
@@ -130,10 +132,18 @@ def test_all_flags_together():
 def test_no_flags_minimal_proxied_args():
     server = _stdio(command="uvx", args=["mcp-server-git"])
     agents = [_agent([server])]
-    configs = auto_configure_proxies(agents)
+    configs = auto_configure_proxies(agents, secure_defaults=False)
     cfg = configs[0]
     # Should be: ["--", "uvx", "mcp-server-git"]
     assert cfg.proxied_args == ["--", "uvx", "mcp-server-git"]
+
+
+def test_secure_defaults_can_be_disabled():
+    agents = [_agent([_stdio()])]
+    configs = auto_configure_proxies(agents, secure_defaults=False)
+    args = configs[0].proxied_args
+    assert "--detect-credentials" not in args
+    assert "--block-undeclared" not in args
 
 
 def test_original_command_and_args_preserved():

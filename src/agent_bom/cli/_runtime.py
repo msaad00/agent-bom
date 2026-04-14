@@ -58,18 +58,23 @@ def proxy_cmd(
     - Rate limiting and suspicious sequence detection
     - HMAC-SHA256 response signing in audit log (--response-sign-key)
 
+    Boundary:
+    - scanner and MCP server modes are read-only
+    - proxy mode intentionally executes the wrapped stdio server or connects
+      to the remote MCP endpoint so it can enforce policy on live traffic
+
     \b
     Usage (stdio — subprocess):
       agent-bom proxy -- npx @modelcontextprotocol/server-filesystem /tmp
       agent-bom proxy --log audit.jsonl -- npx @mcp/server-github
-      agent-bom proxy --policy policy.json --block-undeclared -- npx @mcp/server-postgres
+      agent-bom proxy --policy policy.json --detect-credentials --block-undeclared -- npx @mcp/server-postgres
       agent-bom proxy --detect-credentials --log-only -- npx @mcp/server-github
       agent-bom proxy --log audit.jsonl --response-sign-key $MY_SECRET -- npx @mcp/server-github
 
     \b
     Usage (SSE/HTTP — remote server):
       agent-bom proxy --url http://localhost:3000
-      agent-bom proxy --url https://mcp.example.com --log audit.jsonl --block-undeclared
+      agent-bom proxy --url https://mcp.example.com --log audit.jsonl --detect-credentials --block-undeclared
       agent-bom proxy --url http://localhost:3000 --policy policy.json
 
     \b
@@ -78,8 +83,9 @@ def proxy_cmd(
         "mcpServers": {
           "filesystem": {
             "command": "agent-bom",
-            "args": ["proxy", "--log", "audit.jsonl", "--detect-credentials",
-                     "--", "npx", "@modelcontextprotocol/server-filesystem", "/tmp"]
+        "args": ["proxy", "--log", "audit.jsonl", "--detect-credentials",
+                 "--block-undeclared",
+                 "--", "npx", "@modelcontextprotocol/server-filesystem", "/tmp"]
           }
         }
       }
@@ -136,6 +142,12 @@ def proxy_cmd(
 @click.command("proxy-configure")
 @click.option("--policy", type=click.Path(exists=True), default=None, help="Policy JSON file to pass to each proxy instance")
 @click.option("--log-dir", default=None, type=click.Path(), help="Directory for per-server audit JSONL logs")
+@click.option(
+    "--secure-defaults/--no-secure-defaults",
+    default=True,
+    show_default=True,
+    help="Inject the recommended hardening flags (--detect-credentials and --block-undeclared)",
+)
 @click.option("--detect-credentials", is_flag=True, help="Enable credential leak detection in each proxy")
 @click.option("--block-undeclared", is_flag=True, help="Block undeclared tools in each proxy")
 @click.option(
@@ -144,7 +156,7 @@ def proxy_cmd(
     help="Write proxy config back to source JSON config files (default: preview only)",
 )
 @click.option("--project", default=None, type=click.Path(exists=True), help="Project directory to scan for MCP configs")
-def proxy_configure_cmd(policy, log_dir, detect_credentials, block_undeclared, apply, project):
+def proxy_configure_cmd(policy, log_dir, secure_defaults, detect_credentials, block_undeclared, apply, project):
     """Auto-configure the agent-bom proxy for discovered MCP servers.
 
     \b
@@ -159,10 +171,16 @@ def proxy_configure_cmd(policy, log_dir, detect_credentials, block_undeclared, a
     By default, shows a preview.  Use --apply to write changes back to the
     original config files (JSON only — claude_desktop_config.json, mcp.json…).
 
+    Recommended hardening for developer environments:
+    - secure defaults already inject --detect-credentials and --block-undeclared
+    - --log-dir for auditable JSONL logs
+    - --policy for explicit allowlist/blocklist/read-only enforcement
+
     \b
     Example:
-      agent-bom proxy-configure --log-dir ~/.agent-bom/logs --detect-credentials
-      agent-bom proxy-configure --policy policy.json --block-undeclared --apply
+      agent-bom proxy-configure --log-dir ~/.agent-bom/logs
+      agent-bom proxy-configure --policy policy.json --log-dir ~/.agent-bom/logs --apply
+      agent-bom proxy-configure --no-secure-defaults --apply
     """
     from agent_bom.discovery import discover_all
     from agent_bom.proxy_configure import apply_proxy_configs, auto_configure_proxies
@@ -174,6 +192,7 @@ def proxy_configure_cmd(policy, log_dir, detect_credentials, block_undeclared, a
         agents,
         policy_path=policy,
         log_dir=log_dir,
+        secure_defaults=secure_defaults,
         detect_credentials=detect_credentials,
         block_undeclared=block_undeclared,
     )

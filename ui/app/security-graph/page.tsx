@@ -690,6 +690,16 @@ function SecurityGraphPageContent() {
                               ))}
                             </div>
                           )}
+                          {risk.owasp_agentic_tag && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <Link
+                                href={`/compliance?q=${encodeURIComponent(risk.owasp_agentic_tag)}`}
+                                className="rounded-full border border-emerald-900/70 bg-emerald-950/30 px-2 py-1 text-[11px] font-mono text-emerald-300 transition hover:border-emerald-700 hover:text-emerald-200"
+                              >
+                                {risk.owasp_agentic_tag}
+                              </Link>
+                            </div>
+                          )}
                           <div className="mt-3 flex flex-wrap gap-2">
                             {recommendedInteractionRiskActions(risk).map((action) => (
                               <Link

@@ -396,13 +396,42 @@ function SecurityGraphPageContent() {
         <section className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-4">
           <GraphEmptyState
             title="No precomputed attack paths are available for this snapshot"
-            detail="The persisted graph loaded successfully, but it does not currently contain exploit chains for the selected scan."
+            detail={
+              hasFocusContext
+                ? "The persisted graph loaded successfully, but the current dashboard focus did not resolve to a stored exploit chain for this snapshot."
+                : "The persisted graph loaded successfully, but it does not currently contain exploit chains for the selected scan."
+            }
             suggestions={[
               "Run a fresh scan to refresh the persisted graph snapshot.",
               "Open the full graph to inspect inventory and findings that did persist.",
               "Check the vulnerabilities page if you need fix context before the next scan completes.",
             ]}
           />
+          <div className="mt-4 flex flex-wrap gap-3 border-t border-zinc-800 pt-4">
+            <Link
+              href="/graph"
+              className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+            >
+              Open full graph
+              <GitBranch className="h-3.5 w-3.5" />
+            </Link>
+            <Link
+              href="/vulns"
+              className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+            >
+              Review vulnerabilities
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+            {hasFocusContext && (
+              <Link
+                href={buildSecurityGraphHref({ scanId: selectedScanId || undefined })}
+                className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+              >
+                Clear focus
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            )}
+          </div>
         </section>
       ) : (
         <>
@@ -532,7 +561,11 @@ function SecurityGraphPageContent() {
                   <TagList label="Tools" tags={selectedAttackPath.tool_exposure} emptyLabel="No tool exposure" />
                 </div>
 
-                <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                <div className="mt-4">
+                  <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Recommended next steps</div>
+                </div>
+
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
                   {selectedPathActions.map((action) => (
                     <Link
                       key={action.title}
@@ -568,6 +601,9 @@ function SecurityGraphPageContent() {
                     <Sparkles className="h-4 w-4 text-sky-400" />
                     Interaction risks
                   </div>
+                  <p className="mt-2 text-xs leading-5 text-zinc-500">
+                    These overlays highlight runtime combinations that are risky even when the selected path itself is already understood.
+                  </p>
                   {graphData?.interaction_risks?.length ? (
                     <div className="mt-4 space-y-3">
                       <div className="grid grid-cols-3 gap-3">
@@ -597,6 +633,16 @@ function SecurityGraphPageContent() {
                                   {agent}
                                 </Link>
                               ))}
+                            </div>
+                          )}
+                          {risk.owasp_agentic_tag && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              <Link
+                                href={`/compliance?q=${encodeURIComponent(risk.owasp_agentic_tag)}`}
+                                className="rounded-full border border-emerald-900/70 bg-emerald-950/30 px-2 py-1 text-[11px] font-mono text-emerald-300 transition hover:border-emerald-700 hover:text-emerald-200"
+                              >
+                                {risk.owasp_agentic_tag}
+                              </Link>
                             </div>
                           )}
                           <div className="mt-3 flex flex-wrap gap-2">

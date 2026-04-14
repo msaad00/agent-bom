@@ -7,8 +7,10 @@ import {
   labelsForAttackPathType,
   mapAttackPathNodeType,
   matchesAttackPathFocus,
-  recommendedAttackPathActions,
   moveAttackPathSelection,
+  recommendedInteractionRiskActions,
+  recommendedAttackPathActions,
+  summarizeInteractionRisks,
   toAttackCardNodes,
 } from "@/lib/attack-paths";
 import { EntityType, type AttackPath, type UnifiedNode } from "@/lib/graph-schema";
@@ -526,6 +528,50 @@ describe("attack path helpers", () => {
         title: "Contain credential exposure",
         detail: "Rotate or scope exposed secrets before you widen blast radius by exploring deeper topology.",
         href: "/mesh",
+      },
+    ]);
+  });
+
+  it("summarizes interaction risks for panel-level metrics", () => {
+    expect(
+      summarizeInteractionRisks([
+        {
+          pattern: "credential + tool",
+          agents: ["Claude Desktop", "Cursor"],
+          risk_score: 8.8,
+          description: "shared exposure",
+        },
+        {
+          pattern: "runtime drift",
+          agents: ["Cursor"],
+          risk_score: 6.4,
+          description: "policy drift",
+        },
+      ]),
+    ).toEqual({
+      total: 2,
+      uniqueAgents: 2,
+      highestRisk: 8.8,
+    });
+  });
+
+  it("recommends deterministic follow-up actions for an interaction risk", () => {
+    expect(
+      recommendedInteractionRiskActions({
+        pattern: "credential + tool",
+        agents: ["Claude Desktop"],
+        risk_score: 8.2,
+        description: "shared exposure",
+        owasp_agentic_tag: "AGENT-001",
+      }),
+    ).toEqual([
+      {
+        label: "Open lead agent",
+        href: "/agents?name=Claude%20Desktop",
+      },
+      {
+        label: "Review tag evidence",
+        href: "/compliance?q=AGENT-001",
       },
     ]);
   });

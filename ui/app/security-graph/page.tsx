@@ -30,7 +30,9 @@ import {
   buildSecurityGraphHref,
   labelsForAttackPathType,
   matchesAttackPathFocus,
+  recommendedInteractionRiskActions,
   recommendedAttackPathActions,
+  summarizeInteractionRisks,
   moveAttackPathSelection,
   toAttackCardNodes,
 } from "@/lib/attack-paths";
@@ -233,6 +235,11 @@ function SecurityGraphPageContent() {
         ? recommendedAttackPathActions(selectedAttackPath, graphNodeById)
         : [],
     [graphNodeById, selectedAttackPath],
+  );
+
+  const interactionRiskSummary = useMemo(
+    () => summarizeInteractionRisks(graphData?.interaction_risks ?? []),
+    [graphData?.interaction_risks],
   );
 
   useEffect(() => {
@@ -609,6 +616,11 @@ function SecurityGraphPageContent() {
                   </div>
                   {graphData?.interaction_risks?.length ? (
                     <div className="mt-4 space-y-3">
+                      <div className="grid grid-cols-3 gap-3">
+                        <QuickStat label="Patterns" value={String(interactionRiskSummary.total)} />
+                        <QuickStat label="Agents touched" value={String(interactionRiskSummary.uniqueAgents)} tone="blue" />
+                        <QuickStat label="Highest risk" value={interactionRiskSummary.highestRisk.toFixed(1)} tone="amber" />
+                      </div>
                       {graphData.interaction_risks.slice(0, 3).map((risk) => (
                         <div key={`${risk.pattern}-${risk.risk_score}`} className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
                           <div className="flex items-start justify-between gap-3">
@@ -633,6 +645,18 @@ function SecurityGraphPageContent() {
                               ))}
                             </div>
                           )}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {recommendedInteractionRiskActions(risk).map((action) => (
+                              <Link
+                                key={`${risk.pattern}-${action.label}`}
+                                href={action.href}
+                                className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-[11px] text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+                              >
+                                {action.label}
+                                <ArrowRight className="h-3 w-3" />
+                              </Link>
+                            ))}
+                          </div>
                         </div>
                       ))}
                     </div>

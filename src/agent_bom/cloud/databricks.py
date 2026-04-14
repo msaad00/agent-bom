@@ -28,7 +28,7 @@ from typing import Any, Optional
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_cloud_state
+from .normalization import build_cloud_state, normalize_cloud_lifecycle_state
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,13 @@ def discover(
 
         # Only scan running or terminated (recently used) clusters
         state_str = str(state).upper() if state else ""
-        if state_str not in ("RUNNING", "TERMINATED", "RESIZING"):
+        lifecycle_state = normalize_cloud_lifecycle_state(
+            provider="databricks",
+            service="clusters",
+            resource_type="cluster",
+            raw_state=state_str,
+        )
+        if lifecycle_state is None:
             continue
 
         packages = _get_cluster_packages(ws, cluster_id, warnings)
@@ -113,7 +119,7 @@ def discover(
                     provider="databricks",
                     service="clusters",
                     resource_type="cluster",
-                    lifecycle_state=state_str.lower().replace("_", "-"),
+                    lifecycle_state=lifecycle_state,
                     raw_state=state_str,
                     state_source="cluster.state",
                 )
@@ -131,7 +137,13 @@ def discover(
             # the raw string ("READY" / "NOT_READY") rather than the repr.
             ready_enum = getattr(ep_state, "ready", None) if ep_state else None
             state_str = getattr(ready_enum, "value", str(ready_enum or "")).upper()
-            if state_str not in ("READY", "NOT_READY"):
+            lifecycle_state = normalize_cloud_lifecycle_state(
+                provider="databricks",
+                service="model-serving",
+                resource_type="serving-endpoint",
+                raw_state=state_str,
+            )
+            if lifecycle_state is None:
                 continue
 
             server = MCPServer(
@@ -150,7 +162,7 @@ def discover(
                         provider="databricks",
                         service="model-serving",
                         resource_type="serving-endpoint",
-                        lifecycle_state=state_str.lower().replace("_", "-"),
+                        lifecycle_state=lifecycle_state,
                         raw_state=state_str,
                         state_source="state.ready",
                     )

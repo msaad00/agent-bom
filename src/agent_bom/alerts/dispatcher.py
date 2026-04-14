@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Protocol, runtime_checkable
 
+from agent_bom.event_normalization import build_runtime_alert_relationships
+
 logger = logging.getLogger(__name__)
 
 
@@ -163,6 +165,28 @@ def _build_slack_payload(alert: dict) -> dict:
     return {"blocks": blocks}
 
 
+def _normalize_alert_event(alert: dict) -> dict:
+    """Attach canonical relationship metadata to runtime alerts when possible."""
+    if alert.get("type") != "runtime_alert" or "event_relationships" in alert:
+        return alert
+
+    detector = str(alert.get("detector", "unknown"))
+    details = alert.get("details")
+    if not isinstance(details, dict):
+        return alert
+
+    event_relationships = build_runtime_alert_relationships(
+        detector=detector,
+        details=details,
+    )
+    if event_relationships is None:
+        return alert
+    return {
+        **alert,
+        "event_relationships": event_relationships,
+    }
+
+
 # ─── Generic Webhook Channel ─────────────────────────────────────────────────
 
 
@@ -281,6 +305,7 @@ class AlertDispatcher:
         # Ensure timestamp
         if "ts" not in alert_dict:
             alert_dict["ts"] = datetime.now(timezone.utc).isoformat()
+        alert_dict = _normalize_alert_event(alert_dict)
 
         successes = 0
         for ch in self._channels:

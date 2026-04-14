@@ -123,12 +123,39 @@ def test_dispatcher_dispatch_alert_object():
     from agent_bom.runtime.detectors import Alert, AlertSeverity
 
     d = AlertDispatcher()
-    alert = Alert(detector="test", severity=AlertSeverity.HIGH, message="from detector")
+    alert = Alert(
+        detector="test",
+        severity=AlertSeverity.HIGH,
+        message="from detector",
+        details={"tool": "read_file", "path": "/tmp/example.txt"},
+    )
     count = asyncio.run(d.dispatch(alert))
     assert count == 1
     stored = d.list_alerts()[0]
     assert stored["detector"] == "test"
     assert stored["severity"] == "high"
+    assert stored["event_relationships"]["targets"][0]["id"] == "read_file"
+    assert stored["event_relationships"]["resources"][0]["id"] == "/tmp/example.txt"
+
+
+def test_dispatcher_dispatch_runtime_dict_adds_relationships():
+    d = AlertDispatcher()
+    count = asyncio.run(
+        d.dispatch(
+            {
+                "type": "runtime_alert",
+                "severity": "critical",
+                "detector": "shield_killswitch",
+                "message": "blocked",
+                "details": {"tool": "exec", "agent_id": "agent-1", "path": "/etc/passwd"},
+            }
+        )
+    )
+    assert count == 1
+    stored = d.list_alerts()[0]
+    assert stored["event_relationships"]["actor"]["id"] == "agent-1"
+    assert stored["event_relationships"]["targets"][0]["id"] == "exec"
+    assert stored["event_relationships"]["resources"][0]["id"] == "/etc/passwd"
 
 
 def test_dispatcher_add_webhook():

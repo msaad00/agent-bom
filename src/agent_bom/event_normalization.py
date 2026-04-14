@@ -17,6 +17,10 @@ _RESOURCE_ARG_TYPES = {
     "uri": "uri",
     "resource_id": "resource",
 }
+_RUNTIME_DETAIL_TARGET_LIST_FIELDS = {
+    "new_tools": "observed_tool",
+    "removed_tools": "removed_tool",
+}
 
 
 def _scalar_attributes(attributes: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -139,6 +143,90 @@ def build_proxy_event_relationships(
 
     return build_event_relationships(
         source="proxy_tool_call",
+        actor=actor,
+        targets=targets,
+        resources=resources,
+    )
+
+
+def build_runtime_alert_relationships(
+    *,
+    detector: str,
+    details: Mapping[str, Any] | None,
+    agent_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Normalize runtime alert relationships.
+
+    Runtime alerts are event-like, but the exact actor/target/resource shape
+    varies by detector. Only explicit fields are normalized. Unknown or
+    detector-specific fields remain in ``details``.
+    """
+    clean_details = details if isinstance(details, Mapping) else {}
+
+    actor = None
+    resolved_agent_id = agent_id or clean_details.get("agent_id")
+    if isinstance(resolved_agent_id, str) and resolved_agent_id:
+        actor = build_event_ref(
+            ref_type="agent",
+            ref_id=resolved_agent_id,
+            name=resolved_agent_id,
+            role="caller",
+            source_field="agent_id",
+        )
+
+    targets: list[dict[str, Any]] = []
+    tool_name = clean_details.get("tool")
+    if isinstance(tool_name, str) and tool_name:
+        tool_target = build_event_ref(
+            ref_type="tool",
+            ref_id=tool_name,
+            name=tool_name,
+            role="implicated_tool",
+            source_field="details.tool",
+        )
+        if tool_target is not None:
+            targets.append(tool_target)
+
+    for field_name, role in _RUNTIME_DETAIL_TARGET_LIST_FIELDS.items():
+        raw_values = clean_details.get(field_name)
+        if not isinstance(raw_values, list):
+            continue
+        for value in raw_values:
+            if not isinstance(value, str) or not value:
+                continue
+            target = build_event_ref(
+                ref_type="tool",
+                ref_id=value,
+                name=value,
+                role=role,
+                source_field=f"details.{field_name}",
+            )
+            if target is not None:
+                targets.append(target)
+
+    resources: list[dict[str, Any]] = []
+    seen_resources: set[tuple[str, str, str]] = set()
+    for field_name, resource_type in _RESOURCE_ARG_TYPES.items():
+        value = clean_details.get(field_name)
+        if not isinstance(value, (str, int, float, bool)) or value in ("", None):
+            continue
+        resource_id = str(value)
+        dedupe_key = (resource_type, resource_id, field_name)
+        if dedupe_key in seen_resources:
+            continue
+        seen_resources.add(dedupe_key)
+        resource = build_event_ref(
+            ref_type=resource_type,
+            ref_id=resource_id,
+            name=resource_id,
+            role="referenced_resource",
+            source_field=f"details.{field_name}",
+        )
+        if resource is not None:
+            resources.append(resource)
+
+    return build_event_relationships(
+        source=f"runtime_alert:{detector}",
         actor=actor,
         targets=targets,
         resources=resources,

@@ -80,6 +80,17 @@ function pathNodeLabels(path: AttackPath, nodeById: Map<string, UnifiedNode>) {
     }));
 }
 
+export function labelsForAttackPathType(
+  path: AttackPath,
+  nodeById: Map<string, UnifiedNode>,
+  type: AttackPathCardNode["type"],
+): string[] {
+  const labels = pathNodeLabels(path, nodeById)
+    .filter((node) => node.type === type)
+    .map((node) => node.label);
+  return Array.from(new Set(labels));
+}
+
 export function matchesAttackPathFocus(
   path: AttackPath,
   nodeById: Map<string, UnifiedNode>,

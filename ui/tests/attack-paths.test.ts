@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   attackPathKey,
   buildSecurityGraphHref,
+  labelsForAttackPathType,
   mapAttackPathNodeType,
   matchesAttackPathFocus,
   toAttackCardNodes,
@@ -245,5 +246,87 @@ describe("attack path helpers", () => {
         packageName: "requests",
       }),
     ).toBe(false);
+  });
+
+  it("returns unique labels for a requested attack-path node type", () => {
+    const path: AttackPath = {
+      source: "cve-1",
+      target: "agent-1",
+      hops: ["agent-1", "agent-2", "agent-1", "cred-1"],
+      edges: [],
+      composite_risk: 5.3,
+      summary: "duplicate agent labels",
+      credential_exposure: [],
+      tool_exposure: [],
+      vuln_ids: [],
+    };
+
+    const nodes = new Map<string, UnifiedNode>([
+      [
+        "agent-1",
+        {
+          id: "agent-1",
+          entity_type: EntityType.AGENT,
+          label: "Claude Desktop",
+          category_uid: 5,
+          class_uid: 4001,
+          type_uid: 0,
+          status: "active",
+          risk_score: 5,
+          severity: "medium",
+          severity_id: 3,
+          first_seen: "2026-04-14T00:00:00Z",
+          last_seen: "2026-04-14T00:00:00Z",
+          attributes: {},
+          compliance_tags: [],
+          data_sources: [],
+          dimensions: {},
+        },
+      ],
+      [
+        "agent-2",
+        {
+          id: "agent-2",
+          entity_type: EntityType.AGENT,
+          label: "Cursor",
+          category_uid: 5,
+          class_uid: 4001,
+          type_uid: 0,
+          status: "active",
+          risk_score: 5,
+          severity: "medium",
+          severity_id: 3,
+          first_seen: "2026-04-14T00:00:00Z",
+          last_seen: "2026-04-14T00:00:00Z",
+          attributes: {},
+          compliance_tags: [],
+          data_sources: [],
+          dimensions: {},
+        },
+      ],
+      [
+        "cred-1",
+        {
+          id: "cred-1",
+          entity_type: EntityType.CREDENTIAL,
+          label: "ANTHROPIC_API_KEY",
+          category_uid: 5,
+          class_uid: 4001,
+          type_uid: 0,
+          status: "active",
+          risk_score: 6,
+          severity: "high",
+          severity_id: 4,
+          first_seen: "2026-04-14T00:00:00Z",
+          last_seen: "2026-04-14T00:00:00Z",
+          attributes: {},
+          compliance_tags: [],
+          data_sources: [],
+          dimensions: {},
+        },
+      ],
+    ]);
+
+    expect(labelsForAttackPathType(path, nodes, "agent")).toEqual(["Claude Desktop", "Cursor"]);
   });
 });

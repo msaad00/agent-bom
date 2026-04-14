@@ -24,7 +24,12 @@ import {
   type PostureResponse,
   type UnifiedGraphResponse,
 } from "@/lib/api";
-import { attackPathKey, matchesAttackPathFocus, toAttackCardNodes } from "@/lib/attack-paths";
+import {
+  attackPathKey,
+  labelsForAttackPathType,
+  matchesAttackPathFocus,
+  toAttackCardNodes,
+} from "@/lib/attack-paths";
 import { EntityType } from "@/lib/graph-schema";
 
 const ATTACK_PATH_ENTITY_TYPES = [
@@ -196,6 +201,14 @@ function SecurityGraphPageContent() {
         ? attackPaths.find((path) => attackPathKey(path) === selectedAttackPathKey) ?? null
         : attackPaths[0] ?? null,
     [attackPaths, selectedAttackPathKey],
+  );
+
+  const selectedPathAgents = useMemo(
+    () =>
+      selectedAttackPath
+        ? labelsForAttackPathType(selectedAttackPath, graphNodeById, "agent")
+        : [],
+    [graphNodeById, selectedAttackPath],
   );
 
   useEffect(() => {
@@ -441,8 +454,22 @@ function SecurityGraphPageContent() {
                   />
                 </div>
 
-                <div className="mt-4 grid gap-4 lg:grid-cols-3">
-                  <TagList label="Findings" tags={selectedAttackPath.vuln_ids} emptyLabel="No linked findings" />
+                <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                  <TagList
+                    label="Findings"
+                    tags={selectedAttackPath.vuln_ids}
+                    emptyLabel="No linked findings"
+                    hrefForTag={(tag) => `/vulns?cve=${encodeURIComponent(tag)}`}
+                  />
+                  <TagList
+                    label="Agents"
+                    tags={selectedPathAgents}
+                    emptyLabel="No agent hop resolved in this path"
+                    hrefForTag={(tag) => `/agents?name=${encodeURIComponent(tag)}`}
+                  />
+                </div>
+
+                <div className="mt-4 grid gap-4 lg:grid-cols-2">
                   <TagList label="Credentials" tags={selectedAttackPath.credential_exposure} emptyLabel="No credential exposure" />
                   <TagList label="Tools" tags={selectedAttackPath.tool_exposure} emptyLabel="No tool exposure" />
                 </div>
@@ -489,9 +516,13 @@ function SecurityGraphPageContent() {
                           {risk.agents.length > 0 && (
                             <div className="mt-3 flex flex-wrap gap-2">
                               {risk.agents.slice(0, 4).map((agent) => (
-                                <span key={agent} className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-300">
+                                <Link
+                                  key={agent}
+                                  href={`/agents?name=${encodeURIComponent(agent)}`}
+                                  className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+                                >
                                   {agent}
-                                </span>
+                                </Link>
                               ))}
                             </div>
                           )}
@@ -571,10 +602,12 @@ function TagList({
   label,
   tags,
   emptyLabel,
+  hrefForTag,
 }: {
   label: string;
   tags: string[];
   emptyLabel: string;
+  hrefForTag?: (tag: string) => string;
 }) {
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
@@ -582,9 +615,19 @@ function TagList({
       {tags.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {tags.map((tag) => (
-            <span key={tag} className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-1 text-[11px] font-mono text-zinc-300">
-              {tag}
-            </span>
+            hrefForTag ? (
+              <Link
+                key={tag}
+                href={hrefForTag(tag)}
+                className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-1 text-[11px] font-mono text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+              >
+                {tag}
+              </Link>
+            ) : (
+              <span key={tag} className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-1 text-[11px] font-mono text-zinc-300">
+                {tag}
+              </span>
+            )
           ))}
         </div>
       ) : (

@@ -1,0 +1,116 @@
+import { describe, expect, it } from "vitest";
+
+import { attackPathKey, mapAttackPathNodeType, toAttackCardNodes } from "@/lib/attack-paths";
+import { EntityType, type AttackPath, type UnifiedNode } from "@/lib/graph-schema";
+
+describe("attack path helpers", () => {
+  it("builds a stable key from source, target, and hops", () => {
+    const path: AttackPath = {
+      source: "pkg",
+      target: "agent",
+      hops: ["cve", "pkg", "server", "agent"],
+      edges: [],
+      composite_risk: 9.2,
+      summary: "critical path",
+      credential_exposure: [],
+      tool_exposure: [],
+      vuln_ids: ["CVE-2026-0001"],
+    };
+
+    expect(attackPathKey(path)).toBe("pkg::agent::cve->pkg->server->agent");
+  });
+
+  it("maps supported entity types into attack card node types", () => {
+    expect(mapAttackPathNodeType(EntityType.VULNERABILITY)).toBe("cve");
+    expect(mapAttackPathNodeType(EntityType.PACKAGE)).toBe("package");
+    expect(mapAttackPathNodeType(EntityType.SERVER)).toBe("server");
+    expect(mapAttackPathNodeType(EntityType.AGENT)).toBe("agent");
+    expect(mapAttackPathNodeType(EntityType.CREDENTIAL)).toBe("credential");
+    expect(mapAttackPathNodeType(EntityType.TOOL)).toBeNull();
+  });
+
+  it("drops unknown hops and preserves severity for supported nodes", () => {
+    const path: AttackPath = {
+      source: "cve-1",
+      target: "agent-1",
+      hops: ["cve-1", "tool-1", "agent-1"],
+      edges: [],
+      composite_risk: 7.8,
+      summary: "mixed path",
+      credential_exposure: [],
+      tool_exposure: [],
+      vuln_ids: ["CVE-2026-0002"],
+    };
+
+    const nodes = new Map<string, UnifiedNode>([
+      [
+        "cve-1",
+        {
+          id: "cve-1",
+          entity_type: EntityType.VULNERABILITY,
+          label: "CVE-2026-0002",
+          category_uid: 2,
+          class_uid: 2001,
+          type_uid: 0,
+          status: "active",
+          risk_score: 9,
+          severity: "critical",
+          severity_id: 5,
+          first_seen: "2026-04-14T00:00:00Z",
+          last_seen: "2026-04-14T00:00:00Z",
+          attributes: {},
+          compliance_tags: [],
+          data_sources: [],
+          dimensions: {},
+        },
+      ],
+      [
+        "tool-1",
+        {
+          id: "tool-1",
+          entity_type: EntityType.TOOL,
+          label: "run_shell",
+          category_uid: 5,
+          class_uid: 4001,
+          type_uid: 0,
+          status: "active",
+          risk_score: 4,
+          severity: "high",
+          severity_id: 4,
+          first_seen: "2026-04-14T00:00:00Z",
+          last_seen: "2026-04-14T00:00:00Z",
+          attributes: {},
+          compliance_tags: [],
+          data_sources: [],
+          dimensions: {},
+        },
+      ],
+      [
+        "agent-1",
+        {
+          id: "agent-1",
+          entity_type: EntityType.AGENT,
+          label: "Claude Desktop",
+          category_uid: 5,
+          class_uid: 4001,
+          type_uid: 0,
+          status: "active",
+          risk_score: 6,
+          severity: "high",
+          severity_id: 4,
+          first_seen: "2026-04-14T00:00:00Z",
+          last_seen: "2026-04-14T00:00:00Z",
+          attributes: {},
+          compliance_tags: [],
+          data_sources: [],
+          dimensions: {},
+        },
+      ],
+    ]);
+
+    expect(toAttackCardNodes(path, nodes)).toEqual([
+      { type: "cve", label: "CVE-2026-0002", severity: "critical" },
+      { type: "agent", label: "Claude Desktop", severity: "high" },
+    ]);
+  });
+});

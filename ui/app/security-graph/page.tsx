@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   ArrowRight,
@@ -23,7 +24,7 @@ import {
   type PostureResponse,
   type UnifiedGraphResponse,
 } from "@/lib/api";
-import { attackPathKey, toAttackCardNodes } from "@/lib/attack-paths";
+import { attackPathKey, matchesAttackPathFocus, toAttackCardNodes } from "@/lib/attack-paths";
 import { EntityType } from "@/lib/graph-schema";
 
 const ATTACK_PATH_ENTITY_TYPES = [
@@ -70,7 +71,8 @@ function emptyGraphResponse(scanId: string): UnifiedGraphResponse {
   };
 }
 
-export default function SecurityGraphPage() {
+function SecurityGraphPageContent() {
+  const searchParams = useSearchParams();
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
   const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
@@ -79,6 +81,22 @@ export default function SecurityGraphPage() {
   const [loadingGraph, setLoadingGraph] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [selectedAttackPathKey, setSelectedAttackPathKey] = useState<string | null>(null);
+  const [focusApplied, setFocusApplied] = useState(false);
+
+  const focus = useMemo(
+    () => ({
+      scanId: searchParams.get("scan") ?? "",
+      cve: searchParams.get("cve") ?? "",
+      packageName: searchParams.get("package") ?? "",
+      agentName: searchParams.get("agent") ?? "",
+    }),
+    [searchParams],
+  );
+
+  const focusLabel = useMemo(() => {
+    const parts = [focus.cve, focus.packageName, focus.agentName].filter(Boolean);
+    return parts.length > 0 ? parts.join(" · ") : null;
+  }, [focus.agentName, focus.cve, focus.packageName]);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,7 +111,12 @@ export default function SecurityGraphPage() {
         if (cancelled) return;
         setSnapshots(snapshotList);
         setPosture(postureData);
-        setSelectedScanId(snapshotList[0]?.scan_id ?? "");
+        const requestedScanId = focus.scanId;
+        const initialScanId =
+          requestedScanId && snapshotList.some((snapshot) => snapshot.scan_id === requestedScanId)
+            ? requestedScanId
+            : snapshotList[0]?.scan_id ?? "";
+        setSelectedScanId(initialScanId);
         setApiError(null);
       } catch (error) {
         if (cancelled) return;
@@ -109,7 +132,7 @@ export default function SecurityGraphPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [focus.scanId]);
 
   useEffect(() => {
     if (!selectedScanId) {
@@ -165,6 +188,8 @@ export default function SecurityGraphPage() {
     [graphData?.attack_paths],
   );
 
+  const hasFocusContext = Boolean(focus.cve || focus.packageName || focus.agentName);
+
   const selectedAttackPath = useMemo(
     () =>
       selectedAttackPathKey
@@ -174,8 +199,19 @@ export default function SecurityGraphPage() {
   );
 
   useEffect(() => {
+    setFocusApplied(false);
+  }, [focus.agentName, focus.cve, focus.packageName, selectedScanId]);
+
+  useEffect(() => {
     if (attackPaths.length === 0) {
       setSelectedAttackPathKey(null);
+      return;
+    }
+    if (!focusApplied && hasFocusContext) {
+      const focusedPath =
+        attackPaths.find((path) => matchesAttackPathFocus(path, graphNodeById, focus)) ?? attackPaths[0];
+      setSelectedAttackPathKey(attackPathKey(focusedPath));
+      setFocusApplied(true);
       return;
     }
     if (!selectedAttackPathKey) {
@@ -185,7 +221,7 @@ export default function SecurityGraphPage() {
     if (!attackPaths.some((path) => attackPathKey(path) === selectedAttackPathKey)) {
       setSelectedAttackPathKey(attackPathKey(attackPaths[0]));
     }
-  }, [attackPaths, selectedAttackPathKey]);
+  }, [attackPaths, focus, focusApplied, graphNodeById, hasFocusContext, selectedAttackPathKey]);
 
   if (apiError && !loadingSnapshots && snapshots.length === 0) {
     return (
@@ -328,6 +364,11 @@ export default function SecurityGraphPage() {
                 <p className="mt-1 text-sm text-zinc-500">
                   Focus one exploit chain at a time, then jump into the full graph only when you need broader topology.
                 </p>
+                {focusLabel && (
+                  <p className="mt-2 text-xs text-emerald-300">
+                    Focused from dashboard context: {focusLabel}
+                  </p>
+                )}
               </div>
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 px-4 py-3 text-sm text-zinc-300">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Highest composite risk</div>
@@ -487,6 +528,14 @@ export default function SecurityGraphPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function SecurityGraphPage() {
+  return (
+    <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-zinc-500" /></div>}>
+      <SecurityGraphPageContent />
+    </Suspense>
   );
 }
 

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { attackPathKey, mapAttackPathNodeType, toAttackCardNodes } from "@/lib/attack-paths";
+import {
+  attackPathKey,
+  buildSecurityGraphHref,
+  mapAttackPathNodeType,
+  matchesAttackPathFocus,
+  toAttackCardNodes,
+} from "@/lib/attack-paths";
 import { EntityType, type AttackPath, type UnifiedNode } from "@/lib/graph-schema";
 
 describe("attack path helpers", () => {
@@ -112,5 +118,132 @@ describe("attack path helpers", () => {
       { type: "cve", label: "CVE-2026-0002", severity: "critical" },
       { type: "agent", label: "Claude Desktop", severity: "high" },
     ]);
+  });
+
+  it("builds a focused security-graph href from canonical context", () => {
+    expect(
+      buildSecurityGraphHref({
+        scanId: "scan-123",
+        cve: "CVE-2026-0002",
+        packageName: "flask",
+        agentName: "Claude Desktop",
+      }),
+    ).toBe("/security-graph?scan=scan-123&cve=CVE-2026-0002&package=flask&agent=Claude+Desktop");
+  });
+
+  it("matches a focused attack path by cve, package, and agent labels", () => {
+    const path: AttackPath = {
+      source: "cve-1",
+      target: "agent-1",
+      hops: ["cve-1", "pkg-1", "server-1", "agent-1"],
+      edges: [],
+      composite_risk: 8.4,
+      summary: "focused path",
+      credential_exposure: [],
+      tool_exposure: [],
+      vuln_ids: ["CVE-2026-7777"],
+    };
+
+    const nodes = new Map<string, UnifiedNode>([
+      [
+        "cve-1",
+        {
+          id: "cve-1",
+          entity_type: EntityType.VULNERABILITY,
+          label: "CVE-2026-7777",
+          category_uid: 2,
+          class_uid: 2001,
+          type_uid: 0,
+          status: "active",
+          risk_score: 9,
+          severity: "critical",
+          severity_id: 5,
+          first_seen: "2026-04-14T00:00:00Z",
+          last_seen: "2026-04-14T00:00:00Z",
+          attributes: {},
+          compliance_tags: [],
+          data_sources: [],
+          dimensions: {},
+        },
+      ],
+      [
+        "pkg-1",
+        {
+          id: "pkg-1",
+          entity_type: EntityType.PACKAGE,
+          label: "flask",
+          category_uid: 5,
+          class_uid: 4001,
+          type_uid: 0,
+          status: "active",
+          risk_score: 6,
+          severity: "high",
+          severity_id: 4,
+          first_seen: "2026-04-14T00:00:00Z",
+          last_seen: "2026-04-14T00:00:00Z",
+          attributes: {},
+          compliance_tags: [],
+          data_sources: [],
+          dimensions: {},
+        },
+      ],
+      [
+        "server-1",
+        {
+          id: "server-1",
+          entity_type: EntityType.SERVER,
+          label: "sqlite-mcp",
+          category_uid: 5,
+          class_uid: 4001,
+          type_uid: 0,
+          status: "active",
+          risk_score: 6,
+          severity: "high",
+          severity_id: 4,
+          first_seen: "2026-04-14T00:00:00Z",
+          last_seen: "2026-04-14T00:00:00Z",
+          attributes: {},
+          compliance_tags: [],
+          data_sources: [],
+          dimensions: {},
+        },
+      ],
+      [
+        "agent-1",
+        {
+          id: "agent-1",
+          entity_type: EntityType.AGENT,
+          label: "Claude Desktop",
+          category_uid: 5,
+          class_uid: 4001,
+          type_uid: 0,
+          status: "active",
+          risk_score: 6,
+          severity: "high",
+          severity_id: 4,
+          first_seen: "2026-04-14T00:00:00Z",
+          last_seen: "2026-04-14T00:00:00Z",
+          attributes: {},
+          compliance_tags: [],
+          data_sources: [],
+          dimensions: {},
+        },
+      ],
+    ]);
+
+    expect(
+      matchesAttackPathFocus(path, nodes, {
+        cve: "CVE-2026-7777",
+        packageName: "flask",
+        agentName: "Claude Desktop",
+      }),
+    ).toBe(true);
+
+    expect(
+      matchesAttackPathFocus(path, nodes, {
+        cve: "CVE-2026-7777",
+        packageName: "requests",
+      }),
+    ).toBe(false);
   });
 });

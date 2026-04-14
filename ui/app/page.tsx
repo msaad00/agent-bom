@@ -10,6 +10,7 @@ import { ActivityFeed } from "@/components/activity-feed";
 import { PostureGrade } from "@/components/posture-grade";
 import { AttackPathCard } from "@/components/attack-path-card";
 import { ApiOfflineState } from "@/components/api-offline-state";
+import { buildSecurityGraphHref } from "@/lib/attack-paths";
 import {
   ShieldAlert, Server, Package, Bug, Zap, ArrowRight, Clock,
   AlertTriangle, Container, Layers, FileText, ExternalLink, GitBranch,
@@ -632,7 +633,11 @@ export default function Dashboard() {
                     key={b.vulnerability_id}
                     nodes={nodes}
                     riskScore={b.risk_score ?? b.blast_score / 10}
-                    href="/security-graph"
+                    href={buildSecurityGraphHref({
+                      cve: b.vulnerability_id,
+                      packageName: b.package,
+                      agentName: b.affected_agents[0],
+                    })}
                   />
                 );
               })}

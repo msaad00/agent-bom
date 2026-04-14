@@ -45,6 +45,7 @@ def test_main_help():
     assert result.exit_code == 0
     assert "scan" in result.output
     assert "where" in result.output
+    assert "Navigation tips:" in result.output
 
 
 def test_main_version():

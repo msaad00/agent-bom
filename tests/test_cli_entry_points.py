@@ -22,6 +22,8 @@ class TestAgentBom:
         r = CliRunner().invoke(main, ["--help"])
         assert r.exit_code == 0
         assert "agent-bom" in r.output
+        assert "Core readiness" not in r.output
+        assert "Navigation tips:" in r.output
 
     def test_version(self):
         from agent_bom.cli import main

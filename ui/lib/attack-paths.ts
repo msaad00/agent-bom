@@ -19,6 +19,19 @@ export type AttackPathAction = {
   href: string;
 };
 
+export type InteractionRiskLike = {
+  pattern: string;
+  agents: string[];
+  risk_score: number;
+  description: string;
+  owasp_agentic_tag?: string;
+};
+
+export type InteractionRiskAction = {
+  label: string;
+  href: string;
+};
+
 export function attackPathKey(path: AttackPath): string {
   return `${path.source}::${path.target}::${path.hops.join("->")}`;
 }
@@ -166,6 +179,40 @@ export function recommendedAttackPathActions(
   }
 
   return actions.slice(0, 3);
+}
+
+export function summarizeInteractionRisks(risks: InteractionRiskLike[]) {
+  const uniqueAgents = new Set(risks.flatMap((risk) => risk.agents));
+  return {
+    total: risks.length,
+    uniqueAgents: uniqueAgents.size,
+    highestRisk: risks.reduce((max, risk) => Math.max(max, risk.risk_score), 0),
+  };
+}
+
+export function recommendedInteractionRiskActions(risk: InteractionRiskLike): InteractionRiskAction[] {
+  const actions: InteractionRiskAction[] = [];
+
+  if (risk.agents[0]) {
+    actions.push({
+      label: "Open lead agent",
+      href: `/agents?name=${encodeURIComponent(risk.agents[0])}`,
+    });
+  }
+
+  if (risk.owasp_agentic_tag) {
+    actions.push({
+      label: "Review tag evidence",
+      href: `/compliance?q=${encodeURIComponent(risk.owasp_agentic_tag)}`,
+    });
+  } else {
+    actions.push({
+      label: "Inspect runtime controls",
+      href: "/proxy",
+    });
+  }
+
+  return actions.slice(0, 2);
 }
 
 export function matchesAttackPathFocus(

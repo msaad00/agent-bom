@@ -13,6 +13,7 @@ from click.testing import CliRunner
 from agent_bom.cli import main
 from agent_bom.cloud import CloudDiscoveryError, discover_from_provider
 from agent_bom.cloud.base import CloudDiscoveryError as BaseCloudError
+from agent_bom.cloud.normalization import normalize_cloud_lifecycle_state
 from agent_bom.models import (
     Agent,
     AgentType,
@@ -197,6 +198,26 @@ def test_aws_bedrock_agents_discovered():
     assert state["state_source"] == "agentStatus"
 
 
+@pytest.mark.parametrize(
+    ("raw_state", "expected"),
+    [
+        ("PREPARED", "prepared"),
+        ("NOT_PREPARED", "not-prepared"),
+        ("UNKNOWN", None),
+    ],
+)
+def test_aws_bedrock_lifecycle_mapping(raw_state, expected):
+    assert (
+        normalize_cloud_lifecycle_state(
+            provider="aws",
+            service="bedrock",
+            resource_type="agent",
+            raw_state=raw_state,
+        )
+        == expected
+    )
+
+
 def test_aws_no_credentials_returns_warning():
     """NoCredentialsError becomes a warning, not an unhandled exception."""
     _, botocore_exc = _install_mock_boto3()
@@ -339,6 +360,28 @@ def test_databricks_cluster_packages():
     assert state["state_source"] == "cluster.state"
 
 
+@pytest.mark.parametrize(
+    ("raw_state", "expected"),
+    [
+        ("RUNNING", "running"),
+        ("RESIZING", "resizing"),
+        ("RESTARTING", "restarting"),
+        ("TERMINATED", "terminated"),
+        ("PENDING", None),
+    ],
+)
+def test_databricks_cluster_lifecycle_mapping(raw_state, expected):
+    assert (
+        normalize_cloud_lifecycle_state(
+            provider="databricks",
+            service="clusters",
+            resource_type="cluster",
+            raw_state=raw_state,
+        )
+        == expected
+    )
+
+
 def test_databricks_serving_endpoint_state_normalized():
     """Serving endpoints carry normalized readiness state for downstream consumers."""
     _install_mock_databricks()
@@ -371,6 +414,26 @@ def test_databricks_serving_endpoint_state_normalized():
     assert state["lifecycle_state"] == "ready"
     assert state["raw_state"] == "READY"
     assert state["state_source"] == "state.ready"
+
+
+@pytest.mark.parametrize(
+    ("raw_state", "expected"),
+    [
+        ("READY", "ready"),
+        ("NOT_READY", "not-ready"),
+        ("UPDATING", None),
+    ],
+)
+def test_databricks_serving_lifecycle_mapping(raw_state, expected):
+    assert (
+        normalize_cloud_lifecycle_state(
+            provider="databricks",
+            service="model-serving",
+            resource_type="serving-endpoint",
+            raw_state=raw_state,
+        )
+        == expected
+    )
 
 
 def test_databricks_maven_packages():

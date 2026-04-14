@@ -22,7 +22,7 @@ from typing import Any
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_cloud_origin, build_cloud_state
+from .normalization import build_cloud_origin, build_cloud_state, normalize_cloud_lifecycle_state
 
 logger = logging.getLogger(__name__)
 
@@ -213,8 +213,13 @@ def _discover_bedrock(session: Any, region: str) -> tuple[list[Agent], list[str]
             agent_id = summary["agentId"]
             agent_name = summary.get("agentName", agent_id)
             agent_status = summary.get("agentStatus", "UNKNOWN")
-
-            if agent_status not in ("PREPARED", "NOT_PREPARED"):
+            lifecycle_state = normalize_cloud_lifecycle_state(
+                provider="aws",
+                service="bedrock",
+                resource_type="agent",
+                raw_state=agent_status,
+            )
+            if lifecycle_state is None:
                 continue
 
             try:
@@ -254,7 +259,7 @@ def _discover_bedrock(session: Any, region: str) -> tuple[list[Agent], list[str]
                         provider="aws",
                         service="bedrock",
                         resource_type="agent",
-                        lifecycle_state=agent_status.lower().replace("_", "-"),
+                        lifecycle_state=lifecycle_state,
                         raw_state=agent_status,
                         state_source="agentStatus",
                     ),

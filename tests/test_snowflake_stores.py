@@ -295,13 +295,14 @@ class TestSnowflakeJobStore:
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_list_summary(self, mock_connect):
-        cur = _mock_cursor(fetchall_val=[("j1", "done", "2025-01-01T00:00:00Z", "2025-01-01T00:01:00Z")])
+        cur = _mock_cursor(fetchall_val=[("j1", "tenant-alpha", "done", "2025-01-01T00:00:00Z", "2025-01-01T00:01:00Z")])
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
         result = store.list_summary()
         assert len(result) == 1
         assert result[0]["job_id"] == "j1"
+        assert result[0]["tenant_id"] == "tenant-alpha"
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_cleanup_expired(self, mock_connect):

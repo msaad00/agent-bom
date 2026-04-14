@@ -84,9 +84,11 @@ class SnowflakeJobStore:
                     status VARCHAR NOT NULL,
                     created_at TIMESTAMP_TZ NOT NULL,
                     completed_at TIMESTAMP_TZ,
+                    tenant_id VARCHAR NOT NULL DEFAULT 'default',
                     data VARIANT NOT NULL
                 )
             """)
+            conn.cursor().execute("ALTER TABLE scan_jobs ADD COLUMN IF NOT EXISTS tenant_id VARCHAR NOT NULL DEFAULT 'default'")
 
     def put(self, job: ScanJob) -> None:
         with self._connect() as conn:
@@ -94,21 +96,23 @@ class SnowflakeJobStore:
                 """MERGE INTO scan_jobs t USING (SELECT %s AS job_id) s
                    ON t.job_id = s.job_id
                    WHEN MATCHED THEN UPDATE SET
-                     status = %s, created_at = %s, completed_at = %s,
+                     status = %s, created_at = %s, completed_at = %s, tenant_id = %s,
                      data = PARSE_JSON(%s)
                    WHEN NOT MATCHED THEN INSERT
-                     (job_id, status, created_at, completed_at, data)
-                     VALUES (%s, %s, %s, %s, PARSE_JSON(%s))""",
+                     (job_id, status, created_at, completed_at, tenant_id, data)
+                     VALUES (%s, %s, %s, %s, %s, PARSE_JSON(%s))""",
                 (
                     job.job_id,
                     job.status.value,
                     job.created_at,
                     job.completed_at,
+                    job.tenant_id,
                     job.model_dump_json(),
                     job.job_id,
                     job.status.value,
                     job.created_at,
                     job.completed_at,
+                    job.tenant_id,
                     job.model_dump_json(),
                 ),
             )
@@ -131,29 +135,35 @@ class SnowflakeJobStore:
     def list_all(self, tenant_id: str | None = None) -> list[ScanJob]:
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT data FROM scan_jobs ORDER BY created_at DESC")
-            jobs = [ScanJob.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
             if tenant_id is None:
-                return jobs
-            return [job for job in jobs if job.tenant_id == tenant_id]
+                cur.execute("SELECT data FROM scan_jobs ORDER BY created_at DESC")
+            else:
+                cur.execute("SELECT data FROM scan_jobs WHERE tenant_id = %s ORDER BY created_at DESC", (tenant_id,))
+            return [ScanJob.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
 
     def list_summary(self, tenant_id: str | None = None) -> list[dict]:
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT data, job_id, status, created_at, completed_at FROM scan_jobs ORDER BY created_at DESC")
-            rows = [
+            if tenant_id is None:
+                cur.execute("SELECT job_id, tenant_id, status, created_at, completed_at FROM scan_jobs ORDER BY created_at DESC")
+            else:
+                cur.execute(
+                    """SELECT job_id, tenant_id, status, created_at, completed_at
+                       FROM scan_jobs
+                       WHERE tenant_id = %s
+                       ORDER BY created_at DESC""",
+                    (tenant_id,),
+                )
+            return [
                 {
-                    "tenant_id": ScanJob.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])).tenant_id,
-                    "job_id": r[1],
+                    "job_id": r[0],
+                    "tenant_id": r[1],
                     "status": r[2],
                     "created_at": str(r[3]) if r[3] else None,
                     "completed_at": str(r[4]) if r[4] else None,
                 }
                 for r in cur.fetchall()
             ]
-            if tenant_id is None:
-                return rows
-            return [row for row in rows if row["tenant_id"] == tenant_id]
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
         with self._connect() as conn:

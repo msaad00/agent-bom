@@ -632,6 +632,7 @@ export default function Dashboard() {
                     key={b.vulnerability_id}
                     nodes={nodes}
                     riskScore={b.risk_score ?? b.blast_score / 10}
+                    href="/security-graph"
                   />
                 );
               })}

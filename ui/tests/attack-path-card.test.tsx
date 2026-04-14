@@ -53,6 +53,13 @@ describe('AttackPathCard', () => {
     ).not.toThrow()
   })
 
+  it('renders as a link when href is provided without onClick', () => {
+    render(<AttackPathCard nodes={baseNodes} riskScore={5.5} href="/security-graph" />)
+    const link = screen.getByRole('link')
+    expect(link).toHaveAttribute('href', '/security-graph')
+    expect(screen.getByText('Open focused security graph')).toBeInTheDocument()
+  })
+
   it('applies critical severity styling to cve node', () => {
     const { container } = render(
       <AttackPathCard

@@ -8,6 +8,7 @@ import {
   mapAttackPathNodeType,
   matchesAttackPathFocus,
   recommendedAttackPathActions,
+  moveAttackPathSelection,
   toAttackCardNodes,
 } from "@/lib/attack-paths";
 import { EntityType, type AttackPath, type UnifiedNode } from "@/lib/graph-schema";
@@ -27,6 +28,40 @@ describe("attack path helpers", () => {
     };
 
     expect(attackPathKey(path)).toBe("pkg::agent::cve->pkg->server->agent");
+  });
+
+  it("moves attack-path selection left and right with wraparound", () => {
+    const paths: AttackPath[] = [
+      {
+        source: "a",
+        target: "b",
+        hops: ["a", "b"],
+        edges: [],
+        composite_risk: 9.1,
+        summary: "path one",
+        credential_exposure: [],
+        tool_exposure: [],
+        vuln_ids: [],
+      },
+      {
+        source: "b",
+        target: "c",
+        hops: ["b", "c"],
+        edges: [],
+        composite_risk: 8.4,
+        summary: "path two",
+        credential_exposure: [],
+        tool_exposure: [],
+        vuln_ids: [],
+      },
+    ];
+
+    const firstKey = attackPathKey(paths[0]);
+    const secondKey = attackPathKey(paths[1]);
+
+    expect(moveAttackPathSelection(paths, firstKey, 1)).toBe(secondKey);
+    expect(moveAttackPathSelection(paths, secondKey, 1)).toBe(firstKey);
+    expect(moveAttackPathSelection(paths, firstKey, -1)).toBe(secondKey);
   });
 
   it("maps supported entity types into attack card node types", () => {

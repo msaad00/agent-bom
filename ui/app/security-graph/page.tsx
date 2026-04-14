@@ -30,6 +30,7 @@ import {
   labelsForAttackPathType,
   matchesAttackPathFocus,
   recommendedAttackPathActions,
+  moveAttackPathSelection,
   toAttackCardNodes,
 } from "@/lib/attack-paths";
 import { EntityType } from "@/lib/graph-schema";
@@ -254,6 +255,14 @@ function SecurityGraphPageContent() {
     }
   }, [attackPaths, focus, focusApplied, graphNodeById, hasFocusContext, selectedAttackPathKey]);
 
+  function handleAttackPathQueueKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    setSelectedAttackPathKey((currentKey) =>
+      moveAttackPathSelection(attackPaths, currentKey, event.key === "ArrowRight" ? 1 : -1),
+    );
+  }
+
   if (apiError && !loadingSnapshots && snapshots.length === 0) {
     return (
       <ApiOfflineState
@@ -400,6 +409,9 @@ function SecurityGraphPageContent() {
                 <p className="mt-1 text-sm text-zinc-500">
                   Focus one exploit chain at a time, then jump into the full graph only when you need broader topology.
                 </p>
+                <p className="mt-2 text-xs text-zinc-500">
+                  Keyboard: focus this queue and use ← / → to step through paths.
+                </p>
                 {focusLabel && (
                   <p className="mt-2 text-xs text-emerald-300">
                     Focused from dashboard context: {focusLabel}
@@ -412,7 +424,12 @@ function SecurityGraphPageContent() {
               </div>
             </div>
 
-            <div className="mt-4 flex gap-3 overflow-x-auto pb-1">
+            <div
+              className="mt-4 flex gap-3 overflow-x-auto pb-1 outline-none"
+              tabIndex={0}
+              onKeyDown={handleAttackPathQueueKeyDown}
+              aria-label="Attack path queue"
+            >
               {attackPaths.slice(0, 8).map((path) => {
                 const key = attackPathKey(path);
                 const pathNodes = toAttackCardNodes(path, graphNodeById);

@@ -29,6 +29,7 @@ from urllib.parse import urlparse
 
 from agent_bom.agent_identity import ANONYMOUS, check_identity
 from agent_bom.async_stdin import create_async_stdin_reader, read_async_stdin_line
+from agent_bom.event_normalization import build_proxy_event_relationships
 from agent_bom.permissions import classify_tool
 from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_tool_call, scan_tool_response
 from agent_bom.security import validate_arguments, validate_command
@@ -525,6 +526,14 @@ def log_tool_call(
         record["payload_sha256"] = payload_sha256
     if message_id is not None:
         record["message_id"] = message_id
+    event_relationships = build_proxy_event_relationships(
+        tool_name=tool_name,
+        arguments=arguments,
+        agent_id=agent_id,
+        anonymous_id=ANONYMOUS,
+    )
+    if event_relationships is not None:
+        record["event_relationships"] = event_relationships
 
     log_file.write(json.dumps(record) + "\n")
     log_file.flush()

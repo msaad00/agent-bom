@@ -12,6 +12,7 @@ import pytest
 
 from agent_bom.db.graph_store import _init_db, load_graph, save_graph
 from agent_bom.graph import (
+    AttackPath,
     EntityType,
     RelationshipType,
     UnifiedEdge,
@@ -128,6 +129,8 @@ class TestDeltaAlerts:
         assert len(vuln_alerts) == 1
         assert vuln_alerts[0]["severity"] == "critical"
         assert "CVE-1" in vuln_alerts[0]["title"]
+        assert vuln_alerts[0]["event_relationships"]["targets"][0]["id"] == "vuln:CVE-1"
+        assert vuln_alerts[0]["event_relationships"]["targets"][0]["role"] == "affected_finding"
 
     def test_no_alert_for_existing_vuln(self):
         from agent_bom.graph.webhooks import compute_delta_alerts
@@ -212,6 +215,31 @@ class TestDeltaAlerts:
         assert first["message"] == first["title"]
         assert first["details"]["risk_score"] == 9.5
         assert first["details"]["cvss_score"] == 9.8
+
+    def test_attack_path_alert_relationships(self):
+        from agent_bom.graph.webhooks import compute_delta_alerts
+
+        new = UnifiedGraph(scan_id="s1")
+        new.add_node(UnifiedNode(id="package:demo", entity_type=EntityType.PACKAGE, label="demo-pkg"))
+        new.add_node(UnifiedNode(id="agent:prod", entity_type=EntityType.AGENT, label="prod-agent"))
+        new.attack_paths.append(
+            AttackPath(
+                source="package:demo",
+                target="agent:prod",
+                hops=["package:demo", "agent:prod"],
+                composite_risk=8.0,
+                summary="demo-pkg -> prod-agent",
+            )
+        )
+
+        alerts = compute_delta_alerts(None, new)
+        attack_alerts = [a for a in alerts if a["type"] == "new_attack_path"]
+        assert len(attack_alerts) == 1
+        refs = attack_alerts[0]["event_relationships"]["targets"]
+        assert refs[0]["id"] == "package:demo"
+        assert refs[0]["role"] == "path_source"
+        assert refs[1]["id"] == "agent:prod"
+        assert refs[1]["role"] == "path_target"
 
     def test_dispatch_delta_alerts_without_outbound_channels(self, monkeypatch):
         from agent_bom.graph.webhooks import compute_delta_alerts, dispatch_delta_alerts

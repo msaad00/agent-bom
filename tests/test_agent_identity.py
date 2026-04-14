@@ -244,6 +244,8 @@ def test_log_tool_call_agent_id_written():
     buf.seek(0)
     record = json.loads(buf.readline())
     assert record["agent_id"] == "agent-eve"
+    assert record["event_relationships"]["actor"]["id"] == "agent-eve"
+    assert record["event_relationships"]["actor"]["role"] == "caller"
 
 
 def test_log_tool_call_anonymous_default():
@@ -252,6 +254,7 @@ def test_log_tool_call_anonymous_default():
     buf.seek(0)
     record = json.loads(buf.readline())
     assert record["agent_id"] == ANONYMOUS
+    assert "actor" not in record["event_relationships"]
 
 
 def test_log_tool_call_blocked_carries_agent_id():
@@ -261,3 +264,4 @@ def test_log_tool_call_blocked_carries_agent_id():
     record = json.loads(buf.readline())
     assert record["agent_id"] == "bad-bot"
     assert record["policy"] == "blocked"
+    assert record["event_relationships"]["actor"]["id"] == "bad-bot"

@@ -242,6 +242,35 @@ function SecurityGraphPageContent() {
     [graphData?.interaction_risks],
   );
 
+  const emptyGraphState = useMemo(() => {
+    if (hasFocusContext) {
+      return {
+        title: "No attack paths matched the current focus",
+        detail: `The persisted graph loaded successfully, but no exploit chain matched ${focusLabel ?? "the current filters"}. Clear the focus or widen the query to inspect the rest of this snapshot.`,
+        suggestions: [
+          "Clear focus to review every persisted path in this snapshot.",
+          "Open the full graph to inspect broader topology.",
+          "Review vulnerabilities before the next focused scan completes.",
+        ],
+      };
+    }
+
+    return {
+      title: "No precomputed attack paths are available for this snapshot",
+      detail:
+        "The persisted graph loaded successfully, but it does not currently contain exploit chains for the selected scan.",
+      suggestions: [
+        "Run a fresh scan to refresh the persisted graph snapshot.",
+        "Open the full graph to inspect inventory and findings that did persist.",
+        "Check the vulnerabilities page if you need fix context before the next scan completes.",
+      ],
+    };
+  }, [focusLabel, hasFocusContext]);
+
+  const loadingGraphMessage = focusLabel
+    ? `Loading attack-path candidates for ${focusLabel} from the persisted graph.`
+    : "Loading attack-path candidates from the persisted graph.";
+
   useEffect(() => {
     setFocusApplied(false);
   }, [focus.agentName, focus.cve, focus.packageName, selectedScanId]);
@@ -395,18 +424,14 @@ function SecurityGraphPageContent() {
       {loadingGraph ? (
         <section className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-8 text-center text-sm text-zinc-400">
           <Loader2 className="mx-auto mb-3 h-6 w-6 animate-spin text-sky-400" />
-          Loading attack-path candidates from the persisted graph.
+          {loadingGraphMessage}
         </section>
       ) : attackPaths.length === 0 ? (
         <section className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-4">
           <GraphEmptyState
-            title="No precomputed attack paths are available for this snapshot"
-            detail="The persisted graph loaded successfully, but it does not currently contain exploit chains for the selected scan."
-            suggestions={[
-              "Run a fresh scan to refresh the persisted graph snapshot.",
-              "Open the full graph to inspect inventory and findings that did persist.",
-              "Check the vulnerabilities page if you need fix context before the next scan completes.",
-            ]}
+            title={emptyGraphState.title}
+            detail={emptyGraphState.detail}
+            suggestions={emptyGraphState.suggestions}
           />
           <div className="mt-4 flex flex-wrap gap-3 border-t border-zinc-800 pt-4">
             <Link
@@ -423,6 +448,15 @@ function SecurityGraphPageContent() {
               Review vulnerabilities
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
+            {hasFocusContext && (
+              <Link
+                href={resetFocusHref}
+                className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+              >
+                Clear focus
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            )}
           </div>
         </section>
       ) : (
@@ -578,7 +612,10 @@ function SecurityGraphPageContent() {
                   <TagList label="Tools" tags={selectedAttackPath.tool_exposure} emptyLabel="No tool exposure" />
                 </div>
 
-                <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                <div className="mt-4 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                  Recommended next steps
+                </div>
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
                   {selectedPathActions.map((action) => (
                     <Link
                       key={action.title}
@@ -614,6 +651,9 @@ function SecurityGraphPageContent() {
                     <Sparkles className="h-4 w-4 text-sky-400" />
                     Interaction risks
                   </div>
+                  <p className="mt-2 text-xs leading-5 text-zinc-500">
+                    Runtime interaction overlays show where agent behavior, tags, and control surfaces can expand blast radius.
+                  </p>
                   {graphData?.interaction_risks?.length ? (
                     <div className="mt-4 space-y-3">
                       <div className="grid grid-cols-3 gap-3">
@@ -627,6 +667,11 @@ function SecurityGraphPageContent() {
                             <div>
                               <div className="text-sm font-medium text-zinc-100">{risk.pattern}</div>
                               <p className="mt-1 text-xs leading-5 text-zinc-500">{risk.description}</p>
+                              {risk.owasp_agentic_tag && (
+                                <div className="mt-2 inline-flex rounded-full border border-zinc-700 bg-zinc-950 px-2 py-1 text-[10px] font-mono text-zinc-400">
+                                  {risk.owasp_agentic_tag}
+                                </div>
+                              )}
                             </div>
                             <span className="rounded-full border border-sky-800 bg-sky-950/40 px-2 py-1 text-[10px] font-mono text-sky-300">
                               {risk.risk_score.toFixed(1)}

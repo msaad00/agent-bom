@@ -23,15 +23,17 @@ def doctor_cmd() -> None:
 
     from agent_bom import __version__
 
-    checks: list[tuple[str, str, str]] = []  # (label, value, status)
+    core_checks: list[tuple[str, str, str]] = []
+    runtime_checks: list[tuple[str, str, str]] = []
+    platform_checks: list[tuple[str, str, str]] = []
 
     # Python version
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     py_ok = sys.version_info >= (3, 11)
-    checks.append(("Python", py_ver, "ok" if py_ok else "warn"))
+    core_checks.append(("Python", py_ver, "ok" if py_ok else "warn"))
 
     # agent-bom version
-    checks.append(("agent-bom", __version__, "ok"))
+    core_checks.append(("agent-bom", __version__, "ok"))
 
     # Local vulnerability DB — check the same path ScanCache() uses
     try:
@@ -51,47 +53,47 @@ def doctor_cmd() -> None:
                 _conn.close()
                 entry_count = _row[0] if _row else 0
                 if entry_count == 0:
-                    checks.append(("Local DB", f"exists but empty ({size_kb} KB) — run a scan to populate", "info"))
+                    core_checks.append(("Local DB", f"exists but empty ({size_kb} KB) — run a scan to populate", "info"))
                 else:
-                    checks.append(("Local DB", f"exists ({size_kb} KB, {entry_count} cached entries)", "ok"))
+                    core_checks.append(("Local DB", f"exists ({size_kb} KB, {entry_count} cached entries)", "ok"))
             except Exception:
-                checks.append(("Local DB", f"exists ({size_kb} KB)", "ok"))
+                core_checks.append(("Local DB", f"exists ({size_kb} KB)", "ok"))
         else:
-            checks.append(("Local DB", "not yet created (run a scan first)", "info"))
+            core_checks.append(("Local DB", "not yet created (run a scan first)", "info"))
     except Exception:
-        checks.append(("Local DB", "not available", "info"))
+        core_checks.append(("Local DB", "not available", "info"))
 
     # Network — OSV API
     try:
         import urllib.request
 
         urllib.request.urlopen("https://api.osv.dev/v1", timeout=5)  # nosec B310 — hardcoded HTTPS URL
-        checks.append(("Network", "api.osv.dev reachable", "ok"))
+        core_checks.append(("Network", "api.osv.dev reachable", "ok"))
     except Exception:
-        checks.append(("Network", "api.osv.dev unreachable", "warn"))
+        core_checks.append(("Network", "api.osv.dev unreachable", "warn"))
 
     # Docker
     docker_path = shutil.which("docker")
     if docker_path:
-        checks.append(("Docker", "available", "ok"))
+        runtime_checks.append(("Docker", "available", "ok"))
     else:
-        checks.append(("Docker", "not found", "info"))
+        runtime_checks.append(("Docker", "not found", "info"))
 
     # kubectl
     kubectl_path = shutil.which("kubectl")
     if kubectl_path:
-        checks.append(("kubectl", "available", "ok"))
+        runtime_checks.append(("kubectl", "available", "ok"))
     else:
-        checks.append(("kubectl", "not found", "info"))
+        runtime_checks.append(("kubectl", "not found", "info"))
 
     # MCP configs
     try:
         from agent_bom.discovery import discover_global_configs
 
         configs = discover_global_configs()
-        checks.append(("MCP configs", f"{len(configs)} found", "ok" if configs else "info"))
+        runtime_checks.append(("MCP configs", f"{len(configs)} found", "ok" if configs else "info"))
     except Exception:
-        checks.append(("MCP configs", "discovery error", "warn"))
+        runtime_checks.append(("MCP configs", "discovery error", "warn"))
 
     # API keys
     api_keys = {
@@ -101,13 +103,36 @@ def doctor_cmd() -> None:
     }
     for key, label in api_keys.items():
         if os.environ.get(key):
-            checks.append((label, "configured", "ok"))
+            platform_checks.append((label, "configured", "ok"))
         else:
-            checks.append((label, "not set", "info"))
+            platform_checks.append((label, "not set", "info"))
 
     # Print results
     console.print("  [bold]agent-bom doctor[/bold]")
     console.print()
+
+    _print_section(console, "Core readiness", core_checks)
+    _print_section(console, "Runtime surfaces", runtime_checks)
+    _print_section(console, "Platform integrations", platform_checks)
+
+    console.print()
+
+    checks = [*core_checks, *runtime_checks, *platform_checks]
+    warns = sum(1 for _, _, s in checks if s == "warn")
+    if warns == 0:
+        console.print("  [green]Ready to scan.[/green]")
+    else:
+        console.print(f"  [yellow]{warns} warning(s) — scanning may be limited.[/yellow]")
+    console.print()
+    console.print("  [bold]Next commands[/bold]")
+    console.print("    • agent-bom agents --demo --offline")
+    console.print("    • agent-bom where")
+    console.print("    • agent-bom proxy --help")
+    console.print()
+
+
+def _print_section(console: Console, title: str, checks: list[tuple[str, str, str]]) -> None:
+    console.print(f"  [bold]{title}[/bold]")
     for label, value, status in checks:
         if status == "ok":
             icon = "[green]✓[/green]"
@@ -115,13 +140,5 @@ def doctor_cmd() -> None:
             icon = "[yellow]⚠[/yellow]"
         else:
             icon = "[dim]○[/dim]"
-        console.print(f"  {icon}  {label + ':':<20s} {value}")
-
-    console.print()
-
-    warns = sum(1 for _, _, s in checks if s == "warn")
-    if warns == 0:
-        console.print("  [green]Ready to scan.[/green]")
-    else:
-        console.print(f"  [yellow]{warns} warning(s) — scanning may be limited.[/yellow]")
+        console.print(f"    {icon}  {label + ':':<20s} {value}")
     console.print()

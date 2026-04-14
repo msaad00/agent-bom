@@ -41,6 +41,17 @@ COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
     ]
 )
 
+CATEGORY_DESCRIPTIONS: dict[str, str] = {
+    "Scanning": "Inventory, package, image, IaC, cloud, and skills scanning entry points.",
+    "Runtime": "Live MCP enforcement, replay, and runtime monitoring surfaces.",
+    "MCP": "Discovery, inventory, introspection, and MCP server operations.",
+    "Reporting": "Graph, mesh, dashboard, history, and narrative reporting workflows.",
+    "Governance": "Policy, fleet, API, scheduling, and operational control-plane commands.",
+    "Database": "Local cache, vuln database, and framework catalog maintenance.",
+    "Utilities": "Shell completions and upgrade helpers.",
+    "Other": "Additional commands that do not fit a primary workflow bucket.",
+}
+
 
 class GroupedGroup(click.Group):
     """A Click group that displays commands organized by category.
@@ -82,6 +93,9 @@ class GroupedGroup(click.Group):
 
             if rows:
                 with formatter.section(category):
+                    description = CATEGORY_DESCRIPTIONS.get(category)
+                    if description:
+                        formatter.write_text(description)
                     formatter.write_dl(rows)
 
         # Any commands not in a category go under "Other"
@@ -93,4 +107,15 @@ class GroupedGroup(click.Group):
 
         if other:
             with formatter.section("Other"):
+                description = CATEGORY_DESCRIPTIONS.get("Other")
+                if description:
+                    formatter.write_text(description)
                 formatter.write_dl(other)
+
+    def format_epilog(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        formatter.write_paragraph()
+        formatter.write_text(
+            "Navigation tips: start with `agent-bom doctor` for readiness, "
+            "`agent-bom agents --demo` for a reproducible local run, and "
+            "`agent-bom COMMAND --help` for command-specific flags."
+        )

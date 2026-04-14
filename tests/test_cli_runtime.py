@@ -129,6 +129,30 @@ def test_proxy_configure_apply_no_patch():
         assert result.exit_code == 0
 
 
+def test_proxy_configure_secure_defaults_enabled_by_default():
+    runner = CliRunner()
+    with (
+        patch("agent_bom.discovery.discover_all", return_value=[]),
+        patch("agent_bom.proxy_configure.auto_configure_proxies", return_value=[]) as mock_auto_configure,
+    ):
+        result = runner.invoke(proxy_configure_cmd, [])
+        assert result.exit_code == 0
+    mock_auto_configure.assert_called_once()
+    assert mock_auto_configure.call_args.kwargs["secure_defaults"] is True
+
+
+def test_proxy_configure_secure_defaults_can_be_disabled():
+    runner = CliRunner()
+    with (
+        patch("agent_bom.discovery.discover_all", return_value=[]),
+        patch("agent_bom.proxy_configure.auto_configure_proxies", return_value=[]) as mock_auto_configure,
+    ):
+        result = runner.invoke(proxy_configure_cmd, ["--no-secure-defaults"])
+        assert result.exit_code == 0
+    mock_auto_configure.assert_called_once()
+    assert mock_auto_configure.call_args.kwargs["secure_defaults"] is False
+
+
 # ---------------------------------------------------------------------------
 # watch_cmd
 # ---------------------------------------------------------------------------

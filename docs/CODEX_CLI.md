@@ -55,7 +55,14 @@ Codex uses TOML, so `agent-bom proxy-configure` does not auto-rewrite the config
 ```toml
 [mcp_servers.filesystem]
 command = "agent-bom"
-args = ["proxy", "--log", "~/.agent-bom/logs/filesystem.jsonl", "--", "npx", "@modelcontextprotocol/server-filesystem", "/workspace"]
+args = [
+  "proxy",
+  "--log", "~/.agent-bom/logs/filesystem.jsonl",
+  "--detect-credentials",
+  "--block-undeclared",
+  "--",
+  "npx", "@modelcontextprotocol/server-filesystem", "/workspace"
+]
 ```
 
 That gives you:
@@ -65,6 +72,12 @@ That gives you:
 - credential leak detection
 - response inspection
 - sequence and rate analysis
+
+Important boundary:
+
+- `agent-bom mcp server` is read-only
+- `agent-bom agents` is read-only
+- `agent-bom proxy` intentionally runs the wrapped stdio server so it can enforce policy on live traffic
 
 For deeper protection workflows beyond the lighter proxy path, use the broader runtime engine documented in [RUNTIME_MONITORING.md](RUNTIME_MONITORING.md).
 

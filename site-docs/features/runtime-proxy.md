@@ -2,6 +2,12 @@
 
 The `agent-bom proxy` command sits between MCP clients and servers, intercepting all JSON-RPC messages for real-time security enforcement.
 
+Important boundary:
+
+- scanner mode is read-only
+- MCP server mode is read-only
+- proxy mode intentionally executes the wrapped stdio server or connects to the remote SSE/HTTP server so it can enforce policy on live traffic
+
 ## Architecture
 
 ```
@@ -32,13 +38,21 @@ MCP Server (filesystem, postgres, etc.)
 agent-bom proxy --log audit.jsonl \
   -- npx @modelcontextprotocol/server-filesystem /workspace
 
-# With policy enforcement
+# Recommended hardened proxy
 agent-bom proxy \
   --policy policy.json \
   --log audit.jsonl \
+  --detect-credentials \
   --block-undeclared \
   -- npx @modelcontextprotocol/server-filesystem /workspace
 ```
+
+Recommended minimum hardening for developer workstations:
+
+- `--log` for auditable JSONL records
+- `--detect-credentials` to inspect responses for leaked secrets
+- `--block-undeclared` to stop tools that were never declared in `tools/list`
+- `--policy` when you want explicit allowlist/blocklist/read-only enforcement
 
 ## Claude Desktop integration
 
@@ -51,6 +65,7 @@ agent-bom proxy \
         "proxy",
         "--log", "audit.jsonl",
         "--policy", "policy.json",
+        "--detect-credentials",
         "--block-undeclared",
         "--",
         "npx", "@modelcontextprotocol/server-filesystem", "/workspace"

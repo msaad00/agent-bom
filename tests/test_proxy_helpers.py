@@ -181,6 +181,9 @@ def test_log_tool_call_basic():
     assert record["type"] == "tools/call"
     assert record["tool"] == "read_file"
     assert record["policy"] == "allowed"
+    assert record["event_relationships"]["source"] == "proxy_tool_call"
+    assert record["event_relationships"]["targets"][0]["id"] == "read_file"
+    assert record["event_relationships"]["resources"][0]["id"] == "/tmp"
 
 
 def test_log_tool_call_blocked():
@@ -192,6 +195,7 @@ def test_log_tool_call_blocked():
     assert record["reason"] == "undeclared"
     assert record["payload_sha256"] == "abc123"
     assert record["message_id"] == 42
+    assert record["event_relationships"]["targets"][0]["id"] == "exec"
 
 
 def test_log_tool_call_no_optional_fields():
@@ -202,6 +206,8 @@ def test_log_tool_call_no_optional_fields():
     assert "reason" not in record
     assert "payload_sha256" not in record
     assert "message_id" not in record
+    assert record["event_relationships"]["targets"][0]["id"] == "test_tool"
+    assert "resources" not in record["event_relationships"]
 
 
 # ---------------------------------------------------------------------------

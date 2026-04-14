@@ -16,11 +16,48 @@ import logging
 import os
 from typing import Any
 
+from agent_bom.event_normalization import build_event_ref, build_event_relationships
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.severity import SEVERITY_RANK
 from agent_bom.graph.types import EntityType
 
 logger = logging.getLogger(__name__)
+
+
+def _graph_node_ref(
+    graph: UnifiedGraph | None,
+    node_id: str,
+    *,
+    role: str,
+) -> dict[str, Any] | None:
+    """Resolve one graph node into a canonical event target reference."""
+    if graph is None:
+        return None
+    node = graph.nodes.get(node_id)
+    if node is None:
+        return None
+    return build_event_ref(
+        ref_type=node.entity_type.value,
+        ref_id=node.id,
+        name=node.label,
+        role=role,
+        attributes={
+            "severity": node.severity,
+            "status": node.status.value if hasattr(node.status, "value") else str(node.status),
+            "risk_score": node.risk_score,
+        },
+    )
+
+
+def _graph_relationships(
+    *,
+    graph: UnifiedGraph | None,
+    targets: list[tuple[str, str]],
+    source: str = "graph_delta",
+) -> dict[str, Any] | None:
+    """Build an additive canonical relationship envelope for delta alerts."""
+    target_refs = [_graph_node_ref(graph, node_id, role=role) for node_id, role in targets]
+    return build_event_relationships(source=source, targets=[ref for ref in target_refs if ref])
 
 
 def _dispatch_outbound_alert(dispatcher: Any, alert: dict[str, Any], outbound_channels: int) -> tuple[int, int]:
@@ -73,6 +110,10 @@ def compute_delta_alerts(
                     "node_ids": [nid],
                     "scan_id": new_graph.scan_id,
                     "details": details,
+                    "event_relationships": _graph_relationships(
+                        graph=new_graph,
+                        targets=[(nid, "affected_finding")],
+                    ),
                     "attributes": {
                         "cvss_score": node.attributes.get("cvss_score"),
                         "is_kev": node.attributes.get("is_kev", False),
@@ -102,6 +143,10 @@ def compute_delta_alerts(
                     "node_ids": [nid],
                     "scan_id": new_graph.scan_id,
                     "details": details,
+                    "event_relationships": _graph_relationships(
+                        graph=new_graph,
+                        targets=[(nid, "affected_finding")],
+                    ),
                 }
             )
 
@@ -131,6 +176,13 @@ def compute_delta_alerts(
                     "node_ids": path.hops,
                     "scan_id": new_graph.scan_id,
                     "details": details,
+                    "event_relationships": _graph_relationships(
+                        graph=new_graph,
+                        targets=[
+                            (path.source, "path_source"),
+                            (path.target, "path_target"),
+                        ],
+                    ),
                     "attributes": {
                         "composite_risk": path.composite_risk,
                         "credential_exposure": path.credential_exposure,
@@ -166,6 +218,10 @@ def compute_delta_alerts(
                     "node_ids": node_ids,
                     "scan_id": new_graph.scan_id,
                     "details": details,
+                    "event_relationships": _graph_relationships(
+                        graph=new_graph,
+                        targets=[(node_id, "affected_agent") for node_id in node_ids],
+                    ),
                     "attributes": {
                         "risk_score": risk.risk_score,
                         "pattern": risk.pattern,
@@ -195,6 +251,10 @@ def compute_delta_alerts(
                     "node_ids": agent_removed,
                     "scan_id": new_graph.scan_id,
                     "details": details,
+                    "event_relationships": _graph_relationships(
+                        graph=old_graph,
+                        targets=[(node_id, "removed_agent") for node_id in agent_removed],
+                    ),
                 }
             )
 

@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS graph_nodes (
     id              TEXT NOT NULL,
     entity_type     TEXT NOT NULL,
     label           TEXT NOT NULL,
+    -- OCSF projection columns (derived from entity_type via graph/ocsf.py
+    -- ENTITY_OCSF_MAP) for classification/filtering. They are not the
+    -- canonical source of truth for graph entities.
     category_uid    INTEGER DEFAULT 0,
     class_uid       INTEGER DEFAULT 0,
     type_uid        INTEGER DEFAULT 0,

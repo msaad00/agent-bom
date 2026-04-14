@@ -988,7 +988,9 @@ def integration_options(fn):
                 envvar="AGENT_BOM_SIEM_FORMAT",
                 type=click.Choice(["raw", "ocsf"], case_sensitive=False),
                 show_default=True,
-                help="Event format for SIEM push: ocsf (default) or raw",
+                help=(
+                    "Event format for SIEM push: ocsf (standardized for enterprise SIEM ingestion) or raw (canonical agent-bom event shape)"
+                ),
             ),
             click.option(
                 "--clickhouse-url",

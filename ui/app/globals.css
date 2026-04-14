@@ -1,8 +1,19 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: dark;
+  --background: #0a0a0b;
+  --foreground: #ededed;
+  --surface: #111113;
+  --surface-elevated: #18181b;
+  --surface-muted: rgba(39, 39, 42, 0.45);
+  --border-subtle: rgba(63, 63, 70, 0.72);
+  --border-strong: rgba(82, 82, 91, 0.88);
+  --text-secondary: #a1a1aa;
+  --text-tertiary: #71717a;
+  --shadow-color: rgba(0, 0, 0, 0.28);
+  --scrollbar-thumb: #27272a;
+  --scrollbar-thumb-hover: #3f3f46;
   --sidebar-width: 240px;
   --sidebar-collapsed-width: 60px;
 
@@ -14,6 +25,22 @@
   --color-protect: #f778ba;
 }
 
+:root[data-theme="light"] {
+  color-scheme: light;
+  --background: #f7f8fc;
+  --foreground: #18181b;
+  --surface: #ffffff;
+  --surface-elevated: #f4f5f8;
+  --surface-muted: rgba(228, 228, 231, 0.72);
+  --border-subtle: rgba(212, 212, 216, 0.92);
+  --border-strong: rgba(161, 161, 170, 0.92);
+  --text-secondary: #52525b;
+  --text-tertiary: #71717a;
+  --shadow-color: rgba(15, 23, 42, 0.08);
+  --scrollbar-thumb: #c4c4ca;
+  --scrollbar-thumb-hover: #a1a1aa;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -21,19 +48,12 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0b;
-    --foreground: #ededed;
-  }
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
 }
 
-/* Smooth scrollbar for dark theme */
+/* Smooth scrollbar */
 ::-webkit-scrollbar {
   width: 5px;
   height: 5px;
@@ -42,11 +62,11 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* Sidebar thin scrollbar */
@@ -54,7 +74,7 @@ body {
   width: 3px;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: var(--scrollbar-thumb);
   border-radius: 2px;
 }
 
@@ -74,7 +94,7 @@ body {
 
 /* Fullscreen mode styles */
 :fullscreen {
-  background: #0a0a0b;
+  background: var(--background);
 }
 :fullscreen nav {
   display: none;

@@ -27,10 +27,26 @@ export const metadata: Metadata = {
   icons: { icon: "/favicon.ico" },
 };
 
+const themeBootstrap = `
+(function () {
+  try {
+    var stored = localStorage.getItem("agent-bom-theme");
+    var theme = stored === "light" || stored === "dark" ? stored : "dark";
+    var root = document.documentElement;
+    root.dataset.theme = theme;
+    root.style.colorScheme = theme;
+  } catch (error) {
+    document.documentElement.dataset.theme = "dark";
+    document.documentElement.style.colorScheme = "dark";
+  }
+})();
+`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="dark">
-      <body className={`${inter.variable} ${mono.variable} font-sans bg-[#0a0a0b] text-zinc-100 min-h-screen antialiased selection:bg-emerald-500/20`}>
+    <html lang="en" data-theme="dark" suppressHydrationWarning>
+      <body className={`${inter.variable} ${mono.variable} font-sans bg-background text-foreground min-h-screen antialiased selection:bg-emerald-500/20`}>
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
         <Nav />
         {/* Main content — offset by sidebar width on desktop, offset by top bar on mobile */}
         <main id="main-content" className="lg:pl-[240px] pt-14 lg:pt-0 min-h-screen transition-[padding-left] duration-200">

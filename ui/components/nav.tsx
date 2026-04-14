@@ -25,12 +25,11 @@ import {
   PanelLeftClose,
   PanelLeft,
   Search,
-  Bell,
-  Settings,
   LayoutDashboard,
   Wrench,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 // ─── Navigation Structure ──────────────────────────────────────────────────
 
@@ -222,7 +221,7 @@ export function Nav() {
     <>
       {/* Logo */}
       <div
-        className={`border-b border-zinc-800/60 ${
+        className={`border-b border-[color:var(--border-subtle)] ${
           collapsed
             ? "flex h-20 flex-col items-center justify-center gap-2 px-2 py-2"
             : "flex h-14 items-center justify-between px-4"
@@ -234,14 +233,14 @@ export function Nav() {
           </div>
           {!collapsed && (
             <div className="min-w-0">
-              <span className="font-semibold text-sm text-zinc-100 block truncate">agent-bom</span>
-              <span className="text-[10px] text-zinc-500 font-mono block">AI Supply Chain</span>
+              <span className="font-semibold text-sm text-[color:var(--foreground)] block truncate">agent-bom</span>
+              <span className="text-[10px] text-[color:var(--text-secondary)] font-mono block">AI Supply Chain</span>
             </div>
           )}
         </Link>
         <button
           onClick={() => setCollapsed((value) => !value)}
-          className="hidden rounded-md p-1.5 text-zinc-500 transition-colors hover:bg-zinc-800/60 hover:text-zinc-300 lg:flex"
+          className="hidden rounded-md p-1.5 text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--surface-elevated)] hover:text-[color:var(--foreground)] lg:flex"
           title={collapsed ? "Expand sidebar (⌘B)" : "Collapse sidebar (⌘B)"}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
@@ -254,11 +253,11 @@ export function Nav() {
         <div className="px-3 py-3">
           <button
             onClick={() => setSearchOpen(true)}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-800/40 border border-zinc-700/40 text-zinc-500 text-xs hover:border-zinc-600 hover:text-zinc-400 transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-[color:var(--surface-muted)] border border-[color:var(--border-subtle)] text-[color:var(--text-secondary)] text-xs hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)] transition-colors"
           >
             <Search className="w-3.5 h-3.5" />
             <span>Search pages...</span>
-            <kbd className="ml-auto text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-500">⌘K</kbd>
+            <kbd className="ml-auto text-[10px] font-mono bg-[color:var(--surface-elevated)] border border-[color:var(--border-subtle)] rounded px-1.5 py-0.5 text-[color:var(--text-secondary)]">⌘K</kbd>
           </button>
         </div>
       )}
@@ -266,7 +265,7 @@ export function Nav() {
         <div className="px-2 py-3 flex justify-center">
           <button
             onClick={() => { setCollapsed(false); setSearchOpen(true); }}
-            className="p-2 rounded-lg text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60 transition-colors"
+            className="p-2 rounded-lg text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-elevated)] transition-colors"
             title="Search (⌘K)"
           >
             <Search className="w-4 h-4" />
@@ -284,14 +283,14 @@ export function Nav() {
           );
 
           return (
-            <div key={group.label} className="rounded-xl border border-zinc-900/80 bg-zinc-950/50">
+            <div key={group.label} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]">
               {/* Group Header */}
               <button
                 onClick={() => collapsed ? setCollapsed(false) : toggleGroup(group.label)}
                 className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-medium transition-colors border-l-2 ${
                   hasActiveChild
-                    ? "text-zinc-200 bg-zinc-900/70"
-                    : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40"
+                    ? "text-[color:var(--foreground)] bg-[color:var(--surface-elevated)]"
+                    : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
                 }`}
                 style={{ borderLeftColor: group.accent }}
                 title={collapsed ? group.label : undefined}
@@ -306,9 +305,9 @@ export function Nav() {
                       {group.label}
                     </span>
                     {isExpanded ? (
-                      <ChevronDown className="w-3 h-3 text-zinc-600" />
+                      <ChevronDown className="w-3 h-3 text-[color:var(--text-tertiary)]" />
                     ) : (
-                      <ChevronRight className="w-3 h-3 text-zinc-600" />
+                      <ChevronRight className="w-3 h-3 text-[color:var(--text-tertiary)]" />
                     )}
                   </>
                 )}
@@ -316,7 +315,7 @@ export function Nav() {
 
               {/* Group Links */}
               {(isExpanded || collapsed) && !collapsed && (
-                <div className="mx-2 mb-2 mt-1 space-y-0.5 border-l border-zinc-800/60 pl-2">
+                <div className="mx-2 mb-2 mt-1 space-y-0.5 border-l border-[color:var(--border-subtle)] pl-2">
                   {group.links.map(({ href, label, icon: Icon, badge }) => {
                     const active = href === "/" ? path === "/" : path.startsWith(href);
                     const dimmed = isDimmed(href);
@@ -330,8 +329,8 @@ export function Nav() {
                           active
                             ? "border-l-2 ml-0 pl-2.5"
                             : dimmed
-                            ? "text-zinc-600 hover:text-zinc-400 hover:bg-zinc-800/30"
-                            : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40"
+                            ? "text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-muted)]"
+                            : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
                         }`}
                         style={active ? {
                           color: group.accent,
@@ -341,7 +340,7 @@ export function Nav() {
                         title={dimmed ? "No MCP servers detected" : undefined}
                       >
                         <Icon
-                          className={`w-3.5 h-3.5 shrink-0 ${!active && (dimmed ? "opacity-40" : "text-zinc-500 group-hover:text-zinc-400")}`}
+                          className={`w-3.5 h-3.5 shrink-0 ${!active && (dimmed ? "opacity-40" : "text-[color:var(--text-tertiary)] group-hover:text-[color:var(--text-secondary)]")}`}
                           style={active ? { color: group.accent } : undefined}
                         />
                         <span className="truncate">{label}</span>
@@ -377,7 +376,7 @@ export function Nav() {
                         className={`flex items-center justify-center p-2 rounded-lg transition-colors ${
                           active
                             ? "bg-emerald-500/10 text-emerald-400"
-                            : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/40"
+                            : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
                         }`}
                         title={label}
                       >
@@ -393,8 +392,11 @@ export function Nav() {
       </nav>
 
       {/* Bottom section */}
-      <div className={`border-t border-zinc-800/60 ${collapsed ? "px-2 py-3" : "px-3 py-3"}`}>
-        <ApiStatus collapsed={collapsed} />
+      <div className={`border-t border-[color:var(--border-subtle)] ${collapsed ? "px-2 py-3" : "px-3 py-3"}`}>
+        <div className="space-y-2">
+          <ThemeToggle compact={collapsed} />
+          <ApiStatus collapsed={collapsed} />
+        </div>
       </div>
     </>
   );
@@ -403,7 +405,7 @@ export function Nav() {
     <>
       {/* Desktop Sidebar */}
       <aside
-        className={`hidden lg:flex flex-col fixed left-0 top-0 bottom-0 z-40 bg-zinc-950 border-r border-zinc-800/60 transition-[width] duration-200 ${
+        className={`hidden lg:flex flex-col fixed left-0 top-0 bottom-0 z-40 bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] transition-[width] duration-200 ${
           collapsed ? "w-[60px]" : "w-[240px]"
         }`}
       >
@@ -411,18 +413,19 @@ export function Nav() {
       </aside>
 
       {/* Mobile Top Bar */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 bg-zinc-950/95 backdrop-blur-sm border-b border-zinc-800/60 flex items-center justify-between px-4">
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 bg-[color:var(--surface)] backdrop-blur-sm border-b border-[color:var(--border-subtle)] flex items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2 group">
           <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
             <ShieldAlert className="w-3.5 h-3.5 text-emerald-400" />
           </div>
-          <span className="font-semibold text-sm text-zinc-100">agent-bom</span>
+          <span className="font-semibold text-sm text-[color:var(--foreground)]">agent-bom</span>
         </Link>
         <div className="flex items-center gap-2">
+          <ThemeToggle compact />
           <ApiStatus collapsed={false} />
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
-            className="p-2 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800/60 transition-colors"
+            className="p-2 rounded-lg text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-elevated)] transition-colors"
           >
             {mobileOpen ? (
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -437,7 +440,7 @@ export function Nav() {
       {mobileOpen && (
         <>
           <div className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" onClick={() => setMobileOpen(false)} />
-          <aside className="lg:hidden fixed left-0 top-0 bottom-0 z-50 w-[260px] bg-zinc-950 border-r border-zinc-800/60 flex flex-col animate-slide-in">
+          <aside className="lg:hidden fixed left-0 top-0 bottom-0 z-50 w-[260px] bg-[color:var(--surface)] border-r border-[color:var(--border-subtle)] flex flex-col animate-slide-in">
             {sidebarContent}
           </aside>
         </>
@@ -487,32 +490,32 @@ function CommandPalette({
   return (
     <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-zinc-900 border border-zinc-700/60 rounded-xl shadow-2xl overflow-hidden">
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-800">
-          <Search className="w-4 h-4 text-zinc-500 shrink-0" />
+      <div className="relative w-full max-w-lg bg-[color:var(--surface)] border border-[color:var(--border-subtle)] rounded-xl shadow-2xl overflow-hidden">
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-[color:var(--border-subtle)]">
+          <Search className="w-4 h-4 text-[color:var(--text-secondary)] shrink-0" />
           <input
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search pages, commands..."
-            className="flex-1 bg-transparent text-sm text-zinc-100 placeholder-zinc-500 outline-none"
+            className="flex-1 bg-transparent text-sm text-[color:var(--foreground)] placeholder:text-[color:var(--text-secondary)] outline-none"
           />
-          <kbd className="text-[10px] font-mono bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-zinc-500">ESC</kbd>
+          <kbd className="text-[10px] font-mono bg-[color:var(--surface-elevated)] border border-[color:var(--border-subtle)] rounded px-1.5 py-0.5 text-[color:var(--text-secondary)]">ESC</kbd>
         </div>
         <div className="max-h-[50vh] overflow-y-auto py-2">
           {filtered.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-zinc-500">No results found</div>
+            <div className="px-4 py-8 text-center text-sm text-[color:var(--text-secondary)]">No results found</div>
           ) : (
             filtered.map(({ href, label, icon: Icon, group }) => (
               <Link
                 key={href}
                 href={href}
                 onClick={onClose}
-                className="flex items-center gap-3 px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-800/60 hover:text-zinc-100 transition-colors"
+                className="flex items-center gap-3 px-4 py-2.5 text-sm text-[color:var(--foreground)] hover:bg-[color:var(--surface-elevated)] transition-colors"
               >
-                <Icon className="w-4 h-4 text-zinc-500" />
+                <Icon className="w-4 h-4 text-[color:var(--text-secondary)]" />
                 <span className="flex-1">{label}</span>
-                <span className="text-[10px] text-zinc-600 uppercase tracking-wider">{group}</span>
+                <span className="text-[10px] text-[color:var(--text-tertiary)] uppercase tracking-wider">{group}</span>
               </Link>
             ))
           )}
@@ -567,7 +570,7 @@ function ApiStatus({ collapsed }: { collapsed: boolean }) {
   }
 
   return (
-    <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-zinc-500">
+    <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs text-[color:var(--text-secondary)]">
       <span className={`w-1.5 h-1.5 rounded-full ${dotColor} shrink-0`} />
       <span className="truncate">
         {status === "online" ? `API ${version}` : status === "offline" ? "API Offline" : "Connecting..."}

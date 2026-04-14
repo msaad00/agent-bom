@@ -1,5 +1,541 @@
-import { redirect } from "next/navigation";
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  ExternalLink,
+  GitBranch,
+  Loader2,
+  Route,
+  Sparkles,
+} from "lucide-react";
+
+import { ApiOfflineState } from "@/components/api-offline-state";
+import { AttackPathCard } from "@/components/attack-path-card";
+import { GraphEmptyState } from "@/components/graph-state-panels";
+import { PostureGrade } from "@/components/posture-grade";
+import {
+  api,
+  formatDate,
+  type GraphSnapshot,
+  type PostureResponse,
+  type UnifiedGraphResponse,
+} from "@/lib/api";
+import { attackPathKey, toAttackCardNodes } from "@/lib/attack-paths";
+import { EntityType } from "@/lib/graph-schema";
+
+const ATTACK_PATH_ENTITY_TYPES = [
+  EntityType.VULNERABILITY,
+  EntityType.MISCONFIGURATION,
+  EntityType.PACKAGE,
+  EntityType.SERVER,
+  EntityType.CONTAINER,
+  EntityType.CLOUD_RESOURCE,
+  EntityType.AGENT,
+  EntityType.USER,
+  EntityType.GROUP,
+  EntityType.SERVICE_ACCOUNT,
+  EntityType.CREDENTIAL,
+  EntityType.TOOL,
+];
+
+function emptyGraphResponse(scanId: string): UnifiedGraphResponse {
+  return {
+    scan_id: scanId,
+    tenant_id: "",
+    created_at: "",
+    nodes: [],
+    edges: [],
+    attack_paths: [],
+    interaction_risks: [],
+    stats: {
+      total_nodes: 0,
+      total_edges: 0,
+      node_types: {},
+      severity_counts: {},
+      relationship_types: {},
+      attack_path_count: 0,
+      interaction_risk_count: 0,
+      max_attack_path_risk: 0,
+      highest_interaction_risk: 0,
+    },
+    pagination: {
+      total: 0,
+      offset: 0,
+      limit: 0,
+      has_more: false,
+    },
+  };
+}
 
 export default function SecurityGraphPage() {
-  redirect("/graph");
+  const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
+  const [selectedScanId, setSelectedScanId] = useState("");
+  const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
+  const [posture, setPosture] = useState<PostureResponse | null>(null);
+  const [loadingSnapshots, setLoadingSnapshots] = useState(true);
+  const [loadingGraph, setLoadingGraph] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [selectedAttackPathKey, setSelectedAttackPathKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setLoadingSnapshots(true);
+      try {
+        const [snapshotList, postureData] = await Promise.all([
+          api.getGraphSnapshots(25),
+          api.getPosture().catch(() => null),
+        ]);
+        if (cancelled) return;
+        setSnapshots(snapshotList);
+        setPosture(postureData);
+        setSelectedScanId(snapshotList[0]?.scan_id ?? "");
+        setApiError(null);
+      } catch (error) {
+        if (cancelled) return;
+        setApiError(error instanceof Error ? error.message : "Failed to load graph snapshots");
+        setSnapshots([]);
+        setGraphData(null);
+      } finally {
+        if (!cancelled) setLoadingSnapshots(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedScanId) {
+      setGraphData(null);
+      setSelectedAttackPathKey(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadGraph() {
+      setLoadingGraph(true);
+      try {
+        const graph = await api.getGraph({
+          scanId: selectedScanId,
+          entityTypes: ATTACK_PATH_ENTITY_TYPES,
+          maxDepth: 6,
+          limit: 1200,
+        });
+        if (cancelled) return;
+        setGraphData(graph);
+        setApiError(null);
+      } catch (error) {
+        if (cancelled) return;
+        setGraphData(emptyGraphResponse(selectedScanId));
+        setApiError(error instanceof Error ? error.message : "Failed to load security graph");
+      } finally {
+        if (!cancelled) setLoadingGraph(false);
+      }
+    }
+
+    loadGraph();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedScanId]);
+
+  const selectedSnapshot = useMemo(
+    () => snapshots.find((snapshot) => snapshot.scan_id === selectedScanId) ?? null,
+    [snapshots, selectedScanId],
+  );
+
+  const graphNodeById = useMemo(
+    () => new Map((graphData?.nodes ?? []).map((node) => [node.id, node])),
+    [graphData?.nodes],
+  );
+
+  const attackPaths = useMemo(
+    () =>
+      [...(graphData?.attack_paths ?? [])].sort(
+        (left, right) => right.composite_risk - left.composite_risk,
+      ),
+    [graphData?.attack_paths],
+  );
+
+  const selectedAttackPath = useMemo(
+    () =>
+      selectedAttackPathKey
+        ? attackPaths.find((path) => attackPathKey(path) === selectedAttackPathKey) ?? null
+        : attackPaths[0] ?? null,
+    [attackPaths, selectedAttackPathKey],
+  );
+
+  useEffect(() => {
+    if (attackPaths.length === 0) {
+      setSelectedAttackPathKey(null);
+      return;
+    }
+    if (!selectedAttackPathKey) {
+      setSelectedAttackPathKey(attackPathKey(attackPaths[0]));
+      return;
+    }
+    if (!attackPaths.some((path) => attackPathKey(path) === selectedAttackPathKey)) {
+      setSelectedAttackPathKey(attackPathKey(attackPaths[0]));
+    }
+  }, [attackPaths, selectedAttackPathKey]);
+
+  if (apiError && !loadingSnapshots && snapshots.length === 0) {
+    return (
+      <ApiOfflineState
+        title="Cannot load the security graph"
+        detail={apiError}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <section className="rounded-3xl border border-zinc-800/80 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.08),transparent_34%),linear-gradient(180deg,rgba(17,24,39,0.96),rgba(10,10,11,0.98))] p-6 shadow-2xl shadow-black/20">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-3xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-emerald-900/60 bg-emerald-950/30 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-emerald-300">
+              <Route className="h-3.5 w-3.5" />
+              Security graph
+            </div>
+            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-zinc-100">
+              Fix-first attack paths without dropping into the full graph canvas
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-zinc-400">
+              This view keeps the highest-risk exploit chains explicit: what finding starts the path, which assets it reaches,
+              which credentials and tools stay exposed, and where to jump next for evidence or remediation.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/graph"
+              className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:text-zinc-100"
+            >
+              Open full lineage graph
+              <GitBranch className="h-4 w-4" />
+            </Link>
+            <Link
+              href="/remediation"
+              className="inline-flex items-center gap-2 rounded-xl border border-emerald-800 bg-emerald-950/40 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-950/70"
+            >
+              Open remediation
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+        </div>
+
+        <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Snapshot</p>
+                <h2 className="mt-1 text-sm font-semibold text-zinc-100">
+                  {selectedSnapshot ? `Scan ${selectedSnapshot.scan_id.slice(0, 8)}…` : "No persisted graph snapshot yet"}
+                </h2>
+                {selectedSnapshot && (
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Persisted {formatDate(selectedSnapshot.created_at)} · {selectedSnapshot.node_count} nodes · {selectedSnapshot.edge_count} edges
+                  </p>
+                )}
+              </div>
+              {loadingSnapshots && (
+                <span className="inline-flex items-center gap-2 text-xs text-sky-400">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  loading snapshots
+                </span>
+              )}
+            </div>
+
+            {snapshots.length > 0 ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {snapshots.slice(0, 8).map((snapshot) => {
+                  const selected = snapshot.scan_id === selectedScanId;
+                  return (
+                    <button
+                      key={snapshot.scan_id}
+                      type="button"
+                      onClick={() => setSelectedScanId(snapshot.scan_id)}
+                      className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
+                        selected
+                          ? "border-emerald-700 bg-emerald-950/40 text-emerald-200"
+                          : "border-zinc-800 bg-zinc-900/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+                      }`}
+                    >
+                      <div className="font-mono">{snapshot.scan_id.slice(0, 8)}…</div>
+                      <div className="mt-1 text-[11px] opacity-80">{snapshot.node_count} nodes</div>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              !loadingSnapshots && (
+                <div className="mt-4 rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 p-5 text-sm text-zinc-500">
+                  No persisted graph snapshots yet. Run a scan first so the security graph can build historical attack-path views.
+                </div>
+              )
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-4">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Current pressure</p>
+            {posture ? (
+              <div className="mt-3">
+                <PostureGrade grade={posture.grade} score={posture.score} dimensions={posture.dimensions} />
+              </div>
+            ) : (
+              <div className="mt-4 rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 p-5 text-sm text-zinc-500">
+                Posture scoring is unavailable for this snapshot.
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
+
+      {loadingGraph ? (
+        <section className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-8 text-center text-sm text-zinc-400">
+          <Loader2 className="mx-auto mb-3 h-6 w-6 animate-spin text-sky-400" />
+          Loading attack-path candidates from the persisted graph.
+        </section>
+      ) : attackPaths.length === 0 ? (
+        <section className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-4">
+          <GraphEmptyState
+            title="No precomputed attack paths are available for this snapshot"
+            detail="The persisted graph loaded successfully, but it does not currently contain exploit chains for the selected scan."
+            suggestions={[
+              "Run a fresh scan to refresh the persisted graph snapshot.",
+              "Open the full graph to inspect inventory and findings that did persist.",
+              "Check the vulnerabilities page if you need fix context before the next scan completes.",
+            ]}
+          />
+        </section>
+      ) : (
+        <>
+          <section className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.2em] text-orange-400">Attack path queue</p>
+                <h2 className="mt-1 text-lg font-semibold text-zinc-100">
+                  {attackPaths.length} high-signal path{attackPaths.length !== 1 ? "s" : ""} in the selected snapshot
+                </h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  Focus one exploit chain at a time, then jump into the full graph only when you need broader topology.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 px-4 py-3 text-sm text-zinc-300">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Highest composite risk</div>
+                <div className="mt-1 font-mono text-xl text-red-300">{attackPaths[0].composite_risk.toFixed(1)}</div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex gap-3 overflow-x-auto pb-1">
+              {attackPaths.slice(0, 8).map((path) => {
+                const key = attackPathKey(path);
+                const pathNodes = toAttackCardNodes(path, graphNodeById);
+                if (pathNodes.length === 0) return null;
+                const active = selectedAttackPath ? attackPathKey(selectedAttackPath) === key : false;
+                return (
+                  <div
+                    key={key}
+                    className={`min-w-[360px] rounded-2xl transition ${active ? "ring-2 ring-orange-400/70 ring-offset-2 ring-offset-zinc-950" : ""}`}
+                  >
+                    <AttackPathCard
+                      nodes={pathNodes}
+                      riskScore={path.composite_risk}
+                      onClick={() => setSelectedAttackPathKey(key)}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {selectedAttackPath && (
+            <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.2em] text-orange-400">Selected path</p>
+                    <h2 className="mt-1 text-lg font-semibold text-zinc-100">
+                      {selectedAttackPath.summary || "Credential-aware exploit chain"}
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-zinc-400">
+                      The graph already resolved this chain. Use it as the operator-facing shortlist before you branch into detailed evidence.
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-red-900/60 bg-red-950/20 px-4 py-3">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-red-300">Composite risk</div>
+                    <div className="mt-1 font-mono text-2xl text-red-200">{selectedAttackPath.composite_risk.toFixed(1)}</div>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <QuickStat label="Hop count" value={String(Math.max(0, selectedAttackPath.hops.length - 1))} />
+                  <QuickStat
+                    label="Credentials exposed"
+                    value={selectedAttackPath.credential_exposure.length > 0 ? String(selectedAttackPath.credential_exposure.length) : "none"}
+                    tone={selectedAttackPath.credential_exposure.length > 0 ? "amber" : "zinc"}
+                  />
+                  <QuickStat
+                    label="Tools reachable"
+                    value={selectedAttackPath.tool_exposure.length > 0 ? String(selectedAttackPath.tool_exposure.length) : "none"}
+                    tone={selectedAttackPath.tool_exposure.length > 0 ? "blue" : "zinc"}
+                  />
+                  <QuickStat
+                    label="Findings in chain"
+                    value={selectedAttackPath.vuln_ids.length > 0 ? String(selectedAttackPath.vuln_ids.length) : "none"}
+                    tone={selectedAttackPath.vuln_ids.length > 0 ? "red" : "zinc"}
+                  />
+                </div>
+
+                <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                  <TagList label="Findings" tags={selectedAttackPath.vuln_ids} emptyLabel="No linked findings" />
+                  <TagList label="Credentials" tags={selectedAttackPath.credential_exposure} emptyLabel="No credential exposure" />
+                  <TagList label="Tools" tags={selectedAttackPath.tool_exposure} emptyLabel="No tool exposure" />
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {selectedAttackPath.vuln_ids[0] && (
+                    <Link
+                      href={`/vulns?cve=${encodeURIComponent(selectedAttackPath.vuln_ids[0])}`}
+                      className="inline-flex items-center gap-2 rounded-xl border border-emerald-800 bg-emerald-950/40 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-950/70"
+                    >
+                      Open finding evidence
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                  )}
+                  <Link
+                    href="/graph"
+                    className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:text-zinc-100"
+                  >
+                    Open full graph canvas
+                    <GitBranch className="h-4 w-4" />
+                  </Link>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-5">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
+                    <Sparkles className="h-4 w-4 text-sky-400" />
+                    Interaction risks
+                  </div>
+                  {graphData?.interaction_risks?.length ? (
+                    <div className="mt-4 space-y-3">
+                      {graphData.interaction_risks.slice(0, 3).map((risk) => (
+                        <div key={`${risk.pattern}-${risk.risk_score}`} className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-medium text-zinc-100">{risk.pattern}</div>
+                              <p className="mt-1 text-xs leading-5 text-zinc-500">{risk.description}</p>
+                            </div>
+                            <span className="rounded-full border border-sky-800 bg-sky-950/40 px-2 py-1 text-[10px] font-mono text-sky-300">
+                              {risk.risk_score.toFixed(1)}
+                            </span>
+                          </div>
+                          {risk.agents.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {risk.agents.slice(0, 4).map((agent) => (
+                                <span key={agent} className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-300">
+                                  {agent}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 p-4 text-sm text-zinc-500">
+                      No interaction risk overlays were recorded for this snapshot.
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-5">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
+                    <AlertTriangle className="h-4 w-4 text-orange-400" />
+                    Operator notes
+                  </div>
+                  <ul className="mt-4 space-y-3 text-sm leading-6 text-zinc-400">
+                    <li>Use this page when you want the fix-first shortlist, not the full topology explorer.</li>
+                    <li>Persisted snapshots keep historical paths even when later scans deactivate or remove an entity.</li>
+                    <li>Open the lineage graph when you need full neighbor context, pagination, or custom filtering.</li>
+                  </ul>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <a
+                      href="https://osv.dev/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-zinc-500 transition hover:text-zinc-300"
+                    >
+                      External OSV reference
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function QuickStat({
+  label,
+  value,
+  tone = "zinc",
+}: {
+  label: string;
+  value: string;
+  tone?: "zinc" | "red" | "amber" | "blue";
+}) {
+  const tones = {
+    zinc: "border-zinc-800 bg-zinc-900/80 text-zinc-100",
+    red: "border-red-900/60 bg-red-950/20 text-red-200",
+    amber: "border-amber-900/60 bg-amber-950/20 text-amber-200",
+    blue: "border-sky-900/60 bg-sky-950/20 text-sky-200",
+  };
+  return (
+    <div className={`rounded-2xl border px-4 py-3 ${tones[tone]}`}>
+      <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</div>
+      <div className="mt-1 font-mono text-xl">{value}</div>
+    </div>
+  );
+}
+
+function TagList({
+  label,
+  tags,
+  emptyLabel,
+}: {
+  label: string;
+  tags: string[];
+  emptyLabel: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
+      <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</div>
+      {tags.length > 0 ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {tags.map((tag) => (
+            <span key={tag} className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-1 text-[11px] font-mono text-zinc-300">
+              {tag}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 text-sm text-zinc-500">{emptyLabel}</div>
+      )}
+    </div>
+  );
 }

@@ -324,7 +324,12 @@ function SecurityGraphPageContent() {
             <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Current pressure</p>
             {posture ? (
               <div className="mt-3">
-                <PostureGrade grade={posture.grade} score={posture.score} dimensions={posture.dimensions} />
+                <PostureGrade
+                  grade={posture.grade}
+                  score={posture.score}
+                  dimensions={posture.dimensions}
+                  drilldown
+                />
               </div>
             ) : (
               <div className="mt-4 rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 p-5 text-sm text-zinc-500">

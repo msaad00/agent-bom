@@ -27,6 +27,7 @@ import {
 import {
   attackPathKey,
   attackPathSequenceLabels,
+  buildSecurityGraphHref,
   labelsForAttackPathType,
   matchesAttackPathFocus,
   recommendedAttackPathActions,
@@ -197,6 +198,10 @@ function SecurityGraphPageContent() {
   );
 
   const hasFocusContext = Boolean(focus.cve || focus.packageName || focus.agentName);
+  const resetFocusHref = useMemo(
+    () => buildSecurityGraphHref({ scanId: selectedScanId || undefined }),
+    [selectedScanId],
+  );
 
   const selectedAttackPath = useMemo(
     () =>
@@ -396,6 +401,22 @@ function SecurityGraphPageContent() {
               "Check the vulnerabilities page if you need fix context before the next scan completes.",
             ]}
           />
+          <div className="mt-4 flex flex-wrap gap-3 border-t border-zinc-800 pt-4">
+            <Link
+              href="/graph"
+              className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+            >
+              Open full graph
+              <GitBranch className="h-3.5 w-3.5" />
+            </Link>
+            <Link
+              href="/vulns"
+              className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+            >
+              Review vulnerabilities
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </div>
         </section>
       ) : (
         <>
@@ -417,6 +438,31 @@ function SecurityGraphPageContent() {
                     Focused from dashboard context: {focusLabel}
                   </p>
                 )}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link
+                    href="/graph"
+                    className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-[11px] text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+                  >
+                    Full graph
+                    <GitBranch className="h-3 w-3" />
+                  </Link>
+                  <Link
+                    href="/vulns"
+                    className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-[11px] text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+                  >
+                    Vulns
+                    <ArrowRight className="h-3 w-3" />
+                  </Link>
+                  {hasFocusContext && (
+                    <Link
+                      href={resetFocusHref}
+                      className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-[11px] text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+                    >
+                      Clear focus
+                      <ArrowRight className="h-3 w-3" />
+                    </Link>
+                  )}
+                </div>
               </div>
               <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 px-4 py-3 text-sm text-zinc-300">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Highest composite risk</div>

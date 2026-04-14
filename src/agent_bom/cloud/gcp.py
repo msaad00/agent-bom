@@ -16,7 +16,7 @@ import os
 from agent_bom.models import Agent, AgentType, MCPServer, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_cloud_origin, build_cloud_principal, build_cloud_timestamps
+from .normalization import build_cloud_origin, build_cloud_principal, build_cloud_scope, build_cloud_timestamps
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +197,18 @@ def _discover_vertex_ai(
             )
             if cloud_timestamps:
                 agent.metadata["cloud_timestamps"] = cloud_timestamps
+            cloud_scope = build_cloud_scope(
+                provider="gcp",
+                service="vertex-ai",
+                resource_type="endpoint",
+                scope_type="project",
+                scope_id=project_id,
+                scope_name=project_id,
+                location=region,
+                source_fields=["resource_name", "create_time", "update_time"],
+            )
+            if cloud_scope:
+                agent.metadata["cloud_scope"] = cloud_scope
             agents.append(agent)
 
     except Exception as exc:
@@ -286,6 +298,18 @@ def _discover_cloud_functions(
                     "source_uri": source_uri,
                 },
             )
+            cloud_scope = build_cloud_scope(
+                provider="gcp",
+                service="cloud-functions",
+                resource_type="function",
+                scope_type="project",
+                scope_id=project_id,
+                scope_name=project_id,
+                location=region,
+                source_fields=["name", "service_config.uri"],
+            )
+            if cloud_scope:
+                agent.metadata["cloud_scope"] = cloud_scope
             cloud_principal = build_cloud_principal(
                 provider="gcp",
                 service="cloud-functions",
@@ -471,6 +495,18 @@ def _discover_cloud_run(
                             ),
                         },
                     )
+                    cloud_scope = build_cloud_scope(
+                        provider="gcp",
+                        service="cloud-run",
+                        resource_type="service",
+                        scope_type="project",
+                        scope_id=project_id,
+                        scope_name=project_id,
+                        location=region,
+                        source_fields=["name", "template.service_account"],
+                    )
+                    if cloud_scope:
+                        agent.metadata["cloud_scope"] = cloud_scope
                     cloud_principal = build_cloud_principal(
                         provider="gcp",
                         service="cloud-run",

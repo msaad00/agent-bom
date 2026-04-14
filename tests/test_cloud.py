@@ -1517,6 +1517,7 @@ def test_azure_container_apps_discovered():
     mock_app = MagicMock()
     mock_app.name = "my-ai-agent-app"
     mock_app.id = "/subscriptions/sub-123/resourceGroups/rg-ai/providers/Microsoft.App/containerApps/my-ai-agent-app"
+    mock_app.location = "eastus"
     mock_app.template = mock_template
     mock_identity = MagicMock()
     mock_identity.type = "SystemAssigned"
@@ -1552,6 +1553,12 @@ def test_azure_container_apps_discovered():
     assert principal["principal_type"] == "system-assigned-managed-identity"
     assert principal["principal_id"] == "11111111-2222-3333-4444-555555555555"
     assert principal["tenant_id"] == "tenant-123"
+    scope = ca_agents[0].metadata["cloud_scope"]
+    assert scope["scope_type"] == "resource-group"
+    assert scope["scope_id"] == "rg-ai"
+    assert scope["parent_scope"]["type"] == "subscription"
+    assert scope["parent_scope"]["id"] == "sub-123"
+    assert scope["location"] == "eastus"
 
 
 def test_azure_ai_foundry_discovered():
@@ -1568,6 +1575,7 @@ def test_azure_ai_foundry_discovered():
     mock_workspace = MagicMock()
     mock_workspace.name = "my-ml-workspace"
     mock_workspace.id = "/subscriptions/sub-123/resourceGroups/rg-ai/providers/Microsoft.MachineLearningServices/workspaces/my-ml-workspace"
+    mock_workspace.location = "eastus2"
     mock_system_data = MagicMock()
     mock_system_data.created_at = "2026-04-01T12:00:00Z"
     mock_system_data.last_modified_at = "2026-04-12T09:15:00Z"
@@ -1591,6 +1599,10 @@ def test_azure_ai_foundry_discovered():
     timestamps = ai_agents[0].metadata["cloud_timestamps"]
     assert timestamps["created_at"] == "2026-04-01T12:00:00Z"
     assert timestamps["updated_at"] == "2026-04-12T09:15:00Z"
+    scope = ai_agents[0].metadata["cloud_scope"]
+    assert scope["scope_id"] == "rg-ai"
+    assert scope["parent_scope"]["id"] == "sub-123"
+    assert scope["location"] == "eastus2"
 
 
 def test_azure_container_apps_by_resource_group():
@@ -1731,6 +1743,10 @@ def test_gcp_vertex_ai_endpoints_discovered():
     assert timestamps["created_at"] == "2026-04-05T08:00:00Z"
     assert timestamps["updated_at"] == "2026-04-12T10:30:00Z"
     assert timestamps["sources"]["updated_at"] == "update_time"
+    scope = vertex_agents[0].metadata["cloud_scope"]
+    assert scope["scope_type"] == "project"
+    assert scope["scope_id"] == "my-project"
+    assert scope["location"] == "us-central1"
 
 
 def test_gcp_cloud_run_services_discovered():
@@ -1772,6 +1788,9 @@ def test_gcp_cloud_run_services_discovered():
     assert principal["principal_type"] == "service-account"
     assert principal["principal_id"] == "run-sa@my-project.iam.gserviceaccount.com"
     assert principal["source_field"] == "template.service_account"
+    scope = run_agents[0].metadata["cloud_scope"]
+    assert scope["scope_id"] == "my-project"
+    assert scope["location"] == "us-central1"
 
 
 def test_gcp_cloud_functions_discovered_with_service_account():
@@ -1809,6 +1828,9 @@ def test_gcp_cloud_functions_discovered_with_service_account():
     assert principal["principal_type"] == "service-account"
     assert principal["principal_id"] == "functions-sa@my-project.iam.gserviceaccount.com"
     assert principal["source_field"] == "service_config.service_account_email"
+    scope = fn_agents[0].metadata["cloud_scope"]
+    assert scope["scope_id"] == "my-project"
+    assert scope["location"] == "us-central1"
 
 
 def test_azure_functions_discovered_with_managed_identity():

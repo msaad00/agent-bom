@@ -17,9 +17,19 @@ from typing import Any
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_cloud_origin, build_cloud_principal, build_cloud_timestamps
+from .normalization import build_cloud_origin, build_cloud_principal, build_cloud_scope, build_cloud_timestamps
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_azure_resource_group(resource_id: str) -> str:
+    """Extract Azure resource group name from a resource ID."""
+    if not resource_id:
+        return ""
+    rg_parts = resource_id.split("/resourceGroups/")
+    if len(rg_parts) < 2:
+        return ""
+    return rg_parts[1].split("/")[0]
 
 
 def _build_azure_principal(
@@ -213,6 +223,21 @@ def _discover_container_apps(
                             )
                         },
                     )
+                    rg_name = resource_group or _extract_azure_resource_group(app.id or "")
+                    cloud_scope = build_cloud_scope(
+                        provider="azure",
+                        service="container-apps",
+                        resource_type="container-app",
+                        scope_type="resource-group",
+                        scope_id=rg_name,
+                        scope_name=rg_name or None,
+                        parent_scope_type="subscription",
+                        parent_scope_id=subscription_id,
+                        location=getattr(app, "location", None),
+                        source_fields=["id", "location"],
+                    )
+                    if cloud_scope:
+                        agent.metadata["cloud_scope"] = cloud_scope
                     system_data = getattr(app, "system_data", None)
                     cloud_timestamps = build_cloud_timestamps(
                         provider="azure",
@@ -288,6 +313,21 @@ def _discover_ai_foundry(
                     )
                 },
             )
+            rg_name = resource_group or _extract_azure_resource_group(resource.id or "")
+            cloud_scope = build_cloud_scope(
+                provider="azure",
+                service="ai-foundry",
+                resource_type="workspace",
+                scope_type="resource-group",
+                scope_id=rg_name,
+                scope_name=rg_name or None,
+                parent_scope_type="subscription",
+                parent_scope_id=subscription_id,
+                location=getattr(resource, "location", None),
+                source_fields=["id", "location"],
+            )
+            if cloud_scope:
+                agent.metadata["cloud_scope"] = cloud_scope
             system_data = getattr(resource, "system_data", None)
             cloud_timestamps = build_cloud_timestamps(
                 provider="azure",
@@ -466,6 +506,20 @@ def _discover_azure_functions(
                 mcp_servers=[server],
                 metadata={"runtime": runtime_stack, "location": location},
             )
+            cloud_scope = build_cloud_scope(
+                provider="azure",
+                service="functions",
+                resource_type="function-app",
+                scope_type="resource-group",
+                scope_id=rg_name,
+                scope_name=rg_name or None,
+                parent_scope_type="subscription",
+                parent_scope_id=subscription_id,
+                location=location or None,
+                source_fields=["id", "location"],
+            )
+            if cloud_scope:
+                agent.metadata["cloud_scope"] = cloud_scope
             cloud_principal = _build_azure_principal(
                 service="functions",
                 resource_type="function-app",

@@ -180,3 +180,48 @@ def build_cloud_principal(
             key: value for key, value in raw_identity.items() if isinstance(value, (str, int, float, bool)) and value not in ("", None)
         }
     return envelope
+
+
+def build_cloud_scope(
+    *,
+    provider: str,
+    service: str,
+    resource_type: str,
+    scope_type: str,
+    scope_id: str,
+    scope_name: str | None = None,
+    parent_scope_type: str | None = None,
+    parent_scope_id: str | None = None,
+    parent_scope_name: str | None = None,
+    location: str | None = None,
+    source_fields: list[str] | None = None,
+) -> dict[str, Any] | None:
+    """Return a stable scope/ownership envelope for discovered resources.
+
+    This models where a resource lives in provider hierarchy, for example a
+    resource group inside a subscription or a service inside a project.
+    """
+    if not scope_id:
+        return None
+    envelope: dict[str, Any] = {
+        "normalization_version": "1",
+        "provider": provider,
+        "service": service,
+        "resource_type": resource_type,
+        "scope_type": scope_type,
+        "scope_id": scope_id,
+    }
+    if scope_name:
+        envelope["scope_name"] = scope_name
+    if parent_scope_type and parent_scope_id:
+        envelope["parent_scope"] = {
+            "type": parent_scope_type,
+            "id": parent_scope_id,
+        }
+        if parent_scope_name:
+            envelope["parent_scope"]["name"] = parent_scope_name
+    if location:
+        envelope["location"] = location
+    if source_fields:
+        envelope["source_fields"] = [field for field in source_fields if field]
+    return envelope

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import JobStatus
 from agent_bom.api.stores import _get_store
@@ -19,6 +19,10 @@ from agent_bom.security import sanitize_error
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
+
+
+def _tenant_id(request: Request) -> str:
+    return getattr(request.state, "tenant_id", "default")
 
 
 @router.get("/v1/agents", tags=["discovery"])
@@ -49,7 +53,7 @@ async def list_agents() -> dict:
 
 
 @router.get("/v1/agents/{agent_name}", tags=["discovery"])
-async def get_agent_detail(agent_name: str) -> dict:
+async def get_agent_detail(request: Request, agent_name: str) -> dict:
     """Get detailed view of a single agent with cross-referenced scan data."""
     try:
         from dataclasses import asdict
@@ -73,7 +77,7 @@ async def get_agent_detail(agent_name: str) -> dict:
 
         # Cross-reference blast radii from completed scans
         agent_blast: list[dict] = []
-        for job in _get_store().list_all():
+        for job in _get_store().list_all(tenant_id=_tenant_id(request)):
             if job.status != JobStatus.DONE or not job.result:
                 continue
             for br in job.result.get("blast_radius", []):
@@ -113,14 +117,14 @@ async def get_agent_detail(agent_name: str) -> dict:
 
 
 @router.get("/v1/agents/{agent_name}/lifecycle", tags=["discovery"])
-async def get_agent_lifecycle(agent_name: str) -> dict:
+async def get_agent_lifecycle(request: Request, agent_name: str) -> dict:
     """Get React Flow nodes/edges for an agent's full lifecycle graph.
 
     Shows: Agent -> MCP Servers -> Tools/Credentials -> Packages -> CVEs
     """
     from agent_bom.output.attack_flow import _severity_color
 
-    detail = await get_agent_detail(agent_name)
+    detail = await get_agent_detail(request, agent_name)
     agent_data = detail["agent"]
 
     nodes: list[dict] = []
@@ -296,7 +300,7 @@ async def get_agent_lifecycle(agent_name: str) -> dict:
 
 
 @router.get("/v1/agents/mesh", tags=["discovery"])
-async def get_agent_mesh() -> dict:
+async def get_agent_mesh(request: Request) -> dict:
     """Get a ReactFlow-compatible mesh topology of all discovered agents.
 
     Shows agents, their MCP servers, tools, and vulnerability overlay
@@ -319,7 +323,7 @@ async def get_agent_mesh() -> dict:
 
         # Gather blast radius from completed scans for vuln overlay
         all_blast: list[dict] = []
-        for job in _get_store().list_all():
+        for job in _get_store().list_all(tenant_id=_tenant_id(request)):
             if job.status == JobStatus.DONE and job.result:
                 all_blast.extend(job.result.get("blast_radius", []))
 

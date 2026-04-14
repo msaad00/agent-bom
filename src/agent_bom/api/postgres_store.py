@@ -216,18 +216,33 @@ class PostgresJobStore:
             conn.commit()
             return cursor.rowcount > 0
 
-    def list_all(self) -> list:
+    def list_all(self, tenant_id: str | None = None) -> list:
         from .server import ScanJob
 
         with _tenant_connection(self._pool) as conn:
-            rows = conn.execute("SELECT data FROM scan_jobs ORDER BY created_at DESC").fetchall()
+            if tenant_id is None:
+                rows = conn.execute("SELECT data FROM scan_jobs ORDER BY created_at DESC").fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT data FROM scan_jobs WHERE team_id = %s ORDER BY created_at DESC",
+                    (tenant_id,),
+                ).fetchall()
             return [ScanJob.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
 
-    def list_summary(self) -> list[dict]:
+    def list_summary(self, tenant_id: str | None = None) -> list[dict]:
         with _tenant_connection(self._pool) as conn:
-            rows = conn.execute(
-                "SELECT job_id, team_id, status, created_at, completed_at FROM scan_jobs ORDER BY created_at DESC"
-            ).fetchall()
+            if tenant_id is None:
+                rows = conn.execute(
+                    "SELECT job_id, team_id, status, created_at, completed_at FROM scan_jobs ORDER BY created_at DESC"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT job_id, team_id, status, created_at, completed_at
+                       FROM scan_jobs
+                       WHERE team_id = %s
+                       ORDER BY created_at DESC""",
+                    (tenant_id,),
+                ).fetchall()
             return [{"job_id": r[0], "tenant_id": r[1], "status": r[2], "created_at": r[3], "completed_at": r[4]} for r in rows]
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:

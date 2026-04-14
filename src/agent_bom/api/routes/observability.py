@@ -27,8 +27,12 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _tenant_id(request: Request) -> str:
+    return getattr(request.state, "tenant_id", "default")
+
+
 @router.post("/v1/traces", tags=["observability"])
-async def ingest_traces(body: dict) -> dict:
+async def ingest_traces(request: Request, body: dict) -> dict:
     """Ingest OpenTelemetry trace data and flag vulnerable tool calls.
 
     Accepts OTLP JSON format traces containing `adk.tool.*` spans.
@@ -45,7 +49,7 @@ async def ingest_traces(body: dict) -> dict:
         # Gather vulnerable packages and servers from scan history
         vuln_packages: dict[str, set[str]] = defaultdict(set)
         vuln_servers: dict[str, set[str]] = defaultdict(set)
-        for job in _get_store().list_all():
+        for job in _get_store().list_all(tenant_id=_tenant_id(request)):
             if job.status == JobStatus.DONE and job.result:
                 for br in job.result.get("blast_radius", []):
                     cve_id = br.get("vulnerability_id", "")
@@ -97,7 +101,7 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
     """
     job = ScanJob(
         job_id=str(uuid.uuid4()),
-        tenant_id=getattr(request.state, "tenant_id", "default"),
+        tenant_id=_tenant_id(request),
         created_at=_now(),
         request=ScanRequest(),
     )

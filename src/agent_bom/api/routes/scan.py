@@ -160,7 +160,7 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
     # Enforce max concurrent jobs
     store = _get_store()
     tenant_id = _tenant_id(request)
-    active = sum(1 for j in store.list_all() if _visible_to_tenant(j, tenant_id) and j.status in (JobStatus.PENDING, JobStatus.RUNNING))
+    active = sum(1 for j in store.list_all(tenant_id=tenant_id) if j.status in (JobStatus.PENDING, JobStatus.RUNNING))
     if active >= _MAX_CONCURRENT_JOBS:
         raise HTTPException(
             status_code=429,
@@ -505,7 +505,7 @@ async def list_jobs(
     offset = max(0, offset)
     tenant_id = _tenant_id(request)
     store = _get_store()
-    summary = [j for j in store.list_summary() if j.get("tenant_id", "default") == tenant_id]
+    summary = store.list_summary(tenant_id=tenant_id)
     total = len(summary)
     page = summary[offset : offset + limit]
     enriched: list[dict[str, Any]] = []

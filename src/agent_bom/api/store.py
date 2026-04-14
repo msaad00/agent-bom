@@ -23,8 +23,8 @@ class JobStore(Protocol):
     def put(self, job: ScanJob) -> None: ...
     def get(self, job_id: str) -> ScanJob | None: ...
     def delete(self, job_id: str) -> bool: ...
-    def list_all(self) -> list[ScanJob]: ...
-    def list_summary(self) -> list[dict]: ...
+    def list_all(self, tenant_id: str | None = None) -> list[ScanJob]: ...
+    def list_summary(self, tenant_id: str | None = None) -> list[dict]: ...
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int: ...
 
 
@@ -50,13 +50,16 @@ class InMemoryJobStore:
                 return True
             return False
 
-    def list_all(self) -> list[ScanJob]:
+    def list_all(self, tenant_id: str | None = None) -> list[ScanJob]:
         with self._lock:
-            return list(self._jobs.values())
+            jobs = list(self._jobs.values())
+            if tenant_id is None:
+                return jobs
+            return [job for job in jobs if job.tenant_id == tenant_id]
 
-    def list_summary(self) -> list[dict]:
+    def list_summary(self, tenant_id: str | None = None) -> list[dict]:
         with self._lock:
-            return [
+            rows = [
                 {
                     "job_id": j.job_id,
                     "tenant_id": j.tenant_id,
@@ -66,6 +69,9 @@ class InMemoryJobStore:
                 }
                 for j in self._jobs.values()
             ]
+            if tenant_id is None:
+                return rows
+            return [row for row in rows if row["tenant_id"] == tenant_id]
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
         with self._lock:
@@ -149,14 +155,29 @@ class SQLiteJobStore:
         self._conn.commit()
         return cursor.rowcount > 0
 
-    def list_all(self) -> list[ScanJob]:
-        rows = self._conn.execute("SELECT data FROM jobs ORDER BY created_at DESC").fetchall()
+    def list_all(self, tenant_id: str | None = None) -> list[ScanJob]:
+        if tenant_id is None:
+            rows = self._conn.execute("SELECT data FROM jobs ORDER BY created_at DESC").fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT data FROM jobs WHERE tenant_id = ? ORDER BY created_at DESC",
+                (tenant_id,),
+            ).fetchall()
         return [self._deserialize(r[0]) for r in rows]
 
-    def list_summary(self) -> list[dict]:
-        rows = self._conn.execute(
-            "SELECT job_id, tenant_id, status, created_at, completed_at FROM jobs ORDER BY created_at DESC"
-        ).fetchall()
+    def list_summary(self, tenant_id: str | None = None) -> list[dict]:
+        if tenant_id is None:
+            rows = self._conn.execute(
+                "SELECT job_id, tenant_id, status, created_at, completed_at FROM jobs ORDER BY created_at DESC"
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                """SELECT job_id, tenant_id, status, created_at, completed_at
+                   FROM jobs
+                   WHERE tenant_id = ?
+                   ORDER BY created_at DESC""",
+                (tenant_id,),
+            ).fetchall()
         return [{"job_id": r[0], "tenant_id": r[1], "status": r[2], "created_at": r[3], "completed_at": r[4]} for r in rows]
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:

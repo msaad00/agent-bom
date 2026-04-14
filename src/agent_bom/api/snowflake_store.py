@@ -128,25 +128,32 @@ class SnowflakeJobStore:
             cur.execute("DELETE FROM scan_jobs WHERE job_id = %s", (job_id,))
             return (cur.rowcount or 0) > 0
 
-    def list_all(self) -> list[ScanJob]:
+    def list_all(self, tenant_id: str | None = None) -> list[ScanJob]:
         with self._connect() as conn:
             cur = conn.cursor()
             cur.execute("SELECT data FROM scan_jobs ORDER BY created_at DESC")
-            return [ScanJob.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
+            jobs = [ScanJob.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
+            if tenant_id is None:
+                return jobs
+            return [job for job in jobs if job.tenant_id == tenant_id]
 
-    def list_summary(self) -> list[dict]:
+    def list_summary(self, tenant_id: str | None = None) -> list[dict]:
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT job_id, status, created_at, completed_at FROM scan_jobs ORDER BY created_at DESC")
-            return [
+            cur.execute("SELECT data, job_id, status, created_at, completed_at FROM scan_jobs ORDER BY created_at DESC")
+            rows = [
                 {
-                    "job_id": r[0],
-                    "status": r[1],
-                    "created_at": str(r[2]) if r[2] else None,
-                    "completed_at": str(r[3]) if r[3] else None,
+                    "tenant_id": ScanJob.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])).tenant_id,
+                    "job_id": r[1],
+                    "status": r[2],
+                    "created_at": str(r[3]) if r[3] else None,
+                    "completed_at": str(r[4]) if r[4] else None,
                 }
                 for r in cur.fetchall()
             ]
+            if tenant_id is None:
+                return rows
+            return [row for row in rows if row["tenant_id"] == tenant_id]
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
         with self._connect() as conn:

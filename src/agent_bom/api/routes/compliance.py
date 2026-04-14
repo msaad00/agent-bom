@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import JobStatus
 from agent_bom.api.stores import _get_store
@@ -27,8 +27,16 @@ if TYPE_CHECKING:
 router = APIRouter()
 
 
+def _tenant_id(request: Request) -> str:
+    return getattr(request.state, "tenant_id", "default")
+
+
+def _tenant_jobs(request: Request) -> list:
+    return _get_store().list_all(tenant_id=_tenant_id(request))
+
+
 @router.get("/v1/compliance", tags=["compliance"])
-async def get_compliance() -> dict:
+async def get_compliance(request: Request) -> dict:
     """Aggregate OWASP LLM Top 10, OWASP MCP Top 10, MITRE ATLAS, NIST AI RMF,
     OWASP Agentic Top 10, and EU AI Act compliance posture across all completed scans.
 
@@ -46,7 +54,7 @@ async def get_compliance() -> dict:
     has_agent_context = False
     all_scan_sources: set[str] = set()
 
-    for job in _get_store().list_all():
+    for job in _tenant_jobs(request):
         if job.status != JobStatus.DONE or not job.result:
             continue
         scan_count += 1
@@ -257,7 +265,7 @@ async def get_compliance() -> dict:
 # ─── Compliance Narrative ─────────────────────────────────────────────────
 
 
-def _latest_report() -> "AIBOMReport | None":
+def _latest_report(request: Request) -> "AIBOMReport | None":
     """Return a synthetic AIBOMReport built from the latest completed scan result.
 
     The narrative generator expects a real ``AIBOMReport`` model object, but the
@@ -281,7 +289,7 @@ def _latest_report() -> "AIBOMReport | None":
     total_agents_count = 0
     total_packages_count = 0
 
-    for job in _get_store().list_all():
+    for job in _tenant_jobs(request):
         if job.status != JobStatus.DONE or not job.result:
             continue
         all_blast_dicts.extend(job.result.get("blast_radius", []))
@@ -397,7 +405,7 @@ def _narrative_to_dict(narrative: "ComplianceNarrative") -> dict:
 
 
 @router.get("/v1/compliance/narrative", tags=["compliance"])
-async def get_compliance_narrative() -> dict:
+async def get_compliance_narrative(request: Request) -> dict:
     """Generate an auditor-ready compliance narrative from all completed scans.
 
     Produces human-readable stories for all 11 supported frameworks, a
@@ -411,7 +419,7 @@ async def get_compliance_narrative() -> dict:
         generate_compliance_narrative,
     )
 
-    report = _latest_report()
+    report = _latest_report(request)
     if report is None:
         return {
             "executive_summary": "No completed scans available. Run agent-bom scan first.",
@@ -426,7 +434,7 @@ async def get_compliance_narrative() -> dict:
 
 
 @router.get("/v1/compliance/narrative/{framework}", tags=["compliance"])
-async def get_compliance_narrative_by_framework(framework: str) -> dict:
+async def get_compliance_narrative_by_framework(request: Request, framework: str) -> dict:
     """Generate a single-framework compliance narrative.
 
     Supported framework slugs: owasp-llm, owasp-mcp, atlas, nist,
@@ -446,7 +454,7 @@ async def get_compliance_narrative_by_framework(framework: str) -> dict:
             detail=(f"Unknown framework '{framework}'. Supported: {', '.join(ALL_FRAMEWORK_SLUGS)}"),
         )
 
-    report = _latest_report()
+    report = _latest_report(request)
     if report is None:
         return {
             "executive_summary": "No completed scans available. Run agent-bom scan first.",
@@ -461,13 +469,13 @@ async def get_compliance_narrative_by_framework(framework: str) -> dict:
 
 
 @router.get("/v1/compliance/{framework}", tags=["compliance"])
-async def get_compliance_by_framework(framework: str) -> dict:
+async def get_compliance_by_framework(request: Request, framework: str) -> dict:
     """Get compliance posture for a single framework.
 
     Supported frameworks: owasp-llm, owasp-mcp, atlas, nist, owasp-agentic, eu-ai-act,
     nist-csf, iso-27001, soc2, cis, cmmc
     """
-    full = await get_compliance()
+    full = await get_compliance(request)
 
     framework_map = {
         "owasp-llm": "owasp_llm_top10",
@@ -510,7 +518,7 @@ async def get_compliance_by_framework(framework: str) -> dict:
 
 
 @router.get("/v1/posture", tags=["compliance"])
-async def get_posture_scorecard() -> dict:
+async def get_posture_scorecard(request: Request) -> dict:
     """Compute enterprise posture scorecard from the latest completed scan.
 
     Returns a letter grade (A-F), numeric score (0-100), and per-dimension
@@ -518,7 +526,7 @@ async def get_posture_scorecard() -> dict:
     chain quality, compliance coverage, active exploitation, and configuration.
     """
     latest_result = None
-    for job in _get_store().list_all():
+    for job in _tenant_jobs(request):
         if job.status != JobStatus.DONE or not job.result:
             continue
         latest_result = job.result
@@ -545,7 +553,7 @@ async def get_posture_scorecard() -> dict:
 
 
 @router.get("/v1/posture/counts", tags=["compliance"])
-async def get_posture_counts() -> dict:
+async def get_posture_counts(request: Request) -> dict:
     """Aggregate vulnerability counts across all completed scans.
 
     Lightweight endpoint used by the dashboard nav to show Critical/High
@@ -569,7 +577,7 @@ async def get_posture_counts() -> dict:
     all_scan_sources: set[str] = set()
     scan_count = 0
 
-    for job in _get_store().list_all():
+    for job in _tenant_jobs(request):
         if job.status != JobStatus.DONE or not job.result:
             continue
         scan_count += 1
@@ -608,14 +616,14 @@ async def get_posture_counts() -> dict:
 
 
 @router.get("/v1/posture/credentials", tags=["compliance"])
-async def get_credential_risk_ranking() -> dict:
+async def get_credential_risk_ranking(request: Request) -> dict:
     """Rank credentials by blast radius exposure from the latest scan.
 
     Returns credentials sorted by risk tier (critical to low) with
     associated vulnerability counts and affected agents.
     """
     latest_result = None
-    for job in _get_store().list_all():
+    for job in _tenant_jobs(request):
         if job.status != JobStatus.DONE or not job.result:
             continue
         latest_result = job.result
@@ -629,14 +637,14 @@ async def get_credential_risk_ranking() -> dict:
 
 
 @router.get("/v1/posture/incidents", tags=["compliance"])
-async def get_incident_correlation() -> dict:
+async def get_incident_correlation(request: Request) -> dict:
     """Group vulnerabilities by agent for SOC incident correlation.
 
     Returns agent-centric incident summaries with priority (P1-P4),
     severity counts, credential exposure, and recommended actions.
     """
     latest_result = None
-    for job in _get_store().list_all():
+    for job in _tenant_jobs(request):
         if job.status != JobStatus.DONE or not job.result:
             continue
         latest_result = job.result

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -11,12 +12,14 @@ from fastapi import HTTPException
 
 from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState, InMemoryFleetStore
 from agent_bom.api.models import FleetAgentUpdate, JobStatus, PushPayload, ScanJob, ScanRequest, ScheduleCreate, StateUpdate
+from agent_bom.api.routes import compliance as compliance_routes
+from agent_bom.api.routes import discovery as discovery_routes
 from agent_bom.api.routes import fleet as fleet_routes
 from agent_bom.api.routes import observability as observability_routes
 from agent_bom.api.routes import scan as scan_routes
 from agent_bom.api.routes import schedules as schedule_routes
 from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule
-from agent_bom.api.store import InMemoryJobStore
+from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
 from agent_bom.api.stores import _jobs, set_fleet_store, set_job_store, set_schedule_store
 
 
@@ -262,7 +265,8 @@ async def test_list_jobs_is_summary_first_and_opt_in_for_hydration():
         def __init__(self) -> None:
             self.get_calls = 0
 
-        def list_summary(self) -> list[dict]:
+        def list_summary(self, tenant_id: str | None = None) -> list[dict]:
+            assert tenant_id == "tenant-alpha"
             return [
                 {
                     "job_id": "job-alpha",
@@ -301,3 +305,183 @@ async def test_list_jobs_is_summary_first_and_opt_in_for_hydration():
         assert store.get_calls == 1
         assert hydrated["jobs"][0]["request"] == {"images": ["example:latest"]}
         assert hydrated["jobs"][0]["summary"]["total_packages"] == 12
+
+
+def test_sqlite_job_store_filters_by_tenant(tmp_path):
+    store = SQLiteJobStore(str(tmp_path / "jobs.db"))
+    alpha_job = ScanJob(
+        job_id="job-alpha",
+        tenant_id="tenant-alpha",
+        status=JobStatus.DONE,
+        created_at=_now(),
+        request=ScanRequest(),
+    )
+    beta_job = ScanJob(
+        job_id="job-beta",
+        tenant_id="tenant-beta",
+        status=JobStatus.DONE,
+        created_at=_now(),
+        request=ScanRequest(),
+    )
+    store.put(alpha_job)
+    store.put(beta_job)
+
+    assert [job.job_id for job in store.list_all(tenant_id="tenant-alpha")] == ["job-alpha"]
+    assert [row["job_id"] for row in store.list_summary(tenant_id="tenant-alpha")] == ["job-alpha"]
+
+
+@pytest.mark.asyncio
+async def test_compliance_routes_are_tenant_scoped():
+    store = InMemoryJobStore()
+    set_job_store(store)
+    alpha_job = ScanJob(
+        job_id="job-alpha",
+        tenant_id="tenant-alpha",
+        status=JobStatus.DONE,
+        created_at=_now(),
+        completed_at=_now(),
+        request=ScanRequest(),
+        result={
+            "blast_radius": [
+                {
+                    "vulnerability_id": "CVE-alpha",
+                    "severity": "critical",
+                    "package": "alpha@1.0.0",
+                    "affected_agents": ["alpha-agent"],
+                    "owasp_tags": ["LLM01"],
+                }
+            ],
+            "summary": {"total_agents": 1, "total_packages": 1},
+            "posture_scorecard": {"grade": "A", "score": 97},
+            "credential_risk_ranking": [{"name": "ALPHA_KEY"}],
+            "incident_correlation": [{"agent": "alpha-agent"}],
+        },
+    )
+    beta_job = ScanJob(
+        job_id="job-beta",
+        tenant_id="tenant-beta",
+        status=JobStatus.DONE,
+        created_at=_now(),
+        completed_at=_now(),
+        request=ScanRequest(),
+        result={
+            "blast_radius": [
+                {
+                    "vulnerability_id": "CVE-beta",
+                    "severity": "high",
+                    "package": "beta@1.0.0",
+                    "affected_agents": ["beta-agent"],
+                    "owasp_tags": ["LLM01"],
+                }
+            ],
+            "summary": {"total_agents": 1, "total_packages": 1},
+            "posture_scorecard": {"grade": "F", "score": 10},
+            "credential_risk_ranking": [{"name": "BETA_KEY"}],
+            "incident_correlation": [{"agent": "beta-agent"}],
+        },
+    )
+    store.put(alpha_job)
+    store.put(beta_job)
+
+    req = _request("tenant-alpha")
+
+    compliance = await compliance_routes.get_compliance(req)
+    assert compliance["scan_count"] == 1
+    llm01 = next(control for control in compliance["owasp_llm_top10"] if control["code"] == "LLM01")
+    assert llm01["affected_agents"] == ["alpha-agent"]
+
+    scorecard = await compliance_routes.get_posture_scorecard(req)
+    assert scorecard["score"] == 97
+
+    counts = await compliance_routes.get_posture_counts(req)
+    assert counts["critical"] == 1
+    assert counts["high"] == 0
+
+    creds = await compliance_routes.get_credential_risk_ranking(req)
+    assert creds["credentials"] == [{"name": "ALPHA_KEY"}]
+
+    incidents = await compliance_routes.get_incident_correlation(req)
+    assert incidents["incidents"] == [{"agent": "alpha-agent"}]
+
+
+@pytest.mark.asyncio
+async def test_discovery_and_traces_are_tenant_scoped():
+    store = InMemoryJobStore()
+    set_job_store(store)
+    alpha_job = ScanJob(
+        job_id="job-alpha",
+        tenant_id="tenant-alpha",
+        status=JobStatus.DONE,
+        created_at=_now(),
+        completed_at=_now(),
+        request=ScanRequest(),
+        result={
+            "blast_radius": [
+                {
+                    "vulnerability_id": "CVE-alpha",
+                    "severity": "critical",
+                    "package": "langchain",
+                    "affected_agents": ["alpha"],
+                    "affected_servers": ["sqlite-mcp"],
+                }
+            ]
+        },
+    )
+    beta_job = ScanJob(
+        job_id="job-beta",
+        tenant_id="tenant-beta",
+        status=JobStatus.DONE,
+        created_at=_now(),
+        completed_at=_now(),
+        request=ScanRequest(),
+        result={
+            "blast_radius": [
+                {
+                    "vulnerability_id": "CVE-beta",
+                    "severity": "high",
+                    "package": "requests",
+                    "affected_agents": ["beta"],
+                    "affected_servers": ["beta-mcp"],
+                }
+            ]
+        },
+    )
+    store.put(alpha_job)
+    store.put(beta_job)
+
+    req = _request("tenant-alpha")
+
+    @dataclass
+    class _Server:
+        name: str = "sqlite-mcp"
+        packages: list = field(default_factory=list)
+        tools: list = field(default_factory=list)
+        credential_names: list[str] = field(default_factory=list)
+        env: dict = field(default_factory=dict)
+        transport: str = "stdio"
+
+    @dataclass
+    class _Agent:
+        name: str = "alpha"
+        agent_type: str = "claude-desktop"
+        mcp_servers: list[_Server] = field(default_factory=lambda: [_Server()])
+
+    with patch("agent_bom.discovery.discover_all", return_value=[_Agent()]):
+        with patch("agent_bom.parsers.extract_packages", return_value=[]):
+            detail = await discovery_routes.get_agent_detail(req, "alpha")
+            assert [item["vulnerability_id"] for item in detail["blast_radius"]] == ["CVE-alpha"]
+
+    def _parse(_body: dict) -> list:
+        from agent_bom.otel_ingest import ToolCallTrace
+
+        return [ToolCallTrace(trace_id="t1", span_id="s1", tool_name="read_file", server_name="sqlite-mcp", package_name="langchain")]
+
+    def _flag(_traces, vuln_packages, vuln_servers):
+        assert vuln_packages == {"langchain": ["CVE-alpha"]}
+        assert vuln_servers == {"sqlite-mcp": ["CVE-alpha"]}
+        return []
+
+    with patch("agent_bom.otel_ingest.parse_otel_traces", side_effect=_parse):
+        with patch("agent_bom.otel_ingest.flag_vulnerable_tool_calls", side_effect=_flag):
+            result = await observability_routes.ingest_traces(req, {"resourceSpans": []})
+    assert result["traces"] == 1

@@ -83,6 +83,7 @@ nav:
   - Features:
       - Scanning & Discovery: features/scanning.md
       - Blast Radius: features/blast-radius.md
+      - Cloud Normalization: features/cloud-normalization.md
       - Compliance: features/compliance.md
       - Registry: features/registry.md
       - Runtime Proxy: features/runtime-proxy.md
@@ -92,6 +93,7 @@ nav:
       - Overview: deployment/overview.md
       - Docker: deployment/docker.md
       - Kubernetes: deployment/kubernetes.md
+      - SIEM Integration: deployment/siem-integration.md
       - Runtime Monitoring: deployment/runtime-monitoring.md
       - Grafana Dashboard: deployment/grafana.md
   - Architecture:

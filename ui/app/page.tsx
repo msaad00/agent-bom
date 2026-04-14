@@ -7,7 +7,12 @@ import { AgentTopology } from "@/components/agent-topology";
 import { TrustStack } from "@/components/trust-stack";
 import { SeverityBadge } from "@/components/severity-badge";
 import { ActivityFeed } from "@/components/activity-feed";
-import { PostureGrade } from "@/components/posture-grade";
+import {
+  PostureGrade,
+  postureDimensionHint,
+  postureDimensionHref,
+  postureDimensionTone,
+} from "@/components/posture-grade";
 import { AttackPathCard } from "@/components/attack-path-card";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { buildSecurityGraphHref } from "@/lib/attack-paths";
@@ -1037,48 +1042,6 @@ function BlastCard({ blast, detailHref }: { blast: BlastRadius; detailHref: stri
       </div>
     </div>
   );
-}
-
-function postureDimensionTone(score: number) {
-  if (score >= 80) {
-    return {
-      label: "strong",
-      badge: "border border-emerald-800 bg-emerald-950/60 text-emerald-300",
-      bar: "bg-emerald-500",
-    };
-  }
-  if (score >= 60) {
-    return {
-      label: "watch",
-      badge: "border border-yellow-800 bg-yellow-950/60 text-yellow-300",
-      bar: "bg-yellow-500",
-    };
-  }
-  return {
-    label: "critical",
-    badge: "border border-red-800 bg-red-950/60 text-red-300",
-    bar: "bg-red-500",
-  };
-}
-
-function postureDimensionHref(key: string, label: string) {
-  const text = `${key} ${label}`.toLowerCase();
-  if (text.includes("vuln") || text.includes("package") || text.includes("fix")) return "/vulns";
-  if (text.includes("credential") || text.includes("tool")) return "/mesh";
-  if (text.includes("agent") || text.includes("server")) return "/agents";
-  if (text.includes("trust") || text.includes("framework") || text.includes("compliance")) return "/compliance";
-  if (text.includes("runtime") || text.includes("proxy") || text.includes("watch")) return "/proxy";
-  return "/graph";
-}
-
-function postureDimensionHint(key: string, label: string) {
-  const text = `${key} ${label}`.toLowerCase();
-  if (text.includes("vuln") || text.includes("package")) return "packages and CVEs";
-  if (text.includes("credential") || text.includes("tool")) return "reach and exposure";
-  if (text.includes("agent") || text.includes("server")) return "discovery and trust";
-  if (text.includes("trust") || text.includes("framework") || text.includes("compliance")) return "policy and controls";
-  if (text.includes("runtime") || text.includes("proxy")) return "live telemetry";
-  return "open evidence";
 }
 
 function JobRow({ job }: { job: JobListItem }) {

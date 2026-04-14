@@ -1,12 +1,63 @@
 "use client";
 
+import Link from "next/link";
+
+export interface PostureDimension {
+  score: number;
+  label: string;
+  details?: string;
+}
+
 interface PostureGradeProps {
   grade: string;  // A, B, C, D, F, or N/A
   score: number;  // 0-100
-  dimensions?: Record<string, { score: number; label: string }>;
+  dimensions?: Record<string, PostureDimension>;
+  drilldown?: boolean;
 }
 
-export function PostureGrade({ grade, score, dimensions }: PostureGradeProps) {
+export function postureDimensionTone(score: number) {
+  if (score >= 80) {
+    return {
+      label: "strong",
+      badge: "border border-emerald-800 bg-emerald-950/60 text-emerald-300",
+      bar: "bg-emerald-500",
+    };
+  }
+  if (score >= 60) {
+    return {
+      label: "watch",
+      badge: "border border-yellow-800 bg-yellow-950/60 text-yellow-300",
+      bar: "bg-yellow-500",
+    };
+  }
+  return {
+    label: "critical",
+    badge: "border border-red-800 bg-red-950/60 text-red-300",
+    bar: "bg-red-500",
+  };
+}
+
+export function postureDimensionHref(key: string, label: string) {
+  const text = `${key} ${label}`.toLowerCase();
+  if (text.includes("vuln") || text.includes("package") || text.includes("fix")) return "/vulns";
+  if (text.includes("credential") || text.includes("tool")) return "/mesh";
+  if (text.includes("agent") || text.includes("server")) return "/agents";
+  if (text.includes("trust") || text.includes("framework") || text.includes("compliance")) return "/compliance";
+  if (text.includes("runtime") || text.includes("proxy") || text.includes("watch")) return "/proxy";
+  return "/graph";
+}
+
+export function postureDimensionHint(key: string, label: string) {
+  const text = `${key} ${label}`.toLowerCase();
+  if (text.includes("vuln") || text.includes("package")) return "packages and CVEs";
+  if (text.includes("credential") || text.includes("tool")) return "reach and exposure";
+  if (text.includes("agent") || text.includes("server")) return "discovery and trust";
+  if (text.includes("trust") || text.includes("framework") || text.includes("compliance")) return "policy and controls";
+  if (text.includes("runtime") || text.includes("proxy")) return "live telemetry";
+  return "open evidence";
+}
+
+export function PostureGrade({ grade, score, dimensions, drilldown = false }: PostureGradeProps) {
   // Color based on grade — matches architecture diagram semantics
   const gradeColor = {
     A: "#3fb950", // green  — output/governance layer
@@ -45,25 +96,71 @@ export function PostureGrade({ grade, score, dimensions }: PostureGradeProps) {
           </div>
           <div className="space-y-2">
             {orderedDimensions.map(([key, dim]) => (
-              <div key={key} className="space-y-1">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-medium text-zinc-300">{dim.label}</span>
-                  <span className="font-mono text-xs text-zinc-400">{dim.score}/100</span>
-                </div>
-                <div className="h-1.5 rounded-full bg-zinc-800">
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{
-                      width: `${dim.score}%`,
-                      backgroundColor: dim.score >= 80 ? "#22c55e" : dim.score >= 60 ? "#eab308" : "#ef4444",
-                    }}
-                  />
-                </div>
-              </div>
+              <DimensionRow
+                key={key}
+                dimensionKey={key}
+                dimension={dim}
+                drilldown={drilldown}
+              />
             ))}
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function DimensionRow({
+  dimensionKey,
+  dimension,
+  drilldown,
+}: {
+  dimensionKey: string;
+  dimension: PostureDimension;
+  drilldown: boolean;
+}) {
+  const tone = postureDimensionTone(dimension.score);
+  const content = (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-xs font-medium text-zinc-300">{dimension.label}</span>
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${tone.badge}`}>
+          {tone.label}
+        </span>
+      </div>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="font-mono text-xs text-zinc-400">{dimension.score}/100</span>
+        <span className="text-[11px] text-zinc-500">{postureDimensionHint(dimensionKey, dimension.label)}</span>
+      </div>
+      {dimension.details && (
+        <p className="text-[11px] leading-5 text-zinc-500">{dimension.details}</p>
+      )}
+      <div className="h-1.5 rounded-full bg-zinc-800">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${tone.bar}`}
+          style={{
+            width: `${dimension.score}%`,
+          }}
+        />
+      </div>
+    </div>
+  );
+
+  if (drilldown) {
+    return (
+      <Link
+        href={postureDimensionHref(dimensionKey, dimension.label)}
+        className="block rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-2.5 transition-colors hover:border-zinc-700 hover:bg-zinc-900"
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-transparent px-3 py-2.5">
+      {content}
+    </div>
+  );
   );
 }

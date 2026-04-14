@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   attackPathKey,
+  attackPathSequenceLabels,
   buildSecurityGraphHref,
   labelsForAttackPathType,
   mapAttackPathNodeType,
   matchesAttackPathFocus,
+  recommendedAttackPathActions,
   toAttackCardNodes,
 } from "@/lib/attack-paths";
 import { EntityType, type AttackPath, type UnifiedNode } from "@/lib/graph-schema";
@@ -328,5 +330,168 @@ describe("attack path helpers", () => {
     ]);
 
     expect(labelsForAttackPathType(path, nodes, "agent")).toEqual(["Claude Desktop", "Cursor"]);
+  });
+
+  it("returns ordered labels for the selected path sequence", () => {
+    const path: AttackPath = {
+      source: "cve-1",
+      target: "agent-1",
+      hops: ["cve-1", "pkg-1", "agent-1"],
+      edges: [],
+      composite_risk: 7.1,
+      summary: "ordered labels",
+      credential_exposure: [],
+      tool_exposure: [],
+      vuln_ids: ["CVE-2026-1212"],
+    };
+
+    const nodes = new Map<string, UnifiedNode>([
+      [
+        "cve-1",
+        {
+          id: "cve-1",
+          entity_type: EntityType.VULNERABILITY,
+          label: "CVE-2026-1212",
+          category_uid: 2,
+          class_uid: 2001,
+          type_uid: 0,
+          status: "active",
+          risk_score: 9,
+          severity: "critical",
+          severity_id: 5,
+          first_seen: "2026-04-14T00:00:00Z",
+          last_seen: "2026-04-14T00:00:00Z",
+          attributes: {},
+          compliance_tags: [],
+          data_sources: [],
+          dimensions: {},
+        },
+      ],
+      [
+        "pkg-1",
+        {
+          id: "pkg-1",
+          entity_type: EntityType.PACKAGE,
+          label: "flask",
+          category_uid: 5,
+          class_uid: 4001,
+          type_uid: 0,
+          status: "active",
+          risk_score: 5,
+          severity: "medium",
+          severity_id: 3,
+          first_seen: "2026-04-14T00:00:00Z",
+          last_seen: "2026-04-14T00:00:00Z",
+          attributes: {},
+          compliance_tags: [],
+          data_sources: [],
+          dimensions: {},
+        },
+      ],
+      [
+        "agent-1",
+        {
+          id: "agent-1",
+          entity_type: EntityType.AGENT,
+          label: "Claude Desktop",
+          category_uid: 5,
+          class_uid: 4001,
+          type_uid: 0,
+          status: "active",
+          risk_score: 6,
+          severity: "high",
+          severity_id: 4,
+          first_seen: "2026-04-14T00:00:00Z",
+          last_seen: "2026-04-14T00:00:00Z",
+          attributes: {},
+          compliance_tags: [],
+          data_sources: [],
+          dimensions: {},
+        },
+      ],
+    ]);
+
+    expect(attackPathSequenceLabels(path, nodes)).toEqual([
+      "CVE-2026-1212",
+      "flask",
+      "Claude Desktop",
+    ]);
+  });
+
+  it("recommends deterministic next actions for a selected path", () => {
+    const path: AttackPath = {
+      source: "cve-1",
+      target: "agent-1",
+      hops: ["cve-1", "agent-1"],
+      edges: [],
+      composite_risk: 9.2,
+      summary: "actionable path",
+      credential_exposure: ["ANTHROPIC_API_KEY"],
+      tool_exposure: ["run_shell"],
+      vuln_ids: ["CVE-2026-3434"],
+    };
+
+    const nodes = new Map<string, UnifiedNode>([
+      [
+        "cve-1",
+        {
+          id: "cve-1",
+          entity_type: EntityType.VULNERABILITY,
+          label: "CVE-2026-3434",
+          category_uid: 2,
+          class_uid: 2001,
+          type_uid: 0,
+          status: "active",
+          risk_score: 9,
+          severity: "critical",
+          severity_id: 5,
+          first_seen: "2026-04-14T00:00:00Z",
+          last_seen: "2026-04-14T00:00:00Z",
+          attributes: {},
+          compliance_tags: [],
+          data_sources: [],
+          dimensions: {},
+        },
+      ],
+      [
+        "agent-1",
+        {
+          id: "agent-1",
+          entity_type: EntityType.AGENT,
+          label: "Claude Desktop",
+          category_uid: 5,
+          class_uid: 4001,
+          type_uid: 0,
+          status: "active",
+          risk_score: 6,
+          severity: "high",
+          severity_id: 4,
+          first_seen: "2026-04-14T00:00:00Z",
+          last_seen: "2026-04-14T00:00:00Z",
+          attributes: {},
+          compliance_tags: [],
+          data_sources: [],
+          dimensions: {},
+        },
+      ],
+    ]);
+
+    expect(recommendedAttackPathActions(path, nodes)).toEqual([
+      {
+        title: "Validate the lead finding",
+        detail: "Open the primary CVE evidence first so the exploit chain has a confirmed root cause.",
+        href: "/vulns?cve=CVE-2026-3434",
+      },
+      {
+        title: "Inspect the exposed agent",
+        detail: "Review the first affected agent and confirm its connected servers, tools, and configuration trust boundary.",
+        href: "/agents?name=Claude%20Desktop",
+      },
+      {
+        title: "Contain credential exposure",
+        detail: "Rotate or scope exposed secrets before you widen blast radius by exploring deeper topology.",
+        href: "/mesh",
+      },
+    ]);
   });
 });

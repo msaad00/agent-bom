@@ -26,8 +26,10 @@ import {
 } from "@/lib/api";
 import {
   attackPathKey,
+  attackPathSequenceLabels,
   labelsForAttackPathType,
   matchesAttackPathFocus,
+  recommendedAttackPathActions,
   toAttackCardNodes,
 } from "@/lib/attack-paths";
 import { EntityType } from "@/lib/graph-schema";
@@ -207,6 +209,22 @@ function SecurityGraphPageContent() {
     () =>
       selectedAttackPath
         ? labelsForAttackPathType(selectedAttackPath, graphNodeById, "agent")
+        : [],
+    [graphNodeById, selectedAttackPath],
+  );
+
+  const selectedPathSequence = useMemo(
+    () =>
+      selectedAttackPath
+        ? attackPathSequenceLabels(selectedAttackPath, graphNodeById)
+        : [],
+    [graphNodeById, selectedAttackPath],
+  );
+
+  const selectedPathActions = useMemo(
+    () =>
+      selectedAttackPath
+        ? recommendedAttackPathActions(selectedAttackPath, graphNodeById)
         : [],
     [graphNodeById, selectedAttackPath],
   );
@@ -454,6 +472,22 @@ function SecurityGraphPageContent() {
                   />
                 </div>
 
+                {selectedPathSequence.length > 0 && (
+                  <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Path sequence</div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {selectedPathSequence.map((label, index) => (
+                        <div key={`${label}-${index}`} className="flex items-center gap-2">
+                          {index > 0 && <ArrowRight className="h-3.5 w-3.5 text-zinc-600" />}
+                          <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-[11px] font-mono text-zinc-300">
+                            {label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="mt-4 grid gap-4 lg:grid-cols-2">
                   <TagList
                     label="Findings"
@@ -474,22 +508,32 @@ function SecurityGraphPageContent() {
                   <TagList label="Tools" tags={selectedAttackPath.tool_exposure} emptyLabel="No tool exposure" />
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {selectedAttackPath.vuln_ids[0] && (
+                <div className="mt-4 grid gap-3 lg:grid-cols-3">
+                  {selectedPathActions.map((action) => (
                     <Link
-                      href={`/vulns?cve=${encodeURIComponent(selectedAttackPath.vuln_ids[0])}`}
-                      className="inline-flex items-center gap-2 rounded-xl border border-emerald-800 bg-emerald-950/40 px-4 py-2 text-sm font-medium text-emerald-300 transition hover:bg-emerald-950/70"
+                      key={action.title}
+                      href={action.href}
+                      className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 transition hover:border-zinc-600 hover:bg-zinc-900"
                     >
-                      Open finding evidence
-                      <ArrowRight className="h-4 w-4" />
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="text-sm font-medium text-zinc-100">{action.title}</div>
+                        <ArrowRight className="h-4 w-4 text-emerald-300" />
+                      </div>
+                      <p className="mt-2 text-xs leading-5 text-zinc-500">{action.detail}</p>
                     </Link>
-                  )}
+                  ))}
+
                   <Link
                     href="/graph"
-                    className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:text-zinc-100"
+                    className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 transition hover:border-zinc-600 hover:bg-zinc-900"
                   >
-                    Open full graph canvas
-                    <GitBranch className="h-4 w-4" />
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-medium text-zinc-100">Open full graph canvas</div>
+                      <GitBranch className="h-4 w-4 text-zinc-300" />
+                    </div>
+                    <p className="mt-2 text-xs leading-5 text-zinc-500">
+                      Switch to the full lineage view when you need broader topology, filters, or neighboring assets.
+                    </p>
                   </Link>
                 </div>
               </div>

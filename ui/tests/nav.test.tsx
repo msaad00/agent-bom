@@ -94,11 +94,11 @@ describe('Nav', () => {
     expect(links.some((l) => l.getAttribute('href') === '/jobs')).toBe(true)
   })
 
-  it('contains link to Vulnerabilities (/vulns)', () => {
+  it('contains link to Findings (/findings)', () => {
     render(<Nav />)
     fireEvent.click(screen.getByRole('button', { name: /scan/i }))
-    const links = screen.getAllByRole('link', { name: /vulnerabilities/i })
-    expect(links.some((l) => l.getAttribute('href') === '/vulns')).toBe(true)
+    const links = screen.getAllByRole('link', { name: /findings/i })
+    expect(links.some((l) => l.getAttribute('href') === '/findings')).toBe(true)
   })
 
   it('contains Remediation link', () => {
@@ -178,7 +178,7 @@ describe('Nav', () => {
     }
     const expectedHrefs = [
       '/', '/sources', '/scan', '/jobs',
-      '/agents', '/vulns', '/fleet',
+      '/agents', '/findings', '/fleet',
       '/security-graph', '/graph', '/mesh', '/context', '/insights',
       '/proxy', '/audit', '/gateway',
       '/compliance', '/remediation', '/governance', '/traces', '/activity',

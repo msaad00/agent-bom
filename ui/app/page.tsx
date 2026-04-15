@@ -661,9 +661,9 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <StatCard icon={Layers} label="Total scans" value={summaryReady ? String(effectiveRecentJobs.length) : "—"} color="zinc" href="/jobs" />
         <StatCard icon={Server} label="Agents" value={agentsReady ? String(effectiveAgentCount) : "—"} color="blue" href="/agents" />
-        <StatCard icon={Package} label="Packages" value={summaryReady ? String(detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0)) : "—"} color="orange" href="/vulns" />
-        <StatCard icon={Bug} label="Unique CVEs" value={summaryReady ? String(detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0)) : "—"} color="red" href="/vulns" />
-        <StatCard icon={Zap} label="Critical" value={summaryReady ? String(detailsReady ? severity.critical : (summaryStats?.critical_findings ?? 0)) : "—"} color="red" href="/vulns?severity=critical" />
+        <StatCard icon={Package} label="Packages" value={summaryReady ? String(detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0)) : "—"} color="orange" href="/findings" />
+        <StatCard icon={Bug} label="Unique CVEs" value={summaryReady ? String(detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0)) : "—"} color="red" href="/findings" />
+        <StatCard icon={Zap} label="Critical" value={summaryReady ? String(detailsReady ? severity.critical : (summaryStats?.critical_findings ?? 0)) : "—"} color="red" href="/findings?severity=critical" />
       </div>
 
       {/* Severity distribution + Sources — side by side */}
@@ -699,7 +699,7 @@ export default function Dashboard() {
                 Findings that meet multiple independent risk criteria simultaneously
               </p>
             </div>
-            <Link href="/vulns" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
+            <Link href="/findings" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
               View all <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
@@ -790,7 +790,7 @@ export default function Dashboard() {
           </div>
           {topPackages.length > 10 && (
             <p className="text-xs text-zinc-600 text-right mt-1">
-              Showing 10 of {topPackages.length} — <Link href="/vulns" className="text-emerald-500 hover:text-emerald-400">view all</Link>
+              Showing 10 of {topPackages.length} — <Link href="/findings" className="text-emerald-500 hover:text-emerald-400">view all</Link>
             </p>
           )}
         </section>
@@ -803,7 +803,7 @@ export default function Dashboard() {
             <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
               Highest risk findings
             </h2>
-            <Link href="/vulns" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
+            <Link href="/findings" className="text-xs text-emerald-500 hover:text-emerald-400 flex items-center gap-1">
               View all <ArrowRight className="w-3 h-3" />
             </Link>
           </div>
@@ -815,7 +815,7 @@ export default function Dashboard() {
                 <BlastCard
                   key={b.vulnerability_id}
                   blast={b}
-                  detailHref={`/vulns?cve=${b.vulnerability_id}`}
+                  detailHref={`/findings?cve=${b.vulnerability_id}`}
                 />
               ))}
           </div>
@@ -945,7 +945,7 @@ function SeverityChart({ severity }: { severity: SeverityCounts }) {
           b.count > 0 ? (
             <Link
               key={b.label}
-              href={`/vulns?severity=${b.label.toLowerCase()}`}
+              href={`/findings?severity=${b.label.toLowerCase()}`}
               className={`${b.color} transition-all duration-500 hover:brightness-125`}
               style={{ width: `${(b.count / total) * 100}%` }}
               title={`${b.label}: ${b.count}`}
@@ -957,7 +957,7 @@ function SeverityChart({ severity }: { severity: SeverityCounts }) {
       {/* Legend with hover rings */}
       <div className="grid grid-cols-4 gap-2">
         {bars?.map((b) => (
-          <Link key={b.label} href={`/vulns?severity=${b.label.toLowerCase()}`} className={`rounded-lg py-2 text-center transition-all hover:bg-[var(--surface-muted)] hover:ring-1 ${b.ring}`}>
+          <Link key={b.label} href={`/findings?severity=${b.label.toLowerCase()}`} className={`rounded-lg py-2 text-center transition-all hover:bg-[var(--surface-muted)] hover:ring-1 ${b.ring}`}>
             <div className={`text-xl font-bold font-mono ${b.text}`}>{b.count}</div>
             <div className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">{b.label}</div>
             <div className="text-[10px] font-mono text-[var(--text-tertiary)]">{total > 0 ? Math.round((b.count / total) * 100) : 0}%</div>
@@ -1161,7 +1161,7 @@ function CompoundIssueCard({ issue }: { issue: CompoundIssue }) {
   const countColor = isCrit ? "text-red-400" : "text-orange-400";
 
   return (
-    <Link href={`/vulns?${issue.filter}`}>
+    <Link href={`/findings?${issue.filter}`}>
       <div
         className={`bg-zinc-900 border ${borderColor} rounded-xl p-4 hover:bg-zinc-800/80 transition-colors cursor-pointer`}
       >

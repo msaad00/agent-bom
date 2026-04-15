@@ -517,7 +517,7 @@ describe("attack path helpers", () => {
       {
         title: "Validate the lead finding",
         detail: "Open the primary CVE evidence first so the exploit chain has a confirmed root cause.",
-        href: "/vulns?cve=CVE-2026-3434",
+        href: "/findings?cve=CVE-2026-3434",
       },
       {
         title: "Inspect the exposed agent",

@@ -442,10 +442,10 @@ function SecurityGraphPageContent() {
               <GitBranch className="h-3.5 w-3.5" />
             </Link>
             <Link
-              href="/vulns"
+              href="/findings"
               className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
             >
-              Review vulnerabilities
+              Review findings
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
             {hasFocusContext && (
@@ -488,10 +488,10 @@ function SecurityGraphPageContent() {
                     <GitBranch className="h-3 w-3" />
                   </Link>
                   <Link
-                    href="/vulns"
+                    href="/findings"
                     className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
                   >
-                    Vulns
+                    Findings
                     <ArrowRight className="h-3 w-3" />
                   </Link>
                   {hasFocusContext && (
@@ -597,7 +597,7 @@ function SecurityGraphPageContent() {
                     label="Findings"
                     tags={selectedAttackPath.vuln_ids}
                     emptyLabel="No linked findings"
-                    hrefForTag={(tag) => `/vulns?cve=${encodeURIComponent(tag)}`}
+                    hrefForTag={(tag) => `/findings?cve=${encodeURIComponent(tag)}`}
                   />
                   <TagList
                     label="Agents"

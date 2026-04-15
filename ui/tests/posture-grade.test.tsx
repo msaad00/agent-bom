@@ -10,7 +10,7 @@ import {
 
 describe("posture-grade helpers", () => {
   it("maps dimension labels to evidence destinations", () => {
-    expect(postureDimensionHref("vulnerability_exposure", "Vulnerability Exposure")).toBe("/vulns");
+    expect(postureDimensionHref("vulnerability_exposure", "Vulnerability Exposure")).toBe("/findings");
     expect(postureDimensionHref("credential_reach", "Credential Reach")).toBe("/mesh");
     expect(postureDimensionHref("runtime_watch", "Runtime Watch")).toBe("/proxy");
   });
@@ -48,7 +48,7 @@ describe("PostureGrade", () => {
       />,
     );
 
-    expect(screen.getByRole("link", { name: /Vulnerability Exposure/i })).toHaveAttribute("href", "/vulns");
+    expect(screen.getByRole("link", { name: /Vulnerability Exposure/i })).toHaveAttribute("href", "/findings");
     expect(screen.getByRole("link", { name: /Credential Reach/i })).toHaveAttribute("href", "/mesh");
     expect(screen.getByText("High-risk packages remain reachable by agents.")).toBeInTheDocument();
   });

@@ -39,7 +39,7 @@ export function postureDimensionTone(score: number) {
 
 export function postureDimensionHref(key: string, label: string) {
   const text = `${key} ${label}`.toLowerCase();
-  if (text.includes("vuln") || text.includes("package") || text.includes("fix")) return "/vulns";
+  if (text.includes("vuln") || text.includes("package") || text.includes("fix")) return "/findings";
   if (text.includes("credential") || text.includes("tool")) return "/mesh";
   if (text.includes("agent") || text.includes("server")) return "/agents";
   if (text.includes("trust") || text.includes("framework") || text.includes("compliance")) return "/compliance";

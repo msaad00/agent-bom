@@ -389,7 +389,7 @@ jobs:
   github-release:
     name: Create GitHub Release
     # Only requires PyPI publish — Docker Hub is best-effort (needs external secrets)
-    needs: [pypi-publish, sign, provenance]
+    needs: [pypi-publish, sign, provenance, sbom]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -412,6 +412,12 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: slsa-provenance
+          path: dist/
+
+      - name: Download CycloneDX SBOM
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: agent-bom-sbom
           path: dist/
 
       - name: Create or update GitHub Release

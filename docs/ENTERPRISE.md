@@ -87,7 +87,7 @@ Implementation source: `src/agent_bom/api/middleware.py`, `src/agent_bom/api/oid
 
 ## Storage Compatibility
 
-`agent-bom` uses different backends for different jobs. The current documented default should be read this way:
+`agent-bom` uses different backends for different jobs. The short version is:
 
 | Backend | Status | Best fit |
 |---|---|---|
@@ -95,9 +95,14 @@ Implementation source: `src/agent_bom/api/middleware.py`, `src/agent_bom/api/oid
 | Supabase | Full transactional control-plane backend because it is PostgreSQL | managed Postgres deployments |
 | SQLite | single-node / local persistence | local or small deployments |
 | ClickHouse | analytics backend | high-volume scan and posture analytics |
-| Snowflake | selected enterprise stores, not full transactional parity | governance / analytics / Snowflake-native environments |
+| Snowflake | selected enterprise stores, not full transactional parity | governance / warehouse-native environments |
 
 Today, if you want the broadest transactional feature coverage, use PostgreSQL or Supabase.
+
+For the explicit capability matrix and supported Snowflake deployment modes, see:
+
+- `site-docs/deployment/backend-parity.md`
+- `docs/ENTERPRISE_DEPLOYMENT.md`
 
 ## Multi-Tenant Reference Architecture
 

@@ -8,7 +8,6 @@ import threading
 import time
 from typing import Any, Optional
 
-import httpx
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
@@ -45,6 +44,11 @@ from agent_bom.owasp_agentic import tag_blast_radius as tag_owasp_agentic
 from agent_bom.owasp_mcp import tag_blast_radius as tag_owasp_mcp
 from agent_bom.package_utils import normalize_package_name
 from agent_bom.scanners.blast_radius import _HOP_RISK_FACTORS, expand_blast_radius_hops
+from agent_bom.scanners.osv import candidate_package_names as _candidate_package_names
+from agent_bom.scanners.osv import enrich_results_if_needed as _enrich_results_if_needed_impl
+from agent_bom.scanners.osv import is_valid_fix_version as _is_valid_fix_version
+from agent_bom.scanners.osv import package_lookup_names as _package_lookup_names
+from agent_bom.scanners.osv import parse_fixed_version, query_osv_batch_impl
 from agent_bom.scanners.risk import _parse_cvss4_vector, cvss_to_severity, parse_cvss_vector, parse_osv_severity
 from agent_bom.scanners.state import (
     _bump_scan_perf,
@@ -89,14 +93,6 @@ prefer_local_db: bool = False
 # truthful by default. The CLI --compliance flag still controls whether
 # context-heavy compliance views are rendered explicitly.
 compliance_mode: bool = False
-
-OSV_API_URL = "https://api.osv.dev/v1"
-OSV_BATCH_URL = f"{OSV_API_URL}/querybatch"
-# Max pipeline-level pause when OSV returns persistent 429 after all per-request retries.
-# Separate from per-request exponential backoff (http_client.py) — this pauses the
-# whole batch queue so subsequent batches don't immediately hammer a throttled API.
-_PIPELINE_429_BACKOFF = 60.0
-OSV_QUERY_URL = f"{OSV_API_URL}/query"
 
 # Map ecosystem names to OSV ecosystem identifiers
 ECOSYSTEM_MAP = {
@@ -201,429 +197,32 @@ def _get_scan_cache():  # noqa: ANN202
     return _scan_cache_instance if _scan_cache_instance is not False else None
 
 
-def _candidate_package_names(package_name: str, ecosystem: str = "", source_package: str | None = None) -> set[str]:
-    """Normalized candidate package names for matching advisories."""
-    names = {normalize_package_name(package_name, ecosystem)}
-    if source_package:
-        source_norm = normalize_package_name(source_package, ecosystem)
-        if source_norm:
-            names.add(source_norm)
-    return names
-
-
-def parse_fixed_version(
-    vuln_data: dict,
-    package_name: str,
-    ecosystem: str = "",
-    current_version: str = "",
-    source_package: str | None = None,
-    allow_prerelease: bool = False,
-) -> Optional[str]:
-    """Extract fixed version from OSV affected data.
-
-    Prefers stable releases over pre-release versions and suppresses
-    prerelease-only fixes by default. Uses PEP 503
-    normalization when comparing PyPI package names so that mixed-separator
-    forms (e.g. ``Requests_OAuthlib`` vs ``requests-oauthlib``) always match.
-
-    Guards against cross-package fix bleed: skips affected entries with no
-    package name and skips fix versions lower than ``current_version``.
-    """
-    from agent_bom.version_utils import compare_version_order, is_prerelease_version
-
-    norm_inputs = _candidate_package_names(package_name, ecosystem, source_package)
-    prerelease_candidate: Optional[str] = None
-
-    for affected in vuln_data.get("affected", []):
-        pkg = affected.get("package", {})
-        pkg_name = pkg.get("name", "")
-        # Skip entries with no package name — can't match, causes false fix bleed
-        if not pkg_name:
-            _logger.debug("Skipping affected entry with empty package name in %s", vuln_data.get("id", "?"))
-            continue
-        osv_eco = pkg.get("ecosystem", ecosystem)
-        osv_norm = normalize_package_name(pkg_name, osv_eco)
-        if osv_norm in norm_inputs:
-            for rng in affected.get("ranges", []):
-                for event in rng.get("events", []):
-                    if "fixed" in event:
-                        fixed = event["fixed"]
-                        if not _is_valid_fix_version(fixed):
-                            continue
-                        try:
-                            if current_version and current_version not in ("unknown", "latest", ""):
-                                current_cmp = compare_version_order(current_version, fixed, ecosystem)
-                                if current_cmp is not None and current_cmp > 0:
-                                    _logger.debug(
-                                        "Skipping fix %s < current %s for %s",
-                                        fixed,
-                                        current_version,
-                                        package_name,
-                                    )
-                                    continue
-                            if not is_prerelease_version(fixed, ecosystem):
-                                return fixed
-                            # Remember pre-release as fallback
-                            if prerelease_candidate is None:
-                                prerelease_candidate = fixed
-                        except Exception as exc:  # noqa: BLE001
-                            _logger.debug("Version parse failed for %r: %s", fixed, exc)
-                            if current_version and current_version not in ("unknown", "latest", ""):
-                                current_cmp = compare_version_order(current_version, fixed, ecosystem)
-                                if current_cmp is not None and current_cmp > 0:
-                                    continue
-                            if not is_prerelease_version(fixed, ecosystem):
-                                return fixed
-                            # Not a usable version — skip silently
-    if allow_prerelease:
-        return prerelease_candidate
-    if prerelease_candidate:
-        _logger.debug("Suppressing prerelease-only fix %s for %s", prerelease_candidate, package_name)
-    return None
-
-
-def _is_valid_fix_version(version: str) -> bool:
-    """Check if a string looks like a usable package version (not a git SHA or random hash).
-
-    Returns False for:
-    - Git commit SHAs (40 hex chars)
-    - Short SHAs (7-12 hex chars with no dots/dashes)
-    - Empty strings
-    - Strings with no digits at all
-    """
-    if not version or not any(c.isdigit() for c in version):
-        return False
-    # Git SHA: 40 hex chars
-    stripped = version.lstrip("v")
-    if len(stripped) == 40 and all(c in "0123456789abcdef" for c in stripped):
-        return False
-    # Short SHA: 7-12 hex chars with no version separators
-    if 7 <= len(stripped) <= 12 and all(c in "0123456789abcdef" for c in stripped):
-        return False
-    return True
-
-
-def _package_lookup_names(pkg: Package) -> list[str]:
-    """Lookup names for a package, preserving the primary package name first."""
-    ordered: list[str] = []
-    seen: set[str] = set()
-    for name in pkg.lookup_names:
-        norm = normalize_package_name(name, pkg.ecosystem)
-        if norm and norm not in seen:
-            ordered.append(norm)
-            seen.add(norm)
-    return ordered
-
-
-async def _enrich_vuln_details(client: httpx.AsyncClient, vuln_ids: list[str]) -> dict[str, dict]:
-    """Fetch full vulnerability details from OSV /v1/vulns/{id}.
-
-    The querybatch endpoint only returns {id, modified}.  This function
-    fetches the complete record (summary, severity, references, affected,
-    aliases) for each unique ID so callers get rich data.
-    """
-    if not vuln_ids:
-        return {}
-
-    sem = asyncio.Semaphore(10)  # cap concurrent fetches
-
-    async def _fetch_one(vid: str) -> tuple[str, dict]:
-        async with sem:
-            resp = await request_with_retry(client, "GET", f"{OSV_API_URL}/vulns/{vid}")
-            if resp and resp.status_code == 200:
-                try:
-                    return vid, resp.json()
-                except (ValueError, KeyError):
-                    pass
-        return vid, {}
-
-    pairs = await asyncio.gather(*[_fetch_one(vid) for vid in vuln_ids])
-    return dict(pairs)
-
-
 async def _enrich_results_if_needed(results: dict[str, list[dict]]) -> dict[str, list[dict]]:
-    """Enrich minimal OSV batch results with full vuln details where missing.
-
-    Fetches /v1/vulns/{id} for any vuln entry that only has {id, modified}.
-    """
-    if not results:
-        return results
-    all_vuln_ids: list[str] = []
-    for vuln_list in results.values():
-        for v in vuln_list:
-            if "summary" not in v and v.get("id"):
-                all_vuln_ids.append(v["id"])
-    unique_ids = list(dict.fromkeys(all_vuln_ids))
-    if not unique_ids:
-        return results
-    try:
-        async with create_client(timeout=20.0) as detail_client:
-            details_map = await _enrich_vuln_details(detail_client, unique_ids)
-        for key, vuln_list in results.items():
-            results[key] = [{**v, **details_map.get(v.get("id", ""), {})} for v in vuln_list]
-    except Exception as exc:
-        _logger.warning("OSV detail enrichment skipped (vulnerability summaries may be incomplete): %s", exc)
-        console.print(
-            "  [yellow]⚠[/yellow] OSV detail enrichment skipped — vulnerability summaries may be incomplete."
-            " [dim]Use --verbose for details.[/dim]"
-        )
-        record_scan_warning("OSV detail enrichment skipped")
-    return results
+    """Enrich minimal OSV batch results with full vuln details where missing."""
+    return await _enrich_results_if_needed_impl(
+        results,
+        console=console,
+        record_scan_warning=record_scan_warning,
+        create_client_fn=create_client,
+        request_with_retry_fn=request_with_retry,
+    )
 
 
 async def query_osv_batch(packages: list[Package]) -> dict[str, list[dict]]:
-    """Query OSV API for vulnerabilities in batch.
-
-    Uses an optional SQLite cache (``ScanCache``) to skip packages that were
-    already queried within the last 24 hours.
-    """
-    if not packages:
-        return {}
-
-    cache = _get_scan_cache()
-    results: dict[str, list[dict]] = {}
-    packages_to_query: list[Package] = []
-    skipped_versions = 0
-
-    skipped_ecosystems: dict[str, int] = {}
-
-    # Check cache first
-    for pkg in packages:
-        eco_key = pkg.ecosystem.lower()
-        osv_ecosystems = _osv_ecosystems_for_package(pkg)
-        if not osv_ecosystems:
-            if eco_key in _NON_OSV_ECOSYSTEMS:
-                _logger.debug(
-                    "Skipping package %s/%s: ecosystem %r is not OSV-queryable (handled by other pipeline)",
-                    pkg.ecosystem,
-                    pkg.name,
-                    pkg.ecosystem,
-                )
-            else:
-                _logger.warning(
-                    "Skipping package %s/%s: unknown ecosystem %r — add to ECOSYSTEM_MAP or _NON_OSV_ECOSYSTEMS",
-                    pkg.ecosystem,
-                    pkg.name,
-                    pkg.ecosystem,
-                )
-            skipped_ecosystems[eco_key] = skipped_ecosystems.get(eco_key, 0) + 1
-            _bump_scan_perf("skipped_non_osv_ecosystems")
-            continue
-        if not pkg.version or pkg.version in ("unknown", "latest"):
-            _logger.warning(
-                "Skipping package %s/%s: unresolvable version %r",
-                pkg.ecosystem,
-                pkg.name,
-                pkg.version,
-            )
-            skipped_versions += 1
-            _bump_scan_perf("skipped_unresolvable_versions")
-            continue
-        norm_name = normalize_package_name(pkg.name, eco_key)
-        cache_key_eco = eco_key if len(osv_ecosystems) == 1 else f"{eco_key}|{'|'.join(osv_ecosystems)}"
-        if cache:
-            cached = cache.get(cache_key_eco, norm_name, pkg.version)
-            if cached is not None:
-                _bump_scan_perf("osv_cache_hits")
-                if cached:  # non-empty vuln list
-                    key = f"{eco_key}:{norm_name}@{pkg.version}"
-                    results[key] = cached
-                    _bump_scan_perf("osv_cache_hits_with_vulns")
-                else:
-                    _bump_scan_perf("osv_cache_hits_clean")
-                continue  # skip API call (cached hit or cached "clean")
-        _bump_scan_perf("osv_cache_misses")
-        packages_to_query.append(pkg)
-
-    if not packages_to_query:
-        total_skipped_eco = sum(skipped_ecosystems.values())
-        scanned = len(packages) - skipped_versions - total_skipped_eco
-        if skipped_versions or skipped_ecosystems:
-            _logger.info(
-                "Scan complete: %d packages scanned, %d skipped (unresolvable versions), %d skipped (non-OSV ecosystem)",
-                scanned,
-                skipped_versions,
-                total_skipped_eco,
-            )
-        if skipped_ecosystems:
-            parts = ", ".join(f"{eco}: {cnt}" for eco, cnt in sorted(skipped_ecosystems.items()))
-            console.print(f"  [dim]Skipped {total_skipped_eco} packages not in OSV database ({parts})[/dim]")
-        return await _enrich_results_if_needed(results)
-
-    queries = []
-    pkg_index = {}  # Map query index to (package, queried_name)
-
-    for pkg in packages_to_query:
-        eco_key = pkg.ecosystem.lower()
-        osv_ecosystems = _osv_ecosystems_for_package(pkg)
-        if not osv_ecosystems or pkg.version in ("unknown", "latest"):
-            continue  # already logged in cache-check loop above
-
-        # Normalize name for consistent OSV matching (PEP 503 for PyPI)
-        # Go module versions are stored without 'v' prefix internally but OSV
-        # Go ecosystem expects the canonical semver 'v' prefix.
-        osv_version = f"v{pkg.version}" if eco_key == "go" and not pkg.version.startswith("v") else pkg.version
-        for osv_ecosystem in osv_ecosystems:
-            for norm_name in _package_lookup_names(pkg):
-                queries.append(
-                    {
-                        "version": osv_version,
-                        "package": {
-                            "name": norm_name,
-                            "ecosystem": osv_ecosystem,
-                        },
-                    }
-                )
-                pkg_index[len(queries) - 1] = (pkg, norm_name)
-
-    if not queries:
-        return await _enrich_results_if_needed(results)
-    _bump_scan_perf("osv_packages_queried", len(packages_to_query))
-    _bump_scan_perf("osv_queries_sent", len(queries))
-
-    # Track which queried packages got vulns (to cache "clean" results too)
-    queried_keys_with_vulns: set[str] = set()
-    # Track packages whose CVE lookup failed (batch errors, parse errors, etc.)
-    _lookup_errors: list[tuple[str, str, str]] = []  # (pkg_name, ecosystem, error)
-
-    # OSV batch API accepts up to 1000 queries; configurable via AGENT_BOM_SCANNER_BATCH_SIZE
-    batch_size = min(_BATCH_SIZE, 1000)  # clamp to OSV API max
-    semaphore = _get_api_semaphore()
-    try:
-        _client_ctx = create_client(timeout=30.0)
-    except OfflineModeError:
-        _logger.info("Offline mode: skipping OSV batch query for %d packages", len(queries))
-        console.print("  [yellow]⚠[/yellow] Offline mode — CVE scanning skipped. Use local DB or remove --offline.")
-        record_scan_warning("offline mode skipped remote CVE lookups")
-        _bump_scan_perf("offline_skips", len(packages_to_query))
-        return results
-
-    async with _client_ctx as client:
-        for batch_start in range(0, len(queries), batch_size):
-            batch = queries[batch_start : batch_start + batch_size]
-            _bump_scan_perf("osv_batches")
-
-            async with semaphore:
-                response = await request_with_retry(
-                    client,
-                    "POST",
-                    OSV_BATCH_URL,
-                    json={"queries": batch},
-                )
-
-                if response and response.status_code == 200:
-                    try:
-                        data = response.json()
-                        osv_results = data.get("results", [])
-                        # Validate response length matches batch to prevent index misattribution
-                        if len(osv_results) != len(batch):
-                            _logger.warning(
-                                "OSV batch response length mismatch: sent %d queries, got %d results. "
-                                "Some packages may have missed vulnerability detection.",
-                                len(batch),
-                                len(osv_results),
-                            )
-                            console.print(
-                                f"  [yellow]⚠[/yellow] OSV batch response length mismatch:"
-                                f" sent {len(batch)} queries, got {len(osv_results)} results."
-                                f" [dim]Some packages may have missed vulnerability detection.[/dim]"
-                            )
-                        for i, result in enumerate(osv_results):
-                            if i >= len(batch):
-                                break  # Safety: don't read past our query count
-                            vulns = result.get("vulns", [])
-                            if vulns:
-                                actual_idx = batch_start + i
-                                pkg_match = pkg_index.get(actual_idx)
-                                if pkg_match:
-                                    pkg_obj, _queried_name = pkg_match
-                                    norm = normalize_package_name(pkg_obj.name, pkg_obj.ecosystem)
-                                    key = f"{pkg_obj.ecosystem.lower()}:{norm}@{pkg_obj.version}"
-                                    existing = results.setdefault(key, [])
-                                    seen_ids = {item.get("id") for item in existing}
-                                    for vuln in vulns:
-                                        if vuln.get("id") not in seen_ids:
-                                            existing.append(vuln)
-                                            seen_ids.add(vuln.get("id"))
-                                    queried_keys_with_vulns.add(key)
-                    except (ValueError, KeyError) as e:
-                        console.print(f"  [red]✗[/red] OSV response parse error: {e}")
-                        for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
-                            pkg_err = pkg_index.get(idx)
-                            if pkg_err:
-                                _lookup_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, f"parse error: {e}"))
-                elif response and response.status_code == 429:
-                    # request_with_retry exhausted all retries and still got 429 — apply
-                    # a pipeline-level cooldown before the next batch, respecting any
-                    # Retry-After hint from the server.
-                    retry_after_hdr = response.headers.get("Retry-After")
-                    pipeline_wait = _PIPELINE_429_BACKOFF
-                    if retry_after_hdr:
-                        try:
-                            pipeline_wait = min(float(retry_after_hdr), _PIPELINE_429_BACKOFF)
-                        except ValueError:
-                            pass
-                    console.print(f"  [yellow]⚠[/yellow] OSV rate limit (429) — pausing {pipeline_wait:.0f}s before next batch")
-                    _logger.warning("OSV rate limit hit after all retries; pausing pipeline %.0fs", pipeline_wait)
-                    await asyncio.sleep(pipeline_wait)
-                elif response:
-                    console.print(f"  [red]✗[/red] OSV API error: HTTP {response.status_code}")
-                    for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
-                        pkg_err = pkg_index.get(idx)
-                        if pkg_err:
-                            _lookup_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, f"HTTP {response.status_code}"))
-                else:
-                    console.print("  [red]✗[/red] OSV API unreachable after retries")
-                    for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
-                        pkg_err = pkg_index.get(idx)
-                        if pkg_err:
-                            _lookup_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, "unreachable"))
-
-            # Rate limit: delay between batches
-            if batch_start + batch_size < len(queries):
-                await asyncio.sleep(BATCH_DELAY_SECONDS)
-
-    # Enrich minimal batch results with full vuln details (summary, CVSS, etc.)
-    await _enrich_results_if_needed(results)
-
-    # Populate cache with fresh results — off event loop to avoid blocking
-    if cache:
-        cache_writes = [
-            (
-                pkg.ecosystem.lower()
-                if len(_osv_ecosystems_for_package(pkg)) == 1
-                else f"{pkg.ecosystem.lower()}|{'|'.join(_osv_ecosystems_for_package(pkg))}",
-                normalize_package_name(pkg.name, pkg.ecosystem),
-                pkg.version,
-                results.get(f"{pkg.ecosystem.lower()}:{normalize_package_name(pkg.name, pkg.ecosystem)}@{pkg.version}", []),
-            )
-            for pkg in packages_to_query
-        ]
-        await asyncio.to_thread(cache.put_many, cache_writes)
-
-    total_skipped_eco = sum(skipped_ecosystems.values())
-    scanned = len(packages) - skipped_versions - total_skipped_eco
-    if skipped_versions or skipped_ecosystems:
-        _logger.info(
-            "Scan complete: %d packages scanned, %d skipped (unresolvable versions), %d skipped (non-OSV ecosystem)",
-            scanned,
-            skipped_versions,
-            total_skipped_eco,
-        )
-    if skipped_ecosystems:
-        parts = ", ".join(f"{eco}: {cnt}" for eco, cnt in sorted(skipped_ecosystems.items()))
-        console.print(f"  [dim]Skipped {total_skipped_eco} packages not in OSV database ({parts})[/dim]")
-    if _lookup_errors:
-        _bump_scan_perf("osv_lookup_errors", len(_lookup_errors))
-        _logger.warning(
-            "%d packages had CVE lookup errors — vulnerability detection may be incomplete",
-            len(_lookup_errors),
-        )
-        console.print(f"  [yellow]⚠[/yellow] {len(_lookup_errors)} packages had lookup errors [dim](use --verbose for details)[/dim]")
-        record_scan_warning(f"{len(_lookup_errors)} package lookup error(s)")
-        for pkg_name, eco, err in _lookup_errors:
-            _logger.info("  Lookup error: %s/%s — %s", eco, pkg_name, err)
-    return results
+    """Query OSV API for vulnerabilities in batch."""
+    return await query_osv_batch_impl(
+        packages,
+        console=console,
+        get_scan_cache=_get_scan_cache,
+        get_api_semaphore=_get_api_semaphore,
+        bump_scan_perf=_bump_scan_perf,
+        enrich_results_if_needed_fn=_enrich_results_if_needed,
+        record_scan_warning=record_scan_warning,
+        osv_ecosystems_for_package=_osv_ecosystems_for_package,
+        non_osv_ecosystems=_NON_OSV_ECOSYSTEMS,
+        create_client_fn=create_client,
+        request_with_retry_fn=request_with_retry,
+    )
 
 
 def _is_version_affected(

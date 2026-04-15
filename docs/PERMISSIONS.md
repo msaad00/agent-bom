@@ -188,7 +188,7 @@ This is an open-source tool — you can verify every claim above:
 | Audit file access | `grep -rn "open(\|Path(" src/agent_bom/discovery/` — all file reads in the discovery module |
 | Audit credential handling | `src/agent_bom/models.py` — `MCPServer.credential_names` property + `SENSITIVE_PATTERNS` in `security.py` |
 | Run in isolation | `--no-scan` skips all network calls; `--dry-run` reads nothing |
-| Verify signed releases | `cosign verify-blob dist/agent_bom-*.whl --bundle dist/agent_bom-*.whl.bundle --certificate-oidc-issuer https://token.actions.githubusercontent.com` |
+| Verify signed releases | `cosign verify-blob dist/agent_bom-*.whl --bundle dist/agent_bom-*.whl.sigstore.json --certificate-oidc-issuer https://token.actions.githubusercontent.com` |
 | OpenSSF Scorecard | [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/msaad00/agent-bom/badge)](https://securityscorecards.dev/viewer/?uri=github.com/msaad00/agent-bom) |
 
 ---

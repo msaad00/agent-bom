@@ -284,6 +284,44 @@ class TestSASTNodes:
         assert "A03:2021" in misconfigs[0].compliance_tags
 
 
+class TestIaCNodes:
+    def test_iac_findings_become_misconfig_nodes_and_target_anchors(self):
+        report = _minimal_report()
+        report["iac_findings"] = {
+            "findings": [
+                {
+                    "rule_id": "K8S-007",
+                    "title": "Secrets in plain env values",
+                    "message": "Container sets a plaintext secret in env.",
+                    "severity": "high",
+                    "file_path": "deploy/k8s/api.yaml",
+                    "line_number": 27,
+                    "category": "kubernetes",
+                    "compliance": ["CIS-5.4.1"],
+                    "attack_techniques": ["T1552.001"],
+                    "remediation": "Use Secret refs instead of plaintext values.",
+                }
+            ]
+        }
+
+        g = build_unified_graph_from_report(report)
+
+        misconfigs = g.nodes_by_type(EntityType.MISCONFIGURATION)
+        assert len(misconfigs) == 1
+        assert misconfigs[0].label == "Secrets in plain env values"
+        assert misconfigs[0].attributes["file_path"] == "deploy/k8s/api.yaml"
+        assert misconfigs[0].attributes["category"] == "kubernetes"
+        assert misconfigs[0].attributes["remediation"] == "Use Secret refs instead of plaintext values."
+        assert "CIS-5.4.1" in misconfigs[0].compliance_tags
+        assert "T1552.001" in misconfigs[0].compliance_tags
+
+        anchors = g.nodes_by_type(EntityType.CLOUD_RESOURCE)
+        assert any(anchor.label == "deploy/k8s/api.yaml" for anchor in anchors)
+        anchor = next(anchor for anchor in anchors if anchor.label == "deploy/k8s/api.yaml")
+        assert anchor.attributes["target_type"] == "iac_file"
+        assert g.has_edge("misconfig:iac:K8S-007:deploy/k8s/api.yaml:27", "iac_target:kubernetes:deploy/k8s/api.yaml")
+
+
 class TestModelProvenance:
     def test_model_nodes_created(self):
         report = _minimal_report()

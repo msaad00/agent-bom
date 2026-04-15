@@ -498,6 +498,59 @@ def build_unified_graph_from_report(
                 )
             )
 
+    # ── IaC findings as misconfiguration nodes ───────────────────────
+    iac_data = report_json.get("iac_findings") or report_json.get("iac_findings_data")
+    if iac_data:
+        for finding in iac_data.get("findings", []):
+            rule_id = finding.get("rule_id", "unknown")
+            finding_path = finding.get("file_path", "") or "unknown"
+            finding_line = finding.get("line_number", 0) or 0
+            category = str(finding.get("category", "iac") or "iac").lower()
+            compliance = list(finding.get("compliance", []))
+            attack_techniques = list(finding.get("attack_techniques", []))
+            remediation = finding.get("remediation", "")
+            iac_id = f"misconfig:iac:{rule_id}:{finding_path}:{finding_line}"
+            target_id = f"iac_target:{category}:{finding_path}"
+
+            graph.add_node(
+                UnifiedNode(
+                    id=iac_id,
+                    entity_type=EntityType.MISCONFIGURATION,
+                    label=finding.get("title", rule_id or "IaC finding"),
+                    severity=finding.get("severity", "medium").lower(),
+                    attributes={
+                        "rule_id": rule_id,
+                        "file_path": finding_path,
+                        "line_number": finding_line,
+                        "category": category,
+                        "message": finding.get("message", ""),
+                        "remediation": remediation,
+                    },
+                    compliance_tags=sorted(set(compliance + attack_techniques)),
+                    data_sources=sorted(set(["iac", category])),
+                )
+            )
+            graph.add_node(
+                UnifiedNode(
+                    id=target_id,
+                    entity_type=EntityType.CLOUD_RESOURCE,
+                    label=finding_path,
+                    attributes={
+                        "file_path": finding_path,
+                        "category": category,
+                        "target_type": "iac_file",
+                    },
+                    data_sources=sorted(set(["iac", category])),
+                )
+            )
+            graph.add_edge(
+                UnifiedEdge(
+                    source=iac_id,
+                    target=target_id,
+                    relationship=RelationshipType.AFFECTS,
+                )
+            )
+
     # ── Runtime session graph (dynamic edges) ──────────────────────
     runtime_graph = report_json.get("runtime_session_graph")
     if runtime_graph:

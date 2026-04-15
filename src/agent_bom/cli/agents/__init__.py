@@ -666,6 +666,8 @@ def scan(
                     "line_number": f.line_number,
                     "category": f.category,
                     "compliance": f.compliance,
+                    "attack_techniques": f.attack_techniques,
+                    "remediation": f.remediation,
                 }
                 for f in all_iac_findings
             ],

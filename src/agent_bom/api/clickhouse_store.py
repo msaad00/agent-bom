@@ -45,6 +45,10 @@ class AnalyticsStore(Protocol):
         """Append a runtime protection event."""
         ...
 
+    def record_events(self, events: list[dict]) -> None:
+        """Append multiple runtime protection events in one batch."""
+        ...
+
     def record_posture(self, agent_name: str, snapshot: dict) -> None:
         """Append a posture score snapshot."""
         ...
@@ -106,6 +110,9 @@ class NullAnalyticsStore:
         pass
 
     def record_event(self, event: dict) -> None:
+        pass
+
+    def record_events(self, events: list[dict]) -> None:
         pass
 
     def record_posture(self, agent_name: str, snapshot: dict) -> None:
@@ -200,7 +207,12 @@ class ClickHouseAnalyticsStore:
         ]
 
     def record_event(self, event: dict) -> None:
-        self._client.insert_json("runtime_events", [self._event_row(event)])
+        self.record_events([event])
+
+    def record_events(self, events: list[dict]) -> None:
+        rows = [self._event_row(event) for event in events if event]
+        if rows:
+            self._client.insert_json("runtime_events", rows)
 
     def _event_row(self, event: dict) -> dict[str, Any]:
         return {
@@ -382,6 +394,10 @@ class BufferedAnalyticsStore:
     def record_event(self, event: dict) -> None:
         self._queue.put(("event", (event,)))
 
+    def record_events(self, events: list[dict]) -> None:
+        if events:
+            self._queue.put(("event_batch", (events,)))
+
     def record_posture(self, agent_name: str, snapshot: dict) -> None:
         self._queue.put(("posture", (agent_name, snapshot)))
 
@@ -461,6 +477,9 @@ class BufferedAnalyticsStore:
             elif kind == "event":
                 (event,) = payload
                 event_rows.append(self._store._event_row(dict(event)))
+            elif kind == "event_batch":
+                (events,) = payload
+                event_rows.extend(self._store._event_row(dict(event)) for event in events if event)
             elif kind == "posture":
                 agent_name, snapshot = payload
                 posture_rows.append(self._store._posture_row(str(agent_name), dict(snapshot)))

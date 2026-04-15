@@ -14,7 +14,7 @@ from collections import defaultdict
 from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import JobStatus, PushPayload, ScanJob, ScanRequest
-from agent_bom.api.stores import _get_fleet_store, _get_store
+from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_store
 from agent_bom.security import sanitize_error
 
 router = APIRouter()
@@ -73,8 +73,27 @@ async def ingest_traces(request: Request, body: dict) -> dict:
             {server: sorted(cves) for server, cves in vuln_servers.items()},
         )
 
+        if flagged:
+            analytics_events = [
+                {
+                    "event_id": f"{flag.trace.trace_id}:{flag.trace.span_id}",
+                    "event_type": "vulnerable_tool_call",
+                    "detector": "otel_vulnerable_tool_call",
+                    "severity": flag.severity,
+                    "tool_name": flag.trace.tool_name,
+                    "message": flag.reason,
+                    "agent_name": "",
+                }
+                for flag in flagged
+            ]
+            try:
+                _get_analytics_store().record_events(analytics_events)
+            except Exception:  # noqa: BLE001
+                _logger.warning("Trace analytics sync skipped", exc_info=True)
+
         return {
             "traces": len(traces),
+            "persisted_events": len(flagged),
             "flagged": [
                 {
                     "tool_name": f.trace.tool_name,

@@ -50,6 +50,15 @@ from agent_bom.scanners.osv import is_valid_fix_version as _is_valid_fix_version
 from agent_bom.scanners.osv import package_lookup_names as _package_lookup_names
 from agent_bom.scanners.osv import parse_fixed_version, query_osv_batch_impl
 from agent_bom.scanners.risk import _parse_cvss4_vector, cvss_to_severity, parse_cvss_vector, parse_osv_severity
+from agent_bom.scanners.state import (
+    _bump_scan_perf,
+    _get_api_semaphore,
+    consume_scan_performance,
+    consume_scan_warnings,
+    record_scan_warning,
+    reset_scan_performance,
+    reset_scan_warnings,
+)
 from agent_bom.soc2 import tag_blast_radius as tag_soc2
 from agent_bom.vuln_compliance import tag_vulnerability as _tag_vuln
 
@@ -60,86 +69,11 @@ _logger = logging.getLogger(__name__)
 # only against the local SQLite DB.  Set by CLI --offline before scanning.
 # Also synced from http_client._OFFLINE for transport-layer enforcement.
 offline_mode: bool = False
-_scan_state_local = threading.local()
-_SCAN_PERF_TEMPLATE = {
-    "packages_seen": 0,
-    "packages_deduplicated": 0,
-    "osv_cache_hits": 0,
-    "osv_cache_hits_with_vulns": 0,
-    "osv_cache_hits_clean": 0,
-    "osv_cache_misses": 0,
-    "osv_packages_queried": 0,
-    "osv_queries_sent": 0,
-    "osv_batches": 0,
-    "osv_lookup_errors": 0,
-    "offline_skips": 0,
-    "skipped_unresolvable_versions": 0,
-    "skipped_non_osv_ecosystems": 0,
-}
-_loop_semaphores_lock = threading.Lock()
 _scan_cache_init_lock = threading.Lock()
 
 
 class IncompleteScanError(RuntimeError):
     """Raised when a scan cannot produce a trustworthy verdict."""
-
-
-def _scan_warnings_state() -> list[str]:
-    """Thread-local warning buffer for a single scan execution."""
-    warnings = getattr(_scan_state_local, "warnings", None)
-    if warnings is None:
-        warnings = []
-        _scan_state_local.warnings = warnings
-    return warnings
-
-
-def _scan_performance_state() -> dict[str, int]:
-    """Thread-local performance counters for a single scan execution."""
-    perf = getattr(_scan_state_local, "performance", None)
-    if perf is None:
-        perf = dict(_SCAN_PERF_TEMPLATE)
-        _scan_state_local.performance = perf
-    return perf
-
-
-def reset_scan_warnings() -> None:
-    """Clear accumulated scan warnings for the next scan."""
-    _scan_state_local.warnings = []
-
-
-def record_scan_warning(message: str) -> None:
-    """Record a unique scan warning for later CLI summary output."""
-    warnings = _scan_warnings_state()
-    if message not in warnings:
-        warnings.append(message)
-
-
-def consume_scan_warnings() -> list[str]:
-    """Return and clear accumulated scan warnings."""
-    warnings_state = _scan_warnings_state()
-    warnings = list(warnings_state)
-    _scan_state_local.warnings = []
-    return warnings
-
-
-def reset_scan_performance() -> None:
-    """Clear accumulated performance counters for the next scan."""
-    _scan_state_local.performance = dict(_SCAN_PERF_TEMPLATE)
-
-
-def _bump_scan_perf(key: str, delta: int = 1) -> None:
-    performance = _scan_performance_state()
-    performance[key] = int(performance.get(key, 0)) + delta
-
-
-def consume_scan_performance() -> dict[str, int]:
-    """Return and clear accumulated scan performance counters."""
-    snapshot = dict(_scan_performance_state())
-    reset_scan_performance()
-    total_cache = snapshot["osv_cache_hits"] + snapshot["osv_cache_misses"]
-    if total_cache:
-        snapshot["osv_cache_hit_rate_pct"] = int(round((snapshot["osv_cache_hits"] / total_cache) * 100))
-    return snapshot
 
 
 def set_offline_mode(value: bool) -> None:
@@ -239,35 +173,6 @@ def _osv_ecosystems_for_package(pkg: Package) -> list[str]:
 def _db_ecosystems_for_package(pkg: Package) -> list[str]:
     """Return normalized DB ecosystem keys for a package."""
     return [eco.lower() for eco in _osv_ecosystems_for_package(pkg)]
-
-
-_MAX_CACHED_LOOPS = 8  # Bound stale entries in long-running servers
-_loop_semaphores: dict[int, asyncio.Semaphore] = {}
-
-
-def _get_api_semaphore() -> asyncio.Semaphore:
-    """Get or create a semaphore bound to the current running event loop.
-
-    Caches one semaphore per event loop id so rate-limiting is effective
-    across multiple calls within the same scan, while avoiding the stale-loop
-    problem that module-level semaphores have with ThreadPoolExecutor.
-
-    Evicts oldest entries when the cache exceeds ``_MAX_CACHED_LOOPS`` to
-    prevent unbounded memory growth in long-running API servers.
-
-    Uses ``get_running_loop()`` (not the deprecated ``get_event_loop()``)
-    so this works correctly on Python 3.10+.
-    """
-    loop = asyncio.get_running_loop()
-    loop_id = id(loop)
-    with _loop_semaphores_lock:
-        if loop_id not in _loop_semaphores:
-            if len(_loop_semaphores) >= _MAX_CACHED_LOOPS:
-                # Evict the oldest entry (first inserted key)
-                oldest = next(iter(_loop_semaphores))
-                del _loop_semaphores[oldest]
-            _loop_semaphores[loop_id] = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
-        return _loop_semaphores[loop_id]
 
 
 # ── Scan cache (optional, lazy-initialised) ────────────────────────────────

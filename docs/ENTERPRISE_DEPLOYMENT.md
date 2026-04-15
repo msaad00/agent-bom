@@ -123,7 +123,16 @@ That keeps API roles and tenant boundaries aligned with the upstream identity pr
 
 For PostgreSQL-backed deployments, `agent-bom` now also pushes the authenticated tenant into the database session (`app.tenant_id`) so Postgres row-level security can enforce the same tenant boundary for fleet and schedule data. Internal scheduler work uses an explicit trusted bypass rather than silently reading across tenants.
 
-**Storage:** SQLite for single-node and local persistence, PostgreSQL-compatible backends such as PostgreSQL and Supabase for the transactional control plane, ClickHouse for analytics, and Snowflake for selected enterprise store paths where parity is explicitly implemented. Snowflake does not yet have full parity for every transactional API store, so PostgreSQL-compatible backends remain the primary control-plane default when you need tenant-scoped keys, exceptions, audit, and trend state.
+**Storage:** SQLite for single-node and local persistence, PostgreSQL-compatible backends such as PostgreSQL and Supabase for the transactional control plane, ClickHouse for analytics, and Snowflake for selected enterprise store paths where parity is explicitly implemented. Snowflake does not yet have full parity for every transactional API store, so PostgreSQL-compatible backends remain the primary control-plane default when you need tenant-scoped keys, exceptions, schedules, graph state, and trend history.
+
+Use the backend story this way:
+
+- `SQLite`: local and single-node
+- `Postgres` / `Supabase`: control-plane default
+- `ClickHouse`: analytics add-on
+- `Snowflake`: warehouse-native and governance-oriented mode with explicit parity limits
+
+For the detailed matrix, see `site-docs/deployment/backend-parity.md`.
 
 For ClickHouse-backed analytics, make the backend explicit instead of relying on ambient environment alone:
 

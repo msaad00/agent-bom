@@ -77,10 +77,22 @@ export function ScanForm() {
 
   return (
     <div className="max-w-2xl">
-      <h1 className="text-2xl font-semibold tracking-tight mb-1">New Scan</h1>
-      <p className="text-zinc-400 text-sm mb-5">
-        Launch direct scan jobs from this page. Cloud-backed governance feeds, connector-backed discovery, and trace ingest live in separate product surfaces.
-      </p>
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight mb-1">New Scan</h1>
+          <p className="text-zinc-400 text-sm">
+            Launch direct scan jobs from this page. Cloud-backed governance feeds, connector-backed discovery, and trace ingest live in separate product
+            surfaces.
+          </p>
+        </div>
+        <Link
+          href="/sources"
+          className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm font-medium text-zinc-200 transition-colors hover:border-zinc-600 hover:bg-zinc-800"
+        >
+          Explore data sources
+          <ArrowRight className="h-4 w-4" />
+        </Link>
+      </div>
 
       <div className="grid gap-3 md:grid-cols-2 mb-8">
         <SurfaceCard

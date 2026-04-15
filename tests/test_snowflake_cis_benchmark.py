@@ -13,6 +13,8 @@ from agent_bom.cloud.snowflake_cis_benchmark import (
     _check_1_2,
     _check_1_3,
     _check_1_4,
+    _check_1_5,
+    _check_1_6,
     _check_2_1,
     _check_2_2,
     _check_3_1,
@@ -189,6 +191,50 @@ class TestCheck14:
 
 
 # ---------------------------------------------------------------------------
+# 1.5 — Password history
+# ---------------------------------------------------------------------------
+
+
+class TestCheck15:
+    def test_pass_history_strong(self):
+        cursor = _mock_cursor([{"policy_name": "DEFAULT", "password_history": 24}])
+        result = _check_1_5(cursor)
+        assert result.status == CheckStatus.PASS
+
+    def test_fail_history_weak(self):
+        cursor = _mock_cursor([{"policy_name": "DEFAULT", "password_history": 5}])
+        result = _check_1_5(cursor)
+        assert result.status == CheckStatus.FAIL
+
+    def test_fail_no_policies(self):
+        cursor = _empty_cursor()
+        result = _check_1_5(cursor)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
+# 1.6 — Password max age
+# ---------------------------------------------------------------------------
+
+
+class TestCheck16:
+    def test_pass_max_age_strong(self):
+        cursor = _mock_cursor([{"policy_name": "DEFAULT", "password_max_age_days": 90}])
+        result = _check_1_6(cursor)
+        assert result.status == CheckStatus.PASS
+
+    def test_fail_max_age_too_high(self):
+        cursor = _mock_cursor([{"policy_name": "DEFAULT", "password_max_age_days": 180}])
+        result = _check_1_6(cursor)
+        assert result.status == CheckStatus.FAIL
+
+    def test_fail_max_age_zero(self):
+        cursor = _mock_cursor([{"policy_name": "DEFAULT", "password_max_age_days": 0}])
+        result = _check_1_6(cursor)
+        assert result.status == CheckStatus.FAIL
+
+
+# ---------------------------------------------------------------------------
 # 2.1 — Account-level network policy
 # ---------------------------------------------------------------------------
 
@@ -357,7 +403,7 @@ class TestRunBenchmark:
                 run_benchmark(account="test_acct")
 
     def test_run_benchmark_all_checks(self):
-        """Runner executes all 12 checks and returns report."""
+        """Runner executes all checks and returns report."""
         mock_connector = MagicMock()
         mock_errors = MagicMock()
         mock_errors.DatabaseError = Exception
@@ -384,7 +430,7 @@ class TestRunBenchmark:
                 report = run_benchmark(account="test_acct", user="test_user", authenticator="externalbrowser")
 
         assert report.account == "test_acct"
-        assert report.total == 12
+        assert report.total == 14
 
     def test_run_benchmark_filter_checks(self):
         """Runner only runs requested checks when filtered."""

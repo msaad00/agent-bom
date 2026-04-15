@@ -222,6 +222,7 @@ Product references:
 - [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md)
 - [docs/PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md)
 - [docs/ENTERPRISE.md](docs/ENTERPRISE.md)
+- [docs/RELEASE_VERIFICATION.md](docs/RELEASE_VERIFICATION.md)
 
 ### CI/CD in 60 seconds
 

@@ -131,11 +131,21 @@ git push origin v0.76.4
 ```
 
 This triggers:
-1. **release.yml** → PyPI + Docker Hub + Sigstore signing + GitHub Release
+1. **release.yml** → PyPI + Docker Hub + Sigstore signing + SBOM + provenance + GitHub Release
 2. **publish-mcp.yml** → GHCR stdio + SSE containers (via workflow_run)
 3. **publish-registries.yml** → Smithery + ClawHub (via workflow_run)
 4. **publish-mcp-registry.yml** → Official MCP Registry (via workflow_run)
 5. **deploy-mcp-sse.yml** → Railway deployment (via workflow_run)
+
+Each GitHub Release should include these verification assets alongside the
+wheel and source tarball:
+
+- `agent-bom-sbom.cdx.json`
+- `dist/*.sigstore.json`
+- `dist/*.intoto.jsonl`
+
+Use [`docs/RELEASE_VERIFICATION.md`](RELEASE_VERIFICATION.md) for the exact
+verification flow against a tagged release.
 
 Release operators should also review:
 

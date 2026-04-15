@@ -532,7 +532,7 @@ def _check_1_12(iam_client: Any) -> CISCheckResult:
             try:
                 used_dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
                 days_unused = (now - used_dt).days
-                if days_unused >= threshold_days:
+                if days_unused > threshold_days:
                     is_stale = True
                     break
             except (ValueError, TypeError):

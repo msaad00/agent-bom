@@ -135,11 +135,22 @@ Risk summary, posture, and the highest-value attack paths without waiting on dee
 
 ![agent-bom dashboard](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png)
 
-### Focused graph
+### Security graph / attack-path drilldown
 
-The graph starts scoped to one agent and the vulnerable path in view, then expands only when the operator asks for more.
+The security graph starts with one vulnerable path in view so remediation stays fix-first: package -> vulnerability -> MCP server -> agent -> credential and tool exposure.
 
-![agent-bom focused graph](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="agent-bom security graph attack-path drilldown" width="900" />
+  </picture>
+</p>
+
+### Agent mesh
+
+The current mesh is an agent-centered shared-infrastructure graph: selected agents, their shared MCP servers, tools, packages, and findings. It is not yet a pure runtime agent-to-agent interaction graph.
+
+![agent-bom agent mesh](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
 
 ### Fix-first remediation
 

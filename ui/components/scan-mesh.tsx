@@ -81,7 +81,9 @@ export function ScanMeshView({ id }: { id: string }) {
             <Link href={`/scan?id=${id}`} className="text-zinc-500 hover:text-zinc-300"><ArrowLeft className="w-4 h-4" /></Link>
             <h1 className="text-lg font-semibold text-zinc-100">Agent Mesh</h1>
           </div>
-          <p className="text-xs text-zinc-500 ml-6">Scan {id.slice(0, 8)} — {job.created_at ? new Date(job.created_at).toLocaleDateString() : ""}</p>
+          <p className="text-xs text-zinc-500 ml-6">
+            Agent-centered shared infrastructure for scan {id.slice(0, 8)} — {job.created_at ? new Date(job.created_at).toLocaleDateString() : ""}
+          </p>
         </div>
         <GraphLegend items={legendItems} />
       </div>

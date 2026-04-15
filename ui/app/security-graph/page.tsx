@@ -315,17 +315,17 @@ function SecurityGraphPageContent() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-3xl border border-zinc-800/80 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.08),transparent_34%),linear-gradient(180deg,rgba(17,24,39,0.96),rgba(10,10,11,0.98))] p-6 shadow-2xl shadow-black/20">
+      <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.08),transparent_34%),linear-gradient(180deg,var(--surface),var(--surface-elevated))] p-6 shadow-2xl">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-emerald-900/60 bg-emerald-950/30 px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-emerald-300">
               <Route className="h-3.5 w-3.5" />
               Security graph
             </div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-zinc-100">
+            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-[color:var(--foreground)]">
               Fix-first attack paths without dropping into the full graph canvas
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-zinc-400">
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-[color:var(--text-secondary)]">
               This view keeps the highest-risk exploit chains explicit: what finding starts the path, which assets it reaches,
               which credentials and tools stay exposed, and where to jump next for evidence or remediation.
             </p>
@@ -334,7 +334,7 @@ function SecurityGraphPageContent() {
           <div className="flex flex-wrap items-center gap-2">
             <Link
               href="/graph"
-              className="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-900/80 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:border-zinc-500 hover:text-zinc-100"
+              className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
             >
               Open full lineage graph
               <GitBranch className="h-4 w-4" />
@@ -350,15 +350,15 @@ function SecurityGraphPageContent() {
         </div>
 
         <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-4">
+          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Snapshot</p>
-                <h2 className="mt-1 text-sm font-semibold text-zinc-100">
+                <p className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">Snapshot</p>
+                <h2 className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">
                   {selectedSnapshot ? `Scan ${selectedSnapshot.scan_id.slice(0, 8)}…` : "No persisted graph snapshot yet"}
                 </h2>
                 {selectedSnapshot && (
-                  <p className="mt-1 text-xs text-zinc-500">
+                  <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">
                     Persisted {formatDate(selectedSnapshot.created_at)} · {selectedSnapshot.node_count} nodes · {selectedSnapshot.edge_count} edges
                   </p>
                 )}
@@ -383,7 +383,7 @@ function SecurityGraphPageContent() {
                       className={`rounded-xl border px-3 py-2 text-left text-xs transition ${
                         selected
                           ? "border-emerald-700 bg-emerald-950/40 text-emerald-200"
-                          : "border-zinc-800 bg-zinc-900/80 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+                          : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--text-secondary)] hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
                       }`}
                     >
                       <div className="font-mono">{snapshot.scan_id.slice(0, 8)}…</div>
@@ -394,15 +394,15 @@ function SecurityGraphPageContent() {
               </div>
             ) : (
               !loadingSnapshots && (
-                <div className="mt-4 rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 p-5 text-sm text-zinc-500">
+                <div className="mt-4 rounded-2xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5 text-sm text-[color:var(--text-secondary)]">
                   No persisted graph snapshots yet. Run a scan first so the security graph can build historical attack-path views.
                 </div>
               )
             )}
           </div>
 
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/50 p-4">
-            <p className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">Current pressure</p>
+          <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">Current pressure</p>
             {posture ? (
               <div className="mt-3">
                 <PostureGrade
@@ -413,7 +413,7 @@ function SecurityGraphPageContent() {
                 />
               </div>
             ) : (
-              <div className="mt-4 rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 p-5 text-sm text-zinc-500">
+              <div className="mt-4 rounded-2xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5 text-sm text-[color:var(--text-secondary)]">
                 Posture scoring is unavailable for this snapshot.
               </div>
             )}
@@ -422,28 +422,28 @@ function SecurityGraphPageContent() {
       </section>
 
       {loadingGraph ? (
-        <section className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-8 text-center text-sm text-zinc-400">
+        <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-8 text-center text-sm text-[color:var(--text-secondary)]">
           <Loader2 className="mx-auto mb-3 h-6 w-6 animate-spin text-sky-400" />
           {loadingGraphMessage}
         </section>
       ) : attackPaths.length === 0 ? (
-        <section className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-4">
+        <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
           <GraphEmptyState
             title={emptyGraphState.title}
             detail={emptyGraphState.detail}
             suggestions={emptyGraphState.suggestions}
           />
-          <div className="mt-4 flex flex-wrap gap-3 border-t border-zinc-800 pt-4">
+          <div className="mt-4 flex flex-wrap gap-3 border-t border-[color:var(--border-subtle)] pt-4">
             <Link
               href="/graph"
-              className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
             >
               Open full graph
               <GitBranch className="h-3.5 w-3.5" />
             </Link>
             <Link
               href="/vulns"
-              className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+              className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
             >
               Review vulnerabilities
               <ArrowRight className="h-3.5 w-3.5" />
@@ -451,7 +451,7 @@ function SecurityGraphPageContent() {
             {hasFocusContext && (
               <Link
                 href={resetFocusHref}
-                className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+                className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
               >
                 Clear focus
                 <ArrowRight className="h-3.5 w-3.5" />
@@ -461,17 +461,17 @@ function SecurityGraphPageContent() {
         </section>
       ) : (
         <>
-          <section className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-5">
+          <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-[10px] uppercase tracking-[0.2em] text-orange-400">Attack path queue</p>
-                <h2 className="mt-1 text-lg font-semibold text-zinc-100">
+                <h2 className="mt-1 text-lg font-semibold text-[color:var(--foreground)]">
                   {attackPaths.length} high-signal path{attackPaths.length !== 1 ? "s" : ""} in the selected snapshot
                 </h2>
-                <p className="mt-1 text-sm text-zinc-500">
+                <p className="mt-1 text-sm text-[color:var(--text-tertiary)]">
                   Focus one exploit chain at a time, then jump into the full graph only when you need broader topology.
                 </p>
-                <p className="mt-2 text-xs text-zinc-500">
+                <p className="mt-2 text-xs text-[color:var(--text-tertiary)]">
                   Keyboard: focus this queue and use ← / → to step through paths.
                 </p>
                 {focusLabel && (
@@ -482,14 +482,14 @@ function SecurityGraphPageContent() {
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Link
                     href="/graph"
-                    className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-[11px] text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+                    className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
                   >
                     Full graph
                     <GitBranch className="h-3 w-3" />
                   </Link>
                   <Link
                     href="/vulns"
-                    className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-[11px] text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+                    className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
                   >
                     Vulns
                     <ArrowRight className="h-3 w-3" />
@@ -497,7 +497,7 @@ function SecurityGraphPageContent() {
                   {hasFocusContext && (
                     <Link
                       href={resetFocusHref}
-                      className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-[11px] text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+                      className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
                     >
                       Clear focus
                       <ArrowRight className="h-3 w-3" />
@@ -505,8 +505,8 @@ function SecurityGraphPageContent() {
                   )}
                 </div>
               </div>
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 px-4 py-3 text-sm text-zinc-300">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Highest composite risk</div>
+              <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-3 text-sm text-[color:var(--text-secondary)]">
+                <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Highest composite risk</div>
                 <div className="mt-1 font-mono text-xl text-red-300">{attackPaths[0].composite_risk.toFixed(1)}</div>
               </div>
             </div>
@@ -540,14 +540,14 @@ function SecurityGraphPageContent() {
 
           {selectedAttackPath && (
             <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-5">
+              <div className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-[10px] uppercase tracking-[0.2em] text-orange-400">Selected path</p>
-                    <h2 className="mt-1 text-lg font-semibold text-zinc-100">
+                    <h2 className="mt-1 text-lg font-semibold text-[color:var(--foreground)]">
                       {selectedAttackPath.summary || "Credential-aware exploit chain"}
                     </h2>
-                    <p className="mt-2 text-sm leading-6 text-zinc-400">
+                    <p className="mt-2 text-sm leading-6 text-[color:var(--text-secondary)]">
                       The graph already resolved this chain. Use it as the operator-facing shortlist before you branch into detailed evidence.
                     </p>
                   </div>
@@ -577,13 +577,13 @@ function SecurityGraphPageContent() {
                 </div>
 
                 {selectedPathSequence.length > 0 && (
-                  <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
-                    <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">Path sequence</div>
+                  <div className="mt-4 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Path sequence</div>
                     <div className="mt-3 flex flex-wrap items-center gap-2">
                       {selectedPathSequence.map((label, index) => (
                         <div key={`${label}-${index}`} className="flex items-center gap-2">
-                          {index > 0 && <ArrowRight className="h-3.5 w-3.5 text-zinc-600" />}
-                          <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-[11px] font-mono text-zinc-300">
+                          {index > 0 && <ArrowRight className="h-3.5 w-3.5 text-[color:var(--text-tertiary)]" />}
+                          <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2.5 py-1 text-[11px] font-mono text-[color:var(--text-secondary)]">
                             {label}
                           </span>
                         </div>
@@ -612,7 +612,7 @@ function SecurityGraphPageContent() {
                   <TagList label="Tools" tags={selectedAttackPath.tool_exposure} emptyLabel="No tool exposure" />
                 </div>
 
-                <div className="mt-4 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                <div className="mt-4 text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
                   Recommended next steps
                 </div>
                 <div className="mt-3 grid gap-3 lg:grid-cols-3">
@@ -620,25 +620,25 @@ function SecurityGraphPageContent() {
                     <Link
                       key={action.title}
                       href={action.href}
-                      className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 transition hover:border-zinc-600 hover:bg-zinc-900"
+                      className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 transition hover:border-[color:var(--border-strong)]"
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <div className="text-sm font-medium text-zinc-100">{action.title}</div>
+                        <div className="text-sm font-medium text-[color:var(--foreground)]">{action.title}</div>
                         <ArrowRight className="h-4 w-4 text-emerald-300" />
                       </div>
-                      <p className="mt-2 text-xs leading-5 text-zinc-500">{action.detail}</p>
+                      <p className="mt-2 text-xs leading-5 text-[color:var(--text-tertiary)]">{action.detail}</p>
                     </Link>
                   ))}
 
                   <Link
                     href="/graph"
-                    className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 transition hover:border-zinc-600 hover:bg-zinc-900"
+                    className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 transition hover:border-[color:var(--border-strong)]"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <div className="text-sm font-medium text-zinc-100">Open full graph canvas</div>
-                      <GitBranch className="h-4 w-4 text-zinc-300" />
+                      <div className="text-sm font-medium text-[color:var(--foreground)]">Open full graph canvas</div>
+                      <GitBranch className="h-4 w-4 text-[color:var(--text-secondary)]" />
                     </div>
-                    <p className="mt-2 text-xs leading-5 text-zinc-500">
+                    <p className="mt-2 text-xs leading-5 text-[color:var(--text-tertiary)]">
                       Switch to the full lineage view when you need broader topology, filters, or neighboring assets.
                     </p>
                   </Link>
@@ -646,12 +646,12 @@ function SecurityGraphPageContent() {
               </div>
 
               <div className="space-y-4">
-                <div className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-5">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
+                <div className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--foreground)]">
                     <Sparkles className="h-4 w-4 text-sky-400" />
                     Interaction risks
                   </div>
-                  <p className="mt-2 text-xs leading-5 text-zinc-500">
+                  <p className="mt-2 text-xs leading-5 text-[color:var(--text-tertiary)]">
                     Runtime interaction overlays show where agent behavior, tags, and control surfaces can expand blast radius.
                   </p>
                   {graphData?.interaction_risks?.length ? (
@@ -662,13 +662,13 @@ function SecurityGraphPageContent() {
                         <QuickStat label="Highest risk" value={interactionRiskSummary.highestRisk.toFixed(1)} tone="amber" />
                       </div>
                       {graphData.interaction_risks.slice(0, 3).map((risk) => (
-                        <div key={`${risk.pattern}-${risk.risk_score}`} className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3">
+                        <div key={`${risk.pattern}-${risk.risk_score}`} className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-3">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <div className="text-sm font-medium text-zinc-100">{risk.pattern}</div>
-                              <p className="mt-1 text-xs leading-5 text-zinc-500">{risk.description}</p>
+                              <div className="text-sm font-medium text-[color:var(--foreground)]">{risk.pattern}</div>
+                              <p className="mt-1 text-xs leading-5 text-[color:var(--text-tertiary)]">{risk.description}</p>
                               {risk.owasp_agentic_tag && (
-                                <div className="mt-2 inline-flex rounded-full border border-zinc-700 bg-zinc-950 px-2 py-1 text-[10px] font-mono text-zinc-400">
+                                <div className="mt-2 inline-flex rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-1 text-[10px] font-mono text-[color:var(--text-secondary)]">
                                   {risk.owasp_agentic_tag}
                                 </div>
                               )}
@@ -683,7 +683,7 @@ function SecurityGraphPageContent() {
                                 <Link
                                   key={agent}
                                   href={`/agents?name=${encodeURIComponent(agent)}`}
-                                  className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-1 text-[11px] text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+                                  className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-1 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
                                 >
                                   {agent}
                                 </Link>
@@ -705,7 +705,7 @@ function SecurityGraphPageContent() {
                               <Link
                                 key={`${risk.pattern}-${action.label}`}
                                 href={action.href}
-                                className="inline-flex items-center gap-1 rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-[11px] text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+                                className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2.5 py-1 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
                               >
                                 {action.label}
                                 <ArrowRight className="h-3 w-3" />
@@ -716,18 +716,18 @@ function SecurityGraphPageContent() {
                       ))}
                     </div>
                   ) : (
-                    <div className="mt-4 rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 p-4 text-sm text-zinc-500">
+                    <div className="mt-4 rounded-2xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4 text-sm text-[color:var(--text-secondary)]">
                       No interaction risk overlays were recorded for this snapshot.
                     </div>
                   )}
                 </div>
 
-                <div className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-5">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
+                <div className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--foreground)]">
                     <AlertTriangle className="h-4 w-4 text-orange-400" />
                     Operator notes
                   </div>
-                  <ul className="mt-4 space-y-3 text-sm leading-6 text-zinc-400">
+                  <ul className="mt-4 space-y-3 text-sm leading-6 text-[color:var(--text-secondary)]">
                     <li>Use this page when you want the fix-first shortlist, not the full topology explorer.</li>
                     <li>Persisted snapshots keep historical paths even when later scans deactivate or remove an entity.</li>
                     <li>Open the lineage graph when you need full neighbor context, pagination, or custom filtering.</li>
@@ -737,7 +737,7 @@ function SecurityGraphPageContent() {
                       href="https://osv.dev/"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs text-zinc-500 transition hover:text-zinc-300"
+                      className="inline-flex items-center gap-1 text-xs text-[color:var(--text-tertiary)] transition hover:text-[color:var(--text-secondary)]"
                     >
                       External OSV reference
                       <ExternalLink className="h-3 w-3" />
@@ -755,7 +755,7 @@ function SecurityGraphPageContent() {
 
 export default function SecurityGraphPage() {
   return (
-    <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-zinc-500" /></div>}>
+    <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-[color:var(--text-secondary)]" /></div>}>
       <SecurityGraphPageContent />
     </Suspense>
   );
@@ -771,14 +771,14 @@ function QuickStat({
   tone?: "zinc" | "red" | "amber" | "blue";
 }) {
   const tones = {
-    zinc: "border-zinc-800 bg-zinc-900/80 text-zinc-100",
+    zinc: "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--foreground)]",
     red: "border-red-900/60 bg-red-950/20 text-red-200",
     amber: "border-amber-900/60 bg-amber-950/20 text-amber-200",
     blue: "border-sky-900/60 bg-sky-950/20 text-sky-200",
   };
   return (
     <div className={`rounded-2xl border px-4 py-3 ${tones[tone]}`}>
-      <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</div>
+      <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">{label}</div>
       <div className="mt-1 font-mono text-xl">{value}</div>
     </div>
   );
@@ -796,8 +796,8 @@ function TagList({
   hrefForTag?: (tag: string) => string;
 }) {
   return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
-      <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</div>
+    <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
+      <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">{label}</div>
       {tags.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">
           {tags.map((tag) => (
@@ -805,19 +805,19 @@ function TagList({
               <Link
                 key={tag}
                 href={hrefForTag(tag)}
-                className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-1 text-[11px] font-mono text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+                className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-1 text-[11px] font-mono text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
               >
                 {tag}
               </Link>
             ) : (
-              <span key={tag} className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-1 text-[11px] font-mono text-zinc-300">
+              <span key={tag} className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-1 text-[11px] font-mono text-[color:var(--text-secondary)]">
                 {tag}
               </span>
             )
           ))}
         </div>
       ) : (
-        <div className="mt-3 text-sm text-zinc-500">{emptyLabel}</div>
+        <div className="mt-3 text-sm text-[color:var(--text-secondary)]">{emptyLabel}</div>
       )}
     </div>
   );

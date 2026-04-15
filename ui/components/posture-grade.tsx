@@ -79,19 +79,22 @@ export function PostureGrade({ grade, score, dimensions, drilldown = false }: Po
     <div className="flex flex-col items-center gap-4">
       <div className="relative w-[120px] h-[120px]">
         <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
-          <circle cx="60" cy="60" r={radius} fill="none" stroke="#27272a" strokeWidth="8" />
+          <circle cx="60" cy="60" r={radius} fill="none" stroke="var(--border-subtle)" strokeWidth="8" />
           <circle cx="60" cy="60" r={radius} fill="none" stroke={gradeColor} strokeWidth="8"
             strokeDasharray={circumference} strokeDashoffset={dashOffset}
             strokeLinecap="round" className="transition-all duration-700" />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-3xl font-bold" style={{ color: gradeColor }}>{grade}</span>
-          <span className="text-xs text-zinc-500">{score}/100</span>
+          <span className="text-xs text-[var(--text-tertiary)]">{score}/100</span>
         </div>
       </div>
       {orderedDimensions.length > 0 && (
-        <div className="w-full min-w-[240px] max-w-sm rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
-          <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+        <div
+          className="w-full min-w-[240px] max-w-sm rounded-2xl border p-3"
+          style={{ backgroundColor: "var(--surface)", borderColor: "var(--border-subtle)" }}
+        >
+          <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
             Score breakdown
           </div>
           <div className="space-y-2">
@@ -129,13 +132,13 @@ function DimensionRow({
         </span>
       </div>
       <div className="flex items-baseline justify-between gap-3">
-        <span className="font-mono text-xs text-zinc-400">{dimension.score}/100</span>
-        <span className="text-[11px] text-zinc-500">{postureDimensionHint(dimensionKey, dimension.label)}</span>
+        <span className="font-mono text-xs text-[var(--text-secondary)]">{dimension.score}/100</span>
+        <span className="text-[11px] text-[var(--text-tertiary)]">{postureDimensionHint(dimensionKey, dimension.label)}</span>
       </div>
       {dimension.details && (
-        <p className="text-[11px] leading-5 text-zinc-500">{dimension.details}</p>
+        <p className="text-[11px] leading-5 text-[var(--text-tertiary)]">{dimension.details}</p>
       )}
-      <div className="h-1.5 rounded-full bg-zinc-800">
+      <div className="h-1.5 rounded-full bg-[var(--surface-muted)]">
         <div
           className={`h-full rounded-full transition-all duration-500 ${tone.bar}`}
           style={{
@@ -150,7 +153,8 @@ function DimensionRow({
     return (
       <Link
         href={postureDimensionHref(dimensionKey, dimension.label)}
-        className="block rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-2.5 transition-colors hover:border-zinc-700 hover:bg-zinc-900"
+        className="block rounded-xl border px-3 py-2.5 transition-colors hover:border-[var(--border-strong)]"
+        style={{ backgroundColor: "var(--surface-elevated)", borderColor: "var(--border-subtle)" }}
       >
         {content}
       </Link>
@@ -161,6 +165,5 @@ function DimensionRow({
     <div className="rounded-xl border border-transparent px-3 py-2.5">
       {content}
     </div>
-  );
   );
 }

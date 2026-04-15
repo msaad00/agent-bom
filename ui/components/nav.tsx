@@ -42,6 +42,7 @@ interface NavLink {
 
 interface NavGroup {
   label: string;
+  description: string;
   icon: React.ElementType;
   links: NavLink[];
   /** Accent color from architecture diagram — matches the product layer */
@@ -58,6 +59,7 @@ function activeGroupForPath(path: string | null): string {
 const NAV_GROUPS: NavGroup[] = [
   {
     label: "Discover",
+    description: "Inventory, coverage, and starting points",
     icon: LayoutDashboard,
     accent: "#58a6ff", // blue — discovery layer
     links: [
@@ -68,6 +70,7 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Scan",
+    description: "Run scans, track jobs, and review findings",
     icon: Scan,
     accent: "#f85149", // red — scanning layer
     links: [
@@ -78,6 +81,7 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Analyze",
+    description: "Trace blast radius and graph relationships",
     icon: GitBranch,
     accent: "#d29922", // amber — analysis layer
     links: [
@@ -90,6 +94,7 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Protect",
+    description: "Proxy, policy, and runtime enforcement surfaces",
     icon: Shield,
     accent: "#f778ba", // pink — enforcement layer
     links: [
@@ -100,6 +105,7 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Govern",
+    description: "Evidence, remediation, governance, and activity",
     icon: Eye,
     accent: "#3fb950", // green — output/governance layer
     links: [
@@ -301,8 +307,13 @@ export function Nav() {
                 />
                 {!collapsed && (
                   <>
-                    <span className="flex-1 text-left uppercase tracking-wider text-[10px] font-semibold">
-                      {group.label}
+                    <div className="min-w-0 flex-1 text-left">
+                      <span className="block uppercase tracking-wider text-[10px] font-semibold">
+                        {group.label}
+                      </span>
+                    </div>
+                    <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-1.5 py-0.5 text-[9px] font-mono text-[color:var(--text-tertiary)]">
+                      {group.links.length}
                     </span>
                     {isExpanded ? (
                       <ChevronDown className="w-3 h-3 text-[color:var(--text-tertiary)]" />
@@ -316,6 +327,9 @@ export function Nav() {
               {/* Group Links */}
               {(isExpanded || collapsed) && !collapsed && (
                 <div className="mx-2 mb-2 mt-1 space-y-0.5 border-l border-[color:var(--border-subtle)] pl-2">
+                  <p className="px-3 pb-1 text-[11px] leading-5 text-[color:var(--text-tertiary)]">
+                    {group.description}
+                  </p>
                   {group.links.map(({ href, label, icon: Icon, badge }) => {
                     const active = href === "/" ? path === "/" : path.startsWith(href);
                     const dimmed = isDimmed(href);

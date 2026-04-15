@@ -12,11 +12,14 @@ import logging
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from agent_bom.event_normalization import build_runtime_alert_relationships
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
 
 
 # ─── Channel Protocol ────────────────────────────────────────────────────────
@@ -226,9 +229,9 @@ class ClickHouseChannel:
     def __init__(self, url: str, **kwargs) -> None:
         self._url = url
         self._kwargs = kwargs
-        self._store = None  # lazy init
+        self._store: ClickHouseAnalyticsStore | None = None  # lazy init
 
-    def _get_store(self):
+    def _get_store(self) -> "ClickHouseAnalyticsStore":
         if self._store is None:
             from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
 

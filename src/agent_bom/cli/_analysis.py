@@ -448,7 +448,8 @@ def introspect_cmd(server_command, server_url, timeout, introspect_all, baseline
 
     # Introspect
     try:
-        results = introspect_servers_sync(servers, timeout=timeout)
+        report = introspect_servers_sync(servers, timeout=timeout)
+        results = report.results
     except ImportError:
         con.print("[red]MCP SDK not installed.[/red] Run: pip install 'agent-bom[mcp-server]'")
         sys.exit(1)

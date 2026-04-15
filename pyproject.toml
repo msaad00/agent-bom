@@ -189,8 +189,8 @@ markers = [
 [tool.mypy]
 python_version = "3.11"
 warn_unused_configs = true
-disallow_untyped_defs = false          # Phase 2: enable after all functions annotated
-check_untyped_defs = false             # Phase 2: enable after baseline is clean
+disallow_untyped_defs = false          # Phase 3: enable after remaining untyped modules are reduced
+check_untyped_defs = true              # Phase 2: check bodies of existing untyped functions
 ignore_missing_imports = true          # Third-party stubs (yaml, toml, requests)
 no_implicit_optional = true
 warn_redundant_casts = true

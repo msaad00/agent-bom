@@ -38,6 +38,15 @@ jobs:
           print(f"Version aligned: {pkg}")
           PY
 
+  docs-site:
+    name: Rebuild and deploy docs
+    needs: version-guard
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/docs.yml
+
   build:
     name: Build distribution
     needs: version-guard

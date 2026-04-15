@@ -28,17 +28,17 @@ const NODE_META: Record<AttackPathNode["type"], { icon: LucideIcon; tint: string
 export function AttackPathCard({ nodes, riskScore, onClick, href }: AttackPathCardProps) {
   const riskTone =
     riskScore >= 8
-      ? "text-red-400 text-red-300 border-red-500/25 bg-red-500/10"
+      ? "border-red-500/25 bg-red-500/10 text-red-200"
       : riskScore >= 5
-        ? "text-orange-400 text-amber-300 border-amber-500/25 bg-amber-500/10"
-        : "text-zinc-400 text-zinc-300 border-zinc-700 bg-zinc-800/70";
+        ? "border-amber-500/25 bg-amber-500/10 text-amber-200"
+        : "border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] text-[color:var(--text-secondary)]";
 
   const cardBody = (
     <>
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <p className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">Attack path</p>
-          <p className="mt-1 text-sm font-semibold text-zinc-100">Credential-aware blast radius</p>
+          <p className="text-[10px] uppercase tracking-[0.24em] text-[color:var(--text-tertiary)]">Attack path</p>
+          <p className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">Credential-aware blast radius</p>
         </div>
         <div className={`rounded-xl border px-2.5 py-1 font-mono text-xs font-semibold ${riskTone}`}>
           <span className="text-[10px] uppercase tracking-[0.16em]">Risk</span>{" "}
@@ -59,7 +59,7 @@ export function AttackPathCard({ nodes, riskScore, onClick, href }: AttackPathCa
           return (
             <div key={`${node.type}-${node.label}-${i}`} className="flex items-center gap-1.5">
               {i > 0 && (
-                <div className="flex h-5 w-5 items-center justify-center text-zinc-600">
+                <div className="flex h-5 w-5 items-center justify-center text-[color:var(--text-tertiary)]">
                   <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
                   <span className="sr-only">→</span>
                 </div>
@@ -67,8 +67,8 @@ export function AttackPathCard({ nodes, riskScore, onClick, href }: AttackPathCa
               <div className={`flex items-center gap-2 rounded-xl border px-2.5 py-1.5 ${severityRing} ${meta.tint}`}>
                 <Icon className="h-3.5 w-3.5 shrink-0" />
                 <div className="min-w-0">
-                  <p className="max-w-[120px] truncate text-[11px] font-medium text-zinc-100">{node.label}</p>
-                  <p className="text-[9px] uppercase tracking-[0.16em] text-zinc-500">{node.type}</p>
+                  <p className="max-w-[120px] truncate text-[11px] font-medium text-[color:var(--foreground)]">{node.label}</p>
+                  <p className="text-[9px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">{node.type}</p>
                 </div>
               </div>
             </div>
@@ -76,7 +76,7 @@ export function AttackPathCard({ nodes, riskScore, onClick, href }: AttackPathCa
         })}
       </div>
       {href && (
-        <div className="mt-3 text-xs font-medium text-emerald-300">
+        <div className="mt-3 text-xs font-medium text-emerald-500">
           Open focused security graph
         </div>
       )}
@@ -84,7 +84,7 @@ export function AttackPathCard({ nodes, riskScore, onClick, href }: AttackPathCa
   );
 
   const className =
-    "group block w-full rounded-2xl border border-zinc-800 bg-[linear-gradient(135deg,rgba(24,24,27,0.98),rgba(15,23,42,0.88))] px-4 py-3 text-left shadow-lg shadow-black/20 transition-all hover:-translate-y-0.5 hover:border-zinc-600 hover:shadow-xl hover:shadow-emerald-500/5";
+    "group block w-full rounded-2xl border border-[color:var(--border-subtle)] bg-[linear-gradient(135deg,var(--surface),var(--surface-elevated))] px-4 py-3 text-left shadow-lg transition-all hover:-translate-y-0.5 hover:border-[color:var(--border-strong)] hover:shadow-xl hover:shadow-emerald-500/5";
 
   if (href && !onClick) {
     return (

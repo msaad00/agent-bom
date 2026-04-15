@@ -78,7 +78,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/sources", label: "Data Sources", icon: Database },
       { href: "/scan", label: "New Scan", icon: Scan },
       { href: "/jobs", label: "Scan Jobs", icon: Clock },
-      { href: "/vulns", label: "Vulnerabilities", icon: Bug, badge: "critical" },
+      { href: "/findings", label: "Findings", icon: Bug, badge: "critical" },
     ],
   },
   {
@@ -333,9 +333,14 @@ export function Nav() {
                     {group.description}
                   </p>
                   {group.links.map(({ href, label, icon: Icon, badge }) => {
-                    const active = href === "/" ? path === "/" : path.startsWith(href);
+                    const active =
+                      href === "/"
+                        ? path === "/"
+                        : href === "/findings"
+                        ? path.startsWith("/findings") || path.startsWith("/vulns")
+                        : path.startsWith(href);
                     const dimmed = isDimmed(href);
-                    const isVulns = href === "/vulns";
+                    const isVulns = href === "/findings";
 
                     return (
                       <Link

@@ -314,19 +314,19 @@ function VulnsPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Vulnerabilities</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Findings</h1>
           <p className="text-zinc-400 text-sm mt-1">
             {scope === "latest"
-              ? `${vulns.length} unique CVEs from the latest completed scan.`
-              : `${vulns.length} unique CVEs aggregated across all completed scans.`}{" "}
-            CVSS and EPSS appear only when the underlying advisory includes them.
+              ? `${vulns.length} vulnerability findings from the latest completed scan.`
+              : `${vulns.length} vulnerability findings aggregated across all completed scans.`}{" "}
+            This surface is vulnerability-first today and will expand to broader finding types over time. CVSS and EPSS appear only when the underlying advisory includes them.
           </p>
         </div>
         {vulns.length > 0 && (
           <button
-            onClick={() => downloadJson(displayed, `vulns-${new Date().toISOString().slice(0, 10)}.json`)}
+            onClick={() => downloadJson(displayed, `findings-${new Date().toISOString().slice(0, 10)}.json`)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm font-medium rounded-lg transition-colors"
-            title="Export filtered vulnerabilities as JSON"
+            title="Export filtered findings as JSON"
           >
             <Download className="w-3.5 h-3.5" />
             Export
@@ -348,17 +348,17 @@ function VulnsPage() {
       )}
       {!loading && error && (
         <ApiOfflineState
-          title="Vulnerabilities need the agent-bom API"
+          title="Findings need the agent-bom API"
           detail={error}
         />
       )}
 
       {!loading && !error && vulns.length === 0 && (
-        <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
+          <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
           <Bug className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-          <p className="text-zinc-500 text-sm">No vulnerabilities found.</p>
+          <p className="text-zinc-500 text-sm">No findings found.</p>
           <p className="text-zinc-600 text-xs mt-1">
-            Run a scan with enrichment enabled to see CVE data here.
+            Run a scan with enrichment enabled to see CVE-backed findings here.
           </p>
         </div>
       )}
@@ -406,7 +406,7 @@ function VulnsPage() {
                 </select>
               </div>
               <p className="text-xs text-zinc-600">
-                Default stays scoped for speed. Expand to all scans only when you need history-wide aggregation.
+                Default stays scoped for speed. Expand to all scans only when you need history-wide findings aggregation.
               </p>
             </div>
 
@@ -503,7 +503,7 @@ function VulnsPage() {
 
           {grouped && (
             <p className="text-xs text-zinc-600 text-right">
-              Showing {displayed.length} of {vulns.length} vulnerabilities
+              Showing {displayed.length} of {vulns.length} findings
             </p>
           )}
         </>

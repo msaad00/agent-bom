@@ -1,0 +1,9 @@
+{
+  "name": "fixture-ml-workspace",
+  "id": "/subscriptions/sub-123/resourceGroups/rg-fixture/providers/Microsoft.MachineLearningServices/workspaces/fixture-ml-workspace",
+  "location": "eastus2",
+  "system_data": {
+    "created_at": "2026-04-01T12:00:00+03:00",
+    "last_modified_at": "2026-04-12T09:15:00-07:00"
+  }
+}

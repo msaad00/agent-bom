@@ -1,0 +1,14 @@
+{
+  "display_name": "fixture-endpoint",
+  "resource_name": "projects/123/locations/us-central1/endpoints/456",
+  "create_time": "2026-04-05T08:00:00+02:00",
+  "update_time": "2026-04-12T10:30:00-05:00",
+  "gca_resource": {
+    "deployed_models": [
+      {
+        "model": "projects/123/locations/us-central1/models/fixture-model",
+        "display_name": "fixture-model"
+      }
+    ]
+  }
+}

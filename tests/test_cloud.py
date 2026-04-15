@@ -5,6 +5,8 @@ import json
 import sys
 import types
 from datetime import datetime, timezone
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -26,6 +28,24 @@ from agent_bom.models import (
 )
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
+
+_CLOUD_FIXTURES = Path(__file__).parent / "fixtures" / "cloud"
+
+
+def _load_cloud_fixture(name: str) -> dict:
+    return json.loads((_CLOUD_FIXTURES / name).read_text())
+
+
+def _to_namespace(value):
+    if isinstance(value, dict):
+        if not value:
+            return {}
+        if not all(isinstance(key, str) and key.isidentifier() for key in value):
+            return {key: _to_namespace(item) for key, item in value.items()}
+        return SimpleNamespace(**{key: _to_namespace(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return [_to_namespace(item) for item in value]
+    return value
 
 
 def _install_mock_boto3():
@@ -1700,6 +1720,76 @@ def test_azure_container_apps_by_resource_group():
     mock_client.container_apps.list_by_resource_group.assert_called_once_with("rg-ai")
 
 
+def test_azure_container_app_fixture_normalizes_offsets_and_user_assigned_identity():
+    """Fixture-backed Azure Container App payloads keep scope, UTC timestamps, and user-assigned identity stable."""
+    _install_mock_azure()
+    importlib.reload(importlib.import_module("agent_bom.cloud.azure"))
+    from agent_bom.cloud.azure import discover
+
+    mock_credential = MagicMock()
+    mock_client = MagicMock()
+    mock_client.container_apps.list_by_subscription.return_value = [_to_namespace(_load_cloud_fixture("azure_container_app.json"))]
+
+    mock_rm_client = MagicMock()
+    mock_rm_client.resources.list.return_value = []
+    mock_web_client = MagicMock()
+    mock_web_client.web_apps.list.return_value = []
+
+    with (
+        patch("azure.identity.DefaultAzureCredential", return_value=mock_credential),
+        patch("azure.mgmt.appcontainers.ContainerAppsAPIClient", return_value=mock_client),
+        patch("azure.mgmt.resource.ResourceManagementClient", return_value=mock_rm_client),
+        patch("azure.mgmt.web.WebSiteManagementClient", return_value=mock_web_client),
+    ):
+        agents, warnings = discover(subscription_id="sub-123")
+
+    ca_agents = [a for a in agents if a.source == "azure-container-apps"]
+    assert len(ca_agents) == 1
+    timestamps = ca_agents[0].metadata["cloud_timestamps"]
+    assert timestamps["created_at"] == "2026-04-10T12:30:00Z"
+    assert timestamps["updated_at"] == "2026-04-11T20:45:00Z"
+    principal = ca_agents[0].metadata["cloud_principal"]
+    assert principal["principal_type"] == "user-assigned-managed-identity"
+    assert principal["principal_id"].endswith("/fixture-id")
+    assert principal["principal_name"].endswith("/fixture-id")
+    scope = ca_agents[0].metadata["cloud_scope"]
+    assert scope["scope_id"] == "rg-fixture"
+    assert scope["parent_scope"]["id"] == "sub-123"
+
+
+def test_azure_ai_foundry_fixture_normalizes_offset_timestamps():
+    """Fixture-backed Azure AI Foundry payloads normalize string offsets into UTC and preserve scope."""
+    _install_mock_azure()
+    importlib.reload(importlib.import_module("agent_bom.cloud.azure"))
+    from agent_bom.cloud.azure import discover
+
+    mock_credential = MagicMock()
+    mock_ca_client = MagicMock()
+    mock_ca_client.container_apps.list_by_subscription.return_value = []
+
+    mock_rm_client = MagicMock()
+    mock_rm_client.resources.list.return_value = [_to_namespace(_load_cloud_fixture("azure_ai_foundry_workspace.json"))]
+    mock_web_client = MagicMock()
+    mock_web_client.web_apps.list.return_value = []
+
+    with (
+        patch("azure.identity.DefaultAzureCredential", return_value=mock_credential),
+        patch("azure.mgmt.appcontainers.ContainerAppsAPIClient", return_value=mock_ca_client),
+        patch("azure.mgmt.resource.ResourceManagementClient", return_value=mock_rm_client),
+        patch("azure.mgmt.web.WebSiteManagementClient", return_value=mock_web_client),
+    ):
+        agents, warnings = discover(subscription_id="sub-123")
+
+    ai_agents = [a for a in agents if a.source == "azure-ai-foundry"]
+    assert len(ai_agents) == 1
+    timestamps = ai_agents[0].metadata["cloud_timestamps"]
+    assert timestamps["created_at"] == "2026-04-01T09:00:00Z"
+    assert timestamps["updated_at"] == "2026-04-12T16:15:00Z"
+    scope = ai_agents[0].metadata["cloud_scope"]
+    assert scope["scope_id"] == "rg-fixture"
+    assert scope["parent_scope"]["id"] == "sub-123"
+
+
 # ─── GCP Provider Tests ──────────────────────────────────────────────────
 
 
@@ -1808,6 +1898,28 @@ def test_gcp_vertex_ai_endpoints_discovered():
     assert timestamps["sources"]["updated_at"] == "update_time"
     scope = vertex_agents[0].metadata["cloud_scope"]
     assert scope["scope_type"] == "project"
+    assert scope["scope_id"] == "my-project"
+    assert scope["location"] == "us-central1"
+
+
+def test_gcp_vertex_fixture_normalizes_offset_timestamps():
+    """Fixture-backed Vertex endpoint payloads normalize offset timestamps through the discovery path."""
+    _install_mock_gcp()
+    importlib.reload(importlib.import_module("agent_bom.cloud.gcp"))
+    from agent_bom.cloud.gcp import discover
+
+    mock_endpoint = _to_namespace(_load_cloud_fixture("gcp_vertex_endpoint.json"))
+
+    with patch("google.cloud.aiplatform.init"), patch("google.cloud.aiplatform.Endpoint.list", return_value=[mock_endpoint]):
+        agents, warnings = discover(project_id="my-project", region="us-central1")
+
+    vertex_agents = [a for a in agents if a.source == "gcp-vertex-ai"]
+    assert len(vertex_agents) == 1
+    timestamps = vertex_agents[0].metadata["cloud_timestamps"]
+    assert timestamps["created_at"] == "2026-04-05T06:00:00Z"
+    assert timestamps["updated_at"] == "2026-04-12T15:30:00Z"
+    assert timestamps["sources"]["created_at"] == "create_time"
+    scope = vertex_agents[0].metadata["cloud_scope"]
     assert scope["scope_id"] == "my-project"
     assert scope["location"] == "us-central1"
 

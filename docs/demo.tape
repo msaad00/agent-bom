@@ -1,5 +1,6 @@
 # agent-bom v0.76.4 blast-radius demo
 # Shows: blast radius → package gate
+# Refresh workflow: see docs/TERMINAL_DEMO_REFRESH.md
 
 Output docs/images/demo-latest.gif
 

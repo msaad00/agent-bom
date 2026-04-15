@@ -4,7 +4,7 @@ set -euo pipefail
 
 DEMO_ENGINE="${AGENT_BOM_DEMO_ENGINE:-python}"
 IMAGE_TAG="${AGENT_BOM_DEMO_IMAGE:-agent-bom:demo-current}"
-DB_SOURCE="${AGENT_BOM_DB_SOURCE:-$HOME/.agent-bom/db/vulns.db}"
+DB_SOURCE="${AGENT_BOM_DEMO_DB_SOURCE:-${AGENT_BOM_DB_SOURCE:-$HOME/.agent-bom/db/vulns.db}}"
 
 export AGENT_BOM_DEMO_ENGINE="$DEMO_ENGINE"
 export AGENT_BOM_DEMO_IMAGE="$IMAGE_TAG"

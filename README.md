@@ -131,13 +131,13 @@ These screenshots come from the live product path, using the built-in demo data 
 
 ### Dashboard
 
-Risk summary, posture, and the highest-value attack paths without waiting on deep scan hydration.
+Risk summary, posture, findings, and the highest-value attack paths without waiting on deep scan hydration. This capture should stay aligned with the current `Discover / Scan / Analyze / Protect / Govern` navigation and the `Findings` / `Sources` split.
 
 ![agent-bom dashboard](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png)
 
 ### Security graph / attack-path drilldown
 
-The security graph starts with one vulnerable path in view so remediation stays fix-first: package -> vulnerability -> MCP server -> agent -> credential and tool exposure.
+The security graph starts with one vulnerable path in view so remediation stays fix-first: package -> vulnerability -> MCP server -> agent -> credential and tool exposure. This is the focused path/context view, not the full findings table.
 
 <p align="center">
   <picture>
@@ -157,6 +157,18 @@ The current mesh is an agent-centered shared-infrastructure graph: selected agen
 Reach, severity, fix version, and framework context stay in one review table so the operator can act without jumping between pages.
 
 ![agent-bom remediation view](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png)
+
+### Media refresh note
+
+These images are live captures, not static mockups. Refresh them when the navigation labels, page names, or product surface split changes, and keep the README aligned with the current:
+
+- `Findings` evidence view
+- `Sources` / ingest entrypoints
+- `Security Graph` path drilldown
+- `Agent Mesh` shared-infrastructure topology
+- `Remediation` fix queue
+
+See [`docs/README_MEDIA_REFRESH.md`](docs/README_MEDIA_REFRESH.md) for the checklist.
 
 ## Framework catalogs
 

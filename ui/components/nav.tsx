@@ -8,6 +8,7 @@ import {
   Scan,
   Server,
   Bug,
+  Database,
   Activity,
   GitBranch,
   Shield,
@@ -70,10 +71,11 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     label: "Scan",
-    description: "Run scans, track jobs, and review findings",
+    description: "Choose source mode, run scans, and review findings",
     icon: Scan,
     accent: "#f85149", // red — scanning layer
     links: [
+      { href: "/sources", label: "Data Sources", icon: Database },
       { href: "/scan", label: "New Scan", icon: Scan },
       { href: "/jobs", label: "Scan Jobs", icon: Clock },
       { href: "/vulns", label: "Vulnerabilities", icon: Bug, badge: "critical" },

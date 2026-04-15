@@ -80,6 +80,13 @@ describe('Nav', () => {
     expect(links.some((l) => l.getAttribute('href') === '/scan')).toBe(true)
   })
 
+  it('contains link to Data Sources (/sources)', () => {
+    render(<Nav />)
+    fireEvent.click(screen.getByRole('button', { name: /scan/i }))
+    const links = screen.getAllByRole('link', { name: /data sources/i })
+    expect(links.some((l) => l.getAttribute('href') === '/sources')).toBe(true)
+  })
+
   it('contains link to Scan Jobs (/jobs)', () => {
     render(<Nav />)
     fireEvent.click(screen.getByRole('button', { name: /scan/i }))
@@ -159,7 +166,7 @@ describe('Nav', () => {
 
   it('shows page counts for expanded nav groups', () => {
     render(<Nav />)
-    expect(screen.getByText('3')).toBeInTheDocument()
+    expect(screen.getByText('4')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /analyze/i }))
     expect(screen.getByText('5')).toBeInTheDocument()
   })
@@ -170,7 +177,7 @@ describe('Nav', () => {
       fireEvent.click(screen.getByRole('button', { name: new RegExp(group, 'i') }))
     }
     const expectedHrefs = [
-      '/', '/scan', '/jobs',
+      '/', '/sources', '/scan', '/jobs',
       '/agents', '/vulns', '/fleet',
       '/security-graph', '/graph', '/mesh', '/context', '/insights',
       '/proxy', '/audit', '/gateway',

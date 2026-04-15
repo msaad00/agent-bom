@@ -572,23 +572,30 @@ export default function Dashboard() {
         {posture && (
           <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[auto_1fr]">
             <PostureGrade grade={posture.grade} score={posture.score} dimensions={posture.dimensions} />
-            <div className="rounded-2xl border border-zinc-800/80 bg-zinc-950/60 p-5">
+            <div
+              className="rounded-2xl border p-5"
+              style={{ backgroundColor: "var(--surface)", borderColor: "var(--border-subtle)" }}
+            >
               <div className="flex flex-wrap items-center gap-3">
                 <h2 className="text-lg font-semibold text-zinc-100">
                   Security posture <span style={{ color: posture.grade === "A" ? "#22c55e" : posture.grade === "B" ? "#3b82f6" : posture.grade === "C" ? "#eab308" : posture.grade === "D" ? "#f97316" : posture.grade === "F" ? "#ef4444" : "#71717a" }}>{posture.grade}</span>
                 </h2>
-                <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-zinc-400">
+                <span
+                  className="rounded-full border px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-[var(--text-secondary)]"
+                  style={{ backgroundColor: "var(--surface-elevated)", borderColor: "var(--border-subtle)" }}
+                >
                   score {posture.score.toFixed(1)}
                 </span>
               </div>
-              <p className="mt-3 text-sm leading-6 text-zinc-300">{posture.summary}</p>
+              <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{posture.summary}</p>
               {posture.dimensions && Object.keys(posture.dimensions).length > 0 && (
                 <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
                   {Object.entries(posture.dimensions).map(([key, dim]) => (
                     <Link
                       key={key}
                       href={postureDimensionHref(key, dim.label)}
-                      className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-2.5 transition-colors hover:border-zinc-700 hover:bg-zinc-900"
+                      className="rounded-xl border px-3 py-2.5 transition-colors hover:border-[var(--border-strong)]"
+                      style={{ backgroundColor: "var(--surface-elevated)", borderColor: "var(--border-subtle)" }}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-xs font-medium text-zinc-200">{dim.label}</span>
@@ -598,9 +605,9 @@ export default function Dashboard() {
                       </div>
                       <div className="mt-2 flex items-baseline justify-between gap-3">
                         <span className="font-mono text-lg text-zinc-100">{dim.score}/100</span>
-                        <span className="text-[11px] text-zinc-500">{postureDimensionHint(key, dim.label)}</span>
+                        <span className="text-[11px] text-[var(--text-tertiary)]">{postureDimensionHint(key, dim.label)}</span>
                       </div>
-                      <div className="mt-2 h-1.5 w-full rounded-full bg-zinc-800">
+                      <div className="mt-2 h-1.5 w-full rounded-full bg-[var(--surface-muted)]">
                         <div
                           className={`h-full rounded-full ${postureDimensionTone(dim.score).bar}`}
                           style={{ width: `${dim.score}%` }}
@@ -880,14 +887,19 @@ function StatCard({
   const c = colors[color];
   const inner = (
     <div
-      className={`bg-zinc-900 border border-zinc-800 rounded-xl p-4 ${href ? "hover:border-zinc-600 transition-all cursor-pointer" : ""} shadow-lg ${c.glow}`}
-      style={{ borderTop: `2px solid ${c.topBorder}` }}
+      className={`rounded-xl border p-4 ${href ? "cursor-pointer transition-all hover:border-[var(--border-strong)]" : ""} shadow-lg ${c.glow}`}
+      style={{
+        backgroundColor: "var(--surface)",
+        borderColor: "var(--border-subtle)",
+        borderTop: `2px solid ${c.topBorder}`,
+        boxShadow: "0 18px 36px -24px var(--shadow-color)",
+      }}
     >
       <div className="flex items-center justify-between mb-2">
         <Icon className={`w-4 h-4 ${c.text}`} />
         {trend && (
           <span className={`text-[10px] font-medium ${
-            trend.direction === "down" ? "text-emerald-400" : trend.direction === "up" ? "text-red-400" : "text-zinc-500"
+            trend.direction === "down" ? "text-emerald-400" : trend.direction === "up" ? "text-red-400" : "text-[var(--text-tertiary)]"
           }`}>
             {trend.direction === "up" ? "\u2191" : trend.direction === "down" ? "\u2193" : "\u2022"} {trend.label}
           </span>
@@ -895,7 +907,7 @@ function StatCard({
       </div>
       <div className="text-2xl font-bold font-mono tracking-tight">{value}</div>
       <div className="flex items-center justify-between mt-1">
-        <div className="text-xs text-zinc-500">{label}</div>
+        <div className="text-xs text-[var(--text-tertiary)]">{label}</div>
         <div className={`w-8 h-1 rounded-full ${c.accent} opacity-30`} />
       </div>
     </div>
@@ -914,14 +926,21 @@ function SeverityChart({ severity }: { severity: SeverityCounts }) {
   ];
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg shadow-zinc-950/50">
+    <div
+      className="rounded-xl border p-5 shadow-lg"
+      style={{
+        backgroundColor: "var(--surface)",
+        borderColor: "var(--border-subtle)",
+        boxShadow: "0 18px 36px -24px var(--shadow-color)",
+      }}
+    >
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-sm font-semibold text-zinc-300">Severity Distribution</h3>
-        <span className="text-xs text-zinc-600 font-mono">{total} total</span>
+        <span className="text-xs font-mono text-[var(--text-tertiary)]">{total} total</span>
       </div>
 
       {/* Stacked bar */}
-      <div className="flex h-3 rounded-full overflow-hidden bg-zinc-800/50 mb-5">
+      <div className="mb-5 flex h-3 overflow-hidden rounded-full bg-[var(--surface-muted)]">
         {bars?.map((b) =>
           b.count > 0 ? (
             <Link
@@ -938,10 +957,10 @@ function SeverityChart({ severity }: { severity: SeverityCounts }) {
       {/* Legend with hover rings */}
       <div className="grid grid-cols-4 gap-2">
         {bars?.map((b) => (
-          <Link key={b.label} href={`/vulns?severity=${b.label.toLowerCase()}`} className={`text-center hover:bg-zinc-800/50 rounded-lg py-2 transition-all hover:ring-1 ${b.ring}`}>
+          <Link key={b.label} href={`/vulns?severity=${b.label.toLowerCase()}`} className={`rounded-lg py-2 text-center transition-all hover:bg-[var(--surface-muted)] hover:ring-1 ${b.ring}`}>
             <div className={`text-xl font-bold font-mono ${b.text}`}>{b.count}</div>
-            <div className="text-[10px] text-zinc-500 font-medium uppercase tracking-wide">{b.label}</div>
-            <div className="text-[10px] text-zinc-600 font-mono">{total > 0 ? Math.round((b.count / total) * 100) : 0}%</div>
+            <div className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-tertiary)]">{b.label}</div>
+            <div className="text-[10px] font-mono text-[var(--text-tertiary)]">{total > 0 ? Math.round((b.count / total) * 100) : 0}%</div>
           </Link>
         ))}
       </div>
@@ -951,21 +970,32 @@ function SeverityChart({ severity }: { severity: SeverityCounts }) {
 
 function SourceBreakdown({ sources }: { sources: ScanSource[] }) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg shadow-zinc-950/50">
+    <div
+      className="rounded-xl border p-5 shadow-lg"
+      style={{
+        backgroundColor: "var(--surface)",
+        borderColor: "var(--border-subtle)",
+        boxShadow: "0 18px 36px -24px var(--shadow-color)",
+      }}
+    >
       <h3 className="text-sm font-semibold text-zinc-300 mb-4">Scan Sources</h3>
       {sources.length === 0 ? (
-        <p className="text-zinc-600 text-sm">No completed scans yet.</p>
+        <p className="text-sm text-[var(--text-tertiary)]">No completed scans yet.</p>
       ) : (
         <div className="space-y-3">
           {sources?.map((s) => (
-            <div key={s.label} className="flex items-center gap-3 bg-zinc-800/30 rounded-lg px-3 py-2.5 border border-zinc-800/50">
-              <s.icon className="w-4 h-4 text-zinc-400 flex-shrink-0" />
+            <div
+              key={s.label}
+              className="flex items-center gap-3 rounded-lg border px-3 py-2.5"
+              style={{ backgroundColor: "var(--surface-elevated)", borderColor: "var(--border-subtle)" }}
+            >
+              <s.icon className="h-4 w-4 flex-shrink-0 text-[var(--text-secondary)]" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-zinc-200">{s.label}</span>
-                  <span className="text-xs font-mono text-zinc-400">{s.count} scanned</span>
+                  <span className="text-xs font-mono text-[var(--text-secondary)]">{s.count} scanned</span>
                 </div>
-                <div className="flex items-center gap-3 mt-0.5 text-xs text-zinc-500">
+                <div className="mt-0.5 flex items-center gap-3 text-xs text-[var(--text-tertiary)]">
                   <span>{s.vulns} findings</span>
                   {s.critical > 0 && (
                     <span className="text-red-400 font-semibold">{s.critical} critical</span>

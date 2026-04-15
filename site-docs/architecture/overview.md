@@ -4,6 +4,8 @@ For detailed architecture diagrams and module breakdown, see the [full architect
 
 For the data-model contract between native `agent-bom` objects and optional OCSF projection, see [Canonical Model vs OCSF](canonical-vs-ocsf.md).
 
+For the end-to-end intake story across direct scans, read-only integrations, pushed ingest, and imported artifacts, see [Data Ingestion and Security](data-ingestion-and-security.md).
+
 ## Scanning pipeline
 
 ```mermaid

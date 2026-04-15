@@ -433,3 +433,117 @@ class TestGraphStoreBackendSelection:
         assert body["reachable_count"] == 1
         assert body["reachable_nodes"] == ["server:s"]
         assert [path["target"] for path in body["paths"]] == ["server:s"]
+
+    def test_graph_query_returns_bounded_directional_subgraph(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="vuln:CVE-2026-1",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-2026-1",
+                severity="critical",
+                risk_score=9.8,
+                data_sources=["osv"],
+            )
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES, traversable=True)
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(
+                source="server:s",
+                target="vuln:CVE-2026-1",
+                relationship=RelationshipType.VULNERABLE_TO,
+                traversable=True,
+            )
+        )
+        recording_graph_store.graph.attack_paths.append(
+            AttackPath(
+                source="agent:a",
+                target="vuln:CVE-2026-1",
+                hops=["agent:a", "server:s", "vuln:CVE-2026-1"],
+                edges=["uses", "vulnerable_to"],
+                composite_risk=9.8,
+                summary="agent-a -> server-s -> CVE-2026-1",
+            )
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/graph/query",
+            json={
+                "roots": ["agent:a"],
+                "direction": "forward",
+                "max_depth": 2,
+                "relationship_types": ["uses", "vulnerable_to"],
+                "include_attack_paths": True,
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["roots"] == ["agent:a"]
+        assert body["truncated"] is False
+        assert set(body["depth_by_node"]) == {"agent:a", "server:s", "vuln:CVE-2026-1"}
+        assert {node["id"] for node in body["nodes"]} == {"agent:a", "server:s", "vuln:CVE-2026-1"}
+        assert {(edge["source"], edge["target"]) for edge in body["edges"]} == {
+            ("agent:a", "server:s"),
+            ("server:s", "vuln:CVE-2026-1"),
+        }
+        assert body["attack_paths"][0]["target"] == "vuln:CVE-2026-1"
+
+    def test_graph_query_filters_by_compliance_and_source(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="misconfig:iac:K8S-007:file.yaml:12",
+                entity_type=EntityType.MISCONFIGURATION,
+                label="Secrets in env",
+                severity="high",
+                compliance_tags=["CIS-5.4.1", "T1552.001"],
+                data_sources=["iac", "kubernetes"],
+            )
+        )
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="cloud_resource:k8s:file.yaml",
+                entity_type=EntityType.CLOUD_RESOURCE,
+                label="deploy/k8s/file.yaml",
+                data_sources=["iac", "kubernetes"],
+            )
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(
+                source="misconfig:iac:K8S-007:file.yaml:12",
+                target="cloud_resource:k8s:file.yaml",
+                relationship=RelationshipType.AFFECTS,
+            )
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/graph/query",
+            json={
+                "roots": ["misconfig:iac:K8S-007:file.yaml:12"],
+                "direction": "forward",
+                "max_depth": 1,
+                "compliance_prefixes": ["CIS"],
+                "data_sources": ["iac"],
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert [node["id"] for node in body["nodes"]] == ["misconfig:iac:K8S-007:file.yaml:12"]
+        assert body["edges"] == []
+
+    def test_graph_query_returns_404_for_missing_roots(self, recording_graph_store):
+        client = TestClient(app)
+
+        response = client.post("/v1/graph/query", json={"roots": ["agent:missing"]})
+
+        assert response.status_code == 404
+        assert response.json()["detail"]["missing_roots"] == ["agent:missing"]

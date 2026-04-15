@@ -412,6 +412,96 @@ class UnifiedGraph:
             visited.discard(source)
         return visited
 
+    def traverse_subgraph(
+        self,
+        roots: list[str],
+        *,
+        direction: str = "forward",
+        max_depth: int = 4,
+        max_nodes: int = 500,
+        traversable_only: bool = False,
+        relationship_types: set[RelationshipType] | None = None,
+        static_only: bool = False,
+        dynamic_only: bool = False,
+        include_roots: bool = True,
+    ) -> tuple[UnifiedGraph, dict[str, int], bool]:
+        """Traverse the graph from one or more roots and return a bounded subgraph.
+
+        ``direction`` controls whether traversal follows outgoing edges,
+        incoming edges, or both. The returned edges always preserve their
+        original orientation in the canonical graph.
+        """
+        sub = UnifiedGraph(scan_id=self.scan_id, tenant_id=self.tenant_id, created_at=self.created_at)
+        if not roots:
+            return sub, {}, False
+
+        visited: set[str] = set()
+        depth_by_node: dict[str, int] = {}
+        traversed_edges: dict[tuple[str, str, str], UnifiedEdge] = {}
+        queue: deque[tuple[str, int]] = deque()
+
+        for root in roots:
+            if root not in self.nodes:
+                continue
+            queue.append((root, 0))
+            if include_roots:
+                visited.add(root)
+            depth_by_node[root] = 0
+
+        truncated = False
+
+        def _edge_allowed(edge: UnifiedEdge) -> bool:
+            if relationship_types and edge.relationship not in relationship_types:
+                return False
+            if traversable_only and not edge.traversable:
+                return False
+            if static_only and edge.relationship in _DYNAMIC_RELS:
+                return False
+            if dynamic_only and edge.relationship not in _DYNAMIC_RELS:
+                return False
+            return True
+
+        while queue:
+            current, depth = queue.popleft()
+            if depth >= max_depth:
+                continue
+
+            candidates: list[tuple[str, UnifiedEdge]] = []
+            if direction in {"forward", "both"}:
+                candidates.extend((edge.target, edge) for edge in self.adjacency.get(current, []))
+            if direction in {"reverse", "both"}:
+                candidates.extend((edge.source, edge) for edge in self.reverse_adjacency.get(current, []))
+
+            for neighbor, edge in candidates:
+                if not _edge_allowed(edge):
+                    continue
+
+                rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
+                traversed_edges[(edge.source, edge.target, rel)] = edge
+
+                if neighbor in visited:
+                    continue
+                if len(visited) >= max_nodes:
+                    truncated = True
+                    continue
+                visited.add(neighbor)
+                depth_by_node[neighbor] = depth + 1
+                queue.append((neighbor, depth + 1))
+
+        if include_roots:
+            visited.update(root for root in roots if root in self.nodes)
+
+        for node_id in visited:
+            node = self.nodes.get(node_id)
+            if node:
+                sub.add_node(node)
+
+        for edge in traversed_edges.values():
+            if edge.source in sub.nodes and edge.target in sub.nodes:
+                sub.add_edge(edge)
+
+        return sub, depth_by_node, truncated
+
     # ── Centrality ───────────────────────────────────────────────────────
 
     def degree_centrality(self) -> dict[str, float]:

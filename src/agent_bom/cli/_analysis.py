@@ -6,10 +6,13 @@ import json
 import sys
 from collections import Counter
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import click
 from rich.console import Console
+
+if TYPE_CHECKING:
+    from agent_bom.mcp_introspect import IntrospectionReport, ServerIntrospection
 
 
 def _load_mesh_source(scan_file: Optional[str], project_dir: Optional[str]) -> tuple[list[dict], list[dict] | None]:
@@ -36,6 +39,16 @@ def _load_mesh_source(scan_file: Optional[str], project_dir: Optional[str]) -> t
                 server.packages = extract_packages(server)
 
     return [asdict(agent) for agent in agents], None
+
+
+def _coerce_introspection_results(
+    report_or_results: "IntrospectionReport | list[ServerIntrospection]",
+) -> list["ServerIntrospection"]:
+    """Support both IntrospectionReport and the older list-returning test doubles."""
+    results = getattr(report_or_results, "results", report_or_results)
+    if not isinstance(results, list):
+        raise TypeError("introspection results must be a list")
+    return results
 
 
 def _render_mesh_summary(con: Console, agents_data: list[dict], mesh: dict, *, quiet: bool = False) -> None:
@@ -449,7 +462,7 @@ def introspect_cmd(server_command, server_url, timeout, introspect_all, baseline
     # Introspect
     try:
         report = introspect_servers_sync(servers, timeout=timeout)
-        results = report.results
+        results = _coerce_introspection_results(report)
     except ImportError:
         con.print("[red]MCP SDK not installed.[/red] Run: pip install 'agent-bom[mcp-server]'")
         sys.exit(1)

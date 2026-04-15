@@ -140,6 +140,41 @@ def _coerce_snowflake_days(days: Any, *, max_days: int | None = None) -> int:
     return value
 
 
+def _get_connection(
+    account: str | None = None,
+    user: str | None = None,
+    authenticator: str | None = None,
+    database: str | None = None,
+    schema: str | None = None,
+) -> Any:
+    """Open a Snowflake connection using the standard auth resolution contract."""
+    try:
+        import snowflake.connector
+    except ImportError as exc:
+        raise CloudDiscoveryError(
+            "snowflake-connector-python is required for Snowflake access. Install with: pip install 'agent-bom[snowflake]'"
+        ) from exc
+
+    resolved_account = account or os.environ.get("SNOWFLAKE_ACCOUNT", "")
+    resolved_user = user or os.environ.get("SNOWFLAKE_USER", "")
+    if not resolved_account:
+        raise CloudDiscoveryError("SNOWFLAKE_ACCOUNT not set.")
+
+    conn_kwargs: dict[str, Any] = {
+        "account": resolved_account,
+        "user": resolved_user,
+    }
+    if authenticator:
+        conn_kwargs["authenticator"] = authenticator
+    if database:
+        conn_kwargs["database"] = database
+    if schema:
+        conn_kwargs["schema"] = schema
+
+    _resolve_snowflake_auth(conn_kwargs, authenticator)
+    return snowflake.connector.connect(**conn_kwargs)
+
+
 def discover(
     account: str | None = None,
     user: str | None = None,

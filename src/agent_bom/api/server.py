@@ -14,6 +14,7 @@ import asyncio
 import logging
 import os
 import uuid
+from typing import Any, cast
 
 from agent_bom import __version__
 from agent_bom.api import stores as _stores
@@ -367,10 +368,10 @@ def _apply_cors_middleware(origins: list[str]) -> None:
         app.middleware_stack = app.build_middleware_stack()
 
 
-def _replace_middleware(middleware_cls: type, /, **kwargs: object) -> None:
+def _replace_middleware(middleware_cls: object, /, **kwargs: object) -> None:
     """Replace a middleware class in-place so runtime config updates actually apply."""
     app.user_middleware = [m for m in app.user_middleware if m.cls is not middleware_cls]
-    app.user_middleware.insert(0, Middleware(middleware_cls, **kwargs))
+    app.user_middleware.insert(0, Middleware(cast(Any, middleware_cls), **kwargs))
 
 
 # CORS: defaults to localhost; configure via configure_api() before startup

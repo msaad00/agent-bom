@@ -406,6 +406,7 @@ def watch_cmd(webhook, alert_log, interval):
       agent-bom runtime watch --log alerts.jsonl
     """
     from agent_bom.watch import (
+        AlertSink,
         ConsoleAlertSink,
         FileAlertSink,
         WebhookAlertSink,
@@ -415,7 +416,7 @@ def watch_cmd(webhook, alert_log, interval):
 
     console = Console()
 
-    sinks = [ConsoleAlertSink()]
+    sinks: list[AlertSink] = [ConsoleAlertSink()]
     if webhook:
         sinks.append(WebhookAlertSink(webhook))
     if alert_log:

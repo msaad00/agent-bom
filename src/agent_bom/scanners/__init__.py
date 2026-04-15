@@ -6,7 +6,7 @@ import asyncio
 import logging
 import threading
 import time
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -62,6 +62,9 @@ from agent_bom.scanners.state import (
 from agent_bom.soc2 import tag_blast_radius as tag_soc2
 from agent_bom.vuln_compliance import tag_vulnerability as _tag_vuln
 
+if TYPE_CHECKING:
+    from agent_bom.scan_cache import ScanCache
+
 console = Console(stderr=True)
 _logger = logging.getLogger(__name__)
 
@@ -70,6 +73,7 @@ _logger = logging.getLogger(__name__)
 # Also synced from http_client._OFFLINE for transport-layer enforcement.
 offline_mode: bool = False
 _scan_cache_init_lock = threading.Lock()
+_SCAN_CACHE_UNAVAILABLE = object()
 
 
 class IncompleteScanError(RuntimeError):
@@ -177,10 +181,10 @@ def _db_ecosystems_for_package(pkg: Package) -> list[str]:
 
 # ── Scan cache (optional, lazy-initialised) ────────────────────────────────
 
-_scan_cache_instance = None  # type: ignore[var-annotated]
+_scan_cache_instance: "ScanCache | object | None" = None
 
 
-def _get_scan_cache():  # noqa: ANN202
+def _get_scan_cache() -> "ScanCache | None":
     """Return the shared ScanCache singleton, or *None* if unavailable."""
     global _scan_cache_instance  # noqa: PLW0603
     if _scan_cache_instance is None:
@@ -193,8 +197,10 @@ def _get_scan_cache():  # noqa: ANN202
                 except Exception as exc:  # noqa: BLE001
                     _logger.warning("ScanCache initialization failed (caching disabled): %s", exc)
                     record_scan_warning("scan cache unavailable")
-                    _scan_cache_instance = False  # mark as attempted, don't retry
-    return _scan_cache_instance if _scan_cache_instance is not False else None
+                    _scan_cache_instance = _SCAN_CACHE_UNAVAILABLE  # mark as attempted, don't retry
+    if _scan_cache_instance is None or _scan_cache_instance is _SCAN_CACHE_UNAVAILABLE:
+        return None
+    return cast("ScanCache", _scan_cache_instance)
 
 
 async def _enrich_results_if_needed(results: dict[str, list[dict]]) -> dict[str, list[dict]]:

@@ -6,6 +6,7 @@ Endpoints:
   GET  /v1/graph/paths          — attack paths from a source node
   GET  /v1/graph/impact         — blast radius of a node (reverse BFS)
   GET  /v1/graph/search         — full-text graph search
+  POST /v1/graph/query          — programmable traversal query
   GET  /v1/graph/node/{id}      — single node detail with edges + impact
   GET  /v1/graph/snapshots      — list persisted scan snapshots
   GET  /v1/graph/legend         — entity + relationship legends
@@ -17,12 +18,13 @@ Endpoints:
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from agent_bom.api.stores import _get_graph_store
+from agent_bom.graph import SEVERITY_RANK, GraphFilterOptions, RelationshipType, UnifiedGraph
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -64,6 +66,82 @@ class PresetCreate(BaseModel):
     name: str
     description: str = ""
     filters: dict
+
+
+class GraphQueryRequest(BaseModel):
+    roots: list[str] = Field(..., min_length=1, description="One or more starting node IDs")
+    scan_id: str = ""
+    direction: Literal["forward", "reverse", "both"] = "forward"
+    max_depth: int = Field(4, ge=1, le=10)
+    max_nodes: int = Field(500, ge=1, le=5000)
+    traversable_only: bool = False
+    static_only: bool = False
+    dynamic_only: bool = False
+    include_roots: bool = True
+    include_attack_paths: bool = False
+    min_severity: str = ""
+    entity_types: list[str] = Field(default_factory=list)
+    relationship_types: list[str] = Field(default_factory=list)
+    compliance_prefixes: list[str] = Field(default_factory=list)
+    data_sources: list[str] = Field(default_factory=list)
+
+
+def _node_matches_query(
+    node,
+    *,
+    entity_types: set[str],
+    min_severity_rank: int,
+    compliance_prefixes: set[str],
+    data_sources: set[str],
+) -> bool:
+    from agent_bom.graph import SEVERITY_RANK
+
+    if entity_types:
+        entity_type = node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
+        if entity_type not in entity_types:
+            return False
+    if min_severity_rank and SEVERITY_RANK.get(node.severity.lower(), 0) < min_severity_rank:
+        return False
+    if compliance_prefixes:
+        prefixes = {tag.split("-")[0].upper() if "-" in tag else tag.upper() for tag in node.compliance_tags}
+        if not prefixes.intersection(compliance_prefixes):
+            return False
+    if data_sources and not set(node.data_sources).intersection(data_sources):
+        return False
+    return True
+
+
+def _filtered_query_graph(
+    graph,
+    *,
+    roots: list[str],
+    entity_types: set[str],
+    min_severity_rank: int,
+    compliance_prefixes: set[str],
+    data_sources: set[str],
+):
+    filtered = UnifiedGraph(scan_id=graph.scan_id, tenant_id=graph.tenant_id, created_at=graph.created_at)
+    keep_ids = {
+        node.id
+        for node in graph.nodes.values()
+        if _node_matches_query(
+            node,
+            entity_types=entity_types,
+            min_severity_rank=min_severity_rank,
+            compliance_prefixes=compliance_prefixes,
+            data_sources=data_sources,
+        )
+    }
+    keep_ids.update(root for root in roots if root in graph.nodes)
+
+    for node_id in keep_ids:
+        node = graph.nodes.get(node_id)
+        if node:
+            filtered.add_node(node)
+    for edge in graph.edges:
+        if edge.source in keep_ids and edge.target in keep_ids:
+            filtered.add_edge(edge)
+    return filtered
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -231,6 +309,68 @@ async def search_graph(
             "limit": limit,
             "has_more": offset + limit < total,
         },
+    }
+
+
+@router.post("/v1/graph/query", tags=["graph"])
+async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
+    """Run a bounded programmable traversal over the canonical graph."""
+
+    graph = _get_graph_store_or_503().load_graph(scan_id=body.scan_id or "", tenant_id=_tenant(request))
+    missing_roots = [root for root in body.roots if not graph.has_node(root)]
+    if missing_roots:
+        raise HTTPException(status_code=404, detail={"message": "Root nodes not found", "missing_roots": missing_roots})
+
+    rel_types = {RelationshipType(rel) for rel in body.relationship_types} if body.relationship_types else None
+    traversal_graph, depth_by_node, truncated = graph.traverse_subgraph(
+        body.roots,
+        direction=body.direction,
+        max_depth=body.max_depth,
+        max_nodes=body.max_nodes,
+        traversable_only=body.traversable_only,
+        relationship_types=rel_types,
+        static_only=body.static_only,
+        dynamic_only=body.dynamic_only,
+        include_roots=body.include_roots,
+    )
+
+    filtered_graph = _filtered_query_graph(
+        traversal_graph,
+        roots=body.roots,
+        entity_types=set(body.entity_types),
+        min_severity_rank=SEVERITY_RANK.get(body.min_severity.lower(), 0) if body.min_severity else 0,
+        compliance_prefixes={prefix.upper() for prefix in body.compliance_prefixes},
+        data_sources=set(body.data_sources),
+    )
+
+    attack_paths = []
+    if body.include_attack_paths:
+        attack_paths = [
+            ap.to_dict() for ap in graph.attack_paths if ap.source in body.roots and all(hop in filtered_graph.nodes for hop in ap.hops)
+        ]
+
+    return {
+        "scan_id": filtered_graph.scan_id,
+        "tenant_id": filtered_graph.tenant_id,
+        "roots": body.roots,
+        "direction": body.direction,
+        "max_depth": body.max_depth,
+        "max_nodes": body.max_nodes,
+        "truncated": truncated,
+        "missing_roots": [],
+        "depth_by_node": {node_id: depth for node_id, depth in depth_by_node.items() if node_id in filtered_graph.nodes},
+        "nodes": [node.to_dict() for node in filtered_graph.nodes.values()],
+        "edges": [edge.to_dict() for edge in filtered_graph.edges],
+        "attack_paths": attack_paths,
+        "stats": filtered_graph.stats(),
+        "filters": GraphFilterOptions(
+            max_depth=body.max_depth,
+            min_severity=body.min_severity,
+            relationship_types=rel_types or set(),
+            static_only=body.static_only,
+            dynamic_only=body.dynamic_only,
+            include_ids=set(body.roots),
+        ).to_dict(),
     }
 
 

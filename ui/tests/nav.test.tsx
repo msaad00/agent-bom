@@ -43,6 +43,7 @@ describe('Nav', () => {
   it('renders the Discover nav group', () => {
     render(<Nav />)
     expect(screen.getByText('Discover')).toBeInTheDocument()
+    expect(screen.getByText('Inventory, coverage, and starting points')).toBeInTheDocument()
   })
 
   it('renders the Scan nav group', () => {
@@ -154,6 +155,13 @@ describe('Nav', () => {
     for (const group of groups) {
       expect(screen.getAllByText(group).length).toBeGreaterThan(0)
     }
+  })
+
+  it('shows page counts for expanded nav groups', () => {
+    render(<Nav />)
+    expect(screen.getByText('3')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /analyze/i }))
+    expect(screen.getByText('5')).toBeInTheDocument()
   })
 
   it('contains links for all primary pages across all groups', () => {

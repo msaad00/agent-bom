@@ -302,6 +302,32 @@ class TestClickHouseAnalyticsStore:
         assert result == [{"day": "2026-04-05", "severity": "high", "cnt": 1}]
         assert any(table == "vulnerability_scans" for table, _rows in inserted)
 
+    def test_record_events_batches_runtime_rows(self):
+        from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
+
+        inserted = {}
+
+        class _Client:
+            def ensure_tables(self):
+                return None
+
+            def insert_json(self, table, rows):
+                inserted["table"] = table
+                inserted["rows"] = rows
+
+        with patch("agent_bom.cloud.clickhouse.ClickHouseClient", return_value=_Client()):
+            store = ClickHouseAnalyticsStore(url="http://localhost:8123")
+            store.record_events(
+                [
+                    {"event_type": "vulnerable_tool_call", "severity": "high", "tool_name": "read_file", "message": "flagged"},
+                    {"event_type": "vulnerable_tool_call", "severity": "medium", "tool_name": "exec_sql", "message": "flagged"},
+                ]
+            )
+
+        assert inserted["table"] == "runtime_events"
+        assert len(inserted["rows"]) == 2
+        assert inserted["rows"][0]["event_type"] == "vulnerable_tool_call"
+
 
 def test_clickhouse_escape_strips_control_chars_and_quotes():
     from agent_bom.api.clickhouse_store import _escape

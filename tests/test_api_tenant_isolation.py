@@ -479,9 +479,42 @@ async def test_discovery_and_traces_are_tenant_scoped():
     def _flag(_traces, vuln_packages, vuln_servers):
         assert vuln_packages == {"langchain": ["CVE-alpha"]}
         assert vuln_servers == {"sqlite-mcp": ["CVE-alpha"]}
-        return []
+        from agent_bom.otel_ingest import FlaggedCall, ToolCallTrace
+
+        return [
+            FlaggedCall(
+                trace=ToolCallTrace(
+                    trace_id="t1",
+                    span_id="s1",
+                    tool_name="read_file",
+                    server_name="sqlite-mcp",
+                    package_name="langchain",
+                ),
+                reason="Tool hit package langchain with known CVE",
+                severity="high",
+                server="sqlite-mcp",
+                package_name="langchain",
+                matched_cves=["CVE-alpha"],
+            )
+        ]
+
+    class _Analytics:
+        def __init__(self):
+            self.events = []
+
+        def record_events(self, events):
+            self.events.extend(events)
+
+        def record_event(self, event):
+            self.events.append(event)
+
+    analytics = _Analytics()
 
     with patch("agent_bom.otel_ingest.parse_otel_traces", side_effect=_parse):
         with patch("agent_bom.otel_ingest.flag_vulnerable_tool_calls", side_effect=_flag):
-            result = await observability_routes.ingest_traces(req, {"resourceSpans": []})
+            with patch("agent_bom.api.routes.observability._get_analytics_store", return_value=analytics):
+                result = await observability_routes.ingest_traces(req, {"resourceSpans": []})
     assert result["traces"] == 1
+    assert result["persisted_events"] == 1
+    assert analytics.events[0]["event_type"] == "vulnerable_tool_call"
+    assert analytics.events[0]["detector"] == "otel_vulnerable_tool_call"

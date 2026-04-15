@@ -56,6 +56,9 @@ def test_health_endpoint():
     assert body["analytics"]["backend"] in {"disabled", "clickhouse"}
     assert isinstance(body["analytics"]["enabled"], bool)
     assert isinstance(body["analytics"]["buffered"], bool)
+    assert body["storage"]["control_plane_backend"] in {"inmemory", "sqlite", "postgres", "snowflake"}
+    assert body["storage"]["job_store"] in {"inmemory", "sqlite", "postgres", "snowflake"}
+    assert body["storage"]["audit_log"] in {"inmemory", "sqlite", "postgres", "snowflake"}
 
 
 # ---------------------------------------------------------------------------

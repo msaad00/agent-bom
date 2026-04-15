@@ -17,6 +17,8 @@ import uuid
 
 from agent_bom import __version__
 from agent_bom.api import stores as _stores
+from agent_bom.api.audit_log import get_audit_log
+from agent_bom.api.auth import get_key_store
 from agent_bom.api.middleware import (
     APIKeyMiddleware,
     MaxBodySizeMiddleware,
@@ -32,6 +34,7 @@ from agent_bom.api.models import (
     ScanJob,
     ScanRequest,
     StepStatus,  # noqa: F401 — re-exported for tests
+    StorageHealth,
     TracingHealth,
     VersionInfo,
 )
@@ -105,6 +108,57 @@ def _analytics_health() -> AnalyticsHealth:
         flush_interval_seconds=float(getattr(active_store, "flush_interval", 0.0)) if buffered else None,
         max_batch=int(getattr(active_store, "max_batch", 0)) if buffered else None,
     )
+
+
+def _backend_name(store: object | None) -> str:
+    if store is None:
+        return "disabled"
+    name = type(store).__name__.lower()
+    if "snowflake" in name:
+        return "snowflake"
+    if "postgres" in name:
+        return "postgres"
+    if "sqlite" in name:
+        return "sqlite"
+    if "clickhouse" in name:
+        return "clickhouse"
+    if "memory" in name:
+        return "inmemory"
+    if "null" in name:
+        return "disabled"
+    return type(store).__name__
+
+
+def _control_plane_backend(storage: StorageHealth) -> str:
+    primary = [storage.job_store, storage.fleet_store, storage.policy_store]
+    if any(name == "snowflake" for name in primary):
+        return "snowflake"
+    if any(name == "postgres" for name in primary):
+        return "postgres"
+    if any(name == "sqlite" for name in primary):
+        return "sqlite"
+    return "inmemory"
+
+
+def _storage_health() -> StorageHealth:
+    try:
+        schedule_store = _get_schedule_store()
+    except RuntimeError:
+        schedule_store = None
+
+    storage = StorageHealth(
+        job_store=_backend_name(_stores._store or _stores._get_store()),
+        fleet_store=_backend_name(_stores._fleet_store or _stores._get_fleet_store()),
+        policy_store=_backend_name(_stores._policy_store or _stores._get_policy_store()),
+        schedule_store=_backend_name(_stores._schedule_store or schedule_store),
+        exception_store=_backend_name(_stores._exception_store or _stores._get_exception_store()),
+        trend_store=_backend_name(_stores._trend_store or _stores._get_trend_store()),
+        graph_store=_backend_name(_stores._graph_store or _stores._get_graph_store()),
+        key_store=_backend_name(get_key_store()),
+        audit_log=_backend_name(get_audit_log()),
+    )
+    storage.control_plane_backend = _control_plane_backend(storage)
+    return storage
 
 
 @asynccontextmanager
@@ -466,6 +520,7 @@ async def health() -> HealthResponse:
         version=__version__,
         tracing=TracingHealth(**get_tracing_health()),
         analytics=_analytics_health(),
+        storage=_storage_health(),
     )
 
 

@@ -227,6 +227,72 @@ def _check_1_4(cursor: Any) -> CISCheckResult:
     return result
 
 
+def _check_1_5(cursor: Any) -> CISCheckResult:
+    """CIS 1.5 — Ensure password reuse is limited by password history of 24 or greater."""
+    result = CISCheckResult(
+        check_id="1.5",
+        title="Ensure password reuse is limited by password history of 24 or greater",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_AUTH_SECTION,
+        recommendation="Set password policy: CREATE OR REPLACE PASSWORD POLICY ... PASSWORD_HISTORY = 24;",
+    )
+    rows = _run_query(
+        cursor,
+        """
+        SELECT policy_name, password_history
+        FROM SNOWFLAKE.ACCOUNT_USAGE.PASSWORD_POLICIES
+        WHERE deleted IS NULL
+    """,
+    )
+    if not rows:
+        result.status = CheckStatus.FAIL
+        result.evidence = "No password policies configured."
+        return result
+
+    weak = [r for r in rows if int(r.get("password_history", 0) or 0) < 24]
+    if weak:
+        result.status = CheckStatus.FAIL
+        names = [f"{r['policy_name']} (history={r.get('password_history', 0)})" for r in weak]
+        result.evidence = f"Password policies with weak password history: {', '.join(names[:5])}"
+    else:
+        result.evidence = f"All {len(rows)} password policies enforce password history of 24 or greater."
+    return result
+
+
+def _check_1_6(cursor: Any) -> CISCheckResult:
+    """CIS 1.6 — Ensure password maximum age is set to 90 days or less."""
+    result = CISCheckResult(
+        check_id="1.6",
+        title="Ensure password maximum age is set to 90 days or less",
+        status=CheckStatus.PASS,
+        severity="medium",
+        cis_section=_AUTH_SECTION,
+        recommendation="Set password policy: CREATE OR REPLACE PASSWORD POLICY ... PASSWORD_MAX_AGE_DAYS = 90;",
+    )
+    rows = _run_query(
+        cursor,
+        """
+        SELECT policy_name, password_max_age_days
+        FROM SNOWFLAKE.ACCOUNT_USAGE.PASSWORD_POLICIES
+        WHERE deleted IS NULL
+    """,
+    )
+    if not rows:
+        result.status = CheckStatus.FAIL
+        result.evidence = "No password policies configured."
+        return result
+
+    weak = [r for r in rows if int(r.get("password_max_age_days", 0) or 0) == 0 or int(r.get("password_max_age_days", 0) or 0) > 90]
+    if weak:
+        result.status = CheckStatus.FAIL
+        names = [f"{r['policy_name']} (max_age={r.get('password_max_age_days', 0)})" for r in weak]
+        result.evidence = f"Password policies with weak maximum age: {', '.join(names[:5])}"
+    else:
+        result.evidence = f"All {len(rows)} password policies enforce a maximum password age of 90 days or less."
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Individual checks — CIS 2.x (Network Security)
 # ---------------------------------------------------------------------------
@@ -526,7 +592,7 @@ def run_benchmark(
         )
 
     resolved_account = account or os.environ.get("SNOWFLAKE_ACCOUNT", "")
-    resolved_user = user or os.environ.get("SNOWFLAKE_USER", "")
+    resolved_user = user or os.environ.get("SNOWFLAKE_USER") or ""
 
     if not resolved_account:
         raise CloudDiscoveryError("SNOWFLAKE_ACCOUNT not set. Provide --snowflake-account or set the env var.")
@@ -551,6 +617,8 @@ def run_benchmark(
         ("1.2", _check_1_2),
         ("1.3", _check_1_3),
         ("1.4", _check_1_4),
+        ("1.5", _check_1_5),
+        ("1.6", _check_1_6),
         ("2.1", _check_2_1),
         ("2.2", _check_2_2),
         ("3.1", _check_3_1),

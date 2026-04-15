@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useRef } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, type ScanRequest } from "@/lib/api";
-import { ArrowRight, Loader2, Plus, X, Upload } from "lucide-react";
+import { ArrowRight, Cloud, Loader2, Plus, Radio, Upload, Workflow, X } from "lucide-react";
 
 // ─── Scan Form ──────────────────────────────────────────────────────────────
 
@@ -77,9 +78,38 @@ export function ScanForm() {
   return (
     <div className="max-w-2xl">
       <h1 className="text-2xl font-semibold tracking-tight mb-1">New Scan</h1>
-      <p className="text-zinc-400 text-sm mb-8">
-        Select sources to scan. All sources feed into one unified CVE pipeline.
+      <p className="text-zinc-400 text-sm mb-5">
+        Launch direct scan jobs from this page. Cloud-backed governance feeds, connector-backed discovery, and trace ingest live in separate product surfaces.
       </p>
+
+      <div className="grid gap-3 md:grid-cols-2 mb-8">
+        <SurfaceCard
+          icon={Workflow}
+          title="Direct scans"
+          description="Local MCP configs, images, Kubernetes, Terraform, GitHub Actions, custom inventory, and Python agent projects start here."
+          badge="This page"
+        />
+        <SurfaceCard
+          icon={Cloud}
+          title="Cloud and governance feeds"
+          description="Snowflake and other cloud-backed governance or activity data are surfaced through the governance and activity pages, not this scan form."
+          href="/governance"
+          action="Open governance"
+        />
+        <SurfaceCard
+          icon={Radio}
+          title="Trace ingest"
+          description="OTLP and runtime-event ingest are handled through the traces surface and the POST /v1/traces API contract."
+          href="/traces"
+          action="Open traces"
+        />
+        <SurfaceCard
+          icon={Cloud}
+          title="Connectors and enterprise sources"
+          description="Connector-backed discovery and SIEM integrations exist in the backend today, but they are not yet exposed as first-class setup flows on this page."
+          badge="API today"
+        />
+      </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Auto-discover */}
@@ -288,6 +318,45 @@ function Section({ title, subtitle, children }: { title: string; subtitle: strin
       {children}
     </div>
   );
+}
+
+function SurfaceCard({
+  icon: Icon,
+  title,
+  description,
+  href,
+  action,
+  badge,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+  href?: string;
+  action?: string;
+  badge?: string;
+}) {
+  const content = (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-900/80">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2">
+          <span className="rounded-lg border border-zinc-800 bg-zinc-950 p-2">
+            <Icon className="w-4 h-4 text-emerald-400" />
+          </span>
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-100">{title}</h3>
+            {badge && <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500 mt-0.5">{badge}</p>}
+          </div>
+        </div>
+        {href && <ArrowRight className="w-4 h-4 text-zinc-500" />}
+      </div>
+      <p className="text-xs leading-5 text-zinc-400">{description}</p>
+      {href && action && <div className="mt-4 text-xs font-medium text-emerald-400">{action}</div>}
+    </div>
+  );
+
+  if (!href) return content;
+
+  return <Link href={href}>{content}</Link>;
 }
 
 function ListInput({

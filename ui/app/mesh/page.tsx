@@ -374,7 +374,7 @@ export default function MeshPage() {
         <div>
           <h1 className="text-lg font-semibold text-zinc-100">Agent Mesh</h1>
           <p className="text-xs text-zinc-500">
-            Selected agents, shared servers, packages, and findings
+            Agent-centered shared infrastructure across MCP servers, packages, tools, and findings
           </p>
         </div>
         <div className="flex items-center gap-3">

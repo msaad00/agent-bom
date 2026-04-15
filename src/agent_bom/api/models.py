@@ -137,11 +137,25 @@ class AnalyticsHealth(BaseModel):
     max_batch: int | None = None
 
 
+class StorageHealth(BaseModel):
+    control_plane_backend: str = "inmemory"
+    job_store: str = "inmemory"
+    fleet_store: str = "inmemory"
+    policy_store: str = "inmemory"
+    schedule_store: str = "inmemory"
+    exception_store: str = "inmemory"
+    trend_store: str = "inmemory"
+    graph_store: str = "inmemory"
+    key_store: str = "inmemory"
+    audit_log: str = "inmemory"
+
+
 class HealthResponse(BaseModel):
     status: str = "ok"
     version: str
     tracing: TracingHealth
     analytics: AnalyticsHealth
+    storage: StorageHealth
 
 
 # ─── Fleet Models ──────────────────────────────────────────────────────────

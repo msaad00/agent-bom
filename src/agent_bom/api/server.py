@@ -165,7 +165,7 @@ def _storage_health() -> StorageHealth:
 async def _lifespan(app_instance: FastAPI):
     """Start background cleanup task on startup, cancel on shutdown."""
     configure_otel_tracing()
-    # Priority: Snowflake > SQLite > InMemory (lazy default)
+    # Priority: Snowflake > Postgres > SQLite > InMemory (lazy default)
     if os.environ.get("SNOWFLAKE_ACCOUNT"):
         from agent_bom.api.snowflake_store import (
             SnowflakeFleetStore,

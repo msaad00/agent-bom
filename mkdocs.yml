@@ -91,6 +91,7 @@ nav:
       - Policy Engine: features/policy.md
   - Deployment:
       - Overview: deployment/overview.md
+      - Backend Parity: deployment/backend-parity.md
       - Docker: deployment/docker.md
       - Kubernetes: deployment/kubernetes.md
       - SIEM Integration: deployment/siem-integration.md

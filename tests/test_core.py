@@ -1978,6 +1978,7 @@ def test_api_health_endpoint():
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
     assert "tracing" in resp.json()
+    assert "storage" in resp.json()
 
 
 def test_api_version_endpoint():

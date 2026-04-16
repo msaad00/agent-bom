@@ -312,6 +312,8 @@ def _get_registry_data() -> dict:
     global _registry_cache
     registry_path = Path(__file__).parent / "mcp_registry.json"
     _registry_cache = _mcp_runtime.get_registry_data(_registry_cache, registry_path)
+    if _registry_cache is None:
+        raise RuntimeError("Registry cache failed to load")
     return _registry_cache
 
 
@@ -320,6 +322,8 @@ def _get_registry_data_raw() -> str:
     global _registry_raw_cache
     registry_path = Path(__file__).parent / "mcp_registry.json"
     _registry_raw_cache = _mcp_runtime.get_registry_data_raw(_registry_raw_cache, registry_path)
+    if _registry_raw_cache is None:
+        raise RuntimeError("Registry raw cache failed to load")
     return _registry_raw_cache
 
 
@@ -516,17 +520,15 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
     mcp._mcp_server.version = __version__
 
     # Import tool implementations
+    from agent_bom.mcp_server_specialized import register_specialized_ai_tools
     from agent_bom.mcp_tools.analysis import (
         analytics_query_impl,
         blast_radius_impl,
         context_graph_impl,
     )
-    from agent_bom.mcp_tools.cloud import gpu_infra_scan_impl, vector_db_scan_impl
     from agent_bom.mcp_tools.compliance import (
-        aisvs_benchmark_impl,
         cis_benchmark_impl,
         compliance_impl,
-        license_compliance_scan_impl,
         policy_check_impl,
     )
     from agent_bom.mcp_tools.registry import (
@@ -546,15 +548,6 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
     )
     from agent_bom.mcp_tools.sbom import diff_impl, generate_sbom_impl, remediate_impl
     from agent_bom.mcp_tools.scanning import check_impl, code_scan_impl, scan_impl
-    from agent_bom.mcp_tools.specialized import (
-        ai_inventory_scan_impl,
-        browser_extension_scan_impl,
-        dataset_card_scan_impl,
-        model_file_scan_impl,
-        model_provenance_scan_impl,
-        prompt_scan_impl,
-        training_pipeline_scan_impl,
-    )
 
     # ── Tool 1: scan ──────────────────────────────────────────────────
 
@@ -1452,393 +1445,13 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             "Generate a compliance summary suitable for security review."
         )
 
-    # ── Tool 21: vector_db_scan ───────────────────────────────────────
-
-    @mcp.tool(annotations=_READ_ONLY, title="Vector DB Scan")
-    async def vector_db_scan(
-        hosts: Annotated[
-            str | None,
-            Field(description="Comma-separated hosts to probe (default: 127.0.0.1). Example: '127.0.0.1,10.0.0.5'."),
-        ] = None,
-    ) -> str:
-        """Scan for running vector databases and assess their security posture.
-
-        Probes well-known ports for Qdrant (6333), Weaviate (8080), Chroma (8000),
-        and Milvus (9091). For each discovered instance checks:
-        - Authentication required (no_auth flag if collections accessible without credentials)
-        - Network exposure (network_exposed if accessible beyond localhost)
-        - Number of collections/indexes exposed without auth
-        - MAESTRO layer: KC4: Memory & Context
-
-        Returns:
-            JSON with per-database risk assessment including risk_level, risk_flags, and metadata.
-        """
-        return await _execute_tool_async(
-            "vector_db_scan",
-            vector_db_scan_impl,
-            hosts=hosts,
-            _truncate_response=_truncate_response,
-        )
-
-    # ── Tool 22: aisvs_benchmark ──────────────────────────────────────
-
-    @mcp.tool(annotations=_READ_ONLY, title="AISVS Benchmark")
-    async def aisvs_benchmark(
-        checks: Annotated[
-            str | None,
-            Field(description=("Comma-separated AISVS check IDs to run (e.g. 'AI-4.1,AI-6.1'). Omit to run all 9 checks.")),
-        ] = None,
-    ) -> str:
-        """Run AISVS v1.0 (AI Security Verification Standard) compliance checks.
-
-        Evaluates the local AI system stack against OWASP AISVS v1.0 controls:
-        - AI-4.1 Model files use safe serialization (not pickle/pt/bin)
-        - AI-4.2 Model files have cryptographic integrity digest
-        - AI-4.3 Ollama inference API not network-exposed without auth
-        - AI-5.2 No ML development tools (Jupyter, MLflow, Ray) network-exposed
-        - AI-6.1 Vector stores require authentication
-        - AI-6.2 Vector stores bound to localhost only
-        - AI-7.1 No known malicious or typosquatted ML packages installed
-        - AI-7.2 Locally cached models have verifiable provenance
-        - AI-8.1 MCP server tool definitions include input schemas
-
-        Each check is tagged with its MAESTRO layer (KC1-KC6).
-
-        Returns:
-            JSON with per-check pass/fail results, evidence, severity, MAESTRO layer, and pass rate.
-        """
-        return await _execute_tool_async(
-            "aisvs_benchmark",
-            aisvs_benchmark_impl,
-            checks=checks,
-            _truncate_response=_truncate_response,
-        )
-
-    # ── Tool 23: gpu_infra_scan ────────────────────────────────────
-    @mcp.tool(annotations=_READ_ONLY, title="GPU Infrastructure Scan")
-    async def gpu_infra_scan(
-        k8s_context: Annotated[
-            str | None,
-            Field(description="kubectl context to use for K8s GPU node discovery. Omit for current context."),
-        ] = None,
-        probe_dcgm: Annotated[
-            bool,
-            Field(description="Whether to probe DCGM exporter endpoints on port 9400 (unauthenticated metrics leak detection)."),
-        ] = True,
-    ) -> str:
-        """Discover GPU/AI compute infrastructure: containers, K8s nodes, and DCGM endpoints.
-
-        Scans for GPU-enabled workloads from the local Docker daemon and Kubernetes
-        clusters. Identifies NVIDIA base images, CUDA/cuDNN versions, explicit GPU
-        device assignments, and unauthenticated DCGM exporter endpoints.
-
-        Discovery targets (MAESTRO KC6):
-        - NVIDIA base images (nvcr.io/nvidia/, nvidia/cuda, etc.)
-        - CUDA/cuDNN versions from container labels and env vars
-        - GPU-assigned containers (Docker --gpus, K8s nvidia.com/gpu requests)
-        - Unauthenticated DCGM exporter endpoints (port 9400 — GPU metrics leak)
-        - Kubernetes GPU node inventory with capacity and allocatable counts
-
-        Requires docker and/or kubectl on PATH. All discovery is best-effort
-        (returns empty results rather than failing if tools are unavailable).
-
-        Returns:
-            JSON with GPU containers, K8s nodes, DCGM endpoints, CUDA version
-            inventory, and a risk summary with unauthenticated DCGM count.
-        """
-        return await _execute_tool_async(
-            "gpu_infra_scan",
-            gpu_infra_scan_impl,
-            k8s_context=k8s_context,
-            probe_dcgm=probe_dcgm,
-            _truncate_response=_truncate_response,
-        )
-
-    # ── Tool 24: dataset_card_scan ──────────────────────────────────
-
-    @mcp.tool(annotations=_READ_ONLY, title="Dataset Card Scan")
-    async def dataset_card_scan(
-        directory: Annotated[
-            str,
-            Field(description="Directory path to scan for dataset cards (dataset_info.json, README.md frontmatter, .dvc files)."),
-        ],
-    ) -> str:
-        """Scan a directory for ML dataset card metadata and provenance.
-
-        Discovers and parses:
-        - HuggingFace dataset_info.json (auto-generated metadata)
-        - HuggingFace README.md YAML frontmatter (dataset cards)
-        - DVC .dvc tracking files (data versioning provenance)
-
-        Flags: UNLICENSED_DATASET, NO_DATASET_CARD, UNVERSIONED_DATA, REMOTE_DATA_SOURCE.
-        Tags findings with compliance frameworks: OWASP LLM (LLM03), MITRE ATLAS,
-        NIST AI RMF (MAP-3.5), EU AI Act (ART-10).
-        """
-        return await _execute_tool_async(
-            "dataset_card_scan",
-            dataset_card_scan_impl,
-            directory=str(_safe_path(directory)),
-            _truncate_response=_truncate_response,
-        )
-
-    # ── Tool 25: training_pipeline_scan ──────────────────────────────
-
-    @mcp.tool(annotations=_READ_ONLY, title="Training Pipeline Scan")
-    async def training_pipeline_scan(
-        directory: Annotated[
-            str,
-            Field(description="Directory path to scan for training pipeline artifacts (MLflow, Kubeflow, W&B)."),
-        ],
-    ) -> str:
-        """Scan a directory for ML training pipeline lineage and provenance.
-
-        Discovers and parses:
-        - MLflow: meta.yaml, MLmodel, requirements.txt, conda.yaml
-        - Kubeflow: Argo workflow YAML, KFP v2 pipelineSpec YAML
-        - W&B: wandb-metadata.json, config.yaml, wandb-summary.json
-
-        Flags: UNSAFE_SERIALIZATION, MISSING_PROVENANCE, MISSING_REQUIREMENTS, EXPOSED_CREDENTIALS.
-        Tags findings with compliance frameworks: OWASP LLM (LLM03), MITRE ATLAS (AML.T0020),
-        NIST AI RMF (MAP-3.5, GOVERN-1.7).
-        """
-        return await _execute_tool_async(
-            "training_pipeline_scan",
-            training_pipeline_scan_impl,
-            directory=str(_safe_path(directory)),
-            _truncate_response=_truncate_response,
-        )
-
-    # ── Tool 26: browser_extension_scan ──────────────────────────────
-
-    @mcp.tool(annotations=_READ_ONLY, title="Browser Extension Scan")
-    async def browser_extension_scan(
-        include_low_risk: Annotated[
-            bool,
-            Field(description="Include low-risk extensions in results (default: only medium+ risk)."),
-        ] = False,
-    ) -> str:
-        """Scan installed browser extensions for dangerous permissions.
-
-        Scans Chrome, Chromium, Brave, Edge, and Firefox for extensions with:
-        - nativeMessaging (can execute arbitrary commands)
-        - debugger (can intercept all browser traffic)
-        - cookies/clipboardRead on AI domains
-        - Broad host access patterns (*://*/*)
-        - AI assistant domain access (claude.ai, chatgpt.com, cursor.sh)
-
-        Deduplicates across profiles. Returns risk-ranked results.
-        """
-        return await _execute_tool_async(
-            "browser_extension_scan",
-            browser_extension_scan_impl,
-            include_low_risk=include_low_risk,
-            _truncate_response=_truncate_response,
-        )
-
-    # ── Tool 27: model_provenance_scan ───────────────────────────────
-
-    @mcp.tool(annotations=_READ_ONLY, title="Model Provenance Scan")
-    async def model_provenance_scan(
-        model_id: Annotated[
-            str,
-            Field(description="HuggingFace model ID (e.g. 'meta-llama/Llama-3-8B') or Ollama model name (e.g. 'llama3')."),
-        ],
-        source: Annotated[
-            str,
-            Field(description="Model source: 'huggingface' or 'ollama' (default: huggingface)."),
-        ] = "huggingface",
-    ) -> str:
-        """Check ML model provenance and supply chain metadata.
-
-        Queries HuggingFace Hub or Ollama for:
-        - Serialization format (safetensors=safe, pickle/pt=unsafe)
-        - SHA256 digest verification
-        - Gated/private status
-        - Model card presence
-        - Risk assessment (critical/high/medium/safe)
-
-        Returns structured provenance data for supply chain risk assessment.
-        """
-        return await _execute_tool_async(
-            "model_provenance_scan",
-            model_provenance_scan_impl,
-            model_id=model_id,
-            source=source,
-            _truncate_response=_truncate_response,
-        )
-
-    # ── Tool 28: prompt_scan ─────────────────────────────────────────
-
-    @mcp.tool(annotations=_READ_ONLY, title="Prompt Template Scan")
-    async def prompt_scan(
-        directory: Annotated[
-            str,
-            Field(description="Directory path to scan for prompt template files (.prompt, system_prompt.*, prompts/ directories)."),
-        ],
-    ) -> str:
-        """Scan prompt template files for injection risks and security issues.
-
-        Discovers and analyzes:
-        - .prompt files
-        - system_prompt.* files
-        - Files in prompts/ directories
-
-        Checks for injection patterns, unsafe variable interpolation, and
-        missing guardrails in prompt templates.
-        """
-        return await _execute_tool_async(
-            "prompt_scan",
-            prompt_scan_impl,
-            directory=str(_safe_path(directory)),
-            _truncate_response=_truncate_response,
-        )
-
-    # ── Tool 29: model_file_scan ─────────────────────────────────────
-
-    @mcp.tool(annotations=_READ_ONLY, title="Model File Scan")
-    async def model_file_scan(
-        directory: Annotated[
-            str,
-            Field(description="Directory path to scan for ML model files (.gguf, .safetensors, .onnx, .pt, .pkl, .h5, etc.)."),
-        ],
-    ) -> str:
-        """Scan a directory for ML model files and assess serialization risks.
-
-        Discovers model files and checks:
-        - Serialization format (safetensors=safe, pickle/joblib=unsafe)
-        - File size and format metadata
-        - GGUF/GGML quantization details
-        - Known unsafe patterns in pickle-based formats
-
-        Returns structured results with risk assessment per model file.
-        """
-        return await _execute_tool_async(
-            "model_file_scan",
-            model_file_scan_impl,
-            directory=str(_safe_path(directory)),
-            _truncate_response=_truncate_response,
-        )
-
-    # ── Tool 30: ai_inventory_scan ────────────────────────────────
-
-    @mcp.tool(annotations=_READ_ONLY, title="AI Inventory Scan")
-    async def ai_inventory_scan(
-        directory: Annotated[
-            str,
-            Field(description="Directory to scan for AI SDK imports, model refs, API keys, shadow AI (Python/JS/TS/Java/Go/Rust/Ruby)."),
-        ],
-    ) -> str:
-        """Scan source code for AI component usage patterns.
-
-        Detects:
-        - AI SDK imports (openai, anthropic, langchain, etc.) across 7 languages
-        - Model string references (gpt-4o, claude-3-5-sonnet, llama-3, etc.)
-        - Hardcoded API keys (sk-proj-*, sk-ant-*, hf_*, etc.)
-        - Deprecated model usage with recommended replacements
-        - Shadow AI: SDKs imported in code but not declared in package manifests
-
-        Returns structured inventory with severity classification.
-        """
-        return await _execute_tool_async(
-            "ai_inventory_scan",
-            ai_inventory_scan_impl,
-            directory=str(_safe_path(directory)),
-            _truncate_response=_truncate_response,
-        )
-
-    # ── Tool 31: license_compliance_scan ────────────────────────────
-
-    @mcp.tool(annotations=_READ_ONLY, title="License Compliance Scan")
-    async def license_compliance_scan(
-        scan_json: Annotated[
-            str,
-            Field(
-                description=(
-                    "JSON string of a previous scan result (from the 'scan' tool) "
-                    "containing agents with packages. Or a JSON array of "
-                    '{"name": "pkg", "version": "1.0", "ecosystem": "npm", "license": "MIT"} objects.'
-                ),
-            ),
-        ],
-        policy_json: Annotated[
-            str,
-            Field(
-                default="",
-                description=(
-                    'Optional JSON policy: {"license_block": ["GPL-*"], "license_warn": ["LGPL-*"]}. '
-                    "Uses default policy (block GPL/AGPL/SSPL/BUSL/EUPL/OSL, warn LGPL/MPL/EPL/CDDL) if empty."
-                ),
-            ),
-        ] = "",
-    ) -> str:
-        """Evaluate package licenses against compliance policy.
-
-        Categorizes each package license using the full SPDX catalog (2,500+ licenses)
-        with proper expression parsing (OR/AND/WITH), deprecated ID normalization,
-        and network-copyleft detection (AGPL, EUPL, OSL).
-
-        Risk tiers: permissive (low), weak-copyleft (medium), strong-copyleft (high),
-        network-copyleft (critical), commercial-risk (critical), source-available (high).
-
-        Returns structured report with compliance status, findings, and risk summary.
-        """
-        return await _execute_tool_async(
-            "license_compliance_scan",
-            license_compliance_scan_impl,
-            scan_json=scan_json,
-            policy_json=policy_json,
-            _truncate_response=_truncate_response,
-        )
-
-    # ── Tool 32: ingest_external_scan ───────────────────────────────
-
-    @mcp.tool(annotations=_READ_ONLY, title="Ingest External Scanner Report")
-    async def ingest_external_scan(
-        scan_json: Annotated[
-            str,
-            Field(
-                description="JSON string from Trivy, Grype, or Syft scan output",
-            ),
-        ],
-    ) -> str:
-        """Ingest Trivy, Grype, or Syft JSON scan output and return packages with blast radius analysis.
-
-        Auto-detects the scanner format from the JSON structure:
-        - Trivy (``trivy fs --format json``): Results + Vulnerabilities
-        - Grype (``grype --output json``): matches array
-        - Syft (``syft --output syft-json``): artifacts + schema
-
-        Returns a summary of ingested packages and their vulnerability counts.
-        Pass the full JSON string from the scanner's ``--format json`` / ``--output json``
-        output as the ``scan_json`` argument.
-        """
-
-        async def _impl() -> str:
-            import json as _json
-
-            from agent_bom.parsers.external_scanners import detect_and_parse
-
-            try:
-                data = _json.loads(scan_json)
-                packages = detect_and_parse(data)
-                return _json.dumps(
-                    {
-                        "packages": len(packages),
-                        "ingested": [
-                            {
-                                "name": p.name,
-                                "version": p.version,
-                                "ecosystem": p.ecosystem,
-                                "vulnerabilities": len(p.vulnerabilities),
-                            }
-                            for p in packages[:50]
-                        ],
-                    }
-                )
-            except Exception as e:  # noqa: BLE001
-                return _truncate_response(_json.dumps({"error": sanitize_error(e)}))
-
-        return await _execute_tool_async("ingest_external_scan", _impl)
+    register_specialized_ai_tools(
+        mcp,
+        read_only=_READ_ONLY,
+        execute_tool_async=_execute_tool_async,
+        safe_path=_safe_path,
+        truncate_response=_truncate_response,
+    )
 
     # ── Custom routes: metadata + health ─────────────────────────────
 

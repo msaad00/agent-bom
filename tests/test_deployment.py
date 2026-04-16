@@ -149,17 +149,18 @@ def test_server_card_has_all_tools():
 
 
 def test_server_card_tool_count_matches_decorators():
-    """_SERVER_CARD_TOOLS must list every @mcp.tool in create_mcp_server."""
+    """_SERVER_CARD_TOOLS must list every @mcp.tool across MCP tool surfaces."""
     import inspect
     import re
 
+    from agent_bom import mcp_server_specialized
     from agent_bom.mcp_server import _SERVER_CARD_TOOLS, create_mcp_server
 
-    source = inspect.getsource(create_mcp_server)
+    source = inspect.getsource(create_mcp_server) + inspect.getsource(mcp_server_specialized)
     decorator_count = len(re.findall(r"@mcp\.tool", source))
     card_count = len(_SERVER_CARD_TOOLS)
     assert card_count == decorator_count, (
-        f"_SERVER_CARD_TOOLS has {card_count} entries but create_mcp_server has {decorator_count} @mcp.tool decorators"
+        f"_SERVER_CARD_TOOLS has {card_count} entries but MCP server surfaces define {decorator_count} @mcp.tool decorators"
     )
 
 

@@ -3133,13 +3133,12 @@ def test_remediation_plan_named_assets(sample_report):
 
 
 def test_remediation_plan_impact_score(sample_report):
-    """Impact score accounts for agents, creds, and vulns."""
+    """Remediation score mirrors the grouped blast-radius risk score."""
     from agent_bom.output import build_remediation_plan
 
     plan = build_remediation_plan(sample_report.blast_radii)
     item = plan[0]
-    # 1 agent * 10 + 1 cred * 3 + 1 vuln = 14
-    assert item["impact"] == 14
+    assert item["impact"] == round(sample_report.blast_radii[0].risk_score, 1)
 
 
 def test_remediation_json_in_output(sample_report):

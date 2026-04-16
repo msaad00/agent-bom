@@ -122,7 +122,7 @@ describe('api.getScan', () => {
             fixed_version: null,
             severity: 'high',
             is_kev: false,
-            impact_score: 70,
+            impact_score: 7.0,
             priority: 1,
             action: 'review',
             reason: 'Only prerelease fixes were available and suppressed by default.',

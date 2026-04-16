@@ -142,6 +142,7 @@ export interface RemediationItem {
   fixed_version: string | null;
   severity: string;
   is_kev: boolean;
+  /** Normalized 0-10 remediation risk derived from grouped blast-radius risk. */
   impact_score: number;
   priority?: number;
   action?: string;

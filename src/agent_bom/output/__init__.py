@@ -1027,7 +1027,7 @@ def print_threat_frameworks(report: AIBOMReport) -> None:
 def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
     """Group blast radii into a prioritized remediation plan.
 
-    Returns items sorted by impact: each item = one upgrade action that clears
+    Returns items sorted by grouped blast-radius risk: each item = one upgrade action that clears
     N vulns across M agents and frees exposed credentials.
     """
     from collections import defaultdict
@@ -1062,6 +1062,7 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
             "high_count": 0,
             "has_kev": False,
             "ai_risk": False,
+            "max_risk_score": 0.0,
             "references": set(),
             "suppressed_prerelease_fixes": set(),
         }
@@ -1113,6 +1114,7 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
             g["has_kev"] = True
         if br.ai_risk_context:
             g["ai_risk"] = True
+        g["max_risk_score"] = max(g["max_risk_score"], br.risk_score)
 
     plan = []
     for g in groups.values():
@@ -1132,9 +1134,10 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
         g["cis"] = sorted(g["cis"])
         g["references"] = sorted(g["references"])
         g["suppressed_prerelease_fixes"] = sorted(g["suppressed_prerelease_fixes"])
-        g["impact"] = (
-            len(g["agents"]) * 10 + len(g["creds"]) * 3 + len(g["vulns"]) + (5 if g["has_kev"] else 0) + (3 if g["ai_risk"] else 0)
-        )
+        # Use the highest grouped blast-radius risk score so remediation stays
+        # anchored to the canonical vulnerability risk model instead of a
+        # separate package-level heuristic.
+        g["impact"] = round(g["max_risk_score"], 1)
         if g["has_kev"] or g["critical_count"] >= 3:
             g["priority"] = "P1"
         elif g["critical_count"] > 0 or (g["high_count"] > 0 and g["creds"]):
@@ -1200,7 +1203,7 @@ def print_remediation_plan(report: AIBOMReport) -> None:
     }
 
     if fixable:
-        console.print(f"  [bold]{len(fixable)} fixable upgrade(s) — ordered by blast radius impact:[/bold]\n")
+        console.print(f"  [bold]{len(fixable)} fixable upgrade(s) — ordered by grouped blast-radius risk:[/bold]\n")
         for i, item in enumerate(fixable, 1):
             sev = item["max_severity"]
             style = sev_style.get(sev, "white")

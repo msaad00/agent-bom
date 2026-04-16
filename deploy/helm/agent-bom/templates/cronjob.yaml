@@ -18,8 +18,16 @@ spec:
           labels:
             {{- include "agent-bom.labels" . | nindent 12 }}
             app.kubernetes.io/component: scanner
+          {{- with .Values.podAnnotations }}
+          annotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
         spec:
           serviceAccountName: {{ include "agent-bom.serviceAccountName" . }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           securityContext:
             {{- toYaml .Values.podSecurityContext | nindent 12 }}
           containers:
@@ -54,5 +62,17 @@ spec:
           volumes:
             - name: output
               emptyDir: {}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           restartPolicy: OnFailure
 {{- end }}

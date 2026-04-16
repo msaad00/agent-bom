@@ -1,0 +1,43 @@
+{{- if and .Values.controlPlane.enabled .Values.pdb.enabled }}
+{{- if and .Values.controlPlane.api.enabled (gt (int .Values.controlPlane.api.replicas) 1) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "agent-bom.name" . }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+      app.kubernetes.io/component: api
+  {{- if ne .Values.pdb.maxUnavailable nil }}
+  maxUnavailable: {{ .Values.pdb.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ .Values.pdb.minAvailable }}
+  {{- end }}
+---
+{{- end }}
+{{- if and .Values.controlPlane.ui.enabled (gt (int .Values.controlPlane.ui.replicas) 1) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "agent-bom.name" . }}-ui
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+      app.kubernetes.io/component: ui
+  {{- if ne .Values.pdb.maxUnavailable nil }}
+  maxUnavailable: {{ .Values.pdb.maxUnavailable }}
+  {{- else }}
+  minAvailable: {{ .Values.pdb.minAvailable }}
+  {{- end }}
+{{- end }}
+{{- end }}

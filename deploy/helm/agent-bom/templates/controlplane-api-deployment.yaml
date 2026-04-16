@@ -1,0 +1,75 @@
+{{- if and .Values.controlPlane.enabled .Values.controlPlane.api.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agent-bom.name" . }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  replicas: {{ .Values.controlPlane.api.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        {{- include "agent-bom.labels" . | nindent 8 }}
+        app.kubernetes.io/component: api
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            {{- range .Values.controlPlane.api.args }}
+            - {{ . | quote }}
+            {{- end }}
+          ports:
+            - containerPort: {{ .Values.controlPlane.api.port }}
+              name: http
+              protocol: TCP
+          {{- with .Values.controlPlane.api.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.controlPlane.api.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.controlPlane.api.resources | nindent 12 }}
+          livenessProbe:
+            {{- toYaml .Values.controlPlane.api.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.controlPlane.api.readinessProbe | nindent 12 }}
+          startupProbe:
+            {{- toYaml .Values.controlPlane.api.startupProbe | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

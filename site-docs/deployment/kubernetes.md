@@ -12,6 +12,11 @@ Located in `deploy/k8s/`:
 | `daemonset.yaml` | Runtime protection on every node |
 | `sidecar-example.yaml` | Proxy sidecar alongside an MCP server |
 
+Those static manifests are still the scanner/runtime path.
+
+If you want the packaged API + dashboard control plane, use the Helm chart
+described below.
+
 ## Quick start
 
 ```bash
@@ -32,6 +37,12 @@ helm install agent-bom deploy/helm/agent-bom/ \
   -n agent-bom --create-namespace \
   --set monitor.enabled=true
 
+# Package the API + UI control plane
+helm install agent-bom deploy/helm/agent-bom/ \
+  -n agent-bom --create-namespace \
+  --set controlPlane.enabled=true \
+  --set controlPlane.ingress.enabled=true
+
 # Custom schedule
 helm install agent-bom deploy/helm/agent-bom/ \
   -n agent-bom --create-namespace \
@@ -49,5 +60,12 @@ helm install agent-bom deploy/helm/agent-bom/ \
 | `scanner.env` | `[]` | Extra environment variables for the scanner CronJob |
 | `monitor.enabled` | `false` | Deploy DaemonSet monitor |
 | `monitor.port` | `8423` | HTTP port for protect endpoint |
+| `controlPlane.enabled` | `false` | Package API + dashboard Deployments and Services |
+| `controlPlane.ingress.enabled` | `false` | Add same-origin ingress routing for UI + API |
+| `controlPlane.ui.env` | `NEXT_PUBLIC_API_URL=\"\"` | Blank by default so the browser uses same-origin paths |
+| `networkPolicy.restrictIngress` | `false` | Keep ingress open unless you explicitly provide ingress policy rules |
 | `rbac.create` | `true` | Create RBAC resources |
 | `serviceAccount.annotations` | `{}` | Attach provider-specific identity such as AWS IRSA |
+
+For the full control-plane topology and secret wiring, see
+[Packaged API + UI Control Plane](control-plane-helm.md).

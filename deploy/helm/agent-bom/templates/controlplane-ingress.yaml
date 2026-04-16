@@ -1,0 +1,52 @@
+{{- if and .Values.controlPlane.enabled .Values.controlPlane.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "agent-bom.name" . }}-control-plane
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+  {{- with .Values.controlPlane.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.controlPlane.ingress.className }}
+  ingressClassName: {{ . | quote }}
+  {{- end }}
+  rules:
+    {{- range .Values.controlPlane.ingress.hosts }}
+    - {{- if .host }}
+      host: {{ .host | quote }}
+      {{- end }}
+      http:
+        paths:
+          {{- if and $.Values.controlPlane.api.enabled $.Values.controlPlane.api.service.enabled }}
+          {{- range .apiPaths }}
+          - path: {{ .path | quote }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "agent-bom.name" $ }}-api
+                port:
+                  name: http
+          {{- end }}
+          {{- end }}
+          {{- if and $.Values.controlPlane.ui.enabled $.Values.controlPlane.ui.service.enabled }}
+          {{- range .uiPaths }}
+          - path: {{ .path | quote }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "agent-bom.name" $ }}-ui
+                port:
+                  name: http
+          {{- end }}
+          {{- end }}
+    {{- end }}
+  {{- with .Values.controlPlane.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

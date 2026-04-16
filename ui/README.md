@@ -22,7 +22,22 @@ agent-bom api
 npm run dev
 ```
 
-The UI reads `NEXT_PUBLIC_API_URL`. If it is unset, the dev server proxies `/v1/*`, `/health`, and `/ws/*` to `http://localhost:8422`.
+The UI reads `NEXT_PUBLIC_API_URL`.
+
+- in development, the Next server uses it for local rewrites
+- in containers, the runtime entrypoint writes it into `public/runtime-config.js`
+  so the same image can be pointed at a different API endpoint at startup
+
+If it is unset, the dev server proxies `/v1/*`, `/health`, and `/ws/*` to `http://localhost:8422`.
+
+For same-origin ingress in Kubernetes or other reverse-proxy setups, set:
+
+```bash
+NEXT_PUBLIC_API_URL=
+```
+
+That keeps browser requests relative (`/v1/...`) so the ingress can route API
+paths to the backend service without rebuilding the UI image.
 
 If you see `Failed to fetch`:
 

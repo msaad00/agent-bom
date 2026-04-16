@@ -20,6 +20,50 @@ afterEach(() => {
 })
 
 describe('api.listJobs', () => {
+  it('prefers the runtime API URL over the build-time env', async () => {
+    const oldApiUrl = process.env.NEXT_PUBLIC_API_URL
+    process.env.NEXT_PUBLIC_API_URL = "https://build.example"
+    window.__AGENT_BOM_CONFIG__ = { apiUrl: "https://runtime.example" }
+
+    const fetchMock = mockFetch({ jobs: [], count: 0 })
+    global.fetch = fetchMock
+
+    await api.listJobs()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://runtime.example/v1/jobs",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+
+    if (oldApiUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_URL
+    } else {
+      process.env.NEXT_PUBLIC_API_URL = oldApiUrl
+    }
+  })
+
+  it('allows same-origin runtime routing when the runtime API URL is blank', async () => {
+    const oldApiUrl = process.env.NEXT_PUBLIC_API_URL
+    process.env.NEXT_PUBLIC_API_URL = "https://build.example"
+    window.__AGENT_BOM_CONFIG__ = { apiUrl: "" }
+
+    const fetchMock = mockFetch({ jobs: [], count: 0 })
+    global.fetch = fetchMock
+
+    await api.listJobs()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/v1/jobs",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+
+    if (oldApiUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_URL
+    } else {
+      process.env.NEXT_PUBLIC_API_URL = oldApiUrl
+    }
+  })
+
   it('returns expected shape', async () => {
     const payload = {
       jobs: [

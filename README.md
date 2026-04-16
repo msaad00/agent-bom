@@ -200,11 +200,31 @@ docker run --rm agentbom/agent-bom agents    # Docker
 |------|---------|----------|
 | CLI | `agent-bom agents` | Local audit + project scan |
 | GitHub Action | `uses: msaad00/agent-bom@v0.76.4` | CI/CD + SARIF |
-| Docker | `docker run agentbom/agent-bom` | Isolated scans |
+| Docker | `docker run agentbom/agent-bom` | Isolated scans and containerized self-hosting surfaces |
+| REST API | `agent-bom api` | Platform integration and self-hosted control plane |
 | MCP Server | `agent-bom mcp server` | Claude Desktop, Claude Code, Cursor, Codex, Windsurf, Cortex |
 | Runtime proxy | `agent-bom proxy` | MCP traffic enforcement |
 | Shield SDK | `from agent_bom.shield import Shield` | In-process protection |
 | API + dashboard | `agent-bom serve` | Fleet visibility, audit exports, and central review. Requires `pip install 'agent-bom[ui]'` once. |
+
+Backend choices stay explicit and optional:
+
+- `SQLite` for local and single-node use
+- `Postgres` / `Supabase` for the primary transactional control plane
+- `ClickHouse` for analytics and event-scale persistence
+- `Snowflake` for warehouse-native governance and selected backend paths with explicit parity limits
+
+That means enterprises can run `agent-bom`:
+
+- locally
+- in CI
+- in Docker
+- in Kubernetes / Helm
+- as a self-hosted API + dashboard
+- as an MCP server for local or remote clients
+- with Postgres, ClickHouse, and Snowflake where each backend actually fits
+
+We do not require one hosted control plane or one cloud vendor.
 
 Product references:
 - [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md)

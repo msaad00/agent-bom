@@ -7,10 +7,11 @@ existing API key authentication.
 Configuration via environment variables::
 
     AGENT_BOM_OIDC_ISSUER   = "https://accounts.google.com"
-    AGENT_BOM_OIDC_AUDIENCE = "agent-bom"            # optional, defaults to ISSUER
+    AGENT_BOM_OIDC_AUDIENCE = "agent-bom"            # required when OIDC is enabled
     AGENT_BOM_OIDC_ROLE_CLAIM = "agent_bom_role"      # optional JWT claim for role
     AGENT_BOM_OIDC_TENANT_CLAIM = "tenant_id"         # optional JWT claim for tenant
     AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM = "1"         # fail closed when claim absent
+    AGENT_BOM_OIDC_REQUIRED_NONCE = "random-nonce"    # optional fail-closed nonce check
 
 Role mapping (claim value → agent-bom Role):
 
@@ -128,6 +129,7 @@ def verify_oidc_token(
     issuer: str,
     audience: Optional[str] = None,
     jwks_uri: Optional[str] = None,
+    required_nonce: Optional[str] = None,
 ) -> dict:
     """Verify an OIDC JWT and return its claims.
 
@@ -137,8 +139,9 @@ def verify_oidc_token(
     Args:
         token: Raw JWT string (without "Bearer " prefix).
         issuer: Expected issuer (``iss`` claim). Must match exactly.
-        audience: Expected audience (``aud`` claim). If None, not verified.
+        audience: Expected audience (``aud`` claim). Required for production OIDC use.
         jwks_uri: Override JWKS URI. If None, fetched from OIDC discovery.
+        required_nonce: Optional nonce value that must match the token ``nonce`` claim.
 
     Returns:
         Decoded JWT claims dict.
@@ -175,6 +178,11 @@ def verify_oidc_token(
         claims = jwt.decode(token, signing_key.key, **decode_kwargs)
     except PyJWTError as exc:
         raise OIDCError(f"JWT verification failed: {exc}") from exc
+
+    if required_nonce is not None:
+        token_nonce = claims.get("nonce")
+        if token_nonce != required_nonce:
+            raise OIDCError("JWT verification failed: nonce claim mismatch")
 
     return claims
 
@@ -243,9 +251,10 @@ class OIDCConfig:
     Environment variables:
 
     - ``AGENT_BOM_OIDC_ISSUER`` — OIDC provider issuer URL (required to enable OIDC)
-    - ``AGENT_BOM_OIDC_AUDIENCE`` — Expected JWT audience (defaults to issuer)
+    - ``AGENT_BOM_OIDC_AUDIENCE`` — Expected JWT audience (required when OIDC is enabled)
     - ``AGENT_BOM_OIDC_ROLE_CLAIM`` — JWT claim name for role (default: ``agent_bom_role``)
     - ``AGENT_BOM_OIDC_JWKS_URI`` — Override JWKS URI (optional, auto-discovered if absent)
+    - ``AGENT_BOM_OIDC_REQUIRED_NONCE`` — Optional expected ``nonce`` claim for fail-closed checks
     """
 
     def __init__(
@@ -256,12 +265,14 @@ class OIDCConfig:
         jwks_uri: Optional[str] = None,
         tenant_claim: str = "tenant_id",
         require_tenant_claim: Optional[bool] = None,
+        required_nonce: Optional[str] = None,
     ) -> None:
         self.issuer = issuer or os.environ.get("AGENT_BOM_OIDC_ISSUER", "")
-        self.audience = audience or os.environ.get("AGENT_BOM_OIDC_AUDIENCE", self.issuer) or None
+        self.audience = audience or os.environ.get("AGENT_BOM_OIDC_AUDIENCE") or None
         self.role_claim = role_claim or os.environ.get("AGENT_BOM_OIDC_ROLE_CLAIM", "agent_bom_role")
         self.jwks_uri = jwks_uri or os.environ.get("AGENT_BOM_OIDC_JWKS_URI", "") or None
         self.tenant_claim = tenant_claim or os.environ.get("AGENT_BOM_OIDC_TENANT_CLAIM", "tenant_id")
+        self.required_nonce = required_nonce or os.environ.get("AGENT_BOM_OIDC_REQUIRED_NONCE", "") or None
         if require_tenant_claim is None:
             require_tenant_claim = os.environ.get("AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM", "").strip().lower() in {
                 "1",
@@ -279,7 +290,9 @@ class OIDCConfig:
         """
         if not self.enabled or not self.issuer:
             raise OIDCError("OIDC is not configured (set AGENT_BOM_OIDC_ISSUER)")
-        claims = verify_oidc_token(token, self.issuer, self.audience, self.jwks_uri)
+        if not self.audience:
+            raise OIDCError("OIDC is configured but AGENT_BOM_OIDC_AUDIENCE is not set")
+        claims = verify_oidc_token(token, self.issuer, self.audience, self.jwks_uri, self.required_nonce)
         role = claims_to_role(claims, self.role_claim)
         return claims, role
 

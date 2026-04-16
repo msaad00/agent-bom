@@ -57,6 +57,7 @@ For the detailed backend matrix, see [Backend Parity Matrix](backend-parity.md).
 | Need | Recommended path |
 |---|---|
 | Run one scan locally | CLI |
+| Sync employee laptops into the same control plane | endpoint fleet `agent-bom agents --push-url .../v1/fleet/sync` |
 | Gate pull requests | GitHub Action |
 | Keep the runtime isolated | Docker |
 | Self-host UI + API for a team | `agent-bom serve` + `Postgres` / `Supabase` |

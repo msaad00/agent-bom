@@ -43,6 +43,8 @@ def gateway_policy_to_proxy_format(policy: "GatewayPolicy") -> dict:
             d["block_unknown_egress"] = True
         if rule.allowed_hosts:
             d["allowed_hosts"] = rule.allowed_hosts
+        if rule.rate_limit is not None:
+            d["rate_limit"] = rule.rate_limit
         rules.append(d)
     return {"rules": rules}
 

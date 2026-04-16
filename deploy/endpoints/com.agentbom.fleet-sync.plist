@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.agentbom.fleet-sync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-lc</string>
+    <string>$HOME/.local/share/agent-bom/agent-bom-fleet-sync.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AGENT_BOM_PUSH_URL</key>
+    <string>https://agent-bom.internal.example.com/v1/fleet/sync</string>
+    <key>AGENT_BOM_PUSH_API_KEY</key>
+    <string>replace-me</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>1800</integer>
+  <key>StandardOutPath</key>
+  <string>/tmp/agent-bom-fleet-sync.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/agent-bom-fleet-sync.log</string>
+</dict>
+</plist>

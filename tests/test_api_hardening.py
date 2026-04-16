@@ -192,7 +192,7 @@ def test_api_key_middleware_oidc_sets_tenant_from_custom_claim():
     test_app = Starlette(routes=[Route("/v1/test", dummy)])
     test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
 
-    cfg = OIDCConfig(issuer="https://corp.okta.com", tenant_claim="org_slug")
+    cfg = OIDCConfig(issuer="https://corp.okta.com", audience="agent-bom", tenant_claim="org_slug")
     with (
         patch("agent_bom.api.oidc.OIDCConfig.from_env", return_value=cfg),
         patch(

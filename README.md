@@ -199,6 +199,7 @@ docker run --rm agentbom/agent-bom agents    # Docker
 | Mode | Command | Best for |
 |------|---------|----------|
 | CLI | `agent-bom agents` | Local audit + project scan |
+| Endpoint fleet | `agent-bom agents --preset enterprise --introspect --push-url https://.../v1/fleet/sync` | Employee laptops and workstations pushing into a self-hosted fleet view |
 | GitHub Action | `uses: msaad00/agent-bom@v0.76.4` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom` | Isolated scans and containerized self-hosting surfaces |
 | Kubernetes / Helm | `helm install agent-bom deploy/helm/agent-bom --set controlPlane.enabled=true` | Packaged self-hosted API + dashboard, scheduled discovery, and optional runtime monitor |
@@ -219,6 +220,7 @@ For teams self-hosting in their own AWS / EKS environment, see the focused
 operator guide:
 
 - [Deploy In Your Own AWS / EKS Infrastructure](site-docs/deployment/own-infra-eks.md)
+- [Endpoint Fleet](site-docs/deployment/endpoint-fleet.md)
 - [Focused EKS MCP Pilot](site-docs/deployment/eks-mcp-pilot.md)
 
 That means enterprises can run `agent-bom`:

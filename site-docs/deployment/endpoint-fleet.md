@@ -1,0 +1,132 @@
+# Endpoint Fleet
+
+Use this path when `fleet` means employee laptops and workstations running
+local agent clients and MCP configs:
+
+- Cursor
+- Claude Desktop / Claude Code
+- VS Code / Copilot / Continue.dev
+- Windsurf
+- Cline / Roo / Zed
+- Cortex Code
+- other local MCP-capable developer tooling
+
+This is different from:
+
+- `runtime fleet`: EKS workloads and server-side MCP deployments
+- `cloud / platform inventory`: AWS, Snowflake, IaC, registries, containers
+
+## What ships today
+
+The endpoint-fleet path is real, but it is an opt-in scan + push model:
+
+1. the laptop runs `agent-bom agents`
+2. discovery and live MCP introspection happen locally
+3. the result is sanitized and pushed to the control plane with `--push-url`
+4. the control plane surfaces it in `/fleet`, `/agents`, `/mesh`, `/security-graph`,
+   `/gateway`, and `/findings`
+
+The endpoint command is:
+
+```bash
+agent-bom agents \
+  --preset enterprise \
+  --introspect \
+  --push-url https://agent-bom.internal.example.com/v1/fleet/sync \
+  --push-api-key "$AGENT_BOM_PUSH_API_KEY"
+```
+
+That gives you:
+
+- endpoint MCP config discovery
+- live MCP read-only introspection
+- sanitized fleet sync to the self-hosted control plane
+- the same fleet/mesh/gateway review path as cluster-discovered MCPs
+
+Important boundary:
+
+- this is not a managed endpoint agent
+- there is no MDM or quarantine control channel today
+- the pilot model is explicit local execution on a schedule you control
+
+## Endpoint service templates
+
+Shipped templates:
+
+- [deploy/endpoints/agent-bom-fleet-sync.sh](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/endpoints/agent-bom-fleet-sync.sh)
+- [deploy/endpoints/agent-bom-fleet-sync.service](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/endpoints/agent-bom-fleet-sync.service)
+- [deploy/endpoints/agent-bom-fleet-sync.timer](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/endpoints/agent-bom-fleet-sync.timer)
+- [deploy/endpoints/com.agentbom.fleet-sync.plist](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/endpoints/com.agentbom.fleet-sync.plist)
+
+The wrapper script expects:
+
+- `AGENT_BOM_PUSH_URL`
+- optionally `AGENT_BOM_PUSH_API_KEY`
+
+## Linux systemd example
+
+1. put the wrapper script at `~/.local/share/agent-bom/agent-bom-fleet-sync.sh`
+2. make it executable
+3. create `~/.config/agent-bom/fleet-sync.env`
+
+Example env file:
+
+```bash
+AGENT_BOM_PUSH_URL=https://agent-bom.internal.example.com/v1/fleet/sync
+AGENT_BOM_PUSH_API_KEY=replace-me
+```
+
+4. install the unit files:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp deploy/endpoints/agent-bom-fleet-sync.service ~/.config/systemd/user/
+cp deploy/endpoints/agent-bom-fleet-sync.timer ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now agent-bom-fleet-sync.timer
+```
+
+## macOS launchd example
+
+1. put the wrapper script at `~/.local/share/agent-bom/agent-bom-fleet-sync.sh`
+2. update the environment values in the plist
+3. load it:
+
+```bash
+mkdir -p ~/Library/LaunchAgents
+cp deploy/endpoints/com.agentbom.fleet-sync.plist ~/Library/LaunchAgents/
+launchctl unload ~/Library/LaunchAgents/com.agentbom.fleet-sync.plist 2>/dev/null || true
+launchctl load ~/Library/LaunchAgents/com.agentbom.fleet-sync.plist
+```
+
+## Proxy enforcement on endpoints
+
+Endpoint enforcement is separate from endpoint sync.
+
+For laptops, the proxy runs locally as a stdio wrapper around the editor's MCP
+command:
+
+```bash
+agent-bom proxy \
+  --control-plane-url https://agent-bom.internal.example.com \
+  --control-plane-token "$AGENT_BOM_API_TOKEN" \
+  --detect-credentials \
+  --block-undeclared \
+  -- npx @modelcontextprotocol/server-filesystem ~/workspace
+```
+
+That path now supports:
+
+- control-plane policy pull
+- control-plane audit push
+- local inline MCP enforcement
+
+## How this fits with the EKS pilot
+
+Use both when you want one pilot across laptops and infra:
+
+- `endpoint fleet`: employee laptops push local discovery into the control plane
+- `runtime fleet`: the EKS pilot discovers cluster-side MCP workloads and uses
+  selected proxy sidecars for server-side enforcement
+
+The control plane stays the same. Only the discovery and enforcement path differs.

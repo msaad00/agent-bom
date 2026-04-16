@@ -1,0 +1,15 @@
+[Unit]
+Description=agent-bom endpoint fleet sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/agent-bom/fleet-sync.env
+ExecStart=%h/.local/share/agent-bom/agent-bom-fleet-sync.sh
+WorkingDirectory=%h
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

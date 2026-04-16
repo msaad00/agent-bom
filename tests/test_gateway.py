@@ -71,6 +71,12 @@ def test_convert_runtime_enforcement_fields():
     assert fmt["rules"][0]["allowed_hosts"] == ["api.openai.com"]
 
 
+def test_convert_rate_limit():
+    p = _policy(rules=[GatewayRule(id="r1", action="block", rate_limit=25)])
+    fmt = gateway_policy_to_proxy_format(p)
+    assert fmt["rules"][0]["rate_limit"] == 25
+
+
 # ── Evaluation ────────────────────────────────────────────────────────────────
 
 

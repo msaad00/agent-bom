@@ -130,7 +130,7 @@ You still own:
 - use `Postgres`, not SQLite
 - keep same-origin ingress unless you have a strong reason not to
 - use `envFrom` / Secrets for `AGENT_BOM_POSTGRES_URL`, API keys, OIDC issuer,
-  audience, and audit HMAC settings
+  audience, optional required nonce, and audit HMAC settings
 - enable PDBs when you are running multi-replica workloads
 
 ## Current boundary

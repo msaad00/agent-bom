@@ -316,6 +316,20 @@ def test_rate_limit_properties():
     assert r.window == 30.0
 
 
+def test_rate_limit_dynamic_threshold_override():
+    r = RateLimitTracker(threshold=50, window_seconds=60.0)
+    assert r.record("tool1", threshold=3) == []
+    assert r.record("tool1", threshold=3) == []
+    alerts = r.record("tool1", threshold=3)
+    assert len(alerts) == 1
+    assert alerts[0].details["threshold"] == 3
+
+
+def test_rate_limit_zero_threshold_disables_check():
+    r = RateLimitTracker(threshold=0, window_seconds=60.0)
+    assert r.record("tool1", threshold=0) == []
+
+
 # ─── SequenceAnalyzer ────────────────────────────────────────────────────────
 
 

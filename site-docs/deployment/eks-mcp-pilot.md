@@ -10,6 +10,10 @@ This is the recommended pilot scope for a company that wants to run
 
 This is intentionally narrower than a full platform rollout.
 
+If you also want employee laptops and workstations in the same pilot, pair this
+with [Endpoint Fleet](endpoint-fleet.md). That is a separate endpoint scan +
+push path, not the sidecar/runtime path described here.
+
 ## Pilot scope
 
 Enable:
@@ -108,6 +112,8 @@ At minimum, put these in a Kubernetes Secret referenced by the API Deployment:
 For enterprise pilots, prefer:
 
 - OIDC for user access
+- explicit `AGENT_BOM_OIDC_AUDIENCE`
+- optional `AGENT_BOM_OIDC_REQUIRED_NONCE` when your IdP flow includes a nonce claim
 - persistent audit HMAC keys with `AGENT_BOM_REQUIRE_AUDIT_HMAC=1`
 - IRSA on the scanner service account
 - internal ingress / VPN-only access

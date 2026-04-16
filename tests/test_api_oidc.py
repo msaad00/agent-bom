@@ -49,9 +49,9 @@ def test_oidc_config_from_env_reads_issuer():
         assert cfg.issuer == "https://test.okta.com"
 
 
-def test_oidc_config_audience_defaults_to_issuer():
+def test_oidc_config_audience_is_unset_without_explicit_value():
     cfg = OIDCConfig(issuer="https://myissuer.example.com")
-    assert cfg.audience == "https://myissuer.example.com"
+    assert cfg.audience is None
 
 
 def test_oidc_config_explicit_audience():
@@ -59,9 +59,20 @@ def test_oidc_config_explicit_audience():
     assert cfg.audience == "my-app"
 
 
+def test_oidc_config_reads_required_nonce():
+    cfg = OIDCConfig(issuer="https://myissuer.example.com", required_nonce="nonce-123")
+    assert cfg.required_nonce == "nonce-123"
+
+
 def test_oidc_config_verify_raises_when_not_enabled():
     cfg = OIDCConfig()  # no issuer
     with pytest.raises(OIDCError, match="not configured"):
+        cfg.verify("any.jwt.token")
+
+
+def test_oidc_config_verify_requires_explicit_audience():
+    cfg = OIDCConfig(issuer="https://corp.example.com")
+    with pytest.raises(OIDCError, match="AGENT_BOM_OIDC_AUDIENCE"):
         cfg.verify("any.jwt.token")
 
 
@@ -149,7 +160,7 @@ def test_verify_raises_oidc_error_when_pyjwt_missing():
     """If PyJWT is not installed, OIDCError is raised with install hint."""
     with patch("agent_bom.api.oidc._check_pyjwt", side_effect=OIDCError("mocked: PyJWT missing")):
         with pytest.raises(OIDCError, match="PyJWT"):
-            cfg = OIDCConfig(issuer="https://example.com")
+            cfg = OIDCConfig(issuer="https://example.com", audience="agent-bom")
             cfg.verify("bad.token.here")
 
 
@@ -183,7 +194,7 @@ def test_verify_raises_oidc_error_on_bad_jwt():
 
 def test_oidc_config_verify_returns_claims_and_role():
     """verify() on OIDCConfig returns (claims, role) on success."""
-    cfg = OIDCConfig(issuer="https://example.com")
+    cfg = OIDCConfig(issuer="https://example.com", audience="agent-bom")
 
     mock_claims = {"sub": "user1", "email": "user@example.com", "agent_bom_role": "analyst"}
 
@@ -195,12 +206,12 @@ def test_oidc_config_verify_returns_claims_and_role():
 
 
 def test_oidc_config_resolve_tenant_defaults_when_not_required():
-    cfg = OIDCConfig(issuer="https://corp.example.com")
+    cfg = OIDCConfig(issuer="https://corp.example.com", audience="agent-bom")
     assert cfg.resolve_tenant({"sub": "user-1"}) == "default"
 
 
 def test_oidc_config_resolve_tenant_raises_when_required_claim_missing():
-    cfg = OIDCConfig(issuer="https://corp.example.com", require_tenant_claim=True)
+    cfg = OIDCConfig(issuer="https://corp.example.com", audience="agent-bom", require_tenant_claim=True)
     with pytest.raises(OIDCError, match="tenant claim"):
         cfg.resolve_tenant({"sub": "user-1"})
 
@@ -222,7 +233,7 @@ def test_middleware_oidc_success_sets_request_state():
     """When OIDC verifies a Bearer token, request state is set correctly."""
     mock_claims = {"sub": "u1", "email": "alice@corp.com", "agent_bom_role": "analyst"}
 
-    cfg = OIDCConfig(issuer="https://corp.okta.com")
+    cfg = OIDCConfig(issuer="https://corp.okta.com", audience="agent-bom")
     with patch("agent_bom.api.oidc.verify_oidc_token", return_value=mock_claims):
         claims, role = cfg.verify("eyJ.valid.token")
 
@@ -232,9 +243,23 @@ def test_middleware_oidc_success_sets_request_state():
 
 def test_middleware_oidc_failure_does_not_raise():
     """OIDCError is caught and falls through — does not propagate."""
-    cfg = OIDCConfig(issuer="https://corp.okta.com")
+    cfg = OIDCConfig(issuer="https://corp.okta.com", audience="agent-bom")
 
     with patch("agent_bom.api.oidc.verify_oidc_token", side_effect=OIDCError("expired")):
         with pytest.raises(OIDCError):
             # verify() re-raises — caller (middleware) catches it
             cfg.verify("expired.jwt.token")
+
+
+def test_oidc_config_passes_required_nonce_to_verifier():
+    cfg = OIDCConfig(issuer="https://corp.okta.com", audience="agent-bom", required_nonce="nonce-123")
+
+    with patch(
+        "agent_bom.api.oidc.verify_oidc_token",
+        return_value={"sub": "u1", "agent_bom_role": "admin", "nonce": "nonce-123"},
+    ) as mock_verify:
+        claims, role = cfg.verify("valid.jwt.token")
+
+    assert claims["sub"] == "u1"
+    assert role == "admin"
+    assert mock_verify.call_args.args[4] == "nonce-123"

@@ -73,3 +73,6 @@ For the full control-plane topology and secret wiring, see
 
 For the narrower MCP and agents pilot, see
 [Focused EKS MCP Pilot](eks-mcp-pilot.md).
+
+For employee laptops and workstations that should sync into the same control
+plane, see [Endpoint Fleet](endpoint-fleet.md).

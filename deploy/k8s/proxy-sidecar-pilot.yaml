@@ -15,9 +15,10 @@ data:
     {
       "version": "2",
       "rules": [
-        { "id": "no-unverified-high", "unverified_server": true, "severity_gte": "HIGH", "action": "fail" },
-        { "id": "high-epss-with-creds", "condition": "epss_score > 0.7 and has_credentials", "action": "fail" },
-        { "id": "warn-high-with-creds", "has_credentials": true, "severity_gte": "HIGH", "action": "warn" }
+        { "id": "deny-exec", "action": "block", "deny_tool_classes": ["execute", "destructive"] },
+        { "id": "protect-secret-paths", "action": "block", "block_secret_paths": true },
+        { "id": "deny-unknown-egress", "action": "block", "block_unknown_egress": true, "allowed_hosts": ["api.openai.com", "api.anthropic.com"] },
+        { "id": "runtime-rate-limit", "action": "block", "rate_limit": 60 }
       ]
     }
 ---

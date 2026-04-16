@@ -1,0 +1,11 @@
+[Unit]
+Description=Run agent-bom endpoint fleet sync every 30 minutes
+
+[Timer]
+OnBootSec=5m
+OnUnitActiveSec=30m
+RandomizedDelaySec=5m
+Unit=agent-bom-fleet-sync.service
+
+[Install]
+WantedBy=timers.target

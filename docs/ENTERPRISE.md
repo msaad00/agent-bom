@@ -78,10 +78,11 @@ Implementation source: `src/agent_bom/api/middleware.py`
    - non-loopback binds require `AGENT_BOM_API_KEY` or stored API keys
 3. OIDC bearer enforcement
    - set `AGENT_BOM_OIDC_ISSUER`
-   - optionally set `AGENT_BOM_OIDC_AUDIENCE`
+   - set `AGENT_BOM_OIDC_AUDIENCE`
    - map roles with `AGENT_BOM_OIDC_ROLE_CLAIM`
    - map tenants with `AGENT_BOM_OIDC_TENANT_CLAIM`
    - fail closed with `AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM=1`
+   - optionally set `AGENT_BOM_OIDC_REQUIRED_NONCE` when your IdP flow includes a nonce claim
 
 Implementation source: `src/agent_bom/api/middleware.py`, `src/agent_bom/api/oidc.py`
 

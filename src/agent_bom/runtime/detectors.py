@@ -382,12 +382,15 @@ class RateLimitTracker:
         self._window = window_seconds
         self._calls: dict[str, deque[float]] = {}
 
-    def record(self, tool_name: str) -> list[Alert]:
+    def record(self, tool_name: str, threshold: int | None = None) -> list[Alert]:
         """Record a tool call and check rate limits.
 
         Returns a CRITICAL alert with ``details.blocked = True`` when the
         rate limit is exceeded, signaling the caller to deny the call.
         """
+        effective_threshold = threshold if threshold is not None else self._threshold
+        if effective_threshold <= 0:
+            return []
         now = time.monotonic()
         if tool_name not in self._calls:
             self._calls[tool_name] = deque()
@@ -400,19 +403,19 @@ class RateLimitTracker:
             q.popleft()
 
         alerts: list[Alert] = []
-        if len(q) >= self._threshold:
+        if len(q) >= effective_threshold:
             # Escalate severity based on how far over the limit
-            over_ratio = len(q) / self._threshold
+            over_ratio = len(q) / effective_threshold
             severity = AlertSeverity.CRITICAL if over_ratio >= 2.0 else AlertSeverity.HIGH
             alerts.append(
                 Alert(
                     detector="rate_limit",
                     severity=severity,
-                    message=f"Rate limit exceeded: {tool_name} called {len(q)} times in {self._window}s (threshold: {self._threshold})",
+                    message=f"Rate limit exceeded: {tool_name} called {len(q)} times in {self._window}s (threshold: {effective_threshold})",
                     details={
                         "tool": tool_name,
                         "count": len(q),
-                        "threshold": self._threshold,
+                        "threshold": effective_threshold,
                         "window_seconds": self._window,
                         "blocked": True,
                     },

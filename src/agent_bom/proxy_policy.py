@@ -131,6 +131,16 @@ def _host_allowed(host: str, allowed_hosts: list[str]) -> bool:
     return any(host == allowed or host.endswith(f".{allowed}") for allowed in normalized)
 
 
+def resolve_rate_limit_threshold(policy: dict) -> int | None:
+    """Return the strictest positive ``rate_limit`` configured in a policy bundle."""
+    limits: list[int] = []
+    for rule in policy.get("rules", []):
+        limit = rule.get("rate_limit")
+        if isinstance(limit, int) and limit > 0:
+            limits.append(limit)
+    return min(limits) if limits else None
+
+
 def check_policy(policy: dict, tool_name: str, arguments: dict) -> tuple[bool, str]:
     """Evaluate runtime policy against a tools/call request."""
     rules = policy.get("rules", [])

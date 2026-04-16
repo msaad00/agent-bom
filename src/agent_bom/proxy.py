@@ -51,6 +51,7 @@ _safe_compile = _proxy_policy._safe_compile
 _safe_regex_match = _proxy_policy._safe_regex_match
 _safe_regex_search = _proxy_policy._safe_regex_search
 check_policy = _proxy_policy.check_policy
+resolve_rate_limit_threshold = _proxy_policy.resolve_rate_limit_threshold
 
 # Maximum JSON-RPC message size accepted from client or server (10 MB).
 # Guards against DoS via oversized payloads in the stdio relay loop.
@@ -185,6 +186,22 @@ def _evaluate_gateway_policy_bundle(policies: list["GatewayPolicy"], agent_name:
         scoped.append(policy)
     allowed, reason, _policy_id = evaluate_gateway_policies(scoped, tool_name, arguments)
     return allowed, reason
+
+
+def _resolve_control_plane_rate_limit_threshold(policies: list["GatewayPolicy"], agent_name: str | None = None) -> int | None:
+    from agent_bom.gateway import gateway_policy_to_proxy_format
+
+    limits: list[int] = []
+    for policy in policies:
+        if not getattr(policy, "enabled", False):
+            continue
+        if agent_name and getattr(policy, "bound_agents", None) and agent_name not in getattr(policy, "bound_agents", []):
+            continue
+        proxy_fmt = gateway_policy_to_proxy_format(policy)
+        limit = resolve_rate_limit_threshold(proxy_fmt)
+        if limit is not None:
+            limits.append(limit)
+    return min(limits) if limits else None
 
 
 async def _push_proxy_audit_batch(
@@ -578,7 +595,9 @@ async def run_proxy(
     drift_detector = ToolDriftDetector()
     arg_analyzer = ArgumentAnalyzer()
     cred_detector = CredentialLeakDetector() if detect_credentials else None
-    rate_tracker = RateLimitTracker(threshold=rate_limit_threshold) if rate_limit_threshold > 0 else None
+    local_policy_rate_limit = resolve_rate_limit_threshold(policy) if policy else None
+    effective_rate_limit_threshold = rate_limit_threshold or local_policy_rate_limit or 0
+    rate_tracker = RateLimitTracker(threshold=max(effective_rate_limit_threshold, 0))
     seq_analyzer = SequenceAnalyzer()
     response_inspector = ResponseInspector()
     vector_detector = VectorDBInjectionDetector()
@@ -612,6 +631,12 @@ async def run_proxy(
             control_plane_policies = policies
         if next_etag:
             control_plane_etag = next_etag
+        if rate_limit_threshold <= 0:
+            control_plane_limit = _resolve_control_plane_rate_limit_threshold(control_plane_policies)
+            if control_plane_limit and control_plane_limit > 0:
+                rate_tracker._threshold = control_plane_limit
+            else:
+                rate_tracker._threshold = local_policy_rate_limit or 0
 
     async def _flush_audit_buffer(summary: dict | None = None) -> None:
         if not control_plane_url:
@@ -839,8 +864,15 @@ async def run_proxy(
                     _handle_alerts(arg_alerts, log_file)
 
                     # Runtime detectors: rate limiting
-                    if rate_tracker:
-                        rate_alerts = rate_tracker.record(tool_name)
+                    effective_rule_rate_limit = 0
+                    if _gateway_evaluator is not None and control_plane_policies:
+                        effective_rule_rate_limit = _resolve_control_plane_rate_limit_threshold(control_plane_policies, agent_id) or 0
+                    if effective_rule_rate_limit <= 0 and local_policy_rate_limit:
+                        effective_rule_rate_limit = local_policy_rate_limit
+                    if rate_limit_threshold > 0:
+                        effective_rule_rate_limit = rate_limit_threshold
+                    if rate_tracker and effective_rule_rate_limit > 0:
+                        rate_alerts = rate_tracker.record(tool_name, threshold=effective_rule_rate_limit)
                         _handle_alerts(rate_alerts, log_file)
                         if rate_alerts and not log_only:
                             rl_reason = rate_alerts[0].message

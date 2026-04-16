@@ -9,6 +9,7 @@ import yaml
 DEPLOY_DIR = Path(__file__).parent.parent / "deploy"
 K8S_DIR = DEPLOY_DIR / "k8s"
 HELM_DIR = DEPLOY_DIR / "helm" / "agent-bom"
+ENDPOINTS_DIR = DEPLOY_DIR / "endpoints"
 
 
 # ─── K8s manifest validation ────────────────────────────────────────────────
@@ -86,6 +87,39 @@ def test_sidecar_has_prometheus_annotations():
     annotations = doc["spec"]["template"]["metadata"]["annotations"]
     assert annotations["prometheus.io/scrape"] == "true"
     assert annotations["prometheus.io/port"] == "8422"
+
+
+def test_sidecar_example_pins_runtime_image():
+    """Static sidecar example should not rely on :latest for the runtime image."""
+    doc = yaml.safe_load((K8S_DIR / "sidecar-example.yaml").read_text())
+    containers = doc["spec"]["template"]["spec"]["containers"]
+    proxy = next(container for container in containers if container["name"] == "agent-bom-proxy")
+    assert proxy["image"].startswith("agentbom/agent-bom-runtime:")
+    assert not proxy["image"].endswith(":latest")
+
+
+def test_proxy_sidecar_pilot_uses_runtime_proxy_policy_fields():
+    """Pilot sidecar policy example should use the proxy's real local policy DSL."""
+    docs = list(yaml.safe_load_all((K8S_DIR / "proxy-sidecar-pilot.yaml").read_text()))
+    config_map = next(doc for doc in docs if doc and doc["kind"] == "ConfigMap")
+    policy = yaml.safe_load(config_map["data"]["policy.json"])
+    rules = policy["rules"]
+    assert any(rule.get("deny_tool_classes") for rule in rules)
+    assert any(rule.get("block_secret_paths") for rule in rules)
+    assert any(rule.get("block_unknown_egress") for rule in rules)
+    assert any(rule.get("rate_limit") == 60 for rule in rules)
+
+
+def test_endpoint_fleet_templates_exist():
+    """Endpoint fleet pilot templates should ship for macOS and Linux."""
+    expected = {
+        "agent-bom-fleet-sync.sh",
+        "agent-bom-fleet-sync.service",
+        "agent-bom-fleet-sync.timer",
+        "com.agentbom.fleet-sync.plist",
+    }
+    actual = {path.name for path in ENDPOINTS_DIR.iterdir() if path.is_file()}
+    assert expected.issubset(actual)
 
 
 def test_namespace_manifest():

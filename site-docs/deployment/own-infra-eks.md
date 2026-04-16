@@ -92,7 +92,7 @@ The chart now supports the EKS wiring you actually need:
 |---|---|
 | `controlPlane.enabled` | package the API + dashboard in-cluster |
 | `controlPlane.ingress.enabled` | route `/` to UI and `/v1`, `/health`, `/docs`, `/ws` to API |
-| `controlPlane.api.envFrom` | load Postgres URL, API key, OIDC, and audit settings from Secrets |
+| `controlPlane.api.envFrom` | load Postgres URL, API key, OIDC issuer/audience, optional required nonce, and audit settings from Secrets |
 | `controlPlane.ui.env` | keep `NEXT_PUBLIC_API_URL=\"\"` for same-origin or set a full API URL for cross-origin |
 | `serviceAccount.annotations` | attach an IRSA role to the scanner service account |
 | `scanner.extraArgs` | add `--k8s-mcp`, `--enforce`, `--introspect`, or stricter presets |
@@ -162,7 +162,7 @@ all sit under one operator-controlled plane.
 
 - use `Postgres`, not SQLite, for the control plane
 - keep the proxy and API internal to your VPC unless exposure is intentional
-- use OIDC for user access and map roles explicitly
+- use OIDC for user access, set `AGENT_BOM_OIDC_AUDIENCE` explicitly, and map roles explicitly
 - set a persistent audit HMAC key and require it
 - attach the scanner service account to IRSA instead of static cloud keys
 - start with audit-only policies where rollout risk is unclear, then move to deny

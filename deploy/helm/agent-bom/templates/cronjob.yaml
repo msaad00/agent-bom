@@ -37,6 +37,13 @@ spec:
                 - {{ .Values.scanner.outputFormat | quote }}
                 - "-o"
                 - "/output/scan.{{ .Values.scanner.outputFormat }}"
+                {{- range .Values.scanner.extraArgs }}
+                - {{ . | quote }}
+                {{- end }}
+              {{- with .Values.scanner.env }}
+              env:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
               volumeMounts:
                 - name: output
                   mountPath: /output

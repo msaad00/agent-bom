@@ -214,6 +214,11 @@ Backend choices stay explicit and optional:
 - `ClickHouse` for analytics and event-scale persistence
 - `Snowflake` for warehouse-native governance and selected backend paths with explicit parity limits
 
+For teams self-hosting in their own AWS / EKS environment, see the focused
+operator guide:
+
+- [Deploy In Your Own AWS / EKS Infrastructure](site-docs/deployment/own-infra-eks.md)
+
 That means enterprises can run `agent-bom`:
 
 - locally

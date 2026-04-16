@@ -91,6 +91,7 @@ nav:
       - Policy Engine: features/policy.md
   - Deployment:
       - Overview: deployment/overview.md
+      - Your Own AWS / EKS: deployment/own-infra-eks.md
       - Backend Parity: deployment/backend-parity.md
       - Docker: deployment/docker.md
       - Kubernetes: deployment/kubernetes.md

@@ -11,6 +11,8 @@ from agent_bom.api.policy_store import (
 )
 from agent_bom.api.server import app, set_policy_store
 
+ADMIN_HEADERS = {"X-Agent-Bom-Role": "admin"}
+
 
 def _now() -> str:
     from datetime import datetime, timezone
@@ -80,6 +82,7 @@ def test_create_policy():
             "mode": "enforce",
             "rules": [{"id": "r1", "action": "block", "block_tools": ["exec"]}],
         },
+        headers=ADMIN_HEADERS,
     )
     assert resp.status_code == 201
     data = resp.json()
@@ -91,7 +94,7 @@ def test_create_policy():
 
 def test_create_invalid_mode():
     client, _ = _fresh_client()
-    resp = client.post("/v1/gateway/policies", json={"name": "bad", "mode": "bogus"})
+    resp = client.post("/v1/gateway/policies", json={"name": "bad", "mode": "bogus"}, headers=ADMIN_HEADERS)
     assert resp.status_code == 400
 
 
@@ -125,7 +128,7 @@ def test_get_cross_tenant_hidden():
 def test_update_policy():
     client, store = _fresh_client()
     store.put_policy(_make_policy())
-    resp = client.put("/v1/gateway/policies/p-1", json={"name": "renamed", "mode": "audit"})
+    resp = client.put("/v1/gateway/policies/p-1", json={"name": "renamed", "mode": "audit"}, headers=ADMIN_HEADERS)
     assert resp.status_code == 200
     assert resp.json()["name"] == "renamed"
     assert resp.json()["mode"] == "audit"
@@ -133,7 +136,7 @@ def test_update_policy():
 
 def test_update_not_found():
     client, _ = _fresh_client()
-    resp = client.put("/v1/gateway/policies/missing", json={"name": "x"})
+    resp = client.put("/v1/gateway/policies/missing", json={"name": "x"}, headers=ADMIN_HEADERS)
     assert resp.status_code == 404
 
 
@@ -143,7 +146,7 @@ def test_update_not_found():
 def test_delete_policy():
     client, store = _fresh_client()
     store.put_policy(_make_policy())
-    resp = client.delete("/v1/gateway/policies/p-1")
+    resp = client.delete("/v1/gateway/policies/p-1", headers=ADMIN_HEADERS)
     assert resp.status_code == 200
     assert resp.json()["deleted"] is True
     assert len(store.list_policies()) == 0
@@ -151,8 +154,21 @@ def test_delete_policy():
 
 def test_delete_not_found():
     client, _ = _fresh_client()
-    resp = client.delete("/v1/gateway/policies/missing")
+    resp = client.delete("/v1/gateway/policies/missing", headers=ADMIN_HEADERS)
     assert resp.status_code == 404
+
+
+def test_write_routes_require_policy_write_permission():
+    client, store = _fresh_client()
+    store.put_policy(_make_policy())
+    payload = {
+        "name": "block-exec",
+        "mode": "enforce",
+        "rules": [{"id": "r1", "action": "block", "block_tools": ["exec"]}],
+    }
+    assert client.post("/v1/gateway/policies", json=payload).status_code == 403
+    assert client.put("/v1/gateway/policies/p-1", json={"name": "renamed"}).status_code == 403
+    assert client.delete("/v1/gateway/policies/p-1").status_code == 403
 
 
 def test_list_hides_other_tenants():

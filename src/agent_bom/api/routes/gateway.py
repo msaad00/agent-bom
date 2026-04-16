@@ -20,11 +20,12 @@ from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import EvaluateRequest, PolicyCreate, PolicyUpdate
 from agent_bom.api.stores import _get_policy_store
+from agent_bom.rbac import require_permission
 
 router = APIRouter()
 
 
-@router.get("/v1/gateway/policies", tags=["gateway"])
+@router.get("/v1/gateway/policies", tags=["gateway"], dependencies=[require_permission("policy_read")])
 async def list_gateway_policies(request: Request, enabled: bool | None = None, mode: str | None = None):
     """List all gateway policies."""
     tenant_id = getattr(request.state, "tenant_id", "default")
@@ -36,7 +37,7 @@ async def list_gateway_policies(request: Request, enabled: bool | None = None, m
     return {"policies": [p.model_dump() for p in policies], "count": len(policies)}
 
 
-@router.post("/v1/gateway/policies", tags=["gateway"], status_code=201)
+@router.post("/v1/gateway/policies", tags=["gateway"], status_code=201, dependencies=[require_permission("policy_write")])
 async def create_gateway_policy(body: PolicyCreate, request: Request):
     """Create a new gateway policy."""
     from agent_bom.api.policy_store import GatewayPolicy, GatewayRule, PolicyMode
@@ -68,7 +69,7 @@ async def create_gateway_policy(body: PolicyCreate, request: Request):
     return policy.model_dump()
 
 
-@router.get("/v1/gateway/policies/{policy_id}", tags=["gateway"])
+@router.get("/v1/gateway/policies/{policy_id}", tags=["gateway"], dependencies=[require_permission("policy_read")])
 async def get_gateway_policy(policy_id: str, request: Request):
     """Get a gateway policy by ID."""
     tenant_id = getattr(request.state, "tenant_id", "default")
@@ -78,7 +79,7 @@ async def get_gateway_policy(policy_id: str, request: Request):
     return policy.model_dump()
 
 
-@router.put("/v1/gateway/policies/{policy_id}", tags=["gateway"])
+@router.put("/v1/gateway/policies/{policy_id}", tags=["gateway"], dependencies=[require_permission("policy_write")])
 async def update_gateway_policy(policy_id: str, body: PolicyUpdate, request: Request):
     """Update an existing gateway policy."""
     from agent_bom.api.policy_store import GatewayRule, PolicyMode
@@ -112,7 +113,7 @@ async def update_gateway_policy(policy_id: str, body: PolicyUpdate, request: Req
     return policy.model_dump()
 
 
-@router.delete("/v1/gateway/policies/{policy_id}", tags=["gateway"])
+@router.delete("/v1/gateway/policies/{policy_id}", tags=["gateway"], dependencies=[require_permission("policy_write")])
 async def delete_gateway_policy(policy_id: str, request: Request):
     """Delete a gateway policy."""
     tenant_id = getattr(request.state, "tenant_id", "default")
@@ -121,7 +122,7 @@ async def delete_gateway_policy(policy_id: str, request: Request):
     return {"deleted": True, "policy_id": policy_id}
 
 
-@router.post("/v1/gateway/evaluate", tags=["gateway"])
+@router.post("/v1/gateway/evaluate", tags=["gateway"], dependencies=[require_permission("policy_read")])
 async def evaluate_gateway(body: EvaluateRequest, request: Request):
     """Dry-run evaluation of gateway policies against a tool call."""
     from agent_bom.gateway import evaluate_gateway_policies
@@ -142,7 +143,7 @@ async def evaluate_gateway(body: EvaluateRequest, request: Request):
     }
 
 
-@router.get("/v1/gateway/audit", tags=["gateway"])
+@router.get("/v1/gateway/audit", tags=["gateway"], dependencies=[require_permission("audit_read")])
 async def list_gateway_audit(
     request: Request,
     policy_id: str | None = None,
@@ -160,7 +161,7 @@ async def list_gateway_audit(
     return {"entries": [e.model_dump() for e in entries], "count": len(entries)}
 
 
-@router.get("/v1/gateway/stats", tags=["gateway"])
+@router.get("/v1/gateway/stats", tags=["gateway"], dependencies=[require_permission("audit_read")])
 async def gateway_stats(request: Request):
     """Gateway-wide statistics."""
     tenant_id = getattr(request.state, "tenant_id", "default")

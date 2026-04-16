@@ -45,6 +45,9 @@ helm install agent-bom deploy/helm/agent-bom/ \
 | `scanner.enabled` | `true` | Deploy CronJob scanner |
 | `scanner.schedule` | `0 */6 * * *` | Cron schedule |
 | `scanner.allNamespaces` | `true` | Scan all namespaces |
+| `scanner.extraArgs` | `[]` | Add scan flags like `--k8s-mcp`, `--enforce`, or `--introspect` |
+| `scanner.env` | `[]` | Extra environment variables for the scanner CronJob |
 | `monitor.enabled` | `false` | Deploy DaemonSet monitor |
 | `monitor.port` | `8423` | HTTP port for protect endpoint |
 | `rbac.create` | `true` | Create RBAC resources |
+| `serviceAccount.annotations` | `{}` | Attach provider-specific identity such as AWS IRSA |

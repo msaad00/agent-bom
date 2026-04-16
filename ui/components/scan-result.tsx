@@ -382,8 +382,8 @@ function RemediationPlan({ items }: { items: RemediationItem[] }) {
               </div>
             </div>
             <div className="text-right flex-shrink-0">
-              <div className="text-lg font-bold font-mono text-emerald-400">{item.impact_score}</div>
-              <div className="text-xs text-zinc-600">impact</div>
+              <div className="text-lg font-bold font-mono text-emerald-400">{item.impact_score.toFixed(1)}</div>
+              <div className="text-xs text-zinc-600">risk</div>
             </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">

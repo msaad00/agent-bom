@@ -182,7 +182,7 @@ function NarrativeRow({
           )}
         </td>
 
-        {/* Impact score */}
+        {/* Risk score */}
         <td className="px-4 py-3">
           <div className="flex items-center gap-2">
             <div className="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
@@ -807,7 +807,7 @@ function RemediationPage() {
                   </th>
                   <th className="text-left px-4 py-3">
                     <SortButton
-                      label="Impact"
+                      label="Risk"
                       field="impact_score"
                       current={sortKey}
                       dir={sortDir}

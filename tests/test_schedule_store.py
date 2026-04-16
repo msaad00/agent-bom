@@ -2,6 +2,7 @@
 
 import asyncio
 from datetime import datetime, timezone
+from unittest.mock import patch
 
 from agent_bom.api.schedule_store import (
     InMemoryScheduleStore,
@@ -271,3 +272,46 @@ class TestSchedulerLoop:
         updated = store.get("s1")
         assert updated.last_run is not None
         assert updated.last_job_id == "job-456"
+
+    def test_skips_due_scans_without_postgres_leader_lock(self, monkeypatch):
+        """Only the replica holding the advisory lock should trigger schedules."""
+        from agent_bom.api.scheduler import scheduler_loop
+
+        store = InMemoryScheduleStore()
+        store.put(_make_schedule("s1", next_run="2020-01-01T00:00:00+00:00", enabled=True))
+        monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example.invalid/agent_bom")
+
+        triggered = []
+
+        class _FakeCursor:
+            def fetchone(self):
+                return (False,)
+
+        class _FakeConn:
+            def execute(self, sql, params):
+                return _FakeCursor()
+
+        class _FakePool:
+            def getconn(self):
+                return _FakeConn()
+
+            def putconn(self, conn):
+                return None
+
+        def mock_scan(config):
+            triggered.append(config)
+            return "job-123"
+
+        async def _run():
+            task = asyncio.create_task(scheduler_loop(store, mock_scan, interval_seconds=0))
+            await asyncio.sleep(0.05)
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        with patch("agent_bom.api.postgres_store._get_pool", return_value=_FakePool()):
+            asyncio.run(_run())
+
+        assert triggered == []

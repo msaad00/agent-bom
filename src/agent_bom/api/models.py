@@ -204,6 +204,13 @@ class EvaluateRequest(BaseModel):
     arguments: dict = {}
 
 
+class ProxyAuditIngestRequest(BaseModel):
+    source_id: str = ""
+    session_id: str = ""
+    alerts: list[dict] = []
+    summary: dict | None = None
+
+
 # ─── Scan Type Request Models ─────────────────────────────────────────────
 
 

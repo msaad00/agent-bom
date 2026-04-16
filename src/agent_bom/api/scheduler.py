@@ -7,9 +7,11 @@ Checks for due schedules every 60 seconds, triggers scans.
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
+_SCHEDULER_LEADER_LOCK_ID = 4_197_042_001
 
 
 def parse_cron_next(cron_expr: str, after: datetime) -> datetime | None:
@@ -95,53 +97,87 @@ async def scheduler_loop(
     import asyncio
 
     consecutive_failures = 0
+    leader_conn = None
 
-    while True:
+    def _try_acquire_postgres_leader_lock():
+        if not os.environ.get("AGENT_BOM_POSTGRES_URL"):
+            return None
         try:
-            now = datetime.now(timezone.utc)
-            now_iso = now.isoformat()
-            try:
-                from agent_bom.api.postgres_store import bypass_tenant_rls
-            except Exception:  # pragma: no cover - optional postgres backend
-                due = schedule_store.list_due(now_iso)
-            else:
-                with bypass_tenant_rls():
-                    due = schedule_store.list_due(now_iso)
+            from agent_bom.api.postgres_store import _get_pool
 
-            for schedule in due:
-                if not schedule.enabled:
-                    continue
-                logger.info("Triggering scheduled scan: %s (%s)", schedule.name, schedule.schedule_id)
-                try:
-                    job_id = run_scan_fn(schedule.scan_config)
-                    schedule.last_run = now_iso
-                    schedule.last_job_id = job_id
-
-                    # Compute next run
-                    next_run = parse_cron_next(schedule.cron_expression, now)
-                    schedule.next_run = next_run.isoformat() if next_run else None
-                    schedule.updated_at = now_iso
-                    try:
-                        from agent_bom.api.postgres_store import bypass_tenant_rls
-                    except Exception:  # pragma: no cover - optional postgres backend
-                        schedule_store.put(schedule)
-                    else:
-                        with bypass_tenant_rls():
-                            schedule_store.put(schedule)
-                except Exception:
-                    logger.exception("Failed to trigger scheduled scan: %s", schedule.name)
-
-            # Success — reset backoff counter
-            consecutive_failures = 0
+            pool = _get_pool()
+            conn = pool.getconn()
+            row = conn.execute("SELECT pg_try_advisory_lock(%s)", (_SCHEDULER_LEADER_LOCK_ID,)).fetchone()
+            if row and bool(row[0]):
+                logger.info("Scheduler leader lock acquired")
+                return conn
+            pool.putconn(conn)
         except Exception:
-            consecutive_failures += 1
-            backoff = min(interval_seconds * (2**consecutive_failures), max_backoff)
-            logger.exception(
-                "Scheduler loop error (attempt %d, next retry in %ds)",
-                consecutive_failures,
-                backoff,
-            )
-            await asyncio.sleep(backoff)
-            continue
+            logger.exception("Failed to acquire scheduler leader lock")
+        return None
 
-        await asyncio.sleep(interval_seconds)
+    try:
+        while True:
+            try:
+                if os.environ.get("AGENT_BOM_POSTGRES_URL") and leader_conn is None:
+                    leader_conn = _try_acquire_postgres_leader_lock()
+                    if leader_conn is None:
+                        await asyncio.sleep(interval_seconds)
+                        continue
+
+                now = datetime.now(timezone.utc)
+                now_iso = now.isoformat()
+                try:
+                    from agent_bom.api.postgres_store import bypass_tenant_rls
+                except Exception:  # pragma: no cover - optional postgres backend
+                    due = schedule_store.list_due(now_iso)
+                else:
+                    with bypass_tenant_rls():
+                        due = schedule_store.list_due(now_iso)
+
+                for schedule in due:
+                    if not schedule.enabled:
+                        continue
+                    logger.info("Triggering scheduled scan: %s (%s)", schedule.name, schedule.schedule_id)
+                    try:
+                        job_id = run_scan_fn(schedule.scan_config)
+                        schedule.last_run = now_iso
+                        schedule.last_job_id = job_id
+
+                        # Compute next run
+                        next_run = parse_cron_next(schedule.cron_expression, now)
+                        schedule.next_run = next_run.isoformat() if next_run else None
+                        schedule.updated_at = now_iso
+                        try:
+                            from agent_bom.api.postgres_store import bypass_tenant_rls
+                        except Exception:  # pragma: no cover - optional postgres backend
+                            schedule_store.put(schedule)
+                        else:
+                            with bypass_tenant_rls():
+                                schedule_store.put(schedule)
+                    except Exception:
+                        logger.exception("Failed to trigger scheduled scan: %s", schedule.name)
+
+                # Success — reset backoff counter
+                consecutive_failures = 0
+            except Exception:
+                consecutive_failures += 1
+                backoff = min(interval_seconds * (2**consecutive_failures), max_backoff)
+                logger.exception(
+                    "Scheduler loop error (attempt %d, next retry in %ds)",
+                    consecutive_failures,
+                    backoff,
+                )
+                await asyncio.sleep(backoff)
+                continue
+
+            await asyncio.sleep(interval_seconds)
+    finally:
+        if leader_conn is not None:
+            try:
+                from agent_bom.api.postgres_store import _get_pool
+
+                leader_conn.execute("SELECT pg_advisory_unlock(%s)", (_SCHEDULER_LEADER_LOCK_ID,))
+                _get_pool().putconn(leader_conn)
+            except Exception:
+                logger.exception("Failed to release scheduler leader lock")

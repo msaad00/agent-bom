@@ -99,6 +99,7 @@ nav:
       - Grafana Dashboard: deployment/grafana.md
   - Architecture:
       - Overview: architecture/overview.md
+      - How Agent-BOM Works: architecture/how-agent-bom-works.md
       - AI Infrastructure Scanning: architecture/ai-infrastructure.md
       - Data Ingestion and Security: architecture/data-ingestion-and-security.md
       - Canonical Model vs OCSF: architecture/canonical-vs-ocsf.md

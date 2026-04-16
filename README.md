@@ -211,6 +211,7 @@ Product references:
 - [docs/PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md)
 - [docs/ENTERPRISE.md](docs/ENTERPRISE.md)
 - [docs/RELEASE_VERIFICATION.md](docs/RELEASE_VERIFICATION.md)
+- [How Agent-BOM Works](site-docs/architecture/how-agent-bom-works.md)
 
 ### CI/CD in 60 seconds
 

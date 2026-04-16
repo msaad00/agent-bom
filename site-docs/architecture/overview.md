@@ -6,6 +6,8 @@ For the data-model contract between native `agent-bom` objects and optional OCSF
 
 For the end-to-end intake story across direct scans, read-only integrations, pushed ingest, and imported artifacts, see [Data Ingestion and Security](data-ingestion-and-security.md).
 
+For the shortest operator-facing explanation of inputs, engine, outputs, deployment models, and product surfaces, see [How Agent-BOM Works](how-agent-bom-works.md).
+
 ## Scanning pipeline
 
 ```mermaid

@@ -1,7 +1,8 @@
 name: Deployment Freshness
 
-# Checks that all live deployments (Railway/Smithery) serve the latest
-# released version.  Runs daily and on-demand.  Opens an issue if stale.
+# Checks that the protected Railway surface and the public marketplace/Smithery
+# surface serve the latest release and that the public endpoint is not auth-gated.
+# Runs daily and on-demand. Opens an issue if stale or misconfigured.
 
 on:
   schedule:
@@ -63,20 +64,32 @@ jobs:
             echo "stale=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Check Smithery tool count
-        id: smithery
+      - name: Check public marketplace deployment
+        id: public
         continue-on-error: true
         env:
-          RAILWAY_MCP_URL: ${{ vars.RAILWAY_MCP_URL }}
-          RAILWAY_MCP_BEARER_TOKEN: ${{ secrets.RAILWAY_MCP_BEARER_TOKEN }}
+          SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
         run: |
-          DEPLOY_URL="${RAILWAY_MCP_URL:-https://agent-bom-mcp.up.railway.app}"
+          if [ -z "${SMITHERY_MCP_URL:-}" ]; then
+            echo "::notice::SMITHERY_MCP_URL not configured — skipping public marketplace freshness checks"
+            echo "not_configured=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          DEPLOY_URL="${SMITHERY_MCP_URL}"
           RESPONSE=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe \
             --base-url "$DEPLOY_URL" \
-            --bearer-token "${RAILWAY_MCP_BEARER_TOKEN:-}" \
             --attempts 3 \
             --backoff-seconds 5 \
             --timeout 15 2>/dev/null || echo '{}')
+          DEPLOYED=$(echo "$RESPONSE" | python3 -c "
+          import sys, json
+          try:
+              data = json.load(sys.stdin)
+              print(data.get('version', 'unknown'))
+          except Exception:
+              print('unknown')
+          ")
           TOOL_COUNT=$(echo "$RESPONSE" | python3 -c "
           import sys, json
           try:
@@ -85,18 +98,41 @@ jobs:
           except Exception:
               print('unknown')
           ")
+          AUTH_REQUIRED=$(echo "$RESPONSE" | python3 -c "
+          import sys, json
+          try:
+              data = json.load(sys.stdin)
+              print('true' if data.get('auth_required') else 'false')
+          except Exception:
+              print('unknown')
+          ")
+          echo "public_version=$DEPLOYED" >> "$GITHUB_OUTPUT"
           echo "tool_count=$TOOL_COUNT" >> "$GITHUB_OUTPUT"
-          echo "Deployed tool count: $TOOL_COUNT"
+          echo "auth_required=$AUTH_REQUIRED" >> "$GITHUB_OUTPUT"
+          echo "Public marketplace version: $DEPLOYED (expected: ${{ steps.expected.outputs.version }})"
+          echo "Public marketplace tool count: $TOOL_COUNT"
+          echo "Public marketplace auth_required: $AUTH_REQUIRED"
+          if [ "$DEPLOYED" = "unknown" ]; then
+            echo "probe_failed=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Could not verify public marketplace version from $DEPLOY_URL"
+          elif [ "$AUTH_REQUIRED" = "true" ]; then
+            echo "auth_gate=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Public marketplace endpoint is auth-gated"
+          elif [ "$DEPLOYED" != "${{ steps.expected.outputs.version }}" ]; then
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Open issue if stale
-        if: steps.railway.outputs.stale == 'true'
+      - name: Open issue if deployment surfaces drift or public endpoint is misconfigured
+        if: steps.railway.outputs.stale == 'true' || steps.public.outputs.stale == 'true' || steps.public.outputs.auth_gate == 'true' || steps.public.outputs.probe_failed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           EXPECTED="${{ steps.expected.outputs.version }}"
           RAILWAY="${{ steps.railway.outputs.railway_version }}"
-          TOOLS="${{ steps.smithery.outputs.tool_count }}"
-          TITLE="supply-chain-drift: Railway serving $RAILWAY, expected $EXPECTED"
+          PUBLIC="${{ steps.public.outputs.public_version }}"
+          PUBLIC_TOOLS="${{ steps.public.outputs.tool_count }}"
+          PUBLIC_AUTH="${{ steps.public.outputs.auth_required }}"
+          TITLE="supply-chain-drift: deployment surfaces out of sync with $EXPECTED"
 
           gh label create supply-chain-drift --color FBCA04 --description "Automated supply-chain or deployment drift detection" >/dev/null 2>&1 || true
           gh label create security-preventive --color 0E8A16 --description "Preventive daily security automation findings" >/dev/null 2>&1 || true
@@ -108,12 +144,12 @@ jobs:
             gh issue comment "$EXISTING" --body "$(cat <<EOF
           ## Supply-Chain Drift Check Failed
 
-          | Surface | Deployed | Expected |
-          |---------|----------|----------|
-          | Railway | $RAILWAY | $EXPECTED |
-          | Tool count | $TOOLS | (check mcp_server.py) |
+          | Surface | Version | Expected | Auth Required | Tool Count |
+          |---------|---------|----------|---------------|------------|
+          | Railway (protected) | $RAILWAY | $EXPECTED | true | — |
+          | Public marketplace | $PUBLIC | $EXPECTED | $PUBLIC_AUTH | $PUBLIC_TOOLS |
 
-          **Action**: Re-run the Deploy MCP SSE workflow or trigger a new release.
+          **Action**: Ensure Smithery points at a separate public unauthenticated endpoint, and re-run the relevant deployment or release workflow.
 
           This issue was auto-updated by the deployment-freshness workflow.
           EOF
@@ -127,19 +163,19 @@ jobs:
             --body "$(cat <<EOF
           ## Supply-Chain Drift Check Failed
 
-          | Surface | Deployed | Expected |
-          |---------|----------|----------|
-          | Railway | $RAILWAY | $EXPECTED |
-          | Tool count | $TOOLS | (check mcp_server.py) |
+          | Surface | Version | Expected | Auth Required | Tool Count |
+          |---------|---------|----------|---------------|------------|
+          | Railway (protected) | $RAILWAY | $EXPECTED | true | — |
+          | Public marketplace | $PUBLIC | $EXPECTED | $PUBLIC_AUTH | $PUBLIC_TOOLS |
 
-          **Action**: Re-run the Deploy MCP SSE workflow or trigger a new release.
+          **Action**: Ensure Smithery points at a separate public unauthenticated endpoint, and re-run the relevant deployment or release workflow.
 
           This issue was auto-created by the deployment-freshness workflow.
           EOF
           )"
 
       - name: Close supply-chain drift issue when deployment is fresh
-        if: steps.railway.outputs.stale != 'true' && steps.railway.outputs.probe_failed != 'true'
+        if: steps.railway.outputs.stale != 'true' && steps.railway.outputs.probe_failed != 'true' && (steps.public.outputs.not_configured == 'true' || (steps.public.outputs.stale != 'true' && steps.public.outputs.probe_failed != 'true' && steps.public.outputs.auth_gate != 'true'))
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

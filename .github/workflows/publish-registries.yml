@@ -5,7 +5,7 @@ name: Publish to Registries
 #   SMITHERY_API_TOKEN  — Smithery service token (smithery.ai → API tokens)
 #   CLAWHUB_TOKEN       — ClawHub auth token (clawhub.ai → Settings)
 # Optional vars:
-#   RAILWAY_MCP_URL     — Override Railway MCP endpoint URL
+#   SMITHERY_MCP_URL    — Explicit public, unauthenticated MCP endpoint for Smithery
 
 on:
   workflow_run:
@@ -48,10 +48,39 @@ jobs:
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
+      - name: Validate Smithery public endpoint
+        env:
+          SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
+        run: |
+          if [ -z "$SMITHERY_MCP_URL" ]; then
+            echo "::error::SMITHERY_MCP_URL not set — Smithery must publish a separate public MCP surface, not the protected Railway endpoint"
+            exit 1
+          fi
+
+          RESPONSE=$(PYTHONPATH=src python3 -m agent_bom.deployment_probe \
+            --base-url "$SMITHERY_MCP_URL" \
+            --attempts 3 \
+            --backoff-seconds 5 \
+            --timeout 15 \
+            --forbid-auth-required)
+
+          PUBLIC_VERSION=$(echo "$RESPONSE" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          print(data.get('version', 'unknown'))
+          ")
+          PUBLIC_TOOLS=$(echo "$RESPONSE" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          print(data.get('tool_count', data.get('mcp_metrics', {}).get('tool_count', 'unknown')))
+          ")
+          echo "Smithery public endpoint version: ${PUBLIC_VERSION}"
+          echo "Smithery public endpoint tool count: ${PUBLIC_TOOLS}"
+
       - name: Publish to Smithery
         env:
           SMITHERY_API_TOKEN: ${{ secrets.SMITHERY_API_TOKEN }}
-          RAILWAY_MCP_URL: ${{ vars.RAILWAY_MCP_URL }}
+          SMITHERY_MCP_URL: ${{ vars.SMITHERY_MCP_URL }}
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
           if [ -z "$SMITHERY_API_TOKEN" ]; then
@@ -60,7 +89,7 @@ jobs:
           fi
 
           QUALIFIED_NAME="agent-bom%2Fagent-bom"
-          MCP_URL="${RAILWAY_MCP_URL:-https://agent-bom-mcp.up.railway.app/mcp}"
+          MCP_URL="${SMITHERY_MCP_URL}"
 
           echo "Publishing agent-bom v${VERSION} to Smithery..."
 
@@ -236,11 +265,9 @@ jobs:
             fi
           }
 
-          # Main consolidated skill (fatal on failure)
-          _publish_skill "integrations/openclaw" "agent-bom" true "agent-bom"
-
-          # Focused sub-skills (non-fatal — best-effort)
-          _publish_skill "integrations/openclaw/scan"       "agent-bom-scan"       false "agent-bom scan"
+          # Curated, focused skills only. Do not publish the oversized omnibus root
+          # skill to ClawHub — keep the marketplace surface small and guardrailed.
+          _publish_skill "integrations/openclaw/scan"       "agent-bom-scan"       true  "agent-bom scan"
           _publish_skill "integrations/openclaw/compliance" "agent-bom-compliance" false "agent-bom compliance"
           _publish_skill "integrations/openclaw/registry"   "agent-bom-registry"   false "agent-bom registry"
           _publish_skill "integrations/openclaw/runtime"    "agent-bom-runtime"    false "agent-bom runtime"

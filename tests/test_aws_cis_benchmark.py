@@ -235,26 +235,42 @@ class TestCheck110:
 
 class TestCheck112:
     def test_pass_no_stale(self):
+        recent_use = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
         client = _iam_client()
         client.generate_credential_report.return_value = {"State": "COMPLETE"}
         client.get_credential_report.return_value = {
             "Content": (
                 "user,password_last_used,access_key_1_last_used_date,access_key_2_last_used_date\n"
                 "<root_account>,N/A,N/A,N/A\n"
-                "alice,2026-03-01T00:00:00+00:00,N/A,N/A\n"
+                f"alice,{recent_use},N/A,N/A\n"
+            ).encode()
+        }
+        result = _check_1_12(client)
+        assert result.status == CheckStatus.PASS
+
+    def test_pass_on_45_day_boundary(self):
+        boundary_use = (datetime.now(timezone.utc) - timedelta(days=45)).isoformat()
+        client = _iam_client()
+        client.generate_credential_report.return_value = {"State": "COMPLETE"}
+        client.get_credential_report.return_value = {
+            "Content": (
+                "user,password_last_used,access_key_1_last_used_date,access_key_2_last_used_date\n"
+                "<root_account>,N/A,N/A,N/A\n"
+                f"alice,{boundary_use},N/A,N/A\n"
             ).encode()
         }
         result = _check_1_12(client)
         assert result.status == CheckStatus.PASS
 
     def test_fail_stale_user(self):
+        stale_use = (datetime.now(timezone.utc) - timedelta(days=46)).isoformat()
         client = _iam_client()
         client.generate_credential_report.return_value = {"State": "COMPLETE"}
         client.get_credential_report.return_value = {
             "Content": (
                 "user,password_last_used,access_key_1_last_used_date,access_key_2_last_used_date\n"
                 "<root_account>,N/A,N/A,N/A\n"
-                "stale-bob,2020-01-01T00:00:00+00:00,N/A,N/A\n"
+                f"stale-bob,{stale_use},N/A,N/A\n"
             ).encode()
         }
         result = _check_1_12(client)

@@ -210,8 +210,23 @@ Product references:
 - [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md)
 - [docs/PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md)
 - [docs/ENTERPRISE.md](docs/ENTERPRISE.md)
+- [docs/SUPPLY_CHAIN.md](docs/SUPPLY_CHAIN.md)
 - [docs/RELEASE_VERIFICATION.md](docs/RELEASE_VERIFICATION.md)
 - [How Agent-BOM Works](site-docs/architecture/how-agent-bom-works.md)
+
+## Supply chain and release trust
+
+The dependency and release story is explicit:
+
+- bounded runtime dependency ranges in [pyproject.toml](pyproject.toml)
+- locked Python and UI resolution in [uv.lock](uv.lock) and [ui/package-lock.json](ui/package-lock.json)
+- per-PR dependency review plus scheduled extras audits
+- signed release artifacts, provenance bundles, and published self-SBOMs
+
+If you need the operator-facing details:
+
+- [Supply Chain and Dependency Controls](docs/SUPPLY_CHAIN.md)
+- [Release Verification](docs/RELEASE_VERIFICATION.md)
 
 ### CI/CD in 60 seconds
 

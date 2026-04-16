@@ -24,3 +24,10 @@ agent-bom has three distinct security postures:
 - **Proxy mode** (`agent-bom proxy`) is an execution and enforcement surface. It intentionally launches or connects to the target MCP server so it can inspect, block, and audit tool traffic in real time.
 
 Across all modes, agent-bom never stores credential values — only their names appear in output as `***REDACTED***`.
+
+## Release trust and dependency controls
+
+For dependency controls, extras audit coverage, parser fuzzing, and release
+trust posture, see:
+
+- [Supply Chain and Trust](architecture/supply-chain-and-trust.md)

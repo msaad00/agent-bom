@@ -102,6 +102,7 @@ nav:
       - How Agent-BOM Works: architecture/how-agent-bom-works.md
       - AI Infrastructure Scanning: architecture/ai-infrastructure.md
       - Data Ingestion and Security: architecture/data-ingestion-and-security.md
+      - Supply Chain and Trust: architecture/supply-chain-and-trust.md
       - Canonical Model vs OCSF: architecture/canonical-vs-ocsf.md
   - Reference:
       - MCP Tools: reference/mcp-tools.md

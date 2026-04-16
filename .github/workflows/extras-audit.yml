@@ -1,0 +1,64 @@
+name: Extras Dependency Audit
+
+on:
+  pull_request:
+    paths:
+      - pyproject.toml
+      - uv.lock
+      - .github/workflows/extras-audit.yml
+  schedule:
+    - cron: "0 8 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-extras:
+    name: Audit extras (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api-runtime
+            extras: "api oidc runtime"
+          - name: mcp-surface
+            extras: "mcp-server graph"
+          - name: analytics-ui
+            extras: "postgres dashboard"
+          - name: cloud-surface
+            extras: "cloud"
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: "3.11"
+
+      - name: Install selected extras
+        run: |
+          args=""
+          for extra in ${{ matrix.extras }}; do
+            args="$args --extra $extra"
+          done
+          uv sync $args
+
+      - name: Capture resolved dependency tree
+        run: |
+          mkdir -p audit
+          uv tree > "audit/${{ matrix.name }}-tree.txt"
+
+      - name: Audit selected extras with pip-audit
+        run: |
+          mkdir -p audit
+          uv run --with pip-audit pip-audit \
+            --format json \
+            --output "audit/${{ matrix.name }}-pip-audit.json"
+
+      - name: Upload extras audit artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: extras-audit-${{ matrix.name }}
+          path: audit/

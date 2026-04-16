@@ -57,6 +57,13 @@ agent-bom is a **read-only scanner**. It does not modify agent configurations, e
 - **Pre-commit hooks**: ruff, ruff-format, detect-private-key, check-yaml, end-of-file-fixer
 - No third-party penetration testing yet (planned for v1.0)
 
+## Release verification and dependency controls
+
+The public verification path is documented:
+
+- [docs/RELEASE_VERIFICATION.md](docs/RELEASE_VERIFICATION.md) — Sigstore bundle verification, SLSA provenance inspection, and self-SBOM review
+- [docs/SUPPLY_CHAIN.md](docs/SUPPLY_CHAIN.md) — dependency bounds, lockfiles, extras audit coverage, fuzz targets, and release trust controls
+
 ## Vulnerability Disclosure Timeline
 
 1. Reporter submits via GitHub Security Advisories

@@ -154,7 +154,7 @@ The current mesh is an agent-centered shared-infrastructure graph: selected agen
 
 ### Fix-first remediation
 
-Reach, severity, fix version, and framework context stay in one review table so the operator can act without jumping between pages.
+Risk, reach, fix version, and framework context stay in one review table so the operator can act without jumping between pages.
 
 ![agent-bom remediation view](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png)
 

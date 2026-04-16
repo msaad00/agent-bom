@@ -4,8 +4,7 @@
  */
 
 import type { UnifiedEdge, UnifiedGraphData, UnifiedNode } from "./graph-schema";
-
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
+import { getConfiguredApiUrl } from "./runtime-config";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -746,13 +745,13 @@ async function errorMessage(res: Response): Promise<string> {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { signal: withTimeout() });
+  const res = await fetch(`${getConfiguredApiUrl()}${path}`, { signal: withTimeout() });
   if (!res.ok) throw new Error(await errorMessage(res));
   return res.json() as Promise<T>;
 }
 
 async function post<T>(path: string, body: unknown, headers: Record<string, string> = {}): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${getConfiguredApiUrl()}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
@@ -763,7 +762,7 @@ async function post<T>(path: string, body: unknown, headers: Record<string, stri
 }
 
 async function put<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${getConfiguredApiUrl()}${path}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -774,7 +773,7 @@ async function put<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function del(path: string): Promise<void> {
-  const res = await fetch(`${BASE}${path}`, { method: "DELETE", signal: withTimeout() });
+  const res = await fetch(`${getConfiguredApiUrl()}${path}`, { method: "DELETE", signal: withTimeout() });
   if (!res.ok) throw new Error(await errorMessage(res));
 }
 
@@ -891,7 +890,7 @@ export const api = {
 
   /** Connect to SSE stream for real-time progress */
   streamScan: (jobId: string, onMessage: (data: SSEEvent) => void, onDone: () => void) => {
-    const es = new EventSource(`${BASE}/v1/scan/${jobId}/stream`);
+    const es = new EventSource(`${getConfiguredApiUrl()}/v1/scan/${jobId}/stream`);
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data as string);

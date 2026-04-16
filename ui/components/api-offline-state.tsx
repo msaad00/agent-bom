@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, FileText, PlayCircle, Server } from "lucide-react";
 
 import type { ScanResult } from "@/lib/api";
+import { getDisplayApiUrl } from "@/lib/runtime-config";
 import { checkFileSize, validateScanReport } from "@/lib/validators";
 
 interface ApiOfflineStateProps {
@@ -13,14 +14,13 @@ interface ApiOfflineStateProps {
   onImport?: (data: ScanResult) => void;
 }
 
-const DEFAULT_API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8422";
-
 export function ApiOfflineState({
   title = "Cannot connect to the agent-bom API",
   detail,
   onImport,
 }: ApiOfflineStateProps) {
   const [importError, setImportError] = useState<string | null>(null);
+  const apiUrl = getDisplayApiUrl();
 
   const handleFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -61,7 +61,7 @@ export function ApiOfflineState({
           <p className="mt-3 text-sm leading-6 text-zinc-400">
             Run the local stack at{" "}
             <code className="rounded bg-zinc-900 px-1.5 py-0.5 font-mono text-zinc-200">
-              {DEFAULT_API_URL}
+              {apiUrl}
             </code>{" "}
             so the dashboard can load live scan data, graph views, and compliance surfaces.
           </p>
@@ -108,7 +108,7 @@ export function ApiOfflineState({
           If the API is already running and you still see this page, check the browser console for CORS errors and confirm{" "}
           <code className="rounded bg-zinc-950 px-1.5 py-0.5 font-mono text-zinc-200">NEXT_PUBLIC_API_URL</code>{" "}
           points to{" "}
-          <code className="rounded bg-zinc-950 px-1.5 py-0.5 font-mono text-zinc-200">{DEFAULT_API_URL}</code>.
+          <code className="rounded bg-zinc-950 px-1.5 py-0.5 font-mono text-zinc-200">{apiUrl}</code>.
         </div>
 
         {onImport ? (

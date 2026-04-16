@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import Script from "next/script";
 import "./globals.css";
 import { Nav } from "@/components/nav";
 
@@ -46,6 +47,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" data-theme="dark" suppressHydrationWarning>
       <body className={`${inter.variable} ${mono.variable} font-sans bg-background text-foreground min-h-screen antialiased selection:bg-emerald-500/20`}>
+        <Script src="/runtime-config.js" strategy="beforeInteractive" />
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
         <Nav />
         {/* Main content — offset by sidebar width on desktop, offset by top bar on mobile */}

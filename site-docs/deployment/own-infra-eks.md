@@ -169,6 +169,13 @@ You still own:
 - Secrets Manager / IRSA / ingress-controller wiring
 - operator runbooks and load testing
 
+For the UI specifically, the container now reads `NEXT_PUBLIC_API_URL` at
+startup. That means:
+
+- set a full internal or external API URL when you want cross-origin calls
+- set `NEXT_PUBLIC_API_URL=` for same-origin ingress and route `/v1/*`,
+  `/health`, and `/ws/*` to the API service in your ingress/controller
+
 That is still a valid no-lock-in story. The repo gives you the container entry
 points, storage paths, proxy surface, and scanner/discovery chart knobs without
 forcing you into a hosted control plane.

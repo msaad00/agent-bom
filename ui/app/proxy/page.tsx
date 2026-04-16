@@ -7,6 +7,7 @@ import {
   type ProxyAlert,
   formatDate,
 } from "@/lib/api";
+import { getConfiguredApiUrl } from "@/lib/runtime-config";
 import {
   ResponsiveContainer,
   BarChart,
@@ -93,7 +94,7 @@ export default function ProxyDashboard() {
 
   // WebSocket for live metrics
   useEffect(() => {
-    const base = process.env.NEXT_PUBLIC_API_URL ?? window.location.origin;
+    const base = getConfiguredApiUrl() || window.location.origin;
     const wsUrl = base.replace(/^http/, "ws") + "/ws/proxy/metrics";
 
     let ws: WebSocket;

@@ -80,7 +80,12 @@ export default function GatewayPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      load();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const toggleExpand = (id: string) => {
     setExpanded((prev) => {

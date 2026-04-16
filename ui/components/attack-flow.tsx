@@ -4,10 +4,9 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 import Link from "next/link";
 import {
   ReactFlow, Background, Controls, MiniMap, Handle, Position,
-  useReactFlow, ReactFlowProvider, type Node, type Edge,
+  useReactFlow, ReactFlowProvider,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { applyDagreLayout } from "@/lib/dagre-layout";
 import {
   ArrowLeft, Loader2, AlertTriangle, Bug, Package, Server,
   ShieldAlert, KeyRound, Wrench, X, Download, Filter, ExternalLink,
@@ -321,13 +320,16 @@ export function AttackFlowView({ id }: { id: string }) {
   useEffect(() => { api.getScan(id).then(setJob).catch((e) => setError(e.message)); }, [id]);
 
   useEffect(() => {
-    setLoading(true);
-    const filterParams: Record<string, string> = {};
-    if (filters.cve) filterParams.cve = filters.cve;
-    if (filters.severity) filterParams.severity = filters.severity;
-    if (filters.framework) filterParams.framework = filters.framework;
-    if (filters.agent) filterParams.agent = filters.agent;
-    api.getAttackFlow(id, Object.keys(filterParams).length > 0 ? filterParams : undefined).then(setFlowData).catch((e) => setError(e.message)).finally(() => setLoading(false));
+    const timer = window.setTimeout(() => {
+      setLoading(true);
+      const filterParams: Record<string, string> = {};
+      if (filters.cve) filterParams.cve = filters.cve;
+      if (filters.severity) filterParams.severity = filters.severity;
+      if (filters.framework) filterParams.framework = filters.framework;
+      if (filters.agent) filterParams.agent = filters.agent;
+      api.getAttackFlow(id, Object.keys(filterParams).length > 0 ? filterParams : undefined).then(setFlowData).catch((e) => setError(e.message)).finally(() => setLoading(false));
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [id, filters]);
 
   if (loading && !flowData) return <div className="flex items-center justify-center h-[80vh] text-zinc-400"><Loader2 className="w-5 h-5 animate-spin mr-2" />Loading attack flow...</div>;

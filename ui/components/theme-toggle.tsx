@@ -30,13 +30,11 @@ function applyTheme(theme: ThemeMode) {
 }
 
 export function ThemeToggle({ compact = false, className = "" }: { compact?: boolean; className?: string }) {
-  const [theme, setTheme] = useState<ThemeMode>("dark");
+  const [theme, setTheme] = useState<ThemeMode>(() => readTheme());
 
   useEffect(() => {
-    const initial = readTheme();
-    setTheme(initial);
-    applyTheme(initial);
-  }, []);
+    applyTheme(theme);
+  }, [theme]);
 
   const nextTheme = theme === "dark" ? "light" : "dark";
   const label = theme === "dark" ? "Switch to light theme" : "Switch to dark theme";

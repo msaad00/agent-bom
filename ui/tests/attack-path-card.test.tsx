@@ -105,27 +105,27 @@ describe('AttackPathCard', () => {
   })
 
   it('applies red color class for risk >= 8', () => {
-    const { container } = render(
+    render(
       <AttackPathCard nodes={baseNodes} riskScore={8.5} />
     )
-    const riskEl = container.querySelector('.text-red-400')
-    expect(riskEl).toBeInTheDocument()
+    const riskEl = screen.getByText('8.5').closest('div')
+    expect(riskEl?.className).toContain('text-red-200')
   })
 
   it('applies orange color class for risk between 5 and 8', () => {
-    const { container } = render(
+    render(
       <AttackPathCard nodes={baseNodes} riskScore={6.5} />
     )
-    const riskEl = container.querySelector('.text-orange-400')
-    expect(riskEl).toBeInTheDocument()
+    const riskEl = screen.getByText('6.5').closest('div')
+    expect(riskEl?.className).toContain('text-amber-200')
   })
 
   it('applies zinc color class for risk below 5', () => {
-    const { container } = render(
+    render(
       <AttackPathCard nodes={baseNodes} riskScore={3.0} />
     )
-    const riskEl = container.querySelector('.text-zinc-400')
-    expect(riskEl).toBeInTheDocument()
+    const riskEl = screen.getByText('3.0').closest('div')
+    expect(riskEl?.className).toContain('text-[color:var(--text-secondary)]')
   })
 
   it('renders credential node type with key icon', () => {

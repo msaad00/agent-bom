@@ -72,7 +72,12 @@ export default function AuditLogPage() {
       .finally(() => setLoading(false));
   }, [actionFilter, resourceFilter, page]);
 
-  useEffect(load, [load]);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      load();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [load]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 

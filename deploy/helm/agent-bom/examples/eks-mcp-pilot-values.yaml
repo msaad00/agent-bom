@@ -1,0 +1,43 @@
+controlPlane:
+  enabled: true
+  api:
+    replicas: 2
+    envFrom:
+      - secretRef:
+          name: agent-bom-control-plane
+  ui:
+    replicas: 2
+    env:
+      - name: NEXT_PUBLIC_API_URL
+        value: ""
+  ingress:
+    enabled: true
+    className: nginx
+    hosts:
+      - host: agent-bom.internal.example.com
+
+scanner:
+  enabled: true
+  allNamespaces: true
+  extraArgs:
+    - --k8s-mcp
+    - --k8s-all-namespaces
+    - --introspect
+    - --enforce
+    - --preset
+    - enterprise
+
+monitor:
+  enabled: false
+
+pdb:
+  enabled: true
+  minAvailable: 1
+
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/agent-bom-discovery
+
+networkPolicy:
+  enabled: true
+  restrictIngress: false

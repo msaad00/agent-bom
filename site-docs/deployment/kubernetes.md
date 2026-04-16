@@ -11,6 +11,7 @@ Located in `deploy/k8s/`:
 | `cronjob.yaml` | Scheduled scan every 6 hours |
 | `daemonset.yaml` | Runtime protection on every node |
 | `sidecar-example.yaml` | Proxy sidecar alongside an MCP server |
+| `proxy-sidecar-pilot.yaml` | Focused EKS pilot sidecar pattern for selected MCP workloads |
 
 Those static manifests are still the scanner/runtime path.
 
@@ -69,3 +70,6 @@ helm install agent-bom deploy/helm/agent-bom/ \
 
 For the full control-plane topology and secret wiring, see
 [Packaged API + UI Control Plane](control-plane-helm.md).
+
+For the narrower MCP and agents pilot, see
+[Focused EKS MCP Pilot](eks-mcp-pilot.md).

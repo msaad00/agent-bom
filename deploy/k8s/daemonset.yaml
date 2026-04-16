@@ -20,7 +20,7 @@ spec:
       serviceAccountName: agent-bom
       containers:
         - name: monitor
-          image: msaad02/agent-bom-runtime:latest
+          image: agentbom/agent-bom-runtime:latest
           command: ["agent-bom"]
           args:
             - "protect"

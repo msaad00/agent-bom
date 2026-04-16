@@ -1,0 +1,145 @@
+# Focused MCP pilot sidecar example for selected workloads.
+#
+# This is the honest runtime-enforcement path for EKS today:
+# add agent-bom proxy only to the MCP workloads you want inline enforcement on.
+#
+# Replace the sample MCP server command/image with your own workload image and
+# runtime command before applying.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agent-bom-proxy-policy
+  namespace: agent-bom
+data:
+  policy.json: |
+    {
+      "version": "2",
+      "rules": [
+        { "id": "no-unverified-high", "unverified_server": true, "severity_gte": "HIGH", "action": "fail" },
+        { "id": "high-epss-with-creds", "condition": "epss_score > 0.7 and has_credentials", "action": "fail" },
+        { "id": "warn-high-with-creds", "has_credentials": true, "severity_gte": "HIGH", "action": "warn" }
+      ]
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-server-with-proxy-metrics
+  namespace: agent-bom
+  labels:
+    app.kubernetes.io/name: mcp-server
+    app.kubernetes.io/component: proxy-pilot
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mcp-server
+    app.kubernetes.io/component: proxy-pilot
+  ports:
+    - name: metrics
+      port: 8422
+      targetPort: metrics
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-server-with-proxy
+  namespace: agent-bom
+  labels:
+    app.kubernetes.io/name: mcp-server
+    app.kubernetes.io/component: proxy-pilot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-server
+      app.kubernetes.io/component: proxy-pilot
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mcp-server
+        app.kubernetes.io/component: proxy-pilot
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8422"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mcp-server
+          image: node:20-slim
+          command:
+            - "npx"
+            - "-y"
+            - "@modelcontextprotocol/server-filesystem"
+            - "/workspace"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+
+        - name: agent-bom-proxy
+          image: agentbom/agent-bom-runtime:latest
+          args:
+            - "--policy"
+            - "/etc/agent-bom/policy.json"
+            - "--log"
+            - "/var/log/agent-bom/audit.jsonl"
+            - "--detect-credentials"
+            - "--block-undeclared"
+            - "--rate-limit-threshold"
+            - "60"
+            - "--"
+            - "npx"
+            - "-y"
+            - "@modelcontextprotocol/server-filesystem"
+            - "/workspace"
+          ports:
+            - containerPort: 8422
+              name: metrics
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: audit-logs
+              mountPath: /var/log/agent-bom
+            - name: workspace
+              mountPath: /workspace
+            - name: proxy-policy
+              mountPath: /etc/agent-bom
+              readOnly: true
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+      volumes:
+        - name: workspace
+          emptyDir: {}
+        - name: audit-logs
+          emptyDir: {}
+        - name: proxy-policy
+          configMap:
+            name: agent-bom-proxy-policy

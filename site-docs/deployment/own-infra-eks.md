@@ -3,6 +3,10 @@
 This is the self-hosted path for teams that want `agent-bom` inside their own
 AWS account, VPC, EKS cluster, and databases.
 
+If you want the narrower pilot shape for MCP discovery, fleet, mesh, gateway
+policy, and selected runtime enforcement, start with
+[Focused EKS MCP Pilot](eks-mcp-pilot.md).
+
 It is a good fit when you want:
 
 - your API, audit logs, and findings in your own infrastructure

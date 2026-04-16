@@ -91,6 +91,7 @@ nav:
       - Policy Engine: features/policy.md
   - Deployment:
       - Overview: deployment/overview.md
+      - Focused EKS MCP Pilot: deployment/eks-mcp-pilot.md
       - Your Own AWS / EKS: deployment/own-infra-eks.md
       - Packaged API + UI Control Plane: deployment/control-plane-helm.md
       - Backend Parity: deployment/backend-parity.md

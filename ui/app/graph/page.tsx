@@ -308,7 +308,7 @@ export default function GraphPage() {
       .finally(() => setLoadingSnapshots(false));
   }, []);
 
-  const serverEntityTypes = useMemo(() => entityTypesForLayers(filters), [filters.layers]);
+  const serverEntityTypes = useMemo(() => entityTypesForLayers(filters), [filters]);
 
   const serverRelationships = useMemo(
     () => RELATIONSHIP_SCOPE_MAP[filters.relationshipScope],
@@ -326,7 +326,7 @@ export default function GraphPage() {
         severity: filters.severity,
         pageSize: filters.pageSize,
       }),
-    [selectedScanId, serverEntityTypes, serverRelationships, filters.runtimeMode, filters.maxDepth, filters.severity, filters.pageSize],
+    [selectedScanId, serverEntityTypes, serverRelationships, filters],
   );
 
   useEffect(() => {

@@ -30,7 +30,6 @@ import { applyDagreLayout } from "@/lib/dagre-layout";
 import {
   lineageNodeTypes,
   type LineageNodeData,
-  type LineageNodeType,
 } from "@/components/lineage-nodes";
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import { getConnectedIds, searchNodes } from "@/lib/mesh-graph";
@@ -235,31 +234,34 @@ export default function ContextPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedJobId) {
-      setActiveJob(null);
-      return;
-    }
     let cancelled = false;
-    setDetailLoading(true);
-    api
-      .getScan(selectedJobId)
-      .then((job) => {
-        if (!cancelled) {
-          setActiveJob(job.result ? job : null);
-          setError(null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          setActiveJob(null);
-          setError(e.message);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setDetailLoading(false);
-      });
+    const timer = window.setTimeout(() => {
+      if (!selectedJobId) {
+        setActiveJob(null);
+        return;
+      }
+      setDetailLoading(true);
+      api
+        .getScan(selectedJobId)
+        .then((job) => {
+          if (!cancelled) {
+            setActiveJob(job.result ? job : null);
+            setError(null);
+          }
+        })
+        .catch((e) => {
+          if (!cancelled) {
+            setActiveJob(null);
+            setError(e.message);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setDetailLoading(false);
+        });
+    }, 0);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [selectedJobId]);
 
@@ -269,21 +271,27 @@ export default function ContextPage() {
   );
 
   useEffect(() => {
-    if (agentNames.length === 0) {
-      setSelectedAgent(null);
-      return;
-    }
-    setSelectedAgent((current) => (current && agentNames.includes(current) ? current : agentNames[0]));
+    const timer = window.setTimeout(() => {
+      if (agentNames.length === 0) {
+        setSelectedAgent(null);
+        return;
+      }
+      setSelectedAgent((current) => (current && agentNames.includes(current) ? current : agentNames[0]));
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [agentNames]);
 
   // Fetch context graph when job changes
   useEffect(() => {
-    if (!selectedJobId) return;
-    setGraphData(null);
-    api
-      .getContextGraph(selectedJobId, selectedAgent ?? undefined)
-      .then((resp) => setGraphData(resp as unknown as ContextGraphData))
-      .catch((e) => setError(e.message));
+    const timer = window.setTimeout(() => {
+      if (!selectedJobId) return;
+      setGraphData(null);
+      api
+        .getContextGraph(selectedJobId, selectedAgent ?? undefined)
+        .then((resp) => setGraphData(resp as unknown as ContextGraphData))
+        .catch((e) => setError(e.message));
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [selectedJobId, selectedAgent]);
 
   // Build ReactFlow graph

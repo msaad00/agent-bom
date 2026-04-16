@@ -38,7 +38,6 @@ interface NavLink {
   href: string;
   label: string;
   icon: React.ElementType;
-  badge?: "critical" | "high";
 }
 
 interface NavGroup {
@@ -78,7 +77,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/sources", label: "Data Sources", icon: Database },
       { href: "/scan", label: "New Scan", icon: Scan },
       { href: "/jobs", label: "Scan Jobs", icon: Clock },
-      { href: "/findings", label: "Findings", icon: Bug, badge: "critical" },
+      { href: "/findings", label: "Findings", icon: Bug },
     ],
   },
   {
@@ -150,13 +149,19 @@ export function Nav() {
 
   // Close mobile on route change
   useEffect(() => {
-    setMobileOpen(false);
+    const timer = window.setTimeout(() => {
+      setMobileOpen(false);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [path]);
 
   useEffect(() => {
-    if (!collapsed) {
-      setExpandedGroups(new Set([activeGroupForPath(path)]));
-    }
+    const timer = window.setTimeout(() => {
+      if (!collapsed) {
+        setExpandedGroups(new Set([activeGroupForPath(path)]));
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [collapsed, path]);
 
   // Sync main content padding with sidebar collapsed state
@@ -332,7 +337,7 @@ export function Nav() {
                   <p className="px-3 pb-1 text-[11px] leading-5 text-[color:var(--text-tertiary)]">
                     {group.description}
                   </p>
-                  {group.links.map(({ href, label, icon: Icon, badge }) => {
+                  {group.links.map(({ href, label, icon: Icon }) => {
                     const active =
                       href === "/"
                         ? path === "/"

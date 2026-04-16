@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ExternalLink, Route, SearchX } from "lucide-react";
+import { ExternalLink, Route, SearchX } from "lucide-react";
 
 import type { LineageNodeData } from "./lineage-nodes";
 

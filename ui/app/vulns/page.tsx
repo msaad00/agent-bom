@@ -3,7 +3,7 @@
 import { Fragment, Suspense, useCallback, useEffect, useState, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { api, Vulnerability, ScanJob, ScanResult, severityColor, severityDot, OWASP_LLM_TOP10, MITRE_ATLAS, JobListItem } from "@/lib/api";
+import { api, Vulnerability, ScanJob, ScanResult, severityColor, severityDot, JobListItem } from "@/lib/api";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { Bug, Download, ExternalLink, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, Loader2, Package, Server, ShieldOff } from "lucide-react";
 

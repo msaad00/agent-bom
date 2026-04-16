@@ -239,6 +239,7 @@ export function ComplianceMatrix({ data }: { data: ComplianceResponse }) {
 
   const rows = useMemo(() => flattenControls(data), [data]);
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table is the intended state engine here.
   const table = useReactTable({
     data: rows,
     columns,

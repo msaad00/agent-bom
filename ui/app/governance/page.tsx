@@ -49,7 +49,12 @@ export default function GovernancePage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [days]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      load();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [days]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (

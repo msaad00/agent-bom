@@ -21,7 +21,7 @@ import {
   RadialBarChart,
   RadialBar,
 } from "recharts";
-import type { Agent, BlastRadius, ScanResult } from "@/lib/api";
+import type { Agent, BlastRadius } from "@/lib/api";
 
 // ─── Shared ──────────────────────────────────────────────────────────────────
 

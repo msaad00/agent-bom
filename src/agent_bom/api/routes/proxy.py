@@ -21,6 +21,8 @@ from fastapi import APIRouter, HTTPException, Query, Request, WebSocket
 if TYPE_CHECKING:
     from agent_bom.runtime.protection import ProtectionEngine
 
+from agent_bom.api.models import ProxyAuditIngestRequest
+
 router = APIRouter()
 
 # ── In-process ring buffer for proxy alerts/metrics ──────────────────────────
@@ -51,6 +53,44 @@ def push_proxy_metrics(metrics: dict) -> None:
     """Called by the proxy to record latest metrics summary."""
     global _proxy_metrics
     _proxy_metrics = metrics
+
+
+@router.post("/v1/proxy/audit", tags=["proxy"])
+async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) -> dict:
+    """Ingest alerts and summary from an external proxy process."""
+    from agent_bom.api.audit_log import log_action
+
+    actor = getattr(request.state, "api_key_name", "") or "proxy-client"
+    source_id = body.source_id or "unknown"
+    session_id = body.session_id or "default"
+
+    for alert in body.alerts:
+        enriched = dict(alert)
+        enriched.setdefault("source_id", source_id)
+        enriched.setdefault("session_id", session_id)
+        push_proxy_alert(enriched)
+
+    if body.summary:
+        summary = dict(body.summary)
+        summary.setdefault("source_id", source_id)
+        summary.setdefault("session_id", session_id)
+        push_proxy_metrics(summary)
+
+    log_action(
+        "proxy.audit_ingested",
+        actor=actor,
+        resource=f"proxy/{source_id}",
+        session_id=session_id,
+        alert_count=len(body.alerts),
+        has_summary=body.summary is not None,
+    )
+    return {
+        "ingested": True,
+        "source_id": source_id,
+        "session_id": session_id,
+        "alert_count": len(body.alerts),
+        "has_summary": body.summary is not None,
+    }
 
 
 def _get_configured_log_path() -> _Path | None:

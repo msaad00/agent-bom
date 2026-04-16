@@ -1,0 +1,6 @@
+Enterprise pilot notes:
+
+- Set `AGENT_BOM_AUDIT_HMAC_KEY` in the control-plane secret.
+- Set `AGENT_BOM_REQUIRE_AUDIT_HMAC=1` to fail closed if the key is missing.
+- Use Postgres for the pilot control plane; SQLite is not the multi-replica path.
+- Prefer internal ingress / VPN-only exposure for the API and UI.

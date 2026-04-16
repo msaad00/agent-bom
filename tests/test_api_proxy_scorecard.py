@@ -177,6 +177,39 @@ def test_proxy_alerts_with_data():
     proxy_mod._proxy_alerts.clear()
 
 
+def test_proxy_audit_ingest_updates_alerts_and_status():
+    import agent_bom.api.routes.proxy as proxy_mod
+
+    proxy_mod._proxy_alerts.clear()
+    proxy_mod._proxy_metrics = None
+
+    client = TestClient(app)
+    ingest = client.post(
+        "/v1/proxy/audit",
+        json={
+            "source_id": "laptop-1",
+            "session_id": "sess-1",
+            "alerts": [{"type": "runtime_alert", "detector": "credential_leak", "severity": "critical", "message": "AWS key"}],
+            "summary": {"type": "proxy_summary", "total_tool_calls": 7, "total_blocked": 2},
+        },
+    )
+    assert ingest.status_code == 200
+    assert ingest.json()["alert_count"] == 1
+
+    alerts = client.get("/v1/proxy/alerts")
+    assert alerts.status_code == 200
+    assert alerts.json()["count"] == 1
+    assert alerts.json()["alerts"][0]["source_id"] == "laptop-1"
+
+    status = client.get("/v1/proxy/status")
+    assert status.status_code == 200
+    assert status.json()["total_tool_calls"] == 7
+    assert status.json()["source_id"] == "laptop-1"
+
+    proxy_mod._proxy_alerts.clear()
+    proxy_mod._proxy_metrics = None
+
+
 def test_proxy_alerts_filter_severity():
     """Filters alerts by severity query param."""
     import agent_bom.api.routes.proxy as proxy_mod

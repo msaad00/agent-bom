@@ -21,6 +21,32 @@ from rich.console import Console
 @click.option("--metrics-port", default=8422, show_default=True, help="Prometheus metrics port (0 to disable)")
 @click.option("--metrics-token", default=None, envvar="AGENT_BOM_METRICS_TOKEN", help="Bearer token for Prometheus /metrics endpoint")
 @click.option(
+    "--control-plane-url",
+    default=None,
+    envvar="AGENT_BOM_API_URL",
+    help="Control-plane base URL for gateway policy pull and proxy audit push",
+)
+@click.option(
+    "--control-plane-token",
+    default=None,
+    envvar="AGENT_BOM_API_TOKEN",
+    help="Bearer token or API key for control-plane auth",
+)
+@click.option(
+    "--policy-refresh-seconds",
+    type=int,
+    default=30,
+    show_default=True,
+    help="How often to refresh enabled gateway policies from the control plane",
+)
+@click.option(
+    "--audit-push-interval",
+    type=int,
+    default=10,
+    show_default=True,
+    help="How often to batch-push proxy alerts to the control plane",
+)
+@click.option(
     "--response-sign-key",
     default=None,
     envvar="AGENT_BOM_RESPONSE_SIGN_KEY",
@@ -43,6 +69,10 @@ def proxy_cmd(
     alert_webhook,
     metrics_port,
     metrics_token,
+    control_plane_url,
+    control_plane_token,
+    policy_refresh_seconds,
+    audit_push_interval,
     response_sign_key,
     url,
     server_cmd,
@@ -133,6 +163,10 @@ def proxy_cmd(
             alert_webhook=alert_webhook,
             metrics_port=metrics_port,
             metrics_token=metrics_token,
+            control_plane_url=control_plane_url,
+            control_plane_token=control_plane_token,
+            policy_refresh_seconds=policy_refresh_seconds,
+            audit_push_interval=audit_push_interval,
             response_signing_key=response_sign_key,
         )
     )

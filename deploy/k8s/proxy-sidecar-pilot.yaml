@@ -95,10 +95,14 @@ spec:
               cpu: "500m"
 
         - name: agent-bom-proxy
-          image: agentbom/agent-bom-runtime:latest
+          image: agentbom/agent-bom-runtime:0.76.4
           args:
             - "--policy"
             - "/etc/agent-bom/policy.json"
+            - "--policy-refresh-seconds"
+            - "30"
+            - "--audit-push-interval"
+            - "10"
             - "--log"
             - "/var/log/agent-bom/audit.jsonl"
             - "--detect-credentials"
@@ -110,6 +114,14 @@ spec:
             - "-y"
             - "@modelcontextprotocol/server-filesystem"
             - "/workspace"
+          env:
+            - name: AGENT_BOM_API_URL
+              value: "https://agent-bom.internal.example.com"
+            - name: AGENT_BOM_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: agent-bom-proxy-auth
+                  key: token
           ports:
             - containerPort: 8422
               name: metrics

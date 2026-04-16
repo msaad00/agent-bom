@@ -56,6 +56,35 @@ def test_proxy_cmd_with_project_config():
         assert result.exit_code == 0
 
 
+def test_proxy_cmd_passes_control_plane_settings():
+    runner = CliRunner()
+    with (
+        patch("agent_bom.proxy.run_proxy", new_callable=AsyncMock, return_value=0) as mock_run,
+        patch("agent_bom.project_config.load_project_config", return_value=None),
+    ):
+        result = runner.invoke(
+            proxy_cmd,
+            [
+                "--control-plane-url",
+                "https://agent-bom.internal.example.com",
+                "--control-plane-token",
+                "token-123",
+                "--policy-refresh-seconds",
+                "45",
+                "--audit-push-interval",
+                "15",
+                "--",
+                "echo",
+                "hello",
+            ],
+        )
+        assert result.exit_code == 0
+    assert mock_run.await_args.kwargs["control_plane_url"] == "https://agent-bom.internal.example.com"
+    assert mock_run.await_args.kwargs["control_plane_token"] == "token-123"
+    assert mock_run.await_args.kwargs["policy_refresh_seconds"] == 45
+    assert mock_run.await_args.kwargs["audit_push_interval"] == 15
+
+
 # ---------------------------------------------------------------------------
 # proxy_configure_cmd
 # ---------------------------------------------------------------------------

@@ -68,6 +68,7 @@ This manifest shows:
 - a starter proxy policy `ConfigMap`
 - a metrics `Service`
 - a sample MCP workload with `agent-bom-runtime` sidecar
+- control-plane policy pull and proxy audit push
 - audit logging, undeclared tool blocking, credential detection, and basic rate limiting
 
 Important boundary:
@@ -102,12 +103,12 @@ At minimum, put these in a Kubernetes Secret referenced by the API Deployment:
 
 - `AGENT_BOM_POSTGRES_URL`
 - `AGENT_BOM_API_KEY` or OIDC settings
-- `AGENT_BOM_AUDIT_HMAC_KEY`
+- `AGENT_BOM_AUDIT_HMAC_KEY` (required for pilot sign-off; do not rely on the ephemeral fallback)
 
 For enterprise pilots, prefer:
 
 - OIDC for user access
-- persistent audit HMAC keys
+- persistent audit HMAC keys with `AGENT_BOM_REQUIRE_AUDIT_HMAC=1`
 - IRSA on the scanner service account
 - internal ingress / VPN-only access
 

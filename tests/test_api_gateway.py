@@ -2,6 +2,7 @@
 
 from starlette.testclient import TestClient
 
+from agent_bom.api.audit_log import InMemoryAuditLog, set_audit_log
 from agent_bom.api.policy_store import (
     GatewayPolicy,
     GatewayRule,
@@ -68,6 +69,17 @@ def test_list_filter_mode():
     store.put_policy(_make_policy(policy_id="p-2", mode=PolicyMode.ENFORCE))
     resp = client.get("/v1/gateway/policies?mode=enforce")
     assert resp.json()["count"] == 1
+
+
+def test_list_policies_emits_etag_and_supports_not_modified():
+    client, store = _fresh_client()
+    store.put_policy(_make_policy(policy_id="p-1", name="alpha"))
+    resp = client.get("/v1/gateway/policies?enabled=true")
+    assert resp.status_code == 200
+    etag = resp.headers["etag"]
+    cached = client.get("/v1/gateway/policies?enabled=true", headers={"If-None-Match": etag})
+    assert cached.status_code == 304
+    assert cached.headers["etag"] == etag
 
 
 # ── Create ────────────────────────────────────────────────────────────────────
@@ -156,6 +168,30 @@ def test_delete_not_found():
     client, _ = _fresh_client()
     resp = client.delete("/v1/gateway/policies/missing", headers=ADMIN_HEADERS)
     assert resp.status_code == 404
+
+
+def test_policy_crud_writes_general_audit_log():
+    client, store = _fresh_client()
+    audit_store = InMemoryAuditLog()
+    set_audit_log(audit_store)
+    store.put_policy(_make_policy())
+
+    created = client.post(
+        "/v1/gateway/policies",
+        json={"name": "block-exec", "mode": "enforce", "rules": [{"id": "r1", "action": "block", "block_tools": ["exec"]}]},
+        headers=ADMIN_HEADERS,
+    )
+    assert created.status_code == 201
+
+    updated = client.put("/v1/gateway/policies/p-1", json={"name": "renamed"}, headers=ADMIN_HEADERS)
+    assert updated.status_code == 200
+
+    deleted = client.delete("/v1/gateway/policies/p-1", headers=ADMIN_HEADERS)
+    assert deleted.status_code == 200
+
+    assert audit_store.count("gateway.policy_created") == 1
+    assert audit_store.count("gateway.policy_updated") == 1
+    assert audit_store.count("gateway.policy_deleted") == 1
 
 
 def test_write_routes_require_policy_write_permission():

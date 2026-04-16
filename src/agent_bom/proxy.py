@@ -12,13 +12,16 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
+import platform
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from agent_bom import proxy_audit as _proxy_audit
 from agent_bom import proxy_policy as _proxy_policy
@@ -28,6 +31,9 @@ from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_tool_call
 from agent_bom.security import validate_arguments, validate_command
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from agent_bom.api.policy_store import GatewayPolicy
 
 # Re-export stable helper names for tests and existing callers while keeping the
 # implementation split across dedicated proxy helper modules.
@@ -134,6 +140,76 @@ def set_gateway_evaluator(fn) -> None:  # noqa: ANN001
     """
     global _gateway_evaluator
     _gateway_evaluator = fn
+
+
+def _generate_proxy_source_id() -> str:
+    hostname = platform.node() or "unknown"
+    return hashlib.sha256(hostname.encode()).hexdigest()[:12]
+
+
+def _control_plane_headers(token: str | None, etag: str | None = None) -> dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if etag:
+        headers["If-None-Match"] = etag
+    return headers
+
+
+async def _fetch_enabled_gateway_policies(
+    base_url: str,
+    token: str | None,
+    etag: str | None = None,
+) -> tuple[list["GatewayPolicy"] | None, str | None]:
+    from agent_bom.api.policy_store import GatewayPolicy
+    from agent_bom.http_client import create_client
+
+    url = base_url.rstrip("/") + "/v1/gateway/policies?enabled=true"
+    async with create_client(timeout=15.0) as client:
+        response = await client.get(url, headers=_control_plane_headers(token, etag))
+    if response.status_code == 304:
+        return None, response.headers.get("ETag", etag)
+    response.raise_for_status()
+    payload = response.json()
+    policies = [GatewayPolicy(**item) for item in payload.get("policies", [])]
+    return policies, response.headers.get("ETag")
+
+
+def _evaluate_gateway_policy_bundle(policies: list["GatewayPolicy"], agent_name: str, tool_name: str, arguments: dict) -> tuple[bool, str]:
+    from agent_bom.gateway import evaluate_gateway_policies
+
+    scoped = []
+    for policy in policies:
+        if getattr(policy, "bound_agents", None) and agent_name not in getattr(policy, "bound_agents", []):
+            continue
+        scoped.append(policy)
+    allowed, reason, _policy_id = evaluate_gateway_policies(scoped, tool_name, arguments)
+    return allowed, reason
+
+
+async def _push_proxy_audit_batch(
+    base_url: str,
+    token: str | None,
+    source_id: str,
+    session_id: str,
+    alerts: list[dict],
+    summary: dict | None = None,
+) -> bool:
+    from agent_bom.http_client import create_client
+
+    if not alerts and summary is None:
+        return True
+    url = base_url.rstrip("/") + "/v1/proxy/audit"
+    payload = {
+        "source_id": source_id,
+        "session_id": session_id,
+        "alerts": alerts,
+        "summary": summary,
+    }
+    async with create_client(timeout=15.0) as client:
+        response = await client.post(url, json=payload, headers=_control_plane_headers(token))
+    response.raise_for_status()
+    return True
 
 
 async def _send_webhook(url: str, payload: dict) -> None:
@@ -438,6 +514,10 @@ async def run_proxy(
     alert_webhook: Optional[str] = None,
     metrics_port: int = 8422,
     metrics_token: Optional[str] = None,
+    control_plane_url: Optional[str] = None,
+    control_plane_token: Optional[str] = None,
+    policy_refresh_seconds: int = 30,
+    audit_push_interval: int = 10,
     response_signing_key: Optional[str] = None,
 ) -> int:
     """Main proxy loop. Spawns server subprocess, relays JSON-RPC.
@@ -452,6 +532,8 @@ async def run_proxy(
         log_only: Log alerts without blocking (advisory mode).
         alert_webhook: Optional webhook URL for runtime alert notifications.
         metrics_token: Optional bearer token for Prometheus /metrics endpoint.
+        control_plane_url: Optional control-plane URL for policy pull and audit push.
+        control_plane_token: Optional bearer/API token for control-plane auth.
 
     Returns the server process exit code.
     """
@@ -503,6 +585,75 @@ async def run_proxy(
     replay_detector = ReplayDetector()
     scan_config = load_scan_config(policy) if policy else ScanConfig()
     runtime_alerts: list[dict] = []
+    control_plane_source_id = _generate_proxy_source_id()
+    control_plane_session_id = str(uuid.uuid4())
+    control_plane_policies: list["GatewayPolicy"] = []
+    control_plane_etag: str | None = None
+    audit_buffer: list[dict] = []
+    audit_lock = asyncio.Lock()
+
+    async def _refresh_control_plane_policies(initial: bool = False) -> None:
+        nonlocal control_plane_policies, control_plane_etag
+        if not control_plane_url:
+            return
+        try:
+            policies, next_etag = await _fetch_enabled_gateway_policies(
+                control_plane_url,
+                control_plane_token,
+                control_plane_etag,
+            )
+        except Exception as exc:  # noqa: BLE001
+            if initial:
+                logger.error("Failed to load enabled gateway policies from %s: %s", control_plane_url, exc)
+                raise SystemExit(1) from exc
+            logger.warning("Gateway policy refresh failed: %s", exc)
+            return
+        if policies is not None:
+            control_plane_policies = policies
+        if next_etag:
+            control_plane_etag = next_etag
+
+    async def _flush_audit_buffer(summary: dict | None = None) -> None:
+        if not control_plane_url:
+            return
+        async with audit_lock:
+            alerts = list(audit_buffer)
+            audit_buffer.clear()
+        try:
+            await _push_proxy_audit_batch(
+                control_plane_url,
+                control_plane_token,
+                control_plane_source_id,
+                control_plane_session_id,
+                alerts,
+                summary,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Proxy audit push failed: %s", exc)
+            async with audit_lock:
+                audit_buffer[:0] = alerts
+
+    if control_plane_url:
+        await _refresh_control_plane_policies(initial=True)
+
+        def _control_plane_gateway_evaluator(agent_id, tool_name, arguments):
+            return _evaluate_gateway_policy_bundle(control_plane_policies, agent_id, tool_name, arguments)
+
+        set_gateway_evaluator(_control_plane_gateway_evaluator)
+
+    async def _policy_refresh_loop() -> None:
+        if not control_plane_url:
+            return
+        while True:
+            await asyncio.sleep(max(policy_refresh_seconds, 5))
+            await _refresh_control_plane_policies()
+
+    async def _audit_push_loop() -> None:
+        if not control_plane_url:
+            return
+        while True:
+            await asyncio.sleep(max(audit_push_interval, 5))
+            await _flush_audit_buffer()
 
     def _handle_alerts(alerts, log_f=None):
         """Log alerts and optionally record them + dispatch webhook."""
@@ -515,6 +666,11 @@ async def run_proxy(
                 log_f.flush()
             if alert_webhook:
                 asyncio.ensure_future(_send_webhook(alert_webhook, alert_dict))
+            if control_plane_url:
+                enriched = dict(alert_dict)
+                enriched.setdefault("source_id", control_plane_source_id)
+                enriched.setdefault("session_id", control_plane_session_id)
+                audit_buffer.append(enriched)
 
     # Track declared tools from tools/list responses
     declared_tools: set[str] = set()
@@ -901,6 +1057,9 @@ async def run_proxy(
             sys.stderr.buffer.write(line)
             sys.stderr.buffer.flush()
 
+    refresh_task = asyncio.create_task(_policy_refresh_loop()) if control_plane_url else None
+    audit_task = asyncio.create_task(_audit_push_loop()) if control_plane_url else None
+
     try:
         results = await asyncio.gather(
             relay_client_to_server(),
@@ -927,13 +1086,20 @@ async def run_proxy(
                     log_file.write(err_entry)
     finally:
         # Write metrics summary + runtime alerts to audit log before closing
+        summary = metrics.summary()
+        summary.update(summarize_runtime_alerts(runtime_alerts))
+        if audit_task:
+            audit_task.cancel()
+        if refresh_task:
+            refresh_task.cancel()
+        if control_plane_url:
+            await _flush_audit_buffer(summary=summary)
         if log_file:
-            summary = metrics.summary()
-            summary.update(summarize_runtime_alerts(runtime_alerts))
             summary_line = json.dumps(summary) + "\n"
             log_file.write(summary_line)
             log_file.close()
         await metrics_server.stop()
+        set_gateway_evaluator(None)
         if process.returncode is None:
             process.terminate()
             try:

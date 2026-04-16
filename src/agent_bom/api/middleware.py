@@ -250,6 +250,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("DELETE", "/v1/findings/false-positive/", "analyst"),
         ("POST", "/v1/scan", "analyst"),
         ("POST", "/v1/gateway/evaluate", "analyst"),
+        ("POST", "/v1/proxy/audit", "analyst"),
         ("POST", "/v1/traces", "analyst"),
         ("POST", "/v1/results/push", "analyst"),
         ("POST", "/v1/schedules", "analyst"),

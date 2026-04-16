@@ -34,7 +34,7 @@ plane or one hosting provider.
 | **Local laptop / workstation** | local CLI or `agent-bom serve` with SQLite | individuals, demos, endpoint audit |
 | **Self-hosted VM / container** | `agent-bom api` or `agent-bom serve` behind your ingress/auth | teams and platform operators |
 | **Docker Compose / container platforms** | containerized API, proxy, or MCP server | repeatable deployment without vendor lock-in |
-| **Kubernetes / Helm** | cluster deployment for API, proxy, and runtime surfaces | larger team and enterprise rollout |
+| **Kubernetes / Helm** | cluster deployment for scanner, proxy, optional runtime monitor, and packaged API + UI control plane | larger team and enterprise rollout |
 | **Postgres / Supabase** | primary transactional control plane | full API/UI and tenant-aware persistence |
 | **ClickHouse** | analytics and event-scale persistence | trends, runtime event analytics, OLAP |
 | **Snowflake** | warehouse-native governance and selected control-plane paths | governance/activity workflows and Snowflake-native operators |

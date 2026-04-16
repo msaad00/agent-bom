@@ -11,9 +11,18 @@ spec:
     matchLabels:
       app.kubernetes.io/name: {{ include "agent-bom.name" . }}
   policyTypes:
-    - Ingress
     - Egress
-  ingress: []
+    {{- if or .Values.networkPolicy.restrictIngress (gt (len .Values.networkPolicy.ingress) 0) }}
+    - Ingress
+    {{- end }}
+  {{- if or .Values.networkPolicy.restrictIngress (gt (len .Values.networkPolicy.ingress) 0) }}
+  ingress:
+    {{- if gt (len .Values.networkPolicy.ingress) 0 }}
+    {{- toYaml .Values.networkPolicy.ingress | nindent 4 }}
+    {{- else }}
+    []
+    {{- end }}
+  {{- end }}
   egress:
     {{- if .Values.networkPolicy.allowDns }}
     - ports:

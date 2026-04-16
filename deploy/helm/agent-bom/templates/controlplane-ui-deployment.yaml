@@ -1,28 +1,29 @@
-{{- if .Values.monitor.enabled }}
+{{- if and .Values.controlPlane.enabled .Values.controlPlane.ui.enabled }}
 apiVersion: apps/v1
-kind: DaemonSet
+kind: Deployment
 metadata:
-  name: {{ include "agent-bom.name" . }}-monitor
+  name: {{ include "agent-bom.name" . }}-ui
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "agent-bom.labels" . | nindent 4 }}
-    app.kubernetes.io/component: monitor
+    app.kubernetes.io/component: ui
 spec:
+  replicas: {{ .Values.controlPlane.ui.replicas }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "agent-bom.name" . }}
-      app.kubernetes.io/component: monitor
+      app.kubernetes.io/component: ui
   template:
     metadata:
       labels:
         {{- include "agent-bom.labels" . | nindent 8 }}
-        app.kubernetes.io/component: monitor
+        app.kubernetes.io/component: ui
       {{- with .Values.podAnnotations }}
       annotations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
     spec:
-      serviceAccountName: {{ include "agent-bom.serviceAccountName" . }}
+      automountServiceAccountToken: false
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -30,32 +31,31 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: monitor
-          image: "{{ .Values.runtimeImage.repository }}:{{ .Values.runtimeImage.tag }}"
-          imagePullPolicy: {{ .Values.runtimeImage.pullPolicy }}
-          command: ["agent-bom"]
-          args:
-            - "protect"
-            - "--mode"
-            - {{ .Values.monitor.mode | quote }}
-            - "--host"
-            - "0.0.0.0"
-            - "--port"
-            - {{ .Values.monitor.port | quote }}
+        - name: ui
+          image: "{{ .Values.uiImage.repository }}:{{ .Values.uiImage.tag }}"
+          imagePullPolicy: {{ .Values.uiImage.pullPolicy }}
           ports:
-            - containerPort: {{ .Values.monitor.port }}
-              name: protect
+            - containerPort: {{ .Values.controlPlane.ui.port }}
+              name: http
               protocol: TCP
+          {{- with .Values.controlPlane.ui.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.controlPlane.ui.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           resources:
-            {{- toYaml .Values.resources | nindent 12 }}
+            {{- toYaml .Values.controlPlane.ui.resources | nindent 12 }}
           livenessProbe:
-            {{- toYaml .Values.livenessProbe | nindent 12 }}
+            {{- toYaml .Values.controlPlane.ui.livenessProbe | nindent 12 }}
           readinessProbe:
-            {{- toYaml .Values.readinessProbe | nindent 12 }}
+            {{- toYaml .Values.controlPlane.ui.readinessProbe | nindent 12 }}
           startupProbe:
-            {{- toYaml .Values.startupProbe | nindent 12 }}
+            {{- toYaml .Values.controlPlane.ui.startupProbe | nindent 12 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

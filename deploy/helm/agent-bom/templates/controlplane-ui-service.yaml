@@ -1,0 +1,24 @@
+{{- if and .Values.controlPlane.enabled .Values.controlPlane.ui.enabled .Values.controlPlane.ui.service.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agent-bom.name" . }}-ui
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+  {{- with .Values.controlPlane.ui.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.controlPlane.ui.service.type }}
+  selector:
+    app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+    app.kubernetes.io/component: ui
+  ports:
+    - name: http
+      port: {{ .Values.controlPlane.ui.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}

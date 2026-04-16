@@ -19,7 +19,7 @@ It is a good fit when you want:
 - runtime proxy sidecar:
   - [`deploy/docker-compose.runtime.yml`](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/docker-compose.runtime.yml)
   - [`deploy/k8s/sidecar-example.yaml`](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/k8s/sidecar-example.yaml)
-- Helm chart for scanner and runtime-monitoring helper surfaces:
+- Helm chart for scanner, runtime-monitoring, and packaged API/UI control-plane surfaces:
   - [`deploy/helm/agent-bom`](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/helm/agent-bom)
 - Postgres-backed control-plane path:
   - [`deploy/supabase/postgres/init.sql`](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/supabase/postgres/init.sql)
@@ -28,11 +28,10 @@ It is a good fit when you want:
 
 Important boundary:
 
-- the Helm chart currently ships the scanner CronJob and runtime monitoring
-  surfaces
-- it does not yet ship a full API/UI Deployment for the control plane
-- for EKS, the control plane is still best treated as your own Deployment/Ingress
-  manifests plus the existing container images and database wiring
+- the Helm chart now packages the API + UI control plane
+- Postgres, ClickHouse, secrets, ingress-controller specifics, and autoscaling
+  policy are still operator-owned
+- this is now a real self-host packaging path, not just a container-and-docs story
 
 ## Reference Shape
 
@@ -71,9 +70,10 @@ policy, and only the integrations you intend to allow.
 Use two layers:
 
 1. control plane
-- run the API and UI behind your own ingress
-- back it with `Postgres`
+- enable `controlPlane.enabled=true` in Helm
+- back the API with `Postgres`
 - add `ClickHouse` only if you want event-scale analytics
+- use the packaged same-origin ingress unless you have a reason to split hosts
 
 2. dataplane and discovery
 - run `agent-bom proxy` beside or in front of MCP servers
@@ -86,6 +86,10 @@ The chart now supports the EKS wiring you actually need:
 
 | Value | Why it matters |
 |---|---|
+| `controlPlane.enabled` | package the API + dashboard in-cluster |
+| `controlPlane.ingress.enabled` | route `/` to UI and `/v1`, `/health`, `/docs`, `/ws` to API |
+| `controlPlane.api.envFrom` | load Postgres URL, API key, OIDC, and audit settings from Secrets |
+| `controlPlane.ui.env` | keep `NEXT_PUBLIC_API_URL=\"\"` for same-origin or set a full API URL for cross-origin |
 | `serviceAccount.annotations` | attach an IRSA role to the scanner service account |
 | `scanner.extraArgs` | add `--k8s-mcp`, `--enforce`, `--introspect`, or stricter presets |
 | `scanner.env` | inject operator-owned environment like API endpoints or auth context |
@@ -97,6 +101,8 @@ Example:
 ```bash
 helm install agent-bom deploy/helm/agent-bom \
   -n agent-bom --create-namespace \
+  --set controlPlane.enabled=true \
+  --set controlPlane.ingress.enabled=true \
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::123456789012:role/agent-bom-discovery \
   --set scanner.allNamespaces=true \
   --set-json 'scanner.extraArgs=["--k8s-mcp","--k8s-all-namespaces","--enforce","--introspect","--preset","enterprise"]'
@@ -164,8 +170,8 @@ This path is self-hostable today, but not every enterprise primitive is encoded
 
 You still own:
 
-- control-plane Deployment / Service / Ingress manifests
-- HPA, PDB, and failover settings for your own workloads
+- Postgres, optional ClickHouse, and secret storage
+- HPA, topology, and failover settings for your own workloads
 - Secrets Manager / IRSA / ingress-controller wiring
 - operator runbooks and load testing
 
@@ -176,6 +182,6 @@ startup. That means:
 - set `NEXT_PUBLIC_API_URL=` for same-origin ingress and route `/v1/*`,
   `/health`, and `/ws/*` to the API service in your ingress/controller
 
-That is still a valid no-lock-in story. The repo gives you the container entry
-points, storage paths, proxy surface, and scanner/discovery chart knobs without
-forcing you into a hosted control plane.
+That is now a stronger no-lock-in story. The repo packages the control plane,
+proxy surface, and scanner/discovery knobs without forcing you into a hosted
+vendor plane.

@@ -9,9 +9,7 @@ import {
   isConfigured,
   type AgentDetailResponse,
   type AgentLifecycleResponse,
-  type BlastRadius,
   type AttackFlowNodeData,
-  severityColor,
   OWASP_LLM_TOP10,
   MITRE_ATLAS,
 } from "@/lib/api";
@@ -37,7 +35,6 @@ import {
   ChevronDown,
   ChevronRight,
   Download,
-  ExternalLink,
   GitBranch,
   Key,
   KeyRound,

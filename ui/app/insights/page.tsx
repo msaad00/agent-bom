@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   api,
-  JobListItem,
   ScanJob,
   ScanResult,
   Agent,
@@ -109,7 +108,6 @@ function buildTrendData(jobs: ScanJob[]): TrendDataPoint[] {
 
 export default function InsightsPage() {
   const router = useRouter();
-  const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [latestJob, setLatestJob] = useState<ScanJob | null>(null);
   const [trendJobs, setTrendJobs] = useState<ScanJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -126,7 +124,6 @@ export default function InsightsPage() {
       .listJobs()
       .then(async (res) => {
         const doneJobs = res.jobs.filter((j) => j.status === "done");
-        setJobs(doneJobs);
         if (doneJobs.length === 0) {
           setLatestJob(null);
           setTrendJobs([]);
@@ -148,14 +145,17 @@ export default function InsightsPage() {
   };
 
   useEffect(() => {
-    fetchData();
+    const timer = window.setTimeout(() => {
+      fetchData();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   // Use the most recent completed scan for single-scan charts
   const latest = latestJob;
   const result = latest?.result ?? null;
   const agents: Agent[] = result?.agents ?? [];
-  const blasts: BlastRadius[] = result?.blast_radius ?? [];
+  const blasts = useMemo<BlastRadius[]>(() => result?.blast_radius ?? [], [result]);
 
   const pipelineStats = useMemo(
     () => (result ? buildPipelineStats(result) : null),

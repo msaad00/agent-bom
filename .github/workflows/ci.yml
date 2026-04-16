@@ -132,6 +132,44 @@ jobs:
       - name: MyPy
         run: uv run mypy src/ --ignore-missing-imports --disable-error-code import-untyped
 
+  ui:
+    name: UI Validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: '22'
+
+      - name: Install UI dependencies
+        run: |
+          cd ui
+          npm ci
+
+      - name: Verify UI toolchain contract
+        run: |
+          cd ui
+          npm run verify:toolchain
+
+      - name: UI lint
+        run: |
+          cd ui
+          npm run lint
+
+      - name: UI tests
+        run: |
+          cd ui
+          npm run test:run
+
+      - name: UI production build
+        run: |
+          cd ui
+          npm run build
+
   # 3. Tests
   test:
     name: Test (Python ${{ matrix.python-version }})

@@ -13,7 +13,7 @@ import "@xyflow/react/dist/style.css";
 import { ShieldAlert, Loader2, AlertTriangle, Search, SlidersHorizontal, Network, GitBranch } from "lucide-react";
 import { api, type JobListItem, type ScanJob } from "@/lib/api";
 import { applyDagreLayout } from "@/lib/dagre-layout";
-import { lineageNodeTypes, type LineageNodeData, type LineageNodeType } from "@/components/lineage-nodes";
+import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nodes";
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import { MeshStats } from "@/components/mesh-stats";
 import {
@@ -202,31 +202,34 @@ export default function MeshPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedJob) {
-      setActiveJob(null);
-      return;
-    }
     let cancelled = false;
-    setDetailLoading(true);
-    api
-      .getScan(selectedJob)
-      .then((job) => {
-        if (!cancelled) {
-          setActiveJob(job.result ? job : null);
-          setError(null);
-        }
-      })
-      .catch((e) => {
-        if (!cancelled) {
-          setActiveJob(null);
-          setError(e.message);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setDetailLoading(false);
-      });
+    const timer = window.setTimeout(() => {
+      if (!selectedJob) {
+        setActiveJob(null);
+        return;
+      }
+      setDetailLoading(true);
+      api
+        .getScan(selectedJob)
+        .then((job) => {
+          if (!cancelled) {
+            setActiveJob(job.result ? job : null);
+            setError(null);
+          }
+        })
+        .catch((e) => {
+          if (!cancelled) {
+            setActiveJob(null);
+            setError(e.message);
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setDetailLoading(false);
+        });
+    }, 0);
     return () => {
       cancelled = true;
+      window.clearTimeout(timer);
     };
   }, [selectedJob]);
 
@@ -238,14 +241,17 @@ export default function MeshPage() {
   );
 
   useEffect(() => {
-    if (agentNames.length === 0) {
-      setSelectedAgents([]);
-      return;
-    }
-    setSelectedAgents((current) => {
-      const retained = current.filter((name) => agentNames.includes(name));
-      return retained.length > 0 ? retained : [agentNames[0]];
-    });
+    const timer = window.setTimeout(() => {
+      if (agentNames.length === 0) {
+        setSelectedAgents([]);
+        return;
+      }
+      setSelectedAgents((current) => {
+        const retained = current.filter((name) => agentNames.includes(name));
+        return retained.length > 0 ? retained : [agentNames[0]];
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [agentNames]);
 
   const { rawNodes, rawEdges, stats } = useMemo(() => {

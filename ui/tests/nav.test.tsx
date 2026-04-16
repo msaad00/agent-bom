@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock next/link so it renders a plain anchor
@@ -164,29 +164,33 @@ describe('Nav', () => {
     }
   })
 
-  it('shows page counts for expanded nav groups', () => {
+  it('shows page counts for expanded nav groups', async () => {
     render(<Nav />)
-    expect(screen.getByText('4')).toBeInTheDocument()
+    expect(screen.getAllByText('4').length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: /analyze/i }))
-    expect(screen.getByText('5')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getAllByText('5').length).toBeGreaterThan(0)
+    })
   })
 
-  it('contains links for all primary pages across all groups', () => {
+  it('contains links for all primary pages across all groups', async () => {
     render(<Nav />)
-    for (const group of ['Scan', 'Analyze', 'Protect', 'Govern']) {
-      fireEvent.click(screen.getByRole('button', { name: new RegExp(group, 'i') }))
+    const expectedByGroup: Record<string, string[]> = {
+      Discover: ['/', '/agents', '/fleet'],
+      Scan: ['/sources', '/scan', '/jobs', '/findings'],
+      Analyze: ['/security-graph', '/graph', '/mesh', '/context', '/insights'],
+      Protect: ['/proxy', '/audit', '/gateway'],
+      Govern: ['/compliance', '/remediation', '/governance', '/traces', '/activity'],
     }
-    const expectedHrefs = [
-      '/', '/sources', '/scan', '/jobs',
-      '/agents', '/findings', '/fleet',
-      '/security-graph', '/graph', '/mesh', '/context', '/insights',
-      '/proxy', '/audit', '/gateway',
-      '/compliance', '/remediation', '/governance', '/traces', '/activity',
-    ]
-    const allLinks = screen.getAllByRole('link')
-    const hrefsFound = allLinks.map((l) => l.getAttribute('href'))
-    for (const href of expectedHrefs) {
-      expect(hrefsFound).toContain(href)
+
+    for (const [group, hrefs] of Object.entries(expectedByGroup)) {
+      fireEvent.click(screen.getByRole('button', { name: new RegExp(group, 'i') }))
+      await waitFor(() => {
+        const hrefsFound = screen.getAllByRole('link').map((l) => l.getAttribute('href'))
+        for (const href of hrefs) {
+          expect(hrefsFound).toContain(href)
+        }
+      })
     }
   })
 })

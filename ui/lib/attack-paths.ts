@@ -116,6 +116,7 @@ function pathNodeLabels(path: AttackPath, nodeById: Map<string, UnifiedNode>) {
     .map((hop) => nodeById.get(hop))
     .filter((node): node is UnifiedNode => Boolean(node))
     .map((node) => ({
+      rawLabel: node.label,
       label: normalizeLabel(node.label),
       type: mapAttackPathNodeType(String(node.entity_type)),
     }));
@@ -126,10 +127,12 @@ export function labelsForAttackPathType(
   nodeById: Map<string, UnifiedNode>,
   type: AttackPathCardNode["type"],
 ): string[] {
-  const labels = pathNodeLabels(path, nodeById)
-    .filter((node) => node.type === type)
-    .map((node) => node.label);
-  return Array.from(new Set(labels));
+  const deduped = new Map<string, string>();
+  for (const node of pathNodeLabels(path, nodeById)) {
+    if (node.type !== type || deduped.has(node.label)) continue;
+    deduped.set(node.label, node.rawLabel);
+  }
+  return Array.from(deduped.values());
 }
 
 export function recommendedAttackPathActions(
@@ -144,7 +147,7 @@ export function recommendedAttackPathActions(
     actions.push({
       title: "Validate the lead finding",
       detail: "Open the primary CVE evidence first so the exploit chain has a confirmed root cause.",
-      href: `/vulns?cve=${encodeURIComponent(leadingFinding)}`,
+      href: `/findings?cve=${encodeURIComponent(leadingFinding)}`,
     });
   }
 

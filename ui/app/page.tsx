@@ -9,9 +9,6 @@ import { SeverityBadge } from "@/components/severity-badge";
 import { ActivityFeed } from "@/components/activity-feed";
 import {
   PostureGrade,
-  postureDimensionHint,
-  postureDimensionHref,
-  postureDimensionTone,
 } from "@/components/posture-grade";
 import { AttackPathCard } from "@/components/attack-path-card";
 import { ApiOfflineState } from "@/components/api-offline-state";
@@ -570,54 +567,16 @@ export default function Dashboard() {
         </div>
 
         {posture && (
-          <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[auto_1fr]">
-            <PostureGrade grade={posture.grade} score={posture.score} dimensions={posture.dimensions} />
-            <div
-              className="rounded-2xl border p-5"
-              style={{ backgroundColor: "var(--surface)", borderColor: "var(--border-subtle)" }}
-            >
-              <div className="flex flex-wrap items-center gap-3">
-                <h2 className="text-lg font-semibold text-zinc-100">
-                  Security posture <span style={{ color: posture.grade === "A" ? "#22c55e" : posture.grade === "B" ? "#3b82f6" : posture.grade === "C" ? "#eab308" : posture.grade === "D" ? "#f97316" : posture.grade === "F" ? "#ef4444" : "#71717a" }}>{posture.grade}</span>
-                </h2>
-                <span
-                  className="rounded-full border px-2.5 py-1 text-[11px] uppercase tracking-[0.16em] text-[var(--text-secondary)]"
-                  style={{ backgroundColor: "var(--surface-elevated)", borderColor: "var(--border-subtle)" }}
-                >
-                  score {posture.score.toFixed(1)}
-                </span>
-              </div>
-              <p className="mt-3 text-sm leading-6 text-[var(--text-secondary)]">{posture.summary}</p>
-              {posture.dimensions && Object.keys(posture.dimensions).length > 0 && (
-                <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                  {Object.entries(posture.dimensions).map(([key, dim]) => (
-                    <Link
-                      key={key}
-                      href={postureDimensionHref(key, dim.label)}
-                      className="rounded-xl border px-3 py-2.5 transition-colors hover:border-[var(--border-strong)]"
-                      style={{ backgroundColor: "var(--surface-elevated)", borderColor: "var(--border-subtle)" }}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs font-medium text-zinc-200">{dim.label}</span>
-                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${postureDimensionTone(dim.score).badge}`}>
-                          {postureDimensionTone(dim.score).label}
-                        </span>
-                      </div>
-                      <div className="mt-2 flex items-baseline justify-between gap-3">
-                        <span className="font-mono text-lg text-zinc-100">{dim.score}/100</span>
-                        <span className="text-[11px] text-[var(--text-tertiary)]">{postureDimensionHint(key, dim.label)}</span>
-                      </div>
-                      <div className="mt-2 h-1.5 w-full rounded-full bg-[var(--surface-muted)]">
-                        <div
-                          className={`h-full rounded-full ${postureDimensionTone(dim.score).bar}`}
-                          style={{ width: `${dim.score}%` }}
-                        />
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
-            </div>
+          <div className="mt-6">
+            <PostureGrade
+              grade={posture.grade}
+              score={posture.score}
+              dimensions={posture.dimensions}
+              summary={posture.summary}
+              variant="panel"
+              defaultExpanded={false}
+              drilldown
+            />
           </div>
         )}
       </section>

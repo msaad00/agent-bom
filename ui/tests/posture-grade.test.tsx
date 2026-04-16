@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -51,5 +51,38 @@ describe("PostureGrade", () => {
     expect(screen.getByRole("link", { name: /Vulnerability Exposure/i })).toHaveAttribute("href", "/findings");
     expect(screen.getByRole("link", { name: /Credential Reach/i })).toHaveAttribute("href", "/mesh");
     expect(screen.getByText("High-risk packages remain reachable by agents.")).toBeInTheDocument();
+  });
+
+  it("renders one unified panel with a collapsible evidence breakdown", () => {
+    render(
+      <PostureGrade
+        grade="F"
+        score={40.4}
+        drilldown
+        variant="panel"
+        summary="Weak security posture driven by credential exposure and undeclared MCP tools."
+        dimensions={{
+          vulnerability_exposure: {
+            label: "Packages and CVEs",
+            score: 10,
+            details: "44 vulnerable packages remain in scope.",
+          },
+          credential_reach: {
+            label: "Reach and exposure",
+            score: 23,
+            details: "7 credentials remain exposed across reachable agents.",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/Weak security posture driven by credential exposure/i)).toBeInTheDocument();
+    expect(screen.queryByText("44 vulnerable packages remain in scope.")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Show evidence breakdown/i }));
+
+    expect(screen.getByText("44 vulnerable packages remain in scope.")).toBeInTheDocument();
+    const packageLinks = screen.getAllByRole("link", { name: /Packages and CVEs/i });
+    expect(packageLinks[0]).toHaveAttribute("href", "/findings");
   });
 });

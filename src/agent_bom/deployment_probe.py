@@ -84,6 +84,20 @@ def fetch_health(
     raise RuntimeError(f"unable to fetch MCP health from {health_url}: {last_error}")
 
 
+def validate_health_payload(
+    payload: dict[str, Any],
+    *,
+    forbid_auth_required: bool = False,
+) -> dict[str, Any]:
+    """Validate parsed health payload contract for deployment checks."""
+
+    if not isinstance(payload, dict):
+        raise ValueError("health response must be a JSON object")
+    if forbid_auth_required and bool(payload.get("auth_required")):
+        raise ValueError("deployment surface requires auth and is not suitable for public registry publishing")
+    return payload
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Probe the MCP health endpoint used by CI workflows.")
     parser.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Railway base URL or MCP endpoint URL.")
@@ -100,6 +114,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--resolve-only",
         action="store_true",
         help="Print the normalized health URL without making a network request.",
+    )
+    parser.add_argument(
+        "--forbid-auth-required",
+        action="store_true",
+        help="Fail if the health payload reports auth_required=true.",
     )
     return parser
 
@@ -119,6 +138,10 @@ def main(argv: list[str] | None = None) -> int:
             attempts=args.attempts,
             backoff_seconds=args.backoff_seconds,
             timeout=args.timeout,
+        )
+        payload = validate_health_payload(
+            payload,
+            forbid_auth_required=args.forbid_auth_required,
         )
     except (RuntimeError, ValueError) as exc:
         print(str(exc), file=sys.stderr)

@@ -23,6 +23,8 @@ ingress or platform edge.
 
 If you need a public unauthenticated registry/demo endpoint, treat that as a separate,
 explicitly less-trusted deployment surface rather than weakening the primary service.
+Release automation now requires that public endpoint to be set explicitly via
+`SMITHERY_MCP_URL`. It does not fall back to the protected Railway URL.
 
 ### Step 2: Publish to Smithery
 
@@ -30,11 +32,18 @@ explicitly less-trusted deployment surface rather than weakening the primary ser
 1. Go to https://smithery.ai/servers/new
 2. Namespace: `agent-bom`
 3. Server ID: `agent-bom`
-4. MCP Server URL: `https://agent-bom-mcp.up.railway.app/mcp`
+4. MCP Server URL: your separate public unauthenticated endpoint, e.g. `https://agent-bom--agent-bom.run.tools`
 5. Click **Continue**
 
 **Option B — Automated**:
-The `publish-registries.yml` workflow auto-publishes to Smithery on each release using `SMITHERY_API_TOKEN`.
+The `publish-registries.yml` workflow auto-publishes to Smithery on each release using:
+- `SMITHERY_API_TOKEN`
+- `SMITHERY_MCP_URL`
+
+Before publish, CI probes the public endpoint and fails if:
+- the endpoint is unreachable
+- the endpoint reports `auth_required=true`
+- the endpoint is otherwise unsuitable for public registry publishing
 
 ### Verification
 
@@ -71,20 +80,30 @@ Search for "agent-bom" at: https://registry.modelcontextprotocol.io
 
 Automated via `publish-registries.yml` using `CLAWHUB_TOKEN`.
 
+The public ClawHub surface is intentionally curated. Release automation publishes only:
+- `agent-bom-scan`
+- `agent-bom-registry`
+- `agent-bom-compliance`
+- `agent-bom-runtime`
+
+See [`integrations/openclaw/README.md`](../integrations/openclaw/README.md) for the
+curated publish set and rationale. The oversized omnibus root skill is kept in-repo
+but is not part of the public ClawHub release surface.
+
 ### Manual publish
 
 ```bash
 npm install -g clawhub@latest
 clawhub login --token "$CLAWHUB_TOKEN"
-clawhub publish integrations/openclaw \
-  --slug agent-bom --name "agent-bom" \
+clawhub publish integrations/openclaw/scan \
+  --slug agent-bom-scan --name "agent-bom scan" \
   --version "0.76.4"
 ```
 
 ### Verification
 
 ```bash
-clawhub install agent-bom
+clawhub install agent-bom-scan
 ```
 
 ---
@@ -171,6 +190,6 @@ For dependency-heavy or security-driven releases, also verify:
 | **GHCR (stdio)** | `Dockerfile.mcp` | publish-mcp.yml | workflow_run |
 | **GHCR (SSE)** | `deploy/docker/Dockerfile.sse` | publish-mcp.yml | workflow_run |
 | **Smithery** | workflow API | publish-registries.yml | workflow_run |
-| **ClawHub** | `integrations/openclaw/` | publish-registries.yml | workflow_run |
+| **ClawHub** | curated `integrations/openclaw/*/SKILL.md` set | publish-registries.yml | workflow_run |
 | **MCP Registry** | `integrations/mcp-registry/server.json` | publish-mcp-registry.yml | workflow_run |
 | **Railway** | `deploy/docker/Dockerfile.sse` | deploy-mcp-sse.yml | workflow_run |

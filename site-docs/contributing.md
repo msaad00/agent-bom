@@ -63,7 +63,7 @@ When preparing a release, update the version in all of these files:
 3. `Dockerfile` — version label
 4. `deploy/docker/Dockerfile.sse` — `ARG VERSION=X.Y.Z`
 5. `integrations/mcp-registry/server.json` — `version`
-6. `integrations/openclaw/*/SKILL.md` — version in frontmatter (scan, compliance, registry, runtime)
+6. `integrations/openclaw/*/SKILL.md` — version in frontmatter for the published ClawHub skills (scan, compliance, registry, runtime)
 7. `action.yml` — version in description + branding
 8. `README.md` — version references in examples
 9. `docs/PUBLISHING.md` — version references

@@ -221,11 +221,25 @@ def test_deployment_freshness_workflow_uses_bearer_token_and_parses_tool_count()
     """Deployment freshness should probe authenticated MCP health endpoints safely."""
     workflow = (ROOT / ".github" / "workflows" / "deployment-freshness.yml").read_text()
     assert "RAILWAY_MCP_BEARER_TOKEN" in workflow
+    assert "SMITHERY_MCP_URL" in workflow
     assert "python3 -m agent_bom.deployment_probe" in workflow
     assert "tool_count" in workflow
+    assert "auth_required" in workflow
     assert "probe_failed=true" in workflow
     assert "steps.railway.outputs.probe_failed != 'true'" in workflow
     assert "--resolve-only" in workflow
+
+
+def test_publish_registries_workflow_requires_public_smithery_surface_and_curated_clawhub_set():
+    """Registry publishing should fail fast on auth-gated Smithery URLs and avoid omnibus ClawHub skills."""
+    workflow = (ROOT / ".github" / "workflows" / "publish-registries.yml").read_text()
+    assert "SMITHERY_MCP_URL" in workflow
+    assert "--forbid-auth-required" in workflow
+    assert "integrations/openclaw/scan" in workflow
+    assert "integrations/openclaw/compliance" in workflow
+    assert "integrations/openclaw/registry" in workflow
+    assert "integrations/openclaw/runtime" in workflow
+    assert '_publish_skill "integrations/openclaw" "agent-bom"' not in workflow
 
 
 def test_deploy_mcp_sse_workflow_uses_bearer_token_for_health_check():

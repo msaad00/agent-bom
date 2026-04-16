@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import urllib.error
 
-from agent_bom.deployment_probe import fetch_health, resolve_health_url
+import pytest
+
+from agent_bom.deployment_probe import fetch_health, resolve_health_url, validate_health_payload
 
 
 class _Response:
@@ -58,3 +60,13 @@ def test_fetch_health_retries_normalized_url(monkeypatch):
         "https://agent-bom-mcp.up.railway.app/health",
         "https://agent-bom-mcp.up.railway.app/health",
     ]
+
+
+def test_validate_health_payload_rejects_auth_required_for_public_registry():
+    with pytest.raises(ValueError, match="requires auth"):
+        validate_health_payload({"version": "0.76.0", "auth_required": True}, forbid_auth_required=True)
+
+
+def test_validate_health_payload_allows_public_surface():
+    payload = validate_health_payload({"version": "0.76.0", "auth_required": False}, forbid_auth_required=True)
+    assert payload["version"] == "0.76.0"

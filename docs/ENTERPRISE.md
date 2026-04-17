@@ -40,6 +40,7 @@ The API middleware uses ordered route rules. Narrower enterprise routes win over
 |---|---|---|
 | `GET` | `/v1/auth/keys` | `admin` |
 | `POST` | `/v1/auth/keys` | `admin` |
+| `POST` | `/v1/auth/keys/` | `admin` |
 | `DELETE` | `/v1/auth/keys/` | `admin` |
 | `POST` | `/v1/gateway/policies` | `admin` |
 | `PUT` | `/v1/gateway/policies/` | `admin` |
@@ -76,6 +77,9 @@ Implementation source: `src/agent_bom/api/middleware.py`
    - localhost binds are allowed without remote auth
 2. API key enforcement
    - non-loopback binds require `AGENT_BOM_API_KEY` or stored API keys
+   - set `AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS` and `AGENT_BOM_API_KEY_MAX_TTL_SECONDS`
+     to enforce rotation windows on stored keys
+   - rotate stored keys with `POST /v1/auth/keys/{key_id}/rotate`
 3. OIDC bearer enforcement
    - set `AGENT_BOM_OIDC_ISSUER`
    - set `AGENT_BOM_OIDC_AUDIENCE`

@@ -12,7 +12,7 @@ import os
 import secrets
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Protocol
 
@@ -74,6 +74,52 @@ class ApiKey:
         }
 
 
+@dataclass(frozen=True)
+class ApiKeyPolicy:
+    """Operator-controlled API key lifetime policy."""
+
+    default_ttl_seconds: int = 30 * 24 * 60 * 60
+    max_ttl_seconds: int = 90 * 24 * 60 * 60
+
+
+def get_api_key_policy() -> ApiKeyPolicy:
+    """Load API key lifetime policy from env with safe defaults."""
+    default_ttl = int(os.environ.get("AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS", str(30 * 24 * 60 * 60)))
+    max_ttl = int(os.environ.get("AGENT_BOM_API_KEY_MAX_TTL_SECONDS", str(90 * 24 * 60 * 60)))
+    if default_ttl <= 0:
+        raise ValueError("AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS must be > 0")
+    if max_ttl <= 0:
+        raise ValueError("AGENT_BOM_API_KEY_MAX_TTL_SECONDS must be > 0")
+    if default_ttl > max_ttl:
+        raise ValueError("AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS cannot exceed AGENT_BOM_API_KEY_MAX_TTL_SECONDS")
+    return ApiKeyPolicy(default_ttl_seconds=default_ttl, max_ttl_seconds=max_ttl)
+
+
+def normalize_api_key_expiry(
+    expires_at: str | None,
+    *,
+    now: datetime | None = None,
+    policy: ApiKeyPolicy | None = None,
+) -> str:
+    """Normalize and enforce API key expiry under the configured policy."""
+    active_policy = policy or get_api_key_policy()
+    current = now or datetime.now(timezone.utc)
+    if expires_at:
+        try:
+            parsed = datetime.fromisoformat(expires_at)
+        except ValueError as exc:
+            raise ValueError("expires_at must be a valid ISO-8601 datetime with timezone") from exc
+        if parsed.tzinfo is None:
+            raise ValueError("expires_at must include timezone information")
+        if parsed <= current:
+            raise ValueError("expires_at must be in the future")
+        max_expiry = current + timedelta(seconds=active_policy.max_ttl_seconds)
+        if parsed > max_expiry:
+            raise ValueError(f"expires_at exceeds the maximum allowed API key lifetime ({active_policy.max_ttl_seconds} seconds)")
+        return parsed.isoformat()
+    return (current + timedelta(seconds=active_policy.default_ttl_seconds)).isoformat()
+
+
 def _derive_key(raw_key: str, salt: bytes) -> str:
     """Derive key hash using scrypt KDF (CodeQL-safe, brute-force resistant)."""
     derived = hashlib.scrypt(
@@ -104,6 +150,7 @@ def create_api_key(
     key_hash = _derive_key(raw_key, salt)
     key_id = secrets.token_hex(8)
 
+    normalized_expiry = normalize_api_key_expiry(expires_at)
     api_key = ApiKey(
         key_id=key_id,
         key_hash=key_hash,
@@ -111,7 +158,7 @@ def create_api_key(
         key_prefix=raw_key[:12],
         name=name,
         role=role,
-        expires_at=expires_at,
+        expires_at=normalized_expiry,
         scopes=scopes or [],
         tenant_id=tenant_id,
     )

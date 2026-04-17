@@ -175,6 +175,10 @@ all sit under one operator-controlled plane.
   - [deploy/helm/agent-bom/examples/eks-production-values.yaml](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/helm/agent-bom/examples/eks-production-values.yaml)
 - keep the proxy and API internal to your VPC unless exposure is intentional
 - use OIDC or SAML for user access, set `AGENT_BOM_OIDC_AUDIENCE` explicitly when using OIDC, and map roles explicitly
+- enforce API key rotation with:
+  - `AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS`
+  - `AGENT_BOM_API_KEY_MAX_TTL_SECONDS`
+  and rotate admin keys through `POST /v1/auth/keys/{key_id}/rotate`
 - split external secrets by cadence in production:
   - `AGENT_BOM_POSTGRES_URL` at `1h`
   - `AGENT_BOM_OIDC_*`, `AGENT_BOM_SAML_*`, and `AGENT_BOM_AUDIT_HMAC_KEY` at `5m`

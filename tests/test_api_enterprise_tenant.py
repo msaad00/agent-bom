@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from agent_bom.api.audit_log import AuditEntry, InMemoryAuditLog
 from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
 from agent_bom.api.exception_store import InMemoryExceptionStore, VulnException
-from agent_bom.api.models import CreateKeyRequest
+from agent_bom.api.models import CreateKeyRequest, RotateKeyRequest
 from agent_bom.api.routes import enterprise
 
 
@@ -45,6 +45,7 @@ async def test_create_key_uses_authenticated_tenant(isolated_key_store):
     )
 
     assert created["tenant_id"] == "tenant-alpha"
+    assert created["expires_at"]
     keys = isolated_key_store.list_keys("tenant-alpha")
     assert len(keys) == 1
     assert keys[0].tenant_id == "tenant-alpha"
@@ -70,6 +71,33 @@ async def test_delete_key_returns_404_for_cross_tenant_key(isolated_key_store):
 
     with pytest.raises(HTTPException) as exc:
         await enterprise.delete_key(_request("tenant-alpha"), beta.key_id)
+
+    assert exc.value.status_code == 404
+    assert isolated_key_store.get(beta.key_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_rotate_key_replaces_old_key_and_revokes_previous(isolated_key_store):
+    raw, alpha = create_api_key("alpha", Role.ADMIN, tenant_id="tenant-alpha")
+    isolated_key_store.add(alpha)
+
+    result = await enterprise.rotate_key(_request("tenant-alpha", "alice-admin"), alpha.key_id, RotateKeyRequest())
+
+    assert result["replaced_key_id"] == alpha.key_id
+    assert result["tenant_id"] == "tenant-alpha"
+    assert result["expires_at"]
+    assert isolated_key_store.get(alpha.key_id) is None
+    assert isolated_key_store.verify(raw) is None
+    assert isolated_key_store.verify(result["raw_key"]) is not None
+
+
+@pytest.mark.asyncio
+async def test_rotate_key_returns_404_for_cross_tenant_key(isolated_key_store):
+    _, beta = create_api_key("beta", Role.ADMIN, tenant_id="tenant-beta")
+    isolated_key_store.add(beta)
+
+    with pytest.raises(HTTPException) as exc:
+        await enterprise.rotate_key(_request("tenant-alpha"), beta.key_id, RotateKeyRequest())
 
     assert exc.value.status_code == 404
     assert isolated_key_store.get(beta.key_id) is not None

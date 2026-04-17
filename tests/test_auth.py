@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+
+import pytest
 
 from agent_bom.api.auth import (
+    ApiKey,
+    ApiKeyPolicy,
     KeyStore,
     Role,
     create_api_key,
     get_key_store,
+    normalize_api_key_expiry,
     set_key_store,
     verify_api_key,
 )
@@ -78,12 +83,12 @@ class TestCreateApiKey:
         _, key = create_api_key("scope-test", Role.ANALYST, scopes=["scan", "vex"])
         assert key.scopes == ["scan", "vex"]
 
-    def test_expires_at_optional(self):
+    def test_expires_at_defaults_under_rotation_policy(self):
         _, key = create_api_key("no-expire", Role.VIEWER)
-        assert key.expires_at is None
+        assert key.expires_at is not None
 
     def test_expires_at_set(self):
-        exp = "2099-12-31T23:59:59+00:00"
+        exp = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
         _, key = create_api_key("expire-test", Role.VIEWER, expires_at=exp)
         assert key.expires_at == exp
 
@@ -106,12 +111,25 @@ class TestVerifyApiKey:
         assert result is None
 
     def test_expired_key_returns_none(self):
-        raw, key = create_api_key("expired", Role.ADMIN, expires_at="2020-01-01T00:00:00+00:00")
+        raw, fresh = create_api_key("expired", Role.ADMIN)
+        key = ApiKey(
+            key_id=fresh.key_id,
+            key_hash=fresh.key_hash,
+            key_salt=fresh.key_salt,
+            key_prefix=fresh.key_prefix,
+            name=fresh.name,
+            role=fresh.role,
+            created_at=fresh.created_at,
+            expires_at="2020-01-01T00:00:00+00:00",
+            scopes=fresh.scopes,
+            tenant_id=fresh.tenant_id,
+        )
         result = verify_api_key(raw, [key])
         assert result is None
 
     def test_not_expired_key_works(self):
-        raw, key = create_api_key("future", Role.ADMIN, expires_at="2099-12-31T23:59:59+00:00")
+        exp = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+        raw, key = create_api_key("future", Role.ADMIN, expires_at=exp)
         result = verify_api_key(raw, [key])
         assert result is not None
 
@@ -146,16 +164,30 @@ class TestVerifyApiKey:
 
 
 class TestApiKeyExpiry:
-    def test_no_expiry_not_expired(self):
+    def test_default_expiry_not_expired(self):
         _, key = create_api_key("no-exp", Role.VIEWER)
+        assert key.expires_at is not None
         assert not key.is_expired()
 
     def test_past_expiry_is_expired(self):
-        _, key = create_api_key("past", Role.VIEWER, expires_at="2020-01-01T00:00:00+00:00")
+        _, fresh = create_api_key("past", Role.VIEWER)
+        key = ApiKey(
+            key_id=fresh.key_id,
+            key_hash=fresh.key_hash,
+            key_salt=fresh.key_salt,
+            key_prefix=fresh.key_prefix,
+            name=fresh.name,
+            role=fresh.role,
+            created_at=fresh.created_at,
+            expires_at="2020-01-01T00:00:00+00:00",
+            scopes=fresh.scopes,
+            tenant_id=fresh.tenant_id,
+        )
         assert key.is_expired()
 
     def test_future_expiry_not_expired(self):
-        _, key = create_api_key("future", Role.VIEWER, expires_at="2099-12-31T23:59:59+00:00")
+        exp = (datetime.now(timezone.utc) + timedelta(days=7)).isoformat()
+        _, key = create_api_key("future", Role.VIEWER, expires_at=exp)
         assert not key.is_expired()
 
 
@@ -231,3 +263,28 @@ class TestSingleton:
         assert get_key_store() is new_store
         # Restore
         set_key_store(original)
+
+
+class TestApiKeyRotationPolicy:
+    def test_normalize_expiry_applies_default_ttl(self):
+        now = datetime(2026, 4, 17, 18, 0, tzinfo=timezone.utc)
+        expiry = normalize_api_key_expiry(None, now=now, policy=ApiKeyPolicy(default_ttl_seconds=300, max_ttl_seconds=600))
+        assert expiry == (now + timedelta(seconds=300)).isoformat()
+
+    def test_normalize_expiry_rejects_past(self):
+        now = datetime(2026, 4, 17, 18, 0, tzinfo=timezone.utc)
+        with pytest.raises(ValueError, match="in the future"):
+            normalize_api_key_expiry(
+                "2026-04-17T17:59:00+00:00",
+                now=now,
+                policy=ApiKeyPolicy(default_ttl_seconds=300, max_ttl_seconds=600),
+            )
+
+    def test_normalize_expiry_rejects_over_max(self):
+        now = datetime(2026, 4, 17, 18, 0, tzinfo=timezone.utc)
+        with pytest.raises(ValueError, match="maximum allowed API key lifetime"):
+            normalize_api_key_expiry(
+                "2026-04-17T18:20:01+00:00",
+                now=now,
+                policy=ApiKeyPolicy(default_ttl_seconds=300, max_ttl_seconds=1200),
+            )

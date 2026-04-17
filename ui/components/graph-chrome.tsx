@@ -6,21 +6,42 @@
  */
 
 import { useState, useCallback } from "react";
-import { Maximize2, Minimize2, Download } from "lucide-react";
+import { Maximize2, Minimize2, Download, ChevronDown } from "lucide-react";
 import { useReactFlow } from "@xyflow/react";
 import type { LegendItem } from "@/lib/graph-utils";
 
 // ─── Legend Bar ──────────────────────────────────────────────────────────────
 
 export function GraphLegend({ items }: { items: LegendItem[] }) {
+  const [open, setOpen] = useState(false);
+
+  if (items.length === 0) return null;
+
   return (
-    <div className="flex items-center gap-3 text-[10px] text-zinc-500">
-      {items?.map((item) => (
-        <span key={item.label} className="flex items-center gap-1">
-          <LegendMarker item={item} />
-          {item.label}
-        </span>
-      ))}
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800/80 px-2.5 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700 backdrop-blur-sm"
+        aria-expanded={open}
+        aria-label={open ? "Hide legend" : "Show legend"}
+      >
+        <span className="font-medium">Legend</span>
+        <span className="rounded-full bg-zinc-900 px-1.5 py-0.5 text-[10px] text-zinc-400">{items.length}</span>
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-zinc-700 bg-zinc-900/95 p-3 shadow-2xl shadow-black/30 backdrop-blur-md">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] text-zinc-300 sm:grid-cols-3">
+            {items.map((item) => (
+              <span key={item.label} className="flex items-center gap-2 whitespace-nowrap">
+                <LegendMarker item={item} />
+                {item.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

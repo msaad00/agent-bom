@@ -57,6 +57,71 @@ function getCredKeys(server: MCPServer): string[] {
   return server.env ? Object.keys(server.env).filter((k) => CRED_RE.test(k)) : [];
 }
 
+function mergeServers(existing: MCPServer, incoming: MCPServer): MCPServer {
+  const packages = new Map(existing.packages.map((pkg) => [`${pkg.ecosystem}:${pkg.name}:${pkg.version}`, pkg]));
+  for (const pkg of incoming.packages) {
+    const key = `${pkg.ecosystem}:${pkg.name}:${pkg.version}`;
+    const current = packages.get(key);
+    if (current) {
+      const vulnerabilities = new Map((current.vulnerabilities ?? []).map((vuln) => [vuln.id, vuln]));
+      for (const vuln of pkg.vulnerabilities ?? []) {
+        vulnerabilities.set(vuln.id, vuln);
+      }
+      packages.set(key, { ...current, vulnerabilities: [...vulnerabilities.values()] });
+    } else {
+      packages.set(key, pkg);
+    }
+  }
+
+  const tools = new Map((existing.tools ?? []).map((tool) => [tool.name, tool]));
+  for (const tool of incoming.tools ?? []) {
+    tools.set(tool.name, tool);
+  }
+
+  return {
+    ...existing,
+    command: existing.command || incoming.command,
+    transport: existing.transport || incoming.transport,
+    packages: [...packages.values()],
+    tools: [...tools.values()],
+    env: { ...(existing.env ?? {}), ...(incoming.env ?? {}) },
+  };
+}
+
+function normalizeAgents(agents: Agent[]): Agent[] {
+  const merged = new Map<string, Agent>();
+
+  for (const agent of agents) {
+    const existing = merged.get(agent.name);
+    if (!existing) {
+      merged.set(agent.name, {
+        ...agent,
+        mcp_servers: [...agent.mcp_servers],
+      });
+      continue;
+    }
+
+    const serverMap = new Map(
+      existing.mcp_servers.map((server) => [`${server.name}|${server.command ?? ""}|${server.transport ?? ""}`, server]),
+    );
+
+    for (const server of agent.mcp_servers) {
+      const key = `${server.name}|${server.command ?? ""}|${server.transport ?? ""}`;
+      const current = serverMap.get(key);
+      serverMap.set(key, current ? mergeServers(current, server) : server);
+    }
+
+    merged.set(agent.name, {
+      ...existing,
+      agent_type: existing.agent_type || agent.agent_type,
+      status: existing.status || agent.status,
+      mcp_servers: [...serverMap.values()],
+    });
+  }
+
+  return [...merged.values()];
+}
+
 // ─── Shared Server Detection ────────────────────────────────────────────────
 
 export function detectSharedServers(agents: Agent[]): Map<string, ServerGroup> {
@@ -153,11 +218,25 @@ export function buildMeshGraph(
   const sevFilter = severityFilter ?? "all";
   const selectedAgents = scope?.selectedAgents ?? [];
   const vulnerableOnly = scope?.vulnerableOnly ?? false;
-  const activeAgents =
+  const scopedAgents =
     selectedAgents.length > 0
       ? result.agents.filter((agent) => selectedAgents.includes(agent.name))
       : result.agents;
+  const normalizedAgents = normalizeAgents(scopedAgents);
   const blastByVulnId = new Map(result.blast_radius?.map((item) => [item.vulnerability_id, item]) ?? []);
+
+  const hasVisiblePackage = (server: MCPServer): boolean => {
+    return server.packages.some((pkg) =>
+      (pkg.vulnerabilities ?? []).some((vuln) => {
+        const blast = blastByVulnId.get(vuln.id);
+        return meetsSeverityFilter(blast?.severity ?? vuln.severity, sevFilter);
+      }),
+    );
+  };
+
+  const activeAgents = vulnerableOnly
+    ? normalizedAgents.filter((agent) => agent.mcp_servers.some(hasVisiblePackage))
+    : normalizedAgents;
 
   const serverGroups = detectSharedServers(activeAgents);
   const sharedServerNames = new Set(
@@ -208,15 +287,7 @@ export function buildMeshGraph(
   // ── Agent nodes ──
   for (const agent of activeAgents) {
     const agentId = `agent:${agent.name}`;
-    const visibleServers = agent.mcp_servers.filter((server) => {
-      if (!vulnerableOnly) return true;
-      return server.packages.some((pkg) =>
-        (pkg.vulnerabilities ?? []).some((vuln) => {
-          const blast = blastByVulnId.get(vuln.id);
-          return meetsSeverityFilter(blast?.severity ?? vuln.severity, sevFilter);
-        }),
-      );
-    });
+    const visibleServers = vulnerableOnly ? agent.mcp_servers.filter(hasVisiblePackage) : agent.mcp_servers;
     const visiblePackageCount = visibleServers.reduce((sum, server) => {
       return sum + server.packages.filter((pkg) => {
         const matching = (pkg.vulnerabilities ?? []).some((vuln) => {

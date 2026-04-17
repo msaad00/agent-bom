@@ -236,7 +236,12 @@ export default function MeshPage() {
   const activeResult = useMemo(() => activeJob?.result ?? null, [activeJob]);
 
   const agentNames = useMemo(
-    () => activeResult?.agents.map((agent) => agent.name).sort((left, right) => left.localeCompare(right)) ?? [],
+    () =>
+      activeResult
+        ? Array.from(new Set(activeResult.agents.map((agent) => agent.name))).sort((left, right) =>
+            left.localeCompare(right),
+          )
+        : [],
     [activeResult],
   );
 
@@ -248,7 +253,7 @@ export default function MeshPage() {
       }
       setSelectedAgents((current) => {
         const retained = current.filter((name) => agentNames.includes(name));
-        return retained.length > 0 ? retained : [agentNames[0]];
+        return retained.length > 0 ? retained : agentNames;
       });
     }, 0);
     return () => window.clearTimeout(timer);

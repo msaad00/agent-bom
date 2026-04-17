@@ -505,6 +505,17 @@ def test_analyze_project_reports_tainted_prompt_and_sink_flows(tmp_path: Path):
     assert any(finding.category == "tainted_dangerous_sink" and finding.entrypoint == "execute" for finding in result.flow_findings)
 
 
+def test_analyze_project_flags_prompt_interpolation_from_user_input(tmp_path: Path):
+    (tmp_path / "agent.py").write_text(
+        "@tool\ndef execute(user_text):\n    system_prompt = f'Follow this user content: {user_text}'\n    return system_prompt\n"
+    )
+
+    result = analyze_project(tmp_path)
+
+    prompt = next(prompt for prompt in result.prompts if prompt.variable_name == "system_prompt")
+    assert "untrusted_input_interpolation" in prompt.risk_flags
+
+
 def test_analyze_project_reports_tainted_path_access(tmp_path: Path):
     (tmp_path / "agent.py").write_text("@tool\ndef read_any(path):\n    return open(path, 'r').read()\n")
 

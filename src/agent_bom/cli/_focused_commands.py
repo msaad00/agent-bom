@@ -263,9 +263,10 @@ def code_cmd(path: str, output_format: str, output_path: Optional[str], quiet: b
     """Analyze source code for AI components — prompts, guardrails, tools.
 
     AST-based analysis of Python AI framework code. Extracts system
-    prompts, detects guardrails, and maps tool signatures. Also reuses the
-    multi-language AI component source scan to surface SDK/model usage across
-    Python, JavaScript/TypeScript, Go, Java, Rust, and Ruby.
+    prompts, flags risky prompt interpolation, detects guardrails, and maps
+    tool signatures. Also reuses the multi-language AI component source scan
+    to surface SDK/model usage across Python, JavaScript/TypeScript, Go,
+    Java, Rust, and Ruby.
 
     \b
     Examples:

@@ -84,8 +84,11 @@ class ProxyMetrics:
     relay_errors: int = 0
     audit_buffer_bytes: int = 0
     audit_spillover_bytes: int = 0
+    audit_dlq_bytes: int = 0
     policy_fetch_failures: int = 0
     audit_push_failures: int = 0
+    audit_push_backoff_seconds: int = 0
+    audit_circuit_open: bool = False
 
     _MAX_LATENCY_ENTRIES = 10_000
 
@@ -106,11 +109,20 @@ class ProxyMetrics:
     def set_audit_spillover_bytes(self, size_bytes: int) -> None:
         self.audit_spillover_bytes = max(0, size_bytes)
 
+    def set_audit_dlq_bytes(self, size_bytes: int) -> None:
+        self.audit_dlq_bytes = max(0, size_bytes)
+
     def record_policy_fetch_failure(self) -> None:
         self.policy_fetch_failures += 1
 
     def record_audit_push_failure(self) -> None:
         self.audit_push_failures += 1
+
+    def set_audit_push_backoff_seconds(self, seconds: int) -> None:
+        self.audit_push_backoff_seconds = max(0, seconds)
+
+    def set_audit_circuit_open(self, is_open: bool) -> None:
+        self.audit_circuit_open = bool(is_open)
 
     def summary(self) -> dict:
         elapsed = time.monotonic() - self.start_time
@@ -144,9 +156,110 @@ class ProxyMetrics:
             "relay_errors": self.relay_errors,
             "audit_buffer_bytes": self.audit_buffer_bytes,
             "audit_spillover_bytes": self.audit_spillover_bytes,
+            "audit_dlq_bytes": self.audit_dlq_bytes,
             "policy_fetch_failures": self.policy_fetch_failures,
             "audit_push_failures": self.audit_push_failures,
+            "audit_push_backoff_seconds": self.audit_push_backoff_seconds,
+            "audit_circuit_open": 1 if self.audit_circuit_open else 0,
         }
+
+
+@dataclass
+class AuditDeliveryController:
+    """Backoff and circuit-breaker state for proxy audit push delivery."""
+
+    base_interval_seconds: int = 10
+    max_backoff_seconds: int = 300
+    breaker_failure_threshold: int = 3
+    breaker_cooldown_seconds: int = 60
+    consecutive_failures: int = 0
+    _next_delay_seconds: int = 10
+    _circuit_open_until: float = 0.0
+
+    def is_circuit_open(self, now: float | None = None) -> bool:
+        now = time.monotonic() if now is None else now
+        return now < self._circuit_open_until
+
+    def current_backoff_seconds(self, now: float | None = None) -> int:
+        now = time.monotonic() if now is None else now
+        if self.is_circuit_open(now):
+            return max(int(self._circuit_open_until - now), 1)
+        return self._next_delay_seconds
+
+    def record_success(self) -> None:
+        self.consecutive_failures = 0
+        self._next_delay_seconds = self.base_interval_seconds
+        self._circuit_open_until = 0.0
+
+    def record_failure(self, now: float | None = None) -> None:
+        now = time.monotonic() if now is None else now
+        self.consecutive_failures += 1
+        if self._next_delay_seconds <= self.base_interval_seconds:
+            self._next_delay_seconds = min(self.base_interval_seconds * 2, self.max_backoff_seconds)
+        else:
+            self._next_delay_seconds = min(self._next_delay_seconds * 2, self.max_backoff_seconds)
+        if self.consecutive_failures >= self.breaker_failure_threshold:
+            self._circuit_open_until = now + self.breaker_cooldown_seconds
+
+
+@dataclass
+class AuditSpilloverStore:
+    """Persist bounded proxy audit overflow to spillover and DLQ files."""
+
+    spill_path: Path
+    dlq_path: Path
+    max_spillover_bytes: int
+
+    def spillover_size_bytes(self) -> int:
+        try:
+            return self.spill_path.stat().st_size
+        except FileNotFoundError:
+            return 0
+
+    def dlq_size_bytes(self) -> int:
+        try:
+            return self.dlq_path.stat().st_size
+        except FileNotFoundError:
+            return 0
+
+    def append_events(self, events: list[dict]) -> str:
+        if not events:
+            return "noop"
+        encoded = [json.dumps(event) for event in events]
+        total_bytes = sum(len((line + "\n").encode("utf-8")) for line in encoded)
+        if self.spillover_size_bytes() + total_bytes <= self.max_spillover_bytes:
+            self._append_lines(self.spill_path, encoded)
+            return "spillover"
+        self._append_lines(self.dlq_path, encoded)
+        return "dlq"
+
+    def read_spillover(self) -> list[dict]:
+        if not self.spill_path.exists():
+            return []
+        events: list[dict] = []
+        with self.spill_path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    payload = json.loads(line)
+                except json.JSONDecodeError:
+                    logger.warning("Skipping malformed proxy audit spillover line from %s", self.spill_path)
+                    continue
+                if isinstance(payload, dict):
+                    events.append(payload)
+        return events
+
+    def clear_spillover(self) -> None:
+        if self.spill_path.exists():
+            self.spill_path.unlink()
+
+    def _append_lines(self, path: Path, lines: list[str]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            for line in lines:
+                handle.write(line + "\n")
 
 
 class ProxyMetricsServer:
@@ -211,6 +324,10 @@ class ProxyMetricsServer:
         lines.append("# TYPE agent_bom_proxy_audit_spillover_bytes gauge")
         lines.append(f"agent_bom_proxy_audit_spillover_bytes {summary.get('audit_spillover_bytes', 0)}")
 
+        lines.append("# HELP agent_bom_proxy_audit_dlq_bytes On-disk audit records diverted to the DLQ")
+        lines.append("# TYPE agent_bom_proxy_audit_dlq_bytes gauge")
+        lines.append(f"agent_bom_proxy_audit_dlq_bytes {summary.get('audit_dlq_bytes', 0)}")
+
         lines.append("# HELP agent_bom_proxy_policy_fetch_failures_total Failed policy refresh attempts")
         lines.append("# TYPE agent_bom_proxy_policy_fetch_failures_total counter")
         lines.append(f"agent_bom_proxy_policy_fetch_failures_total {summary.get('policy_fetch_failures', 0)}")
@@ -218,6 +335,14 @@ class ProxyMetricsServer:
         lines.append("# HELP agent_bom_proxy_audit_push_failures_total Failed audit push attempts")
         lines.append("# TYPE agent_bom_proxy_audit_push_failures_total counter")
         lines.append(f"agent_bom_proxy_audit_push_failures_total {summary.get('audit_push_failures', 0)}")
+
+        lines.append("# HELP agent_bom_proxy_audit_push_backoff_seconds Current audit push retry/backoff delay")
+        lines.append("# TYPE agent_bom_proxy_audit_push_backoff_seconds gauge")
+        lines.append(f"agent_bom_proxy_audit_push_backoff_seconds {summary.get('audit_push_backoff_seconds', 0)}")
+
+        lines.append("# HELP agent_bom_proxy_audit_circuit_open Whether the audit push circuit breaker is open")
+        lines.append("# TYPE agent_bom_proxy_audit_circuit_open gauge")
+        lines.append(f"agent_bom_proxy_audit_circuit_open {summary.get('audit_circuit_open', 0)}")
 
         return "\n".join(lines) + "\n"
 

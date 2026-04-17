@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import io
 import json
+from pathlib import Path
 
 from agent_bom.proxy import (
+    AuditDeliveryController,
+    AuditSpilloverStore,
     ProxyMetrics,
     ReplayDetector,
     check_policy,
@@ -220,8 +223,11 @@ def test_proxy_metrics_summary():
     assert s["messages_server_to_client"] == 3
     assert s["audit_buffer_bytes"] == 0
     assert s["audit_spillover_bytes"] == 0
+    assert s["audit_dlq_bytes"] == 0
     assert s["policy_fetch_failures"] == 0
     assert s["audit_push_failures"] == 0
+    assert s["audit_push_backoff_seconds"] == 0
+    assert s["audit_circuit_open"] == 0
     assert "ts" in s
     assert "uptime_seconds" in s
 
@@ -241,14 +247,52 @@ def test_proxy_metrics_records_backpressure_and_policy_failures():
     m = ProxyMetrics()
     m.set_audit_buffer_bytes(1024)
     m.set_audit_spillover_bytes(2048)
+    m.set_audit_dlq_bytes(4096)
     m.record_policy_fetch_failure()
     m.record_audit_push_failure()
+    m.set_audit_push_backoff_seconds(30)
+    m.set_audit_circuit_open(True)
 
     s = m.summary()
     assert s["audit_buffer_bytes"] == 1024
     assert s["audit_spillover_bytes"] == 2048
+    assert s["audit_dlq_bytes"] == 4096
     assert s["policy_fetch_failures"] == 1
     assert s["audit_push_failures"] == 1
+    assert s["audit_push_backoff_seconds"] == 30
+    assert s["audit_circuit_open"] == 1
+
+
+def test_audit_delivery_controller_opens_circuit_after_threshold():
+    controller = AuditDeliveryController(
+        base_interval_seconds=10,
+        max_backoff_seconds=60,
+        breaker_failure_threshold=3,
+        breaker_cooldown_seconds=30,
+    )
+    controller.record_failure(now=100.0)
+    assert controller.current_backoff_seconds(now=100.0) == 20
+    assert controller.is_circuit_open(now=100.0) is False
+    controller.record_failure(now=101.0)
+    assert controller.current_backoff_seconds(now=101.0) == 40
+    controller.record_failure(now=102.0)
+    assert controller.is_circuit_open(now=102.0) is True
+    assert controller.current_backoff_seconds(now=102.0) == 30
+    controller.record_success()
+    assert controller.is_circuit_open(now=102.0) is False
+    assert controller.current_backoff_seconds(now=102.0) == 10
+
+
+def test_audit_spillover_store_diverts_to_dlq_when_spillover_full(tmp_path: Path):
+    store = AuditSpilloverStore(
+        spill_path=tmp_path / "spill.jsonl",
+        dlq_path=tmp_path / "audit.dlq.jsonl",
+        max_spillover_bytes=1,
+    )
+    destination = store.append_events([{"event": "first"}])
+    assert destination == "dlq"
+    assert store.spillover_size_bytes() == 0
+    assert store.dlq_size_bytes() > 0
 
 
 # ── CLI proxy --help ─────────────────────────────────────────────────────────

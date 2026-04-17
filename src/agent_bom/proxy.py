@@ -43,6 +43,8 @@ ProxyMetrics = _proxy_audit.ProxyMetrics
 ProxyMetricsServer = _proxy_audit.ProxyMetricsServer
 ReplayDetector = _proxy_audit.ReplayDetector
 RotatingAuditLog = _proxy_audit.RotatingAuditLog
+AuditDeliveryController = _proxy_audit.AuditDeliveryController
+AuditSpilloverStore = _proxy_audit.AuditSpilloverStore
 _truncate_args = _proxy_audit._truncate_args
 compute_payload_hash = _proxy_audit.compute_payload_hash
 compute_response_hmac = _proxy_audit.compute_response_hmac
@@ -614,52 +616,52 @@ async def run_proxy(
     audit_buffer_bytes = 0
     audit_lock = asyncio.Lock()
     max_audit_buffer_bytes = max(64 * 1024, int(os.environ.get("AGENT_BOM_PROXY_AUDIT_BUFFER_MAX_BYTES", "1048576")))
+    max_audit_spillover_bytes = max(
+        max_audit_buffer_bytes,
+        int(os.environ.get("AGENT_BOM_PROXY_AUDIT_SPILLOVER_MAX_BYTES", str(max_audit_buffer_bytes * 8))),
+    )
     audit_spill_path = Path(
         os.environ.get(
             "AGENT_BOM_PROXY_AUDIT_SPILLOVER_PATH",
             str(Path(tempfile.gettempdir()) / f"agent-bom-proxy-audit-{control_plane_session_id}.jsonl"),
         )
     )
+    audit_dlq_path = Path(
+        os.environ.get(
+            "AGENT_BOM_PROXY_AUDIT_DLQ_PATH",
+            str(Path(tempfile.gettempdir()) / f"agent-bom-proxy-audit-{control_plane_session_id}.dlq.jsonl"),
+        )
+    )
+    audit_delivery = AuditDeliveryController(
+        base_interval_seconds=max(audit_push_interval, 5),
+        max_backoff_seconds=max(
+            max(audit_push_interval, 5),
+            int(os.environ.get("AGENT_BOM_PROXY_AUDIT_PUSH_BACKOFF_MAX_SECONDS", "300")),
+        ),
+        breaker_failure_threshold=max(
+            1,
+            int(os.environ.get("AGENT_BOM_PROXY_AUDIT_CIRCUIT_BREAKER_THRESHOLD", "3")),
+        ),
+        breaker_cooldown_seconds=max(
+            max(audit_push_interval, 5),
+            int(os.environ.get("AGENT_BOM_PROXY_AUDIT_CIRCUIT_BREAKER_COOLDOWN_SECONDS", "60")),
+        ),
+    )
+    audit_spillover = AuditSpilloverStore(
+        spill_path=audit_spill_path,
+        dlq_path=audit_dlq_path,
+        max_spillover_bytes=max_audit_spillover_bytes,
+    )
 
     def _event_size_bytes(payload: dict) -> int:
         return len(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
 
-    def _spillover_size_bytes() -> int:
-        try:
-            return audit_spill_path.stat().st_size
-        except FileNotFoundError:
-            return 0
-
     def _sync_audit_metrics() -> None:
         metrics.set_audit_buffer_bytes(audit_buffer_bytes)
-        metrics.set_audit_spillover_bytes(_spillover_size_bytes())
-
-    def _append_spillover_locked(events: list[dict]) -> None:
-        if not events:
-            return
-        audit_spill_path.parent.mkdir(parents=True, exist_ok=True)
-        with audit_spill_path.open("a", encoding="utf-8") as handle:
-            for event in events:
-                handle.write(json.dumps(event) + "\n")
-        _sync_audit_metrics()
-
-    def _read_spillover_locked() -> list[dict]:
-        if not audit_spill_path.exists():
-            return []
-        events: list[dict] = []
-        with audit_spill_path.open("r", encoding="utf-8") as handle:
-            for line in handle:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    payload = json.loads(line)
-                except json.JSONDecodeError:
-                    logger.warning("Skipping malformed proxy audit spillover line from %s", audit_spill_path)
-                    continue
-                if isinstance(payload, dict):
-                    events.append(payload)
-        return events
+        metrics.set_audit_spillover_bytes(audit_spillover.spillover_size_bytes())
+        metrics.set_audit_dlq_bytes(audit_spillover.dlq_size_bytes())
+        metrics.set_audit_push_backoff_seconds(audit_delivery.current_backoff_seconds())
+        metrics.set_audit_circuit_open(audit_delivery.is_circuit_open())
 
     async def _queue_control_plane_alert(alert_payload: dict) -> None:
         nonlocal audit_buffer_bytes
@@ -669,12 +671,19 @@ async def run_proxy(
                 audit_buffer.append(alert_payload)
                 audit_buffer_bytes += event_size
             else:
-                logger.warning(
-                    "Proxy audit buffer exceeded %s bytes; spilling alert backlog to %s",
-                    max_audit_buffer_bytes,
-                    audit_spill_path,
-                )
-                _append_spillover_locked([alert_payload])
+                destination = audit_spillover.append_events([alert_payload])
+                if destination == "dlq":
+                    logger.error(
+                        "Proxy audit spillover exceeded %s bytes; diverting alert backlog to DLQ %s",
+                        max_audit_spillover_bytes,
+                        audit_dlq_path,
+                    )
+                else:
+                    logger.warning(
+                        "Proxy audit buffer exceeded %s bytes; spilling alert backlog to %s",
+                        max_audit_buffer_bytes,
+                        audit_spill_path,
+                    )
             _sync_audit_metrics()
 
     async def _refresh_control_plane_policies(initial: bool = False) -> None:
@@ -705,20 +714,20 @@ async def run_proxy(
             else:
                 rate_tracker._threshold = local_policy_rate_limit or 0
 
-    async def _flush_audit_buffer(summary: dict | None = None) -> None:
+    async def _flush_audit_buffer(summary: dict | None = None) -> bool:
         nonlocal audit_buffer_bytes
         if not control_plane_url:
-            return
+            return True
         async with audit_lock:
             alerts = list(audit_buffer)
             in_memory_bytes = audit_buffer_bytes
-            spillover_alerts = _read_spillover_locked()
+            spillover_alerts = audit_spillover.read_spillover()
             audit_buffer.clear()
             audit_buffer_bytes = 0
             _sync_audit_metrics()
         combined_alerts = spillover_alerts + alerts
         if not combined_alerts and summary is None:
-            return
+            return True
         spillover_had_data = bool(spillover_alerts)
         try:
             await _push_proxy_audit_batch(
@@ -736,10 +745,12 @@ async def run_proxy(
                 audit_buffer[:0] = alerts
                 audit_buffer_bytes += in_memory_bytes
                 _sync_audit_metrics()
+            return False
         else:
-            if spillover_had_data and audit_spill_path.exists():
-                audit_spill_path.unlink()
+            if spillover_had_data:
+                audit_spillover.clear_spillover()
             _sync_audit_metrics()
+            return True
 
     if control_plane_url:
         await _refresh_control_plane_policies(initial=True)
@@ -760,8 +771,15 @@ async def run_proxy(
         if not control_plane_url:
             return
         while True:
-            await asyncio.sleep(max(audit_push_interval, 5))
-            await _flush_audit_buffer()
+            await asyncio.sleep(audit_delivery.current_backoff_seconds())
+            if audit_delivery.is_circuit_open():
+                _sync_audit_metrics()
+                continue
+            if await _flush_audit_buffer():
+                audit_delivery.record_success()
+            else:
+                audit_delivery.record_failure()
+            _sync_audit_metrics()
 
     async def _handle_alerts(alerts, log_f=None):
         """Log alerts and optionally record them + dispatch webhook."""

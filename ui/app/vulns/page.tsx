@@ -1,11 +1,11 @@
 "use client";
 
-import { Fragment, Suspense, useCallback, useEffect, useState, useMemo } from "react";
+import { Fragment, Suspense, useCallback, useEffect, useState, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { api, Vulnerability, ScanJob, ScanResult, severityColor, severityDot, JobListItem } from "@/lib/api";
+import { api, Vulnerability, ScanJob, ScanResult, severityColor, severityDot, JobListItem, RemediationItem } from "@/lib/api";
 import { ApiOfflineState } from "@/components/api-offline-state";
-import { Bug, Download, ExternalLink, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, Loader2, Package, Server, ShieldOff } from "lucide-react";
+import { Bug, Download, ExternalLink, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, Loader2, Package, Server, ShieldOff, Radar, FileSearch, ShieldAlert } from "lucide-react";
 
 function downloadJson(data: unknown, filename: string) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -19,6 +19,27 @@ interface EnrichedVuln extends Vulnerability {
   packages: string[];
   agents: string[];
   sources: string[]; // scan source labels (e.g., "python:3.11-slim", "claude-desktop")
+  affected_servers: string[];
+  exposed_credentials: string[];
+  reachable_tools: string[];
+  references: string[];
+  advisory_sources: string[];
+  attack_vector_summary?: string;
+  impact_category?: string;
+  risk_score?: number;
+  remediation_items: RemediationSummary[];
+}
+
+interface RemediationSummary {
+  package: string;
+  ecosystem: string;
+  current_version: string;
+  fixed_version: string | null;
+  action?: string;
+  command?: string | null;
+  verify_command?: string | null;
+  references: string[];
+  risk_narrative: string;
 }
 
 type SeverityFilter = "all" | "critical" | "high" | "medium" | "low";
@@ -40,6 +61,35 @@ function CisaKevBadge() {
       KEV
     </span>
   );
+}
+
+function uniqueStrings(items: Array<string | null | undefined>) {
+  return [...new Set(items.filter((item): item is string => Boolean(item && item.trim())).map((item) => item.trim()))];
+}
+
+function toRemediationSummary(item: RemediationItem): RemediationSummary {
+  return {
+    package: item.package,
+    ecosystem: item.ecosystem,
+    current_version: item.current_version,
+    fixed_version: item.fixed_version,
+    action: item.action,
+    command: item.command,
+    verify_command: item.verify_command,
+    references: item.references ?? [],
+    risk_narrative: item.risk_narrative,
+  };
+}
+
+function mergeRemediationItems(existing: RemediationSummary[], incoming: RemediationSummary[]) {
+  const merged = new Map(existing.map((item) => [`${item.package}:${item.current_version}:${item.fixed_version ?? "none"}`, item]));
+  for (const item of incoming) {
+    const key = `${item.package}:${item.current_version}:${item.fixed_version ?? "none"}`;
+    if (!merged.has(key)) {
+      merged.set(key, item);
+    }
+  }
+  return Array.from(merged.values());
 }
 
 function SortButton({
@@ -116,6 +166,15 @@ function VulnsPage() {
       if (!job.result) continue;
       const result = job.result as ScanResult;
       const blastById = new Map(result.blast_radius?.map((item) => [item.vulnerability_id, item]) ?? []);
+      const remediationByVulnId = new Map<string, RemediationSummary[]>();
+      for (const item of result.remediation_plan ?? []) {
+        const summary = toRemediationSummary(item);
+        for (const vulnId of item.vulnerabilities ?? []) {
+          const existing = remediationByVulnId.get(vulnId) ?? [];
+          existing.push(summary);
+          remediationByVulnId.set(vulnId, existing);
+        }
+      }
 
       const scanSources: string[] = [];
       if (job.request.images?.length) scanSources.push(...job.request.images);
@@ -128,6 +187,7 @@ function VulnsPage() {
           for (const pkg of srv.packages) {
             for (const vuln of pkg.vulnerabilities ?? []) {
               const blast = blastById.get(vuln.id);
+              const remediationItems = remediationByVulnId.get(vuln.id) ?? [];
               const existing = vulnMap.get(vuln.id);
               if (existing) {
                 if (!existing.packages.includes(pkg.name)) existing.packages.push(pkg.name);
@@ -139,6 +199,20 @@ function VulnsPage() {
                 existing.epss_score = existing.epss_score ?? blast?.epss_score ?? vuln.epss_score;
                 existing.fixed_version = existing.fixed_version ?? blast?.fixed_version ?? vuln.fixed_version;
                 existing.summary = existing.summary ?? blast?.attack_vector_summary ?? vuln.summary ?? vuln.description;
+                existing.attack_vector_summary = existing.attack_vector_summary ?? blast?.attack_vector_summary;
+                existing.impact_category = existing.impact_category ?? blast?.impact_category;
+                existing.risk_score = existing.risk_score ?? blast?.risk_score ?? blast?.blast_score;
+                existing.affected_servers = uniqueStrings([...existing.affected_servers, ...(blast?.affected_servers ?? [])]);
+                existing.exposed_credentials = uniqueStrings([...existing.exposed_credentials, ...(blast?.exposed_credentials ?? [])]);
+                existing.reachable_tools = uniqueStrings([
+                  ...existing.reachable_tools,
+                  ...(blast?.exposed_tools ?? []),
+                  ...(blast?.reachable_tools ?? []),
+                ]);
+                existing.references = uniqueStrings([...existing.references, ...(vuln.references ?? []), ...remediationItems.flatMap((item) => item.references)]);
+                existing.advisory_sources = uniqueStrings([...existing.advisory_sources, ...(vuln.advisory_sources ?? [])]);
+                existing.aliases = uniqueStrings([...(existing.aliases ?? []), ...(vuln.aliases ?? [])]);
+                existing.remediation_items = mergeRemediationItems(existing.remediation_items, remediationItems);
               } else {
                 vulnMap.set(vuln.id, {
                   ...vuln,
@@ -149,6 +223,16 @@ function VulnsPage() {
                   packages: [pkg.name],
                   agents: [agent.name],
                   sources: [...scanSources],
+                  affected_servers: blast?.affected_servers ?? [],
+                  exposed_credentials: blast?.exposed_credentials ?? [],
+                  reachable_tools: uniqueStrings([...(blast?.exposed_tools ?? []), ...(blast?.reachable_tools ?? [])]),
+                  references: uniqueStrings([...(vuln.references ?? []), ...remediationItems.flatMap((item) => item.references)]),
+                  advisory_sources: vuln.advisory_sources ?? [],
+                  aliases: vuln.aliases ?? [],
+                  attack_vector_summary: blast?.attack_vector_summary,
+                  impact_category: blast?.impact_category,
+                  risk_score: blast?.risk_score ?? blast?.blast_score,
+                  remediation_items: remediationItems,
                 });
               }
             }
@@ -690,13 +774,20 @@ function renderPercentValue(value: number | undefined, missingLabel: string) {
 }
 
 function VulnDetailPanel({ vuln }: { vuln: EnrichedVuln }) {
-  const summary = vuln.summary ?? vuln.description ?? "No advisory summary available.";
+  const summary = vuln.attack_vector_summary ?? vuln.summary ?? vuln.description ?? "No advisory summary available.";
   const cweMatches = summary.match(/CWE-\d+/gi) ?? [];
-  const published = vuln.published ?? vuln.nvd_published;
+  const published = vuln.published_at ?? vuln.published ?? vuln.nvd_published;
+  const modified = vuln.modified_at;
+  const references = uniqueStrings(vuln.references).slice(0, 6);
+  const fixCandidates = vuln.remediation_items.filter((item) => item.fixed_version || item.command || item.verify_command);
+  const investigationSources = uniqueStrings([
+    ...vuln.sources,
+    ...vuln.advisory_sources,
+  ]);
 
   return (
     <div className="ml-6 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-      <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
+      <div className="grid gap-4 xl:grid-cols-[1.3fr_1fr]">
         <div className="space-y-4">
           <div>
             <h4 className="text-xs font-medium uppercase tracking-wide text-zinc-500">Attack summary</h4>
@@ -716,19 +807,98 @@ function VulnDetailPanel({ vuln }: { vuln: EnrichedVuln }) {
             <DetailStat label="CVSS" value={typeof vuln.cvss_score === "number" ? vuln.cvss_score.toFixed(1) : "Not published"} />
             <DetailStat label="EPSS" value={typeof vuln.epss_score === "number" ? `${(vuln.epss_score * 100).toFixed(1)}%` : "Not available"} />
           </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <ContextCard
+              icon={Radar}
+              title="Asset and reach context"
+              items={[
+                `${vuln.packages.length} package${vuln.packages.length === 1 ? "" : "s"}`,
+                `${vuln.agents.length} agent${vuln.agents.length === 1 ? "" : "s"}`,
+                `${vuln.affected_servers.length} server${vuln.affected_servers.length === 1 ? "" : "s"}`,
+                vuln.risk_score ? `Risk score ${vuln.risk_score.toFixed(1)}` : null,
+                vuln.impact_category ? `Impact ${vuln.impact_category}` : null,
+              ]}
+              detail={
+                <>
+                  <TagList label="Packages" values={vuln.packages} mono />
+                  <TagList label="Agents" values={vuln.agents} />
+                  <TagList label="Servers" values={vuln.affected_servers} />
+                </>
+              }
+            />
+            <ContextCard
+              icon={ShieldAlert}
+              title="Exposure at risk"
+              items={[
+                `${vuln.exposed_credentials.length} credential${vuln.exposed_credentials.length === 1 ? "" : "s"} exposed`,
+                `${vuln.reachable_tools.length} reachable tool${vuln.reachable_tools.length === 1 ? "" : "s"}`,
+              ]}
+              detail={
+                <>
+                  <TagList label="Credentials" values={vuln.exposed_credentials} mono />
+                  <TagList label="Tools" values={vuln.reachable_tools} mono />
+                </>
+              }
+            />
+          </div>
         </div>
 
         <div className="space-y-4">
           <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
-            <h4 className="text-xs font-medium uppercase tracking-wide text-zinc-500">Affected scope</h4>
+            <h4 className="text-xs font-medium uppercase tracking-wide text-zinc-500">Fix context</h4>
             <div className="mt-3 space-y-2 text-sm text-zinc-300">
-              <div><span className="text-zinc-500">Packages:</span> {vuln.packages.join(", ")}</div>
-              <div><span className="text-zinc-500">Agents:</span> {vuln.agents.join(", ")}</div>
-              {vuln.sources.length > 0 && <div><span className="text-zinc-500">Sources:</span> {vuln.sources.join(", ")}</div>}
               <div><span className="text-zinc-500">Fix:</span> {vuln.fixed_version ?? "No published fix"}</div>
               {published && <div><span className="text-zinc-500">Published:</span> {new Date(published).toLocaleDateString()}</div>}
+              {modified && <div><span className="text-zinc-500">Modified:</span> {new Date(modified).toLocaleDateString()}</div>}
               {typeof vuln.confidence === "number" && <div><span className="text-zinc-500">Confidence:</span> {(vuln.confidence * 100).toFixed(0)}%</div>}
               {vuln.severity_source && <div><span className="text-zinc-500">Severity source:</span> {vuln.severity_source}</div>}
+            </div>
+            {fixCandidates.length > 0 && (
+              <div className="mt-4 space-y-3">
+                {fixCandidates.slice(0, 2).map((item) => (
+                  <div key={`${item.package}:${item.current_version}`} className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-zinc-200">{item.package}</span>
+                      <span className="text-[11px] font-mono text-emerald-400">
+                        {item.current_version} → {item.fixed_version ?? "monitor"}
+                      </span>
+                    </div>
+                    {item.action && <p className="mt-2 text-xs text-zinc-400">{item.action}</p>}
+                    {item.command && <CodeLine label="Apply" value={item.command} />}
+                    {item.verify_command && <CodeLine label="Verify" value={item.verify_command} />}
+                  </div>
+                ))}
+              </div>
+            )}
+            {vuln.remediation_items[0]?.risk_narrative && (
+              <p className="mt-3 text-xs leading-5 text-zinc-400">{vuln.remediation_items[0].risk_narrative}</p>
+            )}
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+            <h4 className="text-xs font-medium uppercase tracking-wide text-zinc-500">Investigation sources</h4>
+            <div className="mt-3 space-y-3">
+              <TagList label="Signals" values={investigationSources} />
+              <TagList label="Aliases" values={vuln.aliases ?? []} mono />
+              {references.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Advisories</div>
+                  <div className="flex flex-col gap-2">
+                    {references.map((ref) => (
+                      <a
+                        key={ref}
+                        href={ref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2 text-xs text-zinc-300 transition-colors hover:border-zinc-700 hover:text-zinc-100"
+                      >
+                        <FileSearch className="h-3.5 w-3.5 text-zinc-500" />
+                        <span className="truncate">{ref}</span>
+                        <ExternalLink className="ml-auto h-3 w-3 shrink-0" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -759,6 +929,68 @@ function DetailStat({ label, value, accent }: { label: string; value: string; ac
     <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
       <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">{label}</div>
       <div className={`mt-2 text-sm font-medium text-zinc-100 ${accent ?? ""}`}>{value}</div>
+    </div>
+  );
+}
+
+function ContextCard({
+  icon: Icon,
+  title,
+  items,
+  detail,
+}: {
+  icon: typeof Radar;
+  title: string;
+  items: Array<string | null | undefined>;
+  detail: ReactNode;
+}) {
+  const visibleItems = items.filter(Boolean) as string[];
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-950/70 p-3">
+      <div className="flex items-center gap-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+        <Icon className="h-3.5 w-3.5" />
+        {title}
+      </div>
+      {visibleItems.length > 0 && (
+        <ul className="mt-3 space-y-1 text-xs text-zinc-300">
+          {visibleItems.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-3 space-y-2">{detail}</div>
+    </div>
+  );
+}
+
+function TagList({ label, values, mono = false }: { label: string; values: string[]; mono?: boolean }) {
+  if (values.length === 0) {
+    return null;
+  }
+  return (
+    <div className="space-y-2">
+      <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">{label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {values.map((value) => (
+          <span
+            key={`${label}:${value}`}
+            className={`rounded border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-xs text-zinc-300 ${mono ? "font-mono" : ""}`}
+          >
+            {value}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CodeLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="mt-2">
+      <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">{label}</div>
+      <code className="mt-1 block overflow-x-auto rounded bg-black/30 px-2 py-1.5 text-[11px] text-emerald-300">
+        {value}
+      </code>
     </div>
   );
 }

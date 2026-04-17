@@ -208,6 +208,9 @@ export interface Vulnerability {
   /** API v2 field — same as description */
   summary?: string;
   description?: string;
+  references?: string[];
+  advisory_sources?: string[];
+  aliases?: string[];
   cvss_score?: number;
   epss_score?: number;
   /** API v2 field — same as cisa_kev */
@@ -215,6 +218,8 @@ export interface Vulnerability {
   cisa_kev?: boolean;
   fixed_version?: string;
   /** API v2 field — same as published */
+  published_at?: string;
+  modified_at?: string;
   nvd_published?: string;
   published?: string;
   /** Phase 2 fields */

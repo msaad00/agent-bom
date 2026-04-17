@@ -22,6 +22,13 @@ from agent_bom.api.stores import _get_fleet_store, _get_idempotency_store
 router = APIRouter()
 
 
+def _request_header(request: Request, key: str) -> str:
+    headers = getattr(request, "headers", None)
+    if headers is None:
+        return ""
+    return str(headers.get(key, "") or "")
+
+
 @router.get("/v1/fleet", tags=["fleet"])
 async def list_fleet(
     request: Request,
@@ -130,8 +137,8 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
     store = _get_fleet_store()
     tenant_id = getattr(request.state, "tenant_id", "default")
     now = datetime.now(timezone.utc).isoformat()
-    source_id = (body.source_id if body else "") or request.headers.get("X-Agent-Bom-Source-Id", "") or "server-discovery"
-    idem_key = (body.idempotency_key if body else "") or request.headers.get("Idempotency-Key", "")
+    source_id = (body.source_id if body else "") or _request_header(request, "X-Agent-Bom-Source-Id") or "server-discovery"
+    idem_key = (body.idempotency_key if body else "") or _request_header(request, "Idempotency-Key")
     if idem_key:
         cached = _get_idempotency_store().get("/v1/fleet/sync", tenant_id, source_id, idem_key)
         if cached is not None:

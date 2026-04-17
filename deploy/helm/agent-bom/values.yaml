@@ -65,6 +65,34 @@ monitor:
 
 controlPlane:
   enabled: false
+  observability:
+    grafanaDashboard:
+      enabled: false
+      namespace: ""
+      labels: {}
+      annotations: {}
+      folder: agent-bom
+    prometheusRule:
+      enabled: false
+      namespace: ""
+      labels: {}
+      annotations: {}
+      rules:
+        apiErrorRate:
+          enabled: true
+          errorRateThreshold: 0.05
+          for: 10m
+        scannerFailures:
+          enabled: true
+          for: 15m
+        oidcFailures:
+          enabled: true
+          for: 10m
+          increaseThreshold: 5
+        proxyAuditBacklog:
+          enabled: true
+          for: 10m
+          backlogBytesThreshold: 10485760
   podAntiAffinity:
     enabled: false
     topologyKey: kubernetes.io/hostname
@@ -200,6 +228,43 @@ controlPlane:
       creationPolicy: Owner
     data: []
     secrets: []
+  backup:
+    enabled: false
+    schedule: "0 3 * * *"
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 3
+    suspend: false
+    serviceAccountName: ""
+    image:
+      dumpRepository: postgres
+      dumpTag: "16-alpine"
+      uploadRepository: amazon/aws-cli
+      uploadTag: "2.17.52"
+      pullPolicy: IfNotPresent
+    resources:
+      dump:
+        requests:
+          memory: "256Mi"
+          cpu: "100m"
+        limits:
+          memory: "512Mi"
+          cpu: "500m"
+      upload:
+        requests:
+          memory: "128Mi"
+          cpu: "50m"
+        limits:
+          memory: "256Mi"
+          cpu: "250m"
+    destination:
+      bucket: ""
+      prefix: "agent-bom/postgres"
+      region: us-east-1
+      endpoint: ""
+      extraArgs: []
+    retentionDays: 14
+    env: []
+    envFrom: []
 
 rbac:
   create: true

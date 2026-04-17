@@ -1,5 +1,10 @@
 controlPlane:
   enabled: true
+  observability:
+    grafanaDashboard:
+      enabled: true
+    prometheusRule:
+      enabled: true
   podAntiAffinity:
     enabled: true
   priorityClass:
@@ -83,6 +88,16 @@ controlPlane:
             remoteRef:
               key: /agent-bom/prod/control-plane
               property: AGENT_BOM_REQUIRE_AUDIT_HMAC
+  backup:
+    enabled: true
+    schedule: "0 3 * * *"
+    destination:
+      bucket: agent-bom-prod-backups
+      prefix: agent-bom/postgres
+      region: us-east-1
+    envFrom:
+      - secretRef:
+          name: agent-bom-control-plane-db
 
 scanner:
   enabled: true

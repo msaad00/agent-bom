@@ -130,6 +130,9 @@ That example adds:
 - fail-closed shared rate limiting when the Postgres-backed limiter is unavailable
 - `cert-manager` ingress annotations and TLS wiring
 - `external-secrets` integration for the control-plane secrets, including split refresh cadence for DB vs auth/HMAC material
+- packaged `PrometheusRule` alerts for API error rate, scanner failures, OIDC decode failures, and proxy audit backlog
+- packaged Grafana dashboard `ConfigMap` for clusters that already watch dashboard config
+- packaged Postgres backup `CronJob` that runs `pg_dump` and uploads to S3 through IRSA
 - restricted ingress defaults for the chart network policy
 
 ## What you still own
@@ -162,6 +165,9 @@ You still own:
   while `AGENT_BOM_POSTGRES_URL` stays at `1h`
 - set `AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1` for multi-replica production
   control planes so the API refuses to start if the shared limiter backend is unavailable
+- enable `controlPlane.observability.prometheusRule.enabled=true` when the cluster already runs Prometheus Operator
+- enable `controlPlane.observability.grafanaDashboard.enabled=true` when Grafana watches dashboard `ConfigMap`s
+- enable `controlPlane.backup.enabled=true` only after setting a real S3 bucket, prefix, and IRSA-backed upload permissions
 - enable PDBs when you are running multi-replica workloads
 
 ## Current boundary

@@ -1,0 +1,90 @@
+{{- if and .Values.controlPlane.enabled .Values.controlPlane.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "agent-bom.name" . }}-control-plane-backup
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane-backup
+spec:
+  schedule: {{ .Values.controlPlane.backup.schedule | quote }}
+  suspend: {{ .Values.controlPlane.backup.suspend }}
+  successfulJobsHistoryLimit: {{ .Values.controlPlane.backup.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.controlPlane.backup.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "agent-bom.labels" . | nindent 12 }}
+            app.kubernetes.io/component: control-plane-backup
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ default (include "agent-bom.serviceAccountName" .) .Values.controlPlane.backup.serviceAccountName }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: dump
+              image: "{{ .Values.controlPlane.backup.image.dumpRepository }}:{{ .Values.controlPlane.backup.image.dumpTag }}"
+              imagePullPolicy: {{ .Values.controlPlane.backup.image.pullPolicy }}
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  ts="$(date -u +%Y%m%dT%H%M%SZ)"
+                  out="/backup/agent-bom-${ts}.dump"
+                  pg_dump "$AGENT_BOM_POSTGRES_URL" --format=custom --file "$out"
+                  echo "$out" > /backup/latest-path
+              env:
+                - name: PGCONNECT_TIMEOUT
+                  value: "10"
+                {{- with .Values.controlPlane.backup.env }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+              {{- with .Values.controlPlane.backup.envFrom }}
+              envFrom:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
+              volumeMounts:
+                - name: backup-data
+                  mountPath: /backup
+              resources:
+                {{- toYaml .Values.controlPlane.backup.resources.dump | nindent 16 }}
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+            - name: upload
+              image: "{{ .Values.controlPlane.backup.image.uploadRepository }}:{{ .Values.controlPlane.backup.image.uploadTag }}"
+              imagePullPolicy: {{ .Values.controlPlane.backup.image.pullPolicy }}
+              command:
+                - /bin/sh
+                - -ec
+                - |
+                  for _ in $(seq 1 180); do
+                    if [ -s /backup/latest-path ]; then
+                      break
+                    fi
+                    sleep 2
+                  done
+                  dump_path="$(cat /backup/latest-path)"
+                  test -f "$dump_path"
+                  key="{{ trimSuffix "/" .Values.controlPlane.backup.destination.prefix }}/$(basename "$dump_path")"
+                  set -- s3 cp "$dump_path" "s3://{{ .Values.controlPlane.backup.destination.bucket }}/$key" --region "{{ .Values.controlPlane.backup.destination.region }}"
+                  {{- if .Values.controlPlane.backup.destination.endpoint }}
+                  set -- "$@" --endpoint-url "{{ .Values.controlPlane.backup.destination.endpoint }}"
+                  {{- end }}
+                  {{- range .Values.controlPlane.backup.destination.extraArgs }}
+                  set -- "$@" "{{ . }}"
+                  {{- end }}
+                  aws "$@"
+              volumeMounts:
+                - name: backup-data
+                  mountPath: /backup
+              resources:
+                {{- toYaml .Values.controlPlane.backup.resources.upload | nindent 16 }}
+              securityContext:
+                {{- toYaml .Values.securityContext | nindent 16 }}
+          volumes:
+            - name: backup-data
+              emptyDir: {}
+{{- end }}

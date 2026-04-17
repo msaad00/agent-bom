@@ -154,6 +154,14 @@ def test_loadtest_scripts_target_real_endpoints():
     assert "/v1/proxy/audit" in proxy_audit
 
 
+def test_chart_packages_grafana_dashboard_asset():
+    """The Helm chart should package the shipped Grafana dashboard JSON."""
+    dashboard = HELM_DIR / "files" / "grafana-agent-bom.json"
+    assert dashboard.exists()
+    payload = yaml.safe_load(dashboard.read_text())
+    assert payload["title"] == "agent-bom — AI Supply Chain Security"
+
+
 def test_namespace_manifest():
     """Namespace manifest creates agent-bom namespace."""
     doc = yaml.safe_load((K8S_DIR / "namespace.yaml").read_text())
@@ -215,10 +223,13 @@ def test_helm_templates_exist():
         "controlplane-api-deployment.yaml",
         "controlplane-api-hpa.yaml",
         "controlplane-api-service.yaml",
+        "controlplane-backup-cronjob.yaml",
         "controlplane-externalsecret.yaml",
+        "controlplane-grafana-dashboard.yaml",
         "controlplane-ingress.yaml",
         "controlplane-pdb.yaml",
         "controlplane-priorityclass.yaml",
+        "controlplane-prometheusrule.yaml",
         "controlplane-ui-deployment.yaml",
         "controlplane-ui-hpa.yaml",
         "controlplane-ui-service.yaml",
@@ -290,6 +301,28 @@ def test_helm_external_secrets_defaults():
     assert ext["secrets"] == []
 
 
+def test_helm_control_plane_observability_defaults():
+    """PrometheusRule and Grafana dashboard packaging is explicit and opt-in."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    observability = doc["controlPlane"]["observability"]
+    assert observability["grafanaDashboard"]["enabled"] is False
+    assert observability["grafanaDashboard"]["folder"] == "agent-bom"
+    assert observability["prometheusRule"]["enabled"] is False
+    assert observability["prometheusRule"]["rules"]["apiErrorRate"]["enabled"] is True
+    assert observability["prometheusRule"]["rules"]["proxyAuditBacklog"]["backlogBytesThreshold"] == 10485760
+
+
+def test_helm_control_plane_backup_defaults():
+    """Postgres backup packaging is explicit and disabled by default."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    backup = doc["controlPlane"]["backup"]
+    assert backup["enabled"] is False
+    assert backup["schedule"] == "0 3 * * *"
+    assert backup["destination"]["prefix"] == "agent-bom/postgres"
+    assert backup["image"]["dumpRepository"] == "postgres"
+    assert backup["image"]["uploadRepository"] == "amazon/aws-cli"
+
+
 def test_helm_monitor_disabled_by_default():
     """Monitor is disabled by default."""
     doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
@@ -357,6 +390,10 @@ def test_production_values_enable_operator_defaults():
     assert production["controlPlane"]["api"]["autoscaling"]["behavior"]["scaleDown"]["stabilizationWindowSeconds"] == 300
     assert production["controlPlane"]["ui"]["autoscaling"]["behavior"]["scaleDown"]["stabilizationWindowSeconds"] == 300
     assert production["controlPlane"]["externalSecrets"]["enabled"] is True
+    assert production["controlPlane"]["observability"]["grafanaDashboard"]["enabled"] is True
+    assert production["controlPlane"]["observability"]["prometheusRule"]["enabled"] is True
+    assert production["controlPlane"]["backup"]["enabled"] is True
+    assert production["controlPlane"]["backup"]["destination"]["bucket"] == "agent-bom-prod-backups"
     secrets = production["controlPlane"]["externalSecrets"]["secrets"]
     assert {secret["target"]["name"] for secret in secrets} == {
         "agent-bom-control-plane-auth",

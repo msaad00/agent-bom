@@ -1,0 +1,73 @@
+{{- if and .Values.controlPlane.enabled .Values.controlPlane.observability.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "agent-bom.name" . }}-control-plane
+  namespace: {{ default .Release.Namespace .Values.controlPlane.observability.prometheusRule.namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+    {{- with .Values.controlPlane.observability.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.controlPlane.observability.prometheusRule.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  groups:
+    - name: agent-bom.control-plane
+      rules:
+        {{- if .Values.controlPlane.observability.prometheusRule.rules.apiErrorRate.enabled }}
+        - alert: AgentBomApiHighErrorRate
+          expr: |
+            (
+              sum(rate(http_requests_total{job=~".*agent-bom.*",status=~"5.."}[5m]))
+              /
+              clamp_min(sum(rate(http_requests_total{job=~".*agent-bom.*"}[5m])), 1)
+            ) > {{ .Values.controlPlane.observability.prometheusRule.rules.apiErrorRate.errorRateThreshold }}
+          for: {{ .Values.controlPlane.observability.prometheusRule.rules.apiErrorRate.for }}
+          labels:
+            severity: warning
+            service: agent-bom-api
+          annotations:
+            summary: agent-bom API 5xx rate is elevated
+            description: agent-bom API error rate has exceeded the configured threshold for 10 minutes.
+        {{- end }}
+        {{- if .Values.controlPlane.observability.prometheusRule.rules.scannerFailures.enabled }}
+        - alert: AgentBomScannerFailures
+          expr: |
+            increase(kube_job_status_failed{job_name=~".*agent-bom.*"}[15m]) > 0
+          for: {{ .Values.controlPlane.observability.prometheusRule.rules.scannerFailures.for }}
+          labels:
+            severity: warning
+            service: agent-bom-scanner
+          annotations:
+            summary: agent-bom scanner job failures detected
+            description: One or more recent agent-bom scheduled jobs have failed in Kubernetes.
+        {{- end }}
+        {{- if .Values.controlPlane.observability.prometheusRule.rules.oidcFailures.enabled }}
+        - alert: AgentBomOidcDecodeFailures
+          expr: |
+            increase(agent_bom_oidc_decode_failures_total[5m]) > {{ .Values.controlPlane.observability.prometheusRule.rules.oidcFailures.increaseThreshold }}
+          for: {{ .Values.controlPlane.observability.prometheusRule.rules.oidcFailures.for }}
+          labels:
+            severity: warning
+            service: agent-bom-api
+          annotations:
+            summary: agent-bom OIDC decode failures are rising
+            description: OIDC token decode failures exceeded the configured threshold during the last 5 minutes.
+        {{- end }}
+        {{- if .Values.controlPlane.observability.prometheusRule.rules.proxyAuditBacklog.enabled }}
+        - alert: AgentBomProxyAuditBacklog
+          expr: |
+            max(agent_bom_proxy_audit_buffer_bytes + agent_bom_proxy_audit_spillover_bytes) > {{ .Values.controlPlane.observability.prometheusRule.rules.proxyAuditBacklog.backlogBytesThreshold }}
+          for: {{ .Values.controlPlane.observability.prometheusRule.rules.proxyAuditBacklog.for }}
+          labels:
+            severity: warning
+            service: agent-bom-proxy
+          annotations:
+            summary: agent-bom proxy audit backlog is growing
+            description: The proxy audit queue plus spillover file size exceeded the configured threshold.
+        {{- end }}
+{{- end }}

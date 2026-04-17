@@ -95,6 +95,10 @@ controlPlane:
       bucket: agent-bom-prod-backups
       prefix: agent-bom/postgres
       region: us-east-1
+      encryption:
+        enabled: true
+        mode: aws:kms
+        kmsKeyId: alias/agent-bom-backups
     envFrom:
       - secretRef:
           name: agent-bom-control-plane-db

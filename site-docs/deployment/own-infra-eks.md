@@ -102,7 +102,7 @@ The chart now supports the EKS wiring you actually need:
 | `controlPlane.externalSecrets.secrets[]` | split DB secret cadence from faster OIDC / audit-HMAC rotation |
 | `controlPlane.observability.prometheusRule.*` | package alert rules for API, scanner, OIDC, and proxy backlog |
 | `controlPlane.observability.grafanaDashboard.*` | package the shipped Grafana dashboard as a `ConfigMap` |
-| `controlPlane.backup.*` | package Postgres backup jobs that dump and upload to S3 through IRSA |
+| `controlPlane.backup.*` | package Postgres backup jobs that dump and upload to S3 through IRSA with SSE or KMS |
 | `scanner.extraArgs` | add `--k8s-mcp`, `--enforce`, `--introspect`, or stricter presets |
 | `scanner.env` | inject operator-owned environment like API endpoints or auth context |
 | `scanner.allNamespaces` | scan cluster-wide instead of one namespace |
@@ -181,6 +181,8 @@ all sit under one operator-controlled plane.
 - enable the packaged PrometheusRule and Grafana dashboard when your cluster
   already runs Prometheus Operator and Grafana sidecar discovery
 - enable the packaged backup CronJob only after setting a real S3 destination
+- set `controlPlane.backup.destination.encryption.mode=aws:kms` and a real KMS key for production backups
+- run restore drills with [`deploy/ops/restore-postgres-backup.sh`](../../deploy/ops/restore-postgres-backup.sh) and document RTO/RPO around that exact command path
   and granting `s3:PutObject` via IRSA
 - set a persistent audit HMAC key and require it
 - attach the scanner service account to IRSA instead of static cloud keys

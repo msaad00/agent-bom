@@ -183,6 +183,7 @@ Operator guides:
 - [Packaged API + UI Control Plane](site-docs/deployment/control-plane-helm.md)
 - [Grafana Dashboard](site-docs/deployment/grafana.md)
 - [Performance, Sizing, and Benchmarks](site-docs/deployment/performance-and-sizing.md)
+- [Restore Postgres Backup Script](deploy/ops/restore-postgres-backup.sh)
 
 ## Product views
 

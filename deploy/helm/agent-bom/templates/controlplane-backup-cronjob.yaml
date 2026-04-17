@@ -73,6 +73,12 @@ spec:
                   {{- if .Values.controlPlane.backup.destination.endpoint }}
                   set -- "$@" --endpoint-url "{{ .Values.controlPlane.backup.destination.endpoint }}"
                   {{- end }}
+                  {{- if .Values.controlPlane.backup.destination.encryption.enabled }}
+                  set -- "$@" --sse "{{ .Values.controlPlane.backup.destination.encryption.mode }}"
+                  {{- if .Values.controlPlane.backup.destination.encryption.kmsKeyId }}
+                  set -- "$@" --sse-kms-key-id "{{ .Values.controlPlane.backup.destination.encryption.kmsKeyId }}"
+                  {{- end }}
+                  {{- end }}
                   {{- range .Values.controlPlane.backup.destination.extraArgs }}
                   set -- "$@" "{{ . }}"
                   {{- end }}

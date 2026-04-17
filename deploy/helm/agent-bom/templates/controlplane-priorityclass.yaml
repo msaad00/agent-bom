@@ -1,0 +1,12 @@
+{{- if and .Values.controlPlane.enabled .Values.controlPlane.priorityClass.create }}
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: {{ include "agent-bom.controlPlanePriorityClassName" . }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+value: {{ .Values.controlPlane.priorityClass.value }}
+preemptionPolicy: {{ .Values.controlPlane.priorityClass.preemptionPolicy }}
+globalDefault: false
+description: {{ .Values.controlPlane.priorityClass.description | quote }}
+{{- end }}

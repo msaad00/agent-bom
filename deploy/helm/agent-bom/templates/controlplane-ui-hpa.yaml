@@ -14,6 +14,10 @@ spec:
     name: {{ include "agent-bom.name" . }}-ui
   minReplicas: {{ .Values.controlPlane.ui.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.controlPlane.ui.autoscaling.maxReplicas }}
+  {{- with .Values.controlPlane.ui.autoscaling.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   metrics:
     - type: Resource
       resource:

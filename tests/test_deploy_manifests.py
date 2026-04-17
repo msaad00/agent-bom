@@ -218,6 +218,7 @@ def test_helm_templates_exist():
         "controlplane-externalsecret.yaml",
         "controlplane-ingress.yaml",
         "controlplane-pdb.yaml",
+        "controlplane-priorityclass.yaml",
         "controlplane-ui-deployment.yaml",
         "controlplane-ui-hpa.yaml",
         "controlplane-ui-service.yaml",
@@ -252,9 +253,11 @@ def test_helm_control_plane_autoscaling_defaults():
     assert api["minReplicas"] == 2
     assert api["maxReplicas"] == 6
     assert api["targetCPUUtilizationPercentage"] == 70
+    assert api["behavior"] == {}
     assert ui["enabled"] is False
     assert ui["minReplicas"] == 2
     assert ui["maxReplicas"] == 4
+    assert ui["behavior"] == {}
 
 
 def test_helm_topology_spread_defaults():
@@ -264,6 +267,17 @@ def test_helm_topology_spread_defaults():
     assert spread["enabled"] is False
     assert spread["zone"]["enabled"] is True
     assert spread["node"]["enabled"] is True
+
+
+def test_helm_control_plane_priority_and_anti_affinity_defaults():
+    """Control-plane HA knobs are explicit and opt-in by default."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    anti_affinity = doc["controlPlane"]["podAntiAffinity"]
+    priority_class = doc["controlPlane"]["priorityClass"]
+    assert anti_affinity["enabled"] is False
+    assert anti_affinity["topologyKey"] == "kubernetes.io/hostname"
+    assert priority_class["create"] is False
+    assert priority_class["name"] == ""
 
 
 def test_helm_external_secrets_defaults():
@@ -339,7 +353,24 @@ def test_production_values_enable_operator_defaults():
     production = yaml.safe_load((HELM_DIR / "examples" / "eks-production-values.yaml").read_text())
     assert production["controlPlane"]["api"]["autoscaling"]["enabled"] is True
     assert production["controlPlane"]["ui"]["autoscaling"]["enabled"] is True
+    assert production["controlPlane"]["api"]["autoscaling"]["behavior"]["scaleDown"]["stabilizationWindowSeconds"] == 300
+    assert production["controlPlane"]["ui"]["autoscaling"]["behavior"]["scaleDown"]["stabilizationWindowSeconds"] == 300
     assert production["controlPlane"]["externalSecrets"]["enabled"] is True
+    assert production["controlPlane"]["externalSecrets"]["refreshInterval"] == "5m"
+    assert production["controlPlane"]["podAntiAffinity"]["enabled"] is True
+    assert production["controlPlane"]["priorityClass"]["create"] is True
     assert production["topologySpread"]["enabled"] is True
     assert production["networkPolicy"]["restrictIngress"] is True
     assert "cert-manager.io/cluster-issuer" in production["controlPlane"]["ingress"]["annotations"]
+
+
+def test_pilot_and_production_values_narrow_ingress_to_controller_pods_and_ports():
+    """Focused values should narrow ingress traffic to controller pods on UI/API ports."""
+    for name in ("eks-mcp-pilot-values.yaml", "eks-production-values.yaml"):
+        values = yaml.safe_load((HELM_DIR / "examples" / name).read_text())
+        ingress_rule = values["networkPolicy"]["ingress"][1]
+        source = ingress_rule["from"][0]
+        ports = {port["port"] for port in ingress_rule["ports"]}
+        assert source["namespaceSelector"]["matchLabels"]["kubernetes.io/metadata.name"] == "ingress-nginx"
+        assert source["podSelector"]["matchLabels"]["app.kubernetes.io/component"] == "controller"
+        assert ports == {3000, 8422}

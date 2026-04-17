@@ -302,6 +302,10 @@ _JS_TS_UNTRUSTED_DATA_RE = re.compile(
     r"\b(?:user[A-Z_]\w*|user\w*|input|payload|req(?:uest)?\.(?:body|query|params)|ctx\.(?:body|query|params)|process\.env)\b",
     re.IGNORECASE,
 )
+_PROMPT_UNTRUSTED_INPUT_RE = re.compile(
+    r"\b(?:user\w*|input|payload|message|content|query|prompt|instruction|body|request)\b",
+    re.IGNORECASE,
+)
 
 
 # ── AST extraction ───────────────────────────────────────────────────────────
@@ -320,7 +324,34 @@ def _extract_string_value(node: ast.expr) -> str | None:
             else:
                 parts.append("{...}")
         return "".join(parts)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _extract_string_value(node.left)
+        right = _extract_string_value(node.right)
+        if left is not None or right is not None:
+            left = left if left is not None else "{...}"
+            right = right if right is not None else "{...}"
+            return f"{left}{right}"
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr == "format":
+        template = _extract_string_value(node.func.value)
+        if template is not None:
+            return template
     return None
+
+
+def _expr_contains_untrusted_prompt_input(node: ast.AST) -> bool:
+    """Return True when a prompt expression interpolates likely untrusted input."""
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name) and _PROMPT_UNTRUSTED_INPUT_RE.search(child.id):
+            return True
+        if isinstance(child, ast.Attribute):
+            attr_name = _expr_name(child)
+            if attr_name and _PROMPT_UNTRUSTED_INPUT_RE.search(attr_name):
+                return True
+        if isinstance(child, ast.Call):
+            call_name = _call_name(child.func).lower()
+            if call_name in {"input", "request.get_json", "request.args.get", "request.form.get"}:
+                return True
+    return False
 
 
 def _call_name(node: ast.AST) -> str:
@@ -801,6 +832,8 @@ def _analyze_file(
                     text = _extract_string_value(node.value)
                     if text and len(text) > 10:
                         risk_flags = _check_prompt_risks(text)
+                        if _expr_contains_untrusted_prompt_input(node.value):
+                            risk_flags = [*risk_flags, "untrusted_input_interpolation"]
                         prompts.append(
                             ExtractedPrompt(
                                 text=text[:2000],
@@ -820,6 +853,8 @@ def _analyze_file(
                     text = _extract_string_value(kw.value)
                     if text and len(text) > 10:
                         risk_flags = _check_prompt_risks(text)
+                        if _expr_contains_untrusted_prompt_input(kw.value):
+                            risk_flags = [*risk_flags, "untrusted_input_interpolation"]
                         prompts.append(
                             ExtractedPrompt(
                                 text=text[:2000],

@@ -207,6 +207,19 @@ API_MAX_FLEET_AGENTS_PER_TENANT = _int("AGENT_BOM_API_MAX_FLEET_AGENTS_PER_TENAN
 API_MAX_SCHEDULES_PER_TENANT = _int("AGENT_BOM_API_MAX_SCHEDULES_PER_TENANT", 100)
 
 
+# ── PostgreSQL Control Plane Tuning ──────────────────────────────────────
+# Used by api/postgres_store.py and shared Postgres-backed control-plane
+# services such as the distributed rate limiter.
+#
+# Defaults target multi-replica self-hosted control planes rather than a
+# single local developer process.
+
+POSTGRES_POOL_MIN_SIZE = _int("AGENT_BOM_POSTGRES_POOL_MIN_SIZE", 5)
+POSTGRES_POOL_MAX_SIZE = _int("AGENT_BOM_POSTGRES_POOL_MAX_SIZE", 20)
+POSTGRES_CONNECT_TIMEOUT_SECONDS = _int("AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS", 5)
+POSTGRES_STATEMENT_TIMEOUT_MS = _int("AGENT_BOM_POSTGRES_STATEMENT_TIMEOUT_MS", 15_000)
+
+
 # ── MCP Server Limits ────────────────────────────────────────────────────
 # Used by mcp_server.py for file-size and response-size guards, tool execution
 # governance, and lightweight in-process observability.

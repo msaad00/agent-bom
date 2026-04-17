@@ -14,6 +14,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from agent_bom import __version__
+from agent_bom.api.auth import get_key_store
 from agent_bom.api.tracing import configure_otel_tracing, make_request_trace
 
 if TYPE_CHECKING:
@@ -378,7 +379,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Per-IP sliding window rate limiter with bounded memory."""
+    """Tenant-aware sliding window rate limiter with bounded memory."""
 
     def __init__(self, app: ASGIApp, scan_rpm: int = 60, read_rpm: int = 300):
         super().__init__(app)
@@ -397,19 +398,32 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 _logger.warning("Postgres rate limiter unavailable, falling back to in-memory store", exc_info=True)
         return InMemoryRateLimitStore(window_seconds=self._window)
 
+    def _resolve_tenant_scope(self, request: StarletteRequest, raw_key: str) -> str | None:
+        tenant_id = getattr(request.state, "tenant_id", "").strip() or None
+        if tenant_id and tenant_id != "default":
+            return tenant_id
+        if raw_key:
+            try:
+                resolved = get_key_store().verify(raw_key)
+            except Exception:
+                resolved = None
+            if resolved and resolved.tenant_id:
+                return resolved.tenant_id
+        return None
+
     def _bucket_key(self, request: StarletteRequest, is_scan: bool) -> str:
         bucket_type = "scan" if is_scan else "read"
-        tenant_id = getattr(request.state, "tenant_id", "").strip() or None
         auth = request.headers.get("authorization", "")
         raw_key = auth[7:] if auth.startswith("Bearer ") else request.headers.get("x-api-key", "")
-        if raw_key:
+        tenant_scope = self._resolve_tenant_scope(request, raw_key)
+        if tenant_scope:
+            scope = f"tenant:{tenant_scope}"
+        elif raw_key:
             auth_hash = _rate_limit_fingerprint(raw_key)
             scope = f"auth:{auth_hash}"
         else:
             client_ip = request.client.host if request.client else "unknown"
             scope = f"ip:{client_ip}"
-        if tenant_id and tenant_id != "default":
-            scope = f"tenant:{tenant_id}:{scope}"
         return f"{scope}:{bucket_type}"
 
     async def dispatch(self, request: StarletteRequest, call_next):

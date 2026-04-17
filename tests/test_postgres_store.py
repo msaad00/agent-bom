@@ -4,6 +4,8 @@ Uses a mock psycopg_pool to avoid needing a real PostgreSQL instance.
 """
 
 import json
+import sys
+import types
 
 import pytest
 
@@ -743,6 +745,70 @@ def test_get_pool_missing_psycopg(monkeypatch):
         else:
             sys.modules.pop("psycopg_pool", None)
         reset_pool()
+
+
+def test_get_pool_uses_tuned_pool_sizes_and_connect_timeout(monkeypatch):
+    """Pool creation should honor operator-controlled sizing and connect timeout envs."""
+    from agent_bom.api import postgres_store
+
+    captured: dict[str, object] = {}
+
+    class CapturePool:
+        def __init__(self, url, min_size, max_size, kwargs=None):
+            captured["url"] = url
+            captured["min_size"] = min_size
+            captured["max_size"] = max_size
+            captured["kwargs"] = kwargs or {}
+
+    reset = postgres_store.reset_pool
+    reset()
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://localhost/test")
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_POOL_MIN_SIZE", "7")
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_POOL_MAX_SIZE", "21")
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS", "9")
+    monkeypatch.setattr(
+        postgres_store,
+        "POSTGRES_POOL_MIN_SIZE",
+        7,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        postgres_store,
+        "POSTGRES_POOL_MAX_SIZE",
+        21,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        postgres_store,
+        "POSTGRES_CONNECT_TIMEOUT_SECONDS",
+        9,
+        raising=False,
+    )
+    monkeypatch.setitem(sys.modules, "psycopg_pool", types.SimpleNamespace(ConnectionPool=CapturePool))
+
+    try:
+        postgres_store._get_pool()
+        assert captured == {
+            "url": "postgresql://localhost/test",
+            "min_size": 7,
+            "max_size": 21,
+            "kwargs": {"connect_timeout": 9},
+        }
+    finally:
+        reset()
+
+
+def test_apply_tenant_session_sets_statement_timeout(monkeypatch):
+    """Tenant session setup should apply the configured statement timeout."""
+    from agent_bom.api import postgres_store
+
+    conn = MockConnection()
+    monkeypatch.setattr(postgres_store, "POSTGRES_STATEMENT_TIMEOUT_MS", 12_000, raising=False)
+
+    postgres_store._apply_tenant_session(conn)
+
+    assert any("app.tenant_id" in sql for sql, _ in conn.executed)
+    assert any("statement_timeout" in sql and params == ("12000",) for sql, params in conn.executed)
 
 
 # ─── Server lifespan integration ─────────────────────────────────────────────

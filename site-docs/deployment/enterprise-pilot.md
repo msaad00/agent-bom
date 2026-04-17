@@ -108,6 +108,9 @@ sequenceDiagram
 - ClickHouse is available when pilot volume grows beyond what Postgres should carry for analytics
 - sidecar proxy rollout stays workload-by-workload instead of forcing universal inline routing
 
+For concrete sizing, autoscaling, and load-test guidance, use
+[Performance, Sizing, and Benchmarks](performance-and-sizing.md).
+
 ## Required rollout steps
 
 1. Run Postgres migrations.

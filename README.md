@@ -224,6 +224,7 @@ operator guide:
 - [Endpoint Fleet](site-docs/deployment/endpoint-fleet.md)
 - [Focused EKS MCP Pilot](site-docs/deployment/eks-mcp-pilot.md)
 - [Packaged API + UI Control Plane](site-docs/deployment/control-plane-helm.md)
+- [Performance, Sizing, and Benchmarks](site-docs/deployment/performance-and-sizing.md)
 
 That means enterprises can run `agent-bom`:
 

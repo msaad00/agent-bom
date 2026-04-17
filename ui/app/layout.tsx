@@ -46,9 +46,12 @@ const themeBootstrap = `
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" data-theme="dark" suppressHydrationWarning>
+      <head />
       <body className={`${inter.variable} ${mono.variable} font-sans bg-background text-foreground min-h-screen antialiased selection:bg-emerald-500/20`}>
         <Script src="/runtime-config.js" strategy="beforeInteractive" />
-        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
+        <Script id="theme-bootstrap" strategy="beforeInteractive">
+          {themeBootstrap}
+        </Script>
         <Nav />
         {/* Main content — offset by sidebar width on desktop, offset by top bar on mobile */}
         <main id="main-content" className="lg:pl-[240px] pt-14 lg:pt-0 min-h-screen transition-[padding-left] duration-200">

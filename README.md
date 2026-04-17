@@ -125,6 +125,63 @@ agent-bom serve                         # API + Next.js dashboard
 - AI-native coverage across agents, MCP, runtime, containers, cloud, IaC, and GPU surfaces
 - Compliance evidence bundles for `cmmc`, `fedramp`, and `nist-ai-rmf`
 
+## Deploy in your own AWS / EKS
+
+This is one of the core self-hosted paths now, not a side note:
+
+- employee endpoints push fleet discovery into your control plane
+- selected MCP workloads run the proxy locally or as sidecars
+- gateway policy stays in your control plane
+- Postgres, audit, secrets, ingress, and logs stay in your infra
+
+```text
+Employee laptops                    Your AWS / EKS cluster
+Cursor / Claude / VS Code           ┌──────────────────────────────────────┐
+Codex / Cortex / Continue           │ agent-bom control plane             │
+         │                          │  - API + UI                         │
+agent-bom agents --push ───────────▶│  - fleet / mesh / gateway / audit   │
+         │                          │  - OIDC / RBAC / Postgres           │
+         │                          └────────────────┬─────────────────────┘
+         │                                           │
+agent-bom proxy -- <mcp cmd>                         │ policy pull + audit push
+         │                                           │
+         └──────────────────────────────────────────▶│
+                                                     ▼
+                                        selected MCP workloads in EKS
+                                        with agent-bom proxy sidecars
+```
+
+What that gives you:
+
+- endpoint fleet visibility for developer laptops and local MCP clients
+- runtime enforcement for selected MCP workloads in-cluster
+- one control plane for fleet, mesh, findings, gateway policy, and audit
+- no mandatory hosted vendor plane
+
+Focused entrypoints:
+
+```bash
+# control plane in your cluster
+helm install agent-bom deploy/helm/agent-bom \
+  --set controlPlane.enabled=true \
+  --set db.backend=postgres
+
+# endpoint fleet sync
+agent-bom agents --preset enterprise --introspect \
+  --push-url https://agent-bom.example.com/v1/fleet/sync
+
+# local MCP enforcement on a laptop or workstation
+agent-bom proxy --policy ./policy.json -- <editor-mcp-command>
+```
+
+Operator guides:
+
+- [Deploy In Your Own AWS / EKS Infrastructure](site-docs/deployment/own-infra-eks.md)
+- [Enterprise MCP / Endpoint Pilot](site-docs/deployment/enterprise-pilot.md)
+- [Endpoint Fleet](site-docs/deployment/endpoint-fleet.md)
+- [Focused EKS MCP Pilot](site-docs/deployment/eks-mcp-pilot.md)
+- [Packaged API + UI Control Plane](site-docs/deployment/control-plane-helm.md)
+
 ## Product views
 
 These screenshots come from the live product path, using the built-in demo data pushed into the API.
@@ -180,12 +237,12 @@ One path: discover, analyze, persist, then operate across CLI, CI, API, dashboar
   </picture>
 </p>
 
-Blast radius stays explicit in the data model instead of being hand-waved as a generic finding list.
+The broader topology stays explicit too: start from a scoped risky path, then expand outward to the MCP servers, packages, credentials, and tools that share that surface.
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="agent-bom blast radius model" width="900" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/topology-dark.svg">
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/topology-light.svg" alt="agent-bom focused topology view" width="900" />
   </picture>
 </p>
 

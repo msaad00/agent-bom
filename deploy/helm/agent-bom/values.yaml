@@ -259,8 +259,13 @@ controlPlane:
     destination:
       bucket: ""
       prefix: "agent-bom/postgres"
+      bucketRegion: ""
       region: us-east-1
       endpoint: ""
+      encryption:
+        enabled: true
+        mode: "AES256"
+        kmsKeyId: ""
       extraArgs: []
     retentionDays: 14
     env: []

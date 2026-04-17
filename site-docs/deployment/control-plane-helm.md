@@ -132,7 +132,7 @@ That example adds:
 - `external-secrets` integration for the control-plane secrets, including split refresh cadence for DB vs auth/HMAC material
 - packaged `PrometheusRule` alerts for API error rate, scanner failures, OIDC decode failures, and proxy audit backlog
 - packaged Grafana dashboard `ConfigMap` for clusters that already watch dashboard config
-- packaged Postgres backup `CronJob` that runs `pg_dump` and uploads to S3 through IRSA
+- packaged Postgres backup `CronJob` that runs `pg_dump` and uploads to S3 through IRSA with SSE or KMS
 - restricted ingress defaults for the chart network policy
 
 ## What you still own
@@ -168,6 +168,11 @@ You still own:
 - enable `controlPlane.observability.prometheusRule.enabled=true` when the cluster already runs Prometheus Operator
 - enable `controlPlane.observability.grafanaDashboard.enabled=true` when Grafana watches dashboard `ConfigMap`s
 - enable `controlPlane.backup.enabled=true` only after setting a real S3 bucket, prefix, and IRSA-backed upload permissions
+- set `controlPlane.backup.destination.bucketRegion` to the actual region of your backup bucket; the production example intentionally uses `REPLACE_ME_BUCKET_REGION`
+- `controlPlane.backup.destination.region` remains as a backward-compatible fallback for older values files
+- keep `controlPlane.backup.destination.encryption.enabled=true`; the default is `AES256`, and production should set `mode=aws:kms` with a dedicated `kmsKeyId`
+- restore drills should use [`deploy/ops/restore-postgres-backup.sh`](../../deploy/ops/restore-postgres-backup.sh):
+  `./deploy/ops/restore-postgres-backup.sh s3://bucket/key.dump "$AGENT_BOM_POSTGRES_URL" us-east-1`
 - enable PDBs when you are running multi-replica workloads
 
 ## Current boundary

@@ -303,6 +303,10 @@ def scan(
     posture: bool = False,
     _iac_only: bool = False,
     _image_only: bool = False,
+    k8s_live: bool = False,
+    k8s_live_namespace: str = "default",
+    k8s_live_all_namespaces: bool = False,
+    k8s_live_context: Optional[str] = None,
 ):
     """Discover agents, extract dependencies, scan for vulnerabilities.
 
@@ -632,26 +636,51 @@ def scan(
     # skip ALL discovery, package extraction, and network calls entirely.
     # This prevents MCP config discovery, lockfile scanning, and registry
     # lookups from running when the user only asked for IaC misconfiguration checks.
-    if _iac_only and iac_paths:
+    if _iac_only and (iac_paths or k8s_live):
         from agent_bom.iac import scan_iac_directory
+        from agent_bom.k8s import K8sDiscoveryError, scan_live_cluster_posture
 
         _iac_ctx = ScanContext(con=con)
         all_iac_findings: list = []
-        con.print(f"\n[bold blue]Scanning {len(iac_paths)} path(s) for IaC misconfigurations...[/bold blue]\n")
-        for _iac_path in iac_paths:
-            _iac_f = scan_iac_directory(_iac_path)
-            all_iac_findings.extend(_iac_f)
-            if _iac_f:
+        if iac_paths:
+            con.print(f"\n[bold blue]Scanning {len(iac_paths)} path(s) for IaC misconfigurations...[/bold blue]\n")
+            for _iac_path in iac_paths:
+                _iac_f = scan_iac_directory(_iac_path)
+                all_iac_findings.extend(_iac_f)
+                if _iac_f:
+                    from collections import Counter as _Counter
+
+                    _sev_counts = _Counter(f.severity for f in _iac_f)
+                    _sev_parts = [
+                        f"[red]{_sev_counts.get('critical', 0)} critical[/red]",
+                        f"[yellow]{_sev_counts.get('high', 0)} high[/yellow]",
+                    ]
+                    con.print(f"  [red]⚠[/red]  {_iac_path}: {len(_iac_f)} finding(s) ({', '.join(_sev_parts)})")
+                else:
+                    con.print(f"  [green]✓[/green] {_iac_path}: no misconfigurations")
+        if k8s_live:
+            con.print("\n[bold blue]Inspecting live Kubernetes cluster posture...[/bold blue]\n")
+            try:
+                _k8s_live_findings = scan_live_cluster_posture(
+                    namespace=k8s_live_namespace,
+                    all_namespaces=k8s_live_all_namespaces,
+                    context=k8s_live_context,
+                )
+            except K8sDiscoveryError as exc:
+                con.print(f"  [red]✗[/red] live cluster scan failed: {exc}")
+                raise SystemExit(1)
+            all_iac_findings.extend(_k8s_live_findings)
+            if _k8s_live_findings:
                 from collections import Counter as _Counter
 
-                _sev_counts = _Counter(f.severity for f in _iac_f)
+                _sev_counts = _Counter(f.severity for f in _k8s_live_findings)
                 _sev_parts = [
                     f"[red]{_sev_counts.get('critical', 0)} critical[/red]",
                     f"[yellow]{_sev_counts.get('high', 0)} high[/yellow]",
                 ]
-                con.print(f"  [red]⚠[/red]  {_iac_path}: {len(_iac_f)} finding(s) ({', '.join(_sev_parts)})")
+                con.print(f"  [red]⚠[/red]  live cluster posture: {len(_k8s_live_findings)} finding(s) ({', '.join(_sev_parts)})")
             else:
-                con.print(f"  [green]✓[/green] {_iac_path}: no misconfigurations")
+                con.print("  [green]✓[/green] live cluster posture: no runtime misconfigurations")
 
         _iac_report = AIBOMReport(agents=[], blast_radii=[])
         _iac_report.iac_findings_data = {

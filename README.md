@@ -66,7 +66,7 @@ Pick the entrypoint that matches your first job:
 | Turn findings into a fix plan | `agent-bom agents -p . --remediate remediation.md` | Prioritized remediation plan with fix versions and reachable impact |
 | Check a package before install | `agent-bom check flask@2.2.0 --ecosystem pypi` | Machine-readable pre-install verdict |
 | Scan a container image | `agent-bom image nginx:latest` | OS and package CVEs with fixability |
-| Audit IaC or cloud posture | `agent-bom iac Dockerfile k8s/ infra/main.tf` | Misconfigurations and posture findings |
+| Audit IaC or cloud posture | `agent-bom iac Dockerfile k8s/ infra/main.tf` | Misconfigurations, manifest hardening, and optional live cluster posture |
 | Review findings in a persistent graph | `agent-bom serve` | API, dashboard, unified graph, current-state and diff views. Requires `pip install 'agent-bom[ui]'` once. |
 | Inspect live MCP traffic | `agent-bom proxy "<server command>"` | Inline runtime inspection, detector chaining, response/argument review |
 
@@ -85,6 +85,7 @@ agent-bom skills scan .                       # Scan CLAUDE.md, AGENTS.md, .curs
 agent-bom check flask@2.0.0 --ecosystem pypi  # Pre-install CVE gate
 agent-bom image nginx:latest                  # Container image scan
 agent-bom iac Dockerfile k8s/ infra/main.tf   # IaC scan across one or more paths
+agent-bom iac . --k8s-live --k8s-all-namespaces  # Live Kubernetes posture via kubectl
 ```
 
 ## What to do after the first scan

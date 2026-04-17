@@ -366,6 +366,13 @@ def test_analyze_project_builds_interprocedural_dangerous_flow(tmp_path: Path):
         finding.category == "interprocedural_dangerous_flow" and finding.entrypoint == "execute" and finding.sink == "subprocess.run"
         for finding in result.flow_findings
     )
+    finding = next(
+        finding
+        for finding in result.flow_findings
+        if finding.category == "interprocedural_dangerous_flow" and finding.entrypoint == "execute" and finding.sink == "subprocess.run"
+    )
+    assert finding.call_path == ["execute", "run_shell", "subprocess.run"]
+    assert "bounded helper-call chain" in finding.detail
 
 
 def test_analyze_project_treats_validation_branch_as_guard(tmp_path: Path):

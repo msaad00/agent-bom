@@ -73,8 +73,8 @@ controlPlane:
         data:
           - secretKey: AGENT_BOM_POSTGRES_URL
             remoteRef:
-              key: /agent-bom/prod/control-plane
-              property: AGENT_BOM_POSTGRES_URL
+              key: REPLACE_ME_DB_SECRET_PATH
+              property: REPLACE_ME_POSTGRES_URL_PROPERTY
       - nameSuffix: control-plane-auth
         refreshInterval: 5m
         target:
@@ -82,40 +82,40 @@ controlPlane:
         data:
           - secretKey: AGENT_BOM_OIDC_ISSUER
             remoteRef:
-              key: /agent-bom/prod/control-plane
-              property: AGENT_BOM_OIDC_ISSUER
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_OIDC_ISSUER_PROPERTY
           - secretKey: AGENT_BOM_OIDC_AUDIENCE
             remoteRef:
-              key: /agent-bom/prod/control-plane
-              property: AGENT_BOM_OIDC_AUDIENCE
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_OIDC_AUDIENCE_PROPERTY
           - secretKey: AGENT_BOM_SAML_IDP_ENTITY_ID
             remoteRef:
-              key: /agent-bom/prod/control-plane
-              property: AGENT_BOM_SAML_IDP_ENTITY_ID
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_SAML_IDP_ENTITY_ID_PROPERTY
           - secretKey: AGENT_BOM_SAML_IDP_SSO_URL
             remoteRef:
-              key: /agent-bom/prod/control-plane
-              property: AGENT_BOM_SAML_IDP_SSO_URL
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_SAML_IDP_SSO_URL_PROPERTY
           - secretKey: AGENT_BOM_SAML_IDP_X509_CERT
             remoteRef:
-              key: /agent-bom/prod/control-plane
-              property: AGENT_BOM_SAML_IDP_X509_CERT
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_SAML_IDP_X509_CERT_PROPERTY
           - secretKey: AGENT_BOM_SAML_SP_ENTITY_ID
             remoteRef:
-              key: /agent-bom/prod/control-plane
-              property: AGENT_BOM_SAML_SP_ENTITY_ID
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_SAML_SP_ENTITY_ID_PROPERTY
           - secretKey: AGENT_BOM_SAML_SP_ACS_URL
             remoteRef:
-              key: /agent-bom/prod/control-plane
-              property: AGENT_BOM_SAML_SP_ACS_URL
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_SAML_SP_ACS_URL_PROPERTY
           - secretKey: AGENT_BOM_AUDIT_HMAC_KEY
             remoteRef:
-              key: /agent-bom/prod/control-plane
-              property: AGENT_BOM_AUDIT_HMAC_KEY
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_AUDIT_HMAC_KEY_PROPERTY
           - secretKey: AGENT_BOM_REQUIRE_AUDIT_HMAC
             remoteRef:
-              key: /agent-bom/prod/control-plane
-              property: AGENT_BOM_REQUIRE_AUDIT_HMAC
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_REQUIRE_AUDIT_HMAC_PROPERTY
   backup:
     enabled: true
     schedule: "0 3 * * *"

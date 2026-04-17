@@ -30,6 +30,7 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "agent-bom.controlPlaneTopologySpreadConstraints" (dict "Values" .Values "component" "api" "Chart" .Chart "Release" .Release) | nindent 6 }}
       containers:
         - name: api
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"

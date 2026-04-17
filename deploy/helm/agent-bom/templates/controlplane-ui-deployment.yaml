@@ -30,6 +30,7 @@ spec:
       {{- end }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "agent-bom.controlPlaneTopologySpreadConstraints" (dict "Values" .Values "component" "ui" "Chart" .Chart "Release" .Release) | nindent 6 }}
       containers:
         - name: ui
           image: "{{ .Values.uiImage.repository }}:{{ .Values.uiImage.tag }}"

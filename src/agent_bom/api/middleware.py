@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import secrets
 import sys
 import time
 import uuid
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from agent_bom import __version__
@@ -23,6 +25,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
 _logger = logging.getLogger(__name__)
+_RATE_LIMIT_FINGERPRINT_FALLBACK = secrets.token_bytes(32)
 
 
 class InMemoryRateLimitStore:
@@ -44,7 +47,15 @@ class InMemoryRateLimitStore:
         for k in stale:
             del self._hits[k]
         if len(self._hits) > self._MAX_ENTRIES:
-            self._hits.clear()
+            overflow = len(self._hits) - self._MAX_ENTRIES
+            oldest_keys = sorted(self._hits, key=lambda key: self._hits[key][-1] if self._hits[key] else 0.0)[:overflow]
+            for key in oldest_keys:
+                del self._hits[key]
+            _logger.warning(
+                "In-memory rate limiter pruned %s oldest buckets to stay under %s entries",
+                overflow,
+                self._MAX_ENTRIES,
+            )
 
     def hit(self, key: str, now: float) -> tuple[int, int]:
         """Record a request and return (hit_count, reset_epoch)."""
@@ -380,17 +391,33 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             try:
                 return PostgresRateLimitStore(window_seconds=self._window)
             except Exception:
+                if _env_flag("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT"):
+                    raise RuntimeError("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1 but Postgres rate limiter could not initialize") from None
                 _logger.warning("Postgres rate limiter unavailable, falling back to in-memory store", exc_info=True)
         return InMemoryRateLimitStore(window_seconds=self._window)
 
+    def _bucket_key(self, request: StarletteRequest, is_scan: bool) -> str:
+        bucket_type = "scan" if is_scan else "read"
+        tenant_id = getattr(request.state, "tenant_id", "").strip() or None
+        auth = request.headers.get("authorization", "")
+        raw_key = auth[7:] if auth.startswith("Bearer ") else request.headers.get("x-api-key", "")
+        if raw_key:
+            auth_hash = _rate_limit_fingerprint(raw_key)
+            scope = f"auth:{auth_hash}"
+        else:
+            client_ip = request.client.host if request.client else "unknown"
+            scope = f"ip:{client_ip}"
+        if tenant_id and tenant_id != "default":
+            scope = f"tenant:{tenant_id}:{scope}"
+        return f"{scope}:{bucket_type}"
+
     async def dispatch(self, request: StarletteRequest, call_next):
-        client_ip = request.client.host if request.client else "unknown"
         now = time.time()
 
         is_scan = request.url.path.startswith("/v1/scan") and request.method == "POST"
         limit = self._scan_rpm if is_scan else self._read_rpm
 
-        key = f"{client_ip}:{'scan' if is_scan else 'read'}"
+        key = self._bucket_key(request, is_scan)
         hit_count, reset_at = await asyncio.to_thread(self._store.hit, key, now)
         remaining = max(0, limit - hit_count)
 
@@ -412,6 +439,26 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         response.headers["X-RateLimit-Remaining"] = str(remaining)
         response.headers["X-RateLimit-Reset"] = str(reset_at)
         return response
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _rate_limit_fingerprint_key() -> bytes:
+    key = (os.environ.get("AGENT_BOM_RATE_LIMIT_KEY") or os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY") or "").strip()
+    return key.encode() if key else _RATE_LIMIT_FINGERPRINT_FALLBACK
+
+
+@lru_cache(maxsize=4096)
+def _rate_limit_fingerprint(raw_key: str) -> str:
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        raw_key.encode(),
+        _rate_limit_fingerprint_key(),
+        200_000,
+        dklen=8,
+    ).hex()
 
 
 class MaxBodySizeMiddleware(BaseHTTPMiddleware):

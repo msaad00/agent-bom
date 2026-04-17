@@ -27,6 +27,40 @@ Service account name.
 {{- end }}
 
 {{/*
+Control-plane affinity helper. If the operator provides a full affinity block,
+use it verbatim. Otherwise, optionally emit preferred pod anti-affinity so API
+and UI replicas avoid co-location on the same node.
+*/}}
+{{- define "agent-bom.controlPlaneAffinity" -}}
+{{- if .Values.affinity }}
+affinity:
+  {{- toYaml .Values.affinity | nindent 2 }}
+{{- else if .Values.controlPlane.podAntiAffinity.enabled }}
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          topologyKey: {{ .Values.controlPlane.podAntiAffinity.topologyKey }}
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+              app.kubernetes.io/component: {{ .component }}
+{{- end }}
+{{- end }}
+
+{{/*
+Resolved PriorityClass name for control-plane workloads.
+*/}}
+{{- define "agent-bom.controlPlanePriorityClassName" -}}
+{{- if .Values.controlPlane.priorityClass.create -}}
+{{- default (printf "%s-control-plane" (include "agent-bom.name" .)) .Values.controlPlane.priorityClass.name -}}
+{{- else -}}
+{{- .Values.controlPlane.priorityClass.name -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Control-plane topology spread constraints.
 */}}
 {{- define "agent-bom.controlPlaneTopologySpreadConstraints" -}}

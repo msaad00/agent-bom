@@ -122,7 +122,11 @@ For the stronger self-hosted operator path, start from:
 That example adds:
 
 - `HPA` for API and UI
+- `HPA` scale-down stabilization
 - topology spread across zones and nodes
+- preferred pod anti-affinity for API and UI replicas
+- optional control-plane `PriorityClass`
+- fail-closed shared rate limiting when the Postgres-backed limiter is unavailable
 - `cert-manager` ingress annotations and TLS wiring
 - `external-secrets` integration for the control-plane secret
 - restricted ingress defaults for the chart network policy
@@ -147,10 +151,13 @@ You still own:
   - `alembic -c deploy/supabase/postgres/alembic.ini upgrade head`
   - existing `init.sql` databases should be stamped once with `20260416_01`
 - enable the control-plane HPAs before higher-volume rollout
+- use anti-affinity and a control-plane `PriorityClass` when you expect node pressure
 - enable topology spread when you run multi-AZ EKS
 - keep same-origin ingress unless you have a strong reason not to
 - use `envFrom` / Secrets for `AGENT_BOM_POSTGRES_URL`, API keys, OIDC issuer,
   audience, optional required nonce, and audit HMAC settings
+- set `AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1` for multi-replica production
+  control planes so the API refuses to start if the shared limiter backend is unavailable
 - enable PDBs when you are running multi-replica workloads
 
 ## Current boundary

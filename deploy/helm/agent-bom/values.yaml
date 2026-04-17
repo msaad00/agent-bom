@@ -65,6 +65,15 @@ monitor:
 
 controlPlane:
   enabled: false
+  podAntiAffinity:
+    enabled: false
+    topologyKey: kubernetes.io/hostname
+  priorityClass:
+    create: false
+    name: ""
+    value: 100000
+    preemptionPolicy: PreemptLowerPriority
+    description: "Priority class for agent-bom control-plane API and UI workloads."
   api:
     enabled: true
     replicas: 2
@@ -74,6 +83,7 @@ controlPlane:
       maxReplicas: 6
       targetCPUUtilizationPercentage: 70
       targetMemoryUtilizationPercentage: null
+      behavior: {}
     port: 8422
     args:
       - api
@@ -121,6 +131,7 @@ controlPlane:
       maxReplicas: 4
       targetCPUUtilizationPercentage: 70
       targetMemoryUtilizationPercentage: null
+      behavior: {}
     port: 3000
     env:
       - name: NEXT_PUBLIC_API_URL

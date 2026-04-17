@@ -1,10 +1,12 @@
 """Tests for API server hardening — auth, rate limiting, CORS, body size."""
 
+import time
 from unittest.mock import MagicMock, patch
 
 from starlette.testclient import TestClient
 
 from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
+from agent_bom.api.middleware import InMemoryRateLimitStore
 from agent_bom.api.oidc import OIDCConfig
 from agent_bom.api.server import (
     APIKeyMiddleware,
@@ -271,6 +273,61 @@ def test_rate_limit_middleware_falls_back_when_postgres_store_unavailable(monkey
         resp = client.get("/v1/test")
 
     assert resp.status_code == 200
+
+
+def test_rate_limit_middleware_can_fail_closed_when_shared_store_required(monkeypatch):
+    """Production-style deployments should be able to refuse startup without shared limiter state."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example/test")
+    monkeypatch.setenv("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT", "1")
+    with patch("agent_bom.api.middleware.PostgresRateLimitStore", side_effect=RuntimeError("boom")):
+        test_app = Starlette(routes=[Route("/v1/test", dummy)])
+        test_app.add_middleware(RateLimitMiddleware, scan_rpm=3, read_rpm=10)
+        client = TestClient(test_app)
+        try:
+            client.get("/v1/test")
+            raise AssertionError("expected shared rate-limit initialization to fail")
+        except RuntimeError as exc:
+            assert "AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT" in str(exc)
+
+
+def test_rate_limit_middleware_scopes_by_auth_credential():
+    """Different API credentials behind one shared IP should not starve each other."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app.add_middleware(RateLimitMiddleware, scan_rpm=3, read_rpm=2)
+
+    client = TestClient(test_app)
+    assert client.get("/v1/test", headers={"X-API-Key": "alpha"}).status_code == 200
+    assert client.get("/v1/test", headers={"X-API-Key": "alpha"}).status_code == 200
+    assert client.get("/v1/test", headers={"X-API-Key": "beta"}).status_code == 200
+
+
+def test_in_memory_rate_limit_store_prunes_oldest_entries_instead_of_clearing_all():
+    """Overflow should evict oldest buckets, not reset every limiter bucket at once."""
+    store = InMemoryRateLimitStore(window_seconds=60)
+    now = time.time()
+    store._hits = {f"bucket-{idx}": [now - 1] for idx in range(store._MAX_ENTRIES)}
+    store._hits["important"] = [now - 1]
+    store._last_cleanup = 0
+
+    count, _ = store.hit("important", now)
+
+    assert count == 2
+    assert "important" in store._hits
+    assert len(store._hits) <= store._MAX_ENTRIES
 
 
 def test_max_body_size_middleware():

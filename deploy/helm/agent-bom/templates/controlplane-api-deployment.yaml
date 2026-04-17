@@ -24,6 +24,10 @@ spec:
       {{- end }}
     spec:
       automountServiceAccountToken: false
+      {{- $priorityClassName := include "agent-bom.controlPlanePriorityClassName" . }}
+      {{- if $priorityClassName }}
+      priorityClassName: {{ $priorityClassName }}
+      {{- end }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -31,6 +35,7 @@ spec:
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       {{- include "agent-bom.controlPlaneTopologySpreadConstraints" (dict "Values" .Values "component" "api" "Chart" .Chart "Release" .Release) | nindent 6 }}
+      {{- include "agent-bom.controlPlaneAffinity" (dict "Values" .Values "component" "api" "Chart" .Chart "Release" .Release) | nindent 6 }}
       containers:
         - name: api
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -63,10 +68,6 @@ spec:
             {{- toYaml .Values.controlPlane.api.startupProbe | nindent 12 }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.affinity }}
-      affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.tolerations }}

@@ -113,6 +113,9 @@ oidc = [
     "PyJWT>=2.8",
     "cryptography>=46.0.7",  # Buffer overflow advisory on older releases when non-contiguous buffers reach cryptography APIs
 ]
+saml = [
+    "python3-saml>=1.16.0",
+]
 cloud = [
     "agent-bom[aws]",
     "agent-bom[azure]",

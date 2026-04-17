@@ -88,6 +88,26 @@ controlPlane:
             remoteRef:
               key: /agent-bom/prod/control-plane
               property: AGENT_BOM_OIDC_AUDIENCE
+          - secretKey: AGENT_BOM_SAML_IDP_ENTITY_ID
+            remoteRef:
+              key: /agent-bom/prod/control-plane
+              property: AGENT_BOM_SAML_IDP_ENTITY_ID
+          - secretKey: AGENT_BOM_SAML_IDP_SSO_URL
+            remoteRef:
+              key: /agent-bom/prod/control-plane
+              property: AGENT_BOM_SAML_IDP_SSO_URL
+          - secretKey: AGENT_BOM_SAML_IDP_X509_CERT
+            remoteRef:
+              key: /agent-bom/prod/control-plane
+              property: AGENT_BOM_SAML_IDP_X509_CERT
+          - secretKey: AGENT_BOM_SAML_SP_ENTITY_ID
+            remoteRef:
+              key: /agent-bom/prod/control-plane
+              property: AGENT_BOM_SAML_SP_ENTITY_ID
+          - secretKey: AGENT_BOM_SAML_SP_ACS_URL
+            remoteRef:
+              key: /agent-bom/prod/control-plane
+              property: AGENT_BOM_SAML_SP_ACS_URL
           - secretKey: AGENT_BOM_AUDIT_HMAC_KEY
             remoteRef:
               key: /agent-bom/prod/control-plane

@@ -4,6 +4,8 @@ Endpoints:
     POST   /v1/auth/keys                      create API key
     GET    /v1/auth/keys                      list API keys
     DELETE /v1/auth/keys/{key_id}             revoke API key
+    GET    /v1/auth/saml/metadata             generate SP metadata for IdP setup
+    POST   /v1/auth/saml/login                verify a SAML assertion and mint a short-lived API key
     GET    /v1/audit                          audit log entries
     GET    /v1/audit/integrity                verify audit HMAC integrity
     GET    /v1/audit/export                   export audit evidence packet
@@ -27,12 +29,12 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from agent_bom.api.models import CreateKeyRequest, ExceptionRequest, FalsePositiveRequest, JiraTicketRequest
+from agent_bom.api.models import CreateKeyRequest, ExceptionRequest, FalsePositiveRequest, JiraTicketRequest, SAMLLoginRequest
 from agent_bom.api.stores import _get_exception_store, _get_store, _get_trend_store
 from agent_bom.security import sanitize_error
 
@@ -106,6 +108,60 @@ async def delete_key(request: Request, key_id: str) -> None:
     store.remove(key_id)
 
     log_action("auth.key_revoked", actor=actor, resource=f"key/{key_id}")
+
+
+@router.get("/v1/auth/saml/metadata", tags=["enterprise"])
+async def saml_metadata() -> PlainTextResponse:
+    """Return SP metadata XML for enterprise IdP configuration."""
+    from agent_bom.api.saml import SAMLConfig, SAMLError
+
+    try:
+        metadata = SAMLConfig.from_env().metadata_xml()
+    except SAMLError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return PlainTextResponse(content=metadata, media_type="application/samlmetadata+xml")
+
+
+@router.post("/v1/auth/saml/login", tags=["enterprise"], status_code=201)
+async def saml_login(req: SAMLLoginRequest) -> dict:
+    """Verify a SAML assertion and return a short-lived API key."""
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.auth import Role, create_api_key, get_key_store
+    from agent_bom.api.saml import SAMLConfig, SAMLError
+
+    try:
+        cfg = SAMLConfig.from_env()
+        assertion = cfg.verify_response(req.saml_response, relay_state=req.relay_state)
+    except SAMLError as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=cfg.session_ttl_seconds)).isoformat()
+    raw_key, api_key = create_api_key(
+        name=f"saml:{assertion.subject}",
+        role=Role(assertion.role),
+        expires_at=expires_at,
+        scopes=["saml-session"],
+        tenant_id=assertion.tenant_id,
+    )
+    get_key_store().add(api_key)
+    log_action(
+        "auth.saml_login",
+        actor=assertion.subject,
+        resource=f"key/{api_key.key_id}",
+        role=assertion.role,
+        tenant_id=assertion.tenant_id,
+        session_index=assertion.session_index,
+    )
+    return {
+        "raw_key": raw_key,
+        "key_id": api_key.key_id,
+        "role": api_key.role.value,
+        "tenant_id": api_key.tenant_id,
+        "subject": assertion.subject,
+        "expires_at": api_key.expires_at,
+        "attributes": assertion.attributes,
+        "message": "Use this short-lived key as Authorization: Bearer <key> for the control-plane session.",
+    }
 
 
 # ── Audit Log ────────────────────────────────────────────────────────────────

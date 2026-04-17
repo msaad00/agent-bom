@@ -8,7 +8,7 @@ This is the right path when you want:
 
 - the API and UI in your own cluster
 - same-origin browser traffic through your own ingress
-- Postgres, ClickHouse, OIDC, and secrets kept in your own environment
+- Postgres, ClickHouse, SSO, and secrets kept in your own environment
 - the scanner CronJob and optional runtime monitor packaged alongside the
   control plane
 - production operator defaults without pretending there is a managed vendor plane
@@ -31,7 +31,7 @@ flowchart LR
     D --> E[(Postgres)]
     D --> F[(ClickHouse optional)]
     G[Scanner CronJob] --> D
-    H[OIDC / API key auth] --> D
+    H[OIDC or SAML / API key auth] --> D
 ```
 
 ## Same-origin default
@@ -66,7 +66,7 @@ runtime model.
 - API and UI pods run with `automountServiceAccountToken: false`
 - the discovery service account and IRSA path stay attached to the scanner
 - the API still refuses non-loopback startup without `AGENT_BOM_API_KEY`,
-  OIDC, or an explicit insecure override
+  OIDC, SAML-issued session keys, or an explicit insecure override
 - same-origin ingress avoids default CORS sprawl
 - network policy stays enabled, with configurable ingress restrictions
 
@@ -143,7 +143,7 @@ You still own:
 
 - Postgres and optional ClickHouse
 - ingress controller and TLS
-- OIDC provider configuration or API key secret management
+- OIDC or SAML IdP configuration, or API key secret management
 - cluster-specific autoscaling thresholds and failure-domain policy
 - operator runbooks and load testing
 
@@ -159,9 +159,11 @@ You still own:
 - enable topology spread when you run multi-AZ EKS
 - keep same-origin ingress unless you have a strong reason not to
 - use `envFrom` / Secrets for `AGENT_BOM_POSTGRES_URL`, API keys, OIDC issuer,
-  audience, optional required nonce, and audit HMAC settings
+  audience, optional required nonce, SAML IdP/SP metadata values, and audit
+  HMAC settings
 - split fast-rotating auth secrets from slower DB config with `controlPlane.externalSecrets.secrets[]`
-  so `AGENT_BOM_OIDC_*` and `AGENT_BOM_AUDIT_HMAC_KEY` can refresh at `5m`
+  so `AGENT_BOM_OIDC_*`, `AGENT_BOM_SAML_*`, and `AGENT_BOM_AUDIT_HMAC_KEY`
+  can refresh at `5m`
   while `AGENT_BOM_POSTGRES_URL` stays at `1h`
 - set `AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1` for multi-replica production
   control planes so the API refuses to start if the shared limiter backend is unavailable
@@ -172,7 +174,9 @@ You still own:
 - `controlPlane.backup.destination.region` remains as a backward-compatible fallback for older values files
 - keep `controlPlane.backup.destination.encryption.enabled=true`; the default is `AES256`, and production should set `mode=aws:kms` with a dedicated `kmsKeyId`
 - restore drills should use [`deploy/ops/restore-postgres-backup.sh`](../../deploy/ops/restore-postgres-backup.sh):
-  `./deploy/ops/restore-postgres-backup.sh s3://bucket/key.dump "$AGENT_BOM_POSTGRES_URL" us-east-1`
+  `./deploy/ops/restore-postgres-backup.sh s3://bucket/key.dump "$AGENT_BOM_POSTGRES_URL" REPLACE_ME_BUCKET_REGION`
+- expose `GET /v1/auth/saml/metadata` to your IdP admins and keep
+  `POST /v1/auth/saml/login` behind the same ingress hostname as the API
 - enable PDBs when you are running multi-replica workloads
 
 ## Current boundary

@@ -46,7 +46,7 @@ flowchart LR
     D[Scheduled scans and discovery] --> E[agent-bom API and UI]
     E --> F[(Postgres)]
     E --> G[(ClickHouse optional)]
-    H[Okta or other OIDC] --> E
+    H[Okta or other OIDC or SAML IdP] --> E
 ```
 
 ## What Stays In Your Infra
@@ -92,14 +92,14 @@ The chart now supports the EKS wiring you actually need:
 |---|---|
 | `controlPlane.enabled` | package the API + dashboard in-cluster |
 | `controlPlane.ingress.enabled` | route `/` to UI and `/v1`, `/health`, `/docs`, `/ws` to API |
-| `controlPlane.api.envFrom` | load Postgres URL, API key, OIDC issuer/audience, optional required nonce, and audit settings from Secrets |
+| `controlPlane.api.envFrom` | load Postgres URL, API key, OIDC issuer/audience, optional required nonce, SAML IdP/SP values, and audit settings from Secrets |
 | `controlPlane.ui.env` | keep `NEXT_PUBLIC_API_URL=\"\"` for same-origin or set a full API URL for cross-origin |
 | `serviceAccount.annotations` | attach an IRSA role to the scanner service account |
 | `controlPlane.api.autoscaling.*` | autoscale the API deployment with HPA |
 | `controlPlane.ui.autoscaling.*` | autoscale the UI deployment with HPA |
 | `topologySpread.*` | spread API and UI replicas across zones and nodes |
 | `controlPlane.externalSecrets.*` | map control-plane env vars from external-secrets |
-| `controlPlane.externalSecrets.secrets[]` | split DB secret cadence from faster OIDC / audit-HMAC rotation |
+| `controlPlane.externalSecrets.secrets[]` | split DB secret cadence from faster OIDC/SAML/audit-HMAC rotation |
 | `controlPlane.observability.prometheusRule.*` | package alert rules for API, scanner, OIDC, and proxy backlog |
 | `controlPlane.observability.grafanaDashboard.*` | package the shipped Grafana dashboard as a `ConfigMap` |
 | `controlPlane.backup.*` | package Postgres backup jobs that dump and upload to S3 through IRSA with SSE or KMS |
@@ -174,10 +174,10 @@ all sit under one operator-controlled plane.
   topology spread, and external-secrets wiring:
   - [deploy/helm/agent-bom/examples/eks-production-values.yaml](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/helm/agent-bom/examples/eks-production-values.yaml)
 - keep the proxy and API internal to your VPC unless exposure is intentional
-- use OIDC for user access, set `AGENT_BOM_OIDC_AUDIENCE` explicitly, and map roles explicitly
+- use OIDC or SAML for user access, set `AGENT_BOM_OIDC_AUDIENCE` explicitly when using OIDC, and map roles explicitly
 - split external secrets by cadence in production:
   - `AGENT_BOM_POSTGRES_URL` at `1h`
-  - `AGENT_BOM_OIDC_*` and `AGENT_BOM_AUDIT_HMAC_KEY` at `5m`
+  - `AGENT_BOM_OIDC_*`, `AGENT_BOM_SAML_*`, and `AGENT_BOM_AUDIT_HMAC_KEY` at `5m`
 - enable the packaged PrometheusRule and Grafana dashboard when your cluster
   already runs Prometheus Operator and Grafana sidecar discovery
 - enable the packaged backup CronJob only after setting a real S3 destination
@@ -185,6 +185,7 @@ all sit under one operator-controlled plane.
 - `controlPlane.backup.destination.region` remains as a backward-compatible fallback for older values files
 - set `controlPlane.backup.destination.encryption.mode=aws:kms` and a real KMS key for production backups
 - run restore drills with [`deploy/ops/restore-postgres-backup.sh`](../../deploy/ops/restore-postgres-backup.sh) and document RTO/RPO around that exact command path
+- publish `GET /v1/auth/saml/metadata` to your IdP admins if you choose SAML, and keep `POST /v1/auth/saml/login` on the same internal ingress as the API
   and granting `s3:PutObject` via IRSA
 - set a persistent audit HMAC key and require it
 - attach the scanner service account to IRSA instead of static cloud keys

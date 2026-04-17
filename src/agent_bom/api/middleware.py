@@ -233,9 +233,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     # Set AGENT_BOM_DISABLE_DOCS=1 in production to block /docs and /redoc
     _DOCS_DISABLED = os.environ.get("AGENT_BOM_DISABLE_DOCS", "").strip() in ("1", "true", "yes")
     _EXEMPT_PATHS = (
-        {"/", "/health", "/version", "/metrics", "/docs", "/redoc", "/openapi.json"}
+        {"/", "/health", "/version", "/metrics", "/docs", "/redoc", "/openapi.json", "/v1/auth/saml/metadata", "/v1/auth/saml/login"}
         if not _DOCS_DISABLED
-        else {"/", "/health", "/version", "/metrics"}
+        else {"/", "/health", "/version", "/metrics", "/v1/auth/saml/metadata", "/v1/auth/saml/login"}
     )
 
     # Ordered route rules so narrower enterprise paths win over broad prefixes.

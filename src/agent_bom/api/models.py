@@ -212,6 +212,11 @@ class ProxyAuditIngestRequest(BaseModel):
     summary: dict | None = None
 
 
+class SAMLLoginRequest(BaseModel):
+    saml_response: str
+    relay_state: str | None = None
+
+
 # ─── Scan Type Request Models ─────────────────────────────────────────────
 
 

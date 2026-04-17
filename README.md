@@ -184,7 +184,9 @@ Operator guides:
 - [Grafana Dashboard](site-docs/deployment/grafana.md)
 - [Performance, Sizing, and Benchmarks](site-docs/deployment/performance-and-sizing.md)
 - [Restore Postgres Backup Script](deploy/ops/restore-postgres-backup.sh)
+- [SAML SP Metadata And Login Endpoints](src/agent_bom/api/routes/enterprise.py)
 - production backup examples use `bucketRegion: REPLACE_ME_BUCKET_REGION` on purpose; set it to your actual object-store bucket region
+- self-hosted SSO can use OIDC or SAML; SAML admins use `/v1/auth/saml/metadata`, and the control plane exchanges verified assertions for short-lived API keys at `/v1/auth/saml/login`
 
 ## Product views
 

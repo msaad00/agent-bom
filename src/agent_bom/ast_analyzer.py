@@ -8,14 +8,14 @@ Extends the regex-based scanner with semantic analysis:
 - **Credential flow analysis** — tracks env var → agent parameter paths
 - **Framework-specific patterns** — LangChain chains, CrewAI crews, MCP servers, etc.
 - **Call graph extraction** — function-to-function edges for Python entrypoints
-- **Inter-procedural flow findings** — helper-chain reachability to dangerous sinks
+- **Bounded helper-chain findings** — lightweight call-path detection from tool entrypoints to dangerous sinks
 
 Python files use full AST parsing. JS/TS files contribute prompt/tool/guardrail
 signals plus parser-backed import, handler, and call-chain extraction so
 non-Python agent projects participate in the same inventory and flow model.
 
 Compliance mapping:
-- OWASP LLM01 (Prompt Injection) — prompt extraction enables review
+- OWASP LLM01 (Prompt Injection) — prompt inventory and risk review signals
 - OWASP LLM02 (Insecure Output) — guardrail detection validates defenses
 - NIST AI RMF MAP-3.5 — inventories AI components at code level
 - EU AI Act ART-15 — transparency of AI system instructions
@@ -1630,7 +1630,13 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
 
 
 def _build_call_graph(functions: list[_FunctionAnalysis]) -> tuple[list[CallEdge], list[FlowFinding]]:
-    """Build a lightweight call graph and inter-procedural findings."""
+    """Build a lightweight call graph and bounded helper-chain findings.
+
+    This path is intentionally lightweight: it follows resolved helper-call
+    chains from tool entrypoints to already-detected dangerous sinks, but it
+    does not claim full inter-procedural taint propagation or proof-grade
+    reachability across arbitrary call graphs.
+    """
     by_name: dict[str, list[_FunctionAnalysis]] = {}
     by_module_and_name: dict[tuple[str, str], _FunctionAnalysis] = {}
     for func in functions:
@@ -1681,8 +1687,10 @@ def _build_call_graph(functions: list[_FunctionAnalysis]) -> tuple[list[CallEdge
                 findings.append(
                     FlowFinding(
                         category="interprocedural_dangerous_flow",
-                        title="Tool call chain reaches dangerous sink",
-                        detail=(f"Tool `{func.simple_name}` reaches `{sink_name}` through helper calls in {current.file_path}."),
+                        title="Tool helper chain reaches dangerous sink",
+                        detail=(
+                            f"Tool `{func.simple_name}` reaches `{sink_name}` through a bounded helper-call chain in {current.file_path}."
+                        ),
                         file_path=current.file_path,
                         line_number=line_num,
                         entrypoint=func.simple_name,

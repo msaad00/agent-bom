@@ -135,6 +135,21 @@ That example adds:
 - packaged Postgres backup `CronJob` that runs `pg_dump` and uploads to S3 through IRSA with SSE or KMS
 - restricted ingress defaults for the chart network policy
 
+For clusters that already standardize on a service mesh and policy controller,
+start from:
+
+- [deploy/helm/agent-bom/examples/eks-istio-kyverno-values.yaml](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/helm/agent-bom/examples/eks-istio-kyverno-values.yaml)
+
+That example adds:
+
+- packaged Istio `PeerAuthentication` for strict mTLS on `agent-bom` pods
+- packaged Istio `AuthorizationPolicy` that keeps same-namespace traffic and explicitly whitelisted ingress namespaces
+- packaged namespaced Kyverno `Policy` that enforces the same restricted pod contract already used by the chart
+
+This is intentionally an opt-in hardening layer. It composes with the chart's
+existing `NetworkPolicy`, PSS-restricted pod settings, anti-affinity, and HPA
+defaults instead of replacing them.
+
 ## What you still own
 
 This is a real packaged control plane, but not a magic managed service.
@@ -177,6 +192,9 @@ You still own:
 - enable `controlPlane.observability.prometheusRule.enabled=true` when the cluster already runs Prometheus Operator
 - enable `controlPlane.observability.grafanaDashboard.enabled=true` when Grafana watches dashboard `ConfigMap`s
 - enable `controlPlane.backup.enabled=true` only after setting a real S3 bucket, prefix, and IRSA-backed upload permissions
+- enable `controlPlane.serviceMesh.enabled=true` only when the control-plane namespace is already part of your Istio data plane
+- keep `controlPlane.serviceMesh.istio.authorizationPolicy.allowedNamespaces` explicit; the packaged example allows `ingress-nginx` and `istio-system`, but production should match your real ingress path
+- enable `controlPlane.policyController.enabled=true` only when Kyverno is already installed cluster-wide; the chart packages the namespaced policy, not the controller itself
 - set `controlPlane.backup.destination.bucketRegion` to the actual region of your backup bucket; the production example intentionally uses `REPLACE_ME_BUCKET_REGION`
 - `controlPlane.backup.destination.region` remains as a backward-compatible fallback for older values files
 - keep `controlPlane.backup.destination.encryption.enabled=true`; the default is `AES256`, and production should set `mode=aws:kms` with a dedicated `kmsKeyId`

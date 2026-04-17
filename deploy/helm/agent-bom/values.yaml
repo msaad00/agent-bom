@@ -65,6 +65,24 @@ monitor:
 
 controlPlane:
   enabled: false
+  serviceMesh:
+    enabled: false
+    provider: istio
+    istio:
+      peerAuthentication:
+        enabled: true
+        mode: STRICT
+      authorizationPolicy:
+        enabled: true
+        allowSameNamespace: true
+        allowedNamespaces: []
+  policyController:
+    enabled: false
+    provider: kyverno
+    kyverno:
+      validationFailureAction: Audit
+      background: true
+      requireControlPlanePodHardening: true
   observability:
     grafanaDashboard:
       enabled: false

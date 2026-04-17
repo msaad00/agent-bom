@@ -10,6 +10,7 @@ DEPLOY_DIR = Path(__file__).parent.parent / "deploy"
 K8S_DIR = DEPLOY_DIR / "k8s"
 HELM_DIR = DEPLOY_DIR / "helm" / "agent-bom"
 ENDPOINTS_DIR = DEPLOY_DIR / "endpoints"
+LOADTEST_DIR = DEPLOY_DIR / "loadtest"
 
 
 # ─── K8s manifest validation ────────────────────────────────────────────────
@@ -130,6 +131,27 @@ def test_endpoint_fleet_templates_exist():
     }
     actual = {path.name for path in ENDPOINTS_DIR.iterdir() if path.is_file()}
     assert expected.issubset(actual)
+
+
+def test_loadtest_harness_assets_exist():
+    """Self-hosted operator load-test assets should ship with the repo."""
+    expected = {
+        "README.md",
+        "k6-control-plane-api.js",
+        "k6-proxy-audit.js",
+    }
+    actual = {path.name for path in LOADTEST_DIR.iterdir() if path.is_file()}
+    assert expected.issubset(actual)
+
+
+def test_loadtest_scripts_target_real_endpoints():
+    """k6 scripts should exercise the real shipped API and proxy paths."""
+    control_plane = (LOADTEST_DIR / "k6-control-plane-api.js").read_text()
+    proxy_audit = (LOADTEST_DIR / "k6-proxy-audit.js").read_text()
+    assert "/health" in control_plane
+    assert "/v1/fleet" in control_plane
+    assert "/v1/fleet/stats" in control_plane
+    assert "/v1/proxy/audit" in proxy_audit
 
 
 def test_namespace_manifest():

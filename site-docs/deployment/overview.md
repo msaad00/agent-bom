@@ -78,6 +78,7 @@ buyers, use the consolidated guide:
 - [Endpoint Fleet](endpoint-fleet.md)
 - [Focused EKS MCP Pilot](eks-mcp-pilot.md)
 - [Packaged API + UI Control Plane](control-plane-helm.md)
+- [Performance, Sizing, and Benchmarks](performance-and-sizing.md)
 
 ## Available on
 

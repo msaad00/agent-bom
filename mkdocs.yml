@@ -96,6 +96,7 @@ nav:
       - Focused EKS MCP Pilot: deployment/eks-mcp-pilot.md
       - Your Own AWS / EKS: deployment/own-infra-eks.md
       - Packaged API + UI Control Plane: deployment/control-plane-helm.md
+      - Performance, Sizing, and Benchmarks: deployment/performance-and-sizing.md
       - Backend Parity: deployment/backend-parity.md
       - Docker: deployment/docker.md
       - Kubernetes: deployment/kubernetes.md

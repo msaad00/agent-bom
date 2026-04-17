@@ -6,8 +6,10 @@ import io
 import json
 
 from agent_bom.proxy import (
+    AuditPushCircuitBreaker,
     ProxyMetrics,
     ReplayDetector,
+    _partition_jsonl_lines_for_budget,
     check_policy,
     compute_payload_hash,
     compute_response_hmac,
@@ -249,6 +251,45 @@ def test_proxy_metrics_records_backpressure_and_policy_failures():
     assert s["audit_spillover_bytes"] == 2048
     assert s["policy_fetch_failures"] == 1
     assert s["audit_push_failures"] == 1
+
+
+def test_proxy_metrics_records_dlq_and_circuit_state():
+    m = ProxyMetrics()
+    m.set_audit_dlq_bytes(4096)
+    m.set_audit_push_circuit_open(True)
+    m.record_audit_push_circuit_open()
+
+    s = m.summary()
+    assert s["audit_dlq_bytes"] == 4096
+    assert s["audit_push_circuit_open"] == 1
+    assert s["audit_push_circuit_open_total"] == 1
+
+
+def test_audit_push_circuit_breaker_opens_after_threshold():
+    breaker = AuditPushCircuitBreaker(failure_threshold=2, reset_seconds=30)
+    assert breaker.is_open(now=10.0) is False
+    assert breaker.record_failure(now=10.0) is False
+    assert breaker.is_open(now=10.0) is False
+    assert breaker.record_failure(now=11.0) is True
+    assert breaker.is_open(now=20.0) is True
+    assert breaker.is_open(now=42.0) is False
+
+
+def test_audit_push_circuit_breaker_resets_on_success():
+    breaker = AuditPushCircuitBreaker(failure_threshold=1, reset_seconds=30)
+    assert breaker.record_failure(now=5.0) is True
+    assert breaker.is_open(now=6.0) is True
+    breaker.record_success()
+    assert breaker.is_open(now=6.0) is False
+    assert breaker.consecutive_failures == 0
+
+
+def test_partition_jsonl_lines_for_budget_keeps_newest_lines():
+    lines = ['{"id":1}', '{"id":2}', '{"id":3}']
+    keep_budget = len('{"id":2}'.encode("utf-8")) + len('{"id":3}'.encode("utf-8"))
+    kept, overflow = _partition_jsonl_lines_for_budget(lines, keep_budget)
+    assert kept == ['{"id":2}', '{"id":3}']
+    assert overflow == ['{"id":1}']
 
 
 # ── CLI proxy --help ─────────────────────────────────────────────────────────

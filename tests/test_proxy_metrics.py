@@ -97,14 +97,20 @@ def test_control_plane_linkage_metrics(server, metrics):
     """Backpressure and refresh failure metrics are exposed for operators."""
     metrics.set_audit_buffer_bytes(512)
     metrics.set_audit_spillover_bytes(2048)
+    metrics.set_audit_dlq_bytes(4096)
     metrics.record_policy_fetch_failure()
     metrics.record_audit_push_failure()
+    metrics.set_audit_push_circuit_open(True)
+    metrics.record_audit_push_circuit_open()
     server.port = 9999
     output = server.render_metrics()
     assert "agent_bom_proxy_audit_buffer_bytes 512" in output
     assert "agent_bom_proxy_audit_spillover_bytes 2048" in output
+    assert "agent_bom_proxy_audit_dlq_bytes 4096" in output
     assert "agent_bom_proxy_policy_fetch_failures_total 1" in output
     assert "agent_bom_proxy_audit_push_failures_total 1" in output
+    assert "agent_bom_proxy_audit_push_circuit_open 1" in output
+    assert "agent_bom_proxy_audit_push_circuit_open_total 1" in output
 
 
 @pytest.mark.asyncio

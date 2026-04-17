@@ -60,6 +60,52 @@ resolve_rate_limit_threshold = _proxy_policy.resolve_rate_limit_threshold
 _MAX_MESSAGE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
+class AuditPushCircuitBreaker:
+    """Simple consecutive-failure circuit breaker for proxy audit push."""
+
+    def __init__(self, failure_threshold: int = 3, reset_seconds: int = 60) -> None:
+        self.failure_threshold = max(1, failure_threshold)
+        self.reset_seconds = max(1, reset_seconds)
+        self.consecutive_failures = 0
+        self.open_until = 0.0
+
+    def is_open(self, now: float | None = None) -> bool:
+        now = time.monotonic() if now is None else now
+        return now < self.open_until
+
+    def record_success(self) -> None:
+        self.consecutive_failures = 0
+        self.open_until = 0.0
+
+    def record_failure(self, now: float | None = None) -> bool:
+        now = time.monotonic() if now is None else now
+        self.consecutive_failures += 1
+        if self.consecutive_failures >= self.failure_threshold:
+            self.open_until = max(self.open_until, now + self.reset_seconds)
+            return True
+        return False
+
+
+def _partition_jsonl_lines_for_budget(lines: list[str], max_bytes: int) -> tuple[list[str], list[str]]:
+    """Keep newest JSONL lines within a byte budget and return overflow oldest-first."""
+    budget = max(0, max_bytes)
+    if budget == 0:
+        return [], list(lines)
+    kept_reversed: list[str] = []
+    overflow_reversed: list[str] = []
+    used = 0
+    for line in reversed(lines):
+        line_bytes = len(line.encode("utf-8"))
+        if used + line_bytes <= budget:
+            kept_reversed.append(line)
+            used += line_bytes
+        else:
+            overflow_reversed.append(line)
+    kept_reversed.reverse()
+    overflow_reversed.reverse()
+    return kept_reversed, overflow_reversed
+
+
 # ─── JSON-RPC parsing ────────────────────────────────────────────────────────
 
 
@@ -225,9 +271,23 @@ async def _push_proxy_audit_batch(
         "alerts": alerts,
         "summary": summary,
     }
-    async with create_client(timeout=15.0) as client:
-        response = await client.post(url, json=payload, headers=_control_plane_headers(token))
-    response.raise_for_status()
+    max_attempts = max(1, int(os.environ.get("AGENT_BOM_PROXY_AUDIT_PUSH_MAX_ATTEMPTS", "3")))
+    backoff = max(1.0, float(os.environ.get("AGENT_BOM_PROXY_AUDIT_PUSH_INITIAL_BACKOFF_SECONDS", "1")))
+    last_exc: Exception | None = None
+    for attempt in range(max_attempts):
+        try:
+            async with create_client(timeout=15.0) as client:
+                response = await client.post(url, json=payload, headers=_control_plane_headers(token))
+            response.raise_for_status()
+            return True
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if attempt >= max_attempts - 1:
+                break
+            await asyncio.sleep(min(backoff, 10.0))
+            backoff = min(backoff * 2, 10.0)
+    if last_exc is not None:
+        raise last_exc
     return True
 
 
@@ -614,11 +674,25 @@ async def run_proxy(
     audit_buffer_bytes = 0
     audit_lock = asyncio.Lock()
     max_audit_buffer_bytes = max(64 * 1024, int(os.environ.get("AGENT_BOM_PROXY_AUDIT_BUFFER_MAX_BYTES", "1048576")))
+    max_spillover_bytes = max(
+        max_audit_buffer_bytes,
+        int(os.environ.get("AGENT_BOM_PROXY_AUDIT_SPILLOVER_MAX_BYTES", str(10 * 1024 * 1024))),
+    )
     audit_spill_path = Path(
         os.environ.get(
             "AGENT_BOM_PROXY_AUDIT_SPILLOVER_PATH",
             str(Path(tempfile.gettempdir()) / f"agent-bom-proxy-audit-{control_plane_session_id}.jsonl"),
         )
+    )
+    audit_dlq_path = Path(
+        os.environ.get(
+            "AGENT_BOM_PROXY_AUDIT_DLQ_PATH",
+            str(Path(tempfile.gettempdir()) / f"agent-bom-proxy-audit-dlq-{control_plane_session_id}.jsonl"),
+        )
+    )
+    audit_push_breaker = AuditPushCircuitBreaker(
+        failure_threshold=max(1, int(os.environ.get("AGENT_BOM_PROXY_AUDIT_CIRCUIT_FAILURE_THRESHOLD", "3"))),
+        reset_seconds=max(5, int(os.environ.get("AGENT_BOM_PROXY_AUDIT_CIRCUIT_RESET_SECONDS", "60"))),
     )
 
     def _event_size_bytes(payload: dict) -> int:
@@ -630,18 +704,49 @@ async def run_proxy(
         except FileNotFoundError:
             return 0
 
+    def _dlq_size_bytes() -> int:
+        try:
+            return audit_dlq_path.stat().st_size
+        except FileNotFoundError:
+            return 0
+
     def _sync_audit_metrics() -> None:
         metrics.set_audit_buffer_bytes(audit_buffer_bytes)
         metrics.set_audit_spillover_bytes(_spillover_size_bytes())
+        metrics.set_audit_dlq_bytes(_dlq_size_bytes())
+        metrics.set_audit_push_circuit_open(audit_push_breaker.is_open())
 
-    def _append_spillover_locked(events: list[dict]) -> None:
+    def _append_jsonl_locked(path: Path, events: list[dict]) -> None:
         if not events:
             return
-        audit_spill_path.parent.mkdir(parents=True, exist_ok=True)
-        with audit_spill_path.open("a", encoding="utf-8") as handle:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
             for event in events:
                 handle.write(json.dumps(event) + "\n")
+
+    def _enforce_spillover_budget_locked() -> None:
+        if not audit_spill_path.exists():
+            _sync_audit_metrics()
+            return
+        lines = audit_spill_path.read_text(encoding="utf-8").splitlines()
+        kept, overflow = _partition_jsonl_lines_for_budget(lines, max_spillover_bytes)
+        if overflow:
+            logger.warning(
+                "Proxy audit spillover exceeded %s bytes; moving %s oldest events to DLQ %s",
+                max_spillover_bytes,
+                len(overflow),
+                audit_dlq_path,
+            )
+            if kept:
+                audit_spill_path.write_text("".join(f"{line}\n" for line in kept), encoding="utf-8")
+            else:
+                audit_spill_path.unlink(missing_ok=True)
+            _append_jsonl_locked(audit_dlq_path, [json.loads(line) for line in overflow if line.strip()])
         _sync_audit_metrics()
+
+    def _append_spillover_locked(events: list[dict]) -> None:
+        _append_jsonl_locked(audit_spill_path, events)
+        _enforce_spillover_budget_locked()
 
     def _read_spillover_locked() -> list[dict]:
         if not audit_spill_path.exists():
@@ -709,6 +814,10 @@ async def run_proxy(
         nonlocal audit_buffer_bytes
         if not control_plane_url:
             return
+        if audit_push_breaker.is_open():
+            logger.warning("Proxy audit push circuit breaker is open; skipping control-plane flush")
+            _sync_audit_metrics()
+            return
         async with audit_lock:
             alerts = list(audit_buffer)
             in_memory_bytes = audit_buffer_bytes
@@ -731,12 +840,16 @@ async def run_proxy(
             )
         except Exception as exc:  # noqa: BLE001
             metrics.record_audit_push_failure()
+            circuit_opened = audit_push_breaker.record_failure()
+            if circuit_opened:
+                metrics.record_audit_push_circuit_open()
             logger.warning("Proxy audit push failed: %s", exc)
             async with audit_lock:
                 audit_buffer[:0] = alerts
                 audit_buffer_bytes += in_memory_bytes
                 _sync_audit_metrics()
         else:
+            audit_push_breaker.record_success()
             if spillover_had_data and audit_spill_path.exists():
                 audit_spill_path.unlink()
             _sync_audit_metrics()

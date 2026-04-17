@@ -1,0 +1,22 @@
+{{- if and .Values.controlPlane.enabled .Values.controlPlane.observability.grafanaDashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "agent-bom.name" . }}-grafana-dashboard
+  namespace: {{ default .Release.Namespace .Values.controlPlane.observability.grafanaDashboard.namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: control-plane
+    grafana_dashboard: "1"
+    {{- with .Values.controlPlane.observability.grafanaDashboard.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    grafana_folder: {{ .Values.controlPlane.observability.grafanaDashboard.folder | quote }}
+    {{- with .Values.controlPlane.observability.grafanaDashboard.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+data:
+  agent-bom-dashboard.json: |
+{{ .Files.Get "files/grafana-agent-bom.json" | indent 4 }}
+{{- end }}

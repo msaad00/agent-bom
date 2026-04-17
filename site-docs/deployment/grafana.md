@@ -1,13 +1,29 @@
 # Grafana Dashboard
 
-A pre-built Grafana dashboard for visualizing agent-bom Prometheus metrics.
+`agent-bom` ships a pre-built Grafana dashboard for visualizing Prometheus
+metrics from the API and proxy.
 
-## Import
+## Manual import
 
 1. Go to **Dashboards > Import** in Grafana
 2. Upload `deploy/grafana/grafana-agent-bom.json`
 3. Select your Prometheus data source
 4. Click **Import**
+
+## Helm-packaged dashboard
+
+If you are using the packaged control plane, enable:
+
+```yaml
+controlPlane:
+  enabled: true
+  observability:
+    grafanaDashboard:
+      enabled: true
+```
+
+The chart renders a `ConfigMap` with `grafana_dashboard=1` so a Grafana
+sidecar or operator can pick it up automatically.
 
 ## Panels
 
@@ -56,3 +72,4 @@ annotations:
 
 - Grafana 10+
 - Prometheus data source with agent-bom metrics
+- For the packaged path, a Grafana sidecar or operator that watches dashboard `ConfigMap`s

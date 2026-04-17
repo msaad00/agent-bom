@@ -100,6 +100,9 @@ The chart now supports the EKS wiring you actually need:
 | `topologySpread.*` | spread API and UI replicas across zones and nodes |
 | `controlPlane.externalSecrets.*` | map control-plane env vars from external-secrets |
 | `controlPlane.externalSecrets.secrets[]` | split DB secret cadence from faster OIDC / audit-HMAC rotation |
+| `controlPlane.observability.prometheusRule.*` | package alert rules for API, scanner, OIDC, and proxy backlog |
+| `controlPlane.observability.grafanaDashboard.*` | package the shipped Grafana dashboard as a `ConfigMap` |
+| `controlPlane.backup.*` | package Postgres backup jobs that dump and upload to S3 through IRSA |
 | `scanner.extraArgs` | add `--k8s-mcp`, `--enforce`, `--introspect`, or stricter presets |
 | `scanner.env` | inject operator-owned environment like API endpoints or auth context |
 | `scanner.allNamespaces` | scan cluster-wide instead of one namespace |
@@ -175,6 +178,10 @@ all sit under one operator-controlled plane.
 - split external secrets by cadence in production:
   - `AGENT_BOM_POSTGRES_URL` at `1h`
   - `AGENT_BOM_OIDC_*` and `AGENT_BOM_AUDIT_HMAC_KEY` at `5m`
+- enable the packaged PrometheusRule and Grafana dashboard when your cluster
+  already runs Prometheus Operator and Grafana sidecar discovery
+- enable the packaged backup CronJob only after setting a real S3 destination
+  and granting `s3:PutObject` via IRSA
 - set a persistent audit HMAC key and require it
 - attach the scanner service account to IRSA instead of static cloud keys
 - start with audit-only policies where rollout risk is unclear, then move to deny

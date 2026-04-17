@@ -11,7 +11,7 @@ import subprocess
 
 import pytest
 
-from agent_bom.k8s import K8sDiscoveryError, _kubectl_available, discover_images, list_namespaces
+from agent_bom.k8s import K8sDiscoveryError, _kubectl_available, discover_images, list_namespaces, scan_live_cluster_posture
 
 # ─── _kubectl_available ──────────────────────────────────────────────────────
 
@@ -260,3 +260,93 @@ def test_list_namespaces_empty(monkeypatch):
     """list_namespaces returns empty list when no namespaces exist."""
     _mock_kubectl(monkeypatch, {"items": []})
     assert list_namespaces() == []
+
+
+def test_scan_live_cluster_posture_finds_runtime_gaps(monkeypatch):
+    """Live cluster posture scan reports runtime RBAC, pod health, and network gaps."""
+    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/" + cmd)
+
+    payloads = {
+        ("get", "pods"): {
+            "items": [
+                {
+                    "metadata": {"name": "api", "namespace": "prod"},
+                    "spec": {"automountServiceAccountToken": True},
+                    "status": {
+                        "phase": "CrashLoopBackOff",
+                        "containerStatuses": [
+                            {
+                                "name": "api",
+                                "ready": False,
+                                "state": {"waiting": {"reason": "CrashLoopBackOff"}},
+                            }
+                        ],
+                    },
+                }
+            ]
+        },
+        ("get", "networkpolicies"): {"items": []},
+        ("get", "clusterrolebindings"): {
+            "items": [
+                {
+                    "metadata": {"name": "admin-binding"},
+                    "roleRef": {"name": "cluster-admin"},
+                    "subjects": [{"kind": "ServiceAccount", "namespace": "prod", "name": "default"}],
+                }
+            ]
+        },
+    }
+
+    def fake_run(cmd, **kwargs):
+        class R:
+            pass
+
+        r = R()
+        r.returncode = 0
+        r.stderr = ""
+        key = tuple(cmd[1:3])
+        r.stdout = json.dumps(payloads[key])
+        return r
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    findings = scan_live_cluster_posture(namespace="prod")
+    rule_ids = {finding.rule_id for finding in findings}
+    assert {"K8S-LIVE-001", "K8S-LIVE-002", "K8S-LIVE-003", "K8S-LIVE-004", "K8S-LIVE-005", "K8S-LIVE-006"} <= rule_ids
+
+
+def test_scan_live_cluster_posture_clean_cluster(monkeypatch):
+    """Live cluster posture scan returns no findings for a healthy constrained cluster."""
+    monkeypatch.setattr(shutil, "which", lambda cmd: "/usr/bin/" + cmd)
+
+    payloads = {
+        ("get", "pods"): {
+            "items": [
+                {
+                    "metadata": {"name": "api", "namespace": "prod"},
+                    "spec": {"automountServiceAccountToken": False},
+                    "status": {
+                        "phase": "Running",
+                        "containerStatuses": [{"name": "api", "ready": True, "state": {"running": {}}}],
+                    },
+                }
+            ]
+        },
+        ("get", "networkpolicies"): {"items": [{"metadata": {"name": "default-deny", "namespace": "prod"}}]},
+        ("get", "clusterrolebindings"): {"items": []},
+    }
+
+    def fake_run(cmd, **kwargs):
+        class R:
+            pass
+
+        r = R()
+        r.returncode = 0
+        r.stderr = ""
+        key = tuple(cmd[1:3])
+        r.stdout = json.dumps(payloads[key])
+        return r
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    assert scan_live_cluster_posture(namespace="prod") == []

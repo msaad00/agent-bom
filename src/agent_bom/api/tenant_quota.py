@@ -23,6 +23,18 @@ def _raise_quota_exceeded(
     current: int,
     attempted: int = 1,
 ) -> None:
+    if quota_name == "active_scan_jobs":
+        detail = (
+            f"Tenant quota exceeded for concurrent scan jobs: "
+            f"limit={limit}, current={current}, attempted={attempted}. "
+            "Reduce usage or raise the tenant quota."
+        )
+    else:
+        detail = (
+            f"Tenant quota exceeded for {quota_name}: "
+            f"limit={limit}, current={current}, attempted={attempted}. "
+            "Reduce usage or raise the tenant quota."
+        )
     log_action(
         "tenant.quota_exceeded",
         actor=f"tenant:{tenant_id}",
@@ -34,11 +46,7 @@ def _raise_quota_exceeded(
     )
     raise HTTPException(
         status_code=429,
-        detail=(
-            f"Tenant quota exceeded for {quota_name}: "
-            f"limit={limit}, current={current}, attempted={attempted}. "
-            "Reduce usage or raise the tenant quota."
-        ),
+        detail=detail,
     )
 
 

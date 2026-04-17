@@ -168,6 +168,7 @@ You still own:
 - enable `controlPlane.observability.prometheusRule.enabled=true` when the cluster already runs Prometheus Operator
 - enable `controlPlane.observability.grafanaDashboard.enabled=true` when Grafana watches dashboard `ConfigMap`s
 - enable `controlPlane.backup.enabled=true` only after setting a real S3 bucket, prefix, and IRSA-backed upload permissions
+- set `controlPlane.backup.destination.region` to the actual region of your backup bucket; the production example intentionally uses `REPLACE_ME_BUCKET_REGION`
 - keep `controlPlane.backup.destination.encryption.enabled=true`; the default is `AES256`, and production should set `mode=aws:kms` with a dedicated `kmsKeyId`
 - restore drills should use [`deploy/ops/restore-postgres-backup.sh`](../../deploy/ops/restore-postgres-backup.sh):
   `./deploy/ops/restore-postgres-backup.sh s3://bucket/key.dump "$AGENT_BOM_POSTGRES_URL" us-east-1`

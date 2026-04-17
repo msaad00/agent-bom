@@ -406,6 +406,7 @@ def test_production_values_enable_operator_defaults():
     assert production["controlPlane"]["observability"]["prometheusRule"]["enabled"] is True
     assert production["controlPlane"]["backup"]["enabled"] is True
     assert production["controlPlane"]["backup"]["destination"]["bucket"] == "agent-bom-prod-backups"
+    assert production["controlPlane"]["backup"]["destination"]["region"] == "REPLACE_ME_BUCKET_REGION"
     assert production["controlPlane"]["backup"]["destination"]["encryption"]["enabled"] is True
     assert production["controlPlane"]["backup"]["destination"]["encryption"]["mode"] == "aws:kms"
     assert production["controlPlane"]["backup"]["destination"]["encryption"]["kmsKeyId"] == "alias/agent-bom-backups"

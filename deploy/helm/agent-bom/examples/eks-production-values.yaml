@@ -94,7 +94,7 @@ controlPlane:
     destination:
       bucket: agent-bom-prod-backups
       prefix: agent-bom/postgres
-      region: us-east-1
+      region: REPLACE_ME_BUCKET_REGION
       encryption:
         enabled: true
         mode: aws:kms

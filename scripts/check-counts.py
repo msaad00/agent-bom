@@ -89,8 +89,8 @@ SURFACES = [
     "README.md",
     "DOCKER_HUB_README.md",
     "docs/ARCHITECTURE.md",
-    "docs/STRATEGIC_AUDIT_2026_03.md",
-    "docs/AUDIT.md",
+    "docs/archive/STRATEGIC_AUDIT_2026_03.md",
+    "docs/archive/AUDIT.md",
     "pyproject.toml",
     "action.yml",
 ]

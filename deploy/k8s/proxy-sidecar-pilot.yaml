@@ -6,6 +6,17 @@
 # Replace the sample MCP server command/image with your own workload image and
 # runtime command before applying.
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent-bom
+  labels:
+    app.kubernetes.io/name: agent-bom
+    app.kubernetes.io/part-of: agent-bom
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: agent-bom-proxy-policy
@@ -49,6 +60,7 @@ metadata:
   labels:
     app.kubernetes.io/name: mcp-server
     app.kubernetes.io/component: proxy-pilot
+    security.agent-bom.io/pod-security-level: restricted
 spec:
   replicas: 1
   selector:
@@ -60,6 +72,7 @@ spec:
       labels:
         app.kubernetes.io/name: mcp-server
         app.kubernetes.io/component: proxy-pilot
+        security.agent-bom.io/pod-security-level: restricted
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "8422"

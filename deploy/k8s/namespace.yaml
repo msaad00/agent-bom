@@ -5,3 +5,6 @@ metadata:
   labels:
     app.kubernetes.io/name: agent-bom
     app.kubernetes.io/part-of: agent-bom
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

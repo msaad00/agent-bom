@@ -128,6 +128,9 @@ You still own:
 
 - keep `controlPlane.api.replicas` and `controlPlane.ui.replicas` at `2+`
 - use `Postgres`, not SQLite
+- run Alembic for long-lived Postgres control planes:
+  - `alembic -c deploy/supabase/postgres/alembic.ini upgrade head`
+  - existing `init.sql` databases should be stamped once with `20260416_01`
 - keep same-origin ingress unless you have a strong reason not to
 - use `envFrom` / Secrets for `AGENT_BOM_POSTGRES_URL`, API keys, OIDC issuer,
   audience, optional required nonce, and audit HMAC settings

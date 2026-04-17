@@ -219,6 +219,7 @@ Backend choices stay explicit and optional:
 For teams self-hosting in their own AWS / EKS environment, see the focused
 operator guide:
 
+- [Enterprise MCP / Endpoint Pilot](site-docs/deployment/enterprise-pilot.md)
 - [Deploy In Your Own AWS / EKS Infrastructure](site-docs/deployment/own-infra-eks.md)
 - [Endpoint Fleet](site-docs/deployment/endpoint-fleet.md)
 - [Focused EKS MCP Pilot](site-docs/deployment/eks-mcp-pilot.md)

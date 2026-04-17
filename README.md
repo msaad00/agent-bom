@@ -181,6 +181,7 @@ Operator guides:
 - [Endpoint Fleet](site-docs/deployment/endpoint-fleet.md)
 - [Focused EKS MCP Pilot](site-docs/deployment/eks-mcp-pilot.md)
 - [Packaged API + UI Control Plane](site-docs/deployment/control-plane-helm.md)
+- [Performance, Sizing, and Benchmarks](site-docs/deployment/performance-and-sizing.md)
 
 ## Product views
 
@@ -273,28 +274,7 @@ Backend choices stay explicit and optional:
 - `ClickHouse` for analytics and event-scale persistence
 - `Snowflake` for warehouse-native governance and selected backend paths with explicit parity limits
 
-For teams self-hosting in their own AWS / EKS environment, see the focused
-operator guide:
-
-- [Enterprise MCP / Endpoint Pilot](site-docs/deployment/enterprise-pilot.md)
-- [Deploy In Your Own AWS / EKS Infrastructure](site-docs/deployment/own-infra-eks.md)
-- [Endpoint Fleet](site-docs/deployment/endpoint-fleet.md)
-- [Focused EKS MCP Pilot](site-docs/deployment/eks-mcp-pilot.md)
-- [Packaged API + UI Control Plane](site-docs/deployment/control-plane-helm.md)
-- [Performance, Sizing, and Benchmarks](site-docs/deployment/performance-and-sizing.md)
-
-That means enterprises can run `agent-bom`:
-
-- locally
-- in CI
-- in Docker
-- in Kubernetes / Helm
-- as a self-hosted API + dashboard
-- as a Helm-packaged API + dashboard control plane in your own Kubernetes / EKS cluster
-- as an MCP server for local or remote clients
-- with Postgres, ClickHouse, and Snowflake where each backend actually fits
-
-We do not require one hosted control plane or one cloud vendor.
+That means enterprises can run `agent-bom` locally, in CI, in Docker, in Kubernetes / Helm, as a self-hosted API + dashboard, as an MCP server for local or remote clients, and with Postgres, ClickHouse, or Snowflake where each backend actually fits. We do not require one hosted control plane or one cloud vendor.
 
 Product references:
 - [docs/PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md)

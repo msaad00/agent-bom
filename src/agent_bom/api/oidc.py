@@ -41,6 +41,8 @@ logger = logging.getLogger(__name__)
 
 _JWKS_CACHE_TTL = 3600  # seconds — re-fetch public keys every hour
 _OIDC_TIMEOUT = 5  # seconds for HTTP requests to OIDC provider
+_oidc_failure_lock = threading.Lock()
+_oidc_decode_failures = 0
 
 
 # ── JWKS key cache ──────────────────────────────────────────────────────────────
@@ -72,6 +74,26 @@ class _JwksCache:
 
 
 _jwks_cache = _JwksCache()
+
+
+def record_oidc_decode_failure() -> None:
+    """Increment the control-plane OIDC decode failure counter."""
+    global _oidc_decode_failures
+    with _oidc_failure_lock:
+        _oidc_decode_failures += 1
+
+
+def oidc_decode_failure_count() -> int:
+    """Return the number of failed OIDC decode/verify attempts."""
+    with _oidc_failure_lock:
+        return _oidc_decode_failures
+
+
+def reset_oidc_decode_failures() -> None:
+    """Reset the OIDC decode failure counter for tests."""
+    global _oidc_decode_failures
+    with _oidc_failure_lock:
+        _oidc_decode_failures = 0
 
 
 # ── Discovery ──────────────────────────────────────────────────────────────────

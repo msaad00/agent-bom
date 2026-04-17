@@ -140,6 +140,8 @@ async def prometheus_metrics():
     from starlette.responses import Response
 
     try:
+        from agent_bom.api.oidc import oidc_decode_failure_count
+
         store = _get_fleet_store()
         agents = store.list_all()
         lines = [
@@ -149,6 +151,9 @@ async def prometheus_metrics():
             "# HELP agent_bom_fleet_quarantined Quarantined agents",
             "# TYPE agent_bom_fleet_quarantined gauge",
             f"agent_bom_fleet_quarantined {sum(1 for a in agents if getattr(a, 'lifecycle_state', '') == 'quarantined')}",
+            "# HELP agent_bom_oidc_decode_failures_total Failed OIDC decode or verification attempts",
+            "# TYPE agent_bom_oidc_decode_failures_total counter",
+            f"agent_bom_oidc_decode_failures_total {oidc_decode_failure_count()}",
         ]
         return Response("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4; charset=utf-8")
     except Exception:  # noqa: BLE001

@@ -180,7 +180,7 @@ DOCS_TO_CHECK = [
     ROOT / "docs" / "ARCHITECTURE.md",
     ROOT / "CONTRIBUTING.md",
     ROOT / "docs" / "DEPLOYMENT.md",
-    ROOT / "docs" / "AUDIT.md",
+    ROOT / "docs" / "archive" / "AUDIT.md",
 ]
 
 

@@ -99,6 +99,7 @@ The chart now supports the EKS wiring you actually need:
 | `controlPlane.ui.autoscaling.*` | autoscale the UI deployment with HPA |
 | `topologySpread.*` | spread API and UI replicas across zones and nodes |
 | `controlPlane.externalSecrets.*` | map control-plane env vars from external-secrets |
+| `controlPlane.externalSecrets.secrets[]` | split DB secret cadence from faster OIDC / audit-HMAC rotation |
 | `scanner.extraArgs` | add `--k8s-mcp`, `--enforce`, `--introspect`, or stricter presets |
 | `scanner.env` | inject operator-owned environment like API endpoints or auth context |
 | `scanner.allNamespaces` | scan cluster-wide instead of one namespace |
@@ -171,6 +172,9 @@ all sit under one operator-controlled plane.
   - [deploy/helm/agent-bom/examples/eks-production-values.yaml](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/helm/agent-bom/examples/eks-production-values.yaml)
 - keep the proxy and API internal to your VPC unless exposure is intentional
 - use OIDC for user access, set `AGENT_BOM_OIDC_AUDIENCE` explicitly, and map roles explicitly
+- split external secrets by cadence in production:
+  - `AGENT_BOM_POSTGRES_URL` at `1h`
+  - `AGENT_BOM_OIDC_*` and `AGENT_BOM_AUDIT_HMAC_KEY` at `5m`
 - set a persistent audit HMAC key and require it
 - attach the scanner service account to IRSA instead of static cloud keys
 - start with audit-only policies where rollout risk is unclear, then move to deny

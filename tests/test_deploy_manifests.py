@@ -287,6 +287,7 @@ def test_helm_external_secrets_defaults():
     assert ext["enabled"] is False
     assert ext["secretStoreRef"]["kind"] == "ClusterSecretStore"
     assert ext["target"]["name"] == "agent-bom-control-plane"
+    assert ext["secrets"] == []
 
 
 def test_helm_monitor_disabled_by_default():
@@ -356,7 +357,18 @@ def test_production_values_enable_operator_defaults():
     assert production["controlPlane"]["api"]["autoscaling"]["behavior"]["scaleDown"]["stabilizationWindowSeconds"] == 300
     assert production["controlPlane"]["ui"]["autoscaling"]["behavior"]["scaleDown"]["stabilizationWindowSeconds"] == 300
     assert production["controlPlane"]["externalSecrets"]["enabled"] is True
-    assert production["controlPlane"]["externalSecrets"]["refreshInterval"] == "5m"
+    secrets = production["controlPlane"]["externalSecrets"]["secrets"]
+    assert {secret["target"]["name"] for secret in secrets} == {
+        "agent-bom-control-plane-auth",
+        "agent-bom-control-plane-db",
+    }
+    assert next(secret for secret in secrets if secret["target"]["name"] == "agent-bom-control-plane-db")["refreshInterval"] == "1h"
+    assert next(secret for secret in secrets if secret["target"]["name"] == "agent-bom-control-plane-auth")["refreshInterval"] == "5m"
+    env_from = production["controlPlane"]["api"]["envFrom"]
+    assert env_from == [
+        {"secretRef": {"name": "agent-bom-control-plane-db"}},
+        {"secretRef": {"name": "agent-bom-control-plane-auth"}},
+    ]
     assert production["controlPlane"]["podAntiAffinity"]["enabled"] is True
     assert production["controlPlane"]["priorityClass"]["create"] is True
     assert production["topologySpread"]["enabled"] is True

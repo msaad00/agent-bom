@@ -199,6 +199,7 @@ controlPlane:
       name: agent-bom-control-plane
       creationPolicy: Owner
     data: []
+    secrets: []
 
 rbac:
   create: true

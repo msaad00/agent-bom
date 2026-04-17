@@ -218,6 +218,10 @@ def test_proxy_metrics_summary():
     assert s["latency"]["count"] == 2
     assert s["messages_client_to_server"] == 5
     assert s["messages_server_to_client"] == 3
+    assert s["audit_buffer_bytes"] == 0
+    assert s["audit_spillover_bytes"] == 0
+    assert s["policy_fetch_failures"] == 0
+    assert s["audit_push_failures"] == 0
     assert "ts" in s
     assert "uptime_seconds" in s
 
@@ -230,6 +234,21 @@ def test_proxy_metrics_summary_empty():
     assert s["total_blocked"] == 0
     assert s["latency"] == {}
     assert s["messages_client_to_server"] == 0
+
+
+def test_proxy_metrics_records_backpressure_and_policy_failures():
+    """Proxy metrics surface control-plane linkage failures and queued backlog."""
+    m = ProxyMetrics()
+    m.set_audit_buffer_bytes(1024)
+    m.set_audit_spillover_bytes(2048)
+    m.record_policy_fetch_failure()
+    m.record_audit_push_failure()
+
+    s = m.summary()
+    assert s["audit_buffer_bytes"] == 1024
+    assert s["audit_spillover_bytes"] == 2048
+    assert s["policy_fetch_failures"] == 1
+    assert s["audit_push_failures"] == 1
 
 
 # ── CLI proxy --help ─────────────────────────────────────────────────────────

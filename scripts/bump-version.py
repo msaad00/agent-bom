@@ -49,7 +49,7 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("README.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("docs/AI_INFRASTRUCTURE_SCANNING.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("docs/ENTERPRISE_DEPLOYMENT.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
-    ("docs/WINDOWS_CONTAINERS.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
+    ("docs/archive/WINDOWS_CONTAINERS.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("docs/MCP_SECURITY_MODEL.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("site-docs/index.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),
     ("site-docs/features/policy.md", re.compile(r"(msaad00/agent-bom@v)\d+(?:\.\d+){0,2}"), r"\g<1>{v}"),

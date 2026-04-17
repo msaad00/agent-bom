@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import FleetAgentUpdate, PushPayload, StateUpdate
 from agent_bom.api.stores import _get_fleet_store, _get_idempotency_store
+from agent_bom.api.tenant_quota import enforce_fleet_agents_quota
 
 router = APIRouter()
 
@@ -149,9 +150,12 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
 
     if body and body.agents:
         payload_agents = body.agents
+        existing_by_name = {agent.name: agent for agent in store.list_by_tenant(tenant_id)}
+        new_names = {str(agent.get("name", "unknown-agent")) for agent in payload_agents} - set(existing_by_name)
+        enforce_fleet_agents_quota(tenant_id, attempted=len(new_names))
         for agent in payload_agents:
             name = agent.get("name", "unknown-agent")
-            existing = next((a for a in store.list_by_tenant(tenant_id) if a.name == name), None)
+            existing = existing_by_name.get(name)
             server_count, pkg_count, cred_count, vuln_count = _payload_counts(agent)
             score = float(agent.get("trust_score", 0.0) or 0.0)
             factors = dict(agent.get("trust_factors", {}) or {})
@@ -190,8 +194,12 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
                 new_count += 1
     else:
         discovered = discover_all()
+        existing_by_name = {agent.name: agent for agent in store.list_by_tenant(tenant_id)}
+        discovered_names = {agent.name for agent in discovered}
+        new_names = discovered_names - set(existing_by_name)
+        enforce_fleet_agents_quota(tenant_id, attempted=len(new_names))
         for agent in discovered:
-            existing = next((a for a in store.list_by_tenant(tenant_id) if a.name == agent.name), None)
+            existing = existing_by_name.get(agent.name)
             server_count, pkg_count, cred_count, vuln_count = _server_counts(agent)
             score, factors = compute_trust_score(agent)
 

@@ -155,6 +155,38 @@ If any of these fail first:
 - overlapping scans: lengthen schedule or split scope
 - audit query drag: add retention boundaries and move analytics to `ClickHouse`
 
+## Tenant quotas
+
+For multi-tenant or shared internal deployments, set explicit per-tenant quotas
+ on the API instead of relying only on request rate limits.
+
+Available environment variables:
+
+- `AGENT_BOM_API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT`
+- `AGENT_BOM_API_MAX_RETAINED_JOBS_PER_TENANT`
+- `AGENT_BOM_API_MAX_FLEET_AGENTS_PER_TENANT`
+- `AGENT_BOM_API_MAX_SCHEDULES_PER_TENANT`
+
+These are enforced on:
+
+- scan creation
+- scheduled scan creation
+- pushed scan-result ingestion
+- fleet sync
+- schedule creation
+
+The packaged production example already shows how to inject these through
+ `controlPlane.api.env` in:
+
+- [eks-production-values.yaml](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/helm/agent-bom/examples/eks-production-values.yaml)
+
+Recommended starting posture:
+
+- keep active scan jobs low enough that one tenant cannot saturate the API
+- keep retained jobs bounded to match your retention expectations
+- keep fleet-agent quotas aligned to your actual endpoint/runtime rollout size
+- keep schedule quotas low unless you deliberately expose scheduled scans to many tenants
+
 ## Benchmark before production rollout
 
 The repo now ships a small benchmark harness under:

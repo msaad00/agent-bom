@@ -15,6 +15,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import JobStatus, PushPayload, ScanJob, ScanRequest
 from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_store
+from agent_bom.api.tenant_quota import enforce_retained_jobs_quota
 from agent_bom.security import sanitize_error
 
 router = APIRouter()
@@ -118,9 +119,11 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
 
     Stores as a completed ScanJob with source metadata.
     """
+    tenant_id = _tenant_id(request)
+    enforce_retained_jobs_quota(tenant_id)
     job = ScanJob(
         job_id=str(uuid.uuid4()),
-        tenant_id=_tenant_id(request),
+        tenant_id=tenant_id,
         created_at=_now(),
         request=ScanRequest(),
     )

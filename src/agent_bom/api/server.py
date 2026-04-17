@@ -289,15 +289,19 @@ async def _lifespan(app_instance: FastAPI):
     from agent_bom.api.pipeline import _now
     from agent_bom.api.pipeline import _run_scan_sync as _run_scan  # local alias avoids F811 with re-export
     from agent_bom.api.scheduler import scheduler_loop
+    from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota
 
     def _schedule_scan(scan_config: dict) -> str:
         """Trigger a scan from a schedule."""
         tenant_id = (
             getattr(scan_config, "tenant_id", None) if hasattr(scan_config, "tenant_id") else scan_config.get("tenant_id", "default")
         )
+        tenant_id = str(tenant_id or "default")
+        enforce_active_scan_quota(tenant_id)
+        enforce_retained_jobs_quota(tenant_id)
         job = ScanJob(
             job_id=str(uuid.uuid4()),
-            tenant_id=str(tenant_id or "default"),
+            tenant_id=tenant_id,
             created_at=_now(),
             request=ScanRequest(**scan_config) if isinstance(scan_config, dict) else scan_config,
         )

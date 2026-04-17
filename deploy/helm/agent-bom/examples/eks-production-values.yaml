@@ -15,6 +15,14 @@ controlPlane:
     env:
       - name: AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT
         value: "1"
+      - name: AGENT_BOM_API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT
+        value: "25"
+      - name: AGENT_BOM_API_MAX_RETAINED_JOBS_PER_TENANT
+        value: "1000"
+      - name: AGENT_BOM_API_MAX_FLEET_AGENTS_PER_TENANT
+        value: "5000"
+      - name: AGENT_BOM_API_MAX_SCHEDULES_PER_TENANT
+        value: "250"
     autoscaling:
       enabled: true
       minReplicas: 2

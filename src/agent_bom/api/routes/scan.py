@@ -50,7 +50,7 @@ from agent_bom.api.stores import (
     _jobs_pop,
     _jobs_put,
 )
-from agent_bom.config import API_MAX_CONCURRENT_JOBS as _MAX_CONCURRENT_JOBS
+from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -157,15 +157,10 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
     """Start a scan. Returns immediately with a job_id.
     Poll GET /v1/scan/{job_id} for results, or stream via /v1/scan/{job_id}/stream.
     """
-    # Enforce max concurrent jobs
     store = _get_store()
     tenant_id = _tenant_id(request)
-    active = sum(1 for j in store.list_all(tenant_id=tenant_id) if j.status in (JobStatus.PENDING, JobStatus.RUNNING))
-    if active >= _MAX_CONCURRENT_JOBS:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Max {_MAX_CONCURRENT_JOBS} concurrent scan jobs. Try again later.",
-        )
+    enforce_active_scan_quota(tenant_id)
+    enforce_retained_jobs_quota(tenant_id)
 
     job = ScanJob(
         job_id=str(uuid.uuid4()),

@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 from fastapi import HTTPException
 
+from agent_bom.api import tenant_quota as tenant_quota_module
 from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState, InMemoryFleetStore
 from agent_bom.api.models import FleetAgentUpdate, JobStatus, PushPayload, ScanJob, ScanRequest, ScheduleCreate, StateUpdate
 from agent_bom.api.routes import compliance as compliance_routes
@@ -260,6 +261,84 @@ async def test_create_scan_and_push_stamp_request_tenant(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_scan_routes_enforce_active_and_retained_job_quotas(monkeypatch):
+    store = InMemoryJobStore()
+    set_job_store(store)
+    _jobs.clear()
+    req = _request("tenant-alpha")
+
+    class _Loop:
+        def run_in_executor(self, *_args, **_kwargs):
+            return None
+
+    monkeypatch.setattr(scan_routes.asyncio, "get_running_loop", lambda: _Loop())
+
+    pending = ScanJob(
+        job_id="job-alpha",
+        tenant_id="tenant-alpha",
+        status=JobStatus.PENDING,
+        created_at=_now(),
+        request=ScanRequest(),
+    )
+    store.put(pending)
+    monkeypatch.setattr(tenant_quota_module, "API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT", 1)
+    with pytest.raises(HTTPException) as exc:
+        await scan_routes.create_scan(req, ScanRequest())
+    assert exc.value.status_code == 429
+    assert "active_scan_jobs" in exc.value.detail
+
+    store = InMemoryJobStore()
+    set_job_store(store)
+    _jobs.clear()
+    completed = ScanJob(
+        job_id="job-retained",
+        tenant_id="tenant-alpha",
+        status=JobStatus.DONE,
+        created_at=_now(),
+        completed_at=_now(),
+        request=ScanRequest(),
+    )
+    store.put(completed)
+    monkeypatch.setattr(tenant_quota_module, "API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT", 10)
+    monkeypatch.setattr(tenant_quota_module, "API_MAX_RETAINED_JOBS_PER_TENANT", 1)
+    with pytest.raises(HTTPException) as exc:
+        await scan_routes.create_scan(req, ScanRequest())
+    assert exc.value.status_code == 429
+    assert "retained_scan_jobs" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_pushed_results_enforce_retained_job_quota(monkeypatch):
+    store = InMemoryJobStore()
+    set_job_store(store)
+    req = _request("tenant-alpha")
+    existing = ScanJob(
+        job_id="job-retained",
+        tenant_id="tenant-alpha",
+        status=JobStatus.DONE,
+        created_at=_now(),
+        completed_at=_now(),
+        request=ScanRequest(),
+    )
+    store.put(existing)
+    monkeypatch.setattr(tenant_quota_module, "API_MAX_RETAINED_JOBS_PER_TENANT", 1)
+
+    with pytest.raises(HTTPException) as exc:
+        await observability_routes.receive_push(
+            req,
+            PushPayload(
+                source_id="source-a",
+                agents=[],
+                blast_radii=[],
+                warnings=[],
+                summary={"total_packages": 1, "total_vulnerabilities": 1},
+            ),
+        )
+    assert exc.value.status_code == 429
+    assert "retained_scan_jobs" in exc.value.detail
+
+
+@pytest.mark.asyncio
 async def test_list_jobs_is_summary_first_and_opt_in_for_hydration():
     class _Store:
         def __init__(self) -> None:
@@ -305,6 +384,27 @@ async def test_list_jobs_is_summary_first_and_opt_in_for_hydration():
         assert store.get_calls == 1
         assert hydrated["jobs"][0]["request"] == {"images": ["example:latest"]}
         assert hydrated["jobs"][0]["summary"]["total_packages"] == 12
+
+
+@pytest.mark.asyncio
+async def test_schedule_routes_enforce_tenant_schedule_quota(monkeypatch):
+    store = InMemoryScheduleStore()
+    set_schedule_store(store)
+    req = _request("tenant-alpha")
+    store.put(_schedule("sched-alpha", "tenant-alpha"))
+    monkeypatch.setattr(tenant_quota_module, "API_MAX_SCHEDULES_PER_TENANT", 1)
+
+    with pytest.raises(HTTPException) as exc:
+        await schedule_routes.create_schedule(
+            req,
+            ScheduleCreate(
+                name="alpha-scan",
+                cron_expression="0 */6 * * *",
+                scan_config={"path": "."},
+            ),
+        )
+    assert exc.value.status_code == 429
+    assert "schedules" in exc.value.detail
 
 
 def test_sqlite_job_store_filters_by_tenant(tmp_path):

@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from starlette.testclient import TestClient
 
+from agent_bom.api import tenant_quota as tenant_quota_module
 from agent_bom.api.fleet_store import (
     FleetAgent,
     FleetLifecycleState,
@@ -208,6 +209,30 @@ def test_sync_endpoint_push_is_idempotent():
     assert first.status_code == 200
     assert second.status_code == 200
     assert second.json()["idempotent_replay"] is True
+    assert len(store.list_all()) == 1
+
+
+def test_sync_endpoint_push_enforces_fleet_quota(monkeypatch):
+    client, store = _fresh_client()
+    store.put(_make(agent_id="a-1", name="existing"))
+    monkeypatch.setattr(tenant_quota_module, "API_MAX_FLEET_AGENTS_PER_TENANT", 1)
+
+    resp = client.post(
+        "/v1/fleet/sync",
+        json={
+            "source_id": "laptop-a",
+            "agents": [
+                {
+                    "name": "cursor",
+                    "agent_type": "cursor",
+                    "trust_score": 82.5,
+                    "mcp_servers": [],
+                }
+            ],
+        },
+    )
+    assert resp.status_code == 429
+    assert "fleet_agents" in resp.json()["detail"]
     assert len(store.list_all()) == 1
 
 

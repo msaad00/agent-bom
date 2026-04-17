@@ -12,12 +12,13 @@ Configuration via environment variables::
     AGENT_BOM_OIDC_TENANT_CLAIM = "tenant_id"         # optional JWT claim for tenant
     AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM = "1"         # fail closed when claim absent
     AGENT_BOM_OIDC_REQUIRED_NONCE = "random-nonce"    # optional fail-closed nonce check
+    AGENT_BOM_OIDC_REQUIRE_ROLE_CLAIM = "1"           # optional fail-closed role requirement
 
 Role mapping (claim value → agent-bom Role):
 
     "admin"   → Role.ADMIN
     "analyst" → Role.ANALYST
-    any other → Role.VIEWER  (default when claim absent)
+    any other → Role.VIEWER  (default when claim absent unless strict mode enabled)
 
 Install the optional dependency::
 
@@ -250,6 +251,25 @@ def claims_to_role(claims: dict, role_claim: str = "agent_bom_role") -> str:
     return "viewer"
 
 
+def claims_have_role_signal(claims: dict, role_claim: str = "agent_bom_role") -> bool:
+    """Return True when claims include an explicit recognizable role signal."""
+    admin_values = {"admin", "administrator", "superuser"}
+    analyst_values = {"analyst", "security-analyst", "engineer", "developer"}
+
+    role_val = claims.get(role_claim, "")
+    if isinstance(role_val, str) and role_val and role_val.lower() in (admin_values | analyst_values):
+        return True
+
+    for array_claim in ("roles", "groups", "permissions"):
+        values = claims.get(array_claim, [])
+        if isinstance(values, list):
+            lowered = {str(v).lower() for v in values}
+            if lowered & (admin_values | analyst_values):
+                return True
+
+    return False
+
+
 def claims_to_tenant(claims: dict, tenant_claim: str = "tenant_id") -> str | None:
     """Map OIDC JWT claims to a tenant identifier."""
     tenant_val = claims.get(tenant_claim)
@@ -277,6 +297,7 @@ class OIDCConfig:
     - ``AGENT_BOM_OIDC_ROLE_CLAIM`` — JWT claim name for role (default: ``agent_bom_role``)
     - ``AGENT_BOM_OIDC_JWKS_URI`` — Override JWKS URI (optional, auto-discovered if absent)
     - ``AGENT_BOM_OIDC_REQUIRED_NONCE`` — Optional expected ``nonce`` claim for fail-closed checks
+    - ``AGENT_BOM_OIDC_REQUIRE_ROLE_CLAIM`` — Fail closed when no explicit mapped role claim is present
     """
 
     def __init__(
@@ -288,6 +309,7 @@ class OIDCConfig:
         tenant_claim: str = "tenant_id",
         require_tenant_claim: Optional[bool] = None,
         required_nonce: Optional[str] = None,
+        require_role_claim: Optional[bool] = None,
     ) -> None:
         self.issuer = issuer or os.environ.get("AGENT_BOM_OIDC_ISSUER", "")
         self.audience = audience or os.environ.get("AGENT_BOM_OIDC_AUDIENCE") or None
@@ -302,6 +324,13 @@ class OIDCConfig:
                 "yes",
             }
         self.require_tenant_claim = require_tenant_claim
+        if require_role_claim is None:
+            require_role_claim = os.environ.get("AGENT_BOM_OIDC_REQUIRE_ROLE_CLAIM", "").strip().lower() in {
+                "1",
+                "true",
+                "yes",
+            }
+        self.require_role_claim = require_role_claim
         self.enabled = bool(self.issuer)
 
     def verify(self, token: str) -> tuple[dict, str]:
@@ -315,6 +344,8 @@ class OIDCConfig:
         if not self.audience:
             raise OIDCError("OIDC is configured but AGENT_BOM_OIDC_AUDIENCE is not set")
         claims = verify_oidc_token(token, self.issuer, self.audience, self.jwks_uri, self.required_nonce)
+        if self.require_role_claim and not claims_have_role_signal(claims, self.role_claim):
+            raise OIDCError(f"JWT missing required role claim '{self.role_claim}'")
         role = claims_to_role(claims, self.role_claim)
         return claims, role
 

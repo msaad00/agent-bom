@@ -209,6 +209,37 @@ def test_api_key_middleware_oidc_sets_tenant_from_custom_claim():
     assert resp.json() == {"tenant_id": "tenant-zeta", "role": "analyst"}
 
 
+def test_api_key_middleware_oidc_requires_explicit_role_claim_when_enabled():
+    """Strict OIDC mode should reject tokens that lack a mapped role signal."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
+
+    cfg = OIDCConfig(
+        issuer="https://corp.okta.com",
+        audience="agent-bom",
+        require_role_claim=True,
+    )
+    with (
+        patch("agent_bom.api.oidc.OIDCConfig.from_env", return_value=cfg),
+        patch(
+            "agent_bom.api.oidc.verify_oidc_token",
+            return_value={"sub": "u1", "email": "alice@corp.com"},
+        ),
+    ):
+        client = TestClient(test_app)
+        resp = client.get("/v1/test", headers={"Authorization": "Bearer oidc.jwt"})
+
+    assert resp.status_code == 401
+    assert "invalid API key" in resp.json()["detail"]
+
+
 def test_rate_limit_middleware():
     """Should return 429 when rate limit exceeded."""
     from starlette.applications import Starlette

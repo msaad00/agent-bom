@@ -207,6 +207,7 @@ class EvaluateRequest(BaseModel):
 class ProxyAuditIngestRequest(BaseModel):
     source_id: str = ""
     session_id: str = ""
+    idempotency_key: str = ""
     alerts: list[dict] = []
     summary: dict | None = None
 
@@ -272,6 +273,7 @@ class PushPayload(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     source_id: str = ""
+    idempotency_key: str = ""
     agents: list = []
     blast_radii: list = []
     warnings: list = []

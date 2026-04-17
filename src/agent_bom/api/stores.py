@@ -88,6 +88,7 @@ def _jobs_pop(job_id: str) -> ScanJob | None:
 
 # ─── Fleet store (pluggable) ────────────────────────────────────────────────
 _fleet_store: Any = None
+_idempotency_store: Any = None
 
 
 def _get_fleet_store():
@@ -106,6 +107,29 @@ def set_fleet_store(store: Any) -> None:
     """Switch the fleet store backend. Call before server startup."""
     global _fleet_store
     _fleet_store = store
+
+
+def _get_idempotency_store():
+    """Get the active idempotency store for retry-safe write endpoints."""
+    global _idempotency_store
+    if _idempotency_store is None:
+        with _store_lock:
+            if _idempotency_store is None:
+                if os.environ.get("AGENT_BOM_DB"):
+                    from agent_bom.api.idempotency_store import SQLiteIdempotencyStore
+
+                    _idempotency_store = SQLiteIdempotencyStore(os.environ["AGENT_BOM_DB"])
+                else:
+                    from agent_bom.api.idempotency_store import InMemoryIdempotencyStore
+
+                    _idempotency_store = InMemoryIdempotencyStore()
+    return _idempotency_store
+
+
+def set_idempotency_store(store: Any) -> None:
+    """Switch the idempotency store backend. Call before server startup."""
+    global _idempotency_store
+    _idempotency_store = store
 
 
 # ─── Policy store (pluggable) ───────────────────────────────────────────────

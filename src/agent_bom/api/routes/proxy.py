@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from agent_bom.runtime.protection import ProtectionEngine
 
 from agent_bom.api.models import ProxyAuditIngestRequest
+from agent_bom.api.stores import _get_idempotency_store
 
 router = APIRouter()
 
@@ -61,8 +62,14 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
     from agent_bom.api.audit_log import log_action
 
     actor = getattr(request.state, "api_key_name", "") or "proxy-client"
+    tenant_id = getattr(request.state, "tenant_id", "default")
     source_id = body.source_id or "unknown"
     session_id = body.session_id or "default"
+    if body.idempotency_key:
+        cached = _get_idempotency_store().get("/v1/proxy/audit", tenant_id, source_id, body.idempotency_key)
+        if cached is not None:
+            cached["idempotent_replay"] = True
+            return cached
 
     for alert in body.alerts:
         enriched = dict(alert)
@@ -84,13 +91,16 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         alert_count=len(body.alerts),
         has_summary=body.summary is not None,
     )
-    return {
+    response = {
         "ingested": True,
         "source_id": source_id,
         "session_id": session_id,
         "alert_count": len(body.alerts),
         "has_summary": body.summary is not None,
     }
+    if body.idempotency_key:
+        _get_idempotency_store().put("/v1/proxy/audit", tenant_id, source_id, body.idempotency_key, response)
+    return response
 
 
 def _get_configured_log_path() -> _Path | None:

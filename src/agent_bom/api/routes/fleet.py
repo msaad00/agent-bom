@@ -16,8 +16,8 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 
-from agent_bom.api.models import FleetAgentUpdate, StateUpdate
-from agent_bom.api.stores import _get_fleet_store
+from agent_bom.api.models import FleetAgentUpdate, PushPayload, StateUpdate
+from agent_bom.api.stores import _get_fleet_store, _get_idempotency_store
 
 router = APIRouter()
 
@@ -95,8 +95,29 @@ async def get_fleet_agent(request: Request, agent_id: str):
     return agent.model_dump()
 
 
+def _server_counts(agent) -> tuple[int, int, int, int]:
+    server_count = len(agent.mcp_servers)
+    pkg_count = sum(len(s.packages) for s in agent.mcp_servers)
+    cred_count = sum(len(s.credential_names) for s in agent.mcp_servers)
+    vuln_count = sum(s.total_vulnerabilities for s in agent.mcp_servers)
+    return server_count, pkg_count, cred_count, vuln_count
+
+
+def _payload_counts(agent: dict) -> tuple[int, int, int, int]:
+    servers = agent.get("mcp_servers", []) or []
+    server_count = len(servers)
+    pkg_count = 0
+    cred_count = 0
+    vuln_count = 0
+    for server in servers:
+        pkg_count += len(server.get("packages", []) or [])
+        cred_count += len(server.get("credential_names", []) or [])
+        vuln_count += int(server.get("total_vulnerabilities", 0) or 0)
+    return server_count, pkg_count, cred_count, vuln_count
+
+
 @router.post("/v1/fleet/sync", tags=["fleet"])
-async def sync_fleet(request: Request):
+async def sync_fleet(request: Request, body: PushPayload | None = None):
     """Run discovery and sync results into the fleet registry.
 
     New agents -> state=DISCOVERED. Existing agents -> counts updated.
@@ -106,60 +127,109 @@ async def sync_fleet(request: Request):
     from agent_bom.discovery import discover_all
     from agent_bom.fleet.trust_scoring import compute_trust_score
 
-    discovered = discover_all()
     store = _get_fleet_store()
     tenant_id = getattr(request.state, "tenant_id", "default")
     now = datetime.now(timezone.utc).isoformat()
+    source_id = (body.source_id if body else "") or request.headers.get("X-Agent-Bom-Source-Id", "") or "server-discovery"
+    idem_key = (body.idempotency_key if body else "") or request.headers.get("Idempotency-Key", "")
+    if idem_key:
+        cached = _get_idempotency_store().get("/v1/fleet/sync", tenant_id, source_id, idem_key)
+        if cached is not None:
+            cached["idempotent_replay"] = True
+            return cached
     new_count = 0
     updated_count = 0
 
-    for agent in discovered:
-        existing = next((a for a in store.list_by_tenant(tenant_id) if a.name == agent.name), None)
-        server_count = len(agent.mcp_servers)
-        pkg_count = sum(len(s.packages) for s in agent.mcp_servers)
-        cred_count = sum(len(s.credential_names) for s in agent.mcp_servers)
-        vuln_count = sum(s.total_vulnerabilities for s in agent.mcp_servers)
+    if body and body.agents:
+        payload_agents = body.agents
+        for agent in payload_agents:
+            name = agent.get("name", "unknown-agent")
+            existing = next((a for a in store.list_by_tenant(tenant_id) if a.name == name), None)
+            server_count, pkg_count, cred_count, vuln_count = _payload_counts(agent)
+            score = float(agent.get("trust_score", 0.0) or 0.0)
+            factors = dict(agent.get("trust_factors", {}) or {})
+            if existing:
+                existing.server_count = server_count
+                existing.package_count = pkg_count
+                existing.credential_count = cred_count
+                existing.vuln_count = vuln_count
+                existing.trust_score = score
+                existing.trust_factors = factors
+                existing.last_discovery = now
+                existing.updated_at = now
+                existing.config_path = ""
+                existing.agent_type = str(agent.get("agent_type", existing.agent_type))
+                store.put(existing)
+                updated_count += 1
+            else:
+                fleet_agent = FleetAgent(
+                    agent_id=str(uuid.uuid4()),
+                    name=name,
+                    agent_type=str(agent.get("agent_type", "unknown")),
+                    config_path="",
+                    lifecycle_state=FleetLifecycleState.DISCOVERED,
+                    trust_score=score,
+                    trust_factors=factors,
+                    server_count=server_count,
+                    package_count=pkg_count,
+                    credential_count=cred_count,
+                    vuln_count=vuln_count,
+                    tenant_id=tenant_id,
+                    last_discovery=now,
+                    created_at=now,
+                    updated_at=now,
+                )
+                store.put(fleet_agent)
+                new_count += 1
+    else:
+        discovered = discover_all()
+        for agent in discovered:
+            existing = next((a for a in store.list_by_tenant(tenant_id) if a.name == agent.name), None)
+            server_count, pkg_count, cred_count, vuln_count = _server_counts(agent)
+            score, factors = compute_trust_score(agent)
 
-        score, factors = compute_trust_score(agent)
+            if existing:
+                existing.server_count = server_count
+                existing.package_count = pkg_count
+                existing.credential_count = cred_count
+                existing.vuln_count = vuln_count
+                existing.trust_score = score
+                existing.trust_factors = factors
+                existing.last_discovery = now
+                existing.updated_at = now
+                existing.config_path = agent.config_path or ""
+                store.put(existing)
+                updated_count += 1
+            else:
+                fleet_agent = FleetAgent(
+                    agent_id=str(uuid.uuid4()),
+                    name=agent.name,
+                    agent_type=agent.agent_type.value if hasattr(agent.agent_type, "value") else str(agent.agent_type),
+                    config_path=agent.config_path or "",
+                    lifecycle_state=FleetLifecycleState.DISCOVERED,
+                    trust_score=score,
+                    trust_factors=factors,
+                    server_count=server_count,
+                    package_count=pkg_count,
+                    credential_count=cred_count,
+                    vuln_count=vuln_count,
+                    tenant_id=tenant_id,
+                    last_discovery=now,
+                    created_at=now,
+                    updated_at=now,
+                )
+                store.put(fleet_agent)
+                new_count += 1
 
-        if existing:
-            existing.server_count = server_count
-            existing.package_count = pkg_count
-            existing.credential_count = cred_count
-            existing.vuln_count = vuln_count
-            existing.trust_score = score
-            existing.trust_factors = factors
-            existing.last_discovery = now
-            existing.updated_at = now
-            existing.config_path = agent.config_path or ""
-            store.put(existing)
-            updated_count += 1
-        else:
-            fleet_agent = FleetAgent(
-                agent_id=str(uuid.uuid4()),
-                name=agent.name,
-                agent_type=agent.agent_type.value if hasattr(agent.agent_type, "value") else str(agent.agent_type),
-                config_path=agent.config_path or "",
-                lifecycle_state=FleetLifecycleState.DISCOVERED,
-                trust_score=score,
-                trust_factors=factors,
-                server_count=server_count,
-                package_count=pkg_count,
-                credential_count=cred_count,
-                vuln_count=vuln_count,
-                tenant_id=tenant_id,
-                last_discovery=now,
-                created_at=now,
-                updated_at=now,
-            )
-            store.put(fleet_agent)
-            new_count += 1
-
-    return {
+    response = {
         "synced": new_count + updated_count,
         "new": new_count,
         "updated": updated_count,
+        "source_id": source_id,
     }
+    if idem_key:
+        _get_idempotency_store().put("/v1/fleet/sync", tenant_id, source_id, idem_key, response)
+    return response
 
 
 @router.put("/v1/fleet/{agent_id}/state", tags=["fleet"])

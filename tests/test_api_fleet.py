@@ -152,6 +152,65 @@ def test_sync_updates_existing(_mock):
     assert len(store.list_all()) == 1
 
 
+def test_sync_accepts_endpoint_push_payload():
+    client, store = _fresh_client()
+    resp = client.post(
+        "/v1/fleet/sync",
+        json={
+            "source_id": "laptop-a",
+            "agents": [
+                {
+                    "name": "cursor",
+                    "agent_type": "cursor",
+                    "trust_score": 82.5,
+                    "trust_factors": {"registry": 20},
+                    "mcp_servers": [
+                        {
+                            "name": "filesystem",
+                            "packages": [{"name": "express", "version": "4.18.2"}],
+                            "credential_names": ["OPENAI_API_KEY"],
+                            "total_vulnerabilities": 2,
+                        }
+                    ],
+                }
+            ],
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["source_id"] == "laptop-a"
+    assert data["new"] == 1
+    agents = store.list_all()
+    assert len(agents) == 1
+    assert agents[0].name == "cursor"
+    assert agents[0].server_count == 1
+    assert agents[0].package_count == 1
+    assert agents[0].credential_count == 1
+    assert agents[0].vuln_count == 2
+
+
+def test_sync_endpoint_push_is_idempotent():
+    client, store = _fresh_client()
+    payload = {
+        "source_id": "laptop-a",
+        "idempotency_key": "fleet-sync-1",
+        "agents": [
+            {
+                "name": "cursor",
+                "agent_type": "cursor",
+                "trust_score": 82.5,
+                "mcp_servers": [],
+            }
+        ],
+    }
+    first = client.post("/v1/fleet/sync", json=payload)
+    second = client.post("/v1/fleet/sync", json=payload)
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["idempotent_replay"] is True
+    assert len(store.list_all()) == 1
+
+
 # ── State update ──────────────────────────────────────────────────────────────
 
 

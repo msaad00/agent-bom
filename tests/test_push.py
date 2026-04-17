@@ -72,6 +72,12 @@ class TestSanitizeResults:
         assert "source_id" in sanitized
         assert len(sanitized["source_id"]) == 12
 
+    def test_adds_idempotency_key(self):
+        results = {"agents": []}
+        sanitized = sanitize_results(results)
+        assert "idempotency_key" in sanitized
+        assert len(sanitized["idempotency_key"]) >= 32
+
     def test_does_not_mutate_original(self):
         results = {"agents": [{"name": "a", "config_path": "/x"}]}
         sanitize_results(results)

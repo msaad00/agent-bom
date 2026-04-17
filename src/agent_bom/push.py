@@ -12,6 +12,7 @@ import copy
 import hashlib
 import logging
 import platform
+import uuid
 
 import httpx
 
@@ -44,6 +45,7 @@ def sanitize_results(results: dict) -> dict:
 
     # Add source identifier
     sanitized["source_id"] = generate_source_id()
+    sanitized["idempotency_key"] = str(uuid.uuid4())
 
     return sanitized
 

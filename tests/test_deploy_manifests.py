@@ -423,6 +423,12 @@ def test_production_values_enable_operator_defaults():
         {"secretRef": {"name": "agent-bom-control-plane-db"}},
         {"secretRef": {"name": "agent-bom-control-plane-auth"}},
     ]
+    env = {entry["name"]: entry["value"] for entry in production["controlPlane"]["api"]["env"]}
+    assert env["AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT"] == "1"
+    assert env["AGENT_BOM_POSTGRES_POOL_MIN_SIZE"] == "5"
+    assert env["AGENT_BOM_POSTGRES_POOL_MAX_SIZE"] == "20"
+    assert env["AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS"] == "5"
+    assert env["AGENT_BOM_POSTGRES_STATEMENT_TIMEOUT_MS"] == "15000"
     assert production["controlPlane"]["podAntiAffinity"]["enabled"] is True
     assert production["controlPlane"]["priorityClass"]["create"] is True
     assert production["topologySpread"]["enabled"] is True

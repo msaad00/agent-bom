@@ -170,6 +170,10 @@ You still own:
   while `AGENT_BOM_POSTGRES_URL` stays at `1h`
 - set `AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1` for multi-replica production
   control planes so the API refuses to start if the shared limiter backend is unavailable
+- tune Postgres-backed control planes explicitly with
+  `AGENT_BOM_POSTGRES_POOL_MIN_SIZE`, `AGENT_BOM_POSTGRES_POOL_MAX_SIZE`,
+  `AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS`, and
+  `AGENT_BOM_POSTGRES_STATEMENT_TIMEOUT_MS`
 - enable `controlPlane.observability.prometheusRule.enabled=true` when the cluster already runs Prometheus Operator
 - enable `controlPlane.observability.grafanaDashboard.enabled=true` when Grafana watches dashboard `ConfigMap`s
 - enable `controlPlane.backup.enabled=true` only after setting a real S3 bucket, prefix, and IRSA-backed upload permissions

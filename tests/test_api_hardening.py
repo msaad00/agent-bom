@@ -346,6 +346,35 @@ def test_rate_limit_middleware_scopes_by_auth_credential():
     assert client.get("/v1/test", headers={"X-API-Key": "beta"}).status_code == 200
 
 
+def test_rate_limit_middleware_scopes_api_keys_by_tenant():
+    """Different API keys for the same tenant should share one tenant-wide bucket."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    original_store = get_key_store()
+    store = KeyStore()
+    raw_alpha, alpha = create_api_key("alpha", Role.ADMIN, tenant_id="tenant-alpha")
+    raw_beta, beta = create_api_key("beta", Role.ANALYST, tenant_id="tenant-alpha")
+    store.add(alpha)
+    store.add(beta)
+    set_key_store(store)
+    try:
+        test_app = Starlette(routes=[Route("/v1/test", dummy)])
+        test_app.add_middleware(APIKeyMiddleware, api_key="unused-static-key")
+        test_app.add_middleware(RateLimitMiddleware, scan_rpm=3, read_rpm=2)
+
+        client = TestClient(test_app)
+        assert client.get("/v1/test", headers={"Authorization": f"Bearer {raw_alpha}"}).status_code == 200
+        assert client.get("/v1/test", headers={"Authorization": f"Bearer {raw_beta}"}).status_code == 200
+        assert client.get("/v1/test", headers={"Authorization": f"Bearer {raw_alpha}"}).status_code == 429
+    finally:
+        set_key_store(original_store)
+
+
 def test_in_memory_rate_limit_store_prunes_oldest_entries_instead_of_clearing_all():
     """Overflow should evict oldest buckets, not reset every limiter bucket at once."""
     store = InMemoryRateLimitStore(window_seconds=60)

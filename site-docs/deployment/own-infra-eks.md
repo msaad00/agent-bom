@@ -182,6 +182,11 @@ all sit under one operator-controlled plane.
 - split external secrets by cadence in production:
   - `AGENT_BOM_POSTGRES_URL` at `1h`
   - `AGENT_BOM_OIDC_*`, `AGENT_BOM_SAML_*`, and `AGENT_BOM_AUDIT_HMAC_KEY` at `5m`
+- size the Postgres-backed control plane explicitly:
+  - `AGENT_BOM_POSTGRES_POOL_MIN_SIZE`
+  - `AGENT_BOM_POSTGRES_POOL_MAX_SIZE`
+  - `AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS`
+  - `AGENT_BOM_POSTGRES_STATEMENT_TIMEOUT_MS`
 - enable the packaged PrometheusRule and Grafana dashboard when your cluster
   already runs Prometheus Operator and Grafana sidecar discovery
 - enable the packaged backup CronJob only after setting a real S3 destination

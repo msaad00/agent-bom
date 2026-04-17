@@ -15,6 +15,14 @@ controlPlane:
     env:
       - name: AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT
         value: "1"
+      - name: AGENT_BOM_POSTGRES_POOL_MIN_SIZE
+        value: "5"
+      - name: AGENT_BOM_POSTGRES_POOL_MAX_SIZE
+        value: "20"
+      - name: AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS
+        value: "5"
+      - name: AGENT_BOM_POSTGRES_STATEMENT_TIMEOUT_MS
+        value: "15000"
       - name: AGENT_BOM_API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT
         value: "25"
       - name: AGENT_BOM_API_MAX_RETAINED_JOBS_PER_TENANT

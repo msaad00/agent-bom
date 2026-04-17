@@ -32,6 +32,12 @@ from agent_bom.api.auth import ApiKey, Role, verify_api_key
 from agent_bom.api.exception_store import ExceptionStatus, VulnException
 from agent_bom.api.graph_store import _escape_like_query
 from agent_bom.baseline import TrendPoint
+from agent_bom.config import (
+    POSTGRES_CONNECT_TIMEOUT_SECONDS,
+    POSTGRES_POOL_MAX_SIZE,
+    POSTGRES_POOL_MIN_SIZE,
+    POSTGRES_STATEMENT_TIMEOUT_MS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +81,17 @@ def _get_pool():
         url = os.environ.get("AGENT_BOM_POSTGRES_URL", "")
         if not url:
             raise ValueError("AGENT_BOM_POSTGRES_URL env var is required for PostgreSQL storage.")
-        _pool = psycopg_pool.ConnectionPool(url, min_size=2, max_size=10)
+        min_size = max(1, POSTGRES_POOL_MIN_SIZE)
+        max_size = max(min_size, POSTGRES_POOL_MAX_SIZE)
+        kwargs: dict[str, object] = {}
+        if POSTGRES_CONNECT_TIMEOUT_SECONDS > 0:
+            kwargs["connect_timeout"] = POSTGRES_CONNECT_TIMEOUT_SECONDS
+        _pool = psycopg_pool.ConnectionPool(
+            url,
+            min_size=min_size,
+            max_size=max_size,
+            kwargs=kwargs,
+        )
     return _pool
 
 
@@ -89,6 +105,8 @@ def _apply_tenant_session(conn) -> None:
     """Attach tenant session settings used by Postgres RLS policies."""
     conn.execute("SELECT set_config('app.tenant_id', %s, true)", (_current_tenant.get(),))
     conn.execute("SELECT set_config('app.bypass_rls', %s, true)", ("1" if _bypass_tenant_rls.get() else "0",))
+    if POSTGRES_STATEMENT_TIMEOUT_MS > 0:
+        conn.execute("SELECT set_config('statement_timeout', %s, false)", (str(POSTGRES_STATEMENT_TIMEOUT_MS),))
 
 
 def _ensure_rls_helpers(conn) -> None:

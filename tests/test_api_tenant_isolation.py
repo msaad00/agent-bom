@@ -285,7 +285,7 @@ async def test_scan_routes_enforce_active_and_retained_job_quotas(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         await scan_routes.create_scan(req, ScanRequest())
     assert exc.value.status_code == 429
-    assert "active_scan_jobs" in exc.value.detail
+    assert "concurrent scan jobs" in exc.value.detail.lower()
 
     store = InMemoryJobStore()
     set_job_store(store)

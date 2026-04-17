@@ -110,6 +110,16 @@ def test_proxy_sidecar_pilot_uses_runtime_proxy_policy_fields():
     assert any(rule.get("rate_limit") == 60 for rule in rules)
 
 
+def test_proxy_sidecar_pilot_bootstraps_restricted_namespace():
+    """Pilot sidecar manifest should include the namespace with PSA restricted labels."""
+    docs = list(yaml.safe_load_all((K8S_DIR / "proxy-sidecar-pilot.yaml").read_text()))
+    namespace = next(doc for doc in docs if doc and doc["kind"] == "Namespace")
+    labels = namespace["metadata"]["labels"]
+    assert labels["pod-security.kubernetes.io/enforce"] == "restricted"
+    assert labels["pod-security.kubernetes.io/audit"] == "restricted"
+    assert labels["pod-security.kubernetes.io/warn"] == "restricted"
+
+
 def test_endpoint_fleet_templates_exist():
     """Endpoint fleet pilot templates should ship for macOS and Linux."""
     expected = {
@@ -127,6 +137,15 @@ def test_namespace_manifest():
     doc = yaml.safe_load((K8S_DIR / "namespace.yaml").read_text())
     assert doc["kind"] == "Namespace"
     assert doc["metadata"]["name"] == "agent-bom"
+
+
+def test_namespace_manifest_sets_psa_restricted():
+    """Namespace manifest should enforce restricted Pod Security Admission."""
+    doc = yaml.safe_load((K8S_DIR / "namespace.yaml").read_text())
+    labels = doc["metadata"]["labels"]
+    assert labels["pod-security.kubernetes.io/enforce"] == "restricted"
+    assert labels["pod-security.kubernetes.io/audit"] == "restricted"
+    assert labels["pod-security.kubernetes.io/warn"] == "restricted"
 
 
 # ─── Helm chart validation ──────────────────────────────────────────────────
@@ -238,3 +257,12 @@ def test_helm_monitor_ingress_defaults_are_defined():
     assert ingress["enabled"] is False
     assert ingress["hosts"][0]["paths"][0]["path"] == "/"
     assert ingress["hosts"][0]["paths"][0]["pathType"] == "Prefix"
+
+
+def test_pilot_values_restrict_ingress():
+    """Focused EKS pilot values should not leave ingress wide open."""
+    pilot = yaml.safe_load((HELM_DIR / "examples" / "eks-mcp-pilot-values.yaml").read_text())
+    policy = pilot["networkPolicy"]
+    assert policy["enabled"] is True
+    assert policy["restrictIngress"] is True
+    assert len(policy["ingress"]) >= 2

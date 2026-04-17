@@ -91,6 +91,7 @@ nav:
       - Policy Engine: features/policy.md
   - Deployment:
       - Overview: deployment/overview.md
+      - Enterprise MCP / Endpoint Pilot: deployment/enterprise-pilot.md
       - Endpoint Fleet: deployment/endpoint-fleet.md
       - Focused EKS MCP Pilot: deployment/eks-mcp-pilot.md
       - Your Own AWS / EKS: deployment/own-infra-eks.md

@@ -1,6 +1,8 @@
 -- agent-bom PostgreSQL initialization
 -- Runs once on first container start via docker-entrypoint-initdb.d
--- Also used as the Supabase project schema migration.
+-- Also used as the Supabase project schema bootstrap.
+-- Long-lived enterprise control planes should move forward with Alembic after
+-- this baseline is established.
 --
 -- Principle: POSTGRES_USER (admin) owns the schema and creates tables.
 -- A separate app user (agent_bom_app) gets DML-only access.

@@ -40,4 +40,13 @@ serviceAccount:
 
 networkPolicy:
   enabled: true
-  restrictIngress: false
+  restrictIngress: true
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agent-bom
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx

@@ -68,6 +68,15 @@ For the detailed backend matrix, see [Backend Parity Matrix](backend-parity.md).
 | Add analytics at scale | `ClickHouse` alongside the control plane |
 | Use warehouse-native governance data | `Snowflake` with explicit parity limits |
 
+## Canonical Pilot
+
+If you want the deployment shape we actively defend with enterprise pilot
+buyers, use the consolidated guide:
+
+- [Enterprise MCP / Endpoint Fleet Pilot](enterprise-pilot.md)
+- [Endpoint Fleet](endpoint-fleet.md)
+- [Focused EKS MCP Pilot](eks-mcp-pilot.md)
+
 ## Available on
 
 - [PyPI](https://pypi.org/project/agent-bom/)

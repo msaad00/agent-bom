@@ -50,6 +50,7 @@ That pilot profile gives you:
 
 - packaged API + UI control plane
 - same-origin ingress
+- ingress restricted to the pilot namespace and the ingress controller namespace
 - scanner CronJob running cluster-wide discovery
 - enterprise-oriented MCP scan args:
   - `--k8s-mcp`
@@ -69,6 +70,7 @@ Use:
 
 This manifest shows:
 
+- a namespace labeled for Pod Security Admission `restricted`
 - a starter proxy policy `ConfigMap`
 - a metrics `Service`
 - a sample MCP workload with `agent-bom-runtime` sidecar
@@ -100,6 +102,39 @@ That gives the team a clean story:
 3. review fleet and graph posture
 4. define gateway policies
 5. enforce selected runtime traffic through sidecars
+
+## Required platform hardening
+
+Before calling this pilot production-like, apply the namespace labels and run
+the control-plane migrations explicitly:
+
+```bash
+kubectl label namespace agent-bom \
+  pod-security.kubernetes.io/enforce=restricted \
+  pod-security.kubernetes.io/audit=restricted \
+  pod-security.kubernetes.io/warn=restricted \
+  --overwrite
+
+alembic -c deploy/supabase/postgres/alembic.ini upgrade head
+```
+
+If the database was already bootstrapped from
+[deploy/supabase/postgres/init.sql](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/supabase/postgres/init.sql),
+stamp the baseline once before future upgrades:
+
+```bash
+alembic -c deploy/supabase/postgres/alembic.ini stamp 20260416_01
+```
+
+The focused pilot values also set `networkPolicy.restrictIngress=true` and only
+allow ingress from:
+
+- the `agent-bom` namespace
+- the `ingress-nginx` namespace
+
+If your ingress controller runs elsewhere, change
+[deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml)
+before install.
 
 ## Recommended secrets and auth
 

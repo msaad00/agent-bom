@@ -4,3 +4,8 @@ Enterprise pilot notes:
 - Set `AGENT_BOM_REQUIRE_AUDIT_HMAC=1` to fail closed if the key is missing.
 - Use Postgres for the pilot control plane; SQLite is not the multi-replica path.
 - Prefer internal ingress / VPN-only exposure for the API and UI.
+- Run Alembic before first multi-replica rollout: `alembic -c deploy/supabase/postgres/alembic.ini upgrade head`.
+- For existing databases bootstrapped from `init.sql`, stamp the baseline first: `alembic -c deploy/supabase/postgres/alembic.ini stamp 20260416_01`.
+- Label the namespace with Pod Security Admission restricted mode before applying sidecars:
+  `kubectl label namespace {{ .Release.Namespace }} pod-security.kubernetes.io/enforce=restricted pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/warn=restricted --overwrite`
+- The focused EKS pilot values lock ingress down; adjust `networkPolicy.ingress` if your ingress controller does not run in `ingress-nginx`.

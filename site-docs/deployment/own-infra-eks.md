@@ -161,6 +161,7 @@ all sit under one operator-controlled plane.
 ## Recommended Production Defaults
 
 - use `Postgres`, not SQLite, for the control plane
+- use Alembic as the migration path for long-lived Postgres control planes
 - keep the proxy and API internal to your VPC unless exposure is intentional
 - use OIDC for user access, set `AGENT_BOM_OIDC_AUDIENCE` explicitly, and map roles explicitly
 - set a persistent audit HMAC key and require it

@@ -27,6 +27,7 @@ import pytest
 from agent_bom.api.oidc import (
     OIDCConfig,
     OIDCError,
+    claims_have_role_signal,
     claims_to_role,
     claims_to_tenant,
     record_oidc_decode_failure,
@@ -105,6 +106,18 @@ def test_oidc_config_require_tenant_claim_from_env():
         assert cfg.require_tenant_claim is True
 
 
+def test_oidc_config_require_role_claim_from_env():
+    with patch.dict(
+        os.environ,
+        {
+            "AGENT_BOM_OIDC_ISSUER": "https://test.okta.com",
+            "AGENT_BOM_OIDC_REQUIRE_ROLE_CLAIM": "true",
+        },
+    ):
+        cfg = OIDCConfig.from_env()
+        assert cfg.require_role_claim is True
+
+
 @pytest.fixture(autouse=True)
 def _reset_oidc_metrics():
     reset_oidc_decode_failures()
@@ -137,6 +150,14 @@ def test_claims_analyst_via_groups_array():
 
 def test_claims_viewer_via_unknown_role():
     assert claims_to_role({"agent_bom_role": "readonlyuser"}) == "viewer"
+
+
+def test_claims_have_role_signal_false_for_unknown_role():
+    assert claims_have_role_signal({"agent_bom_role": "readonlyuser"}) is False
+
+
+def test_claims_have_role_signal_true_for_roles_array():
+    assert claims_have_role_signal({"roles": ["admin"]}) is True
 
 
 def test_claims_admin_case_insensitive():
@@ -217,6 +238,18 @@ def test_oidc_config_verify_returns_claims_and_role():
 
     assert claims["email"] == "user@example.com"
     assert role == "analyst"
+
+
+def test_oidc_config_verify_requires_explicit_role_when_enabled():
+    cfg = OIDCConfig(
+        issuer="https://example.com",
+        audience="agent-bom",
+        require_role_claim=True,
+    )
+
+    with patch("agent_bom.api.oidc.verify_oidc_token", return_value={"sub": "user-1", "email": "user@example.com"}):
+        with pytest.raises(OIDCError, match="required role claim"):
+            cfg.verify("valid.jwt.token")
 
 
 def test_oidc_config_resolve_tenant_defaults_when_not_required():

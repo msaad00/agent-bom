@@ -259,6 +259,7 @@ controlPlane:
     destination:
       bucket: ""
       prefix: "agent-bom/postgres"
+      bucketRegion: ""
       region: us-east-1
       endpoint: ""
       encryption:

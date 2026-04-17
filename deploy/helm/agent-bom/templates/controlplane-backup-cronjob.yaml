@@ -69,7 +69,7 @@ spec:
                   dump_path="$(cat /backup/latest-path)"
                   test -f "$dump_path"
                   key="{{ trimSuffix "/" .Values.controlPlane.backup.destination.prefix }}/$(basename "$dump_path")"
-                  set -- s3 cp "$dump_path" "s3://{{ .Values.controlPlane.backup.destination.bucket }}/$key" --region "{{ .Values.controlPlane.backup.destination.region }}"
+                  set -- s3 cp "$dump_path" "s3://{{ .Values.controlPlane.backup.destination.bucket }}/$key" --region "{{ default .Values.controlPlane.backup.destination.region .Values.controlPlane.backup.destination.bucketRegion }}"
                   {{- if .Values.controlPlane.backup.destination.endpoint }}
                   set -- "$@" --endpoint-url "{{ .Values.controlPlane.backup.destination.endpoint }}"
                   {{- end }}

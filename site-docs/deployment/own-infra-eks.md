@@ -181,7 +181,8 @@ all sit under one operator-controlled plane.
 - enable the packaged PrometheusRule and Grafana dashboard when your cluster
   already runs Prometheus Operator and Grafana sidecar discovery
 - enable the packaged backup CronJob only after setting a real S3 destination
-- set `controlPlane.backup.destination.region` to your real bucket region; the production example intentionally leaves a `REPLACE_ME_BUCKET_REGION` placeholder
+- set `controlPlane.backup.destination.bucketRegion` to your real bucket region; the production example intentionally leaves a `REPLACE_ME_BUCKET_REGION` placeholder
+- `controlPlane.backup.destination.region` remains as a backward-compatible fallback for older values files
 - set `controlPlane.backup.destination.encryption.mode=aws:kms` and a real KMS key for production backups
 - run restore drills with [`deploy/ops/restore-postgres-backup.sh`](../../deploy/ops/restore-postgres-backup.sh) and document RTO/RPO around that exact command path
   and granting `s3:PutObject` via IRSA

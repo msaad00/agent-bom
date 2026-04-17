@@ -11,6 +11,7 @@ K8S_DIR = DEPLOY_DIR / "k8s"
 HELM_DIR = DEPLOY_DIR / "helm" / "agent-bom"
 ENDPOINTS_DIR = DEPLOY_DIR / "endpoints"
 LOADTEST_DIR = DEPLOY_DIR / "loadtest"
+OPS_DIR = DEPLOY_DIR / "ops"
 
 
 # ─── K8s manifest validation ────────────────────────────────────────────────
@@ -142,6 +143,15 @@ def test_loadtest_harness_assets_exist():
     }
     actual = {path.name for path in LOADTEST_DIR.iterdir() if path.is_file()}
     assert expected.issubset(actual)
+
+
+def test_restore_backup_script_exists():
+    """Operators should get a concrete restore path with the packaged backup job."""
+    script = OPS_DIR / "restore-postgres-backup.sh"
+    assert script.exists()
+    body = script.read_text()
+    assert "aws s3 cp" in body
+    assert "pg_restore" in body
 
 
 def test_loadtest_scripts_target_real_endpoints():
@@ -319,6 +329,9 @@ def test_helm_control_plane_backup_defaults():
     assert backup["enabled"] is False
     assert backup["schedule"] == "0 3 * * *"
     assert backup["destination"]["prefix"] == "agent-bom/postgres"
+    assert backup["destination"]["bucketRegion"] == ""
+    assert backup["destination"]["encryption"]["enabled"] is True
+    assert backup["destination"]["encryption"]["mode"] == "AES256"
     assert backup["image"]["dumpRepository"] == "postgres"
     assert backup["image"]["uploadRepository"] == "amazon/aws-cli"
 
@@ -394,6 +407,10 @@ def test_production_values_enable_operator_defaults():
     assert production["controlPlane"]["observability"]["prometheusRule"]["enabled"] is True
     assert production["controlPlane"]["backup"]["enabled"] is True
     assert production["controlPlane"]["backup"]["destination"]["bucket"] == "agent-bom-prod-backups"
+    assert production["controlPlane"]["backup"]["destination"]["bucketRegion"] == "REPLACE_ME_BUCKET_REGION"
+    assert production["controlPlane"]["backup"]["destination"]["encryption"]["enabled"] is True
+    assert production["controlPlane"]["backup"]["destination"]["encryption"]["mode"] == "aws:kms"
+    assert production["controlPlane"]["backup"]["destination"]["encryption"]["kmsKeyId"] == "alias/agent-bom-backups"
     secrets = production["controlPlane"]["externalSecrets"]["secrets"]
     assert {secret["target"]["name"] for secret in secrets} == {
         "agent-bom-control-plane-auth",

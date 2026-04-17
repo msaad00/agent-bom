@@ -6,6 +6,7 @@ Endpoints:
     DELETE /v1/auth/keys/{key_id}             revoke API key
     GET    /v1/audit                          audit log entries
     GET    /v1/audit/integrity                verify audit HMAC integrity
+    GET    /v1/audit/export                   export audit evidence packet
     POST   /v1/exceptions                     create vuln exception
     GET    /v1/exceptions                     list exceptions
     GET    /v1/exceptions/{exception_id}      get exception
@@ -24,10 +25,12 @@ Endpoints:
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from agent_bom.api.models import CreateKeyRequest, ExceptionRequest, FalsePositiveRequest, JiraTicketRequest
 from agent_bom.api.stores import _get_exception_store, _get_store, _get_trend_store
@@ -134,6 +137,79 @@ async def audit_integrity(limit: int = 1000) -> dict:
 
     verified, tampered = get_audit_log().verify_integrity(limit=limit)
     return {"verified": verified, "tampered": tampered, "checked": verified + tampered}
+
+
+@router.get("/v1/audit/export", tags=["enterprise"])
+async def export_audit_entries(
+    request: Request,
+    action: str | None = None,
+    resource: str | None = None,
+    since: str | None = None,
+    limit: int = 1000,
+    offset: int = 0,
+    format: str = "json",
+):
+    """Export audit entries as a signed evidence packet."""
+    from agent_bom.api.audit_log import get_audit_log, log_action, sign_export_payload
+
+    fmt = format.lower()
+    if fmt not in {"json", "jsonl"}:
+        raise HTTPException(status_code=400, detail="format must be one of: json, jsonl")
+
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = getattr(request.state, "api_key_name", "") or "system"
+    store = get_audit_log()
+    entries = store.list_entries(action=action, resource=resource, since=since, limit=limit, offset=offset)
+    verified, tampered = store.verify_integrity(limit=min(limit, 10_000))
+
+    log_action(
+        "audit.export",
+        actor=actor,
+        resource="audit/export",
+        tenant_id=tenant_id,
+        format=fmt,
+        exported=len(entries),
+        action_filter=action,
+        resource_filter=resource,
+    )
+
+    if fmt == "jsonl":
+        lines = [json.dumps(entry.to_dict(), sort_keys=True) for entry in entries]
+        payload = ("\n".join(lines) + ("\n" if lines else "")).encode()
+        return PlainTextResponse(
+            content=payload.decode(),
+            media_type="application/x-ndjson",
+            headers={
+                "Content-Disposition": 'attachment; filename="agent-bom-audit-export.jsonl"',
+                "X-Agent-Bom-Audit-Export-Signature": sign_export_payload(payload),
+            },
+        )
+
+    body = {
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "tenant_id": tenant_id,
+        "filters": {
+            "action": action,
+            "resource": resource,
+            "since": since,
+            "limit": limit,
+            "offset": offset,
+        },
+        "integrity": {
+            "verified": verified,
+            "tampered": tampered,
+            "checked": verified + tampered,
+        },
+        "entries": [entry.to_dict() for entry in entries],
+    }
+    payload = json.dumps(body, sort_keys=True).encode()
+    return JSONResponse(
+        content=body,
+        headers={
+            "Content-Disposition": 'attachment; filename="agent-bom-audit-export.json"',
+            "X-Agent-Bom-Audit-Export-Signature": sign_export_payload(payload),
+        },
+    )
 
 
 # ── Exception / Waiver Management ────────────────────────────────────────────

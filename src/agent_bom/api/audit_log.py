@@ -97,6 +97,11 @@ class AuditEntry:
         }
 
 
+def sign_export_payload(payload: bytes) -> str:
+    """Sign an exported audit payload so downstream consumers can verify it."""
+    return hmac.new(_HMAC_KEY, payload, hashlib.sha256).hexdigest()
+
+
 class AuditLogStore(Protocol):
     """Protocol for audit log persistence."""
 

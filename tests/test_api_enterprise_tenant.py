@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
 
+from agent_bom.api.audit_log import AuditEntry, InMemoryAuditLog
 from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
 from agent_bom.api.exception_store import InMemoryExceptionStore, VulnException
 from agent_bom.api.models import CreateKeyRequest
@@ -180,3 +182,40 @@ async def test_remove_false_positive_returns_404_for_wrong_tenant(isolated_excep
 
     assert error.value.status_code == 404
     assert isolated_exception_store.get(exc.exception_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_export_audit_entries_returns_signed_json(monkeypatch):
+    store = InMemoryAuditLog()
+    store.append(AuditEntry(action="scan", actor="alice", resource="job/1", details={"packages": 5}))
+    monkeypatch.setattr("agent_bom.api.audit_log.get_audit_log", lambda: store)
+
+    response = await enterprise.export_audit_entries(_request("tenant-alpha", "alice-admin"))
+
+    payload = json.loads(response.body.decode())
+    assert payload["tenant_id"] == "tenant-alpha"
+    assert payload["entries"][0]["action"] == "scan"
+    assert response.headers["x-agent-bom-audit-export-signature"]
+    assert response.headers["content-disposition"].endswith('agent-bom-audit-export.json"')
+
+
+@pytest.mark.asyncio
+async def test_export_audit_entries_supports_jsonl(monkeypatch):
+    store = InMemoryAuditLog()
+    store.append(AuditEntry(action="scan", actor="alice", resource="job/1"))
+    monkeypatch.setattr("agent_bom.api.audit_log.get_audit_log", lambda: store)
+
+    response = await enterprise.export_audit_entries(_request("tenant-alpha", "alice-admin"), format="jsonl")
+
+    lines = [line for line in response.body.decode().splitlines() if line]
+    assert len(lines) == 1
+    assert json.loads(lines[0])["resource"] == "job/1"
+    assert response.media_type == "application/x-ndjson"
+
+
+@pytest.mark.asyncio
+async def test_export_audit_entries_rejects_unknown_format():
+    with pytest.raises(HTTPException) as error:
+        await enterprise.export_audit_entries(_request("tenant-alpha"), format="csv")
+
+    assert error.value.status_code == 400

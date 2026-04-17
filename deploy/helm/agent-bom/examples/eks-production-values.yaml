@@ -1,0 +1,96 @@
+controlPlane:
+  enabled: true
+  api:
+    replicas: 2
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      targetCPUUtilizationPercentage: 70
+    envFrom:
+      - secretRef:
+          name: agent-bom-control-plane
+  ui:
+    replicas: 2
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 70
+    env:
+      - name: NEXT_PUBLIC_API_URL
+        value: ""
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-internal
+    hosts:
+      - host: agent-bom.internal.example.com
+    tls:
+      - hosts:
+          - agent-bom.internal.example.com
+        secretName: agent-bom-control-plane-tls
+  externalSecrets:
+    enabled: true
+    secretStoreRef:
+      kind: ClusterSecretStore
+      name: aws-secrets-manager
+    target:
+      name: agent-bom-control-plane
+    data:
+      - secretKey: AGENT_BOM_POSTGRES_URL
+        remoteRef:
+          key: /agent-bom/prod/control-plane
+          property: AGENT_BOM_POSTGRES_URL
+      - secretKey: AGENT_BOM_OIDC_ISSUER
+        remoteRef:
+          key: /agent-bom/prod/control-plane
+          property: AGENT_BOM_OIDC_ISSUER
+      - secretKey: AGENT_BOM_OIDC_AUDIENCE
+        remoteRef:
+          key: /agent-bom/prod/control-plane
+          property: AGENT_BOM_OIDC_AUDIENCE
+      - secretKey: AGENT_BOM_AUDIT_HMAC_KEY
+        remoteRef:
+          key: /agent-bom/prod/control-plane
+          property: AGENT_BOM_AUDIT_HMAC_KEY
+      - secretKey: AGENT_BOM_REQUIRE_AUDIT_HMAC
+        remoteRef:
+          key: /agent-bom/prod/control-plane
+          property: AGENT_BOM_REQUIRE_AUDIT_HMAC
+
+scanner:
+  enabled: true
+  allNamespaces: true
+  extraArgs:
+    - --k8s-mcp
+    - --k8s-all-namespaces
+    - --introspect
+    - --enforce
+    - --preset
+    - enterprise
+
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/agent-bom-discovery
+
+topologySpread:
+  enabled: true
+
+networkPolicy:
+  enabled: true
+  restrictIngress: true
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agent-bom
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+
+pdb:
+  enabled: true
+  minAvailable: 1

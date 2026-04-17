@@ -62,6 +62,7 @@ For the detailed backend matrix, see [Backend Parity Matrix](backend-parity.md).
 | Keep the runtime isolated | Docker |
 | Self-host UI + API for a team | `agent-bom serve` + `Postgres` / `Supabase` |
 | Run a focused MCP / agents / fleet pilot on EKS | Helm control plane + scanner CronJob + selected proxy sidecars |
+| Run a production-shaped self-hosted control plane on EKS | Helm control plane + production values example + Postgres + external-secrets |
 | Integrate with internal platforms | `agent-bom api` |
 | Expose agent-bom as a tool server | `agent-bom mcp server` |
 | Add runtime enforcement | `agent-bom proxy` |
@@ -76,6 +77,7 @@ buyers, use the consolidated guide:
 - [Enterprise MCP / Endpoint Fleet Pilot](enterprise-pilot.md)
 - [Endpoint Fleet](endpoint-fleet.md)
 - [Focused EKS MCP Pilot](eks-mcp-pilot.md)
+- [Packaged API + UI Control Plane](control-plane-helm.md)
 
 ## Available on
 

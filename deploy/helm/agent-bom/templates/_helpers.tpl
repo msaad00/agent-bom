@@ -25,3 +25,30 @@ Service account name.
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Control-plane topology spread constraints.
+*/}}
+{{- define "agent-bom.controlPlaneTopologySpreadConstraints" -}}
+{{- if .Values.topologySpread.enabled }}
+topologySpreadConstraints:
+  {{- if .Values.topologySpread.zone.enabled }}
+  - maxSkew: 1
+    topologyKey: {{ .Values.topologySpread.zone.topologyKey }}
+    whenUnsatisfiable: {{ .Values.topologySpread.whenUnsatisfiable }}
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+        app.kubernetes.io/component: {{ .component }}
+  {{- end }}
+  {{- if .Values.topologySpread.node.enabled }}
+  - maxSkew: 1
+    topologyKey: {{ .Values.topologySpread.node.topologyKey }}
+    whenUnsatisfiable: {{ .Values.topologySpread.whenUnsatisfiable }}
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+        app.kubernetes.io/component: {{ .component }}
+  {{- end }}
+{{- end }}
+{{- end }}

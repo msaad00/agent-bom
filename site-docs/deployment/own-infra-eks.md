@@ -95,6 +95,10 @@ The chart now supports the EKS wiring you actually need:
 | `controlPlane.api.envFrom` | load Postgres URL, API key, OIDC issuer/audience, optional required nonce, and audit settings from Secrets |
 | `controlPlane.ui.env` | keep `NEXT_PUBLIC_API_URL=\"\"` for same-origin or set a full API URL for cross-origin |
 | `serviceAccount.annotations` | attach an IRSA role to the scanner service account |
+| `controlPlane.api.autoscaling.*` | autoscale the API deployment with HPA |
+| `controlPlane.ui.autoscaling.*` | autoscale the UI deployment with HPA |
+| `topologySpread.*` | spread API and UI replicas across zones and nodes |
+| `controlPlane.externalSecrets.*` | map control-plane env vars from external-secrets |
 | `scanner.extraArgs` | add `--k8s-mcp`, `--enforce`, `--introspect`, or stricter presets |
 | `scanner.env` | inject operator-owned environment like API endpoints or auth context |
 | `scanner.allNamespaces` | scan cluster-wide instead of one namespace |
@@ -162,6 +166,9 @@ all sit under one operator-controlled plane.
 
 - use `Postgres`, not SQLite, for the control plane
 - use Alembic as the migration path for long-lived Postgres control planes
+- start from the production values example when you want HPA, cert-manager,
+  topology spread, and external-secrets wiring:
+  - [deploy/helm/agent-bom/examples/eks-production-values.yaml](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/helm/agent-bom/examples/eks-production-values.yaml)
 - keep the proxy and API internal to your VPC unless exposure is intentional
 - use OIDC for user access, set `AGENT_BOM_OIDC_AUDIENCE` explicitly, and map roles explicitly
 - set a persistent audit HMAC key and require it

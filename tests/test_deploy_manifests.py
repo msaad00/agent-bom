@@ -165,9 +165,11 @@ def test_helm_values_yaml_keys():
     doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
     expected_keys = {
         "image",
+        "uiImage",
         "runtimeImage",
         "scanner",
         "monitor",
+        "controlPlane",
         "rbac",
         "serviceAccount",
         "resources",
@@ -178,6 +180,7 @@ def test_helm_values_yaml_keys():
         "startupProbe",
         "networkPolicy",
         "pdb",
+        "topologySpread",
     }
     assert expected_keys.issubset(set(doc.keys()))
 
@@ -187,6 +190,15 @@ def test_helm_templates_exist():
     templates_dir = HELM_DIR / "templates"
     expected = {
         "_helpers.tpl",
+        "controlplane-api-deployment.yaml",
+        "controlplane-api-hpa.yaml",
+        "controlplane-api-service.yaml",
+        "controlplane-externalsecret.yaml",
+        "controlplane-ingress.yaml",
+        "controlplane-pdb.yaml",
+        "controlplane-ui-deployment.yaml",
+        "controlplane-ui-hpa.yaml",
+        "controlplane-ui-service.yaml",
         "serviceaccount.yaml",
         "rbac.yaml",
         "cronjob.yaml",
@@ -207,6 +219,38 @@ def test_helm_scanner_defaults():
     assert scanner["enabled"] is True
     assert scanner["allNamespaces"] is True
     assert "schedule" in scanner
+
+
+def test_helm_control_plane_autoscaling_defaults():
+    """Control plane ships explicit HPA defaults without enabling autoscaling by default."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    api = doc["controlPlane"]["api"]["autoscaling"]
+    ui = doc["controlPlane"]["ui"]["autoscaling"]
+    assert api["enabled"] is False
+    assert api["minReplicas"] == 2
+    assert api["maxReplicas"] == 6
+    assert api["targetCPUUtilizationPercentage"] == 70
+    assert ui["enabled"] is False
+    assert ui["minReplicas"] == 2
+    assert ui["maxReplicas"] == 4
+
+
+def test_helm_topology_spread_defaults():
+    """Topology spread knobs are explicit for production operators."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    spread = doc["topologySpread"]
+    assert spread["enabled"] is False
+    assert spread["zone"]["enabled"] is True
+    assert spread["node"]["enabled"] is True
+
+
+def test_helm_external_secrets_defaults():
+    """External secrets support is packaged but disabled by default."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    ext = doc["controlPlane"]["externalSecrets"]
+    assert ext["enabled"] is False
+    assert ext["secretStoreRef"]["kind"] == "ClusterSecretStore"
+    assert ext["target"]["name"] == "agent-bom-control-plane"
 
 
 def test_helm_monitor_disabled_by_default():
@@ -266,3 +310,14 @@ def test_pilot_values_restrict_ingress():
     assert policy["enabled"] is True
     assert policy["restrictIngress"] is True
     assert len(policy["ingress"]) >= 2
+
+
+def test_production_values_enable_operator_defaults():
+    """Production example should turn on the packaged operator defaults."""
+    production = yaml.safe_load((HELM_DIR / "examples" / "eks-production-values.yaml").read_text())
+    assert production["controlPlane"]["api"]["autoscaling"]["enabled"] is True
+    assert production["controlPlane"]["ui"]["autoscaling"]["enabled"] is True
+    assert production["controlPlane"]["externalSecrets"]["enabled"] is True
+    assert production["topologySpread"]["enabled"] is True
+    assert production["networkPolicy"]["restrictIngress"] is True
+    assert "cert-manager.io/cluster-issuer" in production["controlPlane"]["ingress"]["annotations"]

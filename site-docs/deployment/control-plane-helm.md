@@ -11,6 +11,7 @@ This is the right path when you want:
 - Postgres, ClickHouse, OIDC, and secrets kept in your own environment
 - the scanner CronJob and optional runtime monitor packaged alongside the
   control plane
+- production operator defaults without pretending there is a managed vendor plane
 
 ## What the chart deploys
 
@@ -112,6 +113,20 @@ helm install agent-bom deploy/helm/agent-bom \
   -f values.agent-bom.yaml
 ```
 
+## Production defaults example
+
+For the stronger self-hosted operator path, start from:
+
+- [deploy/helm/agent-bom/examples/eks-production-values.yaml](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/helm/agent-bom/examples/eks-production-values.yaml)
+
+That example adds:
+
+- `HPA` for API and UI
+- topology spread across zones and nodes
+- `cert-manager` ingress annotations and TLS wiring
+- `external-secrets` integration for the control-plane secret
+- restricted ingress defaults for the chart network policy
+
 ## What you still own
 
 This is a real packaged control plane, but not a magic managed service.
@@ -121,7 +136,7 @@ You still own:
 - Postgres and optional ClickHouse
 - ingress controller and TLS
 - OIDC provider configuration or API key secret management
-- HPA, topology spread, and cluster-specific scaling policy
+- cluster-specific autoscaling thresholds and failure-domain policy
 - operator runbooks and load testing
 
 ## Production guidance
@@ -131,6 +146,8 @@ You still own:
 - run Alembic for long-lived Postgres control planes:
   - `alembic -c deploy/supabase/postgres/alembic.ini upgrade head`
   - existing `init.sql` databases should be stamped once with `20260416_01`
+- enable the control-plane HPAs before higher-volume rollout
+- enable topology spread when you run multi-AZ EKS
 - keep same-origin ingress unless you have a strong reason not to
 - use `envFrom` / Secrets for `AGENT_BOM_POSTGRES_URL`, API keys, OIDC issuer,
   audience, optional required nonce, and audit HMAC settings
@@ -141,7 +158,7 @@ You still own:
 The chart now packages the control plane honestly, but it still does not claim:
 
 - a bundled Postgres subchart
-- built-in autoscaling or benchmarked throughput guarantees
+- benchmarked throughput guarantees
 - completed auth hardening beyond the currently shipped server contract
 
 Those are the next operator-hardening layers, not hidden assumptions.

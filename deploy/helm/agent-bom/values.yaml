@@ -18,6 +18,15 @@ podAnnotations: {}
 nodeSelector: {}
 tolerations: []
 affinity: {}
+topologySpread:
+  enabled: false
+  whenUnsatisfiable: ScheduleAnyway
+  zone:
+    enabled: true
+    topologyKey: topology.kubernetes.io/zone
+  node:
+    enabled: true
+    topologyKey: kubernetes.io/hostname
 
 scanner:
   enabled: true
@@ -59,6 +68,12 @@ controlPlane:
   api:
     enabled: true
     replicas: 2
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 6
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: null
     port: 8422
     args:
       - api
@@ -100,6 +115,12 @@ controlPlane:
   ui:
     enabled: true
     replicas: 2
+    autoscaling:
+      enabled: false
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 70
+      targetMemoryUtilizationPercentage: null
     port: 3000
     env:
       - name: NEXT_PUBLIC_API_URL
@@ -157,6 +178,16 @@ controlPlane:
           - path: /
             pathType: Prefix
     tls: []
+  externalSecrets:
+    enabled: false
+    refreshInterval: 1h
+    secretStoreRef:
+      kind: ClusterSecretStore
+      name: ""
+    target:
+      name: agent-bom-control-plane
+      creationPolicy: Owner
+    data: []
 
 rbac:
   create: true

@@ -223,6 +223,7 @@ operator guide:
 - [Deploy In Your Own AWS / EKS Infrastructure](site-docs/deployment/own-infra-eks.md)
 - [Endpoint Fleet](site-docs/deployment/endpoint-fleet.md)
 - [Focused EKS MCP Pilot](site-docs/deployment/eks-mcp-pilot.md)
+- [Packaged API + UI Control Plane](site-docs/deployment/control-plane-helm.md)
 
 That means enterprises can run `agent-bom`:
 

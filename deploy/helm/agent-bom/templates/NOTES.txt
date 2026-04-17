@@ -9,3 +9,4 @@ Enterprise pilot notes:
 - Label the namespace with Pod Security Admission restricted mode before applying sidecars:
   `kubectl label namespace {{ .Release.Namespace }} pod-security.kubernetes.io/enforce=restricted pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/warn=restricted --overwrite`
 - The focused EKS pilot values lock ingress down; adjust `networkPolicy.ingress` if your ingress controller does not run in `ingress-nginx`.
+- For production operator defaults, start from `deploy/helm/agent-bom/examples/eks-production-values.yaml`.

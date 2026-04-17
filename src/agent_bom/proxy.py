@@ -15,8 +15,10 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import platform
 import sys
+import tempfile
 import time
 import uuid
 from datetime import datetime, timezone
@@ -609,7 +611,71 @@ async def run_proxy(
     control_plane_policies: list["GatewayPolicy"] = []
     control_plane_etag: str | None = None
     audit_buffer: list[dict] = []
+    audit_buffer_bytes = 0
     audit_lock = asyncio.Lock()
+    max_audit_buffer_bytes = max(64 * 1024, int(os.environ.get("AGENT_BOM_PROXY_AUDIT_BUFFER_MAX_BYTES", "1048576")))
+    audit_spill_path = Path(
+        os.environ.get(
+            "AGENT_BOM_PROXY_AUDIT_SPILLOVER_PATH",
+            str(Path(tempfile.gettempdir()) / f"agent-bom-proxy-audit-{control_plane_session_id}.jsonl"),
+        )
+    )
+
+    def _event_size_bytes(payload: dict) -> int:
+        return len(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+
+    def _spillover_size_bytes() -> int:
+        try:
+            return audit_spill_path.stat().st_size
+        except FileNotFoundError:
+            return 0
+
+    def _sync_audit_metrics() -> None:
+        metrics.set_audit_buffer_bytes(audit_buffer_bytes)
+        metrics.set_audit_spillover_bytes(_spillover_size_bytes())
+
+    def _append_spillover_locked(events: list[dict]) -> None:
+        if not events:
+            return
+        audit_spill_path.parent.mkdir(parents=True, exist_ok=True)
+        with audit_spill_path.open("a", encoding="utf-8") as handle:
+            for event in events:
+                handle.write(json.dumps(event) + "\n")
+        _sync_audit_metrics()
+
+    def _read_spillover_locked() -> list[dict]:
+        if not audit_spill_path.exists():
+            return []
+        events: list[dict] = []
+        with audit_spill_path.open("r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    payload = json.loads(line)
+                except json.JSONDecodeError:
+                    logger.warning("Skipping malformed proxy audit spillover line from %s", audit_spill_path)
+                    continue
+                if isinstance(payload, dict):
+                    events.append(payload)
+        return events
+
+    async def _queue_control_plane_alert(alert_payload: dict) -> None:
+        nonlocal audit_buffer_bytes
+        event_size = _event_size_bytes(alert_payload)
+        async with audit_lock:
+            if audit_buffer_bytes + event_size <= max_audit_buffer_bytes:
+                audit_buffer.append(alert_payload)
+                audit_buffer_bytes += event_size
+            else:
+                logger.warning(
+                    "Proxy audit buffer exceeded %s bytes; spilling alert backlog to %s",
+                    max_audit_buffer_bytes,
+                    audit_spill_path,
+                )
+                _append_spillover_locked([alert_payload])
+            _sync_audit_metrics()
 
     async def _refresh_control_plane_policies(initial: bool = False) -> None:
         nonlocal control_plane_policies, control_plane_etag
@@ -622,6 +688,7 @@ async def run_proxy(
                 control_plane_etag,
             )
         except Exception as exc:  # noqa: BLE001
+            metrics.record_policy_fetch_failure()
             if initial:
                 logger.error("Failed to load enabled gateway policies from %s: %s", control_plane_url, exc)
                 raise SystemExit(1) from exc
@@ -639,24 +706,40 @@ async def run_proxy(
                 rate_tracker._threshold = local_policy_rate_limit or 0
 
     async def _flush_audit_buffer(summary: dict | None = None) -> None:
+        nonlocal audit_buffer_bytes
         if not control_plane_url:
             return
         async with audit_lock:
             alerts = list(audit_buffer)
+            in_memory_bytes = audit_buffer_bytes
+            spillover_alerts = _read_spillover_locked()
             audit_buffer.clear()
+            audit_buffer_bytes = 0
+            _sync_audit_metrics()
+        combined_alerts = spillover_alerts + alerts
+        if not combined_alerts and summary is None:
+            return
+        spillover_had_data = bool(spillover_alerts)
         try:
             await _push_proxy_audit_batch(
                 control_plane_url,
                 control_plane_token,
                 control_plane_source_id,
                 control_plane_session_id,
-                alerts,
+                combined_alerts,
                 summary,
             )
         except Exception as exc:  # noqa: BLE001
+            metrics.record_audit_push_failure()
             logger.warning("Proxy audit push failed: %s", exc)
             async with audit_lock:
                 audit_buffer[:0] = alerts
+                audit_buffer_bytes += in_memory_bytes
+                _sync_audit_metrics()
+        else:
+            if spillover_had_data and audit_spill_path.exists():
+                audit_spill_path.unlink()
+            _sync_audit_metrics()
 
     if control_plane_url:
         await _refresh_control_plane_policies(initial=True)
@@ -680,7 +763,7 @@ async def run_proxy(
             await asyncio.sleep(max(audit_push_interval, 5))
             await _flush_audit_buffer()
 
-    def _handle_alerts(alerts, log_f=None):
+    async def _handle_alerts(alerts, log_f=None):
         """Log alerts and optionally record them + dispatch webhook."""
         for alert in alerts:
             alert_dict = alert.to_dict()
@@ -695,7 +778,7 @@ async def run_proxy(
                 enriched = dict(alert_dict)
                 enriched.setdefault("source_id", control_plane_source_id)
                 enriched.setdefault("session_id", control_plane_session_id)
-                audit_buffer.append(enriched)
+                await _queue_control_plane_alert(enriched)
 
     # Track declared tools from tools/list responses
     declared_tools: set[str] = set()
@@ -861,7 +944,7 @@ async def run_proxy(
 
                     # Runtime detectors: argument analysis
                     arg_alerts = arg_analyzer.check(tool_name, arguments)
-                    _handle_alerts(arg_alerts, log_file)
+                    await _handle_alerts(arg_alerts, log_file)
 
                     # Runtime detectors: rate limiting
                     effective_rule_rate_limit = 0
@@ -873,7 +956,7 @@ async def run_proxy(
                         effective_rule_rate_limit = rate_limit_threshold
                     if rate_tracker and effective_rule_rate_limit > 0:
                         rate_alerts = rate_tracker.record(tool_name, threshold=effective_rule_rate_limit)
-                        _handle_alerts(rate_alerts, log_file)
+                        await _handle_alerts(rate_alerts, log_file)
                         if rate_alerts and not log_only:
                             rl_reason = rate_alerts[0].message
                             metrics.record_blocked("rate_limit")
@@ -895,7 +978,7 @@ async def run_proxy(
 
                     # Runtime detectors: sequence analysis
                     seq_alerts = seq_analyzer.record(tool_name)
-                    _handle_alerts(seq_alerts, log_file)
+                    await _handle_alerts(seq_alerts, log_file)
 
                     # Inline content scanning (prompt injection, PII, secrets, payload vuln)
                     if scan_config.enabled:
@@ -911,7 +994,7 @@ async def run_proxy(
                                 message=f"Inline scan: {sr.scanner}/{sr.rule_id} in tool '{tool_name}'",
                                 details={"rule_id": sr.rule_id, "excerpt": sr.excerpt, "confidence": sr.confidence},
                             )
-                            _handle_alerts([alert], log_file)
+                            await _handle_alerts([alert], log_file)
                         if scan_config.mode == "enforce" and any(sr.blocked for sr in s_results):
                             first = next(sr for sr in s_results if sr.blocked)
                             reason = f"Blocked by inline scanner: {first.scanner}/{first.rule_id}"
@@ -981,7 +1064,7 @@ async def run_proxy(
 
                     # Runtime detector: tool drift
                     drift_alerts = drift_detector.check(new_tools)
-                    _handle_alerts(drift_alerts, log_file)
+                    await _handle_alerts(drift_alerts, log_file)
 
                 # Runtime detector: credential leak in responses AND errors
                 # Error fields can contain exception messages that include secrets.
@@ -993,7 +1076,7 @@ async def run_proxy(
                     if resp_id is not None and resp_id in pending_calls:
                         tool_for_resp = pending_calls[resp_id][0]
                     cred_alerts = cred_detector.check(tool_for_resp or "unknown", result_text)
-                    _handle_alerts(cred_alerts, log_file)
+                    await _handle_alerts(cred_alerts, log_file)
 
                 # Runtime detector: response content inspection (cloaking, SVG, invisible chars,
                 # prompt injection). For confirmed vector DB / RAG retrieval tools, also run
@@ -1007,11 +1090,11 @@ async def run_proxy(
                     if ri_id is not None and ri_id in pending_calls:
                         ri_tool = pending_calls[ri_id][0]
                     ri_alerts = response_inspector.check(ri_tool or "unknown", ri_text)
-                    _handle_alerts(ri_alerts, log_file)
+                    await _handle_alerts(ri_alerts, log_file)
                     # Vector DB / RAG tools get specialized cache-poison detection on top
                     if vector_detector.is_vector_tool(ri_tool or ""):
                         vec_alerts = vector_detector.check(ri_tool or "unknown", ri_text)
-                        _handle_alerts(vec_alerts, log_file)
+                        await _handle_alerts(vec_alerts, log_file)
 
                 # Response signing — compute HMAC on ORIGINAL response before
                 # inline scanning may modify msg (tamper detection must sign
@@ -1051,7 +1134,7 @@ async def run_proxy(
                             message=f"Inline scan (response): {sr.scanner}/{sr.rule_id} from '{tool_for_scan or 'unknown'}'",
                             details={"rule_id": sr.rule_id, "excerpt": sr.excerpt, "confidence": sr.confidence},
                         )
-                        _handle_alerts([alert], log_file)
+                        await _handle_alerts([alert], log_file)
                     if scan_config.mode == "enforce" and any(sr.blocked for sr in resp_results):
                         # Return a JSON-RPC error instead of modifying the result structure,
                         # which preserves protocol compatibility with all MCP clients.

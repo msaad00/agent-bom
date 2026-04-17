@@ -71,10 +71,11 @@ async def fleet_stats(request: Request):
     by_env: dict[str, int] = {}
     trust_scores: list[float] = []
     for a in agents:
-        by_state[a.lifecycle_state.value] = by_state.get(a.lifecycle_state.value, 0) + 1
+        state_value = getattr(a.lifecycle_state, "value", str(a.lifecycle_state))
+        by_state[state_value] = by_state.get(state_value, 0) + 1
         env = a.environment or "unset"
         by_env[env] = by_env.get(env, 0) + 1
-        trust_scores.append(a.trust_score)
+        trust_scores.append(float(getattr(a, "trust_score", 0.0) or 0.0))
     return {
         "total": len(agents),
         "by_state": by_state,

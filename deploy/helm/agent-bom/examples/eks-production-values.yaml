@@ -20,7 +20,9 @@ controlPlane:
           stabilizationWindowSeconds: 300
     envFrom:
       - secretRef:
-          name: agent-bom-control-plane
+          name: agent-bom-control-plane-db
+      - secretRef:
+          name: agent-bom-control-plane-auth
   ui:
     replicas: 2
     autoscaling:
@@ -47,33 +49,40 @@ controlPlane:
         secretName: agent-bom-control-plane-tls
   externalSecrets:
     enabled: true
-    refreshInterval: 5m
     secretStoreRef:
       kind: ClusterSecretStore
       name: aws-secrets-manager
-    target:
-      name: agent-bom-control-plane
-    data:
-      - secretKey: AGENT_BOM_POSTGRES_URL
-        remoteRef:
-          key: /agent-bom/prod/control-plane
-          property: AGENT_BOM_POSTGRES_URL
-      - secretKey: AGENT_BOM_OIDC_ISSUER
-        remoteRef:
-          key: /agent-bom/prod/control-plane
-          property: AGENT_BOM_OIDC_ISSUER
-      - secretKey: AGENT_BOM_OIDC_AUDIENCE
-        remoteRef:
-          key: /agent-bom/prod/control-plane
-          property: AGENT_BOM_OIDC_AUDIENCE
-      - secretKey: AGENT_BOM_AUDIT_HMAC_KEY
-        remoteRef:
-          key: /agent-bom/prod/control-plane
-          property: AGENT_BOM_AUDIT_HMAC_KEY
-      - secretKey: AGENT_BOM_REQUIRE_AUDIT_HMAC
-        remoteRef:
-          key: /agent-bom/prod/control-plane
-          property: AGENT_BOM_REQUIRE_AUDIT_HMAC
+    secrets:
+      - nameSuffix: control-plane-db
+        refreshInterval: 1h
+        target:
+          name: agent-bom-control-plane-db
+        data:
+          - secretKey: AGENT_BOM_POSTGRES_URL
+            remoteRef:
+              key: /agent-bom/prod/control-plane
+              property: AGENT_BOM_POSTGRES_URL
+      - nameSuffix: control-plane-auth
+        refreshInterval: 5m
+        target:
+          name: agent-bom-control-plane-auth
+        data:
+          - secretKey: AGENT_BOM_OIDC_ISSUER
+            remoteRef:
+              key: /agent-bom/prod/control-plane
+              property: AGENT_BOM_OIDC_ISSUER
+          - secretKey: AGENT_BOM_OIDC_AUDIENCE
+            remoteRef:
+              key: /agent-bom/prod/control-plane
+              property: AGENT_BOM_OIDC_AUDIENCE
+          - secretKey: AGENT_BOM_AUDIT_HMAC_KEY
+            remoteRef:
+              key: /agent-bom/prod/control-plane
+              property: AGENT_BOM_AUDIT_HMAC_KEY
+          - secretKey: AGENT_BOM_REQUIRE_AUDIT_HMAC
+            remoteRef:
+              key: /agent-bom/prod/control-plane
+              property: AGENT_BOM_REQUIRE_AUDIT_HMAC
 
 scanner:
   enabled: true

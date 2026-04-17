@@ -89,6 +89,7 @@ export default function FleetPage() {
   const [stats, setStats] = useState<FleetStatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
@@ -104,12 +105,35 @@ export default function FleetPage() {
   const load = () => {
     setLoading(true);
     setError(null);
-    Promise.all([api.listFleet(), api.getFleetStats()])
-      .then(([fleet, s]) => {
-        setAgents(fleet.agents);
-        setStats(s);
+    setWarning(null);
+    Promise.allSettled([api.listFleet(), api.getFleetStats()])
+      .then(([fleetResult, statsResult]) => {
+        if (fleetResult.status === "fulfilled") {
+          setAgents(fleetResult.value.agents);
+        } else {
+          setAgents([]);
+        }
+
+        if (statsResult.status === "fulfilled") {
+          setStats(statsResult.value);
+        } else {
+          setStats(null);
+        }
+
+        if (fleetResult.status === "rejected" && statsResult.status === "rejected") {
+          setError(fleetResult.reason?.message ?? statsResult.reason?.message ?? "Fleet API requests failed");
+          return;
+        }
+
+        if (fleetResult.status === "rejected") {
+          setError(fleetResult.reason?.message ?? "Fleet inventory request failed");
+          return;
+        }
+
+        if (statsResult.status === "rejected") {
+          setWarning(statsResult.reason?.message ?? "Fleet stats request failed");
+        }
       })
-      .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   };
 
@@ -328,6 +352,13 @@ export default function FleetPage() {
           <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-3" />
           <p className="text-red-400 text-sm">Failed to load fleet data</p>
           <p className="text-zinc-500 text-xs mt-1">{error}</p>
+        </div>
+      )}
+
+      {warning && !loading && !error && (
+        <div className="rounded-xl border border-yellow-900/40 bg-yellow-950/20 px-4 py-3">
+          <p className="text-sm text-yellow-300">Fleet loaded with partial data</p>
+          <p className="mt-1 text-xs text-yellow-100/70">{warning}</p>
         </div>
       )}
 

@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 import {
-  ShieldAlert,
   Scan,
   Server,
   Bug,
@@ -30,6 +29,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 // ─── Navigation Structure ──────────────────────────────────────────────────
@@ -241,9 +241,7 @@ export function Nav() {
         }`}
       >
         <Link href="/" className="flex items-center gap-2.5 group min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/20 transition-colors">
-            <ShieldAlert className="w-4 h-4 text-emerald-400" />
-          </div>
+          <BrandMark className="h-8 w-8 shrink-0 transition-transform duration-200 group-hover:scale-[1.03]" />
           {!collapsed && (
             <div className="min-w-0">
               <span className="font-semibold text-sm text-[color:var(--foreground)] block truncate">agent-bom</span>
@@ -441,9 +439,7 @@ export function Nav() {
       {/* Mobile Top Bar */}
       <div className="lg:hidden fixed top-0 left-0 right-0 z-50 h-14 bg-[color:var(--surface)] backdrop-blur-sm border-b border-[color:var(--border-subtle)] flex items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2 group">
-          <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-            <ShieldAlert className="w-3.5 h-3.5 text-emerald-400" />
-          </div>
+          <BrandMark className="h-7 w-7" />
           <span className="font-semibold text-sm text-[color:var(--foreground)]">agent-bom</span>
         </Link>
         <div className="flex items-center gap-2">

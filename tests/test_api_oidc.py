@@ -24,7 +24,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent_bom.api.oidc import OIDCConfig, OIDCError, claims_to_role, claims_to_tenant
+from agent_bom.api.oidc import (
+    OIDCConfig,
+    OIDCError,
+    claims_to_role,
+    claims_to_tenant,
+    record_oidc_decode_failure,
+    reset_oidc_decode_failures,
+)
 
 # ── OIDCConfig ────────────────────────────────────────────────────────────────
 
@@ -96,6 +103,13 @@ def test_oidc_config_require_tenant_claim_from_env():
     ):
         cfg = OIDCConfig.from_env()
         assert cfg.require_tenant_claim is True
+
+
+@pytest.fixture(autouse=True)
+def _reset_oidc_metrics():
+    reset_oidc_decode_failures()
+    yield
+    reset_oidc_decode_failures()
 
 
 # ── claims_to_role ────────────────────────────────────────────────────────────
@@ -263,3 +277,15 @@ def test_oidc_config_passes_required_nonce_to_verifier():
     assert claims["sub"] == "u1"
     assert role == "admin"
     assert mock_verify.call_args.args[4] == "nonce-123"
+
+
+@pytest.mark.asyncio
+async def test_observability_metrics_include_oidc_decode_failures():
+    from agent_bom.api.routes.observability import prometheus_metrics
+
+    record_oidc_decode_failure()
+    record_oidc_decode_failure()
+
+    response = await prometheus_metrics()
+    body = response.body.decode("utf-8")
+    assert "agent_bom_oidc_decode_failures_total 2" in body

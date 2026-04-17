@@ -317,7 +317,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
         oidc_cfg = self._oidc_config
         if oidc_cfg is not None and getattr(oidc_cfg, "enabled", False) and auth.startswith("Bearer "):
-            from agent_bom.api.oidc import OIDCError
+            from agent_bom.api.oidc import OIDCError, record_oidc_decode_failure
 
             try:
                 _claims, oidc_role = oidc_cfg.verify(raw_key)
@@ -334,6 +334,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                     content={"detail": f"Forbidden — requires {required} role, OIDC token has {oidc_role}"},
                 )
             except OIDCError as exc:
+                record_oidc_decode_failure()
                 _logger.debug("OIDC verification failed: %s", exc)
                 # Fall through to API key check — OIDC failure is non-fatal if keys also configured
 

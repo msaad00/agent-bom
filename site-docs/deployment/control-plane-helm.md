@@ -129,7 +129,7 @@ That example adds:
 - optional control-plane `PriorityClass`
 - fail-closed shared rate limiting when the Postgres-backed limiter is unavailable
 - `cert-manager` ingress annotations and TLS wiring
-- `external-secrets` integration for the control-plane secret
+- `external-secrets` integration for the control-plane secrets, including split refresh cadence for DB vs auth/HMAC material
 - restricted ingress defaults for the chart network policy
 
 ## What you still own
@@ -157,6 +157,9 @@ You still own:
 - keep same-origin ingress unless you have a strong reason not to
 - use `envFrom` / Secrets for `AGENT_BOM_POSTGRES_URL`, API keys, OIDC issuer,
   audience, optional required nonce, and audit HMAC settings
+- split fast-rotating auth secrets from slower DB config with `controlPlane.externalSecrets.secrets[]`
+  so `AGENT_BOM_OIDC_*` and `AGENT_BOM_AUDIT_HMAC_KEY` can refresh at `5m`
+  while `AGENT_BOM_POSTGRES_URL` stays at `1h`
 - set `AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1` for multi-replica production
   control planes so the API refuses to start if the shared limiter backend is unavailable
 - enable PDBs when you are running multi-replica workloads

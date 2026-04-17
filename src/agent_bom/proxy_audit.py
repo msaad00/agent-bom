@@ -82,6 +82,10 @@ class ProxyMetrics:
     total_messages_server_to_client: int = 0
     replay_rejections: int = 0
     relay_errors: int = 0
+    audit_buffer_bytes: int = 0
+    audit_spillover_bytes: int = 0
+    policy_fetch_failures: int = 0
+    audit_push_failures: int = 0
 
     _MAX_LATENCY_ENTRIES = 10_000
 
@@ -95,6 +99,18 @@ class ProxyMetrics:
         self.latencies_ms.append(duration_ms)
         if len(self.latencies_ms) > self._MAX_LATENCY_ENTRIES:
             self.latencies_ms = self.latencies_ms[self._MAX_LATENCY_ENTRIES // 2 :]
+
+    def set_audit_buffer_bytes(self, size_bytes: int) -> None:
+        self.audit_buffer_bytes = max(0, size_bytes)
+
+    def set_audit_spillover_bytes(self, size_bytes: int) -> None:
+        self.audit_spillover_bytes = max(0, size_bytes)
+
+    def record_policy_fetch_failure(self) -> None:
+        self.policy_fetch_failures += 1
+
+    def record_audit_push_failure(self) -> None:
+        self.audit_push_failures += 1
 
     def summary(self) -> dict:
         elapsed = time.monotonic() - self.start_time
@@ -126,6 +142,10 @@ class ProxyMetrics:
             "messages_server_to_client": self.total_messages_server_to_client,
             "replay_rejections": self.replay_rejections,
             "relay_errors": self.relay_errors,
+            "audit_buffer_bytes": self.audit_buffer_bytes,
+            "audit_spillover_bytes": self.audit_spillover_bytes,
+            "policy_fetch_failures": self.policy_fetch_failures,
+            "audit_push_failures": self.audit_push_failures,
         }
 
 
@@ -182,6 +202,22 @@ class ProxyMetricsServer:
         lines.append("# TYPE agent_bom_proxy_messages_total counter")
         lines.append(f'agent_bom_proxy_messages_total{{direction="client_to_server"}} {summary.get("messages_client_to_server", 0)}')
         lines.append(f'agent_bom_proxy_messages_total{{direction="server_to_client"}} {summary.get("messages_server_to_client", 0)}')
+
+        lines.append("# HELP agent_bom_proxy_audit_buffer_bytes In-memory audit backlog waiting to be pushed")
+        lines.append("# TYPE agent_bom_proxy_audit_buffer_bytes gauge")
+        lines.append(f"agent_bom_proxy_audit_buffer_bytes {summary.get('audit_buffer_bytes', 0)}")
+
+        lines.append("# HELP agent_bom_proxy_audit_spillover_bytes On-disk audit backlog spilled from memory")
+        lines.append("# TYPE agent_bom_proxy_audit_spillover_bytes gauge")
+        lines.append(f"agent_bom_proxy_audit_spillover_bytes {summary.get('audit_spillover_bytes', 0)}")
+
+        lines.append("# HELP agent_bom_proxy_policy_fetch_failures_total Failed policy refresh attempts")
+        lines.append("# TYPE agent_bom_proxy_policy_fetch_failures_total counter")
+        lines.append(f"agent_bom_proxy_policy_fetch_failures_total {summary.get('policy_fetch_failures', 0)}")
+
+        lines.append("# HELP agent_bom_proxy_audit_push_failures_total Failed audit push attempts")
+        lines.append("# TYPE agent_bom_proxy_audit_push_failures_total counter")
+        lines.append(f"agent_bom_proxy_audit_push_failures_total {summary.get('audit_push_failures', 0)}")
 
         return "\n".join(lines) + "\n"
 

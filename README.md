@@ -188,6 +188,7 @@ Operator guides:
 - [SAML SP Metadata And Login Endpoints](src/agent_bom/api/routes/enterprise.py)
 - production backup examples use `bucketRegion: REPLACE_ME_BUCKET_REGION` on purpose; set it to your actual object-store bucket region
 - self-hosted SSO can use OIDC or SAML; SAML admins use `/v1/auth/saml/metadata`, and the control plane exchanges verified assertions for short-lived API keys at `/v1/auth/saml/login`
+- control-plane API keys now follow an enforced lifetime policy; operators set `AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS` and `AGENT_BOM_API_KEY_MAX_TTL_SECONDS`, and admins can rotate keys in place at `/v1/auth/keys/{key_id}/rotate`
 
 ## Product views
 

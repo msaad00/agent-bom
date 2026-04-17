@@ -161,6 +161,9 @@ You still own:
 - use `envFrom` / Secrets for `AGENT_BOM_POSTGRES_URL`, API keys, OIDC issuer,
   audience, optional required nonce, SAML IdP/SP metadata values, and audit
   HMAC settings
+- enforce API key lifetime policy with `AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS`
+  and `AGENT_BOM_API_KEY_MAX_TTL_SECONDS`; admin key replacement uses
+  `POST /v1/auth/keys/{key_id}/rotate` so rotation stays explicit and audited
 - split fast-rotating auth secrets from slower DB config with `controlPlane.externalSecrets.secrets[]`
   so `AGENT_BOM_OIDC_*`, `AGENT_BOM_SAML_*`, and `AGENT_BOM_AUDIT_HMAC_KEY`
   can refresh at `5m`

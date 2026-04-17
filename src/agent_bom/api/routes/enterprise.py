@@ -2,6 +2,7 @@
 
 Endpoints:
     POST   /v1/auth/keys                      create API key
+    POST   /v1/auth/keys/{key_id}/rotate      rotate API key
     GET    /v1/auth/keys                      list API keys
     DELETE /v1/auth/keys/{key_id}             revoke API key
     GET    /v1/auth/saml/metadata             generate SP metadata for IdP setup
@@ -34,7 +35,14 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from agent_bom.api.models import CreateKeyRequest, ExceptionRequest, FalsePositiveRequest, JiraTicketRequest, SAMLLoginRequest
+from agent_bom.api.models import (
+    CreateKeyRequest,
+    ExceptionRequest,
+    FalsePositiveRequest,
+    JiraTicketRequest,
+    RotateKeyRequest,
+    SAMLLoginRequest,
+)
 from agent_bom.api.stores import _get_exception_store, _get_store, _get_trend_store
 from agent_bom.security import sanitize_error
 
@@ -59,16 +67,27 @@ async def create_key(request: Request, req: CreateKeyRequest) -> dict:
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid role: {req.role}. Must be admin, analyst, or viewer")
 
-    raw_key, api_key = create_api_key(
-        name=req.name,
-        role=role,
-        expires_at=req.expires_at,
-        scopes=req.scopes,
-        tenant_id=tenant_id,
-    )
+    try:
+        raw_key, api_key = create_api_key(
+            name=req.name,
+            role=role,
+            expires_at=req.expires_at,
+            scopes=req.scopes,
+            tenant_id=tenant_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     get_key_store().add(api_key)
 
-    log_action("auth.key_created", actor=actor, resource=f"key/{api_key.key_id}", role=req.role)
+    log_action(
+        "auth.key_created",
+        actor=actor,
+        resource=f"key/{api_key.key_id}",
+        role=req.role,
+        tenant_id=tenant_id,
+        expires_at=api_key.expires_at,
+        rotation_policy="enforced",
+    )
 
     return {
         "raw_key": raw_key,
@@ -80,6 +99,65 @@ async def create_key(request: Request, req: CreateKeyRequest) -> dict:
         "created_at": api_key.created_at,
         "expires_at": api_key.expires_at,
         "message": "Store the raw_key securely — it will not be shown again.",
+    }
+
+
+@router.post("/v1/auth/keys/{key_id}/rotate", tags=["enterprise"], status_code=201)
+async def rotate_key(request: Request, key_id: str, req: RotateKeyRequest) -> dict:
+    """Rotate an API key by minting a replacement and revoking the old key."""
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.auth import create_api_key, get_key_store
+
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = getattr(request.state, "api_key_name", "") or "system"
+    store = get_key_store()
+    current_key = store.get(key_id)
+    if current_key is None or current_key.tenant_id != tenant_id:
+        raise HTTPException(status_code=404, detail=f"Key {key_id} not found")
+
+    replacement_name = req.name or current_key.name
+    try:
+        raw_key, replacement = create_api_key(
+            name=replacement_name,
+            role=current_key.role,
+            expires_at=req.expires_at,
+            scopes=list(current_key.scopes),
+            tenant_id=current_key.tenant_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    store.add(replacement)
+    store.remove(current_key.key_id)
+    log_action(
+        "auth.key_rotated",
+        actor=actor,
+        resource=f"key/{current_key.key_id}",
+        tenant_id=tenant_id,
+        replacement_key_id=replacement.key_id,
+        previous_expires_at=current_key.expires_at,
+        replacement_expires_at=replacement.expires_at,
+    )
+    log_action(
+        "auth.key_revoked",
+        actor=actor,
+        resource=f"key/{current_key.key_id}",
+        tenant_id=tenant_id,
+        reason="rotated",
+        replacement_key_id=replacement.key_id,
+    )
+
+    return {
+        "raw_key": raw_key,
+        "key_id": replacement.key_id,
+        "replaced_key_id": current_key.key_id,
+        "key_prefix": replacement.key_prefix,
+        "name": replacement.name,
+        "role": replacement.role.value,
+        "tenant_id": replacement.tenant_id,
+        "created_at": replacement.created_at,
+        "expires_at": replacement.expires_at,
+        "message": "Store the raw_key securely — it will not be shown again. The previous key has been revoked.",
     }
 
 

@@ -299,6 +299,11 @@ class CreateKeyRequest(BaseModel):
     scopes: list[str] = []
 
 
+class RotateKeyRequest(BaseModel):
+    name: str | None = None
+    expires_at: str | None = None
+
+
 class ExceptionRequest(BaseModel):
     vuln_id: str
     package_name: str

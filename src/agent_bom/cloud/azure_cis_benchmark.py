@@ -106,6 +106,7 @@ class AzureCISReport:
                     "evidence": c.evidence,
                     "resource_ids": c.resource_ids,
                     "recommendation": c.recommendation,
+                    "remediation": c.remediation,
                     "cis_section": c.cis_section,
                     "attack_techniques": tag_cis_check(c),
                 }
@@ -3332,5 +3333,10 @@ def run_benchmark(
                     evidence=str(exc),
                 )
             )
+
+    # Structured remediation per #665.
+    from agent_bom.cloud.cis_remediation import attach_all
+
+    attach_all(report, cloud="azure")
 
     return report

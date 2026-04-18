@@ -106,7 +106,7 @@ docker run --rm agentbom/agent-bom:latest doctor
 | Tag | Description |
 |-----|-------------|
 | `latest` | Most recent stable release |
-| `0.76.4` | Current stable version (pinned) |
+| `0.77.0` | Current stable version (pinned) |
 
 ## Links
 

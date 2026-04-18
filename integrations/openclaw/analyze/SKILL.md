@@ -4,7 +4,7 @@ description: >-
   Analyze blast radius, attack paths, and threat landscape across your AI
   infrastructure. Use when: "blast radius", "threat intel", "risk score",
   "attack path", "lateral movement", "context graph", "who can reach what".
-version: 0.76.4
+version: 0.77.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. No credentials required for
@@ -20,7 +20,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.76.4
+    docker: ghcr.io/msaad00/agent-bom:0.77.0
   openclaw:
     requires:
       bins: []

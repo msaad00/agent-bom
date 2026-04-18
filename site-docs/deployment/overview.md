@@ -19,7 +19,7 @@ plane or one hosting provider.
 | Surface | Best for | Command / entrypoint |
 |---|---|---|
 | **CLI** | local scans, endpoint runs, CI jobs | `pip install agent-bom` then `agent-bom agents` |
-| **GitHub Action** | PR and release gates | `uses: msaad00/agent-bom@v0.76.4` |
+| **GitHub Action** | PR and release gates | `uses: msaad00/agent-bom@v0.77.0` |
 | **Docker** | isolated scans and reproducible runners | `docker run ghcr.io/msaad00/agent-bom agents` |
 | **API + dashboard** | team and enterprise self-hosting | `agent-bom serve` |
 | **REST API only** | platform integration without bundled UI | `agent-bom api` |

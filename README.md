@@ -265,7 +265,7 @@ docker run --rm agentbom/agent-bom agents    # Docker
 |------|---------|----------|
 | CLI | `agent-bom agents` | Local audit + project scan |
 | Endpoint fleet | `agent-bom agents --preset enterprise --introspect --push-url https://.../v1/fleet/sync` | Employee laptops and workstations pushing into a self-hosted fleet view |
-| GitHub Action | `uses: msaad00/agent-bom@v0.76.4` | CI/CD + SARIF |
+| GitHub Action | `uses: msaad00/agent-bom@v0.77.0` | CI/CD + SARIF |
 | Docker | `docker run agentbom/agent-bom` | Isolated scans and containerized self-hosting surfaces |
 | Kubernetes / Helm | `helm install agent-bom deploy/helm/agent-bom --set controlPlane.enabled=true` | Packaged self-hosted API + dashboard, scheduled discovery, and optional runtime monitor |
 | REST API | `agent-bom api` | Platform integration and self-hosted control plane |
@@ -312,7 +312,7 @@ Use the GitHub Action when you want a fast CI gate: one step, one gate, SARIF in
 **Repo + MCP + instruction files**
 
 ```yaml
-- uses: msaad00/agent-bom@v0.76.4
+- uses: msaad00/agent-bom@v0.77.0
   with:
     scan-type: scan
     severity-threshold: high
@@ -324,7 +324,7 @@ Use the GitHub Action when you want a fast CI gate: one step, one gate, SARIF in
 **Container image gate**
 
 ```yaml
-- uses: msaad00/agent-bom@v0.76.4
+- uses: msaad00/agent-bom@v0.77.0
   with:
     scan-type: image
     scan-ref: ghcr.io/acme/agent-runtime:sha-abcdef
@@ -334,7 +334,7 @@ Use the GitHub Action when you want a fast CI gate: one step, one gate, SARIF in
 **IaC gate**
 
 ```yaml
-- uses: msaad00/agent-bom@v0.76.4
+- uses: msaad00/agent-bom@v0.77.0
   with:
     scan-type: iac
     iac: Dockerfile,k8s/,infra/main.tf
@@ -344,7 +344,7 @@ Use the GitHub Action when you want a fast CI gate: one step, one gate, SARIF in
 **Air-gapped / pre-synced CI**
 
 ```yaml
-- uses: msaad00/agent-bom@v0.76.4
+- uses: msaad00/agent-bom@v0.77.0
   with:
     auto-update-db: false
     enrich: false

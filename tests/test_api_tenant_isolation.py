@@ -601,12 +601,15 @@ async def test_discovery_and_traces_are_tenant_scoped():
     class _Analytics:
         def __init__(self):
             self.events = []
+            self.event_tenants: list[str] = []
 
-        def record_events(self, events):
+        def record_events(self, events, *, tenant_id: str = "default"):
             self.events.extend(events)
+            self.event_tenants.append(tenant_id)
 
-        def record_event(self, event):
+        def record_event(self, event, *, tenant_id: str = "default"):
             self.events.append(event)
+            self.event_tenants.append(tenant_id)
 
     analytics = _Analytics()
 
@@ -618,3 +621,6 @@ async def test_discovery_and_traces_are_tenant_scoped():
     assert result["persisted_events"] == 1
     assert analytics.events[0]["event_type"] == "vulnerable_tool_call"
     assert analytics.events[0]["detector"] == "otel_vulnerable_tool_call"
+    # Trace analytics ingest must carry the authed tenant through to
+    # ClickHouse so cross-tenant queries cannot see each other's events.
+    assert analytics.event_tenants[0] == req.state.tenant_id

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from agent_bom.cli._common import SEVERITY_ORDER
@@ -86,17 +87,23 @@ def run_integrations(
 
             _ch_store = ClickHouseAnalyticsStore(url=clickhouse_url)
             _scan_id = str(_uuid_ch.uuid4())
+            # CLI runs against a shared ClickHouse are tagged with the
+            # operator's tenant so reads stay segregated. Operators set
+            # AGENT_BOM_TENANT_ID when the local scan belongs to a
+            # specific tenant context.
+            _ch_tenant_id = (os.environ.get("AGENT_BOM_TENANT_ID") or "default").strip() or "default"
             if ctx.report:
                 analytics = build_scan_analytics_payload(ctx.report, scan_id=_scan_id, source="cli")
                 for agent_name, findings in analytics.agent_findings.items():
-                    _ch_store.record_scan(analytics.scan_id, agent_name, findings)
-                _ch_store.record_scan_metadata(analytics.scan_metadata)
+                    _ch_store.record_scan(analytics.scan_id, agent_name, findings, tenant_id=_ch_tenant_id)
+                _ch_store.record_scan_metadata(analytics.scan_metadata, tenant_id=_ch_tenant_id)
                 for agent_name, snapshot in analytics.posture_snapshots.items():
-                    _ch_store.record_posture(agent_name, snapshot)
+                    _ch_store.record_posture(agent_name, snapshot, tenant_id=_ch_tenant_id)
                 for fleet_snapshot in analytics.fleet_snapshots:
+                    fleet_snapshot.setdefault("tenant_id", _ch_tenant_id)
                     _ch_store.record_fleet_snapshot(fleet_snapshot)
                 for control in analytics.compliance_controls:
-                    _ch_store.record_compliance_control(control)
+                    _ch_store.record_compliance_control(control, tenant_id=_ch_tenant_id)
             if not quiet:
                 _finding_count = sum(len(findings) for findings in analytics.agent_findings.values()) if ctx.report else 0
                 con.print(f"  [green]✓[/green] Analytics: {_finding_count} finding(s) recorded to ClickHouse")

@@ -176,14 +176,15 @@ class TestClickHouseClient:
 
     def test_ensure_tables_idempotent(self):
         """CREATE TABLE IF NOT EXISTS should not error on repeated calls."""
-        from agent_bom.cloud.clickhouse import ClickHouseClient
+        from agent_bom.cloud.clickhouse import _TABLE_DDL, _TABLE_MIGRATIONS, ClickHouseClient
 
         c = ClickHouseClient(url="http://localhost:8123")
 
         with patch("agent_bom.http_client.sync_request_with_retry", return_value=_mock_response("")) as mock_req:
             c.ensure_tables()
-            # 1 CREATE DATABASE + 7 CREATE TABLE = 8 calls
-            assert mock_req.call_count == 8
+            # 1 CREATE DATABASE + N CREATE TABLE + M ALTER forward-compat migrations
+            expected = 1 + len(_TABLE_DDL) + len(_TABLE_MIGRATIONS)
+            assert mock_req.call_count == expected
 
 
 # ─── NullAnalyticsStore tests ───────────────────────────────────────────────

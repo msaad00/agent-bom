@@ -44,32 +44,40 @@ def test_api_pipeline_persists_clickhouse_analytics(monkeypatch):
     store = _DummyStore()
     job = ScanJob(
         job_id="clickhouse-123",
+        tenant_id="tenant-blue",
         created_at="2026-03-25T12:00:00Z",
         request=ScanRequest(images=["agentbom/agent-bom:latest"], enrich=False),
     )
 
     class _AnalyticsStore:
         def __init__(self) -> None:
-            self.scan_calls: list[tuple[str, str, list[dict]]] = []
-            self.metadata_calls: list[dict] = []
-            self.posture_calls: list[tuple[str, dict]] = []
+            self.scan_calls: list[tuple[str, str, list[dict], str]] = []
+            self.metadata_calls: list[tuple[dict, str]] = []
+            self.posture_calls: list[tuple[str, dict, str]] = []
             self.fleet_calls: list[dict] = []
-            self.compliance_calls: list[dict] = []
+            self.compliance_calls: list[tuple[dict, str]] = []
 
-        def record_scan(self, scan_id: str, agent_name: str, findings: list[dict]) -> None:
-            self.scan_calls.append((scan_id, agent_name, findings))
+        def record_scan(
+            self,
+            scan_id: str,
+            agent_name: str,
+            findings: list[dict],
+            *,
+            tenant_id: str = "default",
+        ) -> None:
+            self.scan_calls.append((scan_id, agent_name, findings, tenant_id))
 
-        def record_scan_metadata(self, metadata: dict) -> None:
-            self.metadata_calls.append(metadata)
+        def record_scan_metadata(self, metadata: dict, *, tenant_id: str = "default") -> None:
+            self.metadata_calls.append((metadata, tenant_id))
 
-        def record_posture(self, agent_name: str, snapshot: dict) -> None:
-            self.posture_calls.append((agent_name, snapshot))
+        def record_posture(self, agent_name: str, snapshot: dict, *, tenant_id: str = "default") -> None:
+            self.posture_calls.append((agent_name, snapshot, tenant_id))
 
         def record_fleet_snapshot(self, snapshot: dict) -> None:
             self.fleet_calls.append(snapshot)
 
-        def record_compliance_control(self, control: dict) -> None:
-            self.compliance_calls.append(control)
+        def record_compliance_control(self, control: dict, *, tenant_id: str = "default") -> None:
+            self.compliance_calls.append((control, tenant_id))
 
     analytics = _AnalyticsStore()
 
@@ -118,26 +126,34 @@ def test_api_pipeline_persists_clickhouse_analytics(monkeypatch):
     assert analytics.fleet_calls
     assert analytics.compliance_calls
 
-    scan_id, agent_name, findings = analytics.scan_calls[0]
+    scan_id, agent_name, findings, scan_tenant = analytics.scan_calls[0]
     assert scan_id == "clickhouse-123"
     assert agent_name == "image:agentbom/agent-bom:latest"
     assert findings[0]["package_name"] == "openssl"
     assert findings[0]["source"] == "osv"
+    assert scan_tenant == "tenant-blue"
 
-    metadata = analytics.metadata_calls[0]
+    metadata, metadata_tenant = analytics.metadata_calls[0]
     assert metadata["scan_id"] == "clickhouse-123"
     assert metadata["source"] == "api"
     assert metadata["agent_count"] == 1
     assert metadata["vuln_count"] == 1
+    assert metadata_tenant == "tenant-blue"
 
-    posture_agent, snapshot = analytics.posture_calls[0]
+    posture_agent, snapshot, posture_tenant = analytics.posture_calls[0]
     assert posture_agent == "image:agentbom/agent-bom:latest"
     assert snapshot["high"] == 1
     assert snapshot["total_packages"] == 1
+    assert posture_tenant == "tenant-blue"
+
+    # Compliance controls also carry the scan tenant through to the store
+    for _, control_tenant in analytics.compliance_calls:
+        assert control_tenant == "tenant-blue"
 
     assert analytics.fleet_calls[0]["agent_name"] == "image:agentbom/agent-bom:latest"
     assert analytics.fleet_calls[0]["lifecycle_state"] == "discovered"
-    assert any(control["framework"] == "owasp-llm-top10" for control in analytics.compliance_calls)
+    assert analytics.fleet_calls[0]["tenant_id"] == "tenant-blue"
+    assert any(control["framework"] == "owasp-llm-top10" for control, _ in analytics.compliance_calls)
 
 
 def test_api_pipeline_persists_unified_graph_snapshot(monkeypatch):

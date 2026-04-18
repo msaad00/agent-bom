@@ -1,9 +1,14 @@
 """Tests for hybrid push-to-dashboard."""
 
+import asyncio
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from agent_bom.push import (
     _looks_like_secret,
+    _push_async,
+    _push_retry_delay,
     generate_source_id,
     push_results,
     sanitize_results,
@@ -131,6 +136,7 @@ class TestPushResults:
         assert result is True
 
     def test_push_failure(self):
+        """A 500 is retryable; the final result is False after max attempts."""
         mock_resp = AsyncMock()
         mock_resp.status_code = 500
         mock_resp.text = "Internal server error"
@@ -140,9 +146,13 @@ class TestPushResults:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("agent_bom.http_client.create_client", return_value=mock_client):
+        with patch("agent_bom.http_client.create_client", return_value=mock_client), patch(
+            "agent_bom.push.asyncio.sleep", new=AsyncMock()
+        ):
             result = push_results("https://dashboard.example.com/v1/results/push", {"agents": []})
         assert result is False
+        # 3 retry attempts by default
+        assert mock_client.post.call_count == 3
 
     def test_push_with_api_key(self):
         mock_resp = AsyncMock()
@@ -166,11 +176,91 @@ class TestPushResults:
         assert headers.get("Authorization") == "Bearer test-key-123"
 
     def test_push_network_error(self):
+        """Network errors retry up to max attempts then return False."""
         mock_client = AsyncMock()
         mock_client.post = AsyncMock(side_effect=OSError("Connection refused"))
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("agent_bom.http_client.create_client", return_value=mock_client):
+        with patch("agent_bom.http_client.create_client", return_value=mock_client), patch(
+            "agent_bom.push.asyncio.sleep", new=AsyncMock()
+        ):
             result = push_results("https://unreachable.example.com/push", {"agents": []})
         assert result is False
+        assert mock_client.post.call_count == 3
+
+
+# ─── push retry contract ──────────────────────────────────────────────────────
+
+
+class TestPushRetry:
+    def test_retryable_status_then_success(self):
+        """503 then 200 ⇒ single retry, final True."""
+        resp_fail = AsyncMock(status_code=503)
+        resp_fail.text = "Service unavailable"
+        resp_ok = AsyncMock(status_code=200)
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(side_effect=[resp_fail, resp_ok])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("agent_bom.http_client.create_client", return_value=mock_client), patch(
+            "agent_bom.push.asyncio.sleep", new=AsyncMock()
+        ):
+            result = asyncio.run(
+                _push_async("https://dashboard.example.com/push", {"agents": []}, max_attempts=3)
+            )
+        assert result is True
+        assert mock_client.post.call_count == 2
+
+    def test_non_retryable_status_short_circuits(self):
+        """4xx that isn't 408/425/429 returns False without retrying."""
+        resp = AsyncMock(status_code=400)
+        resp.text = "Bad request"
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("agent_bom.http_client.create_client", return_value=mock_client), patch(
+            "agent_bom.push.asyncio.sleep", new=AsyncMock()
+        ):
+            result = asyncio.run(
+                _push_async("https://dashboard.example.com/push", {"agents": []}, max_attempts=3)
+            )
+        assert result is False
+        assert mock_client.post.call_count == 1
+
+    def test_429_is_retryable(self):
+        resp_429 = AsyncMock(status_code=429)
+        resp_429.text = "rate limited"
+        resp_ok = AsyncMock(status_code=200)
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(side_effect=[resp_429, resp_ok])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("agent_bom.http_client.create_client", return_value=mock_client), patch(
+            "agent_bom.push.asyncio.sleep", new=AsyncMock()
+        ):
+            result = asyncio.run(
+                _push_async("https://dashboard.example.com/push", {"agents": []}, max_attempts=3)
+            )
+        assert result is True
+        assert mock_client.post.call_count == 2
+
+    @pytest.mark.parametrize(
+        "attempt,expected_floor,cap",
+        [
+            (1, 1.0, 30.0),
+            (2, 2.0, 30.0),
+            (3, 4.0, 30.0),
+            (10, 30.0, 30.0),  # capped
+        ],
+    )
+    def test_retry_delay_exponential_and_capped(self, attempt, expected_floor, cap):
+        delay = _push_retry_delay(attempt, base=1.0, cap=cap)
+        assert expected_floor <= delay <= cap + 0.01

@@ -72,3 +72,18 @@ The public verification path is documented:
 4. Fix developed on private branch; CVE ID requested if warranted
 5. Coordinated disclosure: patch released, advisory published simultaneously
 6. Reporter credited in release notes (unless anonymity requested)
+
+## Coordinated Disclosure Embargo
+
+agent-bom follows a **90-day coordinated disclosure** model aligned with industry practice (CERT/CC, Project Zero):
+
+- **Default embargo: 90 days** from the date the maintainer acknowledges the report
+- **Critical (CVSS ≥ 9.0)**: 30-day target with possible 14-day extension if a patch is in active review
+- **High (CVSS 7.0–8.9)**: 60-day target
+- **Medium / Low (CVSS < 7.0)**: 90-day target
+- **Extension requests** are considered case-by-case; the reporter is consulted before any extension
+- **Early disclosure** is permitted if the vulnerability is being actively exploited in the wild, or if the reporter and maintainer mutually agree
+- **Public CVE / GHSA publication** happens at the same moment as the patched release; the reporter is credited unless anonymity is requested
+- **Private pre-disclosure** to downstream packagers (PyPI security, Docker Hub, distros) may occur up to 7 days before public disclosure when the maintainer has reasonable grounds to believe coordinated patching reduces aggregate risk
+
+If the maintainer becomes unresponsive past the embargo deadline without prior coordination, reporters may publish at their own discretion 14 days after a documented final outreach attempt.

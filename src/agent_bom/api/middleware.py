@@ -18,6 +18,8 @@ from agent_bom.api.auth import get_key_store
 from agent_bom.api.tracing import configure_otel_tracing, make_request_trace
 
 if TYPE_CHECKING:
+    from datetime import datetime
+
     from agent_bom.api.oidc import OIDCConfig
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -474,6 +476,112 @@ def _rate_limit_fingerprint(raw_key: str) -> str:
         200_000,
         dklen=8,
     ).hex()
+
+
+def get_rate_limit_key_status(now: "datetime | None" = None) -> dict:
+    """Report rate-limit fingerprint key configuration and rotation status.
+
+    Returns a structured dict suitable for surfacing in /v1/auth/policy and
+    operator dashboards. Status values:
+
+    - "ephemeral":         no key configured; using process-local random key
+    - "ok":                key configured and within rotation interval
+    - "rotation_due":      key age past AGENT_BOM_RATE_LIMIT_KEY_ROTATION_DAYS
+    - "max_age_exceeded":  key age past AGENT_BOM_RATE_LIMIT_KEY_MAX_AGE_DAYS
+    - "unknown_age":       key configured but no last-rotated timestamp set
+    """
+    from datetime import datetime as _dt
+    from datetime import timezone as _tz
+
+    from agent_bom.config import (
+        RATE_LIMIT_KEY_LAST_ROTATED,
+        RATE_LIMIT_KEY_MAX_AGE_DAYS,
+        RATE_LIMIT_KEY_ROTATION_DAYS,
+    )
+
+    raw_key = (os.environ.get("AGENT_BOM_RATE_LIMIT_KEY") or os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY") or "").strip()
+    fallback_source = (
+        "AGENT_BOM_AUDIT_HMAC_KEY"
+        if not os.environ.get("AGENT_BOM_RATE_LIMIT_KEY") and os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY")
+        else None
+    )
+
+    if not raw_key:
+        return {
+            "status": "ephemeral",
+            "rotation_days": RATE_LIMIT_KEY_ROTATION_DAYS,
+            "max_age_days": RATE_LIMIT_KEY_MAX_AGE_DAYS,
+            "fallback_source": None,
+            "last_rotated": None,
+            "age_days": None,
+            "message": (
+                "No AGENT_BOM_RATE_LIMIT_KEY configured. Rate-limit fingerprints use a "
+                "process-local random key that resets on restart and breaks shared bucket "
+                "scoping across replicas. Set AGENT_BOM_RATE_LIMIT_KEY for production."
+            ),
+        }
+
+    if not RATE_LIMIT_KEY_LAST_ROTATED:
+        return {
+            "status": "unknown_age",
+            "rotation_days": RATE_LIMIT_KEY_ROTATION_DAYS,
+            "max_age_days": RATE_LIMIT_KEY_MAX_AGE_DAYS,
+            "fallback_source": fallback_source,
+            "last_rotated": None,
+            "age_days": None,
+            "message": (
+                "Rate-limit key is configured but AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED is "
+                "unset. Set it to an ISO-8601 timestamp when the key was last rotated to "
+                "enable rotation tracking."
+            ),
+        }
+
+    try:
+        rotated = _dt.fromisoformat(RATE_LIMIT_KEY_LAST_ROTATED)
+    except ValueError:
+        return {
+            "status": "unknown_age",
+            "rotation_days": RATE_LIMIT_KEY_ROTATION_DAYS,
+            "max_age_days": RATE_LIMIT_KEY_MAX_AGE_DAYS,
+            "fallback_source": fallback_source,
+            "last_rotated": RATE_LIMIT_KEY_LAST_ROTATED,
+            "age_days": None,
+            "message": (
+                "AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED is set but is not a valid ISO-8601 "
+                "timestamp. Use a value like '2026-04-17T00:00:00+00:00'."
+            ),
+        }
+
+    if rotated.tzinfo is None:
+        rotated = rotated.replace(tzinfo=_tz.utc)
+    current = now or _dt.now(_tz.utc)
+    age_days = max(0, int((current - rotated).total_seconds() // 86400))
+
+    if age_days >= RATE_LIMIT_KEY_MAX_AGE_DAYS:
+        status = "max_age_exceeded"
+        message = (
+            f"Rate-limit key is {age_days} days old, exceeding the configured maximum "
+            f"({RATE_LIMIT_KEY_MAX_AGE_DAYS} days). Rotate AGENT_BOM_RATE_LIMIT_KEY now and "
+            "update AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED."
+        )
+    elif age_days >= RATE_LIMIT_KEY_ROTATION_DAYS:
+        status = "rotation_due"
+        message = (
+            f"Rate-limit key is {age_days} days old, past the rotation interval ({RATE_LIMIT_KEY_ROTATION_DAYS} days). Schedule a rotation."
+        )
+    else:
+        status = "ok"
+        message = f"Rate-limit key is {age_days} days old; rotation interval is {RATE_LIMIT_KEY_ROTATION_DAYS} days."
+
+    return {
+        "status": status,
+        "rotation_days": RATE_LIMIT_KEY_ROTATION_DAYS,
+        "max_age_days": RATE_LIMIT_KEY_MAX_AGE_DAYS,
+        "fallback_source": fallback_source,
+        "last_rotated": rotated.isoformat(),
+        "age_days": age_days,
+        "message": message,
+    }
 
 
 class MaxBodySizeMiddleware(BaseHTTPMiddleware):

@@ -156,9 +156,13 @@ controlPlane:
         port: http
       initialDelaySeconds: 10
       periodSeconds: 30
+    # /readyz goes 503 as soon as graceful shutdown begins so the service
+    # endpoint drains before Kubernetes sends SIGTERM. The drain window is
+    # AGENT_BOM_SHUTDOWN_DRAIN_SECONDS (default 25s); keep that under
+    # terminationGracePeriodSeconds so the pod exits cleanly.
     readinessProbe:
       httpGet:
-        path: /health
+        path: /readyz
         port: http
       initialDelaySeconds: 5
       periodSeconds: 10
@@ -168,6 +172,9 @@ controlPlane:
         port: http
       failureThreshold: 18
       periodSeconds: 5
+    # Leaves a 5s margin over the default 25s drain window for in-flight
+    # requests to finish before Kubernetes force-kills the pod.
+    terminationGracePeriodSeconds: 30
   ui:
     enabled: true
     replicas: 2

@@ -24,6 +24,7 @@ spec:
       {{- end }}
     spec:
       automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.controlPlane.api.terminationGracePeriodSeconds | default 30 }}
       {{- $priorityClassName := include "agent-bom.controlPlanePriorityClassName" . }}
       {{- if $priorityClassName }}
       priorityClassName: {{ $priorityClassName }}

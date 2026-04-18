@@ -88,9 +88,9 @@ pip install 'agent-bom[ui]' && agent-bom serve                    # API + dashbo
 
 These come from the live product path, using the built-in demo data pushed through the API. See [`docs/CAPTURE.md`](docs/CAPTURE.md) for the canonical capture protocol.
 
-### Dashboard
+### Dashboard — Risk overview
 
-Risk summary, posture, and the highest-value attack paths in one screen.
+The landing page is the **Risk overview**: a letter-grade gauge, the four headline counters (actively exploited · credentials exposed · reachable tools · top attack-path risk), the security-posture grade with sub-scores (policy + controls, open evidence, packages + CVEs, reach + exposure, MCP configuration), the score breakdown for each driver, and the top attack paths with one-click drilldown.
 
 ![agent-bom dashboard](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png)
 

@@ -1,0 +1,219 @@
+name: Backup restore round-trip
+
+# Proves the Postgres backup → object-store → restore path actually works
+# end-to-end. Runs on every change to the backup CronJob template or the
+# restore script so an operator runbook can never silently rot, and on a
+# weekly cron so drift from upstream Postgres / aws-cli images is caught
+# before an incident.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy/helm/agent-bom/templates/controlplane-backup-cronjob.yaml'
+      - 'deploy/ops/restore-postgres-backup.sh'
+      - '.github/workflows/backup-restore.yml'
+  pull_request:
+    paths:
+      - 'deploy/helm/agent-bom/templates/controlplane-backup-cronjob.yaml'
+      - 'deploy/ops/restore-postgres-backup.sh'
+      - '.github/workflows/backup-restore.yml'
+  schedule:
+    # Weekly — Mondays 08:00 UTC. Cheap and catches image/CLI drift early.
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  roundtrip:
+    name: Dump → S3 → restore → verify
+    runs-on: ubuntu-latest
+    # aws-cli honors AWS_ENDPOINT_URL / AWS_ENDPOINT_URL_S3 in v2 so the
+    # production restore script runs unmodified against MinIO.
+    env:
+      AWS_ACCESS_KEY_ID: testuser
+      AWS_SECRET_ACCESS_KEY: testpassword
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ENDPOINT_URL: http://127.0.0.1:9000
+      AWS_ENDPOINT_URL_S3: http://127.0.0.1:9000
+      PGPASSWORD: testpass
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGDATABASE: agentbom_test
+      BUCKET: agent-bom-backups
+      BACKUP_KEY: ci/agent-bom-test.dump
+      # pg_dump and pg_restore must run from the same major version against
+      # the service container. Bumping this requires a bump in the Postgres
+      # service image below and vice versa.
+      PG_MAJOR: '16'
+
+    services:
+      # MinIO is launched as a step below rather than a service because its
+      # default entrypoint needs a subcommand that GitHub Actions' `services:`
+      # block cannot express cleanly. Postgres fits services: naturally.
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: agentbom_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d agentbom_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Start MinIO (S3-compatible object store)
+        run: |
+          set -euo pipefail
+          docker run -d --name minio \
+            -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER=testuser \
+            -e MINIO_ROOT_PASSWORD=testpassword \
+            minio/minio:latest \
+            server /data --address :9000 --console-address :9001
+          for _ in $(seq 1 30); do
+            if curl -fsS "$AWS_ENDPOINT_URL/minio/health/live" >/dev/null; then
+              echo "MinIO is live"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::MinIO never became live"
+          docker logs minio || true
+          exit 1
+
+      - name: Install postgresql-client-${{ env.PG_MAJOR }} + aws-cli
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL --output /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends "postgresql-client-${PG_MAJOR}"
+          aws --version
+
+      - name: Create MinIO bucket
+        run: |
+          set -euo pipefail
+          aws s3 mb "s3://${BUCKET}" || true
+
+      - name: Seed synthetic control-plane tables
+        run: |
+          set -euo pipefail
+          psql <<'SQL'
+            CREATE TABLE scan_jobs (
+              job_id UUID PRIMARY KEY,
+              tenant_id TEXT NOT NULL,
+              status TEXT NOT NULL,
+              created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            );
+            CREATE TABLE findings (
+              finding_id BIGSERIAL PRIMARY KEY,
+              job_id UUID NOT NULL REFERENCES scan_jobs(job_id) ON DELETE CASCADE,
+              severity TEXT NOT NULL,
+              cve_id TEXT,
+              package_name TEXT NOT NULL,
+              package_version TEXT NOT NULL
+            );
+            CREATE TABLE audit_log (
+              entry_id BIGSERIAL PRIMARY KEY,
+              action TEXT NOT NULL,
+              actor TEXT NOT NULL,
+              tenant_id TEXT NOT NULL,
+              ts TIMESTAMPTZ NOT NULL DEFAULT now()
+            );
+
+            INSERT INTO scan_jobs (job_id, tenant_id, status)
+            SELECT gen_random_uuid(), 'tenant-' || (i % 3), 'completed'
+            FROM generate_series(1, 25) i;
+
+            INSERT INTO findings (job_id, severity, cve_id, package_name, package_version)
+            SELECT j.job_id,
+                   (ARRAY['critical','high','medium','low'])[(i % 4) + 1],
+                   'CVE-2024-' || lpad((10000 + i)::text, 5, '0'),
+                   (ARRAY['axios','certifi','jinja2','flask','requests'])[(i % 5) + 1],
+                   '1.' || (i % 10) || '.0'
+            FROM scan_jobs j
+            CROSS JOIN generate_series(1, 4) i;
+
+            INSERT INTO audit_log (action, actor, tenant_id)
+            SELECT 'scan.started', 'ci-actor', 'tenant-' || (i % 3)
+            FROM generate_series(1, 60) i;
+          SQL
+
+      - name: Record expected row counts
+        id: counts
+        run: |
+          set -euo pipefail
+          jobs_n="$(psql -At -c 'SELECT count(*) FROM scan_jobs')"
+          findings_n="$(psql -At -c 'SELECT count(*) FROM findings')"
+          audit_n="$(psql -At -c 'SELECT count(*) FROM audit_log')"
+          echo "jobs=${jobs_n}" >> "$GITHUB_OUTPUT"
+          echo "findings=${findings_n}" >> "$GITHUB_OUTPUT"
+          echo "audit=${audit_n}" >> "$GITHUB_OUTPUT"
+          echo "Seeded rows — jobs=${jobs_n} findings=${findings_n} audit=${audit_n}"
+          # Guardrail: require non-empty populations so a broken seed does
+          # not silently pass the restore check.
+          [ "$jobs_n" -ge 25 ] && [ "$findings_n" -ge 100 ] && [ "$audit_n" -ge 60 ]
+
+      - name: Dump via the same command the CronJob runs
+        run: |
+          set -euo pipefail
+          ts="$(date -u +%Y%m%dT%H%M%SZ)"
+          out="/tmp/agent-bom-${ts}.dump"
+          pg_dump "postgresql://${PGUSER}:${PGPASSWORD}@${PGHOST}:${PGPORT}/${PGDATABASE}" \
+            --format=custom --file "$out"
+          ls -la "$out"
+          aws s3 cp "$out" "s3://${BUCKET}/${BACKUP_KEY}"
+
+      - name: Simulate disaster — drop every tenant table
+        run: |
+          set -euo pipefail
+          psql <<'SQL'
+            DROP TABLE IF EXISTS findings;
+            DROP TABLE IF EXISTS audit_log;
+            DROP TABLE IF EXISTS scan_jobs;
+          SQL
+          # Prove the wipe succeeded before restoring.
+          remaining="$(psql -At -c "SELECT count(*) FROM pg_tables WHERE schemaname='public'")"
+          [ "$remaining" = "0" ]
+
+      - name: Restore via deploy/ops/restore-postgres-backup.sh
+        run: |
+          set -euo pipefail
+          chmod +x deploy/ops/restore-postgres-backup.sh
+          deploy/ops/restore-postgres-backup.sh \
+            "s3://${BUCKET}/${BACKUP_KEY}" \
+            "postgresql://${PGUSER}:${PGPASSWORD}@${PGHOST}:${PGPORT}/${PGDATABASE}" \
+            "${AWS_DEFAULT_REGION}"
+
+      - name: Verify restored row counts match the original seed
+        run: |
+          set -euo pipefail
+          jobs_n="$(psql -At -c 'SELECT count(*) FROM scan_jobs')"
+          findings_n="$(psql -At -c 'SELECT count(*) FROM findings')"
+          audit_n="$(psql -At -c 'SELECT count(*) FROM audit_log')"
+          echo "Restored rows — jobs=${jobs_n} findings=${findings_n} audit=${audit_n}"
+          [ "$jobs_n" = "${{ steps.counts.outputs.jobs }}" ]
+          [ "$findings_n" = "${{ steps.counts.outputs.findings }}" ]
+          [ "$audit_n" = "${{ steps.counts.outputs.audit }}" ]
+
+      - name: Verify tenant-aware data integrity post-restore
+        # The failure mode we care about is not "rows restored" but "rows
+        # restored correctly" — a bad pg_restore can duplicate rows or
+        # flatten tenant_id. Aggregate per tenant and assert.
+        run: |
+          set -euo pipefail
+          tenant_breakdown="$(psql -At -F',' -c "SELECT tenant_id, count(*) FROM scan_jobs GROUP BY tenant_id ORDER BY tenant_id")"
+          echo "${tenant_breakdown}"
+          tenant_count="$(echo "${tenant_breakdown}" | grep -c '^tenant-')"
+          [ "${tenant_count}" = "3" ]

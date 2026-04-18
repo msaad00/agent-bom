@@ -190,8 +190,14 @@ jobs:
           TOKEN=$(curl -sf -X POST "https://hub.docker.com/v2/users/login" \
             -H "Content-Type: application/json" \
             -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
-            | jq -r '.token')
-          [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ] && { echo "::warning::Docker Hub login failed — skipping cleanup"; exit 0; }
+            | jq -r '.token') || {
+            echo "::error::Docker Hub login curl failed during cleanup"
+            exit 1
+          }
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "::error::Docker Hub login returned empty token during cleanup"
+            exit 1
+          fi
           echo "::add-mask::$TOKEN"
 
           ALL_TAGS=$(curl -sf "https://hub.docker.com/v2/repositories/${REPO}/tags/?page_size=100&ordering=-last_updated" \

@@ -8,6 +8,7 @@ Sanitizes results before push:
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import hashlib
 import logging
@@ -57,8 +58,37 @@ def _looks_like_secret(key: str) -> bool:
     return any(p in lower for p in patterns)
 
 
-async def _push_async(push_url: str, results: dict, api_key: str | None = None) -> bool:
-    """POST sanitized results to central dashboard."""
+_DEFAULT_PUSH_MAX_ATTEMPTS = 3
+_DEFAULT_PUSH_BASE_DELAY = 1.0
+_DEFAULT_PUSH_MAX_DELAY = 30.0
+
+
+def _push_retry_delay(attempt: int, base: float, cap: float) -> float:
+    """Exponential backoff with small jitter bounded by cap."""
+    import random
+
+    exp = base * (2 ** (attempt - 1))
+    jitter = random.uniform(0, exp * 0.1)
+    return min(cap, exp + jitter)
+
+
+async def _push_async(
+    push_url: str,
+    results: dict,
+    api_key: str | None = None,
+    *,
+    max_attempts: int = _DEFAULT_PUSH_MAX_ATTEMPTS,
+    base_delay_seconds: float = _DEFAULT_PUSH_BASE_DELAY,
+    max_delay_seconds: float = _DEFAULT_PUSH_MAX_DELAY,
+) -> bool:
+    """POST sanitized results to the central dashboard with bounded retries.
+
+    Retries on network errors (``httpx.HTTPError``, ``OSError``) and on
+    retryable server responses (408, 425, 429, 5xx). Non-retryable 4xx
+    responses short-circuit immediately to avoid hammering misconfigured
+    endpoints. Matches the backoff contract used by the proxy audit delivery
+    controller so both egress paths degrade the same way.
+    """
     from agent_bom.http_client import create_client
 
     sanitized = sanitize_results(results)
@@ -66,21 +96,63 @@ async def _push_async(push_url: str, results: dict, api_key: str | None = None) 
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
 
+    retryable_status = {408, 425, 429, 500, 502, 503, 504}
+    last_status: int | None = None
+    last_error: str | None = None
+
     async with create_client(timeout=30.0) as client:
-        try:
-            resp = await client.post(push_url, json=sanitized, headers=headers)
-            if resp.status_code < 300:
-                logger.info("Results pushed to %s (status=%d)", push_url, resp.status_code)
-                return True
-            logger.warning("Push failed: HTTP %d — %s", resp.status_code, resp.text[:200])
-            return False
-        except (httpx.HTTPError, ValueError, OSError):
-            logger.exception("Push to %s failed", push_url)
-            return False
+        for attempt in range(1, max_attempts + 1):
+            try:
+                resp = await client.post(push_url, json=sanitized, headers=headers)
+            except (httpx.HTTPError, ValueError, OSError) as exc:
+                last_error = f"{type(exc).__name__}: {exc}"
+                logger.warning(
+                    "Push to %s attempt %d/%d failed with %s",
+                    push_url,
+                    attempt,
+                    max_attempts,
+                    last_error,
+                )
+            else:
+                last_status = resp.status_code
+                if resp.status_code < 300:
+                    logger.info(
+                        "Results pushed to %s (status=%d, attempt=%d)",
+                        push_url,
+                        resp.status_code,
+                        attempt,
+                    )
+                    return True
+                if resp.status_code not in retryable_status:
+                    logger.warning(
+                        "Push to %s rejected with non-retryable status %d — %s",
+                        push_url,
+                        resp.status_code,
+                        resp.text[:200],
+                    )
+                    return False
+                last_error = resp.text[:200]
+                logger.warning(
+                    "Push to %s attempt %d/%d returned retryable status %d",
+                    push_url,
+                    attempt,
+                    max_attempts,
+                    resp.status_code,
+                )
+
+            if attempt < max_attempts:
+                await asyncio.sleep(_push_retry_delay(attempt, base_delay_seconds, max_delay_seconds))
+
+    logger.error(
+        "Push to %s failed after %d attempts (last_status=%s, last_error=%s)",
+        push_url,
+        max_attempts,
+        last_status,
+        last_error,
+    )
+    return False
 
 
 def push_results(push_url: str, results: dict, api_key: str | None = None) -> bool:
     """Synchronous wrapper for pushing results to a dashboard."""
-    import asyncio
-
     return asyncio.run(_push_async(push_url, results, api_key))

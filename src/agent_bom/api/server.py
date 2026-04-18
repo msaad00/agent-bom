@@ -67,7 +67,7 @@ _logger = logging.getLogger(__name__)
 try:
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import RedirectResponse
+    from fastapi.responses import JSONResponse, RedirectResponse
     from pydantic import BaseModel  # noqa: F401 — presence check for [api] extra
     from starlette.middleware import Middleware
 except ImportError as exc:  # pragma: no cover
@@ -281,6 +281,34 @@ async def _lifespan(app_instance: FastAPI):
         except Exception:
             _logger.warning("ClickHouse analytics unavailable, using NullAnalyticsStore", exc_info=True)
 
+    # ── Rate-limit key rotation status ──
+    try:
+        from agent_bom.api.middleware import get_rate_limit_key_status
+
+        _rl_status = get_rate_limit_key_status()
+        if _rl_status["status"] == "max_age_exceeded":
+            _logger.error(
+                "rate_limit_key_rotation status=%s age_days=%s message=%s",
+                _rl_status["status"],
+                _rl_status["age_days"],
+                _rl_status["message"],
+            )
+        elif _rl_status["status"] in {"rotation_due", "ephemeral", "unknown_age"}:
+            _logger.warning(
+                "rate_limit_key_rotation status=%s age_days=%s message=%s",
+                _rl_status["status"],
+                _rl_status["age_days"],
+                _rl_status["message"],
+            )
+        else:
+            _logger.info(
+                "rate_limit_key_rotation status=%s age_days=%s",
+                _rl_status["status"],
+                _rl_status["age_days"],
+            )
+    except Exception:
+        _logger.debug("rate_limit_key_rotation status check skipped", exc_info=True)
+
     global _cleanup_task
     _cleanup_task = asyncio.create_task(_cleanup_loop())
 
@@ -316,12 +344,30 @@ async def _lifespan(app_instance: FastAPI):
     yield
 
     # ── Graceful shutdown ──
+    # Flip readiness to not-ready so upstream load balancers stop routing new
+    # traffic while in-flight requests drain. The readiness probe reads
+    # _shutting_down under the same module; see meta_routes.
+    global _shutting_down
+    _shutting_down = True
     if _scheduler_task:
         _scheduler_task.cancel()
     if _cleanup_task:
         _cleanup_task.cancel()
-    # Shut down thread pool (wait for in-flight scans, 30s timeout)
-    _executor.shutdown(wait=True, cancel_futures=True)
+    # Drain in-flight scans. Honor the operator-configured drain budget so the
+    # pod exits before Kubernetes force-kills at terminationGracePeriodSeconds.
+    # Default 25s leaves a 5s margin under the recommended 30s Helm value.
+    _drain_seconds = float(os.environ.get("AGENT_BOM_SHUTDOWN_DRAIN_SECONDS", "25"))
+    try:
+        await asyncio.wait_for(
+            asyncio.to_thread(lambda: _executor.shutdown(wait=True, cancel_futures=False)),
+            timeout=_drain_seconds,
+        )
+    except asyncio.TimeoutError:
+        _logger.warning(
+            "shutdown drain timeout after %.1fs; force-cancelling in-flight scans",
+            _drain_seconds,
+        )
+        _executor.shutdown(wait=False, cancel_futures=True)
     # Close Postgres connection pool if active
     try:
         if os.environ.get("AGENT_BOM_POSTGRES_URL"):
@@ -479,6 +525,10 @@ from agent_bom.api.routes.scan import _dataclass_to_dict, _sanitize_api_path  # 
 
 _cleanup_task: asyncio.Task | None = None
 _scheduler_task: asyncio.Task | None = None
+# Flipped to True during graceful shutdown so the /readyz probe goes red
+# and upstream load balancers stop sending new traffic while in-flight
+# requests complete under the drain budget.
+_shutting_down: bool = False
 
 
 _STUCK_JOB_TIMEOUT = 1800  # 30 minutes — mark RUNNING jobs as FAILED
@@ -533,6 +583,19 @@ async def health() -> HealthResponse:
 async def version() -> VersionInfo:
     """Version information."""
     return VersionInfo(version=__version__)
+
+
+@app.get("/readyz", tags=["meta"])
+async def readiness() -> JSONResponse:
+    """Readiness probe — returns 503 once graceful shutdown has started.
+
+    Kubernetes removes the pod from the service endpoint list on first 503,
+    so new requests stop arriving while in-flight work drains under the
+    operator-configured drain budget (AGENT_BOM_SHUTDOWN_DRAIN_SECONDS).
+    """
+    if _shutting_down:
+        return JSONResponse(status_code=503, content={"status": "draining"})
+    return JSONResponse(status_code=200, content={"status": "ready"})
 
 
 # ── Dashboard static file serving ────────────────────────────────────────────

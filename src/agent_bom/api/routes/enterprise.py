@@ -171,6 +171,30 @@ async def list_keys(request: Request) -> dict:
     return {"keys": [k.to_dict() for k in keys]}
 
 
+@router.get("/v1/auth/policy", tags=["enterprise"])
+async def auth_policy() -> dict:
+    """Report API key and rate-limit key rotation policy + status.
+
+    Operators surface this in dashboards and runbooks to confirm that
+    rotation cadence is enforced and that no fingerprint key has aged
+    past the configured maximum.
+    """
+    from agent_bom.api.auth import get_api_key_policy
+    from agent_bom.api.middleware import get_rate_limit_key_status
+
+    api_policy = get_api_key_policy()
+    rl_status = get_rate_limit_key_status()
+    return {
+        "api_key": {
+            "default_ttl_seconds": api_policy.default_ttl_seconds,
+            "max_ttl_seconds": api_policy.max_ttl_seconds,
+            "rotation_policy": "enforced",
+            "rotation_endpoint": "/v1/auth/keys/{key_id}/rotate",
+        },
+        "rate_limit_key": rl_status,
+    }
+
+
 @router.delete("/v1/auth/keys/{key_id}", tags=["enterprise"], status_code=204)
 async def delete_key(request: Request, key_id: str) -> None:
     """Revoke an API key."""

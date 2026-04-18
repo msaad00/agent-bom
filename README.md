@@ -142,35 +142,31 @@ Self-hosted is a first-class path. Employee endpoints push fleet discovery into 
 ```mermaid
 flowchart LR
     subgraph endpoints["Employee endpoints"]
-        cur[Cursor / Claude / VS Code]
-        codex[Codex / Cortex / Continue]
-        agcli[agent-bom agents --push]
-        prx[agent-bom proxy &lt;mcp cmd&gt;]
+        direction TB
+        clients["Cursor · Claude · VS Code<br/>Codex · Cortex · Continue"]
+        push["agent-bom agents --push"]
+        proxy["agent-bom proxy &lt;mcp&gt;"]
+        clients -.-> push
+        clients -.-> proxy
     end
 
-    subgraph eks["Your AWS / EKS cluster"]
-        api[Control-plane API + UI]
-        fleet[Fleet · Mesh · Gateway · Audit]
-        auth[OIDC / SAML / RBAC]
-        pg[(Postgres)]
-        ch[(ClickHouse · optional)]
-        secrets[(External Secrets · KMS)]
-        obs[Prometheus · Grafana · OTel]
-        mcps[Selected MCP workloads<br/>+ proxy sidecars]
-    end
+    cp(["Control plane<br/>API · UI · Fleet · Mesh · Gateway · Audit"])
+    pg[("Postgres")]
+    ch[("ClickHouse<br/>optional")]
+    sec[("External Secrets · KMS")]
+    obs["Prometheus · Grafana · OTel"]
+    workloads["Selected MCP workloads<br/>+ proxy sidecars"]
 
-    cur --> agcli
-    codex --> agcli
-    agcli -->|HTTPS push| api
-    prx -->|policy pull · audit push| api
-    api --- fleet
-    api --- auth
-    api --- pg
-    api -. analytics .- ch
-    api --- secrets
-    api --- obs
-    api --- mcps
+    push -->|HTTPS push| cp
+    proxy -->|policy pull · audit push| cp
+    cp --- pg
+    cp -. analytics .- ch
+    cp --- sec
+    cp --- obs
+    cp --> workloads
 ```
+
+Inside the control plane: **OIDC + SAML SSO** with RBAC, **enforced API-key rotation policy**, **tenant-scoped quotas + rate limits**, **HMAC-chained audit log** with signed export, and **KMS-encrypted Postgres backups** with a verified restore round-trip in CI.
 
 What that gives you:
 
@@ -178,6 +174,23 @@ What that gives you:
 - runtime enforcement for selected MCP workloads in-cluster
 - one control plane for fleet, mesh, findings, gateway policy, and audit
 - no mandatory hosted vendor plane
+
+### How a request flows through the control plane
+
+```mermaid
+flowchart LR
+    REQ([HTTP request]) --> BODY[Body size + read timeout]
+    BODY --> TRACE[Trust headers + W3C trace]
+    TRACE --> AUTH["Auth — API key · OIDC · SAML"]
+    AUTH --> RBAC[RBAC role check]
+    RBAC --> TENANT[Tenant context propagation]
+    TENANT --> QUOTA[Tenant quota + rate limit]
+    QUOTA --> ROUTE[Route handler]
+    ROUTE --> AUDIT[(HMAC audit log)]
+    ROUTE --> STORE[(Postgres / ClickHouse<br/>KMS at rest)]
+```
+
+Every layer is testable on its own; failures emit Prometheus metrics. Operators introspect a live request via `GET /v1/auth/debug` and see rotation status via `GET /v1/auth/policy`.
 
 ```bash
 # control plane in your cluster

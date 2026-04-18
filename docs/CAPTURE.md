@@ -31,9 +31,24 @@ that does not happen again.
 
 | Asset | Page | Required scope | Rationale |
 |---|---|---|---|
-| `dashboard-live.png` | `/dashboard` | All agents | Shows risk overview + top attack paths |
+| `dashboard-live.png` | `/dashboard` (Risk overview) | All agents · scroll showing F-grade gauge, posture sub-scores, score breakdown, top attack paths | Captures the headline counters (actively exploited / credentials exposed / reachable tools / top-path risk), the security-posture grade, and the score breakdown — all in one frame |
 | `mesh-live.png` | `/mesh` | Filter to `claude-desktop` | Has 2 servers, 4 packages, 5+ CVEs — produces a rich graph |
 | `remediation-live.png` | `/remediation` | All frameworks tab | Shows the full prioritized fix list |
+
+### Dashboard layout (current)
+
+The Risk overview redesign (post-#1496 operator UX drilldown) replaced
+the older single-column attack-path layout. The current frame contains:
+
+1. **Header** — `Risk overview` title, scan count + agent count + package count + CVE count
+2. **Top counters** — actively exploited · credentials exposed · reachable tools · top attack-path risk
+3. **F-grade gauge** — 0-100 numeric score with letter grade
+4. **Security posture card** — grade explanation + 6 sub-scores (policy + controls, open evidence × 2, packages + CVEs, reach + exposure, MCP configuration)
+5. **Score breakdown** — per-driver progress bars with one-line evidence
+6. **Top attack paths** — clickable rows linking to the security graph
+
+A capture that misses any of those sections is incomplete. Re-shoot
+with the page scrolled to top so the gauge + posture card both fit.
 
 The `claude-desktop` agent in `src/agent_bom/demo.py` is the one wired
 for the mesh hero shot — it pulls in `axios@1.4.0` (7 CVEs) and

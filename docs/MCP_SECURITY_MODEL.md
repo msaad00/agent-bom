@@ -226,7 +226,7 @@ blast_radius        — blast radius for a specific CVE
 ### CI/CD (GitHub Action)
 
 ```yaml
-- uses: msaad00/agent-bom@v0.77.0
+- uses: msaad00/agent-bom@v0.77.1
   with:
     format: sarif
     upload-sarif: 'true'

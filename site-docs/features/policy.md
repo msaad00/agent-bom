@@ -49,7 +49,7 @@ agent-bom proxy --policy policy.json --block-undeclared -- ...
 
 ```yaml
 - name: Security gate
-  uses: msaad00/agent-bom@v0.77.0
+  uses: msaad00/agent-bom@v0.77.1
   with:
     policy: policy.json
     fail-on-violation: true

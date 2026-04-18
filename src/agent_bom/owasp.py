@@ -61,9 +61,14 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     """
     tags: set[str] = set()
 
-    # LLM05 — supply chain vulnerability: only when package is AI-related
-    if br.package.name.lower() in _AI_PACKAGES or br.package.name.lower() in _TRAINING_DATA_PACKAGES:
-        tags.add("LLM05")
+    # LLM05 — "Supply Chain Vulnerabilities" per OWASP LLM Top 10.
+    # Every CVE in a third-party package an agent depends on is a supply-chain
+    # finding by OWASP's definition; the prior narrow allowlist (AI/training
+    # packages only) under-fired LLM05 on generic transport/HTTP/template
+    # packages (starlette, requests, jinja2, etc.) that ARE reachable from
+    # the agent via an MCP server and therefore ARE supply-chain risk.
+    # A vulnerable package is always at least LLM05.
+    tags.add("LLM05")
 
     # LLM06 — sensitive information disclosure via credential exposure
     if br.exposed_credentials:

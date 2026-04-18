@@ -89,10 +89,16 @@ class TestCredentialDedup:
 
 
 class TestOwaspLLM05Tagging:
-    """LLM05 should only be applied to AI/ML packages, not all findings."""
+    """LLM05 — OWASP LLM Top 10 "Supply Chain Vulnerabilities" — applies to
+    every CVE in a third-party package an agent depends on. The earlier
+    narrow-allowlist behavior (AI/ML packages only) under-fired on generic
+    transport / HTTP / template packages (starlette, requests, jinja2, etc.)
+    that ARE reachable from the agent via an MCP server and therefore ARE
+    supply-chain risk by OWASP's definition.
+    """
 
-    def test_non_ai_package_no_llm05(self):
-        """A generic npm package should NOT get LLM05."""
+    def test_non_ai_package_gets_llm05(self):
+        """Every vulnerable third-party package is supply-chain risk."""
         br = BlastRadius(
             vulnerability=_vuln(),
             package=_pkg("express", "4.17.1", "npm"),
@@ -103,10 +109,10 @@ class TestOwaspLLM05Tagging:
         )
         br.calculate_risk_score()
         tags = tag_blast_radius(br)
-        assert "LLM05" not in tags
+        assert "LLM05" in tags
 
     def test_ai_package_gets_llm05(self):
-        """An AI framework package should get LLM05."""
+        """An AI framework package also gets LLM05 (supply chain)."""
         br = BlastRadius(
             vulnerability=_vuln(),
             package=_pkg("langchain", "0.1.0", "pypi"),

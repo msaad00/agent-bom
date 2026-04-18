@@ -15,6 +15,8 @@ Endpoints:
 from __future__ import annotations
 
 import json
+import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -607,11 +609,28 @@ async def export_compliance_report(
 
     The bundle pairs each control with the blast-radius findings that map to
     its tags, the audit-log entries within the requested time window, and
-    integrity totals from the HMAC-chained log. The response carries an
-    ``X-Agent-Bom-Compliance-Report-Signature`` header — the HMAC-SHA256 of
-    the canonical body — so downstream auditors can verify the bundle did
-    not drift between export and review. The export itself is audit-logged
-    as ``compliance.report_exported`` so re-issued bundles leave a trail.
+    integrity totals from the HMAC-chained log.
+
+    Security properties of the bundle:
+
+    - **Integrity** — ``X-Agent-Bom-Compliance-Report-Signature`` is the
+      HMAC-SHA256 of the canonical body. Any tampering with any field
+      invalidates the signature.
+    - **Replay protection** — the body carries ``nonce`` (128-bit) and
+      ``expires_at``; both are inside the signed envelope so a captured
+      bundle cannot be re-used after its expiry window. Consumers should
+      reject bundles where ``expires_at`` is in the past.
+    - **Confidentiality** — the bundle is cleartext at the application
+      layer by design (auditors need to read it). Operators MUST serve
+      ``/v1/compliance/*`` over TLS so evidence is not sniffable in
+      transit.
+    - **Non-repudiation** — HMAC is a shared secret so it does not provide
+      true non-repudiation; for forensic use, correlate with the
+      ``compliance.report_exported`` entry in the audit log (which
+      records the nonce of every exported bundle).
+    - **Tenant isolation** — controls evidence and audit events are
+      filtered by the authed tenant; cross-tenant data never appears
+      in a bundle belonging to another tenant.
 
     Query params:
       - ``since`` ISO-8601 timestamp (default: now − 30 days)
@@ -693,6 +712,15 @@ async def export_compliance_report(
             }
         )
 
+    # Replay-protection envelope: every bundle carries a fresh 128-bit nonce
+    # and an explicit expiry. The signature is computed over the canonical
+    # body that includes both, so tampering with either invalidates the
+    # signature and a captured bundle cannot be re-used after expiry.
+    nonce = secrets.token_hex(16)
+    bundle_ttl_seconds = int(os.environ.get("AGENT_BOM_COMPLIANCE_BUNDLE_TTL_SECONDS", "86400"))
+    bundle_ttl_seconds = max(60, min(bundle_ttl_seconds, 30 * 86400))  # 1 min to 30 days
+    expires_at = now + timedelta(seconds=bundle_ttl_seconds)
+
     body = {
         "schema_version": "v1",
         "framework": framework,
@@ -700,6 +728,8 @@ async def export_compliance_report(
         "framework_label": framework_label,
         "tenant_id": tenant_id,
         "generated_at": now.isoformat(),
+        "expires_at": expires_at.isoformat(),
+        "nonce": nonce,
         "scope": {
             "since": since_dt.isoformat(),
             "until": until_dt.isoformat(),
@@ -721,6 +751,27 @@ async def export_compliance_report(
             "checked": verified + tampered,
         },
         "signature_algorithm": "HMAC-SHA256",
+        "threat_model": {
+            "integrity": (
+                "HMAC-SHA256 over the canonical UTF-8 body. Tampering with any field "
+                "invalidates the signature. Auditors verify with the operator's "
+                "AGENT_BOM_AUDIT_HMAC_KEY."
+            ),
+            "confidentiality": (
+                "The bundle is cleartext at the application layer by design — auditors "
+                "need to read it. Operators MUST serve /v1/compliance/* over TLS so the "
+                "bundle is not sniffable in transit."
+            ),
+            "replay": (
+                "nonce + expires_at are inside the signed envelope. A re-issued bundle "
+                "past expires_at is expected to be rejected by the consumer."
+            ),
+            "non_repudiation": (
+                "HMAC is a shared secret between server and auditor; it does NOT provide "
+                "true non-repudiation. For forensic cases requiring non-repudiation, "
+                "cross-reference the compliance.report_exported audit entry."
+            ),
+        },
     }
 
     log_action(
@@ -734,6 +785,8 @@ async def export_compliance_report(
         control_count=len(controls),
         finding_count=total_findings,
         audit_event_count=len(audit_in_window),
+        nonce=nonce,
+        expires_at=expires_at.isoformat(),
     )
 
     filename = f"agent-bom-compliance-{framework_key.replace('_', '-')}.{ 'jsonl' if fmt == 'jsonl' else 'json'}"

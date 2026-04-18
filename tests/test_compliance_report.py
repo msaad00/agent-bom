@@ -170,6 +170,77 @@ def test_report_json_signature_matches_canonical_body() -> None:
     exported = exported_entries[0]
     assert (exported.details or {}).get("tenant_id") == "tenant-alpha"
     assert exported.actor == "ci-bot"
+    # Nonce from the body is recorded in the audit trail for forensic correlation
+    assert (exported.details or {}).get("nonce") == body["nonce"]
+    assert (exported.details or {}).get("expires_at") == body["expires_at"]
+
+
+# ─── Replay-protection envelope ──────────────────────────────────────────────
+
+
+def test_bundle_carries_nonce_and_expiry_in_signed_envelope() -> None:
+    """nonce + expires_at must be inside the body and thus inside the signature."""
+    _setup_audit_log()
+    jobs = _seed_jobs_with_findings()
+    full_payload = {"owasp_llm_top10": []}
+    req = _request("tenant-alpha")
+
+    with patch.object(compliance_routes, "_tenant_jobs", return_value=jobs):
+        with _patched_get_compliance_returns(full_payload):
+            resp = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
+
+    body = json.loads(resp.body)
+    # 128-bit hex nonce
+    assert isinstance(body["nonce"], str)
+    assert len(body["nonce"]) == 32
+    assert all(c in "0123456789abcdef" for c in body["nonce"])
+    # expires_at is in the future
+    expires = datetime.fromisoformat(body["expires_at"])
+    assert expires > datetime.now(timezone.utc)
+    # Signature covers the envelope — tampering with nonce breaks it
+    tampered = dict(body)
+    tampered["nonce"] = "00" * 16
+    tampered_canonical = json.dumps(tampered, sort_keys=True).encode()
+    from agent_bom.api.audit_log import _HMAC_KEY  # noqa: PLC0415
+
+    tampered_sig = hmac.new(_HMAC_KEY, tampered_canonical, hashlib.sha256).hexdigest()
+    assert resp.headers["X-Agent-Bom-Compliance-Report-Signature"] != tampered_sig
+
+
+def test_every_export_gets_a_fresh_nonce() -> None:
+    """Two consecutive exports for the same tenant must have different nonces."""
+    _setup_audit_log()
+    jobs = _seed_jobs_with_findings()
+    full_payload = {"owasp_llm_top10": []}
+    req = _request("tenant-alpha")
+
+    with patch.object(compliance_routes, "_tenant_jobs", return_value=jobs):
+        with _patched_get_compliance_returns(full_payload):
+            a = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
+            b = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
+
+    nonce_a = json.loads(a.body)["nonce"]
+    nonce_b = json.loads(b.body)["nonce"]
+    assert nonce_a != nonce_b
+
+
+def test_threat_model_block_documents_guarantees() -> None:
+    """The bundle must carry a threat_model block so auditors see the guarantees inline."""
+    _setup_audit_log()
+    jobs = _seed_jobs_with_findings()
+    full_payload = {"owasp_llm_top10": []}
+    req = _request("tenant-alpha")
+
+    with patch.object(compliance_routes, "_tenant_jobs", return_value=jobs):
+        with _patched_get_compliance_returns(full_payload):
+            resp = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
+
+    body = json.loads(resp.body)
+    tm = body["threat_model"]
+    # Every documented guarantee has a block
+    for key in ("integrity", "confidentiality", "replay", "non_repudiation"):
+        assert key in tm, f"threat_model must document {key}"
+        assert len(tm[key]) > 40
 
 
 # ─── Tenant isolation ─────────────────────────────────────────────────────────

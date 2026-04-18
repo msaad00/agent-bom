@@ -88,7 +88,7 @@ async def ingest_traces(request: Request, body: dict) -> dict:
                 for flag in flagged
             ]
             try:
-                _get_analytics_store().record_events(analytics_events)
+                _get_analytics_store().record_events(analytics_events, tenant_id=_tenant_id(request))
             except Exception:  # noqa: BLE001
                 _logger.warning("Trace analytics sync skipped", exc_info=True)
 

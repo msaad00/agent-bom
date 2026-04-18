@@ -309,6 +309,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             request.state.api_key_name = "static-key"
             request.state.api_key_role = "admin"
             request.state.tenant_id = "default"
+            request.state.auth_method = "static_api_key"
             return await self._call_with_tenant_context(request, call_next)
 
         # OIDC mode: try JWT verification when AGENT_BOM_OIDC_ISSUER is set
@@ -331,6 +332,12 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                     request.state.api_key_name = _claims.get("email") or _claims.get("sub", "oidc-user")
                     request.state.api_key_role = oidc_role
                     request.state.tenant_id = oidc_cfg.resolve_tenant(_claims)
+                    request.state.auth_method = "oidc"
+                    # Short issuer suffix helps operators recognize which IdP
+                    # resolved the token without leaking the full URL to all
+                    # request-scoped log fields.
+                    issuer = str(_claims.get("iss") or "")
+                    request.state.auth_issuer = issuer.rsplit("/", 1)[-1][:64] if issuer else None
                     return await self._call_with_tenant_context(request, call_next)
                 return JSONResponse(
                     status_code=403,
@@ -358,6 +365,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 request.state.api_key_name = api_key.name
                 request.state.api_key_role = api_key.role.value
                 request.state.tenant_id = api_key.tenant_id
+                request.state.api_key_id = api_key.key_id
+                # SAML-minted keys are named "saml:<subject>" — surface that
+                # as a distinct auth method so operators can trace who came
+                # in via which IdP path even after the key has been issued.
+                request.state.auth_method = "saml" if api_key.name.startswith("saml:") else "api_key"
                 return await self._call_with_tenant_context(request, call_next)
 
         return JSONResponse(

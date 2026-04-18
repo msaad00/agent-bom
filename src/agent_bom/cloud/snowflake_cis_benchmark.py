@@ -77,6 +77,7 @@ class SnowflakeCISReport:
                     "evidence": c.evidence,
                     "resource_ids": c.resource_ids,
                     "recommendation": c.recommendation,
+                    "remediation": c.remediation,
                     "cis_section": c.cis_section,
                     "attack_techniques": tag_cis_check(c),
                 }
@@ -650,5 +651,10 @@ def run_benchmark(
                 )
     finally:
         conn.close()
+
+    # Structured remediation per #665.
+    from agent_bom.cloud.cis_remediation import attach_all
+
+    attach_all(report, cloud="snowflake")
 
     return report

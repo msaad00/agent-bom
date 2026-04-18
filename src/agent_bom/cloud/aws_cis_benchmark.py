@@ -89,6 +89,10 @@ class CISCheckResult:
     resource_ids: list[str] = field(default_factory=list)
     recommendation: str = ""
     cis_section: str = ""
+    # Structured remediation (issue #665). Populated by
+    # ``agent_bom.cloud.cis_remediation.attach_remediation(result, cloud=...)``
+    # so per-check functions stay thin. Schema defined in that module.
+    remediation: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -138,6 +142,7 @@ class CISBenchmarkReport:
                     "evidence": c.evidence,
                     "resource_ids": c.resource_ids,
                     "recommendation": c.recommendation,
+                    "remediation": c.remediation,
                     "cis_section": c.cis_section,
                     "attack_techniques": tag_cis_check(c),
                 }
@@ -2650,5 +2655,11 @@ def run_benchmark(
 
     # Sort checks by check_id for consistent output
     report.checks.sort(key=lambda c: [int(x) if x.isdigit() else x for x in c.check_id.replace(".", " ").split()])
+
+    # Structured remediation per #665 — every check gets a non-empty
+    # ``remediation`` dict (schema in ``cis_remediation``).
+    from agent_bom.cloud.cis_remediation import attach_all
+
+    attach_all(report, cloud="aws")
 
     return report

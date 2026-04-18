@@ -24,6 +24,7 @@ Compliance mapping:
 from __future__ import annotations
 
 import ast
+import os
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -70,6 +71,28 @@ from agent_bom.ast_signal_utils import (
 from agent_bom.ast_signal_utils import (
     classify_prompt_type as _classify_prompt_type,
 )
+
+
+# Bounded depth for inter-procedural taint propagation. The taint analyzer
+# already follows tainted parameters across helper-call boundaries with
+# per-callsite parameter mapping; this cap pins the "bounded" claim with
+# a concrete number so operators understand exactly how many hops the
+# analyzer commits to following before it stops. Defaults to 4 — three
+# helper hops past the tool entrypoint plus the entrypoint itself —
+# which matches the depth the prior PR (#1488) committed to in writing.
+def _max_taint_depth() -> int:
+    raw = os.environ.get("AGENT_BOM_TAINT_MAX_DEPTH", "").strip()
+    if not raw:
+        return 4
+    try:
+        value = int(raw)
+    except ValueError:
+        return 4
+    # Clamp to a sane operational range. Going deeper than 8 in practice
+    # explodes the visit-set and produces near-duplicate findings; going
+    # below 2 disables the inter-procedural pass entirely.
+    return max(2, min(value, 8))
+
 
 # ── Prompt extraction patterns ───────────────────────────────────────────────
 
@@ -1272,12 +1295,20 @@ def _build_taint_findings(functions: list[_FunctionAnalysis]) -> list[FlowFindin
             return guarded
         return set()
 
+    max_depth = _max_taint_depth()
+
     def analyze_function(
         func: _FunctionAnalysis,
         tainted_params: set[str],
         call_path: list[str],
         visited: set[tuple[str, tuple[str, ...]]],
     ) -> tuple[list[FlowFinding], bool]:
+        # Bounded inter-procedural traversal: the visit-set already prevents
+        # cycles, but a long fan-out chain could still explode the work
+        # without surfacing a finding the operator can act on. Cap the
+        # call_path length so the analyzer commits to a documented depth.
+        if len(call_path) > max_depth:
+            return [], False
         visit_key = (func.qualified_name, tuple(sorted(tainted_params)))
         if visit_key in visited or func.node is None:
             return [], False
@@ -1699,6 +1730,7 @@ def _build_call_graph(functions: list[_FunctionAnalysis]) -> tuple[list[CallEdge
     findings: list[FlowFinding] = []
     seen_findings: set[tuple[str, str, str, int]] = set()
     function_by_id = {func.qualified_name: func for func in functions}
+    max_depth = _max_taint_depth()
     for func in functions:
         if not func.is_tool:
             continue
@@ -1706,6 +1738,12 @@ def _build_call_graph(functions: list[_FunctionAnalysis]) -> tuple[list[CallEdge
         visited: set[str] = set()
         while queue:
             current_id, path = queue.pop(0)
+            if len(path) > max_depth:
+                # Stop following helper chains past the configured depth so
+                # the bounded claim is honored uniformly across the two
+                # taint surfaces (this BFS + the parameter-level recursion
+                # in _build_taint_findings).
+                continue
             if current_id in visited:
                 continue
             visited.add(current_id)

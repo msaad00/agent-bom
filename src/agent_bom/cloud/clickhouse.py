@@ -99,11 +99,26 @@ class ClickHouseClient:
     # ------------------------------------------------------------------
 
     def ensure_tables(self) -> None:
-        """Create analytics tables if they don't exist (idempotent)."""
+        """Create analytics tables if they don't exist (idempotent).
+
+        Also applies forward-compatible column migrations via
+        ``ALTER TABLE ... ADD COLUMN IF NOT EXISTS`` so deployments that
+        pre-date the multi-tenant schema pick up the ``tenant_id`` column
+        on the next process start without an operator intervention.
+        """
         _validate_identifier(self.database, "database")
         self.execute(f"CREATE DATABASE IF NOT EXISTS {self.database}")
         for ddl in _TABLE_DDL:
             self.execute(ddl)
+        for migration in _TABLE_MIGRATIONS:
+            try:
+                self.execute(migration)
+            except ClickHouseError as exc:
+                # ALTER TABLE ADD COLUMN IF NOT EXISTS is idempotent on
+                # modern ClickHouse. Older clusters may return a transient
+                # error on repeat runs; log and continue so ensure_tables
+                # stays safe to call on every process start.
+                logger.debug("ClickHouse migration skipped (%s): %s", exc, migration.split('\n', 1)[0])
         logger.info("ClickHouse analytics tables ensured in database '%s'", self.database)
 
 
@@ -117,6 +132,7 @@ _TABLE_DDL: list[str] = [
 CREATE TABLE IF NOT EXISTS vulnerability_scans (
     scan_id String,
     scan_timestamp DateTime DEFAULT now(),
+    tenant_id String DEFAULT 'default',
     package_name String,
     package_version String,
     ecosystem LowCardinality(String),
@@ -136,6 +152,7 @@ PARTITION BY toYYYYMM(scan_timestamp)""",
 CREATE TABLE IF NOT EXISTS runtime_events (
     event_id String,
     event_timestamp DateTime DEFAULT now(),
+    tenant_id String DEFAULT 'default',
     event_type LowCardinality(String),
     detector LowCardinality(String),
     severity LowCardinality(String),
@@ -149,6 +166,7 @@ PARTITION BY toYYYYMM(event_timestamp)""",
     """\
 CREATE TABLE IF NOT EXISTS posture_scores (
     measured_at DateTime DEFAULT now(),
+    tenant_id String DEFAULT 'default',
     agent_name String,
     total_packages UInt32,
     critical_vulns UInt32,
@@ -166,6 +184,7 @@ TTL measured_at + INTERVAL 2 YEAR""",
 CREATE TABLE IF NOT EXISTS scan_metadata (
     scan_id String,
     scan_timestamp DateTime DEFAULT now(),
+    tenant_id String DEFAULT 'default',
     agent_count UInt32,
     package_count UInt32,
     vuln_count UInt32,
@@ -202,6 +221,7 @@ TTL measured_at + INTERVAL 2 YEAR""",
 CREATE TABLE IF NOT EXISTS compliance_controls (
     measured_at DateTime DEFAULT now(),
     scan_id String,
+    tenant_id String DEFAULT 'default',
     framework LowCardinality(String),
     control_id String,
     control_name String,
@@ -225,4 +245,17 @@ CREATE TABLE IF NOT EXISTS audit_events (
 ORDER BY (event_timestamp, tenant_id, action)
 PARTITION BY toYYYYMM(event_timestamp)
 TTL event_timestamp + INTERVAL 2 YEAR""",
+]
+
+
+# Forward-compatible column additions for pre-tenant deployments. Each ALTER
+# uses ``ADD COLUMN IF NOT EXISTS`` so it is safe to run on every startup.
+# Existing rows get the ``default`` tenant; new rows carry the caller-supplied
+# tenant_id. Reads enforce the filter when a tenant scope is provided.
+_TABLE_MIGRATIONS: list[str] = [
+    "ALTER TABLE vulnerability_scans ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default'",
+    "ALTER TABLE runtime_events ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default'",
+    "ALTER TABLE posture_scores ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default'",
+    "ALTER TABLE scan_metadata ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default'",
+    "ALTER TABLE compliance_controls ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default'",
 ]

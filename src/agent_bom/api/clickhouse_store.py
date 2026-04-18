@@ -35,21 +35,35 @@ _CLICKHOUSE_SAFE_STRING_RE = re.compile(r"[\x20-\x7E]+")
 
 @runtime_checkable
 class AnalyticsStore(Protocol):
-    """Protocol for analytics persistence (OLAP)."""
+    """Protocol for analytics persistence (OLAP).
 
-    def record_scan(self, scan_id: str, agent_name: str, vulns: list[dict]) -> None:
+    Every write carries a ``tenant_id`` so the shared ClickHouse cluster
+    stays segregated per-tenant at row level. Read methods accept an
+    optional ``tenant_id``; ``None`` is an explicit cross-tenant scan used
+    only by admin-scoped operator dashboards. All call sites on the
+    user-facing API path must supply the tenant_id from the request state.
+    """
+
+    def record_scan(
+        self,
+        scan_id: str,
+        agent_name: str,
+        vulns: list[dict],
+        *,
+        tenant_id: str = "default",
+    ) -> None:
         """Append vulnerability scan results."""
         ...
 
-    def record_event(self, event: dict) -> None:
+    def record_event(self, event: dict, *, tenant_id: str = "default") -> None:
         """Append a runtime protection event."""
         ...
 
-    def record_events(self, events: list[dict]) -> None:
+    def record_events(self, events: list[dict], *, tenant_id: str = "default") -> None:
         """Append multiple runtime protection events in one batch."""
         ...
 
-    def record_posture(self, agent_name: str, snapshot: dict) -> None:
+    def record_posture(self, agent_name: str, snapshot: dict, *, tenant_id: str = "default") -> None:
         """Append a posture score snapshot."""
         ...
 
@@ -57,7 +71,7 @@ class AnalyticsStore(Protocol):
         """Append a fleet-agent snapshot."""
         ...
 
-    def record_compliance_control(self, control: dict) -> None:
+    def record_compliance_control(self, control: dict, *, tenant_id: str = "default") -> None:
         """Append a compliance control measurement."""
         ...
 
@@ -65,31 +79,43 @@ class AnalyticsStore(Protocol):
         """Append an audit event for analytics/trending."""
         ...
 
-    def query_vuln_trends(self, days: int = 30, agent: str | None = None) -> list[dict]:
+    def query_vuln_trends(
+        self,
+        days: int = 30,
+        agent: str | None = None,
+        *,
+        tenant_id: str | None = None,
+    ) -> list[dict]:
         """Vulnerability counts grouped by day and severity."""
         ...
 
-    def query_top_cves(self, limit: int = 20) -> list[dict]:
+    def query_top_cves(self, limit: int = 20, *, tenant_id: str | None = None) -> list[dict]:
         """Most frequent CVEs across all scans."""
         ...
 
-    def query_posture_history(self, agent: str | None = None, days: int = 90) -> list[dict]:
+    def query_posture_history(
+        self,
+        agent: str | None = None,
+        days: int = 90,
+        *,
+        tenant_id: str | None = None,
+    ) -> list[dict]:
         """Posture grade time-series."""
         ...
 
-    def query_event_summary(self, hours: int = 24) -> list[dict]:
+    def query_event_summary(self, hours: int = 24, *, tenant_id: str | None = None) -> list[dict]:
         """Runtime event counts grouped by type."""
         ...
 
-    def query_top_riskiest_agents(self, limit: int = 20) -> list[dict]:
+    def query_top_riskiest_agents(self, limit: int = 20, *, tenant_id: str | None = None) -> list[dict]:
         """Top fleet agents by trust/risk posture."""
         ...
 
-    def query_compliance_heatmap(self, days: int = 30) -> list[dict]:
+    def query_compliance_heatmap(self, days: int = 30, *, tenant_id: str | None = None) -> list[dict]:
         """Compliance control pass/fail summary grouped by framework."""
         ...
 
-    def record_scan_metadata(self, metadata: dict) -> None:
+    def record_scan_metadata(self, metadata: dict, *, tenant_id: str = "default") -> None:
         """Record scan-level metadata (agent count, vuln count, grade)."""
         ...
 
@@ -106,46 +132,65 @@ class AnalyticsStore(Protocol):
 class NullAnalyticsStore:
     """Silent no-op analytics store used when ClickHouse is not configured."""
 
-    def record_scan(self, scan_id: str, agent_name: str, vulns: list[dict]) -> None:
+    def record_scan(
+        self,
+        scan_id: str,
+        agent_name: str,
+        vulns: list[dict],
+        *,
+        tenant_id: str = "default",
+    ) -> None:
         pass
 
-    def record_event(self, event: dict) -> None:
+    def record_event(self, event: dict, *, tenant_id: str = "default") -> None:
         pass
 
-    def record_events(self, events: list[dict]) -> None:
+    def record_events(self, events: list[dict], *, tenant_id: str = "default") -> None:
         pass
 
-    def record_posture(self, agent_name: str, snapshot: dict) -> None:
+    def record_posture(self, agent_name: str, snapshot: dict, *, tenant_id: str = "default") -> None:
         pass
 
     def record_fleet_snapshot(self, snapshot: dict) -> None:
         pass
 
-    def record_compliance_control(self, control: dict) -> None:
+    def record_compliance_control(self, control: dict, *, tenant_id: str = "default") -> None:
         pass
 
     def record_audit_event(self, event: dict) -> None:
         pass
 
-    def query_vuln_trends(self, days: int = 30, agent: str | None = None) -> list[dict]:
+    def query_vuln_trends(
+        self,
+        days: int = 30,
+        agent: str | None = None,
+        *,
+        tenant_id: str | None = None,
+    ) -> list[dict]:
         return []
 
-    def query_top_cves(self, limit: int = 20) -> list[dict]:
+    def query_top_cves(self, limit: int = 20, *, tenant_id: str | None = None) -> list[dict]:
         return []
 
-    def query_posture_history(self, agent: str | None = None, days: int = 90) -> list[dict]:
+    def query_posture_history(
+        self,
+        agent: str | None = None,
+        days: int = 90,
+        *,
+        tenant_id: str | None = None,
+    ) -> list[dict]:
         return []
 
-    def query_event_summary(self, hours: int = 24) -> list[dict]:
+    def query_event_summary(self, hours: int = 24, *, tenant_id: str | None = None) -> list[dict]:
         return []
 
-    def query_top_riskiest_agents(self, limit: int = 20) -> list[dict]:
+    def query_top_riskiest_agents(self, limit: int = 20, *, tenant_id: str | None = None) -> list[dict]:
         return []
 
-    def query_compliance_heatmap(self, days: int = 30) -> list[dict]:
+    def query_compliance_heatmap(self, days: int = 30, *, tenant_id: str | None = None) -> list[dict]:
         return []
 
-    def record_scan_metadata(self, metadata: dict) -> None:
+    def record_scan_metadata(self, metadata: dict, *, tenant_id: str = "default") -> None:
         pass
 
     def close(self) -> None:
@@ -168,12 +213,26 @@ class ClickHouseAnalyticsStore:
 
     # -- writes --------------------------------------------------------
 
-    def record_scan(self, scan_id: str, agent_name: str, vulns: list[dict]) -> None:
-        rows = self._scan_rows(scan_id, agent_name, vulns)
+    def record_scan(
+        self,
+        scan_id: str,
+        agent_name: str,
+        vulns: list[dict],
+        *,
+        tenant_id: str = "default",
+    ) -> None:
+        rows = self._scan_rows(scan_id, agent_name, vulns, tenant_id=tenant_id)
         if rows:
             self._client.insert_json("vulnerability_scans", rows)
 
-    def _scan_rows(self, scan_id: str, agent_name: str, vulns: list[dict]) -> list[dict[str, Any]]:
+    def _scan_rows(
+        self,
+        scan_id: str,
+        agent_name: str,
+        vulns: list[dict],
+        *,
+        tenant_id: str = "default",
+    ) -> list[dict[str, Any]]:
         if not vulns:
             return []
 
@@ -191,6 +250,7 @@ class ClickHouseAnalyticsStore:
         return [
             {
                 "scan_id": scan_id,
+                "tenant_id": str(v.get("tenant_id") or tenant_id or "default"),
                 "package_name": _split_package(v)[0],
                 "package_version": _split_package(v)[1],
                 "ecosystem": v.get("ecosystem", ""),
@@ -206,17 +266,18 @@ class ClickHouseAnalyticsStore:
             for v in vulns
         ]
 
-    def record_event(self, event: dict) -> None:
-        self.record_events([event])
+    def record_event(self, event: dict, *, tenant_id: str = "default") -> None:
+        self.record_events([event], tenant_id=tenant_id)
 
-    def record_events(self, events: list[dict]) -> None:
-        rows = [self._event_row(event) for event in events if event]
+    def record_events(self, events: list[dict], *, tenant_id: str = "default") -> None:
+        rows = [self._event_row(event, tenant_id=tenant_id) for event in events if event]
         if rows:
             self._client.insert_json("runtime_events", rows)
 
-    def _event_row(self, event: dict) -> dict[str, Any]:
+    def _event_row(self, event: dict, *, tenant_id: str = "default") -> dict[str, Any]:
         return {
             "event_id": event.get("event_id", str(uuid.uuid4())),
+            "tenant_id": str(event.get("tenant_id") or tenant_id or "default"),
             "event_type": event.get("event_type", event.get("type", "")),
             "detector": event.get("detector", ""),
             "severity": event.get("severity", "INFO"),
@@ -225,11 +286,21 @@ class ClickHouseAnalyticsStore:
             "agent_name": event.get("agent_name", ""),
         }
 
-    def record_posture(self, agent_name: str, snapshot: dict) -> None:
-        self._client.insert_json("posture_scores", [self._posture_row(agent_name, snapshot)])
+    def record_posture(self, agent_name: str, snapshot: dict, *, tenant_id: str = "default") -> None:
+        self._client.insert_json(
+            "posture_scores",
+            [self._posture_row(agent_name, snapshot, tenant_id=tenant_id)],
+        )
 
-    def _posture_row(self, agent_name: str, snapshot: dict) -> dict[str, Any]:
+    def _posture_row(
+        self,
+        agent_name: str,
+        snapshot: dict,
+        *,
+        tenant_id: str = "default",
+    ) -> dict[str, Any]:
         return {
+            "tenant_id": str(snapshot.get("tenant_id") or tenant_id or "default"),
             "agent_name": agent_name,
             "total_packages": int(snapshot.get("total_packages", 0)),
             "critical_vulns": int(snapshot.get("critical", 0)),
@@ -257,13 +328,17 @@ class ClickHouseAnalyticsStore:
             "tenant_id": snapshot.get("tenant_id", "default"),
         }
 
-    def record_compliance_control(self, control: dict) -> None:
-        self._client.insert_json("compliance_controls", [self._compliance_row(control)])
+    def record_compliance_control(self, control: dict, *, tenant_id: str = "default") -> None:
+        self._client.insert_json(
+            "compliance_controls",
+            [self._compliance_row(control, tenant_id=tenant_id)],
+        )
 
-    def _compliance_row(self, control: dict) -> dict[str, Any]:
+    def _compliance_row(self, control: dict, *, tenant_id: str = "default") -> dict[str, Any]:
         return {
             "measured_at": control.get("measured_at"),
             "scan_id": control.get("scan_id", ""),
+            "tenant_id": str(control.get("tenant_id") or tenant_id or "default"),
             "framework": control.get("framework", ""),
             "control_id": control.get("control_id", ""),
             "control_name": control.get("control_name", ""),
@@ -287,11 +362,19 @@ class ClickHouseAnalyticsStore:
 
     # -- reads ---------------------------------------------------------
 
-    def query_vuln_trends(self, days: int = 30, agent: str | None = None) -> list[dict]:
-        # days is int-only, agent is escaped via _escape() — safe from injection
+    def query_vuln_trends(
+        self,
+        days: int = 30,
+        agent: str | None = None,
+        *,
+        tenant_id: str | None = None,
+    ) -> list[dict]:
+        # days is int-only, agent + tenant_id are escaped via _escape() — safe from injection
         where = f"scan_timestamp >= now() - INTERVAL {int(days)} DAY"
         if agent:
             where += f" AND agent_name = '{_escape(agent)}'"
+        if tenant_id is not None:
+            where += f" AND tenant_id = '{_escape(tenant_id)}'"
         query = (
             f"SELECT toDate(scan_timestamp) AS day, severity, count() AS cnt "  # nosec B608
             f"FROM vulnerability_scans WHERE {where} "
@@ -299,20 +382,31 @@ class ClickHouseAnalyticsStore:
         )
         return self._client.query_json(query)
 
-    def query_top_cves(self, limit: int = 20) -> list[dict]:
+    def query_top_cves(self, limit: int = 20, *, tenant_id: str | None = None) -> list[dict]:
         # limit is int-only via int() cast — safe from injection
+        where = "cve_id != ''"
+        if tenant_id is not None:
+            where += f" AND tenant_id = '{_escape(tenant_id)}'"
         query = (
             f"SELECT cve_id, count() AS cnt, max(cvss_score) AS max_cvss "  # nosec B608
-            f"FROM vulnerability_scans WHERE cve_id != '' "
+            f"FROM vulnerability_scans WHERE {where} "
             f"GROUP BY cve_id ORDER BY cnt DESC LIMIT {int(limit)}"
         )
         return self._client.query_json(query)
 
-    def query_posture_history(self, agent: str | None = None, days: int = 90) -> list[dict]:
-        # days is int-only, agent is escaped via _escape() — safe from injection
+    def query_posture_history(
+        self,
+        agent: str | None = None,
+        days: int = 90,
+        *,
+        tenant_id: str | None = None,
+    ) -> list[dict]:
+        # days is int-only, agent + tenant_id are escaped via _escape() — safe from injection
         where = f"measured_at >= now() - INTERVAL {int(days)} DAY"
         if agent:
             where += f" AND agent_name = '{_escape(agent)}'"
+        if tenant_id is not None:
+            where += f" AND tenant_id = '{_escape(tenant_id)}'"
         query = (
             f"SELECT toDate(measured_at) AS day, agent_name, posture_grade, "  # nosec B608
             f"risk_score, compliance_score "
@@ -321,41 +415,54 @@ class ClickHouseAnalyticsStore:
         )
         return self._client.query_json(query)
 
-    def query_event_summary(self, hours: int = 24) -> list[dict]:
+    def query_event_summary(self, hours: int = 24, *, tenant_id: str | None = None) -> list[dict]:
         # hours is int-only via int() cast — safe from injection
+        where = f"event_timestamp >= now() - INTERVAL {int(hours)} HOUR"
+        if tenant_id is not None:
+            where += f" AND tenant_id = '{_escape(tenant_id)}'"
         query = (
             f"SELECT event_type, severity, count() AS cnt "  # nosec B608
             f"FROM runtime_events "
-            f"WHERE event_timestamp >= now() - INTERVAL {int(hours)} HOUR "
+            f"WHERE {where} "
             f"GROUP BY event_type, severity ORDER BY cnt DESC"
         )
         return self._client.query_json(query)
 
-    def query_top_riskiest_agents(self, limit: int = 20) -> list[dict]:
+    def query_top_riskiest_agents(self, limit: int = 20, *, tenant_id: str | None = None) -> list[dict]:
+        where_clause = ""
+        if tenant_id is not None:
+            where_clause = f" WHERE tenant_id = '{_escape(tenant_id)}'"
         query = (
             f"SELECT agent_name, anyLast(lifecycle_state) AS lifecycle_state, "
             f"max(trust_score) AS trust_score, max(vuln_count) AS vuln_count, "
             f"max(credential_count) AS credential_count, anyLast(tenant_id) AS tenant_id "  # nosec B608
-            f"FROM fleet_agents GROUP BY agent_name ORDER BY trust_score ASC, vuln_count DESC "
+            f"FROM fleet_agents{where_clause} GROUP BY agent_name ORDER BY trust_score ASC, vuln_count DESC "
             f"LIMIT {int(limit)}"
         )
         return self._client.query_json(query)
 
-    def query_compliance_heatmap(self, days: int = 30) -> list[dict]:
+    def query_compliance_heatmap(self, days: int = 30, *, tenant_id: str | None = None) -> list[dict]:
+        where = f"measured_at >= now() - INTERVAL {int(days)} DAY"
+        if tenant_id is not None:
+            where += f" AND tenant_id = '{_escape(tenant_id)}'"
         query = (
             f"SELECT framework, status, count() AS cnt, avg(score) AS avg_score "  # nosec B608
             f"FROM compliance_controls "
-            f"WHERE measured_at >= now() - INTERVAL {int(days)} DAY "
+            f"WHERE {where} "
             f"GROUP BY framework, status ORDER BY framework, status"
         )
         return self._client.query_json(query)
 
-    def record_scan_metadata(self, metadata: dict) -> None:
-        self._client.insert_json("scan_metadata", [self._metadata_row(metadata)])
+    def record_scan_metadata(self, metadata: dict, *, tenant_id: str = "default") -> None:
+        self._client.insert_json(
+            "scan_metadata",
+            [self._metadata_row(metadata, tenant_id=tenant_id)],
+        )
 
-    def _metadata_row(self, metadata: dict) -> dict[str, Any]:
+    def _metadata_row(self, metadata: dict, *, tenant_id: str = "default") -> dict[str, Any]:
         return {
             "scan_id": metadata.get("scan_id", str(uuid.uuid4())),
+            "tenant_id": str(metadata.get("tenant_id") or tenant_id or "default"),
             "agent_count": int(metadata.get("agent_count", 0)),
             "package_count": int(metadata.get("package_count", 0)),
             "vuln_count": int(metadata.get("vuln_count", 0)),
@@ -388,54 +495,73 @@ class BufferedAnalyticsStore:
         self._thread = threading.Thread(target=self._run, name="agent-bom-clickhouse-buffer", daemon=True)
         self._thread.start()
 
-    def record_scan(self, scan_id: str, agent_name: str, vulns: list[dict]) -> None:
-        self._queue.put(("scan", (scan_id, agent_name, vulns)))
+    def record_scan(
+        self,
+        scan_id: str,
+        agent_name: str,
+        vulns: list[dict],
+        *,
+        tenant_id: str = "default",
+    ) -> None:
+        self._queue.put(("scan", (scan_id, agent_name, vulns, tenant_id)))
 
-    def record_event(self, event: dict) -> None:
-        self._queue.put(("event", (event,)))
+    def record_event(self, event: dict, *, tenant_id: str = "default") -> None:
+        self._queue.put(("event", (event, tenant_id)))
 
-    def record_events(self, events: list[dict]) -> None:
+    def record_events(self, events: list[dict], *, tenant_id: str = "default") -> None:
         if events:
-            self._queue.put(("event_batch", (events,)))
+            self._queue.put(("event_batch", (events, tenant_id)))
 
-    def record_posture(self, agent_name: str, snapshot: dict) -> None:
-        self._queue.put(("posture", (agent_name, snapshot)))
+    def record_posture(self, agent_name: str, snapshot: dict, *, tenant_id: str = "default") -> None:
+        self._queue.put(("posture", (agent_name, snapshot, tenant_id)))
 
-    def record_scan_metadata(self, metadata: dict) -> None:
-        self._queue.put(("metadata", (metadata,)))
+    def record_scan_metadata(self, metadata: dict, *, tenant_id: str = "default") -> None:
+        self._queue.put(("metadata", (metadata, tenant_id)))
 
     def record_fleet_snapshot(self, snapshot: dict) -> None:
         self._queue.put(("fleet", (snapshot,)))
 
-    def record_compliance_control(self, control: dict) -> None:
-        self._queue.put(("compliance", (control,)))
+    def record_compliance_control(self, control: dict, *, tenant_id: str = "default") -> None:
+        self._queue.put(("compliance", (control, tenant_id)))
 
     def record_audit_event(self, event: dict) -> None:
         self._queue.put(("audit", (event,)))
 
-    def query_vuln_trends(self, days: int = 30, agent: str | None = None) -> list[dict]:
+    def query_vuln_trends(
+        self,
+        days: int = 30,
+        agent: str | None = None,
+        *,
+        tenant_id: str | None = None,
+    ) -> list[dict]:
         self._flush_pending()
-        return self._store.query_vuln_trends(days=days, agent=agent)
+        return self._store.query_vuln_trends(days=days, agent=agent, tenant_id=tenant_id)
 
-    def query_top_cves(self, limit: int = 20) -> list[dict]:
+    def query_top_cves(self, limit: int = 20, *, tenant_id: str | None = None) -> list[dict]:
         self._flush_pending()
-        return self._store.query_top_cves(limit=limit)
+        return self._store.query_top_cves(limit=limit, tenant_id=tenant_id)
 
-    def query_posture_history(self, agent: str | None = None, days: int = 90) -> list[dict]:
+    def query_posture_history(
+        self,
+        agent: str | None = None,
+        days: int = 90,
+        *,
+        tenant_id: str | None = None,
+    ) -> list[dict]:
         self._flush_pending()
-        return self._store.query_posture_history(agent=agent, days=days)
+        return self._store.query_posture_history(agent=agent, days=days, tenant_id=tenant_id)
 
-    def query_event_summary(self, hours: int = 24) -> list[dict]:
+    def query_event_summary(self, hours: int = 24, *, tenant_id: str | None = None) -> list[dict]:
         self._flush_pending()
-        return self._store.query_event_summary(hours=hours)
+        return self._store.query_event_summary(hours=hours, tenant_id=tenant_id)
 
-    def query_top_riskiest_agents(self, limit: int = 20) -> list[dict]:
+    def query_top_riskiest_agents(self, limit: int = 20, *, tenant_id: str | None = None) -> list[dict]:
         self._flush_pending()
-        return self._store.query_top_riskiest_agents(limit=limit)
+        return self._store.query_top_riskiest_agents(limit=limit, tenant_id=tenant_id)
 
-    def query_compliance_heatmap(self, days: int = 30) -> list[dict]:
+    def query_compliance_heatmap(self, days: int = 30, *, tenant_id: str | None = None) -> list[dict]:
         self._flush_pending()
-        return self._store.query_compliance_heatmap(days=days)
+        return self._store.query_compliance_heatmap(days=days, tenant_id=tenant_id)
 
     def close(self) -> None:
         self._stop.set()
@@ -472,26 +598,36 @@ class BufferedAnalyticsStore:
 
         for kind, payload in drained:
             if kind == "scan":
-                scan_id, agent_name, vulns = payload
-                scan_rows.extend(self._store._scan_rows(str(scan_id), str(agent_name), list(vulns)))
+                scan_id, agent_name, vulns, tenant_id = payload
+                scan_rows.extend(
+                    self._store._scan_rows(str(scan_id), str(agent_name), list(vulns), tenant_id=str(tenant_id))
+                )
             elif kind == "event":
-                (event,) = payload
-                event_rows.append(self._store._event_row(dict(event)))
+                event, tenant_id = payload
+                event_rows.append(self._store._event_row(dict(event), tenant_id=str(tenant_id)))
             elif kind == "event_batch":
-                (events,) = payload
-                event_rows.extend(self._store._event_row(dict(event)) for event in events if event)
+                events, tenant_id = payload
+                event_rows.extend(
+                    self._store._event_row(dict(event), tenant_id=str(tenant_id))
+                    for event in events
+                    if event
+                )
             elif kind == "posture":
-                agent_name, snapshot = payload
-                posture_rows.append(self._store._posture_row(str(agent_name), dict(snapshot)))
+                agent_name, snapshot, tenant_id = payload
+                posture_rows.append(
+                    self._store._posture_row(str(agent_name), dict(snapshot), tenant_id=str(tenant_id))
+                )
             elif kind == "metadata":
-                (metadata,) = payload
-                metadata_rows.append(self._store._metadata_row(dict(metadata)))
+                metadata, tenant_id = payload
+                metadata_rows.append(self._store._metadata_row(dict(metadata), tenant_id=str(tenant_id)))
             elif kind == "fleet":
                 (snapshot,) = payload
                 fleet_rows.append(self._store._fleet_row(dict(snapshot)))
             elif kind == "compliance":
-                (control,) = payload
-                compliance_rows.append(self._store._compliance_row(dict(control)))
+                control, tenant_id = payload
+                compliance_rows.append(
+                    self._store._compliance_row(dict(control), tenant_id=str(tenant_id))
+                )
             elif kind == "audit":
                 (event,) = payload
                 audit_rows.append(self._store._audit_row(dict(event)))

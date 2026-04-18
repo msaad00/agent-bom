@@ -195,6 +195,46 @@ async def auth_policy() -> dict:
     }
 
 
+@router.get("/v1/auth/debug", tags=["enterprise"])
+async def auth_debug(request: Request) -> dict:
+    """Introspect how the current request was authenticated.
+
+    Surfaces the auth method (``static_api_key`` / ``api_key`` / ``oidc`` /
+    ``saml``), the resolved role + tenant, the request-scoped trace IDs, and
+    the subject recorded for audit purposes. Intended for operator support
+    flows — "why is my request being denied?" — and for client SDKs doing
+    session introspection without issuing a shadow request.
+
+    The response never contains the raw API key or OIDC token. Only
+    non-secret identifying attributes (name, key_id prefix, role, tenant,
+    auth method) so the endpoint is safe to log.
+    """
+    method = getattr(request.state, "auth_method", None)
+    subject = getattr(request.state, "api_key_name", None)
+    role = getattr(request.state, "api_key_role", None)
+    tenant_id = getattr(request.state, "tenant_id", None) or "default"
+    request_id = getattr(request.state, "request_id", None)
+    trace_id = getattr(request.state, "trace_id", None)
+    span_id = getattr(request.state, "span_id", None)
+    issuer = getattr(request.state, "auth_issuer", None)
+    key_id = getattr(request.state, "api_key_id", None)
+    key_id_prefix = key_id[:8] if isinstance(key_id, str) else None
+
+    authenticated = bool(method and role)
+    return {
+        "authenticated": authenticated,
+        "auth_method": method,
+        "subject": subject,
+        "role": role,
+        "tenant_id": tenant_id,
+        "oidc_issuer_suffix": issuer,
+        "api_key_id_prefix": key_id_prefix,
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "span_id": span_id,
+    }
+
+
 @router.delete("/v1/auth/keys/{key_id}", tags=["enterprise"], status_code=204)
 async def delete_key(request: Request, key_id: str) -> None:
     """Revoke an API key."""

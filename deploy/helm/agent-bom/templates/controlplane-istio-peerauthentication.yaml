@@ -1,0 +1,15 @@
+{{- if and .Values.controlPlane.enabled .Values.controlPlane.serviceMesh.enabled (eq .Values.controlPlane.serviceMesh.provider "istio") .Values.controlPlane.serviceMesh.istio.peerAuthentication.enabled }}
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: {{ include "agent-bom.name" . }}-control-plane
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+  mtls:
+    mode: {{ .Values.controlPlane.serviceMesh.istio.peerAuthentication.mode }}
+{{- end }}

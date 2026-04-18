@@ -127,6 +127,36 @@ That gives you:
 - runtime surface introspection
 - enforcement checks in the scheduled scan path
 
+## Optional Mesh And Policy Hardening
+
+If your platform baseline already uses Istio and Kyverno, the chart now ships
+an opt-in hardening layer that stays aligned with the current security model
+instead of inventing a second one.
+
+Start from:
+
+- [deploy/helm/agent-bom/examples/eks-istio-kyverno-values.yaml](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/helm/agent-bom/examples/eks-istio-kyverno-values.yaml)
+
+That package adds:
+
+- Istio `PeerAuthentication` with `STRICT` mTLS for `agent-bom` pods
+- Istio `AuthorizationPolicy` with explicit namespace allow-lists for ingress paths
+- a namespaced Kyverno `Policy` that enforces:
+  - `automountServiceAccountToken: false`
+  - `runAsNonRoot`
+  - `seccompProfile: RuntimeDefault`
+  - `allowPrivilegeEscalation: false`
+  - `readOnlyRootFilesystem: true`
+  - `capabilities.drop: [ALL]`
+
+Use it only when:
+
+- the namespace is already part of your Istio mesh
+- ingress traffic really comes from the namespaces you allow
+- Kyverno is already installed cluster-wide
+
+It is additive to the chart's `NetworkPolicy`, not a replacement for it.
+
 ## Policy Enforcement In This Model
 
 `agent-bom` policy enforcement is three separate layers:
@@ -187,6 +217,9 @@ all sit under one operator-controlled plane.
   - `AGENT_BOM_POSTGRES_POOL_MAX_SIZE`
   - `AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS`
   - `AGENT_BOM_POSTGRES_STATEMENT_TIMEOUT_MS`
+- when enabling the mesh layer, keep the namespace allow-list explicit:
+  - `controlPlane.serviceMesh.istio.authorizationPolicy.allowedNamespaces`
+  and match it to your actual ingress path instead of assuming `ingress-nginx`
 - enable the packaged PrometheusRule and Grafana dashboard when your cluster
   already runs Prometheus Operator and Grafana sidecar discovery
 - enable the packaged backup CronJob only after setting a real S3 destination

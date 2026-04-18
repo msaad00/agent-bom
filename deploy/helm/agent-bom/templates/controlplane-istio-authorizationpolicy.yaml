@@ -1,0 +1,27 @@
+{{- if and .Values.controlPlane.enabled .Values.controlPlane.serviceMesh.enabled (eq .Values.controlPlane.serviceMesh.provider "istio") .Values.controlPlane.serviceMesh.istio.authorizationPolicy.enabled }}
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: {{ include "agent-bom.name" . }}-control-plane
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+  action: ALLOW
+  rules:
+    {{- if .Values.controlPlane.serviceMesh.istio.authorizationPolicy.allowSameNamespace }}
+    - from:
+        - source:
+            namespaces:
+              - {{ .Release.Namespace | quote }}
+    {{- end }}
+    {{- range .Values.controlPlane.serviceMesh.istio.authorizationPolicy.allowedNamespaces }}
+    - from:
+        - source:
+            namespaces:
+              - {{ . | quote }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,39 @@
+{{- if and .Values.controlPlane.enabled .Values.controlPlane.policyController.enabled (eq .Values.controlPlane.policyController.provider "kyverno") .Values.controlPlane.policyController.kyverno.requireControlPlanePodHardening }}
+apiVersion: kyverno.io/v1
+kind: Policy
+metadata:
+  name: {{ include "agent-bom.name" . }}-control-plane-hardening
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+spec:
+  validationFailureAction: {{ .Values.controlPlane.policyController.kyverno.validationFailureAction }}
+  background: {{ .Values.controlPlane.policyController.kyverno.background }}
+  rules:
+    - name: require-control-plane-pod-hardening
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              selector:
+                matchLabels:
+                  app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+      validate:
+        message: agent-bom pods must keep the chart's restricted security contract.
+        pattern:
+          spec:
+            automountServiceAccountToken: false
+            securityContext:
+              runAsNonRoot: true
+              seccompProfile:
+                type: RuntimeDefault
+            containers:
+              - securityContext:
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: true
+                  runAsNonRoot: true
+                  capabilities:
+                    drop:
+                      - ALL
+{{- end }}

@@ -237,6 +237,9 @@ def test_helm_templates_exist():
         "controlplane-externalsecret.yaml",
         "controlplane-grafana-dashboard.yaml",
         "controlplane-ingress.yaml",
+        "controlplane-istio-authorizationpolicy.yaml",
+        "controlplane-istio-peerauthentication.yaml",
+        "controlplane-kyverno-policy.yaml",
         "controlplane-pdb.yaml",
         "controlplane-priorityclass.yaml",
         "controlplane-prometheusrule.yaml",
@@ -320,6 +323,24 @@ def test_helm_control_plane_observability_defaults():
     assert observability["prometheusRule"]["enabled"] is False
     assert observability["prometheusRule"]["rules"]["apiErrorRate"]["enabled"] is True
     assert observability["prometheusRule"]["rules"]["proxyAuditBacklog"]["backlogBytesThreshold"] == 10485760
+
+
+def test_helm_control_plane_mesh_and_policy_defaults():
+    """Service-mesh and policy-controller packaging should be explicit and opt-in."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    mesh = doc["controlPlane"]["serviceMesh"]
+    policy = doc["controlPlane"]["policyController"]
+    assert mesh["enabled"] is False
+    assert mesh["provider"] == "istio"
+    assert mesh["istio"]["peerAuthentication"]["enabled"] is True
+    assert mesh["istio"]["peerAuthentication"]["mode"] == "STRICT"
+    assert mesh["istio"]["authorizationPolicy"]["enabled"] is True
+    assert mesh["istio"]["authorizationPolicy"]["allowSameNamespace"] is True
+    assert mesh["istio"]["authorizationPolicy"]["allowedNamespaces"] == []
+    assert policy["enabled"] is False
+    assert policy["provider"] == "kyverno"
+    assert policy["kyverno"]["validationFailureAction"] == "Audit"
+    assert policy["kyverno"]["requireControlPlanePodHardening"] is True
 
 
 def test_helm_control_plane_backup_defaults():
@@ -434,6 +455,24 @@ def test_production_values_enable_operator_defaults():
     assert production["topologySpread"]["enabled"] is True
     assert production["networkPolicy"]["restrictIngress"] is True
     assert "cert-manager.io/cluster-issuer" in production["controlPlane"]["ingress"]["annotations"]
+
+
+def test_mesh_example_enables_istio_and_kyverno_hardening():
+    """Mesh example should wire the chart's Istio and Kyverno packaging coherently."""
+    values = yaml.safe_load((HELM_DIR / "examples" / "eks-istio-kyverno-values.yaml").read_text())
+    mesh = values["controlPlane"]["serviceMesh"]
+    policy = values["controlPlane"]["policyController"]
+    assert values["controlPlane"]["enabled"] is True
+    assert mesh["enabled"] is True
+    assert mesh["provider"] == "istio"
+    assert mesh["istio"]["peerAuthentication"]["mode"] == "STRICT"
+    assert set(mesh["istio"]["authorizationPolicy"]["allowedNamespaces"]) == {"ingress-nginx", "istio-system"}
+    assert policy["enabled"] is True
+    assert policy["provider"] == "kyverno"
+    assert policy["kyverno"]["validationFailureAction"] == "Enforce"
+    ingress_rule = values["networkPolicy"]["ingress"][1]
+    ports = {port["port"] for port in ingress_rule["ports"]}
+    assert ports == {3000, 8422}
 
 
 def test_pilot_and_production_values_narrow_ingress_to_controller_pods_and_ports():

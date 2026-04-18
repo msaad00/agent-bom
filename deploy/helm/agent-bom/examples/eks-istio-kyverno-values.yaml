@@ -1,0 +1,52 @@
+controlPlane:
+  enabled: true
+  serviceMesh:
+    enabled: true
+    provider: istio
+    istio:
+      peerAuthentication:
+        enabled: true
+        mode: STRICT
+      authorizationPolicy:
+        enabled: true
+        allowSameNamespace: true
+        allowedNamespaces:
+          - ingress-nginx
+          - istio-system
+  policyController:
+    enabled: true
+    provider: kyverno
+    kyverno:
+      validationFailureAction: Enforce
+      background: true
+      requireControlPlanePodHardening: true
+  api:
+    env:
+      - name: AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT
+        value: "1"
+  ingress:
+    enabled: true
+    className: nginx
+    hosts:
+      - host: agent-bom.internal.example.com
+
+networkPolicy:
+  enabled: true
+  restrictIngress: true
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agent-bom
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: controller
+      ports:
+        - protocol: TCP
+          port: 8422
+        - protocol: TCP
+          port: 3000

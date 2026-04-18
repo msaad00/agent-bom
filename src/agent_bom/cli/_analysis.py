@@ -93,7 +93,15 @@ def _render_mesh_summary(con: Console, agents_data: list[dict], mesh: dict, *, q
 @click.option("--agent", default=None, help="Filter by agent name")
 @click.option("--limit", "top_limit", default=20, type=int, help="Limit for top-cves (default: 20)")
 @click.option("--clickhouse-url", default=None, envvar="AGENT_BOM_CLICKHOUSE_URL", metavar="URL", help="ClickHouse HTTP URL")
-def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url):
+@click.option(
+    "--tenant",
+    "tenant_id",
+    default=None,
+    envvar="AGENT_BOM_TENANT_ID",
+    metavar="TENANT",
+    help="Scope results to a single tenant. Omit to read across tenants (admin scope).",
+)
+def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url, tenant_id):
     """Query vulnerability trends, posture history, and runtime events from ClickHouse.
 
     \b
@@ -122,7 +130,7 @@ def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url):
         sys.exit(1)
 
     if query_type == "trends":
-        rows = store.query_vuln_trends(days=days, agent=agent)
+        rows = store.query_vuln_trends(days=days, agent=agent, tenant_id=tenant_id)
         table = Table(title=f"Vulnerability Trends (last {days} days)")
         table.add_column("Day", style="cyan")
         table.add_column("Severity", style="yellow")
@@ -132,7 +140,7 @@ def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url):
         console.print(table)
 
     elif query_type == "posture":
-        rows = store.query_posture_history(agent=agent, days=days)
+        rows = store.query_posture_history(agent=agent, days=days, tenant_id=tenant_id)
         table = Table(title=f"Posture History (last {days} days)")
         table.add_column("Day", style="cyan")
         table.add_column("Agent", style="blue")
@@ -150,7 +158,7 @@ def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url):
         console.print(table)
 
     elif query_type == "events":
-        rows = store.query_event_summary(hours=hours)
+        rows = store.query_event_summary(hours=hours, tenant_id=tenant_id)
         table = Table(title=f"Runtime Events (last {hours} hours)")
         table.add_column("Event Type", style="cyan")
         table.add_column("Severity", style="yellow")
@@ -160,7 +168,7 @@ def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url):
         console.print(table)
 
     elif query_type == "top-cves":
-        rows = store.query_top_cves(limit=top_limit)
+        rows = store.query_top_cves(limit=top_limit, tenant_id=tenant_id)
         table = Table(title=f"Top {top_limit} CVEs")
         table.add_column("CVE ID", style="cyan")
         table.add_column("Count", style="bold")
@@ -170,7 +178,7 @@ def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url):
         console.print(table)
 
     elif query_type == "fleet":
-        rows = store.query_top_riskiest_agents(limit=top_limit)
+        rows = store.query_top_riskiest_agents(limit=top_limit, tenant_id=tenant_id)
         table = Table(title=f"Top {top_limit} Riskiest Fleet Agents")
         table.add_column("Agent", style="cyan")
         table.add_column("State", style="yellow")
@@ -190,7 +198,7 @@ def analytics_cmd(query_type, days, hours, agent, top_limit, clickhouse_url):
         console.print(table)
 
     elif query_type == "compliance":
-        rows = store.query_compliance_heatmap(days=days)
+        rows = store.query_compliance_heatmap(days=days, tenant_id=tenant_id)
         table = Table(title=f"Compliance Heatmap (last {days} days)")
         table.add_column("Framework", style="cyan")
         table.add_column("Status", style="yellow")

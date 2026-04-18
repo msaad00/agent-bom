@@ -582,15 +582,23 @@ def _run_scan_sync(job: ScanJob) -> None:
 
             analytics_store = _get_analytics_store()
             analytics = build_scan_analytics_payload(report, report_json=report_json, scan_id=job.job_id, source="api")
+            # Plumb the job's tenant through to analytics so the shared
+            # ClickHouse cluster stays segregated per tenant at row level.
+            tenant_id = str(getattr(job, "tenant_id", None) or "default")
             for agent_name, findings in analytics.agent_findings.items():
-                analytics_store.record_scan(analytics.scan_id, agent_name, findings)
-            analytics_store.record_scan_metadata(analytics.scan_metadata)
+                analytics_store.record_scan(analytics.scan_id, agent_name, findings, tenant_id=tenant_id)
+            analytics_store.record_scan_metadata(analytics.scan_metadata, tenant_id=tenant_id)
             for agent_name, snapshot in analytics.posture_snapshots.items():
-                analytics_store.record_posture(agent_name, snapshot)
+                analytics_store.record_posture(agent_name, snapshot, tenant_id=tenant_id)
             for fleet_snapshot in analytics.fleet_snapshots:
+                # The analytics builder seeds tenant_id="default" so CLI scans
+                # without a request context keep working. When a real job is
+                # on the wire we override with the authed tenant so dashboards
+                # see the finding in the right column.
+                fleet_snapshot["tenant_id"] = tenant_id
                 analytics_store.record_fleet_snapshot(fleet_snapshot)
             for control in analytics.compliance_controls:
-                analytics_store.record_compliance_control(control)
+                analytics_store.record_compliance_control(control, tenant_id=tenant_id)
         except Exception as analytics_exc:  # noqa: BLE001
             _logger.warning("API ClickHouse analytics persistence failed: %s", analytics_exc)
             with lock:

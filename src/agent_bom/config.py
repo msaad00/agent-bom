@@ -220,6 +220,18 @@ POSTGRES_CONNECT_TIMEOUT_SECONDS = _int("AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECO
 POSTGRES_STATEMENT_TIMEOUT_MS = _int("AGENT_BOM_POSTGRES_STATEMENT_TIMEOUT_MS", 15_000)
 
 
+# ── Rate-limit fingerprint key rotation policy ──────────────────────────
+# Operators rotate AGENT_BOM_RATE_LIMIT_KEY periodically and record the
+# rotation timestamp in AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED (ISO-8601
+# with timezone). The control plane warns when the configured key age
+# approaches the rotation interval and surfaces the status via
+# /v1/auth/policy so dashboards and runbooks can act on it.
+
+RATE_LIMIT_KEY_ROTATION_DAYS = _int("AGENT_BOM_RATE_LIMIT_KEY_ROTATION_DAYS", 30)
+RATE_LIMIT_KEY_MAX_AGE_DAYS = _int("AGENT_BOM_RATE_LIMIT_KEY_MAX_AGE_DAYS", 90)
+RATE_LIMIT_KEY_LAST_ROTATED = (os.environ.get("AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED") or "").strip()
+
+
 # ── MCP Server Limits ────────────────────────────────────────────────────
 # Used by mcp_server.py for file-size and response-size guards, tool execution
 # governance, and lightweight in-process observability.

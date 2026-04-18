@@ -5,6 +5,7 @@ Endpoints:
     GET  /v1/compliance/narrative            full compliance narrative (all frameworks)
     GET  /v1/compliance/narrative/{framework} single-framework narrative
     GET  /v1/compliance/{framework}          single framework (must be after /narrative)
+    GET  /v1/compliance/{framework}/report   signed evidence bundle for auditors
     GET  /v1/posture                         enterprise posture scorecard
     GET  /v1/posture/counts                  severity counts for nav badges
     GET  /v1/posture/credentials             credential risk ranking
@@ -13,9 +14,12 @@ Endpoints:
 
 from __future__ import annotations
 
+import json
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse, PlainTextResponse
 
 from agent_bom.api.models import JobStatus
 from agent_bom.api.stores import _get_store
@@ -512,6 +516,254 @@ async def get_compliance_by_framework(request: Request, framework: str) -> dict:
         "summary": {"pass": pass_count, "warning": warn_count, "fail": fail_count},
         "score": round((pass_count / len(controls)) * 100, 1) if controls else 100.0,
     }
+
+
+# ─── Signed evidence bundle ────────────────────────────────────────────────
+
+
+def _parse_iso_or_default(value: str | None, default: datetime) -> datetime:
+    """Parse an ISO-8601 timestamp; fall back to ``default`` on missing/invalid."""
+    if not value:
+        return default
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid timestamp '{value}'. Use ISO-8601 with timezone.",
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _evidence_for_control(
+    control: dict,
+    blast_radii_by_tag: dict[str, list[dict]],
+) -> list[dict]:
+    """Map a control's tags onto the matching blast-radius findings."""
+    seen_finding_ids: set[str] = set()
+    evidence: list[dict] = []
+    for tag in control.get("tags", []) or []:
+        for br in blast_radii_by_tag.get(tag, []):
+            finding_id = br.get("finding_id") or f"{br.get('vulnerability_id', '')}@{br.get('package', '')}"
+            if finding_id in seen_finding_ids:
+                continue
+            seen_finding_ids.add(finding_id)
+            evidence.append(
+                {
+                    "finding_id": finding_id,
+                    "control_tag": tag,
+                    "vulnerability_id": br.get("vulnerability_id"),
+                    "package": br.get("package"),
+                    "severity": br.get("severity"),
+                    "scan_id": br.get("scan_id"),
+                    "fixed_version": br.get("fixed_version"),
+                    "agents_at_risk": br.get("affected_agents") or [],
+                }
+            )
+    return evidence
+
+
+def _index_blast_radii_by_tag(jobs: list) -> dict[str, list[dict]]:
+    """Build a flat tag → list[blast-radius] index across all completed scans."""
+    by_tag: dict[str, list[dict]] = {}
+    for job in jobs:
+        if job.status != JobStatus.DONE or not job.result:
+            continue
+        scan_id = job.result.get("scan_id") or job.job_id
+        for br in job.result.get("blast_radius", []):
+            br_with_scan = {**br, "scan_id": scan_id}
+            for tag_field in (
+                "owasp_tags",
+                "owasp_mcp_tags",
+                "atlas_tags",
+                "nist_ai_rmf_tags",
+                "nist_csf_tags",
+                "iso_27001_tags",
+                "soc2_tags",
+                "cmmc_tags",
+                "fedramp_tags",
+                "owasp_agentic_tags",
+                "eu_ai_act_tags",
+                "cis_tags",
+                "nist_800_53_tags",
+                "pci_dss_tags",
+            ):
+                for tag in br.get(tag_field, []) or []:
+                    by_tag.setdefault(tag, []).append(br_with_scan)
+    return by_tag
+
+
+@router.get("/v1/compliance/{framework}/report", tags=["compliance"], response_model=None)
+async def export_compliance_report(
+    request: Request,
+    framework: str,
+    since: str | None = None,
+    until: str | None = None,
+    format: str = "json",
+) -> JSONResponse | PlainTextResponse:
+    """Export an auditor-ready signed evidence bundle for a single framework.
+
+    The bundle pairs each control with the blast-radius findings that map to
+    its tags, the audit-log entries within the requested time window, and
+    integrity totals from the HMAC-chained log. The response carries an
+    ``X-Agent-Bom-Compliance-Report-Signature`` header — the HMAC-SHA256 of
+    the canonical body — so downstream auditors can verify the bundle did
+    not drift between export and review. The export itself is audit-logged
+    as ``compliance.report_exported`` so re-issued bundles leave a trail.
+
+    Query params:
+      - ``since`` ISO-8601 timestamp (default: now − 30 days)
+      - ``until`` ISO-8601 timestamp (default: now)
+      - ``format`` ``json`` (default) or ``jsonl`` for streaming consumers
+    """
+    fmt = format.lower()
+    if fmt not in {"json", "jsonl"}:
+        raise HTTPException(status_code=400, detail="format must be one of: json, jsonl")
+
+    now = datetime.now(timezone.utc)
+    since_dt = _parse_iso_or_default(since, now - timedelta(days=30))
+    until_dt = _parse_iso_or_default(until, now)
+    if since_dt >= until_dt:
+        raise HTTPException(status_code=400, detail="since must be earlier than until")
+
+    full = await get_compliance(request)
+    framework_map = {
+        "owasp-llm": ("owasp_llm_top10", "OWASP LLM Top 10"),
+        "owasp-mcp": ("owasp_mcp_top10", "OWASP MCP Top 10"),
+        "atlas": ("mitre_atlas", "MITRE ATLAS"),
+        "nist": ("nist_ai_rmf", "NIST AI RMF"),
+        "owasp-agentic": ("owasp_agentic_top10", "OWASP Agentic Top 10"),
+        "eu-ai-act": ("eu_ai_act", "EU AI Act"),
+        "nist-csf": ("nist_csf", "NIST CSF"),
+        "iso-27001": ("iso_27001", "ISO 27001"),
+        "soc2": ("soc2", "SOC 2"),
+        "cis": ("cis_controls", "CIS Controls"),
+        "cmmc": ("cmmc", "CMMC"),
+        "nist-800-53": ("nist_800_53", "NIST 800-53"),
+        "fedramp": ("fedramp", "FedRAMP"),
+        "pci-dss": ("pci_dss", "PCI DSS"),
+    }
+    key_label = framework_map.get(framework.lower())
+    if not key_label:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown framework '{framework}'. Supported: {', '.join(framework_map.keys())}",
+        )
+    framework_key, framework_label = key_label
+    controls = full.get(framework_key, [])
+
+    tenant_id = _tenant_id(request)
+    actor = getattr(request.state, "api_key_name", "") or "system"
+
+    blast_by_tag = _index_blast_radii_by_tag(_tenant_jobs(request))
+
+    from agent_bom.api.audit_log import get_audit_log, log_action, sign_export_payload
+
+    store = get_audit_log()
+    audit_since_iso = since_dt.isoformat()
+    # Cap audit fetch at 10k for export sanity; consumers paginate further via /v1/audit
+    audit_entries = store.list_entries(since=audit_since_iso, limit=10_000)
+    until_iso = until_dt.isoformat()
+    audit_in_window = [
+        e
+        for e in audit_entries
+        if str((e.details or {}).get("tenant_id", "default")) == tenant_id
+        and audit_since_iso <= (e.timestamp or "") <= until_iso
+    ]
+    verified, tampered = store.verify_integrity(limit=min(10_000, len(audit_entries) or 1))
+
+    pass_count = sum(1 for c in controls if c.get("status") == "pass")
+    warn_count = sum(1 for c in controls if c.get("status") == "warning")
+    fail_count = sum(1 for c in controls if c.get("status") == "fail")
+
+    enriched_controls: list[dict] = []
+    total_findings = 0
+    for control in controls:
+        evidence = _evidence_for_control(control, blast_by_tag)
+        total_findings += len(evidence)
+        enriched_controls.append(
+            {
+                "control_id": control.get("control_id") or control.get("id"),
+                "control_name": control.get("name") or control.get("title"),
+                "status": control.get("status", "unknown"),
+                "finding_count": len(evidence),
+                "evidence": evidence,
+            }
+        )
+
+    body = {
+        "schema_version": "v1",
+        "framework": framework,
+        "framework_key": framework_key,
+        "framework_label": framework_label,
+        "tenant_id": tenant_id,
+        "generated_at": now.isoformat(),
+        "scope": {
+            "since": since_dt.isoformat(),
+            "until": until_dt.isoformat(),
+            "control_count": len(controls),
+            "finding_count": total_findings,
+            "audit_event_count": len(audit_in_window),
+        },
+        "summary": {
+            "pass": pass_count,
+            "warning": warn_count,
+            "fail": fail_count,
+            "score": round((pass_count / len(controls)) * 100, 1) if controls else 100.0,
+        },
+        "controls": enriched_controls,
+        "audit_events": [entry.to_dict() for entry in audit_in_window],
+        "audit_log_integrity": {
+            "verified": verified,
+            "tampered": tampered,
+            "checked": verified + tampered,
+        },
+        "signature_algorithm": "HMAC-SHA256",
+    }
+
+    log_action(
+        "compliance.report_exported",
+        actor=actor,
+        resource=f"compliance/{framework_key}",
+        tenant_id=tenant_id,
+        format=fmt,
+        since=since_dt.isoformat(),
+        until=until_dt.isoformat(),
+        control_count=len(controls),
+        finding_count=total_findings,
+        audit_event_count=len(audit_in_window),
+    )
+
+    filename = f"agent-bom-compliance-{framework_key.replace('_', '-')}.{ 'jsonl' if fmt == 'jsonl' else 'json'}"
+
+    if fmt == "jsonl":
+        # jsonl streams one control per line so SIEM and security-lake
+        # consumers can ingest without loading the whole bundle.
+        lines = [json.dumps({"meta": {k: v for k, v in body.items() if k not in {"controls", "audit_events"}}}, sort_keys=True)]
+        for control in body["controls"]:
+            lines.append(json.dumps({"control": control}, sort_keys=True))
+        for entry in body["audit_events"]:
+            lines.append(json.dumps({"audit": entry}, sort_keys=True))
+        payload = ("\n".join(lines) + "\n").encode()
+        return PlainTextResponse(
+            content=payload.decode(),
+            media_type="application/x-ndjson",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Agent-Bom-Compliance-Report-Signature": sign_export_payload(payload),
+            },
+        )
+
+    payload = json.dumps(body, sort_keys=True).encode()
+    return JSONResponse(
+        content=body,
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Agent-Bom-Compliance-Report-Signature": sign_export_payload(payload),
+        },
+    )
 
 
 # ─── Posture Scorecard ─────────────────────────────────────────────────────

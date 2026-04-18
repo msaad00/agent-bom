@@ -215,7 +215,18 @@ def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
         else:
             cvss_bar = '<span style="color:#334155">&mdash;</span>'
         epss = f"{v.epss_score:.1%}" if v.epss_score else '<span style="color:#334155">&mdash;</span>'
-        kev = '<span class="badge-kev">KEV</span>' if v.is_kev else '<span style="color:#334155">&mdash;</span>'
+        # Exploit likelihood (issue #486) — graded badge subsuming KEV +
+        # EPSS-percentile signals. KEV takes priority; elevated
+        # EPSS-only levels still surface a muted "exploit" hint.
+        exploit_level = v.exploit_likelihood
+        if v.is_kev:
+            kev = '<span class="badge-kev" title="CISA Known Exploited Vulnerability">KEV</span>'
+        elif exploit_level == "likely_exploited":
+            kev = '<span class="badge-exploit-likely" title="EPSS ≥ 0.5 or percentile ≥ 95 — exploitation likely">EXPL</span>'
+        elif exploit_level == "public_exploit":
+            kev = '<span class="badge-exploit-public" title="EPSS percentile ≥ 80 — public exploit code">PoC</span>'
+        else:
+            kev = '<span style="color:#334155">&mdash;</span>'
         fix = (
             f'<code style="color:#4ade80">{_esc(v.fixed_version)}</code>'
             if v.fixed_version
@@ -235,6 +246,7 @@ def _vuln_table(blast_radii: list["BlastRadius"]) -> str:
             vendor_hint = f'<br><span style="font-size:.62rem;color:#94a3b8;font-style:italic">vendor: {_esc(vendor_sev)}</span>'
         rows.append(
             f'<tr data-severity="{sev}" data-kev="{"1" if v.is_kev else "0"}" '
+            f'data-exploit-likelihood="{exploit_level}" '
             f'data-cvss="{v.cvss_score if v.cvss_score else 0}">'
             f'<td><code class="vuln-id">{_esc(v.id)}</code></td>'
             f"<td>{_sev_badge(sev)}{vendor_hint}</td>"
@@ -1243,6 +1255,8 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
 
     /* BADGES */
     .badge-kev{{background:#7f1d1d;color:#fca5a5;padding:2px 8px;border-radius:4px;font-size:.68rem;font-weight:700}}
+    .badge-exploit-likely{{background:#7c2d12;color:#fdba74;padding:2px 8px;border-radius:4px;font-size:.68rem;font-weight:700}}
+    .badge-exploit-public{{background:#713f12;color:#fde047;padding:2px 8px;border-radius:4px;font-size:.66rem;font-weight:600}}
     .badge-ai{{background:#1d4ed8;color:#bfdbfe;padding:2px 8px;border-radius:4px;font-size:.68rem;font-weight:700;margin-right:4px}}
     .badge-vuln{{background:#7f1d1d;color:#fca5a5;font-size:.65rem;padding:2px 6px;border-radius:4px;font-weight:700}}
     .badge-cred{{background:#78350f;color:#fde68a;font-size:.65rem;padding:2px 6px;border-radius:4px;font-weight:700}}

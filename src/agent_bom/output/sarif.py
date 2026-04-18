@@ -87,6 +87,9 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                 rule_props["epss-score"] = round(vuln.epss_score, 5)
             if vuln.is_kev:
                 rule_props["kev"] = True
+            # exploit_likelihood (issue #486) — graded signal computed
+            # from KEV + EPSS percentile / probability.
+            rule_props["exploit_likelihood"] = vuln.exploit_likelihood
             if vuln.cwe_ids:
                 rule_props["tags"] = vuln.cwe_ids
             rule: dict = {
@@ -136,6 +139,19 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                 }
             ],
         }
+        # Always emit structured properties so downstream consumers get
+        # the exploit_likelihood (#486) + blast metrics without needing
+        # a compliance tag to trigger enrichment.
+        result_properties: dict = {
+            "blast_score": br.risk_score,
+            "epss_score": vuln.epss_score,
+            "is_kev": vuln.is_kev,
+            "exploit_likelihood": vuln.exploit_likelihood,
+            "exposed_credentials": br.exposed_credentials,
+            "impact_category": getattr(br, "impact_category", "code-execution"),
+            "attack_vector_summary": getattr(br, "attack_vector_summary", None),
+            "reachability": br.reachability,
+        }
         if (
             br.owasp_tags
             or br.atlas_tags
@@ -149,27 +165,23 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
             or br.cis_tags
             or br.cmmc_tags
         ):
-            result["properties"] = {
-                "owasp_tags": br.owasp_tags,
-                "atlas_tags": br.atlas_tags,
-                "attack_tags": getattr(br, "attack_tags", []),
-                "nist_ai_rmf_tags": br.nist_ai_rmf_tags,
-                "owasp_mcp_tags": br.owasp_mcp_tags,
-                "owasp_agentic_tags": br.owasp_agentic_tags,
-                "eu_ai_act_tags": br.eu_ai_act_tags,
-                "nist_csf_tags": br.nist_csf_tags,
-                "iso_27001_tags": br.iso_27001_tags,
-                "soc2_tags": br.soc2_tags,
-                "cis_tags": br.cis_tags,
-                "cmmc_tags": br.cmmc_tags,
-                "blast_score": br.risk_score,
-                "epss_score": vuln.epss_score,
-                "is_kev": vuln.is_kev,
-                "exposed_credentials": br.exposed_credentials,
-                "impact_category": getattr(br, "impact_category", "code-execution"),
-                "attack_vector_summary": getattr(br, "attack_vector_summary", None),
-                "reachability": br.reachability,
-            }
+            result_properties.update(
+                {
+                    "owasp_tags": br.owasp_tags,
+                    "atlas_tags": br.atlas_tags,
+                    "attack_tags": getattr(br, "attack_tags", []),
+                    "nist_ai_rmf_tags": br.nist_ai_rmf_tags,
+                    "owasp_mcp_tags": br.owasp_mcp_tags,
+                    "owasp_agentic_tags": br.owasp_agentic_tags,
+                    "eu_ai_act_tags": br.eu_ai_act_tags,
+                    "nist_csf_tags": br.nist_csf_tags,
+                    "iso_27001_tags": br.iso_27001_tags,
+                    "soc2_tags": br.soc2_tags,
+                    "cis_tags": br.cis_tags,
+                    "cmmc_tags": br.cmmc_tags,
+                }
+            )
+        result["properties"] = result_properties
         results.append(result)
 
     # IaC misconfiguration findings (Dockerfile, K8s, Terraform, CloudFormation)

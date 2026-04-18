@@ -155,6 +155,44 @@ class Vulnerability:
         return self.is_kev or (self.epss_score is not None and self.epss_score > EPSS_ACTIVE_EXPLOITATION_THRESHOLD)
 
     @property
+    def exploit_likelihood(self) -> str:
+        """Graded exploit-likelihood signal derived from CISA KEV + EPSS
+        percentile + EPSS probability (issue #486 scope-cut).
+
+        Returns one of:
+
+        - ``"actively_exploited"`` — present in CISA KEV (observed
+          exploitation in the wild).
+        - ``"likely_exploited"`` — EPSS probability at or above the
+          ``EPSS_ACTIVE_EXPLOITATION_THRESHOLD`` (default 0.5) OR EPSS
+          percentile ≥ 95. Sophisticated attackers are known to be
+          working on (or using) exploits.
+        - ``"public_exploit"`` — EPSS percentile ≥ 80. Public exploit
+          code exists but widespread exploitation not yet observed.
+        - ``"theoretical"`` — no KEV, low EPSS. Exploitation is
+          theoretically possible but not currently evidenced.
+
+        The monotonic ordering means the highest-severity signal wins
+        (KEV always beats EPSS-only signals) and never double-counts.
+
+        Not a replacement for ``is_actively_exploited`` (boolean); this
+        property provides the four-level gradation downstream consumers
+        (HTML, SARIF, dashboards) use for prioritization and
+        triage-ordering.
+        """
+        from agent_bom.config import EPSS_ACTIVE_EXPLOITATION_THRESHOLD
+
+        if self.is_kev:
+            return "actively_exploited"
+        epss = self.epss_score or 0.0
+        pct = self.epss_percentile or 0.0
+        if epss >= EPSS_ACTIVE_EXPLOITATION_THRESHOLD or pct >= 95.0:
+            return "likely_exploited"
+        if pct >= 80.0:
+            return "public_exploit"
+        return "theoretical"
+
+    @property
     def all_advisory_sources(self) -> list[str]:
         """Return advisory + enrichment sources that contributed to this finding."""
         derived_sources: list[str | None] = []

@@ -1677,7 +1677,18 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
 
     for br in shown:
         fix = f"[green]{br.vulnerability.fixed_version}[/green]" if br.vulnerability.fixed_version else "[dim]no fix[/dim]"
-        kev = " [red bold]KEV[/red bold]" if br.vulnerability.is_kev else ""
+        # Exploit-likelihood (issue #486) — KEV wins; elevated EPSS-only
+        # levels still surface a muted hint so the operator knows why
+        # the row is flagged even when it's not in CISA KEV.
+        _exploit_level = br.vulnerability.exploit_likelihood
+        if br.vulnerability.is_kev:
+            kev = " [red bold]KEV[/red bold]"
+        elif _exploit_level == "likely_exploited":
+            kev = " [#e67e22 bold]EXPL[/#e67e22 bold]"
+        elif _exploit_level == "public_exploit":
+            kev = " [yellow]PoC[/yellow]"
+        else:
+            kev = ""
 
         epss_display = "[dim]—[/dim]"
         if br.vulnerability.epss_score is not None:

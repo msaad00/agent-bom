@@ -528,6 +528,123 @@ def _ai_inventory_section(report: "AIBOMReport") -> str:
     )
 
 
+_CIS_CLOUD_LABELS = {
+    "aws": ("AWS", "cis_benchmark_data"),
+    "azure": ("Azure", "azure_cis_benchmark_data"),
+    "gcp": ("GCP", "gcp_cis_benchmark_data"),
+    "snowflake": ("Snowflake", "snowflake_cis_benchmark_data"),
+}
+
+
+def _cis_benchmark_section(report: "AIBOMReport") -> str:
+    """Build the CIS benchmark posture section (issue #665).
+
+    Renders one sub-panel per cloud with a CIS benchmark bundle. Each
+    failed check surfaces its structured remediation dict (``fix_cli``,
+    ``fix_console``, ``priority``, ``guardrails``, human-review flag).
+    Returns an empty string when no CIS data is present.
+    """
+
+    panels: list[str] = []
+    for cloud_key, (label, attr) in _CIS_CLOUD_LABELS.items():
+        bundle = getattr(report, attr, None)
+        if not bundle:
+            continue
+        checks = bundle.get("checks") or []
+        if not checks:
+            continue
+        failed = [c for c in checks if c.get("status") == "fail"]
+        evaluated = [c for c in checks if c.get("status") in ("pass", "fail")]
+        pass_rate = bundle.get("pass_rate", 0.0)
+        band_color = "#16a34a" if pass_rate >= 90 else "#eab308" if pass_rate >= 70 else "#ef4444"
+
+        header = (
+            f'<div style="display:flex;align-items:center;gap:18px;margin-bottom:12px">'
+            f'<div style="font-weight:700;color:#f1f5f9;font-size:.95rem">{_esc(label)}</div>'
+            f'<div style="color:{band_color};font-weight:700">{pass_rate:.0f}% pass</div>'
+            f'<div style="color:#64748b;font-size:.78rem">'
+            f"{bundle.get('passed', 0)}/{len(evaluated)} checks &middot; "
+            f'<strong style="color:#f97316">{len(failed)} failed</strong>'
+            f"</div></div>"
+        )
+
+        if not failed:
+            panels.append(
+                f'<div class="panel" style="margin-bottom:16px">{header}<div class="empty-state">&#x2705; No failed CIS checks.</div></div>'
+            )
+            continue
+
+        def _sort_key(c: dict) -> tuple[int, int]:
+            rem = c.get("remediation") or {}
+            priority = rem.get("priority", 3)
+            sev = (c.get("severity") or "").lower()
+            sev_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(sev, 4)
+            return (priority, sev_rank)
+
+        rows = []
+        for check in sorted(failed, key=_sort_key):
+            sev = (check.get("severity") or "").lower()
+            rem = check.get("remediation") or {}
+            fix_cli = rem.get("fix_cli")
+            fix_console = rem.get("fix_console") or ""
+            effort = rem.get("effort") or "manual"
+            priority = rem.get("priority", 3)
+            guardrails = rem.get("guardrails") or []
+            guard_html = "".join(
+                f'<span style="display:inline-block;padding:1px 7px;margin:1px 3px 1px 0;border-radius:4px;background:#1e293b;color:#94a3b8;font-size:.65rem;font-family:monospace">{_esc(g)}</span>'
+                for g in guardrails[:5]
+            )
+            if len(guardrails) > 5:
+                guard_html += f'<span style="color:#475569;font-size:.65rem">+{len(guardrails) - 5}</span>'
+            review_badge = (
+                '<span style="color:#eab308;font-size:.7rem;margin-left:6px">&#8634; review</span>'
+                if rem.get("requires_human_review")
+                else ""
+            )
+
+            fix_cell = ""
+            if fix_cli:
+                fix_cell = f'<code style="color:#67e8f9;font-size:.72rem;white-space:pre-wrap;word-break:break-all">{_esc(fix_cli)}</code>'
+            elif fix_console:
+                fix_cell = f'<span style="color:#94a3b8;font-size:.72rem">&rarr; {_esc(fix_console)}</span>'
+
+            docs_link = ""
+            docs = rem.get("docs") or ""
+            if docs:
+                docs_link = f' &middot; <a href="{_esc(docs)}" target="_blank" rel="noopener" style="font-size:.7rem">docs</a>'
+
+            rows.append(
+                "<tr>"
+                f"<td>{_sev_badge(sev)}</td>"
+                f'<td style="font-family:monospace;color:#f1f5f9;font-weight:600">{_esc(check.get("check_id", ""))}</td>'
+                f'<td style="color:#e2e8f0;font-size:.82rem">{_esc(check.get("title", ""))}{review_badge}</td>'
+                f'<td style="color:#94a3b8;font-size:.75rem">P{priority} &middot; {_esc(effort)}</td>'
+                f"<td>{guard_html}</td>"
+                f"<td>{fix_cell}{docs_link}</td>"
+                "</tr>"
+            )
+
+        table_html = (
+            '<div class="table-wrap"><table class="data-table sortable">'
+            + "<thead><tr>"
+            + "".join(
+                f'<th data-col="{i}">{h} <span class="sort-arrow"></span></th>'
+                for i, h in enumerate(["Severity", "Check", "Title", "Priority", "Guardrails", "Remediation"])
+            )
+            + "</tr></thead>"
+            + f"<tbody>{''.join(rows)}</tbody></table></div>"
+        )
+
+        panels.append(f'<div class="panel" style="margin-bottom:16px">{header}{table_html}</div>')
+
+    if not panels:
+        return ""
+
+    return (
+        '<section id="cisbenchmarks"><div class="sec-title">&#x1f6e1;&#xfe0f; CIS Benchmark Posture</div>' + "".join(panels) + "</section>"
+    )
+
+
 def _trust_assessment_section(report: "AIBOMReport") -> str:
     """Build the trust assessment section if data is available."""
     data = getattr(report, "trust_assessment_data", None)
@@ -984,6 +1101,9 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     # Enforcement section
     enforce_section = _enforcement_section(report)
 
+    # CIS benchmark posture (issue #665 — structured remediation)
+    cis_bench_section = _cis_benchmark_section(report)
+
     # Determine node counts for graph subtitle
     vuln_node_count = len({(br.package.name, br.package.ecosystem) for br in blast_radii})
     graph_note = (
@@ -1236,6 +1356,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     {'<a href="#skillaudit" class="sidebar-link"><span class="link-icon">&#x1f50d;</span> Skill Audit</a>' if skill_section else ""}
     {'<a href="#trust" class="sidebar-link"><span class="link-icon">&#x1f91d;</span> Trust</a>' if trust_section else ""}
     {'<a href="#enforcement" class="sidebar-link"><span class="link-icon">&#x1f512;</span> Enforcement</a>' if enforce_section else ""}
+    {'<a href="#cisbenchmarks" class="sidebar-link"><span class="link-icon">&#x1f6e1;&#xfe0f;</span> CIS Benchmarks</a>' if cis_bench_section else ""}
   </div>
 
   <div class="sidebar-spacer"></div>
@@ -1346,6 +1467,9 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
 
   <!-- Enforcement -->
   {enforce_section}
+
+  <!-- CIS benchmark posture (issue #665) -->
+  {cis_bench_section}
 
   <!-- Attack flow graph (only when vulns exist) -->
   {_attack_flow_section(blast_radii)}

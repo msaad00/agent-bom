@@ -269,6 +269,91 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                 }
             )
 
+    # CIS benchmark findings (AWS / Azure / GCP / Snowflake). Each failed
+    # check emits a SARIF result with the structured remediation dict
+    # (issue #665) in ``properties.remediation`` so GitHub Code Scanning
+    # and downstream SARIF consumers can surface fix guidance per finding.
+    cis_sev_map = {"critical": "error", "high": "error", "medium": "warning", "low": "note", "info": "none"}
+    cis_sev_score = {"critical": "9.0", "high": "7.0", "medium": "4.0", "low": "1.0", "info": "0.0"}
+    for cloud_key, data_attr in (
+        ("aws", "cis_benchmark_data"),
+        ("azure", "azure_cis_benchmark_data"),
+        ("gcp", "gcp_cis_benchmark_data"),
+        ("snowflake", "snowflake_cis_benchmark_data"),
+    ):
+        bundle = getattr(report, data_attr, None)
+        if not bundle:
+            continue
+        for check in bundle.get("checks", []):
+            if check.get("status") != "fail":
+                continue
+            sev = (check.get("severity") or "medium").lower()
+            check_id = check.get("check_id") or "unknown"
+            rule_id = f"cis/{cloud_key}/{check_id}"
+            level = cis_sev_map.get(sev, "warning")
+            remediation = check.get("remediation") or {}
+            title = check.get("title") or rule_id
+            help_uri = remediation.get("docs") or ""
+
+            if rule_id not in seen_rule_ids:
+                seen_rule_ids.add(rule_id)
+                cis_rule: dict = {
+                    "id": rule_id,
+                    "shortDescription": {"text": f"{sev.upper()}: CIS {cloud_key.upper()} {check_id} — {title}"},
+                    "fullDescription": {"text": check.get("recommendation") or title},
+                    "defaultConfiguration": {"level": level},
+                    "properties": {
+                        "security-severity": cis_sev_score.get(sev, "4.0"),
+                        "tags": ["cis", cloud_key, "compliance"],
+                        "cis_section": check.get("cis_section") or "",
+                    },
+                }
+                if help_uri:
+                    cis_rule["helpUri"] = help_uri
+                rules.append(cis_rule)
+
+            # Synthetic fingerprint so repeat runs produce stable IDs.
+            fp_input = f"{rule_id}:{','.join(check.get('resource_ids') or [])}"
+            fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()
+
+            # CIS findings are cloud-control-level, not file-level. Point
+            # at a conventional manifest so GitHub renders the result;
+            # the rich context lives in ``properties``.
+            result_props: dict = {
+                "remediation": remediation,
+                "cis_section": check.get("cis_section") or "",
+                "evidence": check.get("evidence") or "",
+                "resource_ids": check.get("resource_ids") or [],
+            }
+            # Surface the remediation knobs flat for consumers that
+            # can't (or don't want to) read nested dicts.
+            if remediation:
+                result_props["fix_cli"] = remediation.get("fix_cli")
+                result_props["fix_console"] = remediation.get("fix_console") or ""
+                result_props["effort"] = remediation.get("effort") or "manual"
+                result_props["priority"] = remediation.get("priority") or 3
+                result_props["guardrails"] = remediation.get("guardrails") or []
+                result_props["requires_human_review"] = bool(remediation.get("requires_human_review"))
+
+            results.append(
+                {
+                    "ruleId": rule_id,
+                    "level": level,
+                    "kind": "fail",
+                    "message": {"text": f"CIS {cloud_key.upper()} {check_id} failed: {title}"},
+                    "fingerprints": {"agent-bom/v1": fingerprint},
+                    "locations": [
+                        {
+                            "physicalLocation": {
+                                "artifactLocation": {"uri": f"cis-{cloud_key}-benchmark", "uriBaseId": "%SRCROOT%"},
+                                "region": {"startLine": 1, "startColumn": 1},
+                            },
+                        }
+                    ],
+                    "properties": result_props,
+                }
+            )
+
     return {
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
         "version": "2.1.0",

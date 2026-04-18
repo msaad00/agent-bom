@@ -1830,6 +1830,103 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
     console.print()
 
 
+def _iter_cis_bundles(report: AIBOMReport):
+    """Yield (cloud, bundle_dict) for every populated CIS benchmark bundle."""
+    bundles = [
+        ("aws", getattr(report, "cis_benchmark_data", None)),
+        ("azure", getattr(report, "azure_cis_benchmark_data", None)),
+        ("gcp", getattr(report, "gcp_cis_benchmark_data", None)),
+        ("snowflake", getattr(report, "snowflake_cis_benchmark_data", None)),
+    ]
+    for cloud, bundle in bundles:
+        if bundle and bundle.get("checks"):
+            yield cloud, bundle
+
+
+def print_compact_cis_posture(report: AIBOMReport, limit: int = 5) -> None:
+    """Per-cloud CIS posture with top failing checks + remediation.
+
+    Renders once per cloud that has a populated benchmark. For each
+    cloud:
+      - Header line with pass rate and failed-count (colored by
+        pass-rate band).
+      - Top ``limit`` failed checks, sorted by remediation priority
+        (1 = fix first), each showing: check_id, title, guardrails
+        tags, effort, ``fix_cli`` (when present) or the ``fix_console``
+        path (when ``fix_cli`` is ``None``), and a ``review`` flag when
+        ``requires_human_review`` is true.
+
+    Respects the same compact/one-screen style as
+    ``print_compact_blast_radius`` and ``print_compact_remediation``.
+    """
+
+    bundles = list(_iter_cis_bundles(report))
+    if not bundles:
+        return
+
+    console.print()
+    console.print("  [bold]CIS Benchmark Posture[/bold]")
+
+    for cloud, bundle in bundles:
+        checks = bundle.get("checks") or []
+        failed = [c for c in checks if c.get("status") == "fail"]
+        total_eval = sum(1 for c in checks if c.get("status") in ("pass", "fail"))
+        pass_rate = bundle.get("pass_rate", 0.0)
+
+        band = "green" if pass_rate >= 90 else "yellow" if pass_rate >= 70 else "red"
+        cloud_label = {"aws": "AWS", "azure": "Azure", "gcp": "GCP", "snowflake": "Snowflake"}.get(cloud, cloud)
+        console.print(
+            f"  [bold]{cloud_label}[/bold]  "
+            f"[{band}]{pass_rate:.0f}%[/{band}] pass  "
+            f"[dim]({bundle.get('passed', 0)}/{total_eval} checks, "
+            f"{len(failed)} failed)[/dim]"
+        )
+
+        if not failed:
+            console.print("    [green]✓[/green] [dim]no failed checks[/dim]")
+            continue
+
+        # Sort by remediation priority (1 = fix first), then severity.
+        def _sort_key(c: dict) -> tuple[int, int]:
+            rem = c.get("remediation") or {}
+            priority = rem.get("priority", 3)
+            sev = (c.get("severity") or "").lower()
+            sev_rank = {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(sev, 4)
+            return (priority, sev_rank)
+
+        failed_sorted = sorted(failed, key=_sort_key)
+        shown = failed_sorted[:limit]
+        sev_style = {"critical": "red bold", "high": "#e67e22 bold", "medium": "yellow", "low": "dim"}
+
+        for i, check in enumerate(shown, 1):
+            sev = (check.get("severity") or "").lower()
+            style = sev_style.get(sev, "white")
+            rem = check.get("remediation") or {}
+            guardrails = rem.get("guardrails") or []
+            guard_str = " · ".join(guardrails[:3])
+            if len(guardrails) > 3:
+                guard_str += f" · +{len(guardrails) - 3}"
+            review_flag = " [yellow]↺ review[/yellow]" if rem.get("requires_human_review") else ""
+
+            title = (check.get("title") or "").rstrip(".")
+            console.print(
+                f"    [{style}]{i}.[/{style}] [bold]{check.get('check_id', '')}[/bold] "
+                f"{_compact_detail(title, limit=70)}{review_flag}  "
+                f"[dim]P{rem.get('priority', 3)} · {rem.get('effort', 'manual')}[/dim]"
+            )
+            if guard_str:
+                console.print(f"       [dim]{guard_str}[/dim]")
+            if rem.get("fix_cli"):
+                console.print(f"       [cyan]{_compact_detail(rem['fix_cli'], limit=110)}[/cyan]")
+            elif rem.get("fix_console"):
+                console.print(f"       [dim]→ {_compact_detail(rem['fix_console'], limit=110)}[/dim]")
+
+        if len(failed) > limit:
+            console.print(f"    [dim]... {len(failed) - limit} more (use --verbose for full plan)[/dim]")
+
+    console.print()
+
+
 def print_compact_export_hint(report: AIBOMReport) -> None:
     """Single-line summary with key metrics."""
     vuln_color = "red" if report.total_vulnerabilities > 0 else "green"

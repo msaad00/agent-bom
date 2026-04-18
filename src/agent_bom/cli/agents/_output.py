@@ -28,6 +28,7 @@ from agent_bom.output import (
     print_blast_radius,
     print_compact_agents,
     print_compact_blast_radius,
+    print_compact_cis_posture,
     print_compact_export_hint,
     print_compact_remediation,
     print_compact_summary,
@@ -196,9 +197,11 @@ def render_output(
 
         if verbose:
             print_remediation_plan(report)
+            print_compact_cis_posture(report, limit=20)
             print_export_hint(report)
         else:
             print_compact_remediation(report)
+            print_compact_cis_posture(report)
             print_compact_export_hint(report)
     elif output_format in ("text", "plain") and not output:
         _print_text(report, blast_radii)

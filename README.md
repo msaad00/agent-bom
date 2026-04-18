@@ -106,9 +106,8 @@ Agent-centered shared-infrastructure graph — selected agents, their shared MCP
 
 ![agent-bom agent mesh](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
 
-## How a scan moves through the system
-
-Five stages, left to right. No source code or credential values leave your machine; external calls are limited to package metadata, version lookups, and CVE enrichment.
+<details>
+<summary><b>How a scan moves through the system</b> — five stages, no source code or credentials leave your machine</summary>
 
 <p align="center">
   <picture>
@@ -126,71 +125,88 @@ Inside the engine: parsers, taint, call graph, blast-radius scoring.
   </picture>
 </p>
 
-The broader topology stays explicit: start from a scoped risky path, expand outward to the MCP servers, packages, credentials, and tools that share that surface.
+External calls are limited to package metadata, version lookups, and CVE enrichment.
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/topology-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/topology-light.svg" alt="agent-bom focused topology view" width="900" />
-  </picture>
-</p>
+</details>
 
 ## Deploy in your own AWS / EKS
 
-Self-hosted is a first-class path. Employee endpoints push fleet discovery into your control plane; selected MCP workloads run the proxy in-cluster; gateway policy stays in your control plane; Postgres, audit, secrets, ingress, and logs stay in your infra.
+Self-hosted is a first-class path. Employee endpoints push fleet discovery into your control plane; selected MCP workloads run the proxy in-cluster; Postgres, audit, secrets, ingress, and logs stay in your infra.
+
+### 1. External flow — where the data comes from
 
 ```mermaid
 flowchart LR
-    subgraph endpoints["Employee endpoints"]
-        direction TB
-        clients["Cursor · Claude · VS Code<br/>Codex · Cortex · Continue"]
-        push["agent-bom agents --push"]
-        proxy["agent-bom proxy &lt;mcp&gt;"]
-        clients -.-> push
-        clients -.-> proxy
-    end
+    clients["Cursor · Claude · VS Code<br/>Codex · Cortex · Continue"]
+    cli["agent-bom agents --push"]
+    prx["agent-bom proxy &lt;mcp&gt;"]
+    cp(["agent-bom control plane<br/>in your EKS cluster"])
 
-    cp(["Control plane<br/>API · UI · Fleet · Mesh · Gateway · Audit"])
-    pg[("Postgres")]
-    ch[("ClickHouse<br/>optional")]
-    sec[("External Secrets · KMS")]
-    obs["Prometheus · Grafana · OTel"]
-    workloads["Selected MCP workloads<br/>+ proxy sidecars"]
-
-    push -->|HTTPS push| cp
-    proxy -->|policy pull · audit push| cp
-    cp --- pg
-    cp -. analytics .- ch
-    cp --- sec
-    cp --- obs
-    cp --> workloads
+    clients -.-> cli
+    clients -.-> prx
+    cli -->|HTTPS push| cp
+    prx -->|policy pull · audit push| cp
 ```
 
-Inside the control plane: **OIDC + SAML SSO** with RBAC, **enforced API-key rotation policy**, **tenant-scoped quotas + rate limits**, **HMAC-chained audit log** with signed export, and **KMS-encrypted Postgres backups** with a verified restore round-trip in CI.
+### 2. Inside your EKS cluster — what actually deploys
 
-What that gives you:
-
-- endpoint fleet visibility for developer laptops and local MCP clients
-- runtime enforcement for selected MCP workloads in-cluster
-- one control plane for fleet, mesh, findings, gateway policy, and audit
-- no mandatory hosted vendor plane
-
-### How a request flows through the control plane
+The Helm chart installs a single namespace with the control plane, its backup job, and the operator surface. Selected MCP workloads run alongside with an `agent-bom-proxy` sidecar that pulls gateway policy and pushes audit events back.
 
 ```mermaid
-flowchart LR
-    REQ([HTTP request]) --> BODY[Body size + read timeout]
-    BODY --> TRACE[Trust headers + W3C trace]
-    TRACE --> AUTH["Auth — API key · OIDC · SAML"]
-    AUTH --> RBAC[RBAC role check]
-    RBAC --> TENANT[Tenant context propagation]
-    TENANT --> QUOTA[Tenant quota + rate limit]
-    QUOTA --> ROUTE[Route handler]
-    ROUTE --> AUDIT[(HMAC audit log)]
-    ROUTE --> STORE[(Postgres / ClickHouse<br/>KMS at rest)]
+flowchart TB
+    subgraph ns["namespace: agent-bom"]
+        direction TB
+        api["Deployment: agent-bom-api<br/>3 replicas · HPA · /readyz drain"]
+        ui["Deployment: agent-bom-ui<br/>2 replicas"]
+        cron["CronJob: controlplane-backup<br/>pg_dump → S3 (SSE-KMS)"]
+        es[("ExternalSecret<br/>API keys · HMAC key · DB URL")]
+        obs["PrometheusRule + Grafana dashboard ConfigMap"]
+    end
+
+    subgraph work["Selected MCP workloads (same or adjacent ns)"]
+        direction LR
+        mcpsvc["MCP server pod"]
+        proxy["Sidecar: agent-bom-proxy"]
+        mcpsvc -.- proxy
+    end
+
+    api --- ui
+    api --- es
+    api -. scrape / alert .- obs
+    api --- cron
+    proxy -->|policy pull · audit push| api
+```
+
+Outside the namespace but in your VPC: **Postgres** (primary state), **ClickHouse** (optional analytics), **External Secrets** wired to **KMS**, and **Prometheus + Grafana + OTel** scraping the API. The restore round-trip is exercised in CI (`backup-restore.yml`).
+
+### 3. How a request flows through the control plane
+
+```mermaid
+flowchart TB
+    REQ([HTTP request])
+    BODY[Body size + read timeout]
+    TRACE[Trust headers + W3C trace]
+    AUTH["Auth — API key · OIDC · SAML"]
+    RBAC[RBAC role check]
+    TENANT[Tenant context propagation]
+    QUOTA[Tenant quota + rate limit]
+    ROUTE[Route handler]
+    AUDIT[(HMAC audit log)]
+    STORE[(Postgres · ClickHouse<br/>KMS at rest)]
+
+    REQ --> BODY --> TRACE --> AUTH --> RBAC --> TENANT --> QUOTA --> ROUTE
+    ROUTE --> AUDIT
+    ROUTE --> STORE
 ```
 
 Every layer is testable on its own; failures emit Prometheus metrics. Operators introspect a live request via `GET /v1/auth/debug` and see rotation status via `GET /v1/auth/policy`.
+
+### 4. What you get, and how to install it
+
+Inside the control plane: **OIDC + SAML SSO** with RBAC, **enforced API-key rotation policy**, **tenant-scoped quotas + rate limits**, **HMAC-chained audit log** with signed export, **KMS-encrypted Postgres backups** with a verified restore round-trip in CI, and **signed compliance evidence bundles** (`/v1/compliance/{framework}/report` — nonce + expiry inside the signature).
+
+<details>
+<summary><b>Helm install + fleet sync + local proxy</b></summary>
 
 ```bash
 # control plane in your cluster
@@ -208,7 +224,9 @@ agent-bom proxy --policy ./policy.json -- <editor-mcp-command>
 
 Operator guides: [Own AWS / EKS](site-docs/deployment/own-infra-eks.md) · [Enterprise pilot](site-docs/deployment/enterprise-pilot.md) · [Endpoint fleet](site-docs/deployment/endpoint-fleet.md) · [EKS MCP pilot](site-docs/deployment/eks-mcp-pilot.md) · [Helm control plane](site-docs/deployment/control-plane-helm.md) · [Grafana](site-docs/deployment/grafana.md) · [Performance + sizing](site-docs/deployment/performance-and-sizing.md) · [Restore script](deploy/ops/restore-postgres-backup.sh).
 
-Self-hosted SSO uses **OIDC or SAML**; SAML admins fetch SP metadata at `/v1/auth/saml/metadata`. Control-plane API keys follow an enforced lifetime policy (`AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS`, `AGENT_BOM_API_KEY_MAX_TTL_SECONDS`); rotate in place at `/v1/auth/keys/{key_id}/rotate`. Operator status and rotation health surface at `/v1/auth/policy`.
+Self-hosted SSO uses **OIDC or SAML**; SAML admins fetch SP metadata at `/v1/auth/saml/metadata`. Control-plane API keys follow an enforced lifetime policy (`AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS`, `AGENT_BOM_API_KEY_MAX_TTL_SECONDS`); rotate in place at `/v1/auth/keys/{key_id}/rotate`.
+
+</details>
 
 ## Trust & transparency
 
@@ -273,7 +291,8 @@ Run locally, in CI, in Docker, in Kubernetes, as a self-hosted API + dashboard, 
 
 References: [PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) · [PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md) · [ENTERPRISE.md](docs/ENTERPRISE.md) · [How agent-bom works](site-docs/architecture/how-agent-bom-works.md).
 
-## CI/CD in 60 seconds
+<details>
+<summary><b>CI/CD in 60 seconds</b></summary>
 
 ```yaml
 - uses: msaad00/agent-bom@v0.77.1
@@ -286,6 +305,8 @@ References: [PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) · [PRODUCT_METRICS.md](do
 ```
 
 Container image gate, IaC gate, air-gapped CI, MCP scan, and the SARIF / SBOM examples are documented in [site-docs/getting-started/ci-cd.md](site-docs/getting-started/ci-cd.md).
+
+</details>
 
 ## MCP server
 

@@ -172,10 +172,15 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
 
 @router.get("/metrics", tags=["observability"])
 async def prometheus_metrics():
-    """Prometheus scrape endpoint — returns latest scan metrics."""
+    """Prometheus scrape endpoint — exposes control-plane and pilot metrics.
+
+    Catalog lives in docs/OBSERVABILITY_METRICS.md — keep that doc in sync
+    when adding or renaming series here.
+    """
     from starlette.responses import Response
 
     try:
+        from agent_bom.api.metrics import render_prometheus_lines
         from agent_bom.api.oidc import oidc_decode_failure_count
 
         store = _get_fleet_store()
@@ -191,6 +196,7 @@ async def prometheus_metrics():
             "# TYPE agent_bom_oidc_decode_failures_total counter",
             f"agent_bom_oidc_decode_failures_total {oidc_decode_failure_count()}",
         ]
+        lines.extend(render_prometheus_lines())
         return Response("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4; charset=utf-8")
     except Exception:  # noqa: BLE001
         return Response("# No metrics available\n", media_type="text/plain; version=0.0.4; charset=utf-8")

@@ -60,19 +60,16 @@ class _Ed25519Signer:
         if not isinstance(loaded, Ed25519PrivateKey):
             raise ValueError("AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM is not an Ed25519 key")
         self._private_key = loaded
-        public_bytes = loaded.public_key().public_bytes(
+        public_bytes: bytes = loaded.public_key().public_bytes(
             encoding=serialization.Encoding.DER,
             format=serialization.PublicFormat.SubjectPublicKeyInfo,
         )
-        self._key_id = hashlib.sha256(public_bytes).hexdigest()[:16]
-        self._public_pem = (
-            loaded.public_key()
-            .public_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo,
-            )
-            .decode()
+        self._key_id: str = hashlib.sha256(public_bytes).hexdigest()[:16]
+        pem_bytes: bytes = loaded.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
         )
+        self._public_pem: str = pem_bytes.decode()
 
     def sign(self, payload: bytes) -> SignatureResult:
         return SignatureResult(

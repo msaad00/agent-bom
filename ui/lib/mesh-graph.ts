@@ -355,6 +355,7 @@ export function buildMeshGraph(
           source: `agent:${agentName}`,
           target: serverId,
           type: "smoothstep",
+          data: { relationship: "uses" },
           animated: isShared,
           style: {
             stroke: isShared ? "#22d3ee" : "#10b981",
@@ -391,6 +392,7 @@ export function buildMeshGraph(
             source: serverId,
             target: credId,
             type: "smoothstep",
+            data: { relationship: "exposes_cred" },
             style: {
               stroke: multiAgent ? "#f59e0b" : "#92400e",
               strokeWidth: multiAgent ? 2 : 1,
@@ -426,6 +428,7 @@ export function buildMeshGraph(
             source: serverId,
             target: toolId,
             type: "smoothstep",
+            data: { relationship: "provides_tool" },
             style: {
               stroke: multiAgent ? "#a855f7" : "#6b21a8",
               strokeWidth: multiAgent ? 1.5 : 1,
@@ -504,6 +507,7 @@ export function buildMeshGraph(
           source: serverId,
           target: pkgId,
           type: "smoothstep",
+          data: { relationship: "depends_on" },
           style: {
             stroke: vulnCount > 0 ? "#ef4444" : "#52525b",
             strokeWidth: vulnCount > 0 ? 1.5 : 1,
@@ -554,6 +558,7 @@ export function buildMeshGraph(
               source: pkgId,
               target: vulnId,
               type: "smoothstep",
+              data: { relationship: "vulnerable_to" },
               animated: vuln.severity === "critical" || vuln.severity === "high",
               style: {
                 stroke: sevColor(vuln.severity),

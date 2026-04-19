@@ -31,7 +31,7 @@ import {
   MINIMAP_MASK,
   BACKGROUND_COLOR,
   BACKGROUND_GAP,
-  legendItemsForVisibleNodes,
+  legendItemsForVisibleGraph,
   minimapNodeColor,
 } from "@/lib/graph-utils";
 import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
@@ -245,19 +245,36 @@ export default function MeshPage() {
     [activeResult],
   );
 
+  const rankedAgentNames = useMemo(() => {
+    if (!activeResult) return [];
+    const scoreByAgent = new Map<string, number>();
+    for (const agent of activeResult.agents) {
+      const score = agent.mcp_servers.reduce((total, server) => {
+        return total + server.packages.reduce((packageTotal, pkg) => {
+          return packageTotal + (pkg.vulnerabilities?.length ?? 0);
+        }, 0);
+      }, 0);
+      scoreByAgent.set(agent.name, score);
+    }
+    return [...agentNames].sort((left, right) => {
+      const scoreDiff = (scoreByAgent.get(right) ?? 0) - (scoreByAgent.get(left) ?? 0);
+      return scoreDiff !== 0 ? scoreDiff : left.localeCompare(right);
+    });
+  }, [activeResult, agentNames]);
+
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      if (agentNames.length === 0) {
+      if (rankedAgentNames.length === 0) {
         setSelectedAgents([]);
         return;
       }
       setSelectedAgents((current) => {
-        const retained = current.filter((name) => agentNames.includes(name));
-        return retained.length > 0 ? retained : agentNames;
+        const retained = current.filter((name) => rankedAgentNames.includes(name));
+        return retained.length > 0 ? retained : rankedAgentNames.slice(0, 1);
       });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [agentNames]);
+  }, [rankedAgentNames]);
 
   const { rawNodes, rawEdges, stats } = useMemo(() => {
     const empty: MeshStatsData = {
@@ -334,7 +351,10 @@ export default function MeshPage() {
     }));
   }, [layoutEdges, connectedIds, searchMatches]);
 
-  const legendItems = useMemo(() => legendItemsForVisibleNodes(displayNodes), [displayNodes]);
+  const legendItems = useMemo(
+    () => legendItemsForVisibleGraph(displayNodes, displayEdges),
+    [displayEdges, displayNodes],
+  );
 
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
     setSelectedNode(node.data as LineageNodeData);
@@ -386,6 +406,9 @@ export default function MeshPage() {
           <h1 className="text-lg font-semibold text-zinc-100">Agent Mesh</h1>
           <p className="text-xs text-zinc-500">
             Agent-centered shared infrastructure across MCP servers, packages, tools, and findings
+          </p>
+          <p className="mt-1 text-[11px] text-zinc-600">
+            Default scope stays on the highest-risk agent first so the mesh is readable before you expand it.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -465,6 +488,9 @@ export default function MeshPage() {
           fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
           minZoom={0.16}
           maxZoom={2.5}
+          zoomOnScroll={false}
+          panOnScroll={false}
+          preventScrolling={false}
           onlyRenderVisibleElements
           defaultEdgeOptions={{ type: "smoothstep" }}
           proOptions={{ hideAttribution: true }}

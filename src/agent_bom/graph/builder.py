@@ -45,7 +45,7 @@ def build_unified_graph_from_report(
     graph = UnifiedGraph(scan_id=sid, tenant_id=tenant_id)
 
     agents_data = report_json.get("agents", [])
-    blast_data = report_json.get("blast_radius", [])
+    blast_data = report_json.get("blast_radius", report_json.get("blast_radii", []))
     scan_sources = report_json.get("scan_sources", [])
     data_source_tag = scan_sources[0] if scan_sources else "mcp-scan"
 
@@ -59,7 +59,7 @@ def build_unified_graph_from_report(
     for agent_dict in agents_data:
         agent_name = agent_dict.get("name", "unknown")
         agent_id = f"agent:{agent_name}"
-        agent_type = agent_dict.get("type", "")
+        agent_type = agent_dict.get("type", agent_dict.get("agent_type", ""))
         provider_name = str(agent_dict.get("source") or "local").strip() or "local"
         provider_id = f"provider:{provider_name}"
 

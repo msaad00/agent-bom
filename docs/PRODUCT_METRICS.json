@@ -1,10 +1,10 @@
 {
-  "generated_on": "2026-04-13",
-  "version": "0.77.1",
+  "generated_on": "2026-04-19",
+  "version": "0.78.0",
   "metrics": [
     {
       "name": "MCP tools",
-      "value": 36,
+      "value": 24,
       "source": "src/agent_bom/mcp_server.py",
       "notes": "Counted from @mcp.tool decorators."
     },
@@ -16,13 +16,13 @@
     },
     {
       "name": "GitHub workflow files",
-      "value": 24,
+      "value": 26,
       "source": ".github/workflows",
       "notes": "Counts .yml and .yaml workflow definitions."
     },
     {
       "name": "Test files",
-      "value": 314,
+      "value": 329,
       "source": "tests/",
       "notes": "Counts files matching test_*.py."
     },
@@ -34,13 +34,13 @@
     },
     {
       "name": "UI app pages",
-      "value": 20,
+      "value": 22,
       "source": "ui/app",
       "notes": "Counts page.tsx and page.jsx files recursively."
     },
     {
       "name": "Python modules",
-      "value": 319,
+      "value": 341,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },

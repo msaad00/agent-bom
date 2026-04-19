@@ -80,6 +80,8 @@ export interface LegendItem {
   label: string;
   color: string;
   dashed?: boolean;
+  kind?: "node" | "edge";
+  lineStyle?: "solid" | "dashed";
   shape?: "dot" | "square" | "diamond" | "pill";
 }
 
@@ -106,25 +108,51 @@ const NODE_TYPE_LEGEND_ORDER: LineageNodeType[] = [
 ];
 
 const NODE_TYPE_LEGEND_ITEMS: Record<LineageNodeType, LegendItem> = {
-  provider: { label: "Provider", color: "#71717a", shape: "dot" },
-  agent: { label: "Agent", color: "#10b981", shape: "dot" },
-  sharedServer: { label: "Shared", color: "#22d3ee", shape: "square" },
-  server: { label: "Server", color: "#3b82f6", shape: "square" },
-  package: { label: "Package", color: "#52525b", shape: "pill" },
-  model: { label: "Model", color: "#8b5cf6", shape: "pill" },
-  dataset: { label: "Dataset", color: "#06b6d4", shape: "pill" },
-  container: { label: "Container", color: "#6366f1", shape: "square" },
-  cloudResource: { label: "Cloud", color: "#0ea5e9", shape: "square" },
-  environment: { label: "Env", color: "#14b8a6", shape: "square" },
-  fleet: { label: "Fleet", color: "#22d3ee", shape: "square" },
-  cluster: { label: "Cluster", color: "#38bdf8", shape: "square" },
-  user: { label: "User", color: "#34d399", shape: "dot" },
-  group: { label: "Group", color: "#d946ef", shape: "pill" },
-  serviceAccount: { label: "Svc", color: "#fbbf24", shape: "dot" },
-  vulnerability: { label: "Vuln", color: "#ef4444", shape: "diamond" },
-  misconfiguration: { label: "Config", color: "#f97316", shape: "diamond" },
-  credential: { label: "Cred", color: "#f59e0b", shape: "dot" },
-  tool: { label: "Tool", color: "#a855f7", shape: "pill" },
+  provider: { label: "Provider", color: "#71717a", kind: "node", shape: "dot" },
+  agent: { label: "Agent", color: "#10b981", kind: "node", shape: "dot" },
+  sharedServer: { label: "Shared", color: "#22d3ee", kind: "node", shape: "square" },
+  server: { label: "Server", color: "#3b82f6", kind: "node", shape: "square" },
+  package: { label: "Package", color: "#52525b", kind: "node", shape: "pill" },
+  model: { label: "Model", color: "#8b5cf6", kind: "node", shape: "pill" },
+  dataset: { label: "Dataset", color: "#06b6d4", kind: "node", shape: "pill" },
+  container: { label: "Container", color: "#6366f1", kind: "node", shape: "square" },
+  cloudResource: { label: "Cloud", color: "#0ea5e9", kind: "node", shape: "square" },
+  environment: { label: "Env", color: "#14b8a6", kind: "node", shape: "square" },
+  fleet: { label: "Fleet", color: "#22d3ee", kind: "node", shape: "square" },
+  cluster: { label: "Cluster", color: "#38bdf8", kind: "node", shape: "square" },
+  user: { label: "User", color: "#34d399", kind: "node", shape: "dot" },
+  group: { label: "Group", color: "#d946ef", kind: "node", shape: "pill" },
+  serviceAccount: { label: "Svc", color: "#fbbf24", kind: "node", shape: "dot" },
+  vulnerability: { label: "Vuln", color: "#ef4444", kind: "node", shape: "diamond" },
+  misconfiguration: { label: "Config", color: "#f97316", kind: "node", shape: "diamond" },
+  credential: { label: "Cred", color: "#f59e0b", kind: "node", shape: "dot" },
+  tool: { label: "Tool", color: "#a855f7", kind: "node", shape: "pill" },
+};
+
+const RELATIONSHIP_LEGEND_ORDER = [
+  "uses",
+  "depends_on",
+  "provides_tool",
+  "exposes_cred",
+  "vulnerable_to",
+  "shares_server",
+  "shares_cred",
+  "lateral_path",
+  "invoked",
+  "accessed",
+] as const;
+
+const RELATIONSHIP_LEGEND_ITEMS: Record<(typeof RELATIONSHIP_LEGEND_ORDER)[number], LegendItem> = {
+  uses: { label: "Uses", color: EDGE_COLORS.agentToServer, kind: "edge", lineStyle: "solid" },
+  depends_on: { label: "Depends On", color: EDGE_COLORS.serverToPackage, kind: "edge", lineStyle: "solid" },
+  provides_tool: { label: "Provides Tool", color: EDGE_COLORS.serverToTool, kind: "edge", lineStyle: "solid" },
+  exposes_cred: { label: "Exposes Cred", color: EDGE_COLORS.serverToCredential, kind: "edge", lineStyle: "dashed", dashed: true },
+  vulnerable_to: { label: "Vulnerable To", color: EDGE_COLORS.packageToVuln, kind: "edge", lineStyle: "solid" },
+  shares_server: { label: "Shares Server", color: EDGE_COLORS.sharedServer, kind: "edge", lineStyle: "dashed", dashed: true },
+  shares_cred: { label: "Shares Cred", color: EDGE_COLORS.sharedCredential, kind: "edge", lineStyle: "dashed", dashed: true },
+  lateral_path: { label: "Lateral Path", color: EDGE_COLORS.lateralPath, kind: "edge", lineStyle: "dashed", dashed: true },
+  invoked: { label: "Runtime Invoke", color: EDGE_COLORS.agentToServer, kind: "edge", lineStyle: "dashed", dashed: true },
+  accessed: { label: "Runtime Access", color: EDGE_COLORS.serverToPackage, kind: "edge", lineStyle: "dashed", dashed: true },
 };
 
 function isLineageNodeType(value: unknown): value is LineageNodeType {
@@ -156,30 +184,55 @@ export function legendItemsForVisibleNodes(
   return items;
 }
 
+export function relationshipLegendItemsForVisibleEdges(edges: Array<{ data?: unknown }>): LegendItem[] {
+  const visibleRelationships = new Set<string>();
+  for (const edge of edges) {
+    const relationship = (edge.data as { relationship?: unknown } | undefined)?.relationship;
+    if (typeof relationship === "string" && relationship in RELATIONSHIP_LEGEND_ITEMS) {
+      visibleRelationships.add(relationship);
+    }
+  }
+
+  return RELATIONSHIP_LEGEND_ORDER
+    .filter((relationship) => visibleRelationships.has(relationship))
+    .map((relationship) => RELATIONSHIP_LEGEND_ITEMS[relationship]);
+}
+
+export function legendItemsForVisibleGraph(
+  nodes: Array<{ data?: unknown }>,
+  edges: Array<{ data?: unknown }>,
+  extras: LegendItem[] = [],
+): LegendItem[] {
+  return legendItemsForVisibleNodes(nodes, [
+    ...relationshipLegendItemsForVisibleEdges(edges),
+    ...extras,
+  ]);
+}
+
 export const STANDARD_LEGEND: LegendItem[] = [
-  { label: "Agent", color: "#10b981", shape: "dot" },
-  { label: "Server", color: "#3b82f6", shape: "square" },
-  { label: "Package", color: "#52525b", shape: "pill" },
-  { label: "CVE", color: "#ef4444", shape: "diamond" },
-  { label: "Cred", color: "#f59e0b", shape: "dot" },
-  { label: "Tool", color: "#a855f7", shape: "pill" },
+  { label: "Agent", color: "#10b981", kind: "node", shape: "dot" },
+  { label: "Server", color: "#3b82f6", kind: "node", shape: "square" },
+  { label: "Package", color: "#52525b", kind: "node", shape: "pill" },
+  { label: "CVE", color: "#ef4444", kind: "node", shape: "diamond" },
+  { label: "Cred", color: "#f59e0b", kind: "node", shape: "dot" },
+  { label: "Tool", color: "#a855f7", kind: "node", shape: "pill" },
 ];
 
 export const MESH_LEGEND: LegendItem[] = [
-  { label: "Agent", color: "#10b981", shape: "dot" },
-  { label: "Shared", color: "#22d3ee", shape: "square" },
-  { label: "Server", color: "#3b82f6", shape: "square" },
-  { label: "Package", color: "#52525b", shape: "pill" },
-  { label: "Vuln", color: "#ef4444", shape: "diamond" },
-  { label: "Cred", color: "#f59e0b", shape: "dot" },
-  { label: "Tool", color: "#a855f7", shape: "pill" },
+  { label: "Agent", color: "#10b981", kind: "node", shape: "dot" },
+  { label: "Shared", color: "#22d3ee", kind: "node", shape: "square" },
+  { label: "Server", color: "#3b82f6", kind: "node", shape: "square" },
+  { label: "Package", color: "#52525b", kind: "node", shape: "pill" },
+  { label: "Vuln", color: "#ef4444", kind: "node", shape: "diamond" },
+  { label: "Cred", color: "#f59e0b", kind: "node", shape: "dot" },
+  { label: "Tool", color: "#a855f7", kind: "node", shape: "pill" },
 ];
 
 export const CONTEXT_LEGEND: LegendItem[] = [
-  { label: "Agent", color: "#10b981", shape: "dot" },
-  { label: "Shared", color: "#22d3ee", shape: "square" },
-  { label: "Cred", color: "#f59e0b", shape: "dot" },
-  { label: "Tool", color: "#a855f7", shape: "pill" },
-  { label: "Vuln", color: "#ef4444", shape: "diamond" },
-  { label: "Lateral", color: "#f97316", dashed: true, shape: "diamond" },
+  { label: "Agent", color: "#10b981", kind: "node", shape: "dot" },
+  { label: "Shared", color: "#22d3ee", kind: "node", shape: "square" },
+  { label: "Cred", color: "#f59e0b", kind: "node", shape: "dot" },
+  { label: "Tool", color: "#a855f7", kind: "node", shape: "pill" },
+  { label: "Vuln", color: "#ef4444", kind: "node", shape: "diamond" },
+  { label: "Lateral", color: "#f97316", kind: "edge", dashed: true, lineStyle: "dashed", shape: "diamond" },
 ];

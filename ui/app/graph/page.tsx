@@ -39,6 +39,7 @@ import {
   BACKGROUND_COLOR,
   BACKGROUND_GAP,
   CONTROLS_CLASS,
+  legendItemsForVisibleGraph,
   MINIMAP_BG,
   MINIMAP_CLASS,
   MINIMAP_MASK,
@@ -542,6 +543,11 @@ export default function GraphPage() {
     }));
   }, [layoutEdges, connectedIds, attackPathEdgeKeys]);
 
+  const legendItems = useMemo(
+    () => legendItemsForVisibleGraph(displayNodes, displayEdges),
+    [displayEdges, displayNodes],
+  );
+
   const hasContextualGraph = useMemo(
     () => displayNodes.some((node) => {
       const nodeType = (node.data as LineageNodeData).nodeType;
@@ -713,7 +719,7 @@ export default function GraphPage() {
             </select>
 
             <FullscreenButton />
-            <GraphLegend items={flow.legend} />
+            <GraphLegend items={legendItems} />
           </div>
         </div>
 
@@ -964,6 +970,9 @@ export default function GraphPage() {
               fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
               minZoom={0.16}
               maxZoom={2.5}
+              zoomOnScroll={false}
+              panOnScroll={false}
+              preventScrolling={false}
               onlyRenderVisibleElements
               defaultEdgeOptions={{ type: "smoothstep" }}
               proOptions={{ hideAttribution: true }}

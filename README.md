@@ -131,7 +131,22 @@ External calls are limited to package metadata, version lookups, and CVE enrichm
 
 ## Deploy in your own AWS / EKS
 
-Self-hosted is a first-class path. Employee endpoints push fleet discovery into your control plane; selected MCP workloads run the proxy in-cluster; Postgres, audit, secrets, ingress, and logs stay in your infra.
+Self-hosted is a first-class path. `agent-bom` is designed to run inside the
+customer's own AWS account, VPC, EKS cluster, IAM boundary, databases, and SSO
+stack.
+
+The deployable surfaces are intentionally split:
+
+- **scan**: discovery, inventory, CVE, image, IaC, Kubernetes, and cloud analysis
+- **fleet**: endpoint and collector inventory pushed into the control plane
+- **proxy / runtime**: inline MCP enforcement near selected workloads
+- **gateway**: central policy management for those runtime paths
+- **API + UI**: findings, graph, remediation, audit, and operator workflows
+
+That gives one shared graph and policy model without forcing one runtime
+monolith. By default, findings, fleet data, audit logs, graph state, and
+remediation outputs stay in your infrastructure; optional egress is operator
+controlled for DB refresh, enrichment, SIEM, OTLP, and webhooks.
 
 ### 1. External flow — where the data comes from
 
@@ -272,7 +287,7 @@ docker run --rm agentbom/agent-bom agents    # Docker
 |------|----------|
 | CLI (`agent-bom agents`) | local audit + project scan |
 | Endpoint fleet (`--push-url …/v1/fleet/sync`) | employee laptops pushing into self-hosted fleet |
-| GitHub Action (`uses: msaad00/agent-bom@v0.77.1`) | CI/CD + SARIF |
+| GitHub Action (`uses: msaad00/agent-bom@v0.78.0`) | CI/CD + SARIF |
 | Docker (`agentbom/agent-bom`) | isolated scans, containerized self-hosting |
 | Kubernetes / Helm (`helm install agent-bom deploy/helm/agent-bom`) | self-hosted API + dashboard, scheduled discovery |
 | REST API (`agent-bom api`) | platform integration, self-hosted control plane |
@@ -295,7 +310,7 @@ References: [PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) · [PRODUCT_METRICS.md](do
 <summary><b>CI/CD in 60 seconds</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.77.1
+- uses: msaad00/agent-bom@v0.78.0
   with:
     scan-type: scan
     severity-threshold: high

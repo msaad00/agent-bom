@@ -16,6 +16,17 @@ If you want the narrower pilot shape first, start with
 also covers developer endpoints, pair this page with
 [Endpoint Fleet](endpoint-fleet.md).
 
+## What This EKS Shape Is Optimized For
+
+This deployment model is built for teams that want:
+
+- all findings, graph state, audit data, and remediation views inside their own VPC
+- read-only cloud and cluster discovery where enforcement is not required
+- selected inline enforcement only for the MCP workloads that actually need it
+- low-latency runtime inspection without routing every request through a shared monolith
+- enterprise auth, least privilege, and tenant boundaries that map cleanly to platform controls
+- predictable cost with stateless control-plane pods and scale-out scan jobs
+
 ## Best-In-Class EKS Shape
 
 The best current EKS rollout is not "put everything behind one service." It is
@@ -23,24 +34,30 @@ a split between a control plane and the discovery/enforcement paths around it.
 
 ```mermaid
 flowchart LR
-    subgraph Workloads["Your workloads"]
+    subgraph Workloads["Your workloads and endpoints"]
       Endpoints["Developer endpoints"]
       Cron["Scanner CronJob"]
       MCP["Selected MCP workloads"]
       Sidecars["agent-bom proxy sidecars"]
     end
 
-    subgraph ControlPlane["agent-bom control plane"]
+    subgraph ControlPlane["agent-bom control plane in your VPC"]
       API["API + UI"]
       Fleet["Fleet"]
       Gateway["Gateway policies"]
       Findings["Findings / graph / remediation"]
     end
 
-    subgraph Data["Operator-owned data plane"]
+    subgraph Data["Operator-owned data plane and identity"]
       PG["Postgres"]
       CH["ClickHouse optional"]
-      Secrets["Secrets / IRSA / ingress / OIDC"]
+      Secrets["Secrets / IRSA / ingress / OIDC / SAML"]
+      S3["S3 / KMS optional backups and exports"]
+    end
+
+    subgraph Optional["Optional external egress"]
+      DBSync["Vuln DB sync / package metadata / enrichment"]
+      SIEM["SIEM / OTLP / webhooks"]
     end
 
     Endpoints -->|fleet sync| Fleet
@@ -50,9 +67,12 @@ flowchart LR
     API --> PG
     API --> CH
     API --> Secrets
+    API --> S3
     Fleet --> API
     Gateway --> API
     Findings --> API
+    Findings -. optional .-> DBSync
+    API -. optional .-> SIEM
 ```
 
 ## Which Agent-BOM Surface Runs Where
@@ -88,6 +108,23 @@ Potential egress still depends on operator choice:
 - vulnerability database refresh
 - enrichment lookups
 - explicit exports such as SARIF upload, OTLP, SIEM, or webhooks
+
+## Current Capabilities By Surface
+
+These are the current deployable capabilities this EKS model supports:
+
+| Surface | Current capabilities |
+|---|---|
+| **Control plane** | API + UI, remediation, graph, findings, gateway, fleet, audit review, compliance evidence, health and auth introspection |
+| **Scan** | package, image, IaC, Kubernetes, MCP, cloud, and inventory scanning via CronJob, CI, or one-off runs |
+| **Fleet** | endpoint and collector inventory persistence, state review, trust/lifecycle tracking |
+| **Proxy / runtime** | MCP policy evaluation, undeclared-tool blocking, credential detection, audit push, local or sidecar deployment |
+| **Gateway** | central policy authoring, distribution, and evaluation surface for proxies |
+| **Storage** | Postgres-backed control-plane state, optional ClickHouse analytics, optional S3-backed backups/exports |
+
+This is the important product boundary: customers can deploy one or all of
+these surfaces in their own infrastructure without shipping their core operator
+data to a vendor-hosted control plane.
 
 ## What You Actually Deploy
 
@@ -197,8 +234,10 @@ The rollout order should normally be:
 - use Alembic for long-lived Postgres-backed deployments
 - keep the proxy and API internal to your VPC unless exposure is intentional
 - attach discovery jobs to IRSA instead of static cloud keys
+- keep discovery roles read-only unless a specific workflow truly requires write access
 - set a persistent `AGENT_BOM_AUDIT_HMAC_KEY` and require it for proxy audit
   sign-off
+- set `AGENT_BOM_RATE_LIMIT_KEY` and `AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED` for multi-replica control planes
 - split external secrets by rotation cadence
 - enable the packaged PrometheusRule and Grafana dashboard only when your
   cluster already runs Prometheus Operator and Grafana sidecar discovery
@@ -206,6 +245,21 @@ The rollout order should normally be:
 - use topology spread for multi-AZ EKS
 - start with audit-only policy outcomes where rollout risk is unclear, then
   move to deny
+
+## Why This Is Not A Monolith
+
+The control plane stores and visualizes state. The scanner discovers. The fleet
+surface ingests endpoint inventory. The proxy enforces live MCP traffic. The
+gateway distributes policy. Those are aligned surfaces, but they are not one
+process pretending to be every enterprise service at once.
+
+That split is what makes the deployment:
+
+- **secure**: least privilege and clearer trust boundaries
+- **performant**: enforcement stays close to the workload
+- **cheap**: heavy scan work can scale independently from the API/UI
+- **manageable**: each surface can roll out on its own lifecycle
+- **accurate**: one shared graph and policy model keeps outputs consistent across surfaces
 
 Run database migrations explicitly:
 

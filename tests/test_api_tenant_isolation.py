@@ -12,6 +12,7 @@ from fastapi import HTTPException
 
 from agent_bom.api import tenant_quota as tenant_quota_module
 from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState, InMemoryFleetStore
+from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.models import FleetAgentUpdate, JobStatus, PushPayload, ScanJob, ScanRequest, ScheduleCreate, StateUpdate
 from agent_bom.api.routes import compliance as compliance_routes
 from agent_bom.api.routes import discovery as discovery_routes
@@ -21,7 +22,7 @@ from agent_bom.api.routes import scan as scan_routes
 from agent_bom.api.routes import schedules as schedule_routes
 from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule
 from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
-from agent_bom.api.stores import _jobs, set_fleet_store, set_job_store, set_schedule_store
+from agent_bom.api.stores import _jobs, set_fleet_store, set_graph_store, set_job_store, set_schedule_store
 
 
 def _now() -> str:
@@ -258,6 +259,73 @@ async def test_create_scan_and_push_stamp_request_tenant(monkeypatch):
     hydrated = await scan_routes.list_jobs(req, include_details=True)
     pushed_hydrated = next(job for job in hydrated["jobs"] if job["job_id"] == pushed["job_id"])
     assert pushed_hydrated["summary"]["total_packages"] == 12
+
+
+@pytest.mark.asyncio
+async def test_receive_push_normalizes_report_contract_and_persists_graph(tmp_path):
+    store = InMemoryJobStore()
+    set_job_store(store)
+    set_graph_store(SQLiteGraphStore(tmp_path / "graph.db"))
+    _jobs.clear()
+    req = _request("tenant-alpha")
+
+    pushed = await observability_routes.receive_push(
+        req,
+        PushPayload(
+            source_id="source-a",
+            agents=[
+                {
+                    "name": "claude-desktop",
+                    "agent_type": "claude-desktop",
+                    "status": "configured",
+                    "mcp_servers": [
+                        {
+                            "name": "filesystem",
+                            "command": "npx",
+                            "packages": [
+                                {
+                                    "name": "pillow",
+                                    "ecosystem": "pypi",
+                                    "version": "9.0.0",
+                                }
+                            ],
+                            "env": {"OPENAI_API_KEY": "redacted"},
+                        }
+                    ],
+                }
+            ],
+            blast_radii=[
+                {
+                    "vulnerability_id": "CVE-2026-0001",
+                    "severity": "high",
+                    "package": "pillow@9.0.0",
+                    "package_name": "pillow",
+                    "package_version": "9.0.0",
+                    "ecosystem": "pypi",
+                    "affected_agents": ["claude-desktop"],
+                    "affected_servers": ["filesystem"],
+                }
+            ],
+            warnings=[],
+            summary={"total_packages": 1, "total_vulnerabilities": 1},
+        ),
+    )
+
+    pushed_job = store.get(pushed["job_id"])
+    assert pushed_job is not None
+    assert pushed_job.result["scan_id"] == pushed["job_id"]
+    assert pushed_job.result["blast_radius"][0]["vulnerability_id"] == "CVE-2026-0001"
+    assert pushed_job.result["blast_radii"][0]["vulnerability_id"] == "CVE-2026-0001"
+    assert pushed_job.result["agents"][0]["type"] == "claude-desktop"
+    assert pushed_job.result["agents"][0]["agent_type"] == "claude-desktop"
+
+    graph_store = SQLiteGraphStore(tmp_path / "graph.db")
+    snapshots = graph_store.list_snapshots(tenant_id="tenant-alpha")
+    assert [snapshot["scan_id"] for snapshot in snapshots] == [pushed["job_id"]]
+
+    graph = graph_store.load_graph(tenant_id="tenant-alpha", scan_id=pushed["job_id"])
+    assert "agent:claude-desktop" in graph.nodes
+    assert "vuln:CVE-2026-0001" in graph.nodes
 
 
 @pytest.mark.asyncio

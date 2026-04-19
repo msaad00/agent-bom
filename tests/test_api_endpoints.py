@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 import pytest
 from starlette.testclient import TestClient
@@ -93,12 +94,27 @@ def test_framework_catalogs_endpoint():
 # ---------------------------------------------------------------------------
 
 
-def test_root_redirects():
-    """GET / returns a 307 redirect (RedirectResponse default for TestClient)."""
+def test_root_redirects_when_dashboard_is_not_bundled(monkeypatch):
+    """GET / falls back to API docs when the packaged dashboard is absent."""
+    monkeypatch.setattr("agent_bom.api.server._dashboard_index_file", lambda: None)
     client, _ = _fresh_client()
     resp = client.get("/", follow_redirects=False)
     assert resp.status_code == 307
     assert "/docs" in resp.headers.get("location", "")
+
+
+def test_root_serves_dashboard_when_bundled(tmp_path: Path, monkeypatch):
+    """GET / serves the packaged dashboard when UI assets are present."""
+    index_file = tmp_path / "index.html"
+    index_file.write_text("<html><body>agent-bom dashboard</body></html>", encoding="utf-8")
+    monkeypatch.setattr("agent_bom.api.server._dashboard_index_file", lambda: str(index_file))
+
+    client, _ = _fresh_client()
+    resp = client.get("/", follow_redirects=False)
+
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers.get("content-type", "")
+    assert "agent-bom dashboard" in resp.text
 
 
 # ---------------------------------------------------------------------------

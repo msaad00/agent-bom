@@ -288,6 +288,36 @@ def test_compact_remediation_empty():
     assert output.strip() == ""
 
 
+def test_compact_remediation_command_prefix_and_spacing():
+    """Install + verify commands render with a `$` prefix (copy-this affordance),
+    and numbered items are separated by a blank line for scan-ability."""
+    server = _make_server(env={"GITHUB_TOKEN": "x"}, tools=[{"name": "read_file"}])
+    agent = _make_agent(servers=[server])
+    radii = []
+    for i in range(3):
+        v = _vuln(vid=f"CVE-2024-{i:04d}", severity=Severity.HIGH, fixed="9.9.9", kev=True)
+        p = Package(name=f"pkg-{i}", version="1.0.0", ecosystem="pypi", vulnerabilities=[v])
+        radii.append(_blast(v, p, [agent], [server], creds=["GITHUB_TOKEN"]))
+    report = AIBOMReport(agents=[agent], blast_radii=radii)
+    plain = _plain(_capture(print_compact_remediation, report, limit=3))
+
+    # Install command is prefixed with "$ " to signal a copy-this line.
+    assert "$ pip install 'pkg-0>=9.9.9'" in plain
+    # Verify command is also "$ "-prefixed and annotated as verify.
+    assert "$ agent-bom check pkg-0@9.9.9 --ecosystem pypi" in plain
+    assert "(verify)" in plain
+
+    # Numbered items are separated by a blank line (breathing room).
+    # Strip leading/trailing blank lines, then look for the pattern of a
+    # dedented numbered item preceded by an empty line.
+    lines = plain.splitlines()
+    item_indices = [idx for idx, line in enumerate(lines) if line.lstrip().startswith(("1.", "2.", "3."))]
+    assert len(item_indices) == 3
+    # Items 2 and 3 must each be preceded by a blank line.
+    for idx in item_indices[1:]:
+        assert lines[idx - 1].strip() == "", f"Expected blank line before {lines[idx]!r}"
+
+
 # ── print_compact_export_hint ────────────────────────────────────────────────
 
 

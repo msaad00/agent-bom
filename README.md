@@ -135,35 +135,130 @@ External calls are limited to package metadata, version lookups, and CVE enrichm
 
 </details>
 
-## Deploy in your own AWS / EKS
+---
 
-Self-hosted is a first-class path. `agent-bom` is designed to run inside the
-customer's own AWS account, VPC, EKS cluster, IAM boundary, databases, and SSO
-stack.
+# Enterprise self-hosted deployment
 
-The promoted self-hosted rollout today is a scoped operator stack, not a
-monolith. Most teams start with four product surfaces plus one operator plane:
+**`agent-bom` runs end-to-end inside your infrastructure — your AWS account, your VPC, your EKS cluster, your Postgres / ClickHouse / Snowflake, your SSO, your KMS. No hosted control plane. No mandatory vendor backend. No telemetry.**
 
-- **scan**: discovery, inventory, CVE, image, IaC, Kubernetes, and cloud analysis
-- **fleet**: endpoint and collector inventory pushed into the control plane
-- **proxy / runtime**: inline MCP enforcement near selected workloads
-- **gateway**: central policy management for those runtime paths
-- **API + UI**: the operator plane for findings, graph, remediation, audit, and policy workflows
+This section is the pilot-grade walkthrough: the five product surfaces you install, the backends they run against, the network flows, the day-1 install, and the break-glass path. Every diagram below maps to real code in this repo, not a pitch deck.
 
-That gives one shared graph and policy model without forcing one runtime
-monolith. By default, findings, fleet data, audit logs, graph state, and
-remediation outputs stay in your infrastructure; optional egress is operator
-controlled for DB refresh, enrichment, SIEM, OTLP, and webhooks.
+### The concrete pilot shape
 
-The recommended EKS shape is:
+A realistic enterprise pilot today looks like this:
 
-- stateless API + UI deployments behind your ingress
-- Postgres for transactional state and graph metadata
-- optional ClickHouse only when audit and analytics volume justifies it
-- scheduled scan jobs for cluster, image, and discovery work
-- endpoint fleet sync for laptops and collectors
-- selected `agent-bom proxy` sidecars or local wrappers for the MCP workloads that need inline enforcement
-- gateway-backed policy pull so runtime controls stay centralized without hairpinning all traffic through one shared chokepoint
+- **Employees on macOS and Windows** running Cursor, VS Code, Codex CLI, Claude Desktop / Claude Code, and GitHub Copilot.
+- **Each editor talks to a mix of MCPs**:
+  - *Local / stdio* — filesystem, git, shell, dev-server MCPs running on the laptop.
+  - *Remote / HTTP + SSE* — hosted MCPs on internal services, SaaS tools, or inside a data warehouse.
+- **MCPs hosted inside Snowflake** — e.g. a Snowflake-hosted "jira" MCP exposing Jira data via Snowpark or Cortex. These look like remote MCPs to the client.
+- **An in-cluster agent-bom control plane on EKS** — ingests fleet data from every laptop, mediates gateway policy for runtime proxies, and stores scan/audit state (Postgres, ClickHouse, or Snowflake).
+
+```mermaid
+flowchart LR
+    subgraph mac["macOS employees"]
+      cursor_m[Cursor]
+      claude_m[Claude Desktop]
+      codex_m[Codex CLI]
+      copilot_m[VS Code + Copilot]
+    end
+    subgraph win["Windows employees"]
+      cursor_w[Cursor]
+      claude_w[Claude Code]
+      copilot_w[VS Code + Copilot]
+    end
+    localmcp["Local MCPs<br/>(filesystem · git · shell)"]
+    remotemcp["Remote MCPs<br/>(HTTP / SSE)"]
+    snowmcp["Snowflake-hosted MCPs<br/>(e.g. jira MCP)"]
+
+    mac --> localmcp
+    mac --> remotemcp
+    mac --> snowmcp
+    win --> localmcp
+    win --> remotemcp
+    win --> snowmcp
+
+    fleet[agent-bom agents --push-url]
+    proxy["agent-bom proxy<br/>(per-MCP wrapper)"]
+    cp(["agent-bom control plane<br/>in your EKS cluster"])
+
+    mac -. daily scan .-> fleet
+    win -. daily scan .-> fleet
+    localmcp -. wrapped .- proxy
+    remotemcp -. wrapped .- proxy
+    snowmcp -. wrapped .- proxy
+    fleet -->|HTTPS fleet sync| cp
+    proxy -->|policy pull · audit push| cp
+```
+
+**How each surface serves this mix**:
+
+| Surface | macOS | Windows | Local MCP | Remote MCP | Snowflake MCP |
+|---|:-:|:-:|:-:|:-:|:-:|
+| `agent-bom agents --push-url` (fleet sync) | ✓ | ✓ | discovered + scanned | discovered (reachability + CVE on the package that implements the server) | discovered (via Snowflake cloud scanner) |
+| `agent-bom proxy -- <cmd>` stdio | ✓ | ✓ | ✓ | — | — |
+| `agent-bom proxy --sse <url>` HTTP/SSE | ✓ | ✓ | — | ✓ | ✓ (Snowflake MCPs speak HTTP) |
+| `agent-bom cloud snowflake` | ✓ | ✓ | — | — | ✓ (native discovery + CIS benchmark) |
+| Central gateway-for-all MCPs on one URL | — | — | — | planned | planned |
+
+The last row is the gap the pilot team asks about: a single central URL that fronts every remote MCP, so laptops don't individually need to configure a proxy. See the [multi-MCP gateway design](docs/design/MULTI_MCP_GATEWAY.md).
+
+## Five product surfaces, one shared graph
+
+| Surface | CLI / route | What it does | Deploys as |
+|---|---|---|---|
+| **scan** | `agent-bom agents`, `agent-bom image`, `agent-bom iac` | Discovery, inventory, CVE enrichment, blast-radius scoring | CLI + CronJob |
+| **fleet** | `POST /v1/fleet/sync` + CLI `--push-url` | Endpoint + collector fleet ingest with tenant scoping | API endpoint |
+| **proxy / runtime** | `agent-bom proxy` (stdio) / `--sse` (HTTP) | Inline MCP JSON-RPC inspection + policy enforcement | K8s sidecar or laptop wrapper |
+| **gateway** | `/v1/gateway/policies` + `/v1/proxy/audit` | Central policy authoring + audit ingest; proxies pull & push | API routes |
+| **API + UI** | `/v1/*` + Next.js dashboard | Findings, graph, remediation, compliance, posture | 2 Deployments + HPA |
+
+By default, findings, fleet data, audit logs, graph state, and remediation outputs stay in your infrastructure. Optional egress (OSV lookups, NVD enrichment, Slack / Jira / Vanta / Drata webhooks, SIEM / OTLP) is operator-controlled.
+
+### Today's proxy is per-MCP, not a shared traffic gateway
+
+The honest architecture: `agent-bom proxy` is a **per-MCP sidecar or wrapper** ([`proxy.py:527`](src/agent_bom/proxy.py:527) stdio, [`proxy.py:258`](src/agent_bom/proxy.py:258) HTTP/SSE). One proxy instance per MCP server. The "gateway" today is the central **policy + audit plane** — proxies pull [`/v1/gateway/policies`](src/agent_bom/api/routes/gateway.py) and push [`/v1/proxy/audit`](src/agent_bom/api/routes/proxy.py:59). This is the Istio / OPA-Gatekeeper pattern: central control, edge enforcement, no hairpinning.
+
+A **central multi-upstream HTTP gateway** (`agent-bom gateway serve` — one service fronting N MCP upstreams, clients point at one URL) is on the roadmap for the [current pilot cycle](docs/design/MULTI_MCP_GATEWAY.md). Until then, pilot teams use per-MCP sidecars.
+
+## Backend matrix — pick what fits your data
+
+`agent-bom` does not treat every backend as interchangeable. Pick per capability — full detail in [backend-parity.md](site-docs/deployment/backend-parity.md).
+
+| Capability | SQLite | **Postgres / Supabase** (default) | **ClickHouse** (analytics) | **Snowflake** (warehouse-native) |
+|---|:-:|:-:|:-:|:-:|
+| Scan job / fleet / policy / audit store | ✓ | ✓ | — | ✓ |
+| Exceptions, API keys, schedules, trend, graph | ✓ (SQLite) / — (API) | ✓ | — | — |
+| Row-level tenant isolation | ✓ | ✓ | ✓ | ✓ (governance-oriented) |
+| High-volume OLAP / time-series | — | — | ✓ | ✓ (via Snowpark) |
+| Best for | laptops, single-node | standard EKS pilot | audit + analytics at scale | you already live in Snowflake |
+
+Common deployment shapes:
+
+- **Pilot default** — Postgres (or Supabase) control plane. Everything works, fastest install.
+- **Analytics-heavy** — Postgres + ClickHouse. Postgres stays transactional; ClickHouse ingests the audit/event firehose.
+- **Snowflake-native (unified stack)** — Snowflake as the primary *and* analytics store. Uses Hybrid Tables for transactional writes (scan / fleet / policy / audit), columnar tables for analytics, Snowpipe Streaming for real-time ingest, and the Postgres-compatible protocol where clients need it. Cross-cloud replication lets EKS read/write the same tables your Cortex MCPs read, regardless of region. Best when you already govern data there. See [snowflake-backend.md](site-docs/deployment/snowflake-backend.md).
+
+## Ready-made Helm values files
+
+Three shipped examples in [`deploy/helm/agent-bom/examples/`](deploy/helm/agent-bom/examples/):
+
+| File | Shape | Use when |
+|---|---|---|
+| [`eks-mcp-pilot-values.yaml`](deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml) | Postgres + MCP-focused scanner CronJob + restricted ingress | Pilot scope, MCP + agents + fleet + proxy |
+| [`eks-production-values.yaml`](deploy/helm/agent-bom/examples/eks-production-values.yaml) | Postgres pool tuned + HPA + pod anti-affinity + PriorityClass | Production rollout |
+| [`eks-istio-kyverno-values.yaml`](deploy/helm/agent-bom/examples/eks-istio-kyverno-values.yaml) | Istio mTLS + Kyverno policy + PSA restricted | Regulated / zero-trust environments |
+| [`eks-snowflake-values.yaml`](deploy/helm/agent-bom/examples/eks-snowflake-values.yaml) | Snowflake as primary backend via key-pair auth | You already govern data in Snowflake |
+
+## The scoped product stack
+
+Most pilot teams start with the **four product surfaces plus one operator plane** below:
+
+- **scan** — discovery, inventory, CVE, image, IaC, Kubernetes, cloud analysis
+- **fleet** — endpoint and collector inventory pushed into the control plane
+- **proxy / runtime** — inline MCP enforcement near selected workloads (per-MCP today)
+- **gateway** — central policy + audit plane for those runtime paths
+- **API + UI** — operator plane for findings, graph, remediation, audit, policy
 
 ### 1. External flow — where the data comes from
 
@@ -224,7 +319,7 @@ flowchart TB
     QUOTA[Tenant quota + rate limit]
     ROUTE[Route handler]
     AUDIT[(HMAC audit log)]
-    STORE[(Postgres · ClickHouse<br/>KMS at rest)]
+    STORE[(Postgres · ClickHouse · Snowflake<br/>KMS at rest)]
 
     REQ --> BODY --> TRACE --> AUTH --> RBAC --> TENANT --> QUOTA --> ROUTE
     ROUTE --> AUDIT
@@ -233,32 +328,56 @@ flowchart TB
 
 Every layer is testable on its own; failures emit Prometheus metrics. Operators introspect a live request via `GET /v1/auth/debug` and see rotation status via `GET /v1/auth/policy`.
 
-### 4. What you get, and how to install it
+### 4. Day-1 install on EKS (scripted)
 
-Inside the control plane: **OIDC + SAML SSO** with RBAC, **enforced API-key rotation policy**, **tenant-scoped quotas + rate limits**, **HMAC-chained audit log** with signed export, **KMS-encrypted Postgres backups** with a verified restore round-trip in CI, and **tamper-evident compliance evidence bundles** (`/v1/compliance/{framework}/report` — nonce + expiry inside the HMAC envelope).
+Inside the control plane: **OIDC + SAML SSO** with RBAC, **enforced API-key rotation policy**, **tenant-scoped quotas + rate limits**, **HMAC-chained audit log** with signed export, **KMS-encrypted Postgres backups** with a verified restore round-trip in CI ([`backup-restore.yml`](.github/workflows/backup-restore.yml)), and **signed compliance evidence bundles** with **Ed25519 asymmetric signing** ([`/v1/compliance/{framework}/report`](src/agent_bom/api/routes/compliance.py) — key pinned via [`/v1/compliance/verification-key`](src/agent_bom/api/routes/compliance.py), verification cookbook at [docs/COMPLIANCE_SIGNING.md](docs/COMPLIANCE_SIGNING.md)).
 
-<details>
-<summary><b>Helm install + fleet sync + local proxy</b></summary>
+Pilot teams run:
 
 ```bash
-# control plane in your cluster
+# 1. Pick your backend shape (postgres default; snowflake / istio / production also shipped)
 helm install agent-bom deploy/helm/agent-bom \
-  --set controlPlane.enabled=true \
-  --set db.backend=postgres
+  -n agent-bom --create-namespace \
+  -f deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml
 
-# endpoint fleet sync
+# 2. Smoke-test the install end-to-end — health + auth + fleet + scan + evidence bundle
+kubectl -n agent-bom port-forward svc/agent-bom-api 8080:8080 &
+./scripts/pilot-verify.sh http://localhost:8080 "$API_KEY"
+
+# 3. Sync endpoint fleet
 agent-bom agents --preset enterprise --introspect \
   --push-url https://agent-bom.example.com/v1/fleet/sync
 
-# local MCP enforcement on a laptop or workstation
+# 4. Wrap one MCP server with the runtime proxy (per-MCP today — see roadmap note above)
 agent-bom proxy --policy ./policy.json -- <editor-mcp-command>
+
+# 5. Pull an auditor-ready evidence bundle
+curl -sD headers.txt -o soc2.json \
+  "https://agent-bom.example.com/v1/compliance/soc2/report" \
+  -H "Authorization: Bearer $API_KEY"
 ```
 
-Operator guides: [Own AWS / EKS](site-docs/deployment/own-infra-eks.md) · [Enterprise pilot](site-docs/deployment/enterprise-pilot.md) · [Endpoint fleet](site-docs/deployment/endpoint-fleet.md) · [EKS MCP pilot](site-docs/deployment/eks-mcp-pilot.md) · [Helm control plane](site-docs/deployment/control-plane-helm.md) · [Grafana](site-docs/deployment/grafana.md) · [Performance + sizing](site-docs/deployment/performance-and-sizing.md) · [Restore script](deploy/ops/restore-postgres-backup.sh).
+See [site-docs/deployment/eks-mcp-pilot.md](site-docs/deployment/eks-mcp-pilot.md) for the full Day-1 runbook (four stages + break-glass table) and [docs/COMPLIANCE_SIGNING.md](docs/COMPLIANCE_SIGNING.md) for offline signature verification.
+
+**Operator guides by scenario:**
+
+| Scenario | Guide |
+|---|---|
+| Own AWS / EKS end-to-end | [own-infra-eks.md](site-docs/deployment/own-infra-eks.md) |
+| Enterprise pilot scope | [enterprise-pilot.md](site-docs/deployment/enterprise-pilot.md) |
+| Focused EKS MCP pilot | [eks-mcp-pilot.md](site-docs/deployment/eks-mcp-pilot.md) |
+| Endpoint fleet on laptops | [endpoint-fleet.md](site-docs/deployment/endpoint-fleet.md) |
+| Snowflake-native backend | [snowflake-backend.md](site-docs/deployment/snowflake-backend.md) |
+| Istio + Kyverno zero-trust | [kubernetes.md](site-docs/deployment/kubernetes.md) |
+| Backend parity matrix | [backend-parity.md](site-docs/deployment/backend-parity.md) |
+| Grafana dashboards | [grafana.md](site-docs/deployment/grafana.md) |
+| SIEM / OCSF integration | [siem-integration.md](site-docs/deployment/siem-integration.md) |
+| Metrics catalog + SLOs | [OBSERVABILITY_METRICS.md](docs/OBSERVABILITY_METRICS.md) |
+| Performance + sizing | [performance-and-sizing.md](site-docs/deployment/performance-and-sizing.md) |
 
 Self-hosted SSO uses **OIDC or SAML**; SAML admins fetch SP metadata at `/v1/auth/saml/metadata`. Control-plane API keys follow an enforced lifetime policy (`AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS`, `AGENT_BOM_API_KEY_MAX_TTL_SECONDS`); rotate in place at `/v1/auth/keys/{key_id}/rotate`.
 
-</details>
+---
 
 ## Trust & transparency
 

@@ -1,0 +1,163 @@
+# Snowflake-native backend for enterprises that already govern data in Snowflake.
+#
+# Scan jobs, fleet agents, gateway policies, and HMAC-chained audit events all
+# persist to Snowflake via SnowflakeJobStore / SnowflakeFleetStore /
+# SnowflakePolicyStore (src/agent_bom/api/snowflake_store.py). Parity boundary
+# is explicit — see site-docs/deployment/backend-parity.md.
+#
+# Key-pair auth is required. Passwords are deprecated and emit a runtime
+# warning. Generate the private key once, store in AWS Secrets Manager (or
+# your equivalent), and mount via ExternalSecrets.
+#
+#   openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8 -nocrypt
+#   snowsql -a <account> -u <user> -q "ALTER USER <user> SET RSA_PUBLIC_KEY='...'"
+#   aws secretsmanager create-secret --name agent-bom/snowflake-key --secret-string file://rsa_key.p8
+#
+# Usage:
+#   helm install agent-bom deploy/helm/agent-bom \
+#     -n agent-bom --create-namespace \
+#     -f deploy/helm/agent-bom/examples/eks-snowflake-values.yaml
+
+controlPlane:
+  enabled: true
+  observability:
+    grafanaDashboard:
+      enabled: true
+    prometheusRule:
+      enabled: true
+
+  podAntiAffinity:
+    enabled: true
+
+  priorityClass:
+    create: true
+    name: agent-bom-control-plane
+
+  api:
+    replicas: 2
+    env:
+      # Backend selection — Snowflake stores scan jobs, fleet, policies, audit
+      - name: AGENT_BOM_STORE_BACKEND
+        value: "snowflake"
+      - name: AGENT_BOM_FLEET_STORE_BACKEND
+        value: "snowflake"
+      - name: AGENT_BOM_POLICY_STORE_BACKEND
+        value: "snowflake"
+      - name: AGENT_BOM_AUDIT_STORE_BACKEND
+        value: "snowflake"
+
+      # Snowflake connection params — read from mounted Secret
+      - name: SNOWFLAKE_ACCOUNT
+        valueFrom:
+          secretKeyRef:
+            name: agent-bom-snowflake
+            key: account
+      - name: SNOWFLAKE_USER
+        valueFrom:
+          secretKeyRef:
+            name: agent-bom-snowflake
+            key: user
+      - name: SNOWFLAKE_WAREHOUSE
+        valueFrom:
+          secretKeyRef:
+            name: agent-bom-snowflake
+            key: warehouse
+      - name: SNOWFLAKE_DATABASE
+        valueFrom:
+          secretKeyRef:
+            name: agent-bom-snowflake
+            key: database
+      - name: SNOWFLAKE_SCHEMA
+        valueFrom:
+          secretKeyRef:
+            name: agent-bom-snowflake
+            key: schema
+      - name: SNOWFLAKE_ROLE
+        valueFrom:
+          secretKeyRef:
+            name: agent-bom-snowflake
+            key: role
+
+      # Key-pair auth — mount the PKCS#8 private key file
+      - name: SNOWFLAKE_PRIVATE_KEY_PATH
+        value: /var/snowflake/rsa_key.p8
+
+      # Hard-disable password fallback so misconfig fails loud instead of silent
+      - name: AGENT_BOM_SNOWFLAKE_REQUIRE_KEYPAIR
+        value: "1"
+
+      # Pilot-grade quotas
+      - name: AGENT_BOM_API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT
+        value: "25"
+      - name: AGENT_BOM_API_MAX_RETAINED_JOBS_PER_TENANT
+        value: "1000"
+      - name: AGENT_BOM_API_MAX_FLEET_AGENTS_PER_TENANT
+        value: "5000"
+
+      # Require persistent audit HMAC — no ephemeral fallback
+      - name: AGENT_BOM_REQUIRE_AUDIT_HMAC
+        value: "1"
+
+    envFrom:
+      - secretRef:
+          name: agent-bom-snowflake
+      - secretRef:
+          name: agent-bom-control-plane-auth
+
+    volumeMounts:
+      - name: snowflake-key
+        mountPath: /var/snowflake
+        readOnly: true
+
+    volumes:
+      - name: snowflake-key
+        secret:
+          secretName: agent-bom-snowflake
+          items:
+            - key: private_key
+              path: rsa_key.p8
+          defaultMode: 0400
+
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      targetCPUUtilizationPercentage: 70
+
+  ui:
+    replicas: 2
+
+  # Skip the Postgres backup CronJob — Snowflake handles durability.
+  backup:
+    enabled: false
+
+  # Scanner CronJob still runs; pushes scan results via the API which writes to Snowflake.
+  scanCronJob:
+    enabled: true
+    schedule: "0 */6 * * *"
+    args:
+      - "agents"
+      - "--k8s-mcp"
+      - "--k8s-all-namespaces"
+      - "--introspect"
+      - "--push-url"
+      - "http://agent-bom-api.agent-bom.svc.cluster.local:8080/v1/fleet/sync"
+
+  networkPolicy:
+    enabled: true
+    restrictIngress: true
+    allowedNamespaces:
+      - agent-bom
+      - ingress-nginx
+    # Egress: the API needs to reach *.snowflakecomputing.com on 443
+    egress:
+      - to:
+          - ipBlock:
+              cidr: 0.0.0.0/0
+              except:
+                - 10.0.0.0/8
+                - 172.16.0.0/12
+                - 192.168.0.0/16
+        ports:
+          - protocol: TCP
+            port: 443

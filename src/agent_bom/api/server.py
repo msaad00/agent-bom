@@ -572,7 +572,7 @@ def _dashboard_index_file() -> str | None:
     return None
 
 
-@app.get("/", include_in_schema=False)
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
 async def root():
     dashboard_index = _dashboard_index_file()
     if dashboard_index:
@@ -644,7 +644,7 @@ def _mount_dashboard(application: FastAPI) -> None:
     _index_html = str((ui_dist / "index.html").resolve())
 
     # SPA catch-all for client-side routing
-    @application.get("/{path:path}", include_in_schema=False)
+    @application.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     async def _spa_catch_all(path: str):
         # Skip API and docs paths
         if path.startswith(("v1/", "docs", "redoc", "openapi.json", "health", "version", "readyz", "metrics")):

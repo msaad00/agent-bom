@@ -117,6 +117,44 @@ def test_root_serves_dashboard_when_bundled(tmp_path: Path, monkeypatch):
     assert "agent-bom dashboard" in resp.text
 
 
+def test_root_uses_dashboard_friendly_csp_when_bundled(tmp_path: Path, monkeypatch):
+    """Packaged dashboard HTML should allow the inline bootstrap it ships with."""
+    index_file = tmp_path / "index.html"
+    index_file.write_text("<html><body>agent-bom dashboard</body></html>", encoding="utf-8")
+    monkeypatch.setattr("agent_bom.api.server._dashboard_index_file", lambda: str(index_file))
+
+    client, _ = _fresh_client()
+    resp = client.get("/", follow_redirects=False)
+
+    assert resp.status_code == 200
+    csp = resp.headers.get("content-security-policy", "")
+    assert "script-src 'self' 'unsafe-inline'" in csp
+    assert "style-src 'self' 'unsafe-inline'" in csp
+    assert "frame-ancestors 'none'" in csp
+
+
+def test_root_allows_head_when_dashboard_is_bundled(tmp_path: Path, monkeypatch):
+    """Packaged dashboard should answer HEAD like a normal static site root."""
+    index_file = tmp_path / "index.html"
+    index_file.write_text("<html><body>agent-bom dashboard</body></html>", encoding="utf-8")
+    monkeypatch.setattr("agent_bom.api.server._dashboard_index_file", lambda: str(index_file))
+
+    client, _ = _fresh_client()
+    resp = client.head("/", follow_redirects=False)
+
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers.get("content-type", "")
+
+
+def test_health_keeps_strict_api_csp():
+    """API JSON routes should keep the stricter default CSP."""
+    client, _ = _fresh_client()
+    resp = client.get("/health")
+
+    assert resp.status_code == 200
+    assert resp.headers.get("content-security-policy") == "default-src 'self'"
+
+
 # ---------------------------------------------------------------------------
 # 4. Create scan — 202
 # ---------------------------------------------------------------------------

@@ -15,4 +15,4 @@ Set PlaybackSpeed 1.0
 # Hero flow — render_demo.sh handles TERM=xterm-256color for Rich colors
 Type "bash scripts/render_demo.sh"
 Enter
-Sleep 15s
+Sleep 18s

@@ -29,6 +29,25 @@ from starlette.types import ASGIApp
 
 _logger = logging.getLogger(__name__)
 _RATE_LIMIT_FINGERPRINT_FALLBACK = secrets.token_bytes(32)
+_API_CSP = "default-src 'self'"
+_DASHBOARD_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: blob:; "
+    "font-src 'self' data:; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "frame-ancestors 'none'"
+)
+
+
+def _content_security_policy(path: str, content_type: str) -> str:
+    """Return a route-aware CSP that keeps the API strict and the dashboard usable."""
+    if "text/html" in content_type and not path.startswith(("/v1/", "/docs", "/redoc", "/openapi.json")):
+        return _DASHBOARD_CSP
+    return _API_CSP
 
 
 class InMemoryRateLimitStore:
@@ -217,7 +236,10 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Cache-Control"] = "no-store"
-        response.headers["Content-Security-Policy"] = "default-src 'self'"
+        response.headers["Content-Security-Policy"] = _content_security_policy(
+            request.url.path,
+            response.headers.get("content-type", ""),
+        )
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"

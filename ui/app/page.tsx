@@ -584,19 +584,33 @@ export default function Dashboard() {
         )}
       </section>
 
-      {/* Top Attack Paths — collapsible so the list doesn't force endless scroll */}
       {(!isLoading) && allBlast.length > 0 && (
-        <details open className="group/attack">
-          <summary className="flex cursor-pointer list-none items-center gap-2 mb-3 select-none">
-            <ChevronRight className="h-4 w-4 text-zinc-500 transition-transform group-open/attack:rotate-90" />
-            <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
-              Top Attack Paths
-            </h2>
-            <span className="ml-2 rounded-full bg-zinc-800/80 px-2 py-0.5 font-mono text-[10px] text-zinc-400">
-              {Math.min(allBlast.length, 5)}
+        <details open className="group/attack rounded-[28px] border border-zinc-800/90 bg-zinc-950/70 p-4 shadow-[0_24px_80px_-48px_rgba(16,185,129,0.28)]">
+          <summary className="flex cursor-pointer list-none items-start justify-between gap-4 select-none">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-300">
+                <GitBranch className="h-4 w-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <ChevronRight className="h-4 w-4 text-zinc-500 transition-transform group-open/attack:rotate-90" />
+                  <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-widest">
+                    Top Attack Paths
+                  </h2>
+                  <span className="rounded-full border border-zinc-800 bg-zinc-900/90 px-2 py-0.5 font-mono text-[10px] text-zinc-400">
+                    {Math.min(allBlast.length, 5)} shown
+                  </span>
+                </div>
+                <p className="mt-1 max-w-3xl text-xs leading-5 text-zinc-500">
+                  Collapse this list when you want a tighter landing view. Open any path card to jump straight into the focused security graph drilldown.
+                </p>
+              </div>
+            </div>
+            <span className="hidden rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-300 md:inline-flex">
+              Clickable drilldowns
             </span>
           </summary>
-          <div className="space-y-2">
+          <div className="mt-4 space-y-2">
             {[...allBlast]
               .sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score))
               .slice(0, 5)
@@ -625,15 +639,29 @@ export default function Dashboard() {
         </details>
       )}
 
-      {/* Scan metrics — collapsible */}
-      <details open className="group/metrics">
-        <summary className="flex cursor-pointer list-none items-center gap-2 mb-3 select-none">
-          <ChevronRight className="h-4 w-4 text-zinc-500 transition-transform group-open/metrics:rotate-90" />
-          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
-            Scan metrics
-          </h2>
+      <details open className="group/metrics rounded-[28px] border border-zinc-800/90 bg-zinc-950/70 p-4 shadow-[0_24px_80px_-48px_rgba(59,130,246,0.24)]">
+        <summary className="flex cursor-pointer list-none items-start justify-between gap-4 select-none">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-sky-500/20 bg-sky-500/10 text-sky-300">
+              <Layers className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <ChevronRight className="h-4 w-4 text-zinc-500 transition-transform group-open/metrics:rotate-90" />
+                <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-widest">
+                  Exposure KPIs
+                </h2>
+              </div>
+              <p className="mt-1 max-w-3xl text-xs leading-5 text-zinc-500">
+                Coverage and backlog snapshot for the current scan set: total scans, agents, packages, unique CVEs, and critical findings.
+              </p>
+            </div>
+          </div>
+          <span className="hidden rounded-full border border-zinc-800 bg-zinc-900/90 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400 md:inline-flex">
+            5 tiles
+          </span>
         </summary>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
           <StatCard icon={Layers} label="Total scans" value={summaryReady ? String(effectiveRecentJobs.length) : "—"} color="zinc" href="/jobs" />
           <StatCard icon={Server} label="Agents" value={agentsReady ? String(effectiveAgentCount) : "—"} color="blue" href="/agents" />
           <StatCard icon={Package} label="Packages" value={summaryReady ? String(detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0)) : "—"} color="orange" href="/findings" />

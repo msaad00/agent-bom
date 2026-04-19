@@ -1806,7 +1806,8 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
     console.print()
     total = len(fixable)
     title = f"Fix First (top {min(limit, total)} of {total})" if total > limit else f"Fix First ({total})"
-    console.print(f"  [bold]{title}[/bold]")
+    console.print(Rule(f"[bold]{title}[/bold]", style="dim"))
+    console.print("  [dim]Each item shows the impact radius, the primary action, and a verification command.[/dim]")
     console.print()
 
     sev_style = {
@@ -1828,15 +1829,16 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
             reach_parts.append(f"{len(item['tools'])} tool(s)")
         reach = ", ".join(reach_parts)
         console.print(
-            f"  [{style}]{i}.[/{style}] [bold]{item['package']}[/bold] "
-            f"[dim]{item['current']}[/dim] → [green]{item['fix']}[/green]{kev}  "
-            f"[dim]{item['priority']} · clears {reach}[/dim]"
+            f"  [{style}]{i}.[/{style}] [bold]{item['package']}[/bold] [dim]{item['current']}[/dim] → [green]{item['fix']}[/green]{kev}"
         )
-        console.print(f"     [dim]{_compact_detail(item['action'], limit=110)}[/dim]")
+        console.print(f"     [bold]Priority:[/bold] {item['priority']} [dim]· clears {reach}[/dim]")
+        console.print(f"     [bold]Action:[/bold] [dim]{_compact_detail(item['action'], limit=96)}[/dim]")
         if item.get("command"):
-            console.print(f"     [cyan]$ {item['command']}[/cyan]")
+            console.print(f"     [bold cyan]Install:[/bold cyan] [cyan]$ {item['command']}[/cyan]")
         if item.get("verify_command"):
-            console.print(f"     [dim cyan]$ {item['verify_command']}[/dim cyan] [dim](verify)[/dim]")
+            console.print(
+                f"     [bold dim cyan]Verify:[/bold dim cyan] [dim cyan]$ {item['verify_command']}[/dim cyan] [dim](verify)[/dim]"
+            )
         if i < len(shown):
             console.print()
 

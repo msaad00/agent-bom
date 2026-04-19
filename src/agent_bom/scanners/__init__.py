@@ -818,7 +818,8 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
     # when the DB is populated via `agent-bom db update`.
     local_count, db_covered = _scan_packages_local_db(scannable)
     if local_count:
-        console.print(f"  [green]✓[/green] Local DB: {local_count} vulnerability/vulnerabilities found (offline)")
+        local_label = "vulnerability found" if local_count == 1 else "vulnerabilities found"
+        console.print(f"  [green]✓[/green] Local DB: {local_count} {local_label} (offline)")
 
     # Only call OSV for packages not already covered by the local DB
     def _db_key(p: Package) -> str:

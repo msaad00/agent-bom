@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { Bot, Bug, ChevronRight, KeyRound, Package, Server } from "lucide-react";
+import { ArrowRight, Bot, Bug, ChevronRight, KeyRound, Package, Server } from "lucide-react";
 
 interface AttackPathNode {
   type: "cve" | "package" | "server" | "agent" | "credential";
@@ -76,8 +76,17 @@ export function AttackPathCard({ nodes, riskScore, onClick, href }: AttackPathCa
         })}
       </div>
       {href && (
-        <div className="mt-3 text-xs font-medium text-emerald-500">
-          Open focused security graph
+        <div className="mt-4 flex items-center justify-between border-t border-[color:var(--border-subtle)] pt-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Drilldown</p>
+            <p className="mt-1 text-xs font-medium text-emerald-500 transition-colors group-hover:text-emerald-400">
+              Open focused security graph
+            </p>
+          </div>
+          <div className="flex items-center gap-1 text-xs font-medium text-[color:var(--text-secondary)] transition-colors group-hover:text-[color:var(--foreground)]">
+            Inspect path
+            <ArrowRight className="h-3.5 w-3.5" />
+          </div>
         </div>
       )}
     </>

@@ -135,18 +135,29 @@ Self-hosted is a first-class path. `agent-bom` is designed to run inside the
 customer's own AWS account, VPC, EKS cluster, IAM boundary, databases, and SSO
 stack.
 
-The deployable surfaces are intentionally split:
+The promoted self-hosted rollout today is a scoped operator stack, not a
+monolith. Most teams start with four product surfaces plus one operator plane:
 
 - **scan**: discovery, inventory, CVE, image, IaC, Kubernetes, and cloud analysis
 - **fleet**: endpoint and collector inventory pushed into the control plane
 - **proxy / runtime**: inline MCP enforcement near selected workloads
 - **gateway**: central policy management for those runtime paths
-- **API + UI**: findings, graph, remediation, audit, and operator workflows
+- **API + UI**: the operator plane for findings, graph, remediation, audit, and policy workflows
 
 That gives one shared graph and policy model without forcing one runtime
 monolith. By default, findings, fleet data, audit logs, graph state, and
 remediation outputs stay in your infrastructure; optional egress is operator
 controlled for DB refresh, enrichment, SIEM, OTLP, and webhooks.
+
+The recommended EKS shape is:
+
+- stateless API + UI deployments behind your ingress
+- Postgres for transactional state and graph metadata
+- optional ClickHouse only when audit and analytics volume justifies it
+- scheduled scan jobs for cluster, image, and discovery work
+- endpoint fleet sync for laptops and collectors
+- selected `agent-bom proxy` sidecars or local wrappers for the MCP workloads that need inline enforcement
+- gateway-backed policy pull so runtime controls stay centralized without hairpinning all traffic through one shared chokepoint
 
 ### 1. External flow — where the data comes from
 

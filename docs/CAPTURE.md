@@ -20,6 +20,10 @@ that does not happen again.
    AGENT_BOM_DB=/tmp/agent-bom-capture.db agent-bom serve
    ```
 
+   Use the packaged UI path for captures. Do not shoot screenshots from the
+   Next.js dev server, or you risk the transient `Compiling...` badge showing
+   up in published assets.
+
 4. Generate the bundled demo report offline, then push that exact payload to
    the API so the stored job matches the terminal demo and does not pull in
    local workstation discovery:
@@ -35,7 +39,7 @@ that does not happen again.
 
 | Asset | Page | Required scope | Rationale |
 |---|---|---|---|
-| `dashboard-live.png` | `/dashboard` (Risk overview) | All agents · scroll showing F-grade gauge, posture sub-scores, score breakdown, top attack paths | Captures the headline counters (actively exploited / credentials exposed / reachable tools / top-path risk), the security-posture grade, and the score breakdown — all in one frame |
+| `dashboard-live.png` | `/dashboard?capture=1` (Risk overview) | All agents · scroll showing F-grade gauge, posture sub-scores, score breakdown, top attack paths, and KPI section header | Capture mode expands every nav section for the screenshot while leaving the default product navigation behavior unchanged |
 | `mesh-live.png` | `/mesh` | Filter to `cursor` | Has 2 servers, 8 packages, 10+ CVEs, and richer tool + credential traversal than the smaller `claude-desktop` slice |
 | `remediation-live.png` | `/remediation` | All frameworks tab | Shows the full prioritized fix list |
 
@@ -49,7 +53,8 @@ the older single-column attack-path layout. The current frame contains:
 3. **F-grade gauge** — 0-100 numeric score with letter grade
 4. **Security posture card** — grade explanation + 6 sub-scores (policy + controls, open evidence × 2, packages + CVEs, reach + exposure, MCP configuration)
 5. **Score breakdown** — per-driver progress bars with one-line evidence
-6. **Top attack paths** — clickable rows linking to the security graph
+6. **Top attack paths** — visible collapsible header plus clickable rows linking to the security graph
+7. **Exposure KPIs** — visible collapsible header above the KPI tiles below the attack-path list
 
 A capture that misses any of those sections is incomplete. Re-shoot
 with the page scrolled to top so the gauge + posture card both fit.

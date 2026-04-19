@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+let mockedPathname = '/'
+
 // Mock next/link so it renders a plain anchor
 vi.mock('next/link', () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode; [key: string]: unknown }) => (
@@ -10,7 +12,7 @@ vi.mock('next/link', () => ({
 
 // Mock next/navigation
 vi.mock('next/navigation', () => ({
-  usePathname: () => '/',
+  usePathname: () => mockedPathname,
 }))
 
 // Mock the API so the component doesn't make real network calls
@@ -37,6 +39,8 @@ import { Nav } from '@/components/nav'
 
 describe('Nav', () => {
   beforeEach(() => {
+    mockedPathname = '/'
+    window.history.replaceState({}, '', '/')
     vi.clearAllMocks()
   })
 
@@ -192,5 +196,22 @@ describe('Nav', () => {
         }
       })
     }
+  })
+
+  it('expands every nav group in capture mode for screenshots', async () => {
+    window.history.replaceState({}, '', '/?capture=1')
+    render(<Nav />)
+
+    await waitFor(() => {
+      expect(screen.getByText('Choose source mode, run scans, and review findings')).toBeInTheDocument()
+      expect(screen.getByText('Trace blast radius and graph relationships')).toBeInTheDocument()
+      expect(screen.getByText('Proxy, policy, and runtime enforcement surfaces')).toBeInTheDocument()
+      expect(screen.getByText('Evidence, remediation, governance, and activity')).toBeInTheDocument()
+    })
+
+    expect(screen.getAllByRole('link', { name: /dashboard/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', { name: /new scan/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', { name: /proxy/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('link', { name: /remediation/i }).length).toBeGreaterThan(0)
   })
 })

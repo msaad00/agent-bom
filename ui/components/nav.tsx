@@ -119,6 +119,8 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+const ALL_GROUP_LABELS = NAV_GROUPS.map((group) => group.label);
+
 // ─── Risk counts for badges ─────────────────────────────────────────────────
 
 interface RiskCounts {
@@ -138,10 +140,11 @@ const MCP_ONLY_PAGES = new Set(["/agents", "/fleet", "/mesh", "/context"]);
 
 export function Nav() {
   const path = usePathname();
+  const [captureMode, setCaptureMode] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
-    () => new Set([activeGroupForPath(path)])
+    () => new Set(captureMode ? ALL_GROUP_LABELS : [activeGroupForPath(path)])
   );
   const [counts, setCounts] = useState<RiskCounts | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -157,12 +160,20 @@ export function Nav() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
+      const capture = new URLSearchParams(window.location.search).get("capture") === "1";
+      setCaptureMode(capture);
+      if (capture) {
+        setCollapsed(false);
+        setExpandedGroups(new Set(ALL_GROUP_LABELS));
+        setSearchOpen(false);
+        return;
+      }
       if (!collapsed) {
         setExpandedGroups(new Set([activeGroupForPath(path)]));
       }
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [collapsed, path]);
+  }, [captureMode, collapsed, path]);
 
   // Sync main content padding with sidebar collapsed state
   useEffect(() => {
@@ -192,13 +203,16 @@ export function Nav() {
   }, []);
 
   const toggleGroup = useCallback((label: string) => {
+    if (captureMode) {
+      return;
+    }
     setExpandedGroups((prev) => {
       if (prev.has(label) && prev.size === 1) {
         return new Set();
       }
       return new Set([label]);
     });
-  }, []);
+  }, [captureMode]);
 
   const isDimmed = (href: string): boolean => {
     if (!counts || (counts.scan_count ?? 0) === 0) return false;
@@ -287,7 +301,7 @@ export function Nav() {
       {/* Navigation Groups */}
       <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-2 scrollbar-thin">
         {filteredGroups.map((group) => {
-          const isExpanded = expandedGroups.has(group.label);
+          const isExpanded = captureMode || expandedGroups.has(group.label);
           const GroupIcon = group.icon;
           const hasActiveChild = group.links.some(
             (l) => (l.href === "/" ? path === "/" : path.startsWith(l.href))
@@ -297,7 +311,12 @@ export function Nav() {
             <div key={group.label} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)]">
               {/* Group Header */}
               <button
-                onClick={() => collapsed ? setCollapsed(false) : toggleGroup(group.label)}
+                onClick={() => {
+                  if (captureMode) {
+                    return;
+                  }
+                  collapsed ? setCollapsed(false) : toggleGroup(group.label);
+                }}
                 className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-medium transition-colors border-l-2 ${
                   hasActiveChild
                     ? "text-[color:var(--foreground)] bg-[color:var(--surface-elevated)]"

@@ -6,13 +6,13 @@ Output docs/images/demo-latest.gif
 Set Shell "bash"
 Set FontSize 20
 Set Width 1280
-Set Height 980
+Set Height 1120
 Set Theme "Dracula"
 Set Padding 20
-Set TypingSpeed 30ms
-Set PlaybackSpeed 1.35
+Set TypingSpeed 34ms
+Set PlaybackSpeed 1.0
 
 # Hero flow — render_demo.sh handles TERM=xterm-256color for Rich colors
 Type "bash scripts/render_demo.sh"
 Enter
-Sleep 9s
+Sleep 15s

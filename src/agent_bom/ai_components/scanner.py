@@ -9,7 +9,7 @@ Usage::
 
     report = scan_source("/path/to/project")
     for comp in report.components:
-        print(f"{comp.component_type.value}: {comp.name} in {comp.file_path}:{comp.line_number}")
+        summary = f"{comp.component_type.value}: {comp.name} in {comp.file_path}:{comp.line_number}"
 """
 
 from __future__ import annotations

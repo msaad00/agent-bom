@@ -27,14 +27,19 @@ from unittest.mock import patch
 import pytest
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse, PlainTextResponse
+from starlette.testclient import TestClient
 
 from agent_bom.api.audit_log import (
     AuditEntry,
     InMemoryAuditLog,
+    get_audit_log,
     set_audit_log,
 )
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.routes import compliance as compliance_routes
+from agent_bom.api.server import app
+from agent_bom.api.store import InMemoryJobStore
+from agent_bom.api.stores import _get_store, set_job_store
 
 
 def _now_iso() -> str:
@@ -192,6 +197,45 @@ def test_real_compliance_export_wires_control_tags_and_non_empty_evidence() -> N
     assert exported["LLM01"]["finding_count"] == 1
     assert exported["LLM01"]["evidence"][0]["control_tag"] == "LLM01"
     assert exported["LLM01"]["evidence"][0]["vulnerability_id"] == "CVE-2024-0001"
+
+
+def test_compliance_report_route_exports_real_evidence_end_to_end() -> None:
+    """Exercise the real FastAPI route with real auth, store, and audit wiring."""
+    original_store = _get_store()
+    original_audit_log = get_audit_log()
+    audit = _setup_audit_log()
+    store = InMemoryJobStore()
+    set_job_store(store)
+    try:
+        for job in _seed_jobs_with_findings():
+            store.put(job)
+
+        client = TestClient(app)
+        resp = client.get(
+            "/v1/compliance/owasp-llm/report",
+            headers={
+                "X-Agent-Bom-Role": "viewer",
+                "X-Agent-Bom-Tenant-ID": "tenant-alpha",
+            },
+        )
+        assert resp.status_code == 200
+
+        body = resp.json()
+        assert body["tenant_id"] == "tenant-alpha"
+        assert body["scope"]["finding_count"] == 2
+        llm01 = next(control for control in body["controls"] if control["control_id"] == "LLM01")
+        assert llm01["finding_count"] == 1
+        assert llm01["evidence"]
+        assert llm01["evidence"][0]["control_tag"] == "LLM01"
+        assert llm01["evidence"][0]["scan_id"] == "scan-a"
+        assert llm01["evidence"][0]["vulnerability_id"] == "CVE-2024-0001"
+        assert {entry["details"]["tenant_id"] for entry in body["audit_events"]} == {"tenant-alpha"}
+
+        log_entries = list(audit._entries)  # type: ignore[attr-defined]
+        assert any(entry.action == "compliance.report_exported" for entry in log_entries)
+    finally:
+        set_job_store(original_store)
+        set_audit_log(original_audit_log)
 
 
 # ─── Replay-protection envelope ──────────────────────────────────────────────

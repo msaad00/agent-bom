@@ -13,7 +13,7 @@ Usage::
 
     findings = scan_secrets("/path/to/project")
     for f in findings:
-        print(f"{f['file']}:{f['line']} [{f['severity']}] {f['type']}")
+        line = f"{f['file']}:{f['line']} [{f['severity']}] {f['type']}"
 
 Compliance:
 - OWASP LLM01 — hardcoded credentials enable account takeover

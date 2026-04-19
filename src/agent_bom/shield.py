@@ -9,7 +9,7 @@ Use as a Python middleware in any AI agent pipeline:
     # Check tool calls before execution
     alerts = shield.check_tool_call("read_file", {"path": "/etc/passwd"})
     if alerts:
-        print(f"Blocked: {alerts[0]['message']}")
+        raise RuntimeError(alerts[0]["message"])
 
     # Check and redact tool responses
     alerts = shield.check_response("read_file", response_text)

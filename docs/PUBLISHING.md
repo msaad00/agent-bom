@@ -94,11 +94,14 @@ but is not part of the public ClawHub release surface.
 
 ```bash
 npm install -g clawhub@latest
-clawhub login --token "$CLAWHUB_TOKEN"
+clawhub login --token "$CLAWHUB_TOKEN" --no-browser
 clawhub publish integrations/openclaw/scan \
   --slug agent-bom-scan --name "agent-bom scan" \
   --version "0.78.1"
 ```
+
+Release automation uses the same official `clawhub` CLI flow, not a custom
+multipart API shim, so local publishing and CI stay aligned.
 
 ### Verification
 

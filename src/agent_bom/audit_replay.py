@@ -411,7 +411,8 @@ def display_json(log: AuditLog) -> int:
         else None,
         "alert_details": [{"severity": a.severity, "detector": a.detector, "tool": a.tool, "message": a.message} for a in log.alerts],
     }
-    print(json.dumps(out, indent=2))
+    sys.stdout.write(json.dumps(out, indent=2))
+    sys.stdout.write("\n")
     blocked = out["blocked"]
     errors = out["relay_errors"]
     return 1 if (blocked or errors) else 0
@@ -434,7 +435,7 @@ def replay(
     """Parse and display an audit log. Returns exit code (0 = clean, 1 = issues)."""
     path = Path(log_path)
     if not path.exists():
-        print(f"Error: audit log not found: {log_path}", file=sys.stderr)
+        sys.stderr.write(f"Error: audit log not found: {log_path}\n")
         return 2
 
     log = parse_audit_log(path)

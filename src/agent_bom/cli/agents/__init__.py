@@ -30,6 +30,7 @@ from agent_bom.cli.agents._context import ScanContext
 from agent_bom.cli.agents._discovery import run_local_discovery
 from agent_bom.cli.agents._output import _format_text, render_output
 from agent_bom.cli.agents._post import compute_exit_code, run_integrations
+from agent_bom.cli.agents._preflight import emit_dry_run_plan, run_iac_only_scan
 from agent_bom.cli.options import scan_options
 from agent_bom.discovery import discover_all
 from agent_bom.models import AIBOMReport
@@ -486,119 +487,46 @@ def scan(
 
     # ── Dry-run: show access plan without scanning ────────────────────────────
     if dry_run:
-        con.print("\n[bold cyan]🔍 Dry-run — access plan (no files read, no queries made)[/bold cyan]\n")
-        reads = []
-        if inventory:
-            reads.append(f"  [green]Would read:[/green]   {inventory}")
-        if project:
-            reads.append(f"  [green]Would read:[/green]   {project}  (agent configs)")
-        if config_dir:
-            reads.append(f"  [green]Would read:[/green]   {config_dir}  (config directory)")
-        if not reads:
-            from agent_bom.discovery import get_all_discovery_paths
-
-            for client, path in get_all_discovery_paths():
-                reads.append(f"  [green]Would read:[/green]   {path}  ({client})")
-        for cp in code_paths:
-            reads.append(f"  [green]Would scan:[/green]   {cp}  (SAST via semgrep)")
-        for aip in ai_inventory_paths:
-            reads.append(f"  [green]Would scan:[/green]   {aip}  (AI component source scan)")
-        for tf_dir in tf_dirs:
-            reads.append(f"  [green]Would read:[/green]   {tf_dir}  (Terraform .tf files)")
-        for ap in agent_projects:
-            reads.append(f"  [green]Would read:[/green]   {ap}  (Python agent project)")
-        for jdir in jupyter_dirs:
-            reads.append(f"  [green]Would read:[/green]   {jdir}  (Jupyter notebooks *.ipynb)")
-        for mdir in model_dirs:
-            reads.append(f"  [green]Would read:[/green]   {mdir}  (ML model files .gguf, .safetensors, .onnx, .pt, etc.)")
-        for ddir in dataset_dirs:
-            reads.append(f"  [green]Would read:[/green]   {ddir}  (dataset cards: dataset_info.json, README.md, .dvc)")
-        for tdir in training_dirs:
-            reads.append(f"  [green]Would read:[/green]   {tdir}  (training pipelines: MLflow, Kubeflow, W&B)")
-        if gha_path:
-            reads.append(f"  [green]Would read:[/green]   {gha_path}/.github/workflows/  (GitHub Actions)")
-        for sp in skill_paths:
-            reads.append(f"  [green]Would read:[/green]   {sp}  (skill/instruction file)")
-        if no_skill:
-            reads.append("  [dim]Skill scanning:[/dim]   disabled (--no-skill)")
-        elif not skill_paths:
-            reads.append("  [green]Would discover:[/green] skill files (CLAUDE.md, .cursorrules, etc.)")
-        if skill_only:
-            reads.append("  [bold cyan]Mode:[/bold cyan]           skill-only (skipping agent/package/CVE scanning)")
-        for img in images:
-            reads.append(f"  [green]Would scan:[/green]   docker image {img}  (via grype → syft → docker)")
-        if aws:
-            reads.append(f"  [green]Would query:[/green]  AWS Bedrock/Lambda/ECS APIs ({aws_region or 'default region'})")
-            if aws_include_lambda:
-                reads.append(f"  [green]Would query:[/green]  AWS Lambda ListFunctions API ({aws_region or 'default region'})")
-            if aws_include_eks:
-                reads.append("  [green]Would query:[/green]  AWS EKS ListClusters + kubectl pod discovery")
-            if aws_include_step_functions:
-                reads.append("  [green]Would query:[/green]  AWS Step Functions ListStateMachines API")
-            if aws_include_ec2:
-                reads.append("  [green]Would query:[/green]  AWS EC2 DescribeInstances API (tag-filtered)")
-        if azure_flag:
-            reads.append("  [green]Would query:[/green]  Azure AI Foundry/Container Apps APIs")
-        if gcp_flag:
-            reads.append(f"  [green]Would query:[/green]  GCP Vertex AI/Cloud Run APIs ({gcp_project or 'default project'})")
-        if databricks_flag:
-            reads.append("  [green]Would query:[/green]  Databricks Clusters/Libraries APIs")
-        if snowflake_flag:
-            reads.append("  [green]Would query:[/green]  Snowflake Cortex Agents/MCP Servers/Search/Snowpark/Streamlit APIs")
-        if coreweave_flag:
-            reads.append(
-                "  [green]Would query:[/green]  CoreWeave VirtualServer/InferenceService CRDs, GPU pods, InfiniBand jobs via kubectl"
-            )
-        if nebius_flag:
-            reads.append("  [green]Would query:[/green]  Nebius K8s/Container APIs")
-        if hf_flag:
-            reads.append("  [green]Would query:[/green]  Hugging Face Hub Models/Spaces/Endpoints APIs")
-        if wandb_flag:
-            reads.append("  [green]Would query:[/green]  W&B Runs/Artifacts/Model Registry APIs")
-        if mlflow_flag:
-            reads.append("  [green]Would query:[/green]  MLflow Tracking Server (models, experiments)")
-        if openai_flag:
-            reads.append("  [green]Would query:[/green]  OpenAI Assistants/Fine-tuning APIs")
-        if ollama_flag:
-            _host = ollama_host or "http://localhost:11434"
-            reads.append(f"  [green]Would query:[/green]  Ollama API ({_host}/api/tags) + ~/.ollama/models manifests")
-        if mcp_registry_flag:
-            reads.append(
-                "  [green]Would query:[/green]  https://registry.modelcontextprotocol.io/v0/servers  (Official MCP Registry, no auth)"
-            )
-        if snyk_flag:
-            reads.append("  [green]Would query:[/green]  https://api.snyk.io/rest/  (Snyk vulnerability enrichment)")
-        for line in reads:
-            con.print(line)
-        con.print()
-        con.print("  [dim]Would query:[/dim]  https://api.osv.dev/v1/querybatch  (batch CVE lookup, no auth required)")
-        if enrich:
-            con.print("  [dim]Would query:[/dim]  https://services.nvd.nist.gov/rest/json/cves/2.0  (CVSS v4)")
-            con.print("  [dim]Would query:[/dim]  https://api.first.org/data/v1/epss  (exploit probability)")
-            con.print("  [dim]Would query:[/dim]  https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json")
-        con.print()
-
-        # ── Data audit: exactly what gets extracted and sent ──────────────
-        con.print("[bold cyan]📋 Data Audit — what is extracted and transmitted[/bold cyan]\n")
-        con.print("  [bold]Extracted from config files:[/bold]")
-        con.print('    • Server names (e.g. "filesystem", "github")')
-        con.print('    • Commands and arguments (e.g. "npx @modelcontextprotocol/server-filesystem")')
-        con.print('    • Environment variable [bold]NAMES only[/bold] (e.g. "OPENAI_API_KEY")')
-        con.print("    • [dim]Values are NEVER read, stored, or logged[/dim]")
-        con.print()
-        con.print("  [bold]Sent to vulnerability APIs:[/bold]")
-        con.print('    • Package name + version only (e.g. "express@4.17.1")')
-        con.print("    • [dim]No file paths, config contents, env var values, hostnames, or IP addresses[/dim]")
-        con.print()
-        con.print("  [bold]Credential detection (name-only pattern matching):[/bold]")
-        con.print("    • Flagged patterns: *KEY*, *TOKEN*, *SECRET*, *PASSWORD*, *CREDENTIAL*, *AUTH*")
-        con.print("    • Excluded: PATH, HOME, LANG, SHELL, USER, TERM, EDITOR")
-        con.print("    • [dim]Detection is purely on env var names — values are never accessed[/dim]")
-        con.print()
-        con.print("  [bold green]✓ agent-bom is read-only.[/bold green] It never writes to configs or executes MCP servers.")
-        con.print("  [bold green]✓ Credential values are never read.[/bold green] Only env var names appear in reports.")
-        con.print(
-            "  See [link=https://github.com/msaad00/agent-bom/blob/main/PERMISSIONS.md]PERMISSIONS.md[/link] for the full trust contract."
+        emit_dry_run_plan(
+            con,
+            inventory=inventory,
+            project=project,
+            config_dir=config_dir,
+            code_paths=code_paths,
+            ai_inventory_paths=ai_inventory_paths,
+            tf_dirs=tf_dirs,
+            agent_projects=agent_projects,
+            jupyter_dirs=jupyter_dirs,
+            model_dirs=model_dirs,
+            dataset_dirs=dataset_dirs,
+            training_dirs=training_dirs,
+            gha_path=gha_path,
+            skill_paths=skill_paths,
+            no_skill=no_skill,
+            skill_only=skill_only,
+            images=images,
+            aws=aws,
+            aws_region=aws_region,
+            aws_include_lambda=aws_include_lambda,
+            aws_include_eks=aws_include_eks,
+            aws_include_step_functions=aws_include_step_functions,
+            aws_include_ec2=aws_include_ec2,
+            azure_flag=azure_flag,
+            gcp_flag=gcp_flag,
+            gcp_project=gcp_project,
+            databricks_flag=databricks_flag,
+            snowflake_flag=snowflake_flag,
+            coreweave_flag=coreweave_flag,
+            nebius_flag=nebius_flag,
+            hf_flag=hf_flag,
+            wandb_flag=wandb_flag,
+            mlflow_flag=mlflow_flag,
+            openai_flag=openai_flag,
+            ollama_flag=ollama_flag,
+            ollama_host=ollama_host,
+            mcp_registry_flag=mcp_registry_flag,
+            snyk_flag=snyk_flag,
+            enrich=enrich,
         )
         return
 
@@ -637,114 +565,30 @@ def scan(
     # This prevents MCP config discovery, lockfile scanning, and registry
     # lookups from running when the user only asked for IaC misconfiguration checks.
     if _iac_only and (iac_paths or k8s_live):
-        from agent_bom.iac import scan_iac_directory
-        from agent_bom.k8s import K8sDiscoveryError, scan_live_cluster_posture
-
-        _iac_ctx = ScanContext(con=con)
-        all_iac_findings: list = []
-        if iac_paths:
-            con.print(f"\n[bold blue]Scanning {len(iac_paths)} path(s) for IaC misconfigurations...[/bold blue]\n")
-            for _iac_path in iac_paths:
-                _iac_f = scan_iac_directory(_iac_path)
-                all_iac_findings.extend(_iac_f)
-                if _iac_f:
-                    from collections import Counter as _Counter
-
-                    _sev_counts = _Counter(f.severity for f in _iac_f)
-                    _sev_parts = [
-                        f"[red]{_sev_counts.get('critical', 0)} critical[/red]",
-                        f"[yellow]{_sev_counts.get('high', 0)} high[/yellow]",
-                    ]
-                    con.print(f"  [red]⚠[/red]  {_iac_path}: {len(_iac_f)} finding(s) ({', '.join(_sev_parts)})")
-                else:
-                    con.print(f"  [green]✓[/green] {_iac_path}: no misconfigurations")
-        if k8s_live:
-            con.print("\n[bold blue]Inspecting live Kubernetes cluster posture...[/bold blue]\n")
-            try:
-                _k8s_live_findings = scan_live_cluster_posture(
-                    namespace=k8s_live_namespace,
-                    all_namespaces=k8s_live_all_namespaces,
-                    context=k8s_live_context,
-                )
-            except K8sDiscoveryError as exc:
-                con.print(f"  [red]✗[/red] live cluster scan failed: {exc}")
-                raise SystemExit(1)
-            all_iac_findings.extend(_k8s_live_findings)
-            if _k8s_live_findings:
-                from collections import Counter as _Counter
-
-                _sev_counts = _Counter(f.severity for f in _k8s_live_findings)
-                _sev_parts = [
-                    f"[red]{_sev_counts.get('critical', 0)} critical[/red]",
-                    f"[yellow]{_sev_counts.get('high', 0)} high[/yellow]",
-                ]
-                con.print(f"  [red]⚠[/red]  live cluster posture: {len(_k8s_live_findings)} finding(s) ({', '.join(_sev_parts)})")
-            else:
-                con.print("  [green]✓[/green] live cluster posture: no runtime misconfigurations")
-
-        _iac_report = AIBOMReport(agents=[], blast_radii=[])
-        _iac_report.iac_findings_data = {
-            "total": len(all_iac_findings),
-            "findings": [
-                {
-                    "rule_id": f.rule_id,
-                    "severity": f.severity,
-                    "title": f.title,
-                    "message": f.message,
-                    "file_path": f.file_path,
-                    "line_number": f.line_number,
-                    "category": f.category,
-                    "compliance": f.compliance,
-                    "attack_techniques": f.attack_techniques,
-                    "remediation": f.remediation,
-                }
-                for f in all_iac_findings
-            ],
-        }
-        _iac_ctx.report = _iac_report
-        _iac_ctx.iac_findings_data = _iac_report.iac_findings_data
-
-        # Output
-        if output_format == "json" or output:
-            import json as _json
-
-            _out_data = _json.dumps(_iac_report.iac_findings_data, indent=2)
-            if output and output != "-":
-                from pathlib import Path as _Path
-
-                _Path(output).write_text(_out_data)
-                con.print(f"\n[green]IaC report written[/green] → {output}")
-            else:
-                import click as _click
-
-                _click.echo(_out_data)
-        elif output_format != "console":
-            # For SARIF, CycloneDX, etc — use the standard render pipeline
-            render_output(
-                _iac_ctx,
-                output=output,
-                output_format=output_format,
-                no_tree=no_tree,
-                quiet=quiet,
-                no_color=no_color,
-                open_report=open_report,
-                compliance_export=compliance_export,
-                mermaid_mode=mermaid_mode,
-                push_gateway=push_gateway,
-                otel_endpoint=otel_endpoint,
-                baseline=baseline,
-                delta_mode=delta_mode,
-                verbose=verbose,
-                exclude_unfixable=exclude_unfixable,
-                fixable_only=fixable_only,
-            )
-
-        # Exit code based on findings severity
-        if fail_on_severity and all_iac_findings:
-            _sev_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-            _threshold = _sev_order.get(fail_on_severity, 99)
-            if any(_sev_order.get(f.severity, 99) <= _threshold for f in all_iac_findings):
-                sys.exit(1)
+        run_iac_only_scan(
+            con=con,
+            iac_paths=iac_paths,
+            k8s_live=k8s_live,
+            k8s_live_namespace=k8s_live_namespace,
+            k8s_live_all_namespaces=k8s_live_all_namespaces,
+            k8s_live_context=k8s_live_context,
+            output=output,
+            output_format=output_format,
+            no_tree=no_tree,
+            quiet=quiet,
+            no_color=no_color,
+            open_report=open_report,
+            compliance_export=compliance_export,
+            mermaid_mode=mermaid_mode,
+            push_gateway=push_gateway,
+            otel_endpoint=otel_endpoint,
+            baseline=baseline,
+            delta_mode=delta_mode,
+            verbose=verbose,
+            exclude_unfixable=exclude_unfixable,
+            fixable_only=fixable_only,
+            fail_on_severity=fail_on_severity,
+        )
         return
 
     # Create shared context object

@@ -75,10 +75,7 @@ def fetch_health(
                 break
             sleep_seconds = max(backoff_seconds, 0.0) * attempt
             if sleep_seconds:
-                print(
-                    f"Attempt {attempt}/{attempts} failed for {health_url}: {exc}. Retrying in {sleep_seconds:.0f}s...",
-                    file=sys.stderr,
-                )
+                sys.stderr.write(f"Attempt {attempt}/{attempts} failed for {health_url}: {exc}. Retrying in {sleep_seconds:.0f}s...\n")
                 time.sleep(sleep_seconds)
 
     raise RuntimeError(f"unable to fetch MCP health from {health_url}: {last_error}")
@@ -129,7 +126,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.resolve_only:
-            print(resolve_health_url(args.base_url))
+            sys.stdout.write(f"{resolve_health_url(args.base_url)}\n")
             return 0
 
         _, payload = fetch_health(
@@ -144,7 +141,7 @@ def main(argv: list[str] | None = None) -> int:
             forbid_auth_required=args.forbid_auth_required,
         )
     except (RuntimeError, ValueError) as exc:
-        print(str(exc), file=sys.stderr)
+        sys.stderr.write(f"{exc}\n")
         return 1
 
     json.dump(payload, sys.stdout, separators=(",", ":"))

@@ -799,6 +799,130 @@ def test_rpm_sqlite_and_log_manifest_dedup():
 # ── Full mixed ecosystem layer ────────────────────────────────────────────────
 
 
+# ── Security hardening: tar-member safety ───────────────────────────────────
+
+
+def _make_layer_tar_with_members(members: list[tarfile.TarInfo], payloads: list[bytes | None]) -> bytes:
+    """Build an in-memory layer tar with explicit TarInfo objects (for symlink / traversal tests)."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:") as tf:
+        for info, payload in zip(members, payloads):
+            if payload is None:
+                tf.addfile(info)  # link/symlink/dir — no payload
+            else:
+                info.size = len(payload)
+                tf.addfile(info, io.BytesIO(payload))
+    return buf.getvalue()
+
+
+def _wrap_layer_bytes_in_docker_save(layer_bytes: bytes) -> Path:
+    """Wrap a single raw layer tar into a Docker-save outer tar (manifest.json + layer.tar)."""
+    tmp = tempfile.NamedTemporaryFile(suffix=".tar", delete=False)
+    layer_path = "0" * 40 + "/layer.tar"
+    with tarfile.open(fileobj=tmp, mode="w:") as outer:
+        info = tarfile.TarInfo(name=layer_path)
+        info.size = len(layer_bytes)
+        outer.addfile(info, io.BytesIO(layer_bytes))
+        manifest = [{"Config": "sha256:abc.json", "RepoTags": ["myapp:latest"], "Layers": [layer_path]}]
+        mb = json.dumps(manifest).encode()
+        mi = tarfile.TarInfo(name="manifest.json")
+        mi.size = len(mb)
+        outer.addfile(mi, io.BytesIO(mb))
+    tmp.close()
+    return Path(tmp.name)
+
+
+def test_is_safe_tar_member_name_accepts_normal_paths():
+    from agent_bom.oci_parser import _is_safe_tar_member_name
+
+    assert _is_safe_tar_member_name("var/lib/dpkg/status") is True
+    assert _is_safe_tar_member_name("./usr/lib/node_modules/foo/package.json") is True
+    assert _is_safe_tar_member_name("a/b/c") is True
+
+
+def test_is_safe_tar_member_name_rejects_traversal():
+    from agent_bom.oci_parser import _is_safe_tar_member_name
+
+    assert _is_safe_tar_member_name("../etc/passwd") is False
+    assert _is_safe_tar_member_name("../../etc/passwd") is False
+    assert _is_safe_tar_member_name("foo/../../etc/passwd") is False, "normalize must detect escapes that span segments"
+    assert _is_safe_tar_member_name("a/b/../../c/../../d") is False
+
+
+def test_is_safe_tar_member_name_rejects_absolute_and_nul():
+    from agent_bom.oci_parser import _is_safe_tar_member_name
+
+    assert _is_safe_tar_member_name("/etc/passwd") is False
+    assert _is_safe_tar_member_name("") is False
+    assert _is_safe_tar_member_name("a\x00b") is False
+
+
+def test_path_traversal_member_never_produces_a_package():
+    """A crafted tar whose member name escapes the root must not be parsed as a real file."""
+    traversal_info = tarfile.TarInfo(name="foo/../../../etc/passwd")
+    traversal_info.type = tarfile.REGTYPE
+    # Give it "METADATA-looking" content so a naive parser would treat it as a Python dist-info
+    payload = b"Name: evil\nVersion: 9.9.9\n"
+
+    benign_info = tarfile.TarInfo(name="requests-2.31.0.dist-info/METADATA")
+    benign_info.type = tarfile.REGTYPE
+
+    layer = _make_layer_tar_with_members(
+        [traversal_info, benign_info],
+        [payload, _METADATA_REQUESTS],
+    )
+    tar = _wrap_layer_bytes_in_docker_save(layer)
+    result = parse_oci_tarball(tar)
+    names = {p.name for p in result.packages}
+    assert "evil" not in names, "path-traversal member must not contribute a package"
+    assert "requests" in names, "legitimate sibling members must still parse"
+
+
+def test_symlink_metadata_member_is_refused_not_followed():
+    """A symlinked METADATA member must not be opened (would leak host FS if followed)."""
+    symlink = tarfile.TarInfo(name="requests-2.31.0.dist-info/METADATA")
+    symlink.type = tarfile.SYMTYPE
+    symlink.linkname = "/etc/passwd"
+
+    # Include a legitimate sibling package so we know the parser still runs.
+    other = tarfile.TarInfo(name="urllib3-2.0.0.dist-info/METADATA")
+    other.type = tarfile.REGTYPE
+    other_payload = b"Name: urllib3\nVersion: 2.0.0\n"
+
+    layer = _make_layer_tar_with_members([symlink, other], [None, other_payload])
+    tar = _wrap_layer_bytes_in_docker_save(layer)
+    result = parse_oci_tarball(tar)
+    names = {p.name for p in result.packages}
+    assert "requests" not in names, "symlinked METADATA must be skipped, not followed"
+    assert "urllib3" in names, "non-symlink siblings must still parse"
+
+
+def test_symlinked_dpkg_status_is_refused():
+    """A symlinked var/lib/dpkg/status must not be followed to leak host state."""
+    symlink = tarfile.TarInfo(name="var/lib/dpkg/status")
+    symlink.type = tarfile.SYMTYPE
+    symlink.linkname = "/etc/passwd"
+
+    layer = _make_layer_tar_with_members([symlink], [None])
+    tar = _wrap_layer_bytes_in_docker_save(layer)
+    result = parse_oci_tarball(tar)
+    assert all("passwd" not in (p.name or "") for p in result.packages)
+    # Zero dpkg packages because the symlink was refused.
+    assert len(result.packages) == 0
+
+
+def test_absolute_path_member_rejected():
+    """A member whose name starts with `/` must not be readable."""
+    info = tarfile.TarInfo(name="/etc/evil/METADATA")
+    info.type = tarfile.REGTYPE
+    payload = b"Name: escaped\nVersion: 0.0.1\n"
+
+    layer = _make_layer_tar_with_members([info], [payload])
+    tar = _wrap_layer_bytes_in_docker_save(layer)
+    result = parse_oci_tarball(tar)
+    assert not any(p.name == "escaped" for p in result.packages)
+
+
 def test_full_mixed_ecosystem_layer():
     """All ecosystems detected from a single mixed layer."""
     jar = _make_jar(pom_props={"groupId": "org.springframework", "artifactId": "spring-core", "version": "6.1.0"})

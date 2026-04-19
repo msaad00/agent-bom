@@ -34,6 +34,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import posixpath
 import re
 import sqlite3
 import struct
@@ -42,12 +43,137 @@ import tempfile
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import IO, Optional
 
 from agent_bom.models import Package, PackageOccurrence
 from agent_bom.package_utils import parse_debian_source_name
 
 _logger = logging.getLogger(__name__)
+
+
+# ── Tar member safety ────────────────────────────────────────────────────────
+#
+# Image tarballs are untrusted input. A malicious tar can carry members whose
+# names escape the extraction root, members that are symlinks pointing outside
+# the tar, or hardlinks to arbitrary files. `tarfile.TarFile` does not validate
+# these by default (Python's `data_filter` arrived in 3.12 but we target 3.11+
+# and call `extractfile()` which bypasses it anyway).
+#
+# The helpers below give us two guarantees the parser relies on:
+#   1. `_is_safe_tar_member_name(name)` — the member name, after POSIX
+#      normalization, stays inside the tar root. Rejects `../` traversal,
+#      absolute paths, and NUL-injected names.
+#   2. `_safe_getmember(tf, name)` — resolves a member by name and also
+#      requires it to be a regular file. Symlinks and hardlinks never reach
+#      `extractfile()`, so the parser cannot be tricked into reading a host
+#      file by a crafted tar with `METADATA -> /etc/passwd`.
+#
+# Both helpers log at debug level when they reject something, so operators
+# scanning hostile images can see why certain layers contributed zero
+# packages.
+
+
+def _is_safe_tar_member_name(name: str) -> bool:
+    """Return True iff ``name`` is safe to treat as a relative path inside a tar.
+
+    Rejects absolute paths, parent-traversal (``../``), NUL-injected names,
+    and any name whose POSIX-normalized form escapes the tar root.
+    """
+    if not name or "\x00" in name:
+        return False
+    if name.startswith("/"):
+        return False
+    # posixpath.normpath collapses "./foo/../bar" → "bar" but preserves a
+    # leading ".." if the name escapes. "a/../b" → "b" (safe);
+    # "../a" → "../a" (escapes); "a/../../b" → "../b" (escapes).
+    normalized = posixpath.normpath(name)
+    if normalized.startswith("../") or normalized == "..":
+        return False
+    if normalized.startswith("/"):
+        return False
+    # Belt-and-suspenders against split-by-"/" bypasses on odd separators.
+    parts = normalized.split("/")
+    if any(p == ".." for p in parts):
+        return False
+    return True
+
+
+def _safe_tar_names(tf: tarfile.TarFile) -> set[str]:
+    """Return member names that are safe regular files inside ``tf``.
+
+    Filters out:
+      - names failing ``_is_safe_tar_member_name`` (traversal / absolute / NUL)
+      - symlink members (``SYMTYPE``) and hardlink members (``LNKTYPE``)
+      - device / fifo members
+
+    Directory members are excluded because this helper exists to feed
+    file-reading loops; directories carry no file payload.
+    """
+    safe: set[str] = set()
+    rejected_traversal = 0
+    rejected_link = 0
+    for member in tf.getmembers():
+        name = member.name
+        if not _is_safe_tar_member_name(name):
+            rejected_traversal += 1
+            continue
+        if member.issym() or member.islnk():
+            # Symlinks / hardlinks inside an image layer are legitimate OS
+            # artifacts — but we never follow them for package parsing. We
+            # only ingest concrete regular-file payloads.
+            rejected_link += 1
+            continue
+        if not member.isfile():
+            # Skip directories, devices, fifos, etc.
+            continue
+        safe.add(name)
+    if rejected_traversal:
+        _logger.debug(
+            "Rejected %d tar member(s) with unsafe names (traversal / absolute / NUL)",
+            rejected_traversal,
+        )
+    if rejected_link:
+        _logger.debug(
+            "Skipped %d symlink/hardlink member(s) — package parsing reads concrete files only",
+            rejected_link,
+        )
+    return safe
+
+
+def _safe_getmember(tf: tarfile.TarFile, name: str) -> tarfile.TarInfo | None:
+    """Resolve ``name`` to a tar member only if the name is safe AND the member is a regular file.
+
+    Returns ``None`` (instead of raising ``KeyError``) so callers can treat a
+    missing-or-unsafe member the same way they treat a missing-but-legitimate
+    member: skip and move on.
+    """
+    if not _is_safe_tar_member_name(name):
+        return None
+    try:
+        member = tf.getmember(name)
+    except KeyError:
+        return None
+    if member.issym() or member.islnk() or not member.isfile():
+        return None
+    return member
+
+
+def _safe_extractfile(tf: tarfile.TarFile, name: str) -> IO[bytes] | None:
+    """Open a tar member by name, but only if it is safe (see ``_safe_getmember``).
+
+    Returns ``None`` if the member is missing, a symlink / hardlink, has an
+    unsafe name, or can't be opened as a stream. Callers can treat ``None``
+    uniformly as "skip this member" without distinguishing the cause.
+    """
+    member = _safe_getmember(tf, name)
+    if member is None:
+        return None
+    try:
+        return tf.extractfile(member)
+    except (tarfile.TarError, OSError) as e:
+        _logger.debug("Failed to open tar member %s: %s: %s", name, type(e).__name__, e)
+        return None
+
 
 # Whiteout prefix per OCI image spec
 _WHITEOUT_PREFIX = ".wh."
@@ -334,9 +460,9 @@ def _read_os_release_from_layer(layer_tf: tarfile.TarFile, deleted_paths: set[st
     for os_release_path in ("etc/os-release", "./etc/os-release"):
         if os_release_path in deleted_paths:
             continue
-        try:
-            member = layer_tf.getmember(os_release_path)
-        except KeyError:
+        member = _safe_getmember(layer_tf, os_release_path)
+        if member is None:
+            # Missing, symlinked (refused), or unsafe name. Try next candidate.
             continue
         try:
             f = layer_tf.extractfile(member)
@@ -351,8 +477,8 @@ def _read_os_release_from_layer(layer_tf: tarfile.TarFile, deleted_paths: set[st
                 elif line.startswith("VERSION_ID="):
                     distro_version = line.split("=", 1)[1].strip().strip('"').strip("'") or None
             return distro_name, distro_version
-        except Exception:
-            _logger.debug("Failed to parse os-release: %s", os_release_path)
+        except (tarfile.TarError, OSError, UnicodeDecodeError) as e:
+            _logger.debug("Failed to parse os-release %s: %s: %s", os_release_path, type(e).__name__, e)
     return None, None
 
 
@@ -376,10 +502,10 @@ def _extract_packages_from_layer(
         Set of paths marked as whiteout in THIS layer (for caller to accumulate).
     """
     whiteouts: set[str] = set()
-    raw_names = set(layer_tf.getnames())
-
-    # Filter out path traversal attempts (malicious tar members with ../)
-    names = {n for n in raw_names if ".." not in n.split("/") and not n.startswith("/")}
+    # `_safe_tar_names` filters out path-traversal members (normalized + split-part
+    # check, not just substring), absolute paths, NUL-injected names, AND symlink /
+    # hardlink members. Prior filter only substring-checked "..".
+    names = _safe_tar_names(layer_tf)
 
     # Collect whiteout paths from this layer
     for member_name in names:
@@ -410,7 +536,7 @@ def _extract_packages_from_layer(
         if _is_deleted(member_name):
             continue
         try:
-            f = layer_tf.extractfile(layer_tf.getmember(member_name))
+            f = _safe_extractfile(layer_tf, member_name)
             if f is None:
                 continue
             pkg_name = pkg_version = ""
@@ -436,7 +562,7 @@ def _extract_packages_from_layer(
         if _is_deleted(member_name):
             continue
         try:
-            f = layer_tf.extractfile(layer_tf.getmember(member_name))
+            f = _safe_extractfile(layer_tf, member_name)
             if f is None:
                 continue
             data = json.loads(f.read().decode("utf-8", errors="ignore"))
@@ -452,7 +578,7 @@ def _extract_packages_from_layer(
         if dpkg_path not in names or _is_deleted(dpkg_path):
             continue
         try:
-            f = layer_tf.extractfile(layer_tf.getmember(dpkg_path))
+            f = _safe_extractfile(layer_tf, dpkg_path)
             if f:
                 content = f.read().decode("utf-8", errors="ignore")
                 pkg_name = pkg_version = ""
@@ -500,7 +626,7 @@ def _extract_packages_from_layer(
         if apk_path not in names or _is_deleted(apk_path):
             continue
         try:
-            f = layer_tf.extractfile(layer_tf.getmember(apk_path))
+            f = _safe_extractfile(layer_tf, apk_path)
             if f:
                 content = f.read().decode("utf-8", errors="ignore")
                 pkg_name = pkg_version = ""
@@ -541,7 +667,7 @@ def _extract_packages_from_layer(
         if rpm_path not in names or _is_deleted(rpm_path):
             continue
         try:
-            f = layer_tf.extractfile(layer_tf.getmember(rpm_path))
+            f = _safe_extractfile(layer_tf, rpm_path)
             if f:
                 for raw_line in f:
                     line = raw_line.decode("utf-8", errors="ignore").strip()
@@ -576,7 +702,7 @@ def _extract_packages_from_layer(
         if sqlite_path not in names or _is_deleted(sqlite_path):
             continue
         try:
-            f = layer_tf.extractfile(layer_tf.getmember(sqlite_path))
+            f = _safe_extractfile(layer_tf, sqlite_path)
             if f is None:
                 continue
             db_bytes = f.read()
@@ -626,10 +752,10 @@ def _extract_packages_from_layer(
         name_for_hint = "/" + member_name.lower()
         if not any(hint in name_for_hint for hint in _JAR_DIR_HINTS):
             continue
+        member = _safe_getmember(layer_tf, member_name)
+        if member is None or member.size == 0 or member.size > _JAR_MAX_BYTES:
+            continue
         try:
-            member = layer_tf.getmember(member_name)
-            if not member.isfile() or member.size == 0 or member.size > _JAR_MAX_BYTES:
-                continue
             f = layer_tf.extractfile(member)
             if f is None:
                 continue
@@ -672,10 +798,10 @@ def _extract_packages_from_layer(
             continue
         if _is_deleted(member_name):
             continue
+        member = _safe_getmember(layer_tf, member_name)
+        if member is None or member.size < 64:
+            continue
         try:
-            member = layer_tf.getmember(member_name)
-            if not member.isfile() or member.size < 64:
-                continue
             f = layer_tf.extractfile(member)
             if f is None:
                 continue
@@ -707,7 +833,7 @@ def _extract_packages_from_layer(
         if _is_deleted(member_name):
             continue
         try:
-            f = layer_tf.extractfile(layer_tf.getmember(member_name))
+            f = _safe_extractfile(layer_tf, member_name)
             if f is None:
                 continue
             content = f.read(32 * 1024).decode("utf-8", errors="ignore")
@@ -736,7 +862,7 @@ def _extract_packages_from_layer(
         if _is_deleted(member_name):
             continue
         try:
-            f = layer_tf.extractfile(layer_tf.getmember(member_name))
+            f = _safe_extractfile(layer_tf, member_name)
             if f is None:
                 continue
             deps = json.loads(f.read().decode("utf-8", errors="ignore"))
@@ -774,7 +900,7 @@ def _extract_packages_from_layer(
             if path not in names or _is_deleted(path):
                 continue
             try:
-                f = layer_tf.extractfile(layer_tf.getmember(path))
+                f = _safe_extractfile(layer_tf, path)
                 if f is None:
                     continue
                 data = json.loads(f.read().decode("utf-8", errors="ignore"))
@@ -803,7 +929,7 @@ def _extract_packages_from_layer(
             if path not in names or _is_deleted(path):
                 continue
             try:
-                f = layer_tf.extractfile(layer_tf.getmember(path))
+                f = _safe_extractfile(layer_tf, path)
                 if f is None:
                     continue
                 content = f.read().decode("utf-8", errors="ignore")
@@ -834,7 +960,7 @@ def _extract_packages_from_layer(
             if path not in names or _is_deleted(path):
                 continue
             try:
-                f = layer_tf.extractfile(layer_tf.getmember(path))
+                f = _safe_extractfile(layer_tf, path)
                 if f is None:
                     continue
                 data = json.loads(f.read().decode("utf-8", errors="ignore"))

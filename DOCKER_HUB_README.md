@@ -78,7 +78,7 @@ docker run --rm agentbom/agent-bom:latest doctor
 
 ### Dashboard
 
-![agent-bom dashboard](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png)
+![agent-bom dashboard overview](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png)
 
 ### Focused graph
 

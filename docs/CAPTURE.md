@@ -39,25 +39,25 @@ that does not happen again.
 
 | Asset | Page | Required scope | Rationale |
 |---|---|---|---|
-| `dashboard-live.png` | `/dashboard?capture=1` (Risk overview) | All agents · scroll showing F-grade gauge, posture sub-scores, score breakdown, top attack paths, and KPI section header | Capture mode expands every nav section for the screenshot while leaving the default product navigation behavior unchanged |
+| `dashboard-live.png` | `/dashboard?capture=1` (Risk overview) | All agents · top crop showing the gauge, posture sub-scores, score breakdown, and the start of the attack-path list | The published README should not use one tall stitched dashboard asset when two shorter frames tell the story more clearly |
+| `dashboard-paths-live.png` | `/dashboard?capture=1` (Risk overview) | All agents · mid-page crop showing the attack-path list, exposure KPI band, and the first backlog charts | Keeps the fix-first path list readable in GitHub while still proving the KPI / backlog context lives on the same page |
 | `mesh-live.png` | `/mesh` | Filter to `cursor` | Has 2 servers, 8 packages, 10+ CVEs, and richer tool + credential traversal than the smaller `claude-desktop` slice |
 | `remediation-live.png` | `/remediation` | All frameworks tab | Shows the full prioritized fix list |
 
 ### Dashboard layout (current)
 
 The Risk overview redesign (post-#1496 operator UX drilldown) replaced
-the older single-column attack-path layout. The current frame contains:
+the older single-column attack-path layout. The published media now ships
+as two dashboard frames rather than one stitched full-page export:
 
-1. **Header** — `Risk overview` title, scan count + agent count + package count + CVE count
-2. **Top counters** — actively exploited · credentials exposed · reachable tools · top attack-path risk
-3. **F-grade gauge** — 0-100 numeric score with letter grade
-4. **Security posture card** — grade explanation + 6 sub-scores (policy + controls, open evidence × 2, packages + CVEs, reach + exposure, MCP configuration)
-5. **Score breakdown** — per-driver progress bars with one-line evidence
-6. **Top attack paths** — visible collapsible header plus clickable rows linking to the security graph
-7. **Exposure KPIs** — visible collapsible header above the KPI tiles below the attack-path list
+1. `dashboard-live.png`
+   Header, top counters, F-grade gauge, security posture card, score breakdown, and the start of the attack-path list
+2. `dashboard-paths-live.png`
+   Top attack paths, exposure KPIs, severity/source charts, and the first compound-issue cards
 
-A capture that misses any of those sections is incomplete. Re-shoot
-with the page scrolled to top so the gauge + posture card both fit.
+A capture set that misses either frame is incomplete. Re-shoot from the
+packaged UI and crop deliberately; do not publish another full-page stitched
+dashboard asset unless the layout materially changes again.
 
 The `cursor` agent in `src/agent_bom/demo.py` is the best mesh hero shot in
 the current demo inventory — it brings the filesystem and database servers,

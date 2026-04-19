@@ -198,7 +198,7 @@ You still own:
 - set `controlPlane.backup.destination.bucketRegion` to the actual region of your backup bucket; the production example intentionally uses `REPLACE_ME_BUCKET_REGION`
 - `controlPlane.backup.destination.region` remains as a backward-compatible fallback for older values files
 - keep `controlPlane.backup.destination.encryption.enabled=true`; the default is `AES256`, and production should set `mode=aws:kms` with a dedicated `kmsKeyId`
-- restore drills should use [`deploy/ops/restore-postgres-backup.sh`](../../deploy/ops/restore-postgres-backup.sh):
+- restore drills should use [`deploy/ops/restore-postgres-backup.sh`](https://github.com/msaad00/agent-bom/blob/main/deploy/ops/restore-postgres-backup.sh):
   `./deploy/ops/restore-postgres-backup.sh s3://bucket/key.dump "$AGENT_BOM_POSTGRES_URL" REPLACE_ME_BUCKET_REGION`
 - expose `GET /v1/auth/saml/metadata` to your IdP admins and keep
   `POST /v1/auth/saml/login` behind the same ingress hostname as the API

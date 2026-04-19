@@ -1807,6 +1807,7 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
     total = len(fixable)
     title = f"Fix First (top {min(limit, total)} of {total})" if total > limit else f"Fix First ({total})"
     console.print(f"  [bold]{title}[/bold]")
+    console.print()
 
     sev_style = {
         Severity.CRITICAL: "red bold",
@@ -1816,7 +1817,8 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
         Severity.NONE: "white",
     }
 
-    for i, item in enumerate(fixable[:limit], 1):
+    shown = fixable[:limit]
+    for i, item in enumerate(shown, 1):
         style = sev_style.get(item["max_severity"], "white")
         kev = " [red]KEV[/red]" if item["has_kev"] else ""
         reach_parts = [f"{len(item['vulns'])} vuln(s)", f"{len(item['agents'])} agent(s)"]
@@ -1832,11 +1834,14 @@ def print_compact_remediation(report: AIBOMReport, limit: int = 5) -> None:
         )
         console.print(f"     [dim]{_compact_detail(item['action'], limit=110)}[/dim]")
         if item.get("command"):
-            console.print(f"     [cyan]{item['command']}[/cyan]")
+            console.print(f"     [cyan]$ {item['command']}[/cyan]")
         if item.get("verify_command"):
-            console.print(f"     [dim]verify:[/dim] [cyan]{item['verify_command']}[/cyan]")
+            console.print(f"     [dim cyan]$ {item['verify_command']}[/dim cyan] [dim](verify)[/dim]")
+        if i < len(shown):
+            console.print()
 
     if total > limit:
+        console.print()
         console.print(f"  [dim]... {total - limit} more (use --verbose for full plan)[/dim]")
     console.print()
 

@@ -19,7 +19,7 @@ flowchart LR
         B["Imported artifacts
         SBOMs
         inventories
-        Trivy / Grype / Syft JSON"]
+        third-party scanner JSON"]
         C["Pushed ingest
         traces
         runtime events
@@ -82,7 +82,7 @@ flowchart LR
 | Intake mode | What it means | Typical inputs | Best when |
 |---|---|---|---|
 | Direct scan | `agent-bom` reads the target itself | agent configs, projects, lockfiles, images, IaC, read-only cloud APIs | you want local or CI-native discovery |
-| Imported artifact | you hand `agent-bom` an exported file | CycloneDX, SPDX, Trivy, Grype, Syft, inventories | collection already happens elsewhere |
+| Imported artifact | you hand `agent-bom` an exported file | CycloneDX, SPDX, third-party scanner JSON, inventories | collection already happens elsewhere |
 | Pushed ingest | another system sends evidence in | traces, runtime events, audit payloads | runtime telemetry already exists |
 | Read-only integration | `agent-bom` connects to an existing source | cloud accounts, governance systems, analytics backends | you want central review without modifying the source |
 

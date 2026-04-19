@@ -79,7 +79,7 @@ See [CLI Debug Guide](cli-debug.md) for quiet/logging behavior, stdout vs file o
 | Variable | Purpose | Required |
 |----------|---------|----------|
 | `NVD_API_KEY` | Increase NVD rate limit | No |
-| `SNYK_TOKEN` | Snyk enrichment | No |
+| `SNYK_TOKEN` | Optional commercial vuln-API enrichment | No |
 | `AGENT_BOM_CLICKHOUSE_URL` | Analytics storage | No |
 | `AWS_PROFILE` | AWS CIS benchmark | Only for `cis-benchmark --provider aws` |
 | `SNOWFLAKE_ACCOUNT` | Snowflake CIS benchmark | Only for `cis-benchmark --provider snowflake` |

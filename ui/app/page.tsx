@@ -15,7 +15,7 @@ import { ApiOfflineState } from "@/components/api-offline-state";
 import { buildSecurityGraphHref } from "@/lib/attack-paths";
 import {
   ShieldAlert, Server, Package, Bug, Zap, ArrowRight, Clock,
-  AlertTriangle, Container, Layers, FileText, ExternalLink, GitBranch,
+  AlertTriangle, Container, Layers, FileText, ExternalLink, GitBranch, ChevronRight,
 } from "lucide-react";
 import { VulnTrendChart, EpssDistributionChart, EpssVsCvssChart, TrendDataPoint, EpssDataPoint, EpssVsCvssPoint } from "@/components/charts";
 
@@ -524,7 +524,10 @@ export default function Dashboard() {
             <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300">
               {effectiveRecentJobs.length} scan{effectiveRecentJobs.length !== 1 ? "s" : ""} · {(displayedAgentCount ?? "—")} agent{displayedAgentCount === 1 ? "" : "s"} · {detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0)} packages · {detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0)} CVEs
             </p>
-            <div className="mt-5 flex flex-wrap gap-2">
+            <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
+              Overview KPIs
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
               <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-red-200/70">Actively exploited</div>
                 <div className="mt-1 font-mono text-lg font-semibold text-red-100">{detailsReady ? kevCount : 0}</div>
@@ -581,12 +584,18 @@ export default function Dashboard() {
         )}
       </section>
 
-      {/* Top Attack Paths */}
+      {/* Top Attack Paths — collapsible so the list doesn't force endless scroll */}
       {(!isLoading) && allBlast.length > 0 && (
-        <section>
-          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest mb-3">
-            Top Attack Paths
-          </h2>
+        <details open className="group/attack">
+          <summary className="flex cursor-pointer list-none items-center gap-2 mb-3 select-none">
+            <ChevronRight className="h-4 w-4 text-zinc-500 transition-transform group-open/attack:rotate-90" />
+            <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
+              Top Attack Paths
+            </h2>
+            <span className="ml-2 rounded-full bg-zinc-800/80 px-2 py-0.5 font-mono text-[10px] text-zinc-400">
+              {Math.min(allBlast.length, 5)}
+            </span>
+          </summary>
           <div className="space-y-2">
             {[...allBlast]
               .sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score))
@@ -613,17 +622,25 @@ export default function Dashboard() {
                 );
               })}
           </div>
-        </section>
+        </details>
       )}
 
-      {/* Key stats bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <StatCard icon={Layers} label="Total scans" value={summaryReady ? String(effectiveRecentJobs.length) : "—"} color="zinc" href="/jobs" />
-        <StatCard icon={Server} label="Agents" value={agentsReady ? String(effectiveAgentCount) : "—"} color="blue" href="/agents" />
-        <StatCard icon={Package} label="Packages" value={summaryReady ? String(detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0)) : "—"} color="orange" href="/findings" />
-        <StatCard icon={Bug} label="Unique CVEs" value={summaryReady ? String(detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0)) : "—"} color="red" href="/findings" />
-        <StatCard icon={Zap} label="Critical" value={summaryReady ? String(detailsReady ? severity.critical : (summaryStats?.critical_findings ?? 0)) : "—"} color="red" href="/findings?severity=critical" />
-      </div>
+      {/* Scan metrics — collapsible */}
+      <details open className="group/metrics">
+        <summary className="flex cursor-pointer list-none items-center gap-2 mb-3 select-none">
+          <ChevronRight className="h-4 w-4 text-zinc-500 transition-transform group-open/metrics:rotate-90" />
+          <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest">
+            Scan metrics
+          </h2>
+        </summary>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <StatCard icon={Layers} label="Total scans" value={summaryReady ? String(effectiveRecentJobs.length) : "—"} color="zinc" href="/jobs" />
+          <StatCard icon={Server} label="Agents" value={agentsReady ? String(effectiveAgentCount) : "—"} color="blue" href="/agents" />
+          <StatCard icon={Package} label="Packages" value={summaryReady ? String(detailsReady ? totalPackages : (summaryStats?.total_packages ?? 0)) : "—"} color="orange" href="/findings" />
+          <StatCard icon={Bug} label="Unique CVEs" value={summaryReady ? String(detailsReady ? uniqueCVEs : (summaryStats?.total_vulnerabilities ?? 0)) : "—"} color="red" href="/findings" />
+          <StatCard icon={Zap} label="Critical" value={summaryReady ? String(detailsReady ? severity.critical : (summaryStats?.critical_findings ?? 0)) : "—"} color="red" href="/findings?severity=critical" />
+        </div>
+      </details>
 
       {/* Severity distribution + Sources — side by side */}
       {(!isLoading) && allBlast.length > 0 && (

@@ -287,7 +287,7 @@ docker run --rm agentbom/agent-bom agents    # Docker
 |------|----------|
 | CLI (`agent-bom agents`) | local audit + project scan |
 | Endpoint fleet (`--push-url …/v1/fleet/sync`) | employee laptops pushing into self-hosted fleet |
-| GitHub Action (`uses: msaad00/agent-bom@v0.78.0`) | CI/CD + SARIF |
+| GitHub Action (`uses: msaad00/agent-bom@v0.78.1`) | CI/CD + SARIF |
 | Docker (`agentbom/agent-bom`) | isolated scans, containerized self-hosting |
 | Kubernetes / Helm (`helm install agent-bom deploy/helm/agent-bom`) | self-hosted API + dashboard, scheduled discovery |
 | REST API (`agent-bom api`) | platform integration, self-hosted control plane |
@@ -310,7 +310,7 @@ References: [PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) · [PRODUCT_METRICS.md](do
 <summary><b>CI/CD in 60 seconds</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.78.0
+- uses: msaad00/agent-bom@v0.78.1
   with:
     scan-type: scan
     severity-threshold: high

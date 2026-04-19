@@ -206,6 +206,11 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Install ClawHub CLI
+        run: |
+          npm install -g clawhub@latest
+          clawhub --version
+
       - name: Publish to ClawHub
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
@@ -217,51 +222,30 @@ jobs:
           fi
 
           echo "Publishing agent-bom v${VERSION} to ClawHub..."
+          clawhub login --token "$CLAWHUB_TOKEN" --no-browser
 
-          # Direct API publish — bypasses clawhub CLI v0.7.0 acceptLicenseTerms bug.
-          # API: POST /api/v1/skills with multipart form: payload JSON + file blobs.
           _publish_skill() {
             local DIR="$1" SLUG="$2" FATAL="${3:-true}"
             local DISPLAY_NAME="${4:-$SLUG}"
 
-            # Build file list (text files only, skip hidden/binary)
-            local CURL_ARGS=()
-            local FILE_COUNT=0
-            while IFS= read -r -d '' FILE; do
-              REL_PATH="${FILE#${DIR}/}"
-              CURL_ARGS+=(-F "files=@${FILE};filename=${REL_PATH};type=text/plain")
-              FILE_COUNT=$((FILE_COUNT + 1))
-            done < <(find "${DIR}" -maxdepth 2 -type f \( -name "*.md" -o -name "*.yaml" -o -name "*.yml" -o -name "*.json" -o -name "*.txt" \) -print0)
-
-            if [ "$FILE_COUNT" -eq 0 ]; then
+            if [ ! -d "$DIR" ]; then
               echo "::warning::No files found in ${DIR} — skipping"
               return 0
             fi
 
-            local PAYLOAD
-            PAYLOAD=$(cat <<EOJSON
-          {"slug":"${SLUG}","displayName":"${DISPLAY_NAME}","version":"${VERSION}","changelog":"Release v${VERSION}","tags":["latest"],"acceptLicenseTerms":true}
-          EOJSON
-            )
-
             for ATTEMPT in 1 2 3; do
               echo "ClawHub ${SLUG} attempt ${ATTEMPT}/3..."
-              HTTP_CODE=$(curl -s -o /tmp/clawhub_resp.json -w "%{http_code}" \
-                --connect-timeout 15 --max-time 120 \
-                -X POST "https://clawhub.ai/api/v1/skills" \
-                -H "Authorization: Bearer ${CLAWHUB_TOKEN}" \
-                -H "Accept: application/json" \
-                -F "payload=${PAYLOAD}" \
-                "${CURL_ARGS[@]}")
-              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-                echo "ClawHub ${SLUG} v${VERSION} published (HTTP ${HTTP_CODE})"
+              if clawhub publish "$DIR" \
+                --slug "$SLUG" \
+                --name "$DISPLAY_NAME" \
+                --version "$VERSION" \
+                --changelog "Release v${VERSION}" \
+                --tags latest; then
+                echo "ClawHub ${SLUG} v${VERSION} published"
                 return 0
               else
-                echo "ClawHub ${SLUG} failed (HTTP ${HTTP_CODE})"
-                jq -r '.error // .message // "unknown error"' /tmp/clawhub_resp.json 2>/dev/null || echo "(non-JSON response)"
-                if [ "$HTTP_CODE" -eq 429 ] && [ "$ATTEMPT" -lt 3 ]; then
-                  sleep $((ATTEMPT * 15))
-                elif [ "$ATTEMPT" -lt 3 ]; then
+                echo "ClawHub ${SLUG} publish failed"
+                if [ "$ATTEMPT" -lt 3 ]; then
                   sleep $((ATTEMPT * 10))
                 fi
               fi

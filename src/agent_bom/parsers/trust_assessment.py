@@ -13,7 +13,7 @@ Categories:
 Usage:
     from agent_bom.parsers.trust_assessment import assess_trust
     result = assess_trust(scan_result, audit_result)
-    print(result.verdict, result.confidence)
+    verdict = (result.verdict, result.confidence)
 """
 
 from __future__ import annotations

@@ -12,7 +12,7 @@ Usage::
 
     from agent_bom.registry_enrichment import enrich_registry
     stats = enrich_registry()  # updates mcp_registry.json in-place
-    print(f"Enriched {stats['total']} servers from {stats['sources']} sources")
+    summary = f"Enriched {stats['total']} servers from {stats['sources']} sources"
 """
 
 from __future__ import annotations

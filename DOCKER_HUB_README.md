@@ -2,20 +2,23 @@
 
 **Open security scanner for AI supply chain — agents, MCP servers, packages, containers, cloud, GPU, and runtime.**
 
-Package risk is only the start. What matters is what it can reach.
+Every CVE in your AI stack is a credential leak waiting to happen. `agent-bom`
+follows the chain end-to-end and tells you which fix collapses it first.
 
-agent-bom helps developers, security teams, and enterprises discover AI agents and MCP environments, map CVEs into real blast radius, scan packages, container images, Kubernetes, IaC, and cloud AI infrastructure, and protect MCP traffic at runtime.
+Blast radius is the core idea:
+
+```text
+CVE -> package -> MCP server -> agent -> credentials -> tools
+```
+
+This container is the quickest way to run the same scanner, runtime surfaces,
+and self-hosted operator path described in the main repository README.
 
 References:
 
+- GitHub README: https://github.com/msaad00/agent-bom/blob/main/README.md
 - Product brief: https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_BRIEF.md
 - Verified metrics: https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_METRICS.md
-
-## Who It Is For
-
-- **Developers:** scan your workstation, repos, MCP servers, and AI tools
-- **Security teams:** map package risk into agents, credentials, and reachable tools
-- **Enterprises:** add runtime protection, policy, and compliance evidence
 
 ## Quick Start
 
@@ -43,7 +46,7 @@ docker run --rm agentbom/agent-bom:latest check flask@2.0.0
 docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest agents -p /workspace
 ```
 
-**Export AI BOM (CycloneDX 1.6 / SPDX 3.0)**
+**Export AI BOM (CycloneDX / SPDX)**
 
 ```bash
 docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest agents -p /workspace -f cyclonedx -o /workspace/ai-bom.json
@@ -55,51 +58,64 @@ docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest agents -p /work
 docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom:latest iac /workspace
 ```
 
-**Cloud AI and infra inventory**
-
-```bash
-docker run --rm agentbom/agent-bom:latest cloud aws
-```
-
-**Preflight health check**
-
-```bash
-docker run --rm agentbom/agent-bom:latest doctor
-```
-
-## What it scans
+## What You Get
 
 - Blast radius from package to server to agent to credentials and tools
-- AI-native coverage across agents, MCP, runtime, containers, cloud, IaC, and GPU surfaces
+- AI-native coverage across agents, MCP, runtime, containers, cloud, IaC, and GPU
 - One operator path across CLI, CI, API, dashboard, remediation, and MCP tools
-- Runtime MCP protection plus broader review and evidence exports
+- Runtime MCP protection plus broader review and tamper-evident evidence exports
 
-## Product views
+## Product Surfaces
 
-### Dashboard
+The promoted self-hosted rollout is a scoped operator stack, not one forced
+runtime monolith. Teams typically deploy only the surfaces they need:
+
+- **scan**: discovery, inventory, CVE, image, IaC, Kubernetes, and cloud analysis
+- **fleet**: endpoint and collector inventory pushed into the control plane
+- **proxy / runtime**: inline MCP enforcement near selected workloads
+- **gateway**: central policy management for those runtime paths
+- **API + UI**: the operator plane for findings, graph, remediation, audit, and policy workflows
+
+## Deploy In Your Own Infra
+
+`agent-bom` is designed to run inside your own AWS account, VPC, EKS cluster,
+IAM boundary, databases, and SSO stack.
+
+Recommended shape:
+
+- stateless API + UI deployments behind your ingress
+- Postgres for transactional state and graph metadata
+- optional ClickHouse only when audit and analytics volume justifies it
+- scheduled scan jobs for cluster, image, and discovery work
+- endpoint fleet sync for laptops and collectors
+- selected `agent-bom proxy` sidecars or local wrappers for the MCP workloads that need inline enforcement
+- gateway-backed policy pull so runtime controls stay centralized without hairpinning all traffic through one shared chokepoint
+
+Everything stays in your infrastructure by default; optional egress for DB
+refresh, enrichment, SIEM, OTLP, and webhooks is operator-controlled.
+
+## Security Posture
+
+- HTTPS for every external hop
+- private in-cluster traffic or service-mesh mTLS for internal hops
+- auth on every non-loopback control-plane surface
+- RBAC and tenant scoping on sensitive routes
+- rate limiting, audit trails, and signed release artifacts
+- HMAC-backed tamper evidence for exported bundles
+
+## Dashboard Views
+
+Dashboard overview:
 
 ![agent-bom dashboard overview](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png)
 
-### Focused graph
+Attack paths and exposure:
+
+![agent-bom dashboard attack paths and exposure](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-paths-live.png)
+
+Focused graph:
 
 ![agent-bom focused graph](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
-
-## Key features
-
-- **Agents + MCP** — clients, servers, tools, transports, trust posture
-- **Skills + instructions** — `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `skills/*`
-- **Supply chain** — package ecosystems, blast radius, dependency confusion, SBOM formats
-- **Containers + IaC + cloud** — OCI images, Docker, Kubernetes, Terraform, Helm, cloud AI posture
-- **Runtime + trust** — MCP proxy, runtime protection engine, capability risk, compliance mapping
-
-## Deployment Guidance
-
-| Environment | Recommendation |
-|-------------|----------------|
-| Developer laptop | `pip install agent-bom` is fine; read-only and no listener by default |
-| CI/CD | `docker run --rm agentbom/agent-bom` for isolated scans and easy gating |
-| Enterprise fleet | run `agent-bom serve` in a dedicated container or namespace with RBAC |
-| Air-gapped | pre-sync the DB and run with `--offline` |
 
 ## Tags
 
@@ -110,8 +126,7 @@ docker run --rm agentbom/agent-bom:latest doctor
 
 ## Links
 
-- [GitHub](https://github.com/msaad00/agent-bom)
-- [PyPI](https://pypi.org/project/agent-bom/)
-- [GitHub Action](https://github.com/marketplace/actions/agent-bom)
-- [Discord](https://discord.gg/3YmYPqKZh5)
-- [Discussions](https://github.com/msaad00/agent-bom/discussions)
+- GitHub: https://github.com/msaad00/agent-bom
+- PyPI: https://pypi.org/project/agent-bom/
+- Docs: https://msaad00.github.io/agent-bom/
+- GitHub Action: https://github.com/marketplace/actions/agent-bom

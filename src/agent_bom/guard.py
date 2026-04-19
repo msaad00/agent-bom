@@ -236,25 +236,25 @@ def run_guarded_install(
     result = guard_install_sync(tool, args, min_severity=min_severity, allow_risky=allow_risky)
 
     if not result.install_allowed:
-        print(f"\n  BLOCKED — {result.packages_blocked} package(s) have critical/high vulnerabilities:", file=sys.stderr)
+        sys.stderr.write(f"\n  BLOCKED — {result.packages_blocked} package(s) have critical/high vulnerabilities:\n")
         for pkg in result.blocked:
             vulns_str = ", ".join(v["id"] for v in pkg.get("vulns", [])[:5])
-            print(f"    {pkg['name']}: {pkg['vuln_count']} CVEs ({vulns_str})", file=sys.stderr)
-        print("\n  Use --allow-risky to install anyway, or fix the vulnerabilities first.", file=sys.stderr)
+            sys.stderr.write(f"    {pkg['name']}: {pkg['vuln_count']} CVEs ({vulns_str})\n")
+        sys.stderr.write("\n  Use --allow-risky to install anyway, or fix the vulnerabilities first.\n")
         return 1
 
     if result.packages_blocked > 0 and allow_risky:
-        print(f"\n  WARNING — installing {result.packages_blocked} package(s) with known vulnerabilities", file=sys.stderr)
+        sys.stderr.write(f"\n  WARNING — installing {result.packages_blocked} package(s) with known vulnerabilities\n")
         for pkg in result.blocked:
-            print(f"    {pkg['name']}: {pkg['vuln_count']} CVEs", file=sys.stderr)
+            sys.stderr.write(f"    {pkg['name']}: {pkg['vuln_count']} CVEs\n")
 
     if result.packages_checked > 0:
-        print(f"  {result.packages_clean}/{result.packages_checked} packages clean", file=sys.stderr)
+        sys.stderr.write(f"  {result.packages_clean}/{result.packages_checked} packages clean\n")
 
     # Execute the real install command
     real_cmd = _find_real_tool(tool)
     if not real_cmd:
-        print(f"  ERROR: Could not find real '{tool}' binary", file=sys.stderr)
+        sys.stderr.write(f"  ERROR: Could not find real '{tool}' binary\n")
         return 1
 
     full_cmd = [real_cmd] + args

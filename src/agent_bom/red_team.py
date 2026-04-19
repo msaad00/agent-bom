@@ -8,7 +8,7 @@ Usage::
 
     from agent_bom.red_team import run_red_team
     report = run_red_team()
-    print(f"Detected: {report['detected']}/{report['total']}")
+    summary = f"Detected: {report['detected']}/{report['total']}"
 
 Categories:
 - Prompt injection (role override, jailbreak, delimiter attacks)

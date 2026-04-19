@@ -383,6 +383,7 @@ def test_helm_network_policy_defaults_are_explicit():
     doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
     policy = doc["networkPolicy"]
     assert policy["enabled"] is True
+    assert policy["restrictIngress"] is True
     assert policy["allowDns"] is True
     assert policy["allowWeb"] is True
     assert policy["webPorts"] == [80, 443]

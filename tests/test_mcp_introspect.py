@@ -220,6 +220,35 @@ def test_server_introspection_to_dict_includes_capability_risk():
     assert payload["tool_risk_profiles"][0]["tool_name"] == "run_command"
 
 
+def test_server_introspection_to_dict_includes_structured_schema_rule_findings():
+    from agent_bom.mcp_introspect import ServerIntrospection
+
+    tool = MCPTool(
+        name="read_file",
+        description="Read a file from the workspace",
+        schema_findings=["read_file.path: filesystem-capability"],
+        schema_rule_findings=[
+            {
+                "rule_id": "mcp.tool.path-input",
+                "severity": "medium",
+                "category": "filesystem",
+                "message": "Tool accepts filesystem paths.",
+            }
+        ],
+    )
+    result = ServerIntrospection(
+        server_name="filesystem",
+        success=True,
+        runtime_tools=[tool],
+        tool_schema_findings=["read_file.path: filesystem-capability"],
+        tool_schema_rule_findings=tool.schema_rule_findings,
+    )
+
+    payload = result.to_dict(include_runtime_objects=True)
+    assert payload["tool_schema_rule_findings"][0]["rule_id"] == "mcp.tool.path-input"
+    assert payload["runtime_tools"][0]["schema_rule_findings"][0]["category"] == "filesystem"
+
+
 def test_enrich_servers_no_duplicate_tools():
     from agent_bom.mcp_introspect import IntrospectionReport, ServerIntrospection, enrich_servers
 

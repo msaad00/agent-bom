@@ -307,6 +307,7 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
                         "fingerprint": tool.fingerprint,
                         "description": tool.description,
                         "schema_findings": tool.schema_findings,
+                        "schema_rule_findings": tool.schema_rule_findings,
                         "risk_score": tool.risk_score,
                     }
                 if tool.stable_id not in servers[server.stable_id]["tool_ids"]:
@@ -417,6 +418,10 @@ def _build_mcp_runtime_diff(report: AIBOMReport) -> dict | None:
                         "tool_schema_findings",
                         sorted({finding for tool in server.tools for finding in tool.schema_findings}),
                     ),
+                    "tool_schema_rule_findings": intro.get(
+                        "tool_schema_rule_findings",
+                        [finding for tool in server.tools for finding in tool.schema_rule_findings],
+                    ),
                     "resource_findings": intro.get(
                         "resource_findings",
                         sorted({finding for resource in server.resources for finding in resource.content_findings}),
@@ -516,6 +521,7 @@ def to_json(report: AIBOMReport) -> dict:
                                 "fingerprint": t.fingerprint,
                                 "description": t.description,
                                 "schema_findings": t.schema_findings,
+                                "schema_rule_findings": t.schema_rule_findings,
                                 "risk_score": t.risk_score,
                             }
                             for t in server.tools

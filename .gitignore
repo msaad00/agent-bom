@@ -34,3 +34,15 @@ ui/.next/
 .coverage
 .claude/worktrees/
 AUDIT_*.md
+ui/.claude/
+# macOS / iCloud duplicate conflict files — keep them out of git even if they
+# appear locally in a synced working tree.
+README [0-9].md
+docs/CAPTURE [0-9].md
+docs/images/* [0-9].png
+docs/images/* [0-9].gif
+docs/images/* [0-9].svg
+src/agent_bom/**/* [0-9].py
+tests/**/* [0-9].py
+deploy/helm/agent-bom/**/* [0-9].yaml
+.github/workflows/* [0-9].yml

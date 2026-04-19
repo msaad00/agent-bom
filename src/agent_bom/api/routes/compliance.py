@@ -18,19 +18,25 @@ import json
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from agent_bom.api.models import JobStatus
+from agent_bom.api.models import ComplianceReportBundle, JobStatus
 from agent_bom.api.stores import _get_store
+from agent_bom.rbac import require_authenticated_permission
 
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport
     from agent_bom.output.compliance_narrative import ComplianceNarrative
 
-router = APIRouter()
+
+def _dep(permission: str) -> Any:
+    return cast(Any, require_authenticated_permission(permission))
+
+
+router = APIRouter(dependencies=[_dep("read")])
 
 
 def _tenant_id(request: Request) -> str:
@@ -112,7 +118,9 @@ async def get_compliance(request: Request) -> dict:
             controls.append(
                 {
                     id_key: code,
+                    "control_id": code,
                     "name": name,
+                    "tags": [code],
                     "findings": findings,
                     "status": status,
                     "severity_breakdown": sev_breakdown,
@@ -412,7 +420,7 @@ def _narrative_to_dict(narrative: "ComplianceNarrative") -> dict:
 
 @router.get("/v1/compliance/narrative", tags=["compliance"])
 async def get_compliance_narrative(request: Request) -> dict:
-    """Generate an auditor-ready compliance narrative from all completed scans.
+    """Generate a review-ready compliance narrative from all completed scans.
 
     Produces human-readable stories for all 11 supported frameworks, a
     cross-framework executive summary, and a remediation-compliance bridge
@@ -546,7 +554,11 @@ def _evidence_for_control(
     """Map a control's tags onto the matching blast-radius findings."""
     seen_finding_ids: set[str] = set()
     evidence: list[dict] = []
-    for tag in control.get("tags", []) or []:
+    tags = list(control.get("tags", []) or [])
+    fallback_tag = control.get("control_id") or control.get("code") or control.get("id")
+    if fallback_tag and fallback_tag not in tags:
+        tags.append(str(fallback_tag))
+    for tag in tags:
         for br in blast_radii_by_tag.get(tag, []):
             finding_id = br.get("finding_id") or f"{br.get('vulnerability_id', '')}@{br.get('package', '')}"
             if finding_id in seen_finding_ids:
@@ -597,7 +609,19 @@ def _index_blast_radii_by_tag(jobs: list) -> dict[str, list[dict]]:
     return by_tag
 
 
-@router.get("/v1/compliance/{framework}/report", tags=["compliance"], response_model=None)
+def _verify_audit_entries(entries: list) -> tuple[int, int]:
+    """Verify only the entries included in the exported bundle."""
+    verified = 0
+    tampered = 0
+    for entry in entries:
+        if entry.verify():
+            verified += 1
+        else:
+            tampered += 1
+    return verified, tampered
+
+
+@router.get("/v1/compliance/{framework}/report", tags=["compliance"], response_model=ComplianceReportBundle)
 async def export_compliance_report(
     request: Request,
     framework: str,
@@ -605,7 +629,7 @@ async def export_compliance_report(
     until: str | None = None,
     format: str = "json",
 ) -> JSONResponse | PlainTextResponse:
-    """Export an auditor-ready signed evidence bundle for a single framework.
+    """Export a tamper-evident signed evidence bundle for a single framework.
 
     The bundle pairs each control with the blast-radius findings that map to
     its tags, the audit-log entries within the requested time window, and
@@ -688,10 +712,9 @@ async def export_compliance_report(
     audit_in_window = [
         e
         for e in audit_entries
-        if str((e.details or {}).get("tenant_id", "default")) == tenant_id
-        and audit_since_iso <= (e.timestamp or "") <= until_iso
+        if str((e.details or {}).get("tenant_id", "")) == tenant_id and audit_since_iso <= (e.timestamp or "") <= until_iso
     ]
-    verified, tampered = store.verify_integrity(limit=min(10_000, len(audit_entries) or 1))
+    verified, tampered = _verify_audit_entries(audit_in_window)
 
     pass_count = sum(1 for c in controls if c.get("status") == "pass")
     warn_count = sum(1 for c in controls if c.get("status") == "warning")
@@ -748,7 +771,7 @@ async def export_compliance_report(
         "audit_log_integrity": {
             "verified": verified,
             "tampered": tampered,
-            "checked": verified + tampered,
+            "checked": len(audit_in_window),
         },
         "signature_algorithm": "HMAC-SHA256",
         "threat_model": {
@@ -789,7 +812,7 @@ async def export_compliance_report(
         expires_at=expires_at.isoformat(),
     )
 
-    filename = f"agent-bom-compliance-{framework_key.replace('_', '-')}.{ 'jsonl' if fmt == 'jsonl' else 'json'}"
+    filename = f"agent-bom-compliance-{framework_key.replace('_', '-')}.{'jsonl' if fmt == 'jsonl' else 'json'}"
 
     if fmt == "jsonl":
         # jsonl streams one control per line so SIEM and security-lake

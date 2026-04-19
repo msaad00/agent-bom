@@ -80,7 +80,7 @@ After the first scan:
 
 ```bash
 agent-bom agents -p . --remediate remediation.md                  # fix-first plan
-agent-bom agents -p . --compliance-export fedramp -o evidence.zip # auditor-ready bundle
+agent-bom agents -p . --compliance-export fedramp -o evidence.zip # tamper-evident evidence bundle
 pip install 'agent-bom[ui]' && agent-bom serve                    # API + dashboard
 ```
 
@@ -235,7 +235,7 @@ Every layer is testable on its own; failures emit Prometheus metrics. Operators 
 
 ### 4. What you get, and how to install it
 
-Inside the control plane: **OIDC + SAML SSO** with RBAC, **enforced API-key rotation policy**, **tenant-scoped quotas + rate limits**, **HMAC-chained audit log** with signed export, **KMS-encrypted Postgres backups** with a verified restore round-trip in CI, and **signed compliance evidence bundles** (`/v1/compliance/{framework}/report` — nonce + expiry inside the signature).
+Inside the control plane: **OIDC + SAML SSO** with RBAC, **enforced API-key rotation policy**, **tenant-scoped quotas + rate limits**, **HMAC-chained audit log** with signed export, **KMS-encrypted Postgres backups** with a verified restore round-trip in CI, and **tamper-evident compliance evidence bundles** (`/v1/compliance/{framework}/report` — nonce + expiry inside the HMAC envelope).
 
 <details>
 <summary><b>Helm install + fleet sync + local proxy</b></summary>
@@ -277,7 +277,7 @@ Full trust model: [SECURITY_ARCHITECTURE.md](docs/SECURITY_ARCHITECTURE.md) · [
 
 ## Compliance
 
-Bundled mappings for FedRAMP, CMMC, NIST AI RMF, ISO 27001, SOC 2, OWASP LLM Top-10, MITRE ATLAS, and EU AI Act. Export auditor-ready evidence packets in one command.
+Bundled mappings for FedRAMP, CMMC, NIST AI RMF, ISO 27001, SOC 2, OWASP LLM Top-10, MITRE ATLAS, and EU AI Act. Export tamper-evident evidence packets in one command.
 
 <p align="center">
   <picture>
@@ -336,7 +336,7 @@ References: [PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) · [PRODUCT_METRICS.md](do
     fail-on-kev: true
 ```
 
-Container image gate, IaC gate, air-gapped CI, MCP scan, and the SARIF / SBOM examples are documented in [site-docs/getting-started/ci-cd.md](site-docs/getting-started/ci-cd.md).
+Container image gate, IaC gate, air-gapped CI, MCP scan, and the SARIF / SBOM examples are documented in [site-docs/getting-started/quickstart.md](site-docs/getting-started/quickstart.md).
 
 </details>
 

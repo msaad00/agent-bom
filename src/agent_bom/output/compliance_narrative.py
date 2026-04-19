@@ -1,4 +1,4 @@
-"""Compliance narrative generator — auditor-ready stories from scan data.
+"""Compliance narrative generator — review-ready stories from scan data.
 
 Produces human-readable compliance narratives from AIBOMReport data without
 requiring an LLM.  Uses template strings and structured data from blast_radius
@@ -123,7 +123,7 @@ class RemediationImpact:
 
 @dataclass
 class ComplianceNarrative:
-    """Full auditor-ready compliance story from a scan."""
+    """Full review-ready compliance story from a scan."""
 
     executive_summary: str
     framework_narratives: list[FrameworkNarrative]
@@ -642,7 +642,7 @@ def generate_compliance_narrative(
     report: "AIBOMReport",
     framework: str | None = None,
 ) -> ComplianceNarrative:
-    """Generate auditor-ready compliance narrative from scan results.
+    """Generate review-ready compliance narrative from scan results.
 
     Args:
         report: The AIBOMReport to analyse.

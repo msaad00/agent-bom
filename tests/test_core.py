@@ -3908,7 +3908,10 @@ def test_api_posture_counts_empty():
     from agent_bom.api.server import app
 
     client = TestClient(app)
-    resp = client.get("/v1/posture/counts")
+    resp = client.get(
+        "/v1/posture/counts",
+        headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Tenant-ID": "default"},
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert "critical" in body
@@ -3955,7 +3958,10 @@ def test_api_posture_counts_with_data():
         },
     )
     _get_store().put(job)
-    resp = client.get("/v1/posture/counts")
+    resp = client.get(
+        "/v1/posture/counts",
+        headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Tenant-ID": "default"},
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert body["critical"] >= 1

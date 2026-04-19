@@ -19,6 +19,8 @@ import threading
 from enum import Enum
 from typing import Callable
 
+from fastapi import HTTPException, Request
+
 logger = logging.getLogger(__name__)
 
 
@@ -153,3 +155,69 @@ def require_permission(action: str) -> Callable:
         return role
 
     return Depends(_check)
+
+
+def require_authenticated_permission(action: str) -> Callable:
+    """FastAPI dependency that requires authenticated enterprise access.
+
+    Unlike ``require_permission()``, this helper does not silently fall back to
+    the default viewer role for unauthenticated requests. It accepts either:
+
+    - a request already authenticated by APIKeyMiddleware / OIDC / SAML, or
+    - a trusted reverse proxy injecting ``X-Agent-Bom-Role`` plus
+      ``X-Agent-Bom-Tenant-ID``.
+    """
+    from fastapi import Depends, Header, HTTPException
+
+    async def _check(
+        request: Request,
+        x_role: str | None = Header(None, alias="X-Agent-Bom-Role"),
+        x_tenant_id: str | None = Header(None, alias="X-Agent-Bom-Tenant-ID"),
+    ) -> Role:
+        state_role = getattr(request.state, "api_key_role", None)
+        if state_role:
+            try:
+                role = Role(str(state_role).lower())
+            except ValueError as exc:
+                raise HTTPException(status_code=403, detail=f"Invalid authenticated role '{state_role}'") from exc
+            if not getattr(request.state, "tenant_id", None):
+                request.state.tenant_id = "default"
+            return _authorize(role, action)
+
+        if not x_role:
+            raise HTTPException(
+                status_code=401,
+                detail=(
+                    "Authentication required — provide an authenticated API key/token "
+                    "or trusted proxy headers (X-Agent-Bom-Role + X-Agent-Bom-Tenant-ID)"
+                ),
+            )
+
+        try:
+            role = Role(x_role.lower())
+        except ValueError as exc:
+            raise HTTPException(status_code=403, detail=f"Invalid proxy role '{x_role}'") from exc
+
+        if not x_tenant_id:
+            raise HTTPException(
+                status_code=401,
+                detail="Authentication required — trusted proxy requests must include X-Agent-Bom-Tenant-ID",
+            )
+
+        request.state.api_key_role = role.value
+        request.state.tenant_id = x_tenant_id
+        request.state.api_key_name = getattr(request.state, "api_key_name", None) or "proxy-header"
+        request.state.auth_method = getattr(request.state, "auth_method", None) or "proxy_header"
+        return _authorize(role, action)
+
+    return Depends(_check)
+
+
+def _authorize(role: Role, action: str) -> Role:
+    """Validate that a resolved role can perform an action."""
+    if not check_permission(role, action):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Role '{role.value}' does not have '{action}' permission",
+        )
+    return role

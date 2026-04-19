@@ -158,6 +158,73 @@ class HealthResponse(BaseModel):
     storage: StorageHealth
 
 
+class ComplianceEvidenceItem(BaseModel):
+    finding_id: str
+    control_tag: str
+    vulnerability_id: str | None = None
+    package: str | None = None
+    severity: str | None = None
+    scan_id: str | None = None
+    fixed_version: str | None = None
+    agents_at_risk: list[str] = Field(default_factory=list)
+
+
+class ComplianceReportControl(BaseModel):
+    control_id: str | None = None
+    control_name: str | None = None
+    status: str = "unknown"
+    finding_count: int = 0
+    evidence: list[ComplianceEvidenceItem] = Field(default_factory=list)
+
+
+class ComplianceReportScope(BaseModel):
+    since: str
+    until: str
+    control_count: int = 0
+    finding_count: int = 0
+    audit_event_count: int = 0
+
+
+class ComplianceReportSummary(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    passed: int = Field(alias="pass")
+    warning: int = 0
+    fail: int = 0
+    score: float = 100.0
+
+
+class ComplianceAuditIntegrity(BaseModel):
+    verified: int = 0
+    tampered: int = 0
+    checked: int = 0
+
+
+class ComplianceThreatModel(BaseModel):
+    integrity: str
+    confidentiality: str
+    replay: str
+    non_repudiation: str
+
+
+class ComplianceReportBundle(BaseModel):
+    schema_version: str = "v1"
+    framework: str
+    framework_key: str
+    framework_label: str
+    tenant_id: str
+    generated_at: str
+    expires_at: str
+    nonce: str
+    scope: ComplianceReportScope
+    summary: ComplianceReportSummary
+    controls: list[ComplianceReportControl] = Field(default_factory=list)
+    audit_events: list[dict[str, Any]] = Field(default_factory=list)
+    audit_log_integrity: ComplianceAuditIntegrity
+    signature_algorithm: str
+    threat_model: ComplianceThreatModel
+
+
 # ─── Fleet Models ──────────────────────────────────────────────────────────
 
 

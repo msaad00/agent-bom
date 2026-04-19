@@ -14,7 +14,7 @@ Work targeting the next minor release. Tracking toward `0.78.1`.
 ### Added
 - **MCP tool-schema validation rule catalog** (#1507) — OWASP-mapped rules classify MCP tool definitions for risky capability combinations, over-broad permissions, and schema gaps; findings wired into live introspection output (#1519)
 - **Graded exploit likelihood signal** (#1518, closes #486) — blast-radius scoring fuses EPSS and CISA KEV into a single `exploit_likelihood` tier so triage reflects in-the-wild exploitation risk, not just theoretical severity
-- **Signed compliance evidence bundle** — new `/v1/compliance/{framework}/report` endpoint (#1504) returns cosign-signed, replay-protected evidence (#1509) for auditor hand-off
+- **Signed compliance evidence bundle** — new `/v1/compliance/{framework}/report` endpoint (#1504) returns HMAC-signed, replay-protected evidence (#1509) for auditor hand-off
 - **Structured CIS remediation field** (#1512, #1517) — CIS benchmark findings now carry a first-class `remediation` object surfaced through CLI, HTML, and SARIF outputs
 - **OCSF interop boundary** (#1513) — optional SIEM export is scoped as a boundary concern (not core data model); ownership and schema lifecycle documented
 - **Auth-method introspection** — `/v1/auth/debug` endpoint (#1502) reports which auth method resolved a request, easing operator debugging in mixed-auth deployments
@@ -306,7 +306,7 @@ Work targeting the next minor release. Tracking toward `0.78.1`.
 ### Added
 - **Dashboard UX** — posture grade (A-F) hero, top 5 attack path cards, security graph page with interactive React Flow, insight layer toggle (risk/credentials/default), 14-framework compliance heatmap
 - **Remediation page** — priority table sorted by blast radius impact, Jira ticket creation per finding, compliance impact summary, severity/framework filters, JSON export
-- **Compliance narratives** — `GET /v1/compliance/narrative` generates auditor-ready text per framework with control-level detail and remediation-compliance bridge
+- **Compliance narratives** — `GET /v1/compliance/narrative` generates review-ready text per framework with control-level detail and remediation-compliance bridge
 - **`--posture` flag** — 5-line workstation posture summary for solo developers
 - **`--fixable-only` flag** — show only vulnerabilities with available fixes
 - **`agent-bom doctor`** — preflight diagnostic (Python, DB, network, Docker, MCP configs, API keys)

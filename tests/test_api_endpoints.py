@@ -337,3 +337,7 @@ def test_openapi_schema_available():
     assert "openapi" in body
     assert "paths" in body
     assert body["info"]["title"] == "agent-bom API"
+    compliance_report = body["paths"]["/v1/compliance/{framework}/report"]["get"]["responses"]["200"]["content"]["application/json"][
+        "schema"
+    ]
+    assert compliance_report["$ref"].endswith("/ComplianceReportBundle")

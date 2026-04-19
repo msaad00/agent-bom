@@ -309,7 +309,7 @@ This closes the loop: the same warehouse that sourced the departed employee data
 - **Remediation velocity** — time from termination to IAM cleanup
 - **Coverage gaps** — departed employees whose IAM was missed
 - **Posture trend** — orphaned IAM count over time
-- **Compliance evidence** — auditor-ready logs of every action taken
+- **Compliance evidence** — review-ready logs of every action taken
 
 ```sql
 -- Snowflake: remediation dashboard query

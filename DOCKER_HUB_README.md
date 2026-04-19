@@ -67,7 +67,7 @@ docker run --rm agentbom/agent-bom:latest cloud aws
 docker run --rm agentbom/agent-bom:latest doctor
 ```
 
-## Why Teams Use It
+## What it scans
 
 - Blast radius from package to server to agent to credentials and tools
 - AI-native coverage across agents, MCP, runtime, containers, cloud, IaC, and GPU surfaces
@@ -84,7 +84,7 @@ docker run --rm agentbom/agent-bom:latest doctor
 
 ![agent-bom focused graph](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
 
-## Coverage At A Glance
+## Key features
 
 - **Agents + MCP** — clients, servers, tools, transports, trust posture
 - **Skills + instructions** — `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `skills/*`

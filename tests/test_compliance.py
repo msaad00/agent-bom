@@ -7,6 +7,11 @@ from starlette.testclient import TestClient
 from agent_bom.api.server import JobStatus, _get_store, app
 from agent_bom.api.store import InMemoryJobStore
 
+_AUTH_HEADERS = {
+    "X-Agent-Bom-Role": "viewer",
+    "X-Agent-Bom-Tenant-ID": "default",
+}
+
 
 def _clear_jobs():
     """Reset the job store to a fresh in-memory store."""
@@ -41,7 +46,7 @@ def test_compliance_no_scans():
     """With no completed scans, all controls pass and score is 100%."""
     _clear_jobs()
     client = TestClient(app)
-    resp = client.get("/v1/compliance")
+    resp = client.get("/v1/compliance", headers=_AUTH_HEADERS)
     assert resp.status_code == 200
     data = resp.json()
     assert data["overall_score"] == 100.0
@@ -72,7 +77,7 @@ def test_compliance_with_findings():
         ]
     )
     client = TestClient(app)
-    resp = client.get("/v1/compliance")
+    resp = client.get("/v1/compliance", headers=_AUTH_HEADERS)
     data = resp.json()
 
     assert data["scan_count"] == 1
@@ -110,7 +115,7 @@ def test_compliance_severity_breakdown():
         ]
     )
     client = TestClient(app)
-    data = client.get("/v1/compliance").json()
+    data = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
 
     lmm04 = next(c for c in data["owasp_llm_top10"] if c["code"] == "LLM04")
     assert lmm04["status"] == "fail"
@@ -137,7 +142,7 @@ def test_compliance_warning_status():
         ]
     )
     client = TestClient(app)
-    data = client.get("/v1/compliance").json()
+    data = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
 
     lmm05 = next(c for c in data["owasp_llm_top10"] if c["code"] == "LLM05")
     assert lmm05["status"] == "warning"
@@ -150,7 +155,7 @@ def test_compliance_owasp_catalog_complete():
     """All 10 OWASP LLM Top 10 controls are present."""
     _clear_jobs()
     client = TestClient(app)
-    data = client.get("/v1/compliance").json()
+    data = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
     codes = {c["code"] for c in data["owasp_llm_top10"]}
     assert codes == {f"LLM{str(i).zfill(2)}" for i in range(1, 11)}
     _clear_jobs()
@@ -160,7 +165,7 @@ def test_compliance_atlas_catalog_complete():
     """MITRE ATLAS catalog is fully populated (74 entries as of March 2026)."""
     _clear_jobs()
     client = TestClient(app)
-    data = client.get("/v1/compliance").json()
+    data = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
     assert len(data["mitre_atlas"]) >= 50
     _clear_jobs()
 
@@ -169,7 +174,7 @@ def test_compliance_nist_catalog_complete():
     """All 14 NIST AI RMF subcategories are present."""
     _clear_jobs()
     client = TestClient(app)
-    data = client.get("/v1/compliance").json()
+    data = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
     assert len(data["nist_ai_rmf"]) == 14
     _clear_jobs()
 
@@ -191,7 +196,7 @@ def test_compliance_summary_counts():
         ]
     )
     client = TestClient(app)
-    data = client.get("/v1/compliance").json()
+    data = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
 
     s = data["summary"]
     # Verify OWASP: 1 fail (LLM05), 9 pass

@@ -482,6 +482,46 @@ async def get_compliance_narrative_by_framework(request: Request, framework: str
     return _narrative_to_dict(narrative)
 
 
+@router.get("/v1/compliance/verification-key", tags=["compliance"])
+async def get_compliance_verification_key(request: Request) -> dict:
+    """Return the Ed25519 public key used to sign compliance evidence bundles.
+
+    Safe to expose — it's a public key. Auditors and external SIEM systems
+    use this endpoint to fetch the verification key without operator
+    hand-off.
+
+    Response shape:
+      - ``algorithm``: "Ed25519" when asymmetric signing is configured, else "HMAC-SHA256"
+      - ``key_id``: stable 16-hex prefix of SHA-256(DER public key) — identifies the key across rotations
+      - ``public_key_pem``: PEM-encoded public key (Ed25519 only)
+      - ``key_distribution``: one-line guidance for verifiers
+    """
+    from agent_bom.api.compliance_signing import describe_current_signer
+
+    algorithm, key_id, public_key_pem = describe_current_signer()
+    if algorithm == "Ed25519":
+        return {
+            "algorithm": algorithm,
+            "key_id": key_id,
+            "public_key_pem": public_key_pem,
+            "key_distribution": (
+                "Retrieve this key over TLS once, pin the key_id, and use it to verify "
+                "every compliance bundle signed with Ed25519. Rotate by updating "
+                "AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM and re-fetching."
+            ),
+        }
+    return {
+        "algorithm": algorithm,
+        "key_id": None,
+        "public_key_pem": None,
+        "key_distribution": (
+            "Server is signing with HMAC-SHA256 (shared secret). Verifiers must obtain "
+            "AGENT_BOM_AUDIT_HMAC_KEY out-of-band. For auditor-distributable signing, "
+            "set AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM on the server."
+        ),
+    }
+
+
 @router.get("/v1/compliance/{framework}", tags=["compliance"])
 async def get_compliance_by_framework(request: Request, framework: str) -> dict:
     """Get compliance posture for a single framework.
@@ -702,7 +742,7 @@ async def export_compliance_report(
 
     blast_by_tag = _index_blast_radii_by_tag(_tenant_jobs(request))
 
-    from agent_bom.api.audit_log import get_audit_log, log_action, sign_export_payload
+    from agent_bom.api.audit_log import get_audit_log, log_action
 
     store = get_audit_log()
     audit_since_iso = since_dt.isoformat()
@@ -744,7 +784,17 @@ async def export_compliance_report(
     bundle_ttl_seconds = max(60, min(bundle_ttl_seconds, 30 * 86400))  # 1 min to 30 days
     expires_at = now + timedelta(seconds=bundle_ttl_seconds)
 
-    body = {
+    # Resolve signer config up-front so the algorithm, key_id, and public key
+    # are part of the canonical body that gets signed — verifiers read the
+    # same fields and reconstruct the exact canonical form.
+    from agent_bom.api.compliance_signing import (
+        describe_current_signer,
+        sign_compliance_bundle,
+    )
+
+    signing_algorithm, signing_key_id, signing_public_key_pem = describe_current_signer()
+
+    body: dict[str, Any] = {
         "schema_version": "v1",
         "framework": framework,
         "framework_key": framework_key,
@@ -773,13 +823,9 @@ async def export_compliance_report(
             "tampered": tampered,
             "checked": len(audit_in_window),
         },
-        "signature_algorithm": "HMAC-SHA256",
+        "signature_algorithm": signing_algorithm,
         "threat_model": {
-            "integrity": (
-                "HMAC-SHA256 over the canonical UTF-8 body. Tampering with any field "
-                "invalidates the signature. Auditors verify with the operator's "
-                "AGENT_BOM_AUDIT_HMAC_KEY."
-            ),
+            "integrity": (f"{signing_algorithm} over the canonical UTF-8 body. Tampering with any field invalidates the signature."),
             "confidentiality": (
                 "The bundle is cleartext at the application layer by design — auditors "
                 "need to read it. Operators MUST serve /v1/compliance/* over TLS so the "
@@ -790,12 +836,22 @@ async def export_compliance_report(
                 "past expires_at is expected to be rejected by the consumer."
             ),
             "non_repudiation": (
-                "HMAC is a shared secret between server and auditor; it does NOT provide "
+                "Ed25519 provides asymmetric non-repudiation — verifiers only need the "
+                "public key (at /v1/compliance/verification-key). HMAC is a shared secret "
+                "so it does NOT provide true non-repudiation; for forensic cases cross-"
+                "reference the compliance.report_exported audit entry."
+                if signing_algorithm == "Ed25519"
+                else "HMAC is a shared secret between server and auditor; it does NOT provide "
                 "true non-repudiation. For forensic cases requiring non-repudiation, "
-                "cross-reference the compliance.report_exported audit entry."
+                "cross-reference the compliance.report_exported audit entry, or configure "
+                "AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM to switch to Ed25519 signing."
             ),
         },
     }
+    if signing_key_id is not None:
+        body["signature_key_id"] = signing_key_id
+    if signing_public_key_pem is not None:
+        body["signature_public_key_pem"] = signing_public_key_pem
 
     log_action(
         "compliance.report_exported",
@@ -814,6 +870,16 @@ async def export_compliance_report(
 
     filename = f"agent-bom-compliance-{framework_key.replace('_', '-')}.{'jsonl' if fmt == 'jsonl' else 'json'}"
 
+    def _signing_headers(payload: bytes) -> dict[str, str]:
+        sig_result = sign_compliance_bundle(payload)
+        headers = {
+            "X-Agent-Bom-Compliance-Report-Signature": sig_result.signature_hex,
+            "X-Agent-Bom-Compliance-Signature-Algorithm": sig_result.algorithm,
+        }
+        if sig_result.key_id is not None:
+            headers["X-Agent-Bom-Compliance-Signature-KeyId"] = sig_result.key_id
+        return headers
+
     if fmt == "jsonl":
         # jsonl streams one control per line so SIEM and security-lake
         # consumers can ingest without loading the whole bundle.
@@ -828,7 +894,7 @@ async def export_compliance_report(
             media_type="application/x-ndjson",
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"',
-                "X-Agent-Bom-Compliance-Report-Signature": sign_export_payload(payload),
+                **_signing_headers(payload),
             },
         )
 
@@ -837,7 +903,7 @@ async def export_compliance_report(
         content=body,
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',
-            "X-Agent-Bom-Compliance-Report-Signature": sign_export_payload(payload),
+            **_signing_headers(payload),
         },
     )
 

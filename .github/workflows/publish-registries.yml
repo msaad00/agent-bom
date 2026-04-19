@@ -206,7 +206,20 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Check ClawHub configuration
+        id: clawhub_config
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+        run: |
+          if [ -z "${CLAWHUB_TOKEN:-}" ]; then
+            echo "::notice::CLAWHUB_TOKEN not configured — skipping ClawHub publish"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
       - name: Install ClawHub CLI
+        if: steps.clawhub_config.outputs.enabled == 'true'
         run: |
           npm install -g clawhub@latest
           # `clawhub --version` is not a supported option on the current CLI, so
@@ -216,15 +229,11 @@ jobs:
           clawhub --help > /dev/null
 
       - name: Publish to ClawHub
+        if: steps.clawhub_config.outputs.enabled == 'true'
         env:
           CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
-          if [ -z "$CLAWHUB_TOKEN" ]; then
-            echo "::error::CLAWHUB_TOKEN not set — cannot publish to ClawHub"
-            exit 1
-          fi
-
           echo "Publishing agent-bom v${VERSION} to ClawHub..."
           clawhub login --token "$CLAWHUB_TOKEN" --no-browser
 

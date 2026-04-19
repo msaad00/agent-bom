@@ -153,12 +153,12 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
         existing_by_name = {agent.name: agent for agent in store.list_by_tenant(tenant_id)}
         new_names = {str(agent.get("name", "unknown-agent")) for agent in payload_agents} - set(existing_by_name)
         enforce_fleet_agents_quota(tenant_id, attempted=len(new_names))
-        for agent in payload_agents:
-            name = agent.get("name", "unknown-agent")
+        for payload_agent in payload_agents:
+            name = payload_agent.get("name", "unknown-agent")
             existing = existing_by_name.get(name)
-            server_count, pkg_count, cred_count, vuln_count = _payload_counts(agent)
-            score = float(agent.get("trust_score", 0.0) or 0.0)
-            factors = dict(agent.get("trust_factors", {}) or {})
+            server_count, pkg_count, cred_count, vuln_count = _payload_counts(payload_agent)
+            score = float(payload_agent.get("trust_score", 0.0) or 0.0)
+            factors = dict(payload_agent.get("trust_factors", {}) or {})
             if existing:
                 existing.server_count = server_count
                 existing.package_count = pkg_count
@@ -169,14 +169,14 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
                 existing.last_discovery = now
                 existing.updated_at = now
                 existing.config_path = ""
-                existing.agent_type = str(agent.get("agent_type", existing.agent_type))
+                existing.agent_type = str(payload_agent.get("agent_type", existing.agent_type))
                 store.put(existing)
                 updated_count += 1
             else:
                 fleet_agent = FleetAgent(
                     agent_id=str(uuid.uuid4()),
                     name=name,
-                    agent_type=str(agent.get("agent_type", "unknown")),
+                    agent_type=str(payload_agent.get("agent_type", "unknown")),
                     config_path="",
                     lifecycle_state=FleetLifecycleState.DISCOVERED,
                     trust_score=score,
@@ -198,10 +198,10 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
         discovered_names = {agent.name for agent in discovered}
         new_names = discovered_names - set(existing_by_name)
         enforce_fleet_agents_quota(tenant_id, attempted=len(new_names))
-        for agent in discovered:
-            existing = existing_by_name.get(agent.name)
-            server_count, pkg_count, cred_count, vuln_count = _server_counts(agent)
-            score, factors = compute_trust_score(agent)
+        for discovered_agent in discovered:
+            existing = existing_by_name.get(discovered_agent.name)
+            server_count, pkg_count, cred_count, vuln_count = _server_counts(discovered_agent)
+            score, factors = compute_trust_score(discovered_agent)
 
             if existing:
                 existing.server_count = server_count
@@ -212,15 +212,19 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
                 existing.trust_factors = factors
                 existing.last_discovery = now
                 existing.updated_at = now
-                existing.config_path = agent.config_path or ""
+                existing.config_path = discovered_agent.config_path or ""
                 store.put(existing)
                 updated_count += 1
             else:
                 fleet_agent = FleetAgent(
                     agent_id=str(uuid.uuid4()),
-                    name=agent.name,
-                    agent_type=agent.agent_type.value if hasattr(agent.agent_type, "value") else str(agent.agent_type),
-                    config_path=agent.config_path or "",
+                    name=discovered_agent.name,
+                    agent_type=(
+                        discovered_agent.agent_type.value
+                        if hasattr(discovered_agent.agent_type, "value")
+                        else str(discovered_agent.agent_type)
+                    ),
+                    config_path=discovered_agent.config_path or "",
                     lifecycle_state=FleetLifecycleState.DISCOVERED,
                     trust_score=score,
                     trust_factors=factors,

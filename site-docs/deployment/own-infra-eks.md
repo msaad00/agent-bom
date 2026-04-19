@@ -1,112 +1,157 @@
 # Deploy In Your Own AWS / EKS Infrastructure
 
 This is the self-hosted path for teams that want `agent-bom` inside their own
-AWS account, VPC, EKS cluster, and databases.
+AWS account, VPC, EKS cluster, IAM boundary, and databases.
 
-If you want the narrower pilot shape for MCP discovery, fleet, mesh, gateway
-policy, and selected runtime enforcement, start with
-[Focused EKS MCP Pilot](eks-mcp-pilot.md).
+Use this path when you want one operator-controlled system for:
 
-It is a good fit when you want:
+- scheduled scans and discovery
+- endpoint fleet inventory
+- selected live MCP proxy enforcement
+- central gateway policy management
+- API, UI, findings, graph, and remediation in your own infra
 
-- your API, audit logs, and findings in your own infrastructure
-- inline MCP policy enforcement in your own runtime path
-- Kubernetes and cloud discovery under your own IAM and network controls
-- no dependency on a vendor-hosted control plane
+If you want the narrower pilot shape first, start with
+[Focused EKS MCP Pilot](eks-mcp-pilot.md). If you want the broader rollout that
+also covers developer endpoints, pair this page with
+[Endpoint Fleet](endpoint-fleet.md).
 
-## What Is Real Today
+## Best-In-Class EKS Shape
 
-`agent-bom` already ships the building blocks for this model:
-
-- control-plane containers:
-  - [`deploy/docker-compose.platform.yml`](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/docker-compose.platform.yml)
-- runtime proxy sidecar:
-  - [`deploy/docker-compose.runtime.yml`](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/docker-compose.runtime.yml)
-  - [`deploy/k8s/sidecar-example.yaml`](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/k8s/sidecar-example.yaml)
-- Helm chart for scanner, runtime-monitoring, and packaged API/UI control-plane surfaces:
-  - [`deploy/helm/agent-bom`](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/helm/agent-bom)
-- Postgres-backed control-plane path:
-  - [`deploy/supabase/postgres/init.sql`](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/supabase/postgres/init.sql)
-- ClickHouse analytics path:
-  - [`deploy/supabase/clickhouse/init.sql`](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/supabase/clickhouse/init.sql)
-
-Important boundary:
-
-- the Helm chart now packages the API + UI control plane
-- Postgres, ClickHouse, secrets, ingress-controller specifics, and autoscaling
-  policy are still operator-owned
-- this is now a real self-host packaging path, not just a container-and-docs story
-
-## Reference Shape
+The best current EKS rollout is not "put everything behind one service." It is
+a split between a control plane and the discovery/enforcement paths around it.
 
 ```mermaid
 flowchart LR
-    A[MCP clients in your VPC] --> B[agent-bom proxy]
-    B --> C[MCP servers]
-    D[Scheduled scans and discovery] --> E[agent-bom API and UI]
-    E --> F[(Postgres)]
-    E --> G[(ClickHouse optional)]
-    H[Okta or other OIDC or SAML IdP] --> E
+    subgraph Workloads["Your workloads"]
+      Endpoints["Developer endpoints"]
+      Cron["Scanner CronJob"]
+      MCP["Selected MCP workloads"]
+      Sidecars["agent-bom proxy sidecars"]
+    end
+
+    subgraph ControlPlane["agent-bom control plane"]
+      API["API + UI"]
+      Fleet["Fleet"]
+      Gateway["Gateway policies"]
+      Findings["Findings / graph / remediation"]
+    end
+
+    subgraph Data["Operator-owned data plane"]
+      PG["Postgres"]
+      CH["ClickHouse optional"]
+      Secrets["Secrets / IRSA / ingress / OIDC"]
+    end
+
+    Endpoints -->|fleet sync| Fleet
+    Cron -->|scheduled scans| Findings
+    MCP --> Sidecars
+    Sidecars -->|policy pull + audit push| Gateway
+    API --> PG
+    API --> CH
+    API --> Secrets
+    Fleet --> API
+    Gateway --> API
+    Findings --> API
 ```
 
-## What Stays In Your Infra
+## Which Agent-BOM Surface Runs Where
 
-For this deployment model, these surfaces stay inside your environment unless
-you explicitly wire external destinations:
+| Surface | Where it runs | Why you deploy it |
+|---|---|---|
+| **API + UI** | in-cluster or on self-hosted compute behind your ingress | one operator plane for findings, graph, fleet, audit, gateway, and remediation |
+| **Scan** | CronJob, CI runner, or one-off job | Kubernetes, container, package, MCP, cloud, and inventory scanning |
+| **Fleet** | pushed into the control plane from endpoints or collectors | persisted workstation and collector inventory in `/fleet` |
+| **Proxy / runtime** | only next to the MCP workloads you want inline enforcement on | live JSON-RPC inspection, allow/warn/deny, audit push |
+| **Gateway** | central control plane API + UI | store and manage policies that proxies evaluate and pull |
+| **MCP server** | wherever you expose `agent-bom` itself as a tool server | assistant-facing tool access, separate from the proxy path |
+
+The important boundary is that `agent-bom proxy` is the inline runtime path,
+while the gateway is the central policy surface. One does not replace the
+other.
+
+## What Stays In Your Infrastructure
+
+For this model, the sensitive operator surfaces stay inside your environment
+unless you explicitly wire external destinations:
 
 - API and dashboard traffic
+- fleet inventory
 - proxy audit logs
-- Postgres and ClickHouse persistence
-- Kubernetes discovery through your service account / IRSA role
+- Postgres and optional ClickHouse
+- Kubernetes discovery through your service account and IRSA role
 - cloud discovery through your own IAM credentials
+- OIDC, API-key, audit-HMAC, and ingress policy
 
 Potential egress still depends on operator choice:
 
-- vulnerability and threat-intel refresh
+- vulnerability database refresh
 - enrichment lookups
-- explicit exports such as SARIF upload, webhooks, or OTLP
+- explicit exports such as SARIF upload, OTLP, SIEM, or webhooks
 
-If you need a tighter posture, run with local databases, explicit outbound
-policy, and only the integrations you intend to allow.
+## What You Actually Deploy
 
-## Recommended EKS Topology
+These are the maintained building blocks for this model:
 
-Use two layers:
+- control plane:
+  [deploy/helm/agent-bom](https://github.com/msaad00/agent-bom/tree/main/deploy/helm/agent-bom)
+- Compose references:
+  [deploy/docker-compose.platform.yml](https://github.com/msaad00/agent-bom/blob/main/deploy/docker-compose.platform.yml)
+  and
+  [deploy/docker-compose.runtime.yml](https://github.com/msaad00/agent-bom/blob/main/deploy/docker-compose.runtime.yml)
+- sidecar examples:
+  [deploy/k8s/sidecar-example.yaml](https://github.com/msaad00/agent-bom/blob/main/deploy/k8s/sidecar-example.yaml)
+  and
+  [deploy/k8s/proxy-sidecar-pilot.yaml](https://github.com/msaad00/agent-bom/blob/main/deploy/k8s/proxy-sidecar-pilot.yaml)
+- Postgres bootstrap:
+  [deploy/supabase/postgres/init.sql](https://github.com/msaad00/agent-bom/blob/main/deploy/supabase/postgres/init.sql)
+- ClickHouse bootstrap:
+  [deploy/supabase/clickhouse/init.sql](https://github.com/msaad00/agent-bom/blob/main/deploy/supabase/clickhouse/init.sql)
+- production values example:
+  [eks-production-values.yaml](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/examples/eks-production-values.yaml)
+- focused pilot values example:
+  [eks-mcp-pilot-values.yaml](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml)
 
-1. control plane
-- enable `controlPlane.enabled=true` in Helm
-- back the API with `Postgres`
-- add `ClickHouse` only if you want event-scale analytics
-- use the packaged same-origin ingress unless you have a reason to split hosts
+## Recommended Topology
 
-2. dataplane and discovery
-- run `agent-bom proxy` beside or in front of MCP servers
-- run the scanner CronJob for scheduled discovery and scan jobs
-- use a dedicated Kubernetes service account with IRSA for discovery scope
+Use two layers.
 
-## Helm Chart Knobs That Matter
+### 1. Control plane
 
-The chart now supports the EKS wiring you actually need:
+- enable the packaged API + UI control plane
+- back it with Postgres
+- add ClickHouse only when you want event-scale analytics
+- keep ingress same-origin unless you have a concrete reason to split hosts
+- use OIDC or SAML for user access
+
+### 2. Discovery and enforcement
+
+- run scheduled scan jobs for Kubernetes, MCP, package, and cloud discovery
+- use fleet sync for laptops and workstations
+- run `agent-bom proxy` only beside the MCP workloads that need inline
+  runtime enforcement
+- let proxies pull gateway policy from the control plane and push audit back
+
+That keeps scan, fleet, runtime enforcement, and gateway policy aligned
+without pretending every workload needs the same enforcement model.
+
+## Helm Knobs That Matter
 
 | Value | Why it matters |
 |---|---|
-| `controlPlane.enabled` | package the API + dashboard in-cluster |
-| `controlPlane.ingress.enabled` | route `/` to UI and `/v1`, `/health`, `/docs`, `/ws` to API |
-| `controlPlane.api.envFrom` | load Postgres URL, API key, OIDC issuer/audience, optional required nonce, SAML IdP/SP values, and audit settings from Secrets |
-| `controlPlane.ui.env` | keep `NEXT_PUBLIC_API_URL=\"\"` for same-origin or set a full API URL for cross-origin |
-| `serviceAccount.annotations` | attach an IRSA role to the scanner service account |
-| `controlPlane.api.autoscaling.*` | autoscale the API deployment with HPA |
-| `controlPlane.ui.autoscaling.*` | autoscale the UI deployment with HPA |
-| `topologySpread.*` | spread API and UI replicas across zones and nodes |
-| `controlPlane.externalSecrets.*` | map control-plane env vars from external-secrets |
-| `controlPlane.externalSecrets.secrets[]` | split DB secret cadence from faster OIDC/SAML/audit-HMAC rotation |
-| `controlPlane.observability.prometheusRule.*` | package alert rules for API, scanner, OIDC, and proxy backlog |
-| `controlPlane.observability.grafanaDashboard.*` | package the shipped Grafana dashboard as a `ConfigMap` |
-| `controlPlane.backup.*` | package Postgres backup jobs that dump and upload to S3 through IRSA with SSE or KMS |
-| `scanner.extraArgs` | add `--k8s-mcp`, `--enforce`, `--introspect`, or stricter presets |
-| `scanner.env` | inject operator-owned environment like API endpoints or auth context |
-| `scanner.allNamespaces` | scan cluster-wide instead of one namespace |
-| `rbac.create` | create cluster read access for discovery |
+| `controlPlane.enabled` | packages the API + dashboard in-cluster |
+| `controlPlane.ingress.enabled` | routes `/` to UI and `/v1`, `/health`, `/docs`, `/ws` to API |
+| `controlPlane.api.envFrom` | loads Postgres URL, auth settings, audit HMAC, and other control-plane secrets |
+| `controlPlane.ui.env` | keeps same-origin routing honest with `NEXT_PUBLIC_API_URL=\"\"` or sets an explicit API URL |
+| `serviceAccount.annotations` | attaches IRSA to the scanner service account |
+| `scanner.extraArgs` | enables `--k8s-mcp`, `--introspect`, `--enforce`, and other operator choices |
+| `scanner.allNamespaces` | expands cluster scan scope |
+| `controlPlane.api.autoscaling.*` | autoscales the API deployment |
+| `controlPlane.ui.autoscaling.*` | autoscales the UI deployment |
+| `topologySpread.*` | spreads API and UI pods across zones and nodes |
+| `controlPlane.externalSecrets.*` | maps secrets from your external-secrets provider |
+| `controlPlane.observability.prometheusRule.*` | packages alerts for API, scanner, OIDC, and proxy backlog |
+| `controlPlane.backup.*` | packages the Postgres backup job when you are ready to wire S3 and KMS |
 
 Example:
 
@@ -117,141 +162,77 @@ helm install agent-bom deploy/helm/agent-bom \
   --set controlPlane.ingress.enabled=true \
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::123456789012:role/agent-bom-discovery \
   --set scanner.allNamespaces=true \
-  --set-json 'scanner.extraArgs=["--k8s-mcp","--k8s-all-namespaces","--enforce","--introspect","--preset","enterprise"]'
+  --set-json 'scanner.extraArgs=["--k8s-mcp","--k8s-all-namespaces","--introspect","--enforce","--preset","enterprise"]'
 ```
 
 That gives you:
 
-- Kubernetes image discovery
-- Kubernetes MCP server discovery
-- runtime surface introspection
-- enforcement checks in the scheduled scan path
+- packaged API + UI
+- cluster-wide discovery
+- MCP-oriented scheduled scans
+- a clean bridge to selected proxy sidecars and gateway policy
 
-## Optional Mesh And Policy Hardening
+## Runtime, Proxy, Gateway, Scan, and Fleet Together
 
-If your platform baseline already uses Istio and Kyverno, the chart now ships
-an opt-in hardening layer that stays aligned with the current security model
-instead of inventing a second one.
+This is the most common source of confusion in self-hosted rollouts:
 
-Start from:
+- **Scan** finds and analyzes what is deployed.
+- **Fleet** persists endpoint and collector inventory into the control plane.
+- **Proxy / runtime** inspects and enforces live MCP traffic for selected
+  workloads.
+- **Gateway** stores and serves the policies that proxies use.
+- **API + UI** is where operators review all of the above together.
 
-- [deploy/helm/agent-bom/examples/eks-istio-kyverno-values.yaml](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/helm/agent-bom/examples/eks-istio-kyverno-values.yaml)
+The rollout order should normally be:
 
-That package adds:
-
-- Istio `PeerAuthentication` with `STRICT` mTLS for `agent-bom` pods
-- Istio `AuthorizationPolicy` with explicit namespace allow-lists for ingress paths
-- a namespaced Kyverno `Policy` that enforces:
-  - `automountServiceAccountToken: false`
-  - `runAsNonRoot`
-  - `seccompProfile: RuntimeDefault`
-  - `allowPrivilegeEscalation: false`
-  - `readOnlyRootFilesystem: true`
-  - `capabilities.drop: [ALL]`
-
-Use it only when:
-
-- the namespace is already part of your Istio mesh
-- ingress traffic really comes from the namespaces you allow
-- Kyverno is already installed cluster-wide
-
-It is additive to the chart's `NetworkPolicy`, not a replacement for it.
-
-## Policy Enforcement In This Model
-
-`agent-bom` policy enforcement is three separate layers:
-
-1. stored policy model
-- policies live in the control plane and are managed through the gateway API
-
-2. inline proxy enforcement
-- each MCP call is evaluated before relay
-- allow, warn, or deny happens on the wire
-
-3. scan-time enforcement
-- introspection, description drift, undeclared tool drift, dangerous capability
-  combinations, and CVE-aware checks run during scheduled scans
-
-That means the same self-hosted deployment can:
-
-- block risky live MCP calls
-- discover unknown or unverified servers
-- persist findings for later review
-
-## Discovery In This Model
-
-For EKS, the relevant discovery surfaces are:
-
-- Kubernetes image discovery via `--k8s`
-- Kubernetes MCP discovery via `--k8s-mcp`
-- config and registry matching
-- optional cloud and Snowflake discovery through your own credentials
-
-That combination is what makes the EKS deployment useful for platform teams:
-
-- inventory
-- policy enforcement
-- scanning
-- graph correlation
-
-all sit under one operator-controlled plane.
+1. control plane
+2. scheduled scan jobs
+3. fleet sync
+4. selected proxy sidecars
+5. stricter gateway-backed enforcement
 
 ## Recommended Production Defaults
 
-- use `Postgres`, not SQLite, for the control plane
-- use Alembic as the migration path for long-lived Postgres control planes
-- start from the production values example when you want HPA, cert-manager,
-  topology spread, and external-secrets wiring:
-  - [deploy/helm/agent-bom/examples/eks-production-values.yaml](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/helm/agent-bom/examples/eks-production-values.yaml)
+- use Postgres, not SQLite, for the control plane
+- use Alembic for long-lived Postgres-backed deployments
 - keep the proxy and API internal to your VPC unless exposure is intentional
-- use OIDC or SAML for user access, set `AGENT_BOM_OIDC_AUDIENCE` explicitly when using OIDC, and map roles explicitly
-- enforce API key rotation with:
-  - `AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS`
-  - `AGENT_BOM_API_KEY_MAX_TTL_SECONDS`
-  and rotate admin keys through `POST /v1/auth/keys/{key_id}/rotate`
-- split external secrets by cadence in production:
-  - `AGENT_BOM_POSTGRES_URL` at `1h`
-  - `AGENT_BOM_OIDC_*`, `AGENT_BOM_SAML_*`, and `AGENT_BOM_AUDIT_HMAC_KEY` at `5m`
-- size the Postgres-backed control plane explicitly:
-  - `AGENT_BOM_POSTGRES_POOL_MIN_SIZE`
-  - `AGENT_BOM_POSTGRES_POOL_MAX_SIZE`
-  - `AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS`
-  - `AGENT_BOM_POSTGRES_STATEMENT_TIMEOUT_MS`
-- when enabling the mesh layer, keep the namespace allow-list explicit:
-  - `controlPlane.serviceMesh.istio.authorizationPolicy.allowedNamespaces`
-  and match it to your actual ingress path instead of assuming `ingress-nginx`
-- enable the packaged PrometheusRule and Grafana dashboard when your cluster
-  already runs Prometheus Operator and Grafana sidecar discovery
-- enable the packaged backup CronJob only after setting a real S3 destination
-- set `controlPlane.backup.destination.bucketRegion` to your real bucket region; the production example intentionally leaves a `REPLACE_ME_BUCKET_REGION` placeholder
-- `controlPlane.backup.destination.region` remains as a backward-compatible fallback for older values files
-- set `controlPlane.backup.destination.encryption.mode=aws:kms` and a real KMS key for production backups
-- run restore drills with [`deploy/ops/restore-postgres-backup.sh`](../../deploy/ops/restore-postgres-backup.sh) and document RTO/RPO around that exact command path
-- publish `GET /v1/auth/saml/metadata` to your IdP admins if you choose SAML, and keep `POST /v1/auth/saml/login` on the same internal ingress as the API
-  and granting `s3:PutObject` via IRSA
-- set a persistent audit HMAC key and require it
-- attach the scanner service account to IRSA instead of static cloud keys
-- start with audit-only policies where rollout risk is unclear, then move to deny
+- attach discovery jobs to IRSA instead of static cloud keys
+- set a persistent `AGENT_BOM_AUDIT_HMAC_KEY` and require it for proxy audit
+  sign-off
+- split external secrets by rotation cadence
+- enable the packaged PrometheusRule and Grafana dashboard only when your
+  cluster already runs Prometheus Operator and Grafana sidecar discovery
+- wire backup destinations explicitly before enabling the packaged backup CronJob
+- use topology spread for multi-AZ EKS
+- start with audit-only policy outcomes where rollout risk is unclear, then
+  move to deny
 
-## What Still Needs Your Own Manifests
+Run database migrations explicitly:
 
-This path is self-hostable today, but not every enterprise primitive is encoded
- in the Helm chart yet.
+```bash
+alembic -c deploy/supabase/postgres/alembic.ini upgrade head
+```
+
+If the database was previously bootstrapped from `init.sql`, stamp the baseline
+once before future upgrades:
+
+```bash
+alembic -c deploy/supabase/postgres/alembic.ini stamp 20260416_01
+```
+
+## What You Still Own
+
+This is a real self-hosted packaging path, but not every enterprise primitive
+is abstracted into the chart.
 
 You still own:
 
 - Postgres, optional ClickHouse, and secret storage
-- HPA, topology, and failover settings for your own workloads
-- Secrets Manager / IRSA / ingress-controller wiring
-- operator runbooks and load testing
+- ingress controller, cert-manager, and network perimeter specifics
+- HPA, failover, and operator runbooks
+- platform-specific logging and SIEM wiring
+- workload-by-workload decisions about where proxy sidecars belong
 
-For the UI specifically, the container now reads `NEXT_PUBLIC_API_URL` at
-startup. That means:
-
-- set a full internal or external API URL when you want cross-origin calls
-- set `NEXT_PUBLIC_API_URL=` for same-origin ingress and route `/v1/*`,
-  `/health`, and `/ws/*` to the API service in your ingress/controller
-
-That is now a stronger no-lock-in story. The repo packages the control plane,
-proxy surface, and scanner/discovery knobs without forcing you into a hosted
-vendor plane.
+For the narrower rollout, see [Focused EKS MCP Pilot](eks-mcp-pilot.md). For
+the packaged control plane details, see
+[Packaged API + UI Control Plane](control-plane-helm.md).

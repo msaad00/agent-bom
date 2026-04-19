@@ -128,7 +128,7 @@ alembic -c deploy/supabase/postgres/alembic.ini upgrade head
 ```
 
 If a database was already initialized from
-[deploy/supabase/postgres/init.sql](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/supabase/postgres/init.sql),
+[deploy/supabase/postgres/init.sql](https://github.com/msaad00/agent-bom/blob/main/deploy/supabase/postgres/init.sql),
 stamp it once before future changes:
 
 ```bash

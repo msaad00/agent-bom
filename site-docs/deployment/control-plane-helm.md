@@ -117,7 +117,7 @@ helm install agent-bom deploy/helm/agent-bom \
 
 For the stronger self-hosted operator path, start from:
 
-- [deploy/helm/agent-bom/examples/eks-production-values.yaml](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/helm/agent-bom/examples/eks-production-values.yaml)
+- [eks-production-values.yaml](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/examples/eks-production-values.yaml)
 - [Performance, Sizing, and Benchmarks](performance-and-sizing.md)
 
 That example adds:
@@ -138,7 +138,7 @@ That example adds:
 For clusters that already standardize on a service mesh and policy controller,
 start from:
 
-- [deploy/helm/agent-bom/examples/eks-istio-kyverno-values.yaml](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/helm/agent-bom/examples/eks-istio-kyverno-values.yaml)
+- [eks-istio-kyverno-values.yaml](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/examples/eks-istio-kyverno-values.yaml)
 
 That example adds:
 

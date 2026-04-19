@@ -35,6 +35,9 @@ import json
 import logging
 import sys
 from collections import defaultdict
+from functools import lru_cache
+from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +46,75 @@ _CSV_REQUIRED_COLUMNS = frozenset({"name", "version", "ecosystem"})
 
 # Size guard to prevent OOM on malicious/huge inputs.
 _MAX_INVENTORY_SIZE = 100 * 1024 * 1024  # 100 MB
+_ECOSYSTEM_ALIASES = {
+    "pip": "pypi",
+    "python": "pypi",
+    "node": "npm",
+    "golang": "go",
+    "crates": "cargo",
+    "dotnet": "nuget",
+}
+
+
+def _inventory_schema_path() -> Path | None:
+    """Return the checked-in inventory schema path."""
+    candidate_paths = [
+        Path(__file__).parent.parent.parent / "config" / "schemas" / "inventory.schema.json",
+        Path(__file__).parent.parent.parent / "schemas" / "inventory.schema.json",
+    ]
+    for candidate in candidate_paths:
+        if candidate.exists():
+            return candidate
+
+    try:
+        import importlib.resources
+
+        package_root = Path(str(importlib.resources.files("agent_bom")))
+    except Exception:
+        return None
+
+    fallback_paths = [
+        package_root / ".." / ".." / "config" / "schemas" / "inventory.schema.json",
+        package_root / ".." / ".." / "schemas" / "inventory.schema.json",
+    ]
+    for candidate in fallback_paths:
+        resolved = candidate.resolve()
+        if resolved.exists():
+            return resolved
+    return None
+
+
+@lru_cache(maxsize=1)
+def _inventory_validator():
+    """Build and cache the inventory JSON Schema validator."""
+    import jsonschema
+
+    schema_path = _inventory_schema_path()
+    if not schema_path or not schema_path.exists():
+        raise RuntimeError("Inventory schema file not found")
+    schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    return jsonschema.Draft202012Validator(schema)
+
+
+def _validate_inventory_payload(data: Any) -> dict[str, Any]:
+    """Validate an inventory payload against the canonical schema."""
+    if not isinstance(data, dict):
+        raise ValueError("Inventory JSON root must be an object with an 'agents' array")
+
+    errors = sorted(_inventory_validator().iter_errors(data), key=lambda e: list(e.path))
+    if errors:
+        first = errors[0]
+        path = " -> ".join(str(part) for part in first.path) or "(root)"
+        raise ValueError(f"Inventory schema validation failed at {path}: {first.message}")
+    return data
+
+
+def _normalize_inventory_ecosystem(ecosystem: str) -> str:
+    """Map common feed aliases into the canonical inventory schema vocabulary."""
+    normalized = ecosystem.strip().lower()
+    if not normalized:
+        return "unknown"
+    return _ECOSYSTEM_ALIASES.get(normalized, normalized)
 
 
 def load_inventory(source: str) -> dict:
@@ -62,8 +134,6 @@ def load_inventory(source: str) -> dict:
     """
     if source == "-":
         return _load_from_stdin()
-
-    from pathlib import Path
 
     path = Path(source)
     if not path.exists():
@@ -91,7 +161,7 @@ def _load_from_stdin() -> dict:
 
     fmt = _detect_format(content)
     if fmt == "json":
-        return json.loads(content)
+        return _validate_inventory_payload(json.loads(content))
 
     return _load_csv_inventory(io.StringIO(content))
 
@@ -106,7 +176,7 @@ def _detect_format(content: str) -> str:
 
 def _load_json_inventory(fp: io.TextIOBase) -> dict:  # type: ignore[override]
     """Parse JSON inventory from a file-like object."""
-    return json.load(fp)
+    return _validate_inventory_payload(json.load(fp))
 
 
 def _load_csv_inventory(fp: io.TextIOBase) -> dict:  # type: ignore[override]
@@ -150,14 +220,14 @@ def _load_csv_inventory(fp: io.TextIOBase) -> dict:  # type: ignore[override]
         for row in rows:
             name = (row.get(col_name) or "").strip()
             version = (row.get(col_version) or "").strip()
-            ecosystem = (row.get(col_ecosystem) or "").strip()
+            ecosystem = _normalize_inventory_ecosystem((row.get(col_ecosystem) or "").strip())
             if not name or not version:
                 continue
             packages.append(
                 {
                     "name": name,
                     "version": version,
-                    "ecosystem": ecosystem or "unknown",
+                    "ecosystem": ecosystem,
                 }
             )
             # Parse semicolon-separated env key names (values always redacted)
@@ -187,4 +257,4 @@ def _load_csv_inventory(fp: io.TextIOBase) -> dict:  # type: ignore[override]
     if not agents_by_name:
         raise ValueError("CSV produced no valid inventory entries (check name/version columns)")
 
-    return {"agents": list(agents_by_name.values())}
+    return _validate_inventory_payload({"agents": list(agents_by_name.values())})

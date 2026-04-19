@@ -12,6 +12,7 @@ from rich.console import Console
 
 from agent_bom.cli._common import _make_console
 from agent_bom.discovery import discover_all
+from agent_bom.inventory import _inventory_schema_path, _inventory_validator
 from agent_bom.models import AIBOMReport
 from agent_bom.output import print_agent_tree, print_summary
 from agent_bom.parsers import extract_packages
@@ -76,35 +77,6 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
     print_agent_tree(report)
 
 
-def _inventory_schema_path() -> Path | None:
-    """Return the inventory schema path from the repo or installed package."""
-    candidate_paths = [
-        Path(__file__).parent.parent.parent / "config" / "schemas" / "inventory.schema.json",
-        Path(__file__).parent.parent.parent / "schemas" / "inventory.schema.json",
-    ]
-
-    for candidate in candidate_paths:
-        if candidate.exists():
-            return candidate
-
-    try:
-        import importlib.resources
-
-        package_root = Path(str(importlib.resources.files("agent_bom")))
-    except Exception:
-        return None
-
-    fallback_paths = [
-        package_root / ".." / ".." / "config" / "schemas" / "inventory.schema.json",
-        package_root / ".." / ".." / "schemas" / "inventory.schema.json",
-    ]
-    for candidate in fallback_paths:
-        resolved = candidate.resolve()
-        if resolved.exists():
-            return resolved
-    return None
-
-
 @click.command()
 @click.argument("inventory_file", type=click.Path(exists=True))
 def validate(inventory_file: str):
@@ -117,19 +89,10 @@ def validate(inventory_file: str):
     """
     console = Console()
 
-    try:
-        import jsonschema
-    except ImportError:
-        console.print("[red]jsonschema not installed. Run: pip install jsonschema[/red]")
-        sys.exit(1)
-
     schema_path = _inventory_schema_path()
     if not schema_path or not schema_path.exists():
         console.print("[red]Schema file not found. Run from the agent-bom repo root.[/red]")
         sys.exit(1)
-
-    with open(schema_path) as f:
-        schema = json.load(f)
 
     with open(inventory_file) as f:
         try:
@@ -138,7 +101,11 @@ def validate(inventory_file: str):
             console.print(f"[red]JSON parse error: {e}[/red]")
             sys.exit(1)
 
-    validator = jsonschema.Draft202012Validator(schema)
+    try:
+        validator = _inventory_validator()
+    except ImportError:
+        console.print("[red]jsonschema not installed. Run: pip install jsonschema[/red]")
+        sys.exit(1)
     errors = sorted(validator.iter_errors(data), key=lambda e: list(e.path))
 
     if not errors:

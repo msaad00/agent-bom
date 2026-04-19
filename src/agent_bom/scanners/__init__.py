@@ -522,10 +522,13 @@ def _scan_packages_local_db(packages: list[Package]) -> tuple[int, set[str]]:
         from agent_bom.db.schema import init_db, open_existing_db_readonly
 
         try:
-            conn = init_db(DB_PATH)
+            # Scans only need read access. Prefer the existing DB in read-only
+            # mode so the hot path avoids init-time integrity work and extra
+            # writable-open overhead on large catalogs.
+            conn = open_existing_db_readonly(DB_PATH) if DB_PATH.exists() else init_db(DB_PATH)
         except Exception as exc:
-            _logger.debug("Writable local DB open failed, retrying read-only: %s", exc)
-            conn = open_existing_db_readonly(DB_PATH)
+            _logger.debug("Primary local DB open failed, retrying writable init: %s", exc)
+            conn = init_db(DB_PATH)
     except Exception as exc:
         _logger.warning("Local DB unavailable: %s", exc)
         record_scan_warning("local vulnerability DB unavailable")

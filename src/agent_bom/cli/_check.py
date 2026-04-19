@@ -171,6 +171,10 @@ def _check_result_payload(
     }
 
 
+def _format_vulnerability_count(count: int) -> str:
+    return f"{count} vulnerability found" if count == 1 else f"{count} vulnerabilities found"
+
+
 def _resolve_check_ecosystems(name: str, version: str, ecosystem: Optional[str], detected_eco: str) -> list[str]:
     """Return the ecosystems that `check` should scan."""
     if ecosystem:
@@ -514,7 +518,8 @@ def check(
 
         from agent_bom.cwe_impact import classify_cwe_impact
 
-        table = Table(title=f"{name}@{version} — {len(vulns)} vulnerability/ies found")
+        vuln_count_text = _format_vulnerability_count(len(vulns))
+        table = Table(title=f"{name}@{version} — {vuln_count_text}")
         table.add_column("Sev", width=10, no_wrap=True)
         table.add_column("ID", width=20, no_wrap=True)
         table.add_column("Impact", width=14, no_wrap=True)
@@ -572,7 +577,7 @@ def check(
                     version=version,
                     ecosystems=ecosystems,
                     verdict="unsafe",
-                    message=f"{len(vulns)} vulnerability/ies found in {name}@{version}; reported without failing due to --exit-zero.",
+                    message=f"{_format_vulnerability_count(len(vulns))} in {name}@{version}; reported without failing due to --exit-zero.",
                     exit_code=0,
                     vulnerabilities=vulns,
                     warnings=scan_warnings,
@@ -582,9 +587,11 @@ def check(
             )
             sys.exit(0)
         if quiet:
-            click.echo(f"{name}@{version}: {len(vulns)} vulnerability/ies found (exit-zero)")
+            click.echo(f"{name}@{version}: {_format_vulnerability_count(len(vulns))} (exit-zero)")
         else:
-            console.print(f"  [yellow]⚠ {len(vulns)} vulnerability/ies found — reported without failing due to --exit-zero.[/yellow]\n")
+            console.print(
+                f"  [yellow]⚠ {_format_vulnerability_count(len(vulns))} — reported without failing due to --exit-zero.[/yellow]\n"
+            )
         sys.exit(0)
 
     if structured_output:
@@ -594,7 +601,7 @@ def check(
                 version=version,
                 ecosystems=ecosystems,
                 verdict="unsafe",
-                message=f"{len(vulns)} vulnerability/ies found in {name}@{version}.",
+                message=f"{_format_vulnerability_count(len(vulns))} in {name}@{version}.",
                 exit_code=1,
                 vulnerabilities=vulns,
                 warnings=scan_warnings,
@@ -604,9 +611,9 @@ def check(
         sys.exit(1)
 
     if quiet:
-        click.echo(f"{name}@{version}: {len(vulns)} vulnerability/ies found")
+        click.echo(f"{name}@{version}: {_format_vulnerability_count(len(vulns))}")
     else:
-        console.print(f"  [red]✗ {len(vulns)} vulnerability/ies found — do not install without review.[/red]\n")
+        console.print(f"  [red]✗ {_format_vulnerability_count(len(vulns))} — do not install without review.[/red]\n")
     sys.exit(1)
 
 

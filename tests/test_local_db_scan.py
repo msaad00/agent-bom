@@ -134,6 +134,32 @@ def test_scan_packages_local_db_falls_back_to_readonly_open():
     conn.close.assert_called_once()
 
 
+def test_scan_packages_local_db_prefers_readonly_open_for_existing_db(tmp_path):
+    """Existing DBs should open read-only on the scan hot path."""
+    from agent_bom.scanners import _scan_packages_local_db
+
+    pkg = _make_pkg()
+    db_file = tmp_path / "scan.db"
+    db_file.write_text("placeholder", encoding="utf-8")
+    conn = MagicMock()
+
+    with (
+        patch("agent_bom.db.schema.db_freshness_days", return_value=1),
+        patch("agent_bom.db.schema.DB_PATH", db_file),
+        patch("agent_bom.db.schema.open_existing_db_readonly", return_value=conn) as mock_open_ro,
+        patch("agent_bom.db.schema.init_db") as mock_init_db,
+        patch("agent_bom.db.lookup.package_in_db", return_value=False),
+        patch("agent_bom.db.lookup_package", return_value=[]),
+    ):
+        count, covered = _scan_packages_local_db([pkg])
+
+    assert count == 0
+    assert covered == set()
+    mock_open_ro.assert_called_once_with(db_file)
+    mock_init_db.assert_not_called()
+    conn.close.assert_called_once()
+
+
 # ---------------------------------------------------------------------------
 # _scan_packages_local_db — DB has findings
 # ---------------------------------------------------------------------------

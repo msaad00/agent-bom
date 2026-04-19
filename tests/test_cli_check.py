@@ -163,7 +163,32 @@ def test_check_quiet_suppresses_scan_chatter(monkeypatch):
     assert result.exit_code == 1
     assert "scanner noise" not in result.output
     assert "Checking flask@2.2.0" not in result.output
-    assert "1 vulnerability/ies found" in result.output
+    assert "1 vulnerability found" in result.output
+
+
+def test_check_pluralizes_vulnerability_count(monkeypatch):
+    _patch_check_scan(
+        monkeypatch,
+        [
+            Vulnerability(
+                id="CVE-2023-30861",
+                summary="Session cookie disclosure",
+                severity=Severity.HIGH,
+                fixed_version="2.3.2",
+            ),
+            Vulnerability(
+                id="CVE-2024-00002",
+                summary="Second issue",
+                severity=Severity.MEDIUM,
+                fixed_version="2.3.3",
+            ),
+        ],
+    )
+
+    result = CliRunner().invoke(main, ["check", "flask@2.2.0", "--ecosystem", "pypi", "--quiet"])
+
+    assert result.exit_code == 1
+    assert "2 vulnerabilities found" in result.output
 
 
 def test_check_json_output_is_machine_readable(monkeypatch):

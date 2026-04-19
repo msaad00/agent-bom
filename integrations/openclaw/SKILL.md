@@ -232,7 +232,7 @@ agent-bom where             # show all discovery paths
 }
 ```
 
-## Sub-Skills (8)
+## Sub-Skills (10)
 
 | Sub-Skill | Purpose | Triggers |
 |-----------|---------|---------|
@@ -243,6 +243,8 @@ agent-bom where             # show all discovery paths
 | [compliance](compliance/SKILL.md) | 14-framework compliance, SBOM generation | "compliance report", "NIST", "SOC 2", "OWASP" |
 | [monitor](monitor/SKILL.md) | Fleet monitoring, trust scores, lifecycle | "fleet", "watch agents", "trust scores" |
 | [analyze](analyze/SKILL.md) | Blast radius, attack paths, context graph | "blast radius", "threat intel", "attack path" |
+| [registry](registry/SKILL.md) | MCP registry lookup, marketplace check, fleet risk scoring, skill trust, SAST | "registry lookup", "marketplace check", "skill trust" |
+| [runtime](runtime/SKILL.md) | Runtime audit-log correlation, context graph analytics, vulnerability trends | "runtime monitoring", "audit correlation", "analytics" |
 | [troubleshoot](troubleshoot/SKILL.md) | Diagnostics, doctor, config validation | "doctor", "debug", "why failing", "validate config" |
 
 ## Tools
@@ -274,6 +276,7 @@ agent-bom where             # show all discovery paths
 | `registry_lookup` | Look up MCP server in 427+ server security metadata registry |
 | `marketplace_check` | Pre-install trust check with registry cross-reference |
 | `fleet_scan` | Batch registry lookup + risk scoring for MCP server inventories |
+| `tool_risk_assessment` | Score live-introspected MCP tool capabilities and server risk (READ/WRITE/EXECUTE/NETWORK classification + dangerous-combination flags) |
 | `skill_scan` | Scan instruction files for package refs, trust, and findings |
 | `skill_verify` | Verify Sigstore provenance for instruction files |
 | `skill_trust` | Assess skill file trust level (5-category analysis) |
@@ -283,6 +286,7 @@ agent-bom where             # show all discovery paths
 | Tool | Description |
 |------|-------------|
 | `context_graph` | Agent context graph with lateral movement analysis |
+| `graph_export` | Export the agent dependency graph (json, graphml, cypher, dot, mermaid) |
 | `analytics_query` | Query vulnerability trends, posture history, and runtime events |
 | `runtime_correlate` | Cross-reference proxy audit JSONL with CVE findings, risk amplification |
 | `vector_db_scan` | Probe Qdrant/Weaviate/Chroma/Milvus for auth and exposure |
@@ -291,6 +295,7 @@ agent-bom where             # show all discovery paths
 ### Specialized Scans
 | Tool | Description |
 |------|-------------|
+| `ai_inventory_scan` | Discover AI/ML components across infrastructure (models, datasets, agents, training jobs) |
 | `dataset_card_scan` | Scan dataset cards for bias, licensing, and provenance issues |
 | `training_pipeline_scan` | Scan training pipeline configs for security risks |
 | `browser_extension_scan` | Scan browser extensions for risky permissions and AI domain access |

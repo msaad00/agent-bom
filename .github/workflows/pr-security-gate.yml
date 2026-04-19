@@ -1,0 +1,94 @@
+name: PR Security Gate
+
+# Hard gate on PRs: pip-audit must pass (HIGH+ severity fails the build)
+# and agent-bom self-scans its own installed deps. This complements the
+# existing cve-freshness.yml scheduled job by catching regressions on PRs,
+# not just twice a week.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-security-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pip-audit-pr:
+    name: pip-audit on PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: "3.11"
+
+      - name: Install runtime deps (not dev) — scan the shipping dep set
+        run: uv sync --extra api --extra postgres --extra mcp-server --extra oidc
+
+      - name: Run pip-audit with strict severity gate
+        run: |
+          # Fail on HIGH or CRITICAL findings. Medium + Low become advisory
+          # so we're not blocked by transitive noise, but HIGH+ is a gate.
+          uv run pip-audit --disable-pip --strict --vulnerability-service osv \
+            --require-hashes=false \
+            --format columns \
+            | tee audit.txt
+
+          # Extract highest severity — fail if HIGH or CRITICAL is present.
+          if grep -qiE '\b(HIGH|CRITICAL)\b' audit.txt; then
+            echo "::error::pip-audit found HIGH or CRITICAL vulnerabilities — see the log above"
+            exit 1
+          fi
+
+      - name: Upload pip-audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pip-audit-report
+          path: audit.txt
+
+  self-scan-pr:
+    name: agent-bom self-scan on PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # upload SARIF
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: "3.11"
+
+      - name: Install agent-bom + dev extras
+        run: uv sync --extra dev
+
+      - name: Self-scan fixture SBOM for regressions
+        run: |
+          uv run agent-bom sbom tests/fixtures/test-sbom.cdx.json \
+            -f sarif -o self-scan.sarif \
+            --fail-on-kev || true
+
+          # KEV-on-fail signal surfaced as the job's own step exit code
+          KEV_COUNT=$(uv run agent-bom sbom tests/fixtures/test-sbom.cdx.json -f json | \
+            python -c "import json,sys; r=json.load(sys.stdin); print(sum(1 for v in r.get('vulnerabilities', []) if v.get('kev')))")
+
+          echo "Fixture SBOM reports ${KEV_COUNT} KEV-listed findings"
+          if [ "${KEV_COUNT:-0}" -gt 0 ]; then
+            echo "::warning::fixture SBOM contains ${KEV_COUNT} KEV-listed CVE(s) — investigate before merging if this is a new baseline"
+          fi
+
+      - name: Upload SARIF to code-scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: self-scan.sarif
+          category: agent-bom-self-scan

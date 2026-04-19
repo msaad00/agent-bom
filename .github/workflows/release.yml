@@ -43,9 +43,9 @@ jobs:
     needs: version-guard
     permissions:
       contents: read
-      pages: write
-      id-token: write
     uses: ./.github/workflows/docs.yml
+    with:
+      deploy: false
 
   build:
     name: Build distribution

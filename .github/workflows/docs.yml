@@ -9,6 +9,12 @@ on:
       - '.github/workflows/docs.yml'
   workflow_dispatch:
   workflow_call:
+    inputs:
+      deploy:
+        description: 'Deploy built docs to GitHub Pages'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -43,6 +49,7 @@ jobs:
           path: site
 
   deploy:
+    if: ${{ inputs.deploy }}
     needs: build
     runs-on: ubuntu-latest
     permissions:

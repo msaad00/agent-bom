@@ -36,7 +36,7 @@ Leave out unless you need them:
 
 Use the packaged control-plane chart with the focused pilot values file:
 
-- [deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml)
+- [eks-mcp-pilot-values.yaml](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml)
 
 Install:
 
@@ -66,7 +66,7 @@ specific MCP workloads you want to guard.
 
 Use:
 
-- [deploy/k8s/proxy-sidecar-pilot.yaml](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/k8s/proxy-sidecar-pilot.yaml)
+- [proxy-sidecar-pilot.yaml](https://github.com/msaad00/agent-bom/blob/main/deploy/k8s/proxy-sidecar-pilot.yaml)
 
 This manifest shows:
 
@@ -119,7 +119,7 @@ alembic -c deploy/supabase/postgres/alembic.ini upgrade head
 ```
 
 If the database was already bootstrapped from
-[deploy/supabase/postgres/init.sql](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/supabase/postgres/init.sql),
+[deploy/supabase/postgres/init.sql](https://github.com/msaad00/agent-bom/blob/main/deploy/supabase/postgres/init.sql),
 stamp the baseline once before future upgrades:
 
 ```bash
@@ -133,7 +133,7 @@ allow ingress from:
 - the `ingress-nginx` namespace
 
 If your ingress controller runs elsewhere, change
-[deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml](/Users/mohamedsaad/Desktop/Agent-Bom/deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml)
+[eks-mcp-pilot-values.yaml](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml)
 before install.
 
 ## Recommended secrets and auth

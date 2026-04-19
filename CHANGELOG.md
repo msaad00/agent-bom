@@ -9,7 +9,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Work targeting the next minor release. Tracking toward `0.78.0`.
+Work targeting the next minor release. Tracking toward `0.78.1`.
 
 ### Added
 - **MCP tool-schema validation rule catalog** (#1507) — OWASP-mapped rules classify MCP tool definitions for risky capability combinations, over-broad permissions, and schema gaps; findings wired into live introspection output (#1519)

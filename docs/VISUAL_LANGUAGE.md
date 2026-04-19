@@ -23,7 +23,7 @@ Current SVG inventory:
 | `engine-internals-{light,dark}.svg` | Inside the scanner | "How a scan moves" |
 | `topology-{light,dark}.svg` | Focused graph view (start scoped, expand) | "How a scan moves" |
 | `compliance-{light,dark}.svg` | Finding → control → evidence packet | Compliance section |
-| `dashboard-live.png` `mesh-live.png` `remediation-live.png` | Live UI screenshots | Product views |
+| `dashboard-live.png` `dashboard-paths-live.png` `mesh-live.png` `remediation-live.png` | Live UI screenshots | Product views |
 | `demo-latest.gif` | Terminal demo (1.04MB after compression) | "Try the demo" |
 
 ## Mermaid — for code-true flows that evolve

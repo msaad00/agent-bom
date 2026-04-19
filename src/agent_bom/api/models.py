@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 # ─── Enums ─────────────────────────────────────────────────────────────────
 
@@ -35,7 +35,7 @@ class ScanRequest(BaseModel):
     inventory: str | None = None
     """Path to agents.json inventory file."""
 
-    images: list[str] = []
+    images: list[str] = Field(default_factory=list)
     """Docker image references to scan (e.g. ['myapp:latest', 'redis:7'])."""
 
     k8s: bool = False
@@ -44,16 +44,16 @@ class ScanRequest(BaseModel):
     k8s_namespace: str | None = None
     """Kubernetes namespace (None = all)."""
 
-    tf_dirs: list[str] = []
+    tf_dirs: list[str] = Field(default_factory=list)
     """Terraform directories to scan."""
 
     gha_path: str | None = None
     """Path to a Git repo to scan GitHub Actions workflows."""
 
-    agent_projects: list[str] = []
+    agent_projects: list[str] = Field(default_factory=list)
     """Python project directories using AI agent frameworks."""
 
-    jupyter_dirs: list[str] = []
+    jupyter_dirs: list[str] = Field(default_factory=list)
     """Directories to scan for Jupyter notebooks (.ipynb) with AI library usage."""
 
     sbom: str | None = None
@@ -62,10 +62,10 @@ class ScanRequest(BaseModel):
     enrich: bool = False
     """Enrich with NVD CVSS, EPSS, and CISA KEV data."""
 
-    connectors: list[str] = []
+    connectors: list[str] = Field(default_factory=list)
     """SaaS connectors to discover from (e.g. ['jira', 'servicenow', 'slack'])."""
 
-    filesystem_paths: list[str] = []
+    filesystem_paths: list[str] = Field(default_factory=list)
     """Filesystem directories or tar archives to scan via Syft."""
 
     format: str = "json"
@@ -77,16 +77,16 @@ class ScanRequest(BaseModel):
     dynamic_max_depth: int = 4
     """Max directory depth for dynamic discovery."""
 
-    scope_agents: list[str] = []
+    scope_agents: list[str] = Field(default_factory=list)
     """Filter discovered agents by name (glob patterns, e.g. ['claude-*', 'cursor'])."""
 
-    scope_servers: list[str] = []
+    scope_servers: list[str] = Field(default_factory=list)
     """Filter discovered MCP servers by name (glob patterns)."""
 
-    exclude_agents: list[str] = []
+    exclude_agents: list[str] = Field(default_factory=list)
     """Exclude agents matching these name patterns."""
 
-    exclude_servers: list[str] = []
+    exclude_servers: list[str] = Field(default_factory=list)
     """Exclude MCP servers matching these name patterns."""
 
     min_severity: str | None = None
@@ -103,11 +103,11 @@ class ScanJob(BaseModel):
     started_at: str | None = None
     completed_at: str | None = None
     request: ScanRequest
-    progress: list[str] = []
+    progress: list[str] = Field(default_factory=list)
     result: dict[str, Any] | None = None
     error: str | None = None
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 # ─── Meta Models ───────────────────────────────────────────────────────────
@@ -180,10 +180,10 @@ class PolicyCreate(BaseModel):
     name: str
     description: str = ""
     mode: str = "audit"
-    rules: list[dict] = []
-    bound_agents: list[str] = []
-    bound_agent_types: list[str] = []
-    bound_environments: list[str] = []
+    rules: list[dict[str, Any]] = Field(default_factory=list)
+    bound_agents: list[str] = Field(default_factory=list)
+    bound_agent_types: list[str] = Field(default_factory=list)
+    bound_environments: list[str] = Field(default_factory=list)
     enabled: bool = True
 
 
@@ -191,7 +191,7 @@ class PolicyUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     mode: str | None = None
-    rules: list[dict] | None = None
+    rules: list[dict[str, Any]] | None = None
     bound_agents: list[str] | None = None
     bound_agent_types: list[str] | None = None
     bound_environments: list[str] | None = None
@@ -201,15 +201,15 @@ class PolicyUpdate(BaseModel):
 class EvaluateRequest(BaseModel):
     agent_name: str = ""
     tool_name: str
-    arguments: dict = {}
+    arguments: dict[str, Any] = Field(default_factory=dict)
 
 
 class ProxyAuditIngestRequest(BaseModel):
     source_id: str = ""
     session_id: str = ""
     idempotency_key: str = ""
-    alerts: list[dict] = []
-    summary: dict | None = None
+    alerts: list[dict[str, Any]] = Field(default_factory=list)
+    summary: dict[str, Any] | None = None
 
 
 class SAMLLoginRequest(BaseModel):
@@ -244,20 +244,20 @@ class BrowserExtensionsRequest(BaseModel):
 class ModelProvenanceRequest(BaseModel):
     """Request body for POST /v1/scan/model-provenance."""
 
-    hf_models: list[str] = []
+    hf_models: list[str] = Field(default_factory=list)
     """HuggingFace model IDs to check (e.g. ['meta-llama/Llama-2-7b-hf'])."""
 
-    ollama_models: list[str] = []
+    ollama_models: list[str] = Field(default_factory=list)
     """Ollama model names to check (e.g. ['llama2', 'codellama'])."""
 
 
 class PromptScanRequest(BaseModel):
     """Request body for POST /v1/scan/prompt-scan."""
 
-    directories: list[str] = []
+    directories: list[str] = Field(default_factory=list)
     """Directories to scan for prompt files (.prompt, prompt.yaml, etc.)."""
 
-    files: list[str] = []
+    files: list[str] = Field(default_factory=list)
     """Specific prompt files to scan."""
 
 
@@ -279,15 +279,15 @@ class PushPayload(BaseModel):
 
     source_id: str = ""
     idempotency_key: str = ""
-    agents: list = []
-    blast_radii: list = []
-    warnings: list = []
+    agents: list[dict[str, Any]] = Field(default_factory=list)
+    blast_radii: list[dict[str, Any]] = Field(default_factory=list)
+    warnings: list[dict[str, Any] | str] = Field(default_factory=list)
 
 
 class ScheduleCreate(BaseModel):
     name: str
     cron_expression: str
-    scan_config: dict = {}
+    scan_config: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
     tenant_id: str = "default"
 
@@ -296,7 +296,7 @@ class CreateKeyRequest(BaseModel):
     name: str
     role: str = "viewer"
     expires_at: str | None = None
-    scopes: list[str] = []
+    scopes: list[str] = Field(default_factory=list)
 
 
 class RotateKeyRequest(BaseModel):
@@ -320,7 +320,7 @@ class JiraTicketRequest(BaseModel):
     jira_url: str
     email: str
     project_key: str
-    finding: dict
+    finding: dict[str, Any]
 
 
 class FalsePositiveRequest(BaseModel):

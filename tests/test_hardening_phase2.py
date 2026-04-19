@@ -394,6 +394,7 @@ class TestInventoryCSV:
         agent = result["agents"][0]
         assert agent["name"] == "inventory-agent"
         assert agent["mcp_servers"][0]["name"] == "inventory-server"
+        assert agent["mcp_servers"][0]["packages"][0]["ecosystem"] == "pypi"
 
     def test_env_keys_parsed(self):
         from agent_bom.inventory import _load_csv_inventory
@@ -455,6 +456,16 @@ class TestInventoryJSON:
         result = load_inventory(str(json_file))
         assert result == data
 
+    def test_invalid_json_schema_rejected(self, tmp_path):
+        from agent_bom.inventory import load_inventory
+
+        data = {"agents": [{}]}
+        json_file = tmp_path / "inventory.json"
+        json_file.write_text(json.dumps(data))
+
+        with pytest.raises(ValueError, match="Inventory schema validation failed"):
+            load_inventory(str(json_file))
+
     def test_csv_file_detected_by_extension(self, tmp_path):
         from agent_bom.inventory import load_inventory
 
@@ -500,4 +511,11 @@ class TestInventoryStdin:
 
         with patch("sys.stdin", io.StringIO("   ")):
             with pytest.raises(ValueError, match="Empty input"):
+                _load_from_stdin()
+
+    def test_stdin_invalid_schema_raises(self):
+        from agent_bom.inventory import _load_from_stdin
+
+        with patch("sys.stdin", io.StringIO(json.dumps({"agents": [{}]}))):
+            with pytest.raises(ValueError, match="Inventory schema validation failed"):
                 _load_from_stdin()

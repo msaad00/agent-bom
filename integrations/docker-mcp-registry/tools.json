@@ -106,6 +106,14 @@
     ]
   },
   {
+    "name": "tool_risk_assessment",
+    "description": "Score live-introspected MCP tool capabilities and server risk — classifies tools as READ/WRITE/EXECUTE/NETWORK/FILE_ACCESS and flags dangerous capability combinations.",
+    "arguments": [
+      {"name": "config_path", "type": "string", "desc": "Path to MCP client config directory (default: auto-discover)"},
+      {"name": "timeout", "type": "number", "desc": "Per-server introspection timeout in seconds (default: 10.0)"}
+    ]
+  },
+  {
     "name": "diff",
     "description": "Compare a fresh scan against a baseline to find new and resolved vulnerabilities.",
     "arguments": [
@@ -134,6 +142,14 @@
     "arguments": [
       {"name": "project_path", "type": "string", "desc": "Directory to analyze"},
       {"name": "output_format", "type": "string", "desc": "Output format: json, dot"}
+    ]
+  },
+  {
+    "name": "graph_export",
+    "description": "Export the agent dependency graph in graph-native formats for visualization or downstream graph analysis.",
+    "arguments": [
+      {"name": "config_path", "type": "string", "desc": "Path to MCP config directory (default: auto-discover)"},
+      {"name": "format", "type": "string", "desc": "Export format: json (default), graphml, cypher, dot, mermaid"}
     ]
   },
   {

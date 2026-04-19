@@ -9,6 +9,90 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+Work targeting the next minor release. Tracking toward `0.78.0`.
+
+### Added
+- **MCP tool-schema validation rule catalog** (#1507) — OWASP-mapped rules classify MCP tool definitions for risky capability combinations, over-broad permissions, and schema gaps; findings wired into live introspection output (#1519)
+- **Graded exploit likelihood signal** (#1518, closes #486) — blast-radius scoring fuses EPSS and CISA KEV into a single `exploit_likelihood` tier so triage reflects in-the-wild exploitation risk, not just theoretical severity
+- **Signed compliance evidence bundle** — new `/v1/compliance/{framework}/report` endpoint (#1504) returns cosign-signed, replay-protected evidence (#1509) for auditor hand-off
+- **Structured CIS remediation field** (#1512, #1517) — CIS benchmark findings now carry a first-class `remediation` object surfaced through CLI, HTML, and SARIF outputs
+- **OCSF interop boundary** (#1513) — optional SIEM export is scoped as a boundary concern (not core data model); ownership and schema lifecycle documented
+- **Auth-method introspection** — `/v1/auth/debug` endpoint (#1502) reports which auth method resolved a request, easing operator debugging in mixed-auth deployments
+- **ClickHouse row-level tenant isolation** (#1501) — analytics tables gain `tenant_id` column with enforced filtering
+- **Backup/restore round-trip CI** (#1500) — nightly workflow verifies end-to-end backup → restore → scan equivalence
+- **Canonical data model atlas** — `docs/DATA_MODEL.md` (#1505) documents the single source of truth across scanner model, DB schema, and output formats
+
+### Changed
+- **Inter-procedural taint analyzer depth cap** (#1508) — bounded recursion eliminates pathological analysis time on deeply nested call graphs while preserving precision
+- **Dashboard Risk overview description** (#1506) — copy refreshed to match the redesigned overview layout and score drivers
+- **README EKS section restructured** (#1510) — deployment guidance simplified, redundant topology SVG pruned
+- **Visual language documented** — README diagrams tightened (#1503) with the visual language reference inline for contributors
+
+### Fixed
+- **Docker MCP marketplace tool catalog** — `integrations/docker-mcp-registry/tools.json` now exposes all 36 `@mcp.tool` decorators in code; adds the previously-missing `tool_risk_assessment` and `graph_export` entries so the listed tool set matches the running server
+
+### Security
+- **Compliance report replay protection** (#1509) — evidence bundle requests now include nonce + timestamp validation, blocking replay of previously-signed bundles. LLM05 supply-chain tagging broadened for clearer downstream filtering.
+- **Helm chart hardened default** (#1519) — `networkPolicy.restrictIngress=true` is the default; Kubernetes deployment guide updated to document the egress/ingress posture
+
+### Infra & observability
+- **Demo artifacts refresh** (#1511) — `docs/images/demo-latest.gif` and dashboard screenshot re-recorded against the current CLI/UI
+- **Fresh Phase 0+1 hardening** (#1499) — rotation helper, graceful drain, webhook retry semantics, README + visual refresh rolled up
+
+---
+
+## [0.77.1] – 2026-04-18
+
+### Fixed
+- **Release metadata alignment** (#1498) — corrected 0.77.0 follow-up: brought `pyproject.toml`, `uv.lock`, and integration listings to a consistent 0.77.1 after an intermediate packaging drift
+
+---
+
+## [0.77.0] – 2026-04-18
+
+### Added
+- **Live Kubernetes posture scanning** (#1489) — cluster-scoped scan path walks live API-server objects, correlates pod specs with image/CVE inventory, and emits findings through the unified pipeline
+- **Control-plane enterprise auth** — SAML SSO assertion exchange (#1487), API key rotation policy with audit trail (#1492), tenant quotas (#1486), and tenant-scoped rate limiting with Postgres tuning (#1493)
+- **Proxy & fleet durability** — idempotent fleet/proxy ingest (#1473), circuit breaker + DLQ for proxy audit delivery (#1494), service-mesh + policy-controller templates for EKS (#1495)
+- **Helm packaging for the control plane** (#1453) — end-to-end Helm chart with production operator defaults (#1458), operator observability + backups (#1472), encrypted backup restore path (#1485)
+- **MCP agent mesh surface** — agent context graph with lateral movement analysis, IaC findings stitched into the unified graph (#1426), programmable graph query traversal (#1427), mesh cleanup polish (#1470)
+- **Findings as first-class UI surface** (#1423) — unified, deep-linkable findings view across vulnerability, policy, and compliance sources with one-click drill into the security graph (#1395, #1397, #1399, #1400, #1401)
+- **Snowflake CIS password policy coverage** (#1429) and Snowflake storage backend parity (#1408)
+- **Live UI configurability** — runtime-configurable API endpoint (#1452), dashboard posture card unification (#1447), theme support across dashboard and graph surfaces (#1404, #1407, #1411, #1413)
+- **Data-sources product surface** (#1421), how-agent-bom-works explainer (#1440), and deployment/hosting guidance (#1444)
+
+### Changed
+- **AST analyzer modularization** — JS/TS (#1424), Go (#1425), and shared models (#1420) extracted into focused helpers; SAST helper-chain findings reframed for clearer attribution (#1488)
+- **MCP server modularization** — specialized tool registrations (#1439) and runtime helpers (#1438) split out of the main server module
+- **Scanner modularization** — OSV helpers (#1418), runtime state helpers (#1417), risk/blast-radius helpers (#1416) split into dedicated modules
+- **CLI modularization** — option groups split into helper modules (#1434); wayfinding and doctor output polished (#1394)
+- **Proxy policy & audit split** (#1436) for cleaner policy boundaries
+- **Remediation scoring anchored to blast-radius risk** (#1443), not CVSS alone
+- **Prompt-injection analyzer signals tightened** (#1490)
+- **Analytics ingest batched** for flagged trace events (#1428)
+
+### Fixed
+- **Operator drilldown UX** (#1496), pilot UI reliability (#1471), mesh UI cleanup + README visuals (#1470)
+- **Pilot rate limiting + control-plane HA hardening** (#1460), pilot hardening follow-ups (#1457), pilot auth + endpoint fleet path (#1456)
+
+### Security
+- **Gateway policy RBAC hardened** (#1451)
+- **Marketplace publishing surfaces hardened** (#1442)
+- **Supply-chain trust + extras audit made explicit** (#1441)
+- **UI dependency + validation contract hardened** (#1446)
+
+### Docs
+- **Enterprise scale guidance + benchmark harness published** (#1459)
+- **Data ingestion + security model documented** (#1437)
+- **Docs rebuilt on release tags** (#1419)
+- **Sidebar IA clarified** (#1412), scan page product surfaces clarified (#1415)
+
+### Infra
+- **mypy phase 2 body checking enabled** (#1433)
+- **Cloud normalization coverage with fixtures** (#1410)
+- **Storage backend contract exposed on health** (#1409)
+- **Backend parity + Snowflake modes documented** (#1408)
+
 ---
 
 ## [0.76.4] – 2026-04-13

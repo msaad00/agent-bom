@@ -36,7 +36,7 @@ Linux paths use `~/.config/` equivalents.
 | [EPSS](https://www.first.org/epss/) | Exploit probability scores (0.0–1.0) |
 | [CISA KEV](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) | Known exploited vulnerabilities catalog |
 | [GitHub Advisories](https://github.com/advisories) | Supplemental advisory data |
-| [Snyk](https://snyk.io) | Optional enrichment (requires `SNYK_TOKEN`) |
+| Commercial vuln API | Optional enrichment when a vendor API token is configured |
 
 ## Credential exposure detection
 

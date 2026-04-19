@@ -102,9 +102,8 @@ data:
 
 The external scanner fuzz target covers:
 
-- Trivy JSON ingestion
-- Grype JSON ingestion
-- Syft JSON ingestion
+- CVE-scanner JSON ingestion (common industry formats)
+- container-SBOM JSON ingestion (common industry formats)
 - format auto-detection via `detect_and_parse()`
 
 That keeps the import path for third-party scanner results under the same

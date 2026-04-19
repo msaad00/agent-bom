@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 from click.testing import CliRunner
 
-from agent_bom.cli._inventory import completions_cmd, inventory, validate, where
+from agent_bom.cli._inventory import _inventory_schema_path, completions_cmd, inventory, validate, where
 
 # ---------------------------------------------------------------------------
 # inventory
@@ -90,19 +88,21 @@ def test_inventory_security_blocked():
 
 def test_validate_valid_file(tmp_path):
     runner = CliRunner()
-    # Create a minimal valid inventory
-    data = {"agents": [], "generated_at": "2025-01-01T00:00:00Z", "version": "0.1"}
+    data = {
+        "schema_version": "1",
+        "generated_at": "2025-01-01T00:00:00Z",
+        "agents": [{"name": "demo-agent", "agent_type": "custom", "mcp_servers": []}],
+    }
     inv_file = tmp_path / "inv.json"
     inv_file.write_text(json.dumps(data))
 
-    # Need the schema file to exist
-    schema_path = Path(__file__).parent.parent / "schemas" / "inventory.schema.json"
-    if not schema_path.exists():
-        pytest.skip("Schema file not found")
+    schema_path = _inventory_schema_path()
+    assert schema_path is not None
+    assert schema_path.exists()
 
     result = runner.invoke(validate, [str(inv_file)])
-    # Will succeed if schema allows empty agents, fail otherwise — just test it runs
-    assert result.exit_code in (0, 1)
+    assert result.exit_code == 0
+    assert "Valid" in result.output
 
 
 def test_validate_invalid_json(tmp_path):
@@ -110,13 +110,19 @@ def test_validate_invalid_json(tmp_path):
     inv_file = tmp_path / "bad.json"
     inv_file.write_text("not json {{{")
 
-    # Need the schema file to exist
-    schema_path = Path(__file__).parent.parent / "schemas" / "inventory.schema.json"
-    if not schema_path.exists():
-        pytest.skip("Schema file not found")
+    schema_path = _inventory_schema_path()
+    assert schema_path is not None
+    assert schema_path.exists()
 
     result = runner.invoke(validate, [str(inv_file)])
     assert result.exit_code == 1
+
+
+def test_inventory_schema_path_points_to_repo_schema():
+    schema_path = _inventory_schema_path()
+    assert schema_path is not None
+    assert schema_path.name == "inventory.schema.json"
+    assert "config/schemas" in schema_path.as_posix()
 
 
 # ---------------------------------------------------------------------------

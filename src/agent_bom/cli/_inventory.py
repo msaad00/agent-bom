@@ -76,6 +76,35 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
     print_agent_tree(report)
 
 
+def _inventory_schema_path() -> Path | None:
+    """Return the inventory schema path from the repo or installed package."""
+    candidate_paths = [
+        Path(__file__).parent.parent.parent / "config" / "schemas" / "inventory.schema.json",
+        Path(__file__).parent.parent.parent / "schemas" / "inventory.schema.json",
+    ]
+
+    for candidate in candidate_paths:
+        if candidate.exists():
+            return candidate
+
+    try:
+        import importlib.resources
+
+        package_root = Path(str(importlib.resources.files("agent_bom")))
+    except Exception:
+        return None
+
+    fallback_paths = [
+        package_root / ".." / ".." / "config" / "schemas" / "inventory.schema.json",
+        package_root / ".." / ".." / "schemas" / "inventory.schema.json",
+    ]
+    for candidate in fallback_paths:
+        resolved = candidate.resolve()
+        if resolved.exists():
+            return resolved
+    return None
+
+
 @click.command()
 @click.argument("inventory_file", type=click.Path(exists=True))
 def validate(inventory_file: str):
@@ -94,17 +123,7 @@ def validate(inventory_file: str):
         console.print("[red]jsonschema not installed. Run: pip install jsonschema[/red]")
         sys.exit(1)
 
-    _initial_schema = Path(__file__).parent.parent.parent / "schemas" / "inventory.schema.json"
-    schema_path: Path | None = _initial_schema
-    if not _initial_schema.exists():
-        # Fallback: look relative to installed package
-        import importlib.resources
-
-        try:
-            schema_path = Path(str(importlib.resources.files("agent_bom"))) / ".." / ".." / "schemas" / "inventory.schema.json"
-        except Exception:
-            schema_path = None
-
+    schema_path = _inventory_schema_path()
     if not schema_path or not schema_path.exists():
         console.print("[red]Schema file not found. Run from the agent-bom repo root.[/red]")
         sys.exit(1)

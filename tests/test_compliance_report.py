@@ -26,7 +26,7 @@ from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse
 from starlette.testclient import TestClient
 
 from agent_bom.api.audit_log import (
@@ -114,6 +114,20 @@ def _setup_audit_log() -> InMemoryAuditLog:
 
 def _patched_get_compliance_returns(payload: dict):
     return patch.object(compliance_routes, "get_compliance", return_value=payload)
+
+
+def _export_with_real_producer(framework: str = "owasp-llm", *, format: str = "json"):
+    """Call export_compliance_report against seeded real jobs — no get_compliance mock.
+
+    The only patch is ``_tenant_jobs`` (the store accessor, which is test
+    plumbing) so the real ``_build_controls`` / ``_evidence_for_control``
+    pipeline runs end-to-end. This is the regression guard for the
+    control-dict shape drift that the mock-heavy tests originally missed.
+    """
+    jobs = _seed_jobs_with_findings()
+    req = _request("tenant-alpha")
+    with patch.object(compliance_routes, "_tenant_jobs", return_value=jobs):
+        return asyncio.run(compliance_routes.export_compliance_report(req, framework, format=format))
 
 
 # ─── Happy-path JSON ─────────────────────────────────────────────────────────
@@ -244,14 +258,7 @@ def test_compliance_report_route_exports_real_evidence_end_to_end() -> None:
 def test_bundle_carries_nonce_and_expiry_in_signed_envelope() -> None:
     """nonce + expires_at must be inside the body and thus inside the signature."""
     _setup_audit_log()
-    jobs = _seed_jobs_with_findings()
-    full_payload = {"owasp_llm_top10": []}
-    req = _request("tenant-alpha")
-
-    with patch.object(compliance_routes, "_tenant_jobs", return_value=jobs):
-        with _patched_get_compliance_returns(full_payload):
-            resp = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
-
+    resp = _export_with_real_producer("owasp-llm")
     body = json.loads(resp.body)
     # 128-bit hex nonce
     assert isinstance(body["nonce"], str)
@@ -273,15 +280,8 @@ def test_bundle_carries_nonce_and_expiry_in_signed_envelope() -> None:
 def test_every_export_gets_a_fresh_nonce() -> None:
     """Two consecutive exports for the same tenant must have different nonces."""
     _setup_audit_log()
-    jobs = _seed_jobs_with_findings()
-    full_payload = {"owasp_llm_top10": []}
-    req = _request("tenant-alpha")
-
-    with patch.object(compliance_routes, "_tenant_jobs", return_value=jobs):
-        with _patched_get_compliance_returns(full_payload):
-            a = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
-            b = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
-
+    a = _export_with_real_producer("owasp-llm")
+    b = _export_with_real_producer("owasp-llm")
     nonce_a = json.loads(a.body)["nonce"]
     nonce_b = json.loads(b.body)["nonce"]
     assert nonce_a != nonce_b
@@ -290,14 +290,7 @@ def test_every_export_gets_a_fresh_nonce() -> None:
 def test_threat_model_block_documents_guarantees() -> None:
     """The bundle must carry a threat_model block so auditors see the guarantees inline."""
     _setup_audit_log()
-    jobs = _seed_jobs_with_findings()
-    full_payload = {"owasp_llm_top10": []}
-    req = _request("tenant-alpha")
-
-    with patch.object(compliance_routes, "_tenant_jobs", return_value=jobs):
-        with _patched_get_compliance_returns(full_payload):
-            resp = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
-
+    resp = _export_with_real_producer("owasp-llm")
     body = json.loads(resp.body)
     tm = body["threat_model"]
     # Every documented guarantee has a block
@@ -321,14 +314,7 @@ def test_report_audit_events_are_tenant_filtered() -> None:
             details={},  # missing tenant_id must NOT leak into default tenant exports
         )
     )
-    jobs = _seed_jobs_with_findings()
-    full_payload = {"owasp_llm_top10": []}
-    req = _request("tenant-alpha")
-
-    with patch.object(compliance_routes, "_tenant_jobs", return_value=jobs):
-        with _patched_get_compliance_returns(full_payload):
-            resp = asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
-
+    resp = _export_with_real_producer("owasp-llm")
     body = json.loads(resp.body)
     # Cross-tenant audit entry must not leak into the bundle
     tenants = {e["details"].get("tenant_id") for e in body["audit_events"]}
@@ -355,8 +341,14 @@ def test_report_jsonl_streams_one_record_per_line() -> None:
         with _patched_get_compliance_returns(full_payload):
             resp = asyncio.run(compliance_routes.export_compliance_report(req, "soc2", format="jsonl"))
 
-    assert isinstance(resp, PlainTextResponse)
-    raw = resp.body.decode()
+    # jsonl path is a StreamingResponse — drain the async iterator into bytes.
+    from starlette.responses import StreamingResponse
+
+    assert isinstance(resp, StreamingResponse)
+    chunks: list[bytes] = []
+    for chunk in asyncio.run(_drain_stream(resp)):
+        chunks.append(chunk)
+    raw = b"".join(chunks).decode()
     lines = [ln for ln in raw.split("\n") if ln]
     # First line is meta; followed by one control line; followed by the audit entry
     assert json.loads(lines[0])["meta"]["framework_key"] == "soc2"
@@ -367,6 +359,14 @@ def test_report_jsonl_streams_one_record_per_line() -> None:
 
     expected = hmac.new(_HMAC_KEY, raw.encode(), hashlib.sha256).hexdigest()
     assert sig == expected
+
+
+async def _drain_stream(resp) -> list[bytes]:
+    """Drain a StreamingResponse into a list of bytes chunks for assertions."""
+    collected: list[bytes] = []
+    async for chunk in resp.body_iterator:
+        collected.append(chunk if isinstance(chunk, bytes) else chunk.encode())
+    return collected
 
 
 # ─── Bad input ────────────────────────────────────────────────────────────────

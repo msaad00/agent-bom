@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from agent_bom.api.models import ComplianceReportBundle, JobStatus
 from agent_bom.api.stores import _get_store
@@ -668,7 +668,7 @@ async def export_compliance_report(
     since: str | None = None,
     until: str | None = None,
     format: str = "json",
-) -> JSONResponse | PlainTextResponse:
+) -> JSONResponse | PlainTextResponse | StreamingResponse:
     """Export a tamper-evident signed evidence bundle for a single framework.
 
     The bundle pairs each control with the blast-radius findings that map to
@@ -880,25 +880,38 @@ async def export_compliance_report(
             headers["X-Agent-Bom-Compliance-Signature-KeyId"] = sig_result.key_id
         return headers
 
+    from agent_bom.api.metrics import record_compliance_export
+
     if fmt == "jsonl":
         # jsonl streams one control per line so SIEM and security-lake
-        # consumers can ingest without loading the whole bundle.
+        # consumers can ingest without loading the whole bundle. We build
+        # the full payload once (signing requires the complete canonical
+        # bytes), then stream it in 64 KB chunks so very large exports
+        # don't pin a whole copy in the ASGI write buffer.
         lines = [json.dumps({"meta": {k: v for k, v in body.items() if k not in {"controls", "audit_events"}}}, sort_keys=True)]
         for control in body["controls"]:
             lines.append(json.dumps({"control": control}, sort_keys=True))
         for entry in body["audit_events"]:
             lines.append(json.dumps({"audit": entry}, sort_keys=True))
         payload = ("\n".join(lines) + "\n").encode()
-        return PlainTextResponse(
-            content=payload.decode(),
+        record_compliance_export(signing_algorithm, framework_key, len(payload))
+
+        async def _iter_chunks(data: bytes, chunk_size: int = 64 * 1024):
+            for offset in range(0, len(data), chunk_size):
+                yield data[offset : offset + chunk_size]
+
+        return StreamingResponse(
+            _iter_chunks(payload),
             media_type="application/x-ndjson",
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(len(payload)),
                 **_signing_headers(payload),
             },
         )
 
     payload = json.dumps(body, sort_keys=True).encode()
+    record_compliance_export(signing_algorithm, framework_key, len(payload))
     return JSONResponse(
         content=body,
         headers={

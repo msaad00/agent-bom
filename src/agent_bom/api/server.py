@@ -562,8 +562,23 @@ async def _cleanup_loop():
 # ─── Meta Routes ─────────────────────────────────────────────────────────────
 
 
+def _dashboard_index_file() -> str | None:
+    """Return the packaged dashboard index path when bundled UI assets exist."""
+    from pathlib import Path as _DashPath  # noqa: N814
+
+    index_file = _DashPath(__file__).resolve().parents[1] / "ui_dist" / "index.html"
+    if index_file.is_file():
+        return str(index_file)
+    return None
+
+
 @app.get("/", include_in_schema=False)
-async def root() -> RedirectResponse:
+async def root():
+    dashboard_index = _dashboard_index_file()
+    if dashboard_index:
+        from fastapi.responses import FileResponse
+
+        return FileResponse(dashboard_index)
     return RedirectResponse(url="/docs")
 
 
@@ -608,7 +623,7 @@ def _mount_dashboard(application: FastAPI) -> None:
 
     from fastapi import HTTPException as _HTTPException
 
-    ui_dist = _DashPath(__file__).parent / "ui_dist"
+    ui_dist = _DashPath(__file__).resolve().parents[1] / "ui_dist"
     if not ui_dist.is_dir() or not (ui_dist / "index.html").exists():
         return
 
@@ -619,11 +634,6 @@ def _mount_dashboard(application: FastAPI) -> None:
     next_static = ui_dist / "_next"
     if next_static.is_dir():
         application.mount("/_next", StaticFiles(directory=str(next_static)), name="next-static")
-
-    # Override root to serve dashboard instead of redirect to /docs
-    @application.get("/", include_in_schema=False)
-    async def _dashboard_root():
-        return FileResponse(str(ui_dist / "index.html"))
 
     # Pre-build a whitelist of static files at startup so the catch-all
     # handler never constructs filesystem paths from user input.
@@ -637,7 +647,7 @@ def _mount_dashboard(application: FastAPI) -> None:
     @application.get("/{path:path}", include_in_schema=False)
     async def _spa_catch_all(path: str):
         # Skip API and docs paths
-        if path.startswith(("v1/", "docs", "redoc", "openapi.json", "health", "version")):
+        if path.startswith(("v1/", "docs", "redoc", "openapi.json", "health", "version", "readyz", "metrics")):
             raise _HTTPException(status_code=404)
         # Look up the pre-resolved path — user input is only a dict key,
         # never used in any filesystem operation (no path-injection risk).

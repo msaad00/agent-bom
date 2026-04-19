@@ -386,6 +386,7 @@ function toFlowEdge(edge: UnifiedEdge): Edge {
     source: edge.source,
     target: edge.target,
     type: "smoothstep",
+    data: { relationship },
     animated,
     style: {
       stroke: color,

@@ -4,7 +4,7 @@ description: >-
   Scan infrastructure-as-code, cloud configurations, and find secrets. Use when:
   "check terraform", "scan kubernetes", "IaC", "find secrets",
   "scan dockerfile", "cloud security", "misconfigurations".
-version: 0.77.1
+version: 0.78.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. Optional: kubectl for
@@ -20,7 +20,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.77.1
+    docker: ghcr.io/msaad00/agent-bom:0.78.0
   openclaw:
     requires:
       bins: []

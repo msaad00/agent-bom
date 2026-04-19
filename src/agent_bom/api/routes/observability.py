@@ -10,10 +10,12 @@ from __future__ import annotations
 import logging
 import uuid
 from collections import defaultdict
+from copy import deepcopy
 
 from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import JobStatus, PushPayload, ScanJob, ScanRequest
+from agent_bom.api.pipeline import _persist_graph_snapshot
 from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_store
 from agent_bom.api.tenant_quota import enforce_retained_jobs_quota
 from agent_bom.security import sanitize_error
@@ -30,6 +32,32 @@ def _now() -> str:
 
 def _tenant_id(request: Request) -> str:
     return getattr(request.state, "tenant_id", "default")
+
+
+def _normalize_pushed_report(body: PushPayload, *, fallback_scan_id: str) -> dict:
+    """Coerce pushed payloads onto the canonical scan report contract.
+
+    The main scan pipeline emits `blast_radius` and agent `type`, while some
+    push clients still send `blast_radii` and `agent_type`. Normalizing here
+    keeps graph persistence, UI pages, and downstream exporters aligned.
+    """
+    report = body.model_dump()
+    blast_radius = deepcopy(report.get("blast_radius") or report.get("blast_radii") or [])
+    report["blast_radius"] = blast_radius
+    if "blast_radii" not in report:
+        report["blast_radii"] = deepcopy(blast_radius)
+    report["scan_id"] = str(report.get("scan_id") or fallback_scan_id)
+
+    normalized_agents: list[dict] = []
+    for raw_agent in report.get("agents", []):
+        agent = dict(raw_agent)
+        agent_type = str(agent.get("type") or agent.get("agent_type") or "").strip()
+        if agent_type:
+            agent["type"] = agent_type
+            agent["agent_type"] = agent_type
+        normalized_agents.append(agent)
+    report["agents"] = normalized_agents
+    return report
 
 
 @router.post("/v1/traces", tags=["observability"])
@@ -129,10 +157,15 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
     )
     job.status = JobStatus.DONE
     job.completed_at = _now()
-    job_result = body.model_dump()
+    job_result = _normalize_pushed_report(body, fallback_scan_id=job.job_id)
     job_result["pushed"] = True
     job.result = job_result
     job.progress.append(f"Received via push from source={body.source_id}")
+    try:
+        _persist_graph_snapshot(job, job_result)
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("Pushed-result graph persistence failed: %s", exc)
+        job.progress.append(f"Graph persistence skipped: {sanitize_error(exc)}")
     _get_store().put(job)
     return {"job_id": job.job_id, "source_id": body.source_id, "status": "stored"}
 

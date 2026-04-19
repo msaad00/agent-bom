@@ -206,7 +206,7 @@ def serve_cmd(
         api_key=api_key,
     )
 
-    _ui_dist = Path(__file__).parent / "ui_dist"
+    _ui_dist = Path(__file__).resolve().parents[1] / "ui_dist"
     click.echo(f"\n  API server  →  http://{host}:{port}")
     click.echo(f"  API docs    →  http://{host}:{port}/docs")
     if (_ui_dist / "index.html").exists():

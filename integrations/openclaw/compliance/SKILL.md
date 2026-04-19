@@ -6,7 +6,7 @@ description: >-
   Generate SBOMs and compliance reports. Use when:
   "compliance report", "NIST", "SOC 2", "ISO 27001", "OWASP", "EU AI Act",
   "AISVS", "generate SBOM", "policy check".
-version: 0.77.1
+version: 0.78.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+. Install via pipx or pip. OWASP/NIST/EU AI Act/MITRE
@@ -23,7 +23,7 @@ metadata:
   install:
     pipx: agent-bom
     pip: agent-bom
-    docker: ghcr.io/msaad00/agent-bom:0.77.1
+    docker: ghcr.io/msaad00/agent-bom:0.78.0
   openclaw:
     requires:
       bins: []

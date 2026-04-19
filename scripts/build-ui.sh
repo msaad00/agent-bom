@@ -7,7 +7,7 @@ ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 echo "Building dashboard..."
 cd "$ROOT_DIR/ui"
 npm ci --silent
-npm run build
+NEXT_EXPORT=1 npm run build
 
 echo "Copying static output to package..."
 rm -rf "$ROOT_DIR/src/agent_bom/ui_dist"

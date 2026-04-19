@@ -6,7 +6,22 @@
  */
 
 import { useState, useCallback } from "react";
-import { Maximize2, Minimize2, Download, ChevronDown } from "lucide-react";
+import {
+  Brain,
+  Boxes,
+  Bug,
+  ChevronDown,
+  Cloud,
+  Database,
+  Download,
+  FolderTree,
+  KeyRound,
+  Maximize2,
+  Minimize2,
+  Server,
+  Shield,
+  Wrench,
+} from "lucide-react";
 import { useReactFlow } from "@xyflow/react";
 import type { LegendItem } from "@/lib/graph-utils";
 
@@ -16,6 +31,9 @@ export function GraphLegend({ items }: { items: LegendItem[] }) {
   const [open, setOpen] = useState(false);
 
   if (items.length === 0) return null;
+
+  const nodeItems = items.filter((item) => item.kind !== "edge");
+  const edgeItems = items.filter((item) => item.kind === "edge");
 
   return (
     <div className="relative">
@@ -32,21 +50,55 @@ export function GraphLegend({ items }: { items: LegendItem[] }) {
       </button>
       {open && (
         <div className="absolute right-0 top-full z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-zinc-700 bg-zinc-900/95 p-3 shadow-2xl shadow-black/30 backdrop-blur-md">
-          <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] text-zinc-300 sm:grid-cols-3">
-            {items.map((item) => (
-              <span key={item.label} className="flex items-center gap-2 whitespace-nowrap">
-                <LegendMarker item={item} />
-                {item.label}
-              </span>
-            ))}
-          </div>
+          {nodeItems.length > 0 && (
+            <LegendSection title="Entities" items={nodeItems} />
+          )}
+          {edgeItems.length > 0 && (
+            <LegendSection title="Relationships" items={edgeItems} />
+          )}
         </div>
       )}
     </div>
   );
 }
 
+function LegendSection({ title, items }: { title: string; items: LegendItem[] }) {
+  return (
+    <div className="first:mt-0 mt-3">
+      <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">{title}</div>
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] text-zinc-300 sm:grid-cols-3">
+        {items.map((item) => (
+          <span key={`${title}:${item.label}`} className="flex items-center gap-2 whitespace-nowrap">
+            <LegendMarker item={item} />
+            <LegendIcon item={item} />
+            {item.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function LegendMarker({ item }: { item: LegendItem }) {
+  if (item.kind === "edge") {
+    return (
+      <span className="relative inline-flex h-2.5 w-5 shrink-0 items-center">
+        <span
+          className="block w-full border-t"
+          style={{
+            borderTopColor: item.color,
+            borderTopStyle: item.lineStyle === "dashed" ? "dashed" : "solid",
+            borderTopWidth: 2,
+          }}
+        />
+        <span
+          className="absolute right-0 h-2 w-2 rotate-45 border-r-2 border-t-2"
+          style={{ borderColor: item.color }}
+        />
+      </span>
+    );
+  }
+
   const className =
     item.shape === "square"
       ? "h-2.5 w-2.5 rounded-[3px]"
@@ -66,6 +118,25 @@ function LegendMarker({ item }: { item: LegendItem }) {
       }}
     />
   );
+}
+
+function LegendIcon({ item }: { item: LegendItem }) {
+  const label = item.label.toLowerCase();
+  const className = "h-3.5 w-3.5 shrink-0";
+
+  if (label.includes("agent")) return <Shield className={className} style={{ color: item.color }} />;
+  if (label.includes("server")) return <Server className={className} style={{ color: item.color }} />;
+  if (label.includes("package")) return <Boxes className={className} style={{ color: item.color }} />;
+  if (label.includes("cred")) return <KeyRound className={className} style={{ color: item.color }} />;
+  if (label.includes("tool")) return <Wrench className={className} style={{ color: item.color }} />;
+  if (label.includes("vuln") || label.includes("cve")) return <Bug className={className} style={{ color: item.color }} />;
+  if (label.includes("model")) return <Brain className={className} style={{ color: item.color }} />;
+  if (label.includes("dataset")) return <Database className={className} style={{ color: item.color }} />;
+  if (label.includes("cloud")) return <Cloud className={className} style={{ color: item.color }} />;
+  if (label.includes("provider") || label.includes("fleet") || label.includes("cluster")) {
+    return <FolderTree className={className} style={{ color: item.color }} />;
+  }
+  return null;
 }
 
 // ─── Fullscreen Toggle ──────────────────────────────────────────────────────

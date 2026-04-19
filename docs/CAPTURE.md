@@ -11,20 +11,24 @@ that does not happen again.
 
 1. Clean checkout on the release tag.
 2. Fresh local DB with the bundled offline vuln catalog.
-3. API and dashboard started against an empty SQLite path so only demo
-   data is present:
+3. Build the bundled dashboard, then start the API against an empty SQLite
+   path so only demo data is present:
 
    ```bash
    pip install -e ".[ui,api]"
+   make build-ui
    AGENT_BOM_DB=/tmp/agent-bom-capture.db agent-bom serve
    ```
 
-4. Push the bundled demo inventory through the CLI so the API persists
-   the agents, servers, packages, and findings the screenshots need:
+4. Generate the bundled demo report offline, then push that exact payload to
+   the API so the stored job matches the terminal demo and does not pull in
+   local workstation discovery:
 
    ```bash
-   agent-bom agents --demo --offline \
-     --push-url http://127.0.0.1:8422/v1/fleet/sync
+   agent-bom agents --demo --offline -f json -o /tmp/agent-bom-demo-report.json
+   curl -X POST -H 'content-type: application/json' \
+     --data-binary @/tmp/agent-bom-demo-report.json \
+     http://127.0.0.1:8422/v1/results/push
    ```
 
 ## Per-screenshot scope
@@ -32,7 +36,7 @@ that does not happen again.
 | Asset | Page | Required scope | Rationale |
 |---|---|---|---|
 | `dashboard-live.png` | `/dashboard` (Risk overview) | All agents · scroll showing F-grade gauge, posture sub-scores, score breakdown, top attack paths | Captures the headline counters (actively exploited / credentials exposed / reachable tools / top-path risk), the security-posture grade, and the score breakdown — all in one frame |
-| `mesh-live.png` | `/mesh` | Filter to `claude-desktop` | Has 2 servers, 4 packages, 5+ CVEs — produces a rich graph |
+| `mesh-live.png` | `/mesh` | Filter to `cursor` | Has 2 servers, 8 packages, 10+ CVEs, and richer tool + credential traversal than the smaller `claude-desktop` slice |
 | `remediation-live.png` | `/remediation` | All frameworks tab | Shows the full prioritized fix list |
 
 ### Dashboard layout (current)
@@ -50,10 +54,11 @@ the older single-column attack-path layout. The current frame contains:
 A capture that misses any of those sections is incomplete. Re-shoot
 with the page scrolled to top so the gauge + posture card both fit.
 
-The `claude-desktop` agent in `src/agent_bom/demo.py` is the one wired
-for the mesh hero shot — it pulls in `axios@1.4.0` (7 CVEs) and
-`certifi@2022.12.7` (2 CVEs), enough traversal to populate every column.
-Capturing under any other agent risks the empty-graph regression.
+The `cursor` agent in `src/agent_bom/demo.py` is the best mesh hero shot in
+the current demo inventory — it brings the filesystem and database servers,
+multiple tools, reachable credentials, and the densest CVE cluster
+(`pillow@9.0.0`, `cryptography@39.0.0`, `werkzeug@2.2.2`). Capturing under
+an unscoped or lower-signal agent risks a flatter graph.
 
 ## Accuracy guardrail
 

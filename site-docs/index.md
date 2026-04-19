@@ -44,13 +44,24 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 | **SBOM** | CycloneDX 1.6, SPDX 3.0 output |
 | **Cloud** | AWS, Snowflake, Azure, GCP CIS benchmarks |
 
-## Deployment options
+## Deploy In Your Infra
 
-| Mode | Command |
+`agent-bom` is not limited to one hosting model. The clean self-hosted story is:
+
+- **control plane**: API + UI + Postgres
+- **scan**: CI jobs, scheduled CronJobs, or one-off discovery runs
+- **fleet**: endpoint and collector inventory pushed into one control plane
+- **runtime**: selected `agent-bom proxy` sidecars or local proxy wrappers
+- **gateway**: central policy management for those proxy paths
+
+| Need | Recommended path |
 |---|---|
-| CLI | `pip install agent-bom` |
-| MCP server | `agent-bom mcp server` |
-| Docker | `docker run ghcr.io/msaad00/agent-bom agents` |
-| GitHub Action | `uses: msaad00/agent-bom@v0.77.1` |
-| Kubernetes | Helm chart + CronJob + DaemonSet |
-| Remote SSE | Self-host or use hosted endpoint |
+| local scan or CI gate | CLI or GitHub Action |
+| self-hosted operator plane | API + UI + Postgres |
+| your own AWS / EKS rollout | Helm control plane + scheduled scan jobs + selected proxy sidecars |
+| developer workstation inventory | fleet sync |
+| live MCP enforcement | proxy + gateway |
+| assistant-facing tool server | `agent-bom mcp server` |
+
+[Deployment Overview](deployment/overview.md){ .md-button .md-button--primary }
+[Your Own AWS / EKS](deployment/own-infra-eks.md){ .md-button }

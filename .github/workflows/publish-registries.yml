@@ -209,7 +209,11 @@ jobs:
       - name: Install ClawHub CLI
         run: |
           npm install -g clawhub@latest
-          clawhub --version
+          # `clawhub --version` is not a supported option on the current CLI, so
+          # use --help as a binary-present probe instead. `npm install -g` already
+          # exits non-zero on install failure; this just confirms the command is
+          # on PATH before the publish step runs.
+          clawhub --help > /dev/null
 
       - name: Publish to ClawHub
         env:

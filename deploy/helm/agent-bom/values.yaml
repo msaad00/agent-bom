@@ -349,7 +349,7 @@ startupProbe:
 
 networkPolicy:
   enabled: true
-  restrictIngress: false
+  restrictIngress: true
   ingress: []
   allowDns: true
   allowWeb: true

@@ -23,6 +23,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional
 
+from agent_bom.mcp_tool_rules import evaluate_tool
 from agent_bom.models import MCPResource, MCPServer, MCPTool, TransportType
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ class ServerIntrospection:
     runtime_resources: list[MCPResource] = field(default_factory=list)
     error: Optional[str] = None
     tool_schema_findings: list[str] = field(default_factory=list)
+    tool_schema_rule_findings: list[dict] = field(default_factory=list)
     resource_findings: list[str] = field(default_factory=list)
     capability_risk_score: float = 0.0
     capability_risk_level: str = "low"
@@ -99,6 +101,7 @@ class ServerIntrospection:
             "resources_added": self.resources_added,
             "resources_removed": self.resources_removed,
             "tool_schema_findings": self.tool_schema_findings,
+            "tool_schema_rule_findings": self.tool_schema_rule_findings,
             "resource_findings": self.resource_findings,
             "has_drift": self.has_drift,
             "capability_risk_score": self.capability_risk_score,
@@ -116,6 +119,7 @@ class ServerIntrospection:
                     "name": t.name,
                     "description": t.description,
                     "schema_findings": t.schema_findings,
+                    "schema_rule_findings": t.schema_rule_findings,
                     "risk_score": t.risk_score,
                 }
                 for t in self.runtime_tools
@@ -378,6 +382,7 @@ async def _query_capabilities(
                 input_schema=getattr(tool, "inputSchema", None),
             )
             runtime_tool.schema_findings = _lint_tool_schema(runtime_tool)
+            runtime_tool.schema_rule_findings = [finding.to_dict() for finding in evaluate_tool(runtime_tool)]
             result.runtime_tools.append(runtime_tool)
         tools_ok = True
     except Exception as exc:
@@ -420,6 +425,7 @@ async def _query_capabilities(
         result.resources_removed = sorted(config_resource_uris - runtime_resource_uris)
 
     result.tool_schema_findings = sorted({finding for tool in result.runtime_tools for finding in tool.schema_findings})
+    result.tool_schema_rule_findings = [finding for tool in result.runtime_tools for finding in tool.schema_rule_findings]
     result.resource_findings = sorted({finding for resource in result.runtime_resources for finding in resource.content_findings})
     result.runtime_fingerprint = _runtime_server_fingerprint(server, result.runtime_tools, result.runtime_resources)
     _apply_runtime_risk(server, result)

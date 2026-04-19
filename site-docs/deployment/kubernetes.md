@@ -82,7 +82,7 @@ helm install agent-bom deploy/helm/agent-bom/ \
 | `controlPlane.enabled` | `false` | Package API + dashboard Deployments and Services |
 | `controlPlane.ingress.enabled` | `false` | Add same-origin ingress routing for UI + API |
 | `controlPlane.ui.env` | `NEXT_PUBLIC_API_URL=\"\"` | Blank by default so the browser uses same-origin paths |
-| `networkPolicy.restrictIngress` | `false` | Keep ingress open unless you explicitly provide ingress policy rules |
+| `networkPolicy.restrictIngress` | `true` | Deny ingress by default; add explicit ingress policy rules for allowed callers |
 | `rbac.create` | `true` | Create RBAC resources |
 | `serviceAccount.annotations` | `{}` | Attach provider-specific identity such as AWS IRSA |
 

@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from starlette.testclient import TestClient
 
+from agent_bom.api import stores as _stores
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.server import app
 from agent_bom.api.store import InMemoryJobStore
@@ -96,6 +97,7 @@ def test_compliance_export_end_to_end_returns_real_evidence() -> None:
         ],
     }
     store.put(job)
+    previous_store = _stores._store  # preserve prior backend (may be None or a real one)
     set_job_store(store)
     try:
         client = TestClient(app)
@@ -115,4 +117,6 @@ def test_compliance_export_end_to_end_returns_real_evidence() -> None:
         assert exported["LLM01"]["evidence"][0]["control_tag"] == "LLM01"
         assert resp.headers.get("X-Agent-Bom-Compliance-Report-Signature")
     finally:
-        set_job_store(InMemoryJobStore())
+        # Restore whatever was configured before this test — including None,
+        # which lets _get_store() recreate a fresh default on next access.
+        _stores._store = previous_store

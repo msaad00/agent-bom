@@ -153,6 +153,119 @@ For enterprise pilots, prefer:
 - IRSA on the scanner service account
 - internal ingress / VPN-only access
 
+## Pilot Day-1 runbook — verified end-to-end
+
+This section is a literal script you can run in your AWS sandbox. Every
+command below either lives in this repo or is a single `kubectl` /
+`helm` / `curl`. Nothing hand-waved.
+
+### Stage 1 — Control plane install (5–10 min)
+
+```mermaid
+flowchart LR
+  kc[kubectl / helm] -->|install| helm[Helm chart<br/>deploy/helm/agent-bom]
+  helm --> ns[(namespace: agent-bom)]
+  ns --> api[API + UI + scanner CronJob]
+  api --> pg[(Postgres<br/>RDS or in-cluster)]
+  api --> es[(External Secrets<br/>AWS Secrets Manager)]
+```
+
+```bash
+# 1. Create secrets in AWS Secrets Manager (names match ExternalSecrets in the chart)
+aws secretsmanager create-secret --name agent-bom/api-key --secret-string "$(openssl rand -hex 32)"
+aws secretsmanager create-secret --name agent-bom/audit-hmac --secret-string "$(openssl rand -hex 32)"
+aws secretsmanager create-secret --name agent-bom/postgres-url --secret-string "postgres://…"
+
+# 2. Generate the Ed25519 key pair for compliance evidence signing
+openssl genpkey -algorithm ed25519 -out /tmp/evidence-priv.pem
+aws secretsmanager create-secret --name agent-bom/evidence-signing \
+  --secret-string "$(cat /tmp/evidence-priv.pem)"
+rm /tmp/evidence-priv.pem
+
+# 3. Helm install with the focused pilot values
+helm install agent-bom deploy/helm/agent-bom \
+  -n agent-bom --create-namespace \
+  -f deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml
+```
+
+### Stage 2 — Smoke test (2 min)
+
+Run the pilot verification script from any workstation with a
+`kubectl port-forward` open to the API service:
+
+```bash
+kubectl -n agent-bom port-forward svc/agent-bom-api 8080:8080 &
+./scripts/pilot-verify.sh http://localhost:8080 "$API_KEY"
+```
+
+The script exercises the five capabilities the pilot is scoped to and
+fails fast with a non-zero exit if any check breaks:
+
+1. `GET /healthz` — control plane alive
+2. `GET /v1/auth/debug` — auth resolved as expected
+3. `POST /v1/fleet/sync` — endpoint fleet ingest works
+4. `POST /v1/scan` — a small demo scan runs end-to-end
+5. `GET /v1/compliance/verification-key` — Ed25519 key is exposed
+6. `GET /v1/compliance/soc2/report` — bundle comes back signed + evidence non-empty
+7. Re-verifies the bundle signature with the public key from step 5
+
+### Stage 3 — MCP proxy sidecar on one workload (10 min)
+
+```mermaid
+flowchart LR
+  dev[Developer laptop] --> cp[agent-bom control plane]
+  cp -->|policy pull| sidecar[agent-bom-proxy sidecar]
+  sidecar -. audit push .-> cp
+  sidecar --- mcp[MCP server pod]
+```
+
+```bash
+kubectl apply -f deploy/k8s/proxy-sidecar-pilot.yaml
+kubectl -n agent-bom-workloads rollout status deploy/sample-mcp
+```
+
+Verify:
+
+```bash
+kubectl -n agent-bom-workloads logs deploy/sample-mcp -c agent-bom-runtime --tail=50
+# expect: "policy refresh succeeded"  and an audit heartbeat to the control plane
+```
+
+### Stage 4 — Pull auditor-ready evidence (1 min)
+
+```bash
+curl -s http://localhost:8080/v1/compliance/verification-key \
+  -H "X-Agent-Bom-Role: admin" -H "X-Agent-Bom-Tenant-ID: pilot-acme" \
+  | jq -r .public_key_pem > pinned-pub.pem
+
+curl -sD headers.txt -o soc2.json \
+  "http://localhost:8080/v1/compliance/soc2/report" \
+  -H "X-Agent-Bom-Role: admin" -H "X-Agent-Bom-Tenant-ID: pilot-acme"
+
+python - <<'PY'
+import json
+from cryptography.hazmat.primitives import serialization
+body = json.load(open("soc2.json"))
+pub = serialization.load_pem_public_key(open("pinned-pub.pem").read().encode())
+sig = [l.split(": ",1)[1].strip() for l in open("headers.txt") if l.lower().startswith("x-agent-bom-compliance-report-signature")][0]
+pub.verify(bytes.fromhex(sig), json.dumps(body, sort_keys=True).encode())
+print("signature verified against pinned Ed25519 key", body["signature_key_id"])
+PY
+```
+
+See [docs/COMPLIANCE_SIGNING.md](../../docs/COMPLIANCE_SIGNING.md) for the full verification cookbook.
+
+## Break-glass runbook
+
+| Situation | Action |
+|---|---|
+| Leaked API key | `curl -X POST /v1/auth/keys/{key_id}/rotate` (rotates in place, zero downtime) |
+| Need to block all ingest | `kubectl scale deploy/agent-bom-api -n agent-bom --replicas=0` — the gateway + fleet endpoints stop accepting traffic; scans already queued persist in Postgres |
+| Need to retire Ed25519 key | Generate new pair, update `agent-bom/evidence-signing` in Secrets Manager, `kubectl rollout restart deploy/agent-bom-api`. Old bundles remain verifiable against the old public key — keep it in your auditor archive. |
+| Postgres corruption | `bash deploy/ops/restore-postgres-backup.sh` — restore is round-tripped nightly in `.github/workflows/backup-restore.yml`. |
+| Runtime sidecar misbehaving | `kubectl delete pod -l app=sample-mcp -n agent-bom-workloads` — the sidecar is stateless; control plane re-issues policy on next pull. |
+| Need to revoke tenant access | Delete API keys for the tenant; evidence bundle audit trail retains historical access record (`compliance.report_exported`). |
+
 ## What this pilot is not
 
 This pilot is not trying to prove every `agent-bom` surface at once.

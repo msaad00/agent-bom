@@ -61,9 +61,8 @@ High-risk ingest surfaces are fuzzed because they accept external data:
 
 The external scanner fuzz target covers:
 
-- Trivy JSON
-- Grype JSON
-- Syft JSON
+- CVE-scanner JSON reports (common industry formats)
+- container-SBOM JSON reports (common industry formats)
 - auto-detection of scanner formats
 
 ## Release trust

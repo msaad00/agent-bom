@@ -39,6 +39,7 @@ _rate_limit_hits = _LabelledCounter()  # labelled by bucket name (global, tenant
 _compliance_exports = _LabelledCounter()  # labelled by algorithm (Ed25519, HMAC-SHA256)
 _compliance_export_bytes = _LabelledCounter()  # labelled by framework key
 _scan_completions = _LabelledCounter()  # labelled by status (done, failed, cancelled)
+_gateway_relays = _LabelledCounter()  # labelled by "<upstream>|<outcome>"
 
 
 def record_auth_failure(reason: str) -> None:
@@ -60,6 +61,17 @@ def record_compliance_export(algorithm: str, framework_key: str, byte_count: int
 def record_scan_completion(status: str) -> None:
     """Record a scan outcome (done, failed, cancelled)."""
     _scan_completions.inc(status)
+
+
+def record_gateway_relay(upstream: str, outcome: str) -> None:
+    """Record a gateway relay event.
+
+    ``upstream`` is the routing name (e.g. "jira"); ``outcome`` is one of
+    ``forwarded``, ``blocked``, ``upstream_error``. Labelled as
+    ``upstream|outcome`` in the Prometheus output so operators can
+    rate() by either dimension.
+    """
+    _gateway_relays.inc(f"{upstream}|{outcome}")
 
 
 def render_prometheus_lines() -> list[str]:
@@ -106,6 +118,15 @@ def render_prometheus_lines() -> list[str]:
     for status, count in sorted(scans.items()):
         lines.append(f'agent_bom_scan_completions_total{{status="{status}"}} {count}')
 
+    relays = _gateway_relays.snapshot()
+    lines.append("# HELP agent_bom_gateway_relays_total Multi-MCP gateway relay events by upstream and outcome")
+    lines.append("# TYPE agent_bom_gateway_relays_total counter")
+    if not relays:
+        lines.append('agent_bom_gateway_relays_total{upstream="none",outcome="none"} 0')
+    for label, count in sorted(relays.items()):
+        upstream, _, outcome = label.partition("|")
+        lines.append(f'agent_bom_gateway_relays_total{{upstream="{upstream}",outcome="{outcome}"}} {count}')
+
     return lines
 
 
@@ -117,6 +138,7 @@ def reset_for_tests() -> None:
         _compliance_exports,
         _compliance_export_bytes,
         _scan_completions,
+        _gateway_relays,
     ):
         with counter._lock:  # noqa: SLF001
             counter._values.clear()  # noqa: SLF001

@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -28,6 +30,38 @@ class UpstreamConfigError(ValueError):
     """Raised when ``upstreams.yaml`` is malformed or references missing env vars."""
 
 
+SUPPORTED_AUTH_MODES: tuple[str, ...] = ("none", "bearer", "oauth2_client_credentials")
+
+
+# Process-wide cache for OAuth2 client-credentials access tokens. Keyed by
+# ``(token_url, client_id, scopes)`` so two upstreams pointing at the same
+# IdP with the same credentials share a token.
+_oauth_cache_lock = threading.Lock()
+_oauth_cache: dict[tuple[str, str, tuple[str, ...]], tuple[str, float]] = {}
+
+
+def _cached_oauth_token(key: tuple[str, str, tuple[str, ...]]) -> str | None:
+    with _oauth_cache_lock:
+        entry = _oauth_cache.get(key)
+        if entry is None:
+            return None
+        token, expires_at = entry
+        if expires_at - 60.0 <= time.time():
+            return None  # expire early so we refresh before the token actually dies
+        return token
+
+
+def _store_oauth_token(key: tuple[str, str, tuple[str, ...]], token: str, expires_in: int) -> None:
+    with _oauth_cache_lock:
+        _oauth_cache[key] = (token, time.time() + max(30, expires_in))
+
+
+def reset_oauth_cache_for_tests() -> None:
+    """Drop the process-wide OAuth2 token cache — test-only entry point."""
+    with _oauth_cache_lock:
+        _oauth_cache.clear()
+
+
 @dataclass(frozen=True)
 class UpstreamConfig:
     """A single upstream MCP server the gateway fronts.
@@ -39,12 +73,13 @@ class UpstreamConfig:
     url:
         Base URL of the upstream MCP server. Must be HTTPS in production.
     auth:
-        One of ``"none"``, ``"bearer"``, ``"oauth2_client_credentials"``.
+        One of ``SUPPORTED_AUTH_MODES`` — ``none``, ``bearer``, or
+        ``oauth2_client_credentials``.
     token_env:
         Env var containing the bearer token (used when ``auth == "bearer"``).
     oauth_token_url / oauth_client_id_env / oauth_client_secret_env / oauth_scopes:
-        Parameters for ``oauth2_client_credentials`` — fetched lazily on first
-        upstream call and cached until expiry.
+        OAuth2 client-credentials parameters. Tokens are fetched on first
+        use and cached until ~60 s before expiry.
     headers:
         Additional static headers to inject on every upstream request.
     """
@@ -60,7 +95,12 @@ class UpstreamConfig:
     headers: dict[str, str] = field(default_factory=dict)
 
     def resolved_static_headers(self) -> dict[str, str]:
-        """Return the per-upstream headers with bearer tokens resolved from env."""
+        """Return the per-upstream static headers with bearer tokens resolved from env.
+
+        OAuth2 client-credentials tokens are NOT included here because they
+        require a network fetch + refresh loop — use ``resolve_auth_headers``
+        for those (async, token-cache-aware).
+        """
         resolved = dict(self.headers)
         if self.auth == "bearer":
             if not self.token_env:
@@ -70,6 +110,65 @@ class UpstreamConfig:
                 raise UpstreamConfigError(f"upstream {self.name!r}: token_env {self.token_env!r} is not set")
             resolved["Authorization"] = f"Bearer {token}"
         return resolved
+
+    async def resolve_auth_headers(self) -> dict[str, str]:
+        """Return the full per-request header set, fetching OAuth2 tokens if needed."""
+        headers = self.resolved_static_headers()
+        if self.auth == "oauth2_client_credentials":
+            headers["Authorization"] = f"Bearer {await self._fetch_oauth2_token()}"
+        return headers
+
+    async def _fetch_oauth2_token(self) -> str:
+        if not self.oauth_token_url:
+            raise UpstreamConfigError(f"upstream {self.name!r}: auth=oauth2_client_credentials requires oauth_token_url")
+        if not self.oauth_client_id_env or not self.oauth_client_secret_env:
+            raise UpstreamConfigError(
+                f"upstream {self.name!r}: auth=oauth2_client_credentials requires oauth_client_id_env and oauth_client_secret_env"
+            )
+        client_id = os.environ.get(self.oauth_client_id_env, "")
+        client_secret = os.environ.get(self.oauth_client_secret_env, "")
+        if not client_id or not client_secret:
+            raise UpstreamConfigError(
+                f"upstream {self.name!r}: OAuth2 client credentials env vars "
+                f"({self.oauth_client_id_env}, {self.oauth_client_secret_env}) are not set"
+            )
+
+        cache_key = (self.oauth_token_url, client_id, self.oauth_scopes)
+        cached = _cached_oauth_token(cache_key)
+        if cached is not None:
+            return cached
+
+        import httpx
+
+        form: dict[str, str] = {
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret,
+        }
+        if self.oauth_scopes:
+            form["scope"] = " ".join(self.oauth_scopes)
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                self.oauth_token_url,
+                data=form,
+                headers={"Accept": "application/json"},
+            )
+            response.raise_for_status()
+            payload = response.json()
+
+        access_token = payload.get("access_token")
+        if not isinstance(access_token, str) or not access_token:
+            raise UpstreamConfigError(f"upstream {self.name!r}: OAuth2 token endpoint {self.oauth_token_url!r} returned no access_token")
+        expires_in = int(payload.get("expires_in") or 3600)
+        _store_oauth_token(cache_key, access_token, expires_in)
+        logger.info(
+            "gateway: fetched OAuth2 access token for upstream=%s token_url=%s (expires_in=%ds)",
+            self.name,
+            self.oauth_token_url,
+            expires_in,
+        )
+        return access_token
 
 
 class UpstreamRegistry:
@@ -101,6 +200,36 @@ class UpstreamRegistry:
         logger.info("gateway: loaded %d upstreams from %s", len(upstreams), path)
         return cls(upstreams)
 
+    @classmethod
+    def from_discovery_response(cls, payload: dict[str, Any]) -> "UpstreamRegistry":
+        """Build a registry from a ``/v1/gateway/upstreams/discovered`` response.
+
+        The control plane returns upstreams with ``auth: none`` because
+        discovery sees URLs but not credentials. Operators who need bearer
+        tokens layer them on via their local ``upstreams.yaml`` overlay
+        (see ``merge_with_overlay``).
+        """
+        raw_upstreams = payload.get("upstreams") or []
+        if not isinstance(raw_upstreams, list):
+            raise UpstreamConfigError("discovery response must contain an 'upstreams' list")
+        upstreams = [_parse_upstream(raw, source="control-plane discovery") for raw in raw_upstreams]
+        logger.info("gateway: loaded %d upstreams from control-plane discovery", len(upstreams))
+        return cls(upstreams)
+
+    def merged_with(self, overlay: "UpstreamRegistry") -> "UpstreamRegistry":
+        """Merge another registry on top of this one — overlay wins per name.
+
+        Used when the gateway pulls auto-discovered upstreams from the
+        control plane AND the operator wants to override a subset (typically
+        to attach bearer-token auth to an upstream discovery can't infer).
+        """
+        merged: dict[str, UpstreamConfig] = dict(self._by_name)
+        for name, upstream in overlay._by_name.items():
+            merged[name] = upstream
+        new = UpstreamRegistry.__new__(UpstreamRegistry)
+        new._by_name = merged
+        return new
+
     def get(self, name: str) -> UpstreamConfig | None:
         return self._by_name.get(name)
 
@@ -112,6 +241,34 @@ class UpstreamRegistry:
 
     def __contains__(self, name: object) -> bool:
         return isinstance(name, str) and name in self._by_name
+
+
+def fetch_discovered_upstreams(
+    control_plane_url: str,
+    *,
+    token: str | None = None,
+    timeout: float = 10.0,
+) -> dict[str, Any]:
+    """Pull auto-discovered upstreams from an agent-bom control plane.
+
+    Returns the JSON body of ``GET /v1/gateway/upstreams/discovered``.
+    Callers typically wrap this in ``UpstreamRegistry.from_discovery_response``.
+
+    Kept dependency-light (httpx is already a core dep) so the gateway
+    startup path doesn't pull extra packages.
+    """
+    import httpx
+
+    headers = {"Accept": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    response = httpx.get(
+        control_plane_url.rstrip("/") + "/v1/gateway/upstreams/discovered",
+        headers=headers,
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    return response.json()
 
 
 def _parse_upstream(raw: Any, *, source: str) -> UpstreamConfig:
@@ -127,8 +284,10 @@ def _parse_upstream(raw: Any, *, source: str) -> UpstreamConfig:
         raise UpstreamConfigError(f"{source}: upstream {name!r} requires an http(s) 'url'")
 
     auth = raw.get("auth", "none")
-    if auth not in {"none", "bearer", "oauth2_client_credentials"}:
-        raise UpstreamConfigError(f"{source}: upstream {name!r} has unsupported auth={auth!r}")
+    if auth not in SUPPORTED_AUTH_MODES:
+        raise UpstreamConfigError(
+            f"{source}: upstream {name!r} has unsupported auth={auth!r} — supported: {', '.join(SUPPORTED_AUTH_MODES)}"
+        )
 
     headers = raw.get("headers") or {}
     if not isinstance(headers, dict):

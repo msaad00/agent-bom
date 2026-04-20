@@ -9,6 +9,7 @@ Endpoints:
     POST   /v1/gateway/evaluate              dry-run policy evaluation
     GET    /v1/gateway/audit                 policy audit log
     GET    /v1/gateway/stats                 gateway statistics
+    GET    /v1/gateway/upstreams/discovered  MCP upstreams discovered across the fleet
 """
 
 from __future__ import annotations
@@ -22,9 +23,9 @@ from typing import TYPE_CHECKING, Any, cast
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
-from agent_bom.api.models import EvaluateRequest, PolicyCreate, PolicyUpdate
-from agent_bom.api.stores import _get_policy_store
-from agent_bom.rbac import require_permission
+from agent_bom.api.models import EvaluateRequest, JobStatus, PolicyCreate, PolicyUpdate
+from agent_bom.api.stores import _get_policy_store, _get_store
+from agent_bom.rbac import require_authenticated_permission, require_permission
 
 if TYPE_CHECKING:
     from agent_bom.api.policy_store import GatewayPolicy
@@ -222,6 +223,86 @@ async def list_gateway_audit(
         tenant_id=tenant_id,
     )
     return {"entries": [e.model_dump() for e in entries], "count": len(entries)}
+
+
+@router.get(
+    "/v1/gateway/upstreams/discovered",
+    tags=["gateway"],
+    dependencies=[cast(Any, require_authenticated_permission("read"))],
+)
+async def discovered_upstreams(request: Request) -> dict:
+    """Return the remote MCP servers discovered across the tenant's fleet.
+
+    Aggregates every MCP server surfaced by the fleet-scan path (pushed
+    via ``/v1/fleet/sync`` or returned from in-cluster scans) that has a
+    real HTTP(S) URL — i.e. something a multi-MCP gateway can actually
+    front. stdio servers are excluded because they only make sense as a
+    per-workload sidecar / wrapper (``agent-bom proxy -- <cmd>``).
+
+    Response shape matches the ``upstreams.yaml`` the gateway consumes,
+    so a gateway pod can pull this endpoint at startup and every N
+    seconds to auto-populate its registry without the operator hand-
+    editing YAML. Auth / bearer-token wiring is still operator-supplied
+    via `gateway.envFrom` because tokens live in Secrets, not scan data.
+
+    Shape::
+
+        {
+          "generated_at": "2026-04-20T00:00:00Z",
+          "tenant_id": "...",
+          "source": "fleet_scan_aggregate",
+          "upstreams": [
+            {"name": "jira", "url": "https://...", "transport": "sse",
+             "auth": "none", "source_agents": ["agent-a", ...]},
+            ...
+          ]
+        }
+
+    The ``auth`` field is always ``"none"`` from discovery — discovery can
+    see the URL but not the credential. The gateway operator decides per
+    upstream whether to switch it to ``bearer`` + ``token_env`` when
+    merging with their authored overrides.
+    """
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    jobs = _get_store().list_all(tenant_id=tenant_id)
+
+    # name -> merged upstream record
+    by_name: dict[str, dict[str, Any]] = {}
+    for job in jobs:
+        if job.status != JobStatus.DONE or not job.result:
+            continue
+        agents = job.result.get("agents") or []
+        for agent in agents:
+            agent_name = agent.get("name") or agent.get("agent_name") or ""
+            for server in agent.get("servers") or []:
+                url = server.get("url") or ""
+                if not url.startswith(("http://", "https://")):
+                    # Skip stdio MCPs — they're per-workload sidecar territory.
+                    continue
+                name = server.get("name") or ""
+                if not name:
+                    continue
+                transport = server.get("transport") or "http"
+                record = by_name.setdefault(
+                    name,
+                    {
+                        "name": name,
+                        "url": url,
+                        "transport": transport,
+                        "auth": "none",
+                        "source_agents": [],
+                    },
+                )
+                # First URL wins; record every distinct agent that reports it.
+                if agent_name and agent_name not in record["source_agents"]:
+                    record["source_agents"].append(agent_name)
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "tenant_id": tenant_id,
+        "source": "fleet_scan_aggregate",
+        "upstreams": sorted(by_name.values(), key=lambda r: r["name"]),
+    }
 
 
 @router.get("/v1/gateway/stats", tags=["gateway"], dependencies=[_dep("audit_read")])

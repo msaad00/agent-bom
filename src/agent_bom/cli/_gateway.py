@@ -29,8 +29,31 @@ def gateway_group() -> None:
     "--upstreams",
     "upstreams_path",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    required=True,
-    help="YAML file listing upstream MCP servers (see docs/design/MULTI_MCP_GATEWAY.md).",
+    default=None,
+    help=(
+        "YAML file listing upstream MCP servers (see "
+        "docs/design/MULTI_MCP_GATEWAY.md). When --from-control-plane is also "
+        "set, entries here overlay on top of discovered upstreams — use to "
+        "attach bearer-token auth to a discovered upstream."
+    ),
+)
+@click.option(
+    "--from-control-plane",
+    "control_plane_url",
+    default=None,
+    help=(
+        "Pull auto-discovered upstreams from this agent-bom control plane URL "
+        "(hits /v1/gateway/upstreams/discovered). Fleet scans surface remote "
+        "HTTP/SSE MCPs into this endpoint — the gateway registers whatever the "
+        "fleet has discovered, so pilot teams don't start from a blank YAML."
+    ),
+)
+@click.option(
+    "--control-plane-token",
+    "control_plane_token",
+    envvar="AGENT_BOM_CONTROL_PLANE_TOKEN",
+    default=None,
+    help="Bearer token for the control plane API key (or set AGENT_BOM_CONTROL_PLANE_TOKEN).",
 )
 @click.option(
     "--policy",
@@ -47,13 +70,28 @@ def gateway_group() -> None:
     show_default=True,
 )
 def serve_cmd(
-    upstreams_path: Path,
+    upstreams_path: Path | None,
+    control_plane_url: str | None,
+    control_plane_token: str | None,
     policy_path: Path | None,
     bind: str,
     log_level: str,
 ) -> None:
-    """Run the gateway server on ``bind`` and front the upstreams in ``upstreams.yaml``."""
+    """Run the gateway server on ``bind``.
+
+    Upstreams come from (a) ``--from-control-plane`` auto-discovery, (b)
+    a local ``--upstreams`` YAML, or both (YAML overlays on top of
+    discovery). Must provide at least one — an empty gateway serves
+    nothing.
+    """
     logging.basicConfig(level=log_level.upper(), format="%(asctime)s %(levelname)s %(name)s %(message)s")
+
+    if upstreams_path is None and control_plane_url is None:
+        click.echo(
+            "error: pass --upstreams or --from-control-plane (or both). See `agent-bom gateway serve --help`.",
+            err=True,
+        )
+        sys.exit(2)
 
     try:
         import uvicorn
@@ -65,13 +103,35 @@ def serve_cmd(
         sys.exit(2)
 
     from agent_bom.gateway_server import GatewaySettings, create_gateway_app
-    from agent_bom.gateway_upstreams import UpstreamConfigError, UpstreamRegistry
+    from agent_bom.gateway_upstreams import (
+        UpstreamConfigError,
+        UpstreamRegistry,
+        fetch_discovered_upstreams,
+    )
 
-    try:
-        registry = UpstreamRegistry.from_yaml(upstreams_path)
-    except UpstreamConfigError as exc:
-        click.echo(f"upstreams config error: {exc}", err=True)
-        sys.exit(2)
+    registry: UpstreamRegistry | None = None
+
+    if control_plane_url is not None:
+        try:
+            payload = fetch_discovered_upstreams(control_plane_url, token=control_plane_token)
+            discovered = UpstreamRegistry.from_discovery_response(payload)
+            click.echo(f"discovered {len(discovered)} upstream(s) from {control_plane_url}: {', '.join(discovered.names()) or '(none)'}")
+            registry = discovered
+        except Exception as exc:  # noqa: BLE001 — network/DNS/permission all surface here
+            click.echo(f"control-plane discovery failed: {exc}", err=True)
+            if upstreams_path is None:
+                sys.exit(2)
+            click.echo("continuing with local --upstreams only", err=True)
+
+    if upstreams_path is not None:
+        try:
+            local = UpstreamRegistry.from_yaml(upstreams_path)
+        except UpstreamConfigError as exc:
+            click.echo(f"upstreams config error: {exc}", err=True)
+            sys.exit(2)
+        registry = local if registry is None else registry.merged_with(local)
+
+    assert registry is not None  # guarded above
 
     policy: dict = {}
     if policy_path is not None:

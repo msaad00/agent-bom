@@ -151,7 +151,8 @@ A realistic enterprise pilot today looks like this:
 - **Each editor talks to a mix of MCPs**:
   - *Local / stdio* — filesystem, git, shell, dev-server MCPs running on the laptop.
   - *Remote / HTTP + SSE* — hosted MCPs on internal services, SaaS tools, or inside a data warehouse.
-- **MCPs hosted inside Snowflake** — e.g. a Snowflake-hosted "jira" MCP exposing Jira data via Snowpark or Cortex. These look like remote MCPs to the client.
+- **SaaS MCPs** — e.g. a Jira MCP, GitHub MCP, or similar published by the SaaS vendor or a third party. Speak HTTP/SSE over the network.
+- **Snowflake-hosted MCPs** — an MCP running as a Snowflake container service or Cortex function (separate from the SaaS MCPs above). Typically authenticated via OAuth2 client-credentials against your Snowflake IdP.
 - **An in-cluster agent-bom control plane on EKS** — ingests fleet data from every laptop, mediates gateway policy for runtime proxies, and stores scan/audit state (Postgres, ClickHouse, or Snowflake).
 
 ```mermaid
@@ -169,13 +170,16 @@ flowchart LR
     end
     localmcp["Local MCPs<br/>(filesystem · git · shell)"]
     remotemcp["Remote MCPs<br/>(HTTP / SSE)"]
-    snowmcp["Snowflake-hosted MCPs<br/>(e.g. jira MCP)"]
+    saasmcp["SaaS MCPs<br/>(e.g. Jira MCP, GitHub MCP)"]
+    snowmcp["Snowflake-hosted MCPs<br/>(Cortex / container services)"]
 
     mac --> localmcp
     mac --> remotemcp
+    mac --> saasmcp
     mac --> snowmcp
     win --> localmcp
     win --> remotemcp
+    win --> saasmcp
     win --> snowmcp
 
     fleet[agent-bom agents --push-url]
@@ -186,6 +190,7 @@ flowchart LR
     win -. daily scan .-> fleet
     localmcp -. wrapped .- proxy
     remotemcp -. wrapped .- proxy
+    saasmcp -. wrapped .- proxy
     snowmcp -. wrapped .- proxy
     fleet -->|HTTPS fleet sync| cp
     proxy -->|policy pull · audit push| cp
@@ -193,15 +198,15 @@ flowchart LR
 
 **How each surface serves this mix**:
 
-| Surface | macOS | Windows | Local MCP | Remote MCP | Snowflake MCP |
+| Surface | macOS | Windows | Local MCP | SaaS MCP | Snowflake MCP |
 |---|:-:|:-:|:-:|:-:|:-:|
 | `agent-bom agents --push-url` (fleet sync) | ✓ | ✓ | discovered + scanned | discovered (reachability + CVE on the package that implements the server) | discovered (via Snowflake cloud scanner) |
 | `agent-bom proxy -- <cmd>` stdio | ✓ | ✓ | ✓ | — | — |
-| `agent-bom proxy --sse <url>` HTTP/SSE | ✓ | ✓ | — | ✓ | ✓ (Snowflake MCPs speak HTTP) |
+| `agent-bom proxy --sse <url>` HTTP/SSE | ✓ | ✓ | — | ✓ | ✓ (when exposed over HTTP/SSE) |
 | `agent-bom cloud snowflake` | ✓ | ✓ | — | — | ✓ (native discovery + CIS benchmark) |
-| Central gateway-for-all MCPs on one URL | — | — | — | planned | planned |
+| `agent-bom gateway serve` — one URL for all MCPs | ✓ | ✓ | — | ✓ (bearer auth) | ✓ (OAuth2 client-credentials) |
 
-The last row is the gap the pilot team asks about: a single central URL that fronts every remote MCP, so laptops don't individually need to configure a proxy. See the [multi-MCP gateway design](docs/design/MULTI_MCP_GATEWAY.md).
+The last row closes the gap that pilot teams ask about: a single central URL that fronts every remote MCP, so laptops don't individually need to configure a proxy. See the [multi-MCP gateway design](docs/design/MULTI_MCP_GATEWAY.md) and the [Stage 3a gateway install walkthrough](site-docs/deployment/eks-mcp-pilot.md).
 
 ## Five product surfaces, one shared graph
 

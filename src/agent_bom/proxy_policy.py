@@ -123,6 +123,15 @@ def _classify_tool_classes(tool_name: str, arguments: dict) -> set[str]:
         classes.add("database")
     if any(term in lowered for term in ("file", "path", "directory", "filesystem")) or _extract_argument_paths(arguments):
         classes.add("filesystem")
+    # Screen-capture classification — matches browser / Playwright / Puppeteer
+    # tool names. Policies can deny this class wholesale via
+    # ``deny_tool_classes: ["screen_capture"]`` when an MCP has no business
+    # producing pixels in the pilot environment (see issue #1568).
+    if any(
+        term in tool_name.lower()
+        for term in ("screenshot", "screen_capture", "screencap", "capture_screen", "take_screenshot", "page_screenshot")
+    ):
+        classes.add("screen_capture")
     return classes
 
 

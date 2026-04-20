@@ -4,6 +4,12 @@
 
 **Problem statement:** a pilot team wants to front-door every MCP connection in their environment through a single host so they can apply policy + audit centrally without touching every laptop's editor config. Today, `agent-bom proxy` is **per-MCP** — one instance per upstream server, either as a K8s sidecar next to a workload or as a stdio wrapper on a developer laptop. Central policy + audit already exist (`/v1/gateway/policies`, `/v1/proxy/audit`); central *traffic* does not.
 
+**Concrete pilot mix the gateway must cover:**
+- SaaS MCPs (Jira, GitHub, etc.) — bearer-token auth, remote HTTPS.
+- Snowflake-hosted MCPs (Cortex functions / container services) — OAuth2 client-credentials against the Snowflake IdP.
+- In-cluster MCPs running alongside the gateway — no external auth; NetworkPolicy is the perimeter.
+- stdio-only local MCPs — out of scope for this gateway; keep using `agent-bom proxy` per-MCP wrappers.
+
 ## Goal
 
 Add a new CLI mode: `agent-bom gateway serve`.
@@ -87,8 +93,9 @@ flowchart LR
   audit[("/v1/proxy/audit")]
   metrics[("/metrics")]
   subgraph Upstreams
-    jira["Snowflake-hosted jira MCP"]
-    gh["GitHub MCP"]
+    jira["Jira MCP (SaaS)"]
+    gh["GitHub MCP (SaaS)"]
+    snow["Snowflake MCP (Cortex / container service)"]
     fs["Filesystem MCP in EKS"]
   end
 
@@ -98,6 +105,7 @@ flowchart LR
   gw -. scrape .- metrics
   gw -->|tool call| jira
   gw -->|tool call| gh
+  gw -->|tool call| snow
   gw -->|tool call| fs
 ```
 
@@ -149,7 +157,7 @@ Horizontal scale via HPA; session affinity needed on ingress (SSE is long-lived)
 3. **Day 4–5:** `agent-bom gateway serve` MVP — HTTP/SSE, 1 upstream, policy + audit + metrics wired.
 4. **Day 6:** N upstreams, per-upstream auth injection, upstream config hot-reload.
 5. **Day 7:** Helm chart `gateway` Deployment + HPA + NetworkPolicy + PrometheusRule + Grafana panel.
-6. **Day 8:** pilot team installs, points editors at the gateway URL, validates policy enforcement on a Snowflake jira MCP and a GitHub MCP.
+6. **Day 8:** pilot team installs, points editors at the gateway URL, validates policy enforcement on a SaaS MCP (Jira or GitHub) and a Snowflake-hosted MCP (Cortex function).
 
 Every stage is behind a flag until the gateway-serve tests and the pilot team sign off — sidecars remain the documented default.
 
@@ -157,4 +165,4 @@ Every stage is behind a flag until the gateway-serve tests and the pilot team si
 
 - **Upstream auth refresh**: OAuth2 client-credentials token rotation schedule. Day-1 answer: per-upstream auth policy in the config; background refresher with 80% jitter.
 - **Client authentication**: do we require a per-user token (OIDC), a per-tenant API key, or both? Day-1 answer: per-user OIDC for laptop traffic, per-service API key for machine-to-machine.
-- **Snowflake MCP specifics**: do Snowflake-hosted MCPs speak stock MCP over HTTPS, or do they require `snowflake-connector-python`? Day-1 answer: we assume they speak HTTP/SSE MCP and expose that via an ingress that speaks TLS + OAuth.
+- **Snowflake-hosted MCP specifics**: Snowflake MCPs today expose HTTP/SSE endpoints via Cortex functions or container services, authenticated against the Snowflake IdP. We assume stock MCP over HTTPS and support OAuth2 client-credentials at the gateway — the `snowflake` example in `gateway-upstreams.example.yaml` is the shape.

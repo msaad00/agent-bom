@@ -212,16 +212,18 @@ fails fast with a non-zero exit if any check breaks:
 ### Stage 3a — Multi-MCP gateway (new, HTTP/SSE upstreams — 10 min)
 
 One FastAPI service in your cluster fronts every remote MCP your
-employees hit (Snowflake-hosted jira MCP, GitHub MCP, internal review
-MCPs). Laptops point at **one URL** per MCP — no per-MCP proxy install.
+employees hit (SaaS MCPs like Jira or GitHub, Snowflake-hosted MCPs
+running as Cortex functions or container services, in-cluster MCPs).
+Laptops point at **one URL** per MCP — no per-MCP proxy install.
 
 ```mermaid
 flowchart LR
   dev[Cursor / VS Code / Claude / Codex] -->|one URL per MCP| gw["agent-bom-gateway<br/>(one Deployment, HPA)"]
   gw -. policy pull .- cp[Control plane]
   gw -. audit push .- cp
-  gw -->|inject token| jira["Snowflake jira MCP"]
-  gw -->|inject token| gh["GitHub MCP"]
+  gw -->|inject bearer| jira["Jira MCP<br/>(SaaS)"]
+  gw -->|inject bearer| gh["GitHub MCP<br/>(SaaS)"]
+  gw -->|OAuth2 client-creds| snow["Snowflake MCP<br/>(Cortex / container service)"]
   gw -->|no auth needed| fs["In-cluster filesystem MCP"]
 ```
 

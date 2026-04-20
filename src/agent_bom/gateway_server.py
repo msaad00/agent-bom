@@ -34,6 +34,7 @@ from typing import Any, Awaitable, Callable
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from agent_bom.api.metrics import record_gateway_relay
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 from agent_bom.proxy import check_policy, is_tools_call, parse_jsonrpc
 
@@ -58,10 +59,16 @@ async def _default_upstream_caller(
     message: dict[str, Any],
     extra_headers: dict[str, str],
 ) -> dict[str, Any]:
-    """Forward a JSON-RPC message to an upstream MCP server via HTTP POST."""
+    """Forward a JSON-RPC message to an upstream MCP server via HTTP POST.
+
+    Resolves per-upstream auth (bearer + OAuth2 client-credentials) via
+    ``upstream.resolve_auth_headers`` so OAuth tokens are fetched + cached
+    correctly instead of failing at send time.
+    """
     import httpx
 
-    headers = {"Content-Type": "application/json", **upstream.resolved_static_headers(), **extra_headers}
+    auth_headers = await upstream.resolve_auth_headers()
+    headers = {"Content-Type": "application/json", **auth_headers, **extra_headers}
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(upstream.url, json=message, headers=headers)
         response.raise_for_status()
@@ -125,6 +132,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             arguments = params.get("arguments", {}) or {}
             allowed, reason = check_policy(settings.policy, tool_name, arguments)
             if not allowed:
+                record_gateway_relay(upstream.name, "blocked")
                 audit_event: dict[str, Any] = {
                     "action": "gateway.tool_call_blocked",
                     "upstream": upstream.name,
@@ -153,6 +161,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             upstream_response = await upstream_caller(upstream, message, extra_headers)
         except Exception as exc:  # noqa: BLE001
             logger.exception("gateway upstream call failed for %s", upstream.name)
+            record_gateway_relay(upstream.name, "upstream_error")
             if settings.audit_sink is not None:
                 await settings.audit_sink(
                     {
@@ -164,6 +173,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 )
             raise HTTPException(status_code=502, detail=f"upstream error: {exc}") from exc
 
+        record_gateway_relay(upstream.name, "forwarded")
         if settings.audit_sink is not None:
             await settings.audit_sink(
                 {

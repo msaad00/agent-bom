@@ -31,23 +31,33 @@
 # Replace the three examples below with your real MCP inventory.
 
 upstreams:
-  # EXAMPLE 1 — Snowflake-hosted MCP (e.g. a jira MCP in a Snowflake
-  # container service or Cortex function exposed over HTTPS). The gateway
-  # injects the Snowflake token; the laptop never holds it.
+  # EXAMPLE 1 — A SaaS MCP (e.g. a Jira MCP published by Atlassian or a
+  # vendor) behind an internal ingress. The gateway injects the bearer
+  # token from a Secret; the laptop never holds it.
   - name: jira
-    url: https://snowflake.example.internal/mcp/jira
+    url: https://mcp.jira.example.com/sse
     auth: bearer
-    token_env: SNOWFLAKE_JIRA_MCP_TOKEN
-    headers:
-      X-Agent-Bom-Client: agent-bom-gateway
+    token_env: JIRA_MCP_TOKEN
 
-  # EXAMPLE 2 — A remote GitHub MCP server behind an internal ingress.
+  # EXAMPLE 2 — A Snowflake-hosted MCP (e.g. a data-query MCP running as
+  # a Snowflake container service or Cortex function). Uses OAuth2
+  # client-credentials so the gateway fetches + rotates tokens against
+  # Snowflake's IdP automatically.
+  - name: snowflake
+    url: https://snowflake.example.internal/mcp/cortex
+    auth: oauth2_client_credentials
+    oauth_token_url: https://snowflake.example.internal/oauth/token
+    oauth_client_id_env: SNOWFLAKE_OAUTH_CLIENT_ID
+    oauth_client_secret_env: SNOWFLAKE_OAUTH_CLIENT_SECRET
+    scopes: ["mcp.read", "mcp.write"]
+
+  # EXAMPLE 3 — A remote GitHub MCP server behind an internal ingress.
   - name: github
     url: https://mcp.github.example.com/sse
     auth: bearer
     token_env: GITHUB_MCP_TOKEN
 
-  # EXAMPLE 3 — An in-cluster MCP workload in a sibling namespace. No
+  # EXAMPLE 4 — An in-cluster MCP workload in a sibling namespace. No
   # external auth needed — the gateway is the authed front door and
   # Kubernetes NetworkPolicy restricts direct access.
   - name: filesystem-review-env

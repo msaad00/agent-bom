@@ -1,5 +1,7 @@
 """Tests for API server hardening — auth, rate limiting, CORS, body size."""
 
+import base64
+import json
 import time
 from unittest.mock import MagicMock, patch
 
@@ -16,6 +18,12 @@ from agent_bom.api.server import (
     app,
     configure_api,
 )
+
+
+def _unsigned_test_jwt(claims: dict[str, str]) -> str:
+    header = base64.urlsafe_b64encode(json.dumps({"alg": "none"}).encode()).decode().rstrip("=")
+    payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+    return f"{header}.{payload}."
 
 
 def test_health_no_auth():
@@ -283,7 +291,7 @@ def test_api_key_middleware_oidc_routes_token_to_tenant_bound_issuer():
             )
         }
     )
-    token = "eyJhbGciOiJub25lIn0.eyJpc3MiOiJodHRwczovL2FscGhhLm9rdGEuZXhhbXBsZSJ9."
+    token = _unsigned_test_jwt({"iss": "https://alpha.okta.example"})
     with (
         patch("agent_bom.api.oidc.OIDCConfig.from_env", return_value=cfg),
         patch(

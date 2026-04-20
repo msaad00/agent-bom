@@ -19,6 +19,8 @@ Tests cover:
 
 from __future__ import annotations
 
+import base64
+import json
 import os
 from unittest.mock import MagicMock, patch
 
@@ -36,6 +38,12 @@ from agent_bom.api.oidc import (
 )
 
 # ── OIDCConfig ────────────────────────────────────────────────────────────────
+
+
+def _unsigned_test_jwt(claims: dict[str, str]) -> str:
+    header = base64.urlsafe_b64encode(json.dumps({"alg": "none"}).encode()).decode().rstrip("=")
+    payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+    return f"{header}.{payload}."
 
 
 def test_oidc_config_disabled_when_no_issuer():
@@ -331,7 +339,7 @@ def test_oidc_config_verify_routes_token_by_issuer_for_tenant_bound_providers():
             )
         }
     )
-    token = "eyJhbGciOiJub25lIn0.eyJpc3MiOiJodHRwczovL2FscGhhLm9rdGEuZXhhbXBsZSJ9."
+    token = _unsigned_test_jwt({"iss": "https://alpha.okta.example"})
     with patch(
         "agent_bom.api.oidc.verify_oidc_token",
         return_value={"iss": "https://alpha.okta.example", "sub": "user-1", "agent_bom_role": "analyst", "tenant_id": "tenant-alpha"},
@@ -357,7 +365,7 @@ def test_oidc_config_resolve_tenant_rejects_mismatched_bound_tenant():
         return_value={"iss": "https://alpha.okta.example", "sub": "user-1", "agent_bom_role": "viewer", "tenant_id": "tenant-beta"},
     ):
         with pytest.raises(OIDCError, match="does not match the configured tenant"):
-            cfg.verify("eyJhbGciOiJub25lIn0.eyJpc3MiOiJodHRwczovL2FscGhhLm9rdGEuZXhhbXBsZSJ9.")
+            cfg.verify(_unsigned_test_jwt({"iss": "https://alpha.okta.example"}))
 
 
 # ── API middleware OIDC integration ───────────────────────────────────────────

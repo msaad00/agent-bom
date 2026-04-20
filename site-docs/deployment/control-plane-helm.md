@@ -118,6 +118,44 @@ helm install agent-bom deploy/helm/agent-bom \
   -f values.agent-bom.yaml
 ```
 
+## Single-node SQLite pilot preset
+
+For a fast in-cluster pilot without external Postgres, use the shipped
+single-node preset:
+
+- [eks-control-plane-sqlite-pilot-values.yaml](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/examples/eks-control-plane-sqlite-pilot-values.yaml)
+
+Create the auth secret and a small PVC first:
+
+```bash
+kubectl create secret generic agent-bom-control-plane \
+  -n agent-bom \
+  --from-literal=AGENT_BOM_API_KEY='replace-me'
+
+kubectl apply -n agent-bom -f - <<'EOF'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: agent-bom-sqlite-pilot
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Gi
+EOF
+```
+
+Then install:
+
+```bash
+helm install agent-bom deploy/helm/agent-bom \
+  -n agent-bom --create-namespace \
+  -f deploy/helm/agent-bom/examples/eks-control-plane-sqlite-pilot-values.yaml
+```
+
+This preset is intentionally single-node only: one API pod, one UI pod, PVC-backed
+SQLite state, no HPA, no PDB, and no multi-replica availability claims.
+
 ## Production defaults example
 
 For the stronger self-hosted operator path, start from:

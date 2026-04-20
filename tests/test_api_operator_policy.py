@@ -14,7 +14,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api import server as _server_mod
-from agent_bom.api.middleware import get_rate_limit_key_status
+from agent_bom.api.middleware import APIKeyMiddleware, get_rate_limit_key_status
 from agent_bom.api.server import app
 
 # ─── Rate-limit key status ────────────────────────────────────────────────────
@@ -124,6 +124,12 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "default_ttl_seconds" in body["api_key"]
     assert "max_ttl_seconds" in body["api_key"]
     assert body["rate_limit_key"]["status"] in {"ok", "ephemeral", "unknown_age", "rotation_due", "max_age_exceeded"}
+
+
+def test_auth_policy_requires_admin_role_in_api_middleware() -> None:
+    middleware = APIKeyMiddleware(app, api_key="static-secret")
+    assert middleware._required_role("GET", "/v1/auth/policy") == "admin"
+    assert middleware._required_role("GET", "/v1/auth/debug") == "viewer"
 
 
 # ─── /readyz drain behavior ──────────────────────────────────────────────────

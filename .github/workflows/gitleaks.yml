@@ -1,0 +1,45 @@
+name: Gitleaks Secret Scan
+
+# Runs on every PR + push to main to catch accidentally committed secrets.
+# Reference: https://github.com/gitleaks/gitleaks
+#
+# The gitleaks config in .gitleaks.toml (if present) overrides defaults; we
+# ship the default rules initially and iterate based on false-positive rate.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gitleaks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitleaks:
+    name: Scan for committed secrets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout (full history for PR diff)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        env:
+          # Required since gitleaks-action v2.x for PR scans.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Fail the job on any leak — pilot-grade; no silent advisory mode.
+          GITLEAKS_ENABLE_COMMENTS: "true"
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"
+          # GITLEAKS_LICENSE is only needed for the organisation edition;
+          # individual accounts skip this cleanly.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}

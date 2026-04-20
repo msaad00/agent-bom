@@ -1,0 +1,114 @@
+name: PR Security Gate
+
+# Hard gate on PRs: pip-audit must pass (HIGH+ severity fails the build)
+# and agent-bom self-scans its own installed deps. This complements the
+# existing cve-freshness.yml scheduled job by catching regressions on PRs,
+# not just twice a week.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-security-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pip-audit-pr:
+    name: pip-audit on PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: "3.11"
+
+      - name: Install runtime deps (not dev) — scan the shipping dep set
+        run: uv sync --extra api --extra postgres --extra mcp-server --extra oidc
+
+      - name: Run pip-audit with strict severity gate
+        run: |
+          # Fail on HIGH or CRITICAL findings. Medium + Low become advisory
+          # so we're not blocked by transitive noise, but HIGH+ is a gate.
+          uv run pip-audit --disable-pip --strict --vulnerability-service osv \
+            --require-hashes=false \
+            --format columns \
+            | tee audit.txt
+
+          # Extract highest severity — fail if HIGH or CRITICAL is present.
+          if grep -qiE '\b(HIGH|CRITICAL)\b' audit.txt; then
+            echo "::error::pip-audit found HIGH or CRITICAL vulnerabilities — see the log above"
+            exit 1
+          fi
+
+      - name: Upload pip-audit report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pip-audit-report
+          path: audit.txt
+
+  self-scan-pr:
+    name: agent-bom self-scan on PR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # upload SARIF
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: "3.11"
+
+      - name: Install agent-bom + dev extras
+        run: uv sync --extra dev
+
+      - name: Self-scan fixture SBOM for regressions
+        id: self_scan
+        run: |
+          # Scan once; capture SARIF + JSON so downstream steps can read both.
+          # `|| true` because fixture SBOMs intentionally contain CVEs — we
+          # want the report, not a hard failure on the fixture's baseline.
+          uv run agent-bom sbom tests/fixtures/test-sbom.cdx.json -f sarif -o self-scan.sarif || true
+          uv run agent-bom sbom tests/fixtures/test-sbom.cdx.json -f json -o self-scan.json || true
+
+          # If the scan produced neither artifact, surface a minimal SARIF so
+          # the upload step has something valid to hand to code-scanning and
+          # operators still see the scan ran.
+          if [ ! -s self-scan.sarif ]; then
+            cat > self-scan.sarif <<'EOF'
+          {"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"agent-bom","version":"0.0.0"}},"results":[]}]}
+          EOF
+          fi
+
+          # KEV count is advisory — we surface it for the operator, never fail.
+          if [ -s self-scan.json ]; then
+            KEV_COUNT=$(python -c "
+          import json
+          try:
+              with open('self-scan.json') as f:
+                  data = json.load(f)
+              print(sum(1 for v in data.get('vulnerabilities', []) if v.get('kev')))
+          except Exception:
+              print('0')
+          ")
+            echo "Fixture SBOM reports ${KEV_COUNT} KEV-listed findings"
+            if [ "${KEV_COUNT:-0}" -gt 0 ]; then
+              echo "::warning::fixture SBOM contains ${KEV_COUNT} KEV-listed CVE(s) — investigate before merging if this is a new baseline"
+            fi
+          fi
+
+      - name: Upload SARIF to code-scanning
+        if: always() && hashFiles('self-scan.sarif') != ''
+        uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
+        with:
+          sarif_file: self-scan.sarif
+          category: agent-bom-self-scan

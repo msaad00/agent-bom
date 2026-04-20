@@ -142,6 +142,7 @@ dev = [
     "pip-audit>=2.10",  # Security dependency scanning (replaces safety — not executed in CI)
     "bandit>=1.9",      # Static security analysis
     "pytest-cov>=4.1",  # Coverage reporting
+    "pytest-benchmark>=5.0",  # Performance benchmarking — see docs/PERFORMANCE_BENCHMARKS.md
 ]
 dev-all = [
     "agent-bom[dev]",
@@ -187,6 +188,7 @@ asyncio_mode = "strict"
 pythonpath = ["src"]
 markers = [
     "network: tests that require network access (OSV API)",
+    "slow: slow tests (e.g. large-scale perf benchmarks) — opt-in only",
 ]
 
 [tool.mypy]

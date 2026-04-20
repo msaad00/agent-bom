@@ -103,6 +103,13 @@ pdf = []
 postgres = ["psycopg[binary]>=3.1", "psycopg-pool>=3.1"]
 watch = ["watchdog>=4.0"]
 runtime = ["psutil>=5.9"]  # Process + container discovery (--include-processes)
+visual = [
+    # Visual-leak detection on MCP screenshot/image tool responses.
+    # Opt-in because OCR is CPU-heavy — pilots without screen-capture MCPs
+    # don't pay for pytesseract at runtime. See issue #1568.
+    "Pillow>=10.0",
+    "pytesseract>=0.3.10",
+]
 mcp-server = [
     "mcp>=1.26",
     "smithery>=0.4",

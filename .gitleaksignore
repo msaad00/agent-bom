@@ -6,8 +6,15 @@
 #
 # Format reference: https://github.com/gitleaks/gitleaks#gitleaksignore
 
-# False positive: gitleaks generic-api-key matched on the phrase
-# "verification-key pin, Ed25519-signed" in an early draft of the enterprise
-# playbook. No secret — just documentation prose. The line was rewritten in a
-# follow-up commit, but the fingerprint lives forever in git history.
+# False positive: gitleaks generic-api-key matched on documentation prose in
+# an early draft of the enterprise playbook (describing the public-key pin
+# step of the signed-evidence verification flow). No secret — just English
+# sentences. The line was rewritten in a follow-up commit, but the
+# fingerprint lives forever in git history.
 a5c3a329da9d0f5deed6a6857bcbaeaf3a024f1e:docs/ENTERPRISE_SECURITY_PLAYBOOK.md:generic-api-key:258
+
+# False positive in the previous version of this file itself — the comment
+# above used to quote the triggering English phrase, which then matched the
+# same gitleaks rule. Reworded in this commit; persist the old fingerprint
+# because gitleaks walks git history.
+792b4ad4ff3f877992a678bd533f2dd2dd7854da:.gitleaksignore:generic-api-key:10

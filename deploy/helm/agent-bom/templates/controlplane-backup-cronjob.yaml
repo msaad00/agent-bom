@@ -21,7 +21,7 @@ spec:
             app.kubernetes.io/component: control-plane-backup
         spec:
           restartPolicy: OnFailure
-          serviceAccountName: {{ default (include "agent-bom.serviceAccountName" .) .Values.controlPlane.backup.serviceAccountName }}
+          serviceAccountName: {{ include "agent-bom.controlPlaneBackupServiceAccountName" . }}
           securityContext:
             {{- toYaml .Values.podSecurityContext | nindent 12 }}
           containers:

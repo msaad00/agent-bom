@@ -27,6 +27,41 @@ Service account name.
 {{- end }}
 
 {{/*
+Gateway service account name.
+*/}}
+{{- define "agent-bom.gatewayServiceAccountName" -}}
+{{- if .Values.gateway.serviceAccount.create }}
+{{- default (printf "%s-gateway" (include "agent-bom.name" .)) .Values.gateway.serviceAccount.name }}
+{{- else }}
+{{- default (include "agent-bom.serviceAccountName" .) .Values.gateway.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
+Scanner service account name.
+*/}}
+{{- define "agent-bom.scannerServiceAccountName" -}}
+{{- if .Values.scanner.serviceAccount.create }}
+{{- default (printf "%s-scanner" (include "agent-bom.name" .)) .Values.scanner.serviceAccount.name }}
+{{- else }}
+{{- default (include "agent-bom.serviceAccountName" .) .Values.scanner.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
+Backup service account name.
+*/}}
+{{- define "agent-bom.controlPlaneBackupServiceAccountName" -}}
+{{- if .Values.controlPlane.backup.serviceAccountName }}
+{{- .Values.controlPlane.backup.serviceAccountName }}
+{{- else if .Values.controlPlane.backup.serviceAccount.create }}
+{{- default (printf "%s-backup" (include "agent-bom.name" .)) .Values.controlPlane.backup.serviceAccount.name }}
+{{- else }}
+{{- include "agent-bom.serviceAccountName" . }}
+{{- end }}
+{{- end }}
+
+{{/*
 Control-plane affinity helper. If the operator provides a full affinity block,
 use it verbatim. Otherwise, optionally emit preferred pod anti-affinity so API
 and UI replicas avoid co-location on the same node.

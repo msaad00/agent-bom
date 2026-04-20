@@ -355,6 +355,26 @@ def test_helm_control_plane_backup_defaults():
     assert backup["destination"]["encryption"]["mode"] == "AES256"
     assert backup["image"]["dumpRepository"] == "postgres"
     assert backup["image"]["uploadRepository"] == "amazon/aws-cli"
+    assert backup["serviceAccount"]["create"] is True
+    assert backup["serviceAccount"]["annotations"] == {}
+
+
+def test_helm_gateway_service_account_defaults():
+    """Gateway service account knobs stay explicit for IRSA-style rollout."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    sa = doc["gateway"]["serviceAccount"]
+    assert sa["create"] is True
+    assert sa["name"] == ""
+    assert sa["annotations"] == {}
+
+
+def test_helm_scanner_service_account_defaults():
+    """Scanner service account knobs stay explicit for IRSA-style rollout."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    sa = doc["scanner"]["serviceAccount"]
+    assert sa["create"] is True
+    assert sa["name"] == ""
+    assert sa["annotations"] == {}
 
 
 def test_helm_monitor_disabled_by_default():

@@ -35,6 +35,10 @@ scanner:
   outputFormat: json
   extraArgs: []
   env: []
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
 
@@ -115,6 +119,10 @@ gateway:
   #   AGENT_BOM_GATEWAY_BEARER_TOKEN=<token for incoming gateway clients>
   env: []
   envFrom: []
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
   extraVolumes: []
   extraVolumeMounts: []
   resources:
@@ -322,6 +330,10 @@ controlPlane:
     failedJobsHistoryLimit: 3
     suspend: false
     serviceAccountName: ""
+    serviceAccount:
+      create: true
+      name: ""
+      annotations: {}
     image:
       dumpRepository: postgres
       dumpTag: "16-alpine"

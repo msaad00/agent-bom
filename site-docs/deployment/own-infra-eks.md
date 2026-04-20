@@ -180,7 +180,10 @@ without pretending every workload needs the same enforcement model.
 | `controlPlane.ingress.enabled` | routes `/` to UI and `/v1`, `/health`, `/docs`, `/ws` to API |
 | `controlPlane.api.envFrom` | loads Postgres URL, auth settings, audit HMAC, and other control-plane secrets |
 | `controlPlane.ui.env` | keeps same-origin routing honest with `NEXT_PUBLIC_API_URL=\"\"` or sets an explicit API URL |
-| `serviceAccount.annotations` | attaches IRSA to the scanner service account |
+| `serviceAccount.annotations` | shared IRSA/workload-identity annotations inherited by scanner, gateway, and backup service accounts unless you override them per component |
+| `scanner.serviceAccount.annotations` | attach a distinct IRSA role to the scanner CronJob when cluster discovery should use a different IAM role than the shared runtime SA |
+| `gateway.serviceAccount.annotations` | attach a distinct IRSA role to the gateway when it needs separate cloud access |
+| `controlPlane.backup.serviceAccount.annotations` | attach a distinct IRSA role to the Postgres backup CronJob |
 | `scanner.extraArgs` | enables `--k8s-mcp`, `--introspect`, `--enforce`, and other operator choices |
 | `scanner.allNamespaces` | expands cluster scan scope |
 | `controlPlane.api.autoscaling.*` | autoscales the API deployment |
@@ -197,7 +200,7 @@ helm install agent-bom deploy/helm/agent-bom \
   -n agent-bom --create-namespace \
   --set controlPlane.enabled=true \
   --set controlPlane.ingress.enabled=true \
-  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::123456789012:role/agent-bom-discovery \
+  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"=arn:aws:iam::REPLACE_ME_ACCOUNT_ID:role/REPLACE_ME_AGENT_BOM_DISCOVERY_ROLE \
   --set scanner.allNamespaces=true \
   --set-json 'scanner.extraArgs=["--k8s-mcp","--k8s-all-namespaces","--introspect","--enforce","--preset","enterprise"]'
 ```

@@ -36,7 +36,7 @@ pdb:
 
 serviceAccount:
   annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/agent-bom-discovery
+    eks.amazonaws.com/role-arn: arn:aws:iam::REPLACE_ME_ACCOUNT_ID:role/REPLACE_ME_AGENT_BOM_DISCOVERY_ROLE
 
 networkPolicy:
   enabled: true

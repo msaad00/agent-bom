@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -48,6 +49,7 @@ UpstreamCaller = Callable[[UpstreamConfig, dict[str, Any], dict[str, str]], Awai
 # visual detector (Pillow/pytesseract). Built on first use when
 # ``enable_visual_leak_detection`` is True.
 _visual_detector_singleton: Any = None
+_visual_detector_lock = threading.Lock()
 
 
 def _sanitize_for_log(value: Any) -> str:
@@ -58,9 +60,11 @@ def _sanitize_for_log(value: Any) -> str:
 def _get_visual_leak_detector() -> Any:
     global _visual_detector_singleton
     if _visual_detector_singleton is None:
-        from agent_bom.runtime.visual_leak_detector import VisualLeakDetector
+        with _visual_detector_lock:
+            if _visual_detector_singleton is None:
+                from agent_bom.runtime.visual_leak_detector import VisualLeakDetector
 
-        _visual_detector_singleton = VisualLeakDetector()
+                _visual_detector_singleton = VisualLeakDetector()
     return _visual_detector_singleton
 
 

@@ -16,6 +16,11 @@ If you want the narrower pilot shape first, start with
 also covers developer endpoints, pair this page with
 [Endpoint Fleet](endpoint-fleet.md).
 
+If you need the fastest packaged control-plane demo before standing up
+Postgres, there is now a single-node SQLite preset at
+[eks-control-plane-sqlite-pilot-values.yaml](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/examples/eks-control-plane-sqlite-pilot-values.yaml).
+Use it only for pilots and demos; multi-replica EKS still belongs on Postgres.
+
 ## What This EKS Shape Is Optimized For
 
 This deployment model is built for teams that want:

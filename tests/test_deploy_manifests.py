@@ -368,6 +368,14 @@ def test_helm_gateway_service_account_defaults():
     assert sa["annotations"] == {}
 
 
+def test_helm_control_plane_api_extra_volume_defaults():
+    """API deployment exposes opt-in extra volume hooks for SQLite pilot storage."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    api = doc["controlPlane"]["api"]
+    assert api["extraVolumes"] == []
+    assert api["extraVolumeMounts"] == []
+
+
 def test_helm_scanner_service_account_defaults():
     """Scanner service account knobs stay explicit for IRSA-style rollout."""
     doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
@@ -476,6 +484,22 @@ def test_production_values_enable_operator_defaults():
     assert production["topologySpread"]["enabled"] is True
     assert production["networkPolicy"]["restrictIngress"] is True
     assert "cert-manager.io/cluster-issuer" in production["controlPlane"]["ingress"]["annotations"]
+
+
+def test_helm_single_node_sqlite_pilot_example_is_shipped():
+    """Pilot preset should provide an in-cluster control-plane storage story."""
+    doc = yaml.safe_load((HELM_DIR / "examples" / "eks-control-plane-sqlite-pilot-values.yaml").read_text())
+    assert doc["controlPlane"]["enabled"] is True
+    assert doc["controlPlane"]["api"]["replicas"] == 1
+    assert doc["controlPlane"]["ui"]["replicas"] == 1
+    assert doc["controlPlane"]["api"]["env"][0] == {
+        "name": "AGENT_BOM_DB",
+        "value": "/var/lib/agent-bom/control-plane.sqlite",
+    }
+    assert doc["controlPlane"]["api"]["extraVolumes"][0]["persistentVolumeClaim"]["claimName"] == "agent-bom-sqlite-pilot"
+    assert doc["controlPlane"]["api"]["extraVolumeMounts"][0]["mountPath"] == "/var/lib/agent-bom"
+    assert doc["scanner"]["enabled"] is False
+    assert doc["pdb"]["enabled"] is False
 
 
 def test_mesh_example_enables_istio_and_kyverno_hardening():

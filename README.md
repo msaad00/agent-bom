@@ -59,7 +59,7 @@ The demo uses a curated sample so the output stays reproducible across releases.
 | Check a package before install | `agent-bom check flask@2.2.0 --ecosystem pypi` | Machine-readable pre-install verdict |
 | Scan a container image | `agent-bom image nginx:latest` | OS and package CVEs with fixability |
 | Audit IaC or cloud posture | `agent-bom iac Dockerfile k8s/ infra/main.tf` | Misconfigurations, manifest hardening, optional live cluster posture |
-| Review findings in a persistent graph | `agent-bom serve` | API, dashboard, unified graph, current-state and diff views |
+| Review findings in a persistent graph | `agent-bom serve` | API plus bundled local UI; Kubernetes uses the separate `agent-bom-ui` image |
 | Inspect live MCP traffic | `agent-bom proxy "<server command>"` | Inline runtime inspection, detector chaining, response/argument review |
 
 ## Quick start
@@ -81,7 +81,7 @@ After the first scan:
 ```bash
 agent-bom agents -p . --remediate remediation.md                  # fix-first plan
 agent-bom agents -p . --compliance-export fedramp -o evidence.zip # tamper-evident evidence bundle
-pip install 'agent-bom[ui]' && agent-bom serve                    # API + dashboard
+pip install 'agent-bom[ui]' && agent-bom serve                    # API + bundled local UI
 ```
 
 ## Product views

@@ -1,0 +1,33 @@
+controlPlane:
+  enabled: true
+  api:
+    replicas: 1
+    envFrom:
+      - secretRef:
+          name: agent-bom-control-plane
+    env:
+      - name: AGENT_BOM_DB
+        value: /var/lib/agent-bom/control-plane.sqlite
+    extraVolumes:
+      - name: sqlite-data
+        persistentVolumeClaim:
+          claimName: agent-bom-sqlite-pilot
+    extraVolumeMounts:
+      - name: sqlite-data
+        mountPath: /var/lib/agent-bom
+  ui:
+    replicas: 1
+    env:
+      - name: NEXT_PUBLIC_API_URL
+        value: ""
+  ingress:
+    enabled: true
+    className: nginx
+    hosts:
+      - host: agent-bom.internal.example.com
+
+scanner:
+  enabled: false
+
+pdb:
+  enabled: false

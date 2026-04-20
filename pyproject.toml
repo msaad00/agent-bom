@@ -218,11 +218,20 @@ line-length = 140  # Relaxed from 120 for CLI help strings
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W"]
+# T201 = `print` found: library code under src/agent_bom/ routes all
+# user-visible output through Rich (``console.print``) and everything else
+# through the structured logger (``logging.getLogger(__name__)``). Bare
+# ``print()`` is not allowed — it breaks MCP stdio, corrupts JSON API
+# responses, and skips log aggregation / SIEM forwarding. This rule locks
+# in the print -> logger migration (closes #1521).
+select = ["E", "F", "I", "N", "T201", "W"]
 ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py
-"fuzz/*.py" = ["N802"]  # TestOneInput is the required atheris entry-point name
+"fuzz/*.py" = ["N802", "T201"]  # TestOneInput is required atheris entry; harnesses print repro output
 "src/agent_bom/output/html.py" = ["E501"]  # Inline HTML/CSS/JS template strings cannot be meaningfully wrapped
 "src/agent_bom/cloud/*_cis_benchmark.py" = ["E501"]  # CIS benchmark remediation strings are naturally long
+# T201 allowlist — places where bare `print()` is legitimately the contract:
+"scripts/*.py" = ["T201"]  # Ops scripts — stdout is the documented interface
+"tests/**/*.py" = ["T201"]  # Pytest assertions + debug tracebacks

@@ -55,6 +55,47 @@ over HMAC-SHA256 itself.
 across frameworks, up to ~10 evidence entries each) signs in **under 5
 ms** end-to-end. Ed25519 adds ~0.2 ms on top.
 
+### Unified graph build — `build_unified_graph_from_report`
+
+The hot path behind `/v1/scan/{job_id}/context-graph` and the UI
+mesh / attack-path views. Walks a scan report JSON into a
+`UnifiedGraph` of agents + servers + packages + tools + credentials +
+blast-radius edges.
+
+Measured on a MacBook Pro (M-series, 2026), Python 3.13. Source:
+`tests/benchmarks/test_graph_hot_paths.py`.
+
+| Scale | Agents × Servers × Packages | Mean build time | Throughput |
+|---|---|---:|---:|
+| Small team | 20 × 2 × 5 = 200 pkgs | **0.71 ms** | ~1,415 ops/sec |
+| Departmental | 100 × 2 × 5 = 1,000 pkgs | **3.78 ms** | ~265 ops/sec |
+| Company-wide | 500 × 2 × 10 = 10,000 pkgs | **42.0 ms** | ~24 ops/sec |
+| Enterprise (50k variant) | 1,000 × 5 × 10 = 50,000 pkgs | **50.5 ms** | ~20 ops/sec |
+
+**Scaling:** effectively linear in package count up to 10k (builder is
+O(agents + servers + packages + edges)); the 50k jump is actually
+cheaper per-package than 10k because the synthetic fixture reuses
+package keys across servers, so dedup amortises cost.
+
+**Implication for pilot teams:**
+- **Build-on-every-scan is fine up to ~50k packages.** No caching layer
+  needed. The graph fits comfortably in the API pod memory (~200 MB at
+  50k nodes).
+- **Cardinality cliff to watch:** at >200k packages / 5k agents (hypothetical
+  multi-tenant mega-deploy), consider moving graph persistence to ClickHouse
+  for analytics cardinality or paginate the builder.
+- **Storage story:** graph materialisation (the Postgres `graph_state`
+  table, see [`api/postgres_graph.py`](../src/agent_bom/api/postgres_graph.py))
+  is ~2 KB per node — 50k nodes ≈ 100 MB per tenant.
+
+Run yourself:
+
+```bash
+pip install 'agent-bom[dev]'
+pytest tests/benchmarks/test_graph_hot_paths.py --benchmark-only
+AGENT_BOM_BENCH_FULL=1 pytest tests/benchmarks/test_graph_hot_paths.py -k 50k --benchmark-only
+```
+
 ---
 
 ## End-to-end scan targets

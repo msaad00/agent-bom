@@ -201,13 +201,20 @@ class PostgresTrendStore:
             )
             conn.commit()
 
-    def get_history(self, limit: int = 30) -> list[TrendPoint]:
-        with _tenant_connection(self._pool) as conn:
-            rows = conn.execute(
-                "SELECT timestamp, total_vulns, critical, high, medium, low, posture_score, posture_grade "
-                "FROM trend_history ORDER BY timestamp DESC LIMIT %s",
-                (limit,),
-            ).fetchall()
+    def get_history(self, limit: int = 30, tenant_id: str | None = None) -> list[TrendPoint]:
+        token = None
+        if tenant_id is not None:
+            token = _current_tenant.set(tenant_id)
+        try:
+            with _tenant_connection(self._pool) as conn:
+                rows = conn.execute(
+                    "SELECT timestamp, total_vulns, critical, high, medium, low, posture_score, posture_grade "
+                    "FROM trend_history ORDER BY timestamp DESC LIMIT %s",
+                    (limit,),
+                ).fetchall()
+        finally:
+            if token is not None:
+                _current_tenant.reset(token)
         return [
             TrendPoint(
                 timestamp=row[0],
@@ -218,6 +225,7 @@ class PostgresTrendStore:
                 low=row[5],
                 posture_score=row[6],
                 posture_grade=row[7],
+                tenant_id=tenant_id or _current_tenant.get(),
             )
             for row in rows
         ]

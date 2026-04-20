@@ -79,13 +79,28 @@ from agent_bom.config import MCP_TOOL_TIMEOUT_SECONDS as _MCP_TOOL_TIMEOUT_SECON
 from agent_bom.ecosystems import SUPPORTED_PACKAGE_ECOSYSTEM_SET
 from agent_bom.mcp_server_entrypoint import create_smithery_server as _create_smithery_server
 from agent_bom.mcp_server_metadata import (
+    _SERVER_CARD_PROMPTS as _METADATA_SERVER_CARD_PROMPTS,
+)
+from agent_bom.mcp_server_metadata import (
+    _SERVER_CARD_TOOLS as _METADATA_SERVER_CARD_TOOLS,
+)
+from agent_bom.mcp_server_metadata import (
     attach_metadata_routes,
+)
+from agent_bom.mcp_server_metadata import (
+    build_server_card as _metadata_build_server_card,
 )
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
 _ToolReturn = TypeVar("_ToolReturn")
 _HTTP_URL_ADAPTER = TypeAdapter(AnyHttpUrl)
+
+# Backward-compatible exports for tests and downstream imports that still
+# read metadata directly from `agent_bom.mcp_server`.
+_SERVER_CARD_PROMPTS = _METADATA_SERVER_CARD_PROMPTS
+_SERVER_CARD_TOOLS = _METADATA_SERVER_CARD_TOOLS
+build_server_card = _metadata_build_server_card
 
 # ---------------------------------------------------------------------------
 # Input validation helpers

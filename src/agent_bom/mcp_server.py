@@ -283,67 +283,18 @@ async def _execute_tool_sync_async(
     )
 
 
-def _build_dep_graph_from_agents(agents_data: list[dict[str, Any]]):
-    """Build a dependency graph from serialized agent scan data."""
-    from agent_bom.output.graph_export import DepGraph
+# Dep-graph builder + registry cache live in mcp_server_helpers (#1522 Phase 2).
+# Re-bound to their underscore names here so the existing closures inside
+# create_mcp_server() don't need to change.
+from agent_bom.mcp_server_helpers import build_dep_graph_from_agents as _build_dep_graph_from_agents  # noqa: E402
+from agent_bom.mcp_server_helpers import get_registry_data as _get_registry_data  # noqa: E402
+from agent_bom.mcp_server_helpers import get_registry_data_raw as _get_registry_data_raw  # noqa: E402
 
-    graph = DepGraph()
-    for agent in agents_data:
-        aname = agent.get("name", "unknown")
-        source = agent.get("source") or "local"
-        sid = f"provider:{source}"
-        graph.add_node(sid, source, "provider")
-        aid = f"agent:{aname}"
-        graph.add_node(aid, aname, "agent")
-        graph.add_edge(sid, aid, "hosts")
-        for srv in agent.get("mcp_servers", []):
-            sname = srv.get("name", "unknown")
-            svid = f"server:{aname}/{sname}"
-            graph.add_node(svid, sname, "server_cred" if srv.get("has_credentials") else "server")
-            graph.add_edge(aid, svid, "uses")
-            for pkg in srv.get("packages", []):
-                pn = pkg.get("name", "?")
-                pv = pkg.get("version", "")
-                pe = pkg.get("ecosystem", "")
-                vulns = pkg.get("vulnerabilities", [])
-                pid = f"pkg:{pe}/{pn}@{pv}"
-                graph.add_node(pid, f"{pn}@{pv}" if pv else pn, "pkg_vuln" if vulns else "pkg")
-                graph.add_edge(svid, pid, "depends_on")
-                for vuln in vulns:
-                    vid = f"cve:{vuln.get('id', '?')}"
-                    graph.add_node(vid, vuln.get("id", "?"), "cve", vuln.get("severity", "").lower())
-                    graph.add_edge(pid, vid, "affects")
-    return graph
-
-
-# Cached registry data (loaded once, reused across requests)
-_registry_cache: dict | None = None
-_registry_raw_cache: str | None = None
 _tool_metrics: OrderedDict[str, dict[str, Any]] = OrderedDict()
 _loop_tool_semaphores: OrderedDict[int, asyncio.Semaphore] = OrderedDict()
 _caller_rate_windows: OrderedDict[str, deque[float]] = OrderedDict()
 _recent_tool_requests: deque[dict[str, Any]] = deque(maxlen=_MCP_MAX_REQUEST_TRACES)
 _MAX_CACHED_TOOL_LOOPS = 8
-
-
-def _get_registry_data() -> dict:
-    """Load and cache the MCP registry JSON as a dict."""
-    global _registry_cache
-    registry_path = Path(__file__).parent / "mcp_registry.json"
-    _registry_cache = _mcp_runtime.get_registry_data(_registry_cache, registry_path)
-    if _registry_cache is None:
-        raise RuntimeError("Registry cache failed to load")
-    return _registry_cache
-
-
-def _get_registry_data_raw() -> str:
-    """Load and cache the MCP registry JSON as raw text."""
-    global _registry_raw_cache
-    registry_path = Path(__file__).parent / "mcp_registry.json"
-    _registry_raw_cache = _mcp_runtime.get_registry_data_raw(_registry_raw_cache, registry_path)
-    if _registry_raw_cache is None:
-        raise RuntimeError("Registry raw cache failed to load")
-    return _registry_raw_cache
 
 
 # All agent-bom tools are read-only scanners

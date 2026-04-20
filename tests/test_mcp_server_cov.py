@@ -86,7 +86,7 @@ class TestTruncateResponse:
 
 class TestRegistryCache:
     def test_get_registry_data_returns_dict(self):
-        import agent_bom.mcp_server as mod
+        import agent_bom.mcp_server_helpers as mod
 
         old = mod._registry_cache
         try:
@@ -97,7 +97,7 @@ class TestRegistryCache:
             mod._registry_cache = old
 
     def test_get_registry_data_raw_returns_str(self):
-        import agent_bom.mcp_server as mod
+        import agent_bom.mcp_server_helpers as mod
 
         old = mod._registry_raw_cache
         try:
@@ -110,7 +110,7 @@ class TestRegistryCache:
             mod._registry_raw_cache = old
 
     def test_cache_reuse(self):
-        import agent_bom.mcp_server as mod
+        import agent_bom.mcp_server_helpers as mod
 
         old = mod._registry_cache
         try:

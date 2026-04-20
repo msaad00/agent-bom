@@ -94,12 +94,23 @@ agent-bom scans laptop editor configs for **30+ MCP client surfaces** (Cursor, C
 
 ### 2.2 Credential + PII leakage: "What if an MCP response leaks our AWS keys or customer PII?"
 
-[`CredentialLeakDetector`](../src/agent_bom/runtime/detectors.py) (detectors.py:305) scans every tool-call response for **AWS access keys, GitHub tokens, OpenAI keys, generic bearer tokens, SSH keys, database URLs with embedded credentials, email addresses, phone numbers, SSNs, credit card numbers**. Pattern list lives in [`runtime/patterns.py`](../src/agent_bom/runtime/patterns.py).
+Two channels — text and visual — both covered:
 
-- **Detect + alert** — called inside `run_proxy` on every response.
-- **Redact in place** — `Shield.redact(text)` returns a sanitized string. Usable from any agent framework via the SDK.
-- **Severity-tagged** — credentials are `CRITICAL`, PII is `HIGH`.
-- **Tests** — [`tests/test_runtime_credential_leak.py`](../tests/test_runtime_credential_leak.py).
+**Text channel — [`CredentialLeakDetector`](../src/agent_bom/runtime/detectors.py)** scans every tool-call response for **AWS access keys, GitHub tokens, OpenAI keys, generic bearer tokens, SSH keys, database URLs with embedded credentials, email addresses, phone numbers, SSNs, credit card numbers**. Pattern list in [`runtime/patterns.py`](../src/agent_bom/runtime/patterns.py).
+
+- Detect + alert — called inside `run_proxy` on every response.
+- Redact in place — `Shield.redact(text)` returns a sanitized string.
+- Severity-tagged — credentials are `CRITICAL`, PII is `HIGH`.
+- Tests: [`tests/test_runtime_credential_leak.py`](../tests/test_runtime_credential_leak.py).
+
+**Visual channel — [`VisualLeakDetector`](../src/agent_bom/runtime/visual_leak_detector.py)** (opt-in: `pip install 'agent-bom[visual]'`). MCPs wrapping browsers or screen-capture tools (Playwright-MCP, Puppeteer-MCP, Cursor/Claude screen-read) can leak creds + PII through pixels the text scanner misses.
+
+- OCRs every image block in an MCP `content: [{"type": "image", ...}]` response via pytesseract.
+- Feeds extracted text through the *same* patterns the text scanner uses — one source of truth.
+- Paints black boxes over matched OCR bounding rectangles; returns a new content-block list without mutating the original.
+- Degrades gracefully when pytesseract / tesseract binary are absent.
+- Policy hook: `deny_tool_classes: ["screen_capture"]` in a gateway policy blocks any tool whose name matches `screenshot` / `page_screenshot` / `take_screenshot` / `capture_screen` before the upstream is touched. Classifier in [`proxy_policy.py _classify_tool_classes`](../src/agent_bom/proxy_policy.py).
+- Tests: [`tests/test_visual_leak_detector.py`](../tests/test_visual_leak_detector.py).
 
 ### 2.3 Malicious packages: "What if an employee installs a typosquat or OSSF-flagged malicious package?"
 

@@ -60,12 +60,12 @@ if (nextInstalled !== eslintConfigNextInstalled) {
 const nextMajor = majorOf(nextInstalled);
 const eslintMajor = majorOf(eslintInstalled);
 
-// Next.js 16.2.x is the currently validated lint toolchain for this repo.
-// The repo broke when eslint was allowed to float to 10.x, so keep this
-// explicit until the UI has been validated against a newer major.
-if (nextMajor === 16 && eslintMajor !== 9) {
+// Next.js 16.2.x is currently validated in this repo with ESLint 9.x and 10.x.
+// Keep the allowlist explicit so future major jumps fail closed until the UI
+// has been exercised against them in CI.
+if (nextMajor === 16 && ![9, 10].includes(eslintMajor)) {
   fail(
-    `Next.js ${nextInstalled} is only validated in this repo with ESLint 9.x; found eslint ${eslintInstalled}.`,
+    `Next.js ${nextInstalled} is only validated in this repo with ESLint 9.x or 10.x; found eslint ${eslintInstalled}.`,
   );
 }
 

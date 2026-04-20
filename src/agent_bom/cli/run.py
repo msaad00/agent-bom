@@ -131,6 +131,11 @@ def _resolve_server_command(server: str) -> list[str]:
     help="Detect credential leaks in tool responses.",
 )
 @click.option(
+    "--detect-visual-leaks",
+    is_flag=True,
+    help="OCR-scan image tool responses for credentials/PII (requires 'agent-bom[visual]').",
+)
+@click.option(
     "--log-only",
     is_flag=True,
     help="Log alerts without blocking (advisory mode).",
@@ -150,6 +155,7 @@ def run_cmd(
     audit_log: str | None,
     block_undeclared: bool,
     detect_credentials: bool,
+    detect_visual_leaks: bool,
     log_only: bool,
     quiet: bool,
 ) -> None:
@@ -212,6 +218,7 @@ def run_cmd(
             log_path=audit_log,
             block_undeclared=block_undeclared,
             detect_credentials=detect_credentials,
+            detect_visual_leaks=detect_visual_leaks,
             rate_limit_threshold=rate_limit,
             log_only=log_only,
         )

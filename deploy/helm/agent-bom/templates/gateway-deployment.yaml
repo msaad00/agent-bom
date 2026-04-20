@@ -24,6 +24,7 @@ spec:
         prometheus.io/path: "/metrics"
     spec:
       automountServiceAccountToken: false
+      serviceAccountName: {{ include "agent-bom.gatewayServiceAccountName" . }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001

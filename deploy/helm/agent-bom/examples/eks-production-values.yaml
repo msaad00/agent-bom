@@ -127,6 +127,9 @@ controlPlane:
   backup:
     enabled: true
     schedule: "0 3 * * *"
+    serviceAccount:
+      annotations:
+        eks.amazonaws.com/role-arn: arn:aws:iam::REPLACE_ME_ACCOUNT_ID:role/REPLACE_ME_AGENT_BOM_BACKUP_ROLE
     destination:
       bucket: agent-bom-prod-backups
       prefix: agent-bom/postgres
@@ -142,6 +145,9 @@ controlPlane:
 scanner:
   enabled: true
   allNamespaces: true
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::REPLACE_ME_ACCOUNT_ID:role/REPLACE_ME_AGENT_BOM_DISCOVERY_ROLE
   extraArgs:
     - --k8s-mcp
     - --k8s-all-namespaces
@@ -152,7 +158,7 @@ scanner:
 
 serviceAccount:
   annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/agent-bom-discovery
+    eks.amazonaws.com/role-arn: arn:aws:iam::REPLACE_ME_ACCOUNT_ID:role/REPLACE_ME_AGENT_BOM_DISCOVERY_ROLE
 
 topologySpread:
   enabled: true

@@ -99,11 +99,16 @@ controlPlane:
 scanner:
   enabled: true
   allNamespaces: true
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::REPLACE_ME_ACCOUNT_ID:role/REPLACE_ME_AGENT_BOM_DISCOVERY_ROLE
 
 serviceAccount:
   annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/agent-bom-discovery
+    eks.amazonaws.com/role-arn: arn:aws:iam::REPLACE_ME_ACCOUNT_ID:role/REPLACE_ME_AGENT_BOM_DISCOVERY_ROLE
 ```
+
+The chart supports component-specific service-account overrides for scanner, gateway, and backup jobs. If you omit the component-specific annotations, they inherit the shared `serviceAccount.annotations` block.
 
 Install:
 
@@ -133,6 +138,7 @@ That example adds:
 - packaged `PrometheusRule` alerts for API error rate, scanner failures, OIDC decode failures, and proxy audit backlog
 - packaged Grafana dashboard `ConfigMap` for clusters that already watch dashboard config
 - packaged Postgres backup `CronJob` that runs `pg_dump` and uploads to S3 through IRSA with SSE or KMS
+- dedicated service-account hooks for gateway and backup jobs, inheriting the scanner IRSA annotations unless you override them
 - restricted ingress defaults for the chart network policy
 
 For clusters that already standardize on a service mesh and policy controller,

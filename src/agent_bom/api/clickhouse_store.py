@@ -22,10 +22,31 @@ import queue
 import re
 import threading
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 _CLICKHOUSE_SAFE_STRING_RE = re.compile(r"[\x20-\x7E]+")
+
+
+def _coerce_clickhouse_timestamp(value: Any) -> str | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        dt = value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    candidate = str(value).strip()
+    if not candidate:
+        return None
+    try:
+        dt = datetime.fromisoformat(candidate.replace("Z", "+00:00"))
+    except ValueError:
+        return candidate
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
 # ------------------------------------------------------------------
@@ -277,6 +298,7 @@ class ClickHouseAnalyticsStore:
     def _event_row(self, event: dict, *, tenant_id: str = "default") -> dict[str, Any]:
         return {
             "event_id": event.get("event_id", str(uuid.uuid4())),
+            "event_timestamp": _coerce_clickhouse_timestamp(event.get("event_timestamp") or event.get("timestamp") or event.get("ts")),
             "tenant_id": str(event.get("tenant_id") or tenant_id or "default"),
             "event_type": event.get("event_type", event.get("type", "")),
             "detector": event.get("detector", ""),
@@ -284,6 +306,10 @@ class ClickHouseAnalyticsStore:
             "tool_name": event.get("tool_name", event.get("tool", "")),
             "message": event.get("message", ""),
             "agent_name": event.get("agent_name", ""),
+            "session_id": str(event.get("session_id", "") or ""),
+            "trace_id": str(event.get("trace_id", "") or ""),
+            "request_id": str(event.get("request_id", "") or ""),
+            "source_id": str(event.get("source_id", "") or ""),
         }
 
     def record_posture(self, agent_name: str, snapshot: dict, *, tenant_id: str = "default") -> None:
@@ -352,12 +378,15 @@ class ClickHouseAnalyticsStore:
 
     def _audit_row(self, event: dict) -> dict[str, Any]:
         return {
-            "event_timestamp": event.get("timestamp"),
+            "event_timestamp": _coerce_clickhouse_timestamp(event.get("event_timestamp") or event.get("timestamp")),
             "entry_id": event.get("entry_id", str(uuid.uuid4())),
             "action": event.get("action", ""),
             "actor": event.get("actor", ""),
             "resource": event.get("resource", ""),
             "tenant_id": event.get("tenant_id", "default"),
+            "session_id": str(event.get("session_id", "") or ""),
+            "trace_id": str(event.get("trace_id", "") or ""),
+            "request_id": str(event.get("request_id", "") or ""),
         }
 
     # -- reads ---------------------------------------------------------
@@ -599,24 +628,16 @@ class BufferedAnalyticsStore:
         for kind, payload in drained:
             if kind == "scan":
                 scan_id, agent_name, vulns, tenant_id = payload
-                scan_rows.extend(
-                    self._store._scan_rows(str(scan_id), str(agent_name), list(vulns), tenant_id=str(tenant_id))
-                )
+                scan_rows.extend(self._store._scan_rows(str(scan_id), str(agent_name), list(vulns), tenant_id=str(tenant_id)))
             elif kind == "event":
                 event, tenant_id = payload
                 event_rows.append(self._store._event_row(dict(event), tenant_id=str(tenant_id)))
             elif kind == "event_batch":
                 events, tenant_id = payload
-                event_rows.extend(
-                    self._store._event_row(dict(event), tenant_id=str(tenant_id))
-                    for event in events
-                    if event
-                )
+                event_rows.extend(self._store._event_row(dict(event), tenant_id=str(tenant_id)) for event in events if event)
             elif kind == "posture":
                 agent_name, snapshot, tenant_id = payload
-                posture_rows.append(
-                    self._store._posture_row(str(agent_name), dict(snapshot), tenant_id=str(tenant_id))
-                )
+                posture_rows.append(self._store._posture_row(str(agent_name), dict(snapshot), tenant_id=str(tenant_id)))
             elif kind == "metadata":
                 metadata, tenant_id = payload
                 metadata_rows.append(self._store._metadata_row(dict(metadata), tenant_id=str(tenant_id)))
@@ -625,9 +646,7 @@ class BufferedAnalyticsStore:
                 fleet_rows.append(self._store._fleet_row(dict(snapshot)))
             elif kind == "compliance":
                 control, tenant_id = payload
-                compliance_rows.append(
-                    self._store._compliance_row(dict(control), tenant_id=str(tenant_id))
-                )
+                compliance_rows.append(self._store._compliance_row(dict(control), tenant_id=str(tenant_id)))
             elif kind == "audit":
                 (event,) = payload
                 audit_rows.append(self._store._audit_row(dict(event)))

@@ -6,7 +6,9 @@ import json
 import os
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api.server import (
@@ -186,6 +188,50 @@ def test_proxy_audit_ingest_updates_alerts_and_status():
 
 def test_proxy_audit_ingest_is_idempotent():
     import agent_bom.api.routes.proxy as proxy_mod
+
+    proxy_mod._proxy_alerts.clear()
+    proxy_mod._proxy_metrics = None
+
+
+@pytest.mark.asyncio
+async def test_proxy_audit_ingest_records_analytics_with_session_trace_context(monkeypatch):
+    import agent_bom.api.routes.proxy as proxy_mod
+    from agent_bom.api.models import ProxyAuditIngestRequest
+
+    proxy_mod._proxy_alerts.clear()
+    proxy_mod._proxy_metrics = None
+
+    class _Analytics:
+        def __init__(self):
+            self.events = []
+            self.tenants = []
+
+        def record_events(self, events, *, tenant_id="default"):
+            self.events.extend(events)
+            self.tenants.append(tenant_id)
+
+    analytics = _Analytics()
+    monkeypatch.setattr("agent_bom.api.stores._get_analytics_store", lambda: analytics)
+    request = SimpleNamespace(
+        state=SimpleNamespace(
+            api_key_name="tenant-analyst",
+            tenant_id="tenant-alpha",
+            request_id="req-1",
+            trace_id="0123456789abcdef0123456789abcdef",
+        )
+    )
+    payload = ProxyAuditIngestRequest(
+        source_id="laptop-1",
+        session_id="sess-1",
+        alerts=[{"type": "runtime_alert", "detector": "credential_leak", "severity": "critical", "message": "AWS key"}],
+    )
+    resp = await proxy_mod.ingest_proxy_audit(request, payload)
+    assert resp["ingested"] is True
+    assert analytics.tenants == ["tenant-alpha"]
+    assert analytics.events[0]["session_id"] == "sess-1"
+    assert analytics.events[0]["source_id"] == "laptop-1"
+    assert analytics.events[0]["request_id"] == "req-1"
+    assert analytics.events[0]["trace_id"] == "0123456789abcdef0123456789abcdef"
 
     proxy_mod._proxy_alerts.clear()
     proxy_mod._proxy_metrics = None

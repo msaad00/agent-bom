@@ -414,6 +414,9 @@ def log_action(action: str, actor: str = "system", resource: str = "", **details
                 "actor": entry.actor,
                 "resource": entry.resource,
                 "tenant_id": str(entry.details.get("tenant_id", "default") or "default"),
+                "session_id": str(entry.details.get("session_id", "") or ""),
+                "trace_id": str(entry.details.get("trace_id", "") or ""),
+                "request_id": str(entry.details.get("request_id", "") or ""),
             }
         )
     except Exception:

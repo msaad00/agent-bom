@@ -184,7 +184,7 @@ class ScanPipeline:
 # ─── Fleet sync ──────────────────────────────────────────────────────────────
 
 
-def _sync_scan_agents_to_fleet(agents: list) -> None:
+def _sync_scan_agents_to_fleet(agents: list, tenant_id: str = "default") -> None:
     """Sync discovered agents from a scan into the fleet registry.
 
     Creates new FleetAgent entries for previously unseen agents and updates
@@ -201,8 +201,10 @@ def _sync_scan_agents_to_fleet(agents: list) -> None:
     # Collect all agents for a single batch upsert (atomicity)
     to_upsert: list[FleetAgent] = []
 
+    existing_by_name = {agent.name: agent for agent in store.list_by_tenant(tenant_id)}
+
     for agent in agents:
-        existing = store.get_by_name(agent.name)
+        existing = existing_by_name.get(agent.name)
         server_count = len(agent.mcp_servers)
         pkg_count = sum(len(s.packages) for s in agent.mcp_servers)
         cred_count = sum(len(s.credential_names) for s in agent.mcp_servers)
@@ -232,6 +234,7 @@ def _sync_scan_agents_to_fleet(agents: list) -> None:
                 package_count=pkg_count,
                 credential_count=cred_count,
                 vuln_count=vuln_count,
+                tenant_id=tenant_id,
                 last_discovery=now,
                 created_at=now,
                 updated_at=now,
@@ -572,7 +575,7 @@ def _run_scan_sync(job: ScanJob) -> None:
 
         # Auto-sync discovered agents to fleet registry
         try:
-            _sync_scan_agents_to_fleet(agents)
+            _sync_scan_agents_to_fleet(agents, tenant_id=str(getattr(job, "tenant_id", None) or "default"))
         except Exception as fleet_exc:  # noqa: BLE001
             with lock:
                 job.progress.append(f"Fleet sync skipped: {fleet_exc}")

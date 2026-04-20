@@ -22,7 +22,7 @@ def test_api_pipeline_image_scan_uses_container_surface(monkeypatch):
     )
 
     monkeypatch.setattr("agent_bom.api.pipeline._get_store", lambda: store)
-    monkeypatch.setattr("agent_bom.api.pipeline._sync_scan_agents_to_fleet", lambda _agents: None)
+    monkeypatch.setattr("agent_bom.api.pipeline._sync_scan_agents_to_fleet", lambda _agents, tenant_id="default": None)
     monkeypatch.setattr("agent_bom.discovery.discover_all", lambda *args, **kwargs: [])
     monkeypatch.setattr(
         "agent_bom.image.scan_image",
@@ -83,7 +83,7 @@ def test_api_pipeline_persists_clickhouse_analytics(monkeypatch):
 
     monkeypatch.setattr("agent_bom.api.pipeline._get_store", lambda: store)
     monkeypatch.setattr("agent_bom.api.pipeline._get_analytics_store", lambda: analytics)
-    monkeypatch.setattr("agent_bom.api.pipeline._sync_scan_agents_to_fleet", lambda _agents: None)
+    monkeypatch.setattr("agent_bom.api.pipeline._sync_scan_agents_to_fleet", lambda _agents, tenant_id="default": None)
     monkeypatch.setattr("agent_bom.discovery.discover_all", lambda *args, **kwargs: [])
     monkeypatch.setattr(
         "agent_bom.image.scan_image",
@@ -167,7 +167,7 @@ def test_api_pipeline_persists_unified_graph_snapshot(monkeypatch):
     persisted: list[tuple[str, str]] = []
 
     monkeypatch.setattr("agent_bom.api.pipeline._get_store", lambda: store)
-    monkeypatch.setattr("agent_bom.api.pipeline._sync_scan_agents_to_fleet", lambda _agents: None)
+    monkeypatch.setattr("agent_bom.api.pipeline._sync_scan_agents_to_fleet", lambda _agents, tenant_id="default": None)
     monkeypatch.setattr(
         "agent_bom.api.pipeline._persist_graph_snapshot",
         lambda j, report_json, lock=None: persisted.append((j.tenant_id, report_json["scan_id"])),

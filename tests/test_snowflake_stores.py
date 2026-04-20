@@ -332,6 +332,7 @@ class TestSnowflakeFleetStore:
             agent_id=agent_id,
             name=name,
             agent_type="claude_desktop",
+            tenant_id="tenant-alpha",
             updated_at=datetime.now(timezone.utc).isoformat(),
         )
 
@@ -342,8 +343,9 @@ class TestSnowflakeFleetStore:
         from agent_bom.api.snowflake_store import SnowflakeFleetStore
 
         SnowflakeFleetStore(SF_PARAMS)
-        create_call = conn.cursor().execute.call_args_list[0]
-        assert "CREATE TABLE IF NOT EXISTS fleet_agents" in create_call[0][0]
+        calls = [str(c) for c in conn.cursor().execute.call_args_list]
+        assert any("CREATE TABLE IF NOT EXISTS fleet_agents" in c and "tenant_id VARCHAR NOT NULL DEFAULT 'default'" in c for c in calls)
+        assert any("ALTER TABLE fleet_agents ADD COLUMN IF NOT EXISTS tenant_id" in c for c in calls)
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_put(self, mock_connect):
@@ -355,6 +357,7 @@ class TestSnowflakeFleetStore:
         calls = conn.cursor().execute.call_args_list
         merge_call = [c for c in calls if "MERGE INTO fleet_agents" in str(c)]
         assert len(merge_call) > 0
+        assert any(agent.tenant_id in str(c) for c in merge_call)
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_get_found(self, mock_connect):
@@ -419,6 +422,31 @@ class TestSnowflakeFleetStore:
         assert len(result) == 1
         assert result[0]["agent_id"] == "a1"
         assert result[0]["trust_score"] == 0.8
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_list_by_tenant(self, mock_connect):
+        agent = self._make_agent()
+        cur = _mock_cursor(fetchall_val=[(agent.model_dump_json(),)])
+        conn = _mock_connection(cursor=cur)
+        mock_connect.return_value = conn
+        store = self._make_store()
+        result = store.list_by_tenant("tenant-alpha")
+        assert len(result) == 1
+        assert result[0].tenant_id == "tenant-alpha"
+        sql = str(conn.cursor().execute.call_args_list[-1])
+        assert "WHERE tenant_id = %s" in sql
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_list_tenants(self, mock_connect):
+        cur = _mock_cursor(fetchall_val=[("tenant-alpha", 2), ("tenant-beta", 1)])
+        conn = _mock_connection(cursor=cur)
+        mock_connect.return_value = conn
+        store = self._make_store()
+        result = store.list_tenants()
+        assert result == [
+            {"tenant_id": "tenant-alpha", "agent_count": 2},
+            {"tenant_id": "tenant-beta", "agent_count": 1},
+        ]
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_update_state_found(self, mock_connect):
@@ -527,6 +555,17 @@ class TestSnowflakePolicyStore:
         mock_connect.return_value = conn
         store = self._make_store()
         assert store.delete_policy("p1") is True
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_delete_policy_is_tenant_scoped(self, mock_connect):
+        policy = self._make_policy()
+        cur = _mock_cursor(fetchone_val=(policy.model_dump_json(),), rowcount=1)
+        conn = _mock_connection(cursor=cur)
+        mock_connect.return_value = conn
+        store = self._make_store()
+        assert store.delete_policy("p1", tenant_id="default") is True
+        delete_call = str(conn.cursor().execute.call_args_list[-1])
+        assert "DELETE FROM gateway_policies WHERE policy_id = %s AND tenant_id = %s" in delete_call
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_list_policies(self, mock_connect):

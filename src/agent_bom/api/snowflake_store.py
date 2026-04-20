@@ -156,12 +156,15 @@ class SnowflakeJobStore:
                 )
             summaries: list[dict] = []
             for row in cur.fetchall():
-                job = ScanJob.model_validate_json(row[5] if isinstance(row[5], str) else json.dumps(row[5]))
+                triggered_by = None
+                if len(row) > 5:
+                    job = ScanJob.model_validate_json(row[5] if isinstance(row[5], str) else json.dumps(row[5]))
+                    triggered_by = job.triggered_by
                 summaries.append(
                     {
                         "job_id": row[0],
                         "tenant_id": row[1],
-                        "triggered_by": job.triggered_by,
+                        "triggered_by": triggered_by,
                         "status": row[2],
                         "created_at": str(row[3]) if row[3] else None,
                         "completed_at": str(row[4]) if row[4] else None,

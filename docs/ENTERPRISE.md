@@ -81,12 +81,18 @@ Implementation source: `src/agent_bom/api/middleware.py`
      to enforce rotation windows on stored keys
    - rotate stored keys with `POST /v1/auth/keys/{key_id}/rotate`
 3. OIDC bearer enforcement
-   - set `AGENT_BOM_OIDC_ISSUER`
+   - set `AGENT_BOM_OIDC_ISSUER`, or use `AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON` for tenant-bound issuers
    - set `AGENT_BOM_OIDC_AUDIENCE`
    - map roles with `AGENT_BOM_OIDC_ROLE_CLAIM`
    - map tenants with `AGENT_BOM_OIDC_TENANT_CLAIM`
    - fail closed with `AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM=1`
    - optionally set `AGENT_BOM_OIDC_REQUIRED_NONCE` when your IdP flow includes a nonce claim
+
+Rate limiting also follows an explicit fail-closed contract for scaled control planes:
+
+- single-process / single-replica API: in-memory limiter is allowed
+- multi-replica API or `AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1`: PostgreSQL-backed shared limiter is required
+- if shared rate limiting is required and `AGENT_BOM_POSTGRES_URL` is absent or broken, API startup now fails instead of silently falling back to process-local state
 
 Implementation source: `src/agent_bom/api/middleware.py`, `src/agent_bom/api/oidc.py`
 

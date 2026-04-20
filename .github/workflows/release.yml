@@ -129,6 +129,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push
+        id: build-api-image
         uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
         with:
           context: .
@@ -147,6 +148,19 @@ jobs:
             org.opencontainers.image.description=Open security scanner for AI supply chain — agents, MCP, packages, containers, cloud, GPU, and runtime.
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+      - name: Sign API image
+        run: cosign sign --yes "agentbom/agent-bom@${{ steps.build-api-image.outputs.digest }}"
+
+      - name: Attest API image provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: index.docker.io/agentbom/agent-bom
+          subject-digest: ${{ steps.build-api-image.outputs.digest }}
+          push-to-registry: true
 
       - name: Sync Docker Hub README
         env:
@@ -219,6 +233,156 @@ jobs:
               "https://hub.docker.com/v2/repositories/${REPO}/tags/${tag}" \
               -H "Authorization: Bearer $TOKEN" || true
           done <<< "$ALL_TAGS"
+
+  docker-publish-ui:
+    name: Publish UI image
+    needs: [build, self-scan-gate, container-gate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Extract version from tag
+        id: meta
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test UI container
+        run: |
+          set -euo pipefail
+          cleanup() {
+            status=$?
+            if [ $status -ne 0 ]; then
+              docker logs agent-bom-ui-smoke || true
+            fi
+            docker stop agent-bom-ui-smoke >/dev/null 2>&1 || true
+            exit $status
+          }
+          docker build -f ui/Dockerfile -t agent-bom-ui:release-test ui
+          docker run -d --rm --name agent-bom-ui-smoke -p 3000:3000 -e NEXT_PUBLIC_API_URL= agent-bom-ui:release-test
+          trap cleanup EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3000/ >/dev/null || {
+            echo "::error::UI container did not become healthy in time"
+            exit 1
+          }
+
+      - name: Set up QEMU (multi-arch)
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push UI image
+        id: build-ui-image
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: ui
+          file: ui/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            NEXT_PUBLIC_API_URL=
+          provenance: true
+          sbom: true
+          tags: |
+            agentbom/agent-bom-ui:${{ steps.meta.outputs.version }}
+            agentbom/agent-bom-ui:latest
+          labels: |
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.title=agent-bom-ui
+            org.opencontainers.image.description=agent-bom control-plane dashboard.
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+      - name: Sign UI image
+        run: cosign sign --yes "agentbom/agent-bom-ui@${{ steps.build-ui-image.outputs.digest }}"
+
+      - name: Attest UI image provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: index.docker.io/agentbom/agent-bom-ui
+          subject-digest: ${{ steps.build-ui-image.outputs.digest }}
+          push-to-registry: true
+
+  helm-publish:
+    name: Publish Helm chart to OCI
+    needs: [version-guard, self-scan-gate, container-gate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Extract version from tag
+        id: meta
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Helm
+        run: |
+          set -euo pipefail
+          curl -fsSL https://get.helm.sh/helm-v3.18.6-linux-amd64.tar.gz -o /tmp/helm.tar.gz
+          tar -xzf /tmp/helm.tar.gz -C /tmp
+          sudo mv /tmp/linux-amd64/helm /usr/local/bin/helm
+          helm version
+
+      - name: Package release chart
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/agent-bom-chart
+          cp -R deploy/helm/agent-bom /tmp/agent-bom-chart
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          version = "${{ steps.meta.outputs.version }}"
+          chart = Path("/tmp/agent-bom-chart/Chart.yaml")
+          text = chart.read_text()
+          text = re.sub(r"^version: .+$", f"version: {version}", text, flags=re.MULTILINE)
+          text = re.sub(r'^appVersion: ".+"$', f'appVersion: "{version}"', text, flags=re.MULTILINE)
+          chart.write_text(text)
+          PY
+          mkdir -p dist/helm
+          helm package /tmp/agent-bom-chart --destination dist/helm
+
+      - name: Login to GHCR OCI registry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "${GH_TOKEN}" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push chart to OCI registry
+        run: helm push "dist/helm/agent-bom-${{ steps.meta.outputs.version }}.tgz" "oci://ghcr.io/${{ github.repository_owner }}/charts"
+
+      - name: Attest Helm chart package
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: dist/helm/agent-bom-${{ steps.meta.outputs.version }}.tgz
+
+      - name: Upload Helm chart artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: helm-chart
+          path: dist/helm/agent-bom-${{ steps.meta.outputs.version }}.tgz
 
   container-gate:
     name: Container release gate
@@ -410,7 +574,7 @@ jobs:
   github-release:
     name: Create GitHub Release
     # Only requires PyPI publish — Docker Hub is best-effort (needs external secrets)
-    needs: [pypi-publish, sign, provenance, sbom]
+    needs: [pypi-publish, sign, provenance, sbom, helm-publish]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -439,6 +603,12 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: agent-bom-sbom
+          path: dist/
+
+      - name: Download Helm chart artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: helm-chart
           path: dist/
 
       - name: Create or update GitHub Release

@@ -196,6 +196,21 @@ jobs:
           cd ui
           npm run build
 
+      - name: UI bundle budget
+        run: |
+          cd ui
+          npm run bundle:check
+
+      - name: Install Playwright browser
+        run: |
+          cd ui
+          npx playwright install --with-deps chromium
+
+      - name: UI E2E
+        run: |
+          cd ui
+          npm run test:e2e
+
   # 3. Tests
   test:
     name: Test (Python ${{ matrix.python-version }})

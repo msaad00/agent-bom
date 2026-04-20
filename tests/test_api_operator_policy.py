@@ -126,8 +126,10 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["rate_limit_key"]["status"] in {"ok", "ephemeral", "unknown_age", "rotation_due", "max_age_exceeded"}
     assert body["ui"]["recommended_mode"] in {"no_auth", "reverse_proxy_oidc", "oidc_bearer", "session_api_key"}
     assert body["ui"]["session_storage_fallback"] == "session_api_key"
-    assert body["rate_limit_runtime"]["backend"] in {"inmemory", "postgres_shared"}
+    assert body["rate_limit_runtime"]["backend"] in {"inmemory_single_process", "postgres_shared"}
     assert "shared_across_replicas" in body["rate_limit_runtime"]
+    assert "configured_api_replicas" in body["rate_limit_runtime"]
+    assert "fail_closed" in body["rate_limit_runtime"]
 
 
 def test_rate_limit_runtime_reports_shared_backend(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -137,9 +139,28 @@ def test_rate_limit_runtime_reports_shared_backend(monkeypatch: pytest.MonkeyPat
     assert status == {
         "backend": "postgres_shared",
         "postgres_configured": True,
+        "configured_api_replicas": 1,
         "shared_required": True,
         "shared_across_replicas": True,
+        "fail_closed": True,
         "message": "Rate limiting uses Postgres-backed shared state across replicas.",
+    }
+
+
+def test_rate_limit_runtime_reports_single_replica_process_local_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "1")
+    status = get_rate_limit_runtime_status()
+    assert status == {
+        "backend": "inmemory_single_process",
+        "postgres_configured": False,
+        "configured_api_replicas": 1,
+        "shared_required": False,
+        "shared_across_replicas": False,
+        "fail_closed": False,
+        "message": (
+            "Rate limiting is process-local only because the API is configured for a single replica. "
+            "Multi-replica deployments must configure AGENT_BOM_POSTGRES_URL."
+        ),
     }
 
 

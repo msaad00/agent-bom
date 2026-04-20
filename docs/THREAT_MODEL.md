@@ -88,7 +88,7 @@ agent-bom operates in four modes:
 
 | Attack | MITRE | Mitigation |
 |--------|-------|-----------|
-| Unauthorized access | T1078 | Non-loopback binds require API key auth (`AGENT_BOM_API_KEY`) or OIDC/JWT (`AGENT_BOM_OIDC_ISSUER`) unless explicitly overridden |
+| Unauthorized access | T1078 | Non-loopback binds require API key auth (`AGENT_BOM_API_KEY`) or OIDC/JWT (`AGENT_BOM_OIDC_ISSUER` or `AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON`) unless explicitly overridden |
 | JWT algorithm confusion | T1550 | JWKS enforces RS/ES algorithms; `alg: none` explicitly rejected |
 | Network exposure | T1190 | Defaults to `127.0.0.1:8422` (localhost-only); non-loopback unauthenticated binds fail closed by default |
 

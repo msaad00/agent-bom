@@ -2,13 +2,13 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { api, type ScanJob, type ScanResult, type BlastRadius, type RemediationItem, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS, severityColor } from "@/lib/api";
+import { api, type ScanJob, type ScanResult, type BlastRadius, type RemediationItem, type GraphExportFormat, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS, severityColor } from "@/lib/api";
 import type { StepEvent, SSEEvent } from "@/lib/api";
 import { ScanPipeline } from "@/components/scan-pipeline";
 import { SeverityBadge } from "@/components/severity-badge";
 import {
   ArrowLeft, Loader2, CheckCircle, Clock, Zap, Key, Wrench,
-  ArrowUpCircle, AlertTriangle, ChevronDown, ChevronRight, GitBranch, Server,
+  ArrowUpCircle, AlertTriangle, ChevronDown, ChevronRight, Download, GitBranch, Server,
 } from "lucide-react";
 
 // ─── Scan Result View ───────────────────────────────────────────────────────
@@ -18,6 +18,8 @@ export function ScanResultView({ id }: { id: string }) {
   const [messages, setMessages] = useState<string[]>([]);
   const [streaming, setStreaming] = useState(true);
   const [pipelineSteps, setPipelineSteps] = useState<Map<string, StepEvent>>(new Map());
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   const logRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -67,21 +69,60 @@ export function ScanResultView({ id }: { id: string }) {
   const summary = result?.summary;
   const blastRadius = result?.blast_radius ?? [];
 
+  async function handleExport(format: GraphExportFormat = "json") {
+    setExporting(true);
+    setExportError("");
+    try {
+      const blob = await api.downloadScanGraph(id, format);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `scan-${id}-graph.${format === "json" ? "json" : format}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Failed to export graph");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="space-y-8">
       {/* Back + header */}
-      <div className="flex items-center gap-4">
-        <Link href="/" className="text-zinc-500 hover:text-zinc-300 transition-colors">
-          <ArrowLeft className="w-4 h-4" />
-        </Link>
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl font-semibold">Scan Results</h1>
-            <JobStatusBadge status={job?.status ?? "pending"} streaming={streaming} />
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-4">
+          <Link href="/" className="text-zinc-500 hover:text-zinc-300 transition-colors">
+            <ArrowLeft className="w-4 h-4" />
+          </Link>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl font-semibold">Scan Results</h1>
+              <JobStatusBadge status={job?.status ?? "pending"} streaming={streaming} />
+            </div>
+            <p className="text-xs text-zinc-500 font-mono mt-0.5">{id}</p>
           </div>
-          <p className="text-xs text-zinc-500 font-mono mt-0.5">{id}</p>
         </div>
+        {job?.status === "done" ? (
+          <button
+            type="button"
+            onClick={() => void handleExport("json")}
+            disabled={exporting}
+            className="inline-flex items-center gap-2 rounded-lg border border-cyan-900/60 bg-cyan-950/30 px-3 py-2 text-sm font-medium text-cyan-200 transition-colors hover:border-cyan-800 hover:bg-cyan-950/50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Export graph JSON
+          </button>
+        ) : null}
       </div>
+
+      {exportError ? (
+        <div className="rounded-xl border border-red-900/50 bg-red-950/20 px-4 py-3 text-sm text-red-300">
+          {exportError}
+        </div>
+      ) : null}
 
       {/* Scan Pipeline DAG */}
       {(streaming || pipelineSteps.size > 0) && (

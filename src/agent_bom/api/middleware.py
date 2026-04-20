@@ -538,10 +538,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if os.environ.get("AGENT_BOM_POSTGRES_URL"):
             try:
                 return PostgresRateLimitStore(window_seconds=self._window)
-            except Exception:
-                if _env_flag("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT"):
-                    raise RuntimeError("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1 but Postgres rate limiter could not initialize") from None
-                _logger.warning("Postgres rate limiter unavailable, falling back to in-memory store", exc_info=True)
+            except Exception as exc:
+                raise RuntimeError(
+                    "Configured Postgres rate limiter could not initialize; refusing to fall back to process-local state"
+                ) from exc
+        if _shared_rate_limit_required():
+            raise RuntimeError(
+                "Shared rate limiting is required for multi-replica or fail-closed deployments. "
+                "Configure AGENT_BOM_POSTGRES_URL before starting the API."
+            )
         return InMemoryRateLimitStore(window_seconds=self._window)
 
     def _resolve_tenant_scope(self, request: StarletteRequest, raw_key: str) -> str | None:
@@ -606,20 +611,41 @@ def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _configured_api_replicas() -> int:
+    raw = os.environ.get("AGENT_BOM_CONTROL_PLANE_REPLICAS", "").strip()
+    if not raw:
+        return 1
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        _logger.warning("Invalid AGENT_BOM_CONTROL_PLANE_REPLICAS=%r; defaulting to 1", raw)
+        return 1
+
+
+def _shared_rate_limit_required() -> bool:
+    return _env_flag("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT") or _configured_api_replicas() > 1
+
+
 def get_rate_limit_runtime_status() -> dict[str, object]:
     """Report whether API rate limiting is shared across replicas."""
     postgres_configured = bool(os.environ.get("AGENT_BOM_POSTGRES_URL", "").strip())
-    shared_required = _env_flag("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT")
-    backend = "postgres_shared" if postgres_configured else "inmemory"
+    replicas = _configured_api_replicas()
+    shared_required = _shared_rate_limit_required()
+    backend = "postgres_shared" if postgres_configured else "inmemory_single_process"
     return {
         "backend": backend,
         "postgres_configured": postgres_configured,
+        "configured_api_replicas": replicas,
         "shared_required": shared_required,
         "shared_across_replicas": postgres_configured,
+        "fail_closed": postgres_configured or shared_required,
         "message": (
             "Rate limiting uses Postgres-backed shared state across replicas."
             if postgres_configured
-            else ("Rate limiting is process-local and resets on pod restart. Set AGENT_BOM_POSTGRES_URL for shared limiter state.")
+            else (
+                "Rate limiting is process-local only because the API is configured for a single replica. "
+                "Multi-replica deployments must configure AGENT_BOM_POSTGRES_URL."
+            )
         ),
     }
 

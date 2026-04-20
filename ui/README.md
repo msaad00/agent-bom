@@ -48,6 +48,20 @@ The dashboard supports two browser auth modes:
 
 All browser fetches use `credentials: "include"` so proxy-managed sessions work without custom patches.
 
+## Frontend quality gates
+
+The UI now ships with two extra release guards:
+
+- `npm run bundle:check` verifies the checked-in client bundle budget against the built `.next/` output.
+- `npm run test:e2e` runs the packaged browser path (`scan -> result -> export`) with Playwright.
+
+For local E2E runs, build first:
+
+```bash
+npm run build
+npm run test:e2e
+```
+
 If you see `Failed to fetch`:
 
 1. Make sure `agent-bom api` is running.

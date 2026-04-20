@@ -135,6 +135,8 @@ export interface GraphSearchResponse {
   pagination: GraphPagination;
 }
 
+export type GraphExportFormat = "json" | "dot" | "mermaid" | "graphml" | "cypher";
+
 export type DeploymentMode = "local" | "fleet" | "cluster" | "hybrid";
 
 export interface PostureCountsResponse {
@@ -836,6 +838,16 @@ async function del(path: string): Promise<void> {
   if (!res.ok) throw new Error(await errorMessage(res));
 }
 
+async function getBlob(path: string): Promise<Blob> {
+  const res = await fetch(`${getConfiguredApiUrl()}${path}`, {
+    credentials: "include",
+    headers: getSessionAuthHeaders(),
+    signal: withTimeout(),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+  return res.blob();
+}
+
 // ─── API functions ────────────────────────────────────────────────────────────
 
 export const api = {
@@ -848,6 +860,10 @@ export const api = {
 
   /** Poll scan status + results */
   getScan: (jobId: string) => get<ScanJob>(`/v1/scan/${jobId}`),
+
+  /** Export a completed scan graph in a graph-native format. */
+  downloadScanGraph: (jobId: string, format: GraphExportFormat = "json") =>
+    getBlob(`/v1/scan/${encodeURIComponent(jobId)}/graph-export?format=${encodeURIComponent(format)}`),
 
   /** Delete a job record */
   deleteScan: (jobId: string) => del(`/v1/scan/${jobId}`),

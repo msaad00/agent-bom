@@ -458,7 +458,9 @@ def configure_api(
     _api_key = api_key
     _rate_limit_rpm = rate_limit_rpm
 
-    oidc_enabled = bool(os.environ.get("AGENT_BOM_OIDC_ISSUER", "").strip())
+    from agent_bom.api.oidc import oidc_enabled_from_env
+
+    oidc_enabled = oidc_enabled_from_env()
     trusted_proxy_enabled = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
     auth_required = bool(api_key or oidc_enabled or trusted_proxy_enabled)
     configure_auth_runtime(

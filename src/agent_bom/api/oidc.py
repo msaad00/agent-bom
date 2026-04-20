@@ -6,13 +6,20 @@ existing API key authentication.
 
 Configuration via environment variables::
 
+    # Single issuer (global IdP)
     AGENT_BOM_OIDC_ISSUER   = "https://accounts.google.com"
-    AGENT_BOM_OIDC_AUDIENCE = "agent-bom"            # required when OIDC is enabled
+    AGENT_BOM_OIDC_AUDIENCE = "agent-bom"             # required when OIDC is enabled
     AGENT_BOM_OIDC_ROLE_CLAIM = "agent_bom_role"      # optional JWT claim for role
     AGENT_BOM_OIDC_TENANT_CLAIM = "tenant_id"         # optional JWT claim for tenant
     AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM = "1"         # fail closed when claim absent
     AGENT_BOM_OIDC_REQUIRED_NONCE = "random-nonce"    # optional fail-closed nonce check
     AGENT_BOM_OIDC_REQUIRE_ROLE_CLAIM = "1"           # optional fail-closed role requirement
+
+    # Multi-tenant / tenant-bound issuers (mutually exclusive with AGENT_BOM_OIDC_ISSUER)
+    AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON = (
+        '{"tenant-alpha":{"issuer":"https://alpha.okta.example","audience":"agent-bom"},'
+        '"tenant-beta":{"issuer":"https://beta.okta.example","audience":"agent-bom"}}'
+    )
 
 Role mapping (claim value → agent-bom Role):
 
@@ -29,6 +36,7 @@ Closes #278.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
@@ -284,6 +292,42 @@ def claims_to_tenant(claims: dict, tenant_claim: str = "tenant_id") -> str | Non
     return None
 
 
+def _decode_unverified_claims(token: str) -> dict:
+    """Read JWT claims without verifying the signature so issuer routing can occur."""
+    parts = token.split(".")
+    if len(parts) != 3:
+        raise OIDCError("JWT is not a valid three-part token")
+    payload = parts[1]
+    payload += "=" * (-len(payload) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(payload.encode())
+        claims = json.loads(decoded)
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise OIDCError("JWT payload could not be decoded before verification") from exc
+    if not isinstance(claims, dict):
+        raise OIDCError("JWT payload did not decode to an object")
+    return claims
+
+
+def _coerce_optional_bool(value: object, *, field_name: str) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    raise OIDCError(f"{field_name} must be a boolean when set")
+
+
+def oidc_enabled_from_env() -> bool:
+    """Return True when either single-issuer or tenant-bound OIDC config is present."""
+    return bool(os.environ.get("AGENT_BOM_OIDC_ISSUER", "").strip() or os.environ.get("AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON", "").strip())
+
+
 # ── OIDCConfig helper ──────────────────────────────────────────────────────────
 
 
@@ -310,6 +354,8 @@ class OIDCConfig:
         require_tenant_claim: Optional[bool] = None,
         required_nonce: Optional[str] = None,
         require_role_claim: Optional[bool] = None,
+        tenant_id: Optional[str] = None,
+        tenant_providers: dict[str, OIDCConfig] | None = None,
     ) -> None:
         self.issuer = issuer or os.environ.get("AGENT_BOM_OIDC_ISSUER", "")
         self.audience = audience or os.environ.get("AGENT_BOM_OIDC_AUDIENCE") or None
@@ -317,6 +363,8 @@ class OIDCConfig:
         self.jwks_uri = jwks_uri or os.environ.get("AGENT_BOM_OIDC_JWKS_URI", "") or None
         self.tenant_claim = tenant_claim or os.environ.get("AGENT_BOM_OIDC_TENANT_CLAIM", "tenant_id")
         self.required_nonce = required_nonce or os.environ.get("AGENT_BOM_OIDC_REQUIRED_NONCE", "") or None
+        self.tenant_id = tenant_id or None
+        self.tenant_providers = tenant_providers or {}
         if require_tenant_claim is None:
             require_tenant_claim = os.environ.get("AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM", "").strip().lower() in {
                 "1",
@@ -331,7 +379,46 @@ class OIDCConfig:
                 "yes",
             }
         self.require_role_claim = require_role_claim
-        self.enabled = bool(self.issuer)
+        self._tenant_providers_by_issuer = {provider.issuer: provider for provider in self.tenant_providers.values() if provider.issuer}
+        self.enabled = bool(self.issuer or self.tenant_providers)
+
+    def _provider_for_issuer(self, issuer: str) -> OIDCConfig:
+        if not self.tenant_providers:
+            return self
+        provider = self._tenant_providers_by_issuer.get(issuer)
+        if provider is None:
+            raise OIDCError(f"OIDC issuer '{issuer}' is not configured for any tenant")
+        return provider
+
+    def _provider_for_token(self, token: str) -> OIDCConfig:
+        if not self.tenant_providers:
+            return self
+        claims = _decode_unverified_claims(token)
+        issuer = str(claims.get("iss") or "").strip()
+        if not issuer:
+            raise OIDCError("JWT missing issuer claim required for tenant-bound OIDC")
+        return self._provider_for_issuer(issuer)
+
+    def _provider_for_claims(self, claims: dict) -> OIDCConfig:
+        if not self.tenant_providers:
+            return self
+        issuer = str(claims.get("iss") or "").strip()
+        if not issuer:
+            raise OIDCError("JWT missing issuer claim required for tenant-bound OIDC")
+        return self._provider_for_issuer(issuer)
+
+    def _validate_bound_tenant(self, claims: dict) -> None:
+        if self.tenant_id is None:
+            return
+        tenant_id = claims_to_tenant(claims, self.tenant_claim)
+        if tenant_id:
+            if tenant_id != self.tenant_id:
+                raise OIDCError(
+                    f"JWT tenant '{tenant_id}' does not match the configured tenant '{self.tenant_id}' for issuer '{self.issuer}'"
+                )
+            return
+        if self.require_tenant_claim:
+            raise OIDCError(f"JWT missing required tenant claim '{self.tenant_claim}'")
 
     def verify(self, token: str) -> tuple[dict, str]:
         """Verify a JWT and return ``(claims, role)``.
@@ -339,26 +426,82 @@ class OIDCConfig:
         Raises:
             OIDCError: On verification failure.
         """
-        if not self.enabled or not self.issuer:
-            raise OIDCError("OIDC is not configured (set AGENT_BOM_OIDC_ISSUER)")
-        if not self.audience:
+        provider = self._provider_for_token(token)
+        if not self.enabled or not provider.issuer:
+            raise OIDCError("OIDC is not configured (set AGENT_BOM_OIDC_ISSUER or AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON)")
+        if not provider.audience:
             raise OIDCError("OIDC is configured but AGENT_BOM_OIDC_AUDIENCE is not set")
-        claims = verify_oidc_token(token, self.issuer, self.audience, self.jwks_uri, self.required_nonce)
-        if self.require_role_claim and not claims_have_role_signal(claims, self.role_claim):
-            raise OIDCError(f"JWT missing required role claim '{self.role_claim}'")
-        role = claims_to_role(claims, self.role_claim)
+        claims = verify_oidc_token(token, provider.issuer, provider.audience, provider.jwks_uri, provider.required_nonce)
+        if provider.require_role_claim and not claims_have_role_signal(claims, provider.role_claim):
+            raise OIDCError(f"JWT missing required role claim '{provider.role_claim}'")
+        provider._validate_bound_tenant(claims)
+        role = claims_to_role(claims, provider.role_claim)
         return claims, role
 
     def resolve_tenant(self, claims: dict) -> str:
         """Resolve tenant context from claims or fail closed when required."""
-        tenant_id = claims_to_tenant(claims, self.tenant_claim)
+        provider = self._provider_for_claims(claims)
+        tenant_id = claims_to_tenant(claims, provider.tenant_claim)
         if tenant_id:
             return tenant_id
-        if self.require_tenant_claim:
-            raise OIDCError(f"JWT missing required tenant claim '{self.tenant_claim}'")
+        if provider.tenant_id is not None:
+            return provider.tenant_id
+        if provider.require_tenant_claim:
+            raise OIDCError(f"JWT missing required tenant claim '{provider.tenant_claim}'")
         return "default"
 
     @classmethod
     def from_env(cls) -> "OIDCConfig":
         """Build config from environment variables."""
+        tenant_providers_json = os.environ.get("AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON", "").strip()
+        issuer = os.environ.get("AGENT_BOM_OIDC_ISSUER", "").strip()
+        if tenant_providers_json:
+            if issuer:
+                raise OIDCError("Configure either AGENT_BOM_OIDC_ISSUER or AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON, not both")
+            try:
+                raw = json.loads(tenant_providers_json)
+            except json.JSONDecodeError as exc:
+                raise OIDCError("AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON is not valid JSON") from exc
+            if not isinstance(raw, dict) or not raw:
+                raise OIDCError("AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON must be a non-empty object keyed by tenant ID")
+
+            providers: dict[str, OIDCConfig] = {}
+            seen_issuers: set[str] = set()
+            for tenant_id, provider_raw in raw.items():
+                normalized_tenant = str(tenant_id).strip()
+                if not normalized_tenant:
+                    raise OIDCError("Tenant-bound OIDC config contains an empty tenant ID")
+                if not isinstance(provider_raw, dict):
+                    raise OIDCError(f"OIDC provider config for tenant '{normalized_tenant}' must be an object")
+                if "tenant_id" in provider_raw and str(provider_raw["tenant_id"]).strip() != normalized_tenant:
+                    raise OIDCError(
+                        f"OIDC provider config for tenant '{normalized_tenant}' has mismatched tenant_id '{provider_raw['tenant_id']}'"
+                    )
+
+                provider = cls(
+                    issuer=str(provider_raw.get("issuer", "")).strip(),
+                    audience=str(provider_raw.get("audience", "")).strip() or None,
+                    role_claim=str(provider_raw.get("role_claim", "agent_bom_role")).strip() or "agent_bom_role",
+                    jwks_uri=str(provider_raw.get("jwks_uri", "")).strip() or None,
+                    tenant_claim=str(provider_raw.get("tenant_claim", "tenant_id")).strip() or "tenant_id",
+                    require_tenant_claim=_coerce_optional_bool(
+                        provider_raw.get("require_tenant_claim"),
+                        field_name=f"{normalized_tenant}.require_tenant_claim",
+                    ),
+                    required_nonce=str(provider_raw.get("required_nonce", "")).strip() or None,
+                    require_role_claim=_coerce_optional_bool(
+                        provider_raw.get("require_role_claim"),
+                        field_name=f"{normalized_tenant}.require_role_claim",
+                    ),
+                    tenant_id=normalized_tenant,
+                )
+                if not provider.issuer:
+                    raise OIDCError(f"OIDC provider config for tenant '{normalized_tenant}' is missing 'issuer'")
+                if not provider.audience:
+                    raise OIDCError(f"OIDC provider config for tenant '{normalized_tenant}' is missing 'audience'")
+                if provider.issuer in seen_issuers:
+                    raise OIDCError(f"OIDC issuer '{provider.issuer}' is configured for more than one tenant")
+                seen_issuers.add(provider.issuer)
+                providers[normalized_tenant] = provider
+            return cls(tenant_providers=providers)
         return cls()

@@ -417,6 +417,8 @@ class TestTrendAnalysis:
         assert len(history) == 3
         # Most recent first
         assert history[0].timestamp == "2026-03-05"
+        assert len(store.get_history(limit=10, tenant_id="default")) == 5
+        assert store.get_history(limit=10, tenant_id="tenant-beta") == []
 
     def test_sqlite_trend_store(self, tmp_path):
         from agent_bom.baseline import SQLiteTrendStore, TrendPoint
@@ -435,9 +437,28 @@ class TestTrendAnalysis:
                 posture_grade="B",
             )
         )
+        store.record(
+            TrendPoint(
+                timestamp="2026-03-02T00:00:00",
+                total_vulns=3,
+                critical=0,
+                high=1,
+                medium=1,
+                low=1,
+                posture_score=92.0,
+                posture_grade="A",
+                tenant_id="tenant-beta",
+            )
+        )
         history = store.get_history()
-        assert len(history) == 1
-        assert history[0].total_vulns == 10
+        assert len(history) == 2
+        assert [point.total_vulns for point in history] == [3, 10]
+        alpha = store.get_history(tenant_id="default")
+        beta = store.get_history(tenant_id="tenant-beta")
+        assert len(alpha) == 1
+        assert len(beta) == 1
+        assert alpha[0].total_vulns == 10
+        assert beta[0].total_vulns == 3
 
     def test_trend_point_to_dict(self):
         from agent_bom.baseline import TrendPoint

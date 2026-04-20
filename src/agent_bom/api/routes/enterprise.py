@@ -180,10 +180,11 @@ async def auth_policy() -> dict:
     past the configured maximum.
     """
     from agent_bom.api.auth import get_api_key_policy
-    from agent_bom.api.middleware import get_rate_limit_key_status
+    from agent_bom.api.middleware import get_rate_limit_key_status, get_rate_limit_runtime_status
 
     api_policy = get_api_key_policy()
     rl_status = get_rate_limit_key_status()
+    rl_runtime = get_rate_limit_runtime_status()
     return {
         "api_key": {
             "default_ttl_seconds": api_policy.default_ttl_seconds,
@@ -192,6 +193,7 @@ async def auth_policy() -> dict:
             "rotation_endpoint": "/v1/auth/keys/{key_id}/rotate",
         },
         "rate_limit_key": rl_status,
+        "rate_limit_runtime": rl_runtime,
     }
 
 

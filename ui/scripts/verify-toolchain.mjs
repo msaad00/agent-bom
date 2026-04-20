@@ -27,9 +27,10 @@ const eslintConfigNextDeclared = packageJson.devDependencies?.["eslint-config-ne
 const eslintDeclared = packageJson.devDependencies?.eslint;
 const reactDeclared = packageJson.dependencies?.react;
 const reactDomDeclared = packageJson.dependencies?.["react-dom"];
+const nodeEngines = packageJson.engines?.node;
 
-if (!nextDeclared || !eslintConfigNextDeclared || !eslintDeclared) {
-  fail("UI toolchain contract is incomplete: next, eslint-config-next, and eslint must all be declared.");
+if (!nextDeclared || !eslintConfigNextDeclared || !eslintDeclared || !nodeEngines) {
+  fail("UI toolchain contract is incomplete: next, eslint-config-next, eslint, and engines.node must all be declared.");
 }
 
 if (normalizeVersionRange(nextDeclared) !== normalizeVersionRange(eslintConfigNextDeclared)) {
@@ -59,6 +60,7 @@ if (nextInstalled !== eslintConfigNextInstalled) {
 
 const nextMajor = majorOf(nextInstalled);
 const eslintMajor = majorOf(eslintInstalled);
+const nodeMajor = Number.parseInt(process.versions.node.split(".")[0] ?? "", 10);
 
 // Next.js 16.2.x is currently validated in this repo with ESLint 9.x and 10.x.
 // Keep the allowlist explicit so future major jumps fail closed until the UI
@@ -69,6 +71,10 @@ if (nextMajor === 16 && ![9, 10].includes(eslintMajor)) {
   );
 }
 
+if (!Number.isInteger(nodeMajor) || nodeMajor < 20 || nodeMajor > 22) {
+  fail(`UI runtime must stay within the declared Node range ${nodeEngines}; found Node ${process.versions.node}.`);
+}
+
 console.log(
-  `UI toolchain contract verified: next ${nextInstalled}, eslint-config-next ${eslintConfigNextInstalled}, eslint ${eslintInstalled}.`,
+  `UI toolchain contract verified: next ${nextInstalled}, eslint-config-next ${eslintConfigNextInstalled}, eslint ${eslintInstalled}, node ${process.versions.node}.`,
 );

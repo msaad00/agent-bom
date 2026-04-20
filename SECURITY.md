@@ -48,6 +48,8 @@ agent-bom is a **read-only scanner**. It does not modify agent configurations, e
 - API key auth via `AGENT_BOM_API_KEY` env var; OIDC/JWT via `AGENT_BOM_OIDC_ISSUER`
 - WebSocket endpoints require the same auth when `AGENT_BOM_API_KEY` is set
 - JWKS public key caching (1h TTL); RS256/RS384/RS512/ES256/ES384/ES512 supported; `alg: none` rejected
+- Dashboard HTML uses a route-specific CSP. The packaged FastAPI-served UI allows `script-src 'self' 'unsafe-inline'` for the Next.js runtime bootstrap; API JSON routes keep the stricter `default-src 'self'` policy.
+- The standalone Vercel preview config in `ui/vercel.json` is looser and still includes `unsafe-eval` for that hosting path. Treat it as a preview-only constraint, not the recommended self-hosted control-plane policy.
 
 ## Security Testing
 

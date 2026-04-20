@@ -268,6 +268,21 @@ jobs:
           npm ci --ignore-scripts
           npm audit --audit-level=high
 
+      - name: OSV scanner (ui lockfile) — block release on fixable CVEs
+        run: |
+          curl -fsSL -o /usr/local/bin/osv-scanner \
+            https://github.com/google/osv-scanner/releases/download/v2.3.3/osv-scanner_linux_amd64
+          chmod +x /usr/local/bin/osv-scanner
+          osv-scanner scan --config osv-scanner.toml --lockfile=ui/package-lock.json 2>&1 | tee /tmp/osv-ui-release.txt || {
+            FIXABLE=$(grep -E "^\|" /tmp/osv-ui-release.txt | grep -v "| -- " | grep -v "OSV URL" | grep -v "+--" | head -5)
+            if [ -n "$FIXABLE" ]; then
+              echo "::error::osv-scanner found UI lockfile vulnerabilities with available fixes:"
+              echo "$FIXABLE"
+              exit 1
+            fi
+            echo "::warning::osv-scanner found only unfixable UI lockfile CVEs (no upstream fix) — passing"
+          }
+
       - name: Self dep scan — block release on critical CVE
         run: |
           mkdir -p sarif

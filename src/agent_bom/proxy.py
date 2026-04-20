@@ -530,6 +530,7 @@ async def run_proxy(
     log_path: Optional[str] = None,
     block_undeclared: bool = False,
     detect_credentials: bool = False,
+    detect_visual_leaks: bool = False,
     rate_limit_threshold: int = 0,
     log_only: bool = False,
     alert_webhook: Optional[str] = None,
@@ -549,6 +550,10 @@ async def run_proxy(
         log_path: Path to audit JSONL log.
         block_undeclared: Block tools not in initial tools/list.
         detect_credentials: Enable credential leak detection in responses.
+        detect_visual_leaks: Enable OCR-based credential/PII detection on
+            image tool responses (Playwright-MCP, Puppeteer-MCP, screen
+            capture tools — see issue #1568). Requires the ``visual`` extra;
+            degrades to a no-op when OCR deps are missing.
         rate_limit_threshold: Max calls per tool per 60s (0 = disabled).
         log_only: Log alerts without blocking (advisory mode).
         alert_webhook: Optional webhook URL for runtime alert notifications.
@@ -599,6 +604,15 @@ async def run_proxy(
     drift_detector = ToolDriftDetector()
     arg_analyzer = ArgumentAnalyzer()
     cred_detector = CredentialLeakDetector() if detect_credentials else None
+    visual_detector = None
+    if detect_visual_leaks:
+        from agent_bom.runtime.visual_leak_detector import VisualLeakDetector
+
+        visual_detector = VisualLeakDetector()
+        if not visual_detector.enabled:
+            logger.warning(
+                "Visual leak detection requested but OCR deps are missing — install 'agent-bom[visual]' and ensure tesseract is on PATH"
+            )
     local_policy_rate_limit = resolve_rate_limit_threshold(policy) if policy else None
     effective_rate_limit_threshold = rate_limit_threshold or local_policy_rate_limit or 0
     rate_tracker = RateLimitTracker(threshold=max(effective_rate_limit_threshold, 0))
@@ -1131,6 +1145,27 @@ async def run_proxy(
                         + "\n"
                     )
                     log_file.write(sig_entry)
+
+                # Visual leak detection — OCR-scan image blocks in the result
+                # and either log (log_only) or paint redactions over the
+                # matched regions, then re-encode the line so the client
+                # never sees the raw pixels. Runs after HMAC so the signature
+                # still pins the server's actual response.
+                if visual_detector is not None and visual_detector.enabled and "result" in msg:
+                    vis_result = msg.get("result")
+                    vis_content = vis_result.get("content") if isinstance(vis_result, dict) else None
+                    if isinstance(vis_content, list) and vis_content:
+                        vis_id = msg.get("id")
+                        vis_tool = ""
+                        if vis_id is not None and vis_id in pending_calls:
+                            vis_tool = pending_calls[vis_id][0]
+                        vis_alerts = visual_detector.check(vis_tool or "unknown", vis_content)
+                        if vis_alerts:
+                            await _handle_alerts(vis_alerts, log_file)
+                            if not log_only:
+                                redacted = visual_detector.redact(vis_content)
+                                msg["result"]["content"] = redacted
+                                line = (json.dumps(msg) + "\n").encode()
 
                 # Inline response scanning (PII, secrets, payload vuln)
                 if scan_config.enabled and "result" in msg:

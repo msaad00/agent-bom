@@ -13,6 +13,11 @@ from rich.console import Console
 @click.option("--log", "log_path", default=None, help="Audit log output path (JSONL)")
 @click.option("--block-undeclared", is_flag=True, help="Block tool calls not in tools/list response")
 @click.option("--detect-credentials", is_flag=True, help="Detect credential leaks in tool responses")
+@click.option(
+    "--detect-visual-leaks",
+    is_flag=True,
+    help="OCR-scan image tool responses for credentials/PII (requires 'agent-bom[visual]')",
+)
 @click.option("--rate-limit-threshold", type=int, default=0, help="Max calls per tool per 60s (0=disabled)")
 @click.option("--log-only", is_flag=True, help="Log alerts without blocking (advisory mode)")
 @click.option(
@@ -64,6 +69,7 @@ def proxy_cmd(
     log_path,
     block_undeclared,
     detect_credentials,
+    detect_visual_leaks,
     rate_limit_threshold,
     log_only,
     alert_webhook,
@@ -158,6 +164,7 @@ def proxy_cmd(
             log_path=log_path,
             block_undeclared=block_undeclared,
             detect_credentials=detect_credentials,
+            detect_visual_leaks=detect_visual_leaks,
             rate_limit_threshold=rate_limit_threshold,
             log_only=log_only,
             alert_webhook=alert_webhook,

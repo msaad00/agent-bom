@@ -235,3 +235,157 @@ def test_relay_non_tool_message_bypasses_policy_and_forwards() -> None:
     resp = client.post("/mcp/filesystem", json=_json_rpc("tools/list"))
     assert resp.status_code == 200
     assert upstream_calls and upstream_calls[0]["method"] == "tools/list"
+
+
+# ─── Visual-leak detection wire-up ─────────────────────────────────────────
+
+
+class _StubVisualDetector:
+    """Stand-in for VisualLeakDetector that avoids pulling OCR deps in CI.
+
+    The real detector is exercised in tests/test_visual_leak_detector.py;
+    here we only need to prove the gateway calls ``check`` + ``redact`` on
+    the response content when the feature flag is on.
+    """
+
+    def __init__(self, alert: object | None) -> None:
+        self._alert = alert
+        self.check_calls: list[tuple[str, list]] = []
+        self.redact_calls: list[list] = []
+        self.enabled = True
+
+    def check(self, tool_name, content_blocks):
+        self.check_calls.append((tool_name, content_blocks))
+        return [self._alert] if self._alert is not None else []
+
+    def redact(self, content_blocks):
+        self.redact_calls.append(content_blocks)
+        return [{"type": "image", "data": "REDACTED", "mimeType": "image/png"}]
+
+
+def test_visual_leak_detection_off_by_default_no_scan() -> None:
+    """Feature flag is opt-in — default deploys must not invoke the detector."""
+    import agent_bom.gateway_server as gw
+
+    detector = _StubVisualDetector(alert=None)
+    # If the gateway calls _get_visual_leak_detector when the flag is off,
+    # the stub gets populated — assert that does not happen.
+    gw._visual_detector_singleton = detector
+
+    async def fake_caller(upstream, message, extra_headers):
+        return {
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": {"content": [{"type": "image", "data": "AAA", "mimeType": "image/png"}]},
+        }
+
+    try:
+        settings = GatewaySettings(registry=_simple_registry(), policy={}, upstream_caller=fake_caller)
+        client = TestClient(create_gateway_app(settings))
+        resp = client.post(
+            "/mcp/filesystem",
+            json=_json_rpc("tools/call", name="take_screenshot", arguments={}),
+        )
+        assert resp.status_code == 200
+        assert detector.check_calls == []
+        assert detector.redact_calls == []
+    finally:
+        gw._visual_detector_singleton = None
+
+
+def test_visual_leak_detection_scans_and_redacts_image_content() -> None:
+    """With the flag on and alerts found, the response must be redacted + audited."""
+    import agent_bom.gateway_server as gw
+    from agent_bom.runtime.detectors import Alert, AlertSeverity
+
+    alert = Alert(
+        detector="visual_credential_leak",
+        severity=AlertSeverity.CRITICAL,
+        message="visual AWS key",
+        details={"leak_type": "AWS Access Key", "bbox": [0, 0, 10, 10]},
+    )
+    detector = _StubVisualDetector(alert=alert)
+    gw._visual_detector_singleton = detector
+
+    audit_events: list[dict] = []
+
+    async def audit_sink(event):
+        audit_events.append(event)
+
+    async def fake_caller(upstream, message, extra_headers):
+        return {
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": {
+                "content": [{"type": "image", "data": "ORIGINAL", "mimeType": "image/png"}],
+            },
+        }
+
+    try:
+        settings = GatewaySettings(
+            registry=_simple_registry(),
+            policy={},
+            upstream_caller=fake_caller,
+            audit_sink=audit_sink,
+            enable_visual_leak_detection=True,
+        )
+        client = TestClient(create_gateway_app(settings))
+        resp = client.post(
+            "/mcp/filesystem",
+            json=_json_rpc("tools/call", name="take_screenshot", arguments={}),
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["result"]["content"][0]["data"] == "REDACTED"
+        assert detector.check_calls and detector.check_calls[0][0] == "take_screenshot"
+        assert detector.redact_calls, "redact must fire when alerts are present"
+
+        leak_events = [e for e in audit_events if e["action"] == "gateway.visual_leak_blocked"]
+        assert leak_events, "audit sink must receive a gateway.visual_leak_blocked event"
+        assert leak_events[0]["tool"] == "take_screenshot"
+        assert leak_events[0]["alert_count"] == 1
+    finally:
+        gw._visual_detector_singleton = None
+
+
+def test_visual_leak_detection_clean_response_passes_through() -> None:
+    """Clean scans must not redact the response or emit a leak audit event."""
+    import agent_bom.gateway_server as gw
+
+    detector = _StubVisualDetector(alert=None)
+    gw._visual_detector_singleton = detector
+
+    audit_events: list[dict] = []
+
+    async def audit_sink(event):
+        audit_events.append(event)
+
+    async def fake_caller(upstream, message, extra_headers):
+        return {
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": {"content": [{"type": "image", "data": "CLEAN", "mimeType": "image/png"}]},
+        }
+
+    try:
+        settings = GatewaySettings(
+            registry=_simple_registry(),
+            policy={},
+            upstream_caller=fake_caller,
+            audit_sink=audit_sink,
+            enable_visual_leak_detection=True,
+        )
+        client = TestClient(create_gateway_app(settings))
+        resp = client.post(
+            "/mcp/filesystem",
+            json=_json_rpc("tools/call", name="take_screenshot", arguments={}),
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        # Clean content passes through unchanged (no redact call)
+        assert body["result"]["content"][0]["data"] == "CLEAN"
+        assert detector.check_calls, "check must fire when the flag is on"
+        assert detector.redact_calls == [], "redact must not fire without alerts"
+        assert not any(e["action"] == "gateway.visual_leak_blocked" for e in audit_events)
+    finally:
+        gw._visual_detector_singleton = None

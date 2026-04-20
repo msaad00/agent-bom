@@ -195,6 +195,16 @@ def test_empty_image_data_is_ignored():
     assert d.check("t", [empty_block]) == []
 
 
+def test_ocr_runtime_error_is_treated_as_empty_scan():
+    d = VisualLeakDetector(enabled=True)
+    with patch(
+        "agent_bom.runtime.visual_leak_detector._extract_word_boxes",
+        side_effect=RuntimeError("tesseract failed"),
+    ):
+        assert d.check("t", [_img_block()]) == []
+        assert d.redact([_img_block()])[0]["type"] == "image"
+
+
 def test_multi_word_sliding_window_catches_key_value_leaks():
     """'api_key = abc...xyz' spans three OCR words; the window pass must catch it."""
     with _ocr_words(

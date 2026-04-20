@@ -166,6 +166,7 @@ For the stronger self-hosted operator path, start from:
 That example adds:
 
 - `HPA` for API and UI
+- `ServiceMonitor` enabled in the production preset so `/metrics` is scraped when Prometheus Operator is present
 - `HPA` scale-down stabilization
 - topology spread across zones and nodes
 - preferred pod anti-affinity for API and UI replicas
@@ -234,6 +235,7 @@ You still own:
   `AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS`, and
   `AGENT_BOM_POSTGRES_STATEMENT_TIMEOUT_MS`
 - enable `controlPlane.observability.prometheusRule.enabled=true` when the cluster already runs Prometheus Operator
+- keep `monitor.enabled=true` and `monitor.serviceMonitor.enabled=true` in the production preset unless your platform team has a different scrape contract
 - enable `controlPlane.observability.grafanaDashboard.enabled=true` when Grafana watches dashboard `ConfigMap`s
 - enable `controlPlane.backup.enabled=true` only after setting a real S3 bucket, prefix, and IRSA-backed upload permissions
 - enable `controlPlane.serviceMesh.enabled=true` only when the control-plane namespace is already part of your Istio data plane

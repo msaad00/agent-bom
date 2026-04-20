@@ -209,6 +209,8 @@ controlPlane:
       - "8422"
     env: []
     envFrom: []
+    extraVolumes: []
+    extraVolumeMounts: []
     service:
       enabled: true
       type: ClusterIP

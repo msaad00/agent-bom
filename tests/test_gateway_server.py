@@ -13,7 +13,9 @@ paths a pilot team would actually run into.
 
 from __future__ import annotations
 
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from starlette.testclient import TestClient
@@ -290,6 +292,30 @@ def test_relay_non_tool_message_bypasses_policy_and_forwards() -> None:
     resp = client.post("/mcp/filesystem", json=_json_rpc("tools/list"))
     assert resp.status_code == 200
     assert upstream_calls and upstream_calls[0]["method"] == "tools/list"
+
+
+def test_visual_detector_singleton_init_is_locked(monkeypatch) -> None:
+    import agent_bom.gateway_server as gw
+
+    created: list[object] = []
+    create_lock = threading.Lock()
+
+    class FakeDetector:
+        def __init__(self) -> None:
+            time.sleep(0.02)
+            with create_lock:
+                created.append(self)
+
+    monkeypatch.setattr("agent_bom.runtime.visual_leak_detector.VisualLeakDetector", FakeDetector)
+    gw._visual_detector_singleton = None
+    try:
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            detectors = list(executor.map(lambda _i: gw._get_visual_leak_detector(), range(6)))
+    finally:
+        gw._visual_detector_singleton = None
+
+    assert len(created) == 1
+    assert all(detector is created[0] for detector in detectors)
 
 
 # ─── Visual-leak detection wire-up ─────────────────────────────────────────

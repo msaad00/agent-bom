@@ -25,7 +25,7 @@ pytest.importorskip("pytesseract")
 from PIL import Image  # noqa: E402
 
 from agent_bom.runtime.detectors import AlertSeverity  # noqa: E402
-from agent_bom.runtime.visual_leak_detector import VisualLeakDetector  # noqa: E402
+from agent_bom.runtime.visual_leak_detector import VisualLeakDetector, _extract_word_boxes  # noqa: E402
 
 
 def _png_bytes(width: int = 400, height: int = 200, color: str = "white") -> bytes:
@@ -203,6 +203,24 @@ def test_ocr_runtime_error_is_treated_as_empty_scan():
     ):
         assert d.check("t", [_img_block()]) == []
         assert d.redact([_img_block()])[0]["type"] == "image"
+
+
+def test_extract_word_boxes_tolerates_mismatched_ocr_arrays():
+    img = Image.new("RGB", (32, 32), color="white")
+    with patch(
+        "pytesseract.image_to_data",
+        return_value={
+            "text": ["AKIAIOSFODNN7EXAMPLE", "ignored"],
+            "conf": ["91"],
+            "left": [5],
+            "top": [6],
+            "width": [20],
+            "height": [8],
+        },
+    ):
+        boxes = _extract_word_boxes(img)
+
+    assert boxes == [("AKIAIOSFODNN7EXAMPLE", (5, 6, 25, 14))]
 
 
 def test_multi_word_sliding_window_catches_key_value_leaks():

@@ -147,16 +147,19 @@ def _extract_word_boxes(img) -> list[tuple[str, tuple[int, int, int, int]]]:
     tops = raw.get("top", [])
     widths = raw.get("width", [])
     heights = raw.get("height", [])
-    for idx, word in enumerate(words):
+    for word, conf_raw, left, top, width, height in zip(words, confs, lefts, tops, widths, heights, strict=False):
         if not word or not word.strip():
             continue
         try:
-            conf = float(confs[idx])
+            conf = float(conf_raw)
+            bbox = (int(left), int(top), int(left) + int(width), int(top) + int(height))
         except (TypeError, ValueError):
             conf = -1.0
+            bbox = None
         if conf < 40.0:
             continue
-        bbox = (int(lefts[idx]), int(tops[idx]), int(lefts[idx]) + int(widths[idx]), int(tops[idx]) + int(heights[idx]))
+        if bbox is None:
+            continue
         out.append((word, bbox))
     return out
 

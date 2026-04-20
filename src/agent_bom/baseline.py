@@ -134,6 +134,7 @@ class TrendPoint:
     low: int
     posture_score: float
     posture_grade: str
+    tenant_id: str = "default"
 
     def to_dict(self) -> dict:
         return {
@@ -152,7 +153,7 @@ class TrendStore(Protocol):
     """Protocol for trend data persistence."""
 
     def record(self, point: TrendPoint) -> None: ...
-    def get_history(self, limit: int = 30) -> list[TrendPoint]: ...
+    def get_history(self, limit: int = 30, tenant_id: str | None = None) -> list[TrendPoint]: ...
 
 
 class InMemoryTrendStore:
@@ -168,9 +169,12 @@ class InMemoryTrendStore:
             if len(self._points) > self._MAX_POINTS:
                 self._points = self._points[-self._MAX_POINTS :]
 
-    def get_history(self, limit: int = 30) -> list[TrendPoint]:
+    def get_history(self, limit: int = 30, tenant_id: str | None = None) -> list[TrendPoint]:
         with self._lock:
-            return list(reversed(self._points[-limit:]))
+            points = self._points
+            if tenant_id is not None:
+                points = [point for point in points if point.tenant_id == tenant_id]
+            return list(reversed(points[-limit:]))
 
 
 class SQLiteTrendStore:
@@ -190,6 +194,7 @@ class SQLiteTrendStore:
         self._conn.execute("""CREATE TABLE IF NOT EXISTS trend_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp TEXT NOT NULL,
+            tenant_id TEXT NOT NULL DEFAULT 'default',
             total_vulns INTEGER NOT NULL,
             critical INTEGER NOT NULL DEFAULT 0,
             high INTEGER NOT NULL DEFAULT 0,
@@ -199,14 +204,19 @@ class SQLiteTrendStore:
             posture_grade TEXT NOT NULL DEFAULT ''
         )""")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_trend_ts ON trend_history(timestamp)")
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(trend_history)").fetchall()}
+        if "tenant_id" not in cols:
+            self._conn.execute("ALTER TABLE trend_history ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_trend_tenant_ts ON trend_history(tenant_id, timestamp)")
         self._conn.commit()
 
     def record(self, point: TrendPoint) -> None:
         self._conn.execute(
-            "INSERT INTO trend_history (timestamp, total_vulns, critical, high, medium, low, posture_score, posture_grade) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO trend_history (timestamp, tenant_id, total_vulns, critical, high, medium, low, posture_score, posture_grade) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 point.timestamp,
+                point.tenant_id,
                 point.total_vulns,
                 point.critical,
                 point.high,
@@ -218,15 +228,30 @@ class SQLiteTrendStore:
         )
         self._conn.commit()
 
-    def get_history(self, limit: int = 30) -> list[TrendPoint]:
-        rows = self._conn.execute(
-            "SELECT timestamp, total_vulns, critical, high, medium, low, posture_score, posture_grade "
-            "FROM trend_history ORDER BY timestamp DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
+    def get_history(self, limit: int = 30, tenant_id: str | None = None) -> list[TrendPoint]:
+        if tenant_id is None:
+            rows = self._conn.execute(
+                "SELECT timestamp, total_vulns, critical, high, medium, low, posture_score, posture_grade, tenant_id "
+                "FROM trend_history ORDER BY timestamp DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT timestamp, total_vulns, critical, high, medium, low, posture_score, posture_grade, tenant_id "
+                "FROM trend_history WHERE tenant_id = ? ORDER BY timestamp DESC LIMIT ?",
+                (tenant_id, limit),
+            ).fetchall()
         return [
             TrendPoint(
-                timestamp=r[0], total_vulns=r[1], critical=r[2], high=r[3], medium=r[4], low=r[5], posture_score=r[6], posture_grade=r[7]
+                timestamp=r[0],
+                total_vulns=r[1],
+                critical=r[2],
+                high=r[3],
+                medium=r[4],
+                low=r[5],
+                posture_score=r[6],
+                posture_grade=r[7],
+                tenant_id=r[8] if len(r) > 8 else "default",
             )
             for r in rows
         ]

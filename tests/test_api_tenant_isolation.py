@@ -14,6 +14,7 @@ from agent_bom.api import tenant_quota as tenant_quota_module
 from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState, InMemoryFleetStore
 from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.models import FleetAgentUpdate, JobStatus, PushPayload, ScanJob, ScanRequest, ScheduleCreate, StateUpdate
+from agent_bom.api.pipeline import _sync_scan_agents_to_fleet
 from agent_bom.api.policy_store import GatewayPolicy, InMemoryPolicyStore
 from agent_bom.api.routes import compliance as compliance_routes
 from agent_bom.api.routes import discovery as discovery_routes
@@ -115,6 +116,29 @@ async def test_fleet_sync_assigns_request_tenant():
     agents = store.list_by_tenant("tenant-alpha")
     assert len(agents) == 1
     assert agents[0].tenant_id == "tenant-alpha"
+
+
+def test_pipeline_fleet_sync_uses_job_tenant_scope():
+    store = InMemoryFleetStore()
+    set_fleet_store(store)
+    store.put(_fleet_agent("beta-1", "tenant-beta", "shared-agent"))
+
+    class _Discovered:
+        name = "shared-agent"
+        agent_type = "claude-desktop"
+        config_path = "/tmp/shared.json"
+        mcp_servers = []
+        version = "1.0"
+
+    _sync_scan_agents_to_fleet([_Discovered()], tenant_id="tenant-alpha")
+
+    alpha_agents = store.list_by_tenant("tenant-alpha")
+    beta_agents = store.list_by_tenant("tenant-beta")
+    assert len(alpha_agents) == 1
+    assert alpha_agents[0].name == "shared-agent"
+    assert alpha_agents[0].tenant_id == "tenant-alpha"
+    assert len(beta_agents) == 1
+    assert beta_agents[0].agent_id == "beta-1"
 
 
 @pytest.mark.asyncio

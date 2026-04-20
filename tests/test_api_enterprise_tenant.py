@@ -11,12 +11,37 @@ from fastapi import HTTPException
 from agent_bom.api.audit_log import AuditEntry, InMemoryAuditLog
 from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
 from agent_bom.api.exception_store import InMemoryExceptionStore, VulnException
-from agent_bom.api.models import CreateKeyRequest, RotateKeyRequest
+from agent_bom.api.models import CreateKeyRequest, JobStatus, RotateKeyRequest, ScanJob, ScanRequest
 from agent_bom.api.routes import enterprise
+from agent_bom.api.store import InMemoryJobStore
+from agent_bom.api.stores import _get_store, _get_trend_store, set_job_store, set_trend_store
+from agent_bom.baseline import InMemoryTrendStore, TrendPoint
 
 
 def _request(tenant_id: str, api_key_name: str = "tenant-admin") -> SimpleNamespace:
     return SimpleNamespace(state=SimpleNamespace(tenant_id=tenant_id, api_key_name=api_key_name))
+
+
+@pytest.fixture
+def isolated_job_store():
+    original = _get_store()
+    store = InMemoryJobStore()
+    set_job_store(store)
+    try:
+        yield store
+    finally:
+        set_job_store(original)
+
+
+@pytest.fixture
+def isolated_trend_store():
+    original = _get_trend_store()
+    store = InMemoryTrendStore()
+    set_trend_store(store)
+    try:
+        yield store
+    finally:
+        set_trend_store(original)
 
 
 @pytest.fixture
@@ -266,3 +291,70 @@ async def test_export_audit_entries_rejects_unknown_format():
         await enterprise.export_audit_entries(_request("tenant-alpha"), format="csv")
 
     assert error.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_compare_baseline_is_tenant_scoped(isolated_job_store):
+    alpha_job = ScanJob(
+        job_id="job-alpha",
+        tenant_id="tenant-alpha",
+        status=JobStatus.DONE,
+        created_at="2026-04-20T00:00:00Z",
+        completed_at="2026-04-20T00:01:00Z",
+        request=ScanRequest(),
+        result={"blast_radius": [{"vulnerability_id": "CVE-alpha", "package": "alpha@1.0.0", "severity": "high"}]},
+    )
+    beta_job = ScanJob(
+        job_id="job-beta",
+        tenant_id="tenant-beta",
+        status=JobStatus.DONE,
+        created_at="2026-04-20T00:00:00Z",
+        completed_at="2026-04-20T00:01:00Z",
+        request=ScanRequest(),
+        result={"blast_radius": [{"vulnerability_id": "CVE-beta", "package": "beta@1.0.0", "severity": "critical"}]},
+    )
+    isolated_job_store.put(alpha_job)
+    isolated_job_store.put(beta_job)
+
+    diff = await enterprise.compare_baseline(_request("tenant-alpha"), previous_job_id="job-alpha")
+    assert diff["persistent_count"] == 0
+    assert diff["resolved_count"] == 1
+
+    with pytest.raises(HTTPException) as error:
+        await enterprise.compare_baseline(_request("tenant-alpha"), previous_job_id="job-beta")
+
+    assert error.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_trends_is_tenant_scoped(isolated_trend_store):
+    isolated_trend_store.record(
+        TrendPoint(
+            timestamp="2026-04-20T00:00:00Z",
+            total_vulns=5,
+            critical=1,
+            high=2,
+            medium=1,
+            low=1,
+            posture_score=72.0,
+            posture_grade="C",
+            tenant_id="tenant-alpha",
+        )
+    )
+    isolated_trend_store.record(
+        TrendPoint(
+            timestamp="2026-04-20T01:00:00Z",
+            total_vulns=1,
+            critical=0,
+            high=1,
+            medium=0,
+            low=0,
+            posture_score=91.0,
+            posture_grade="A",
+            tenant_id="tenant-beta",
+        )
+    )
+
+    result = await enterprise.get_trends(_request("tenant-alpha"), limit=30)
+    assert result["count"] == 1
+    assert result["data_points"][0]["total_vulns"] == 5

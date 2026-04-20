@@ -50,6 +50,25 @@ def test_healthz_lists_configured_upstreams() -> None:
     assert resp.json() == {"status": "ok", "upstreams": ["filesystem", "jira"]}
 
 
+def test_metrics_endpoint_returns_prometheus_text_format() -> None:
+    """Guard: /metrics must be plain Prometheus exposition, not a JSON-quoted string.
+
+    Prometheus scrapers fail on a JSON-wrapped body ("# HELP..." — quoted
+    string with escaped \\n). Must be raw text starting with `# HELP`.
+    """
+    settings = GatewaySettings(registry=_simple_registry(), policy={})
+    client = TestClient(create_gateway_app(settings))
+    resp = client.get("/metrics")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/plain")
+    body = resp.text
+    # Raw text — never a JSON-quoted string
+    assert not body.startswith('"'), "body is JSON-quoted; Prometheus scrapers will reject"
+    assert body.startswith("# HELP"), f"expected Prometheus exposition, got: {body[:80]!r}"
+    # Contains the gateway-specific series
+    assert "agent_bom_gateway_relays_total" in body
+
+
 def test_relay_forwards_to_upstream_and_returns_response() -> None:
     upstream_calls: list[dict[str, Any]] = []
 

@@ -266,8 +266,14 @@ async def discovered_upstreams(request: Request) -> dict:
     tenant_id = getattr(request.state, "tenant_id", "default")
     jobs = _get_store().list_all(tenant_id=tenant_id)
 
-    # name -> merged upstream record
-    by_name: dict[str, dict[str, Any]] = {}
+    # Key by (name, url) so two laptops reporting the same MCP name pointed
+    # at different URLs don't silently collapse into one record. This is the
+    # real-world case where one team's "jira" MCP is a SaaS endpoint and
+    # another team's "jira" is an in-cluster one — each must route to its
+    # own URL, and operators must see both in the discovered list so they
+    # can rename or consolidate explicitly.
+    by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    conflicts: dict[str, set[str]] = {}
     for job in jobs:
         if job.status != JobStatus.DONE or not job.result:
             continue
@@ -283,8 +289,9 @@ async def discovered_upstreams(request: Request) -> dict:
                 if not name:
                     continue
                 transport = server.get("transport") or "http"
-                record = by_name.setdefault(
-                    name,
+                key = (name, url)
+                record = by_key.setdefault(
+                    key,
                     {
                         "name": name,
                         "url": url,
@@ -293,15 +300,40 @@ async def discovered_upstreams(request: Request) -> dict:
                         "source_agents": [],
                     },
                 )
-                # First URL wins; record every distinct agent that reports it.
+                # Track conflicts for operator visibility (same name, different URLs).
+                conflicts.setdefault(name, set()).add(url)
                 if agent_name and agent_name not in record["source_agents"]:
                     record["source_agents"].append(agent_name)
+
+    # Suffix the routing name on conflicts so each gets a unique /mcp/{name}.
+    # The first URL keeps the bare name (stable for existing clients); every
+    # other URL with the same base name gets an index suffix. Operators see
+    # the collision in the `conflicts` array and can consolidate in their
+    # overlay upstreams.yaml.
+    conflict_report: list[dict[str, Any]] = []
+    renamed_by_key: dict[tuple[str, str], str] = {}
+    for name, urls in conflicts.items():
+        if len(urls) <= 1:
+            continue
+        sorted_urls = sorted(urls)
+        conflict_report.append({"name": name, "urls": sorted_urls})
+        # First URL wins the bare name; subsequent URLs get -1, -2, ...
+        for idx, url in enumerate(sorted_urls[1:], start=1):
+            renamed_by_key[(name, url)] = f"{name}-{idx}"
+
+    upstreams: list[dict[str, Any]] = []
+    for key, record in by_key.items():
+        rename = renamed_by_key.get(key)
+        if rename is not None:
+            record = {**record, "name": rename, "original_name": record["name"]}
+        upstreams.append(record)
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "tenant_id": tenant_id,
         "source": "fleet_scan_aggregate",
-        "upstreams": sorted(by_name.values(), key=lambda r: r["name"]),
+        "upstreams": sorted(upstreams, key=lambda r: r["name"]),
+        "conflicts": conflict_report,
     }
 
 

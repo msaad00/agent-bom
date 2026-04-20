@@ -262,7 +262,7 @@ Point laptops at it:
 
 The gateway injects per-upstream credentials (Snowflake / GitHub tokens)
 from Secrets — the laptop never holds them. See the full design in
-[docs/design/MULTI_MCP_GATEWAY.md](../../docs/design/MULTI_MCP_GATEWAY.md).
+[docs/design/MULTI_MCP_GATEWAY.md](https://github.com/msaad00/agent-bom/blob/main/docs/design/MULTI_MCP_GATEWAY.md).
 
 ### Stage 3b — MCP proxy sidecar on one workload (10 min)
 
@@ -313,7 +313,7 @@ print("signature verified against pinned Ed25519 key", body["signature_key_id"])
 PY
 ```
 
-See [docs/COMPLIANCE_SIGNING.md](../../docs/COMPLIANCE_SIGNING.md) for the full verification cookbook.
+See [docs/COMPLIANCE_SIGNING.md](https://github.com/msaad00/agent-bom/blob/main/docs/COMPLIANCE_SIGNING.md) for the full verification cookbook.
 
 ## Break-glass runbook
 

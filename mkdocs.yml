@@ -98,6 +98,7 @@ nav:
       - Packaged API + UI Control Plane: deployment/control-plane-helm.md
       - Performance, Sizing, and Benchmarks: deployment/performance-and-sizing.md
       - Backend Parity: deployment/backend-parity.md
+      - Snowflake-Native Backend: deployment/snowflake-backend.md
       - Docker: deployment/docker.md
       - Kubernetes: deployment/kubernetes.md
       - SIEM Integration: deployment/siem-integration.md

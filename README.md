@@ -220,11 +220,14 @@ The last row closes the gap that pilot teams ask about: a single central URL tha
 
 By default, findings, fleet data, audit logs, graph state, and remediation outputs stay in your infrastructure. Optional egress (OSV lookups, NVD enrichment, Slack / Jira / Vanta / Drata webhooks, SIEM / OTLP) is operator-controlled.
 
-### Today's proxy is per-MCP, not a shared traffic gateway
+### Two enforcement shapes, one control plane
 
-The honest architecture: `agent-bom proxy` is a **per-MCP sidecar or wrapper** ([`proxy.py:527`](src/agent_bom/proxy.py:527) stdio, [`proxy.py:258`](src/agent_bom/proxy.py:258) HTTP/SSE). One proxy instance per MCP server. The "gateway" today is the central **policy + audit plane** — proxies pull [`/v1/gateway/policies`](src/agent_bom/api/routes/gateway.py) and push [`/v1/proxy/audit`](src/agent_bom/api/routes/proxy.py:59). This is the Istio / OPA-Gatekeeper pattern: central control, edge enforcement, no hairpinning.
+Pilot teams pick per workload:
 
-A **central multi-upstream HTTP gateway** (`agent-bom gateway serve` — one service fronting N MCP upstreams, clients point at one URL) is on the roadmap for the [current pilot cycle](docs/design/MULTI_MCP_GATEWAY.md). Until then, pilot teams use per-MCP sidecars.
+- **`agent-bom gateway serve`** — central multi-upstream HTTP gateway. One service in your EKS fronts N MCP upstreams (SaaS MCPs, Snowflake-hosted MCPs, in-cluster MCPs) and every laptop points at `/mcp/{server-name}` over HTTP/SSE. Fleet-driven auto-discovery via `--from-control-plane` so the upstream list comes from the scans your team already runs, not a blank YAML. Source: [`src/agent_bom/gateway_server.py`](src/agent_bom/gateway_server.py), CLI: [`src/agent_bom/cli/_gateway.py`](src/agent_bom/cli/_gateway.py), tests: [`tests/test_gateway_server.py`](tests/test_gateway_server.py).
+- **`agent-bom proxy`** — per-MCP sidecar or stdio wrapper ([`proxy.py:527`](src/agent_bom/proxy.py:527) stdio, [`proxy.py:258`](src/agent_bom/proxy.py:258) HTTP/SSE). One instance per server. The honest mode for stdio-only MCPs and for workload-local enforcement where a shared traffic plane would hairpin.
+
+Both modes pull the same gateway policy ([`/v1/gateway/policies`](src/agent_bom/api/routes/gateway.py)) and push to the same audit sink ([`/v1/proxy/audit`](src/agent_bom/api/routes/proxy.py:59)). Central control, edge enforcement, no hairpinning.
 
 ## Backend matrix — pick what fits your data
 

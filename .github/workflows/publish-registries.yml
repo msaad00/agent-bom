@@ -246,6 +246,12 @@ jobs:
               return 0
             fi
 
+            # Idempotency: if the exact same version already exists on ClawHub,
+            # treat it as success rather than churning the retry loop. Run the
+            # publish once and capture output so we can detect the 'already
+            # exists' signal in the retry-or-exit branch below.
+            local TMP_OUT
+            TMP_OUT=$(mktemp)
             for ATTEMPT in 1 2 3; do
               echo "ClawHub ${SLUG} attempt ${ATTEMPT}/3..."
               if clawhub publish "$DIR" \
@@ -253,16 +259,25 @@ jobs:
                 --name "$DISPLAY_NAME" \
                 --version "$VERSION" \
                 --changelog "Release v${VERSION}" \
-                --tags latest; then
+                --tags latest 2>&1 | tee "$TMP_OUT"; then
                 echo "ClawHub ${SLUG} v${VERSION} published"
+                rm -f "$TMP_OUT"
                 return 0
-              else
-                echo "ClawHub ${SLUG} publish failed"
-                if [ "$ATTEMPT" -lt 3 ]; then
-                  sleep $((ATTEMPT * 10))
-                fi
+              fi
+              # Idempotent path: ClawHub reports 'already exists' / 'version
+              # already published' / HTTP 409 when the same version is re-pushed.
+              # That's success for a re-run of the same release — close #1547.
+              if grep -qiE 'already (exists|published)|version.*conflict|http 409|status.*409' "$TMP_OUT"; then
+                echo "::notice::ClawHub ${SLUG} v${VERSION} already published — treating as success (idempotent)"
+                rm -f "$TMP_OUT"
+                return 0
+              fi
+              echo "ClawHub ${SLUG} publish failed"
+              if [ "$ATTEMPT" -lt 3 ]; then
+                sleep $((ATTEMPT * 10))
               fi
             done
+            rm -f "$TMP_OUT"
             if [ "$FATAL" = "true" ]; then
               echo "::error::ClawHub ${SLUG} publish failed after 3 attempts"
               return 1

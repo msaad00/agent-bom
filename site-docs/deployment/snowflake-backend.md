@@ -122,7 +122,7 @@ for the equivalent enforcement on ClickHouse.
 
 ## What to monitor
 
-The metrics catalog ([docs/OBSERVABILITY_METRICS.md](../../docs/OBSERVABILITY_METRICS.md))
+The metrics catalog ([docs/OBSERVABILITY_METRICS.md](https://github.com/msaad00/agent-bom/blob/main/docs/OBSERVABILITY_METRICS.md))
 applies here. Snowflake-specific signals worth alerting on:
 
 - Query latency spikes on `SnowflakeJobStore.put` / `.list_all` —
@@ -139,7 +139,7 @@ applies here. Snowflake-specific signals worth alerting on:
   restart deploy/agent-bom-api`. Old compliance bundles remain
   verifiable against the old **Ed25519** public key (that's a separate
   key from the Snowflake auth key — see
-  [docs/COMPLIANCE_SIGNING.md](../../docs/COMPLIANCE_SIGNING.md)).
+  [docs/COMPLIANCE_SIGNING.md](https://github.com/msaad00/agent-bom/blob/main/docs/COMPLIANCE_SIGNING.md)).
 - **Access revoked** — bring up a Postgres backend from the nightly
   Postgres backup if you kept one; otherwise restore from Snowflake
   Time Travel.

@@ -135,6 +135,53 @@ def test_discovered_upstreams_is_tenant_scoped(fleet_seeded) -> None:
     assert alpha_names & beta_names == set(), "discovery endpoint leaks across tenants"
 
 
+def test_discovered_upstreams_reports_name_collisions_and_renames(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two MCPs with the same `name` but different URLs must NOT silently collapse.
+
+    Real-world case: team A's 'jira' points at SaaS Jira, team B's 'jira' is
+    an in-cluster Jira. Before this guard they'd both collapse to the first
+    URL the aggregator saw; now the route:
+      - keeps the first URL on the bare name,
+      - renames subsequent URLs (`jira-1`, `jira-2`, …),
+      - surfaces a `conflicts` array so the operator sees it.
+    """
+    store = InMemoryJobStore()
+    _seed_scan_with_servers(
+        store,
+        "tenant-alpha",
+        agent_name="team-a-laptop",
+        servers=[{"name": "jira", "url": "https://mcp.jira.example.com/sse", "transport": "sse"}],
+    )
+    _seed_scan_with_servers(
+        store,
+        "tenant-alpha",
+        agent_name="team-b-laptop",
+        servers=[{"name": "jira", "url": "http://jira-internal.svc.cluster.local:8100", "transport": "http"}],
+    )
+    prev = _stores._store
+    set_job_store(store)
+    try:
+        resp = _client_for("tenant-alpha").get("/v1/gateway/upstreams/discovered")
+        assert resp.status_code == 200
+        body = resp.json()
+        # Both URLs surface as separate upstreams — no silent collapse.
+        assert len(body["upstreams"]) == 2
+        names = sorted(u["name"] for u in body["upstreams"])
+        assert names == ["jira", "jira-1"], f"expected bare-name + suffix rename, got {names}"
+        # The renamed entry preserves the original_name for operator mapping.
+        renamed = next(u for u in body["upstreams"] if u["name"] == "jira-1")
+        assert renamed["original_name"] == "jira"
+        # URLs are preserved per record — no mixing.
+        urls = {u["name"]: u["url"] for u in body["upstreams"]}
+        assert urls["jira"] != urls["jira-1"]
+        # Operator-visible conflict report.
+        assert body["conflicts"]
+        jira_conflict = next(c for c in body["conflicts"] if c["name"] == "jira")
+        assert len(jira_conflict["urls"]) == 2
+    finally:
+        _stores._store = prev
+
+
 def test_discovered_upstreams_returns_empty_when_fleet_has_no_remote_mcps() -> None:
     """A tenant whose fleet only has stdio MCPs gets an empty upstream list (no error)."""
     store = InMemoryJobStore()

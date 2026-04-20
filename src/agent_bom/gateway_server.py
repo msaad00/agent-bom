@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from agent_bom.api.metrics import record_gateway_relay
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
@@ -96,12 +96,15 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         }
 
     @app.get("/metrics")
-    async def metrics() -> JSONResponse:
-        # Prometheus scrape target; renders via the shared counters module.
+    async def metrics() -> Response:
+        # Prometheus text-exposition format must be plain text, not JSON.
+        # Previous JSONResponse wrapped the body in quotes + escaped newlines,
+        # which breaks every Prometheus scraper. Serve as `Response` with the
+        # exposition media type so scrapers parse it.
         from agent_bom.api.metrics import render_prometheus_lines
 
         body = "\n".join(render_prometheus_lines()) + "\n"
-        return JSONResponse(body, media_type="text/plain; version=0.0.4; charset=utf-8")
+        return Response(content=body, media_type="text/plain; version=0.0.4; charset=utf-8")
 
     @app.post("/mcp/{server_name}")
     async def relay(server_name: str, request: Request) -> JSONResponse:

@@ -3919,6 +3919,10 @@ def test_api_posture_counts_empty():
     assert "kev" in body
     assert "compound_issues" in body
     assert isinstance(body["total"], int)
+    assert body["deployment_mode"] == "local"
+    assert body["has_local_scan"] is False
+    assert body["has_fleet_ingest"] is False
+    assert body["has_cluster_scan"] is False
 
 
 def test_api_posture_counts_with_data():
@@ -3954,7 +3958,11 @@ def test_api_posture_counts_with_data():
                     "reachable_tools": [],
                     "exposed_credentials": [],
                 },
-            ]
+            ],
+            "has_mcp_context": True,
+            "has_agent_context": True,
+            "scan_sources": ["agent_discovery", "sbom"],
+            "runtime_session_graph": {"node_count": 2, "edge_count": 1},
         },
     )
     _get_store().put(job)
@@ -3969,3 +3977,8 @@ def test_api_posture_counts_with_data():
     assert body["kev"] >= 1
     assert body["compound_issues"] >= 1  # KEV + reachable_tools
     assert body["total"] >= 2
+    assert body["deployment_mode"] == "local"
+    assert body["has_local_scan"] is True
+    assert body["has_registry"] is True
+    assert body["has_proxy"] is True
+    assert body["has_traces"] is True

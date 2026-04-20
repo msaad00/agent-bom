@@ -26,8 +26,17 @@ vi.mock('@/lib/api', () => ({
       total: 0,
       kev: 0,
       compound_issues: 0,
+      deployment_mode: 'local',
       has_mcp_context: false,
       has_agent_context: false,
+      has_local_scan: false,
+      has_fleet_ingest: false,
+      has_cluster_scan: false,
+      has_mesh: false,
+      has_gateway: false,
+      has_proxy: false,
+      has_traces: false,
+      has_registry: false,
       scan_sources: [],
       scan_count: 0,
     }),
@@ -213,5 +222,78 @@ describe('Nav', () => {
     expect(screen.getAllByRole('link', { name: /new scan/i }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('link', { name: /proxy/i }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('link', { name: /remediation/i }).length).toBeGreaterThan(0)
+  })
+
+  it('moves inactive deployment surfaces into Unused capabilities', async () => {
+    const { api } = await import('@/lib/api')
+    vi.mocked(api.getPostureCounts).mockResolvedValueOnce({
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      total: 1,
+      kev: 0,
+      compound_issues: 0,
+      deployment_mode: 'local',
+      has_mcp_context: true,
+      has_agent_context: true,
+      has_local_scan: true,
+      has_fleet_ingest: false,
+      has_cluster_scan: false,
+      has_mesh: false,
+      has_gateway: false,
+      has_proxy: false,
+      has_traces: false,
+      has_registry: true,
+      scan_sources: ['agent_discovery', 'sbom'],
+      scan_count: 1,
+    })
+
+    render(<Nav />)
+
+    await waitFor(() => {
+      expect(document.querySelector('summary')).toBeTruthy()
+    })
+
+    expect(document.querySelector('summary')?.textContent).toContain('Unused capabilities')
+    const fleetLink = screen.getByRole('link', { name: /^fleet$/i })
+    expect(fleetLink).toHaveAttribute('href', '/fleet')
+    expect(fleetLink).toHaveAttribute('title', 'Hidden until this deployment mode is detected')
+  })
+
+  it('keeps gateway and traces visible for hybrid deployments', async () => {
+    const { api } = await import('@/lib/api')
+    vi.mocked(api.getPostureCounts).mockResolvedValueOnce({
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      total: 4,
+      kev: 0,
+      compound_issues: 0,
+      deployment_mode: 'hybrid',
+      has_mcp_context: true,
+      has_agent_context: true,
+      has_local_scan: true,
+      has_fleet_ingest: true,
+      has_cluster_scan: true,
+      has_mesh: true,
+      has_gateway: true,
+      has_proxy: true,
+      has_traces: true,
+      has_registry: true,
+      scan_sources: ['agent_discovery', 'k8s', 'sbom'],
+      scan_count: 3,
+    })
+
+    render(<Nav />)
+
+    fireEvent.click(screen.getByRole('button', { name: /protect/i }))
+    await waitFor(() => {
+      expect(screen.getAllByRole('link', { name: /^gateway$/i }).some((link) => link.getAttribute('href') === '/gateway')).toBe(true)
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /govern/i }))
+    expect(screen.getAllByRole('link', { name: /^traces$/i }).some((link) => link.getAttribute('href') === '/traces')).toBe(true)
   })
 })

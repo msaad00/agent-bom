@@ -171,6 +171,107 @@ CREATE INDEX IF NOT EXISTS idx_schedules_due
 CREATE INDEX IF NOT EXISTS idx_schedules_tenant_due
     ON scan_schedules(tenant_id, enabled, next_run);
 
+-- ── Tables: Unified Graph Persistence ───────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS graph_nodes (
+    id              TEXT NOT NULL,
+    entity_type     TEXT NOT NULL,
+    label           TEXT NOT NULL,
+    category_uid    INTEGER DEFAULT 0,
+    class_uid       INTEGER DEFAULT 0,
+    type_uid        INTEGER DEFAULT 0,
+    status          TEXT DEFAULT 'active',
+    risk_score      DOUBLE PRECISION DEFAULT 0.0,
+    severity        TEXT DEFAULT '',
+    severity_id     INTEGER DEFAULT 0,
+    first_seen      TEXT NOT NULL,
+    last_seen       TEXT NOT NULL,
+    attributes      JSONB DEFAULT '{}'::jsonb,
+    compliance_tags JSONB DEFAULT '[]'::jsonb,
+    data_sources    JSONB DEFAULT '[]'::jsonb,
+    dimensions      JSONB DEFAULT '{}'::jsonb,
+    scan_id         TEXT NOT NULL,
+    tenant_id       TEXT NOT NULL DEFAULT 'default',
+    PRIMARY KEY (id, scan_id, tenant_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pg_graph_nodes_entity_type ON graph_nodes(entity_type);
+CREATE INDEX IF NOT EXISTS idx_pg_graph_nodes_scan ON graph_nodes(tenant_id, scan_id);
+CREATE INDEX IF NOT EXISTS idx_pg_graph_nodes_scan_order
+    ON graph_nodes(tenant_id, scan_id, severity_id DESC, risk_score DESC, label);
+
+CREATE TABLE IF NOT EXISTS graph_edges (
+    source_id    TEXT NOT NULL,
+    target_id    TEXT NOT NULL,
+    relationship TEXT NOT NULL,
+    direction    TEXT DEFAULT 'directed',
+    weight       DOUBLE PRECISION DEFAULT 1.0,
+    traversable  INTEGER DEFAULT 1,
+    first_seen   TEXT NOT NULL,
+    last_seen    TEXT NOT NULL,
+    evidence     JSONB DEFAULT '{}'::jsonb,
+    activity_id  INTEGER DEFAULT 1,
+    scan_id      TEXT NOT NULL,
+    tenant_id    TEXT NOT NULL DEFAULT 'default',
+    PRIMARY KEY (source_id, target_id, relationship, scan_id, tenant_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan ON graph_edges(tenant_id, scan_id);
+CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_source ON graph_edges(tenant_id, scan_id, source_id);
+CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_target ON graph_edges(tenant_id, scan_id, target_id);
+
+CREATE TABLE IF NOT EXISTS graph_snapshots (
+    scan_id      TEXT NOT NULL,
+    tenant_id    TEXT NOT NULL DEFAULT 'default',
+    created_at   TEXT NOT NULL,
+    node_count   INTEGER DEFAULT 0,
+    edge_count   INTEGER DEFAULT 0,
+    risk_summary JSONB DEFAULT '{}'::jsonb,
+    PRIMARY KEY (scan_id, tenant_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pg_graph_snapshots_recent ON graph_snapshots(tenant_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS attack_paths (
+    source_node         TEXT NOT NULL,
+    target_node         TEXT NOT NULL,
+    hop_count           INTEGER DEFAULT 0,
+    composite_risk      DOUBLE PRECISION DEFAULT 0.0,
+    path_nodes          JSONB DEFAULT '[]'::jsonb,
+    path_edges          JSONB DEFAULT '[]'::jsonb,
+    credential_exposure JSONB DEFAULT '[]'::jsonb,
+    vuln_ids            JSONB DEFAULT '[]'::jsonb,
+    scan_id             TEXT NOT NULL,
+    tenant_id           TEXT NOT NULL DEFAULT 'default',
+    computed_at         TEXT NOT NULL,
+    PRIMARY KEY (source_node, target_node, scan_id, tenant_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pg_attack_paths_scan ON attack_paths(tenant_id, scan_id);
+CREATE INDEX IF NOT EXISTS idx_pg_attack_paths_scan_risk ON attack_paths(tenant_id, scan_id, composite_risk DESC);
+
+CREATE TABLE IF NOT EXISTS interaction_risks (
+    pattern           TEXT NOT NULL,
+    agents            TEXT NOT NULL,
+    risk_score        DOUBLE PRECISION DEFAULT 0.0,
+    description       TEXT DEFAULT '',
+    owasp_agentic_tag TEXT DEFAULT NULL,
+    scan_id           TEXT NOT NULL,
+    tenant_id         TEXT NOT NULL DEFAULT 'default',
+    PRIMARY KEY (pattern, agents, scan_id, tenant_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pg_interaction_risks_scan ON interaction_risks(tenant_id, scan_id);
+
+CREATE TABLE IF NOT EXISTS graph_filter_presets (
+    name        TEXT NOT NULL,
+    tenant_id   TEXT NOT NULL DEFAULT 'default',
+    description TEXT DEFAULT '',
+    filters     JSONB NOT NULL,
+    created_at  TEXT NOT NULL,
+    PRIMARY KEY (name, tenant_id)
+);
+
 -- ── Tables: OSV Scan Cache ────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS osv_cache (
@@ -532,6 +633,114 @@ BEGIN
 END
 $$;
 
+ALTER TABLE graph_nodes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE graph_nodes FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'graph_nodes'
+          AND policyname = 'graph_nodes_tenant_isolation'
+    ) THEN
+        CREATE POLICY graph_nodes_tenant_isolation ON graph_nodes
+            USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+ALTER TABLE graph_edges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE graph_edges FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'graph_edges'
+          AND policyname = 'graph_edges_tenant_isolation'
+    ) THEN
+        CREATE POLICY graph_edges_tenant_isolation ON graph_edges
+            USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+ALTER TABLE graph_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE graph_snapshots FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'graph_snapshots'
+          AND policyname = 'graph_snapshots_tenant_isolation'
+    ) THEN
+        CREATE POLICY graph_snapshots_tenant_isolation ON graph_snapshots
+            USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+ALTER TABLE attack_paths ENABLE ROW LEVEL SECURITY;
+ALTER TABLE attack_paths FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'attack_paths'
+          AND policyname = 'attack_paths_tenant_isolation'
+    ) THEN
+        CREATE POLICY attack_paths_tenant_isolation ON attack_paths
+            USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+ALTER TABLE interaction_risks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE interaction_risks FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'interaction_risks'
+          AND policyname = 'interaction_risks_tenant_isolation'
+    ) THEN
+        CREATE POLICY interaction_risks_tenant_isolation ON interaction_risks
+            USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+ALTER TABLE graph_filter_presets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE graph_filter_presets FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'graph_filter_presets'
+          AND policyname = 'graph_filter_presets_tenant_isolation'
+    ) THEN
+        CREATE POLICY graph_filter_presets_tenant_isolation ON graph_filter_presets
+            USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
 ALTER TABLE api_keys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE api_keys FORCE ROW LEVEL SECURITY;
 
@@ -719,7 +928,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO agent_bom_re
 --
 --  Connection: AGENT_BOM_POSTGRES_URL=postgresql://agent_bom_app:<pw>@<host>:5432/agent_bom
 --
---  Schema (15 tables):
+--  Schema (21+ tables):
 --   teams              — multi-tenant team registry (FK root)
 --   scan_jobs          — async scan job lifecycle + full result JSONB
 --   findings           — normalized vulnerability findings (per scan, per CVE)
@@ -734,4 +943,10 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO agent_bom_re
 --   audit_log          — signed API/security audit trail
 --   trend_history      — persisted posture/vulnerability history
 --   scan_schedules     — recurring scan cron configuration
+--   graph_nodes        — per-scan graph entities with severity/risk ordering
+--   graph_edges        — per-scan traversable relationships
+--   graph_snapshots    — graph snapshot summary + recency cursor
+--   attack_paths       — persisted fix-first attack-path projections
+--   interaction_risks  — agent interaction / toxic-combo risk overlays
+--   graph_filter_presets — tenant-scoped saved graph filters
 --   osv_cache          — OSV vulnerability API response cache

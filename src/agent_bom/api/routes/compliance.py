@@ -24,7 +24,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from agent_bom.api.models import ComplianceReportBundle, JobStatus
-from agent_bom.api.stores import _get_store
+from agent_bom.api.stores import _get_fleet_store, _get_policy_store, _get_store
 from agent_bom.rbac import require_authenticated_permission
 
 if TYPE_CHECKING:
@@ -38,6 +38,25 @@ def _dep(permission: str) -> Any:
 
 router = APIRouter(dependencies=[_dep("read")])
 
+_CLUSTER_SCAN_SOURCES = {"gpu_infra", "k8s"}
+_REGISTRY_SCAN_SOURCES = {"external_scan", "image", "sbom"}
+_LOCAL_SCAN_SOURCES = {
+    "agent_discovery",
+    "ast_analysis",
+    "browser_extensions",
+    "dataset_cards",
+    "external_scan",
+    "filesystem",
+    "github_actions",
+    "image",
+    "jupyter",
+    "sbom",
+    "secret_scan",
+    "terraform",
+    "training_pipelines",
+}
+_CLUSTER_ENVIRONMENTS = {"aks", "cluster", "eks", "gke", "k8s", "kubernetes"}
+
 
 def _tenant_id(request: Request) -> str:
     return getattr(request.state, "tenant_id", "default")
@@ -45,6 +64,84 @@ def _tenant_id(request: Request) -> str:
 
 def _tenant_jobs(request: Request) -> list:
     return _get_store().list_all(tenant_id=_tenant_id(request))
+
+
+def _result_has_runtime_signals(result: dict[str, Any]) -> bool:
+    return bool(
+        result.get("runtime_correlation")
+        or result.get("runtime_session_graph")
+        or result.get("introspection")
+        or result.get("introspection_data")
+        or result.get("health_check")
+        or result.get("health_check_data")
+    )
+
+
+def _derive_deployment_context(request: Request, jobs: list[Any]) -> dict[str, Any]:
+    tenant_id = _tenant_id(request)
+    scan_sources: set[str] = set()
+    has_mcp_context = False
+    has_agent_context = False
+    has_runtime_signals = False
+    scan_count = 0
+
+    for job in jobs:
+        if job.status != JobStatus.DONE or not job.result:
+            continue
+        scan_count += 1
+        result = cast(dict[str, Any], job.result)
+        has_mcp_context = has_mcp_context or bool(result.get("has_mcp_context"))
+        has_agent_context = has_agent_context or bool(result.get("has_agent_context"))
+        scan_sources.update(str(src) for src in result.get("scan_sources", []) if src)
+        has_runtime_signals = has_runtime_signals or _result_has_runtime_signals(result)
+
+    fleet_agents = _get_fleet_store().list_by_tenant(tenant_id)
+    has_fleet_ingest = len(fleet_agents) > 0
+    has_cluster_scan = bool(scan_sources & _CLUSTER_SCAN_SOURCES) or any(
+        str(getattr(agent, "environment", "") or "").strip().lower() in _CLUSTER_ENVIRONMENTS for agent in fleet_agents
+    )
+    has_local_scan = (
+        bool(scan_sources & _LOCAL_SCAN_SOURCES) or has_agent_context or has_mcp_context or (scan_count > 0 and not has_cluster_scan)
+    )
+    has_registry = bool(scan_sources & _REGISTRY_SCAN_SOURCES)
+
+    policy_store = _get_policy_store()
+    policies = policy_store.list_policies(tenant_id=tenant_id)
+    policy_audit = policy_store.list_audit_entries(limit=1, tenant_id=tenant_id)
+    has_gateway = bool(policies)
+    has_proxy = bool(policy_audit) or has_runtime_signals
+    has_traces = bool(policy_audit) or has_runtime_signals
+    has_mesh = (
+        has_fleet_ingest
+        or bool(scan_count and has_agent_context and has_mcp_context)
+        or bool(has_runtime_signals and (has_agent_context or has_fleet_ingest))
+    )
+
+    active_modes = sum((has_local_scan, has_fleet_ingest, has_cluster_scan))
+    if active_modes > 1:
+        deployment_mode = "hybrid"
+    elif has_cluster_scan:
+        deployment_mode = "cluster"
+    elif has_fleet_ingest:
+        deployment_mode = "fleet"
+    else:
+        deployment_mode = "local"
+
+    return {
+        "deployment_mode": deployment_mode,
+        "has_local_scan": has_local_scan,
+        "has_fleet_ingest": has_fleet_ingest,
+        "has_cluster_scan": has_cluster_scan,
+        "has_mesh": has_mesh,
+        "has_gateway": has_gateway,
+        "has_proxy": has_proxy,
+        "has_traces": has_traces,
+        "has_registry": has_registry,
+        "has_mcp_context": has_mcp_context,
+        "has_agent_context": has_agent_context,
+        "scan_sources": sorted(scan_sources),
+        "scan_count": scan_count,
+    }
 
 
 @router.get("/v1/compliance", tags=["compliance"])
@@ -975,23 +1072,11 @@ async def get_posture_counts(request: Request) -> dict:
         "compound_issues": 0,
     }
     seen_ids: set[str] = set()
-    has_mcp_context = False
-    has_agent_context = False
-    all_scan_sources: set[str] = set()
-    scan_count = 0
+    tenant_jobs = _tenant_jobs(request)
 
-    for job in _tenant_jobs(request):
+    for job in tenant_jobs:
         if job.status != JobStatus.DONE or not job.result:
             continue
-        scan_count += 1
-
-        # Aggregate context metadata from scan results
-        if job.result.get("has_mcp_context"):
-            has_mcp_context = True
-        if job.result.get("has_agent_context"):
-            has_agent_context = True
-        for src in job.result.get("scan_sources", []):
-            all_scan_sources.add(src)
 
         blast_list = job.result.get("blast_radius", [])
         for b in blast_list:
@@ -1011,10 +1096,7 @@ async def get_posture_counts(request: Request) -> dict:
             elif (b.get("epss_score") or 0) >= 0.3 and (b.get("cvss_score") or 0) >= 7:
                 counts["compound_issues"] += 1
 
-    counts["has_mcp_context"] = has_mcp_context
-    counts["has_agent_context"] = has_agent_context
-    counts["scan_sources"] = sorted(all_scan_sources)
-    counts["scan_count"] = scan_count
+    counts.update(_derive_deployment_context(request, tenant_jobs))
     return counts
 
 

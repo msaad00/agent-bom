@@ -936,6 +936,18 @@ def test_scan_cache_init(mock_pool):
 
     cache = PostgresScanCache(pool=mock_pool)
     assert cache is not None
+    assert any("idx_cache_age" in sql for sql, _ in mock_pool._conn.executed)
+
+
+def test_graph_store_init_adds_query_indexes(mock_pool):
+    from agent_bom.api.postgres_store import PostgresGraphStore
+
+    store = PostgresGraphStore(pool=mock_pool)
+    assert store is not None
+    assert any("idx_pg_graph_nodes_scan_order" in sql for sql, _ in mock_pool._conn.executed)
+    assert any("idx_pg_graph_edges_scan_source" in sql for sql, _ in mock_pool._conn.executed)
+    assert any("idx_pg_graph_edges_scan_target" in sql for sql, _ in mock_pool._conn.executed)
+    assert any("idx_pg_attack_paths_scan_risk" in sql for sql, _ in mock_pool._conn.executed)
 
 
 def test_scan_cache_put_get(mock_pool):

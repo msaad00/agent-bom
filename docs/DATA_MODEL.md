@@ -179,6 +179,44 @@ Warehouse-native deployment for governance-heavy customers. Mirrors
 Postgres tables with Snowflake-specific column types. Not yet at full
 control-plane parity — see roadmap for the gap list.
 
+### Deployment-context posture contract — `GET /v1/posture/counts`
+
+This endpoint is the lightweight capability contract used by the UI to
+adapt navigation and deployment-specific surfaces without fetching full
+scan payloads. It must be derived from **tenant-scoped state only**:
+completed scan jobs, fleet inventory, and gateway policy/audit stores.
+
+| Field | Meaning | Source |
+|---|---|---|
+| `deployment_mode` | `local`, `fleet`, `cluster`, or `hybrid` | derived from the booleans below |
+| `has_local_scan` | direct/local scan evidence exists | `scan_sources` + MCP/agent context |
+| `has_fleet_ingest` | governed fleet inventory exists | fleet store |
+| `has_cluster_scan` | cluster/GPU/K8s evidence exists | `scan_sources` + fleet agent environment |
+| `has_mesh` | mesh/topology views are meaningful | fleet + MCP/agent/runtime evidence |
+| `has_gateway` | central gateway policy plane is configured | policy store |
+| `has_proxy` | proxy/runtime enforcement evidence exists | policy audit + runtime signals |
+| `has_traces` | trace/timeline views are meaningful | runtime correlation/session graph |
+| `has_registry` | image/SBOM/registry-oriented scans exist | `scan_sources` |
+
+If a new scan mode or deployment surface is added, update this table in
+the same PR as the route and nav change.
+
+### Graph/cache hot-path indexes
+
+The Postgres graph and cache backends are tuned for the query shapes
+the UI and API actually execute:
+
+| Table | Query shape | Required indexes |
+|---|---|---|
+| `graph_nodes` | tenant + snapshot search ordered by severity/risk | `idx_pg_graph_nodes_scan`, `idx_pg_graph_nodes_scan_order` |
+| `graph_edges` | neighbor expansion by source/target in one snapshot | `idx_pg_graph_edges_scan`, `idx_pg_graph_edges_scan_source`, `idx_pg_graph_edges_scan_target` |
+| `attack_paths` | fix-first path lists ordered by composite risk | `idx_pg_attack_paths_scan`, `idx_pg_attack_paths_scan_risk` |
+| `graph_snapshots` | latest/previous snapshot lookup | `idx_pg_graph_snapshots_recent` |
+| `osv_cache` | TTL cleanup and expiry sweeps | `idx_cache_age` |
+
+Any new backend should preserve these access patterns or document the
+replacement plan explicitly.
+
 ---
 
 ## 5. Output formats (`src/agent_bom/output/`)

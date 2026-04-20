@@ -134,6 +134,31 @@ export interface GraphSearchResponse {
   pagination: GraphPagination;
 }
 
+export type DeploymentMode = "local" | "fleet" | "cluster" | "hybrid";
+
+export interface PostureCountsResponse {
+  critical: number;
+  high: number;
+  medium: number;
+  low: number;
+  total: number;
+  kev: number;
+  compound_issues: number;
+  deployment_mode?: DeploymentMode;
+  has_mcp_context?: boolean;
+  has_agent_context?: boolean;
+  has_local_scan?: boolean;
+  has_fleet_ingest?: boolean;
+  has_cluster_scan?: boolean;
+  has_mesh?: boolean;
+  has_gateway?: boolean;
+  has_proxy?: boolean;
+  has_traces?: boolean;
+  has_registry?: boolean;
+  scan_sources?: string[];
+  scan_count?: number;
+}
+
 export interface RemediationItem {
   package: string;
   ecosystem: string;
@@ -919,20 +944,7 @@ export const api = {
   getPosture: () => get<PostureResponse>("/v1/posture"),
 
   /** Lightweight aggregate counts + scan context for nav badges */
-  getPostureCounts: () =>
-    get<{
-      critical: number;
-      high: number;
-      medium: number;
-      low: number;
-      total: number;
-      kev: number;
-      compound_issues: number;
-      has_mcp_context?: boolean;
-      has_agent_context?: boolean;
-      scan_sources?: string[];
-      scan_count?: number;
-    }>("/v1/posture/counts"),
+  getPostureCounts: () => get<PostureCountsResponse>("/v1/posture/counts"),
 
   /** Compliance posture across all completed scans */
   getCompliance: () => get<ComplianceResponse>("/v1/compliance"),

@@ -1209,6 +1209,12 @@ class PostgresGraphStore:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_nodes_scan ON graph_nodes(tenant_id, scan_id)")
             conn.execute(
                 """
+                CREATE INDEX IF NOT EXISTS idx_pg_graph_nodes_scan_order
+                ON graph_nodes(tenant_id, scan_id, severity_id DESC, risk_score DESC, label)
+                """
+            )
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS graph_edges (
                     source_id TEXT NOT NULL,
                     target_id TEXT NOT NULL,
@@ -1227,6 +1233,8 @@ class PostgresGraphStore:
                 """
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan ON graph_edges(tenant_id, scan_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_source ON graph_edges(tenant_id, scan_id, source_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_graph_edges_scan_target ON graph_edges(tenant_id, scan_id, target_id)")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS graph_snapshots (
@@ -1260,6 +1268,9 @@ class PostgresGraphStore:
                 """
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_attack_paths_scan ON attack_paths(tenant_id, scan_id)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pg_attack_paths_scan_risk ON attack_paths(tenant_id, scan_id, composite_risk DESC)"
+            )
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS interaction_risks (
@@ -1805,6 +1816,7 @@ class PostgresScanCache:
                     cached_at  REAL NOT NULL
                 )
             """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_cache_age ON osv_cache(cached_at)")
             conn.commit()
 
     def get(self, ecosystem: str, name: str, version: str) -> list[dict] | None:

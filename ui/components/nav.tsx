@@ -28,7 +28,7 @@ import {
   LayoutDashboard,
   Wrench,
 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, type PostureCountsResponse } from "@/lib/api";
 import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -123,18 +123,39 @@ const ALL_GROUP_LABELS = NAV_GROUPS.map((group) => group.label);
 
 // ─── Risk counts for badges ─────────────────────────────────────────────────
 
-interface RiskCounts {
-  critical: number;
-  high: number;
-  kev: number;
-  compound_issues: number;
-  has_mcp_context?: boolean;
-  has_agent_context?: boolean;
-  scan_sources?: string[];
-  scan_count?: number;
+type RiskCounts = PostureCountsResponse;
+
+const CAPABILITY_LINKS: Partial<Record<string, keyof RiskCounts>> = {
+  "/agents": "has_local_scan",
+  "/fleet": "has_fleet_ingest",
+  "/mesh": "has_mesh",
+  "/context": "has_mcp_context",
+  "/proxy": "has_proxy",
+  "/gateway": "has_gateway",
+  "/traces": "has_traces",
+};
+
+function hasDeploymentSignals(counts: RiskCounts | null): boolean {
+  if (!counts) return false;
+  return Boolean(
+    (counts.scan_count ?? 0) > 0 ||
+      counts.has_local_scan ||
+      counts.has_fleet_ingest ||
+      counts.has_cluster_scan ||
+      counts.has_mesh ||
+      counts.has_gateway ||
+      counts.has_proxy ||
+      counts.has_traces ||
+      counts.has_registry
+  );
 }
 
-const MCP_ONLY_PAGES = new Set(["/agents", "/fleet", "/mesh", "/context"]);
+function isLinkVisible(href: string, counts: RiskCounts | null): boolean {
+  if (!hasDeploymentSignals(counts)) return true;
+  const capability = CAPABILITY_LINKS[href];
+  if (!capability) return true;
+  return Boolean(counts?.[capability]);
+}
 
 // ─── Sidebar Component ──────────────────────────────────────────────────────
 
@@ -214,12 +235,6 @@ export function Nav() {
     });
   }, [captureMode]);
 
-  const isDimmed = (href: string): boolean => {
-    if (!counts || (counts.scan_count ?? 0) === 0) return false;
-    if (MCP_ONLY_PAGES.has(href) && !counts.has_mcp_context) return true;
-    return false;
-  };
-
   // Keyboard shortcut: Cmd/Ctrl+K for search, Cmd/Ctrl+B for sidebar
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -243,6 +258,17 @@ export function Nav() {
         links: g.links.filter((l) => l.label.toLowerCase().includes(searchQuery.toLowerCase())),
       })).filter((g) => g.links.length > 0)
     : NAV_GROUPS;
+
+  const navGroups = filteredGroups
+    .map((group) => {
+      if (searchQuery) {
+        return { ...group, visibleLinks: group.links, hiddenLinks: [] as NavLink[] };
+      }
+      const visibleLinks = group.links.filter((link) => isLinkVisible(link.href, counts));
+      const hiddenLinks = group.links.filter((link) => !isLinkVisible(link.href, counts));
+      return { ...group, visibleLinks, hiddenLinks };
+    })
+    .filter((group) => group.visibleLinks.length > 0 || group.hiddenLinks.length > 0);
 
   const sidebarContent = (
     <>
@@ -300,10 +326,10 @@ export function Nav() {
 
       {/* Navigation Groups */}
       <nav className="flex-1 overflow-y-auto px-2 py-2 space-y-2 scrollbar-thin">
-        {filteredGroups.map((group) => {
+        {navGroups.map((group) => {
           const isExpanded = captureMode || expandedGroups.has(group.label);
           const GroupIcon = group.icon;
-          const hasActiveChild = group.links.some(
+          const hasActiveChild = [...group.visibleLinks, ...group.hiddenLinks].some(
             (l) => (l.href === "/" ? path === "/" : path.startsWith(l.href))
           );
 
@@ -337,7 +363,7 @@ export function Nav() {
                       </span>
                     </div>
                     <span className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-1.5 py-0.5 text-[9px] font-mono text-[color:var(--text-tertiary)]">
-                      {group.links.length}
+                      {group.visibleLinks.length}
                     </span>
                     {isExpanded ? (
                       <ChevronDown className="w-3 h-3 text-[color:var(--text-tertiary)]" />
@@ -354,14 +380,13 @@ export function Nav() {
                   <p className="px-3 pb-1 text-[11px] leading-5 text-[color:var(--text-tertiary)]">
                     {group.description}
                   </p>
-                  {group.links.map(({ href, label, icon: Icon }) => {
+                  {group.visibleLinks.map(({ href, label, icon: Icon }) => {
                     const active =
                       href === "/"
                         ? path === "/"
                         : href === "/findings"
                         ? path.startsWith("/findings") || path.startsWith("/vulns")
                         : path.startsWith(href);
-                    const dimmed = isDimmed(href);
                     const isVulns = href === "/findings";
 
                     return (
@@ -371,8 +396,6 @@ export function Nav() {
                         className={`flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-[13px] font-medium transition-all group relative ${
                           active
                             ? "border-l-2 ml-0 pl-2.5"
-                            : dimmed
-                            ? "text-[color:var(--text-tertiary)] hover:text-[color:var(--text-secondary)] hover:bg-[color:var(--surface-muted)]"
                             : "text-[color:var(--text-secondary)] hover:text-[color:var(--foreground)] hover:bg-[color:var(--surface-muted)]"
                         }`}
                         style={active ? {
@@ -380,10 +403,9 @@ export function Nav() {
                           borderLeftColor: group.accent,
                           backgroundColor: `${group.accent}10`,
                         } : undefined}
-                        title={dimmed ? "No MCP servers detected" : undefined}
                       >
                         <Icon
-                          className={`w-3.5 h-3.5 shrink-0 ${!active && (dimmed ? "opacity-40" : "text-[color:var(--text-tertiary)] group-hover:text-[color:var(--text-secondary)]")}`}
+                          className={`w-3.5 h-3.5 shrink-0 ${!active && "text-[color:var(--text-tertiary)] group-hover:text-[color:var(--text-secondary)]"}`}
                           style={active ? { color: group.accent } : undefined}
                         />
                         <span className="truncate">{label}</span>
@@ -404,13 +426,33 @@ export function Nav() {
                       </Link>
                     );
                   })}
+                  {group.hiddenLinks.length > 0 && (
+                    <details className="mt-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2">
+                      <summary className="cursor-pointer list-none text-[11px] font-medium uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">
+                        Unused capabilities ({group.hiddenLinks.length})
+                      </summary>
+                      <div className="mt-2 space-y-0.5">
+                        {group.hiddenLinks.map(({ href, label, icon: Icon }) => (
+                          <Link
+                            key={href}
+                            href={href}
+                            className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[12px] text-[color:var(--text-tertiary)] transition-colors hover:bg-[color:var(--surface-muted)] hover:text-[color:var(--text-secondary)]"
+                            title="Hidden until this deployment mode is detected"
+                          >
+                            <Icon className="h-3.5 w-3.5 shrink-0 opacity-60" />
+                            <span className="truncate">{label}</span>
+                          </Link>
+                        ))}
+                      </div>
+                    </details>
+                  )}
                 </div>
               )}
 
               {/* Collapsed: just show icons as tooltips */}
               {collapsed && (
                 <div className="space-y-0.5 mt-0.5">
-                  {group.links.map(({ href, label, icon: Icon }) => {
+                  {group.visibleLinks.map(({ href, label, icon: Icon }) => {
                     const active = href === "/" ? path === "/" : path.startsWith(href);
                     return (
                       <Link

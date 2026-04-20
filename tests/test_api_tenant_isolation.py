@@ -14,6 +14,7 @@ from agent_bom.api import tenant_quota as tenant_quota_module
 from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState, InMemoryFleetStore
 from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.models import FleetAgentUpdate, JobStatus, PushPayload, ScanJob, ScanRequest, ScheduleCreate, StateUpdate
+from agent_bom.api.policy_store import GatewayPolicy, InMemoryPolicyStore
 from agent_bom.api.routes import compliance as compliance_routes
 from agent_bom.api.routes import discovery as discovery_routes
 from agent_bom.api.routes import fleet as fleet_routes
@@ -22,7 +23,7 @@ from agent_bom.api.routes import scan as scan_routes
 from agent_bom.api.routes import schedules as schedule_routes
 from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule
 from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
-from agent_bom.api.stores import _jobs, set_fleet_store, set_graph_store, set_job_store, set_schedule_store
+from agent_bom.api.stores import _jobs, set_fleet_store, set_graph_store, set_job_store, set_policy_store, set_schedule_store
 
 
 def _now() -> str:
@@ -692,3 +693,84 @@ async def test_discovery_and_traces_are_tenant_scoped():
     # Trace analytics ingest must carry the authed tenant through to
     # ClickHouse so cross-tenant queries cannot see each other's events.
     assert analytics.event_tenants[0] == req.state.tenant_id
+
+
+@pytest.mark.asyncio
+async def test_posture_counts_include_deployment_context_by_tenant():
+    job_store = InMemoryJobStore()
+    fleet_store = InMemoryFleetStore()
+    policy_store = InMemoryPolicyStore()
+    set_job_store(job_store)
+    set_fleet_store(fleet_store)
+    set_policy_store(policy_store)
+
+    alpha_job = ScanJob(
+        job_id="job-alpha-context",
+        tenant_id="tenant-alpha",
+        status=JobStatus.DONE,
+        created_at=_now(),
+        completed_at=_now(),
+        request=ScanRequest(),
+        result={
+            "blast_radius": [
+                {
+                    "vulnerability_id": "CVE-alpha",
+                    "severity": "critical",
+                    "package": "alpha@1.0.0",
+                    "cisa_kev": True,
+                    "reachable_tools": ["exec"],
+                    "affected_agents": ["alpha-agent"],
+                }
+            ],
+            "has_mcp_context": True,
+            "has_agent_context": True,
+            "scan_sources": ["agent_discovery", "k8s", "sbom"],
+            "runtime_session_graph": {"node_count": 3, "edge_count": 2},
+        },
+    )
+    beta_job = ScanJob(
+        job_id="job-beta-context",
+        tenant_id="tenant-beta",
+        status=JobStatus.DONE,
+        created_at=_now(),
+        completed_at=_now(),
+        request=ScanRequest(),
+        result={
+            "blast_radius": [
+                {
+                    "vulnerability_id": "CVE-beta",
+                    "severity": "high",
+                    "package": "beta@1.0.0",
+                    "affected_agents": ["beta-agent"],
+                }
+            ],
+            "scan_sources": ["sbom"],
+        },
+    )
+    job_store.put(alpha_job)
+    job_store.put(beta_job)
+
+    alpha_fleet = _fleet_agent("alpha-fleet-1", "tenant-alpha", "alpha-agent")
+    alpha_fleet.environment = "eks"
+    fleet_store.put(alpha_fleet)
+    policy_store.put_policy(
+        GatewayPolicy(
+            policy_id="policy-alpha",
+            name="alpha-gateway",
+            tenant_id="tenant-alpha",
+            bound_agents=["alpha-agent"],
+        )
+    )
+
+    counts = await compliance_routes.get_posture_counts(_request("tenant-alpha"))
+
+    assert counts["critical"] == 1
+    assert counts["deployment_mode"] == "hybrid"
+    assert counts["has_local_scan"] is True
+    assert counts["has_fleet_ingest"] is True
+    assert counts["has_cluster_scan"] is True
+    assert counts["has_gateway"] is True
+    assert counts["has_proxy"] is True
+    assert counts["has_traces"] is True
+    assert counts["has_registry"] is True
+    assert counts["scan_count"] == 1

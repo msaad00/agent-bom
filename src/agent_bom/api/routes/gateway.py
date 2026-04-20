@@ -76,6 +76,7 @@ async def create_gateway_policy(body: PolicyCreate, request: Request):
         )
     now = datetime.now(timezone.utc).isoformat()
     rules = [GatewayRule(**r) for r in body.rules]
+    tenant_id = getattr(request.state, "tenant_id", "default")
     policy = GatewayPolicy(
         policy_id=str(uuid.uuid4()),
         name=body.name,
@@ -88,7 +89,7 @@ async def create_gateway_policy(body: PolicyCreate, request: Request):
         enabled=body.enabled,
         created_at=now,
         updated_at=now,
-        tenant_id=getattr(request.state, "tenant_id", "default"),
+        tenant_id=tenant_id,
     )
     _get_policy_store().put_policy(policy)
     actor = getattr(request.state, "api_key_name", "unknown")
@@ -96,6 +97,7 @@ async def create_gateway_policy(body: PolicyCreate, request: Request):
         "gateway.policy_created",
         actor=actor,
         resource=f"gateway-policy/{policy.policy_id}",
+        tenant_id=tenant_id,
         name=policy.name,
         mode=policy.mode.value,
         enabled=policy.enabled,
@@ -154,6 +156,7 @@ async def update_gateway_policy(policy_id: str, body: PolicyUpdate, request: Req
         "gateway.policy_updated",
         actor=actor,
         resource=f"gateway-policy/{policy.policy_id}",
+        tenant_id=tenant_id,
         name=policy.name,
         changed_fields=changed_fields,
         enabled=policy.enabled,
@@ -179,6 +182,7 @@ async def delete_gateway_policy(policy_id: str, request: Request):
         "gateway.policy_deleted",
         actor=actor,
         resource=f"gateway-policy/{policy_id}",
+        tenant_id=tenant_id,
         name=policy.name,
         mode=policy.mode.value,
         rule_count=len(policy.rules),

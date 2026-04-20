@@ -158,7 +158,7 @@ async def test_create_jira_ticket_requires_header_token(monkeypatch):
     )
 
     with pytest.raises(HTTPException) as error:
-        await enterprise.create_jira_ticket_route(req, jira_api_token=None)
+        await enterprise.create_jira_ticket_route(_request("tenant-alpha"), req, jira_api_token=None)
 
     assert error.value.status_code == 400
     assert "X-Jira-Api-Token" in error.value.detail
@@ -188,7 +188,7 @@ async def test_create_jira_ticket_uses_header_token(monkeypatch):
 
     monkeypatch.setattr("agent_bom.integrations.jira.create_jira_ticket", fake_create_jira_ticket)
 
-    result = await enterprise.create_jira_ticket_route(req, jira_api_token="token-abc")
+    result = await enterprise.create_jira_ticket_route(_request("tenant-alpha"), req, jira_api_token="token-abc")
 
     assert result == {"ticket_key": "SEC-42", "status": "created"}
     assert captured["api_token"] == "token-abc"
@@ -215,14 +215,17 @@ async def test_remove_false_positive_returns_404_for_wrong_tenant(isolated_excep
 @pytest.mark.asyncio
 async def test_export_audit_entries_returns_signed_json(monkeypatch):
     store = InMemoryAuditLog()
-    store.append(AuditEntry(action="scan", actor="alice", resource="job/1", details={"packages": 5}))
+    store.append(AuditEntry(action="scan", actor="alice", resource="job/1", details={"packages": 5, "tenant_id": "tenant-alpha"}))
+    store.append(AuditEntry(action="scan", actor="bob", resource="job/2", details={"packages": 7, "tenant_id": "tenant-beta"}))
     monkeypatch.setattr("agent_bom.api.audit_log.get_audit_log", lambda: store)
 
     response = await enterprise.export_audit_entries(_request("tenant-alpha", "alice-admin"))
 
     payload = json.loads(response.body.decode())
     assert payload["tenant_id"] == "tenant-alpha"
+    assert len(payload["entries"]) == 1
     assert payload["entries"][0]["action"] == "scan"
+    assert payload["entries"][0]["details"]["tenant_id"] == "tenant-alpha"
     assert response.headers["x-agent-bom-audit-export-signature"]
     assert response.headers["content-disposition"].endswith('agent-bom-audit-export.json"')
 
@@ -230,7 +233,8 @@ async def test_export_audit_entries_returns_signed_json(monkeypatch):
 @pytest.mark.asyncio
 async def test_export_audit_entries_supports_jsonl(monkeypatch):
     store = InMemoryAuditLog()
-    store.append(AuditEntry(action="scan", actor="alice", resource="job/1"))
+    store.append(AuditEntry(action="scan", actor="alice", resource="job/1", details={"tenant_id": "tenant-alpha"}))
+    store.append(AuditEntry(action="scan", actor="bob", resource="job/2", details={"tenant_id": "tenant-beta"}))
     monkeypatch.setattr("agent_bom.api.audit_log.get_audit_log", lambda: store)
 
     response = await enterprise.export_audit_entries(_request("tenant-alpha", "alice-admin"), format="jsonl")
@@ -239,6 +243,21 @@ async def test_export_audit_entries_supports_jsonl(monkeypatch):
     assert len(lines) == 1
     assert json.loads(lines[0])["resource"] == "job/1"
     assert response.media_type == "application/x-ndjson"
+
+
+@pytest.mark.asyncio
+async def test_list_audit_entries_and_integrity_are_tenant_scoped(monkeypatch):
+    store = InMemoryAuditLog()
+    store.append(AuditEntry(action="scan", actor="alice", resource="job/alpha", details={"tenant_id": "tenant-alpha"}))
+    store.append(AuditEntry(action="scan", actor="bob", resource="job/beta", details={"tenant_id": "tenant-beta"}))
+    monkeypatch.setattr("agent_bom.api.audit_log.get_audit_log", lambda: store)
+
+    listed = await enterprise.list_audit_entries(_request("tenant-alpha"))
+    integrity = await enterprise.audit_integrity(_request("tenant-alpha"))
+
+    assert listed["total"] == 1
+    assert [entry["resource"] for entry in listed["entries"]] == ["job/alpha"]
+    assert integrity == {"verified": 1, "tampered": 0, "checked": 1}
 
 
 @pytest.mark.asyncio

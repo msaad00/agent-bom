@@ -39,6 +39,7 @@ def _raise_quota_exceeded(
         "tenant.quota_exceeded",
         actor=f"tenant:{tenant_id}",
         resource=f"tenant/{tenant_id}",
+        tenant_id=tenant_id,
         quota_name=quota_name,
         limit=limit,
         current=current,

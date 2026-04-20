@@ -324,6 +324,39 @@ def test_report_audit_events_are_tenant_filtered() -> None:
     assert body["audit_log_integrity"]["checked"] == 1
 
 
+def test_report_fetches_audit_entries_with_tenant_scope(monkeypatch) -> None:
+    _setup_audit_log()
+    jobs = _seed_jobs_with_findings()
+    req = _request("tenant-alpha")
+
+    class RecordingAuditStore(InMemoryAuditLog):
+        def __init__(self) -> None:
+            super().__init__()
+            self.captured_tenant_id: str | None = None
+
+        def list_entries(self, *args, tenant_id: str | None = None, **kwargs):  # type: ignore[override]
+            self.captured_tenant_id = tenant_id
+            return super().list_entries(*args, tenant_id=tenant_id, **kwargs)
+
+    store = RecordingAuditStore()
+    store.append(
+        AuditEntry(
+            entry_id="e1",
+            timestamp=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
+            action="auth.key_rotated",
+            actor="ci-bot",
+            resource="key/abc",
+            details={"tenant_id": "tenant-alpha"},
+        )
+    )
+    monkeypatch.setattr("agent_bom.api.audit_log.get_audit_log", lambda: store)
+
+    with patch.object(compliance_routes, "_tenant_jobs", return_value=jobs):
+        asyncio.run(compliance_routes.export_compliance_report(req, "owasp-llm"))
+
+    assert store.captured_tenant_id == "tenant-alpha"
+
+
 # ─── Format = jsonl ──────────────────────────────────────────────────────────
 
 

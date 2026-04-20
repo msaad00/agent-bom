@@ -249,7 +249,7 @@ async def delete_key(request: Request, key_id: str) -> None:
         raise HTTPException(status_code=404, detail=f"Key {key_id} not found")
     store.remove(key_id)
 
-    log_action("auth.key_revoked", actor=actor, resource=f"key/{key_id}")
+    log_action("auth.key_revoked", actor=actor, resource=f"key/{key_id}", tenant_id=tenant_id)
 
 
 @router.get("/v1/auth/saml/metadata", tags=["enterprise"])
@@ -311,6 +311,7 @@ async def saml_login(req: SAMLLoginRequest) -> dict:
 
 @router.get("/v1/audit", tags=["enterprise"])
 async def list_audit_entries(
+    request: Request,
     action: str | None = None,
     resource: str | None = None,
     since: str | None = None,
@@ -320,20 +321,22 @@ async def list_audit_entries(
     """List audit log entries with optional filters."""
     from agent_bom.api.audit_log import get_audit_log
 
+    tenant_id = getattr(request.state, "tenant_id", "default")
     store = get_audit_log()
-    entries = store.list_entries(action=action, resource=resource, since=since, limit=limit, offset=offset)
+    entries = store.list_entries(action=action, resource=resource, since=since, limit=limit, offset=offset, tenant_id=tenant_id)
     return {
         "entries": [e.to_dict() for e in entries],
-        "total": store.count(action=action),
+        "total": store.count(action=action, tenant_id=tenant_id),
     }
 
 
 @router.get("/v1/audit/integrity", tags=["enterprise"])
-async def audit_integrity(limit: int = 1000) -> dict:
+async def audit_integrity(request: Request, limit: int = 1000) -> dict:
     """Verify HMAC integrity of audit log entries."""
     from agent_bom.api.audit_log import get_audit_log
 
-    verified, tampered = get_audit_log().verify_integrity(limit=limit)
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    verified, tampered = get_audit_log().verify_integrity(limit=limit, tenant_id=tenant_id)
     return {"verified": verified, "tampered": tampered, "checked": verified + tampered}
 
 
@@ -357,8 +360,8 @@ async def export_audit_entries(
     tenant_id = getattr(request.state, "tenant_id", "default")
     actor = getattr(request.state, "api_key_name", "") or "system"
     store = get_audit_log()
-    entries = store.list_entries(action=action, resource=resource, since=since, limit=limit, offset=offset)
-    verified, tampered = store.verify_integrity(limit=min(limit, 10_000))
+    entries = store.list_entries(action=action, resource=resource, since=since, limit=limit, offset=offset, tenant_id=tenant_id)
+    verified, tampered = store.verify_integrity(limit=min(limit, 10_000), tenant_id=tenant_id)
 
     log_action(
         "audit.export",
@@ -431,7 +434,12 @@ async def create_exception(request: Request, req: ExceptionRequest) -> dict:
     )
     _get_exception_store().put(exc)
     log_action(
-        "exception_create", actor=req.requested_by, resource=f"exception/{exc.exception_id}", vuln_id=req.vuln_id, package=req.package_name
+        "exception_create",
+        actor=req.requested_by,
+        resource=f"exception/{exc.exception_id}",
+        tenant_id=tenant_id,
+        vuln_id=req.vuln_id,
+        package=req.package_name,
     )
     return exc.to_dict()
 
@@ -472,7 +480,7 @@ async def approve_exception(request: Request, exception_id: str, approved_by: st
     exc.approved_by = actor
     exc.approved_at = datetime.now(timezone.utc).isoformat()
     store.put(exc)
-    log_action("exception_approve", actor=actor, resource=f"exception/{exception_id}")
+    log_action("exception_approve", actor=actor, resource=f"exception/{exception_id}", tenant_id=tenant_id)
     return exc.to_dict()
 
 
@@ -491,7 +499,7 @@ async def revoke_exception(request: Request, exception_id: str, revoked_by: str 
     exc.status = ExceptionStatus.REVOKED
     exc.revoked_at = datetime.now(timezone.utc).isoformat()
     store.put(exc)
-    log_action("exception_revoke", actor=actor, resource=f"exception/{exception_id}")
+    log_action("exception_revoke", actor=actor, resource=f"exception/{exception_id}", tenant_id=tenant_id)
     return exc.to_dict()
 
 
@@ -587,6 +595,7 @@ async def test_siem_connection(siem_type: str = "", url: str = "", token: str = 
 
 @router.post("/v1/findings/jira", tags=["enterprise"], status_code=201)
 async def create_jira_ticket_route(
+    request: Request,
     req: JiraTicketRequest,
     jira_api_token: str | None = Header(default=None, alias="X-Jira-Api-Token"),
 ) -> dict:
@@ -619,9 +628,11 @@ async def create_jira_ticket_route(
     if not ticket_key:
         raise HTTPException(status_code=502, detail="Jira API returned no ticket key")
 
+    tenant_id = getattr(request.state, "tenant_id", "default")
     log_action(
         "findings.jira_ticket_created",
         resource=f"jira/{ticket_key}",
+        tenant_id=tenant_id,
         vuln_id=req.finding.get("vulnerability_id", ""),
         package=req.finding.get("package", ""),
     )
@@ -652,6 +663,7 @@ async def mark_false_positive(request: Request, req: FalsePositiveRequest) -> di
         "findings.false_positive_marked",
         actor=req.marked_by,
         resource=f"fp/{exc.exception_id}",
+        tenant_id=tenant_id,
         vuln_id=req.vulnerability_id,
         package=req.package,
     )
@@ -702,4 +714,4 @@ async def remove_false_positive(request: Request, fp_id: str) -> None:
     ok = store.delete(fp_id)
     if not ok:
         raise HTTPException(status_code=404, detail=f"False positive {fp_id} not found")
-    log_action("findings.false_positive_removed", resource=f"fp/{fp_id}")
+    log_action("findings.false_positive_removed", resource=f"fp/{fp_id}", tenant_id=tenant_id)

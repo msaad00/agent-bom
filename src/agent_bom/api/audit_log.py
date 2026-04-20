@@ -20,6 +20,7 @@ import logging
 import os
 import sqlite3
 import threading
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Protocol
@@ -71,9 +72,19 @@ class AuditEntry:
         if not self.timestamp:
             self.timestamp = datetime.now(timezone.utc).isoformat()
 
+    def _canonical_details_json(self) -> str:
+        return json.dumps(self.details or {}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+    def _legacy_hmac(self) -> str:
+        payload = f"{self.prev_signature}|{self.entry_id}|{self.timestamp}|{self.action}|{self.actor}|{self.resource}"
+        return hmac.new(_HMAC_KEY, payload.encode(), hashlib.sha256).hexdigest()
+
     def compute_hmac(self) -> str:
         """Compute HMAC-SHA256 signature for tamper detection (chain-hashed)."""
-        payload = f"{self.prev_signature}|{self.entry_id}|{self.timestamp}|{self.action}|{self.actor}|{self.resource}"
+        payload = (
+            f"{self.prev_signature}|{self.entry_id}|{self.timestamp}|"
+            f"{self.action}|{self.actor}|{self.resource}|{self._canonical_details_json()}"
+        )
         return hmac.new(_HMAC_KEY, payload.encode(), hashlib.sha256).hexdigest()
 
     def sign(self) -> None:
@@ -82,7 +93,9 @@ class AuditEntry:
 
     def verify(self) -> bool:
         """Verify HMAC signature."""
-        return hmac.compare_digest(self.hmac_signature, self.compute_hmac())
+        return hmac.compare_digest(self.hmac_signature, self.compute_hmac()) or hmac.compare_digest(
+            self.hmac_signature, self._legacy_hmac()
+        )
 
     def to_dict(self) -> dict:
         return {
@@ -113,9 +126,14 @@ class AuditLogStore(Protocol):
         since: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        tenant_id: str | None = None,
     ) -> list[AuditEntry]: ...
-    def count(self, action: str | None = None) -> int: ...
-    def verify_integrity(self, limit: int = 1000) -> tuple[int, int]: ...
+    def count(self, action: str | None = None, tenant_id: str | None = None) -> int: ...
+    def verify_integrity(self, limit: int = 1000, tenant_id: str | None = None) -> tuple[int, int]: ...
+
+
+def _entry_tenant(entry: AuditEntry) -> str:
+    return str((entry.details or {}).get("tenant_id") or "default")
 
 
 class InMemoryAuditLog:
@@ -126,12 +144,13 @@ class InMemoryAuditLog:
     def __init__(self) -> None:
         self._entries: list[AuditEntry] = []
         self._lock = threading.Lock()
-        self._last_sig = ""
+        self._last_sig_by_tenant: dict[str, str] = defaultdict(str)
 
     def append(self, entry: AuditEntry) -> None:
-        entry.prev_signature = self._last_sig
+        tenant_id = _entry_tenant(entry)
+        entry.prev_signature = self._last_sig_by_tenant[tenant_id]
         entry.sign()
-        self._last_sig = entry.hmac_signature
+        self._last_sig_by_tenant[tenant_id] = entry.hmac_signature
         with self._lock:
             self._entries.append(entry)
             if len(self._entries) > self._MAX_ENTRIES:
@@ -144,9 +163,12 @@ class InMemoryAuditLog:
         since: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        tenant_id: str | None = None,
     ) -> list[AuditEntry]:
         with self._lock:
             filtered = self._entries
+            if tenant_id is not None:
+                filtered = [e for e in filtered if str((e.details or {}).get("tenant_id", "")) == tenant_id]
             if action:
                 filtered = [e for e in filtered if e.action == action]
             if resource:
@@ -157,16 +179,18 @@ class InMemoryAuditLog:
             filtered = list(reversed(filtered))
             return filtered[offset : offset + limit]
 
-    def count(self, action: str | None = None) -> int:
+    def count(self, action: str | None = None, tenant_id: str | None = None) -> int:
         with self._lock:
+            entries = self._entries
+            if tenant_id is not None:
+                entries = [e for e in entries if str((e.details or {}).get("tenant_id", "")) == tenant_id]
             if action:
-                return sum(1 for e in self._entries if e.action == action)
-            return len(self._entries)
+                return sum(1 for e in entries if e.action == action)
+            return len(entries)
 
-    def verify_integrity(self, limit: int = 1000) -> tuple[int, int]:
+    def verify_integrity(self, limit: int = 1000, tenant_id: str | None = None) -> tuple[int, int]:
         """Verify chain-hashed HMAC signatures. Returns (verified_count, tampered_count)."""
-        with self._lock:
-            entries = self._entries[-limit:]
+        entries = list(reversed(self.list_entries(limit=limit, tenant_id=tenant_id)))
         verified = 0
         tampered = 0
         prev_sig = entries[0].prev_signature if entries else ""
@@ -185,7 +209,7 @@ class SQLiteAuditLog:
     def __init__(self, db_path: str = "agent_bom_audit.db") -> None:
         self._db_path = db_path
         self._local = threading.local()
-        self._last_sig = ""
+        self._last_sig_by_tenant: dict[str, str] = defaultdict(str)
         self._init_db()
         if os.path.exists(self._db_path):
             os.chmod(self._db_path, 0o600)
@@ -213,10 +237,27 @@ class SQLiteAuditLog:
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_audit_resource ON audit_log(resource)")
         self._conn.commit()
 
+    def _latest_signature_for_tenant(self, tenant_id: str) -> str:
+        row = self._conn.execute(
+            """
+            SELECT hmac_signature
+            FROM audit_log
+            WHERE json_extract(details, '$.tenant_id') = ?
+            ORDER BY timestamp DESC
+            LIMIT 1
+            """,
+            (tenant_id,),
+        ).fetchone()
+        return row[0] if row else ""
+
     def append(self, entry: AuditEntry) -> None:
-        entry.prev_signature = self._last_sig
+        tenant_id = _entry_tenant(entry)
+        prev_sig = self._last_sig_by_tenant.get(tenant_id)
+        if prev_sig is None or prev_sig == "":
+            prev_sig = self._latest_signature_for_tenant(tenant_id)
+        entry.prev_signature = prev_sig
         entry.sign()
-        self._last_sig = entry.hmac_signature
+        self._last_sig_by_tenant[tenant_id] = entry.hmac_signature
         self._conn.execute(
             "INSERT INTO audit_log"
             " (entry_id, timestamp, action, actor, resource,"
@@ -242,9 +283,13 @@ class SQLiteAuditLog:
         since: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        tenant_id: str | None = None,
     ) -> list[AuditEntry]:
         clauses = []
         params: list = []
+        if tenant_id is not None:
+            clauses.append("json_extract(details, '$.tenant_id') = ?")
+            params.append(tenant_id)
         if action:
             clauses.append("action = ?")
             params.append(action)
@@ -277,16 +322,22 @@ class SQLiteAuditLog:
             for r in rows
         ]
 
-    def count(self, action: str | None = None) -> int:
+    def count(self, action: str | None = None, tenant_id: str | None = None) -> int:
+        clauses = []
+        params: list[object] = []
+        if tenant_id is not None:
+            clauses.append("json_extract(details, '$.tenant_id') = ?")
+            params.append(tenant_id)
         if action:
-            row = self._conn.execute("SELECT COUNT(*) FROM audit_log WHERE action = ?", (action,)).fetchone()
-        else:
-            row = self._conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()
+            clauses.append("action = ?")
+            params.append(action)
+        where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+        row = self._conn.execute(f"SELECT COUNT(*) FROM audit_log{where}", params).fetchone()  # nosec B608
         return row[0] if row else 0
 
-    def verify_integrity(self, limit: int = 1000) -> tuple[int, int]:
+    def verify_integrity(self, limit: int = 1000, tenant_id: str | None = None) -> tuple[int, int]:
         """Verify chain-hashed HMAC signatures. Returns (verified_count, tampered_count)."""
-        entries = self.list_entries(limit=limit)
+        entries = self.list_entries(limit=limit, tenant_id=tenant_id)
         # list_entries returns most-recent-first; reverse for chronological chain verification
         entries = list(reversed(entries))
         verified = 0
@@ -325,6 +376,21 @@ def get_audit_log() -> AuditLogStore:
     return _audit_log
 
 
+def _default_tenant_id(details: dict[str, object]) -> str:
+    tenant = details.get("tenant_id")
+    if tenant not in (None, ""):
+        return str(tenant)
+    try:
+        from agent_bom.api.postgres_store import _current_tenant
+
+        current = _current_tenant.get()
+        if current:
+            return str(current)
+    except Exception:
+        logger.debug("Audit tenant fallback unavailable", exc_info=True)
+    return "default"
+
+
 def set_audit_log(store: AuditLogStore) -> None:
     global _audit_log
     with _audit_lock:
@@ -333,7 +399,9 @@ def set_audit_log(store: AuditLogStore) -> None:
 
 def log_action(action: str, actor: str = "system", resource: str = "", **details: object) -> None:
     """Convenience: append an audit entry."""
-    entry = AuditEntry(action=action, actor=actor, resource=resource, details=dict(details))
+    audit_details = dict(details)
+    audit_details["tenant_id"] = _default_tenant_id(audit_details)
+    entry = AuditEntry(action=action, actor=actor, resource=resource, details=audit_details)
     get_audit_log().append(entry)
     try:
         from agent_bom.api.stores import _get_analytics_store
@@ -345,7 +413,7 @@ def log_action(action: str, actor: str = "system", resource: str = "", **details
                 "action": entry.action,
                 "actor": entry.actor,
                 "resource": entry.resource,
-                "tenant_id": str(details.get("tenant_id", "default") or "default"),
+                "tenant_id": str(entry.details.get("tenant_id", "default") or "default"),
             }
         )
     except Exception:

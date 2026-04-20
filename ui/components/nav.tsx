@@ -342,7 +342,11 @@ export function Nav() {
                   if (captureMode) {
                     return;
                   }
-                  collapsed ? setCollapsed(false) : toggleGroup(group.label);
+                  if (collapsed) {
+                    setCollapsed(false);
+                  } else {
+                    toggleGroup(group.label);
+                  }
                 }}
                 className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-medium transition-colors border-l-2 ${
                   hasActiveChild

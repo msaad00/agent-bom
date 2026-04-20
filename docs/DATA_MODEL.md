@@ -143,11 +143,11 @@ list/put plus session-scoped `app.current_tenant` for RLS.
 
 | Table | Source dataclass | Notes |
 |---|---|---|
-| `scan_jobs` | `ScanJob` (api/models.py) | `tenant_id` PK component |
+| `scan_jobs` | `ScanJob` (api/models.py) | global `job_id` PK + tenant column (`team_id` / `tenant_id`) |
 | `fleet_agents` | `FleetAgent` (api/fleet_store.py) | trust score + lifecycle state |
 | `api_keys` | `ApiKey` (api/auth.py) | scrypt hashes, expiry, role, tenant |
 | `exceptions` | `Exception` (api/exceptions.py) | suppression workflow |
-| `gateway_policies` + `policy_audit_log` | `GatewayPolicy` | RBAC-gated mutations |
+| `gateway_policies` + `policy_audit_log` | `GatewayPolicy` | RBAC-gated mutations, tenant-native reads |
 | `scan_schedules` | `ScanSchedule` (api/schedule_store.py) | cron-driven |
 | `audit_log` | `AuditEntry` (api/audit_log.py) | HMAC-chained, tamper-evident |
 | `trend_history` | aggregated severity counts | for `/v1/trends` |

@@ -245,11 +245,17 @@ class PostgresScheduleStore:
             conn.commit()
             return cursor.rowcount > 0
 
-    def list_all(self) -> list:
+    def list_all(self, tenant_id: str | None = None) -> list:
         from .schedule_store import ScanSchedule
 
         with _tenant_connection(self._pool) as conn:
-            rows = conn.execute("SELECT data FROM scan_schedules ORDER BY schedule_id").fetchall()
+            if tenant_id is None:
+                rows = conn.execute("SELECT data FROM scan_schedules ORDER BY schedule_id").fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT data FROM scan_schedules WHERE tenant_id = %s ORDER BY schedule_id",
+                    (tenant_id,),
+                ).fetchall()
             return [ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
 
     def list_due(self, now_iso: str) -> list:

@@ -103,7 +103,7 @@ def enforce_schedule_quota(tenant_id: str, attempted: int = 1) -> None:
     limit = API_MAX_SCHEDULES_PER_TENANT
     if limit <= 0 or attempted <= 0:
         return
-    current = len([schedule for schedule in _get_schedule_store().list_all() if schedule.tenant_id == tenant_id])
+    current = len(_get_schedule_store().list_all(tenant_id=tenant_id))
     if current + attempted > limit:
         _raise_quota_exceeded(
             tenant_id=tenant_id,

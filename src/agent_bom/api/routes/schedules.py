@@ -54,7 +54,7 @@ async def create_schedule(request: Request, body: ScheduleCreate) -> dict:
 async def list_schedules(request: Request) -> list[dict]:
     """List all scan schedules."""
     tenant_id = getattr(request.state, "tenant_id", "default")
-    return [s.model_dump() for s in _get_schedule_store().list_all() if s.tenant_id == tenant_id]
+    return [s.model_dump() for s in _get_schedule_store().list_all(tenant_id=tenant_id)]
 
 
 @router.get("/v1/schedules/{schedule_id}", tags=["schedules"])

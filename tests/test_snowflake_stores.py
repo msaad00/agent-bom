@@ -460,6 +460,7 @@ class TestSnowflakePolicyStore:
             policy_id=policy_id,
             name=name,
             updated_at=datetime.now(timezone.utc).isoformat(),
+            tenant_id="tenant-alpha",
         )
 
     def _make_audit_entry(self, entry_id="e1"):
@@ -475,6 +476,7 @@ class TestSnowflakePolicyStore:
             action_taken="blocked",
             reason="matched rule",
             timestamp=datetime.now(timezone.utc).isoformat(),
+            tenant_id="tenant-alpha",
         )
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
@@ -538,6 +540,15 @@ class TestSnowflakePolicyStore:
         assert len(result) == 2
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_list_policies_tenant_filter_is_pushed_into_sql(self, mock_connect):
+        conn = _mock_connection()
+        mock_connect.return_value = conn
+        store = self._make_store()
+        store.list_policies(tenant_id="tenant-alpha")
+        sql_calls = [str(c) for c in conn.cursor().execute.call_args_list if "gateway_policies" in str(c) and "SELECT" in str(c)]
+        assert any("tenant_id = %s" in call for call in sql_calls)
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_get_policies_for_agent_filters(self, mock_connect):
         from agent_bom.api.policy_store import GatewayPolicy
 
@@ -595,11 +606,12 @@ class TestSnowflakePolicyStore:
         conn = _mock_connection()
         mock_connect.return_value = conn
         store = self._make_store()
-        store.list_audit_entries(policy_id="p1", agent_name="test-agent", limit=50)
+        store.list_audit_entries(policy_id="p1", agent_name="test-agent", tenant_id="tenant-alpha", limit=50)
         calls = conn.cursor().execute.call_args_list
         # Check that the SQL includes both filter clauses
         sql_calls = [str(c) for c in calls if "policy_audit_log" in str(c) and "SELECT" in str(c)]
         assert len(sql_calls) > 0
+        assert any("tenant_id = %s" in call for call in sql_calls)
 
 
 # ─── Server lifespan auto-detection ──────────────────────────────────────────

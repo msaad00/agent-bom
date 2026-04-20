@@ -365,6 +365,7 @@ class SnowflakePolicyStore:
                     mode VARCHAR NOT NULL,
                     enabled BOOLEAN NOT NULL DEFAULT TRUE,
                     updated_at TIMESTAMP_TZ,
+                    tenant_id VARCHAR NOT NULL DEFAULT 'default',
                     data VARIANT NOT NULL
                 )
             """)
@@ -375,9 +376,12 @@ class SnowflakePolicyStore:
                     agent_name VARCHAR,
                     action_taken VARCHAR,
                     timestamp TIMESTAMP_TZ,
+                    tenant_id VARCHAR NOT NULL DEFAULT 'default',
                     data VARIANT NOT NULL
                 )
             """)
+            cur.execute("ALTER TABLE gateway_policies ADD COLUMN IF NOT EXISTS tenant_id VARCHAR NOT NULL DEFAULT 'default'")
+            cur.execute("ALTER TABLE policy_audit_log ADD COLUMN IF NOT EXISTS tenant_id VARCHAR NOT NULL DEFAULT 'default'")
 
     # ── policies ──
 
@@ -388,22 +392,24 @@ class SnowflakePolicyStore:
                    ON t.policy_id = s.policy_id
                    WHEN MATCHED THEN UPDATE SET
                      name = %s, mode = %s, enabled = %s,
-                     updated_at = %s, data = PARSE_JSON(%s)
+                     updated_at = %s, tenant_id = %s, data = PARSE_JSON(%s)
                    WHEN NOT MATCHED THEN INSERT
-                     (policy_id, name, mode, enabled, updated_at, data)
-                     VALUES (%s, %s, %s, %s, %s, PARSE_JSON(%s))""",
+                     (policy_id, name, mode, enabled, updated_at, tenant_id, data)
+                     VALUES (%s, %s, %s, %s, %s, %s, PARSE_JSON(%s))""",
                 (
                     policy.policy_id,
                     policy.name,
                     policy.mode.value,
                     policy.enabled,
                     policy.updated_at,
+                    policy.tenant_id,
                     policy.model_dump_json(),
                     policy.policy_id,
                     policy.name,
                     policy.mode.value,
                     policy.enabled,
                     policy.updated_at,
+                    policy.tenant_id,
                     policy.model_dump_json(),
                 ),
             )
@@ -411,17 +417,14 @@ class SnowflakePolicyStore:
     def get_policy(self, policy_id: str, tenant_id: str | None = None) -> GatewayPolicy | None:
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute(
-                "SELECT data FROM gateway_policies WHERE policy_id = %s",
-                (policy_id,),
-            )
+            if tenant_id is None:
+                cur.execute("SELECT data FROM gateway_policies WHERE policy_id = %s", (policy_id,))
+            else:
+                cur.execute("SELECT data FROM gateway_policies WHERE policy_id = %s AND tenant_id = %s", (policy_id, tenant_id))
             row = cur.fetchone()
             if row is None:
                 return None
-            policy = GatewayPolicy.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
-            if tenant_id is not None and policy.tenant_id != tenant_id:
-                return None
-            return policy
+            return GatewayPolicy.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
 
     def delete_policy(self, policy_id: str, tenant_id: str | None = None) -> bool:
         if tenant_id is not None and self.get_policy(policy_id, tenant_id=tenant_id) is None:
@@ -437,10 +440,11 @@ class SnowflakePolicyStore:
     def list_policies(self, tenant_id: str | None = None) -> list[GatewayPolicy]:
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT data FROM gateway_policies ORDER BY name")
+            if tenant_id is None:
+                cur.execute("SELECT data FROM gateway_policies ORDER BY name")
+            else:
+                cur.execute("SELECT data FROM gateway_policies WHERE tenant_id = %s ORDER BY name", (tenant_id,))
             policies = [GatewayPolicy.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
-            if tenant_id is not None:
-                policies = [p for p in policies if p.tenant_id == tenant_id]
             return policies
 
     def get_policies_for_agent(
@@ -468,14 +472,15 @@ class SnowflakePolicyStore:
         with self._connect() as conn:
             conn.cursor().execute(
                 """INSERT INTO policy_audit_log
-                   (entry_id, policy_id, agent_name, action_taken, timestamp, data)
-                   VALUES (%s, %s, %s, %s, %s, PARSE_JSON(%s))""",
+                   (entry_id, policy_id, agent_name, action_taken, timestamp, tenant_id, data)
+                   VALUES (%s, %s, %s, %s, %s, %s, PARSE_JSON(%s))""",
                 (
                     entry.entry_id,
                     entry.policy_id,
                     entry.agent_name,
                     entry.action_taken,
                     entry.timestamp,
+                    entry.tenant_id,
                     entry.model_dump_json(),
                 ),
             )
@@ -490,6 +495,9 @@ class SnowflakePolicyStore:
         with self._connect() as conn:
             sql = "SELECT data FROM policy_audit_log WHERE 1=1"
             params: list = []
+            if tenant_id is not None:
+                sql += " AND tenant_id = %s"
+                params.append(tenant_id)
             if policy_id:
                 sql += " AND policy_id = %s"
                 params.append(policy_id)
@@ -500,7 +508,4 @@ class SnowflakePolicyStore:
             params.append(limit)
             cur = conn.cursor()
             cur.execute(sql, params)
-            entries = [PolicyAuditEntry.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
-            if tenant_id is not None:
-                entries = [e for e in entries if e.tenant_id == tenant_id]
-            return entries
+            return [PolicyAuditEntry.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]

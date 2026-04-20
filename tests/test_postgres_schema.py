@@ -125,10 +125,12 @@ def test_remaining_tenant_tables_have_rls():
 
 
 def test_schema_summary_comment_is_current():
-    assert "--  Schema (15 tables):" in SQL
+    assert "--  Schema (21+ tables):" in SQL
     assert "--   api_rate_limits    — shared API rate-limiter buckets" in SQL
     assert "--   audit_log          — signed API/security audit trail" in SQL
     assert "--   trend_history      — persisted posture/vulnerability history" in SQL
+    assert "--   attack_paths       — persisted fix-first attack-path projections" in SQL
+    assert "--   graph_filter_presets — tenant-scoped saved graph filters" in SQL
 
 
 def test_api_rate_limits_table_exists():

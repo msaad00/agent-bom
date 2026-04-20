@@ -34,7 +34,7 @@ class ScheduleStore(Protocol):
     def put(self, schedule: ScanSchedule) -> None: ...
     def get(self, schedule_id: str) -> ScanSchedule | None: ...
     def delete(self, schedule_id: str) -> bool: ...
-    def list_all(self) -> list[ScanSchedule]: ...
+    def list_all(self, tenant_id: str | None = None) -> list[ScanSchedule]: ...
     def list_due(self, now_iso: str) -> list[ScanSchedule]: ...
 
 
@@ -56,8 +56,11 @@ class InMemoryScheduleStore:
             return True
         return False
 
-    def list_all(self) -> list[ScanSchedule]:
-        return list(self._schedules.values())
+    def list_all(self, tenant_id: str | None = None) -> list[ScanSchedule]:
+        schedules = list(self._schedules.values())
+        if tenant_id is None:
+            return schedules
+        return [schedule for schedule in schedules if schedule.tenant_id == tenant_id]
 
     def list_due(self, now_iso: str) -> list[ScanSchedule]:
         """Return enabled schedules where next_run <= now."""
@@ -85,17 +88,22 @@ class SQLiteScheduleStore:
                 schedule_id TEXT PRIMARY KEY,
                 enabled INTEGER DEFAULT 1,
                 next_run TEXT,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
                 data TEXT NOT NULL
             )
         """)
+        cols = {r[1] for r in self._conn.execute("PRAGMA table_info(schedules)").fetchall()}
+        if "tenant_id" not in cols:
+            self._conn.execute("ALTER TABLE schedules ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_sched_due ON schedules(enabled, next_run)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_sched_tenant_due ON schedules(tenant_id, enabled, next_run)")
         self._conn.commit()
 
     def put(self, schedule: ScanSchedule) -> None:
         self._conn.execute(
-            """INSERT OR REPLACE INTO schedules (schedule_id, enabled, next_run, data)
-               VALUES (?, ?, ?, ?)""",
-            (schedule.schedule_id, int(schedule.enabled), schedule.next_run, schedule.model_dump_json()),
+            """INSERT OR REPLACE INTO schedules (schedule_id, enabled, next_run, tenant_id, data)
+               VALUES (?, ?, ?, ?, ?)""",
+            (schedule.schedule_id, int(schedule.enabled), schedule.next_run, schedule.tenant_id, schedule.model_dump_json()),
         )
         self._conn.commit()
 
@@ -110,8 +118,14 @@ class SQLiteScheduleStore:
         self._conn.commit()
         return cursor.rowcount > 0
 
-    def list_all(self) -> list[ScanSchedule]:
-        rows = self._conn.execute("SELECT data FROM schedules ORDER BY schedule_id").fetchall()
+    def list_all(self, tenant_id: str | None = None) -> list[ScanSchedule]:
+        if tenant_id is None:
+            rows = self._conn.execute("SELECT data FROM schedules ORDER BY schedule_id").fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT data FROM schedules WHERE tenant_id = ? ORDER BY schedule_id",
+                (tenant_id,),
+            ).fetchall()
         return [ScanSchedule.model_validate_json(r[0]) for r in rows]
 
     def list_due(self, now_iso: str) -> list[ScanSchedule]:

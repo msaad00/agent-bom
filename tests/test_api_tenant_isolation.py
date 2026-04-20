@@ -145,6 +145,14 @@ async def test_schedule_routes_are_tenant_scoped():
     assert exc.value.status_code == 404
 
 
+def test_schedule_store_list_all_accepts_tenant_scope():
+    store = InMemoryScheduleStore()
+    store.put(_schedule("sched-alpha", "tenant-alpha"))
+    store.put(_schedule("sched-beta", "tenant-beta"))
+
+    assert [s.schedule_id for s in store.list_all(tenant_id="tenant-alpha")] == ["sched-alpha"]
+
+
 @pytest.mark.asyncio
 async def test_schedule_create_uses_authenticated_tenant():
     store = InMemoryScheduleStore()

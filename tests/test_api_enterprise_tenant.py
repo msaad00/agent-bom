@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from agent_bom.api.audit_log import AuditEntry, InMemoryAuditLog
+from agent_bom.api.audit_log import AuditEntry, InMemoryAuditLog, get_audit_log, set_audit_log
 from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
 from agent_bom.api.exception_store import InMemoryExceptionStore, VulnException
 from agent_bom.api.models import CreateKeyRequest, JobStatus, RotateKeyRequest, ScanJob, ScanRequest
@@ -60,6 +60,17 @@ def isolated_exception_store(monkeypatch):
     store = InMemoryExceptionStore()
     monkeypatch.setattr(enterprise, "_get_exception_store", lambda: store)
     return store
+
+
+@pytest.fixture
+def isolated_audit_log():
+    original = get_audit_log()
+    store = InMemoryAuditLog()
+    set_audit_log(store)
+    try:
+        yield store
+    finally:
+        set_audit_log(original)
 
 
 @pytest.mark.asyncio
@@ -174,6 +185,19 @@ async def test_delete_exception_returns_404_for_cross_tenant(isolated_exception_
 
 
 @pytest.mark.asyncio
+async def test_delete_exception_audit_logs_actor_and_tenant(isolated_exception_store, isolated_audit_log):
+    exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha")
+    isolated_exception_store.put(exc)
+
+    await enterprise.delete_exception(_request("tenant-alpha", "alice-admin"), exc.exception_id)
+
+    entries = isolated_audit_log.list_entries()
+    assert entries[0].action == "exception_delete"
+    assert entries[0].actor == "alice-admin"
+    assert entries[0].details["tenant_id"] == "tenant-alpha"
+
+
+@pytest.mark.asyncio
 async def test_create_jira_ticket_requires_header_token(monkeypatch):
     req = enterprise.JiraTicketRequest(
         jira_url="https://example.atlassian.net",
@@ -218,6 +242,29 @@ async def test_create_jira_ticket_uses_header_token(monkeypatch):
     assert result == {"ticket_key": "SEC-42", "status": "created"}
     assert captured["api_token"] == "token-abc"
     assert captured["project_key"] == "SEC"
+
+
+@pytest.mark.asyncio
+async def test_siem_test_logs_attempt(monkeypatch, isolated_audit_log):
+    class _FakeConnector:
+        def health_check(self):
+            return True
+
+    monkeypatch.setattr("agent_bom.security.validate_url", lambda url: None)
+    monkeypatch.setattr("agent_bom.siem.create_connector", lambda *args, **kwargs: _FakeConnector())
+
+    result = await enterprise.test_siem_connection(
+        _request("tenant-alpha", "alice-admin"),
+        siem_type="splunk",
+        url="https://siem.example.com",
+        token="secret",
+    )
+
+    assert result == {"siem_type": "splunk", "healthy": True}
+    entries = isolated_audit_log.list_entries()
+    assert entries[0].action == "siem.test"
+    assert entries[0].actor == "alice-admin"
+    assert entries[0].details["tenant_id"] == "tenant-alpha"
 
 
 @pytest.mark.asyncio

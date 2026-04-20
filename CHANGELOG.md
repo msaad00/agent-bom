@@ -9,35 +9,35 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Work targeting the next minor release. Tracking toward `0.78.1`.
+Work targeting the next release.
+
+---
+
+## [0.79.0] – 2026-04-20
 
 ### Added
-- **MCP tool-schema validation rule catalog** (#1507) — OWASP-mapped rules classify MCP tool definitions for risky capability combinations, over-broad permissions, and schema gaps; findings wired into live introspection output (#1519)
-- **Graded exploit likelihood signal** (#1518, closes #486) — blast-radius scoring fuses EPSS and CISA KEV into a single `exploit_likelihood` tier so triage reflects in-the-wild exploitation risk, not just theoretical severity
-- **Signed compliance evidence bundle** — new `/v1/compliance/{framework}/report` endpoint (#1504) returns HMAC-signed, replay-protected evidence (#1509) for auditor hand-off
-- **Structured CIS remediation field** (#1512, #1517) — CIS benchmark findings now carry a first-class `remediation` object surfaced through CLI, HTML, and SARIF outputs
-- **OCSF interop boundary** (#1513) — optional SIEM export is scoped as a boundary concern (not core data model); ownership and schema lifecycle documented
-- **Auth-method introspection** — `/v1/auth/debug` endpoint (#1502) reports which auth method resolved a request, easing operator debugging in mixed-auth deployments
-- **ClickHouse row-level tenant isolation** (#1501) — analytics tables gain `tenant_id` column with enforced filtering
-- **Backup/restore round-trip CI** (#1500) — nightly workflow verifies end-to-end backup → restore → scan equivalence
-- **Canonical data model atlas** — `docs/DATA_MODEL.md` (#1505) documents the single source of truth across scanner model, DB schema, and output formats
+- **Multi-MCP gateway and rollout path** — central `agent-bom gateway serve`, fleet-driven upstream discovery, focused EKS pilot guidance, and deployment-first docs for self-hosted operator environments (#1551, #1552, #1554, #1555, #1560).
+- **Visual leak runtime enforcement** — `VisualLeakDetector` is now wired into gateway and proxy protection paths so screenshot and image tool responses can be redacted or blocked as part of the runtime policy surface (#1572, #1575).
+- **Bidirectional OTEL product surface** — OTLP export, W3C trace context, `/v1/traces` ingest, and runtime OTEL evidence are now called out as first-class operator capabilities in the shipped product surfaces (#1583).
 
 ### Changed
-- **Inter-procedural taint analyzer depth cap** (#1508) — bounded recursion eliminates pathological analysis time on deeply nested call graphs while preserving precision
-- **Dashboard Risk overview description** (#1506) — copy refreshed to match the redesigned overview layout and score drivers
-- **README EKS section restructured** (#1510) — deployment guidance simplified, redundant topology SVG pruned
-- **Visual language documented** — README diagrams tightened (#1503) with the visual language reference inline for contributors
+- **Tenant-native persistence and parity** — fleet, policy, audit, baseline, trends, analytics, and Snowflake/Postgres-backed stores now query natively by tenant rather than relying on broad reads plus in-memory filtering (#1558, #1559, #1561, #1562, #1567, #1569).
+- **RBAC and control-plane hardening** — enterprise/compliance/auth-policy surfaces align on the current `admin` / `analyst` / `viewer` model with route-level and middleware-level enforcement kept in sync (#1576).
+- **Monolith reduction in core surfaces** — `mcp_server`, `ast_analyzer`, Postgres stores, and console output were split into focused modules while preserving CLI/API behavior and published contracts (#1561, #1564, #1565, #1566).
 
 ### Fixed
-- **Docker MCP marketplace tool catalog** — `integrations/docker-mcp-registry/tools.json` now exposes all 36 `@mcp.tool` decorators in code; adds the previously-missing `tool_risk_assessment` and `graph_export` entries so the listed tool set matches the running server
+- **Graph blast-radius hot path** — vuln-to-server edge resolution now uses indexed lookups instead of the prior nested agent×server cross-product in the graph builder (#1581).
+- **HTTP retry behavior under load** — outbound retry backoff now adds positive jitter so concurrent OSV and HTTP clients do not back off in lockstep (#1582).
+- **Tenant-blind enterprise reads** — baseline compare, trends, audit export, and related enterprise/operator surfaces now honor tenant scope consistently across backends (#1559, #1569).
+- **Write-route audit coverage** — exception deletion, SIEM test, schedule mutation, fleet sync/state updates, and related operator write paths now emit audit entries with actor and tenant context.
+- **Ignore-file error handling** — malformed YAML/JSON ignore files now fail through narrow parse errors instead of broad exception swallowing (#1582).
 
 ### Security
-- **Compliance report replay protection** (#1509) — evidence bundle requests now include nonce + timestamp validation, blocking replay of previously-signed bundles. LLM05 supply-chain tagging broadened for clearer downstream filtering.
-- **Helm chart hardened default** (#1519) — `networkPolicy.restrictIngress=true` is the default; Kubernetes deployment guide updated to document the egress/ingress posture
+- **Hardened audit evidence chain** — audit HMAC coverage now includes payload `details`, routes fetch tenant-scoped audit entries at the store layer, and exported evidence stays tamper-evident across backends (#1559).
+- **Transport and operator posture clarified** — HTTPS-external / trusted-boundary-internal deployment guidance, OTEL/OPA positioning, and current auth/RBAC behavior now match the live product and deployment docs (#1583).
 
-### Infra & observability
-- **Demo artifacts refresh** (#1511) — `docs/images/demo-latest.gif` and dashboard screenshot re-recorded against the current CLI/UI
-- **Fresh Phase 0+1 hardening** (#1499) — rotation helper, graceful drain, webhook retry semantics, README + visual refresh rolled up
+### Docs
+- **Release and deployment alignment** — README, Docker Hub README, product brief, EKS guidance, backend matrix, and release-managed version surfaces are aligned on `0.79.0`.
 
 ---
 

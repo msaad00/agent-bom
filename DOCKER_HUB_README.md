@@ -142,7 +142,7 @@ Focused graph:
 | Tag | Description |
 |-----|-------------|
 | `latest` | Most recent stable release |
-| `0.78.1` | Current stable version (pinned) |
+| `0.79.0` | Current stable version (pinned) |
 
 ## Links
 

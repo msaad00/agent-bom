@@ -245,6 +245,25 @@ def test_scan_packages_calls_osv_for_uncovered_packages():
     assert mock_osv.called
 
 
+def test_scan_packages_only_skips_exact_db_covered_version():
+    """Local DB coverage must be version-specific, not ecosystem-name global."""
+    from agent_bom.scanners import scan_packages
+
+    covered = _make_pkg("requests", "2.28.0")
+    newer = _make_pkg("requests", "2.31.0")
+
+    with (
+        patch("agent_bom.scanners._scan_packages_local_db", return_value=(1, {"pypi:requests@2.28.0"})),
+        patch("agent_bom.scanners.query_osv_batch", return_value={}) as mock_osv,
+    ):
+        asyncio.run(scan_packages([covered, newer]))
+
+    assert mock_osv.called
+    osv_targets = mock_osv.call_args[0][0]
+    assert covered not in osv_targets
+    assert newer in osv_targets
+
+
 def test_scan_packages_offline_requires_local_db(monkeypatch):
     """Offline mode must fail closed when no local DB coverage exists."""
     from agent_bom.scanners import IncompleteScanError, scan_packages

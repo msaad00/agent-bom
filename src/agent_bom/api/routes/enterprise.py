@@ -506,7 +506,10 @@ async def revoke_exception(request: Request, exception_id: str, revoked_by: str 
 @router.delete("/v1/exceptions/{exception_id}", tags=["enterprise"], status_code=204)
 async def delete_exception(request: Request, exception_id: str) -> None:
     """Delete an exception."""
+    from agent_bom.api.audit_log import log_action
+
     tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = getattr(request.state, "api_key_name", "") or "system"
     store = _get_exception_store()
     exc = store.get(exception_id)
     if exc is None or exc.tenant_id != tenant_id:
@@ -514,6 +517,7 @@ async def delete_exception(request: Request, exception_id: str) -> None:
     ok = store.delete(exception_id)
     if not ok:
         raise HTTPException(status_code=404, detail=f"Exception {exception_id} not found")
+    log_action("exception_delete", actor=actor, resource=f"exception/{exception_id}", tenant_id=tenant_id)
 
 
 # ── Baseline Comparison & Trends ─────────────────────────────────────────────
@@ -580,10 +584,14 @@ async def list_siem_connectors() -> dict:
 
 
 @router.post("/v1/siem/test", tags=["enterprise"])
-async def test_siem_connection(siem_type: str = "", url: str = "", token: str = "") -> dict:
+async def test_siem_connection(request: Request, siem_type: str = "", url: str = "", token: str = "") -> dict:
     """Test SIEM connectivity."""
+    from agent_bom.api.audit_log import log_action
     from agent_bom.security import validate_url
     from agent_bom.siem import SIEMConfig, create_connector
+
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = getattr(request.state, "api_key_name", "") or "system"
 
     # Validate URL to prevent SSRF
     if url:
@@ -595,6 +603,14 @@ async def test_siem_connection(siem_type: str = "", url: str = "", token: str = 
     try:
         connector = create_connector(siem_type, SIEMConfig(name=siem_type, url=url, token=token))
         healthy = connector.health_check()
+        log_action(
+            "siem.test",
+            actor=actor,
+            resource=f"siem/{siem_type or 'unknown'}",
+            tenant_id=tenant_id,
+            healthy=healthy,
+            url=url,
+        )
         return {"siem_type": siem_type, "healthy": healthy}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=sanitize_error(str(exc)))
@@ -602,6 +618,15 @@ async def test_siem_connection(siem_type: str = "", url: str = "", token: str = 
         _logger.exception(
             "Unexpected error while testing SIEM connection: %s",
             sanitize_error(exc),
+        )
+        log_action(
+            "siem.test",
+            actor=actor,
+            resource=f"siem/{siem_type or 'unknown'}",
+            tenant_id=tenant_id,
+            healthy=False,
+            error="Failed to test SIEM connection",
+            url=url,
         )
         return {
             "siem_type": siem_type,
@@ -649,8 +674,10 @@ async def create_jira_ticket_route(
         raise HTTPException(status_code=502, detail="Jira API returned no ticket key")
 
     tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = getattr(request.state, "api_key_name", "") or req.email or "system"
     log_action(
         "findings.jira_ticket_created",
+        actor=actor,
         resource=f"jira/{ticket_key}",
         tenant_id=tenant_id,
         vuln_id=req.finding.get("vulnerability_id", ""),
@@ -727,6 +754,7 @@ async def remove_false_positive(request: Request, fp_id: str) -> None:
     from agent_bom.api.audit_log import log_action
 
     tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = getattr(request.state, "api_key_name", "") or "system"
     store = _get_exception_store()
     exc = store.get(fp_id)
     if exc is None or exc.tenant_id != tenant_id or not exc.reason.startswith("[false_positive]"):
@@ -734,4 +762,4 @@ async def remove_false_positive(request: Request, fp_id: str) -> None:
     ok = store.delete(fp_id)
     if not ok:
         raise HTTPException(status_code=404, detail=f"False positive {fp_id} not found")
-    log_action("findings.false_positive_removed", resource=f"fp/{fp_id}", tenant_id=tenant_id)
+    log_action("findings.false_positive_removed", actor=actor, resource=f"fp/{fp_id}", tenant_id=tenant_id)

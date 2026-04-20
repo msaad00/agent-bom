@@ -94,7 +94,7 @@ def _synth_report(n_agents: int, servers_per_agent: int = 2, pkgs_per_server: in
     return {
         "scan_id": f"bench-{n_agents}",
         "generated_at": "2026-01-01T00:00:00Z",
-        "tool_version": "0.78.1",
+        "tool_version": "0.79.0",
         "agents": agents,
         "blast_radius": blast_radius,
         "scan_sources": ["mcp-scan"],

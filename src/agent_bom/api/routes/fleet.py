@@ -131,12 +131,14 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
     New agents -> state=DISCOVERED. Existing agents -> counts updated.
     Trust scores are recomputed for all synced agents.
     """
+    from agent_bom.api.audit_log import log_action
     from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState
     from agent_bom.discovery import discover_all
     from agent_bom.fleet.trust_scoring import compute_trust_score
 
     store = _get_fleet_store()
     tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = getattr(request.state, "api_key_name", "") or "system"
     now = datetime.now(timezone.utc).isoformat()
     source_id = (body.source_id if body else "") or _request_header(request, "X-Agent-Bom-Source-Id") or "server-discovery"
     idem_key = (body.idempotency_key if body else "") or _request_header(request, "Idempotency-Key")
@@ -246,6 +248,16 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
         "updated": updated_count,
         "source_id": source_id,
     }
+    log_action(
+        "fleet.sync",
+        actor=actor,
+        resource="fleet/sync",
+        tenant_id=tenant_id,
+        synced=response["synced"],
+        new=response["new"],
+        updated=response["updated"],
+        source_id=source_id,
+    )
     if idem_key:
         _get_idempotency_store().put("/v1/fleet/sync", tenant_id, source_id, idem_key, response)
     return response
@@ -254,6 +266,7 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
 @router.put("/v1/fleet/{agent_id}/state", tags=["fleet"])
 async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate):
     """Update agent lifecycle state."""
+    from agent_bom.api.audit_log import log_action
     from agent_bom.api.fleet_store import FleetLifecycleState
 
     try:
@@ -265,19 +278,30 @@ async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate)
         )
     store = _get_fleet_store()
     tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = getattr(request.state, "api_key_name", "") or "system"
     agent = store.get(agent_id)
     if agent is None or agent.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Fleet agent not found")
     store.update_state(agent_id, new_state)
+    log_action(
+        "fleet.state_update",
+        actor=actor,
+        resource=f"fleet/{agent_id}",
+        tenant_id=tenant_id,
+        lifecycle_state=new_state.value,
+    )
     return {"agent_id": agent_id, "lifecycle_state": new_state.value}
 
 
 @router.put("/v1/fleet/{agent_id}", tags=["fleet"])
 async def update_fleet_agent(request: Request, agent_id: str, body: FleetAgentUpdate):
     """Update agent metadata (owner, environment, tags, notes)."""
+    from agent_bom.api.audit_log import log_action
+
     store = _get_fleet_store()
     agent = store.get(agent_id)
     tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = getattr(request.state, "api_key_name", "") or "system"
     if agent is None or agent.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="Fleet agent not found")
     if body.owner is not None:
@@ -290,4 +314,13 @@ async def update_fleet_agent(request: Request, agent_id: str, body: FleetAgentUp
         agent.notes = body.notes
     agent.updated_at = datetime.now(timezone.utc).isoformat()
     store.put(agent)
+    log_action(
+        "fleet.agent_update",
+        actor=actor,
+        resource=f"fleet/{agent_id}",
+        tenant_id=tenant_id,
+        owner=agent.owner,
+        environment=agent.environment,
+        tags=agent.tags,
+    )
     return agent.model_dump()

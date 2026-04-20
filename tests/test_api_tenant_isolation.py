@@ -11,6 +11,7 @@ import pytest
 from fastapi import HTTPException
 
 from agent_bom.api import tenant_quota as tenant_quota_module
+from agent_bom.api.audit_log import InMemoryAuditLog, get_audit_log, set_audit_log
 from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState, InMemoryFleetStore
 from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.models import FleetAgentUpdate, JobStatus, PushPayload, ScanJob, ScanRequest, ScheduleCreate, StateUpdate
@@ -32,7 +33,18 @@ def _now() -> str:
 
 
 def _request(tenant_id: str) -> SimpleNamespace:
-    return SimpleNamespace(state=SimpleNamespace(tenant_id=tenant_id))
+    return SimpleNamespace(state=SimpleNamespace(tenant_id=tenant_id, api_key_name="tenant-actor"))
+
+
+@pytest.fixture
+def isolated_audit_log():
+    original = get_audit_log()
+    store = InMemoryAuditLog()
+    set_audit_log(store)
+    try:
+        yield store
+    finally:
+        set_audit_log(original)
 
 
 def _fleet_agent(agent_id: str, tenant_id: str, name: str = "agent") -> FleetAgent:
@@ -116,6 +128,25 @@ async def test_fleet_sync_assigns_request_tenant():
     agents = store.list_by_tenant("tenant-alpha")
     assert len(agents) == 1
     assert agents[0].tenant_id == "tenant-alpha"
+
+
+@pytest.mark.asyncio
+async def test_fleet_sync_audit_logs_request_tenant(isolated_audit_log):
+    store = InMemoryFleetStore()
+    set_fleet_store(store)
+    req = _request("tenant-alpha")
+
+    payload = PushPayload(
+        source_id="collector-1",
+        agents=[{"name": "alpha", "agent_type": "claude-desktop", "trust_score": 70.0, "trust_factors": {}}],
+    )
+
+    resp = await fleet_routes.sync_fleet(req, payload)
+
+    assert resp["synced"] == 1
+    entries = isolated_audit_log.list_entries()
+    assert entries[0].action == "fleet.sync"
+    assert entries[0].details["tenant_id"] == "tenant-alpha"
 
 
 def test_pipeline_fleet_sync_uses_job_tenant_scope():
@@ -204,6 +235,26 @@ async def test_schedule_create_uses_authenticated_tenant():
         ),
     )
     assert created["tenant_id"] == "tenant-alpha"
+
+
+@pytest.mark.asyncio
+async def test_schedule_create_audit_logs_authenticated_tenant(isolated_audit_log):
+    store = InMemoryScheduleStore()
+    set_schedule_store(store)
+    req = _request("tenant-alpha")
+
+    await schedule_routes.create_schedule(
+        req,
+        ScheduleCreate(
+            name="alpha-scan",
+            cron_expression="0 */6 * * *",
+            scan_config={"path": "."},
+        ),
+    )
+
+    entries = isolated_audit_log.list_entries()
+    assert entries[0].action == "schedule.create"
+    assert entries[0].details["tenant_id"] == "tenant-alpha"
 
 
 @pytest.mark.asyncio

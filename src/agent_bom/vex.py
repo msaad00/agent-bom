@@ -107,8 +107,8 @@ def load_vex(path: str) -> VexDocument:
         status_str = stmt_data.get("status", "under_investigation")
         try:
             status = VexStatus(status_str)
-        except ValueError:
-            status = VexStatus.UNDER_INVESTIGATION
+        except ValueError as exc:
+            raise ValueError(f"Unknown VEX status {status_str!r} in {path}") from exc
 
         justification = None
         just_str = stmt_data.get("justification")

@@ -1514,7 +1514,10 @@ def scan(
         from agent_bom.vex import apply_vex, load_vex
         from agent_bom.vex import to_serializable as _vex_to_ser
 
-        _vex_doc = load_vex(vex_path)
+        try:
+            _vex_doc = load_vex(vex_path)
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
         _vex_count = apply_vex(report, _vex_doc)
         report.vex_data = _vex_to_ser(_vex_doc)
         if not quiet:

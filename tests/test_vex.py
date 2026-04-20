@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from agent_bom.models import (
     Agent,
     AIBOMReport,
@@ -187,12 +189,12 @@ class TestVexLoad:
         assert doc.statements[0].status == VexStatus.AFFECTED
         assert doc.statements[0].action_statement == "Upgrade to 2.0.0"
 
-    def test_load_unknown_status_defaults(self, tmp_path):
+    def test_load_unknown_status_raises(self, tmp_path):
         data = {"statements": [{"vulnerability_id": "CVE-2024-0001", "status": "bogus_status"}]}
         path = tmp_path / "vex.json"
         path.write_text(json.dumps(data))
-        doc = load_vex(str(path))
-        assert doc.statements[0].status == VexStatus.UNDER_INVESTIGATION
+        with pytest.raises(ValueError, match="Unknown VEX status"):
+            load_vex(str(path))
 
     def test_load_unknown_justification_ignored(self, tmp_path):
         data = {

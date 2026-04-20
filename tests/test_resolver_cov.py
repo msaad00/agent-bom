@@ -11,8 +11,11 @@ import agent_bom.resolver as resolver
 from agent_bom.models import Package
 from agent_bom.resolver import (
     _NPM_LATEST_CACHE,
+    _NPM_LATEST_INFLIGHT,
     _PYPI_INFO_CACHE,
+    _PYPI_INFO_INFLIGHT,
     _get_npm_latest_doc,
+    _get_pypi_info_doc,
     consume_performance_stats,
     enrich_licenses,
     enrich_supply_chain_metadata,
@@ -29,14 +32,18 @@ from agent_bom.resolver import (
 @pytest.fixture(autouse=True)
 def clear_registry_metadata_caches():
     _NPM_LATEST_CACHE.clear()
+    _NPM_LATEST_INFLIGHT.clear()
     _PYPI_INFO_CACHE.clear()
+    _PYPI_INFO_INFLIGHT.clear()
     reset_performance_stats()
 
     resolver._NPM_RATE_LIMIT_UNTIL = 0.0
     resolver._NPM_RATE_LIMIT_HITS = 0
     yield
     _NPM_LATEST_CACHE.clear()
+    _NPM_LATEST_INFLIGHT.clear()
     _PYPI_INFO_CACHE.clear()
+    _PYPI_INFO_INFLIGHT.clear()
     reset_performance_stats()
     resolver._NPM_RATE_LIMIT_UNTIL = 0.0
     resolver._NPM_RATE_LIMIT_HITS = 0
@@ -125,6 +132,48 @@ class TestResolveNpmMetadata:
         assert perf["registry_metadata"]["cache_misses"] == 1
         assert perf["registry_metadata"]["cache_hits"] == 1
         assert perf["registry_metadata"]["network_requests"] == 1
+
+    @pytest.mark.asyncio
+    async def test_concurrent_npm_latest_requests_share_inflight_lookup(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"version": "1.2.3", "license": "MIT"}
+
+        async def fake_request(*_args, **_kwargs):
+            await asyncio.sleep(0.01)
+            return mock_response
+
+        with patch("agent_bom.resolver.request_with_retry", side_effect=fake_request) as mock_request:
+            client = AsyncMock()
+            first, second = await asyncio.gather(
+                _get_npm_latest_doc("cached", client),
+                _get_npm_latest_doc("cached", client),
+            )
+
+        assert first == {"version": "1.2.3", "license": "MIT"}
+        assert second == first
+        assert mock_request.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_concurrent_pypi_info_requests_share_inflight_lookup(self):
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"info": {"version": "2.31.0", "license": "Apache-2.0"}}
+
+        async def fake_request(*_args, **_kwargs):
+            await asyncio.sleep(0.01)
+            return mock_response
+
+        with patch("agent_bom.resolver.request_with_retry", side_effect=fake_request) as mock_request:
+            client = AsyncMock()
+            first, second = await asyncio.gather(
+                _get_pypi_info_doc("requests", client),
+                _get_pypi_info_doc("requests", client),
+            )
+
+        assert first == {"version": "2.31.0", "license": "Apache-2.0"}
+        assert second == first
+        assert mock_request.call_count == 1
 
 
 class TestResolvePypiMetadata:

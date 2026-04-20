@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from collections import defaultdict
 from typing import Optional
@@ -24,9 +25,12 @@ _RESOLVE_CONCURRENCY = 8
 _NPM_RESOLVE_CONCURRENCY = 3
 _NPM_LATEST_CACHE: dict[str, dict | None] = {}
 _PYPI_INFO_CACHE: dict[str, dict | None] = {}
+_NPM_LATEST_INFLIGHT: dict[str, asyncio.Future[dict | None]] = {}
+_PYPI_INFO_INFLIGHT: dict[str, asyncio.Future[dict | None]] = {}
 _NPM_RATE_LIMIT_UNTIL = 0.0
 _NPM_RATE_LIMIT_HITS = 0
 _NPM_RATE_LIMIT_MAX_COOLDOWN = 20.0
+_RESOLVER_STATE_LOCK = threading.RLock()
 _PERF_TEMPLATE = {
     "registry_cache_hits": 0,
     "registry_cache_misses": 0,
@@ -55,53 +59,71 @@ _PERF_STATS = dict(_PERF_TEMPLATE)
 
 def reset_performance_stats() -> None:
     """Reset per-scan resolver performance counters."""
-    _PERF_STATS.clear()
-    _PERF_STATS.update(_PERF_TEMPLATE)
+    with _RESOLVER_STATE_LOCK:
+        _PERF_STATS.clear()
+        _PERF_STATS.update(_PERF_TEMPLATE)
 
 
 def _bump_perf(key: str, delta: int = 1) -> None:
-    _PERF_STATS[key] = int(_PERF_STATS.get(key, 0)) + delta
+    with _RESOLVER_STATE_LOCK:
+        _PERF_STATS[key] = int(_PERF_STATS.get(key, 0)) + delta
 
 
 def consume_performance_stats() -> dict[str, dict[str, int]]:
     """Return and reset resolver performance counters."""
-    registry_hits = int(_PERF_STATS["registry_cache_hits"])
-    registry_misses = int(_PERF_STATS["registry_cache_misses"])
-    version_candidates = int(_PERF_STATS["version_candidates"])
-    version_reused = int(_PERF_STATS["version_reused_entries"])
-    license_candidates = int(_PERF_STATS["license_candidates"])
-    license_reused = int(_PERF_STATS["license_reused_entries"])
-    supply_candidates = int(_PERF_STATS["supply_chain_candidates"])
-    supply_reused = int(_PERF_STATS["supply_chain_reused_entries"])
+    with _RESOLVER_STATE_LOCK:
+        registry_hits = int(_PERF_STATS["registry_cache_hits"])
+        registry_misses = int(_PERF_STATS["registry_cache_misses"])
+        version_candidates = int(_PERF_STATS["version_candidates"])
+        version_reused = int(_PERF_STATS["version_reused_entries"])
+        license_candidates = int(_PERF_STATS["license_candidates"])
+        license_reused = int(_PERF_STATS["license_reused_entries"])
+        supply_candidates = int(_PERF_STATS["supply_chain_candidates"])
+        supply_reused = int(_PERF_STATS["supply_chain_reused_entries"])
+        registry_network_requests = int(_PERF_STATS["registry_network_requests"])
+        npm_rate_limit_events = int(_PERF_STATS["npm_rate_limit_events"])
+        npm_rate_limit_short_circuits = int(_PERF_STATS["npm_rate_limit_short_circuits"])
+        version_unique_lookups = int(_PERF_STATS["version_unique_lookups"])
+        version_resolved_live = int(_PERF_STATS["version_resolved_live"])
+        version_resolved_fallback = int(_PERF_STATS["version_resolved_fallback"])
+        version_unresolved = int(_PERF_STATS["version_unresolved"])
+        license_unique_lookups = int(_PERF_STATS["license_unique_lookups"])
+        license_enriched = int(_PERF_STATS["license_enriched"])
+        license_deps_dev_lookups = int(_PERF_STATS["license_deps_dev_lookups"])
+        supply_chain_unique_lookups = int(_PERF_STATS["supply_chain_unique_lookups"])
+        supply_chain_enriched = int(_PERF_STATS["supply_chain_enriched"])
+        supply_chain_deps_dev_fallbacks = int(_PERF_STATS["supply_chain_deps_dev_fallbacks"])
+        _PERF_STATS.clear()
+        _PERF_STATS.update(_PERF_TEMPLATE)
     snapshot = {
         "registry_metadata": {
             "cache_hits": registry_hits,
             "cache_misses": registry_misses,
-            "network_requests": int(_PERF_STATS["registry_network_requests"]),
-            "npm_rate_limit_events": int(_PERF_STATS["npm_rate_limit_events"]),
-            "npm_rate_limit_short_circuits": int(_PERF_STATS["npm_rate_limit_short_circuits"]),
+            "network_requests": registry_network_requests,
+            "npm_rate_limit_events": npm_rate_limit_events,
+            "npm_rate_limit_short_circuits": npm_rate_limit_short_circuits,
         },
         "version_resolution": {
             "candidates": version_candidates,
-            "unique_lookups": int(_PERF_STATS["version_unique_lookups"]),
+            "unique_lookups": version_unique_lookups,
             "reused_entries": version_reused,
-            "resolved_live": int(_PERF_STATS["version_resolved_live"]),
-            "resolved_fallback": int(_PERF_STATS["version_resolved_fallback"]),
-            "unresolved": int(_PERF_STATS["version_unresolved"]),
+            "resolved_live": version_resolved_live,
+            "resolved_fallback": version_resolved_fallback,
+            "unresolved": version_unresolved,
         },
         "license_enrichment": {
             "candidates": license_candidates,
-            "unique_lookups": int(_PERF_STATS["license_unique_lookups"]),
+            "unique_lookups": license_unique_lookups,
             "reused_entries": license_reused,
-            "enriched": int(_PERF_STATS["license_enriched"]),
-            "deps_dev_lookups": int(_PERF_STATS["license_deps_dev_lookups"]),
+            "enriched": license_enriched,
+            "deps_dev_lookups": license_deps_dev_lookups,
         },
         "supply_chain_enrichment": {
             "candidates": supply_candidates,
-            "unique_lookups": int(_PERF_STATS["supply_chain_unique_lookups"]),
+            "unique_lookups": supply_chain_unique_lookups,
             "reused_entries": supply_reused,
-            "enriched": int(_PERF_STATS["supply_chain_enriched"]),
-            "deps_dev_fallbacks": int(_PERF_STATS["supply_chain_deps_dev_fallbacks"]),
+            "enriched": supply_chain_enriched,
+            "deps_dev_fallbacks": supply_chain_deps_dev_fallbacks,
         },
     }
     total_registry_lookups = registry_hits + registry_misses
@@ -113,7 +135,6 @@ def consume_performance_stats() -> dict[str, dict[str, int]]:
         snapshot["license_enrichment"]["reuse_rate_pct"] = int(round((license_reused / license_candidates) * 100))
     if supply_candidates:
         snapshot["supply_chain_enrichment"]["reuse_rate_pct"] = int(round((supply_reused / supply_candidates) * 100))
-    reset_performance_stats()
     return snapshot
 
 
@@ -151,7 +172,8 @@ def _copy_resolution_fields(source: Package, target: Package) -> bool:
 
 
 def _npm_rate_limit_active() -> bool:
-    return time.monotonic() < _NPM_RATE_LIMIT_UNTIL
+    with _RESOLVER_STATE_LOCK:
+        return time.monotonic() < _NPM_RATE_LIMIT_UNTIL
 
 
 def _record_npm_rate_limit(response: httpx.Response | None) -> None:
@@ -171,69 +193,119 @@ def _record_npm_rate_limit(response: httpx.Response | None) -> None:
                 wait = min(float(retry_after), _NPM_RATE_LIMIT_MAX_COOLDOWN)
             except ValueError:
                 wait = 5.0
-    _NPM_RATE_LIMIT_HITS += 1
-    _bump_perf("npm_rate_limit_events")
-    _NPM_RATE_LIMIT_UNTIL = max(_NPM_RATE_LIMIT_UNTIL, time.monotonic() + wait)
+    with _RESOLVER_STATE_LOCK:
+        _NPM_RATE_LIMIT_HITS += 1
+        _PERF_STATS["npm_rate_limit_events"] = int(_PERF_STATS.get("npm_rate_limit_events", 0)) + 1
+        _NPM_RATE_LIMIT_UNTIL = max(_NPM_RATE_LIMIT_UNTIL, time.monotonic() + wait)
+
+
+def _npm_rate_limit_hits() -> int:
+    with _RESOLVER_STATE_LOCK:
+        return _NPM_RATE_LIMIT_HITS
 
 
 async def _get_npm_latest_doc(package_name: str, client: httpx.AsyncClient) -> dict | None:
     """Return cached npm `/latest` JSON for a package."""
     cache_key = package_name.lower()
-    if cache_key in _NPM_LATEST_CACHE:
-        _bump_perf("registry_cache_hits")
-        return _NPM_LATEST_CACHE[cache_key]
-    if _npm_rate_limit_active():
-        _bump_perf("npm_rate_limit_short_circuits")
-        return None
-    _bump_perf("registry_cache_misses")
-    _bump_perf("registry_network_requests")
+    owner = False
+    with _RESOLVER_STATE_LOCK:
+        if cache_key in _NPM_LATEST_CACHE:
+            _PERF_STATS["registry_cache_hits"] = int(_PERF_STATS.get("registry_cache_hits", 0)) + 1
+            return _NPM_LATEST_CACHE[cache_key]
+        if time.monotonic() < _NPM_RATE_LIMIT_UNTIL:
+            _PERF_STATS["npm_rate_limit_short_circuits"] = int(_PERF_STATS.get("npm_rate_limit_short_circuits", 0)) + 1
+            return None
+        inflight = _NPM_LATEST_INFLIGHT.get(cache_key)
+        if inflight is None:
+            inflight = asyncio.get_running_loop().create_future()
+            _NPM_LATEST_INFLIGHT[cache_key] = inflight
+            _PERF_STATS["registry_cache_misses"] = int(_PERF_STATS.get("registry_cache_misses", 0)) + 1
+            _PERF_STATS["registry_network_requests"] = int(_PERF_STATS.get("registry_network_requests", 0)) + 1
+            owner = True
+    if not owner:
+        return await inflight
 
     encoded_name = package_name.replace("/", "%2F")
-    response = await request_with_retry(
-        client,
-        "GET",
-        f"{NPM_REGISTRY}/{encoded_name}/latest",
-    )
-    data: dict | None = None
-    if response and response.status_code == 429:
-        _record_npm_rate_limit(response)
-        return None
-    if response and response.status_code == 200:
-        try:
-            parsed = response.json()
-            if isinstance(parsed, dict):
-                data = parsed
-        except ValueError as exc:
-            _logger.debug("Failed to parse npm metadata for %s: %s", package_name, exc)
-    _NPM_LATEST_CACHE[cache_key] = data
-    return data
+    inflight = _NPM_LATEST_INFLIGHT[cache_key]
+    try:
+        response = await request_with_retry(
+            client,
+            "GET",
+            f"{NPM_REGISTRY}/{encoded_name}/latest",
+        )
+        data: dict | None = None
+        if response and response.status_code == 429:
+            _record_npm_rate_limit(response)
+            if not inflight.done():
+                inflight.set_result(None)
+            return None
+        if response and response.status_code == 200:
+            try:
+                parsed = response.json()
+                if isinstance(parsed, dict):
+                    data = parsed
+            except ValueError as exc:
+                _logger.debug("Failed to parse npm metadata for %s: %s", package_name, exc)
+        with _RESOLVER_STATE_LOCK:
+            _NPM_LATEST_CACHE[cache_key] = data
+        if not inflight.done():
+            inflight.set_result(data)
+        return data
+    except Exception as exc:
+        if not inflight.done():
+            inflight.set_exception(exc)
+        raise
+    finally:
+        with _RESOLVER_STATE_LOCK:
+            _NPM_LATEST_INFLIGHT.pop(cache_key, None)
 
 
 async def _get_pypi_info_doc(package_name: str, client: httpx.AsyncClient) -> dict | None:
     """Return cached PyPI `info` JSON for a package."""
     cache_key = package_name.lower()
-    if cache_key in _PYPI_INFO_CACHE:
-        _bump_perf("registry_cache_hits")
-        return _PYPI_INFO_CACHE[cache_key]
-    _bump_perf("registry_cache_misses")
-    _bump_perf("registry_network_requests")
+    owner = False
+    with _RESOLVER_STATE_LOCK:
+        if cache_key in _PYPI_INFO_CACHE:
+            _PERF_STATS["registry_cache_hits"] = int(_PERF_STATS.get("registry_cache_hits", 0)) + 1
+            return _PYPI_INFO_CACHE[cache_key]
+        inflight = _PYPI_INFO_INFLIGHT.get(cache_key)
+        if inflight is None:
+            inflight = asyncio.get_running_loop().create_future()
+            _PYPI_INFO_INFLIGHT[cache_key] = inflight
+            _PERF_STATS["registry_cache_misses"] = int(_PERF_STATS.get("registry_cache_misses", 0)) + 1
+            _PERF_STATS["registry_network_requests"] = int(_PERF_STATS.get("registry_network_requests", 0)) + 1
+            owner = True
+    if not owner:
+        return await inflight
 
-    response = await request_with_retry(
-        client,
-        "GET",
-        f"{PYPI_API}/{package_name}/json",
-    )
-    info: dict | None = None
-    if response and response.status_code == 200:
-        try:
-            parsed = response.json()
-            maybe_info = parsed.get("info", {}) if isinstance(parsed, dict) else {}
-            if isinstance(maybe_info, dict):
-                info = maybe_info
-        except ValueError as exc:
-            _logger.debug("Failed to parse PyPI metadata for %s: %s", package_name, exc)
-    _PYPI_INFO_CACHE[cache_key] = info
-    return info
+    inflight = _PYPI_INFO_INFLIGHT[cache_key]
+    try:
+        response = await request_with_retry(
+            client,
+            "GET",
+            f"{PYPI_API}/{package_name}/json",
+        )
+        info: dict | None = None
+        if response and response.status_code == 200:
+            try:
+                parsed = response.json()
+                maybe_info = parsed.get("info", {}) if isinstance(parsed, dict) else {}
+                if isinstance(maybe_info, dict):
+                    info = maybe_info
+            except ValueError as exc:
+                _logger.debug("Failed to parse PyPI metadata for %s: %s", package_name, exc)
+        with _RESOLVER_STATE_LOCK:
+            _PYPI_INFO_CACHE[cache_key] = info
+        if not inflight.done():
+            inflight.set_result(info)
+        return info
+    except Exception as exc:
+        if not inflight.done():
+            inflight.set_exception(exc)
+        raise
+    finally:
+        with _RESOLVER_STATE_LOCK:
+            _PYPI_INFO_INFLIGHT.pop(cache_key, None)
 
 
 async def resolve_npm_metadata(
@@ -530,7 +602,7 @@ async def resolve_all_versions(
     if not unresolved:
         return 0
     _bump_perf("version_candidates", len(unresolved))
-    npm_rate_limit_hits_before = _NPM_RATE_LIMIT_HITS
+    npm_rate_limit_hits_before = _npm_rate_limit_hits()
     resolved_count = 0
     groups: dict[tuple[str, str], list[Package]] = defaultdict(list)
     for pkg in unresolved:
@@ -635,7 +707,7 @@ async def resolve_all_versions(
                     console.print(
                         f"  [yellow]↺[/yellow] Preserved scan continuity for {fallback_count} package(s) using bundled registry versions"
                     )
-            npm_rate_limit_hits = _NPM_RATE_LIMIT_HITS - npm_rate_limit_hits_before
+            npm_rate_limit_hits = _npm_rate_limit_hits() - npm_rate_limit_hits_before
             if npm_rate_limit_hits and not quiet:
                 console.print(
                     f"  [yellow]⚠[/yellow] npm registry rate-limited during version resolution "

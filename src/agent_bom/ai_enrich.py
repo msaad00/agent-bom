@@ -28,6 +28,7 @@ import json
 import logging
 import os
 import re
+import threading
 from typing import TYPE_CHECKING, Optional
 
 import httpx
@@ -49,14 +50,22 @@ logger = logging.getLogger(__name__)
 
 # Simple in-memory cache: hash(prompt) -> response (bounded)
 _cache: dict[str, str] = {}
+_cache_lock = threading.RLock()
+
+
+def _ai_cache_get(key: str) -> str | None:
+    """Read a cached AI response with synchronization."""
+    with _cache_lock:
+        return _cache.get(key)
 
 
 def _ai_cache_put(key: str, value: str) -> None:
     """Insert into bounded AI response cache."""
-    _cache[key] = value
-    if len(_cache) > _MAX_AI_CACHE:
-        for k in list(_cache.keys())[: len(_cache) - _MAX_AI_CACHE]:
-            del _cache[k]
+    with _cache_lock:
+        _cache[key] = value
+        if len(_cache) > _MAX_AI_CACHE:
+            for k in list(_cache.keys())[: len(_cache) - _MAX_AI_CACHE]:
+                del _cache[k]
 
 
 DEFAULT_MODEL = "openai/gpt-4o-mini"
@@ -173,8 +182,9 @@ async def _call_ollama_direct(prompt: str, model: str, max_tokens: int = 500) ->
     The *model* parameter is the bare model name (e.g. ``llama3.2``).
     """
     key = _cache_key(prompt, f"ollama/{model}")
-    if key in _cache:
-        return _cache[key]
+    cached = _ai_cache_get(key)
+    if cached is not None:
+        return cached
 
     try:
         async with httpx.AsyncClient(timeout=120.0) as client:
@@ -209,8 +219,9 @@ async def _call_ollama_direct(prompt: str, model: str, max_tokens: int = 500) ->
 async def _call_llm_via_litellm(prompt: str, model: str, max_tokens: int = 500) -> Optional[str]:
     """Call LLM via litellm with caching and error handling."""
     key = _cache_key(prompt, model)
-    if key in _cache:
-        return _cache[key]
+    cached = _ai_cache_get(key)
+    if cached is not None:
+        return cached
 
     try:
         from litellm import acompletion
@@ -243,8 +254,9 @@ async def _call_huggingface(
     Requires ``HF_TOKEN`` env var for gated models.
     """
     key = _cache_key(prompt, f"huggingface/{model}")
-    if key in _cache:
-        return _cache[key]
+    cached = _ai_cache_get(key)
+    if cached is not None:
+        return cached
 
     try:
         from huggingface_hub import InferenceClient
@@ -363,9 +375,10 @@ async def _call_ollama_structured(
     Falls back to None on error.
     """
     key = _cache_key(prompt, f"ollama/{model}:structured")
-    if key in _cache:
+    cached = _ai_cache_get(key)
+    if cached is not None:
         try:
-            return schema_cls.model_validate_json(_cache[key])
+            return schema_cls.model_validate_json(cached)
         except (json.JSONDecodeError, ValueError, AttributeError):
             pass
 

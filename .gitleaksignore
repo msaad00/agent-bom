@@ -24,3 +24,9 @@ a5c3a329da9d0f5deed6a6857bcbaeaf3a024f1e:docs/ENTERPRISE_SECURITY_PLAYBOOK.md:ge
 # Historical false positive in a previous version of this file itself, caused
 # by the trap documented above. Retained because gitleaks walks history.
 792b4ad4ff3f877992a678bd533f2dd2dd7854da:.gitleaksignore:generic-api-key:10
+
+# History-only false positives from test fixtures that temporarily used
+# unsigned token-shaped strings before being replaced with generated values.
+e67c1273881cb01cfbc64b1f6a1081613e5e8fe3:tests/test_api_hardening.py:jwt:286
+e67c1273881cb01cfbc64b1f6a1081613e5e8fe3:tests/test_api_oidc.py:jwt:334
+e67c1273881cb01cfbc64b1f6a1081613e5e8fe3:tests/test_api_oidc.py:jwt:360

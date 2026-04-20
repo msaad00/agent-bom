@@ -365,12 +365,13 @@ curl -sD headers.txt -o soc2.json \
   -H "Authorization: Bearer $API_KEY"
 ```
 
-See [site-docs/deployment/eks-mcp-pilot.md](site-docs/deployment/eks-mcp-pilot.md) for the full Day-1 runbook (four stages + break-glass table) and [docs/COMPLIANCE_SIGNING.md](docs/COMPLIANCE_SIGNING.md) for offline signature verification.
+See [docs/ENTERPRISE_SECURITY_PLAYBOOK.md](docs/ENTERPRISE_SECURITY_PLAYBOOK.md) for the full enterprise trust story — every capability mapped to a code path and a test, with the scripted EKS pilot install at the end. Also: [site-docs/deployment/eks-mcp-pilot.md](site-docs/deployment/eks-mcp-pilot.md) for the focused pilot runbook and [docs/COMPLIANCE_SIGNING.md](docs/COMPLIANCE_SIGNING.md) for offline signature verification.
 
 **Operator guides by scenario:**
 
 | Scenario | Guide |
 |---|---|
+| **Enterprise trust story (start here for pilots)** | [**ENTERPRISE_SECURITY_PLAYBOOK.md**](docs/ENTERPRISE_SECURITY_PLAYBOOK.md) |
 | Own AWS / EKS end-to-end | [own-infra-eks.md](site-docs/deployment/own-infra-eks.md) |
 | Enterprise pilot scope | [enterprise-pilot.md](site-docs/deployment/enterprise-pilot.md) |
 | Focused EKS MCP pilot | [eks-mcp-pilot.md](site-docs/deployment/eks-mcp-pilot.md) |

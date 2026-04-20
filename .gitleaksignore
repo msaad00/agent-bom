@@ -1,0 +1,13 @@
+# gitleaks allowlist — each line is a finding fingerprint (commit:path:rule:line).
+# Only use for verified false positives where the underlying string is not a
+# real secret. For every entry, the justification must be obvious from the
+# fingerprint's path + rule (e.g. docs, examples, test fixtures) + a short
+# comment.
+#
+# Format reference: https://github.com/gitleaks/gitleaks#gitleaksignore
+
+# False positive: gitleaks generic-api-key matched on the phrase
+# "verification-key pin, Ed25519-signed" in an early draft of the enterprise
+# playbook. No secret — just documentation prose. The line was rewritten in a
+# follow-up commit, but the fingerprint lives forever in git history.
+a5c3a329da9d0f5deed6a6857bcbaeaf3a024f1e:docs/ENTERPRISE_SECURITY_PLAYBOOK.md:generic-api-key:258

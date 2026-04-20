@@ -267,6 +267,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     _ROLE_RULES: tuple[tuple[str, str, str], ...] = (
         ("GET", "/v1/compliance", "viewer"),
         ("GET", "/v1/posture", "viewer"),
+        ("GET", "/v1/auth/debug", "viewer"),
+        ("GET", "/v1/auth/policy", "admin"),
         ("GET", "/v1/auth/keys", "admin"),
         ("POST", "/v1/auth/keys", "admin"),
         ("DELETE", "/v1/auth/keys/", "admin"),

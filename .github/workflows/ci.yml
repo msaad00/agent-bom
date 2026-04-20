@@ -72,6 +72,25 @@ jobs:
           }
           # Scan dashboard deps
           osv-scanner scan --config osv-scanner.toml --lockfile=dashboard/requirements.txt
+          # Scan UI and SDK npm lockfiles with the same OSV gate as uv.lock
+          osv-scanner scan --config osv-scanner.toml --lockfile=ui/package-lock.json 2>&1 | tee /tmp/osv-ui.txt || {
+            FIXABLE=$(grep -E "^\|" /tmp/osv-ui.txt | grep -v "| -- " | grep -v "OSV URL" | grep -v "+--" | head -5)
+            if [ -n "$FIXABLE" ]; then
+              echo "::error::osv-scanner found UI lockfile vulnerabilities with available fixes:"
+              echo "$FIXABLE"
+              exit 1
+            fi
+            echo "::warning::osv-scanner found only unfixable UI lockfile CVEs (no upstream fix) — passing"
+          }
+          osv-scanner scan --config osv-scanner.toml --lockfile=sdks/typescript/package-lock.json 2>&1 | tee /tmp/osv-sdk.txt || {
+            FIXABLE=$(grep -E "^\|" /tmp/osv-sdk.txt | grep -v "| -- " | grep -v "OSV URL" | grep -v "+--" | head -5)
+            if [ -n "$FIXABLE" ]; then
+              echo "::error::osv-scanner found TypeScript SDK lockfile vulnerabilities with available fixes:"
+              echo "$FIXABLE"
+              exit 1
+            fi
+            echo "::warning::osv-scanner found only unfixable TypeScript SDK lockfile CVEs (no upstream fix) — passing"
+          }
 
       - name: Trivy filesystem scan
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # 0.35.0

@@ -500,6 +500,24 @@ def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def get_rate_limit_runtime_status() -> dict[str, object]:
+    """Report whether API rate limiting is shared across replicas."""
+    postgres_configured = bool(os.environ.get("AGENT_BOM_POSTGRES_URL", "").strip())
+    shared_required = _env_flag("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT")
+    backend = "postgres_shared" if postgres_configured else "inmemory"
+    return {
+        "backend": backend,
+        "postgres_configured": postgres_configured,
+        "shared_required": shared_required,
+        "shared_across_replicas": postgres_configured,
+        "message": (
+            "Rate limiting uses Postgres-backed shared state across replicas."
+            if postgres_configured
+            else ("Rate limiting is process-local and resets on pod restart. Set AGENT_BOM_POSTGRES_URL for shared limiter state.")
+        ),
+    }
+
+
 def _rate_limit_fingerprint_key() -> bytes:
     key = (os.environ.get("AGENT_BOM_RATE_LIMIT_KEY") or os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY") or "").strip()
     return key.encode() if key else _RATE_LIMIT_FINGERPRINT_FALLBACK

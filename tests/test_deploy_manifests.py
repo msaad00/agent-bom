@@ -450,6 +450,8 @@ def test_production_values_enable_operator_defaults():
     production = yaml.safe_load((HELM_DIR / "examples" / "eks-production-values.yaml").read_text())
     assert production["controlPlane"]["api"]["autoscaling"]["enabled"] is True
     assert production["controlPlane"]["ui"]["autoscaling"]["enabled"] is True
+    assert production["monitor"]["enabled"] is True
+    assert production["monitor"]["serviceMonitor"]["enabled"] is True
     assert production["controlPlane"]["api"]["autoscaling"]["behavior"]["scaleDown"]["stabilizationWindowSeconds"] == 300
     assert production["controlPlane"]["ui"]["autoscaling"]["behavior"]["scaleDown"]["stabilizationWindowSeconds"] == 300
     assert production["controlPlane"]["externalSecrets"]["enabled"] is True

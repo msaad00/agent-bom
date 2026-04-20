@@ -180,10 +180,15 @@ async def auth_policy() -> dict:
     past the configured maximum.
     """
     from agent_bom.api.auth import get_api_key_policy
-    from agent_bom.api.middleware import get_auth_runtime_status, get_rate_limit_key_status
+    from agent_bom.api.middleware import (
+        get_auth_runtime_status,
+        get_rate_limit_key_status,
+        get_rate_limit_runtime_status,
+    )
 
     api_policy = get_api_key_policy()
     rl_status = get_rate_limit_key_status()
+    rl_runtime = get_rate_limit_runtime_status()
     auth_runtime = get_auth_runtime_status()
     return {
         "api_key": {
@@ -204,6 +209,7 @@ async def auth_policy() -> dict:
                 "X-Agent-Bom-* headers. For single-user local or pilot access, the UI also supports a session-only API key."
             ),
         },
+        "rate_limit_runtime": rl_runtime,
     }
 
 

@@ -14,7 +14,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api import server as _server_mod
-from agent_bom.api.middleware import APIKeyMiddleware, get_rate_limit_key_status
+from agent_bom.api.middleware import APIKeyMiddleware, get_rate_limit_key_status, get_rate_limit_runtime_status
 from agent_bom.api.server import app
 
 # ─── Rate-limit key status ────────────────────────────────────────────────────
@@ -126,6 +126,21 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["rate_limit_key"]["status"] in {"ok", "ephemeral", "unknown_age", "rotation_due", "max_age_exceeded"}
     assert body["ui"]["recommended_mode"] in {"no_auth", "reverse_proxy_oidc", "oidc_bearer", "session_api_key"}
     assert body["ui"]["session_storage_fallback"] == "session_api_key"
+    assert body["rate_limit_runtime"]["backend"] in {"inmemory", "postgres_shared"}
+    assert "shared_across_replicas" in body["rate_limit_runtime"]
+
+
+def test_rate_limit_runtime_reports_shared_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example/test")
+    monkeypatch.setenv("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT", "1")
+    status = get_rate_limit_runtime_status()
+    assert status == {
+        "backend": "postgres_shared",
+        "postgres_configured": True,
+        "shared_required": True,
+        "shared_across_replicas": True,
+        "message": "Rate limiting uses Postgres-backed shared state across replicas.",
+    }
 
 
 def test_auth_policy_requires_admin_role_in_api_middleware() -> None:

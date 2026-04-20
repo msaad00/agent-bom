@@ -217,6 +217,20 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         extra_headers: dict[str, str] = {}
         try:
             upstream_response = await upstream_caller(upstream, message, extra_headers)
+        except asyncio.TimeoutError as exc:
+            logger.warning("gateway upstream call timed out for %s", upstream.name)
+            record_gateway_relay(upstream.name, "upstream_timeout")
+            if settings.audit_sink is not None:
+                await settings.audit_sink(
+                    {
+                        "action": "gateway.upstream_error",
+                        "upstream": upstream.name,
+                        "tenant_id": tenant_id,
+                        "error": "timeout",
+                        "reason": "timeout",
+                    }
+                )
+            raise HTTPException(status_code=502, detail="upstream error: timeout") from exc
         except Exception as exc:  # noqa: BLE001
             logger.exception("gateway upstream call failed for %s", upstream.name)
             record_gateway_relay(upstream.name, "upstream_error")

@@ -13,6 +13,7 @@ paths a pilot team would actually run into.
 
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -273,6 +274,39 @@ def test_relay_upstream_error_surfaces_as_502_and_is_audited() -> None:
     assert resp.status_code == 502
     assert "boom" in resp.json()["detail"]
     assert any(e["action"] == "gateway.upstream_error" for e in audit_events)
+
+
+def test_relay_upstream_timeout_surfaces_as_502_and_is_audited() -> None:
+    audit_events: list[dict[str, Any]] = []
+
+    async def timing_out_caller(upstream, message, extra_headers):
+        raise asyncio.TimeoutError()
+
+    async def audit_sink(event):
+        audit_events.append(event)
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        upstream_caller=timing_out_caller,
+        audit_sink=audit_sink,
+    )
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post(
+        "/mcp/filesystem",
+        json=_json_rpc("tools/call", name="read_file", arguments={"path": "/tmp/x"}),
+    )
+    assert resp.status_code == 502
+    assert resp.json()["detail"] == "upstream error: timeout"
+    assert audit_events == [
+        {
+            "action": "gateway.upstream_error",
+            "upstream": "filesystem",
+            "tenant_id": "default",
+            "error": "timeout",
+            "reason": "timeout",
+        }
+    ]
 
 
 def test_relay_non_tool_message_bypasses_policy_and_forwards() -> None:

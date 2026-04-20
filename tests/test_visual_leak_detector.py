@@ -223,6 +223,42 @@ def test_extract_word_boxes_tolerates_mismatched_ocr_arrays():
     assert boxes == [("AKIAIOSFODNN7EXAMPLE", (5, 6, 25, 14))]
 
 
+def test_detector_batches_multiple_image_blocks_into_one_ocr_call():
+    blocks = [_img_block(_png_bytes(120, 60)), _img_block(_png_bytes(140, 80))]
+    with patch(
+        "agent_bom.runtime.visual_leak_detector._extract_word_boxes",
+        return_value=[
+            ("AKIAIOSFODNN7EXAMPLE", (10, 10, 90, 30)),
+            ("jane.doe@example.com", (10, 84, 150, 104)),
+        ],
+    ) as extract_mock:
+        d = VisualLeakDetector(enabled=True)
+        alerts = d.check("browser_capture", blocks)
+
+    assert extract_mock.call_count == 1
+    assert len(alerts) == 2
+    assert alerts[0].details["bbox"] == [10, 10, 90, 30]
+    assert alerts[1].details["bbox"] == [10, 0, 140, 20]
+
+
+def test_redact_batches_multiple_image_blocks_into_one_ocr_call():
+    first = _img_block(_png_bytes(120, 60))
+    second = _img_block(_png_bytes(140, 80))
+    with patch(
+        "agent_bom.runtime.visual_leak_detector._extract_word_boxes",
+        return_value=[
+            ("AKIAIOSFODNN7EXAMPLE", (10, 10, 90, 30)),
+            ("jane.doe@example.com", (10, 84, 130, 104)),
+        ],
+    ) as extract_mock:
+        d = VisualLeakDetector(enabled=True)
+        redacted = d.redact([first, second])
+
+    assert extract_mock.call_count == 1
+    assert redacted[0]["data"] != first["data"]
+    assert redacted[1]["data"] != second["data"]
+
+
 def test_multi_word_sliding_window_catches_key_value_leaks():
     """'api_key = abc...xyz' spans three OCR words; the window pass must catch it."""
     with _ocr_words(

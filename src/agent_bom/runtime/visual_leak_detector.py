@@ -66,6 +66,17 @@ class _Match:
     category: str  # "credential_leak" | "pii_leak"
 
 
+@dataclass(frozen=True)
+class _PlacedImage:
+    """Decoded image placement within a stitched OCR canvas."""
+
+    block_index: int
+    x_offset: int
+    y_offset: int
+    width: int
+    height: int
+
+
 def _ocr_available() -> bool:
     """Return True if pytesseract + Pillow are importable and tesseract is on PATH."""
     try:
@@ -221,6 +232,92 @@ def _paint_redactions(img, matches: list[_Match]):
     return out
 
 
+def _decode_image_blocks(content_blocks: list[dict[str, Any]]) -> list[tuple[int, Any]]:
+    """Return decoded images plus their original content-block index."""
+    decoded: list[tuple[int, Any]] = []
+    for index, block in enumerate(content_blocks):
+        if block.get("type") != _IMAGE_TYPE:
+            continue
+        img = _decode_image(block)
+        if img is None:
+            continue
+        decoded.append((index, img))
+    return decoded
+
+
+def _extract_response_word_boxes(content_blocks: list[dict[str, Any]]) -> dict[int, list[tuple[str, tuple[int, int, int, int]]]]:
+    """OCR all image blocks in one stitched pass and map words back to each block."""
+    decoded = _decode_image_blocks(content_blocks)
+    if not decoded:
+        return {}
+
+    from PIL import Image
+
+    gap = 24
+    canvas_width = max(img.width for _, img in decoded)
+    canvas_height = sum(img.height for _, img in decoded) + gap * max(0, len(decoded) - 1)
+    stitched = Image.new("RGB", (canvas_width, canvas_height), color="white")
+
+    placements: list[_PlacedImage] = []
+    y_offset = 0
+    for block_index, img in decoded:
+        normalized = img.convert("RGB")
+        stitched.paste(normalized, (0, y_offset))
+        placements.append(
+            _PlacedImage(
+                block_index=block_index,
+                x_offset=0,
+                y_offset=y_offset,
+                width=normalized.width,
+                height=normalized.height,
+            )
+        )
+        y_offset += normalized.height + gap
+
+    words_by_block: dict[int, list[tuple[str, tuple[int, int, int, int]]]] = {}
+    for word, bbox in _extract_word_boxes(stitched):
+        left, top, right, bottom = bbox
+        center_x = (left + right) / 2
+        center_y = (top + bottom) / 2
+        placement = next(
+            (
+                candidate
+                for candidate in placements
+                if candidate.x_offset <= center_x < candidate.x_offset + candidate.width
+                and candidate.y_offset <= center_y < candidate.y_offset + candidate.height
+            ),
+            None,
+        )
+        if placement is None:
+            continue
+
+        local_left = max(0, int(left - placement.x_offset))
+        local_top = max(0, int(top - placement.y_offset))
+        local_right = min(placement.width, int(right - placement.x_offset))
+        local_bottom = min(placement.height, int(bottom - placement.y_offset))
+        if local_right <= local_left or local_bottom <= local_top:
+            continue
+        words_by_block.setdefault(placement.block_index, []).append((word, (local_left, local_top, local_right, local_bottom)))
+    return words_by_block
+
+
+def _collect_matches_by_block(content_blocks: list[dict[str, Any]]) -> dict[int, list[_Match]]:
+    """Return visual leak matches keyed by original content-block index."""
+    matches_by_block: dict[int, list[_Match]] = {}
+    try:
+        words_by_block = _extract_response_word_boxes(content_blocks)
+    except (OSError, RuntimeError, ValueError):
+        logger.warning("OCR failed on image response; skipping")
+        return {}
+
+    for block_index, words in words_by_block.items():
+        matches = _match_patterns(words, CREDENTIAL_PATTERNS, "credential_leak")
+        matches.extend(_match_patterns(words, PII_PATTERNS, "pii_leak"))
+        if matches:
+            matches_by_block[block_index] = matches
+    return matches_by_block
+
+
 class VisualLeakDetector:
     """Detect + redact credentials and PII in MCP image tool responses.
 
@@ -241,28 +338,13 @@ class VisualLeakDetector:
     def enabled(self) -> bool:
         return self._enabled
 
-    def _scan_block(self, block: dict[str, Any]) -> list[_Match]:
-        if block.get("type") != _IMAGE_TYPE:
-            return []
-        img = _decode_image(block)
-        if img is None:
-            return []
-        try:
-            words = _extract_word_boxes(img)
-        except (OSError, RuntimeError, ValueError):
-            logger.warning("OCR failed on image block; skipping")
-            return []
-        matches = _match_patterns(words, CREDENTIAL_PATTERNS, "credential_leak")
-        matches.extend(_match_patterns(words, PII_PATTERNS, "pii_leak"))
-        return matches
-
     def check(self, tool_name: str, content_blocks: list[dict[str, Any]]) -> list[Alert]:
         """Emit CRITICAL/HIGH alerts per visual leak found across all image blocks."""
         if not self._enabled or not content_blocks:
             return []
         alerts: list[Alert] = []
-        for block in content_blocks:
-            for m in self._scan_block(block):
+        for matches in _collect_matches_by_block(content_blocks).values():
+            for m in matches:
                 severity = AlertSeverity.CRITICAL if m.category == "credential_leak" else AlertSeverity.HIGH
                 alerts.append(
                     Alert(
@@ -287,23 +369,18 @@ class VisualLeakDetector:
         """
         if not self._enabled or not content_blocks:
             return list(content_blocks)
+        matches_by_block = _collect_matches_by_block(content_blocks)
         out: list[dict[str, Any]] = []
-        for block in content_blocks:
+        for index, block in enumerate(content_blocks):
             if block.get("type") != _IMAGE_TYPE:
+                out.append(block)
+                continue
+            matches = matches_by_block.get(index)
+            if not matches:
                 out.append(block)
                 continue
             img = _decode_image(block)
             if img is None:
-                out.append(block)
-                continue
-            try:
-                words = _extract_word_boxes(img)
-            except (OSError, RuntimeError, ValueError):
-                out.append(block)
-                continue
-            matches = _match_patterns(words, CREDENTIAL_PATTERNS, "credential_leak")
-            matches.extend(_match_patterns(words, PII_PATTERNS, "pii_leak"))
-            if not matches:
                 out.append(block)
                 continue
             painted = _paint_redactions(img, matches)

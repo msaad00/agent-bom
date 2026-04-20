@@ -16,6 +16,8 @@ from pathlib import Path
 
 import click
 
+from agent_bom.cli._server import _enforce_remote_mcp_auth_defaults
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,6 +66,31 @@ def gateway_group() -> None:
 )
 @click.option("--bind", default="0.0.0.0:8090", show_default=True, help="Bind address host:port.")
 @click.option(
+    "--bearer-token",
+    envvar="AGENT_BOM_GATEWAY_BEARER_TOKEN",
+    default=None,
+    help="Require incoming bearer/API-key auth for gateway clients.",
+)
+@click.option(
+    "--allow-insecure-no-auth",
+    is_flag=True,
+    default=False,
+    help="Allow unauthenticated non-loopback gateway exposure. Unsafe outside local development.",
+)
+@click.option(
+    "--detect-visual-leaks",
+    is_flag=True,
+    envvar="AGENT_BOM_GATEWAY_DETECT_VISUAL_LEAKS",
+    default=False,
+    help="OCR-scan image tool responses for credentials/PII (requires 'agent-bom[visual]').",
+)
+@click.option(
+    "--allow-visual-leak-best-effort",
+    is_flag=True,
+    default=False,
+    help="Continue startup if visual leak detection is enabled but OCR runtime support is unavailable.",
+)
+@click.option(
     "--log-level",
     type=click.Choice(["debug", "info", "warning", "error"], case_sensitive=False),
     default="info",
@@ -75,6 +102,10 @@ def serve_cmd(
     control_plane_token: str | None,
     policy_path: Path | None,
     bind: str,
+    bearer_token: str | None,
+    allow_insecure_no_auth: bool,
+    detect_visual_leaks: bool,
+    allow_visual_leak_best_effort: bool,
     log_level: str,
 ) -> None:
     """Run the gateway server on ``bind``.
@@ -108,6 +139,7 @@ def serve_cmd(
         UpstreamRegistry,
         fetch_discovered_upstreams,
     )
+    from agent_bom.runtime.visual_leak_detector import require_visual_leak_runtime
 
     registry: UpstreamRegistry | None = None
 
@@ -141,17 +173,39 @@ def serve_cmd(
             click.echo(f"policy file error: {exc}", err=True)
             sys.exit(2)
 
-    settings = GatewaySettings(registry=registry, policy=policy, audit_sink=None)
+    host, _, port = bind.partition(":")
+    host = host or "0.0.0.0"  # nosec B104
+    _enforce_remote_mcp_auth_defaults(host, bearer_token, allow_insecure_no_auth)
+    if detect_visual_leaks and not allow_visual_leak_best_effort:
+        try:
+            require_visual_leak_runtime()
+        except RuntimeError as exc:
+            raise click.ClickException(str(exc)) from exc
+
+    settings = GatewaySettings(
+        registry=registry,
+        policy=policy,
+        audit_sink=None,
+        bearer_token=bearer_token,
+        enable_visual_leak_detection=detect_visual_leaks,
+        require_visual_leak_detection_ready=detect_visual_leaks and not allow_visual_leak_best_effort,
+    )
     app = create_gateway_app(settings)
 
-    host, _, port = bind.partition(":")
     # Binding to 0.0.0.0 is intentional for containerized deploys — ingress /
     # service mesh terminates external traffic in front of this pod. Set
     # --bind 127.0.0.1:8090 on a dev workstation to restrict.
-    host = host or "0.0.0.0"  # nosec B104
+    host = host  # nosec B104
     port_num = int(port or "8090")
 
     click.echo(f"agent-bom gateway serving on http://{host}:{port_num} fronting {len(registry)} upstream(s): {', '.join(registry.names())}")
+    if bearer_token:
+        click.echo("Auth: bearer/API-key token required for incoming gateway clients")
+    elif allow_insecure_no_auth:
+        click.echo("Auth: disabled by explicit override (--allow-insecure-no-auth)")
+    if detect_visual_leaks:
+        mode = "best-effort" if allow_visual_leak_best_effort else "required"
+        click.echo(f"Visual leak detection: enabled ({mode})")
     uvicorn.run(app, host=host, port=port_num, log_level=log_level.lower())
 
 

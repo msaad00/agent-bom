@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
+from agent_bom.cli._gateway import serve_cmd as gateway_serve_cmd
 from agent_bom.cli._server import api_cmd, mcp_server_cmd, serve_cmd
 
 # ---------------------------------------------------------------------------
@@ -247,6 +248,44 @@ def test_mcp_server_cmd_stdio_warns_when_bearer_token_is_unused():
 
     assert result.exit_code == 0
     assert "applies only to SSE / Streamable HTTP" in result.output
+
+
+def test_gateway_serve_rejects_unauthenticated_non_loopback_bind(tmp_path):
+    runner = CliRunner()
+    upstreams = tmp_path / "upstreams.yaml"
+    upstreams.write_text("upstreams:\n  - name: jira\n    url: https://jira.example.com/mcp\n")
+
+    result = runner.invoke(gateway_serve_cmd, ["--bind", "0.0.0.0:8090", "--upstreams", str(upstreams)])
+    assert result.exit_code == 1
+    assert "without transport authentication" in result.output
+
+
+def test_gateway_serve_allows_non_loopback_bind_with_bearer_token(tmp_path):
+    runner = CliRunner()
+    upstreams = tmp_path / "upstreams.yaml"
+    upstreams.write_text("upstreams:\n  - name: jira\n    url: https://jira.example.com/mcp\n")
+
+    with patch("uvicorn.run") as mock_run:
+        result = runner.invoke(gateway_serve_cmd, ["--bind", "0.0.0.0:8090", "--upstreams", str(upstreams), "--bearer-token", "gw-token"])
+
+    assert result.exit_code == 0
+    assert "token required" in result.output
+    mock_run.assert_called_once()
+
+
+def test_gateway_serve_requires_visual_runtime_when_enabled(tmp_path):
+    runner = CliRunner()
+    upstreams = tmp_path / "upstreams.yaml"
+    upstreams.write_text("upstreams:\n  - name: jira\n    url: https://jira.example.com/mcp\n")
+
+    with patch("agent_bom.runtime.visual_leak_detector.visual_leak_runtime_ready", return_value=False):
+        result = runner.invoke(
+            gateway_serve_cmd,
+            ["--bind", "127.0.0.1:8090", "--upstreams", str(upstreams), "--detect-visual-leaks"],
+        )
+
+    assert result.exit_code == 1
+    assert "Visual leak detection requires" in result.output
 
 
 def test_mcp_server_cmd_missing_sdk():

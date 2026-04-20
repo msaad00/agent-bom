@@ -103,6 +103,16 @@ gateway:
     upstreams: []
   # Optional runtime policy JSON path (mounted via extraVolumes + extraVolumeMounts).
   policyPath: ""
+  # Typical deploy-time auth/runtime wiring:
+  #   env:
+  #     - name: AGENT_BOM_GATEWAY_DETECT_VISUAL_LEAKS
+  #       value: "1"
+  #   envFrom:
+  #     - secretRef:
+  #         name: agent-bom-gateway-auth
+  #
+  # Where `agent-bom-gateway-auth` contains:
+  #   AGENT_BOM_GATEWAY_BEARER_TOKEN=<token for incoming gateway clients>
   env: []
   envFrom: []
   extraVolumes: []

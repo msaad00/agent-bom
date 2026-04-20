@@ -82,6 +82,32 @@ def _ocr_available() -> bool:
     return True
 
 
+def visual_leak_runtime_ready() -> bool:
+    """Return True when OCR/image deps are actually available for enforcement."""
+    return _ocr_available()
+
+
+def require_visual_leak_runtime() -> None:
+    """Raise when visual-leak enforcement is requested without OCR runtime support."""
+    if visual_leak_runtime_ready():
+        return
+    raise RuntimeError(
+        "Visual leak detection requires 'agent-bom[visual]' and the tesseract binary on PATH. "
+        "Install the visual extra or disable screenshot OCR enforcement."
+    )
+
+
+def visual_leak_runtime_health() -> dict[str, Any]:
+    """Operator-facing readiness metadata for health endpoints and startup checks."""
+    ready = visual_leak_runtime_ready()
+    return {
+        "enabled": ready,
+        "ready": ready,
+        "mode": "enforcing" if ready else "unavailable",
+        "reason": None if ready else "install agent-bom[visual] and ensure tesseract is on PATH",
+    }
+
+
 def _decode_image(block: dict[str, Any]):
     """Decode a single MCP image content block into a PIL Image, or None."""
     from PIL import Image
@@ -304,4 +330,11 @@ async def run_visual_leak_redact(detector: VisualLeakDetector, content_blocks: l
     return await asyncio.wait_for(asyncio.to_thread(detector.redact, content_blocks), timeout=timeout)
 
 
-__all__ = ["VisualLeakDetector", "run_visual_leak_check", "run_visual_leak_redact"]
+__all__ = [
+    "VisualLeakDetector",
+    "require_visual_leak_runtime",
+    "run_visual_leak_check",
+    "run_visual_leak_redact",
+    "visual_leak_runtime_health",
+    "visual_leak_runtime_ready",
+]

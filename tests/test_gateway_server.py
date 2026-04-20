@@ -48,7 +48,34 @@ def test_healthz_lists_configured_upstreams() -> None:
     client = TestClient(create_gateway_app(settings))
     resp = client.get("/healthz")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok", "upstreams": ["filesystem", "jira"]}
+    assert resp.json() == {
+        "status": "ok",
+        "upstreams": ["filesystem", "jira"],
+        "auth": {"incoming_token_required": False},
+    }
+
+
+def test_healthz_reports_visual_leak_readiness_when_enabled(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "agent_bom.runtime.visual_leak_detector.visual_leak_runtime_health",
+        lambda: {"enabled": True, "ready": True, "mode": "enforcing", "reason": None},
+    )
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        enable_visual_leak_detection=True,
+        require_visual_leak_detection_ready=False,
+    )
+    client = TestClient(create_gateway_app(settings))
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    assert resp.json()["visual_leak_detection"] == {
+        "enabled": True,
+        "ready": True,
+        "mode": "enforcing",
+        "reason": None,
+        "required": False,
+    }
 
 
 def test_metrics_endpoint_returns_prometheus_text_format() -> None:
@@ -95,6 +122,33 @@ def test_relay_forwards_to_upstream_and_returns_response() -> None:
     assert resp.json()["result"]["content"][0]["text"] == "ok"
     assert upstream_calls[0]["name"] == "filesystem"
     assert upstream_calls[0]["url"] == "http://fs.local:8100"
+
+
+def test_relay_requires_gateway_token_when_configured() -> None:
+    async def fake_caller(upstream, message, extra_headers):
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        upstream_caller=fake_caller,
+        bearer_token="gw-secret",
+    )
+    client = TestClient(create_gateway_app(settings))
+    denied = client.post(
+        "/mcp/filesystem",
+        json=_json_rpc("tools/call", name="read_file", arguments={"path": "/etc/hosts"}),
+    )
+    assert denied.status_code == 401
+    assert "authentication required" in denied.json()["detail"]
+
+    allowed = client.post(
+        "/mcp/filesystem",
+        headers={"Authorization": "Bearer gw-secret"},
+        json=_json_rpc("tools/call", name="read_file", arguments={"path": "/etc/hosts"}),
+    )
+    assert allowed.status_code == 200
+    assert allowed.json()["result"]["ok"] is True
 
 
 # ─── Policy block ─────────────────────────────────────────────────────────

@@ -556,8 +556,9 @@ async def run_proxy(
         detect_credentials: Enable credential leak detection in responses.
         detect_visual_leaks: Enable OCR-based credential/PII detection on
             image tool responses (Playwright-MCP, Puppeteer-MCP, screen
-            capture tools — see issue #1568). Requires the ``visual`` extra;
-            degrades to a no-op when OCR deps are missing.
+            capture tools — see issue #1568). Requires the ``visual`` extra
+            and tesseract on PATH; startup now fails closed when requested
+            without the OCR runtime.
         rate_limit_threshold: Max calls per tool per 60s (0 = disabled).
         log_only: Log alerts without blocking (advisory mode).
         alert_webhook: Optional webhook URL for runtime alert notifications.
@@ -610,13 +611,10 @@ async def run_proxy(
     cred_detector = CredentialLeakDetector() if detect_credentials else None
     visual_detector = None
     if detect_visual_leaks:
-        from agent_bom.runtime.visual_leak_detector import VisualLeakDetector
+        from agent_bom.runtime.visual_leak_detector import VisualLeakDetector, require_visual_leak_runtime
 
+        require_visual_leak_runtime()
         visual_detector = VisualLeakDetector()
-        if not visual_detector.enabled:
-            logger.warning(
-                "Visual leak detection requested but OCR deps are missing — install 'agent-bom[visual]' and ensure tesseract is on PATH"
-            )
     local_policy_rate_limit = resolve_rate_limit_threshold(policy) if policy else None
     effective_rate_limit_threshold = rate_limit_threshold or local_policy_rate_limit or 0
     rate_tracker = RateLimitTracker(threshold=max(effective_rate_limit_threshold, 0))

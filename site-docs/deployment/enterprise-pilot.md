@@ -96,6 +96,8 @@ sequenceDiagram
 - self-hosted API, UI, audit log, and Postgres stay in the company's infra
 - OIDC, API keys, RBAC, and Postgres RLS are the control-plane boundary
 - proxy policy pull and audit push are now real, not cosmetic
+- gateway can now require an incoming bearer/API-key token for remote MCP clients
+- screenshot OCR enforcement now fails closed when explicitly enabled without the visual runtime
 - `AGENT_BOM_AUDIT_HMAC_KEY` is required for pilot sign-off
 - the EKS pilot path assumes Pod Security Admission `restricted`
 - focused pilot values lock ingress down instead of leaving it wide open

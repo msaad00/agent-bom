@@ -72,13 +72,20 @@ class GatewaySettings:
     policy: dict[str, Any]  # dict passed to check_policy — same shape proxy uses
     audit_sink: AuditSink | None = None
     upstream_caller: UpstreamCaller | None = None  # injectable for tests
+    bearer_token: str | None = None
     # Visual-leak detection on image tool responses (closes the screenshot
     # channel that CredentialLeakDetector can't see — #1568). Opt-in
     # because OCR is CPU-heavy; see docs/ENTERPRISE_SECURITY_PLAYBOOK.md §2.2.
-    # Set to True AND install `agent-bom[visual]` to enable. When enabled
-    # but the visual extra is missing, the detector degrades silently
-    # (returns empty alerts, passes images through).
+    # Set to True AND install `agent-bom[visual]` to enable.
     enable_visual_leak_detection: bool = False
+    require_visual_leak_detection_ready: bool = False
+
+
+def _request_has_expected_token(request: Request, expected_token: str) -> bool:
+    auth = request.headers.get("authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[len("Bearer ") :].strip() == expected_token
+    return request.headers.get("x-api-key", "").strip() == expected_token
 
 
 async def _default_upstream_caller(
@@ -112,15 +119,29 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     Separating app construction from CLI entry point keeps the server
     testable end-to-end via ``TestClient(create_gateway_app(settings))``.
     """
+    if settings.enable_visual_leak_detection and settings.require_visual_leak_detection_ready:
+        from agent_bom.runtime.visual_leak_detector import require_visual_leak_runtime
+
+        require_visual_leak_runtime()
+
     app = FastAPI(title="agent-bom gateway", version="1")
     upstream_caller = settings.upstream_caller or _default_upstream_caller
 
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:
-        return {
+        health: dict[str, Any] = {
             "status": "ok",
             "upstreams": settings.registry.names(),
+            "auth": {"incoming_token_required": bool(settings.bearer_token)},
         }
+        if settings.enable_visual_leak_detection:
+            from agent_bom.runtime.visual_leak_detector import visual_leak_runtime_health
+
+            health["visual_leak_detection"] = {
+                **visual_leak_runtime_health(),
+                "required": settings.require_visual_leak_detection_ready,
+            }
+        return health
 
     @app.get("/metrics")
     async def metrics() -> Response:
@@ -136,6 +157,9 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     @app.post("/mcp/{server_name}")
     async def relay(server_name: str, request: Request) -> JSONResponse:
         """Route an MCP JSON-RPC request to the named upstream after policy + audit."""
+        if settings.bearer_token and not _request_has_expected_token(request, settings.bearer_token):
+            raise HTTPException(status_code=401, detail="gateway authentication required")
+
         upstream = settings.registry.get(server_name)
         if upstream is None:
             raise HTTPException(
@@ -206,9 +230,8 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         record_gateway_relay(upstream.name, "forwarded")
 
         # Visual-leak detection on image tool responses. Opt-in because OCR
-        # is CPU-heavy; the detector itself is no-op when its deps are
-        # missing, so enabling without the visual extra installed is safe
-        # (see VisualLeakDetector._ocr_available).
+        # is CPU-heavy; startup can now require the OCR runtime so pilots
+        # fail closed instead of silently skipping the screenshot channel.
         if settings.enable_visual_leak_detection and isinstance(upstream_response, dict):
             result = upstream_response.get("result")
             if isinstance(result, dict):

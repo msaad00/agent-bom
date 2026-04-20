@@ -1,0 +1,37 @@
+# Example upstreams config for `agent-bom gateway serve`.
+#
+# One entry per remote MCP server the gateway should front. Laptop editors
+# (Cursor / VS Code / Claude Desktop / Codex) point at
+# https://agent-bom-gateway.example.com/mcp/{server-name} for each server
+# in this file — one URL template for the whole org.
+#
+# Mount this file into the gateway pod from a ConfigMap:
+#
+#   kubectl -n agent-bom create configmap gateway-upstreams \
+#     --from-file=upstreams.yaml=gateway-upstreams.example.yaml
+#
+# Reload the gateway to pick up changes. (Dynamic reload is a v2 feature.)
+
+upstreams:
+  # A Snowflake-hosted MCP (e.g. a jira MCP running in a Snowflake container
+  # service or Cortex function exposed via HTTPS). Auth is bearer-via-env so
+  # the gateway injects the Snowflake token; the laptop never holds it.
+  - name: jira
+    url: https://snowflake.example.internal/mcp/jira
+    auth: bearer
+    token_env: SNOWFLAKE_JIRA_MCP_TOKEN
+    headers:
+      X-Agent-Bom-Client: agent-bom-gateway
+
+  # A GitHub MCP server behind an internal ingress.
+  - name: github
+    url: https://mcp.github.example.com/sse
+    auth: bearer
+    token_env: GITHUB_MCP_TOKEN
+
+  # An in-cluster MCP workload — same namespace as the gateway, no external
+  # auth. Kubernetes NetworkPolicy + the authed gateway in front are the
+  # perimeter.
+  - name: filesystem-review-env
+    url: http://review-fs.agent-bom-workloads.svc.cluster.local:8100
+    auth: none

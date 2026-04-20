@@ -209,7 +209,65 @@ fails fast with a non-zero exit if any check breaks:
 6. `GET /v1/compliance/soc2/report` — bundle comes back signed + evidence non-empty
 7. Re-verifies the bundle signature with the public key from step 5
 
-### Stage 3 — MCP proxy sidecar on one workload (10 min)
+### Stage 3a — Multi-MCP gateway (new, HTTP/SSE upstreams — 10 min)
+
+One FastAPI service in your cluster fronts every remote MCP your
+employees hit (Snowflake-hosted jira MCP, GitHub MCP, internal review
+MCPs). Laptops point at **one URL** per MCP — no per-MCP proxy install.
+
+```mermaid
+flowchart LR
+  dev[Cursor / VS Code / Claude / Codex] -->|one URL per MCP| gw["agent-bom-gateway<br/>(one Deployment, HPA)"]
+  gw -. policy pull .- cp[Control plane]
+  gw -. audit push .- cp
+  gw -->|inject token| jira["Snowflake jira MCP"]
+  gw -->|inject token| gh["GitHub MCP"]
+  gw -->|no auth needed| fs["In-cluster filesystem MCP"]
+```
+
+Install:
+
+```bash
+# Author upstream config — list every MCP your team should reach
+cp deploy/helm/agent-bom/examples/gateway-upstreams.example.yaml my-upstreams.yaml
+$EDITOR my-upstreams.yaml
+
+# Turn on the gateway via Helm — pass the YAML inline via --set-file
+helm upgrade agent-bom deploy/helm/agent-bom \
+  -n agent-bom --reuse-values \
+  --set gateway.enabled=true \
+  --set-file gateway.upstreamsYaml=my-upstreams.yaml
+```
+
+Point laptops at it:
+
+```jsonc
+// Cursor / VS Code / Claude MCP config — one entry per MCP using the gateway URL
+{
+  "mcpServers": {
+    "jira": {
+      "transport": "http",
+      "url": "https://agent-bom-gateway.example.com/mcp/jira",
+      "headers": { "Authorization": "Bearer ${AGENT_BOM_USER_TOKEN}" }
+    },
+    "github": {
+      "transport": "http",
+      "url": "https://agent-bom-gateway.example.com/mcp/github"
+    }
+  }
+}
+```
+
+The gateway injects per-upstream credentials (Snowflake / GitHub tokens)
+from Secrets — the laptop never holds them. See the full design in
+[docs/design/MULTI_MCP_GATEWAY.md](../../docs/design/MULTI_MCP_GATEWAY.md).
+
+### Stage 3b — MCP proxy sidecar on one workload (10 min)
+
+Sidecar mode is still supported for teams that prefer per-MCP
+enforcement next to a specific workload (e.g. an in-cluster MCP you
+don't want routed through a shared gateway).
+
 
 ```mermaid
 flowchart LR

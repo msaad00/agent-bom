@@ -63,6 +63,36 @@ monitor:
             pathType: Prefix
     tls: []
 
+# Multi-MCP gateway (optional). One FastAPI service that fronts N upstream
+# MCP servers so laptops point at one URL for every MCP. Disabled by default
+# because the sidecar mode (controlPlane.runtime) covers the same surface
+# for teams that prefer per-MCP enforcement. See docs/design/MULTI_MCP_GATEWAY.md.
+gateway:
+  enabled: false
+  replicas: 2
+  image:
+    repository: agentbom/agent-bom
+    # tag defaults to Chart.AppVersion
+    pullPolicy: IfNotPresent
+  # Inline YAML for the upstreams ConfigMap. See:
+  #   deploy/helm/agent-bom/examples/gateway-upstreams.example.yaml
+  # for the schema. When empty, the gateway starts with zero upstreams.
+  upstreamsYaml: |
+    upstreams: []
+  # Optional runtime policy JSON path (mounted via extraVolumes + extraVolumeMounts).
+  policyPath: ""
+  env: []
+  envFrom: []
+  extraVolumes: []
+  extraVolumeMounts: []
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 1
+      memory: 1Gi
+
 controlPlane:
   enabled: false
   serviceMesh:

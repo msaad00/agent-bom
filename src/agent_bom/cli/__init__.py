@@ -128,6 +128,10 @@ main.add_command(serve_cmd, "serve")
 main.add_command(api_cmd, "api")
 # mcp-server is under `mcp server` — no top-level duplicate
 
+from agent_bom.cli._gateway import gateway_group  # noqa: E402
+
+main.add_command(gateway_group, "gateway")
+
 from agent_bom.cli._registry import registry, schedule  # noqa: E402
 
 main.add_command(schedule)

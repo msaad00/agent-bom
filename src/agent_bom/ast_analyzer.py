@@ -43,8 +43,13 @@ from agent_bom.ast_python_analysis import (
     _build_call_graph,
     _build_taint_findings,
 )
+from agent_bom.ast_python_analysis import (
+    _max_taint_depth as _python_max_taint_depth,
+)
 
 # ── Public API ───────────────────────────────────────────────────────────────
+
+_max_taint_depth = _python_max_taint_depth
 
 
 def analyze_project(project_path: str | Path) -> ASTAnalysisResult:

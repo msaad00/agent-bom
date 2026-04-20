@@ -35,26 +35,28 @@ def _count_mcp_tools() -> int:
 
 def _count_server_card_tools() -> int:
     """Count tool entries in _SERVER_CARD_TOOLS list (each has a 'name' key)."""
-    text = (SRC / "mcp_server.py").read_text()
-    # _SERVER_CARD_TOOLS is a list of dicts; count occurrences of "name" keys
-    start = text.find("_SERVER_CARD_TOOLS")
-    if start == -1:
-        return 0
-    # Count dict entries by counting '"name"' occurrences after the marker
-    section = text[start:]
-    # Find the closing bracket
-    bracket_depth = 0
-    end = 0
-    for i, ch in enumerate(section):
-        if ch == "[":
-            bracket_depth += 1
-        elif ch == "]":
-            bracket_depth -= 1
-            if bracket_depth == 0:
-                end = i
-                break
-    section = section[:end]
-    return len(re.findall(r'"name"', section))
+    for path in (SRC / "mcp_server_metadata.py", SRC / "mcp_server.py"):
+        if not path.exists():
+            continue
+        text = path.read_text()
+        # _SERVER_CARD_TOOLS is a list of dicts; count occurrences of "name" keys
+        start = text.find("_SERVER_CARD_TOOLS")
+        if start == -1:
+            continue
+        section = text[start:]
+        bracket_depth = 0
+        end = 0
+        for i, ch in enumerate(section):
+            if ch == "[":
+                bracket_depth += 1
+            elif ch == "]":
+                bracket_depth -= 1
+                if bracket_depth == 0:
+                    end = i
+                    break
+        section = section[:end]
+        return len(re.findall(r'"name"', section))
+    return 0
 
 
 def _count_config_locations() -> int:

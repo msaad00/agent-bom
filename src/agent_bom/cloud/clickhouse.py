@@ -118,7 +118,7 @@ class ClickHouseClient:
                 # modern ClickHouse. Older clusters may return a transient
                 # error on repeat runs; log and continue so ensure_tables
                 # stays safe to call on every process start.
-                logger.debug("ClickHouse migration skipped (%s): %s", exc, migration.split('\n', 1)[0])
+                logger.debug("ClickHouse migration skipped (%s): %s", exc, migration.split("\n", 1)[0])
         logger.info("ClickHouse analytics tables ensured in database '%s'", self.database)
 
 
@@ -158,7 +158,11 @@ CREATE TABLE IF NOT EXISTS runtime_events (
     severity LowCardinality(String),
     tool_name String,
     message String,
-    agent_name String
+    agent_name String,
+    session_id String DEFAULT '',
+    trace_id String DEFAULT '',
+    request_id String DEFAULT '',
+    source_id String DEFAULT ''
 ) ENGINE = MergeTree()
 ORDER BY (event_timestamp, event_type, agent_name)
 PARTITION BY toYYYYMM(event_timestamp)""",
@@ -240,7 +244,10 @@ CREATE TABLE IF NOT EXISTS audit_events (
     action LowCardinality(String),
     actor String,
     resource String,
-    tenant_id String
+    tenant_id String,
+    session_id String DEFAULT '',
+    trace_id String DEFAULT '',
+    request_id String DEFAULT ''
 ) ENGINE = MergeTree()
 ORDER BY (event_timestamp, tenant_id, action)
 PARTITION BY toYYYYMM(event_timestamp)
@@ -255,7 +262,14 @@ TTL event_timestamp + INTERVAL 2 YEAR""",
 _TABLE_MIGRATIONS: list[str] = [
     "ALTER TABLE vulnerability_scans ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default'",
     "ALTER TABLE runtime_events ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default'",
+    "ALTER TABLE runtime_events ADD COLUMN IF NOT EXISTS session_id String DEFAULT ''",
+    "ALTER TABLE runtime_events ADD COLUMN IF NOT EXISTS trace_id String DEFAULT ''",
+    "ALTER TABLE runtime_events ADD COLUMN IF NOT EXISTS request_id String DEFAULT ''",
+    "ALTER TABLE runtime_events ADD COLUMN IF NOT EXISTS source_id String DEFAULT ''",
     "ALTER TABLE posture_scores ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default'",
     "ALTER TABLE scan_metadata ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default'",
     "ALTER TABLE compliance_controls ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default'",
+    "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS session_id String DEFAULT ''",
+    "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS trace_id String DEFAULT ''",
+    "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS request_id String DEFAULT ''",
 ]

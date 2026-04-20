@@ -329,6 +329,52 @@ class TestClickHouseAnalyticsStore:
         assert len(inserted["rows"]) == 2
         assert inserted["rows"][0]["event_type"] == "vulnerable_tool_call"
 
+    def test_audit_and_runtime_rows_preserve_correlation_fields(self):
+        from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
+
+        inserted: list[tuple[str, list[dict]]] = []
+
+        class _Client:
+            def ensure_tables(self):
+                return None
+
+            def insert_json(self, table, rows):
+                inserted.append((table, rows))
+
+        with patch("agent_bom.cloud.clickhouse.ClickHouseClient", return_value=_Client()):
+            store = ClickHouseAnalyticsStore(url="http://localhost:8123")
+            store.record_event(
+                {
+                    "event_type": "runtime_alert",
+                    "session_id": "sess-1",
+                    "trace_id": "trace-1",
+                    "request_id": "req-1",
+                    "source_id": "proxy-a",
+                    "timestamp": "2026-04-20T12:00:01Z",
+                },
+                tenant_id="tenant-alpha",
+            )
+            store.record_audit_event(
+                {
+                    "action": "proxy.audit_ingested",
+                    "tenant_id": "tenant-alpha",
+                    "session_id": "sess-1",
+                    "trace_id": "trace-1",
+                    "request_id": "req-1",
+                    "timestamp": "2026-04-20T12:00:02Z",
+                }
+            )
+
+        runtime_row = next(rows[0] for table, rows in inserted if table == "runtime_events")
+        audit_row = next(rows[0] for table, rows in inserted if table == "audit_events")
+        assert runtime_row["session_id"] == "sess-1"
+        assert runtime_row["trace_id"] == "trace-1"
+        assert runtime_row["request_id"] == "req-1"
+        assert runtime_row["source_id"] == "proxy-a"
+        assert audit_row["session_id"] == "sess-1"
+        assert audit_row["trace_id"] == "trace-1"
+        assert audit_row["request_id"] == "req-1"
+
 
 def test_clickhouse_escape_strips_control_chars_and_quotes():
     from agent_bom.api.clickhouse_store import _escape

@@ -77,10 +77,25 @@ class TestWritesCarryTenantId:
 
     def test_record_event(self) -> None:
         store, cap = _make_store()
-        store.record_event({"event_type": "tool_call", "severity": "HIGH"}, tenant_id="tenant-b")
+        store.record_event(
+            {
+                "event_type": "tool_call",
+                "severity": "HIGH",
+                "session_id": "sess-1",
+                "trace_id": "trace-1",
+                "request_id": "req-1",
+                "source_id": "proxy-a",
+                "timestamp": "2026-04-20T12:00:01Z",
+            },
+            tenant_id="tenant-b",
+        )
         table, rows = cap.inserts[0]
         assert table == "runtime_events"
         assert rows[0]["tenant_id"] == "tenant-b"
+        assert rows[0]["session_id"] == "sess-1"
+        assert rows[0]["trace_id"] == "trace-1"
+        assert rows[0]["request_id"] == "req-1"
+        assert rows[0]["source_id"] == "proxy-a"
 
     def test_record_events_batch(self) -> None:
         store, cap = _make_store()
@@ -145,17 +160,13 @@ class TestReadsApplyTenantFilter:
             ("query_compliance_heatmap", {"days": 30}, "compliance_controls"),
         ],
     )
-    def test_tenant_predicate_present(
-        self, method: str, kwargs: dict[str, Any], expected_table: str
-    ) -> None:
+    def test_tenant_predicate_present(self, method: str, kwargs: dict[str, Any], expected_table: str) -> None:
         store, cap = _make_store()
         getattr(store, method)(tenant_id="tenant-a", **kwargs)
         assert cap.queries, f"{method} must issue a query"
         query = cap.queries[0]
         assert expected_table in query, f"{method} must read from {expected_table}"
-        assert "tenant_id = 'tenant-a'" in query, (
-            f"{method} must include tenant predicate; actual:\n{query}"
-        )
+        assert "tenant_id = 'tenant-a'" in query, f"{method} must include tenant predicate; actual:\n{query}"
 
     @pytest.mark.parametrize(
         "method,kwargs",
@@ -173,9 +184,7 @@ class TestReadsApplyTenantFilter:
         store, cap = _make_store()
         getattr(store, method)(**kwargs)
         query = cap.queries[0]
-        assert "tenant_id =" not in query, (
-            f"{method} without tenant_id must not inject a tenant predicate; actual:\n{query}"
-        )
+        assert "tenant_id =" not in query, f"{method} without tenant_id must not inject a tenant predicate; actual:\n{query}"
 
     def test_tenant_id_is_escaped(self) -> None:
         """Tenant identifiers that contain SQL metacharacters must not break queries."""
@@ -245,8 +254,7 @@ class TestMigrationCoverage:
         }
         for table in required:
             assert any(
-                migration.startswith(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS tenant_id")
-                for migration in _TABLE_MIGRATIONS
+                migration.startswith(f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS tenant_id") for migration in _TABLE_MIGRATIONS
             ), f"Missing ALTER migration for table '{table}'"
 
     def test_ensure_tables_runs_migrations(self) -> None:

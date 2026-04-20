@@ -60,11 +60,15 @@ def push_proxy_metrics(metrics: dict) -> None:
 async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) -> dict:
     """Ingest alerts and summary from an external proxy process."""
     from agent_bom.api.audit_log import log_action
+    from agent_bom.api.stores import _get_analytics_store
 
     actor = getattr(request.state, "api_key_name", "") or "proxy-client"
     tenant_id = getattr(request.state, "tenant_id", "default")
+    request_id = getattr(request.state, "request_id", "") or ""
+    trace_id = getattr(request.state, "trace_id", "") or ""
     source_id = body.source_id or "unknown"
     session_id = body.session_id or "default"
+    analytics_events: list[dict] = []
     if body.idempotency_key:
         cached = _get_idempotency_store().get("/v1/proxy/audit", tenant_id, source_id, body.idempotency_key)
         if cached is not None:
@@ -75,13 +79,40 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         enriched = dict(alert)
         enriched.setdefault("source_id", source_id)
         enriched.setdefault("session_id", session_id)
+        enriched.setdefault("request_id", request_id)
+        enriched.setdefault("trace_id", trace_id)
         push_proxy_alert(enriched)
+        analytics_events.append(
+            {
+                "event_id": enriched.get("event_id", ""),
+                "event_timestamp": enriched.get("timestamp") or enriched.get("ts"),
+                "tenant_id": tenant_id,
+                "event_type": enriched.get("event_type", enriched.get("type", "runtime_alert")),
+                "detector": enriched.get("detector", ""),
+                "severity": enriched.get("severity", "INFO"),
+                "tool_name": enriched.get("tool_name", enriched.get("tool", "")),
+                "message": enriched.get("message", ""),
+                "agent_name": enriched.get("agent_name", ""),
+                "session_id": enriched.get("session_id", ""),
+                "trace_id": enriched.get("trace_id", ""),
+                "request_id": enriched.get("request_id", ""),
+                "source_id": enriched.get("source_id", ""),
+            }
+        )
 
     if body.summary:
         summary = dict(body.summary)
         summary.setdefault("source_id", source_id)
         summary.setdefault("session_id", session_id)
+        summary.setdefault("request_id", request_id)
+        summary.setdefault("trace_id", trace_id)
         push_proxy_metrics(summary)
+
+    if analytics_events:
+        try:
+            _get_analytics_store().record_events(analytics_events, tenant_id=tenant_id)
+        except Exception:
+            pass
 
     log_action(
         "proxy.audit_ingested",
@@ -89,6 +120,8 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         resource=f"proxy/{source_id}",
         tenant_id=tenant_id,
         session_id=session_id,
+        request_id=request_id,
+        trace_id=trace_id,
         alert_count=len(body.alerts),
         has_summary=body.summary is not None,
     )

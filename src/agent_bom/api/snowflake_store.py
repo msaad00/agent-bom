@@ -145,25 +145,29 @@ class SnowflakeJobStore:
         with self._connect() as conn:
             cur = conn.cursor()
             if tenant_id is None:
-                cur.execute("SELECT job_id, tenant_id, status, created_at, completed_at FROM scan_jobs ORDER BY created_at DESC")
+                cur.execute("SELECT job_id, tenant_id, status, created_at, completed_at, data FROM scan_jobs ORDER BY created_at DESC")
             else:
                 cur.execute(
-                    """SELECT job_id, tenant_id, status, created_at, completed_at
+                    """SELECT job_id, tenant_id, status, created_at, completed_at, data
                        FROM scan_jobs
                        WHERE tenant_id = %s
                        ORDER BY created_at DESC""",
                     (tenant_id,),
                 )
-            return [
-                {
-                    "job_id": r[0],
-                    "tenant_id": r[1],
-                    "status": r[2],
-                    "created_at": str(r[3]) if r[3] else None,
-                    "completed_at": str(r[4]) if r[4] else None,
-                }
-                for r in cur.fetchall()
-            ]
+            summaries: list[dict] = []
+            for row in cur.fetchall():
+                job = ScanJob.model_validate_json(row[5] if isinstance(row[5], str) else json.dumps(row[5]))
+                summaries.append(
+                    {
+                        "job_id": row[0],
+                        "tenant_id": row[1],
+                        "triggered_by": job.triggered_by,
+                        "status": row[2],
+                        "created_at": str(row[3]) if row[3] else None,
+                        "completed_at": str(row[4]) if row[4] else None,
+                    }
+                )
+            return summaries
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
         with self._connect() as conn:

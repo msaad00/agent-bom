@@ -224,6 +224,8 @@ async def test_create_scan_and_push_stamp_request_tenant(monkeypatch):
     set_job_store(store)
     _jobs.clear()
     req = _request("tenant-alpha")
+    req.state.api_key_name = "analyst@example.com"
+    req.state.auth_method = "api_key"
 
     class _Loop:
         def run_in_executor(self, *_args, **_kwargs):
@@ -233,6 +235,7 @@ async def test_create_scan_and_push_stamp_request_tenant(monkeypatch):
 
     created = await scan_routes.create_scan(req, ScanRequest())
     assert created.tenant_id == "tenant-alpha"
+    assert created.triggered_by == "analyst@example.com"
 
     pushed = await observability_routes.receive_push(
         req,
@@ -248,6 +251,7 @@ async def test_create_scan_and_push_stamp_request_tenant(monkeypatch):
     pushed_job = store.get(pushed["job_id"])
     assert pushed_job is not None
     assert pushed_job.tenant_id == "tenant-alpha"
+    assert pushed_job.triggered_by == "analyst@example.com:source-a"
     assert pushed_job.completed_at is not None
     assert pushed_job.result["summary"]["total_packages"] == 12
     assert pushed_job.result["posture_scorecard"]["overall_score"] == 82

@@ -34,6 +34,10 @@ def _tenant_id(request: Request) -> str:
     return getattr(request.state, "tenant_id", "default")
 
 
+def _triggered_by(request: Request) -> str:
+    return getattr(request.state, "api_key_name", "") or getattr(request.state, "auth_method", "") or "push"
+
+
 def _normalize_pushed_report(body: PushPayload, *, fallback_scan_id: str) -> dict:
     """Coerce pushed payloads onto the canonical scan report contract.
 
@@ -152,6 +156,7 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
     job = ScanJob(
         job_id=str(uuid.uuid4()),
         tenant_id=tenant_id,
+        triggered_by=f"{_triggered_by(request)}:{body.source_id}" if body.source_id else _triggered_by(request),
         created_at=_now(),
         request=ScanRequest(),
     )

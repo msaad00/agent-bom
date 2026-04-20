@@ -141,9 +141,9 @@ class MockConnection:
             elif "from trend_history" in sql_lower:
                 rows = list(self._store.get("trend_history", {}).values())
                 cursor.rows = [(r[0], r[2], r[3], r[4], r[5], r[6], r[7], r[8]) for r in rows]
-            elif "from scan_jobs" in sql_lower and "job_id, team_id, status, created_at, completed_at" in sql_lower:
+            elif "from scan_jobs" in sql_lower and "job_id, team_id, status, created_at, completed_at, triggered_by" in sql_lower:
                 rows = list(self._store.get("scan_jobs", {}).values())
-                cursor.rows = [(r[0], r[1], r[2], r[3], r[4]) for r in rows]
+                cursor.rows = [(r[0], r[1], r[2], r[3], r[4], (r[5] if len(r) > 6 else None)) for r in rows]
             elif "from fleet_agents" in sql_lower and "agent_id, name, lifecycle_state, trust_score" in sql_lower:
                 rows = list(self._store.get("fleet_agents", {}).values())
                 cursor.rows = [(r[0], r[1], r[2], r[3]) for r in rows]
@@ -247,6 +247,26 @@ def test_job_store_put_get(mock_pool):
     assert retrieved.job_id == "j-1"
 
 
+def test_job_store_persists_triggered_by(mock_pool):
+    from agent_bom.api.postgres_store import PostgresJobStore
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
+
+    store = PostgresJobStore(pool=mock_pool)
+    job = ScanJob(
+        job_id="j-triggered",
+        tenant_id="tenant-alpha",
+        triggered_by="analyst@example.com",
+        status=JobStatus.PENDING,
+        created_at="2026-01-01T00:00:00Z",
+        request=ScanRequest(),
+    )
+    store.put(job)
+
+    insert_sql, insert_params = next((sql, params) for sql, params in reversed(mock_pool._conn.executed) if "INSERT INTO scan_jobs" in sql)
+    assert "triggered_by" in insert_sql
+    assert insert_params[5] == "analyst@example.com"
+
+
 def test_job_store_get_nonexistent(mock_pool):
     from agent_bom.api.postgres_store import PostgresJobStore
 
@@ -288,18 +308,33 @@ def test_job_store_list_summary_includes_tenant(mock_pool):
         "done",
         "2026-01-01T00:00:00Z",
         None,
+        "scheduler",
         "{}",
     )
     result = store.list_summary()
     assert result[0]["tenant_id"] == "tenant-alpha"
+    assert result[0]["triggered_by"] == "scheduler"
 
 
 def test_job_store_cleanup(mock_pool):
     from agent_bom.api.postgres_store import PostgresJobStore
 
     store = PostgresJobStore(pool=mock_pool)
-    count = store.cleanup_expired()
+    count = store.cleanup_expired(ttl_seconds=7200)
+    delete_sql, delete_params = next(
+        (sql, params) for sql, params in reversed(mock_pool._conn.executed) if sql.strip().lower().startswith("delete from scan_jobs")
+    )
     assert isinstance(count, int)
+    assert "INTERVAL '1 second'" in delete_sql
+    assert delete_params == (7200,)
+
+
+def test_job_store_init_migrates_triggered_by_column(mock_pool):
+    from agent_bom.api.postgres_store import PostgresJobStore
+
+    PostgresJobStore(pool=mock_pool)
+    migration_sql = "\n".join(sql for sql, _params in mock_pool._conn.executed if "ALTER TABLE scan_jobs" in sql)
+    assert "ADD COLUMN triggered_by TEXT" in migration_sql
 
 
 # ─── PostgresFleetStore ───────────────────────────────────────────────────────
@@ -749,7 +784,7 @@ def test_get_pool_missing_psycopg(monkeypatch):
 
 def test_get_pool_uses_tuned_pool_sizes_and_connect_timeout(monkeypatch):
     """Pool creation should honor operator-controlled sizing and connect timeout envs."""
-    from agent_bom.api import postgres_store
+    from agent_bom.api import postgres_common
 
     captured: dict[str, object] = {}
 
@@ -760,26 +795,26 @@ def test_get_pool_uses_tuned_pool_sizes_and_connect_timeout(monkeypatch):
             captured["max_size"] = max_size
             captured["kwargs"] = kwargs or {}
 
-    reset = postgres_store.reset_pool
+    reset = postgres_common.reset_pool
     reset()
     monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://localhost/test")
     monkeypatch.setenv("AGENT_BOM_POSTGRES_POOL_MIN_SIZE", "7")
     monkeypatch.setenv("AGENT_BOM_POSTGRES_POOL_MAX_SIZE", "21")
     monkeypatch.setenv("AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS", "9")
     monkeypatch.setattr(
-        postgres_store,
+        postgres_common,
         "POSTGRES_POOL_MIN_SIZE",
         7,
         raising=False,
     )
     monkeypatch.setattr(
-        postgres_store,
+        postgres_common,
         "POSTGRES_POOL_MAX_SIZE",
         21,
         raising=False,
     )
     monkeypatch.setattr(
-        postgres_store,
+        postgres_common,
         "POSTGRES_CONNECT_TIMEOUT_SECONDS",
         9,
         raising=False,
@@ -787,7 +822,7 @@ def test_get_pool_uses_tuned_pool_sizes_and_connect_timeout(monkeypatch):
     monkeypatch.setitem(sys.modules, "psycopg_pool", types.SimpleNamespace(ConnectionPool=CapturePool))
 
     try:
-        postgres_store._get_pool()
+        postgres_common._get_pool()
         assert captured == {
             "url": "postgresql://localhost/test",
             "min_size": 7,
@@ -800,12 +835,12 @@ def test_get_pool_uses_tuned_pool_sizes_and_connect_timeout(monkeypatch):
 
 def test_apply_tenant_session_sets_statement_timeout(monkeypatch):
     """Tenant session setup should apply the configured statement timeout."""
-    from agent_bom.api import postgres_store
+    from agent_bom.api import postgres_common
 
     conn = MockConnection()
-    monkeypatch.setattr(postgres_store, "POSTGRES_STATEMENT_TIMEOUT_MS", 12_000, raising=False)
+    monkeypatch.setattr(postgres_common, "POSTGRES_STATEMENT_TIMEOUT_MS", 12_000, raising=False)
 
-    postgres_store._apply_tenant_session(conn)
+    postgres_common._apply_tenant_session(conn)
 
     assert any("app.tenant_id" in sql for sql, _ in conn.executed)
     assert any("statement_timeout" in sql and params == ("12000",) for sql, params in conn.executed)

@@ -63,10 +63,30 @@ monitor:
             pathType: Prefix
     tls: []
 
-# Multi-MCP gateway (optional). One FastAPI service that fronts N upstream
-# MCP servers so laptops point at one URL for every MCP. Disabled by default
-# because the sidecar mode (controlPlane.runtime) covers the same surface
-# for teams that prefer per-MCP enforcement. See docs/design/MULTI_MCP_GATEWAY.md.
+# ─── Multi-MCP gateway (optional) ─────────────────────────────────────────────
+# One FastAPI service that fronts N upstream MCP servers so laptops point at
+# one URL per MCP instead of configuring a proxy per MCP. Disabled by default
+# because the per-MCP sidecar mode (controlPlane.runtime) covers teams that
+# prefer local-to-workload enforcement.
+#
+# See docs/design/MULTI_MCP_GATEWAY.md for the full design + rollout plan.
+#
+# ── Operator must provide (no auto-discovery): ───────────────────────────────
+#   1. gateway.upstreamsYaml — the list of MCP servers the gateway should
+#      route to. Start from deploy/helm/agent-bom/examples/gateway-upstreams.example.yaml
+#      and customise; pass via --set-file gateway.upstreamsYaml=./my-upstreams.yaml.
+#   2. A Kubernetes Secret exposing any bearer tokens referenced by
+#      `token_env` in upstreamsYaml (e.g. SNOWFLAKE_JIRA_MCP_TOKEN,
+#      GITHUB_MCP_TOKEN). Point gateway.envFrom at it:
+#
+#        gateway:
+#          envFrom:
+#            - secretRef:
+#                name: agent-bom-gateway-upstream-tokens
+#
+#   3. An ingress (same cluster as controlPlane) pointing at the
+#      agent-bom-{release}-gateway Service on port 8090.
+# ─────────────────────────────────────────────────────────────────────────────
 gateway:
   enabled: false
   replicas: 2
@@ -74,9 +94,11 @@ gateway:
     repository: agentbom/agent-bom
     # tag defaults to Chart.AppVersion
     pullPolicy: IfNotPresent
-  # Inline YAML for the upstreams ConfigMap. See:
-  #   deploy/helm/agent-bom/examples/gateway-upstreams.example.yaml
-  # for the schema. When empty, the gateway starts with zero upstreams.
+  # Inline YAML for the upstreams ConfigMap. Replace with your environment's
+  # MCPs. See deploy/helm/agent-bom/examples/gateway-upstreams.example.yaml
+  # for a commented template with three realistic entries. Starting with an
+  # empty list is valid — the gateway boots clean and rejects requests
+  # until you redeploy with a populated list.
   upstreamsYaml: |
     upstreams: []
   # Optional runtime policy JSON path (mounted via extraVolumes + extraVolumeMounts).

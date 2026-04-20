@@ -192,6 +192,7 @@ completed scan jobs, fleet inventory, and gateway policy/audit stores.
 | `has_local_scan` | direct/local scan evidence exists | `scan_sources` + MCP/agent context |
 | `has_fleet_ingest` | governed fleet inventory exists | fleet store |
 | `has_cluster_scan` | cluster/GPU/K8s evidence exists | `scan_sources` + fleet agent environment |
+| `has_ci_cd_scan` | CI/CD workflow scanning exists | `scan_sources` (`github_actions`) |
 | `has_mesh` | mesh/topology views are meaningful | fleet + MCP/agent/runtime evidence |
 | `has_gateway` | central gateway policy plane is configured | policy store |
 | `has_proxy` | proxy/runtime enforcement evidence exists | policy audit + runtime signals |

@@ -39,6 +39,7 @@ def _dep(permission: str) -> Any:
 router = APIRouter(dependencies=[_dep("read")])
 
 _CLUSTER_SCAN_SOURCES = {"gpu_infra", "k8s"}
+_CI_CD_SCAN_SOURCES = {"github_actions"}
 _REGISTRY_SCAN_SOURCES = {"external_scan", "image", "sbom"}
 _LOCAL_SCAN_SOURCES = {
     "agent_discovery",
@@ -47,7 +48,6 @@ _LOCAL_SCAN_SOURCES = {
     "dataset_cards",
     "external_scan",
     "filesystem",
-    "github_actions",
     "image",
     "jupyter",
     "sbom",
@@ -100,8 +100,12 @@ def _derive_deployment_context(request: Request, jobs: list[Any]) -> dict[str, A
     has_cluster_scan = bool(scan_sources & _CLUSTER_SCAN_SOURCES) or any(
         str(getattr(agent, "environment", "") or "").strip().lower() in _CLUSTER_ENVIRONMENTS for agent in fleet_agents
     )
+    has_ci_cd_scan = bool(scan_sources & _CI_CD_SCAN_SOURCES)
     has_local_scan = (
-        bool(scan_sources & _LOCAL_SCAN_SOURCES) or has_agent_context or has_mcp_context or (scan_count > 0 and not has_cluster_scan)
+        bool(scan_sources & _LOCAL_SCAN_SOURCES)
+        or has_agent_context
+        or has_mcp_context
+        or (scan_count > 0 and not has_cluster_scan and not has_ci_cd_scan)
     )
     has_registry = bool(scan_sources & _REGISTRY_SCAN_SOURCES)
 
@@ -132,6 +136,7 @@ def _derive_deployment_context(request: Request, jobs: list[Any]) -> dict[str, A
         "has_local_scan": has_local_scan,
         "has_fleet_ingest": has_fleet_ingest,
         "has_cluster_scan": has_cluster_scan,
+        "has_ci_cd_scan": has_ci_cd_scan,
         "has_mesh": has_mesh,
         "has_gateway": has_gateway,
         "has_proxy": has_proxy,

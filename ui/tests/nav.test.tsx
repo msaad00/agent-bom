@@ -32,6 +32,7 @@ vi.mock('@/lib/api', () => ({
       has_local_scan: false,
       has_fleet_ingest: false,
       has_cluster_scan: false,
+      has_ci_cd_scan: false,
       has_mesh: false,
       has_gateway: false,
       has_proxy: false,
@@ -240,6 +241,7 @@ describe('Nav', () => {
       has_local_scan: true,
       has_fleet_ingest: false,
       has_cluster_scan: false,
+      has_ci_cd_scan: false,
       has_mesh: false,
       has_gateway: false,
       has_proxy: false,
@@ -277,6 +279,7 @@ describe('Nav', () => {
       has_local_scan: true,
       has_fleet_ingest: true,
       has_cluster_scan: true,
+      has_ci_cd_scan: false,
       has_mesh: true,
       has_gateway: true,
       has_proxy: true,
@@ -295,5 +298,42 @@ describe('Nav', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /govern/i }))
     expect(screen.getAllByRole('link', { name: /^traces$/i }).some((link) => link.getAttribute('href') === '/traces')).toBe(true)
+  })
+
+  it('keeps CI-only scans from masquerading as workstation deployment context', async () => {
+    const { api } = await import('@/lib/api')
+    vi.mocked(api.getPostureCounts).mockResolvedValueOnce({
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      total: 1,
+      kev: 0,
+      compound_issues: 0,
+      deployment_mode: 'local',
+      has_mcp_context: false,
+      has_agent_context: false,
+      has_local_scan: false,
+      has_fleet_ingest: false,
+      has_cluster_scan: false,
+      has_ci_cd_scan: true,
+      has_mesh: false,
+      has_gateway: false,
+      has_proxy: false,
+      has_traces: false,
+      has_registry: false,
+      scan_sources: ['github_actions'],
+      scan_count: 1,
+    })
+
+    render(<Nav />)
+
+    await waitFor(() => {
+      expect(document.querySelector('summary')).toBeTruthy()
+    })
+
+    const agentsLink = screen.getByRole('link', { name: /^agents$/i })
+    expect(agentsLink).toHaveAttribute('href', '/agents')
+    expect(agentsLink).toHaveAttribute('title', 'Hidden until this deployment mode is detected')
   })
 })

@@ -142,6 +142,7 @@ function hasDeploymentSignals(counts: RiskCounts | null): boolean {
       counts.has_local_scan ||
       counts.has_fleet_ingest ||
       counts.has_cluster_scan ||
+      counts.has_ci_cd_scan ||
       counts.has_mesh ||
       counts.has_gateway ||
       counts.has_proxy ||

@@ -150,6 +150,7 @@ export interface PostureCountsResponse {
   has_local_scan?: boolean;
   has_fleet_ingest?: boolean;
   has_cluster_scan?: boolean;
+  has_ci_cd_scan?: boolean;
   has_mesh?: boolean;
   has_gateway?: boolean;
   has_proxy?: boolean;

@@ -10,6 +10,17 @@ Package risk is only the start. `agent-bom` follows what it can reach across MCP
 
 Current repo-derived counts live in [PRODUCT_METRICS.md](PRODUCT_METRICS.md). This brief intentionally keeps volatile metrics out of the main narrative.
 
+## Deployment truth
+
+The product should be framed deployment-first:
+
+- **self-hosted operator plane** in the customer's own infrastructure
+- **entry points** through CLI, GitHub Action, fleet ingest, proxy, and gateway
+- **pilot** as a narrower rollout profile of the same architecture, not a separate product shape
+
+That keeps the repo story aligned with the actual code: one shared graph, one
+policy model, multiple entry points, no mandatory hosted control plane.
+
 ## Durable thesis
 
 - Agent security is not just software composition analysis. It is context across packages, MCP servers, agent configuration, credentials, tools, and runtime behavior.
@@ -66,7 +77,7 @@ The product is broader than MCP alone. It includes cloud posture, container scan
 - a serious open-source product with a clear path to `1.0`
 - unusually complete for an open tool in agent and MCP security
 - complementary to traditional package and container scanners today, while differentiated by blast radius, runtime, and MCP-aware analysis
-- deployable across local development, CI, and authenticated remote service environments
+- deployable across local development, CI/CD gates, and authenticated self-hosted operator environments
 
 That means public repo copy should emphasize real shipped surfaces, not just aspirations.
 

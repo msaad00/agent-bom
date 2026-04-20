@@ -3907,10 +3907,11 @@ def test_api_posture_counts_empty():
 
     from agent_bom.api.server import app
 
+    tenant_id = "counts-empty"
     client = TestClient(app)
     resp = client.get(
         "/v1/posture/counts",
-        headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Tenant-ID": "default"},
+        headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Tenant-ID": tenant_id},
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -3923,6 +3924,7 @@ def test_api_posture_counts_empty():
     assert body["has_local_scan"] is False
     assert body["has_fleet_ingest"] is False
     assert body["has_cluster_scan"] is False
+    assert body["has_ci_cd_scan"] is False
 
 
 def test_api_posture_counts_with_data():
@@ -3932,9 +3934,11 @@ def test_api_posture_counts_with_data():
 
     from agent_bom.api.server import JobStatus, ScanJob, ScanRequest, _get_store, app
 
+    tenant_id = "counts-with-data"
     client = TestClient(app)
     job = ScanJob(
         job_id="counts-test-001",
+        tenant_id=tenant_id,
         status=JobStatus.DONE,
         created_at="2026-01-01T00:00:00Z",
         request=ScanRequest(),
@@ -3961,14 +3965,14 @@ def test_api_posture_counts_with_data():
             ],
             "has_mcp_context": True,
             "has_agent_context": True,
-            "scan_sources": ["agent_discovery", "sbom"],
+            "scan_sources": ["agent_discovery", "github_actions", "sbom"],
             "runtime_session_graph": {"node_count": 2, "edge_count": 1},
         },
     )
     _get_store().put(job)
     resp = client.get(
         "/v1/posture/counts",
-        headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Tenant-ID": "default"},
+        headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Tenant-ID": tenant_id},
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -3979,6 +3983,41 @@ def test_api_posture_counts_with_data():
     assert body["total"] >= 2
     assert body["deployment_mode"] == "local"
     assert body["has_local_scan"] is True
+    assert body["has_ci_cd_scan"] is True
     assert body["has_registry"] is True
     assert body["has_proxy"] is True
     assert body["has_traces"] is True
+
+
+def test_api_posture_counts_ci_cd_only_is_not_treated_as_local_runtime():
+    """GitHub Actions scans should surface CI/CD context without implying local runtime deployment."""
+    pytest.importorskip("fastapi", reason="fastapi not installed")
+    from fastapi.testclient import TestClient
+
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest, _get_store, app
+
+    tenant_id = "counts-ci-only"
+    client = TestClient(app)
+    job = ScanJob(
+        job_id="counts-test-ci-001",
+        tenant_id=tenant_id,
+        status=JobStatus.DONE,
+        created_at="2026-01-02T00:00:00Z",
+        request=ScanRequest(),
+        result={
+            "blast_radius": [],
+            "scan_sources": ["github_actions"],
+        },
+    )
+    _get_store().put(job)
+    resp = client.get(
+        "/v1/posture/counts",
+        headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Tenant-ID": tenant_id},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["deployment_mode"] == "local"
+    assert body["has_ci_cd_scan"] is True
+    assert body["has_local_scan"] is False
+    assert body["has_fleet_ingest"] is False
+    assert body["has_cluster_scan"] is False

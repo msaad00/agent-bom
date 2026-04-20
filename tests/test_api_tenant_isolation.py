@@ -724,7 +724,7 @@ async def test_posture_counts_include_deployment_context_by_tenant():
             ],
             "has_mcp_context": True,
             "has_agent_context": True,
-            "scan_sources": ["agent_discovery", "k8s", "sbom"],
+            "scan_sources": ["agent_discovery", "github_actions", "k8s", "sbom"],
             "runtime_session_graph": {"node_count": 3, "edge_count": 2},
         },
     )
@@ -769,6 +769,7 @@ async def test_posture_counts_include_deployment_context_by_tenant():
     assert counts["has_local_scan"] is True
     assert counts["has_fleet_ingest"] is True
     assert counts["has_cluster_scan"] is True
+    assert counts["has_ci_cd_scan"] is True
     assert counts["has_gateway"] is True
     assert counts["has_proxy"] is True
     assert counts["has_traces"] is True

@@ -141,88 +141,89 @@ External calls are limited to package metadata, version lookups, and CVE enrichm
 
 **`agent-bom` runs end-to-end inside your infrastructure — your AWS account, your VPC, your EKS cluster, your Postgres / ClickHouse / Snowflake, your SSO, your KMS. No hosted control plane. No mandatory vendor backend. No telemetry.**
 
-This section is the pilot-grade walkthrough: the five product surfaces you install, the backends they run against, the network flows, the day-1 install, and the break-glass path. Every diagram below maps to real code in this repo, not a pitch deck.
+This section is deployment-first: what runs in your infrastructure, what the
+data path looks like, which stores hold state, and how a focused pilot narrows
+that same architecture without inventing a different product. The detailed
+rollout runbooks live under [`site-docs/deployment/`](site-docs/deployment/).
 
-### The concrete pilot shape
+### Default self-hosted deployment shape
 
-A realistic enterprise pilot today looks like this:
+`agent-bom` is easiest to reason about as three layers:
 
-- **Employees on macOS and Windows** running Cursor, VS Code, Codex CLI, Claude Desktop / Claude Code, and GitHub Copilot.
-- **Each editor talks to a mix of MCPs**:
-  - *Local / stdio* — filesystem, git, shell, dev-server MCPs running on the laptop.
-  - *Remote / HTTP + SSE* — hosted MCPs on internal services, SaaS tools, or inside a data warehouse.
-- **SaaS MCPs** — e.g. a Jira MCP, GitHub MCP, or similar published by the SaaS vendor or a third party. Speak HTTP/SSE over the network.
-- **Snowflake-hosted MCPs** — an MCP running as a Snowflake container service or Cortex function (separate from the SaaS MCPs above). Typically authenticated via OAuth2 client-credentials against your Snowflake IdP.
-- **An in-cluster agent-bom control plane on EKS** — ingests fleet data from every laptop, mediates gateway policy for runtime proxies, and stores scan/audit state (Postgres, ClickHouse, or Snowflake).
+- **entry points**: local CLI scans, GitHub Action CI/CD gates, endpoint fleet
+  sync, proxy sidecars/wrappers, and an optional central gateway
+- **operator plane**: the self-hosted API + UI, scan/fleet/gateway/compliance
+  routes, and job orchestration in your EKS cluster or self-managed compute
+- **data plane**: Postgres/Supabase for transactional state, with ClickHouse or
+  Snowflake added only when your deployment actually needs them
 
 ```mermaid
 flowchart LR
-    subgraph mac["macOS employees"]
-      cursor_m[Cursor]
-      claude_m[Claude Desktop]
-      codex_m[Codex CLI]
-      copilot_m[VS Code + Copilot]
-    end
-    subgraph win["Windows employees"]
-      cursor_w[Cursor]
-      claude_w[Claude Code]
-      copilot_w[VS Code + Copilot]
+    subgraph entry["Entry points in your environment"]
+      cli["CLI scans<br/>agents · image · iac"]
+      gha["GitHub Action<br/>CI/CD gate + SARIF"]
+      fleet["Endpoint fleet<br/>--push-url sync"]
+      proxy["Proxy / sidecar<br/>stdio or HTTP/SSE"]
+      gateway["Central gateway<br/>agent-bom gateway serve"]
     end
 
-    localmcp["Local MCPs<br/>(stdio · filesystem, git, shell)"]
-    saasmcp["SaaS MCPs<br/>(HTTP/SSE · Jira MCP, GitHub MCP)"]
-    snowmcp["Snowflake-hosted MCPs<br/>(HTTPS · Cortex / container services)"]
-    eksmcp["In-cluster MCPs<br/>(K8s workloads)"]
+    subgraph targets["Targets under review"]
+      local["Local repos + stdio MCPs"]
+      remote["Remote MCPs + SaaS + cluster workloads"]
+    end
 
-    fleet["agent-bom agents --push-url<br/>(daily fleet sync)"]
-    gw["agent-bom gateway serve<br/>(one URL · fronts N remote MCPs)"]
-    px["agent-bom proxy -- &lt;cmd&gt;<br/>(per-MCP stdio wrapper)"]
-    sidecar["agent-bom proxy<br/>(K8s sidecar for an MCP workload)"]
-    cp(["agent-bom control plane<br/>in your EKS cluster"])
+    subgraph control["Self-hosted operator plane"]
+      api["API + UI<br/>findings · graph · remediation"]
+      routes["Fleet / policy / compliance routes<br/>tenant-scoped API"]
+      jobs["Scan jobs + ingest workers"]
+    end
 
-    mac -. daily scan .-> fleet
-    win -. daily scan .-> fleet
-    fleet -->|HTTPS fleet sync| cp
+    subgraph data["Your data stores"]
+      pg["Postgres / Supabase<br/>jobs · fleet · graph · audit"]
+      ch["ClickHouse (optional)<br/>analytics + long-retention events"]
+      snow["Snowflake (optional)<br/>warehouse-native deployment"]
+    end
 
-    mac -->|stdio| px
-    win -->|stdio| px
-    px --> localmcp
-
-    mac -->|HTTP/SSE| gw
-    win -->|HTTP/SSE| gw
-    gw -->|bearer| saasmcp
-    gw -->|OAuth2 client-creds| snowmcp
-    gw --> eksmcp
-
-    eksmcp -.- sidecar
-
-    px -. policy pull · audit push .- cp
-    gw -. policy pull · audit push .- cp
-    sidecar -. policy pull · audit push .- cp
+    cli --> local
+    gha --> local
+    fleet --> jobs
+    proxy --> remote
+    gateway --> remote
+    proxy --> routes
+    gateway --> routes
+    jobs --> api
+    routes --> api
+    api --> pg
+    api -. optional analytics .-> ch
+    api -. optional warehouse path .-> snow
 ```
 
-**How each surface serves this mix:**
+This is the architecture. A **pilot** is just a narrower rollout profile over
+the same surfaces and stores.
 
-| Surface | macOS | Windows | Local MCP (stdio) | SaaS MCP (HTTP/SSE) | Snowflake MCP |
-|---|:-:|:-:|:-:|:-:|:-:|
-| `agent-bom agents --push-url` (fleet sync) | ✓ | ✓ | discovered + scanned | discovered (reachability + CVE on the package that implements the server) | discovered (via Snowflake cloud scanner) |
-| `agent-bom proxy -- <cmd>` stdio | ✓ | ✓ | ✓ | n/a | n/a |
-| `agent-bom proxy --sse <url>` HTTP/SSE | ✓ | ✓ | n/a | ✓ | ✓ (when exposed over HTTP/SSE) |
-| `agent-bom cloud snowflake` | ✓ | ✓ | n/a | n/a | ✓ (native discovery + CIS benchmark) |
-| `agent-bom gateway serve` — one URL for all MCPs | ✓ | ✓ | n/a | ✓ (bearer auth) | ✓ (OAuth2 client-credentials) |
+### Rollout profiles
 
-**Legend:** `✓` = this surface handles this case today; `n/a` = not applicable by design (e.g. stdio MCPs can't be fronted by an HTTP gateway, and HTTP MCPs don't need a stdio wrapper). Every `n/a` is because a different row in this same table already covers it, not because the feature is missing.
+| Profile | Turn on first | Keep optional until needed |
+|---|---|---|
+| **Local + CI/CD gate** | CLI scans + GitHub Action + HTML/SARIF output | fleet, proxy, gateway, ClickHouse |
+| **Focused pilot** | scan + fleet + proxy + API/UI | ClickHouse, Snowflake, full gateway rollout |
+| **Standard self-hosted** | scan + fleet + proxy + gateway + API/UI | ClickHouse |
+| **Regulated / zero-trust** | standard self-hosted + Istio/Kyverno/ExternalSecret | Snowflake |
 
-The gateway row closes the gap pilot teams ask about: a single central URL in your EKS that fronts every remote MCP, so laptops don't individually need to configure a proxy. See the [multi-MCP gateway design](docs/design/MULTI_MCP_GATEWAY.md) and the [Stage 3a gateway install walkthrough](site-docs/deployment/eks-mcp-pilot.md).
+The gateway closes the biggest deployment gap for remote MCP usage: one central
+URL in your EKS fronts N remote MCP upstreams, so laptops do not each need
+their own proxy config. See the [multi-MCP gateway design](docs/design/MULTI_MCP_GATEWAY.md)
+and the [focused EKS rollout](site-docs/deployment/eks-mcp-pilot.md).
 
-## Five product surfaces, one shared graph
+## Core surfaces and entry points, one shared graph
 
-| Surface | CLI / route | What it does | Deploys as |
+| Surface | CLI / route | What it does | Runs as |
 |---|---|---|---|
 | **scan** | `agent-bom agents`, `agent-bom image`, `agent-bom iac` | Discovery, inventory, CVE enrichment, blast-radius scoring | CLI + CronJob |
+| **CI/CD gate** | GitHub Action `uses: msaad00/agent-bom@v0.78.1` | Pull-request and release gating, SARIF, policy-driven exits | GitHub Actions runner |
 | **fleet** | `POST /v1/fleet/sync` + CLI `--push-url` | Endpoint + collector fleet ingest with tenant scoping | API endpoint |
 | **proxy / runtime** | `agent-bom proxy` (stdio) / `--sse` (HTTP) | Inline MCP JSON-RPC inspection + policy enforcement | K8s sidecar or laptop wrapper |
-| **gateway** | `/v1/gateway/policies` + `/v1/proxy/audit` | Central policy authoring + audit ingest; proxies pull & push | API routes |
+| **gateway** | `agent-bom gateway serve`, `/v1/gateway/policies`, `/v1/proxy/audit` | Central HTTP traffic plane plus shared policy/audit plane | Service + API routes |
 | **API + UI** | `/v1/*` + Next.js dashboard | Findings, graph, remediation, compliance, posture | 2 Deployments + HPA |
 
 By default, findings, fleet data, audit logs, graph state, and remediation outputs stay in your infrastructure. Optional egress (OSV lookups, NVD enrichment, Slack / Jira / Vanta / Drata webhooks, SIEM / OTLP) is operator-controlled.
@@ -270,10 +271,12 @@ Three shipped examples in [`deploy/helm/agent-bom/examples/`](deploy/helm/agent-
 
 ## The scoped product stack
 
-Most pilot teams start with the five product surfaces below. Every one of them
-maps to code in this repo and ships in the Helm chart today.
+Most self-hosted teams start with the surfaces below. The focused pilot simply
+turns on a narrower subset first; it does not use a different architecture.
+Every one of them maps to code in this repo and ships today.
 
 - **scan** — discovery, inventory, CVE, image, IaC, Kubernetes, cloud analysis ([`src/agent_bom/cli/agents/`](src/agent_bom/cli/agents/))
+- **CI/CD gate** — GitHub Action packaging of the scan surface for pull-request and release workflows with SARIF output
 - **fleet** — endpoint + collector inventory pushed into the control plane ([`POST /v1/fleet/sync`](src/agent_bom/api/routes/fleet.py))
 - **proxy / runtime** — per-MCP sidecar or stdio wrapper — the honest mode for stdio MCPs and workload-local enforcement ([`src/agent_bom/proxy.py`](src/agent_bom/proxy.py))
 - **gateway** — two things, same namespace:

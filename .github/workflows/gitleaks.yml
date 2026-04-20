@@ -35,9 +35,11 @@ jobs:
       - name: Run gitleaks
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
+          # Required since gitleaks-action v2.x for PR scans.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Fail the job on any leak — pilot-grade; no silent advisory mode.
           GITLEAKS_ENABLE_COMMENTS: "true"
           GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"
-          # GITLEAKS_LICENSE is set at the org level for the organisation
-          # edition; unset for the OSS rules path. Both work.
+          # GITLEAKS_LICENSE is only needed for the organisation edition;
+          # individual accounts skip this cleanly.
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}

@@ -43,6 +43,20 @@ logger = logging.getLogger(__name__)
 AuditSink = Callable[[dict[str, Any]], Awaitable[None]]
 UpstreamCaller = Callable[[UpstreamConfig, dict[str, Any], dict[str, str]], Awaitable[dict[str, Any]]]
 
+# Lazy singleton so disabled deploys don't pay the import cost of the
+# visual detector (Pillow/pytesseract). Built on first use when
+# ``enable_visual_leak_detection`` is True.
+_visual_detector_singleton: Any = None
+
+
+def _get_visual_leak_detector() -> Any:
+    global _visual_detector_singleton
+    if _visual_detector_singleton is None:
+        from agent_bom.runtime.visual_leak_detector import VisualLeakDetector
+
+        _visual_detector_singleton = VisualLeakDetector()
+    return _visual_detector_singleton
+
 
 @dataclass
 class GatewaySettings:
@@ -52,6 +66,13 @@ class GatewaySettings:
     policy: dict[str, Any]  # dict passed to check_policy — same shape proxy uses
     audit_sink: AuditSink | None = None
     upstream_caller: UpstreamCaller | None = None  # injectable for tests
+    # Visual-leak detection on image tool responses (closes the screenshot
+    # channel that CredentialLeakDetector can't see — #1568). Opt-in
+    # because OCR is CPU-heavy; see docs/ENTERPRISE_SECURITY_PLAYBOOK.md §2.2.
+    # Set to True AND install `agent-bom[visual]` to enable. When enabled
+    # but the visual extra is missing, the detector degrades silently
+    # (returns empty alerts, passes images through).
+    enable_visual_leak_detection: bool = False
 
 
 async def _default_upstream_caller(
@@ -177,6 +198,34 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             raise HTTPException(status_code=502, detail=f"upstream error: {exc}") from exc
 
         record_gateway_relay(upstream.name, "forwarded")
+
+        # Visual-leak detection on image tool responses. Opt-in because OCR
+        # is CPU-heavy; the detector itself is no-op when its deps are
+        # missing, so enabling without the visual extra installed is safe
+        # (see VisualLeakDetector._ocr_available).
+        if settings.enable_visual_leak_detection and isinstance(upstream_response, dict):
+            result = upstream_response.get("result")
+            if isinstance(result, dict):
+                content = result.get("content")
+                if isinstance(content, list) and content:
+                    detector = _get_visual_leak_detector()
+                    tool_name_for_scan = message.get("params", {}).get("name", "") if is_tools_call(message) else message.get("method", "")
+                    alerts = detector.check(tool_name_for_scan, content)
+                    if alerts:
+                        record_gateway_relay(upstream.name, "visual_leak_redacted")
+                        if settings.audit_sink is not None:
+                            await settings.audit_sink(
+                                {
+                                    "action": "gateway.visual_leak_blocked",
+                                    "upstream": upstream.name,
+                                    "tenant_id": tenant_id,
+                                    "tool": tool_name_for_scan,
+                                    "alert_count": len(alerts),
+                                    "leak_types": sorted({a.details.get("leak_type", "") for a in alerts}),
+                                }
+                            )
+                        result["content"] = detector.redact(content)
+
         if settings.audit_sink is not None:
             await settings.audit_sink(
                 {

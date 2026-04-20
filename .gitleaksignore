@@ -1,20 +1,26 @@
-# gitleaks allowlist — each line is a finding fingerprint (commit:path:rule:line).
-# Only use for verified false positives where the underlying string is not a
-# real secret. For every entry, the justification must be obvious from the
-# fingerprint's path + rule (e.g. docs, examples, test fixtures) + a short
-# comment.
+# .gitleaksignore — fingerprint allowlist for verified false positives.
 #
-# Format reference: https://github.com/gitleaks/gitleaks#gitleaksignore
+# FORMAT: one finding fingerprint per line.
+#   <commit-sha>:<file>:<rule-id>:<line>
+# See: https://github.com/gitleaks/gitleaks#gitleaksignore
+#
+# ─── HARD RULE — READ BEFORE ADDING AN ENTRY ─────────────────────────────────
+# DO NOT include the literal phrase that triggered the rule anywhere in your
+# comment or explanation. Gitleaks scans this file too; if your comment quotes
+# the offending English prose back, gitleaks will re-match on this file, you
+# will add a new fingerprint, you will quote the phrase again, and you will
+# spend an hour in an infinite loop before noticing. (Ask us how we know.)
+#
+# When describing a finding, reference it abstractly: "documentation prose in
+# section N of the enterprise playbook", not the specific words. If you need
+# the text for context, link to the commit on GitHub via the Fingerprint URL
+# that gitleaks prints in the job output.
+# ─────────────────────────────────────────────────────────────────────────────
 
-# False positive: gitleaks generic-api-key matched on documentation prose in
-# an early draft of the enterprise playbook (describing the public-key pin
-# step of the signed-evidence verification flow). No secret — just English
-# sentences. The line was rewritten in a follow-up commit, but the
-# fingerprint lives forever in git history.
+# Doc prose in an early draft of the enterprise security playbook. No secret;
+# reworded in a follow-up commit. History-only finding.
 a5c3a329da9d0f5deed6a6857bcbaeaf3a024f1e:docs/ENTERPRISE_SECURITY_PLAYBOOK.md:generic-api-key:258
 
-# False positive in the previous version of this file itself — the comment
-# above used to quote the triggering English phrase, which then matched the
-# same gitleaks rule. Reworded in this commit; persist the old fingerprint
-# because gitleaks walks git history.
+# Historical false positive in a previous version of this file itself, caused
+# by the trap documented above. Retained because gitleaks walks history.
 792b4ad4ff3f877992a678bd533f2dd2dd7854da:.gitleaksignore:generic-api-key:10

@@ -132,6 +132,57 @@ def test_api_key_middleware_health_exempt():
     assert resp.status_code == 200
 
 
+def test_api_key_middleware_proxy_headers_authenticate_when_enabled(monkeypatch):
+    """Trusted proxy headers should satisfy auth when explicitly enabled."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse(
+            {
+                "role": request.state.api_key_role,
+                "tenant_id": request.state.tenant_id,
+                "method": request.state.auth_method,
+            }
+        )
+
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app.add_middleware(APIKeyMiddleware, api_key="")
+
+    client = TestClient(test_app)
+    resp = client.get(
+        "/v1/test",
+        headers={
+            "X-Agent-Bom-Role": "analyst",
+            "X-Agent-Bom-Tenant-ID": "tenant-alpha",
+            "X-Agent-Bom-Subject": "alice@corp.example",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"role": "analyst", "tenant_id": "tenant-alpha", "method": "proxy_header"}
+
+
+def test_api_key_middleware_proxy_headers_require_tenant(monkeypatch):
+    """Trusted proxy auth must fail closed when the tenant header is missing."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app.add_middleware(APIKeyMiddleware, api_key="")
+
+    client = TestClient(test_app)
+    resp = client.get("/v1/test", headers={"X-Agent-Bom-Role": "viewer"})
+    assert resp.status_code == 401
+    assert "X-Agent-Bom-Tenant-ID" in resp.json()["detail"]
+
+
 def test_api_key_middleware_exception_create_allows_analyst_role():
     """Analyst API keys should keep write access to exception creation paths."""
     from starlette.applications import Starlette
@@ -207,6 +258,30 @@ def test_api_key_middleware_oidc_sets_tenant_from_custom_claim():
 
     assert resp.status_code == 200
     assert resp.json() == {"tenant_id": "tenant-zeta", "role": "analyst"}
+
+
+def test_configure_api_enables_auth_middleware_for_oidc(monkeypatch):
+    """OIDC-only deployments still need the auth middleware installed."""
+    monkeypatch.setenv("AGENT_BOM_OIDC_ISSUER", "https://corp.okta.com")
+    monkeypatch.setenv("AGENT_BOM_OIDC_AUDIENCE", "agent-bom")
+    configure_api(api_key=None)
+    try:
+        assert any(m.cls is APIKeyMiddleware for m in app.user_middleware)
+    finally:
+        monkeypatch.delenv("AGENT_BOM_OIDC_ISSUER", raising=False)
+        monkeypatch.delenv("AGENT_BOM_OIDC_AUDIENCE", raising=False)
+        configure_api(api_key=None)
+
+
+def test_configure_api_enables_auth_middleware_for_trusted_proxy(monkeypatch):
+    """Trusted-proxy browser auth must also install the auth middleware."""
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    configure_api(api_key=None)
+    try:
+        assert any(m.cls is APIKeyMiddleware for m in app.user_middleware)
+    finally:
+        monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH", raising=False)
+        configure_api(api_key=None)
 
 
 def test_api_key_middleware_oidc_requires_explicit_role_claim_when_enabled():

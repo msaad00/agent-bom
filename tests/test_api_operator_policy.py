@@ -124,12 +124,35 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "default_ttl_seconds" in body["api_key"]
     assert "max_ttl_seconds" in body["api_key"]
     assert body["rate_limit_key"]["status"] in {"ok", "ephemeral", "unknown_age", "rotation_due", "max_age_exceeded"}
+    assert body["ui"]["recommended_mode"] in {"no_auth", "reverse_proxy_oidc", "oidc_bearer", "session_api_key"}
+    assert body["ui"]["session_storage_fallback"] == "session_api_key"
 
 
 def test_auth_policy_requires_admin_role_in_api_middleware() -> None:
     middleware = APIKeyMiddleware(app, api_key="static-secret")
     assert middleware._required_role("GET", "/v1/auth/policy") == "admin"
     assert middleware._required_role("GET", "/v1/auth/debug") == "viewer"
+
+
+def test_auth_debug_reports_runtime_auth_modes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    _reload_config()
+    _server_mod.configure_api(api_key=None)
+
+    client = TestClient(app)
+    resp = client.get(
+        "/v1/auth/debug",
+        headers={
+            "X-Agent-Bom-Role": "viewer",
+            "X-Agent-Bom-Tenant-ID": "tenant-alpha",
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["authenticated"] is True
+    assert body["auth_required"] is True
+    assert "trusted_proxy" in body["configured_modes"]
+    assert body["recommended_ui_mode"] == "reverse_proxy_oidc"
 
 
 # ─── /readyz drain behavior ──────────────────────────────────────────────────

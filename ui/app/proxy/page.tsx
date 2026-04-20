@@ -7,6 +7,7 @@ import {
   type ProxyAlert,
   formatDate,
 } from "@/lib/api";
+import { getSessionWebSocketToken } from "@/lib/auth";
 import { getConfiguredApiUrl } from "@/lib/runtime-config";
 import {
   ResponsiveContainer,
@@ -95,7 +96,12 @@ export default function ProxyDashboard() {
   // WebSocket for live metrics
   useEffect(() => {
     const base = getConfiguredApiUrl() || window.location.origin;
-    const wsUrl = base.replace(/^http/, "ws") + "/ws/proxy/metrics";
+    const wsTarget = new URL(base.replace(/^http/, "ws") + "/ws/proxy/metrics");
+    const token = getSessionWebSocketToken();
+    if (token) {
+      wsTarget.searchParams.set("token", token);
+    }
+    const wsUrl = wsTarget.toString();
 
     let ws: WebSocket;
     let reconnectTimer: ReturnType<typeof setTimeout>;

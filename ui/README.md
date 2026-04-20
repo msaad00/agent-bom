@@ -39,6 +39,15 @@ NEXT_PUBLIC_API_URL=
 That keeps browser requests relative (`/v1/...`) so the ingress can route API
 paths to the backend service without rebuilding the UI image.
 
+## Browser auth model
+
+The dashboard supports two browser auth modes:
+
+- Recommended: same-origin reverse-proxy OIDC/session auth. The proxy keeps the browser session and injects trusted `X-Agent-Bom-Role` plus `X-Agent-Bom-Tenant-ID` headers to the API. Enable `AGENT_BOM_TRUST_PROXY_AUTH=1` on the backend for this mode.
+- Fallback: a short-lived API key entered into the dashboard and stored in `sessionStorage` for the current browser tab/session only.
+
+All browser fetches use `credentials: "include"` so proxy-managed sessions work without custom patches.
+
 If you see `Failed to fetch`:
 
 1. Make sure `agent-bom api` is running.

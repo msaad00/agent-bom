@@ -747,13 +747,9 @@ async def export_compliance_report(
     store = get_audit_log()
     audit_since_iso = since_dt.isoformat()
     # Cap audit fetch at 10k for export sanity; consumers paginate further via /v1/audit
-    audit_entries = store.list_entries(since=audit_since_iso, limit=10_000)
+    audit_entries = store.list_entries(since=audit_since_iso, limit=10_000, tenant_id=tenant_id)
     until_iso = until_dt.isoformat()
-    audit_in_window = [
-        e
-        for e in audit_entries
-        if str((e.details or {}).get("tenant_id", "")) == tenant_id and audit_since_iso <= (e.timestamp or "") <= until_iso
-    ]
+    audit_in_window = [e for e in audit_entries if audit_since_iso <= (e.timestamp or "") <= until_iso]
     verified, tampered = _verify_audit_entries(audit_in_window)
 
     pass_count = sum(1 for c in controls if c.get("status") == "pass")

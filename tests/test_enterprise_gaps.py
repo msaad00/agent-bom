@@ -188,7 +188,7 @@ class TestAuditLog:
         log_action("scan", actor="admin", resource="job/test", packages=42)
         entries = store.list_entries()
         assert len(entries) == 1
-        assert entries[0].details == {"packages": 42}
+        assert entries[0].details == {"packages": 42, "tenant_id": "default"}
 
     def test_audit_bounded_size(self):
         from agent_bom.api.audit_log import AuditEntry, InMemoryAuditLog

@@ -21,3 +21,14 @@ def test_chain_hash_detects_tamper():
     log._entries[0].resource = "tampered"
     verified, tampered = log.verify_integrity()
     assert tampered > 0
+
+
+def test_chain_hash_detects_details_tamper():
+    log = InMemoryAuditLog()
+    log.append(AuditEntry(action="scan", actor="test", resource="pkg-a", details={"tenant_id": "tenant-alpha", "severity": "high"}))
+    log.append(AuditEntry(action="scan", actor="test", resource="pkg-b", details={"tenant_id": "tenant-alpha"}))
+
+    log._entries[0].details["severity"] = "critical"
+
+    verified, tampered = log.verify_integrity()
+    assert tampered > 0

@@ -87,6 +87,7 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         "proxy.audit_ingested",
         actor=actor,
         resource=f"proxy/{source_id}",
+        tenant_id=tenant_id,
         session_id=session_id,
         alert_count=len(body.alerts),
         has_summary=body.summary is not None,
@@ -549,10 +550,12 @@ async def break_glass(request: Request, session_id: str = "default", reason: str
     try:
         from agent_bom.api.audit_log import log_action
 
+        tenant_id = getattr(request.state, "tenant_id", "default")
         log_action(
             "break_glass",
             actor=role,
             resource=f"shield/{session_id}",
+            tenant_id=tenant_id,
             reason=reason,
             was_blocked=was_blocked,
         )

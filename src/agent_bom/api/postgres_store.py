@@ -961,9 +961,8 @@ class PostgresAuditLog:
 
     def __init__(self, pool=None) -> None:
         self._pool = pool or _get_pool()
-        self._last_sig = ""
+        self._last_sig_by_tenant: dict[str, str] = {}
         self._init_tables()
-        self._prime_last_sig()
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
@@ -987,15 +986,22 @@ class PostgresAuditLog:
             _ensure_tenant_rls(conn, "audit_log", "team_id")
             conn.commit()
 
-    def _prime_last_sig(self) -> None:
-        with _tenant_connection(self._pool) as conn:
-            row = conn.execute("SELECT hmac_signature FROM audit_log ORDER BY timestamp DESC LIMIT 1").fetchone()
-            self._last_sig = row[0] if row else ""
+    def _latest_signature_for_tenant(self, tenant_id: str) -> str:
+        with self._pool.connection() as conn:
+            row = conn.execute(
+                "SELECT hmac_signature FROM audit_log WHERE team_id = %s ORDER BY timestamp DESC LIMIT 1",
+                (tenant_id,),
+            ).fetchone()
+        return row[0] if row else ""
 
     def append(self, entry: AuditEntry) -> None:
-        entry.prev_signature = self._last_sig
+        tenant_id = str((entry.details or {}).get("tenant_id") or _current_tenant.get())
+        prev_sig = self._last_sig_by_tenant.get(tenant_id)
+        if not prev_sig:
+            prev_sig = self._latest_signature_for_tenant(tenant_id)
+        entry.prev_signature = prev_sig
         entry.sign()
-        self._last_sig = entry.hmac_signature
+        self._last_sig_by_tenant[tenant_id] = entry.hmac_signature
         with _tenant_connection(self._pool) as conn:
             conn.execute(
                 """INSERT INTO audit_log
@@ -1007,7 +1013,7 @@ class PostgresAuditLog:
                     entry.action,
                     entry.actor,
                     entry.resource,
-                    _current_tenant.get(),
+                    tenant_id,
                     json.dumps(entry.details),
                     entry.prev_signature,
                     entry.hmac_signature,
@@ -1022,9 +1028,13 @@ class PostgresAuditLog:
         since: str | None = None,
         limit: int = 100,
         offset: int = 0,
+        tenant_id: str | None = None,
     ) -> list[AuditEntry]:
         clauses: list[str] = []
         params: list[object] = []
+        if tenant_id is not None:
+            clauses.append("team_id = %s")
+            params.append(tenant_id)
         if action:
             clauses.append("action = %s")
             params.append(action)
@@ -1056,18 +1066,24 @@ class PostgresAuditLog:
             for row in rows
         ]
 
-    def count(self, action: str | None = None) -> int:
+    def count(self, action: str | None = None, tenant_id: str | None = None) -> int:
         sql = "SELECT COUNT(*) FROM audit_log"
-        params: tuple[object, ...] = ()
+        clauses: list[str] = []
+        params: list[object] = []
+        if tenant_id is not None:
+            clauses.append("team_id = %s")
+            params.append(tenant_id)
         if action:
-            sql += " WHERE action = %s"
-            params = (action,)
+            clauses.append("action = %s")
+            params.append(action)
+        if clauses:
+            sql += " WHERE " + " AND ".join(clauses)
         with _tenant_connection(self._pool) as conn:
-            row = conn.execute(sql, params).fetchone()
+            row = conn.execute(sql, tuple(params)).fetchone()
         return row[0] if row else 0
 
-    def verify_integrity(self, limit: int = 1000) -> tuple[int, int]:
-        entries = list(reversed(self.list_entries(limit=limit)))
+    def verify_integrity(self, limit: int = 1000, tenant_id: str | None = None) -> tuple[int, int]:
+        entries = list(reversed(self.list_entries(limit=limit, tenant_id=tenant_id)))
         verified = 0
         tampered = 0
         prev_sig = entries[0].prev_signature if entries else ""

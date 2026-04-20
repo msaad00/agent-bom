@@ -76,6 +76,26 @@ runtime monolith. Teams typically deploy only the surfaces they need:
 - **gateway**: central policy management for those runtime paths
 - **API + UI**: the operator plane for findings, graph, remediation, audit, and policy workflows
 
+## OTEL and Policy
+
+`agent-bom` already supports OpenTelemetry as a real interoperability surface:
+
+- API request tracing with W3C trace context
+- OTLP export for operator telemetry
+- OTEL trace ingest through `/v1/traces`
+- runtime workflows that consume OTEL traces as evidence
+
+Policy is native by default. The shipped gateway and proxy use the repo's JSON
+policy engine, not an embedded OPA/Rego runtime. That is intentional: one
+shared policy model across scan, gateway, proxy, and runtime, without adding an
+extra policy binary to the operator stack.
+
+The right enterprise story is:
+
+- OTEL is first-class today
+- native JSON policy remains the default
+- OPA/Rego is an optional future interoperability path, not the core engine
+
 ## Deploy In Your Own Infra
 
 `agent-bom` is designed to run inside your own AWS account, VPC, EKS cluster,

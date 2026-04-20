@@ -45,6 +45,12 @@ Blast radius is the product center of gravity. `agent-bom` connects vulnerabilit
 
 `agent-bom` scores trust with evidence, not a black-box label. It combines package and registry posture, capability risk, drift, exposed credentials, and related supply-chain signals. Policy and compliance layers can then act on those findings with clearer context.
 
+The shipped policy path is the repo's native JSON policy engine used by the
+gateway and proxy surfaces. That should stay the default product framing today.
+If enterprise buyers need OPA/Rego, the sensible roadmap is interoperability
+through bundle import/export or an external decision hook, not a rewrite of the
+core policy engine.
+
 The product also protects its own shipped surfaces with the same discipline: signed releases, provenance, daily dependency monitoring, drift checks, and CI guards for the JavaScript surfaces so accidental source-map leaks or stale npm dependencies do not silently ship.
 
 Model and weight security should be described the same way: not just as file detection, but as a supply-chain contract that surfaces risky formats, signature presence, manifest and lineage evidence, provenance checks, and Hub-backed hash verification where available.
@@ -57,6 +63,19 @@ The runtime story has two levels:
 - a broader runtime protection engine used for deeper protection workflows
 
 The wording matters. The proxy and the broader runtime engine are related, but they are not the same path and should not be described as the same detector surface.
+
+### Observability and OTEL
+
+OpenTelemetry should be described as a first-class product capability, not a
+buried add-on. `agent-bom` already:
+
+- preserves W3C trace context across API requests
+- exports operator telemetry over OTLP/HTTP when configured
+- ingests OTEL traces into the control plane
+- uses OTEL traces as runtime evidence, not just as emitted spans
+
+That bidirectional model is a real differentiator and should appear in the main
+product narrative.
 
 ### Skills and instruction files
 

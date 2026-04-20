@@ -330,6 +330,7 @@ async def _lifespan(app_instance: FastAPI):
         job = ScanJob(
             job_id=str(uuid.uuid4()),
             tenant_id=tenant_id,
+            triggered_by="scheduler",
             created_at=_now(),
             request=ScanRequest(**scan_config) if isinstance(scan_config, dict) else scan_config,
         )
@@ -371,10 +372,10 @@ async def _lifespan(app_instance: FastAPI):
     # Close Postgres connection pool if active
     try:
         if os.environ.get("AGENT_BOM_POSTGRES_URL"):
-            from agent_bom.api.postgres_store import _pool as _pg_pool
+            from agent_bom.api import postgres_common as _postgres_common
 
-            if _pg_pool is not None:
-                _pg_pool.close()
+            if _postgres_common._pool is not None:
+                _postgres_common._pool.close()
     except Exception:
         _logger.debug("Postgres pool close skipped")
     try:

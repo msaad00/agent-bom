@@ -116,6 +116,10 @@ def _tenant_id(request: Request) -> str:
     return getattr(request.state, "tenant_id", "default")
 
 
+def _triggered_by(request: Request) -> str:
+    return getattr(request.state, "api_key_name", "") or getattr(request.state, "auth_method", "") or "api"
+
+
 def _visible_to_tenant(job: ScanJob, tenant_id: str) -> bool:
     return getattr(job, "tenant_id", "default") == tenant_id
 
@@ -165,6 +169,7 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
     job = ScanJob(
         job_id=str(uuid.uuid4()),
         tenant_id=tenant_id,
+        triggered_by=_triggered_by(request),
         created_at=_now(),
         request=body,
     )

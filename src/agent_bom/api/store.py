@@ -63,6 +63,7 @@ class InMemoryJobStore:
                 {
                     "job_id": j.job_id,
                     "tenant_id": j.tenant_id,
+                    "triggered_by": j.triggered_by,
                     "status": j.status,
                     "created_at": j.created_at,
                     "completed_at": j.completed_at,
@@ -168,17 +169,30 @@ class SQLiteJobStore:
     def list_summary(self, tenant_id: str | None = None) -> list[dict]:
         if tenant_id is None:
             rows = self._conn.execute(
-                "SELECT job_id, tenant_id, status, created_at, completed_at FROM jobs ORDER BY created_at DESC"
+                "SELECT job_id, tenant_id, status, created_at, completed_at, data FROM jobs ORDER BY created_at DESC"
             ).fetchall()
         else:
             rows = self._conn.execute(
-                """SELECT job_id, tenant_id, status, created_at, completed_at
+                """SELECT job_id, tenant_id, status, created_at, completed_at, data
                    FROM jobs
                    WHERE tenant_id = ?
                    ORDER BY created_at DESC""",
                 (tenant_id,),
             ).fetchall()
-        return [{"job_id": r[0], "tenant_id": r[1], "status": r[2], "created_at": r[3], "completed_at": r[4]} for r in rows]
+        summaries: list[dict] = []
+        for row in rows:
+            data = self._deserialize(row[5])
+            summaries.append(
+                {
+                    "job_id": row[0],
+                    "tenant_id": row[1],
+                    "triggered_by": data.triggered_by,
+                    "status": row[2],
+                    "created_at": row[3],
+                    "completed_at": row[4],
+                }
+            )
+        return summaries
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
         now = datetime.now(timezone.utc).isoformat()

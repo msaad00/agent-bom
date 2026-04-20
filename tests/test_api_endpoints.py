@@ -167,6 +167,7 @@ def test_create_scan_returns_202():
     assert resp.status_code == 202
     body = resp.json()
     assert "job_id" in body
+    assert body["triggered_by"] == "api"
     # Background thread may mutate the shared job object before serialisation,
     # so the status can be either "pending" or "running" by the time we read it.
     assert body["status"] in ("pending", "running")
@@ -190,6 +191,7 @@ def test_create_scan_with_options():
     )
     assert resp.status_code == 202
     body = resp.json()
+    assert body["triggered_by"] == "api"
     assert body["request"]["inventory"] == "/tmp/agents.json"
     assert body["request"]["enrich"] is True
     assert body["request"]["format"] == "cyclonedx"

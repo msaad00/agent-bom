@@ -50,6 +50,11 @@ UpstreamCaller = Callable[[UpstreamConfig, dict[str, Any], dict[str, str]], Awai
 _visual_detector_singleton: Any = None
 
 
+def _sanitize_for_log(value: Any) -> str:
+    """Return a single-line representation safe for plain-text logs."""
+    return str(value).replace("\r", "").replace("\n", "")
+
+
 def _get_visual_leak_detector() -> Any:
     global _visual_detector_singleton
     if _visual_detector_singleton is None:
@@ -211,12 +216,17 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 if isinstance(content, list) and content:
                     detector = _get_visual_leak_detector()
                     tool_name_for_scan = message.get("params", {}).get("name", "") if is_tools_call(message) else message.get("method", "")
+                    safe_tool_name_for_log = _sanitize_for_log(tool_name_for_scan)
                     from agent_bom.runtime.visual_leak_detector import run_visual_leak_check, run_visual_leak_redact
 
                     try:
                         alerts = await run_visual_leak_check(detector, tool_name_for_scan, content)
                     except asyncio.TimeoutError:
-                        logger.warning("gateway visual leak scan timed out for upstream=%s tool=%s", upstream.name, tool_name_for_scan)
+                        logger.warning(
+                            "gateway visual leak scan timed out for upstream=%s tool=%s",
+                            upstream.name,
+                            safe_tool_name_for_log,
+                        )
                         alerts = []
                     if alerts:
                         record_gateway_relay(upstream.name, "visual_leak_redacted")
@@ -237,7 +247,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                             logger.warning(
                                 "gateway visual leak redaction timed out for upstream=%s tool=%s",
                                 upstream.name,
-                                tool_name_for_scan,
+                                safe_tool_name_for_log,
                             )
 
         if settings.audit_sink is not None:

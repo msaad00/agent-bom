@@ -147,6 +147,10 @@ def set_gateway_evaluator(fn) -> None:  # noqa: ANN001
     _gateway_evaluator = fn
 
 
+def _sanitize_for_log(value: object) -> str:
+    return str(value).replace("\r", "").replace("\n", "")
+
+
 def _generate_proxy_source_id() -> str:
     hostname = platform.node() or "unknown"
     return hashlib.sha256(hostname.encode()).hexdigest()[:12]
@@ -1161,10 +1165,11 @@ async def run_proxy(
                         vis_tool = ""
                         if vis_id is not None and vis_id in pending_calls:
                             vis_tool = pending_calls[vis_id][0]
+                        safe_vis_tool = _sanitize_for_log(vis_tool or "unknown")
                         try:
                             vis_alerts = await run_visual_leak_check(visual_detector, vis_tool or "unknown", vis_content)
                         except asyncio.TimeoutError:
-                            logger.warning("Visual leak scan timed out for tool=%s", vis_tool or "unknown")
+                            logger.warning("Visual leak scan timed out for tool=%s", safe_vis_tool)
                             vis_alerts = []
                         if vis_alerts:
                             await _handle_alerts(vis_alerts, log_file)
@@ -1172,7 +1177,7 @@ async def run_proxy(
                                 try:
                                     redacted = await run_visual_leak_redact(visual_detector, vis_content)
                                 except asyncio.TimeoutError:
-                                    logger.warning("Visual leak redaction timed out for tool=%s", vis_tool or "unknown")
+                                    logger.warning("Visual leak redaction timed out for tool=%s", safe_vis_tool)
                                 else:
                                     msg["result"]["content"] = redacted
                                     line = (json.dumps(msg) + "\n").encode()

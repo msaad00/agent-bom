@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 import time
 from typing import Any, Optional
 
@@ -86,6 +87,13 @@ def _safe_url(url: str) -> str:  # noqa: PLW0108
         return "<redacted-url>"
 
 
+def _jittered_wait(wait: float) -> float:
+    """Apply small positive jitter so concurrent clients do not back off in lockstep."""
+    if wait <= 0:
+        return 0.0
+    return min(wait + random.uniform(0.0, wait * 0.1), MAX_BACKOFF)
+
+
 def create_client(timeout: float | None = None, max_redirects: int = 5) -> httpx.AsyncClient:
     """Create an httpx.AsyncClient with connection-level retries.
 
@@ -162,6 +170,7 @@ async def request_with_retry(
                     wait = backoff
             else:
                 wait = backoff
+            wait = _jittered_wait(wait)
 
             if attempt < max_retries:
                 logger.info(
@@ -185,14 +194,15 @@ async def request_with_retry(
 
         except httpx.TimeoutException:
             if attempt < max_retries:
+                wait = _jittered_wait(backoff)
                 logger.info(
                     "Timeout on %s — retry %d/%d in %.1fs",
                     log_url,
                     attempt + 1,
                     max_retries,
-                    backoff,
+                    wait,
                 )
-                await asyncio.sleep(backoff)
+                await asyncio.sleep(wait)
                 backoff = min(backoff * 2, MAX_BACKOFF)
             else:
                 logger.warning("Timeout on %s — exhausted %d retries", log_url, max_retries)
@@ -201,15 +211,16 @@ async def request_with_retry(
         except httpx.HTTPError as e:
             safe_err = _sanitize_for_log(e)
             if attempt < max_retries:
+                wait = _jittered_wait(backoff)
                 logger.info(
                     "HTTP error on %s: %s — retry %d/%d in %.1fs",
                     log_url,
                     safe_err,
                     attempt + 1,
                     max_retries,
-                    backoff,
+                    wait,
                 )
-                await asyncio.sleep(backoff)
+                await asyncio.sleep(wait)
                 backoff = min(backoff * 2, MAX_BACKOFF)
             else:
                 logger.warning("HTTP error on %s: %s — exhausted %d retries", log_url, safe_err, max_retries)

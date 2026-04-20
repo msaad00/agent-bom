@@ -1155,17 +1155,27 @@ async def run_proxy(
                     vis_result = msg.get("result")
                     vis_content = vis_result.get("content") if isinstance(vis_result, dict) else None
                     if isinstance(vis_content, list) and vis_content:
+                        from agent_bom.runtime.visual_leak_detector import run_visual_leak_check, run_visual_leak_redact
+
                         vis_id = msg.get("id")
                         vis_tool = ""
                         if vis_id is not None and vis_id in pending_calls:
                             vis_tool = pending_calls[vis_id][0]
-                        vis_alerts = visual_detector.check(vis_tool or "unknown", vis_content)
+                        try:
+                            vis_alerts = await run_visual_leak_check(visual_detector, vis_tool or "unknown", vis_content)
+                        except asyncio.TimeoutError:
+                            logger.warning("Visual leak scan timed out for tool=%s", vis_tool or "unknown")
+                            vis_alerts = []
                         if vis_alerts:
                             await _handle_alerts(vis_alerts, log_file)
                             if not log_only:
-                                redacted = visual_detector.redact(vis_content)
-                                msg["result"]["content"] = redacted
-                                line = (json.dumps(msg) + "\n").encode()
+                                try:
+                                    redacted = await run_visual_leak_redact(visual_detector, vis_content)
+                                except asyncio.TimeoutError:
+                                    logger.warning("Visual leak redaction timed out for tool=%s", vis_tool or "unknown")
+                                else:
+                                    msg["result"]["content"] = redacted
+                                    line = (json.dumps(msg) + "\n").encode()
 
                 # Inline response scanning (PII, secrets, payload vuln)
                 if scan_config.enabled and "result" in msg:

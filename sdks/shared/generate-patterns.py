@@ -21,6 +21,14 @@ PATTERNS_PY = ROOT / "src" / "agent_bom" / "runtime" / "patterns.py"
 OUTPUT = Path(__file__).resolve().parent / "patterns.json"
 
 
+def _stdout(message: str) -> None:
+    sys.stdout.write(f"{message}\n")
+
+
+def _stderr(message: str) -> None:
+    sys.stderr.write(f"{message}\n")
+
+
 def _flags_str(pattern: re.Pattern) -> str:
     """Convert re flags to portable string representation."""
     parts: list[str] = []
@@ -93,17 +101,17 @@ def main() -> None:
 
     if "--check" in sys.argv:
         if not OUTPUT.exists():
-            print(f"FAIL: {OUTPUT} does not exist — run: python {__file__}")
+            _stderr(f"FAIL: {OUTPUT} does not exist — run: python {__file__}")
             sys.exit(1)
         existing = OUTPUT.read_text()
         if existing != current:
-            print(f"FAIL: {OUTPUT} is stale — regenerate with: python {__file__}")
+            _stderr(f"FAIL: {OUTPUT} is stale — regenerate with: python {__file__}")
             sys.exit(1)
-        print(f"OK: {OUTPUT} is up-to-date")
+        _stdout(f"OK: {OUTPUT} is up-to-date")
         return
 
     OUTPUT.write_text(current)
-    print(
+    _stdout(
         f"Generated {OUTPUT} ({len(data['credential_patterns'])} credential, "
         f"{len(data['dangerous_arg_patterns'])} arg, "
         f"{len(data['response_injection_patterns'])} injection, "

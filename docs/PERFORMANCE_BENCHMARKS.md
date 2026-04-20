@@ -36,6 +36,18 @@ tag index in under 50 ms. You can re-index on every evidence-bundle
 export without caching; caching becomes interesting only above ~200k
 findings.
 
+### OSV fallback accounting — `skipped_non_osv_ecosystems`
+
+The scanner tracks packages that deliberately skip the OSV network path
+because their ecosystem is not OSV-backed (for example MCP registry
+entries and other non-package inventory rows). This counter is not a
+false-negative bucket; it is the expected accounting for inventory
+surfaces that never belonged in the OSV query set.
+
+**Implication for operators:** rising `skipped_non_osv_ecosystems`
+counts usually mean your inventory mix includes more registry or
+non-package metadata, not that vulnerability coverage regressed.
+
 ### Compliance bundle signature — HMAC-SHA256 over canonical JSON
 
 The signing path behind `/v1/compliance/{framework}/report`. Measured

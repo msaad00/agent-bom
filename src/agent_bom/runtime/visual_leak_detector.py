@@ -37,9 +37,11 @@ matched a credential or PII pattern and returns a new list with updated
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 import logging
+import os
 import re
 from dataclasses import dataclass
 from typing import Any, Iterable
@@ -75,7 +77,7 @@ def _ocr_available() -> bool:
         import pytesseract  # noqa: PLC0415
 
         pytesseract.get_tesseract_version()
-    except Exception:  # noqa: BLE001 — tesseract binary may be missing even if python shim is installed
+    except (FileNotFoundError, OSError, RuntimeError):
         return False
     return True
 
@@ -93,7 +95,7 @@ def _decode_image(block: dict[str, Any]):
         return None
     try:
         return Image.open(io.BytesIO(buf))
-    except Exception:  # noqa: BLE001 — Pillow raises many specific classes here
+    except OSError:
         return None
 
 
@@ -218,7 +220,7 @@ class VisualLeakDetector:
             return []
         try:
             words = _extract_word_boxes(img)
-        except Exception:  # noqa: BLE001
+        except (OSError, RuntimeError, ValueError):
             logger.warning("OCR failed on image block; skipping")
             return []
         matches = _match_patterns(words, CREDENTIAL_PATTERNS, "credential_leak")
@@ -267,7 +269,7 @@ class VisualLeakDetector:
                 continue
             try:
                 words = _extract_word_boxes(img)
-            except Exception:  # noqa: BLE001
+            except (OSError, RuntimeError, ValueError):
                 out.append(block)
                 continue
             matches = _match_patterns(words, CREDENTIAL_PATTERNS, "credential_leak")
@@ -284,4 +286,22 @@ class VisualLeakDetector:
         return out
 
 
-__all__ = ["VisualLeakDetector"]
+def _visual_leak_timeout_seconds() -> float:
+    raw = os.environ.get("AGENT_BOM_VISUAL_LEAK_TIMEOUT_SECONDS", "1.5").strip()
+    try:
+        return max(0.1, float(raw))
+    except ValueError:
+        return 1.5
+
+
+async def run_visual_leak_check(detector: VisualLeakDetector, tool_name: str, content_blocks: list[dict[str, Any]]) -> list[Alert]:
+    timeout = _visual_leak_timeout_seconds()
+    return await asyncio.wait_for(asyncio.to_thread(detector.check, tool_name, content_blocks), timeout=timeout)
+
+
+async def run_visual_leak_redact(detector: VisualLeakDetector, content_blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    timeout = _visual_leak_timeout_seconds()
+    return await asyncio.wait_for(asyncio.to_thread(detector.redact, content_blocks), timeout=timeout)
+
+
+__all__ = ["VisualLeakDetector", "run_visual_leak_check", "run_visual_leak_redact"]

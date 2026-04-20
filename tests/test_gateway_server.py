@@ -13,6 +13,7 @@ paths a pilot team would actually run into.
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from starlette.testclient import TestClient
@@ -387,5 +388,47 @@ def test_visual_leak_detection_clean_response_passes_through() -> None:
         assert detector.check_calls, "check must fire when the flag is on"
         assert detector.redact_calls == [], "redact must not fire without alerts"
         assert not any(e["action"] == "gateway.visual_leak_blocked" for e in audit_events)
+    finally:
+        gw._visual_detector_singleton = None
+
+
+def test_visual_leak_detection_timeout_fails_open_without_blocking_response(monkeypatch) -> None:
+    import agent_bom.gateway_server as gw
+
+    class _SlowDetector:
+        enabled = True
+
+        def check(self, tool_name, content_blocks):
+            time.sleep(0.05)
+            return []
+
+        def redact(self, content_blocks):
+            return content_blocks
+
+    detector = _SlowDetector()
+    gw._visual_detector_singleton = detector
+    monkeypatch.setenv("AGENT_BOM_VISUAL_LEAK_TIMEOUT_SECONDS", "0.001")
+
+    async def fake_caller(upstream, message, extra_headers):
+        return {
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": {"content": [{"type": "image", "data": "CLEAN", "mimeType": "image/png"}]},
+        }
+
+    try:
+        settings = GatewaySettings(
+            registry=_simple_registry(),
+            policy={},
+            upstream_caller=fake_caller,
+            enable_visual_leak_detection=True,
+        )
+        client = TestClient(create_gateway_app(settings))
+        resp = client.post(
+            "/mcp/filesystem",
+            json=_json_rpc("tools/call", name="take_screenshot", arguments={}),
+        )
+        assert resp.status_code == 200
+        assert resp.json()["result"]["content"][0]["data"] == "CLEAN"
     finally:
         gw._visual_detector_singleton = None

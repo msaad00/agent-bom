@@ -225,8 +225,26 @@ and the [focused EKS rollout](site-docs/deployment/eks-mcp-pilot.md).
 | **proxy / runtime** | `agent-bom proxy` (stdio) / `--sse` (HTTP) | Inline MCP JSON-RPC inspection + policy enforcement | K8s sidecar or laptop wrapper |
 | **gateway** | `agent-bom gateway serve`, `/v1/gateway/policies`, `/v1/proxy/audit` | Central HTTP traffic plane plus shared policy/audit plane | Service + API routes |
 | **API + UI** | `/v1/*` + Next.js dashboard | Findings, graph, remediation, compliance, posture | 2 Deployments + HPA |
+| **OTEL / observability** | `POST /v1/traces`, `--otel-endpoint`, API tracing | W3C trace context, OTLP export, and OTEL trace ingest for runtime evidence | API route + CLI/runtime hooks |
 
 By default, findings, fleet data, audit logs, graph state, and remediation outputs stay in your infrastructure. Optional egress (OSV lookups, NVD enrichment, Slack / Jira / Vanta / Drata webhooks, SIEM / OTLP) is operator-controlled.
+
+### OTEL is first-class, OPA is optional interop
+
+`agent-bom` already treats OpenTelemetry as a real product surface, not a bolt-on:
+
+- the API preserves W3C `traceparent` context and can export request spans over OTLP/HTTP
+- the CLI can emit OTLP metrics and scan context to your collector with `--otel-endpoint`
+- the control plane can ingest OTEL traces at `POST /v1/traces`
+- runtime protection can consume OTEL traces as evidence, not just emit them
+
+Policy is different. The shipped gateway and proxy use the repo's native JSON policy engine, not OPA/Rego. That is an intentional product choice documented in [ADR-002](docs/adr/002-custom-policy-engine.md): lower operator complexity, no extra OPA binary, and one policy model shared across scan, gateway, proxy, and runtime.
+
+What makes sense today:
+
+- **promote OTEL** as a first-class interoperability path
+- **keep the native policy engine** as the default shipped control plane
+- treat **OPA/Rego** as a future enterprise interop option, such as bundle import/export or an external decision hook, not as a replacement for the current engine
 
 ### Two enforcement shapes, one control plane
 

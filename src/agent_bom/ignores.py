@@ -36,6 +36,7 @@ Fields
 from __future__ import annotations
 
 import fnmatch
+import json
 import logging
 from datetime import date, datetime
 from pathlib import Path
@@ -67,27 +68,29 @@ def load_ignore_file(path: str | Path | None = None) -> list[dict[str, Any]]:
     try:
         with target.open() as fh:
             data = yaml.safe_load(fh) or {}
-        entries = data.get("ignores", [])
-        if not isinstance(entries, list):
-            logger.warning("agent-bom-ignore: 'ignores' must be a list — skipping file")
-            return []
-        return entries
-    except Exception as exc:
+    except (OSError, yaml.YAMLError) as exc:
         logger.warning("agent-bom-ignore: failed to parse %s: %s", target, exc)
         return []
+    if not isinstance(data, dict):
+        logger.warning("agent-bom-ignore: expected mapping at top level — skipping file")
+        return []
+    entries = data.get("ignores", [])
+    if not isinstance(entries, list):
+        logger.warning("agent-bom-ignore: 'ignores' must be a list — skipping file")
+        return []
+    return entries
 
 
 def _parse_minimal_yaml(path: Path) -> list[dict[str, Any]]:
     """Fallback parser for simple ignore files when PyYAML is not installed."""
     try:
-        import json
-
         text = path.read_text()
         # Try JSON as last resort
         if text.strip().startswith("{") or text.strip().startswith("["):
             data = json.loads(text)
             return data.get("ignores", data) if isinstance(data, dict) else data
-    except Exception:
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("agent-bom-ignore: failed to parse %s without PyYAML: %s", path, exc)
         pass
     logger.warning("agent-bom-ignore: PyYAML not installed and file is not JSON — ignore file skipped. Install PyYAML: pip install pyyaml")
     return []

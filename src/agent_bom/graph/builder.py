@@ -52,8 +52,10 @@ def build_unified_graph_from_report(
     # Track shared resources for lateral movement edges
     server_to_agents: dict[str, list[str]] = defaultdict(list)
     cred_to_agents: dict[str, list[str]] = defaultdict(list)
-    # Track package→server links for vuln edges
+    # Track server/package indexes for vuln edges
     pkg_key_to_servers: dict[str, list[str]] = defaultdict(list)
+    server_name_to_agent_servers: dict[str, dict[str, str]] = defaultdict(dict)
+    agent_to_server_ids: dict[str, set[str]] = defaultdict(set)
 
     # ── Agents → Servers → Packages → Tools → Credentials ───────────
     for agent_dict in agents_data:
@@ -132,6 +134,8 @@ def build_unified_graph_from_report(
                 )
             )
             server_to_agents[srv_name].append(agent_name)
+            server_name_to_agent_servers[srv_name][agent_name] = srv_id
+            agent_to_server_ids[agent_name].add(srv_id)
 
             # ── Packages ──
             for pkg_dict in srv_dict.get("packages", []):
@@ -276,20 +280,26 @@ def build_unified_graph_from_report(
                     )
                 )
 
-        # Link affected servers → vulnerability
-        for agent_name in br_dict.get("affected_agents", []):
-            for srv_name in br_dict.get("affected_servers", []):
-                srv_id = f"server:{agent_name}:{srv_name}"
-                if graph.has_node(srv_id):
-                    graph.add_edge(
-                        UnifiedEdge(
-                            source=srv_id,
-                            target=vuln_node_id,
-                            relationship=RelationshipType.VULNERABLE_TO,
-                            weight=SEVERITY_RISK_SCORE.get(severity, 1.0),
-                            evidence={"package": br_dict.get("package", "")},
-                        )
-                    )
+        # Link affected servers → vulnerability using indexed lookups instead
+        # of an agent×server cross-product scan.
+        for srv_id in _resolve_affected_server_ids(
+            br_dict,
+            pkg_name=pkg_name,
+            pkg_version=pkg_version,
+            ecosystem=ecosystem,
+            pkg_key_to_servers=pkg_key_to_servers,
+            server_name_to_agent_servers=server_name_to_agent_servers,
+            agent_to_server_ids=agent_to_server_ids,
+        ):
+            graph.add_edge(
+                UnifiedEdge(
+                    source=srv_id,
+                    target=vuln_node_id,
+                    relationship=RelationshipType.VULNERABLE_TO,
+                    weight=SEVERITY_RISK_SCORE.get(severity, 1.0),
+                    evidence={"package": br_dict.get("package", "")},
+                )
+            )
 
     # ── Shared server edges (agent ↔ agent) ──────────────────────────
     for srv_name, agent_names in server_to_agents.items():
@@ -669,6 +679,56 @@ def _add_vuln_node(
             weight=SEVERITY_RISK_SCORE.get(severity, 1.0),
         )
     )
+
+
+def _normalize_server_name(raw: Any) -> str:
+    """Return a comparable server name from string or object payloads."""
+    if isinstance(raw, dict):
+        return str(raw.get("name", "")).strip()
+    name = getattr(raw, "name", raw)
+    return str(name).strip()
+
+
+def _resolve_affected_server_ids(
+    br_dict: dict[str, Any],
+    *,
+    pkg_name: str,
+    pkg_version: str,
+    ecosystem: str,
+    pkg_key_to_servers: dict[str, list[str]],
+    server_name_to_agent_servers: dict[str, dict[str, str]],
+    agent_to_server_ids: dict[str, set[str]],
+) -> list[str]:
+    """Resolve the concrete server node IDs touched by a blast-radius finding.
+
+    Preference order:
+    1. package-host servers from the inventory graph
+    2. explicit affected server names
+    3. explicit affected agent names
+
+    Each additional hint narrows the candidate set instead of creating a
+    synthetic agent×server cross-product.
+    """
+    candidate_ids: set[str] = set()
+    if pkg_name:
+        pkg_key = f"{ecosystem}:{pkg_name}:{pkg_version}"
+        candidate_ids.update(pkg_key_to_servers.get(pkg_key, []))
+
+    server_names = {name for name in (_normalize_server_name(server) for server in br_dict.get("affected_servers", [])) if name}
+    if server_names:
+        named_ids: set[str] = set()
+        for server_name in server_names:
+            named_ids.update(server_name_to_agent_servers.get(server_name, {}).values())
+        candidate_ids = (candidate_ids & named_ids) if candidate_ids else named_ids
+
+    agent_names = {str(agent).strip() for agent in br_dict.get("affected_agents", []) if str(agent).strip()}
+    if agent_names:
+        agent_ids: set[str] = set()
+        for agent_name in agent_names:
+            agent_ids.update(agent_to_server_ids.get(agent_name, set()))
+        candidate_ids = (candidate_ids & agent_ids) if candidate_ids else agent_ids
+
+    return sorted(candidate_ids)
 
 
 def _collect_compliance_tags(br_dict: dict[str, Any]) -> list[str]:

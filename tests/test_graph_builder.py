@@ -176,6 +176,18 @@ class TestBuildUnifiedGraphFromReport:
         # claude-desktop and cursor both use mcp-fs
         assert g.has_edge("agent:claude-desktop", "agent:cursor") or g.has_edge("agent:cursor", "agent:claude-desktop")
 
+    def test_blast_radius_does_not_cross_product_same_named_servers(self):
+        g = build_unified_graph_from_report(_minimal_report())
+        vuln_id = "vuln:CVE-2024-1234"
+        assert g.has_edge("server:claude-desktop:mcp-fs", vuln_id)
+        assert not g.has_edge("server:cursor:mcp-fs", vuln_id)
+
+    def test_blast_radius_accepts_object_shaped_affected_servers(self):
+        report = _minimal_report()
+        report["blast_radius"][0]["affected_servers"] = [{"name": "mcp-fs"}]
+        g = build_unified_graph_from_report(report)
+        assert g.has_edge("server:claude-desktop:mcp-fs", "vuln:CVE-2024-1234")
+
     def test_shared_credential_edge(self):
         g = build_unified_graph_from_report(_minimal_report())
         # Both agents expose GITHUB_TOKEN

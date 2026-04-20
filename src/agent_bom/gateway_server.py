@@ -27,6 +27,7 @@ Non-goals for MVP (see design doc):
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
@@ -47,6 +48,11 @@ UpstreamCaller = Callable[[UpstreamConfig, dict[str, Any], dict[str, str]], Awai
 # visual detector (Pillow/pytesseract). Built on first use when
 # ``enable_visual_leak_detection`` is True.
 _visual_detector_singleton: Any = None
+
+
+def _sanitize_for_log(value: Any) -> str:
+    """Return a single-line representation safe for plain-text logs."""
+    return str(value).replace("\r", "").replace("\n", "")
 
 
 def _get_visual_leak_detector() -> Any:
@@ -210,7 +216,18 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 if isinstance(content, list) and content:
                     detector = _get_visual_leak_detector()
                     tool_name_for_scan = message.get("params", {}).get("name", "") if is_tools_call(message) else message.get("method", "")
-                    alerts = detector.check(tool_name_for_scan, content)
+                    safe_tool_name_for_log = _sanitize_for_log(tool_name_for_scan)
+                    from agent_bom.runtime.visual_leak_detector import run_visual_leak_check, run_visual_leak_redact
+
+                    try:
+                        alerts = await run_visual_leak_check(detector, tool_name_for_scan, content)
+                    except asyncio.TimeoutError:
+                        logger.warning(
+                            "gateway visual leak scan timed out for upstream=%s tool=%s",
+                            upstream.name,
+                            safe_tool_name_for_log,
+                        )
+                        alerts = []
                     if alerts:
                         record_gateway_relay(upstream.name, "visual_leak_redacted")
                         if settings.audit_sink is not None:
@@ -224,7 +241,14 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                                     "leak_types": sorted({a.details.get("leak_type", "") for a in alerts}),
                                 }
                             )
-                        result["content"] = detector.redact(content)
+                        try:
+                            result["content"] = await run_visual_leak_redact(detector, content)
+                        except asyncio.TimeoutError:
+                            logger.warning(
+                                "gateway visual leak redaction timed out for upstream=%s tool=%s",
+                                upstream.name,
+                                safe_tool_name_for_log,
+                            )
 
         if settings.audit_sink is not None:
             await settings.audit_sink(

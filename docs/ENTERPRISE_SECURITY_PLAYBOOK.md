@@ -225,7 +225,7 @@ Overlay schema: [`gateway-upstreams.example.yaml`](../deploy/helm/agent-bom/exam
 
 ```bash
 # Wraps any stdio MCP server on a laptop
-agent-bom proxy --policy ./policy.json -- npx @mcp/server-filesystem /tmp
+agent-bom proxy --policy ./policy.json -- /usr/local/bin/your-stdio-mcp --arg ...
 ```
 
 Used for local MCPs the gateway can't front (stdio-only).
@@ -255,7 +255,8 @@ kubectl -n agent-bom port-forward svc/agent-bom-api 8080:8080 &
 ./scripts/pilot-verify.sh http://localhost:8080 "$API_KEY"
 ```
 
-Exit non-zero on any failure. Six checks: `/healthz`, auth, fleet ingest, scan, verification-key pin, Ed25519-signed evidence bundle verification. Source: [`scripts/pilot-verify.sh`](../scripts/pilot-verify.sh).
+Exit non-zero on any failure. Six checks:
+`/healthz`, authentication, fleet ingest, scan submit, public-key fetch for verification, and offline signature check of the compliance evidence bundle. Source: [`scripts/pilot-verify.sh`](../scripts/pilot-verify.sh).
 
 ---
 
@@ -405,7 +406,7 @@ Hand out **one** MCP config snippet to every team:
     "jira":   { "transport": "http", "url": "https://agent-bom-gateway.example.com/mcp/jira" },
     "github": { "transport": "http", "url": "https://agent-bom-gateway.example.com/mcp/github" },
     "snowflake": { "transport": "http", "url": "https://agent-bom-gateway.example.com/mcp/snowflake" },
-    "filesystem": { "command": "agent-bom", "args": ["proxy", "--", "npx", "@mcp/server-filesystem", "/tmp"] }
+    "filesystem": { "command": "agent-bom", "args": ["proxy", "--", "/usr/local/bin/your-stdio-mcp", "--arg", "..."] }
   }
 }
 ```

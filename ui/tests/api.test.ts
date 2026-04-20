@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { api } from '@/lib/api'
+import { setSessionApiKey, clearSessionApiKey } from '@/lib/auth'
 
 // ─── Mock fetch globally ───────────────────────────────────────────────────────
 
@@ -16,6 +17,7 @@ const originalFetch = global.fetch
 
 afterEach(() => {
   global.fetch = originalFetch
+  clearSessionApiKey()
   vi.restoreAllMocks()
 })
 
@@ -76,6 +78,23 @@ describe('api.listJobs', () => {
     expect(result.jobs).toHaveLength(1)
     expect(result.jobs[0].job_id).toBe('abc123')
     expect(result.count).toBe(1)
+  })
+
+  it('propagates a session API key and browser credentials', async () => {
+    setSessionApiKey("pilot-key-123")
+    const fetchMock = mockFetch({ jobs: [], count: 0 })
+    global.fetch = fetchMock
+
+    await api.listJobs()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/v1/jobs",
+      expect.objectContaining({
+        credentials: "include",
+        headers: { Authorization: "Bearer pilot-key-123" },
+        signal: expect.any(AbortSignal),
+      }),
+    )
   })
 
   it('throws on non-ok response', async () => {

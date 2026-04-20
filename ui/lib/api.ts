@@ -4,6 +4,7 @@
  */
 
 import type { UnifiedEdge, UnifiedGraphData, UnifiedNode } from "./graph-schema";
+import { getSessionAuthHeaders } from "./auth";
 import { getConfiguredApiUrl } from "./runtime-config";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -445,6 +446,22 @@ export interface VersionInfo {
   python_package: string;
 }
 
+export interface AuthDebugResponse {
+  authenticated: boolean;
+  auth_required: boolean;
+  configured_modes: string[];
+  recommended_ui_mode: string;
+  auth_method: string | null;
+  subject: string | null;
+  role: string | null;
+  tenant_id: string;
+  oidc_issuer_suffix: string | null;
+  api_key_id_prefix: string | null;
+  request_id: string | null;
+  trace_id: string | null;
+  span_id: string | null;
+}
+
 export interface JobsResponse {
   jobs: JobListItem[];
   count: number;
@@ -776,7 +793,11 @@ async function errorMessage(res: Response): Promise<string> {
 }
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${getConfiguredApiUrl()}${path}`, { signal: withTimeout() });
+  const res = await fetch(`${getConfiguredApiUrl()}${path}`, {
+    credentials: "include",
+    headers: getSessionAuthHeaders(),
+    signal: withTimeout(),
+  });
   if (!res.ok) throw new Error(await errorMessage(res));
   return res.json() as Promise<T>;
 }
@@ -784,7 +805,8 @@ async function get<T>(path: string): Promise<T> {
 async function post<T>(path: string, body: unknown, headers: Record<string, string> = {}): Promise<T> {
   const res = await fetch(`${getConfiguredApiUrl()}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...headers },
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...getSessionAuthHeaders(), ...headers },
     body: JSON.stringify(body),
     signal: withTimeout(),
   });
@@ -795,7 +817,8 @@ async function post<T>(path: string, body: unknown, headers: Record<string, stri
 async function put<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${getConfiguredApiUrl()}${path}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...getSessionAuthHeaders() },
     body: JSON.stringify(body),
     signal: withTimeout(),
   });
@@ -804,7 +827,12 @@ async function put<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function del(path: string): Promise<void> {
-  const res = await fetch(`${getConfiguredApiUrl()}${path}`, { method: "DELETE", signal: withTimeout() });
+  const res = await fetch(`${getConfiguredApiUrl()}${path}`, {
+    method: "DELETE",
+    credentials: "include",
+    headers: getSessionAuthHeaders(),
+    signal: withTimeout(),
+  });
   if (!res.ok) throw new Error(await errorMessage(res));
 }
 
@@ -813,6 +841,7 @@ async function del(path: string): Promise<void> {
 export const api = {
   health: () => get<HealthResponse>("/health"),
   version: () => get<VersionInfo>("/version"),
+  getAuthDebug: () => get<AuthDebugResponse>("/v1/auth/debug"),
 
   /** Start a scan — returns immediately with job_id */
   startScan: (req: ScanRequest) => post<ScanJob>("/v1/scan", req),

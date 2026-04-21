@@ -153,6 +153,34 @@ def _job_for_request(request: Request, job_id: str) -> ScanJob:
     return job
 
 
+def enqueue_scan_job(
+    *,
+    tenant_id: str,
+    triggered_by: str,
+    request_body: ScanRequest,
+    source_id: str | None = None,
+) -> ScanJob:
+    """Persist and queue a scan job for async execution."""
+    store = _get_store()
+    enforce_active_scan_quota(tenant_id)
+    enforce_retained_jobs_quota(tenant_id)
+
+    job = ScanJob(
+        job_id=str(uuid.uuid4()),
+        tenant_id=tenant_id,
+        source_id=source_id,
+        triggered_by=triggered_by,
+        created_at=_now(),
+        request=request_body,
+    )
+    store.put(job)
+    _jobs_put(job.job_id, job)
+
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(_executor, _run_scan_sync, job)
+    return job
+
+
 # ─── Core Scan Endpoints ─────────────────────────────────────────────────────
 
 
@@ -161,26 +189,11 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
     """Start a scan. Returns immediately with a job_id.
     Poll GET /v1/scan/{job_id} for results, or stream via /v1/scan/{job_id}/stream.
     """
-    store = _get_store()
-    tenant_id = _tenant_id(request)
-    enforce_active_scan_quota(tenant_id)
-    enforce_retained_jobs_quota(tenant_id)
-
-    job = ScanJob(
-        job_id=str(uuid.uuid4()),
-        tenant_id=tenant_id,
+    return enqueue_scan_job(
+        tenant_id=_tenant_id(request),
         triggered_by=_triggered_by(request),
-        created_at=_now(),
-        request=body,
+        request_body=body,
     )
-    store.put(job)
-    # Keep in-memory ref for SSE streaming (progress list updates in real-time)
-    _jobs_put(job.job_id, job)
-
-    loop = asyncio.get_running_loop()
-    loop.run_in_executor(_executor, _run_scan_sync, job)
-
-    return job
 
 
 @router.get("/v1/scan/{job_id}", response_model=ScanJob, tags=["scan"])

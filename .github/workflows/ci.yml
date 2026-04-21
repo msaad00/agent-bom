@@ -173,8 +173,11 @@ jobs:
         run: |
           cd ui
           cp package-lock.json /tmp/ui-package-lock.before.json
-          npm install --package-lock-only --ignore-scripts
-          diff -u /tmp/ui-package-lock.before.json package-lock.json
+          npm run lock:normalize
+          if ! diff -u /tmp/ui-package-lock.before.json package-lock.json; then
+            echo "::error::ui/package-lock.json drifted under the canonical UI toolchain. Run: cd ui && npm run lock:normalize"
+            exit 1
+          fi
 
       - name: Verify UI toolchain contract
         run: |

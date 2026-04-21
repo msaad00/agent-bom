@@ -2,6 +2,7 @@
   "name": "ui",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@10.9.7",
   "engines": {
     "node": ">=20 <23"
   },
@@ -11,6 +12,7 @@
     "start": "next start",
     "bundle:check": "node scripts/check-bundle-budget.mjs",
     "lint": "eslint",
+    "lock:normalize": "npm install --package-lock-only --ignore-scripts",
     "test:e2e": "playwright test",
     "verify:toolchain": "node scripts/verify-toolchain.mjs",
     "test": "vitest",

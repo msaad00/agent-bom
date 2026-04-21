@@ -35,6 +35,9 @@ import {
   minimapNodeColor,
 } from "@/lib/graph-utils";
 import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
+import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
+import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 
 // ─── Filter Toolbar ─────────────────────────────────────────────────────────
 
@@ -188,6 +191,7 @@ export default function MeshPage() {
   const [vulnerableOnly, setVulnerableOnly] = useState(true);
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const { counts } = useDeploymentContext();
 
   useEffect(() => {
     api
@@ -389,6 +393,9 @@ export default function MeshPage() {
   }
 
   if (jobs.length === 0) {
+    if (counts && !isDeploymentSurfaceAvailable("mesh", counts)) {
+      return <DeploymentSurfaceRequiredState surface="mesh" counts={counts} detail={error} />;
+    }
     return (
       <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
         <ShieldAlert className="w-8 h-8 text-zinc-600" />

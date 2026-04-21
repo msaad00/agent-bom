@@ -48,6 +48,9 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
+import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 
 // ─── Agents List Helpers ────────────────────────────────────────────────────
 
@@ -97,6 +100,7 @@ function AgentsList() {
   const [error, setError] = useState("");
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const { counts } = useDeploymentContext();
 
   function toggleCollapse(agentName: string) {
     setExpandedAgent((current) => (current === agentName ? null : agentName));
@@ -202,15 +206,18 @@ function AgentsList() {
         </div>
       )}
 
-      {!loading && agents.length === 0 && (
-        <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
-          <Server className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-          <p className="text-zinc-500 text-sm">No agents discovered locally.</p>
-          <p className="text-zinc-600 text-xs mt-1">
-            Install Claude Desktop, Cursor, or Windsurf and configure MCP servers.
-          </p>
-        </div>
-      )}
+      {!loading && agents.length === 0 &&
+        (counts && !isDeploymentSurfaceAvailable("agents", counts) ? (
+          <DeploymentSurfaceRequiredState surface="agents" counts={counts} detail={error || null} />
+        ) : (
+          <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
+            <Server className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
+            <p className="text-zinc-500 text-sm">No agents discovered locally.</p>
+            <p className="text-zinc-600 text-xs mt-1">
+              Install Claude Desktop, Cursor, or Windsurf and configure MCP servers.
+            </p>
+          </div>
+        ))}
 
       {/* Configured agents */}
         <div className="space-y-4">

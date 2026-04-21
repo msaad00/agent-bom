@@ -493,11 +493,48 @@ def test_oidc_config_passes_required_nonce_to_verifier():
 
 @pytest.mark.asyncio
 async def test_observability_metrics_include_oidc_decode_failures():
-    from agent_bom.api.routes.observability import prometheus_metrics
+    from agent_bom.api.routes.observability import _render_prometheus_metrics
 
     record_oidc_decode_failure()
     record_oidc_decode_failure()
 
-    response = await prometheus_metrics()
+    response = await _render_prometheus_metrics()
     body = response.body.decode("utf-8")
     assert "agent_bom_oidc_decode_failures_total 2" in body
+
+
+@pytest.mark.asyncio
+async def test_observability_metrics_are_tenant_scoped_when_tenant_present():
+    from types import SimpleNamespace
+
+    from agent_bom.api.routes import observability as observability_routes
+
+    class _FleetStore:
+        def list_by_tenant(self, tenant_id: str):
+            assert tenant_id == "tenant-alpha"
+            return [
+                SimpleNamespace(lifecycle_state="approved"),
+                SimpleNamespace(lifecycle_state="quarantined"),
+            ]
+
+    request = SimpleNamespace(state=SimpleNamespace(tenant_id="tenant-alpha"))
+    with patch("agent_bom.api.routes.observability._get_fleet_store", return_value=_FleetStore()):
+        response = await observability_routes._render_prometheus_metrics(request)
+    body = response.body.decode("utf-8")
+    assert "agent_bom_fleet_total 2" in body
+    assert "agent_bom_fleet_quarantined 1" in body
+
+
+@pytest.mark.asyncio
+async def test_observability_metrics_do_not_aggregate_fleet_without_tenant_context():
+    from agent_bom.api.routes import observability as observability_routes
+
+    class _FleetStore:
+        def list_by_tenant(self, tenant_id: str):
+            raise AssertionError("list_by_tenant should not be called without tenant context")
+
+    with patch("agent_bom.api.routes.observability._get_fleet_store", return_value=_FleetStore()):
+        response = await observability_routes._render_prometheus_metrics()
+    body = response.body.decode("utf-8")
+    assert "agent_bom_fleet_total 0" in body
+    assert "agent_bom_fleet_quarantined 0" in body

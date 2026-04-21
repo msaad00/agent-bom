@@ -298,6 +298,14 @@ def test_job_store_list_summary(mock_pool):
     assert isinstance(result, list)
 
 
+def test_job_store_list_all_requires_tenant_id(mock_pool):
+    from agent_bom.api.postgres_store import PostgresJobStore
+
+    store = PostgresJobStore(pool=mock_pool)
+    with pytest.raises(ValueError, match="tenant_id is required"):
+        store.list_all()
+
+
 def test_job_store_list_summary_includes_tenant(mock_pool):
     from agent_bom.api.postgres_store import PostgresJobStore
 

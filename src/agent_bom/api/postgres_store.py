@@ -114,14 +114,14 @@ class PostgresJobStore:
     def list_all(self, tenant_id: str | None = None) -> list:
         from .server import ScanJob
 
+        if tenant_id is None:
+            raise ValueError("tenant_id is required for PostgresJobStore.list_all()")
+
         with _tenant_connection(self._pool) as conn:
-            if tenant_id is None:
-                rows = conn.execute("SELECT data FROM scan_jobs ORDER BY created_at DESC").fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT data FROM scan_jobs WHERE team_id = %s ORDER BY created_at DESC",
-                    (tenant_id,),
-                ).fetchall()
+            rows = conn.execute(
+                "SELECT data FROM scan_jobs WHERE team_id = %s ORDER BY created_at DESC",
+                (tenant_id,),
+            ).fetchall()
             return [ScanJob.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
 
     def list_summary(self, tenant_id: str | None = None) -> list[dict]:

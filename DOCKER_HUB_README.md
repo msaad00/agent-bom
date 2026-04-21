@@ -25,13 +25,31 @@ Keep the split. The Python runtime surfaces and the Node UI have different
 runtime, patch cadence, and scaling characteristics. They are companion images,
 not separate products.
 
+## Run This First
+
+Pilot on one workstation:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml
+docker compose -f docker-compose.pilot.yml up -d
+# Dashboard -> http://localhost:3000
+```
+
+Production in your own cluster from a checked-out repo:
+
+```bash
+helm upgrade --install agent-bom deploy/helm/agent-bom \
+  --namespace agent-bom --create-namespace \
+  -f deploy/helm/agent-bom/examples/eks-production-values.yaml
+```
+
 References:
 
 - GitHub README: https://github.com/msaad00/agent-bom/blob/main/README.md
 - Product brief: https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_BRIEF.md
 - Verified metrics: https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_METRICS.md
 
-## Quick Start
+## CLI And Runtime Quick Start
 
 **Discover and scan your AI agent environment**
 

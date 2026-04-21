@@ -4,6 +4,27 @@ Use this page when the question is not "how do I install `agent-bom`?" but
 "what do I actually deploy in my own infrastructure, and what data path does it
 create?"
 
+`agent-bom` is one product with two deployable images:
+
+- `agentbom/agent-bom` for scanner, API, jobs, gateway, proxy, and other non-browser runtimes
+- `agentbom/agent-bom-ui` for the browser dashboard
+
+Pilot on one workstation:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml
+docker compose -f docker-compose.pilot.yml up -d
+# Dashboard -> http://localhost:3000
+```
+
+Production in your own cluster from a checked-out repo:
+
+```bash
+helm upgrade --install agent-bom deploy/helm/agent-bom \
+  --namespace agent-bom --create-namespace \
+  -f deploy/helm/agent-bom/examples/eks-production-values.yaml
+```
+
 `agent-bom` is intentionally packaged as interoperable surfaces, not a forced
 monolith:
 

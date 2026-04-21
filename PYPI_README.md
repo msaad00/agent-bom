@@ -49,6 +49,22 @@ pip install 'agent-bom[ui]'                      # once, if you want the dashboa
 agent-bom serve                                  # API + dashboard + graph explorer
 ```
 
+Self-hosted pilot:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml
+docker compose -f docker-compose.pilot.yml up -d
+# Dashboard -> http://localhost:3000
+```
+
+Production chart from a checked-out repo:
+
+```bash
+helm upgrade --install agent-bom deploy/helm/agent-bom \
+  --namespace agent-bom --create-namespace \
+  -f deploy/helm/agent-bom/examples/eks-production-values.yaml
+```
+
 ## Product views
 
 ### Dashboard

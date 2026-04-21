@@ -220,7 +220,7 @@ and the [focused EKS rollout](site-docs/deployment/eks-mcp-pilot.md).
 | Surface | CLI / route | What it does | Runs as |
 |---|---|---|---|
 | **scan** | `agent-bom agents`, `agent-bom image`, `agent-bom iac` | Discovery, inventory, CVE enrichment, blast-radius scoring | CLI + CronJob |
-| **CI/CD gate** | GitHub Action `uses: msaad00/agent-bom@v0.79.0` | Pull-request and release gating, SARIF, policy-driven exits | GitHub Actions runner |
+| **CI/CD gate** | GitHub Action `uses: msaad00/agent-bom@v0.80.0` | Pull-request and release gating, SARIF, policy-driven exits | GitHub Actions runner |
 | **fleet** | `POST /v1/fleet/sync` + CLI `--push-url` | Endpoint + collector fleet ingest with tenant scoping | API endpoint |
 | **proxy / runtime** | `agent-bom proxy` (stdio) / `--sse` (HTTP) | Inline MCP JSON-RPC inspection + policy enforcement | K8s sidecar or laptop wrapper |
 | **gateway** | `agent-bom gateway serve`, `/v1/gateway/policies`, `/v1/proxy/audit` | Central HTTP traffic plane plus shared policy/audit plane | Service + API routes |
@@ -467,7 +467,7 @@ docker run --rm agentbom/agent-bom agents    # Docker
 |------|----------|
 | CLI (`agent-bom agents`) | local audit + project scan |
 | Endpoint fleet (`--push-url …/v1/fleet/sync`) | employee laptops pushing into self-hosted fleet |
-| GitHub Action (`uses: msaad00/agent-bom@v0.79.0`) | CI/CD + SARIF |
+| GitHub Action (`uses: msaad00/agent-bom@v0.80.0`) | CI/CD + SARIF |
 | Docker (`agentbom/agent-bom`) | isolated scans, containerized self-hosting |
 | Kubernetes / Helm (`helm install agent-bom deploy/helm/agent-bom`) | self-hosted API + dashboard, scheduled discovery |
 | REST API (`agent-bom api`) | platform integration, self-hosted control plane |
@@ -490,7 +490,7 @@ References: [PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) · [PRODUCT_METRICS.md](do
 <summary><b>CI/CD in 60 seconds</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.79.0
+- uses: msaad00/agent-bom@v0.80.0
   with:
     scan-type: scan
     severity-threshold: high

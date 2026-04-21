@@ -426,6 +426,7 @@ def log_tool_call(
     payload_sha256: str = "",
     message_id: int | str | None = None,
     agent_id: str = ANONYMOUS,
+    tenant_id: str = "default",
 ) -> None:
     """Append a tool call record to the audit JSONL log."""
     record: dict = {
@@ -433,6 +434,7 @@ def log_tool_call(
         "type": "tools/call",
         "tool": tool_name,
         "agent_id": agent_id,
+        "tenant_id": tenant_id,
         "args": _truncate_args(arguments),
         "policy": policy_result,
     }

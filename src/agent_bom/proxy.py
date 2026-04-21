@@ -331,6 +331,7 @@ async def _proxy_sse_server(
     replay_detector = ReplayDetector()
     scan_config = load_scan_config(policy) if policy else ScanConfig()
     runtime_alerts: list[dict] = []
+    control_plane_tenant_id = (os.environ.get("AGENT_BOM_TENANT_ID") or "default").strip() or "default"
 
     def _handle_alerts_sse(alerts, log_f=None):
         for alert in alerts:
@@ -422,6 +423,7 @@ async def _proxy_sse_server(
                             payload_sha256=p_hash,
                             message_id=msg_id,
                             agent_id=agent_id,
+                            tenant_id=control_plane_tenant_id,
                         )
                     error_resp = make_error_response(msg_id, -32600, identity_block_reason)
                     sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
@@ -432,7 +434,15 @@ async def _proxy_sse_server(
                     reason = "Replayed payload detected"
                     if log_file:
                         log_tool_call(
-                            log_file, tool_name, arguments, "blocked", reason, payload_sha256=p_hash, message_id=msg_id, agent_id=agent_id
+                            log_file,
+                            tool_name,
+                            arguments,
+                            "blocked",
+                            reason,
+                            payload_sha256=p_hash,
+                            message_id=msg_id,
+                            agent_id=agent_id,
+                            tenant_id=control_plane_tenant_id,
                         )
                     error_resp = make_error_response(msg_id, -32600, reason)
                     sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
@@ -443,7 +453,15 @@ async def _proxy_sse_server(
                     reason = f"Tool '{tool_name}' not in declared tools/list"
                     if log_file:
                         log_tool_call(
-                            log_file, tool_name, arguments, "blocked", reason, payload_sha256=p_hash, message_id=msg_id, agent_id=agent_id
+                            log_file,
+                            tool_name,
+                            arguments,
+                            "blocked",
+                            reason,
+                            payload_sha256=p_hash,
+                            message_id=msg_id,
+                            agent_id=agent_id,
+                            tenant_id=control_plane_tenant_id,
                         )
                     error_resp = make_error_response(msg_id, -32600, reason)
                     sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
@@ -463,6 +481,7 @@ async def _proxy_sse_server(
                                 payload_sha256=p_hash,
                                 message_id=msg_id,
                                 agent_id=agent_id,
+                                tenant_id=control_plane_tenant_id,
                             )
                         error_resp = make_error_response(msg_id, -32600, reason)
                         sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
@@ -505,6 +524,7 @@ async def _proxy_sse_server(
                                 payload_sha256=p_hash,
                                 message_id=msg_id,
                                 agent_id=agent_id,
+                                tenant_id=control_plane_tenant_id,
                             )
                         error_resp = make_error_response(msg_id, -32600, reason)
                         sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
@@ -512,7 +532,16 @@ async def _proxy_sse_server(
                         continue
 
                 if log_file:
-                    log_tool_call(log_file, tool_name, arguments, "allowed", payload_sha256=p_hash, message_id=msg_id, agent_id=agent_id)  # type: ignore[arg-type]
+                    log_tool_call(
+                        log_file,
+                        tool_name,
+                        arguments,
+                        "allowed",
+                        payload_sha256=p_hash,
+                        message_id=msg_id,
+                        agent_id=agent_id,
+                        tenant_id=control_plane_tenant_id,
+                    )  # type: ignore[arg-type]
 
                 # Forward tool call to remote SSE/HTTP server
                 call_counter += 1
@@ -660,6 +689,7 @@ async def run_proxy(
     runtime_alerts: list[dict] = []
     control_plane_source_id = _generate_proxy_source_id()
     control_plane_session_id = str(uuid.uuid4())
+    control_plane_tenant_id = (os.environ.get("AGENT_BOM_TENANT_ID") or "default").strip() or "default"
     control_plane_policies: list["GatewayPolicy"] = []
     control_plane_etag: str | None = None
     audit_buffer: list[dict] = []
@@ -918,6 +948,7 @@ async def run_proxy(
                                 payload_sha256=p_hash,
                                 message_id=msg_id,
                                 agent_id=agent_id,
+                                tenant_id=control_plane_tenant_id,
                             )
                         error_resp = make_error_response(msg_id, -32600, identity_block_reason)
                         sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
@@ -940,6 +971,7 @@ async def run_proxy(
                                     payload_sha256=p_hash,
                                     message_id=msg_id,
                                     agent_id=agent_id,
+                                    tenant_id=control_plane_tenant_id,
                                 )
                             error_resp = make_error_response(msg_id, -32600, reason)
                             sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
@@ -962,6 +994,7 @@ async def run_proxy(
                                 payload_sha256=p_hash,
                                 message_id=msg_id,
                                 agent_id=agent_id,
+                                tenant_id=control_plane_tenant_id,
                             )
                         error_resp = make_error_response(msg_id, -32600, reason)
                         sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
@@ -983,6 +1016,7 @@ async def run_proxy(
                                     payload_sha256=p_hash,
                                     message_id=msg_id,
                                     agent_id=agent_id,
+                                    tenant_id=control_plane_tenant_id,
                                 )
                             error_resp = make_error_response(msg.get("id"), -32600, reason)
                             sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
@@ -1004,6 +1038,7 @@ async def run_proxy(
                                     payload_sha256=p_hash,
                                     message_id=msg_id,
                                     agent_id=agent_id,
+                                    tenant_id=control_plane_tenant_id,
                                 )
                             error_resp = make_error_response(msg.get("id"), -32600, gw_reason)
                             sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
@@ -1038,6 +1073,7 @@ async def run_proxy(
                                     payload_sha256=p_hash,
                                     message_id=msg_id,
                                     agent_id=agent_id,
+                                    tenant_id=control_plane_tenant_id,
                                 )
                             error_resp = make_error_response(msg_id, -32600, rl_reason)
                             sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
@@ -1077,6 +1113,7 @@ async def run_proxy(
                                     payload_sha256=p_hash,
                                     message_id=msg_id,
                                     agent_id=agent_id,
+                                    tenant_id=control_plane_tenant_id,
                                 )
                             error_resp = make_error_response(msg_id, -32600, reason)
                             sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
@@ -1098,6 +1135,7 @@ async def run_proxy(
                             payload_sha256=p_hash,
                             message_id=msg_id,
                             agent_id=agent_id,
+                            tenant_id=control_plane_tenant_id,
                         )
 
             span_cm = _PROXY_TRACER.start_as_current_span("proxy.relay_client_to_server") if (msg and _PROXY_TRACER) else nullcontext()

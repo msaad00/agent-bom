@@ -176,8 +176,7 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
     return {"job_id": job.job_id, "source_id": body.source_id, "status": "stored"}
 
 
-@router.get("/metrics", tags=["observability"])
-async def prometheus_metrics():
+async def _render_prometheus_metrics(request: Request | None = None):
     """Prometheus scrape endpoint — exposes control-plane and pilot metrics.
 
     Catalog lives in docs/OBSERVABILITY_METRICS.md — keep that doc in sync
@@ -190,7 +189,10 @@ async def prometheus_metrics():
         from agent_bom.api.oidc import oidc_decode_failure_count
 
         store = _get_fleet_store()
-        agents = store.list_all()
+        tenant_id = getattr(getattr(request, "state", None), "tenant_id", "").strip() if request is not None else ""
+        # /metrics may be scraped without a tenant-bound auth context. Avoid
+        # aggregating fleet gauges across every tenant in that case.
+        agents = store.list_by_tenant(tenant_id) if tenant_id else []
         lines = [
             "# HELP agent_bom_fleet_total Total agents in fleet",
             "# TYPE agent_bom_fleet_total gauge",
@@ -206,3 +208,8 @@ async def prometheus_metrics():
         return Response("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4; charset=utf-8")
     except Exception:  # noqa: BLE001
         return Response("# No metrics available\n", media_type="text/plain; version=0.0.4; charset=utf-8")
+
+
+@router.get("/metrics", tags=["observability"])
+async def prometheus_metrics(request: Request):
+    return await _render_prometheus_metrics(request)

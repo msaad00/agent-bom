@@ -181,6 +181,7 @@ def test_log_tool_call_basic():
     assert record["type"] == "tools/call"
     assert record["tool"] == "read_file"
     assert record["policy"] == "allowed"
+    assert record["tenant_id"] == "default"
     assert record["event_relationships"]["source"] == "proxy_tool_call"
     assert record["event_relationships"]["targets"][0]["id"] == "read_file"
     assert record["event_relationships"]["resources"][0]["id"] == "/tmp"
@@ -208,6 +209,14 @@ def test_log_tool_call_no_optional_fields():
     assert "message_id" not in record
     assert record["event_relationships"]["targets"][0]["id"] == "test_tool"
     assert "resources" not in record["event_relationships"]
+
+
+def test_log_tool_call_records_explicit_tenant():
+    buf = io.StringIO()
+    log_tool_call(buf, "test_tool", {}, tenant_id="tenant-alpha")
+    buf.seek(0)
+    record = json.loads(buf.readline())
+    assert record["tenant_id"] == "tenant-alpha"
 
 
 # ---------------------------------------------------------------------------

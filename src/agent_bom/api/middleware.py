@@ -397,7 +397,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             )
 
         # Simple mode: single static key (backward compatible, all access)
-        if secrets.compare_digest(raw_key, self._api_key):
+        if self._api_key and secrets.compare_digest(raw_key, self._api_key):
             request.state.api_key_name = "static-key"
             request.state.api_key_role = "admin"
             request.state.tenant_id = "default"

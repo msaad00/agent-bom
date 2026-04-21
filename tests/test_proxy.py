@@ -89,6 +89,8 @@ def test_log_tool_call():
     assert record["policy"] == "allowed"
     assert "ts" in record
     assert record["args"]["path"] == "/etc/hosts"
+    assert record["prev_hash"] == ""
+    assert len(record["record_hash"]) == 64
 
 
 # ── check_policy ─────────────────────────────────────────────────────────────

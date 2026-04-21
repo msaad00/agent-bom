@@ -118,6 +118,8 @@ Automated via `.github/workflows/release.yml` on each tag push.
 Images published:
 - `agentbom/agent-bom:{version}`
 - `agentbom/agent-bom:latest`
+- `agentbom/agent-bom-ui:{version}`
+- `agentbom/agent-bom-ui:latest`
 
 The Git tag remains `v{version}`. Docker Hub image tags are published without the `v` prefix.
 

@@ -50,6 +50,7 @@ compute_payload_hash = _proxy_audit.compute_payload_hash
 compute_response_hmac = _proxy_audit.compute_response_hmac
 log_tool_call = _proxy_audit.log_tool_call
 summarize_runtime_alerts = _proxy_audit.summarize_runtime_alerts
+write_audit_record = _proxy_audit.write_audit_record
 
 _safe_compile = _proxy_policy._safe_compile
 _safe_regex_match = _proxy_policy._safe_regex_match
@@ -318,7 +319,7 @@ async def _proxy_sse_server(
             runtime_alerts.append(alert_dict)
             logger.warning("Runtime alert: %s", alert.message)
             if log_f:
-                log_f.write(json.dumps(alert_dict) + "\n")
+                write_audit_record(log_f, alert_dict)
                 log_f.flush()
             if alert_webhook:
                 asyncio.ensure_future(_send_webhook(alert_webhook, alert_dict))
@@ -804,7 +805,7 @@ async def run_proxy(
             runtime_alerts.append(alert_dict)
             logger.warning("Runtime alert: %s", alert.message)
             if log_f:
-                log_f.write(json.dumps(alert_dict) + "\n")
+                write_audit_record(log_f, alert_dict)
                 log_f.flush()
             if alert_webhook:
                 asyncio.ensure_future(_send_webhook(alert_webhook, alert_dict))
@@ -1135,18 +1136,16 @@ async def run_proxy(
                 # the server's actual response, not a scanner-modified version).
                 if response_signing_key and log_file:
                     sig = compute_response_hmac(msg, response_signing_key)
-                    sig_entry = (
-                        json.dumps(
-                            {
-                                "ts": datetime.now(timezone.utc).isoformat(),
-                                "type": "response_hmac",
-                                "id": msg.get("id"),
-                                "hmac_sha256": sig,
-                            }
-                        )
-                        + "\n"
+                    sig_entry = {
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "type": "response_hmac",
+                        "id": msg.get("id"),
+                        "hmac_sha256": sig,
+                    }
+                    write_audit_record(
+                        log_file,
+                        sig_entry,
                     )
-                    log_file.write(sig_entry)
 
                 # Visual leak detection — OCR-scan image blocks in the result
                 # and either log (log_only) or paint redactions over the
@@ -1253,18 +1252,16 @@ async def run_proxy(
                 metrics.relay_errors += 1
                 logger.warning("Relay task exited with unexpected error: %s", result)
                 if log_file:
-                    err_entry = (
-                        json.dumps(
-                            {
-                                "ts": datetime.now(timezone.utc).isoformat(),
-                                "type": "relay_error",
-                                "error": str(result),
-                                "error_type": type(result).__name__,
-                            }
-                        )
-                        + "\n"
+                    err_entry = {
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "type": "relay_error",
+                        "error": str(result),
+                        "error_type": type(result).__name__,
+                    }
+                    write_audit_record(
+                        log_file,
+                        err_entry,
                     )
-                    log_file.write(err_entry)
     finally:
         # Write metrics summary + runtime alerts to audit log before closing
         summary = metrics.summary()
@@ -1276,8 +1273,7 @@ async def run_proxy(
         if control_plane_url:
             await _flush_audit_buffer(summary=summary)
         if log_file:
-            summary_line = json.dumps(summary) + "\n"
-            log_file.write(summary_line)
+            write_audit_record(log_file, summary)
             log_file.close()
         await metrics_server.stop()
         set_gateway_evaluator(None)

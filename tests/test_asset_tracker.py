@@ -235,3 +235,19 @@ def test_same_cve_different_packages(tracker: AssetTracker) -> None:
     diff2 = tracker.record_scan(_report([_finding("CVE-2024-0001", "lodash", "npm")]))
     assert diff2["summary"]["resolved_count"] == 1
     assert diff2["summary"]["unchanged_count"] == 1
+
+
+def test_tenant_scopes_assets_with_shared_database(tmp_path: Path) -> None:
+    db_path = tmp_path / "shared-assets.db"
+    alpha = AssetTracker(db_path=db_path, tenant_id="tenant-alpha")
+    beta = AssetTracker(db_path=db_path, tenant_id="tenant-beta")
+    try:
+        alpha.record_scan(_report([_finding("CVE-2024-0001", "lodash", "npm")]))
+        beta.record_scan(_report([_finding("CVE-2024-0002", "requests", "pip")]))
+
+        assert [asset["vuln_id"] for asset in alpha.list_assets()] == ["CVE-2024-0001"]
+        assert [asset["vuln_id"] for asset in beta.list_assets()] == ["CVE-2024-0002"]
+        assert alpha.get_asset("CVE-2024-0002", "requests", "pip") is None
+    finally:
+        alpha.close()
+        beta.close()

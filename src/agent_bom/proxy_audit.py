@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 # Maximum audit log size before rotation (100 MB). Prevents disk exhaustion
 # on long-running proxy instances.
 _AUDIT_LOG_MAX_BYTES = 100 * 1024 * 1024
+_AUDIT_CHAIN_STATE: dict[int, str] = {}
 
 
 class RotatingAuditLog:
@@ -450,7 +451,7 @@ def log_tool_call(
     if event_relationships is not None:
         record["event_relationships"] = event_relationships
 
-    log_file.write(json.dumps(record) + "\n")
+    write_audit_record(log_file, record)
     log_file.flush()
 
 
@@ -490,6 +491,25 @@ def compute_payload_hash(payload: dict) -> str:
 def compute_response_hmac(payload: dict, key: str) -> str:
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hmac.new(key.encode("utf-8"), canonical.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _record_digest(record: dict) -> str:
+    payload = {k: v for k, v in record.items() if k not in {"prev_hash", "record_hash"}}
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    prev_hash = str(record.get("prev_hash", ""))
+    return hashlib.sha256(f"{prev_hash}|{canonical}".encode("utf-8")).hexdigest()
+
+
+def write_audit_record(log_file: "IO[str] | RotatingAuditLog", record: dict) -> dict:
+    """Write a chain-hashed audit record to the JSONL sink."""
+    log_id = id(log_file)
+    prev_hash = _AUDIT_CHAIN_STATE.get(log_id, "")
+    payload = dict(record)
+    payload["prev_hash"] = prev_hash
+    payload["record_hash"] = _record_digest(payload)
+    log_file.write(json.dumps(payload) + "\n")
+    _AUDIT_CHAIN_STATE[log_id] = payload["record_hash"]
+    return payload
 
 
 @dataclass

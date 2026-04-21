@@ -59,7 +59,7 @@ The demo uses a curated sample so the output stays reproducible across releases.
 | Check a package before install | `agent-bom check flask@2.2.0 --ecosystem pypi` | Machine-readable pre-install verdict |
 | Scan a container image | `agent-bom image nginx:latest` | OS and package CVEs with fixability |
 | Audit IaC or cloud posture | `agent-bom iac Dockerfile k8s/ infra/main.tf` | Misconfigurations, manifest hardening, optional live cluster posture |
-| Review findings in a persistent graph | `agent-bom serve` | API plus bundled local UI; Kubernetes uses the separate `agent-bom-ui` image |
+| Review findings in a persistent graph | `agent-bom serve` | API plus bundled local UI on one machine; Kubernetes and Compose split the API image (`agentbom/agent-bom`) from the browser UI image (`agentbom/agent-bom-ui`) |
 | Inspect live MCP traffic | `agent-bom proxy "<server command>"` | Inline runtime inspection, detector chaining, response/argument review |
 
 ## Quick start
@@ -157,89 +157,84 @@ allow-listable.
 | Layer | Lives in | Scales via | Talks to |
 |---|---|---|---|
 | **Ingress + auth** | ALB / Istio Gateway + OIDC | — | Corporate IdP (Okta / Entra / Google) |
-| **MCP traffic plane** | `gateway` + `proxy` Deployments | HPA + PDB | Remote MCPs, `/v1/proxy/audit` |
+| **Runtime MCP plane** | `gateway` + selected `proxy` sidecars / local wrappers | HPA + workload rollout | Remote MCPs, `/v1/proxy/audit` |
 | **Control plane** | `api`, `ui`, `jobs`, `backup` (Helm) | HPA + CronJob | Data plane, OTEL, Prometheus |
 | **Data plane** | Customer-owned Postgres (+ optional ClickHouse, S3) | Operator-managed | — |
 | **Platform glue** | ExternalSecrets, ServiceMonitor, OTEL collector | Operator-managed | AWS Secrets Manager / Vault / Grafana |
 
 ```mermaid
 flowchart LR
-    subgraph outside["Outside your account"]
-      idp["Corporate IdP<br/>Okta · Entra · Google"]
-      ci["GitHub Actions / CI"]
-      remote["Remote MCPs<br/>SaaS + partner tools"]
-      osv["OSV / NVD / GHSA<br/>optional enrichment"]
+    subgraph outside["Outside customer infrastructure"]
+      idp["Corporate IdP"]
+      ci["CI / scheduled jobs"]
+      remote["Remote MCPs"]
+      osv["OSV / NVD / GHSA<br/>optional"]
     end
 
-    subgraph customer["Customer VPC / EKS account"]
-      ingress["Ingress + TLS<br/>ALB / Istio"]
+    subgraph customer["Customer VPC / cluster"]
+      ingress["Ingress + SSO"]
 
-      subgraph control["Agent-BOM control plane"]
-        ui["UI<br/>same-origin browser app"]
-        api["API<br/>auth · fleet · findings · audit"]
-        jobs["Scan + ingest workers<br/>CronJob + Job"]
-        backup["Backup job<br/>pg_dump -> S3"]
+      subgraph control["Control plane"]
+        ui["UI"]
+        api["API"]
+        jobs["Scan / ingest jobs"]
+        backup["Backup / scheduler"]
       end
 
-      subgraph runtime["Runtime MCP plane"]
-        proxy["Proxy<br/>sidecar or laptop wrapper"]
-        gateway["Gateway<br/>agent-bom gateway serve"]
+      subgraph runtime["Runtime MCP path"]
+        proxy["agent-bom proxy"]
+        gateway["agent-bom gateway"]
       end
 
-      subgraph data["Customer-owned data plane"]
-        pg["Postgres / Supabase<br/>jobs · fleet · graph · audit"]
-        ch["ClickHouse (optional)<br/>analytics"]
-        s3["S3 (optional)<br/>backups + SBOM archive"]
+      subgraph data["Customer-owned stores"]
+        pg["Postgres"]
+        ch["ClickHouse optional"]
+        s3["S3 optional"]
       end
 
-      subgraph ops["Platform glue"]
-        secrets["ExternalSecrets<br/>AWS SM / Vault"]
-        metrics["OTEL + Prometheus"]
-      end
+      ops["Secrets + telemetry"]
     end
 
     idp -. OIDC .-> ingress
     ingress --> ui
     ingress --> api
-    ingress --> gateway
-    ci -->|"SARIF + findings"| api
-    jobs -->|"scan results + inventory"| api
-    api --> pg
-    api -. optional .-> ch
+    ingress -. optional shared runtime URL .-> gateway
+    ci --> jobs
+    jobs --> api
     backup --> s3
-    secrets --> api
-    secrets --> gateway
-    api --> metrics
-    gateway --> metrics
-    gateway -->|"policy-audited upstream call"| remote
-    api -. optional egress .-> osv
+    api --> pg
+    api -. analytics .-> ch
+    proxy --> gateway
+    gateway --> api
+    gateway --> remote
+    api -. enrichment .-> osv
+    ops --> api
+    ops --> gateway
 ```
 
 *Everything inside the customer boundary runs in the customer's account. The
 default cross-boundary paths are inbound OIDC and outbound, policy-audited MCP
 upstream calls.*
 
-#### How MCP traffic actually flows
+#### Runtime MCP flow in customer infra
 
 ```mermaid
-sequenceDiagram
-    participant Dev as Developer client
-    participant Proxy as agent-bom proxy
-    participant Gateway as agent-bom gateway
-    participant API as Control-plane API
-    participant Remote as Remote MCP
-    participant Store as Postgres / audit store
+flowchart LR
+    dev["Developer client or MCP-enabled workload"]
+    proxy["Local / sidecar<br/>agent-bom proxy"]
+    gateway["In-cluster<br/>agent-bom gateway"]
+    api["Control-plane API"]
+    store["Postgres / audit store"]
+    remote["Approved remote MCP"]
 
-    Dev->>Proxy: MCP JSON-RPC (stdio / SSE / HTTP)
-    Proxy->>Proxy: inspect request + local policy
-    Proxy->>Gateway: audited relay
-    Gateway->>API: POST /v1/proxy/audit
-    Gateway->>Remote: upstream MCP call
-    Remote-->>Gateway: MCP response
-    Gateway-->>Proxy: shared policy + response
-    Proxy->>Proxy: optional VLD / OCR redaction
-    Proxy-->>Dev: safe response
-    API->>Store: persist audit, findings, graph links
+    dev -->|"MCP JSON-RPC"| proxy
+    proxy -->|"inspect + local policy"| gateway
+    gateway -->|"shared policy + relay"| remote
+    remote --> gateway
+    gateway -->|"response"| proxy
+    proxy -->|"safe response"| dev
+    gateway -->|"POST /v1/proxy/audit"| api
+    api --> store
 ```
 
 1. Developer client speaks MCP JSON-RPC to the local `agent-bom proxy`.
@@ -450,7 +445,7 @@ Pilot teams run:
 ```bash
 # 1. Pick your backend shape (postgres default; snowflake / istio / production also shipped)
 helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom \
-  --version 0.79.0 \
+  --version 0.80.1 \
   -n agent-bom --create-namespace \
   -f deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml
 
@@ -534,12 +529,20 @@ pip install agent-bom                        # CLI
 docker run --rm agentbom/agent-bom agents    # Docker
 ```
 
+For published containers, the split is:
+
+- `agentbom/agent-bom` = the main runtime image for CLI, API, jobs, gateway,
+  proxy-related entrypoints, and MCP server mode
+- `agentbom/agent-bom-ui` = the standalone browser UI image used when the
+  self-hosted control plane runs the UI separately from the API
+
 | Mode | Best for |
 |------|----------|
 | CLI (`agent-bom agents`) | local audit + project scan |
 | Endpoint fleet (`--push-url …/v1/fleet/sync`) | employee laptops pushing into self-hosted fleet |
 | GitHub Action (`uses: msaad00/agent-bom@v0.80.1`) | CI/CD + SARIF |
-| Docker (`agentbom/agent-bom`) | isolated scans, containerized self-hosting |
+| Docker (`agentbom/agent-bom`) | isolated scans, API jobs, and non-browser self-hosted entrypoints |
+| Browser UI image (`agentbom/agent-bom-ui`) | the separate Next.js UI container paired with a self-hosted API |
 | Kubernetes / Helm (`helm install agent-bom deploy/helm/agent-bom`) | self-hosted API + dashboard, scheduled discovery |
 | REST API (`agent-bom api`) | platform integration, self-hosted control plane |
 | MCP server (`agent-bom mcp server`) | Claude Desktop, Claude Code, Cursor, Codex, Windsurf, Cortex |

@@ -215,6 +215,44 @@ def verify_hmac_entries(log: AuditLog, sign_key: str) -> tuple[int, int]:
     return verified, failed
 
 
+def verify_hash_chain(path: Path) -> tuple[int, int]:
+    """Verify prev-hash chaining across JSONL audit records.
+
+    Returns ``(verified_count, tampered_count)``.
+    """
+    verified = 0
+    tampered = 0
+    previous_hash = ""
+
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            tampered += 1
+            continue
+        if not isinstance(entry, dict):
+            tampered += 1
+            continue
+
+        actual_prev = str(entry.get("prev_hash", ""))
+        actual_hash = str(entry.get("record_hash", ""))
+        payload = {k: v for k, v in entry.items() if k not in {"prev_hash", "record_hash"}}
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        expected_hash = hashlib.sha256(f"{actual_prev}|{canonical}".encode("utf-8")).hexdigest()
+
+        if actual_prev == previous_hash and actual_hash and hmac.compare_digest(actual_hash, expected_hash):
+            verified += 1
+        else:
+            tampered += 1
+
+        previous_hash = actual_hash or previous_hash
+
+    return verified, tampered
+
+
 # ─── Rich display ─────────────────────────────────────────────────────────────
 
 
@@ -239,6 +277,7 @@ def display_rich(
     blocked_only: bool = False,
     alerts_only: bool = False,
     verify_hmac_key: Optional[str] = None,
+    verify_chain_result: tuple[int, int] | None = None,
 ) -> int:
     """Render audit log to terminal using Rich. Returns exit code (1 if issues found)."""
     from rich import box
@@ -375,6 +414,14 @@ def display_rich(
         elif verified:
             console.print(f"[green]HMAC verification passed for {verified} entries[/green]")
 
+    if verify_chain_result is not None:
+        verified_chain, tampered_chain = verify_chain_result
+        if tampered_chain:
+            console.print(f"[bold red]Audit chain verification FAILED for {tampered_chain} entries![/bold red]")
+            exit_code = 1
+        elif verified_chain:
+            console.print(f"[green]Audit chain verification passed for {verified_chain} entries[/green]")
+
     # ── Nothing to show ────────────────────────────────────────────────────
     total_entries = len(log.tool_calls) + len(log.alerts) + len(log.relay_errors) + len(log.hmac_entries)
     if total_entries == 0 and not log.summary:
@@ -383,7 +430,7 @@ def display_rich(
     return exit_code
 
 
-def display_json(log: AuditLog) -> int:
+def display_json(log: AuditLog, *, chain_verification: tuple[int, int] | None = None) -> int:
     """Output structured JSON summary (for CI/scripting)."""
     s = log.summary
     out = {
@@ -411,11 +458,17 @@ def display_json(log: AuditLog) -> int:
         else None,
         "alert_details": [{"severity": a.severity, "detector": a.detector, "tool": a.tool, "message": a.message} for a in log.alerts],
     }
+    if chain_verification is not None:
+        out["chain_verification"] = {
+            "verified": chain_verification[0],
+            "tampered": chain_verification[1],
+        }
     sys.stdout.write(json.dumps(out, indent=2))
     sys.stdout.write("\n")
     blocked = out["blocked"]
     errors = out["relay_errors"]
-    return 1 if (blocked or errors) else 0
+    tampered = chain_verification[1] if chain_verification is not None else 0
+    return 1 if (blocked or errors or tampered) else 0
 
 
 # ─── Public entry point ───────────────────────────────────────────────────────
@@ -430,6 +483,7 @@ def replay(
     alerts_only: bool = False,
     sign_key: Optional[str] = None,
     verify_hmac: bool = False,
+    verify_chain: bool = False,
     as_json: bool = False,
 ) -> int:
     """Parse and display an audit log. Returns exit code (0 = clean, 1 = issues)."""
@@ -439,9 +493,10 @@ def replay(
         return 2
 
     log = parse_audit_log(path)
+    chain_result = verify_hash_chain(path) if verify_chain else None
 
     if as_json:
-        return display_json(log)
+        return display_json(log, chain_verification=chain_result)
 
     return display_rich(
         log,
@@ -450,4 +505,5 @@ def replay(
         blocked_only=blocked_only,
         alerts_only=alerts_only,
         verify_hmac_key=sign_key if verify_hmac else None,
+        verify_chain_result=chain_result,
     )

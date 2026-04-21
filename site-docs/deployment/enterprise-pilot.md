@@ -73,86 +73,94 @@ allow-listable.
 | **Platform glue** | ExternalSecrets, ServiceMonitor, OTEL collector | Operator-managed | AWS Secrets Manager / Vault / Grafana |
 
 ```mermaid
-flowchart TB
-    subgraph outside["Outside customer trust boundary"]
+flowchart LR
+    subgraph outside["Outside your account"]
       idp["Corporate IdP<br/>Okta · Entra · Google"]
-      dev["Developer laptop<br/>Claude Desktop · Cursor · Claude Code"]
-      gh["GitHub Actions / CI runner"]
+      ci["GitHub Actions / CI"]
       remote["Remote MCPs<br/>SaaS + partner tools"]
-      osv["OSV / NVD / GHSA<br/>optional egress, allow-listable"]
+      osv["OSV / NVD / GHSA<br/>optional enrichment"]
     end
 
-    subgraph vpc["Customer VPC / EKS account"]
-      ingress["Ingress + TLS<br/>ALB / Istio Gateway"]
+    subgraph customer["Customer VPC / EKS account"]
+      ingress["Ingress + TLS<br/>ALB / Istio"]
 
-      subgraph traffic["Agent-Bom traffic plane in your EKS cluster"]
-        px["MCP proxy<br/>sidecar or laptop wrapper<br/>stdio · SSE · HTTP"]
-        gw["MCP gateway<br/>agent-bom gateway serve<br/>Deployment + HPA"]
+      subgraph control["Agent-BOM control plane"]
+        ui["UI<br/>same-origin browser app"]
+        api["API<br/>auth · fleet · findings · audit"]
+        jobs["Scan + ingest workers<br/>CronJob + Job"]
+        backup["Backup job<br/>pg_dump -> S3"]
       end
 
-      subgraph control["Agent-Bom control plane in your EKS cluster"]
-        ui["UI<br/>same-origin browser app"]
-        api["API<br/>fleet · policy · audit · findings"]
-        jobs["Scan + ingest workers<br/>CronJob + Job"]
-        backup["Backup CronJob<br/>pg_dump -> S3"]
+      subgraph runtime["Runtime MCP plane"]
+        proxy["Proxy<br/>sidecar or laptop wrapper"]
+        gateway["Gateway<br/>agent-bom gateway serve"]
       end
 
       subgraph data["Customer-owned data plane"]
         pg["Postgres / Supabase<br/>jobs · fleet · graph · audit"]
-        ch["ClickHouse (optional)<br/>analytics + long-retention"]
+        ch["ClickHouse (optional)<br/>analytics"]
         s3["S3 (optional)<br/>backups + SBOM archive"]
       end
 
-      subgraph platform["Platform integration in your account"]
-        es["ExternalSecrets<br/>AWS SM / Vault"]
-        otel["OTEL collector<br/>traces + metrics"]
-        prom["Prometheus / ServiceMonitor"]
+      subgraph ops["Platform glue"]
+        secrets["ExternalSecrets<br/>AWS SM / Vault"]
+        metrics["OTEL + Prometheus"]
       end
     end
 
     idp -. OIDC .-> ingress
-    ingress -->|"browser traffic"| ui
-    ingress -->|"API + WS"| api
-    ingress -->|"optional shared MCP URL"| gw
-
-    dev -->|"MCP JSON-RPC"| px
-    px -->|"audited relay"| gw
-    gw -->|"policy-audited upstream call"| remote
-    px -->|"/v1/proxy/audit"| api
-    gw -->|"/v1/proxy/audit"| api
-
-    gh -->|"SARIF + findings"| api
+    ingress --> ui
+    ingress --> api
+    ingress --> gateway
+    ci -->|"SARIF + findings"| api
     jobs -->|"scan results + inventory"| api
-
-    api -->|"transactional state"| pg
-    api -. "optional analytics" .-> ch
-    backup -->|"backup archive"| s3
-
-    es -->|"runtime secrets"| api
-    es -->|"runtime secrets"| gw
-    api -->|"telemetry"| otel
-    gw -->|"telemetry"| otel
-    api -->|"metrics"| prom
-    gw -->|"metrics"| prom
-    api -. "optional enrichment egress" .-> osv
+    api --> pg
+    api -. optional .-> ch
+    backup --> s3
+    secrets --> api
+    secrets --> gateway
+    api --> metrics
+    gateway --> metrics
+    gateway -->|"policy-audited upstream call"| remote
+    api -. optional egress .-> osv
 ```
 
-*Everything in the boundary runs in your account. Only OIDC (inbound) and
-MCP upstream calls (outbound, policy-audited) cross it.*
+*Everything inside the customer boundary runs in the customer's account. The
+default cross-boundary paths are inbound OIDC and outbound, policy-audited MCP
+upstream calls.*
 
-### How an MCP call actually flows
+### How MCP traffic actually flows
 
-1. Developer client (Claude Desktop / Cursor / Claude Code) speaks MCP
-   JSON-RPC to the local `agent-bom proxy` (stdio or SSE).
-2. The proxy inspects and audits the call, enforces policy, then relays to
-   the central `agent-bom gateway` inside your cluster.
-3. The gateway applies shared policy, records the audit event to
-   `/v1/proxy/audit`, and forwards to the remote MCP upstream.
-4. Responses flow back on the same path; screenshot/image responses run
-   through the `VisualLeakDetector` for OCR-based redaction before the
-   developer sees them.
-5. Every hop emits OTEL spans with a W3C trace context, so a single trace
-   ties developer → proxy → gateway → remote MCP → back.
+```mermaid
+sequenceDiagram
+    participant Dev as Developer client
+    participant Proxy as agent-bom proxy
+    participant Gateway as agent-bom gateway
+    participant API as Control-plane API
+    participant Remote as Remote MCP
+    participant Store as Postgres / audit store
+
+    Dev->>Proxy: MCP JSON-RPC (stdio / SSE / HTTP)
+    Proxy->>Proxy: inspect request + local policy
+    Proxy->>Gateway: audited relay
+    Gateway->>API: POST /v1/proxy/audit
+    Gateway->>Remote: upstream MCP call
+    Remote-->>Gateway: MCP response
+    Gateway-->>Proxy: shared policy + response
+    Proxy->>Proxy: optional VLD / OCR redaction
+    Proxy-->>Dev: safe response
+    API->>Store: persist audit, findings, graph links
+```
+
+1. Developer client speaks MCP JSON-RPC to the local `agent-bom proxy`.
+2. The proxy inspects and audits the call, enforces local policy, and relays
+   to the central `agent-bom gateway`.
+3. The gateway applies shared policy, records audit to `/v1/proxy/audit`, and
+   forwards to the remote MCP upstream.
+4. Responses come back on the same path; image responses can run through the
+   visual leak detector before they reach the developer.
+5. The control plane persists audit, findings, and graph state for the UI,
+   exports, and compliance surfaces.
 
 ## Control flow
 

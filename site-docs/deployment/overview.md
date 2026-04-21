@@ -134,6 +134,9 @@ That is the intended split:
 - `workers / connectors` = do the privileged read or collection work
 - `proxy / gateway` = enforce and audit runtime MCP traffic
 
+For the concrete backend and UI rollout plan behind this split, see [Hosted
+Product Control-Plane Spec](../architecture/hosted-product-spec.md).
+
 ## Approved intake paths today
 
 “Approved” here means explicit, customer-controlled backend intake paths. The

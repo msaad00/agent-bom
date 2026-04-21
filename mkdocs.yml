@@ -107,6 +107,7 @@ nav:
   - Architecture:
       - Overview: architecture/overview.md
       - How Agent-BOM Works: architecture/how-agent-bom-works.md
+      - Hosted Product Control Plane: architecture/hosted-product-spec.md
       - AI Infrastructure Scanning: architecture/ai-infrastructure.md
       - Data Ingestion and Security: architecture/data-ingestion-and-security.md
       - Supply Chain and Trust: architecture/supply-chain-and-trust.md

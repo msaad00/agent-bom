@@ -8,6 +8,9 @@ For the end-to-end intake story across direct scans, read-only integrations, pus
 
 For the shortest operator-facing explanation of inputs, engine, outputs, deployment models, and product surfaces, see [How Agent-BOM Works](how-agent-bom-works.md).
 
+For the next-phase hosted product plan that maps UI actions to control-plane
+entities, routes, and rollout order, see [Hosted Product Control-Plane Spec](hosted-product-spec.md).
+
 ## Scanning pipeline
 
 ```mermaid

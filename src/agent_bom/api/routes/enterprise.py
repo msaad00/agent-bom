@@ -106,7 +106,7 @@ async def create_key(request: Request, req: CreateKeyRequest) -> dict:
 async def rotate_key(request: Request, key_id: str, req: RotateKeyRequest) -> dict:
     """Rotate an API key by minting a replacement and revoking the old key."""
     from agent_bom.api.audit_log import log_action
-    from agent_bom.api.auth import create_api_key, get_key_store
+    from agent_bom.api.auth import create_api_key, get_api_key_policy, get_key_store, normalize_rotation_overlap_seconds
 
     tenant_id = getattr(request.state, "tenant_id", "default")
     actor = getattr(request.state, "api_key_name", "") or "system"
@@ -114,6 +114,9 @@ async def rotate_key(request: Request, key_id: str, req: RotateKeyRequest) -> di
     current_key = store.get(key_id)
     if current_key is None or current_key.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail=f"Key {key_id} not found")
+
+    overlap_seconds = normalize_rotation_overlap_seconds(req.overlap_seconds, policy=get_api_key_policy())
+    overlap_until = (datetime.now(timezone.utc) + timedelta(seconds=overlap_seconds)).isoformat()
 
     replacement_name = req.name or current_key.name
     try:
@@ -128,7 +131,8 @@ async def rotate_key(request: Request, key_id: str, req: RotateKeyRequest) -> di
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     store.add(replacement)
-    store.remove(current_key.key_id)
+    if not store.mark_rotating(current_key.key_id, replacement_key_id=replacement.key_id, overlap_until=overlap_until):
+        raise HTTPException(status_code=409, detail=f"Key {key_id} could not be marked for rotation")
     log_action(
         "auth.key_rotated",
         actor=actor,
@@ -137,14 +141,8 @@ async def rotate_key(request: Request, key_id: str, req: RotateKeyRequest) -> di
         replacement_key_id=replacement.key_id,
         previous_expires_at=current_key.expires_at,
         replacement_expires_at=replacement.expires_at,
-    )
-    log_action(
-        "auth.key_revoked",
-        actor=actor,
-        resource=f"key/{current_key.key_id}",
-        tenant_id=tenant_id,
-        reason="rotated",
-        replacement_key_id=replacement.key_id,
+        overlap_until=overlap_until,
+        overlap_seconds=overlap_seconds,
     )
 
     return {
@@ -157,7 +155,11 @@ async def rotate_key(request: Request, key_id: str, req: RotateKeyRequest) -> di
         "tenant_id": replacement.tenant_id,
         "created_at": replacement.created_at,
         "expires_at": replacement.expires_at,
-        "message": "Store the raw_key securely — it will not be shown again. The previous key has been revoked.",
+        "overlap_until": overlap_until,
+        "overlap_seconds": overlap_seconds,
+        "message": (
+            "Store the raw_key securely — it will not be shown again. The previous key remains valid until the overlap window ends."
+        ),
     }
 
 
@@ -200,6 +202,8 @@ async def auth_policy() -> dict:
         "api_key": {
             "default_ttl_seconds": api_policy.default_ttl_seconds,
             "max_ttl_seconds": api_policy.max_ttl_seconds,
+            "default_overlap_seconds": api_policy.default_overlap_seconds,
+            "max_overlap_seconds": api_policy.max_overlap_seconds,
             "rotation_policy": "enforced",
             "rotation_endpoint": "/v1/auth/keys/{key_id}/rotate",
         },

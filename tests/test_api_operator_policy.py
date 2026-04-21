@@ -123,6 +123,8 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["api_key"]["rotation_endpoint"] == "/v1/auth/keys/{key_id}/rotate"
     assert "default_ttl_seconds" in body["api_key"]
     assert "max_ttl_seconds" in body["api_key"]
+    assert "default_overlap_seconds" in body["api_key"]
+    assert "max_overlap_seconds" in body["api_key"]
     assert body["rate_limit_key"]["status"] in {"ok", "ephemeral", "unknown_age", "rotation_due", "max_age_exceeded"}
     assert body["ui"]["recommended_mode"] in {"no_auth", "reverse_proxy_oidc", "oidc_bearer", "session_api_key"}
     assert body["ui"]["session_storage_fallback"] == "session_api_key"

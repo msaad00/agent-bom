@@ -444,6 +444,7 @@ class CreateKeyRequest(BaseModel):
 class RotateKeyRequest(BaseModel):
     name: str | None = None
     expires_at: str | None = None
+    overlap_seconds: int | None = None
 
 
 class ExceptionRequest(BaseModel):

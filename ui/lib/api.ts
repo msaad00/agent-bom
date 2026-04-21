@@ -467,6 +467,95 @@ export interface AuthDebugResponse {
   span_id: string | null;
 }
 
+export interface AuthPolicyResponse {
+  api_key: {
+    default_ttl_seconds: number;
+    max_ttl_seconds: number;
+    default_overlap_seconds: number;
+    max_overlap_seconds: number;
+    rotation_policy: string;
+    rotation_endpoint: string;
+  };
+  rate_limit_key: {
+    status: string;
+    last_rotated: string | null;
+    age_days: number | null;
+    fallback_source?: string | null;
+    [key: string]: unknown;
+  };
+  ui: {
+    recommended_mode: string;
+    configured_modes: string[];
+    session_storage_fallback: string;
+    credentials_mode: string;
+    trusted_proxy_headers: string[];
+    message: string;
+  };
+  rate_limit_runtime: {
+    backend: string;
+    postgres_configured: boolean;
+    configured_api_replicas: number;
+    shared_required: boolean;
+    shared_across_replicas: boolean;
+    fail_closed: boolean;
+    message: string;
+  };
+  tenant_quotas: {
+    active_scan_jobs: number;
+    retained_scan_jobs: number;
+    fleet_agents: number;
+    schedules: number;
+  };
+}
+
+export type ApiKeyLifecycleState = "active" | "rotation_overlap" | "rotated" | "revoked" | "expired";
+
+export interface ApiKeyRecord {
+  key_id: string;
+  key_prefix: string;
+  name: string;
+  role: string;
+  created_at: string;
+  expires_at: string | null;
+  scopes: string[];
+  tenant_id: string;
+  revoked_at: string | null;
+  rotation_overlap_until: string | null;
+  replacement_key_id: string | null;
+  state: ApiKeyLifecycleState;
+  overlap_seconds_remaining: number | null;
+}
+
+export interface ListKeysResponse {
+  keys: ApiKeyRecord[];
+}
+
+export interface CreateApiKeyRequest {
+  name: string;
+  role: string;
+  expires_at?: string | null;
+  scopes?: string[];
+}
+
+export interface CreateApiKeyResponse extends ApiKeyRecord {
+  raw_key: string;
+  message: string;
+}
+
+export interface RotateApiKeyRequest {
+  name?: string | null;
+  expires_at?: string | null;
+  overlap_seconds?: number | null;
+}
+
+export interface RotateApiKeyResponse extends ApiKeyRecord {
+  raw_key: string;
+  replaced_key_id: string;
+  overlap_until: string;
+  overlap_seconds: number;
+  message: string;
+}
+
 export interface ConnectorsResponse {
   connectors: string[];
 }
@@ -980,6 +1069,12 @@ export const api = {
   health: () => get<HealthResponse>("/health"),
   version: () => get<VersionInfo>("/version"),
   getAuthDebug: () => get<AuthDebugResponse>("/v1/auth/debug"),
+  getAuthPolicy: () => get<AuthPolicyResponse>("/v1/auth/policy"),
+  listKeys: () => get<ListKeysResponse>("/v1/auth/keys"),
+  createKey: (body: CreateApiKeyRequest) => post<CreateApiKeyResponse>("/v1/auth/keys", body),
+  rotateKey: (keyId: string, body: RotateApiKeyRequest) =>
+    post<RotateApiKeyResponse>(`/v1/auth/keys/${encodeURIComponent(keyId)}/rotate`, body),
+  deleteKey: (keyId: string) => del(`/v1/auth/keys/${encodeURIComponent(keyId)}`),
 
   /** Start a scan — returns immediately with job_id */
   startScan: (req: ScanRequest) => post<ScanJob>("/v1/scan", req),

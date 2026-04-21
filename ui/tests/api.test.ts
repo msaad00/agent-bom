@@ -241,6 +241,79 @@ describe('api.getScan', () => {
   })
 })
 
+describe('api key lifecycle helpers', () => {
+  it('lists keys through the enterprise auth route', async () => {
+    const payload = {
+      keys: [
+        {
+          key_id: 'key-1',
+          key_prefix: 'abom_demo',
+          name: 'ci-service',
+          role: 'admin',
+          created_at: '2026-04-21T00:00:00Z',
+          expires_at: '2026-05-21T00:00:00Z',
+          scopes: [],
+          tenant_id: 'tenant-alpha',
+          revoked_at: null,
+          rotation_overlap_until: null,
+          replacement_key_id: null,
+          state: 'active',
+          overlap_seconds_remaining: null,
+        },
+      ],
+    }
+    const fetchMock = mockFetch(payload)
+    global.fetch = fetchMock
+
+    const result = await api.listKeys()
+
+    expect(result.keys).toHaveLength(1)
+    expect(result.keys[0].name).toBe('ci-service')
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/v1/auth/keys",
+      expect.objectContaining({ credentials: "include", signal: expect.any(AbortSignal) }),
+    )
+  })
+
+  it('posts rotate requests to the expected endpoint', async () => {
+    const payload = {
+      raw_key: 'abom_new_secret',
+      key_id: 'key-2',
+      replaced_key_id: 'key-1',
+      key_prefix: 'abom_new_',
+      name: 'ci-service',
+      role: 'admin',
+      created_at: '2026-04-21T00:05:00Z',
+      expires_at: '2026-05-21T00:05:00Z',
+      tenant_id: 'tenant-alpha',
+      revoked_at: null,
+      rotation_overlap_until: '2026-04-21T00:20:00Z',
+      replacement_key_id: null,
+      state: 'active',
+      overlap_seconds_remaining: null,
+      overlap_until: '2026-04-21T00:20:00Z',
+      overlap_seconds: 900,
+      scopes: [],
+      message: 'rotated',
+    }
+    const fetchMock = mockFetch(payload)
+    global.fetch = fetchMock
+
+    const result = await api.rotateKey('key-1', { overlap_seconds: 900 })
+
+    expect(result.replaced_key_id).toBe('key-1')
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/v1/auth/keys/key-1/rotate",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ overlap_seconds: 900 }),
+        signal: expect.any(AbortSignal),
+      }),
+    )
+  })
+})
+
 describe('api.downloadScanGraph', () => {
   it('downloads graph export with session auth headers', async () => {
     setSessionApiKey('pilot-key-123')

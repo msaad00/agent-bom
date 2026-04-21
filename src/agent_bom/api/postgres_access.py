@@ -33,6 +33,9 @@ class PostgresKeyStore:
                     created_at TEXT NOT NULL,
                     expires_at TEXT,
                     last_used TEXT,
+                    revoked_at TEXT,
+                    rotation_overlap_until TEXT,
+                    replacement_key_id TEXT,
                     revoked BOOLEAN NOT NULL DEFAULT FALSE
                 )
             """)
@@ -44,6 +47,30 @@ class PostgresKeyStore:
                         WHERE table_name = 'api_keys' AND column_name = 'team_id'
                     ) THEN
                         ALTER TABLE api_keys ADD COLUMN team_id TEXT NOT NULL DEFAULT 'default';
+                    END IF;
+                END
+                $$;
+            """)
+            conn.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'api_keys' AND column_name = 'revoked_at'
+                    ) THEN
+                        ALTER TABLE api_keys ADD COLUMN revoked_at TEXT;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'api_keys' AND column_name = 'rotation_overlap_until'
+                    ) THEN
+                        ALTER TABLE api_keys ADD COLUMN rotation_overlap_until TEXT;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'api_keys' AND column_name = 'replacement_key_id'
+                    ) THEN
+                        ALTER TABLE api_keys ADD COLUMN replacement_key_id TEXT;
                     END IF;
                 END
                 $$;
@@ -68,14 +95,20 @@ class PostgresKeyStore:
             scopes=scopes,
             created_at=row[8],
             expires_at=row[9],
+            revoked_at=row[10],
+            rotation_overlap_until=row[11],
+            replacement_key_id=row[12],
         )
 
     def add(self, key: ApiKey) -> None:
         with _tenant_connection(self._pool) as conn:
             conn.execute(
                 """INSERT INTO api_keys
-                   (key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes, created_at, expires_at, revoked)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE)
+                   (
+                     key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
+                     created_at, expires_at, revoked_at, rotation_overlap_until, replacement_key_id, revoked
+                   )
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE)
                    ON CONFLICT (key_id) DO UPDATE SET
                      key_hash = EXCLUDED.key_hash,
                      key_salt = EXCLUDED.key_salt,
@@ -86,6 +119,9 @@ class PostgresKeyStore:
                      scopes = EXCLUDED.scopes,
                      created_at = EXCLUDED.created_at,
                      expires_at = EXCLUDED.expires_at,
+                     revoked_at = EXCLUDED.revoked_at,
+                     rotation_overlap_until = EXCLUDED.rotation_overlap_until,
+                     replacement_key_id = EXCLUDED.replacement_key_id,
                      revoked = FALSE""",
                 (
                     key.key_id,
@@ -98,6 +134,9 @@ class PostgresKeyStore:
                     json.dumps(key.scopes),
                     key.created_at,
                     key.expires_at,
+                    key.revoked_at,
+                    key.rotation_overlap_until,
+                    key.replacement_key_id,
                 ),
             )
             conn.commit()
@@ -105,8 +144,24 @@ class PostgresKeyStore:
     def remove(self, key_id: str) -> bool:
         with _tenant_connection(self._pool) as conn:
             cursor = conn.execute(
-                "UPDATE api_keys SET revoked = TRUE WHERE key_id = %s AND revoked = FALSE",
+                """UPDATE api_keys
+                   SET revoked = TRUE,
+                       revoked_at = NOW()::text,
+                       rotation_overlap_until = NULL
+                   WHERE key_id = %s AND revoked = FALSE""",
                 (key_id,),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def mark_rotating(self, key_id: str, *, replacement_key_id: str, overlap_until: str) -> bool:
+        with _tenant_connection(self._pool) as conn:
+            cursor = conn.execute(
+                """UPDATE api_keys
+                   SET replacement_key_id = %s,
+                       rotation_overlap_until = %s
+                   WHERE key_id = %s AND revoked = FALSE""",
+                (replacement_key_id, overlap_until, key_id),
             )
             conn.commit()
             return cursor.rowcount > 0
@@ -114,18 +169,22 @@ class PostgresKeyStore:
     def get(self, key_id: str) -> ApiKey | None:
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
-                """SELECT key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes, created_at, expires_at
+                """SELECT
+                       key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
+                       created_at, expires_at, revoked_at, rotation_overlap_until, replacement_key_id
                    FROM api_keys
-                   WHERE key_id = %s AND revoked = FALSE""",
+                   WHERE key_id = %s""",
                 (key_id,),
             ).fetchone()
             return self._row_to_key(row) if row else None
 
     def list_keys(self, tenant_id: str | None = None) -> list[ApiKey]:
         query = """
-            SELECT key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes, created_at, expires_at
+            SELECT
+                key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
+                created_at, expires_at, revoked_at, rotation_overlap_until, replacement_key_id
             FROM api_keys
-            WHERE revoked = FALSE
+            WHERE TRUE
         """
         params: tuple[object, ...] = ()
         if tenant_id is not None:
@@ -141,9 +200,11 @@ class PostgresKeyStore:
         with bypass_tenant_rls():
             with _tenant_connection(self._pool) as conn:
                 rows = conn.execute(
-                    """SELECT key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes, created_at, expires_at
+                    """SELECT
+                           key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes,
+                           created_at, expires_at, revoked_at, rotation_overlap_until, replacement_key_id
                        FROM api_keys
-                       WHERE key_prefix = %s AND revoked = FALSE""",
+                       WHERE key_prefix = %s""",
                     (prefix,),
                 ).fetchall()
         return verify_api_key(raw_key, [self._row_to_key(row) for row in rows])

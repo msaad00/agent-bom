@@ -50,6 +50,9 @@ import {
   minimapNodeColor,
 } from "@/lib/graph-utils";
 import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
+import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
+import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 
 // ─── Stats Bar ──────────────────────────────────────────────────────────────
 
@@ -219,6 +222,7 @@ export default function ContextPage() {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeJob, setActiveJob] = useState<ScanJob | null>(null);
+  const { counts } = useDeploymentContext();
 
   // Load completed jobs
   useEffect(() => {
@@ -409,6 +413,9 @@ export default function ContextPage() {
   }
 
   if (jobs.length === 0) {
+    if (counts && !isDeploymentSurfaceAvailable("context", counts)) {
+      return <DeploymentSurfaceRequiredState surface="context" counts={counts} detail={error} />;
+    }
     return (
       <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
         <ShieldAlert className="w-8 h-8 text-zinc-600" />

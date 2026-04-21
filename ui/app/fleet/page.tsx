@@ -35,6 +35,9 @@ import {
   Download,
   Search,
 } from "lucide-react";
+import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
+import { useDeploymentContext } from "@/hooks/use-deployment-context";
+import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 
 function downloadJson(data: unknown, filename: string) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -96,6 +99,7 @@ export default function FleetPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [trustThreshold, setTrustThreshold] = useState(50);
   const [autoQuarantine, setAutoQuarantine] = useState(false);
+  const { counts } = useDeploymentContext();
 
   const belowThresholdCount = useMemo(
     () => agents.filter((a) => a.trust_score < trustThreshold).length,
@@ -363,15 +367,18 @@ export default function FleetPage() {
       )}
 
       {/* Empty state */}
-      {!loading && !error && agents.length === 0 && (
-        <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
-          <Users className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-          <p className="text-zinc-500 text-sm">No agents in fleet yet.</p>
-          <p className="text-zinc-600 text-xs mt-1">
-            Click &quot;Sync Now&quot; to discover and register agents.
-          </p>
-        </div>
-      )}
+      {!loading && !error && agents.length === 0 &&
+        (counts && !isDeploymentSurfaceAvailable("fleet", counts) ? (
+          <DeploymentSurfaceRequiredState surface="fleet" counts={counts} detail={warning} />
+        ) : (
+          <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
+            <Users className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
+            <p className="text-zinc-500 text-sm">No agents in fleet yet.</p>
+            <p className="text-zinc-600 text-xs mt-1">
+              Click &quot;Sync Now&quot; to discover and register agents.
+            </p>
+          </div>
+        ))}
 
       {/* Agent list */}
       {!loading && filtered.length > 0 && (

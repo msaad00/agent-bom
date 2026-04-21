@@ -257,7 +257,7 @@ describe('Nav', () => {
       expect(document.querySelector('summary')).toBeTruthy()
     })
 
-    expect(document.querySelector('summary')?.textContent).toContain('Unused capabilities')
+    expect(document.querySelector('summary')?.textContent).toContain('Unused in Local')
     const fleetLink = screen.getByRole('link', { name: /^fleet$/i })
     expect(fleetLink).toHaveAttribute('href', '/fleet')
     expect(fleetLink).toHaveAttribute('title', 'Hidden until this deployment mode is detected')

@@ -28,9 +28,14 @@ import {
   LayoutDashboard,
   Wrench,
 } from "lucide-react";
-import { api, type PostureCountsResponse } from "@/lib/api";
+import { api } from "@/lib/api";
 import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
+import {
+  deploymentModeLabel,
+  isNavLinkVisible,
+} from "@/lib/deployment-context";
+import { useDeploymentContext } from "@/hooks/use-deployment-context";
 
 // ─── Navigation Structure ──────────────────────────────────────────────────
 
@@ -123,41 +128,6 @@ const ALL_GROUP_LABELS = NAV_GROUPS.map((group) => group.label);
 
 // ─── Risk counts for badges ─────────────────────────────────────────────────
 
-type RiskCounts = PostureCountsResponse;
-
-const CAPABILITY_LINKS: Partial<Record<string, keyof RiskCounts>> = {
-  "/agents": "has_local_scan",
-  "/fleet": "has_fleet_ingest",
-  "/mesh": "has_mesh",
-  "/context": "has_mcp_context",
-  "/proxy": "has_proxy",
-  "/gateway": "has_gateway",
-  "/traces": "has_traces",
-};
-
-function hasDeploymentSignals(counts: RiskCounts | null): boolean {
-  if (!counts) return false;
-  return Boolean(
-    (counts.scan_count ?? 0) > 0 ||
-      counts.has_local_scan ||
-      counts.has_fleet_ingest ||
-      counts.has_cluster_scan ||
-      counts.has_ci_cd_scan ||
-      counts.has_mesh ||
-      counts.has_gateway ||
-      counts.has_proxy ||
-      counts.has_traces ||
-      counts.has_registry
-  );
-}
-
-function isLinkVisible(href: string, counts: RiskCounts | null): boolean {
-  if (!hasDeploymentSignals(counts)) return true;
-  const capability = CAPABILITY_LINKS[href];
-  if (!capability) return true;
-  return Boolean(counts?.[capability]);
-}
-
 // ─── Sidebar Component ──────────────────────────────────────────────────────
 
 export function Nav() {
@@ -168,9 +138,9 @@ export function Nav() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     () => new Set(captureMode ? ALL_GROUP_LABELS : [activeGroupForPath(path)])
   );
-  const [counts, setCounts] = useState<RiskCounts | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const { counts } = useDeploymentContext();
 
   // Close mobile on route change
   useEffect(() => {
@@ -204,25 +174,6 @@ export function Nav() {
       main.style.paddingLeft = collapsed ? "60px" : "";
     }
   }, [collapsed]);
-
-  // Fetch risk counts for badges
-  useEffect(() => {
-    let mounted = true;
-    const load = () => {
-      api
-        .getPostureCounts()
-        .then((c) => {
-          if (mounted) setCounts(c as RiskCounts);
-        })
-        .catch(() => {});
-    };
-    load();
-    const interval = setInterval(load, 60_000);
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, []);
 
   const toggleGroup = useCallback((label: string) => {
     if (captureMode) {
@@ -265,8 +216,8 @@ export function Nav() {
       if (searchQuery) {
         return { ...group, visibleLinks: group.links, hiddenLinks: [] as NavLink[] };
       }
-      const visibleLinks = group.links.filter((link) => isLinkVisible(link.href, counts));
-      const hiddenLinks = group.links.filter((link) => !isLinkVisible(link.href, counts));
+      const visibleLinks = group.links.filter((link) => isNavLinkVisible(link.href, counts));
+      const hiddenLinks = group.links.filter((link) => !isNavLinkVisible(link.href, counts));
       return { ...group, visibleLinks, hiddenLinks };
     })
     .filter((group) => group.visibleLinks.length > 0 || group.hiddenLinks.length > 0);
@@ -287,6 +238,11 @@ export function Nav() {
             <div className="min-w-0">
               <span className="font-semibold text-sm text-[color:var(--foreground)] block truncate">agent-bom</span>
               <span className="text-[10px] text-[color:var(--text-secondary)] font-mono block">AI Supply Chain</span>
+              {counts?.deployment_mode && (
+                <span className="mt-1 inline-flex rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-0.5 text-[9px] font-mono uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">
+                  {deploymentModeLabel(counts.deployment_mode)} Mode
+                </span>
+              )}
             </div>
           )}
         </Link>
@@ -434,7 +390,7 @@ export function Nav() {
                   {group.hiddenLinks.length > 0 && (
                     <details className="mt-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2">
                       <summary className="cursor-pointer list-none text-[11px] font-medium uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">
-                        Unused capabilities ({group.hiddenLinks.length})
+                        Unused in {deploymentModeLabel(counts?.deployment_mode)} ({group.hiddenLinks.length})
                       </summary>
                       <div className="mt-2 space-y-0.5">
                         {group.hiddenLinks.map(({ href, label, icon: Icon }) => (

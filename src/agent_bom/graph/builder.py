@@ -644,15 +644,15 @@ def build_unified_graph_from_report(
             vuln_node.attributes["reachability"] = br_dict.get("reachability", "")
             vuln_node.attributes["actionable"] = br_dict.get("actionable", False)
 
-        if span is not None:
-            span.set_attribute("agent_bom.graph.scan_id", sid)
-            span.set_attribute("agent_bom.graph.tenant_id", tenant_id or "default")
-            span.set_attribute("agent_bom.graph.agent_count", len(agents_data))
-            span.set_attribute("agent_bom.graph.blast_radius_count", len(blast_data))
-            span.set_attribute("agent_bom.graph.node_count", len(graph.nodes))
-            span.set_attribute("agent_bom.graph.edge_count", len(graph.edges))
-            span.end()
-        return graph
+    if span is not None:
+        span.set_attribute("agent_bom.graph.scan_id", sid)
+        span.set_attribute("agent_bom.graph.tenant_id", tenant_id or "default")
+        span.set_attribute("agent_bom.graph.agent_count", len(agents_data))
+        span.set_attribute("agent_bom.graph.blast_radius_count", len(blast_data))
+        span.set_attribute("agent_bom.graph.node_count", len(graph.nodes))
+        span.set_attribute("agent_bom.graph.edge_count", len(graph.edges))
+        span.end()
+    return graph
 
 
 def _add_vuln_node(

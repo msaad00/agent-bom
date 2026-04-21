@@ -87,7 +87,7 @@ class MockConnection:
             elif (
                 "from api_keys" in sql_lower
                 and "key_id, key_hash, key_salt, key_prefix" in sql_lower
-                and "name, role, team_id, scopes, created_at, expires_at" in sql_lower
+                and "name, role, team_id, scopes" in sql_lower
             ):
                 rows = list(self._store.get("api_keys", {}).values())
                 if params:
@@ -97,7 +97,7 @@ class MockConnection:
                         rows = [r for r in rows if r[0] == params[0]]
                     elif "team_id = %s" in sql_lower:
                         rows = [r for r in rows if r[6] == params[0]]
-                cursor.rows = [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9]) for r in rows]
+                cursor.rows = [(r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9], r[10], r[11], r[12]) for r in rows]
             elif (
                 "from exceptions" in sql_lower
                 and "exception_id, vuln_id, package_name" in sql_lower
@@ -178,6 +178,18 @@ class MockConnection:
                         break
         elif sql_lower.startswith("update"):
             cursor.rowcount = 1
+            if "update api_keys" in sql_lower and params:
+                rows = self._store.get("api_keys", {})
+                if "set replacement_key_id" in sql_lower:
+                    replacement_key_id, overlap_until, key_id = params
+                    row = rows.get(key_id)
+                    if row:
+                        rows[key_id] = row[:11] + (overlap_until, replacement_key_id)
+                elif "set revoked = true" in sql_lower:
+                    key_id = params[0]
+                    row = rows.get(key_id)
+                    if row:
+                        rows[key_id] = row[:10] + ("now", None, row[12])
 
         self._cursors.append(cursor)
         return cursor
@@ -520,6 +532,9 @@ def test_key_store_add_get_list_verify_remove(mock_pool):
         json.dumps(api_key.scopes),
         api_key.created_at,
         api_key.expires_at,
+        api_key.revoked_at,
+        api_key.rotation_overlap_until,
+        api_key.replacement_key_id,
     )
 
     loaded = store.get(api_key.key_id)
@@ -535,6 +550,37 @@ def test_key_store_add_get_list_verify_remove(mock_pool):
     assert verified.key_id == api_key.key_id
 
     assert store.remove(api_key.key_id) is True
+
+
+def test_key_store_mark_rotating_updates_overlap_metadata(mock_pool):
+    from agent_bom.api.auth import Role, create_api_key
+    from agent_bom.api.postgres_store import PostgresKeyStore
+
+    store = PostgresKeyStore(pool=mock_pool)
+    _, api_key = create_api_key("alpha-admin", Role.ADMIN, tenant_id="tenant-alpha")
+    store.add(api_key)
+
+    mock_pool._conn._store.setdefault("api_keys", {})[api_key.key_id] = (
+        api_key.key_id,
+        api_key.key_hash,
+        api_key.key_salt,
+        api_key.key_prefix,
+        api_key.name,
+        api_key.role.value,
+        api_key.tenant_id,
+        json.dumps(api_key.scopes),
+        api_key.created_at,
+        api_key.expires_at,
+        api_key.revoked_at,
+        api_key.rotation_overlap_until,
+        api_key.replacement_key_id,
+    )
+
+    assert store.mark_rotating(api_key.key_id, replacement_key_id="next-key", overlap_until="2030-01-01T00:00:00+00:00")
+    rotated = store.get(api_key.key_id)
+    assert rotated is not None
+    assert rotated.replacement_key_id == "next-key"
+    assert rotated.rotation_overlap_until == "2030-01-01T00:00:00+00:00"
 
 
 # ─── PostgresExceptionStore ──────────────────────────────────────────────────

@@ -14,6 +14,7 @@ from agent_bom.api.auth import (
     create_api_key,
     get_key_store,
     normalize_api_key_expiry,
+    normalize_rotation_overlap_seconds,
     set_key_store,
     verify_api_key,
 )
@@ -140,6 +141,20 @@ class TestVerifyApiKey:
         assert verify_api_key(raw2, [key1, key2]) is not None
         assert verify_api_key("abom_nope", [key1, key2]) is None
 
+    def test_rotated_key_remains_valid_during_overlap(self):
+        raw, key = create_api_key("rotate-test", Role.ADMIN)
+        key.replacement_key_id = "next-key"
+        key.rotation_overlap_until = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+        result = verify_api_key(raw, [key])
+        assert result is not None
+
+    def test_rotated_key_fails_after_overlap_window(self):
+        raw, key = create_api_key("rotate-test", Role.ADMIN)
+        key.replacement_key_id = "next-key"
+        key.rotation_overlap_until = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+        result = verify_api_key(raw, [key])
+        assert result is None
+
     def test_prefix_narrows_candidates_before_scrypt(self, monkeypatch):
         raw1, key1 = create_api_key("key1", Role.ADMIN)
         _, key2 = create_api_key("key2", Role.VIEWER)
@@ -203,6 +218,7 @@ class TestApiKeyToDict:
         assert d["name"] == "dict-test"
         assert d["role"] == "analyst"
         assert d["scopes"] == ["scan"]
+        assert d["state"] == "active"
         assert "key_hash" not in d  # Hash should NOT be exposed
         assert "key_salt" not in d  # Salt should NOT be exposed
 
@@ -224,7 +240,9 @@ class TestKeyStore:
         _, key = create_api_key("rm-test", Role.VIEWER)
         store.add(key)
         assert store.remove(key.key_id)
-        assert len(store.list_keys()) == 0
+        listed = store.list_keys()
+        assert len(listed) == 1
+        assert listed[0].lifecycle_state() == "revoked"
 
     def test_remove_nonexistent(self):
         store = KeyStore()
@@ -243,6 +261,30 @@ class TestKeyStore:
         _, key = create_api_key("hk", Role.VIEWER)
         store.add(key)
         assert store.has_keys()
+
+    def test_mark_rotating_preserves_old_key_until_overlap(self):
+        store = KeyStore()
+        raw, key = create_api_key("rotate-me", Role.ADMIN)
+        store.add(key)
+        overlap_until = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+
+        assert store.mark_rotating(key.key_id, replacement_key_id="new-key", overlap_until=overlap_until)
+        assert store.verify(raw) is not None
+        rotated = store.get(key.key_id)
+        assert rotated is not None
+        assert rotated.replacement_key_id == "new-key"
+        assert rotated.rotation_overlap_until == overlap_until
+
+
+class TestRotationPolicy:
+    def test_normalize_overlap_uses_policy_default(self):
+        policy = ApiKeyPolicy(default_overlap_seconds=300, max_overlap_seconds=3600)
+        assert normalize_rotation_overlap_seconds(None, policy=policy) == 300
+
+    def test_normalize_overlap_rejects_excessive_window(self):
+        policy = ApiKeyPolicy(default_overlap_seconds=300, max_overlap_seconds=600)
+        with pytest.raises(ValueError, match="maximum allowed overlap window"):
+            normalize_rotation_overlap_seconds(900, policy=policy)
 
 
 # ---------------------------------------------------------------------------

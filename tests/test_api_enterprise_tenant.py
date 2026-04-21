@@ -113,17 +113,24 @@ async def test_delete_key_returns_404_for_cross_tenant_key(isolated_key_store):
 
 
 @pytest.mark.asyncio
-async def test_rotate_key_replaces_old_key_and_revokes_previous(isolated_key_store):
+async def test_rotate_key_replaces_old_key_and_preserves_overlap_window(isolated_key_store):
     raw, alpha = create_api_key("alpha", Role.ADMIN, tenant_id="tenant-alpha")
     isolated_key_store.add(alpha)
 
-    result = await enterprise.rotate_key(_request("tenant-alpha", "alice-admin"), alpha.key_id, RotateKeyRequest())
+    result = await enterprise.rotate_key(
+        _request("tenant-alpha", "alice-admin"),
+        alpha.key_id,
+        RotateKeyRequest(overlap_seconds=300),
+    )
 
     assert result["replaced_key_id"] == alpha.key_id
     assert result["tenant_id"] == "tenant-alpha"
     assert result["expires_at"]
-    assert isolated_key_store.get(alpha.key_id) is None
-    assert isolated_key_store.verify(raw) is None
+    assert result["overlap_seconds"] == 300
+    previous = isolated_key_store.get(alpha.key_id)
+    assert previous is not None
+    assert previous.replacement_key_id == result["key_id"]
+    assert isolated_key_store.verify(raw) is not None
     assert isolated_key_store.verify(result["raw_key"]) is not None
 
 

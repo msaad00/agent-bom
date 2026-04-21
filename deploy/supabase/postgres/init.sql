@@ -411,6 +411,9 @@ CREATE TABLE IF NOT EXISTS api_keys (
     created_at  TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
     expires_at  TEXT,               -- NULL = never
     last_used   TEXT,
+    revoked_at  TEXT,
+    rotation_overlap_until TEXT,
+    replacement_key_id TEXT,
     revoked     BOOLEAN NOT NULL DEFAULT FALSE
 );
 

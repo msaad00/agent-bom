@@ -3,8 +3,10 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   api,
+  type ApiKeyRecord,
   type AuditEntry,
   type AuditIntegrityResponse,
+  type AuthPolicyResponse,
   formatDate,
 } from "@/lib/api";
 import {
@@ -20,6 +22,7 @@ import {
   CheckCircle2,
   Filter,
 } from "lucide-react";
+import { KeyLifecyclePanel } from "@/components/key-lifecycle-panel";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -44,6 +47,10 @@ export default function AuditLogPage() {
   const [integrity, setIntegrity] = useState<AuditIntegrityResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [authPolicy, setAuthPolicy] = useState<AuthPolicyResponse | null>(null);
+  const [keys, setKeys] = useState<ApiKeyRecord[]>([]);
+  const [adminLoading, setAdminLoading] = useState(true);
+  const [adminError, setAdminError] = useState<string | null>(null);
   const [page, setPage] = useState(0);
 
   // Filters
@@ -51,33 +58,50 @@ export default function AuditLogPage() {
   const [resourceFilter, setResourceFilter] = useState<string>("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  const load = useCallback(() => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    Promise.all([
-      api.listAuditEntries({
-        action: actionFilter || undefined,
-        resource: resourceFilter || undefined,
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
-      }),
-      api.getAuditIntegrity(),
-    ])
-      .then(([log, integ]) => {
-        setEntries(log.entries);
-        setTotal(log.total);
-        setIntegrity(integ);
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+    try {
+      const [log, integ] = await Promise.all([
+        api.listAuditEntries({
+          action: actionFilter || undefined,
+          resource: resourceFilter || undefined,
+          limit: PAGE_SIZE,
+          offset: page * PAGE_SIZE,
+        }),
+        api.getAuditIntegrity(),
+      ]);
+      setEntries(log.entries);
+      setTotal(log.total);
+      setIntegrity(integ);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load audit log");
+    } finally {
+      setLoading(false);
+    }
   }, [actionFilter, resourceFilter, page]);
+
+  const loadAdmin = useCallback(async () => {
+    setAdminLoading(true);
+    setAdminError(null);
+    try {
+      const [policy, keyList] = await Promise.all([api.getAuthPolicy(), api.listKeys()]);
+      setAuthPolicy(policy);
+      setKeys(keyList.keys);
+    } catch (e) {
+      setAdminError(e instanceof Error ? e.message : "Failed to load key lifecycle state");
+    } finally {
+      setAdminLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      load();
+      void load();
+      void loadAdmin();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [load]);
+  }, [load, loadAdmin]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -104,13 +128,24 @@ export default function AuditLogPage() {
           </p>
         </div>
         <button
-          onClick={load}
+          onClick={() => {
+            void load();
+            void loadAdmin();
+          }}
           className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-xs text-zinc-300 transition-colors"
         >
           <RefreshCw className="w-3.5 h-3.5" />
           Refresh
         </button>
       </div>
+
+      <KeyLifecyclePanel
+        loading={adminLoading}
+        error={adminError}
+        policy={authPolicy}
+        keys={keys}
+        onRefresh={loadAdmin}
+      />
 
       {/* Integrity banner + stats */}
       {integrity && (

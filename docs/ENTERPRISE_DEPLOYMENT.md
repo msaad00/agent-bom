@@ -91,6 +91,23 @@ agent-bom agents --format json --output /var/log/agent-bom/scan.json
 - Secret scanner shows only first 8 characters as preview, never the full value
 - PII findings show `[PII]`, never actual data
 
+For managed proxy onboarding on the same endpoints, generate a rollout bundle instead of hand-editing every client config:
+
+```bash
+agent-bom proxy-bootstrap \
+  --bundle-dir ./endpoint-bundle \
+  --control-plane-url https://agent-bom.example.com \
+  --push-url https://agent-bom.example.com/v1/fleet/sync
+```
+
+That bundle includes:
+- a macOS/Linux shell bootstrap script
+- a Windows PowerShell bootstrap script
+- a `fleet-sync.env` file for the shipped timer/service assets
+- a rendered launchd plist for managed macOS rollout
+
+The generated bootstrap scripts install or upgrade `agent-bom`, then run `agent-bom proxy-configure --apply` with the control-plane policy/audit settings you chose, so supported JSON MCP clients no longer need manual config edits.
+
 ### 3. Centralized API Server — fleet dashboard
 
 ```bash

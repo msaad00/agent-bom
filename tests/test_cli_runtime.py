@@ -9,6 +9,7 @@ from click.testing import CliRunner
 from agent_bom.cli._runtime import (
     _NoOpDetector,
     audit_replay_cmd,
+    proxy_bootstrap_cmd,
     proxy_cmd,
     proxy_configure_cmd,
     watch_cmd,
@@ -180,6 +181,56 @@ def test_proxy_configure_secure_defaults_can_be_disabled():
         assert result.exit_code == 0
     mock_auto_configure.assert_called_once()
     assert mock_auto_configure.call_args.kwargs["secure_defaults"] is False
+
+
+def test_proxy_configure_passes_control_plane_settings():
+    runner = CliRunner()
+    with (
+        patch("agent_bom.discovery.discover_all", return_value=[]),
+        patch("agent_bom.proxy_configure.auto_configure_proxies", return_value=[]) as mock_auto_configure,
+    ):
+        result = runner.invoke(
+            proxy_configure_cmd,
+            [
+                "--control-plane-url",
+                "https://agent-bom.internal.example.com",
+                "--control-plane-token",
+                "token-123",
+                "--policy-refresh-seconds",
+                "45",
+                "--audit-push-interval",
+                "15",
+            ],
+        )
+        assert result.exit_code == 0
+    assert mock_auto_configure.call_args.kwargs["control_plane_url"] == "https://agent-bom.internal.example.com"
+    assert mock_auto_configure.call_args.kwargs["control_plane_token"] == "token-123"
+    assert mock_auto_configure.call_args.kwargs["policy_refresh_seconds"] == 45
+    assert mock_auto_configure.call_args.kwargs["audit_push_interval"] == 15
+
+
+def test_proxy_bootstrap_writes_bundle(tmp_path):
+    runner = CliRunner()
+    result = runner.invoke(
+        proxy_bootstrap_cmd,
+        [
+            "--bundle-dir",
+            str(tmp_path),
+            "--control-plane-url",
+            "https://agent-bom.internal.example.com",
+            "--control-plane-token",
+            "token-123",
+            "--push-url",
+            "https://agent-bom.internal.example.com/v1/fleet/sync",
+            "--push-api-key",
+            "fleet-key",
+        ],
+    )
+    assert result.exit_code == 0
+    assert "Wrote endpoint onboarding bundle" in result.output
+    assert (tmp_path / "install-agent-bom-endpoint.sh").exists()
+    assert (tmp_path / "install-agent-bom-endpoint.ps1").exists()
+    assert (tmp_path / "endpoint-onboarding-summary.json").exists()
 
 
 # ---------------------------------------------------------------------------

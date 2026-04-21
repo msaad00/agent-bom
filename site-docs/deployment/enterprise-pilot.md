@@ -67,42 +67,45 @@ allow-listable.
 | Layer | Lives in | Scales via | Talks to |
 |---|---|---|---|
 | **Ingress + auth** | ALB / Istio Gateway + OIDC | — | Corporate IdP (Okta / Entra / Google) |
-| **Runtime MCP plane** | `gateway` + selected `proxy` sidecars / local wrappers | HPA + workload rollout | Remote MCPs, `/v1/proxy/audit` |
+| **Runtime MCP plane** | `gateway` + selected `proxy` sidecars / local wrappers | HPA + PDB | Remote MCPs, `/v1/proxy/audit` |
 | **Control plane** | `api`, `ui`, `jobs`, `backup` (Helm) | HPA + CronJob | Data plane, OTEL, Prometheus |
 | **Data plane** | Customer-owned Postgres (+ optional ClickHouse, S3) | Operator-managed | — |
 | **Platform glue** | ExternalSecrets, ServiceMonitor, OTEL collector | Operator-managed | AWS Secrets Manager / Vault / Grafana |
 
 ```mermaid
 flowchart LR
-    subgraph outside["Outside customer infrastructure"]
-      idp["Corporate IdP"]
+    subgraph outside["Outside customer-owned infrastructure"]
+      idp["Corporate IdP<br/>Okta · Entra · Google"]
       ci["CI / scheduled jobs"]
-      remote["Remote MCPs"]
-      osv["OSV / NVD / GHSA<br/>optional"]
+      remote["Approved remote MCPs"]
+      osv["OSV / NVD / GHSA<br/>optional enrichment"]
     end
 
-    subgraph customer["Customer VPC / cluster"]
-      ingress["Ingress + SSO"]
+    subgraph customer["Customer VPC / cluster / account"]
+      ingress["Ingress + TLS + SSO"]
 
-      subgraph control["Control plane"]
+      subgraph control["Agent-BOM control plane"]
         ui["UI"]
         api["API"]
         jobs["Scan / ingest jobs"]
         backup["Backup / scheduler"]
       end
 
-      subgraph runtime["Runtime MCP path"]
-        proxy["agent-bom proxy"]
+      subgraph runtime["Runtime MCP plane"]
+        proxy["agent-bom proxy<br/>sidecar or local wrapper"]
         gateway["agent-bom gateway"]
       end
 
-      subgraph data["Customer-owned stores"]
+      subgraph data["Customer-owned data stores"]
         pg["Postgres"]
-        ch["ClickHouse optional"]
-        s3["S3 optional"]
+        ch["ClickHouse<br/>optional analytics"]
+        s3["Object storage<br/>optional backups / archive"]
       end
 
-      ops["Secrets + telemetry"]
+      subgraph ops["Platform glue"]
+        secrets["Secrets manager"]
+        metrics["Telemetry / monitoring"]
+      end
     end
 
     idp -. OIDC .-> ingress
@@ -111,15 +114,17 @@ flowchart LR
     ingress -. optional shared runtime URL .-> gateway
     ci --> jobs
     jobs --> api
-    backup --> s3
-    api --> pg
-    api -. analytics .-> ch
     proxy --> gateway
     gateway --> api
     gateway --> remote
+    api --> pg
+    api -. analytics .-> ch
+    backup --> s3
+    secrets --> api
+    secrets --> gateway
+    api --> metrics
+    gateway --> metrics
     api -. enrichment .-> osv
-    ops --> api
-    ops --> gateway
 ```
 
 *Everything inside the customer boundary runs in the customer's account. The

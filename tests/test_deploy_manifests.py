@@ -269,6 +269,16 @@ def test_helm_examples_readme_is_shipped():
     assert "focused-pilot" in body
     assert "sqlite-pilot" in body
     assert "gateway-runtime" in body
+    assert "install_helm_profile.py" in body
+
+
+def test_packaged_helm_profile_installer_script_exists():
+    """Operators should get a one-command wrapper around the shipped Helm profiles."""
+    script = Path(__file__).parent.parent / "scripts" / "install_helm_profile.py"
+    assert script.exists()
+    body = script.read_text()
+    assert "--print-command" in body
+    assert "build_helm_profile_command" in body
 
 
 def test_ci_pipeline_validates_helm_profiles():

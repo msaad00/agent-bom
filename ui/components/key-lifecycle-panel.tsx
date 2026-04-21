@@ -1,0 +1,511 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import {
+  api,
+  type ApiKeyRecord,
+  type AuthPolicyResponse,
+  type CreateApiKeyRequest,
+  type RotateApiKeyRequest,
+  formatDate,
+} from "@/lib/api";
+import {
+  CheckCircle2,
+  Copy,
+  KeyRound,
+  Loader2,
+  Plus,
+  RefreshCw,
+  RotateCw,
+  ShieldAlert,
+  ShieldOff,
+} from "lucide-react";
+
+function formatSeconds(value: number): string {
+  if (value < 60) return `${value}s`;
+  if (value < 3600) return `${Math.floor(value / 60)}m`;
+  if (value < 86400) return `${Math.floor(value / 3600)}h`;
+  return `${Math.floor(value / 86400)}d`;
+}
+
+function toIsoOrNull(value: string): string | null {
+  if (!value.trim()) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("Expiration must be a valid date/time");
+  }
+  return parsed.toISOString();
+}
+
+function keyStateTone(state: ApiKeyRecord["state"]): string {
+  switch (state) {
+    case "active":
+      return "border-emerald-900/60 bg-emerald-950/30 text-emerald-300";
+    case "rotation_overlap":
+      return "border-sky-900/60 bg-sky-950/30 text-sky-300";
+    case "rotated":
+      return "border-amber-900/60 bg-amber-950/30 text-amber-300";
+    case "revoked":
+      return "border-red-900/60 bg-red-950/30 text-red-300";
+    case "expired":
+    default:
+      return "border-zinc-800 bg-zinc-900 text-zinc-400";
+  }
+}
+
+function stateLabel(state: ApiKeyRecord["state"]): string {
+  switch (state) {
+    case "rotation_overlap":
+      return "Rotation overlap";
+    default:
+      return state[0].toUpperCase() + state.slice(1);
+  }
+}
+
+function isSessionKey(key: ApiKeyRecord): boolean {
+  return key.name.startsWith("saml:") || key.scopes.includes("saml-session");
+}
+
+export function KeyLifecyclePanel({
+  loading,
+  error,
+  policy,
+  keys,
+  onRefresh,
+}: {
+  loading: boolean;
+  error: string | null;
+  policy: AuthPolicyResponse | null;
+  keys: ApiKeyRecord[];
+  onRefresh: () => Promise<void> | void;
+}) {
+  const [busyKeyId, setBusyKeyId] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<"create" | "rotate" | "revoke" | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [issuedSecret, setIssuedSecret] = useState<{
+    title: string;
+    rawKey: string;
+    detail: string;
+  } | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [rotationTarget, setRotationTarget] = useState<ApiKeyRecord | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const [createForm, setCreateForm] = useState({
+    name: "",
+    role: "viewer",
+    expiresAt: "",
+  });
+  const [rotateForm, setRotateForm] = useState({
+    name: "",
+    expiresAt: "",
+    overlapSeconds: "",
+  });
+
+  const stateCounts = useMemo(() => {
+    return keys.reduce<Record<string, number>>((acc, key) => {
+      acc[key.state] = (acc[key.state] || 0) + 1;
+      return acc;
+    }, {});
+  }, [keys]);
+
+  async function copyIssuedSecret() {
+    if (!issuedSecret?.rawKey) return;
+    await navigator.clipboard.writeText(issuedSecret.rawKey);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1200);
+  }
+
+  async function handleCreateSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusyAction("create");
+    setFormError(null);
+    try {
+      const body: CreateApiKeyRequest = {
+        name: createForm.name.trim(),
+        role: createForm.role,
+        expires_at: toIsoOrNull(createForm.expiresAt),
+      };
+      const created = await api.createKey(body);
+      setIssuedSecret({
+        title: `Created key ${created.name}`,
+        rawKey: created.raw_key,
+        detail: created.message,
+      });
+      setCreateOpen(false);
+      setCreateForm({ name: "", role: "viewer", expiresAt: "" });
+      await onRefresh();
+    } catch (nextError) {
+      setFormError(nextError instanceof Error ? nextError.message : "Failed to create API key");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleRotateSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!rotationTarget) return;
+    setBusyAction("rotate");
+    setBusyKeyId(rotationTarget.key_id);
+    setFormError(null);
+    try {
+      const overlap = rotateForm.overlapSeconds.trim();
+      const body: RotateApiKeyRequest = {
+        name: rotateForm.name.trim() || undefined,
+        expires_at: toIsoOrNull(rotateForm.expiresAt) ?? undefined,
+        overlap_seconds: overlap ? Number(overlap) : undefined,
+      };
+      const rotated = await api.rotateKey(rotationTarget.key_id, body);
+      setIssuedSecret({
+        title: `Rotated key ${rotationTarget.name}`,
+        rawKey: rotated.raw_key,
+        detail: `${rotated.message} Overlap ends ${formatDate(rotated.overlap_until)}.`,
+      });
+      setRotationTarget(null);
+      setRotateForm({ name: "", expiresAt: "", overlapSeconds: "" });
+      await onRefresh();
+    } catch (nextError) {
+      setFormError(nextError instanceof Error ? nextError.message : "Failed to rotate API key");
+    } finally {
+      setBusyKeyId(null);
+      setBusyAction(null);
+    }
+  }
+
+  async function handleRevoke(key: ApiKeyRecord) {
+    if (!window.confirm(`Revoke ${key.name}? Existing clients will stop authenticating immediately.`)) {
+      return;
+    }
+    setBusyAction("revoke");
+    setBusyKeyId(key.key_id);
+    setFormError(null);
+    try {
+      await api.deleteKey(key.key_id);
+      await onRefresh();
+    } catch (nextError) {
+      setFormError(nextError instanceof Error ? nextError.message : "Failed to revoke API key");
+    } finally {
+      setBusyKeyId(null);
+      setBusyAction(null);
+    }
+  }
+
+  return (
+    <section className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-zinc-100">
+            <KeyRound className="h-5 w-5 text-emerald-400" />
+            Control-plane auth and API keys
+          </h2>
+          <p className="mt-1 text-sm text-zinc-400">
+            Rotate service keys with an overlap window, inspect auth policy, and revoke stale machine-to-machine access
+            without leaving the control plane.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => {
+              setRotationTarget(null);
+              setCreateOpen((value) => !value);
+              setFormError(null);
+            }}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-900/60 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-300 transition hover:bg-emerald-950/50"
+          >
+            <Plus className="h-4 w-4" />
+            New key
+          </button>
+          <button
+            onClick={() => void onRefresh()}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-800"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {issuedSecret ? (
+        <div className="rounded-2xl border border-emerald-900/60 bg-emerald-950/20 p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-emerald-300">{issuedSecret.title}</p>
+              <p className="mt-1 text-sm text-zinc-300">{issuedSecret.detail}</p>
+              <p className="mt-2 text-xs text-zinc-500">This raw key is shown once. Store it securely before you close this panel.</p>
+            </div>
+            <button
+              onClick={() => void copyIssuedSecret()}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-800"
+            >
+              {copied ? <CheckCircle2 className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
+              {copied ? "Copied" : "Copy raw key"}
+            </button>
+          </div>
+          <pre className="mt-3 overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm text-zinc-100">
+            {issuedSecret.rawKey}
+          </pre>
+        </div>
+      ) : null}
+
+      {formError ? (
+        <div className="rounded-xl border border-red-900/50 bg-red-950/20 px-4 py-3 text-sm text-red-300">{formError}</div>
+      ) : null}
+
+      {createOpen ? (
+        <form onSubmit={handleCreateSubmit} className="grid gap-4 rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 md:grid-cols-3">
+          <label className="space-y-2 text-sm text-zinc-300">
+            <span>Name</span>
+            <input
+              required
+              value={createForm.name}
+              onChange={(event) => setCreateForm((current) => ({ ...current, name: event.target.value }))}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-emerald-500"
+              placeholder="ci-service"
+            />
+          </label>
+          <label className="space-y-2 text-sm text-zinc-300">
+            <span>Role</span>
+            <select
+              value={createForm.role}
+              onChange={(event) => setCreateForm((current) => ({ ...current, role: event.target.value }))}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-emerald-500"
+            >
+              <option value="viewer">viewer</option>
+              <option value="analyst">analyst</option>
+              <option value="admin">admin</option>
+            </select>
+          </label>
+          <label className="space-y-2 text-sm text-zinc-300">
+            <span>Expires at (optional)</span>
+            <input
+              type="datetime-local"
+              value={createForm.expiresAt}
+              onChange={(event) => setCreateForm((current) => ({ ...current, expiresAt: event.target.value }))}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-emerald-500"
+            />
+          </label>
+          <div className="md:col-span-3 flex items-center justify-between gap-3">
+            <p className="text-xs text-zinc-500">
+              Default TTL: {policy ? formatSeconds(policy.api_key.default_ttl_seconds) : "policy unavailable"}.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setCreateOpen(false)}
+                className="rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={busyAction === "create"}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-60"
+              >
+                {busyAction === "create" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Create key
+              </button>
+            </div>
+          </div>
+        </form>
+      ) : null}
+
+      {rotationTarget ? (
+        <form onSubmit={handleRotateSubmit} className="grid gap-4 rounded-2xl border border-sky-900/50 bg-sky-950/20 p-4 md:grid-cols-3">
+          <div className="md:col-span-3">
+            <p className="text-sm font-semibold text-sky-300">Rotate {rotationTarget.name}</p>
+            <p className="mt-1 text-sm text-zinc-300">
+              The current key stays valid during the overlap window so clients can roll without downtime.
+            </p>
+          </div>
+          <label className="space-y-2 text-sm text-zinc-300">
+            <span>Replacement name (optional)</span>
+            <input
+              value={rotateForm.name}
+              onChange={(event) => setRotateForm((current) => ({ ...current, name: event.target.value }))}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
+              placeholder={rotationTarget.name}
+            />
+          </label>
+          <label className="space-y-2 text-sm text-zinc-300">
+            <span>Replacement expiry (optional)</span>
+            <input
+              type="datetime-local"
+              value={rotateForm.expiresAt}
+              onChange={(event) => setRotateForm((current) => ({ ...current, expiresAt: event.target.value }))}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
+            />
+          </label>
+          <label className="space-y-2 text-sm text-zinc-300">
+            <span>Overlap seconds</span>
+            <input
+              type="number"
+              min={0}
+              max={policy?.api_key.max_overlap_seconds ?? 86400}
+              value={rotateForm.overlapSeconds}
+              onChange={(event) => setRotateForm((current) => ({ ...current, overlapSeconds: event.target.value }))}
+              className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-sky-500"
+              placeholder={String(policy?.api_key.default_overlap_seconds ?? 900)}
+            />
+          </label>
+          <div className="md:col-span-3 flex items-center justify-between gap-3">
+            <p className="text-xs text-zinc-500">
+              Allowed overlap: up to {policy ? formatSeconds(policy.api_key.max_overlap_seconds) : "policy unavailable"}.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setRotationTarget(null)}
+                className="rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={busyAction === "rotate"}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-sky-500 px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-sky-400 disabled:opacity-60"
+              >
+                {busyAction === "rotate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
+                Rotate key
+              </button>
+            </div>
+          </div>
+        </form>
+      ) : null}
+
+      {loading ? (
+        <div className="flex items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900/40 px-4 py-10 text-zinc-400">
+          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+          Loading auth policy and keys...
+        </div>
+      ) : error ? (
+        <div className="rounded-2xl border border-amber-900/50 bg-amber-950/20 p-4">
+          <div className="flex items-start gap-3">
+            <ShieldAlert className="mt-0.5 h-5 w-5 text-amber-300" />
+            <div>
+              <p className="text-sm font-semibold text-amber-200">Admin access is required for key lifecycle operations</p>
+              <p className="mt-1 text-sm text-amber-100/80">{error}</p>
+            </div>
+          </div>
+        </div>
+      ) : policy ? (
+        <>
+          <div className="grid gap-3 md:grid-cols-4">
+            <MetricCard label="Default TTL" value={formatSeconds(policy.api_key.default_ttl_seconds)} hint="Issued key lifetime" />
+            <MetricCard label="Default overlap" value={formatSeconds(policy.api_key.default_overlap_seconds)} hint="Rotation grace window" />
+            <MetricCard label="Recommended UI mode" value={policy.ui.recommended_mode} hint="Browser auth posture" />
+            <MetricCard label="Active keys" value={String(stateCounts.active ?? 0)} hint={`${keys.length} total in tenant`} />
+          </div>
+
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold text-zinc-200">Key inventory</h3>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Rotation overlap lets old and new keys coexist briefly while clients roll.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-xs text-zinc-500">
+                <span>{stateCounts.rotation_overlap ?? 0} rotating</span>
+                <span>{stateCounts.rotated ?? 0} rotated</span>
+                <span>{stateCounts.revoked ?? 0} revoked</span>
+              </div>
+            </div>
+
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-xs uppercase tracking-[0.18em] text-zinc-500">
+                  <tr>
+                    <th className="pb-2">Name</th>
+                    <th className="pb-2">Role</th>
+                    <th className="pb-2">State</th>
+                    <th className="pb-2">Expires</th>
+                    <th className="pb-2">Overlap</th>
+                    <th className="pb-2 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-800">
+                  {keys.map((key) => {
+                    const sessionKey = isSessionKey(key);
+                    const canRotate = key.state === "active" && !sessionKey;
+                    const canRevoke = key.state !== "revoked";
+                    return (
+                      <tr key={key.key_id}>
+                        <td className="py-3">
+                          <div className="font-medium text-zinc-200">{key.name}</div>
+                          <div className="text-xs text-zinc-500">
+                            {key.key_prefix} · {sessionKey ? "session key" : "service key"}
+                          </div>
+                        </td>
+                        <td className="py-3 text-zinc-300">{key.role}</td>
+                        <td className="py-3">
+                          <span className={`inline-flex rounded-full border px-2 py-1 text-xs ${keyStateTone(key.state)}`}>
+                            {stateLabel(key.state)}
+                          </span>
+                        </td>
+                        <td className="py-3 text-zinc-400">{key.expires_at ? formatDate(key.expires_at) : "Never"}</td>
+                        <td className="py-3 text-zinc-400">
+                          {key.rotation_overlap_until
+                            ? `${formatDate(key.rotation_overlap_until)}${
+                                key.overlap_seconds_remaining != null ? ` · ${formatSeconds(key.overlap_seconds_remaining)} left` : ""
+                              }`
+                            : "—"}
+                        </td>
+                        <td className="py-3">
+                          <div className="flex justify-end gap-2">
+                            <button
+                              onClick={() => {
+                                setCreateOpen(false);
+                                setFormError(null);
+                                setRotateForm({
+                                  name: "",
+                                  expiresAt: "",
+                                  overlapSeconds: String(policy.api_key.default_overlap_seconds),
+                                });
+                                setRotationTarget(key);
+                              }}
+                              disabled={!canRotate || busyKeyId === key.key_id}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-sky-900/60 bg-sky-950/20 px-3 py-1.5 text-xs text-sky-300 transition hover:bg-sky-950/40 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              {busyAction === "rotate" && busyKeyId === key.key_id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <RotateCw className="h-3.5 w-3.5" />
+                              )}
+                              Rotate
+                            </button>
+                            <button
+                              onClick={() => void handleRevoke(key)}
+                              disabled={!canRevoke || busyKeyId === key.key_id}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-red-900/60 bg-red-950/20 px-3 py-1.5 text-xs text-red-300 transition hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              {busyAction === "revoke" && busyKeyId === key.key_id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <ShieldOff className="h-3.5 w-3.5" />
+                              )}
+                              Revoke
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function MetricCard({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
+      <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">{label}</p>
+      <p className="mt-2 text-lg font-semibold text-zinc-100">{value}</p>
+      <p className="mt-1 text-xs text-zinc-500">{hint}</p>
+    </div>
+  );
+}

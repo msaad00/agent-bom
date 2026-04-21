@@ -262,7 +262,20 @@ def test_policy_results_status_values_documented():
 
 def test_api_keys_required_columns():
     cols = _columns_for("api_keys")
-    for col in ("key_id", "key_hash", "key_salt", "key_prefix", "name", "role", "team_id", "scopes", "revoked"):
+    for col in (
+        "key_id",
+        "key_hash",
+        "key_salt",
+        "key_prefix",
+        "name",
+        "role",
+        "team_id",
+        "scopes",
+        "revoked_at",
+        "rotation_overlap_until",
+        "replacement_key_id",
+        "revoked",
+    ):
         assert col in cols, f"api_keys missing column: {col}"
 
 

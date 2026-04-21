@@ -12,6 +12,7 @@ This is the right path when you want:
 - the scanner CronJob and optional runtime monitor packaged alongside the
   control plane
 - production operator defaults without pretending there is a managed vendor plane
+- a clean split between the API/runtime image and the standalone UI image
 
 ## What the chart deploys
 
@@ -22,6 +23,13 @@ When you set `controlPlane.enabled=true`, the Helm chart can package:
 - same-origin Ingress that routes API paths to the API service and `/` to the UI
 - scanner CronJob
 - optional runtime monitor DaemonSet
+
+The image split is intentional:
+
+- `agentbom/agent-bom` runs the API, scanner jobs, gateway, proxy-related
+  entrypoints, and other non-browser workloads
+- `agentbom/agent-bom-ui` runs the standalone browser UI that sits behind the
+  same ingress or a separate UI service
 
 ```mermaid
 flowchart LR
@@ -223,7 +231,7 @@ Install:
 
 ```bash
 helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom \
-  --version 0.79.0 \
+  --version 0.80.1 \
   -n agent-bom --create-namespace \
   -f values.agent-bom.yaml
 ```
@@ -259,7 +267,7 @@ Then install:
 
 ```bash
 helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom \
-  --version 0.79.0 \
+  --version 0.80.1 \
   -n agent-bom --create-namespace \
   -f deploy/helm/agent-bom/examples/eks-control-plane-sqlite-pilot-values.yaml
 ```

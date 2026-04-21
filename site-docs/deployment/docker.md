@@ -1,5 +1,15 @@
 # Docker Deployment
 
+Use this page for containerized entrypoints. The published image split is:
+
+- `agentbom/agent-bom` = the main runtime image for CLI scans, the API,
+  scanner jobs, gateway, MCP server mode, and other non-browser entrypoints
+- `agentbom/agent-bom-ui` = the standalone browser UI image used when the
+  self-hosted control plane runs the UI separately from the API
+
+The UI image does not replace the API image. A self-hosted browser deployment
+still needs the API/control-plane service from `agentbom/agent-bom`.
+
 ## Quick scan
 
 ```bash
@@ -54,10 +64,10 @@ docker run --rm \
 ## Runtime proxy sidecar
 
 ```bash
-docker build -f deploy/docker/Dockerfile.runtime -t agent-bom-runtime .
+docker pull agentbom/agent-bom:0.80.1
 docker run --rm -i \
   -v ./audit-logs:/var/log/agent-bom \
-  agent-bom-runtime \
+  agentbom/agent-bom:0.80.1 \
   --log /var/log/agent-bom/audit.jsonl \
   --block-undeclared \
   -- npx -y @modelcontextprotocol/server-filesystem /workspace
@@ -67,7 +77,8 @@ docker run --rm -i \
 
 | Image | Purpose |
 |-------|---------|
-| `ghcr.io/msaad00/agent-bom:latest` | CLI scanner |
+| `ghcr.io/msaad00/agent-bom:latest` | Main runtime image: CLI, API, scanner jobs, gateway, MCP server |
+| `agentbom/agent-bom-ui` | Standalone browser UI image for split control-plane deploys |
 | `deploy/docker/Dockerfile.sse` | SSE MCP server |
-| `deploy/docker/Dockerfile.runtime` | Runtime proxy |
+| `deploy/docker/Dockerfile.runtime` | Local rebuild recipe for the runtime proxy path shipped in `agentbom/agent-bom` |
 | `deploy/docker/Dockerfile.snowpark` | Snowflake Native App |

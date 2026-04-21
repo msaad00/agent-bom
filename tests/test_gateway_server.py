@@ -17,6 +17,7 @@ import asyncio
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 from typing import Any
 
 from starlette.testclient import TestClient
@@ -152,6 +153,50 @@ def test_relay_requires_gateway_token_when_configured() -> None:
     )
     assert allowed.status_code == 200
     assert allowed.json()["result"]["ok"] is True
+
+
+def test_relay_accepts_control_plane_api_key_and_applies_tenant(monkeypatch) -> None:
+    audit_events: list[dict[str, Any]] = []
+
+    async def fake_caller(upstream, message, extra_headers):
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    async def audit_sink(event):
+        audit_events.append(event)
+
+    class _FakeKeyStore:
+        def has_keys(self) -> bool:
+            return True
+
+        def verify(self, raw_key: str):
+            if raw_key == "tenant-alpha-key":
+                return SimpleNamespace(tenant_id="tenant-alpha")
+            return None
+
+    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        upstream_caller=fake_caller,
+        audit_sink=audit_sink,
+    )
+    client = TestClient(create_gateway_app(settings))
+
+    denied = client.post(
+        "/mcp/filesystem",
+        json=_json_rpc("tools/call", name="read_file", arguments={"path": "/etc/hosts"}),
+    )
+    assert denied.status_code == 401
+
+    allowed = client.post(
+        "/mcp/filesystem",
+        headers={"X-API-Key": "tenant-alpha-key"},
+        json=_json_rpc("tools/call", name="read_file", arguments={"path": "/etc/hosts"}),
+    )
+    assert allowed.status_code == 200
+    assert allowed.json()["result"]["ok"] is True
+    assert audit_events[-1]["tenant_id"] == "tenant-alpha"
 
 
 # ─── Policy block ─────────────────────────────────────────────────────────

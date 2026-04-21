@@ -59,7 +59,7 @@ The demo uses a curated sample so the output stays reproducible across releases.
 | Check a package before install | `agent-bom check flask@2.2.0 --ecosystem pypi` | Machine-readable pre-install verdict |
 | Scan a container image | `agent-bom image nginx:latest` | OS and package CVEs with fixability |
 | Audit IaC or cloud posture | `agent-bom iac Dockerfile k8s/ infra/main.tf` | Misconfigurations, manifest hardening, optional live cluster posture |
-| Review findings in a persistent graph | `agent-bom serve` | API plus bundled local UI; Kubernetes uses the separate `agent-bom-ui` image |
+| Review findings in a persistent graph | `agent-bom serve` | API plus bundled local UI on one machine; Kubernetes and Compose split the API image (`agentbom/agent-bom`) from the browser UI image (`agentbom/agent-bom-ui`) |
 | Inspect live MCP traffic | `agent-bom proxy "<server command>"` | Inline runtime inspection, detector chaining, response/argument review |
 
 ## Quick start
@@ -450,7 +450,7 @@ Pilot teams run:
 ```bash
 # 1. Pick your backend shape (postgres default; snowflake / istio / production also shipped)
 helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom \
-  --version 0.79.0 \
+  --version 0.80.1 \
   -n agent-bom --create-namespace \
   -f deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml
 
@@ -534,12 +534,20 @@ pip install agent-bom                        # CLI
 docker run --rm agentbom/agent-bom agents    # Docker
 ```
 
+For published containers, the split is:
+
+- `agentbom/agent-bom` = the main runtime image for CLI, API, jobs, gateway,
+  proxy-related entrypoints, and MCP server mode
+- `agentbom/agent-bom-ui` = the standalone browser UI image used when the
+  self-hosted control plane runs the UI separately from the API
+
 | Mode | Best for |
 |------|----------|
 | CLI (`agent-bom agents`) | local audit + project scan |
 | Endpoint fleet (`--push-url …/v1/fleet/sync`) | employee laptops pushing into self-hosted fleet |
 | GitHub Action (`uses: msaad00/agent-bom@v0.80.1`) | CI/CD + SARIF |
-| Docker (`agentbom/agent-bom`) | isolated scans, containerized self-hosting |
+| Docker (`agentbom/agent-bom`) | isolated scans, API jobs, and non-browser self-hosted entrypoints |
+| Browser UI image (`agentbom/agent-bom-ui`) | the separate Next.js UI container paired with a self-hosted API |
 | Kubernetes / Helm (`helm install agent-bom deploy/helm/agent-bom`) | self-hosted API + dashboard, scheduled discovery |
 | REST API (`agent-bom api`) | platform integration, self-hosted control plane |
 | MCP server (`agent-bom mcp server`) | Claude Desktop, Claude Code, Cursor, Codex, Windsurf, Cortex |

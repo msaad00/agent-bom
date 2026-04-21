@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -17,6 +17,7 @@ _logger = logging.getLogger(__name__)
 
 @router.get("/v1/assets", tags=["assets"])
 async def list_assets(
+    request: Request,
     status: str | None = None,
     severity: str | None = None,
     limit: int = 500,
@@ -31,7 +32,7 @@ async def list_assets(
     try:
         from agent_bom.asset_tracker import AssetTracker
 
-        tracker = AssetTracker()
+        tracker = AssetTracker(tenant_id=getattr(request.state, "tenant_id", "default"))
         assets = tracker.list_assets(status=status, severity=severity, limit=limit)
         stats = tracker.stats()
         mttr = tracker.mttr_days()
@@ -54,12 +55,12 @@ async def list_assets(
 
 
 @router.get("/v1/assets/stats", tags=["assets"])
-async def get_asset_stats() -> dict:
+async def get_asset_stats(request: Request) -> dict:
     """Return aggregate asset tracking statistics including MTTR."""
     try:
         from agent_bom.asset_tracker import AssetTracker
 
-        tracker = AssetTracker()
+        tracker = AssetTracker(tenant_id=getattr(request.state, "tenant_id", "default"))
         stats = tracker.stats()
         mttr = tracker.mttr_days()
         tracker.close()

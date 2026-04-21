@@ -98,6 +98,7 @@ class ScanJob(BaseModel):
 
     job_id: str
     tenant_id: str = "default"
+    source_id: str | None = None
     triggered_by: str | None = None
     status: JobStatus = JobStatus.PENDING
     created_at: str
@@ -143,6 +144,7 @@ class StorageHealth(BaseModel):
     job_store: str = "inmemory"
     fleet_store: str = "inmemory"
     policy_store: str = "inmemory"
+    source_store: str = "inmemory"
     schedule_store: str = "inmemory"
     exception_store: str = "inmemory"
     trend_store: str = "inmemory"
@@ -358,6 +360,78 @@ class ScheduleCreate(BaseModel):
     scan_config: dict[str, Any] = Field(default_factory=dict)
     enabled: bool = True
     tenant_id: str = "default"
+
+
+class SourceKind(str, Enum):
+    SCAN_REPO = "scan.repo"
+    SCAN_IMAGE = "scan.image"
+    SCAN_IAC = "scan.iac"
+    SCAN_CLOUD = "scan.cloud"
+    SCAN_MCP_CONFIG = "scan.mcp_config"
+    CONNECTOR_CLOUD_READ_ONLY = "connector.cloud_read_only"
+    CONNECTOR_REGISTRY = "connector.registry"
+    CONNECTOR_WAREHOUSE = "connector.warehouse"
+    INGEST_FLEET_SYNC = "ingest.fleet_sync"
+    INGEST_TRACE_PUSH = "ingest.trace_push"
+    INGEST_RESULT_PUSH = "ingest.result_push"
+    INGEST_ARTIFACT_IMPORT = "ingest.artifact_import"
+    RUNTIME_PROXY = "runtime.proxy"
+    RUNTIME_GATEWAY = "runtime.gateway"
+
+
+class SourceStatus(str, Enum):
+    CONFIGURED = "configured"
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    DISABLED = "disabled"
+
+
+class SourceRecord(BaseModel):
+    source_id: str
+    tenant_id: str = "default"
+    display_name: str
+    kind: SourceKind
+    description: str = ""
+    owner: str = ""
+    connector_name: str | None = None
+    credential_mode: str = "none"
+    credential_ref: str | None = None
+    enabled: bool = True
+    status: SourceStatus = SourceStatus.CONFIGURED
+    config: dict[str, Any] = Field(default_factory=dict)
+    last_tested_at: str | None = None
+    last_test_status: str | None = None
+    last_test_message: str | None = None
+    last_run_at: str | None = None
+    last_run_status: str | None = None
+    last_job_id: str | None = None
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class SourceCreate(BaseModel):
+    display_name: str
+    kind: SourceKind
+    description: str = ""
+    owner: str = ""
+    connector_name: str | None = None
+    credential_mode: str = "none"
+    credential_ref: str | None = None
+    enabled: bool = True
+    config: dict[str, Any] = Field(default_factory=dict)
+    tenant_id: str = "default"
+
+
+class SourceUpdate(BaseModel):
+    display_name: str | None = None
+    description: str | None = None
+    owner: str | None = None
+    connector_name: str | None = None
+    credential_mode: str | None = None
+    credential_ref: str | None = None
+    enabled: bool | None = None
+    status: SourceStatus | None = None
+    config: dict[str, Any] | None = None
 
 
 class CreateKeyRequest(BaseModel):

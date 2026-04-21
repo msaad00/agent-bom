@@ -156,6 +156,7 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
     job = ScanJob(
         job_id=str(uuid.uuid4()),
         tenant_id=tenant_id,
+        source_id=body.source_id or None,
         triggered_by=f"{_triggered_by(request)}:{body.source_id}" if body.source_id else _triggered_by(request),
         created_at=_now(),
         request=ScanRequest(),

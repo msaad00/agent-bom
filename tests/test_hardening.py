@@ -165,6 +165,21 @@ def test_get_schedule_store_raises_runtime_error_when_uninitialized():
         _stores._schedule_store = old
 
 
+def test_get_source_store_raises_runtime_error_when_uninitialized():
+    from agent_bom.api import stores as _stores
+
+    old = _stores._source_store
+    try:
+        _stores._source_store = None
+        try:
+            _stores._get_source_store()
+            assert False, "expected RuntimeError"
+        except RuntimeError as exc:
+            assert "not initialized" in str(exc)
+    finally:
+        _stores._source_store = old
+
+
 # ── Pagination ──────────────────────────────────────────────────────────────
 
 

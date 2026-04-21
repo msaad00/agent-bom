@@ -163,63 +163,68 @@ allow-listable.
 | **Platform glue** | ExternalSecrets, ServiceMonitor, OTEL collector | Operator-managed | AWS Secrets Manager / Vault / Grafana |
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph outside["Outside customer trust boundary"]
-      dev["Developer laptop<br/>Claude Desktop · Cursor · Claude Code"]
-      gh["GitHub<br/>Actions runner"]
-      osv["OSV / NVD / GHSA<br/>optional egress, allow-listable"]
-      mcp_saas["Remote MCPs<br/>SaaS + partner tools"]
       idp["Corporate IdP<br/>Okta · Entra · Google"]
+      dev["Developer laptop<br/>Claude Desktop · Cursor · Claude Code"]
+      gh["GitHub Actions / CI runner"]
+      remote["Remote MCPs<br/>SaaS + partner tools"]
+      osv["OSV / NVD / GHSA<br/>optional egress, allow-listable"]
     end
 
-    subgraph vpc["Customer VPC / EKS account — single trust boundary"]
+    subgraph vpc["Customer VPC / EKS account"]
       ingress["Ingress + TLS<br/>ALB / Istio Gateway"]
 
-      subgraph cp["Control plane — Helm chart: agent-bom"]
-        api["API + UI<br/>2× Deployment + HPA + PDB"]
-        gw["MCP gateway<br/>Deployment + HPA<br/>agent-bom gateway serve"]
-        px["MCP proxy sidecar<br/>stdio · SSE · HTTP<br/>sidecar or laptop wrapper"]
+      subgraph traffic["Agent-Bom traffic plane in your EKS cluster"]
+        px["MCP proxy<br/>sidecar or laptop wrapper<br/>stdio · SSE · HTTP"]
+        gw["MCP gateway<br/>agent-bom gateway serve<br/>Deployment + HPA"]
+      end
+
+      subgraph control["Agent-Bom control plane in your EKS cluster"]
+        ui["UI<br/>same-origin browser app"]
+        api["API<br/>fleet · policy · audit · findings"]
         jobs["Scan + ingest workers<br/>CronJob + Job"]
-        backup["Backup CronJob<br/>pg_dump → S3"]
+        backup["Backup CronJob<br/>pg_dump -> S3"]
       end
 
-      subgraph glue["Platform integration"]
-        es["ExternalSecrets<br/>AWS SM / Vault"]
-        otel["OTEL collector<br/>traces + metrics"]
-        prom["Prometheus<br/>ServiceMonitor"]
-      end
-
-      subgraph dataplane["Data plane in your account"]
+      subgraph data["Customer-owned data plane"]
         pg["Postgres / Supabase<br/>jobs · fleet · graph · audit"]
         ch["ClickHouse (optional)<br/>analytics + long-retention"]
         s3["S3 (optional)<br/>backups + SBOM archive"]
       end
+
+      subgraph platform["Platform integration in your account"]
+        es["ExternalSecrets<br/>AWS SM / Vault"]
+        otel["OTEL collector<br/>traces + metrics"]
+        prom["Prometheus / ServiceMonitor"]
+      end
     end
 
     idp -. OIDC .-> ingress
-    ingress --> api
-    ingress --> gw
+    ingress -->|"browser traffic"| ui
+    ingress -->|"API + WS"| api
+    ingress -->|"optional shared MCP URL"| gw
 
-    dev -->|MCP JSON-RPC| px
-    px -->|audited relay| gw
-    gw -->|policy + audit| mcp_saas
-    gw -->|/v1/proxy/audit| api
+    dev -->|"MCP JSON-RPC"| px
+    px -->|"audited relay"| gw
+    gw -->|"policy-audited upstream call"| remote
+    px -->|"/v1/proxy/audit"| api
+    gw -->|"/v1/proxy/audit"| api
 
-    gh -->|SARIF + findings| api
+    gh -->|"SARIF + findings"| api
+    jobs -->|"scan results + inventory"| api
 
-    jobs --> api
-    api --> pg
-    api -. optional .-> ch
-    backup --> s3
+    api -->|"transactional state"| pg
+    api -. "optional analytics" .-> ch
+    backup -->|"backup archive"| s3
 
-    api -. optional egress .-> osv
-
-    es --> api
-    es --> gw
-    api --> otel
-    gw --> otel
-    api --> prom
-    gw --> prom
+    es -->|"runtime secrets"| api
+    es -->|"runtime secrets"| gw
+    api -->|"telemetry"| otel
+    gw -->|"telemetry"| otel
+    api -->|"metrics"| prom
+    gw -->|"metrics"| prom
+    api -. "optional enrichment egress" .-> osv
 ```
 
 *Everything in the boundary runs in your account. Only OIDC (inbound) and

@@ -172,6 +172,59 @@ The same normalized model powers multiple purpose-built views.
 | Proxy / gateway | inspect and enforce runtime MCP traffic | runtime policy + audit path |
 | Analytics / warehouse | central event and trend analysis | ClickHouse or Snowflake |
 
+## How the packaged app gets the data
+
+The packaged product is not “just the Node.js app.” The UI is a client of the
+control plane. The actual collection paths are the API, scan jobs, proxy,
+gateway, and connected sources behind it.
+
+That means `agent-bom` does not require a local CLI for every use case:
+
+- the UI can trigger API-backed scan jobs for repos, images, IaC, and cloud reads
+- scheduled workers and CronJobs can collect data inside the customer EKS cluster
+- CI pipelines can push results in without an interactive local install
+- fleet sync, traces, and proxy or gateway audit routes can push runtime evidence into the control plane
+- read-only integrations can pull from cloud accounts, warehouses, and governance systems with customer-managed credentials
+- imported artifacts let customers upload SBOMs, inventories, or third-party scanner output when collection already happens elsewhere
+
+So the honest model is:
+
+- `UI` = review, remediation, graph, compliance, and job trigger surface
+- `API + workers` = scan orchestration, normalization, and persistence
+- `proxy + gateway` = runtime MCP inspection, policy, and audit
+- `connected sources + imports` = non-CLI intake paths for enterprise deployments
+
+What still needs a local wrapper, CLI, or proxy is anything that lives only on a
+developer machine or inside a local stdio MCP session. Everything else can be
+collected through the control plane, scheduled jobs, pushed ingest, or
+read-only integrations.
+
+## Hosted product architecture
+
+For a secure, scalable hosted deployment, the product boundary should stay
+clean:
+
+- `UI` = operator workflow only: configure sources, trigger jobs, review status, and work findings
+- `API / control plane` = auth, tenant scope, orchestration, graph, persistence, audit, and policy decisions
+- `workers / connectors` = execute scan jobs and read from customer-approved cloud APIs or connected systems
+- `proxy / gateway` = inspect and govern live MCP or runtime traffic
+
+That leads to one implementation rule:
+
+- never make the Node.js UI the collector
+- make every supported intake path reachable through API-triggered jobs, connectors, imports, or proxy and gateway flows
+
+In practice, that means:
+
+- cloud inventory and posture data should come from read-only cloud APIs through backend jobs or connectors
+- repo, image, and IaC scans should run as worker jobs triggered through the API
+- runtime evidence should arrive through proxy, gateway, traces, fleet sync, or other authenticated ingest routes
+- the UI should manage and observe those flows, not replace them
+
+This is the same control-plane pattern used by modern hosted security products:
+the web app is the operator surface, while the backend and collection paths do
+the work.
+
 ## Security and trust boundaries
 
 Mode matters.

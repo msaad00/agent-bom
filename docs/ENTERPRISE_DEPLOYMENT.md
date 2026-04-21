@@ -186,6 +186,18 @@ agent-bom api \
 
 Server mode enables buffered ClickHouse writes by default so scan and runtime paths do not block on OLAP round-trips. `GET /health` now reports the active analytics contract (`backend`, `enabled`, `buffered`, `flush_interval_seconds`, `max_batch`) alongside tracing so operators can confirm both observability and analytics posture from one probe. The ClickHouse analytics path stores scan metadata, vulnerability rows, runtime events, posture snapshots, fleet trust/lifecycle snapshots, compliance control measurements, and audit-event trends so the fleet backend matches the operator story more closely.
 
+For a packaged self-hosted EKS pilot, use the shipped Helm profile installer instead of hand-assembling the values stack:
+
+```bash
+python scripts/install_helm_profile.py focused-pilot
+```
+
+List the available packaged profiles first if you want to inspect the matrix without installing:
+
+```bash
+python scripts/install_helm_profile.py --list
+```
+
 ### 4. Cloud Infrastructure — agentless discovery
 
 ```bash

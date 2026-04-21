@@ -522,6 +522,14 @@ def test_production_values_enable_operator_defaults():
     assert "cert-manager.io/cluster-issuer" in production["controlPlane"]["ingress"]["annotations"]
 
 
+def test_external_secret_template_supports_top_level_secret_store_defaults():
+    """External secret template should not require per-secret secretStoreRef duplication."""
+    template = (HELM_DIR / "templates" / "controlplane-externalsecret.yaml").read_text()
+    assert 'get $secret "secretStoreRef"' in template
+    assert 'default $defaults.secretStoreRef.kind (get $secretStoreRef "kind")' in template
+    assert 'default $defaults.secretStoreRef.name (get $secretStoreRef "name")' in template
+
+
 def test_helm_single_node_sqlite_pilot_example_is_shipped():
     """Pilot preset should provide an in-cluster control-plane storage story."""
     doc = yaml.safe_load((HELM_DIR / "examples" / "eks-control-plane-sqlite-pilot-values.yaml").read_text())

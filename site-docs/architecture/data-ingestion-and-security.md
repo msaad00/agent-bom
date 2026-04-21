@@ -20,6 +20,30 @@ Those are not the same thing, and the security model is different for each.
 | `Pushed ingest` | Accepts evidence pushed by the customer or collector | OTLP traces, runtime events, fleet sync, security-lake feeds | Inbound ingest with API/auth boundaries |
 | `Imported artifact` | Parses customer-exported files without owning collection | SBOMs, inventories, JSON findings, offline exports | File import only |
 
+## Hosted control plane rule
+
+In a hosted deployment, the UI is not a collector. The web app should only act
+as the operator surface for the control plane.
+
+The secure and scalable split is:
+
+- `UI` = trigger jobs, configure sources, show health, review findings
+- `API / control plane` = auth, RBAC, tenant scope, orchestration, graph, persistence, audit, and policy
+- `workers / connectors` = collect from cloud APIs, connected systems, repos, images, and IaC targets
+- `proxy / gateway` = capture runtime MCP evidence and apply policy at the execution boundary
+
+That is why every supported intake path should be reachable through one of these
+backend paths:
+
+- API-triggered scan jobs
+- read-only connectors
+- authenticated pushed ingest
+- imported artifacts
+- proxy or gateway audit flows
+
+This keeps credentials, execution, rate limits, retries, and tenant isolation
+in the backend instead of moving collection logic into the Node.js UI.
+
 ## End-to-end flow
 
 ```mermaid

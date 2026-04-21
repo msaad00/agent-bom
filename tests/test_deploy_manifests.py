@@ -261,6 +261,26 @@ def test_helm_templates_exist():
     assert expected.issubset(actual), f"Missing templates: {expected - actual}"
 
 
+def test_helm_examples_readme_is_shipped():
+    """Operators should get one packaged index of the supported Helm profiles."""
+    readme = HELM_DIR / "examples" / "README.md"
+    assert readme.exists()
+    body = readme.read_text()
+    assert "focused-pilot" in body
+    assert "sqlite-pilot" in body
+    assert "gateway-runtime" in body
+
+
+def test_ci_pipeline_validates_helm_profiles():
+    """CI should render the shipped Helm profiles instead of trusting docs alone."""
+    workflow = yaml.safe_load((Path(__file__).parent.parent / ".github" / "workflows" / "ci.yml").read_text())
+    jobs = workflow["jobs"]
+    assert "helm-profiles" in jobs
+    job = jobs["helm-profiles"]
+    step_runs = [step.get("run", "") for step in job["steps"] if isinstance(step, dict)]
+    assert any("scripts/validate_helm_profiles.py" in run for run in step_runs)
+
+
 def test_helm_scanner_defaults():
     """Scanner defaults are reasonable."""
     doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())

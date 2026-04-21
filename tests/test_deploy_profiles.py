@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
-from agent_bom.deploy_profiles import helm_chart_dir, helm_validation_profiles
+from agent_bom.deploy_profiles import build_helm_profile_command, helm_chart_dir, helm_validation_profiles
 
 
 def test_helm_validation_profiles_reference_existing_chart_assets():
@@ -35,3 +36,38 @@ def test_gateway_runtime_profile_uses_shipped_upstreams_example():
     assert gateway.set_file_arguments == (
         ("gateway.upstreamsYaml", repo_root / "deploy" / "helm" / "agent-bom" / "examples" / "gateway-upstreams.example.yaml"),
     )
+
+
+def test_build_helm_profile_command_uses_shipped_profile_stack():
+    repo_root = Path(__file__).resolve().parent.parent
+    cmd = build_helm_profile_command(repo_root, "focused-pilot")
+    assert cmd[:6] == [
+        "helm",
+        "upgrade",
+        "--install",
+        "agent-bom",
+        str(repo_root / "deploy" / "helm" / "agent-bom"),
+        "--namespace",
+    ]
+    assert "agent-bom" in cmd
+    assert "--create-namespace" in cmd
+    assert str(repo_root / "deploy" / "helm" / "agent-bom" / "examples" / "eks-mcp-pilot-values.yaml") in cmd
+
+
+def test_install_helm_profile_script_prints_packaged_command():
+    repo_root = Path(__file__).resolve().parent.parent
+    result = subprocess.run(
+        [
+            "python3",
+            "scripts/install_helm_profile.py",
+            "focused-pilot",
+            "--print-command",
+        ],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    stdout = result.stdout.strip()
+    assert stdout.startswith("helm upgrade --install agent-bom ")
+    assert "deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml" in stdout

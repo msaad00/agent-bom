@@ -42,7 +42,7 @@ from agent_bom.api.models import (
     ScanRequest,
     TrainingPipelinesRequest,
 )
-from agent_bom.api.pipeline import _executor, _now, _run_scan_sync
+from agent_bom.api.pipeline import _now, _run_scan_sync, get_executor
 from agent_bom.api.stores import (
     _get_store,
     _job_lock,
@@ -177,7 +177,7 @@ def enqueue_scan_job(
     _jobs_put(job.job_id, job)
 
     loop = asyncio.get_running_loop()
-    loop.run_in_executor(_executor, _run_scan_sync, job)
+    loop.run_in_executor(get_executor(), _run_scan_sync, job)
     return job
 
 

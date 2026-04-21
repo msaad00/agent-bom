@@ -366,7 +366,7 @@ async def _lifespan(app_instance: FastAPI):
         _get_store().put(job)
         _jobs_put(job.job_id, job)
         loop = asyncio.get_running_loop()
-        loop.run_in_executor(_executor, _run_scan, job)
+        loop.run_in_executor(get_executor(), _run_scan, job)
         return job.job_id
 
     _scheduler_task = asyncio.create_task(scheduler_loop(_get_schedule_store(), _schedule_scan))
@@ -389,7 +389,7 @@ async def _lifespan(app_instance: FastAPI):
     _drain_seconds = float(os.environ.get("AGENT_BOM_SHUTDOWN_DRAIN_SECONDS", "25"))
     try:
         await asyncio.wait_for(
-            asyncio.to_thread(lambda: _executor.shutdown(wait=True, cancel_futures=False)),
+            asyncio.to_thread(lambda: get_executor().shutdown(wait=True, cancel_futures=False)),
             timeout=_drain_seconds,
         )
     except asyncio.TimeoutError:
@@ -397,7 +397,7 @@ async def _lifespan(app_instance: FastAPI):
             "shutdown drain timeout after %.1fs; force-cancelling in-flight scans",
             _drain_seconds,
         )
-        _executor.shutdown(wait=False, cancel_futures=True)
+        get_executor().shutdown(wait=False, cancel_futures=True)
     # Close Postgres connection pool if active
     try:
         if os.environ.get("AGENT_BOM_POSTGRES_URL"):
@@ -520,9 +520,10 @@ def configure_api(
 from agent_bom.api.pipeline import (  # noqa: E402
     PIPELINE_STEPS,  # noqa: F401 — re-exported for tests
     ScanPipeline,  # noqa: F401 — re-exported for tests
-    _executor,  # noqa: F401 — re-exported for tests
+    _executor,  # noqa: F401 — re-exported for tests (may be replaced on shutdown; use get_executor() for new submissions)
     _run_scan_sync,  # noqa: F401 — re-exported for backward compat
     _sync_scan_agents_to_fleet,  # noqa: F401 — re-exported for tests
+    get_executor,  # noqa: F401 — re-exported for tests
 )
 
 # ─── Route modules ────────────────────────────────────────────────────────

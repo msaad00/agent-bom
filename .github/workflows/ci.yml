@@ -196,6 +196,38 @@ jobs:
           cd ui
           npm run build
 
+      - name: Verify standalone server output
+        run: |
+          test -d ui/.next/standalone || {
+            echo "::error::UI production build did not produce .next/standalone"
+            exit 1
+          }
+
+      - name: UI container smoke test
+        run: |
+          set -euo pipefail
+          cleanup() {
+            status=$?
+            if [ $status -ne 0 ]; then
+              docker logs agent-bom-ui-ci-smoke || true
+            fi
+            docker stop agent-bom-ui-ci-smoke >/dev/null 2>&1 || true
+            exit $status
+          }
+          docker build -f ui/Dockerfile -t agent-bom-ui:ci-test ui
+          docker run -d --rm --name agent-bom-ui-ci-smoke -p 3000:3000 -e NEXT_PUBLIC_API_URL= agent-bom-ui:ci-test
+          trap cleanup EXIT
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:3000/ >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3000/ >/dev/null || {
+            echo "::error::UI container did not become healthy in time"
+            exit 1
+          }
+
       - name: UI bundle budget
         run: |
           cd ui

@@ -36,49 +36,103 @@ This deployment model is built for teams that want:
 
 The best current EKS rollout is not "put everything behind one service." It is
 a split between a control plane and the discovery/enforcement paths around it.
+Keep that story in two diagrams:
+
+- **deployment topology** for what you run in your AWS account
+- **runtime MCP flow** for how proxy, gateway, API, and remote MCP calls move
+  between those surfaces
 
 ```mermaid
-flowchart LR
-    subgraph Workloads["Your workloads and endpoints"]
-      Endpoints["Developer endpoints"]
-      Cron["Scanner CronJob"]
-      MCP["Selected MCP workloads"]
-      Sidecars["agent-bom proxy sidecars"]
+flowchart TB
+    classDef ext  fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
+    classDef edge fill:#111827,stroke:#38bdf8,color:#e0f2fe
+    classDef ctrl fill:#0f172a,stroke:#6366f1,color:#e0e7ff
+    classDef run  fill:#0f172a,stroke:#10b981,color:#d1fae5
+    classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
+    classDef ops  fill:#0f172a,stroke:#64748b,color:#cbd5e1
+
+    Browser["Browser operators"]:::ext
+    IdP["Corporate IdP"]:::ext
+    CI["CI + scheduled scans"]:::ext
+    Remote["Remote MCPs"]:::ext
+    Intel["OSV / NVD / GHSA<br/>optional enrichment"]:::ext
+
+    subgraph Customer["Your AWS account / VPC / EKS cluster"]
+      direction TB
+      Ingress["Ingress + TLS"]:::edge
+
+      subgraph Control["Control plane"]
+        direction LR
+        UI["UI<br/>same-origin browser app"]:::ctrl
+        API["API<br/>auth · findings · fleet · audit"]:::ctrl
+        Jobs["Workers<br/>CronJob / Job"]:::ctrl
+        Backup["Backup job"]:::ctrl
+      end
+
+      subgraph Runtime["Runtime MCP plane"]
+        direction LR
+        Proxy["Proxy<br/>sidecar or laptop wrapper"]:::run
+        Gateway["Gateway<br/>agent-bom gateway serve"]:::run
+      end
+
+      subgraph Data["Customer-owned data"]
+        direction LR
+        PG[("Postgres / Supabase")]:::data
+        CH[("ClickHouse optional")]:::data
+        S3[("S3 optional")]:::data
+      end
+
+      subgraph Platform["Platform services"]
+        direction LR
+        Secrets["ExternalSecrets / IRSA / Vault"]:::ops
+        Obs["OTEL + Prometheus"]:::ops
+      end
     end
 
-    subgraph ControlPlane["agent-bom control plane in your VPC"]
-      API["API + UI"]
-      Fleet["Fleet"]
-      Gateway["Gateway policies"]
-      Findings["Findings / graph / remediation"]
-    end
-
-    subgraph Data["Operator-owned data plane and identity"]
-      PG["Postgres"]
-      CH["ClickHouse optional"]
-      Secrets["Secrets / IRSA / ingress / OIDC / SAML"]
-      S3["S3 / KMS optional backups and exports"]
-    end
-
-    subgraph Optional["Optional external egress"]
-      DBSync["Vuln DB sync / package metadata / enrichment"]
-      SIEM["SIEM / OTLP / webhooks"]
-    end
-
-    Endpoints -->|fleet sync| Fleet
-    Cron -->|scheduled scans| Findings
-    MCP --> Sidecars
-    Sidecars -->|policy pull + audit push| Gateway
+    Browser --> Ingress
+    IdP -. OIDC .-> Ingress
+    Ingress --> UI
+    UI -->|same-origin API calls| API
+    CI --> Jobs
+    Jobs -->|results + inventory| API
+    Proxy -->|audited relay| Gateway
+    Gateway -->|POST /v1/proxy/audit| API
+    Gateway -->|policy-audited upstream| Remote
     API --> PG
-    API --> CH
-    API --> Secrets
-    API --> S3
-    Fleet --> API
-    Gateway --> API
-    Findings --> API
-    Findings -. optional .-> DBSync
-    API -. optional .-> SIEM
+    API -. optional analytics .-> CH
+    Backup --> S3
+    Secrets --> API
+    Secrets --> Gateway
+    API --> Obs
+    Gateway --> Obs
+    API -. optional egress .-> Intel
 ```
+
+```mermaid
+sequenceDiagram
+    participant Client as Developer or workload client
+    participant Proxy as agent-bom proxy
+    participant Gateway as agent-bom gateway
+    participant API as Control-plane API
+    participant Remote as Remote MCP
+    participant Store as Postgres / audit store
+
+    Client->>Proxy: MCP JSON-RPC (stdio / SSE / HTTP)
+    Proxy->>Proxy: local policy + runtime checks
+    Proxy->>Gateway: audited relay
+    Gateway->>API: policy fetch / POST /v1/proxy/audit
+    Gateway->>Remote: upstream MCP call
+    Remote-->>Gateway: MCP response
+    Gateway-->>Proxy: response + shared policy result
+    Proxy->>Proxy: optional VLD / OCR redaction
+    Proxy-->>Client: safe response
+    API->>Store: persist audit, findings, graph links
+```
+
+*Deployment truth: the browser drives workflows, the API owns control-plane
+state, workers do scans, and proxy plus gateway handle runtime MCP traffic. For
+the role split, see the [Self-Hosted Product
+Architecture](../architecture/self-hosted-product-architecture.md).*
 
 ## Which Agent-BOM Surface Runs Where
 

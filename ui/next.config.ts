@@ -9,7 +9,9 @@ const isExport = process.env.NEXT_EXPORT === "1";
 const nextConfig: NextConfig = {
   images: { unoptimized: true },
   productionBrowserSourceMaps: false,
-  ...(isExport && { output: "export" }),
+  // The Python package uses static export, while the standalone Docker image
+  // needs a Node server bundle for the separate control-plane UI container.
+  output: isExport ? "export" : "standalone",
   // Proxy /v1/* and /health to the FastAPI backend so the dev server works
   // without CORS issues and without needing a separate nginx/caddy setup.
   ...(!isExport && {

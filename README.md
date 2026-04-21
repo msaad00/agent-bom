@@ -159,44 +159,62 @@ rollout runbooks live under [`site-docs/deployment/`](site-docs/deployment/).
 
 ```mermaid
 flowchart LR
-    subgraph entry["Entry points in your environment"]
-      cli["CLI scans<br/>agents · image · iac"]
-      gha["GitHub Action<br/>CI/CD gate + SARIF"]
-      fleet["Endpoint fleet<br/>--push-url sync"]
-      proxy["Proxy / sidecar<br/>stdio or HTTP/SSE"]
-      gateway["Central gateway<br/>agent-bom gateway serve"]
+    subgraph customer["Customer environment"]
+      subgraph people["People and owning teams"]
+        team["👥 Security / platform team<br/>owns policy, fleet, remediation"]
+        employees["💼 Employees + service owners<br/>laptops, runners, cluster teams"]
+      end
+
+      subgraph entry["Customer-controlled entry points"]
+        cli["🧰 CLI scans<br/>agents · image · iac"]
+        gha["⚙️ GitHub Action<br/>CI/CD gate + SARIF"]
+        fleet["💻 Endpoint fleet<br/>--push-url sync"]
+        proxy["🔌 Proxy / sidecar<br/>stdio or HTTP/SSE"]
+        gateway["🌐 MCP gateway<br/>agent-bom gateway serve"]
+      end
+
+      subgraph targets["Targets under review"]
+        local["📦 Local repos + stdio MCPs"]
+        remote["☁️ Remote MCPs + SaaS + cluster workloads"]
+      end
     end
 
-    subgraph targets["Targets under review"]
-      local["Local repos + stdio MCPs"]
-      remote["Remote MCPs + SaaS + cluster workloads"]
+    subgraph bom["Agent-Bom deployment in your environment"]
+      subgraph control["Operator plane"]
+        api["🛡️ API + UI<br/>findings · graph · remediation"]
+        routes["📋 Fleet / policy / compliance routes<br/>tenant-scoped API"]
+        jobs["🏃 Scan jobs + ingest workers"]
+      end
+
+      subgraph data["Data plane / your stores"]
+        pg["🗄️ Postgres / Supabase<br/>jobs · fleet · graph · audit"]
+        ch["📈 ClickHouse (optional)<br/>analytics + long-retention events"]
+        snow["🏔️ Snowflake (optional)<br/>warehouse-native deployment"]
+      end
     end
 
-    subgraph control["Self-hosted operator plane"]
-      api["API + UI<br/>findings · graph · remediation"]
-      routes["Fleet / policy / compliance routes<br/>tenant-scoped API"]
-      jobs["Scan jobs + ingest workers"]
-    end
-
-    subgraph data["Your data stores"]
-      pg["Postgres / Supabase<br/>jobs · fleet · graph · audit"]
-      ch["ClickHouse (optional)<br/>analytics + long-retention events"]
-      snow["Snowflake (optional)<br/>warehouse-native deployment"]
-    end
-
-    cli --> local
-    gha --> local
-    fleet --> jobs
-    proxy --> remote
-    gateway --> remote
-    proxy --> routes
-    gateway --> routes
-    jobs --> api
-    routes --> api
-    api --> pg
-    api -. optional analytics .-> ch
-    api -. optional warehouse path .-> snow
+    team -->|"browser / API"| api
+    employees -->|"run local scans"| cli
+    employees -->|"endpoint sync"| fleet
+    employees -->|"app / agent traffic"| proxy
+    employees -->|"shared remote access"| gateway
+    cli -->|"scan requests"| local
+    gha -->|"CI scan requests"| local
+    fleet -->|"fleet sync / jobs"| jobs
+    proxy -->|"remote MCP / SaaS requests"| remote
+    gateway -->|"brokered upstream requests"| remote
+    proxy -->|"tenant-scoped API calls"| routes
+    gateway -->|"policy + gateway API calls"| routes
+    jobs -->|"findings / ingest"| api
+    routes -->|"policy / fleet state"| api
+    api -->|"transactional state"| pg
+    api -. "optional analytics" .-> ch
+    api -. "optional warehouse path" .-> snow
 ```
+
+Legend: people, laptop, and tool icons are customer-owned actors and entry
+points; shield, clipboard, runner, and database icons are the `agent-bom`
+control and data planes.
 
 This is the architecture. A **pilot** is just a narrower rollout profile over
 the same surfaces and stores.

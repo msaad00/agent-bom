@@ -61,7 +61,6 @@ from agent_bom.api.stores import (
 )
 from agent_bom.api.tracing import configure_otel_tracing, get_tracing_health
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
-from agent_bom.config import API_MAX_CONCURRENT_JOBS as _MAX_CONCURRENT_JOBS  # noqa: F401 — re-exported for tests
 
 _logger = logging.getLogger(__name__)
 

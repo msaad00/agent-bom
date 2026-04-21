@@ -130,6 +130,10 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "shared_across_replicas" in body["rate_limit_runtime"]
     assert "configured_api_replicas" in body["rate_limit_runtime"]
     assert "fail_closed" in body["rate_limit_runtime"]
+    assert body["tenant_quotas"]["active_scan_jobs"] >= 1
+    assert body["tenant_quotas"]["retained_scan_jobs"] >= 1
+    assert body["tenant_quotas"]["fleet_agents"] >= 1
+    assert body["tenant_quotas"]["schedules"] >= 1
 
 
 def test_rate_limit_runtime_reports_shared_backend(monkeypatch: pytest.MonkeyPatch) -> None:

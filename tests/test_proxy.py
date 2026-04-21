@@ -6,11 +6,13 @@ import io
 import json
 from pathlib import Path
 
+import agent_bom.proxy as proxy_mod
 from agent_bom.proxy import (
     AuditDeliveryController,
     AuditSpilloverStore,
     ProxyMetrics,
     ReplayDetector,
+    _control_plane_headers,
     check_policy,
     compute_payload_hash,
     compute_response_hmac,
@@ -163,6 +165,25 @@ def test_check_policy_blocks_unknown_egress_host():
     allowed, reason = check_policy(policy, "web_fetch", {"url": "https://evil.example/path"})
     assert allowed is False
     assert "allowlisted" in reason.lower()
+
+
+def test_control_plane_headers_propagate_w3c_trace_context(monkeypatch):
+    """Control-plane requests should carry bounded W3C trace headers when present."""
+
+    def _fake_inject(headers):
+        headers = dict(headers)
+        headers["traceparent"] = "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
+        headers["tracestate"] = "vendor-a=foo"
+        headers["baggage"] = "tenant=acme"
+        return headers
+
+    monkeypatch.setattr(proxy_mod, "inject_current_trace_headers", _fake_inject)
+    headers = _control_plane_headers("secret-token", "etag-1")
+    assert headers["Authorization"] == "Bearer secret-token"
+    assert headers["If-None-Match"] == "etag-1"
+    assert headers["traceparent"].startswith("00-")
+    assert headers["tracestate"] == "vendor-a=foo"
+    assert headers["baggage"] == "tenant=acme"
 
 
 # ── ProxyMetrics ────────────────────────────────────────────────────────────

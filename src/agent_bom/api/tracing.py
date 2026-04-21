@@ -99,6 +99,49 @@ def make_request_trace(headers: dict[str, Any]) -> dict[str, str | bool | None]:
     }
 
 
+def inject_trace_headers(
+    headers: dict[str, str] | None = None,
+    *,
+    traceparent: str | None = None,
+    tracestate: str | None = None,
+    baggage: str | None = None,
+) -> dict[str, str]:
+    """Return a headers dict with bounded W3C trace headers attached."""
+    merged = dict(headers or {})
+    if traceparent:
+        merged["traceparent"] = traceparent
+    if tracestate:
+        merged["tracestate"] = tracestate
+    if baggage:
+        merged["baggage"] = baggage
+    return merged
+
+
+def inject_current_trace_headers(headers: dict[str, str] | None = None) -> dict[str, str]:
+    """Inject active OpenTelemetry context into outbound headers when enabled."""
+    merged = dict(headers or {})
+    if not configure_otel_tracing():
+        return merged
+    try:
+        from opentelemetry.propagate import inject
+    except ImportError:
+        return merged
+    inject(merged)
+    if traceparent := parse_traceparent(merged.get("traceparent")):
+        merged["traceparent"] = build_traceparent(traceparent["trace_id"], traceparent["parent_span_id"], traceparent["trace_flags"])
+    else:
+        merged.pop("traceparent", None)
+    if tracestate := parse_tracestate(merged.get("tracestate")):
+        merged["tracestate"] = tracestate
+    else:
+        merged.pop("tracestate", None)
+    if baggage := parse_baggage(merged.get("baggage")):
+        merged["baggage"] = baggage
+    else:
+        merged.pop("baggage", None)
+    return merged
+
+
 def configure_otel_tracing() -> bool:
     """Enable OTLP trace export when explicitly configured.
 
@@ -152,6 +195,17 @@ def configure_otel_tracing() -> bool:
     _otel_tracing_state = "configured"
     _logger.info("OTLP tracing enabled for agent-bom API: %s", endpoint)
     return True
+
+
+def get_tracer(name: str):
+    """Return an OpenTelemetry tracer when OTLP tracing is enabled."""
+    if not configure_otel_tracing():
+        return None
+    try:
+        from opentelemetry import trace
+    except ImportError:
+        return None
+    return trace.get_tracer(name)
 
 
 def get_tracing_health() -> TracingHealthSnapshot:

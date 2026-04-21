@@ -185,6 +185,12 @@ async def auth_policy() -> dict:
         get_rate_limit_key_status,
         get_rate_limit_runtime_status,
     )
+    from agent_bom.config import (
+        API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT,
+        API_MAX_FLEET_AGENTS_PER_TENANT,
+        API_MAX_RETAINED_JOBS_PER_TENANT,
+        API_MAX_SCHEDULES_PER_TENANT,
+    )
 
     api_policy = get_api_key_policy()
     rl_status = get_rate_limit_key_status()
@@ -210,6 +216,12 @@ async def auth_policy() -> dict:
             ),
         },
         "rate_limit_runtime": rl_runtime,
+        "tenant_quotas": {
+            "active_scan_jobs": API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT,
+            "retained_scan_jobs": API_MAX_RETAINED_JOBS_PER_TENANT,
+            "fleet_agents": API_MAX_FLEET_AGENTS_PER_TENANT,
+            "schedules": API_MAX_SCHEDULES_PER_TENANT,
+        },
     }
 
 

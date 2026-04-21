@@ -38,6 +38,7 @@ def _vuln(
     severity: Severity = Severity.HIGH,
     fixed_version: str | None = None,
     epss_score: float | None = None,
+    epss_percentile: float | None = None,
     is_kev: bool = False,
 ) -> Vulnerability:
     return Vulnerability(
@@ -46,6 +47,7 @@ def _vuln(
         severity=severity,
         fixed_version=fixed_version,
         epss_score=epss_score,
+        epss_percentile=epss_percentile,
         is_kev=is_kev,
     )
 
@@ -192,13 +194,29 @@ def test_high_epss_extra_penalty():
     assert "EPSS" in cve_cat.evidence[0].description
 
 
-def test_cve_deduction_capped():
-    """CVE deductions are capped at max."""
+def test_high_epss_percentile_gets_tiered_bonus():
+    """High EPSS percentile gets a stronger tiered bonus than a boolean flag."""
+    pkg = Package(
+        name="requests",
+        version="2.25.0",
+        ecosystem="pypi",
+        vulnerabilities=[_vuln("CVE-2024-0099", Severity.HIGH, epss_score=0.3, epss_percentile=99.2)],
+    )
+    server = _server(packages=[pkg], registry_verified=True)
+    cve_cat = _score_cves(server)
+    assert cve_cat.actual_deduction == 9.0
+    assert "EPSS percentile" in cve_cat.evidence[0].description
+
+
+def test_cve_deduction_scales_past_old_cap():
+    """Large critical sets no longer flatten at the historical 35-point cap."""
     vulns = [_vuln(f"CVE-2024-{i:04d}", Severity.CRITICAL) for i in range(10)]
     pkg = Package(name="bad-pkg", version="1.0.0", ecosystem="npm", vulnerabilities=vulns)
     server = _server(packages=[pkg], registry_verified=True)
     cve_cat = _score_cves(server)
-    assert cve_cat.actual_deduction <= 35.0
+    assert cve_cat.actual_deduction == 80.0
+    assert cve_cat.max_deduction == 80.0
+    assert cve_cat.score == 0.0
 
 
 def test_cve_fix_version_in_evidence():

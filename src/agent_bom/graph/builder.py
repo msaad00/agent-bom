@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
+from agent_bom.api.tracing import get_tracer
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
@@ -23,6 +24,9 @@ except ImportError:  # pragma: no cover
     def _is_credential_key(name: str) -> bool:
         low = name.lower()
         return any(p in low for p in ("key", "token", "secret", "password", "auth"))
+
+
+_GRAPH_TRACER = get_tracer("agent_bom.graph")
 
 
 def build_unified_graph_from_report(
@@ -41,6 +45,7 @@ def build_unified_graph_from_report(
     Returns:
         A fully populated :class:`UnifiedGraph`.
     """
+    span = _GRAPH_TRACER.start_span("graph.build_unified_graph_from_report") if _GRAPH_TRACER else None
     sid = scan_id or report_json.get("scan_id", "")
     graph = UnifiedGraph(scan_id=sid, tenant_id=tenant_id)
 
@@ -639,7 +644,15 @@ def build_unified_graph_from_report(
             vuln_node.attributes["reachability"] = br_dict.get("reachability", "")
             vuln_node.attributes["actionable"] = br_dict.get("actionable", False)
 
-    return graph
+        if span is not None:
+            span.set_attribute("agent_bom.graph.scan_id", sid)
+            span.set_attribute("agent_bom.graph.tenant_id", tenant_id or "default")
+            span.set_attribute("agent_bom.graph.agent_count", len(agents_data))
+            span.set_attribute("agent_bom.graph.blast_radius_count", len(blast_data))
+            span.set_attribute("agent_bom.graph.node_count", len(graph.nodes))
+            span.set_attribute("agent_bom.graph.edge_count", len(graph.edges))
+            span.end()
+        return graph
 
 
 def _add_vuln_node(

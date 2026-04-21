@@ -5,8 +5,8 @@ security signals. Every deduction is backed by specific evidence (CVE IDs,
 credential names, tool names, etc.) so operators can understand exactly
 why a server scored the way it did.
 
-Score categories (max deduction from 100):
-- CVE/Vulnerability posture:  -35 max
+Score categories (deduction budget from 100):
+- CVE/Vulnerability posture:  -35 baseline, but evidence can exhaust the full score
 - Credential exposure:        -15 max
 - Tool capability risk:       -15 max
 - Registry risk level:        -10 max
@@ -34,13 +34,41 @@ _CVE_SEVERITY_WEIGHTS: dict[Severity, float] = {
     Severity.LOW: 0.5,
 }
 
-# Maximum deduction caps per category
+# Baseline category budgets. CVE deductions can exceed the historical
+# 35-point ceiling so heavily exposed servers no longer collapse into the
+# same score bucket.
 _MAX_CVE_DEDUCTION = 35.0
 _MAX_CREDENTIAL_DEDUCTION = 15.0
 _MAX_CAPABILITY_DEDUCTION = 15.0
 _MAX_REGISTRY_DEDUCTION = 10.0
 _MAX_DRIFT_DEDUCTION = 10.0
 _MAX_SCORECARD_DEDUCTION = 15.0
+
+_EPSS_PERCENTILE_TIERS: tuple[tuple[float, float], ...] = (
+    (99.0, 4.0),
+    (95.0, 3.0),
+    (90.0, 2.0),
+    (80.0, 1.0),
+)
+
+
+def _epss_bonus(vuln) -> tuple[float, str]:
+    """Return additive EPSS/KEV pressure and evidence text."""
+    if vuln.is_kev:
+        return 3.0, " [CISA KEV: actively exploited]"
+
+    percentile = vuln.epss_percentile or 0.0
+    probability = vuln.epss_score or 0.0
+
+    for threshold, bonus in _EPSS_PERCENTILE_TIERS:
+        if percentile >= threshold:
+            return bonus, f" [EPSS percentile: {percentile:.1f}]"
+
+    if probability >= 0.7:
+        return 2.0, f" [EPSS: {probability:.1%} exploit probability]"
+    if probability >= 0.5:
+        return 1.0, f" [EPSS: {probability:.1%} exploit probability]"
+    return 0.0, ""
 
 
 @dataclass
@@ -138,7 +166,8 @@ def _score_cves(server: MCPServer) -> CategoryScore:
     """Score CVE/vulnerability posture.
 
     Each CVE deducts points based on severity. CRITICAL CVEs deduct the most.
-    Actively exploited CVEs (KEV or high EPSS) get an additional penalty.
+    Actively exploited CVEs and high-percentile EPSS entries get additional
+    pressure, and the category no longer flattens at a hard 35-point ceiling.
     """
     evidence: list[TrustEvidence] = []
     total_deduction = 0.0
@@ -146,33 +175,18 @@ def _score_cves(server: MCPServer) -> CategoryScore:
     for pkg in server.packages:
         for vuln in pkg.vulnerabilities:
             weight = _CVE_SEVERITY_WEIGHTS.get(vuln.severity, 0.5)
-
-            # Bonus penalty for actively exploited vulnerabilities
-            if vuln.is_kev:
-                weight += 3.0
-            elif vuln.epss_score is not None and vuln.epss_score > 0.5:
-                weight += 2.0
-
-            deduction = min(weight, _MAX_CVE_DEDUCTION - total_deduction)
-            if deduction <= 0:
-                break
-
+            epss_bonus, epss_note = _epss_bonus(vuln)
+            deduction = weight + epss_bonus
             total_deduction += deduction
 
             fixed_info = ""
             if vuln.fixed_version:
                 fixed_info = f" (fix available: {vuln.fixed_version})"
 
-            kev_info = ""
-            if vuln.is_kev:
-                kev_info = " [CISA KEV: actively exploited]"
-            elif vuln.epss_score is not None and vuln.epss_score > 0.5:
-                kev_info = f" [EPSS: {vuln.epss_score:.1%} exploit probability]"
-
             evidence.append(
                 TrustEvidence(
                     category="cve",
-                    description=(f"{vuln.id} ({vuln.severity.value.upper()}) in {pkg.name}@{pkg.version}{fixed_info}{kev_info}"),
+                    description=f"{vuln.id} ({vuln.severity.value.upper()}) in {pkg.name}@{pkg.version}{fixed_info}{epss_note}",
                     deduction=round(deduction, 1),
                     severity=vuln.severity.value,
                     cve_id=vuln.id,
@@ -180,15 +194,14 @@ def _score_cves(server: MCPServer) -> CategoryScore:
                     package_version=pkg.version,
                 )
             )
-        if total_deduction >= _MAX_CVE_DEDUCTION:
-            break
 
-    actual = min(total_deduction, _MAX_CVE_DEDUCTION)
+    actual = round(total_deduction, 1)
+    max_points = max(_MAX_CVE_DEDUCTION, actual)
     return CategoryScore(
         category="cve",
-        max_deduction=_MAX_CVE_DEDUCTION,
+        max_deduction=max_points,
         actual_deduction=actual,
-        score=_MAX_CVE_DEDUCTION - actual,
+        score=max(max_points - actual, 0.0),
         evidence=evidence,
     )
 

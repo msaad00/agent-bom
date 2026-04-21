@@ -35,6 +35,28 @@ Render only one profile:
 python scripts/validate_helm_profiles.py --profile focused-pilot
 ```
 
+## Install a shipped profile in one command
+
+Print the exact Helm command for a profile:
+
+```bash
+python scripts/install_helm_profile.py focused-pilot --print-command
+```
+
+Run the packaged focused EKS pilot profile directly:
+
+```bash
+python scripts/install_helm_profile.py focused-pilot
+```
+
+Append your own values file or targeted overrides without forking the shipped profile:
+
+```bash
+python scripts/install_helm_profile.py production \
+  --values ./my-prod-overrides.yaml \
+  --set controlPlane.ingress.hosts[0].host=agent-bom.acme.internal
+```
+
 ## Operator guidance
 
 - Start with `focused-pilot` for the narrow customer EKS story.

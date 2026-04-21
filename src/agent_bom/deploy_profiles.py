@@ -1,4 +1,4 @@
-"""Canonical Helm chart validation profiles for shipped deployment examples."""
+"""Canonical Helm chart profiles for shipped deployment examples."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 @dataclass(frozen=True)
 class HelmValidationProfile:
-    """A named Helm render profile backed by shipped chart examples."""
+    """A named Helm profile backed by shipped chart examples."""
 
     name: str
     description: str
@@ -26,7 +26,7 @@ def helm_example_dir(repo_root: Path) -> Path:
 
 
 def helm_validation_profiles(repo_root: Path) -> list[HelmValidationProfile]:
-    """Return the canonical validation matrix for shipped Helm examples."""
+    """Return the canonical shipped Helm profile matrix."""
 
     examples = helm_example_dir(repo_root)
     return [
@@ -63,3 +63,44 @@ def helm_validation_profiles(repo_root: Path) -> list[HelmValidationProfile]:
             set_file_arguments=(("gateway.upstreamsYaml", examples / "gateway-upstreams.example.yaml"),),
         ),
     ]
+
+
+def build_helm_profile_command(
+    repo_root: Path,
+    profile_name: str,
+    *,
+    release_name: str = "agent-bom",
+    namespace: str = "agent-bom",
+    create_namespace: bool = True,
+    extra_values_files: tuple[Path, ...] = (),
+    extra_set_arguments: tuple[str, ...] = (),
+    extra_set_file_arguments: tuple[tuple[str, Path], ...] = (),
+) -> list[str]:
+    """Build the canonical Helm upgrade/install command for a shipped profile."""
+
+    profiles = {profile.name: profile for profile in helm_validation_profiles(repo_root)}
+    try:
+        profile = profiles[profile_name]
+    except KeyError as exc:
+        available = ", ".join(sorted(profiles))
+        raise KeyError(f"unknown Helm profile '{profile_name}' (available: {available})") from exc
+
+    cmd = [
+        "helm",
+        "upgrade",
+        "--install",
+        release_name,
+        str(helm_chart_dir(repo_root)),
+        "--namespace",
+        namespace,
+    ]
+    if create_namespace:
+        cmd.append("--create-namespace")
+
+    for values_file in (*profile.values_files, *extra_values_files):
+        cmd.extend(["-f", str(values_file)])
+    for set_argument in (*profile.set_arguments, *extra_set_arguments):
+        cmd.extend(["--set", set_argument])
+    for key, path in (*profile.set_file_arguments, *extra_set_file_arguments):
+        cmd.extend(["--set-file", f"{key}={path}"])
+    return cmd

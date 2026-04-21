@@ -143,6 +143,7 @@ from agent_bom.cli._runtime import (  # noqa: E402
     _NoOpDetector,
     audit_replay_cmd,
     protect_cmd,
+    proxy_bootstrap_cmd,
     proxy_cmd,
     proxy_configure_cmd,
     watch_cmd,
@@ -155,6 +156,7 @@ from agent_bom.cli._runtime_group import runtime_group  # noqa: E402
 
 runtime_group.add_command(proxy_cmd, "proxy")
 runtime_group.add_command(audit_replay_cmd, "audit")
+runtime_group.add_command(proxy_bootstrap_cmd, "bootstrap")
 # Deprecated — hidden but still work for backward compat
 runtime_group.add_command(proxy_configure_cmd, "configure")
 runtime_group.add_command(protect_cmd, "protect")
@@ -167,6 +169,7 @@ main.commands["runtime"].hidden = True  # Use proxy/audit directly
 
 # Top-level shortcuts for primary runtime commands
 main.add_command(proxy_cmd, "proxy")
+main.add_command(proxy_bootstrap_cmd, "proxy-bootstrap")
 main.add_command(audit_replay_cmd, "audit")
 
 from agent_bom.cli._analysis import (  # noqa: E402

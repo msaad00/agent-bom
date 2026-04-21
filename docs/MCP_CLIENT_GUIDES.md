@@ -14,6 +14,7 @@ Two modes matter:
 | Ask an assistant to run `agent-bom` tools directly | `agent-bom mcp server` | Makes discovery, scan, blast-radius, compliance, and trust tools available in-chat |
 | Inspect or block live MCP traffic to another server | `agent-bom proxy` | Adds inline JSON-RPC inspection, audit logs, and policy enforcement |
 | Auto-wrap JSON-based stdio MCP configs | `agent-bom proxy-configure` | Rewrites eligible client configs so they point at the proxy wrapper |
+| Generate managed endpoint rollout artifacts | `agent-bom proxy-bootstrap` | Writes shell/PowerShell bootstrap scripts plus fleet-sync artifacts for IT-owned rollout |
 
 ## Major clients
 
@@ -78,7 +79,8 @@ args = ["proxy", "--log", "~/.agent-bom/logs/filesystem.jsonl", "--", "npx", "@m
 ## Runtime proxy notes
 
 - `agent-bom proxy` is best when the client talks to a third-party stdio server and you want runtime inspection.
-- `agent-bom proxy-configure --apply` currently targets JSON MCP configs. It is a good fit for Claude Desktop, Cursor, Windsurf, and Cortex CoCo.
+- `agent-bom proxy-configure --apply` targets JSON MCP configs and can now stamp control-plane policy/audit settings into the wrapped proxy command.
+- `agent-bom proxy-bootstrap --bundle-dir ./endpoint-bundle --control-plane-url https://agent-bom.example.com --push-url https://agent-bom.example.com/v1/fleet/sync` writes managed rollout artifacts for macOS/Linux and Windows without hand-editing JSON on every machine.
 - TOML clients like Codex CLI need manual proxy wrapping today.
 - SSE / HTTP clients can use `agent-bom mcp server --transport sse --bearer-token "$AGENT_BOM_MCP_BEARER_TOKEN"` or `--transport streamable-http`.
 - Non-loopback remote transports fail closed unless you configure `--bearer-token` / `AGENT_BOM_MCP_BEARER_TOKEN` or explicitly pass `--allow-insecure-no-auth`.

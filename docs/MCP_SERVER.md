@@ -134,6 +134,15 @@ agent-bom proxy-configure --log-dir ~/.agent-bom/logs --detect-credentials
 
 Add `--apply` to write the wrapped config back to compatible JSON MCP config files.
 
+For IT-owned rollout across managed laptops, use:
+
+```bash
+agent-bom proxy-bootstrap \
+  --bundle-dir ./endpoint-bundle \
+  --control-plane-url https://agent-bom.example.com \
+  --push-url https://agent-bom.example.com/v1/fleet/sync
+```
+
 `proxy-configure` is best for JSON MCP clients such as Claude Desktop, Cursor, Windsurf, and Cortex CoCo. TOML-based clients like Codex CLI need manual proxy wrapping.
 
 ## Tool Categories (36 tools)

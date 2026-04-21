@@ -44,6 +44,12 @@ interface FormState {
   connector_name: string;
 }
 
+interface ScheduleFormState {
+  source_id: string;
+  name: string;
+  cron_expression: string;
+}
+
 const SOURCE_KIND_OPTIONS: KindOption[] = [
   {
     value: "scan.repo",
@@ -139,6 +145,12 @@ const DEFAULT_FORM_STATE: FormState = {
   connector_name: "",
 };
 
+const DEFAULT_SCHEDULE_FORM_STATE: ScheduleFormState = {
+  source_id: "",
+  name: "",
+  cron_expression: "0 * * * *",
+};
+
 const OPERATING_SURFACES = [
   {
     title: "Security graph and path analysis",
@@ -214,9 +226,12 @@ export default function SourcesPage() {
   const [syncingFleet, setSyncingFleet] = useState(false);
   const [fleetSyncSummary, setFleetSyncSummary] = useState<string | null>(null);
   const [formState, setFormState] = useState<FormState>(DEFAULT_FORM_STATE);
+  const [scheduleForm, setScheduleForm] = useState<ScheduleFormState>(DEFAULT_SCHEDULE_FORM_STATE);
   const [submitting, setSubmitting] = useState(false);
+  const [submittingSchedule, setSubmittingSchedule] = useState(false);
   const [formMessage, setFormMessage] = useState<string | null>(null);
   const [busySourceId, setBusySourceId] = useState<string | null>(null);
+  const [busyScheduleId, setBusyScheduleId] = useState<string | null>(null);
 
   const connectorNames = useMemo(
     () => connectorHealth.map((connector) => connector.connector).sort((left, right) => left.localeCompare(right)),
@@ -231,9 +246,32 @@ export default function SourcesPage() {
     () => connectorHealth.filter((connector) => connector.state === "healthy").length,
     [connectorHealth]
   );
+  const sourceIndex = useMemo(() => new Map(sources.map((source) => [source.source_id, source])), [sources]);
+  const schedulableSources = useMemo(
+    () =>
+      sources.filter((source) =>
+        ["scan.repo", "scan.image", "scan.iac", "scan.cloud", "scan.mcp_config", "connector.cloud_read_only", "connector.registry", "connector.warehouse"].includes(
+          source.kind
+        )
+      ),
+    [sources]
+  );
+  const scheduleCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const schedule of schedules) {
+      const linkedSourceId = typeof schedule.scan_config?.source_id === "string" ? String(schedule.scan_config.source_id) : "";
+      if (!linkedSourceId) continue;
+      counts.set(linkedSourceId, (counts.get(linkedSourceId) ?? 0) + 1);
+    }
+    return counts;
+  }, [schedules]);
 
   function updateForm<K extends keyof FormState>(field: K, value: FormState[K]) {
     setFormState((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateScheduleForm<K extends keyof ScheduleFormState>(field: K, value: ScheduleFormState[K]) {
+    setScheduleForm((current) => ({ ...current, [field]: value }));
   }
 
   async function refreshControlPlane() {
@@ -376,6 +414,63 @@ export default function SourcesPage() {
     }
   }
 
+  async function handleCreateSchedule(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFormMessage(null);
+
+    const source = sourceIndex.get(scheduleForm.source_id);
+    if (!source) {
+      setFormMessage("Choose a source to schedule.");
+      return;
+    }
+
+    if (!scheduleForm.cron_expression.trim()) {
+      setFormMessage("Cron expression is required.");
+      return;
+    }
+
+    const name = scheduleForm.name.trim() || `${source.display_name} recurring run`;
+    setSubmittingSchedule(true);
+    try {
+      await api.createSchedule({
+        name,
+        cron_expression: scheduleForm.cron_expression.trim(),
+        enabled: true,
+        scan_config: { source_id: source.source_id },
+      });
+      setFormMessage(`Created schedule ${name}.`);
+      setScheduleForm({
+        source_id: source.source_id,
+        name: "",
+        cron_expression: scheduleForm.cron_expression,
+      });
+      await refreshControlPlane();
+    } catch (err) {
+      setFormMessage(err instanceof Error ? err.message : "Failed to create schedule.");
+    } finally {
+      setSubmittingSchedule(false);
+    }
+  }
+
+  async function runScheduleAction(scheduleId: string, action: "toggle" | "delete") {
+    setBusyScheduleId(scheduleId);
+    setFormMessage(null);
+    try {
+      if (action === "toggle") {
+        const updated = await api.toggleSchedule(scheduleId);
+        setFormMessage(`${updated.name} ${updated.enabled ? "enabled" : "paused"}.`);
+      } else {
+        await api.deleteSchedule(scheduleId);
+        setFormMessage("Schedule deleted.");
+      }
+      await refreshControlPlane();
+    } catch (err) {
+      setFormMessage(err instanceof Error ? err.message : "Schedule action failed.");
+    } finally {
+      setBusyScheduleId(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[linear-gradient(135deg,var(--surface),var(--surface-elevated))] p-6 shadow-2xl shadow-black/10">
@@ -495,6 +590,7 @@ export default function SourcesPage() {
                       <span>Last tested: {formatWhen(source.last_tested_at)}</span>
                       <span>Last run: {formatWhen(source.last_run_at)}</span>
                       <span>Last job: {source.last_job_id || "—"}</span>
+                      <span>Schedules: {scheduleCounts.get(source.source_id) ?? 0}</span>
                     </div>
 
                     {source.last_test_message ? (
@@ -676,6 +772,60 @@ export default function SourcesPage() {
             </div>
 
             <div className="mt-5 space-y-3">
+              <form className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4" onSubmit={handleCreateSchedule}>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <label className="block">
+                    <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Source</span>
+                    <select
+                      aria-label="Schedule source"
+                      value={scheduleForm.source_id}
+                      onChange={(event) => updateScheduleForm("source_id", event.target.value)}
+                      className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+                    >
+                      <option value="">Choose source…</option>
+                      {schedulableSources.map((source) => (
+                        <option key={source.source_id} value={source.source_id}>
+                          {source.display_name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Name</span>
+                    <input
+                      aria-label="Schedule name"
+                      value={scheduleForm.name}
+                      onChange={(event) => updateScheduleForm("name", event.target.value)}
+                      className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+                      placeholder="Nightly cloud posture"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-2 block text-xs font-medium uppercase tracking-[0.18em] text-[var(--text-tertiary)]">Cron</span>
+                    <input
+                      aria-label="Schedule cron"
+                      value={scheduleForm.cron_expression}
+                      onChange={(event) => updateScheduleForm("cron_expression", event.target.value)}
+                      className="w-full rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 font-mono text-sm text-[var(--foreground)] outline-none transition focus:border-emerald-500"
+                      placeholder="0 * * * *"
+                    />
+                  </label>
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  <p className="text-xs leading-5 text-[var(--text-secondary)]">
+                    Schedules persist in the control plane and run queued scans with the linked <code>source_id</code>, not browser state.
+                  </p>
+                  <button
+                    type="submit"
+                    disabled={submittingSchedule || schedulableSources.length === 0}
+                    className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <CalendarClock className="h-4 w-4" />
+                    {submittingSchedule ? "Creating…" : "Create schedule"}
+                  </button>
+                </div>
+              </form>
+
               {schedules.length === 0 && !loading ? (
                 <div className="rounded-2xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
                   <p className="text-sm text-[var(--text-secondary)]">No scan schedules yet.</p>
@@ -685,12 +835,19 @@ export default function SourcesPage() {
                   </Link>
                 </div>
               ) : (
-                schedules.slice(0, 4).map((schedule) => (
+                schedules.map((schedule) => {
+                  const linkedSourceId = typeof schedule.scan_config?.source_id === "string" ? String(schedule.scan_config.source_id) : "";
+                  const linkedSource = linkedSourceId ? sourceIndex.get(linkedSourceId) : null;
+                  const isBusy = busyScheduleId === schedule.schedule_id;
+                  return (
                   <div key={schedule.schedule_id} className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h3 className="text-sm font-semibold text-[var(--foreground)]">{schedule.name}</h3>
                         <p className="mt-1 font-mono text-xs text-[var(--text-secondary)]">{schedule.cron_expression}</p>
+                        <p className="mt-2 text-xs text-[var(--text-secondary)]">
+                          Source: {linkedSource?.display_name ?? (linkedSourceId || "Unlinked control-plane schedule")}
+                        </p>
                       </div>
                       <span className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
                         {schedule.enabled ? "Enabled" : "Paused"}
@@ -700,8 +857,25 @@ export default function SourcesPage() {
                       <span>Next run: {formatWhen(schedule.next_run)}</span>
                       <span>Last run: {formatWhen(schedule.last_run)}</span>
                     </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button
+                        onClick={() => runScheduleAction(schedule.schedule_id, "toggle")}
+                        disabled={isBusy}
+                        className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-xs font-medium text-[var(--foreground)] transition hover:border-[color:var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isBusy ? "Working…" : schedule.enabled ? "Pause" : "Enable"}
+                      </button>
+                      <button
+                        onClick={() => runScheduleAction(schedule.schedule_id, "delete")}
+                        disabled={isBusy}
+                        className="rounded-xl border border-red-900/60 bg-red-950/20 px-3 py-2 text-xs font-medium text-red-300 transition hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </section>

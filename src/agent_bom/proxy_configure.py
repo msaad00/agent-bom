@@ -75,6 +75,10 @@ def auto_configure_proxies(
     secure_defaults: bool = True,
     detect_credentials: bool = False,
     block_undeclared: bool = False,
+    control_plane_url: Optional[str] = None,
+    control_plane_token: Optional[str] = None,
+    policy_refresh_seconds: Optional[int] = None,
+    audit_push_interval: Optional[int] = None,
 ) -> list[ProxyConfig]:
     """Generate proxy-wrapped configs for all eligible STDIO MCP servers.
 
@@ -114,6 +118,15 @@ def auto_configure_proxies(
                 slug = re.sub(r"[^a-zA-Z0-9_-]", "_", server.name)[:64]
                 log_file = str(Path(log_dir) / f"{slug}.jsonl")
                 proxy_flags += ["--log", log_file]
+
+            if control_plane_url:
+                proxy_flags += ["--control-plane-url", control_plane_url]
+                if control_plane_token:
+                    proxy_flags += ["--control-plane-token", control_plane_token]
+                if policy_refresh_seconds is not None:
+                    proxy_flags += ["--policy-refresh-seconds", str(policy_refresh_seconds)]
+                if audit_push_interval is not None:
+                    proxy_flags += ["--audit-push-interval", str(audit_push_interval)]
 
             if secure_defaults or detect_credentials:
                 proxy_flags.append("--detect-credentials")

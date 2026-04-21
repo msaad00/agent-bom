@@ -97,6 +97,15 @@ For JSON-based configs, auto-wrap all eligible stdio servers:
 agent-bom proxy-configure --log-dir ~/.agent-bom/logs --detect-credentials --apply
 ```
 
+For enterprise-managed endpoint rollout, generate a packaged bootstrap bundle instead:
+
+```bash
+agent-bom proxy-bootstrap \
+  --bundle-dir ./endpoint-bundle \
+  --control-plane-url https://agent-bom.example.com \
+  --push-url https://agent-bom.example.com/v1/fleet/sync
+```
+
 The proxy adds runtime inspection for:
 
 - tool drift

@@ -192,12 +192,50 @@ def proxy_cmd(
 @click.option("--detect-credentials", is_flag=True, help="Enable credential leak detection in each proxy")
 @click.option("--block-undeclared", is_flag=True, help="Block undeclared tools in each proxy")
 @click.option(
+    "--control-plane-url",
+    default=None,
+    envvar="AGENT_BOM_API_URL",
+    help="Control-plane base URL for gateway policy pull and proxy audit push",
+)
+@click.option(
+    "--control-plane-token",
+    default=None,
+    envvar="AGENT_BOM_API_TOKEN",
+    help="Bearer token or API key for control-plane auth",
+)
+@click.option(
+    "--policy-refresh-seconds",
+    type=int,
+    default=30,
+    show_default=True,
+    help="How often to refresh enabled gateway policies from the control plane",
+)
+@click.option(
+    "--audit-push-interval",
+    type=int,
+    default=10,
+    show_default=True,
+    help="How often to batch-push proxy alerts to the control plane",
+)
+@click.option(
     "--apply",
     is_flag=True,
     help="Write proxy config back to source JSON config files (default: preview only)",
 )
 @click.option("--project", default=None, type=click.Path(exists=True), help="Project directory to scan for MCP configs")
-def proxy_configure_cmd(policy, log_dir, secure_defaults, detect_credentials, block_undeclared, apply, project):
+def proxy_configure_cmd(
+    policy,
+    log_dir,
+    secure_defaults,
+    detect_credentials,
+    block_undeclared,
+    control_plane_url,
+    control_plane_token,
+    policy_refresh_seconds,
+    audit_push_interval,
+    apply,
+    project,
+):
     """Auto-configure the agent-bom proxy for discovered MCP servers.
 
     \b
@@ -221,6 +259,7 @@ def proxy_configure_cmd(policy, log_dir, secure_defaults, detect_credentials, bl
     Example:
       agent-bom proxy-configure --log-dir ~/.agent-bom/logs
       agent-bom proxy-configure --policy policy.json --log-dir ~/.agent-bom/logs --apply
+      agent-bom proxy-configure --control-plane-url https://agent-bom.example.com --control-plane-token "$TOKEN" --apply
       agent-bom proxy-configure --no-secure-defaults --apply
     """
     from agent_bom.discovery import discover_all
@@ -236,6 +275,10 @@ def proxy_configure_cmd(policy, log_dir, secure_defaults, detect_credentials, bl
         secure_defaults=secure_defaults,
         detect_credentials=detect_credentials,
         block_undeclared=block_undeclared,
+        control_plane_url=control_plane_url,
+        control_plane_token=control_plane_token,
+        policy_refresh_seconds=policy_refresh_seconds,
+        audit_push_interval=audit_push_interval,
     )
 
     if not configs:
@@ -259,6 +302,140 @@ def proxy_configure_cmd(policy, log_dir, secure_defaults, detect_credentials, bl
             con.print("[yellow]⚠[/yellow] No JSON config files were patched (SSE servers, missing files, or no matching entries).")
     else:
         con.print("[dim]Pass --apply to write these changes to config files.[/dim]")
+
+
+@click.command("proxy-bootstrap")
+@click.option(
+    "--bundle-dir",
+    required=True,
+    type=click.Path(path_type=str),
+    help="Directory where the endpoint onboarding artifacts should be written",
+)
+@click.option(
+    "--control-plane-url",
+    required=True,
+    envvar="AGENT_BOM_API_URL",
+    help="Control-plane base URL for gateway policy pull and proxy audit push",
+)
+@click.option(
+    "--control-plane-token",
+    default=None,
+    envvar="AGENT_BOM_API_TOKEN",
+    help="Bearer token or API key for control-plane auth",
+)
+@click.option("--push-url", default=None, help="Optional fleet sync endpoint to write into managed endpoint artifacts")
+@click.option("--push-api-key", default=None, help="Optional fleet sync API key to write into managed endpoint artifacts")
+@click.option("--policy", type=click.Path(exists=True), default=None, help="Policy JSON file to pass to each proxy instance")
+@click.option(
+    "--log-dir",
+    default="~/.agent-bom/logs",
+    show_default=True,
+    type=click.Path(),
+    help="Directory for per-server audit JSONL logs",
+)
+@click.option(
+    "--secure-defaults/--no-secure-defaults",
+    default=True,
+    show_default=True,
+    help="Inject the recommended hardening flags (--detect-credentials and --block-undeclared)",
+)
+@click.option("--detect-credentials", is_flag=True, help="Enable credential leak detection in each proxy")
+@click.option("--block-undeclared", is_flag=True, help="Block undeclared tools in each proxy")
+@click.option(
+    "--policy-refresh-seconds",
+    type=int,
+    default=30,
+    show_default=True,
+    help="How often to refresh enabled gateway policies from the control plane",
+)
+@click.option(
+    "--audit-push-interval",
+    type=int,
+    default=10,
+    show_default=True,
+    help="How often to batch-push proxy alerts to the control plane",
+)
+@click.option("--project", default=None, type=click.Path(exists=True), help="Project directory to scan for MCP configs")
+@click.option("--apply", is_flag=True, help="Also patch the current machine's supported JSON MCP configs")
+def proxy_bootstrap_cmd(
+    bundle_dir,
+    control_plane_url,
+    control_plane_token,
+    push_url,
+    push_api_key,
+    policy,
+    log_dir,
+    secure_defaults,
+    detect_credentials,
+    block_undeclared,
+    policy_refresh_seconds,
+    audit_push_interval,
+    project,
+    apply,
+):
+    """Generate managed endpoint onboarding artifacts for proxy + fleet rollout.
+
+    \b
+    Writes:
+    - macOS/Linux shell bootstrap script
+    - Windows PowerShell bootstrap script
+    - optional fleet-sync env + launchd plist artifacts
+    - machine-readable summary JSON
+
+    \b
+    Use this when you want one IT-owned bundle instead of hand-editing MCP
+    configs on every laptop.
+    """
+    from pathlib import Path
+
+    from agent_bom.discovery import discover_all
+    from agent_bom.endpoint_onboarding import write_endpoint_onboarding_bundle
+    from agent_bom.proxy_configure import apply_proxy_configs, auto_configure_proxies
+
+    con = Console()
+    bundle_path = Path(bundle_dir).expanduser()
+    artifacts = write_endpoint_onboarding_bundle(
+        bundle_path,
+        control_plane_url=control_plane_url,
+        control_plane_token=control_plane_token,
+        policy_refresh_seconds=policy_refresh_seconds,
+        audit_push_interval=audit_push_interval,
+        policy_path=policy,
+        log_dir=log_dir,
+        secure_defaults=secure_defaults,
+        detect_credentials=detect_credentials,
+        block_undeclared=block_undeclared,
+        push_url=push_url,
+        push_api_key=push_api_key,
+    )
+    con.print(f"[green]✓[/green] Wrote endpoint onboarding bundle to [bold]{bundle_path}[/bold]")
+    for name, artifact_path in artifacts.items():
+        con.print(f"  [bold]{name}[/bold]: [dim]{artifact_path}[/dim]")
+
+    if not apply:
+        return
+
+    agents = discover_all(project_dir=project)
+    configs = auto_configure_proxies(
+        agents,
+        policy_path=policy,
+        log_dir=log_dir,
+        secure_defaults=secure_defaults,
+        detect_credentials=detect_credentials,
+        block_undeclared=block_undeclared,
+        control_plane_url=control_plane_url,
+        control_plane_token=control_plane_token,
+        policy_refresh_seconds=policy_refresh_seconds,
+        audit_push_interval=audit_push_interval,
+    )
+    if not configs:
+        con.print("[yellow]No eligible STDIO MCP servers found for local patching.[/yellow]")
+        return
+    patched = apply_proxy_configs(configs, dry_run=False)
+    if patched:
+        con.print(f"[green]✓[/green] Patched {patched} local config file(s).")
+    else:
+        con.print("[yellow]⚠[/yellow] No local config files were patched.")
 
 
 @click.command("protect")

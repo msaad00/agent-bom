@@ -129,6 +129,26 @@ def test_all_flags_together():
     assert "--block-undeclared" in args
 
 
+def test_control_plane_flags_injected():
+    agents = [_agent([_stdio()])]
+    configs = auto_configure_proxies(
+        agents,
+        control_plane_url="https://agent-bom.internal.example.com",
+        control_plane_token="token-123",
+        policy_refresh_seconds=45,
+        audit_push_interval=15,
+    )
+    args = configs[0].proxied_args
+    assert "--control-plane-url" in args
+    assert "https://agent-bom.internal.example.com" in args
+    assert "--control-plane-token" in args
+    assert "token-123" in args
+    assert "--policy-refresh-seconds" in args
+    assert "45" in args
+    assert "--audit-push-interval" in args
+    assert "15" in args
+
+
 def test_no_flags_minimal_proxied_args():
     server = _stdio(command="uvx", args=["mcp-server-git"])
     agents = [_agent([server])]

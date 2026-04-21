@@ -66,6 +66,21 @@ def gateway_group() -> None:
 )
 @click.option("--bind", default="0.0.0.0:8090", show_default=True, help="Bind address host:port.")
 @click.option(
+    "--runtime-rate-limit-per-tenant-per-minute",
+    type=int,
+    envvar="AGENT_BOM_GATEWAY_RATE_LIMIT_PER_TENANT_PER_MINUTE",
+    default=0,
+    show_default=True,
+    help="Tenant-scoped runtime request limit for gateway relay traffic (0 disables).",
+)
+@click.option(
+    "--require-shared-rate-limit",
+    is_flag=True,
+    envvar="AGENT_BOM_GATEWAY_REQUIRE_SHARED_RATE_LIMIT",
+    default=False,
+    help="Fail closed unless gateway runtime rate limiting uses a shared backend.",
+)
+@click.option(
     "--bearer-token",
     envvar="AGENT_BOM_GATEWAY_BEARER_TOKEN",
     default=None,
@@ -102,6 +117,8 @@ def serve_cmd(
     control_plane_token: str | None,
     policy_path: Path | None,
     bind: str,
+    runtime_rate_limit_per_tenant_per_minute: int,
+    require_shared_rate_limit: bool,
     bearer_token: str | None,
     allow_insecure_no_auth: bool,
     detect_visual_leaks: bool,
@@ -189,6 +206,8 @@ def serve_cmd(
         bearer_token=bearer_token,
         enable_visual_leak_detection=detect_visual_leaks,
         require_visual_leak_detection_ready=detect_visual_leaks and not allow_visual_leak_best_effort,
+        runtime_rate_limit_per_tenant_per_minute=max(runtime_rate_limit_per_tenant_per_minute, 0),
+        require_shared_rate_limit=require_shared_rate_limit,
     )
     app = create_gateway_app(settings)
 

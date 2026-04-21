@@ -288,6 +288,36 @@ def test_gateway_serve_requires_visual_runtime_when_enabled(tmp_path):
     assert "Visual leak detection requires" in result.output
 
 
+def test_gateway_serve_passes_runtime_rate_limit_settings(tmp_path):
+    runner = CliRunner()
+    upstreams = tmp_path / "upstreams.yaml"
+    upstreams.write_text("upstreams:\n  - name: jira\n    url: https://jira.example.com/mcp\n")
+
+    with (
+        patch("agent_bom.gateway_server.create_gateway_app") as mock_create_app,
+        patch("uvicorn.run") as mock_run,
+    ):
+        mock_create_app.return_value = object()
+        result = runner.invoke(
+            gateway_serve_cmd,
+            [
+                "--bind",
+                "127.0.0.1:8090",
+                "--upstreams",
+                str(upstreams),
+                "--runtime-rate-limit-per-tenant-per-minute",
+                "120",
+                "--require-shared-rate-limit",
+            ],
+        )
+
+    assert result.exit_code == 0
+    settings = mock_create_app.call_args.args[0]
+    assert settings.runtime_rate_limit_per_tenant_per_minute == 120
+    assert settings.require_shared_rate_limit is True
+    mock_run.assert_called_once()
+
+
 def test_mcp_server_cmd_missing_sdk():
     """Test mcp-server command when MCP SDK is not installed."""
     runner = CliRunner()

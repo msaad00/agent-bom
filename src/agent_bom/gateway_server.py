@@ -29,7 +29,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import threading
+import time
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -37,7 +39,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
 from agent_bom.api.auth import get_key_store
-from agent_bom.api.metrics import record_gateway_relay
+from agent_bom.api.metrics import record_gateway_relay, record_rate_limit_hit
+from agent_bom.api.middleware import InMemoryRateLimitStore, PostgresRateLimitStore
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 from agent_bom.proxy import check_policy, is_tools_call, parse_jsonrpc
 
@@ -84,6 +87,73 @@ class GatewaySettings:
     # Set to True AND install `agent-bom[visual]` to enable.
     enable_visual_leak_detection: bool = False
     require_visual_leak_detection_ready: bool = False
+    runtime_rate_limit_per_tenant_per_minute: int = 0
+    require_shared_rate_limit: bool = False
+
+
+def _gateway_configured_replicas() -> int:
+    raw = os.environ.get("AGENT_BOM_GATEWAY_REPLICAS", "").strip()
+    if not raw:
+        return 1
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        logger.warning("Invalid AGENT_BOM_GATEWAY_REPLICAS=%r; defaulting to 1", _sanitize_for_log(raw))
+        return 1
+
+
+def _gateway_shared_rate_limit_required(settings: GatewaySettings) -> bool:
+    if settings.require_shared_rate_limit:
+        return True
+    return _gateway_configured_replicas() > 1
+
+
+def _build_gateway_rate_limit_store(settings: GatewaySettings):
+    if settings.runtime_rate_limit_per_tenant_per_minute <= 0:
+        return None
+    if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        try:
+            return PostgresRateLimitStore(window_seconds=60)
+        except Exception as exc:
+            raise RuntimeError(
+                "Configured Postgres gateway rate limiter could not initialize; refusing to fall back to process-local state"
+            ) from exc
+    if _gateway_shared_rate_limit_required(settings):
+        raise RuntimeError(
+            "Shared gateway rate limiting is required for multi-replica or fail-closed deployments. "
+            "Configure AGENT_BOM_POSTGRES_URL before starting the gateway."
+        )
+    return InMemoryRateLimitStore(window_seconds=60)
+
+
+def _gateway_rate_limit_runtime_status(settings: GatewaySettings) -> dict[str, object]:
+    postgres_configured = bool(os.environ.get("AGENT_BOM_POSTGRES_URL", "").strip())
+    replicas = _gateway_configured_replicas()
+    enabled = settings.runtime_rate_limit_per_tenant_per_minute > 0
+    shared_required = _gateway_shared_rate_limit_required(settings) if enabled else False
+    backend = "disabled" if not enabled else ("postgres_shared" if postgres_configured else "inmemory_single_process")
+    return {
+        "enabled": enabled,
+        "limit_per_tenant_per_minute": settings.runtime_rate_limit_per_tenant_per_minute,
+        "backend": backend,
+        "postgres_configured": postgres_configured,
+        "configured_gateway_replicas": replicas,
+        "shared_required": shared_required,
+        "shared_across_replicas": enabled and postgres_configured,
+        "fail_closed": (enabled and postgres_configured) or (enabled and shared_required),
+        "message": (
+            "Gateway runtime rate limiting disabled."
+            if not enabled
+            else (
+                "Gateway runtime rate limiting uses Postgres-backed shared state across replicas."
+                if postgres_configured
+                else (
+                    "Gateway runtime rate limiting is process-local because the gateway is configured "
+                    "for a single replica. Multi-replica deployments must configure AGENT_BOM_POSTGRES_URL."
+                )
+            )
+        ),
+    }
 
 
 def _request_has_expected_token(request: Request, expected_token: str) -> bool:
@@ -169,6 +239,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
 
     app = FastAPI(title="agent-bom gateway", version="1")
     upstream_caller = settings.upstream_caller or _default_upstream_caller
+    rate_limit_store = _build_gateway_rate_limit_store(settings)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:
@@ -176,6 +247,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             "status": "ok",
             "upstreams": settings.registry.names(),
             "auth": {"incoming_token_required": _gateway_requires_auth(settings)},
+            "rate_limit_runtime": _gateway_rate_limit_runtime_status(settings),
         }
         if settings.enable_visual_leak_detection:
             from agent_bom.runtime.visual_leak_detector import visual_leak_runtime_health
@@ -227,6 +299,42 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
 
         # Inline policy check — reuse the exact evaluator the per-MCP proxy uses.
         tenant_id = getattr(request.state, "tenant_id", None) or "default"
+        rate_limit_headers: dict[str, str] = {}
+        if rate_limit_store is not None:
+            now = time.time()
+            bucket = f"gateway:tenant:{tenant_id}"
+            hit_count, reset_at = await asyncio.to_thread(rate_limit_store.hit, bucket, now)
+            limit = settings.runtime_rate_limit_per_tenant_per_minute
+            remaining = max(0, limit - hit_count)
+            rate_limit_headers = {
+                "X-RateLimit-Limit": str(limit),
+                "X-RateLimit-Remaining": str(remaining),
+                "X-RateLimit-Reset": str(reset_at),
+            }
+            if hit_count > limit:
+                retry_after = max(int(reset_at - now), 1)
+                record_gateway_relay(upstream.name, "rate_limited")
+                record_rate_limit_hit("gateway_tenant")
+                if settings.audit_sink is not None:
+                    await settings.audit_sink(
+                        {
+                            "action": "gateway.rate_limited",
+                            "upstream": upstream.name,
+                            "tenant_id": tenant_id,
+                            "limit": limit,
+                            "bucket": bucket,
+                            "reason": "tenant_runtime_rate_limit",
+                        }
+                    )
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Gateway tenant rate limit exceeded"},
+                    headers={
+                        **rate_limit_headers,
+                        "Retry-After": str(retry_after),
+                    },
+                )
+
         if is_tools_call(message):
             params = message.get("params", {}) or {}
             tool_name = params.get("name", "")
@@ -254,6 +362,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                         },
                     },
                     status_code=200,
+                    headers=rate_limit_headers or None,
                 )
 
         # Forward to the upstream.
@@ -344,7 +453,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     "tool": message.get("params", {}).get("name") if is_tools_call(message) else None,
                 }
             )
-        return JSONResponse(upstream_response)
+        return JSONResponse(upstream_response, headers=rate_limit_headers or None)
 
     return app
 

@@ -56,6 +56,17 @@ def test_healthz_lists_configured_upstreams() -> None:
         "status": "ok",
         "upstreams": ["filesystem", "jira"],
         "auth": {"incoming_token_required": False},
+        "rate_limit_runtime": {
+            "enabled": False,
+            "limit_per_tenant_per_minute": 0,
+            "backend": "disabled",
+            "postgres_configured": False,
+            "configured_gateway_replicas": 1,
+            "shared_required": False,
+            "shared_across_replicas": False,
+            "fail_closed": False,
+            "message": "Gateway runtime rate limiting disabled.",
+        },
     }
 
 
@@ -197,6 +208,75 @@ def test_relay_accepts_control_plane_api_key_and_applies_tenant(monkeypatch) -> 
     assert allowed.status_code == 200
     assert allowed.json()["result"]["ok"] is True
     assert audit_events[-1]["tenant_id"] == "tenant-alpha"
+
+
+def test_gateway_rate_limit_is_tenant_scoped(monkeypatch) -> None:
+    class _FakeKeyStore:
+        def has_keys(self) -> bool:
+            return True
+
+        def verify(self, raw_key: str):
+            if raw_key == "tenant-alpha-key":
+                return SimpleNamespace(tenant_id="tenant-alpha")
+            if raw_key == "tenant-beta-key":
+                return SimpleNamespace(tenant_id="tenant-beta")
+            return None
+
+    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+
+    async def fake_caller(upstream, message, extra_headers):
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        upstream_caller=fake_caller,
+        runtime_rate_limit_per_tenant_per_minute=1,
+    )
+    client = TestClient(create_gateway_app(settings))
+
+    first = client.post(
+        "/mcp/filesystem",
+        headers={"X-API-Key": "tenant-alpha-key"},
+        json=_json_rpc("tools/call", name="read_file", arguments={"path": "/etc/hosts"}),
+    )
+    assert first.status_code == 200
+    assert first.headers["X-RateLimit-Limit"] == "1"
+
+    second = client.post(
+        "/mcp/filesystem",
+        headers={"X-API-Key": "tenant-alpha-key"},
+        json=_json_rpc("tools/call", name="read_file", arguments={"path": "/etc/hosts"}),
+    )
+    assert second.status_code == 429
+    assert second.json()["detail"] == "Gateway tenant rate limit exceeded"
+
+    other_tenant = client.post(
+        "/mcp/filesystem",
+        headers={"X-API-Key": "tenant-beta-key"},
+        json=_json_rpc("tools/call", name="read_file", arguments={"path": "/etc/hosts"}),
+    )
+    assert other_tenant.status_code == 200
+
+
+def test_gateway_rate_limit_can_require_shared_backend(monkeypatch) -> None:
+    monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
+    monkeypatch.setenv("AGENT_BOM_GATEWAY_REPLICAS", "2")
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        runtime_rate_limit_per_tenant_per_minute=10,
+    )
+    try:
+        try:
+            create_gateway_app(settings)
+        except RuntimeError as exc:
+            assert "Shared gateway rate limiting is required" in str(exc)
+        else:
+            raise AssertionError("expected create_gateway_app to fail closed without shared backend")
+    finally:
+        monkeypatch.delenv("AGENT_BOM_GATEWAY_REPLICAS", raising=False)
 
 
 # ─── Policy block ─────────────────────────────────────────────────────────

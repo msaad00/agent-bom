@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { api } from '@/lib/api'
+import { setSessionApiKey, clearSessionApiKey } from '@/lib/auth'
 
 // ─── Mock fetch globally ───────────────────────────────────────────────────────
 
@@ -12,10 +13,21 @@ function mockFetch(data: unknown, ok = true, status = 200) {
   })
 }
 
+function mockBlobFetch(contents: string, ok = true, status = 200, type = 'application/json') {
+  return vi.fn().mockResolvedValue({
+    ok,
+    status,
+    statusText: ok ? 'OK' : 'Error',
+    json: () => Promise.resolve({}),
+    blob: () => Promise.resolve(new Blob([contents], { type })),
+  })
+}
+
 const originalFetch = global.fetch
 
 afterEach(() => {
   global.fetch = originalFetch
+  clearSessionApiKey()
   vi.restoreAllMocks()
 })
 
@@ -76,6 +88,23 @@ describe('api.listJobs', () => {
     expect(result.jobs).toHaveLength(1)
     expect(result.jobs[0].job_id).toBe('abc123')
     expect(result.count).toBe(1)
+  })
+
+  it('propagates a session API key and browser credentials', async () => {
+    setSessionApiKey("pilot-key-123")
+    const fetchMock = mockFetch({ jobs: [], count: 0 })
+    global.fetch = fetchMock
+
+    await api.listJobs()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/v1/jobs",
+      expect.objectContaining({
+        credentials: "include",
+        headers: { Authorization: "Bearer pilot-key-123" },
+        signal: expect.any(AbortSignal),
+      }),
+    )
   })
 
   it('throws on non-ok response', async () => {
@@ -209,6 +238,26 @@ describe('api.getScan', () => {
   it('throws on error', async () => {
     global.fetch = mockFetch({}, false, 500)
     await expect(api.getScan('bad-id')).rejects.toThrow('500')
+  })
+})
+
+describe('api.downloadScanGraph', () => {
+  it('downloads graph export with session auth headers', async () => {
+    setSessionApiKey('pilot-key-123')
+    const fetchMock = mockBlobFetch('{"nodes":[],"edges":[]}')
+    global.fetch = fetchMock
+
+    const blob = await api.downloadScanGraph('job-1')
+
+    expect(blob).toBeInstanceOf(Blob)
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/v1/scan/job-1/graph-export?format=json',
+      expect.objectContaining({
+        credentials: 'include',
+        headers: { Authorization: 'Bearer pilot-key-123' },
+        signal: expect.any(AbortSignal),
+      }),
+    )
   })
 })
 

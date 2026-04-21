@@ -38,6 +38,10 @@ spec:
       {{- include "agent-bom.controlPlaneTopologySpreadConstraints" (dict "Values" .Values "component" "api" "Chart" .Chart "Release" .Release) | nindent 6 }}
       {{- include "agent-bom.controlPlaneAffinity" (dict "Values" .Values "component" "api" "Chart" .Chart "Release" .Release) | nindent 6 }}
       containers:
+        {{- $apiReplicaFloor := int .Values.controlPlane.api.replicas }}
+        {{- if and .Values.controlPlane.api.autoscaling.enabled (gt (int .Values.controlPlane.api.autoscaling.minReplicas) $apiReplicaFloor) }}
+        {{- $apiReplicaFloor = int .Values.controlPlane.api.autoscaling.minReplicas }}
+        {{- end }}
         - name: api
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
@@ -49,8 +53,10 @@ spec:
             - containerPort: {{ .Values.controlPlane.api.port }}
               name: http
               protocol: TCP
-          {{- with .Values.controlPlane.api.env }}
           env:
+            - name: AGENT_BOM_CONTROL_PLANE_REPLICAS
+              value: {{ $apiReplicaFloor | quote }}
+          {{- with .Values.controlPlane.api.env }}
             {{- toYaml . | nindent 12 }}
           {{- end }}
           {{- with .Values.controlPlane.api.envFrom }}

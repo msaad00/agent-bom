@@ -19,6 +19,8 @@ Tests cover:
 
 from __future__ import annotations
 
+import base64
+import json
 import os
 from unittest.mock import MagicMock, patch
 
@@ -30,11 +32,18 @@ from agent_bom.api.oidc import (
     claims_have_role_signal,
     claims_to_role,
     claims_to_tenant,
+    oidc_enabled_from_env,
     record_oidc_decode_failure,
     reset_oidc_decode_failures,
 )
 
 # ── OIDCConfig ────────────────────────────────────────────────────────────────
+
+
+def _unsigned_test_jwt(claims: dict[str, str]) -> str:
+    header = base64.urlsafe_b64encode(json.dumps({"alg": "none"}).encode()).decode().rstrip("=")
+    payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+    return f"{header}.{payload}."
 
 
 def test_oidc_config_disabled_when_no_issuer():
@@ -55,6 +64,15 @@ def test_oidc_config_from_env_reads_issuer():
         cfg = OIDCConfig.from_env()
         assert cfg.enabled is True
         assert cfg.issuer == "https://test.okta.com"
+
+
+def test_oidc_enabled_from_env_detects_tenant_bound_config():
+    with patch.dict(
+        os.environ,
+        {"AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON": '{"tenant-alpha":{"issuer":"https://alpha.okta.example","audience":"agent-bom"}}'},
+        clear=False,
+    ):
+        assert oidc_enabled_from_env() is True
 
 
 def test_oidc_config_audience_is_unset_without_explicit_value():
@@ -116,6 +134,53 @@ def test_oidc_config_require_role_claim_from_env():
     ):
         cfg = OIDCConfig.from_env()
         assert cfg.require_role_claim is True
+
+
+def test_oidc_config_from_env_reads_tenant_bound_providers():
+    with patch.dict(
+        os.environ,
+        {
+            "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON": (
+                '{"tenant-alpha":{"issuer":"https://alpha.okta.example","audience":"agent-bom"},'
+                '"tenant-beta":{"issuer":"https://beta.okta.example","audience":"agent-bom","require_tenant_claim":true}}'
+            )
+        },
+        clear=False,
+    ):
+        cfg = OIDCConfig.from_env()
+
+    assert cfg.enabled is True
+    assert cfg.issuer == ""
+    assert set(cfg.tenant_providers) == {"tenant-alpha", "tenant-beta"}
+    assert cfg.tenant_providers["tenant-beta"].require_tenant_claim is True
+
+
+def test_oidc_config_from_env_rejects_mixed_global_and_tenant_bound_modes():
+    with patch.dict(
+        os.environ,
+        {
+            "AGENT_BOM_OIDC_ISSUER": "https://global.okta.example",
+            "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON": '{"tenant-alpha":{"issuer":"https://alpha.okta.example","audience":"agent-bom"}}',
+        },
+        clear=False,
+    ):
+        with pytest.raises(OIDCError, match="either AGENT_BOM_OIDC_ISSUER or AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON"):
+            OIDCConfig.from_env()
+
+
+def test_oidc_config_from_env_rejects_duplicate_issuers():
+    with patch.dict(
+        os.environ,
+        {
+            "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON": (
+                '{"tenant-alpha":{"issuer":"https://shared.okta.example","audience":"agent-bom"},'
+                '"tenant-beta":{"issuer":"https://shared.okta.example","audience":"agent-bom"}}'
+            )
+        },
+        clear=False,
+    ):
+        with pytest.raises(OIDCError, match="configured for more than one tenant"):
+            OIDCConfig.from_env()
 
 
 @pytest.fixture(autouse=True)
@@ -261,6 +326,46 @@ def test_oidc_config_resolve_tenant_raises_when_required_claim_missing():
     cfg = OIDCConfig(issuer="https://corp.example.com", audience="agent-bom", require_tenant_claim=True)
     with pytest.raises(OIDCError, match="tenant claim"):
         cfg.resolve_tenant({"sub": "user-1"})
+
+
+def test_oidc_config_verify_routes_token_by_issuer_for_tenant_bound_providers():
+    cfg = OIDCConfig(
+        tenant_providers={
+            "tenant-alpha": OIDCConfig(
+                issuer="https://alpha.okta.example",
+                audience="agent-bom",
+                tenant_id="tenant-alpha",
+                require_tenant_claim=True,
+            )
+        }
+    )
+    token = _unsigned_test_jwt({"iss": "https://alpha.okta.example"})
+    with patch(
+        "agent_bom.api.oidc.verify_oidc_token",
+        return_value={"iss": "https://alpha.okta.example", "sub": "user-1", "agent_bom_role": "analyst", "tenant_id": "tenant-alpha"},
+    ):
+        claims, role = cfg.verify(token)
+
+    assert claims["iss"] == "https://alpha.okta.example"
+    assert role == "analyst"
+
+
+def test_oidc_config_resolve_tenant_rejects_mismatched_bound_tenant():
+    cfg = OIDCConfig(
+        tenant_providers={
+            "tenant-alpha": OIDCConfig(
+                issuer="https://alpha.okta.example",
+                audience="agent-bom",
+                tenant_id="tenant-alpha",
+            )
+        }
+    )
+    with patch(
+        "agent_bom.api.oidc.verify_oidc_token",
+        return_value={"iss": "https://alpha.okta.example", "sub": "user-1", "agent_bom_role": "viewer", "tenant_id": "tenant-beta"},
+    ):
+        with pytest.raises(OIDCError, match="does not match the configured tenant"):
+            cfg.verify(_unsigned_test_jwt({"iss": "https://alpha.okta.example"}))
 
 
 # ── API middleware OIDC integration ───────────────────────────────────────────

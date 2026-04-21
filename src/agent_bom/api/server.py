@@ -25,6 +25,7 @@ from agent_bom.api.middleware import (
     MaxBodySizeMiddleware,
     RateLimitMiddleware,
     TrustHeadersMiddleware,
+    configure_auth_runtime,
 )
 
 # ─── Extracted modules ────────────────────────────────────────────────────────
@@ -457,15 +458,26 @@ def configure_api(
     _api_key = api_key
     _rate_limit_rpm = rate_limit_rpm
 
+    from agent_bom.api.oidc import oidc_enabled_from_env
+
+    oidc_enabled = oidc_enabled_from_env()
+    trusted_proxy_enabled = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
+    auth_required = bool(api_key or oidc_enabled or trusted_proxy_enabled)
+    configure_auth_runtime(
+        api_key_configured=bool(api_key),
+        oidc_enabled=oidc_enabled,
+        trusted_proxy_enabled=trusted_proxy_enabled,
+    )
+
     # Warn if API is exposed without authentication
-    if not api_key:
+    if not auth_required:
         _logger.warning(
             "SECURITY: No AGENT_BOM_API_KEY set — API endpoints are unauthenticated. "
             "Set AGENT_BOM_API_KEY environment variable for production deployments."
         )
 
     # Refresh runtime-configurable middleware
-    if api_key:
+    if auth_required:
         _replace_middleware(APIKeyMiddleware, api_key=api_key)
     else:
         app.user_middleware = [m for m in app.user_middleware if m.cls is not APIKeyMiddleware]

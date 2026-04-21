@@ -105,7 +105,7 @@ agent-bom serve --port 8422 --persist jobs.db
 - `POST /v1/fleet/sync` — ingest endpoint scan results
 - `GET /v1/compliance` — 14-framework compliance posture
 
-**Authentication:** localhost binds are allowed for local development. Non-loopback binds fail closed unless you set `AGENT_BOM_API_KEY`, configure `AGENT_BOM_OIDC_ISSUER`, or explicitly pass `--allow-insecure-no-auth`. Rate limiting and CORS controls are built in.
+**Authentication:** localhost binds are allowed for local development. Non-loopback binds fail closed unless you set `AGENT_BOM_API_KEY`, configure `AGENT_BOM_OIDC_ISSUER`, configure `AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON`, or explicitly pass `--allow-insecure-no-auth`. Rate limiting and CORS controls are built in.
 
 **Tracing:** every API response includes `X-Request-ID`, `X-Trace-ID`, `X-Span-ID`, and W3C `traceparent`. If your ingress or collector already sends `traceparent`, `tracestate`, or bounded W3C `baggage`, `agent-bom` preserves the upstream trace context and continues the chain. `GET /health` also reports the current tracing contract (`w3c_trace_context`, `w3c_tracestate`, `w3c_baggage`) plus OTLP export state so operators can confirm whether tracing is merely available or actively exported. Set `AGENT_BOM_OTEL_TRACES_ENDPOINT` to export API request spans over OTLP/HTTP, and use `AGENT_BOM_OTEL_TRACES_HEADERS` for collector auth headers when needed.
 
@@ -122,7 +122,30 @@ export AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM=1        # fail closed if the claim i
 
 That keeps API roles and tenant boundaries aligned with the upstream identity provider instead of silently falling back to a shared tenant when you expect strict isolation.
 
+For tenant-bound issuers, configure one issuer per tenant and do not also set `AGENT_BOM_OIDC_ISSUER`:
+
+```bash
+export AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON='{
+  "tenant-alpha": {
+    "issuer": "https://alpha.okta.example",
+    "audience": "agent-bom",
+    "tenant_claim": "tenant_id",
+    "require_tenant_claim": true
+  },
+  "tenant-beta": {
+    "issuer": "https://beta.okta.example",
+    "audience": "agent-bom",
+    "tenant_claim": "tenant_id",
+    "require_tenant_claim": true
+  }
+}'
+```
+
+At startup, `agent-bom` treats `AGENT_BOM_OIDC_ISSUER` and `AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON` as mutually exclusive. Mixed configuration now fails closed instead of silently choosing one mode.
+
 For PostgreSQL-backed deployments, `agent-bom` now also pushes the authenticated tenant into the database session (`app.tenant_id`) so Postgres row-level security can enforce the same tenant boundary for fleet and schedule data. Internal scheduler work uses an explicit trusted bypass rather than silently reading across tenants.
+
+For horizontally scaled control-plane APIs, shared rate limiting is mandatory. `agent-bom` now fails closed when `AGENT_BOM_CONTROL_PLANE_REPLICAS > 1` (or `AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1`) and no PostgreSQL-backed limiter is configured via `AGENT_BOM_POSTGRES_URL`.
 
 **Storage:** SQLite for single-node and local persistence, PostgreSQL-compatible backends such as PostgreSQL and Supabase for the transactional control plane, ClickHouse for analytics, and Snowflake for selected enterprise store paths where parity is explicitly implemented. Snowflake does not yet have full parity for every transactional API store, so PostgreSQL-compatible backends remain the primary control-plane default when you need tenant-scoped keys, exceptions, schedules, graph state, and trend history.
 

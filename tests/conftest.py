@@ -38,11 +38,22 @@ def _reset_registry_state() -> None:
         pass
 
 
+def _reset_api_runtime_state() -> None:
+    try:
+        from agent_bom.api import server as api_server
+
+        api_server.configure_api(api_key=None)
+    except Exception:
+        pass
+
+
 @pytest.fixture(autouse=True)
 def reset_global_test_state():
     """Reset process-global caches so test order does not affect outcomes."""
     _reset_resolver_state()
     _reset_registry_state()
+    _reset_api_runtime_state()
     yield
     _reset_resolver_state()
     _reset_registry_state()
+    _reset_api_runtime_state()

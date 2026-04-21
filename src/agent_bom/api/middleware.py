@@ -29,6 +29,11 @@ from starlette.types import ASGIApp
 
 _logger = logging.getLogger(__name__)
 _RATE_LIMIT_FINGERPRINT_FALLBACK = secrets.token_bytes(32)
+_AUTH_RUNTIME_STATUS: dict[str, object] = {
+    "auth_required": False,
+    "configured_modes": [],
+    "recommended_ui_mode": "no_auth",
+}
 _API_CSP = "default-src 'self'"
 _DASHBOARD_CSP = (
     "default-src 'self'; "
@@ -48,6 +53,44 @@ def _content_security_policy(path: str, content_type: str) -> str:
     if "text/html" in content_type and not path.startswith(("/v1/", "/docs", "/redoc", "/openapi.json")):
         return _DASHBOARD_CSP
     return _API_CSP
+
+
+def configure_auth_runtime(
+    *,
+    api_key_configured: bool,
+    oidc_enabled: bool,
+    trusted_proxy_enabled: bool,
+) -> None:
+    """Track the active auth modes for operator/UI introspection surfaces."""
+    configured_modes: list[str] = []
+    if trusted_proxy_enabled:
+        configured_modes.append("trusted_proxy")
+    if oidc_enabled:
+        configured_modes.append("oidc_bearer")
+    if api_key_configured:
+        configured_modes.append("api_key")
+
+    recommended_ui_mode = "no_auth"
+    if trusted_proxy_enabled:
+        recommended_ui_mode = "reverse_proxy_oidc"
+    elif oidc_enabled:
+        recommended_ui_mode = "oidc_bearer"
+    elif api_key_configured:
+        recommended_ui_mode = "session_api_key"
+
+    _AUTH_RUNTIME_STATUS.clear()
+    _AUTH_RUNTIME_STATUS.update(
+        {
+            "auth_required": bool(configured_modes),
+            "configured_modes": configured_modes,
+            "recommended_ui_mode": recommended_ui_mode,
+        }
+    )
+
+
+def get_auth_runtime_status() -> dict[str, object]:
+    """Return the configured auth modes for UI and operator surfaces."""
+    return dict(_AUTH_RUNTIME_STATUS)
 
 
 class InMemoryRateLimitStore:
@@ -258,9 +301,28 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     # Set AGENT_BOM_DISABLE_DOCS=1 in production to block /docs and /redoc
     _DOCS_DISABLED = os.environ.get("AGENT_BOM_DISABLE_DOCS", "").strip() in ("1", "true", "yes")
     _EXEMPT_PATHS = (
-        {"/", "/health", "/version", "/metrics", "/docs", "/redoc", "/openapi.json", "/v1/auth/saml/metadata", "/v1/auth/saml/login"}
+        {
+            "/",
+            "/health",
+            "/readyz",
+            "/version",
+            "/metrics",
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+            "/v1/auth/saml/metadata",
+            "/v1/auth/saml/login",
+        }
         if not _DOCS_DISABLED
-        else {"/", "/health", "/version", "/metrics", "/v1/auth/saml/metadata", "/v1/auth/saml/login"}
+        else {
+            "/",
+            "/health",
+            "/readyz",
+            "/version",
+            "/metrics",
+            "/v1/auth/saml/metadata",
+            "/v1/auth/saml/login",
+        }
     )
 
     # Ordered route rules so narrower enterprise paths win over broad prefixes.
@@ -301,6 +363,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp, api_key: str) -> None:
         super().__init__(app)
         self._api_key = api_key
+        self._trusted_proxy_auth = _env_flag("AGENT_BOM_TRUST_PROXY_AUTH")
         # OIDC config loaded lazily from env on first request
         self._oidc_config: OIDCConfig | None = None
         self._oidc_checked = False
@@ -325,6 +388,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             raw_key = request.headers.get("x-api-key", "")
 
         if not raw_key:
+            proxy_response = await self._try_proxy_header_auth(request, call_next)
+            if proxy_response is not None:
+                return proxy_response
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Unauthorized — provide API key via Authorization: Bearer <key> or X-API-Key header"},
@@ -403,6 +469,46 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             content={"detail": "Unauthorized — invalid API key"},
         )
 
+    async def _try_proxy_header_auth(self, request: StarletteRequest, call_next):
+        if not self._trusted_proxy_auth:
+            return None
+
+        role_header = request.headers.get("x-agent-bom-role", "").strip().lower()
+        tenant_id = request.headers.get("x-agent-bom-tenant-id", "").strip()
+        if not role_header:
+            return None
+        if not tenant_id:
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Authentication required — trusted proxy requests must include X-Agent-Bom-Tenant-ID"},
+            )
+
+        from agent_bom.api.auth import _ROLE_HIERARCHY, Role
+
+        try:
+            proxy_role = Role(role_header)
+        except ValueError:
+            return JSONResponse(status_code=403, content={"detail": f"Invalid proxy role '{role_header}'"})
+
+        required = Role(self._required_role(request.method, request.url.path))
+        if _ROLE_HIERARCHY.get(proxy_role, 0) < _ROLE_HIERARCHY.get(required, 0):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": f"Forbidden — requires {required.value} role, proxy session has {proxy_role.value}"},
+            )
+
+        request.state.api_key_name = (
+            request.headers.get("x-agent-bom-subject")
+            or request.headers.get("x-forwarded-email")
+            or request.headers.get("x-auth-request-email")
+            or "proxy-header"
+        )
+        request.state.api_key_role = proxy_role.value
+        request.state.tenant_id = tenant_id
+        request.state.auth_method = "proxy_header"
+        request.state.auth_issuer = request.headers.get("x-agent-bom-auth-issuer") or None
+        return await self._call_with_tenant_context(request, call_next)
+
     async def _call_with_tenant_context(self, request: StarletteRequest, call_next):
         tenant_token = None
         try:
@@ -432,10 +538,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if os.environ.get("AGENT_BOM_POSTGRES_URL"):
             try:
                 return PostgresRateLimitStore(window_seconds=self._window)
-            except Exception:
-                if _env_flag("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT"):
-                    raise RuntimeError("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1 but Postgres rate limiter could not initialize") from None
-                _logger.warning("Postgres rate limiter unavailable, falling back to in-memory store", exc_info=True)
+            except Exception as exc:
+                raise RuntimeError(
+                    "Configured Postgres rate limiter could not initialize; refusing to fall back to process-local state"
+                ) from exc
+        if _shared_rate_limit_required():
+            raise RuntimeError(
+                "Shared rate limiting is required for multi-replica or fail-closed deployments. "
+                "Configure AGENT_BOM_POSTGRES_URL before starting the API."
+            )
         return InMemoryRateLimitStore(window_seconds=self._window)
 
     def _resolve_tenant_scope(self, request: StarletteRequest, raw_key: str) -> str | None:
@@ -500,20 +611,41 @@ def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _configured_api_replicas() -> int:
+    raw = os.environ.get("AGENT_BOM_CONTROL_PLANE_REPLICAS", "").strip()
+    if not raw:
+        return 1
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        _logger.warning("Invalid AGENT_BOM_CONTROL_PLANE_REPLICAS=%r; defaulting to 1", raw)
+        return 1
+
+
+def _shared_rate_limit_required() -> bool:
+    return _env_flag("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT") or _configured_api_replicas() > 1
+
+
 def get_rate_limit_runtime_status() -> dict[str, object]:
     """Report whether API rate limiting is shared across replicas."""
     postgres_configured = bool(os.environ.get("AGENT_BOM_POSTGRES_URL", "").strip())
-    shared_required = _env_flag("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT")
-    backend = "postgres_shared" if postgres_configured else "inmemory"
+    replicas = _configured_api_replicas()
+    shared_required = _shared_rate_limit_required()
+    backend = "postgres_shared" if postgres_configured else "inmemory_single_process"
     return {
         "backend": backend,
         "postgres_configured": postgres_configured,
+        "configured_api_replicas": replicas,
         "shared_required": shared_required,
         "shared_across_replicas": postgres_configured,
+        "fail_closed": postgres_configured or shared_required,
         "message": (
             "Rate limiting uses Postgres-backed shared state across replicas."
             if postgres_configured
-            else ("Rate limiting is process-local and resets on pod restart. Set AGENT_BOM_POSTGRES_URL for shared limiter state.")
+            else (
+                "Rate limiting is process-local only because the API is configured for a single replica. "
+                "Multi-replica deployments must configure AGENT_BOM_POSTGRES_URL."
+            )
         ),
     }
 

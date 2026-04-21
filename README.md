@@ -378,7 +378,8 @@ Pilot teams run:
 
 ```bash
 # 1. Pick your backend shape (postgres default; snowflake / istio / production also shipped)
-helm install agent-bom deploy/helm/agent-bom \
+helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom \
+  --version 0.79.0 \
   -n agent-bom --create-namespace \
   -f deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml
 

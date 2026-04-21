@@ -24,7 +24,9 @@ def _is_loopback_host(host: str) -> bool:
 
 def _oidc_enabled() -> bool:
     """Return True when OIDC auth is configured via environment."""
-    return bool(os.environ.get("AGENT_BOM_OIDC_ISSUER", "").strip())
+    from agent_bom.api.oidc import oidc_enabled_from_env
+
+    return oidc_enabled_from_env()
 
 
 def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_insecure_no_auth: bool) -> None:
@@ -35,7 +37,8 @@ def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_i
         return
     raise click.ClickException(
         f"Refusing to expose `{command}` on non-loopback host {host!r} without authentication. "
-        "Set --api-key / AGENT_BOM_API_KEY or configure AGENT_BOM_OIDC_ISSUER, "
+        "Set --api-key / AGENT_BOM_API_KEY or configure AGENT_BOM_OIDC_ISSUER / "
+        "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON, "
         "or pass --allow-insecure-no-auth to override."
     )
 

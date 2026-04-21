@@ -1,8 +1,11 @@
 """Tests for API server hardening — auth, rate limiting, CORS, body size."""
 
+import base64
+import json
 import time
 from unittest.mock import MagicMock, patch
 
+import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
@@ -15,6 +18,12 @@ from agent_bom.api.server import (
     app,
     configure_api,
 )
+
+
+def _unsigned_test_jwt(claims: dict[str, str]) -> str:
+    header = base64.urlsafe_b64encode(json.dumps({"alg": "none"}).encode()).decode().rstrip("=")
+    payload = base64.urlsafe_b64encode(json.dumps(claims).encode()).decode().rstrip("=")
+    return f"{header}.{payload}."
 
 
 def test_health_no_auth():
@@ -132,6 +141,57 @@ def test_api_key_middleware_health_exempt():
     assert resp.status_code == 200
 
 
+def test_api_key_middleware_proxy_headers_authenticate_when_enabled(monkeypatch):
+    """Trusted proxy headers should satisfy auth when explicitly enabled."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse(
+            {
+                "role": request.state.api_key_role,
+                "tenant_id": request.state.tenant_id,
+                "method": request.state.auth_method,
+            }
+        )
+
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app.add_middleware(APIKeyMiddleware, api_key="")
+
+    client = TestClient(test_app)
+    resp = client.get(
+        "/v1/test",
+        headers={
+            "X-Agent-Bom-Role": "analyst",
+            "X-Agent-Bom-Tenant-ID": "tenant-alpha",
+            "X-Agent-Bom-Subject": "alice@corp.example",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {"role": "analyst", "tenant_id": "tenant-alpha", "method": "proxy_header"}
+
+
+def test_api_key_middleware_proxy_headers_require_tenant(monkeypatch):
+    """Trusted proxy auth must fail closed when the tenant header is missing."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app.add_middleware(APIKeyMiddleware, api_key="")
+
+    client = TestClient(test_app)
+    resp = client.get("/v1/test", headers={"X-Agent-Bom-Role": "viewer"})
+    assert resp.status_code == 401
+    assert "X-Agent-Bom-Tenant-ID" in resp.json()["detail"]
+
+
 def test_api_key_middleware_exception_create_allows_analyst_role():
     """Analyst API keys should keep write access to exception creation paths."""
     from starlette.applications import Starlette
@@ -207,6 +267,81 @@ def test_api_key_middleware_oidc_sets_tenant_from_custom_claim():
 
     assert resp.status_code == 200
     assert resp.json() == {"tenant_id": "tenant-zeta", "role": "analyst"}
+
+
+def test_api_key_middleware_oidc_routes_token_to_tenant_bound_issuer():
+    """Tenant-bound OIDC config should resolve issuer-specific tenant context."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"tenant_id": request.state.tenant_id, "role": request.state.api_key_role})
+
+    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
+
+    cfg = OIDCConfig(
+        tenant_providers={
+            "tenant-alpha": OIDCConfig(
+                issuer="https://alpha.okta.example",
+                audience="agent-bom",
+                tenant_id="tenant-alpha",
+                require_tenant_claim=True,
+            )
+        }
+    )
+    token = _unsigned_test_jwt({"iss": "https://alpha.okta.example"})
+    with (
+        patch("agent_bom.api.oidc.OIDCConfig.from_env", return_value=cfg),
+        patch(
+            "agent_bom.api.oidc.verify_oidc_token",
+            return_value={"iss": "https://alpha.okta.example", "sub": "u1", "agent_bom_role": "analyst", "tenant_id": "tenant-alpha"},
+        ),
+    ):
+        client = TestClient(test_app)
+        resp = client.get("/v1/test", headers={"Authorization": f"Bearer {token}"})
+
+    assert resp.status_code == 200
+    assert resp.json() == {"tenant_id": "tenant-alpha", "role": "analyst"}
+
+
+def test_configure_api_enables_auth_middleware_for_oidc(monkeypatch):
+    """OIDC-only deployments still need the auth middleware installed."""
+    monkeypatch.setenv("AGENT_BOM_OIDC_ISSUER", "https://corp.okta.com")
+    monkeypatch.setenv("AGENT_BOM_OIDC_AUDIENCE", "agent-bom")
+    configure_api(api_key=None)
+    try:
+        assert any(m.cls is APIKeyMiddleware for m in app.user_middleware)
+    finally:
+        monkeypatch.delenv("AGENT_BOM_OIDC_ISSUER", raising=False)
+        monkeypatch.delenv("AGENT_BOM_OIDC_AUDIENCE", raising=False)
+        configure_api(api_key=None)
+
+
+def test_configure_api_enables_auth_middleware_for_tenant_bound_oidc(monkeypatch):
+    """Tenant-bound OIDC issuer maps should also install auth middleware."""
+    monkeypatch.setenv(
+        "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON",
+        '{"tenant-alpha":{"issuer":"https://alpha.okta.example","audience":"agent-bom"}}',
+    )
+    configure_api(api_key=None)
+    try:
+        assert any(m.cls is APIKeyMiddleware for m in app.user_middleware)
+    finally:
+        monkeypatch.delenv("AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON", raising=False)
+        configure_api(api_key=None)
+
+
+def test_configure_api_enables_auth_middleware_for_trusted_proxy(monkeypatch):
+    """Trusted-proxy browser auth must also install the auth middleware."""
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    configure_api(api_key=None)
+    try:
+        assert any(m.cls is APIKeyMiddleware for m in app.user_middleware)
+    finally:
+        monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH", raising=False)
+        configure_api(api_key=None)
 
 
 def test_api_key_middleware_oidc_requires_explicit_role_claim_when_enabled():
@@ -287,8 +422,8 @@ def test_rate_limit_middleware_uses_postgres_store_when_available(monkeypatch):
     fake_store.hit.assert_called_once()
 
 
-def test_rate_limit_middleware_falls_back_when_postgres_store_unavailable(monkeypatch):
-    """Limiter should keep serving requests if shared Postgres state cannot initialize."""
+def test_rate_limit_middleware_fails_closed_when_postgres_store_unavailable(monkeypatch):
+    """Configured shared Postgres state must not silently downgrade to local buckets."""
     from starlette.applications import Starlette
     from starlette.responses import JSONResponse as StarletteJSONResponse
     from starlette.routing import Route
@@ -301,9 +436,8 @@ def test_rate_limit_middleware_falls_back_when_postgres_store_unavailable(monkey
         test_app = Starlette(routes=[Route("/v1/test", dummy)])
         test_app.add_middleware(RateLimitMiddleware, scan_rpm=3, read_rpm=10)
         client = TestClient(test_app)
-        resp = client.get("/v1/test")
-
-    assert resp.status_code == 200
+        with pytest.raises(RuntimeError, match="Configured Postgres rate limiter could not initialize"):
+            client.get("/v1/test")
 
 
 def test_rate_limit_middleware_can_fail_closed_when_shared_store_required(monkeypatch):
@@ -315,7 +449,26 @@ def test_rate_limit_middleware_can_fail_closed_when_shared_store_required(monkey
     async def dummy(request):
         return StarletteJSONResponse({"ok": True})
 
-    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example/test")
+    monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "2")
+    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app.add_middleware(RateLimitMiddleware, scan_rpm=3, read_rpm=10)
+    client = TestClient(test_app)
+    try:
+        client.get("/v1/test")
+        raise AssertionError("expected shared rate-limit initialization to fail")
+    except RuntimeError as exc:
+        assert "Shared rate limiting is required" in str(exc)
+
+
+def test_rate_limit_middleware_respects_explicit_shared_rate_limit_requirement(monkeypatch):
+    """The explicit fail-closed flag should reject startup without Postgres too."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
     monkeypatch.setenv("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT", "1")
     with patch("agent_bom.api.middleware.PostgresRateLimitStore", side_effect=RuntimeError("boom")):
         test_app = Starlette(routes=[Route("/v1/test", dummy)])
@@ -325,7 +478,7 @@ def test_rate_limit_middleware_can_fail_closed_when_shared_store_required(monkey
             client.get("/v1/test")
             raise AssertionError("expected shared rate-limit initialization to fail")
         except RuntimeError as exc:
-            assert "AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT" in str(exc)
+            assert "Shared rate limiting is required" in str(exc)
 
 
 def test_rate_limit_middleware_scopes_by_auth_credential():

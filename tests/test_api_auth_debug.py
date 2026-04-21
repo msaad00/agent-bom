@@ -66,6 +66,9 @@ def test_auth_debug_reports_resolved_method_and_role() -> None:
     result = asyncio.run(auth_debug(_FakeRequest()))  # type: ignore[arg-type]
     assert result == {
         "authenticated": True,
+        "auth_required": False,
+        "configured_modes": [],
+        "recommended_ui_mode": "no_auth",
         "auth_method": "api_key",
         "subject": "ci-bot",
         "role": "analyst",

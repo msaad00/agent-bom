@@ -67,6 +67,9 @@ runtime model.
 - the discovery service account and IRSA path stay attached to the scanner
 - the API still refuses non-loopback startup without `AGENT_BOM_API_KEY`,
   OIDC, SAML-issued session keys, or an explicit insecure override
+- multi-replica API deployments now require a PostgreSQL-backed shared rate-limit
+  store; the chart exports the replica floor and the API fails closed instead of
+  silently falling back to process-local limits
 - same-origin ingress avoids default CORS sprawl
 - network policy stays enabled, with configurable ingress restrictions
 
@@ -113,7 +116,8 @@ The chart supports component-specific service-account overrides for scanner, gat
 Install:
 
 ```bash
-helm install agent-bom deploy/helm/agent-bom \
+helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom \
+  --version 0.79.0 \
   -n agent-bom --create-namespace \
   -f values.agent-bom.yaml
 ```
@@ -148,7 +152,8 @@ EOF
 Then install:
 
 ```bash
-helm install agent-bom deploy/helm/agent-bom \
+helm install agent-bom oci://ghcr.io/msaad00/charts/agent-bom \
+  --version 0.79.0 \
   -n agent-bom --create-namespace \
   -f deploy/helm/agent-bom/examples/eks-control-plane-sqlite-pilot-values.yaml
 ```

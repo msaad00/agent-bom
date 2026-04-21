@@ -180,11 +180,16 @@ async def auth_policy() -> dict:
     past the configured maximum.
     """
     from agent_bom.api.auth import get_api_key_policy
-    from agent_bom.api.middleware import get_rate_limit_key_status, get_rate_limit_runtime_status
+    from agent_bom.api.middleware import (
+        get_auth_runtime_status,
+        get_rate_limit_key_status,
+        get_rate_limit_runtime_status,
+    )
 
     api_policy = get_api_key_policy()
     rl_status = get_rate_limit_key_status()
     rl_runtime = get_rate_limit_runtime_status()
+    auth_runtime = get_auth_runtime_status()
     return {
         "api_key": {
             "default_ttl_seconds": api_policy.default_ttl_seconds,
@@ -193,6 +198,17 @@ async def auth_policy() -> dict:
             "rotation_endpoint": "/v1/auth/keys/{key_id}/rotate",
         },
         "rate_limit_key": rl_status,
+        "ui": {
+            "recommended_mode": auth_runtime["recommended_ui_mode"],
+            "configured_modes": auth_runtime["configured_modes"],
+            "session_storage_fallback": "session_api_key",
+            "credentials_mode": "include",
+            "trusted_proxy_headers": ["X-Agent-Bom-Role", "X-Agent-Bom-Tenant-ID"],
+            "message": (
+                "Recommended browser auth is same-origin reverse-proxy OIDC with the proxy injecting trusted "
+                "X-Agent-Bom-* headers. For single-user local or pilot access, the UI also supports a session-only API key."
+            ),
+        },
         "rate_limit_runtime": rl_runtime,
     }
 
@@ -211,6 +227,8 @@ async def auth_debug(request: Request) -> dict:
     non-secret identifying attributes (name, key_id prefix, role, tenant,
     auth method) so the endpoint is safe to log.
     """
+    from agent_bom.api.middleware import get_auth_runtime_status
+
     method = getattr(request.state, "auth_method", None)
     subject = getattr(request.state, "api_key_name", None)
     role = getattr(request.state, "api_key_role", None)
@@ -223,8 +241,12 @@ async def auth_debug(request: Request) -> dict:
     key_id_prefix = key_id[:8] if isinstance(key_id, str) else None
 
     authenticated = bool(method and role)
+    auth_runtime = get_auth_runtime_status()
     return {
         "authenticated": authenticated,
+        "auth_required": auth_runtime["auth_required"],
+        "configured_modes": auth_runtime["configured_modes"],
+        "recommended_ui_mode": auth_runtime["recommended_ui_mode"],
         "auth_method": method,
         "subject": subject,
         "role": role,

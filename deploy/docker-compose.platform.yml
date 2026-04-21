@@ -1,6 +1,16 @@
 version: "3.8"
 
-# Production-like platform deployment: API + Dashboard + PostgreSQL
+# Production-like platform deployment: self-hosted `agent-bom` control plane
+# with PostgreSQL, using one product split across two images:
+#   - API/runtime image
+#   - UI companion image
+#
+# The API service below builds a local image from this repo and tags it as
+# `agent-bom:latest` for compose convenience. The published runtime image
+# remains `agentbom/agent-bom:*`.
+#
+# The UI service uses the published `agentbom/agent-bom-ui:*` image. Teams can
+# swap that to a local UI build if they are iterating on the frontend.
 #
 # Defense in depth:
 #   - Postgres on internal 'backend' network only — not reachable from host or internet

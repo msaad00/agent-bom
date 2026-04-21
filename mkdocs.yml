@@ -91,6 +91,7 @@ nav:
       - Policy Engine: features/policy.md
   - Deployment:
       - Overview: deployment/overview.md
+      - Deployment Modes and Alignment: deployment/deployment-modes-and-alignment.md
       - Enterprise MCP / Endpoint Pilot: deployment/enterprise-pilot.md
       - Endpoint Fleet: deployment/endpoint-fleet.md
       - Focused EKS MCP Pilot: deployment/eks-mcp-pilot.md

@@ -14,6 +14,17 @@ CVE -> package -> MCP server -> agent -> credentials -> tools
 This container is the quickest way to run the same scanner, runtime surfaces,
 and self-hosted operator path described in the main repository README.
 
+## Image Model
+
+`agent-bom` is one product with two deployable container images:
+
+- **`agentbom/agent-bom`** — API/runtime image for CLI, API, scanner jobs, gateway, proxy, and MCP server mode
+- **`agentbom/agent-bom-ui`** — UI companion image for the self-hosted control plane
+
+Keep the split. The Python runtime surfaces and the Node UI have different
+runtime, patch cadence, and scaling characteristics. They are companion images,
+not separate products.
+
 References:
 
 - GitHub README: https://github.com/msaad00/agent-bom/blob/main/README.md
@@ -143,6 +154,10 @@ Focused graph:
 |-----|-------------|
 | `latest` | Most recent stable release |
 | `0.80.0` | Current stable version (pinned) |
+
+For local Docker Compose examples, the repo may use local-built image aliases
+such as `agent-bom:latest` and `agent-bom-ui:latest`. Those are compose-facing
+names for local builds from this repo, not a second published product line.
 
 ## Links
 

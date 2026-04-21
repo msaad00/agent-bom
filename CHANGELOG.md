@@ -13,6 +13,26 @@ Work targeting the next release.
 
 ---
 
+## [0.81.0] – 2026-04-21
+
+### Added
+- **Hosted control-plane source workflows** — first-class source records and source-linked jobs are now joined by persisted schedule controls on `/sources`, so operators can create recurring runs against real `source_id` records instead of reading static guidance (#1602, #1606).
+
+### Changed
+- **Blast-radius scoring semantics** — EPSS percentile tiers now influence blast-radius scoring directly, and the previous 35-point deduction ceiling has been removed so high-reach critical exposure does not flatten into the same score band (#1605).
+- **Package lookup hot path** — version parsing is cached and package presence checks are batched, cutting repeated database round-trips on larger scan inventories (#1605).
+- **Traceability on hot paths** — the API, graph builder, DB lookup path, and runtime proxy now emit OTEL spans with W3C trace propagation so control-plane and proxy activity share one trace context (#1605).
+
+### Fixed
+- **Release-managed surface alignment** — package metadata, Dockerfiles, Helm values, runtime examples, registry manifests, and marketplace-facing version pins now align on `0.81.0` instead of leaving post-release drift for operators to discover manually.
+
+### Security
+- **Tenant-scoped control-plane reads** — asset routes now enforce tenant scope directly instead of trusting caller-provided tenant context, closing the highest-risk cross-tenant read gap from the post-release audit (#1603).
+- **Fail-closed OIDC and audit integrity** — OIDC discovery now refuses unsafe tenant/JWKS combinations, audit records are chained instead of independently HMACed, and gateway requests validate API keys against control-plane state before relay (#1603).
+- **Per-tenant runtime fairness** — scan concurrency and operator policy surfaces now expose tenant-specific quota enforcement instead of relying on one global in-process ceiling (#1605).
+
+---
+
 ## [0.80.1] – 2026-04-21
 
 ### Fixed

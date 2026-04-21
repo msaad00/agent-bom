@@ -1,4 +1,4 @@
-# agent-bom v0.80.1 blast-radius demo
+# agent-bom v0.81.0 blast-radius demo
 # Shows: blast radius → package gate
 
 Output docs/images/demo-latest.gif

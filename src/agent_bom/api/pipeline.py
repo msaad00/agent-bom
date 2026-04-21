@@ -592,6 +592,24 @@ def _run_scan_sync(job: ScanJob) -> None:
             with lock:
                 job.progress.append(f"Graph persistence skipped: {sanitize_error(graph_exc)}")
 
+        try:
+            from agent_bom.asset_tracker import AssetTracker
+
+            tracker = AssetTracker(tenant_id=str(getattr(job, "tenant_id", None) or "default"))
+            asset_diff = tracker.record_scan(report_json)
+            tracker.close()
+            with lock:
+                job.progress.append(
+                    "Asset tracker synced "
+                    f"(new={asset_diff['summary']['new_count']}, "
+                    f"resolved={asset_diff['summary']['resolved_count']}, "
+                    f"open={asset_diff['summary']['total_open']})"
+                )
+        except Exception as asset_exc:  # noqa: BLE001
+            _logger.warning("Asset tracker persistence failed: %s", asset_exc)
+            with lock:
+                job.progress.append(f"Asset tracker skipped: {sanitize_error(asset_exc)}")
+
         pipeline.complete_step("output", "Report ready")
 
         # Auto-sync discovered agents to fleet registry

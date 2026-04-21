@@ -307,9 +307,40 @@ jobs:
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.title=agent-bom-ui
-            org.opencontainers.image.description=agent-bom control-plane dashboard.
+            org.opencontainers.image.description=Standalone browser UI for the self-hosted agent-bom control plane. Requires the agent-bom API image.
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Sync UI Docker Hub README
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          SHORT_DESCRIPTION="Standalone browser UI for the self-hosted agent-bom control plane. Requires the agent-bom API image."
+          TOKEN=$(curl -sf -X POST "https://hub.docker.com/v2/users/login" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \
+            | jq -r '.token')
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "::error::Docker Hub login failed"
+            exit 1
+          fi
+          echo "::add-mask::$TOKEN"
+          DESCRIPTION=$(jq -Rs . < DOCKER_HUB_UI_README.md)
+          SHORT_DESCRIPTION_JSON=$(printf '%s' "$SHORT_DESCRIPTION" | jq -Rs .)
+          RESPONSE_FILE=$(mktemp)
+          HTTP_CODE=$(curl -sS -o "$RESPONSE_FILE" -w "%{http_code}" -X PATCH \
+            "https://hub.docker.com/v2/repositories/agentbom/agent-bom-ui/" \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"full_description\": ${DESCRIPTION}, \"description\": ${SHORT_DESCRIPTION_JSON}}")
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Docker Hub UI README sync failed (HTTP $HTTP_CODE)"
+            cat "$RESPONSE_FILE"
+            exit 1
+          fi
+          rm -f "$RESPONSE_FILE"
 
       - name: Install cosign
         uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1

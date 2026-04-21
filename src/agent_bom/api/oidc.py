@@ -44,6 +44,7 @@ import threading
 import time
 from typing import Optional
 from urllib.error import URLError
+from urllib.parse import urlparse
 from urllib.request import urlopen
 
 logger = logging.getLogger(__name__)
@@ -105,6 +106,12 @@ def reset_oidc_decode_failures() -> None:
         _oidc_decode_failures = 0
 
 
+def _csv_env_list(value: str | None) -> tuple[str, ...]:
+    if not value:
+        return ()
+    return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
 # ── Discovery ──────────────────────────────────────────────────────────────────
 
 
@@ -140,6 +147,39 @@ def discover_oidc(issuer: str) -> dict:
     return doc
 
 
+def _validate_jwks_uri(
+    issuer: str,
+    jwks_uri: str,
+    *,
+    allowed_jwks_uris: tuple[str, ...] = (),
+    explicit_jwks_uri: bool = False,
+) -> str:
+    from agent_bom.security import validate_url
+
+    normalized_jwks_uri = str(jwks_uri or "").strip()
+    if not normalized_jwks_uri:
+        raise OIDCError("OIDC JWKS URI is empty")
+
+    validate_url(normalized_jwks_uri)
+    if explicit_jwks_uri:
+        return normalized_jwks_uri
+
+    if not allowed_jwks_uris:
+        raise OIDCError(
+            "OIDC discovery requires a pinned JWKS URI. Set AGENT_BOM_OIDC_JWKS_URI "
+            "or allowlist the discovered value via AGENT_BOM_OIDC_ALLOWED_JWKS_URIS."
+        )
+
+    if normalized_jwks_uri not in allowed_jwks_uris:
+        issuer_host = urlparse(issuer).netloc
+        raise OIDCError(
+            f"OIDC discovery returned untrusted jwks_uri '{normalized_jwks_uri}' for issuer '{issuer_host}'. "
+            "Pin AGENT_BOM_OIDC_JWKS_URI or add the URI to AGENT_BOM_OIDC_ALLOWED_JWKS_URIS."
+        )
+
+    return normalized_jwks_uri
+
+
 # ── JWT verification ───────────────────────────────────────────────────────────
 
 
@@ -161,6 +201,7 @@ def verify_oidc_token(
     audience: Optional[str] = None,
     jwks_uri: Optional[str] = None,
     required_nonce: Optional[str] = None,
+    allowed_jwks_uris: tuple[str, ...] = (),
 ) -> dict:
     """Verify an OIDC JWT and return its claims.
 
@@ -184,12 +225,19 @@ def verify_oidc_token(
     import jwt
     from jwt import PyJWKClient, PyJWTError
 
+    explicit_jwks_uri = bool(jwks_uri)
     if not jwks_uri:
         try:
             discovery = discover_oidc(issuer)
-            jwks_uri = discovery["jwks_uri"]
+            jwks_uri = str(discovery["jwks_uri"])
         except OIDCError:
             raise
+    jwks_uri = _validate_jwks_uri(
+        issuer,
+        jwks_uri,
+        allowed_jwks_uris=allowed_jwks_uris,
+        explicit_jwks_uri=explicit_jwks_uri,
+    )
 
     try:
         jwks_client = PyJWKClient(jwks_uri, cache_jwk_set=True, lifespan=_JWKS_CACHE_TTL)
@@ -354,6 +402,8 @@ class OIDCConfig:
         require_tenant_claim: Optional[bool] = None,
         required_nonce: Optional[str] = None,
         require_role_claim: Optional[bool] = None,
+        allow_default_tenant: Optional[bool] = None,
+        allowed_jwks_uris: tuple[str, ...] | None = None,
         tenant_id: Optional[str] = None,
         tenant_providers: dict[str, OIDCConfig] | None = None,
     ) -> None:
@@ -365,6 +415,7 @@ class OIDCConfig:
         self.required_nonce = required_nonce or os.environ.get("AGENT_BOM_OIDC_REQUIRED_NONCE", "") or None
         self.tenant_id = tenant_id or None
         self.tenant_providers = tenant_providers or {}
+        self.allowed_jwks_uris = allowed_jwks_uris or _csv_env_list(os.environ.get("AGENT_BOM_OIDC_ALLOWED_JWKS_URIS"))
         if require_tenant_claim is None:
             require_tenant_claim = os.environ.get("AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM", "").strip().lower() in {
                 "1",
@@ -372,6 +423,13 @@ class OIDCConfig:
                 "yes",
             }
         self.require_tenant_claim = require_tenant_claim
+        if allow_default_tenant is None:
+            allow_default_tenant = os.environ.get("AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT", "").strip().lower() in {
+                "1",
+                "true",
+                "yes",
+            }
+        self.allow_default_tenant = allow_default_tenant
         if require_role_claim is None:
             require_role_claim = os.environ.get("AGENT_BOM_OIDC_REQUIRE_ROLE_CLAIM", "").strip().lower() in {
                 "1",
@@ -431,7 +489,14 @@ class OIDCConfig:
             raise OIDCError("OIDC is not configured (set AGENT_BOM_OIDC_ISSUER or AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON)")
         if not provider.audience:
             raise OIDCError("OIDC is configured but AGENT_BOM_OIDC_AUDIENCE is not set")
-        claims = verify_oidc_token(token, provider.issuer, provider.audience, provider.jwks_uri, provider.required_nonce)
+        claims = verify_oidc_token(
+            token,
+            provider.issuer,
+            provider.audience,
+            provider.jwks_uri,
+            provider.required_nonce,
+            provider.allowed_jwks_uris,
+        )
         if provider.require_role_claim and not claims_have_role_signal(claims, provider.role_claim):
             raise OIDCError(f"JWT missing required role claim '{provider.role_claim}'")
         provider._validate_bound_tenant(claims)
@@ -448,6 +513,12 @@ class OIDCConfig:
             return provider.tenant_id
         if provider.require_tenant_claim:
             raise OIDCError(f"JWT missing required tenant claim '{provider.tenant_claim}'")
+        if not provider.allow_default_tenant:
+            raise OIDCError(
+                f"JWT missing tenant claim '{provider.tenant_claim}'. "
+                "Configure a tenant-bound issuer, set AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM=1, "
+                "or explicitly opt into single-tenant default mode with AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1."
+            )
         return "default"
 
     @classmethod
@@ -493,6 +564,12 @@ class OIDCConfig:
                         provider_raw.get("require_role_claim"),
                         field_name=f"{normalized_tenant}.require_role_claim",
                     ),
+                    allow_default_tenant=_coerce_optional_bool(
+                        provider_raw.get("allow_default_tenant"),
+                        field_name=f"{normalized_tenant}.allow_default_tenant",
+                    ),
+                    allowed_jwks_uris=tuple(str(item).strip() for item in provider_raw.get("allowed_jwks_uris", []) if str(item).strip())
+                    or None,
                     tenant_id=normalized_tenant,
                 )
                 if not provider.issuer:

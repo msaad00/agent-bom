@@ -96,7 +96,7 @@ def test_sidecar_example_pins_runtime_image():
     doc = yaml.safe_load((K8S_DIR / "sidecar-example.yaml").read_text())
     containers = doc["spec"]["template"]["spec"]["containers"]
     proxy = next(container for container in containers if container["name"] == "agent-bom-proxy")
-    assert proxy["image"].startswith("agentbom/agent-bom-runtime:")
+    assert proxy["image"].startswith("agentbom/agent-bom:")
     assert not proxy["image"].endswith(":latest")
 
 

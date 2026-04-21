@@ -17,6 +17,7 @@ from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.models import FleetAgentUpdate, JobStatus, PushPayload, ScanJob, ScanRequest, ScheduleCreate, StateUpdate
 from agent_bom.api.pipeline import _sync_scan_agents_to_fleet
 from agent_bom.api.policy_store import GatewayPolicy, InMemoryPolicyStore
+from agent_bom.api.routes import assets as asset_routes
 from agent_bom.api.routes import compliance as compliance_routes
 from agent_bom.api.routes import discovery as discovery_routes
 from agent_bom.api.routes import fleet as fleet_routes
@@ -26,6 +27,7 @@ from agent_bom.api.routes import schedules as schedule_routes
 from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule
 from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
 from agent_bom.api.stores import _jobs, set_fleet_store, set_graph_store, set_job_store, set_policy_store, set_schedule_store
+from agent_bom.asset_tracker import AssetTracker
 
 
 def _now() -> str:
@@ -780,6 +782,52 @@ async def test_discovery_and_traces_are_tenant_scoped():
     # Trace analytics ingest must carry the authed tenant through to
     # ClickHouse so cross-tenant queries cannot see each other's events.
     assert analytics.event_tenants[0] == req.state.tenant_id
+
+
+@pytest.mark.asyncio
+async def test_asset_routes_are_tenant_scoped(tmp_path, monkeypatch):
+    db_path = tmp_path / "assets.db"
+    monkeypatch.setattr("agent_bom.asset_tracker.DEFAULT_DB_PATH", db_path)
+
+    alpha = AssetTracker(db_path=db_path, tenant_id="tenant-alpha")
+    beta = AssetTracker(db_path=db_path, tenant_id="tenant-beta")
+    try:
+        alpha.record_scan(
+            {
+                "blast_radius": [
+                    {
+                        "vulnerability_id": "CVE-alpha",
+                        "package": "langchain",
+                        "ecosystem": "pip",
+                        "severity": "critical",
+                    }
+                ]
+            }
+        )
+        beta.record_scan(
+            {
+                "blast_radius": [
+                    {
+                        "vulnerability_id": "CVE-beta",
+                        "package": "requests",
+                        "ecosystem": "pip",
+                        "severity": "high",
+                    }
+                ]
+            }
+        )
+
+        req = _request("tenant-alpha")
+        data = await asset_routes.list_assets(req)
+        assert data["count"] == 1
+        assert [asset["vuln_id"] for asset in data["assets"]] == ["CVE-alpha"]
+
+        stats = await asset_routes.get_asset_stats(req)
+        assert stats["stats"]["total"] == 1
+        assert stats["stats"]["critical_open"] == 1
+    finally:
+        alpha.close()
+        beta.close()
 
 
 @pytest.mark.asyncio

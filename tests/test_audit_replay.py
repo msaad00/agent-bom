@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import tempfile
 from pathlib import Path
@@ -19,6 +20,7 @@ from agent_bom.audit_replay import (
     display_rich,
     parse_audit_log,
     replay,
+    verify_hash_chain,
     verify_hmac_entries,
 )
 
@@ -32,6 +34,19 @@ def _write_log(entries: list[dict]) -> Path:
         tmp.write(json.dumps(e) + "\n")
     tmp.close()
     return Path(tmp.name)
+
+
+def _chained(entries: list[dict]) -> list[dict]:
+    chained: list[dict] = []
+    prev_hash = ""
+    for entry in entries:
+        payload = dict(entry)
+        payload["prev_hash"] = prev_hash
+        canonical = json.dumps(entry, sort_keys=True, separators=(",", ":"))
+        payload["record_hash"] = hashlib.sha256(f"{prev_hash}|{canonical}".encode("utf-8")).hexdigest()
+        prev_hash = payload["record_hash"]
+        chained.append(payload)
+    return chained
 
 
 TOOL_CALL = {
@@ -287,6 +302,14 @@ def test_replay_json_output_structure(capsys):
     assert "alert_details" in data
 
 
+def test_replay_json_includes_chain_verification_when_requested(capsys):
+    p = _write_log(_chained([TOOL_CALL]))
+    replay(str(p), verify_chain=True, as_json=True)
+    captured = capsys.readouterr()
+    data = json.loads(captured.out)
+    assert data["chain_verification"] == {"verified": 1, "tampered": 0}
+
+
 # ── verify_hmac_entries ───────────────────────────────────────────────────────
 
 
@@ -394,6 +417,22 @@ def test_verify_hmac_mismatch():
     verified, failed = verify_hmac_entries(log, "secret")
     assert verified == 0
     assert failed == 1
+
+
+def test_verify_hash_chain_passes_for_valid_records():
+    p = _write_log(_chained([TOOL_CALL, BLOCKED_CALL]))
+    verified, tampered = verify_hash_chain(p)
+    assert verified == 2
+    assert tampered == 0
+
+
+def test_verify_hash_chain_detects_tamper():
+    entries = _chained([TOOL_CALL, BLOCKED_CALL])
+    entries[1]["tool"] = "tampered_tool"
+    p = _write_log(entries)
+    verified, tampered = verify_hash_chain(p)
+    assert verified == 1
+    assert tampered == 1
 
 
 def test_display_json_empty(capsys):

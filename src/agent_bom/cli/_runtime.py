@@ -489,8 +489,9 @@ def watch_cmd(webhook, alert_log, interval):
     help="Secret key used when the proxy was started with --response-sign-key",
 )
 @click.option("--verify-hmac", is_flag=True, help="Verify HMAC-SHA256 response signatures in the log")
+@click.option("--verify-chain", is_flag=True, help="Verify prev-hash chaining across audit log records")
 @click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON summary (for CI)")
-def audit_replay_cmd(log_path, tool, entry_type, blocked_only, alerts_only, sign_key, verify_hmac, as_json):
+def audit_replay_cmd(log_path, tool, entry_type, blocked_only, alerts_only, sign_key, verify_hmac, verify_chain, as_json):
     """View and analyse a proxy audit JSONL log.
 
     \b
@@ -508,6 +509,7 @@ def audit_replay_cmd(log_path, tool, entry_type, blocked_only, alerts_only, sign
       agent-bom runtime audit audit.jsonl --alerts-only
       agent-bom runtime audit audit.jsonl --tool read_file
       agent-bom runtime audit audit.jsonl --sign-key $SECRET --verify-hmac
+      agent-bom runtime audit audit.jsonl --verify-chain
       agent-bom runtime audit audit.jsonl --json
     """
     from agent_bom.audit_replay import replay
@@ -520,6 +522,7 @@ def audit_replay_cmd(log_path, tool, entry_type, blocked_only, alerts_only, sign
         alerts_only=alerts_only,
         sign_key=sign_key,
         verify_hmac=verify_hmac,
+        verify_chain=verify_chain,
         as_json=as_json,
     )
     sys.exit(exit_code)

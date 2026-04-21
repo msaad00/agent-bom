@@ -13,6 +13,34 @@ Work targeting the next release.
 
 ---
 
+## [0.80.1] – 2026-04-21
+
+### Fixed
+- **Standalone UI image release path** — the Next.js container build now emits the `.next/standalone` output expected by the published `agent-bom-ui` image, and CI smoke-tests that path before release.
+- **Version-surface coherence** — Helm examples, runtime sidecar manifests, release verification docs, and product metrics now align on `0.80.1` so the public release surfaces match the shipped tag.
+
+### Security
+- **Tenant and gateway auth hardening** — Postgres-backed API key verification can now resolve non-default tenant keys during auth and gateway relay paths, instead of silently falling back to default-tenant visibility under RLS.
+
+---
+
+## [0.80.0] – 2026-04-21
+
+### Added
+- **Control-plane auth for the shipped UI** — OIDC, trusted-proxy browser auth, session API-key fallback, and runtime auth introspection now let the dashboard operate as a real operator surface instead of a same-origin-only shell.
+- **Hosted-product source registry baseline** — the API and UI now expose first-class source records, source-linked jobs, and persisted schedule state as the first slice of the hosted control-plane model.
+- **Signed release surfaces** — Helm OCI publish, UI image release wiring, and stronger release verification/docs were added to the productized deployment path.
+
+### Changed
+- **P0/P1 audit closure** — visual leak detector races, timeout audit gaps, resolver/VEX strictness, ServiceMonitor/operator defaults, CSP documentation, and UI dependency/release guardrails were tightened across the release lane.
+- **Deployment docs and diagrams** — self-hosted operator guidance, EKS rollout docs, and enterprise topology explanations were rewritten to match the actual control-plane/runtime split in code.
+
+### Fixed
+- **Gateway and runtime audit integrity** — timeout paths now audit correctly, OCR runs once per response instead of once per image block, and the control plane/runtime surfaces agree on the operator deployment contract.
+- **UI packaging accuracy** — README and deployment copy now describe the Python image and standalone UI image honestly instead of implying a single bundled live dashboard path.
+
+---
+
 ## [0.79.0] – 2026-04-20
 
 ### Added

@@ -30,22 +30,22 @@ The proxy interposes on the stdio channel between an MCP client (Claude Desktop,
 
 ### Docker
 
-Build the slim runtime image:
+Use the published main runtime image:
 
 ```bash
-docker build -f deploy/docker/Dockerfile.runtime -t agent-bom-runtime .
+docker pull agentbom/agent-bom:0.80.1
 ```
 
-The maintained runtime image now builds from the checked-out `agent-bom` source tree,
-not from a separately downloaded PyPI artifact, so the runtime sidecar stays aligned
-with the repo revision you are deploying.
+If you need to rebuild locally from the checked-out repo, you can still use
+`deploy/docker/Dockerfile.runtime`, but the public runtime/proxy path now ships
+through `agentbom/agent-bom`.
 
 Run as a wrapper around any MCP server:
 
 ```bash
 docker run --rm \
   -v $(pwd)/audit-logs:/var/log/agent-bom \
-  agent-bom-runtime \
+  agentbom/agent-bom:0.80.1 \
   --log /var/log/agent-bom/audit.jsonl \
   --block-undeclared \
   -- npx -y @modelcontextprotocol/server-filesystem /workspace
@@ -94,7 +94,7 @@ spec:
 
         # agent-bom runtime proxy sidecar
         - name: agent-bom-proxy
-          image: agent-bom-runtime:latest
+          image: agentbom/agent-bom:0.80.1
           args:
             - "--log"
             - "/var/log/agent-bom/audit.jsonl"
@@ -321,7 +321,7 @@ Use the runtime container directly from Claude Desktop:
         "run", "--rm", "-i",
         "-v", "./workspace:/workspace",
         "-v", "./audit-logs:/var/log/agent-bom",
-        "agent-bom-runtime:latest",
+        "agentbom/agent-bom:0.80.1",
         "--log", "/var/log/agent-bom/audit.jsonl",
         "--block-undeclared",
         "--",

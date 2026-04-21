@@ -76,6 +76,22 @@ agent-bom image nginx:latest                  # container image scan
 agent-bom iac Dockerfile k8s/ infra/main.tf   # IaC scan, optionally `--k8s-live`
 ```
 
+Self-hosted pilot:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml
+docker compose -f docker-compose.pilot.yml up -d
+# Dashboard -> http://localhost:3000
+```
+
+Production chart from a checked-out repo:
+
+```bash
+helm upgrade --install agent-bom deploy/helm/agent-bom \
+  --namespace agent-bom --create-namespace \
+  -f deploy/helm/agent-bom/examples/eks-production-values.yaml
+```
+
 After the first scan:
 
 ```bash
@@ -553,12 +569,13 @@ pip install agent-bom                        # CLI
 docker run --rm agentbom/agent-bom agents    # Docker
 ```
 
-For published containers, the split is:
+For published containers, the packaging model is:
 
+- one product, two deployable images
 - `agentbom/agent-bom` = the main runtime image for CLI, API, jobs, gateway,
   proxy-related entrypoints, and MCP server mode
-- `agentbom/agent-bom-ui` = the standalone browser UI image used when the
-  self-hosted control plane runs the UI separately from the API
+- `agentbom/agent-bom-ui` = the browser dashboard image for the same
+  self-hosted control plane
 
 | Mode | Best for |
 |------|----------|
@@ -566,7 +583,7 @@ For published containers, the split is:
 | Endpoint fleet (`--push-url …/v1/fleet/sync`) | employee laptops pushing into self-hosted fleet |
 | GitHub Action (`uses: msaad00/agent-bom@v0.81.0`) | CI/CD + SARIF |
 | Docker (`agentbom/agent-bom`) | isolated scans, API jobs, and non-browser self-hosted entrypoints |
-| Browser UI image (`agentbom/agent-bom-ui`) | the separate Next.js UI container paired with a self-hosted API |
+| Browser UI image (`agentbom/agent-bom-ui`) | the dashboard image paired with the same self-hosted control plane |
 | Kubernetes / Helm (`helm install agent-bom deploy/helm/agent-bom`) | self-hosted API + dashboard, scheduled discovery |
 | REST API (`agent-bom api`) | platform integration, self-hosted control plane |
 | MCP server (`agent-bom mcp server`) | Claude Desktop, Claude Code, Cursor, Codex, Windsurf, Cortex |

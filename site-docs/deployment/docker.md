@@ -1,11 +1,20 @@
 # Docker Deployment
 
-Use this page for containerized entrypoints. The published image split is:
+Use this page for containerized entrypoints. `agent-bom` is one product with
+two deployable images:
 
 - `agentbom/agent-bom` = the main runtime image for CLI scans, the API,
   scanner jobs, gateway, MCP server mode, and other non-browser entrypoints
 - `agentbom/agent-bom-ui` = the standalone browser UI image used when the
   self-hosted control plane runs the UI separately from the API
+
+Pilot on one workstation:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml
+docker compose -f docker-compose.pilot.yml up -d
+# Dashboard -> http://localhost:3000
+```
 
 The UI image does not replace the API image. A self-hosted browser deployment
 still needs the API/control-plane service from `agentbom/agent-bom`.

@@ -1,0 +1,53 @@
+# agent-bom packaged pilot
+# One product, two deployable images:
+#   - agentbom/agent-bom     = API, scanner, jobs, gateway, proxy runtimes
+#   - agentbom/agent-bom-ui  = browser dashboard
+#
+# Local pilot only:
+#   - binds to 127.0.0.1 only
+#   - uses SQLite persistence in a named Docker volume
+#   - allows no-auth browser access for fast evaluation on one workstation
+#
+# Usage:
+#   docker compose -f docker-compose.pilot.yml up -d
+#   open http://localhost:3000
+
+services:
+  api:
+    image: agentbom/agent-bom:0.81.0
+    container_name: agent-bom-pilot-api
+    restart: unless-stopped
+    command: >
+      api
+      --host 0.0.0.0
+      --port 8422
+      --persist /var/lib/agent-bom/jobs.db
+      --cors-allow-all
+      --allow-insecure-no-auth
+    environment:
+      AGENT_BOM_DB_PATH: /var/lib/agent-bom/vulns.db
+    ports:
+      - "127.0.0.1:8422:8422"
+    volumes:
+      - agent-bom-pilot-data:/var/lib/agent-bom
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8422/healthz')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  ui:
+    image: agentbom/agent-bom-ui:0.81.0
+    container_name: agent-bom-pilot-ui
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8422
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  agent-bom-pilot-data:

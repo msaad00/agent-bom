@@ -1,40 +1,41 @@
 # agent-bom-ui
 
-**Standalone browser UI for the self-hosted `agent-bom` control plane.**
+Dashboard image for `agent-bom`.
 
-`agentbom/agent-bom-ui` is the separate Next.js UI container used when you run
-the browser dashboard independently from the API.
+`agent-bom` is one product with two deployable images:
 
-It is **not** the scanner or control-plane backend by itself.
+- `agentbom/agent-bom` runs the scanner, API, jobs, gateway, proxy, and other non-browser runtimes
+- `agentbom/agent-bom-ui` runs the browser dashboard
 
-Use it with:
+This image is not a separate product and it is not meant to be the first thing a
+pilot user reasons about. Use the packaged pilot or Helm chart so both images are
+pulled for you.
 
-- `agentbom/agent-bom` for the API, scan jobs, gateway, proxy-related
-  entrypoints, and other non-browser control-plane services
-- your own ingress / SSO / Postgres setup when deploying the split UI + API
-  control-plane shape
+## Run This First
 
-## Quick Start
-
-```bash
-docker run --rm -p 3000:3000 \
-  -e NEXT_PUBLIC_API_URL=http://localhost:8422 \
-  agentbom/agent-bom-ui:latest
-```
-
-Then run the API separately:
+Pilot on one workstation:
 
 ```bash
-docker run --rm -p 8422:8422 agentbom/agent-bom:latest api
+curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml
+docker compose -f docker-compose.pilot.yml up -d
+# Dashboard -> http://localhost:3000
 ```
 
-## Product Split
+Production in your own cluster from a checked-out repo:
 
-- `agentbom/agent-bom` = scanner, API, jobs, runtime/gateway entrypoints
-- `agentbom/agent-bom-ui` = standalone browser UI only
+```bash
+helm upgrade --install agent-bom deploy/helm/agent-bom \
+  --namespace agent-bom --create-namespace \
+  -f deploy/helm/agent-bom/examples/eks-production-values.yaml
+```
+
+## Image Role
+
+- `agentbom/agent-bom` = runtime image for scanner, API, jobs, gateway, proxy
+- `agentbom/agent-bom-ui` = dashboard image for the same self-hosted control plane
 
 ## Links
 
 - GitHub: https://github.com/msaad00/agent-bom
 - Docs: https://msaad00.github.io/agent-bom/
-- Helm chart: `oci://ghcr.io/msaad00/charts/agent-bom`
+- Helm chart: `deploy/helm/agent-bom`

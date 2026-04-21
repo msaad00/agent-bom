@@ -144,6 +144,13 @@ Focused graph:
 | `latest` | Most recent stable release |
 | `0.81.0` | Current stable version (pinned) |
 
+Published images:
+
+- `agentbom/agent-bom` — main runtime image for CLI scans, API/control-plane
+  jobs, gateway, proxy-adjacent entrypoints, and MCP server mode
+- `agentbom/agent-bom-ui` — standalone Next.js browser UI image for
+  self-hosted deployments that run the UI separately from the API
+
 ## Links
 
 - GitHub: https://github.com/msaad00/agent-bom

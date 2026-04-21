@@ -94,6 +94,13 @@ monitor:
 gateway:
   enabled: false
   replicas: 2
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: null
+    behavior: {}
   image:
     repository: agentbom/agent-bom
     # tag defaults to Chart.AppVersion

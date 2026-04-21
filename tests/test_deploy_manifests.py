@@ -246,6 +246,8 @@ def test_helm_templates_exist():
         "controlplane-ui-deployment.yaml",
         "controlplane-ui-hpa.yaml",
         "controlplane-ui-service.yaml",
+        "gateway-hpa.yaml",
+        "gateway-pdb.yaml",
         "serviceaccount.yaml",
         "rbac.yaml",
         "cronjob.yaml",
@@ -366,6 +368,18 @@ def test_helm_gateway_service_account_defaults():
     assert sa["create"] is True
     assert sa["name"] == ""
     assert sa["annotations"] == {}
+
+
+def test_helm_gateway_autoscaling_defaults():
+    """Gateway ships explicit HA knobs without forcing autoscaling on by default."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    autoscaling = doc["gateway"]["autoscaling"]
+    assert autoscaling["enabled"] is False
+    assert autoscaling["minReplicas"] == 2
+    assert autoscaling["maxReplicas"] == 6
+    assert autoscaling["targetCPUUtilizationPercentage"] == 70
+    assert autoscaling["targetMemoryUtilizationPercentage"] is None
+    assert autoscaling["behavior"] == {}
 
 
 def test_helm_control_plane_api_extra_volume_defaults():

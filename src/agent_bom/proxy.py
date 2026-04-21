@@ -173,6 +173,78 @@ def _proxy_request_headers(headers: dict[str, str] | None = None) -> dict[str, s
     return inject_current_trace_headers(headers)
 
 
+def _gateway_policy_cache_path() -> Path:
+    configured = os.environ.get("AGENT_BOM_PROXY_POLICY_CACHE_PATH")
+    if configured:
+        return Path(configured).expanduser()
+    return Path.home() / ".agent-bom" / "cache" / "gateway-policies.json"
+
+
+def _load_cached_gateway_policies(
+    cache_path: Path,
+    max_age_seconds: int,
+) -> tuple[list["GatewayPolicy"] | None, str | None]:
+    from agent_bom.api.policy_store import GatewayPolicy
+
+    try:
+        payload = json.loads(cache_path.read_text())
+    except FileNotFoundError:
+        return None, None
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Ignoring unreadable gateway policy cache %s: %s", cache_path, exc)
+        return None, None
+
+    fetched_at = payload.get("fetched_at")
+    if not isinstance(fetched_at, (int, float)):
+        logger.warning("Ignoring gateway policy cache %s with missing fetched_at", cache_path)
+        return None, None
+    age_seconds = time.time() - float(fetched_at)
+    if age_seconds > max(max_age_seconds, 0):
+        logger.warning(
+            "Ignoring stale gateway policy cache %s (age=%ss, max=%ss)",
+            cache_path,
+            int(age_seconds),
+            max(max_age_seconds, 0),
+        )
+        return None, None
+
+    try:
+        policies = [GatewayPolicy(**item) for item in payload.get("policies", [])]
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Ignoring invalid gateway policy cache %s: %s", cache_path, exc)
+        return None, None
+    return policies, payload.get("etag")
+
+
+def _persist_gateway_policies_cache(
+    cache_path: Path,
+    policies: list["GatewayPolicy"],
+    etag: str | None,
+) -> None:
+    payload = {
+        "fetched_at": time.time(),
+        "etag": etag,
+        "policies": [policy.model_dump(mode="json") for policy in policies],
+    }
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=str(cache_path.parent),
+            prefix=f"{cache_path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            json.dump(payload, handle, sort_keys=True)
+            handle.flush()
+            os.fsync(handle.fileno())
+            temp_path = Path(handle.name)
+        temp_path.replace(cache_path)
+    except OSError as exc:
+        logger.warning("Failed to persist gateway policy cache %s: %s", cache_path, exc)
+
+
 async def _fetch_enabled_gateway_policies(
     base_url: str,
     token: str | None,
@@ -692,6 +764,11 @@ async def run_proxy(
     control_plane_tenant_id = (os.environ.get("AGENT_BOM_TENANT_ID") or "default").strip() or "default"
     control_plane_policies: list["GatewayPolicy"] = []
     control_plane_etag: str | None = None
+    control_plane_policy_cache_path = _gateway_policy_cache_path()
+    control_plane_policy_cache_max_age_seconds = max(
+        60,
+        int(os.environ.get("AGENT_BOM_PROXY_POLICY_CACHE_MAX_AGE_SECONDS", "3600")),
+    )
     audit_buffer: list[dict] = []
     audit_buffer_bytes = 0
     audit_lock = asyncio.Lock()
@@ -779,12 +856,28 @@ async def run_proxy(
         except Exception as exc:  # noqa: BLE001
             metrics.record_policy_fetch_failure()
             if initial:
-                logger.error("Failed to load enabled gateway policies from %s: %s", control_plane_url, exc)
-                raise SystemExit(1) from exc
-            logger.warning("Gateway policy refresh failed: %s", exc)
-            return
+                cached_policies, cached_etag = _load_cached_gateway_policies(
+                    control_plane_policy_cache_path,
+                    control_plane_policy_cache_max_age_seconds,
+                )
+                if cached_policies is not None:
+                    control_plane_policies = cached_policies
+                    control_plane_etag = cached_etag
+                    logger.warning(
+                        "Gateway policy fetch failed from %s; using cached bundle from %s: %s",
+                        control_plane_url,
+                        control_plane_policy_cache_path,
+                        exc,
+                    )
+                else:
+                    logger.error("Failed to load enabled gateway policies from %s: %s", control_plane_url, exc)
+                    raise SystemExit(1) from exc
+            else:
+                logger.warning("Gateway policy refresh failed: %s", exc)
+                return
         if policies is not None:
             control_plane_policies = policies
+            _persist_gateway_policies_cache(control_plane_policy_cache_path, policies, next_etag)
         if next_etag:
             control_plane_etag = next_etag
         if rate_limit_threshold <= 0:

@@ -7,12 +7,16 @@ import json
 from pathlib import Path
 
 import agent_bom.proxy as proxy_mod
+from agent_bom.api.policy_store import GatewayPolicy, GatewayRule
 from agent_bom.proxy import (
     AuditDeliveryController,
     AuditSpilloverStore,
     ProxyMetrics,
     ReplayDetector,
     _control_plane_headers,
+    _gateway_policy_cache_path,
+    _load_cached_gateway_policies,
+    _persist_gateway_policies_cache,
     check_policy,
     compute_payload_hash,
     compute_response_hmac,
@@ -186,6 +190,60 @@ def test_control_plane_headers_propagate_w3c_trace_context(monkeypatch):
     assert headers["traceparent"].startswith("00-")
     assert headers["tracestate"] == "vendor-a=foo"
     assert headers["baggage"] == "tenant=acme"
+
+
+def test_gateway_policy_cache_path_defaults_to_user_cache_home(monkeypatch):
+    fake_home = Path("/tmp/agent-bom-home")
+    monkeypatch.delenv("AGENT_BOM_PROXY_POLICY_CACHE_PATH", raising=False)
+    monkeypatch.setattr(proxy_mod.Path, "home", staticmethod(lambda: fake_home))
+    assert _gateway_policy_cache_path() == fake_home / ".agent-bom" / "cache" / "gateway-policies.json"
+
+
+def test_gateway_policy_cache_path_honors_env_override(monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_PROXY_POLICY_CACHE_PATH", "/tmp/custom-policy-cache.json")
+    assert _gateway_policy_cache_path() == Path("/tmp/custom-policy-cache.json")
+
+
+def test_gateway_policy_cache_round_trip(tmp_path: Path, monkeypatch):
+    cache_path = tmp_path / "gateway-policies.json"
+    monkeypatch.setattr(proxy_mod.time, "time", lambda: 1234.0)
+    policies = [
+        GatewayPolicy(
+            policy_id="p1",
+            name="Block secrets",
+            rules=[GatewayRule(id="r1", block_secret_paths=True)],
+            tenant_id="tenant-a",
+        )
+    ]
+    _persist_gateway_policies_cache(cache_path, policies, "etag-1")
+    loaded_policies, loaded_etag = _load_cached_gateway_policies(cache_path, max_age_seconds=60)
+    assert loaded_etag == "etag-1"
+    assert loaded_policies is not None
+    assert len(loaded_policies) == 1
+    assert loaded_policies[0].policy_id == "p1"
+    assert loaded_policies[0].tenant_id == "tenant-a"
+
+
+def test_gateway_policy_cache_rejects_stale_entries(tmp_path: Path, monkeypatch):
+    cache_path = tmp_path / "gateway-policies.json"
+    monkeypatch.setattr(proxy_mod.time, "time", lambda: 100.0)
+    _persist_gateway_policies_cache(
+        cache_path,
+        [GatewayPolicy(policy_id="p1", name="stale", rules=[])],
+        "etag-stale",
+    )
+    monkeypatch.setattr(proxy_mod.time, "time", lambda: 1000.0)
+    loaded_policies, loaded_etag = _load_cached_gateway_policies(cache_path, max_age_seconds=60)
+    assert loaded_policies is None
+    assert loaded_etag is None
+
+
+def test_gateway_policy_cache_rejects_invalid_payload(tmp_path: Path):
+    cache_path = tmp_path / "gateway-policies.json"
+    cache_path.write_text('{"fetched_at": 10, "policies": [{"policy_id": "missing-name"}]}')
+    loaded_policies, loaded_etag = _load_cached_gateway_policies(cache_path, max_age_seconds=60)
+    assert loaded_policies is None
+    assert loaded_etag is None
 
 
 # ── ProxyMetrics ────────────────────────────────────────────────────────────

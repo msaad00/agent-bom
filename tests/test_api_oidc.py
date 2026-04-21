@@ -126,6 +126,19 @@ def test_oidc_config_require_tenant_claim_from_env():
         assert cfg.require_tenant_claim is True
 
 
+def test_oidc_config_defaults_to_fail_closed_tenant_claims():
+    with patch.dict(
+        os.environ,
+        {
+            "AGENT_BOM_OIDC_ISSUER": "https://test.okta.com",
+        },
+        clear=False,
+    ):
+        cfg = OIDCConfig.from_env()
+        assert cfg.require_tenant_claim is True
+        assert cfg.allow_default_tenant is False
+
+
 def test_oidc_config_require_role_claim_from_env():
     with patch.dict(
         os.environ,
@@ -149,6 +162,7 @@ def test_oidc_config_reads_allow_default_tenant_and_jwks_allowlist_from_env():
     ):
         cfg = OIDCConfig.from_env()
         assert cfg.allow_default_tenant is True
+        assert cfg.require_tenant_claim is False
         assert cfg.allowed_jwks_uris == ("https://test.okta.com/keys", "https://backup.okta.com/keys")
 
 
@@ -338,7 +352,7 @@ def test_oidc_config_verify_returns_claims_and_role():
     """verify() on OIDCConfig returns (claims, role) on success."""
     cfg = OIDCConfig(issuer="https://example.com", audience="agent-bom")
 
-    mock_claims = {"sub": "user1", "email": "user@example.com", "agent_bom_role": "analyst"}
+    mock_claims = {"sub": "user1", "email": "user@example.com", "agent_bom_role": "analyst", "tenant_id": "tenant-alpha"}
 
     with patch("agent_bom.api.oidc.verify_oidc_token", return_value=mock_claims):
         claims, role = cfg.verify("valid.jwt.token")
@@ -366,7 +380,7 @@ def test_oidc_config_resolve_tenant_defaults_only_when_explicitly_enabled():
 
 def test_oidc_config_resolve_tenant_raises_when_claim_missing_without_opt_in():
     cfg = OIDCConfig(issuer="https://corp.example.com", audience="agent-bom")
-    with pytest.raises(OIDCError, match="missing tenant claim"):
+    with pytest.raises(OIDCError, match="missing required tenant claim"):
         cfg.resolve_tenant({"sub": "user-1"})
 
 
@@ -425,7 +439,7 @@ def test_api_middleware_skips_oidc_when_not_configured():
 
 def test_middleware_oidc_success_sets_request_state():
     """When OIDC verifies a Bearer token, request state is set correctly."""
-    mock_claims = {"sub": "u1", "email": "alice@corp.com", "agent_bom_role": "analyst"}
+    mock_claims = {"sub": "u1", "email": "alice@corp.com", "agent_bom_role": "analyst", "tenant_id": "tenant-alpha"}
 
     cfg = OIDCConfig(issuer="https://corp.okta.com", audience="agent-bom")
     with patch("agent_bom.api.oidc.verify_oidc_token", return_value=mock_claims):

@@ -140,13 +140,17 @@ def test_control_plane_flags_injected():
     )
     args = configs[0].proxied_args
     assert "--control-plane-url" in args
-    assert "https://agent-bom.internal.example.com" in args
+    cp_url_index = args.index("--control-plane-url")
+    assert args[cp_url_index + 1] == "https://agent-bom.internal.example.com"
     assert "--control-plane-token" in args
-    assert "token-123" in args
+    cp_token_index = args.index("--control-plane-token")
+    assert args[cp_token_index + 1] == "token-123"
     assert "--policy-refresh-seconds" in args
-    assert "45" in args
+    refresh_index = args.index("--policy-refresh-seconds")
+    assert args[refresh_index + 1] == "45"
     assert "--audit-push-interval" in args
-    assert "15" in args
+    audit_index = args.index("--audit-push-interval")
+    assert args[audit_index + 1] == "15"
 
 
 def test_no_flags_minimal_proxied_args():

@@ -191,6 +191,8 @@ These are the maintained building blocks for this model:
 
 - control plane:
   [deploy/helm/agent-bom](https://github.com/msaad00/agent-bom/tree/main/deploy/helm/agent-bom)
+- AWS baseline module:
+  [deploy/terraform/aws/baseline](https://github.com/msaad00/agent-bom/tree/main/deploy/terraform/aws/baseline)
 - Compose references:
   [deploy/docker-compose.platform.yml](https://github.com/msaad00/agent-bom/blob/main/deploy/docker-compose.platform.yml)
   and
@@ -207,6 +209,11 @@ These are the maintained building blocks for this model:
   [eks-production-values.yaml](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/examples/eks-production-values.yaml)
 - focused pilot values example:
   [eks-mcp-pilot-values.yaml](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml)
+
+For teams that want Terraform to own the AWS baseline around the chart, use the
+[Terraform AWS Baseline](terraform-aws-baseline.md) module for RDS, IRSA,
+backup bucket, and Secrets Manager ownership, then let Helm own the in-cluster
+workloads.
 
 ## Recommended Topology
 

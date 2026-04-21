@@ -14,6 +14,12 @@ This is the right path when you want:
 - production operator defaults without pretending there is a managed vendor plane
 - a clean split between the API/runtime image and the standalone UI image
 
+When you also need Terraform ownership for the AWS baseline outside the
+cluster, pair this chart with the
+[Terraform AWS Baseline](terraform-aws-baseline.md) module. Terraform should
+own RDS, S3, IAM/IRSA, and Secrets Manager; Helm should own the in-cluster
+Deployments, CronJobs, and ExternalSecret objects.
+
 ## What the chart deploys
 
 When you set `controlPlane.enabled=true`, the Helm chart can package:

@@ -239,6 +239,23 @@ MCP upstream calls (outbound, policy-audited) cross it.*
 5. Every hop emits OTEL spans with a W3C trace context, so a single trace
    ties developer → proxy → gateway → remote MCP → back.
 
+#### Who owns what
+
+| Owner | Owns | Touches agent-bom via |
+|---|---|---|
+| Security / platform team | Policy, fleet, remediation, gateway upstreams | Dashboard, API, Helm values |
+| Developers + service owners | Local scans, CI gates, proxy config on their workload | CLI, GitHub Action, proxy sidecar |
+| Platform / SRE | Cluster, ingress, secrets, observability | Helm chart, ExternalSecrets, ServiceMonitor |
+
+```mermaid
+flowchart LR
+    sec["Security / platform team"] --> ui["Dashboard + API<br/>policy · fleet · remediation"]
+    dev["Developers + service owners"] --> cli["CLI + CI gate + proxy sidecar"]
+    sre["Platform / SRE"] --> helm["Helm chart + secrets + observability"]
+    cli --> ui
+    helm --> ui
+```
+
 This is the architecture. A **pilot** is just a narrower rollout profile
 over the same surfaces and stores.
 

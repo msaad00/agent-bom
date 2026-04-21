@@ -15,7 +15,7 @@ resolution-markers = [
 
 [[package]]
 name = "agent-bom"
-version = "0.79.0"
+version = "0.81.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -92,6 +92,7 @@ dev = [
     { name = "pip-audit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "pytest-benchmark" },
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "types-pyyaml" },
@@ -110,6 +111,7 @@ dev-all = [
     { name = "psycopg-pool" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "pytest-benchmark" },
     { name = "pytest-cov" },
     { name = "ruff" },
     { name = "scipy" },
@@ -177,6 +179,10 @@ ui = [
     { name = "sse-starlette" },
     { name = "uvicorn", extra = ["standard"] },
 ]
+visual = [
+    { name = "pillow" },
+    { name = "pytesseract" },
+]
 wandb = [
     { name = "wandb" },
 ]
@@ -239,6 +245,7 @@ requires-dist = [
     { name = "packageurl-python", specifier = ">=0.17" },
     { name = "packaging", specifier = ">=24.0" },
     { name = "pandas", marker = "extra == 'dashboard'", specifier = ">=2.0.0" },
+    { name = "pillow", marker = "extra == 'visual'", specifier = ">=10.0" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.10" },
     { name = "plotly", marker = "extra == 'dashboard'", specifier = ">=5.18.0" },
     { name = "protobuf", marker = "extra == 'otel'", specifier = ">=6.33.5" },
@@ -248,8 +255,10 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.0" },
     { name = "pyjwt", specifier = ">=2.12.0" },
     { name = "pyjwt", marker = "extra == 'oidc'", specifier = ">=2.8" },
+    { name = "pytesseract", marker = "extra == 'visual'", specifier = ">=0.3.10" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21" },
+    { name = "pytest-benchmark", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1" },
     { name = "python3-saml", marker = "extra == 'saml'", specifier = ">=1.16.0" },
     { name = "pyyaml", specifier = ">=6.0" },
@@ -272,7 +281,7 @@ requires-dist = [
     { name = "watchdog", marker = "extra == 'watch'", specifier = ">=4.0" },
     { name = "werkzeug", specifier = ">=3.1.6" },
 ]
-provides-extras = ["api", "otel", "ui", "aws", "azure", "gcp", "coreweave", "databricks", "snowflake", "nebius", "huggingface", "wandb", "openai", "ai-enrich", "graph", "pdf", "postgres", "watch", "runtime", "mcp-server", "dashboard", "snyk", "oidc", "saml", "cloud", "docs", "dev", "dev-all"]
+provides-extras = ["api", "otel", "ui", "aws", "azure", "gcp", "coreweave", "databricks", "snowflake", "nebius", "huggingface", "wandb", "openai", "ai-enrich", "graph", "pdf", "postgres", "watch", "runtime", "visual", "mcp-server", "dashboard", "snyk", "oidc", "saml", "cloud", "docs", "dev", "dev-all"]
 
 [[package]]
 name = "aiohappyeyeballs"
@@ -3481,6 +3490,15 @@ wheels = [
 ]
 
 [[package]]
+name = "py-cpuinfo"
+version = "9.0.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/37/a8/d832f7293ebb21690860d2e01d8115e5ff6f2ae8bbdc953f0eb0fa4bd2c7/py-cpuinfo-9.0.0.tar.gz", hash = "sha256:3cdbbf3fac90dc6f118bfd64384f309edeadd902d7c8fb17f02ffa1fc3f49690", size = 104716, upload-time = "2022-10-25T20:38:06.303Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e0/a9/023730ba63db1e494a271cb018dcd361bd2c917ba7004c3e49d5daf795a2/py_cpuinfo-9.0.0-py3-none-any.whl", hash = "sha256:859625bc251f64e21f077d099d4162689c762b5d6a4c3c97553d56241c9674d5", size = 22335, upload-time = "2022-10-25T20:38:27.636Z" },
+]
+
+[[package]]
 name = "py-serializable"
 version = "2.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3770,6 +3788,19 @@ wheels = [
 ]
 
 [[package]]
+name = "pytesseract"
+version = "0.3.13"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "pillow" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9f/a6/7d679b83c285974a7cb94d739b461fa7e7a9b17a3abfd7bf6cbc5c2394b0/pytesseract-0.3.13.tar.gz", hash = "sha256:4bf5f880c99406f52a3cfc2633e42d9dc67615e69d8a509d74867d3baddb5db9", size = 17689, upload-time = "2024-08-16T02:33:56.762Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7a/33/8312d7ce74670c9d39a532b2c246a853861120486be9443eebf048043637/pytesseract-0.3.13-py3-none-any.whl", hash = "sha256:7a99c6c2ac598360693d83a416e36e0b33a67638bb9d77fdcac094a3589d4b34", size = 14705, upload-time = "2024-08-16T02:36:10.09Z" },
+]
+
+[[package]]
 name = "pytest"
 version = "9.0.3"
 source = { registry = "https://pypi.org/simple" }
@@ -3796,6 +3827,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/90/2c/8af215c0f776415f3590cac4f9086ccefd6fd463befeae41cd4d3f193e5a/pytest_asyncio-1.3.0.tar.gz", hash = "sha256:d7f52f36d231b80ee124cd216ffb19369aa168fc10095013c6b014a34d3ee9e5", size = 50087, upload-time = "2025-11-10T16:07:47.256Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e5/35/f8b19922b6a25bc0880171a2f1a003eaeb93657475193ab516fd87cac9da/pytest_asyncio-1.3.0-py3-none-any.whl", hash = "sha256:611e26147c7f77640e6d0a92a38ed17c3e9848063698d5c93d5aa7aa11cebff5", size = 15075, upload-time = "2025-11-10T16:07:45.537Z" },
+]
+
+[[package]]
+name = "pytest-benchmark"
+version = "5.2.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "py-cpuinfo" },
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/24/34/9f732b76456d64faffbef6232f1f9dbec7a7c4999ff46282fa418bd1af66/pytest_benchmark-5.2.3.tar.gz", hash = "sha256:deb7317998a23c650fd4ff76e1230066a76cb45dcece0aca5607143c619e7779", size = 341340, upload-time = "2025-11-09T18:48:43.215Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/33/29/e756e715a48959f1c0045342088d7ca9762a2f509b945f362a316e9412b7/pytest_benchmark-5.2.3-py3-none-any.whl", hash = "sha256:bc839726ad20e99aaa0d11a127445457b4219bdb9e80a1afc4b51da7f96b0803", size = 45255, upload-time = "2025-11-09T18:48:39.765Z" },
 ]
 
 [[package]]

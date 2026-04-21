@@ -561,15 +561,16 @@ def test_max_body_size_middleware():
 
 
 def test_max_concurrent_jobs():
-    """Should return 429 when max concurrent jobs exceeded."""
-    from agent_bom.api.server import _MAX_CONCURRENT_JOBS, JobStatus, ScanJob, ScanRequest, _get_store, set_job_store
+    """Should return 429 when the tenant's active scan quota is exceeded."""
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest, _get_store, set_job_store
     from agent_bom.api.store import InMemoryJobStore
+    from agent_bom.config import API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT
 
     # Use a fresh in-memory store filled with running jobs
     original_store = _get_store()
     fake_store = InMemoryJobStore()
     dummy_request = ScanRequest()
-    for i in range(_MAX_CONCURRENT_JOBS):
+    for i in range(API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT):
         fake_store.put(
             ScanJob(
                 job_id=f"fake-{i}",
@@ -577,6 +578,7 @@ def test_max_concurrent_jobs():
                 created_at="2026-01-01T00:00:00Z",
                 request=dummy_request,
                 progress=[],
+                tenant_id="default",
             )
         )
 

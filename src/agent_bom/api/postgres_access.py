@@ -7,7 +7,7 @@ import json
 from agent_bom.api.auth import ApiKey, Role, verify_api_key
 from agent_bom.api.exception_store import ExceptionStatus, VulnException
 
-from .postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
+from .postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection, bypass_tenant_rls
 
 
 class PostgresKeyStore:
@@ -138,19 +138,21 @@ class PostgresKeyStore:
 
     def verify(self, raw_key: str) -> ApiKey | None:
         prefix = raw_key[:12]
-        with _tenant_connection(self._pool) as conn:
-            rows = conn.execute(
-                """SELECT key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes, created_at, expires_at
-                   FROM api_keys
-                   WHERE key_prefix = %s AND revoked = FALSE""",
-                (prefix,),
-            ).fetchall()
+        with bypass_tenant_rls():
+            with _tenant_connection(self._pool) as conn:
+                rows = conn.execute(
+                    """SELECT key_id, key_hash, key_salt, key_prefix, name, role, team_id, scopes, created_at, expires_at
+                       FROM api_keys
+                       WHERE key_prefix = %s AND revoked = FALSE""",
+                    (prefix,),
+                ).fetchall()
         return verify_api_key(raw_key, [self._row_to_key(row) for row in rows])
 
     def has_keys(self) -> bool:
-        with _tenant_connection(self._pool) as conn:
-            row = conn.execute("SELECT COUNT(*) FROM api_keys WHERE revoked = FALSE").fetchone()
-            return bool(row and row[0] > 0)
+        with bypass_tenant_rls():
+            with _tenant_connection(self._pool) as conn:
+                row = conn.execute("SELECT COUNT(*) FROM api_keys WHERE revoked = FALSE").fetchone()
+                return bool(row and row[0] > 0)
 
 
 class PostgresExceptionStore:

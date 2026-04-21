@@ -73,7 +73,7 @@ This manifest shows:
 - a namespace labeled for Pod Security Admission `restricted`
 - a starter proxy policy `ConfigMap`
 - a metrics `Service`
-- a sample MCP workload with `agent-bom-runtime` sidecar
+- a sample MCP workload with an `agent-bom` runtime proxy sidecar (container name `agent-bom-runtime`)
 - control-plane policy pull and proxy audit push
 - audit logging, undeclared tool blocking, credential detection, and basic rate limiting
 

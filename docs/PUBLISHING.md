@@ -97,7 +97,7 @@ npm install -g clawhub@latest
 clawhub login --token "$CLAWHUB_TOKEN" --no-browser
 clawhub publish integrations/openclaw/scan \
   --slug agent-bom-scan --name "agent-bom scan" \
-  --version "0.80.0"
+  --version "0.81.0"
 ```
 
 Release automation uses the same official `clawhub` CLI flow, not a custom
@@ -118,6 +118,8 @@ Automated via `.github/workflows/release.yml` on each tag push.
 Images published:
 - `agentbom/agent-bom:{version}`
 - `agentbom/agent-bom:latest`
+- `agentbom/agent-bom-ui:{version}`
+- `agentbom/agent-bom-ui:latest`
 
 The Git tag remains `v{version}`. Docker Hub image tags are published without the `v` prefix.
 
@@ -148,8 +150,8 @@ Images published:
 Tag push triggers the full pipeline automatically:
 
 ```bash
-git tag v0.80.0
-git push origin v0.80.0
+git tag v0.81.0
+git push origin v0.81.0
 ```
 
 This triggers:

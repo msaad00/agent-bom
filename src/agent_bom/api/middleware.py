@@ -338,6 +338,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("PUT", "/v1/gateway/policies/", "admin"),
         ("DELETE", "/v1/gateway/policies/", "admin"),
         ("POST", "/v1/fleet/sync", "admin"),
+        ("DELETE", "/v1/sources/", "admin"),
         ("PUT", "/v1/fleet/", "admin"),
         ("PUT", "/v1/exceptions/", "admin"),
         ("DELETE", "/v1/exceptions/", "admin"),
@@ -356,8 +357,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("POST", "/v1/traces", "analyst"),
         ("POST", "/v1/results/push", "analyst"),
         ("POST", "/v1/schedules", "analyst"),
+        ("POST", "/v1/sources", "analyst"),
+        ("POST", "/v1/sources/", "analyst"),
         ("DELETE", "/v1/schedules/", "analyst"),
         ("PUT", "/v1/schedules/", "analyst"),
+        ("PUT", "/v1/sources/", "analyst"),
     )
 
     def __init__(self, app: ASGIApp, api_key: str) -> None:
@@ -397,7 +401,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             )
 
         # Simple mode: single static key (backward compatible, all access)
-        if secrets.compare_digest(raw_key, self._api_key):
+        if self._api_key and secrets.compare_digest(raw_key, self._api_key):
             request.state.api_key_name = "static-key"
             request.state.api_key_role = "admin"
             request.state.tenant_id = "default"

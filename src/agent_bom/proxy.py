@@ -21,6 +21,7 @@ import sys
 import tempfile
 import time
 import uuid
+from contextlib import nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -28,6 +29,7 @@ from typing import TYPE_CHECKING, Optional
 from agent_bom import proxy_audit as _proxy_audit
 from agent_bom import proxy_policy as _proxy_policy
 from agent_bom.agent_identity import check_identity
+from agent_bom.api.tracing import get_tracer, inject_current_trace_headers
 from agent_bom.async_stdin import create_async_stdin_reader, read_async_stdin_line
 from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_tool_call, scan_tool_response
 from agent_bom.security import validate_arguments, validate_command
@@ -50,6 +52,7 @@ compute_payload_hash = _proxy_audit.compute_payload_hash
 compute_response_hmac = _proxy_audit.compute_response_hmac
 log_tool_call = _proxy_audit.log_tool_call
 summarize_runtime_alerts = _proxy_audit.summarize_runtime_alerts
+write_audit_record = _proxy_audit.write_audit_record
 
 _safe_compile = _proxy_policy._safe_compile
 _safe_regex_match = _proxy_policy._safe_regex_match
@@ -60,6 +63,7 @@ resolve_rate_limit_threshold = _proxy_policy.resolve_rate_limit_threshold
 # Maximum JSON-RPC message size accepted from client or server (10 MB).
 # Guards against DoS via oversized payloads in the stdio relay loop.
 _MAX_MESSAGE_BYTES = 10 * 1024 * 1024  # 10 MB
+_PROXY_TRACER = get_tracer("agent_bom.proxy")
 
 
 # ─── JSON-RPC parsing ────────────────────────────────────────────────────────
@@ -162,7 +166,11 @@ def _control_plane_headers(token: str | None, etag: str | None = None) -> dict[s
         headers["Authorization"] = f"Bearer {token}"
     if etag:
         headers["If-None-Match"] = etag
-    return headers
+    return inject_current_trace_headers(headers)
+
+
+def _proxy_request_headers(headers: dict[str, str] | None = None) -> dict[str, str]:
+    return inject_current_trace_headers(headers)
 
 
 async def _fetch_enabled_gateway_policies(
@@ -174,13 +182,20 @@ async def _fetch_enabled_gateway_policies(
     from agent_bom.http_client import create_client
 
     url = base_url.rstrip("/") + "/v1/gateway/policies?enabled=true"
-    async with create_client(timeout=15.0) as client:
-        response = await client.get(url, headers=_control_plane_headers(token, etag))
+    span_cm = _PROXY_TRACER.start_as_current_span("proxy.fetch_gateway_policies") if _PROXY_TRACER else nullcontext()
+    with span_cm as span:
+        if span is not None:
+            span.set_attribute("agent_bom.proxy.control_plane_url", base_url.rstrip("/"))
+            span.set_attribute("agent_bom.proxy.gateway_policy_etag_present", bool(etag))
+        async with create_client(timeout=15.0) as client:
+            response = await client.get(url, headers=_control_plane_headers(token, etag))
     if response.status_code == 304:
         return None, response.headers.get("ETag", etag)
     response.raise_for_status()
     payload = response.json()
     policies = [GatewayPolicy(**item) for item in payload.get("policies", [])]
+    if span is not None:
+        span.set_attribute("agent_bom.proxy.gateway_policy_count", len(policies))
     return policies, response.headers.get("ETag")
 
 
@@ -231,8 +246,13 @@ async def _push_proxy_audit_batch(
         "alerts": alerts,
         "summary": summary,
     }
-    async with create_client(timeout=15.0) as client:
-        response = await client.post(url, json=payload, headers=_control_plane_headers(token))
+    span_cm = _PROXY_TRACER.start_as_current_span("proxy.push_audit_batch") if _PROXY_TRACER else nullcontext()
+    with span_cm as span:
+        if span is not None:
+            span.set_attribute("agent_bom.proxy.audit_alert_count", len(alerts))
+            span.set_attribute("agent_bom.proxy.audit_has_summary", summary is not None)
+        async with create_client(timeout=15.0) as client:
+            response = await client.post(url, json=payload, headers=_control_plane_headers(token))
     response.raise_for_status()
     return True
 
@@ -318,7 +338,7 @@ async def _proxy_sse_server(
             runtime_alerts.append(alert_dict)
             logger.warning("Runtime alert: %s", alert.message)
             if log_f:
-                log_f.write(json.dumps(alert_dict) + "\n")
+                write_audit_record(log_f, alert_dict)
                 log_f.flush()
             if alert_webhook:
                 asyncio.ensure_future(_send_webhook(alert_webhook, alert_dict))
@@ -329,16 +349,23 @@ async def _proxy_sse_server(
         async with httpx.AsyncClient(timeout=30) as client:
             # Fetch tool list from the remote server
             try:
-                tools_resp = await client.post(
-                    url.rstrip("/") + "/tools/list",
-                    json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
-                )
+                span_cm = _PROXY_TRACER.start_as_current_span("proxy.sse_tools_list") if _PROXY_TRACER else nullcontext()
+                with span_cm as span:
+                    if span is not None:
+                        span.set_attribute("agent_bom.proxy.upstream_url", url.rstrip("/"))
+                    tools_resp = await client.post(
+                        url.rstrip("/") + "/tools/list",
+                        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+                        headers=_proxy_request_headers(),
+                    )
                 tools_resp.raise_for_status()
                 tools_data = tools_resp.json()
                 if isinstance(tools_data, dict) and "result" in tools_data:
                     result = tools_data["result"]
                     if isinstance(result, dict) and "tools" in result:
                         declared_tools = {t["name"] for t in result["tools"] if isinstance(t, dict) and "name" in t}
+                        if span is not None:
+                            span.set_attribute("agent_bom.proxy.declared_tool_count", len(declared_tools))
                         logger.info("SSE proxy: discovered %d declared tools", len(declared_tools))
             except Exception as exc:  # noqa: BLE001
                 logger.warning("SSE proxy: could not fetch tools/list from %s: %s", url, exc)
@@ -370,6 +397,7 @@ async def _proxy_sse_server(
                             url.rstrip("/") + "/message",
                             json=msg or json.loads(line_str),
                             timeout=30,
+                            headers=_proxy_request_headers(),
                         )
                         sys.stdout.buffer.write((json.dumps(fwd.json()) + "\n").encode())
                         sys.stdout.buffer.flush()
@@ -489,11 +517,17 @@ async def _proxy_sse_server(
                 # Forward tool call to remote SSE/HTTP server
                 call_counter += 1
                 try:
-                    resp = await client.post(
-                        url.rstrip("/") + "/tools/call",
-                        json=msg,
-                        timeout=30,
-                    )
+                    span_cm = _PROXY_TRACER.start_as_current_span("proxy.sse_tools_call") if _PROXY_TRACER else nullcontext()
+                    with span_cm as span:
+                        if span is not None:
+                            span.set_attribute("agent_bom.proxy.tool_name", tool_name)
+                            span.set_attribute("agent_bom.proxy.call_counter", call_counter)
+                        resp = await client.post(
+                            url.rstrip("/") + "/tools/call",
+                            json=msg,
+                            timeout=30,
+                            headers=_proxy_request_headers(),
+                        )
                     resp.raise_for_status()
                     response_data = resp.json()
                 except httpx.HTTPStatusError as exc:
@@ -804,7 +838,7 @@ async def run_proxy(
             runtime_alerts.append(alert_dict)
             logger.warning("Runtime alert: %s", alert.message)
             if log_f:
-                log_f.write(json.dumps(alert_dict) + "\n")
+                write_audit_record(log_f, alert_dict)
                 log_f.flush()
             if alert_webhook:
                 asyncio.ensure_future(_send_webhook(alert_webhook, alert_dict))
@@ -1066,10 +1100,16 @@ async def run_proxy(
                             agent_id=agent_id,
                         )
 
-            # Forward to server
-            if process.stdin:
-                process.stdin.write(line)
-                await process.stdin.drain()
+            span_cm = _PROXY_TRACER.start_as_current_span("proxy.relay_client_to_server") if (msg and _PROXY_TRACER) else nullcontext()
+            with span_cm as span:
+                if span is not None and msg is not None:
+                    span.set_attribute("agent_bom.proxy.message_kind", msg.get("method", "unknown"))
+                    if is_tools_call(msg):
+                        span.set_attribute("agent_bom.proxy.tool_name", extract_tool_name(msg) or "unknown")
+                # Forward to server
+                if process.stdin:
+                    process.stdin.write(line)
+                    await process.stdin.drain()
 
     async def relay_server_to_client():
         """Read from server stdout, forward to our stdout."""
@@ -1135,18 +1175,16 @@ async def run_proxy(
                 # the server's actual response, not a scanner-modified version).
                 if response_signing_key and log_file:
                     sig = compute_response_hmac(msg, response_signing_key)
-                    sig_entry = (
-                        json.dumps(
-                            {
-                                "ts": datetime.now(timezone.utc).isoformat(),
-                                "type": "response_hmac",
-                                "id": msg.get("id"),
-                                "hmac_sha256": sig,
-                            }
-                        )
-                        + "\n"
+                    sig_entry = {
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "type": "response_hmac",
+                        "id": msg.get("id"),
+                        "hmac_sha256": sig,
+                    }
+                    write_audit_record(
+                        log_file,
+                        sig_entry,
                     )
-                    log_file.write(sig_entry)
 
                 # Visual leak detection — OCR-scan image blocks in the result
                 # and either log (log_only) or paint redactions over the
@@ -1253,18 +1291,16 @@ async def run_proxy(
                 metrics.relay_errors += 1
                 logger.warning("Relay task exited with unexpected error: %s", result)
                 if log_file:
-                    err_entry = (
-                        json.dumps(
-                            {
-                                "ts": datetime.now(timezone.utc).isoformat(),
-                                "type": "relay_error",
-                                "error": str(result),
-                                "error_type": type(result).__name__,
-                            }
-                        )
-                        + "\n"
+                    err_entry = {
+                        "ts": datetime.now(timezone.utc).isoformat(),
+                        "type": "relay_error",
+                        "error": str(result),
+                        "error_type": type(result).__name__,
+                    }
+                    write_audit_record(
+                        log_file,
+                        err_entry,
                     )
-                    log_file.write(err_entry)
     finally:
         # Write metrics summary + runtime alerts to audit log before closing
         summary = metrics.summary()
@@ -1276,8 +1312,7 @@ async def run_proxy(
         if control_plane_url:
             await _flush_audit_buffer(summary=summary)
         if log_file:
-            summary_line = json.dumps(summary) + "\n"
-            log_file.write(summary_line)
+            write_audit_record(log_file, summary)
             log_file.close()
         await metrics_server.stop()
         set_gateway_evaluator(None)

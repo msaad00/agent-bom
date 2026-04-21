@@ -1,4 +1,4 @@
-"""PostgreSQL-backed gateway policy and schedule stores."""
+"""PostgreSQL-backed gateway policy, source, and schedule stores."""
 
 from __future__ import annotations
 
@@ -267,3 +267,92 @@ class PostgresScheduleStore:
                 (now_iso,),
             ).fetchall()
             return [ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
+
+
+class PostgresSourceStore:
+    """PostgreSQL-backed hosted product source registry."""
+
+    def __init__(self, pool=None) -> None:
+        self._pool = pool or _get_pool()
+        self._init_tables()
+
+    def _init_tables(self) -> None:
+        with self._pool.connection() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS control_plane_sources (
+                    source_id TEXT PRIMARY KEY,
+                    enabled INTEGER DEFAULT 1,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    updated_at TEXT NOT NULL,
+                    data JSONB NOT NULL
+                )
+            """)
+            conn.execute("""
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'control_plane_sources' AND column_name = 'tenant_id'
+                    ) THEN
+                        ALTER TABLE control_plane_sources ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default';
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'control_plane_sources' AND column_name = 'updated_at'
+                    ) THEN
+                        ALTER TABLE control_plane_sources ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';
+                    END IF;
+                END
+                $$;
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_control_plane_sources_tenant_updated ON control_plane_sources(tenant_id, updated_at DESC)"
+            )
+            _ensure_tenant_rls(conn, "control_plane_sources", "tenant_id")
+            conn.commit()
+
+    def put(self, source) -> None:
+        data = source.model_dump_json()
+        with _tenant_connection(self._pool) as conn:
+            conn.execute(
+                """INSERT INTO control_plane_sources (source_id, enabled, tenant_id, updated_at, data)
+                   VALUES (%s, %s, %s, %s, %s)
+                   ON CONFLICT (source_id) DO UPDATE SET
+                     enabled = EXCLUDED.enabled,
+                     tenant_id = EXCLUDED.tenant_id,
+                     updated_at = EXCLUDED.updated_at,
+                     data = EXCLUDED.data""",
+                (source.source_id, int(source.enabled), source.tenant_id, source.updated_at, data),
+            )
+            conn.commit()
+
+    def get(self, source_id: str):
+        from .models import SourceRecord
+
+        with _tenant_connection(self._pool) as conn:
+            row = conn.execute("SELECT data FROM control_plane_sources WHERE source_id = %s", (source_id,)).fetchone()
+            if row is None:
+                return None
+            raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
+            return SourceRecord.model_validate_json(raw)
+
+    def delete(self, source_id: str) -> bool:
+        with _tenant_connection(self._pool) as conn:
+            cursor = conn.execute("DELETE FROM control_plane_sources WHERE source_id = %s", (source_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def list_all(self, tenant_id: str | None = None) -> list:
+        from .models import SourceRecord
+
+        with _tenant_connection(self._pool) as conn:
+            if tenant_id is None:
+                rows = conn.execute("SELECT data FROM control_plane_sources ORDER BY updated_at DESC, source_id").fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT data FROM control_plane_sources
+                       WHERE tenant_id = %s
+                       ORDER BY updated_at DESC, source_id""",
+                    (tenant_id,),
+                ).fetchall()
+            return [SourceRecord.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0])) for row in rows]

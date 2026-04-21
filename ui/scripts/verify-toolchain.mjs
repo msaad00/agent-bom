@@ -28,9 +28,15 @@ const eslintDeclared = packageJson.devDependencies?.eslint;
 const reactDeclared = packageJson.dependencies?.react;
 const reactDomDeclared = packageJson.dependencies?.["react-dom"];
 const nodeEngines = packageJson.engines?.node;
+const packageManager = packageJson.packageManager;
+const expectedPackageManager = "npm@10.9.7";
 
-if (!nextDeclared || !eslintConfigNextDeclared || !eslintDeclared || !nodeEngines) {
-  fail("UI toolchain contract is incomplete: next, eslint-config-next, eslint, and engines.node must all be declared.");
+if (!nextDeclared || !eslintConfigNextDeclared || !eslintDeclared || !nodeEngines || !packageManager) {
+  fail("UI toolchain contract is incomplete: next, eslint-config-next, eslint, engines.node, and packageManager must all be declared.");
+}
+
+if (packageManager !== expectedPackageManager) {
+  fail(`UI packageManager must stay pinned to ${expectedPackageManager}; found ${packageManager}.`);
 }
 
 if (normalizeVersionRange(nextDeclared) !== normalizeVersionRange(eslintConfigNextDeclared)) {
@@ -76,5 +82,5 @@ if (!Number.isInteger(nodeMajor) || nodeMajor < 20 || nodeMajor > 22) {
 }
 
 console.log(
-  `UI toolchain contract verified: next ${nextInstalled}, eslint-config-next ${eslintConfigNextInstalled}, eslint ${eslintInstalled}, node ${process.versions.node}.`,
+  `UI toolchain contract verified: next ${nextInstalled}, eslint-config-next ${eslintConfigNextInstalled}, eslint ${eslintInstalled}, node ${process.versions.node}, package manager ${packageManager}.`,
 );

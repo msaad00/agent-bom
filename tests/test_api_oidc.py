@@ -25,6 +25,8 @@ import os
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import FastAPI, Request
+from fastapi.testclient import TestClient
 
 from agent_bom.api.oidc import (
     OIDCConfig,
@@ -134,6 +136,20 @@ def test_oidc_config_require_role_claim_from_env():
     ):
         cfg = OIDCConfig.from_env()
         assert cfg.require_role_claim is True
+
+
+def test_oidc_config_reads_allow_default_tenant_and_jwks_allowlist_from_env():
+    with patch.dict(
+        os.environ,
+        {
+            "AGENT_BOM_OIDC_ISSUER": "https://test.okta.com",
+            "AGENT_BOM_OIDC_ALLOWED_JWKS_URIS": "https://test.okta.com/keys, https://backup.okta.com/keys",
+            "AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT": "true",
+        },
+    ):
+        cfg = OIDCConfig.from_env()
+        assert cfg.allow_default_tenant is True
+        assert cfg.allowed_jwks_uris == ("https://test.okta.com/keys", "https://backup.okta.com/keys")
 
 
 def test_oidc_config_from_env_reads_tenant_bound_providers():
@@ -274,6 +290,32 @@ def test_verify_raises_oidc_error_on_discovery_failure():
                 verify_oidc_token("tok", "https://down.example.com")
 
 
+def test_verify_oidc_token_requires_pinned_or_allowlisted_jwks_uri():
+    from agent_bom.api.oidc import verify_oidc_token
+
+    with patch("agent_bom.api.oidc.discover_oidc", return_value={"jwks_uri": "https://example.com/jwks.json"}):
+        with pytest.raises(OIDCError, match="requires a pinned JWKS URI"):
+            verify_oidc_token("tok", "https://example.com", audience="agent-bom")
+
+
+def test_verify_oidc_token_accepts_allowlisted_discovered_jwks_uri():
+    from agent_bom.api.oidc import verify_oidc_token
+
+    mock_jwks_client = MagicMock()
+    mock_jwks_client.get_signing_key_from_jwt.side_effect = Exception("InvalidSignature")
+    mock_jwt_module = MagicMock()
+    mock_jwt_module.PyJWKClient.return_value = mock_jwks_client
+    with patch.dict("sys.modules", {"jwt": mock_jwt_module, "cryptography": MagicMock()}):
+        with patch("agent_bom.api.oidc.discover_oidc", return_value={"jwks_uri": "https://example.com/jwks.json"}):
+            with pytest.raises(OIDCError, match="Failed to resolve signing key"):
+                verify_oidc_token(
+                    "not.a.real.jwt",
+                    "https://example.com",
+                    audience="agent-bom",
+                    allowed_jwks_uris=("https://example.com/jwks.json",),
+                )
+
+
 def test_verify_raises_oidc_error_on_bad_jwt():
     """Invalid JWT signature raises OIDCError."""
     from agent_bom.api.oidc import verify_oidc_token
@@ -317,14 +359,14 @@ def test_oidc_config_verify_requires_explicit_role_when_enabled():
             cfg.verify("valid.jwt.token")
 
 
-def test_oidc_config_resolve_tenant_defaults_when_not_required():
-    cfg = OIDCConfig(issuer="https://corp.example.com", audience="agent-bom")
+def test_oidc_config_resolve_tenant_defaults_only_when_explicitly_enabled():
+    cfg = OIDCConfig(issuer="https://corp.example.com", audience="agent-bom", allow_default_tenant=True)
     assert cfg.resolve_tenant({"sub": "user-1"}) == "default"
 
 
-def test_oidc_config_resolve_tenant_raises_when_required_claim_missing():
-    cfg = OIDCConfig(issuer="https://corp.example.com", audience="agent-bom", require_tenant_claim=True)
-    with pytest.raises(OIDCError, match="tenant claim"):
+def test_oidc_config_resolve_tenant_raises_when_claim_missing_without_opt_in():
+    cfg = OIDCConfig(issuer="https://corp.example.com", audience="agent-bom")
+    with pytest.raises(OIDCError, match="missing tenant claim"):
         cfg.resolve_tenant({"sub": "user-1"})
 
 
@@ -391,6 +433,38 @@ def test_middleware_oidc_success_sets_request_state():
 
     assert role == "analyst"
     assert claims["email"] == "alice@corp.com"
+
+
+def test_api_key_middleware_accepts_oidc_bearer_without_static_api_key(monkeypatch):
+    from agent_bom.api.middleware import APIKeyMiddleware
+
+    app = FastAPI()
+
+    @app.get("/secure")
+    async def secure(request: Request):
+        return {
+            "tenant_id": request.state.tenant_id,
+            "role": request.state.api_key_role,
+            "auth_method": request.state.auth_method,
+        }
+
+    app.add_middleware(APIKeyMiddleware, api_key=None)
+
+    cfg = OIDCConfig(issuer="https://corp.okta.com", audience="agent-bom", allow_default_tenant=True)
+    monkeypatch.setattr("agent_bom.api.oidc.OIDCConfig.from_env", lambda: cfg)
+    monkeypatch.setattr(
+        "agent_bom.api.oidc.verify_oidc_token",
+        lambda *args, **kwargs: {"sub": "u1", "email": "alice@corp.com", "agent_bom_role": "analyst"},
+    )
+
+    client = TestClient(app)
+    resp = client.get("/secure", headers={"Authorization": "Bearer token"})
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "tenant_id": "default",
+        "role": "analyst",
+        "auth_method": "oidc",
+    }
 
 
 def test_middleware_oidc_failure_does_not_raise():

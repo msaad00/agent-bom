@@ -14,6 +14,13 @@ monolith:
 - **API + UI** for operator review, audit, graph, remediation, and control-plane workflows
 - **MCP server mode** when you want `agent-bom` itself exposed as tools
 
+The published container split follows the same model:
+
+- `agentbom/agent-bom` is the main runtime image for CLI, API, jobs, gateway,
+  proxy-related entrypoints, and MCP server mode
+- `agentbom/agent-bom-ui` is only the standalone browser UI image used when the
+  control plane runs the UI separately from the API
+
 ## What You Can Offer In Customer-Controlled Infra
 
 This is the current code-backed self-hosted story:
@@ -133,6 +140,9 @@ That is the intended split:
 - `API / control plane` = auth, RBAC, tenant scope, orchestration, graph, persistence, audit, policy
 - `workers / connectors` = do the privileged read or collection work
 - `proxy / gateway` = enforce and audit runtime MCP traffic
+
+For the concrete backend and UI rollout plan behind this split, see [Hosted
+Product Control-Plane Spec](../architecture/hosted-product-spec.md).
 
 ## Approved intake paths today
 

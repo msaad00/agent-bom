@@ -36,6 +36,7 @@ from typing import Any, Awaitable, Callable
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
+from agent_bom.api.auth import get_key_store
 from agent_bom.api.metrics import record_gateway_relay
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 from agent_bom.proxy import check_policy, is_tools_call, parse_jsonrpc
@@ -92,6 +93,44 @@ def _request_has_expected_token(request: Request, expected_token: str) -> bool:
     return request.headers.get("x-api-key", "").strip() == expected_token
 
 
+def _extract_request_token(request: Request) -> str:
+    auth = request.headers.get("authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[len("Bearer ") :].strip()
+    return request.headers.get("x-api-key", "").strip()
+
+
+def _gateway_requires_auth(settings: GatewaySettings) -> bool:
+    if settings.bearer_token:
+        return True
+    try:
+        return get_key_store().has_keys()
+    except Exception:
+        return False
+
+
+def _authenticate_gateway_request(request: Request, settings: GatewaySettings) -> tuple[str, str]:
+    raw_token = _extract_request_token(request)
+    if settings.bearer_token:
+        if not raw_token or not _request_has_expected_token(request, settings.bearer_token):
+            raise HTTPException(status_code=401, detail="gateway authentication required")
+        return "default", "static_gateway_token"
+
+    try:
+        store = get_key_store()
+        if store.has_keys():
+            api_key = store.verify(raw_token) if raw_token else None
+            if api_key is None:
+                raise HTTPException(status_code=401, detail="gateway authentication required")
+            return api_key.tenant_id or "default", "api_key"
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Gateway key verification unavailable: %s", _sanitize_for_log(exc))
+
+    return "default", "none"
+
+
 async def _default_upstream_caller(
     upstream: UpstreamConfig,
     message: dict[str, Any],
@@ -136,7 +175,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         health: dict[str, Any] = {
             "status": "ok",
             "upstreams": settings.registry.names(),
-            "auth": {"incoming_token_required": bool(settings.bearer_token)},
+            "auth": {"incoming_token_required": _gateway_requires_auth(settings)},
         }
         if settings.enable_visual_leak_detection:
             from agent_bom.runtime.visual_leak_detector import visual_leak_runtime_health
@@ -161,8 +200,12 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     @app.post("/mcp/{server_name}")
     async def relay(server_name: str, request: Request) -> JSONResponse:
         """Route an MCP JSON-RPC request to the named upstream after policy + audit."""
-        if settings.bearer_token and not _request_has_expected_token(request, settings.bearer_token):
-            raise HTTPException(status_code=401, detail="gateway authentication required")
+        tenant_id = "default"
+        auth_method = "none"
+        if _gateway_requires_auth(settings):
+            tenant_id, auth_method = _authenticate_gateway_request(request, settings)
+            request.state.tenant_id = tenant_id
+            request.state.auth_method = auth_method
 
         upstream = settings.registry.get(server_name)
         if upstream is None:

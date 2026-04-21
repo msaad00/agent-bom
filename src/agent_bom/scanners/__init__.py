@@ -598,7 +598,7 @@ def _scan_packages_local_db_batch(
     Uses :func:`lookup_packages_batch` to fetch all vulnerabilities in bulk,
     then applies the same dedup / tagging logic as the per-package path.
     """
-    from agent_bom.db.lookup import lookup_packages_batch, package_in_db
+    from agent_bom.db.lookup import lookup_packages_batch, package_in_db_batch
 
     # Build batch keys: (db_ecosystem, normalized_name, version)
     pkg_index: list[tuple[Package, list[str], str, str, list[str]]] = []  # (pkg, db_ecos, primary_norm_name, db_key, candidate_names)
@@ -616,6 +616,15 @@ def _scan_packages_local_db_batch(
                 batch_keys.append((db_eco, candidate_name, pkg.version))
 
     batch_results = lookup_packages_batch(conn, batch_keys)
+    existing_pairs = package_in_db_batch(
+        conn,
+        [
+            (db_eco, candidate_name)
+            for _pkg, db_ecos, _norm_name, _db_key, candidate_names in pkg_index
+            for db_eco in db_ecos
+            for candidate_name in candidate_names
+        ],
+    )
 
     total = 0
     for pkg, db_ecos, norm_name, db_key, candidate_names in pkg_index:
@@ -624,7 +633,7 @@ def _scan_packages_local_db_batch(
             for candidate_name in candidate_names:
                 local_vulns.extend(batch_results.get((db_eco, candidate_name, pkg.version), []))
 
-        if any(package_in_db(conn, db_eco, candidate_name) for db_eco in db_ecos for candidate_name in candidate_names):
+        if any((db_eco.lower(), candidate_name) in existing_pairs for db_eco in db_ecos for candidate_name in candidate_names):
             covered.add(db_key)
 
         if local_vulns:

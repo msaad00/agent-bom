@@ -153,7 +153,14 @@ Focused graph:
 | Tag | Description |
 |-----|-------------|
 | `latest` | Most recent stable release |
-| `0.80.0` | Current stable version (pinned) |
+| `0.81.0` | Current stable version (pinned) |
+
+Published images:
+
+- `agentbom/agent-bom` — main runtime image for CLI scans, API/control-plane
+  jobs, gateway, proxy-adjacent entrypoints, and MCP server mode
+- `agentbom/agent-bom-ui` — standalone Next.js browser UI image for
+  self-hosted deployments that run the UI separately from the API
 
 For local Docker Compose examples, the repo may use local-built image aliases
 such as `agent-bom:latest` and `agent-bom-ui:latest`. Those are compose-facing

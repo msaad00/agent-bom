@@ -13,11 +13,16 @@ from __future__ import annotations
 import logging
 import sqlite3
 from collections import defaultdict
+from contextlib import nullcontext
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
+from agent_bom.api.tracing import get_tracer
+
 _logger = logging.getLogger(__name__)
+_LOOKUP_TRACER = get_tracer("agent_bom.db.lookup")
 
 
 @dataclass
@@ -129,56 +134,64 @@ def lookup_package(
     norm_name = normalize_package_name(name, ecosystem)
     eco_lower = ecosystem.lower()
 
-    rows = conn.execute(
-        """
-        SELECT
-            v.id, v.summary, v.severity, v.cvss_score, v.fixed_version, v.cwe_ids, COALESCE(v.aliases, '') AS aliases, v.source,
-            v.published, v.modified,
-            a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
-            e.probability AS epss_prob, e.percentile AS epss_pct,
-            k.date_added AS kev_date
-        FROM affected a
-        JOIN vulns v ON v.id = a.vuln_id
-        LEFT JOIN epss_scores e ON e.cve_id = v.id
-        LEFT JOIN kev_entries k ON k.cve_id = v.id
-        WHERE a.ecosystem = ? AND a.package_name = ?
-        ORDER BY v.cvss_score DESC NULLS LAST
-        """,
-        (eco_lower, norm_name),
-    ).fetchall()
+    span_cm = _LOOKUP_TRACER.start_as_current_span("db.lookup_package") if _LOOKUP_TRACER else nullcontext()
+    with span_cm as span:
+        rows = conn.execute(
+            """
+            SELECT
+                v.id, v.summary, v.severity, v.cvss_score, v.fixed_version, v.cwe_ids, COALESCE(v.aliases, '') AS aliases, v.source,
+                v.published, v.modified,
+                a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
+                e.probability AS epss_prob, e.percentile AS epss_pct,
+                k.date_added AS kev_date
+            FROM affected a
+            JOIN vulns v ON v.id = a.vuln_id
+            LEFT JOIN epss_scores e ON e.cve_id = v.id
+            LEFT JOIN kev_entries k ON k.cve_id = v.id
+            WHERE a.ecosystem = ? AND a.package_name = ?
+            ORDER BY v.cvss_score DESC NULLS LAST
+            """,
+            (eco_lower, norm_name),
+        ).fetchall()
 
-    epss_map, kev_map = _load_cve_enrichment(conn, rows)
-    results: list[LocalVuln] = []
-    for row in _select_vulnerability_rows(rows, version):
-        # Parse comma-separated CWE IDs from DB column
-        raw_cwes = row["cwe_ids"] or ""
-        cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []
-        raw_aliases = row["aliases"] or ""
-        alias_list = [a for a in raw_aliases.split(",") if a] if raw_aliases else []
-        epss_prob, epss_pct, kev_date = _resolve_row_enrichment(row, epss_map, kev_map)
+        epss_map, kev_map = _load_cve_enrichment(conn, rows)
+        results: list[LocalVuln] = []
+        for row in _select_vulnerability_rows(rows, version):
+            # Parse comma-separated CWE IDs from DB column
+            raw_cwes = row["cwe_ids"] or ""
+            cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []
+            raw_aliases = row["aliases"] or ""
+            alias_list = [a for a in raw_aliases.split(",") if a] if raw_aliases else []
+            epss_prob, epss_pct, kev_date = _resolve_row_enrichment(row, epss_map, kev_map)
 
-        results.append(
-            LocalVuln(
-                id=row["id"],
-                summary=row["summary"],
-                severity=row["severity"],
-                cvss_score=row["cvss_score"],
-                fixed_version=row["fixed_version"] or row["fixed"],
-                epss_probability=epss_prob,
-                epss_percentile=epss_pct,
-                is_kev=kev_date is not None,
-                kev_date_added=kev_date,
-                published_at=row["published"],
-                modified_at=row["modified"],
-                source=row["source"],
-                ecosystem=row["ecosystem"],
-                package_name=row["package_name"],
-                introduced=row["introduced"],
-                aliases=alias_list,
-                cwe_ids=cwe_list,
+            results.append(
+                LocalVuln(
+                    id=row["id"],
+                    summary=row["summary"],
+                    severity=row["severity"],
+                    cvss_score=row["cvss_score"],
+                    fixed_version=row["fixed_version"] or row["fixed"],
+                    epss_probability=epss_prob,
+                    epss_percentile=epss_pct,
+                    is_kev=kev_date is not None,
+                    kev_date_added=kev_date,
+                    published_at=row["published"],
+                    modified_at=row["modified"],
+                    source=row["source"],
+                    ecosystem=row["ecosystem"],
+                    package_name=row["package_name"],
+                    introduced=row["introduced"],
+                    aliases=alias_list,
+                    cwe_ids=cwe_list,
+                )
             )
-        )
-    return results
+
+        if span is not None:
+            span.set_attribute("agent_bom.lookup.ecosystem", eco_lower)
+            span.set_attribute("agent_bom.lookup.package_name", norm_name)
+            span.set_attribute("agent_bom.lookup.row_count", len(rows))
+            span.set_attribute("agent_bom.lookup.match_count", len(results))
+        return results
 
 
 def _version_affected(
@@ -194,14 +207,14 @@ def _version_affected(
     return version_in_range(version, introduced, fixed, last_affected, ecosystem)
 
 
-def _version_match_state(
+@lru_cache(maxsize=131072)
+def _cached_version_match_state(
     version: str,
     introduced: Optional[str],
     fixed: Optional[str],
     last_affected: Optional[str],
     ecosystem: str = "",
 ) -> str:
-    """Return ``affected``, ``unaffected``, or ``unknown`` for one affected-range row."""
     from agent_bom.version_utils import _looks_like_commit_sha, compare_version_order
 
     intro = introduced or None
@@ -234,6 +247,17 @@ def _version_match_state(
             unknown = True
 
     return "unknown" if unknown else "affected"
+
+
+def _version_match_state(
+    version: str,
+    introduced: Optional[str],
+    fixed: Optional[str],
+    last_affected: Optional[str],
+    ecosystem: str = "",
+) -> str:
+    """Return ``affected``, ``unaffected``, or ``unknown`` for one affected-range row."""
+    return _cached_version_match_state(version, introduced, fixed, last_affected, ecosystem)
 
 
 def _select_vulnerability_rows(rows: list[sqlite3.Row], version: Optional[str]) -> list[sqlite3.Row]:
@@ -309,78 +333,84 @@ def lookup_packages_batch(
 
     pairs = list(pair_set)
 
-    # Fetch all rows in chunks
-    all_rows: list[sqlite3.Row] = []
-    for start in range(0, len(pairs), chunk_size):
-        chunk = pairs[start : start + chunk_size]
-        placeholders = ", ".join(["(?, ?)"] * len(chunk))
-        params: list[str] = []
-        for eco, nm in chunk:
-            params.extend([eco, nm])
+    span_cm = _LOOKUP_TRACER.start_as_current_span("db.lookup_packages_batch") if _LOOKUP_TRACER else nullcontext()
+    with span_cm as span:
+        # Fetch all rows in chunks
+        all_rows: list[sqlite3.Row] = []
+        for start in range(0, len(pairs), chunk_size):
+            chunk = pairs[start : start + chunk_size]
+            placeholders = ", ".join(["(?, ?)"] * len(chunk))
+            params: list[str] = []
+            for eco, nm in chunk:
+                params.extend([eco, nm])
 
-        # placeholders is only "(?, ?)" repeated — no user data in the SQL string.
-        query = f"""
-            SELECT
-                v.id, v.summary, v.severity, v.cvss_score, v.fixed_version, v.cwe_ids, COALESCE(v.aliases, '') AS aliases, v.source,
-                v.published, v.modified,
-                a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
-                e.probability AS epss_prob, e.percentile AS epss_pct,
-                k.date_added AS kev_date
-            FROM affected a
-            JOIN vulns v ON v.id = a.vuln_id
-            LEFT JOIN epss_scores e ON e.cve_id = v.id
-            LEFT JOIN kev_entries k ON k.cve_id = v.id
-            WHERE (a.ecosystem, a.package_name) IN (VALUES {placeholders})
-            ORDER BY v.cvss_score DESC NULLS LAST
-        """  # nosec B608
-        all_rows.extend(conn.execute(query, params).fetchall())
+            # placeholders is only "(?, ?)" repeated — no user data in the SQL string.
+            query = f"""
+                SELECT
+                    v.id, v.summary, v.severity, v.cvss_score, v.fixed_version, v.cwe_ids, COALESCE(v.aliases, '') AS aliases, v.source,
+                    v.published, v.modified,
+                    a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
+                    e.probability AS epss_prob, e.percentile AS epss_pct,
+                    k.date_added AS kev_date
+                FROM affected a
+                JOIN vulns v ON v.id = a.vuln_id
+                LEFT JOIN epss_scores e ON e.cve_id = v.id
+                LEFT JOIN kev_entries k ON k.cve_id = v.id
+                WHERE (a.ecosystem, a.package_name) IN (VALUES {placeholders})
+                ORDER BY v.cvss_score DESC NULLS LAST
+            """  # nosec B608
+            all_rows.extend(conn.execute(query, params).fetchall())
 
-    epss_map, kev_map = _load_cve_enrichment(conn, all_rows)
+        epss_map, kev_map = _load_cve_enrichment(conn, all_rows)
 
-    # Group rows by (lower_ecosystem, package_name)
-    grouped: dict[tuple[str, str], list[sqlite3.Row]] = defaultdict(list)
-    for row in all_rows:
-        grouped[(row["ecosystem"].lower(), row["package_name"])].append(row)
+        # Group rows by (lower_ecosystem, package_name)
+        grouped: dict[tuple[str, str], list[sqlite3.Row]] = defaultdict(list)
+        for row in all_rows:
+            grouped[(row["ecosystem"].lower(), row["package_name"])].append(row)
 
-    # Build results per input package (with version filtering)
-    results: dict[tuple[str, str, str], list[LocalVuln]] = {}
-    for eco, name, version in packages:
-        key = (eco, name, version)
-        eco_lower = eco.lower()
-        rows = grouped.get((eco_lower, name), [])
+        # Build results per input package (with version filtering)
+        results: dict[tuple[str, str, str], list[LocalVuln]] = {}
+        for eco, name, version in packages:
+            key = (eco, name, version)
+            eco_lower = eco.lower()
+            rows = grouped.get((eco_lower, name), [])
 
-        vulns: list[LocalVuln] = []
-        for row in _select_vulnerability_rows(rows, version):
-            raw_cwes = row["cwe_ids"] or ""
-            cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []
-            raw_aliases = row["aliases"] or ""
-            alias_list = [a for a in raw_aliases.split(",") if a] if raw_aliases else []
-            epss_prob, epss_pct, kev_date = _resolve_row_enrichment(row, epss_map, kev_map)
+            vulns: list[LocalVuln] = []
+            for row in _select_vulnerability_rows(rows, version):
+                raw_cwes = row["cwe_ids"] or ""
+                cwe_list = [c for c in raw_cwes.split(",") if c] if raw_cwes else []
+                raw_aliases = row["aliases"] or ""
+                alias_list = [a for a in raw_aliases.split(",") if a] if raw_aliases else []
+                epss_prob, epss_pct, kev_date = _resolve_row_enrichment(row, epss_map, kev_map)
 
-            vulns.append(
-                LocalVuln(
-                    id=row["id"],
-                    summary=row["summary"],
-                    severity=row["severity"],
-                    cvss_score=row["cvss_score"],
-                    fixed_version=row["fixed_version"] or row["fixed"],
-                    epss_probability=epss_prob,
-                    epss_percentile=epss_pct,
-                    is_kev=kev_date is not None,
-                    kev_date_added=kev_date,
-                    published_at=row["published"],
-                    modified_at=row["modified"],
-                    source=row["source"],
-                    ecosystem=row["ecosystem"],
-                    package_name=row["package_name"],
-                    introduced=row["introduced"],
-                    aliases=alias_list,
-                    cwe_ids=cwe_list,
+                vulns.append(
+                    LocalVuln(
+                        id=row["id"],
+                        summary=row["summary"],
+                        severity=row["severity"],
+                        cvss_score=row["cvss_score"],
+                        fixed_version=row["fixed_version"] or row["fixed"],
+                        epss_probability=epss_prob,
+                        epss_percentile=epss_pct,
+                        is_kev=kev_date is not None,
+                        kev_date_added=kev_date,
+                        published_at=row["published"],
+                        modified_at=row["modified"],
+                        source=row["source"],
+                        ecosystem=row["ecosystem"],
+                        package_name=row["package_name"],
+                        introduced=row["introduced"],
+                        aliases=alias_list,
+                        cwe_ids=cwe_list,
+                    )
                 )
-            )
-        results[key] = vulns
+            results[key] = vulns
 
-    return results
+        if span is not None:
+            span.set_attribute("agent_bom.lookup.package_count", len(packages))
+            span.set_attribute("agent_bom.lookup.unique_pairs", len(pairs))
+            span.set_attribute("agent_bom.lookup.row_count", len(all_rows))
+        return results
 
 
 def package_in_db(conn: sqlite3.Connection, ecosystem: str, name: str) -> bool:
@@ -397,6 +427,35 @@ def package_in_db(conn: sqlite3.Connection, ecosystem: str, name: str) -> bool:
         (ecosystem.lower(), norm_name),
     ).fetchone()
     return row is not None
+
+
+def package_in_db_batch(
+    conn: sqlite3.Connection,
+    packages: list[tuple[str, str]],
+) -> set[tuple[str, str]]:
+    """Return the subset of ``(ecosystem, package_name)`` pairs present in affected."""
+    if not packages:
+        return set()
+
+    normalized = {(ecosystem.lower(), name) for ecosystem, name in packages}
+    pairs = list(normalized)
+    chunk_size = 400
+    present: set[tuple[str, str]] = set()
+
+    for start in range(0, len(pairs), chunk_size):
+        chunk = pairs[start : start + chunk_size]
+        placeholders = ", ".join(["(?, ?)"] * len(chunk))
+        params: list[str] = []
+        for eco, name in chunk:
+            params.extend([eco, name])
+        query = f"""
+            SELECT DISTINCT ecosystem, package_name
+            FROM affected
+            WHERE (ecosystem, package_name) IN (VALUES {placeholders})
+        """  # nosec B608
+        present.update((row["ecosystem"], row["package_name"]) for row in conn.execute(query, params).fetchall())
+
+    return present
 
 
 class VulnDB:

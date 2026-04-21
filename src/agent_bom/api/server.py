@@ -42,6 +42,7 @@ from agent_bom.api.models import (
 )
 from agent_bom.api.stores import (
     _get_schedule_store,
+    _get_source_store,
     _get_store,
     _jobs,
     _jobs_get,  # noqa: F401 — re-exported for tests
@@ -55,11 +56,11 @@ from agent_bom.api.stores import (
     set_job_store,
     set_policy_store,
     set_schedule_store,
+    set_source_store,
     set_trend_store,
 )
 from agent_bom.api.tracing import configure_otel_tracing, get_tracing_health
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
-from agent_bom.config import API_MAX_CONCURRENT_JOBS as _MAX_CONCURRENT_JOBS  # noqa: F401 — re-exported for tests
 
 _logger = logging.getLogger(__name__)
 
@@ -132,7 +133,7 @@ def _backend_name(store: object | None) -> str:
 
 
 def _control_plane_backend(storage: StorageHealth) -> str:
-    primary = [storage.job_store, storage.fleet_store, storage.policy_store]
+    primary = [storage.job_store, storage.fleet_store, storage.policy_store, storage.source_store]
     if any(name == "snowflake" for name in primary):
         return "snowflake"
     if any(name == "postgres" for name in primary):
@@ -144,6 +145,10 @@ def _control_plane_backend(storage: StorageHealth) -> str:
 
 def _storage_health() -> StorageHealth:
     try:
+        source_store = _get_source_store()
+    except RuntimeError:
+        source_store = None
+    try:
         schedule_store = _get_schedule_store()
     except RuntimeError:
         schedule_store = None
@@ -152,6 +157,7 @@ def _storage_health() -> StorageHealth:
         job_store=_backend_name(_stores._store or _stores._get_store()),
         fleet_store=_backend_name(_stores._fleet_store or _stores._get_fleet_store()),
         policy_store=_backend_name(_stores._policy_store or _stores._get_policy_store()),
+        source_store=_backend_name(_stores._source_store or source_store),
         schedule_store=_backend_name(_stores._schedule_store or schedule_store),
         exception_store=_backend_name(_stores._exception_store or _stores._get_exception_store()),
         trend_store=_backend_name(_stores._trend_store or _stores._get_trend_store()),
@@ -196,6 +202,7 @@ async def _lifespan(app_instance: FastAPI):
             PostgresJobStore,
             PostgresKeyStore,
             PostgresPolicyStore,
+            PostgresSourceStore,
             PostgresTrendStore,
         )
 
@@ -205,6 +212,8 @@ async def _lifespan(app_instance: FastAPI):
             set_fleet_store(PostgresFleetStore())
         if _stores._policy_store is None:
             set_policy_store(PostgresPolicyStore())
+        if _stores._source_store is None:
+            set_source_store(PostgresSourceStore())
         if _stores._exception_store is None:
             set_exception_store(PostgresExceptionStore())
         if _stores._trend_store is None:
@@ -232,6 +241,10 @@ async def _lifespan(app_instance: FastAPI):
             from agent_bom.api.policy_store import SQLitePolicyStore
 
             set_policy_store(SQLitePolicyStore(db_path))
+        if _stores._source_store is None:
+            from agent_bom.api.source_store import SQLiteSourceStore
+
+            set_source_store(SQLiteSourceStore(db_path))
         if _stores._trend_store is None:
             from agent_bom.baseline import SQLiteTrendStore
 
@@ -242,6 +255,20 @@ async def _lifespan(app_instance: FastAPI):
             set_graph_store(SQLiteGraphStore())
         if _audit_log_mod._audit_log is None:
             set_audit_log(SQLiteAuditLog(db_path))
+
+    if _stores._source_store is None:
+        if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+            from agent_bom.api.postgres_store import PostgresSourceStore
+
+            set_source_store(PostgresSourceStore())
+        elif os.environ.get("AGENT_BOM_DB"):
+            from agent_bom.api.source_store import SQLiteSourceStore
+
+            set_source_store(SQLiteSourceStore(os.environ["AGENT_BOM_DB"]))
+        else:
+            from agent_bom.api.source_store import InMemorySourceStore
+
+            set_source_store(InMemorySourceStore())
 
     # ── Schedule store ──
     if _stores._schedule_store is None:
@@ -338,7 +365,7 @@ async def _lifespan(app_instance: FastAPI):
         _get_store().put(job)
         _jobs_put(job.job_id, job)
         loop = asyncio.get_running_loop()
-        loop.run_in_executor(_executor, _run_scan, job)
+        loop.run_in_executor(get_executor(), _run_scan, job)
         return job.job_id
 
     _scheduler_task = asyncio.create_task(scheduler_loop(_get_schedule_store(), _schedule_scan))
@@ -361,7 +388,7 @@ async def _lifespan(app_instance: FastAPI):
     _drain_seconds = float(os.environ.get("AGENT_BOM_SHUTDOWN_DRAIN_SECONDS", "25"))
     try:
         await asyncio.wait_for(
-            asyncio.to_thread(lambda: _executor.shutdown(wait=True, cancel_futures=False)),
+            asyncio.to_thread(lambda: get_executor().shutdown(wait=True, cancel_futures=False)),
             timeout=_drain_seconds,
         )
     except asyncio.TimeoutError:
@@ -369,7 +396,7 @@ async def _lifespan(app_instance: FastAPI):
             "shutdown drain timeout after %.1fs; force-cancelling in-flight scans",
             _drain_seconds,
         )
-        _executor.shutdown(wait=False, cancel_futures=True)
+        get_executor().shutdown(wait=False, cancel_futures=True)
     # Close Postgres connection pool if active
     try:
         if os.environ.get("AGENT_BOM_POSTGRES_URL"):
@@ -492,9 +519,10 @@ def configure_api(
 from agent_bom.api.pipeline import (  # noqa: E402
     PIPELINE_STEPS,  # noqa: F401 — re-exported for tests
     ScanPipeline,  # noqa: F401 — re-exported for tests
-    _executor,  # noqa: F401 — re-exported for tests
+    _executor,  # noqa: F401 — re-exported for tests (may be replaced on shutdown; use get_executor() for new submissions)
     _run_scan_sync,  # noqa: F401 — re-exported for backward compat
     _sync_scan_agents_to_fleet,  # noqa: F401 — re-exported for tests
+    get_executor,  # noqa: F401 — re-exported for tests
 )
 
 # ─── Route modules ────────────────────────────────────────────────────────
@@ -512,6 +540,7 @@ from agent_bom.api.routes.observability import router as _observability_router  
 from agent_bom.api.routes.proxy import router as _proxy_router  # noqa: E402
 from agent_bom.api.routes.scan import router as _scan_router  # noqa: E402
 from agent_bom.api.routes.schedules import router as _schedules_router  # noqa: E402
+from agent_bom.api.routes.sources import router as _sources_router  # noqa: E402
 
 app.include_router(_assets_router)
 app.include_router(_compliance_router)
@@ -527,6 +556,7 @@ app.include_router(_observability_router)
 app.include_router(_proxy_router)
 app.include_router(_scan_router)
 app.include_router(_schedules_router)
+app.include_router(_sources_router)
 
 # Re-export proxy push functions for backward compatibility
 # Re-export connectors helpers for backward compatibility

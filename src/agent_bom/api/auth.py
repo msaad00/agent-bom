@@ -245,7 +245,12 @@ def get_key_store() -> KeyStoreProtocol:
     if _key_store is None:
         with _store_lock:
             if _key_store is None:
-                _key_store = KeyStore()
+                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                    from agent_bom.api.postgres_access import PostgresKeyStore
+
+                    _key_store = PostgresKeyStore()
+                else:
+                    _key_store = KeyStore()
     return _key_store
 
 

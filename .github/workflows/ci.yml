@@ -246,6 +246,21 @@ jobs:
           cd ui
           npm run test:e2e
 
+  helm-profiles:
+    name: Helm Profile Validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install Helm
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Render shipped Helm profiles
+        run: python3 scripts/validate_helm_profiles.py
+
   # 3. Tests
   test:
     name: Test (Python ${{ matrix.python-version }})

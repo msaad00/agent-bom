@@ -14,55 +14,27 @@ surfaces.
 
 ## Scope
 
-```mermaid
-flowchart LR
-    subgraph EndpointFleet["Endpoint fleet"]
-      Cursor["Cursor / Windsurf / Cline"]
-      Claude["Claude Desktop / Claude Code"]
-      VSCode["VS Code / Copilot / Continue / Roo / Amazon Q / Cortex Code"]
-      Scan["agent-bom agents --preset enterprise --introspect --push-url .../v1/fleet/sync"]
-      Cursor --> Scan
-      Claude --> Scan
-      VSCode --> Scan
-    end
+This pilot keeps the product surface narrow on purpose:
 
-    subgraph RuntimeFleet["Runtime fleet on EKS"]
-      Cron["Scanner CronJob"]
-      Sidecars["Selected MCP sidecars"]
-      Workloads["In-cluster MCP workloads"]
-      Workloads --> Cron
-      Workloads --> Sidecars
-    end
-
-    subgraph ControlPlane["Self-hosted control plane"]
-      API["FastAPI API"]
-      UI["Next.js UI"]
-      Gateway["Gateway policy UI/API"]
-      Audit["Audit + findings + fleet stores"]
-      API --> Gateway
-      API --> Audit
-      UI --> API
-    end
-
-    subgraph DataPlane["Persistence"]
-      PG["Postgres / Supabase"]
-      CH["ClickHouse (optional analytics)"]
-    end
-
-    Scan --> API
-    Cron --> API
-    Sidecars --> API
-    API --> PG
-    API --> CH
-```
+- employee endpoints push fleet and discovery state into the control plane
+- scheduled scan jobs cover cluster, package, image, and MCP discovery
+- selected MCP workloads get `agent-bom proxy` sidecars or local wrappers
+- the control plane hosts API, UI, findings, audit, and gateway policy
+- Postgres is required; ClickHouse stays optional
 
 ## Enterprise deployment topology
 
-Everything agent-bom ships runs inside one trust boundary — the customer's
-VPC, EKS account, or self-managed cluster. The only arrows that cross that
-boundary are OIDC (inbound, terminated at ingress) and policy-audited MCP
-upstream calls (outbound). Enrichment to OSV/NVD is optional and
-allow-listable.
+Use two diagrams, not one overloaded graph:
+
+- **deployment topology** for what the pilot installs in the customer's
+  environment
+- **runtime MCP flow** for how proxy, gateway, API, and upstream MCP traffic
+  interact
+
+Everything agent-bom ships runs inside one trust boundary: the customer's VPC,
+EKS account, or self-managed cluster. The normal cross-boundary paths are
+inbound OIDC and outbound, policy-audited MCP upstream calls. Enrichment to
+OSV/NVD is optional and allow-listable.
 
 | Layer | Lives in | Scales via | Talks to |
 |---|---|---|---|
@@ -73,114 +45,108 @@ allow-listable.
 | **Platform glue** | ExternalSecrets, ServiceMonitor, OTEL collector | Operator-managed | AWS Secrets Manager / Vault / Grafana |
 
 ```mermaid
-flowchart LR
-    subgraph outside["Outside customer-owned infrastructure"]
-      idp["Corporate IdP<br/>Okta · Entra · Google"]
-      ci["CI / scheduled jobs"]
-      remote["Approved remote MCPs"]
-      osv["OSV / NVD / GHSA<br/>optional enrichment"]
+flowchart TB
+    classDef ext  fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
+    classDef edge fill:#111827,stroke:#38bdf8,color:#e0f2fe
+    classDef ctrl fill:#0f172a,stroke:#6366f1,color:#e0e7ff
+    classDef run  fill:#0f172a,stroke:#10b981,color:#d1fae5
+    classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
+    classDef ops  fill:#0f172a,stroke:#64748b,color:#cbd5e1
+
+    Browser["Browser operators"]:::ext
+    IdP["Corporate IdP"]:::ext
+    CI["CI + scheduled scans"]:::ext
+    Remote["Remote MCPs"]:::ext
+    Intel["OSV / NVD / GHSA<br/>optional enrichment"]:::ext
+
+    subgraph Customer["Customer VPC / EKS / self-managed cluster"]
+      direction TB
+      Ingress["Ingress + TLS"]:::edge
+
+      subgraph Control["Control plane"]
+        direction LR
+        UI["UI<br/>same-origin browser app"]:::ctrl
+        API["API<br/>auth · findings · fleet · audit"]:::ctrl
+        Jobs["Workers<br/>CronJob / Job"]:::ctrl
+        Backup["Backup job"]:::ctrl
+      end
+
+      subgraph Runtime["Runtime MCP plane"]
+        direction LR
+        Proxy["Proxy<br/>sidecar or laptop wrapper"]:::run
+        Gateway["Gateway<br/>agent-bom gateway serve"]:::run
+      end
+
+      subgraph Data["Customer-owned data"]
+        direction LR
+        PG[("Postgres / Supabase")]:::data
+        CH[("ClickHouse optional")]:::data
+        S3[("S3 optional")]:::data
+      end
+
+      subgraph Platform["Platform services"]
+        direction LR
+        Secrets["ExternalSecrets / IRSA / Vault"]:::ops
+        Obs["OTEL + Prometheus"]:::ops
+      end
     end
 
-    subgraph customer["Customer VPC / cluster / account"]
-      ingress["Ingress + TLS + SSO"]
-
-      subgraph control["Agent-BOM control plane"]
-        ui["UI"]
-        api["API"]
-        jobs["Scan / ingest jobs"]
-        backup["Backup / scheduler"]
-      end
-
-      subgraph runtime["Runtime MCP plane"]
-        proxy["agent-bom proxy<br/>sidecar or local wrapper"]
-        gateway["agent-bom gateway"]
-      end
-
-      subgraph data["Customer-owned data stores"]
-        pg["Postgres"]
-        ch["ClickHouse<br/>optional analytics"]
-        s3["Object storage<br/>optional backups / archive"]
-      end
-
-      subgraph ops["Platform glue"]
-        secrets["Secrets manager"]
-        metrics["Telemetry / monitoring"]
-      end
-    end
-
-    idp -. OIDC .-> ingress
-    ingress --> ui
-    ingress --> api
-    ingress -. optional shared runtime URL .-> gateway
-    ci --> jobs
-    jobs --> api
-    proxy --> gateway
-    gateway --> api
-    gateway --> remote
-    api --> pg
-    api -. analytics .-> ch
-    backup --> s3
-    secrets --> api
-    secrets --> gateway
-    api --> metrics
-    gateway --> metrics
-    api -. enrichment .-> osv
+    Browser --> Ingress
+    IdP -. OIDC .-> Ingress
+    Ingress --> UI
+    UI -->|same-origin API calls| API
+    CI --> Jobs
+    Jobs -->|results + inventory| API
+    Proxy -->|audited relay| Gateway
+    Gateway -->|POST /v1/proxy/audit| API
+    Gateway -->|policy-audited upstream| Remote
+    API --> PG
+    API -. optional analytics .-> CH
+    Backup --> S3
+    Secrets --> API
+    Secrets --> Gateway
+    API --> Obs
+    Gateway --> Obs
+    API -. optional egress .-> Intel
 ```
 
-*Everything inside the customer boundary runs in the customer's account. The
-default cross-boundary paths are inbound OIDC and outbound, policy-audited MCP
-upstream calls.*
+*Deployment truth: the UI is not the collector. The browser drives workflows,
+the API owns control-plane state, workers do scans, and proxy plus gateway
+handle runtime MCP traffic. For the role split, see the [Self-Hosted Product
+Architecture](../architecture/self-hosted-product-architecture.md).*
 
-### Runtime MCP flow in customer infra
-
-```mermaid
-flowchart LR
-    dev["Developer client or MCP-enabled workload"]
-    proxy["Local / sidecar<br/>agent-bom proxy"]
-    gateway["In-cluster<br/>agent-bom gateway"]
-    api["Control-plane API"]
-    store["Postgres / audit store"]
-    remote["Approved remote MCP"]
-
-    dev -->|"MCP JSON-RPC"| proxy
-    proxy -->|"inspect + local policy"| gateway
-    gateway -->|"shared policy + relay"| remote
-    remote --> gateway
-    gateway -->|"response"| proxy
-    proxy -->|"safe response"| dev
-    gateway -->|"POST /v1/proxy/audit"| api
-    api --> store
-```
-
-1. Developer client speaks MCP JSON-RPC to the local `agent-bom proxy`.
-2. The proxy inspects and audits the call, enforces local policy, and relays
-   to the central `agent-bom gateway`.
-3. The gateway applies shared policy, records audit to `/v1/proxy/audit`, and
-   forwards to the remote MCP upstream.
-4. Responses come back on the same path; image responses can run through the
-   visual leak detector before they reach the developer.
-5. The control plane persists audit, findings, and graph state for the UI,
-   exports, and compliance surfaces.
-
-## Control flow
+### MCP proxy and gateway runtime flow
 
 ```mermaid
 sequenceDiagram
-    participant Admin as Security admin
-    participant UI as /gateway UI
-    participant API as Control-plane API
+    participant Client as Developer or workload client
     participant Proxy as agent-bom proxy
-    participant MCP as MCP server
+    participant Gateway as agent-bom gateway
+    participant API as Control-plane API
+    participant Remote as Remote MCP
+    participant Store as Postgres / audit store
 
-    Admin->>UI: Create / update policy
-    UI->>API: POST /v1/gateway/policies
-    API-->>UI: ETag + persisted policy
-    Proxy->>API: GET /v1/gateway/policies?enabled=true
-    API-->>Proxy: Cached policy bundle
-    Proxy->>MCP: Forward allowed JSON-RPC
-    Proxy-->>API: POST /v1/proxy/audit
-    API-->>UI: Fleet / findings / audit visible
+    Client->>Proxy: MCP JSON-RPC (stdio / SSE / HTTP)
+    Proxy->>Proxy: local policy + runtime checks
+    Proxy->>Gateway: audited relay
+    Gateway->>API: policy fetch / POST /v1/proxy/audit
+    Gateway->>Remote: upstream MCP call
+    Remote-->>Gateway: MCP response
+    Gateway-->>Proxy: response + shared policy result
+    Proxy->>Proxy: optional VLD / OCR redaction
+    Proxy-->>Client: safe response
+    API->>Store: persist audit, findings, graph links
 ```
+
+1. The client talks to a local or sidecar `agent-bom proxy`.
+2. The proxy applies local runtime checks and relays to the central
+   `agent-bom gateway`.
+3. The gateway evaluates shared policy, records audit to `/v1/proxy/audit`,
+   then calls the remote MCP upstream.
+4. The response returns on the same path; image responses can run through the
+   visual leak detector before the client sees them.
+5. The API persists audit, findings, and graph links for the UI, exports, and
+   compliance surfaces.
 
 ## What is in scope
 

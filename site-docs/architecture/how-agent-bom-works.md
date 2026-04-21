@@ -256,6 +256,7 @@ CLI, API/UI, MCP, proxy, and export surfaces.
 ## Related docs
 
 - [Architecture Overview](overview.md)
+- [Self-Hosted Product Architecture](self-hosted-product-architecture.md)
 - [Hosted Product Control-Plane Spec](hosted-product-spec.md)
 - [Data Ingestion and Security](data-ingestion-and-security.md)
 - [Canonical Model vs OCSF](canonical-vs-ocsf.md)

@@ -938,6 +938,48 @@ def test_schedule_store_list_due(mock_pool):
     assert isinstance(result, list)
 
 
+def test_source_store_init(mock_pool):
+    from agent_bom.api.postgres_store import PostgresSourceStore
+
+    store = PostgresSourceStore(pool=mock_pool)
+    assert store is not None
+
+
+def test_source_store_put_get_list_delete(mock_pool):
+    from agent_bom.api.models import SourceKind, SourceRecord
+    from agent_bom.api.postgres_store import PostgresSourceStore
+
+    store = PostgresSourceStore(pool=mock_pool)
+    source = SourceRecord(
+        source_id="source-1",
+        tenant_id="tenant-alpha",
+        display_name="AWS production",
+        kind=SourceKind.CONNECTOR_CLOUD_READ_ONLY,
+        connector_name="jira",
+        credential_mode="reference",
+        created_at="2026-04-20T00:00:00+00:00",
+        updated_at="2026-04-20T00:00:00+00:00",
+    )
+    store.put(source)
+
+    mock_pool._conn._store.setdefault("control_plane_sources", {})["source-1"] = (
+        "source-1",
+        1,
+        "tenant-alpha",
+        "2026-04-20T00:00:00+00:00",
+        source.model_dump_json(),
+    )
+
+    loaded = store.get("source-1")
+    assert loaded is not None
+    assert loaded.source_id == "source-1"
+
+    listed = store.list_all(tenant_id="tenant-alpha")
+    assert isinstance(listed, list)
+
+    assert store.delete("source-1") is True
+
+
 def test_tenant_context_is_applied_to_postgres_session(mock_pool):
     from agent_bom.api.postgres_store import PostgresFleetStore, reset_current_tenant, set_current_tenant
 
@@ -1083,3 +1125,13 @@ def test_server_lifespan_postgres_enterprise_stores():
     assert "PostgresExceptionStore" in source
     assert "PostgresAuditLog" in source
     assert "PostgresTrendStore" in source
+
+
+def test_server_lifespan_postgres_source_store():
+    """PostgresSourceStore is referenced in server lifespan."""
+    import inspect
+
+    from agent_bom.api import server
+
+    source = inspect.getsource(server._lifespan)
+    assert "PostgresSourceStore" in source

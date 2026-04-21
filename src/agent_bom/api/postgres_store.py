@@ -29,7 +29,7 @@ from agent_bom.api.postgres_common import (
     set_current_tenant,
 )
 from agent_bom.api.postgres_graph import PostgresGraphStore, PostgresScanCache
-from agent_bom.api.postgres_policy import PostgresPolicyStore, PostgresScheduleStore
+from agent_bom.api.postgres_policy import PostgresPolicyStore, PostgresScheduleStore, PostgresSourceStore  # noqa: F401
 
 _JOB_TTL_SECONDS = 3600
 

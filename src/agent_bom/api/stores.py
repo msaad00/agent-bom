@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from agent_bom.api.graph_store import GraphStoreProtocol
     from agent_bom.api.models import ScanJob
     from agent_bom.api.schedule_store import ScheduleStore
+    from agent_bom.api.source_store import SourceStore
 
 # ── Shared lock (protects lazy init of all stores) ───────────────────────────
 _store_lock = threading.Lock()
@@ -191,6 +192,23 @@ def set_schedule_store(store: ScheduleStore) -> None:
     """Switch the schedule store backend."""
     global _schedule_store
     _schedule_store = store
+
+
+# ─── Source store (pluggable) ───────────────────────────────────────────────
+_source_store: SourceStore | None = None
+
+
+def _get_source_store() -> SourceStore:
+    """Get the active source registry store. Must be initialized during lifespan."""
+    if _source_store is None:
+        raise RuntimeError("Source store not initialized")
+    return _source_store
+
+
+def set_source_store(store: SourceStore) -> None:
+    """Switch the source registry store backend."""
+    global _source_store
+    _source_store = store
 
 
 # ─── Exception store (enterprise) ───────────────────────────────────────────

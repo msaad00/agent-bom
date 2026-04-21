@@ -68,6 +68,9 @@ export interface ScanJob {
   job_id: string;
   status: JobStatus;
   created_at: string;
+  tenant_id?: string;
+  source_id?: string;
+  triggered_by?: string;
   started_at?: string;
   completed_at?: string;
   request: ScanRequest;
@@ -464,6 +467,107 @@ export interface AuthDebugResponse {
   span_id: string | null;
 }
 
+export interface ConnectorsResponse {
+  connectors: string[];
+}
+
+export interface ConnectorHealthResponse {
+  connector: string;
+  state: string;
+  message: string;
+  api_version: string | null;
+}
+
+export type SourceKind =
+  | "scan.repo"
+  | "scan.image"
+  | "scan.iac"
+  | "scan.cloud"
+  | "scan.mcp_config"
+  | "connector.cloud_read_only"
+  | "connector.registry"
+  | "connector.warehouse"
+  | "ingest.fleet_sync"
+  | "ingest.trace_push"
+  | "ingest.result_push"
+  | "ingest.artifact_import"
+  | "runtime.proxy"
+  | "runtime.gateway";
+
+export type SourceStatus = "configured" | "healthy" | "degraded" | "disabled";
+
+export interface SourceRecord {
+  source_id: string;
+  tenant_id: string;
+  display_name: string;
+  kind: SourceKind;
+  description: string;
+  owner: string;
+  connector_name: string | null;
+  credential_mode: string;
+  credential_ref: string | null;
+  enabled: boolean;
+  status: SourceStatus;
+  config: Record<string, unknown>;
+  last_tested_at: string | null;
+  last_test_status: string | null;
+  last_test_message: string | null;
+  last_run_at: string | null;
+  last_run_status: string | null;
+  last_job_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SourcesResponse {
+  sources: SourceRecord[];
+  count: number;
+}
+
+export interface SourceCreateRequest {
+  display_name: string;
+  kind: SourceKind;
+  description?: string;
+  owner?: string;
+  connector_name?: string | null;
+  credential_mode?: string;
+  credential_ref?: string | null;
+  enabled?: boolean;
+  config?: Record<string, unknown>;
+  tenant_id?: string;
+}
+
+export interface SourceUpdateRequest {
+  display_name?: string;
+  description?: string;
+  owner?: string;
+  connector_name?: string | null;
+  credential_mode?: string;
+  credential_ref?: string | null;
+  enabled?: boolean;
+  status?: SourceStatus;
+  config?: Record<string, unknown>;
+}
+
+export interface SourceCheckResponse {
+  source_id: string;
+  status: SourceStatus;
+  message: string;
+  tested_at: string;
+}
+
+export interface SourceRunResponse {
+  source_id: string;
+  job_id: string;
+  status: JobStatus;
+}
+
+export interface SourceJobsResponse {
+  source_id: string;
+  jobs: ScanJob[];
+  count: number;
+}
+
 export interface JobsResponse {
   jobs: JobListItem[];
   count: number;
@@ -693,6 +797,28 @@ export interface FleetSyncResult {
   synced: number;
   new: number;
   updated: number;
+}
+
+export interface ScanSchedule {
+  schedule_id: string;
+  name: string;
+  cron_expression: string;
+  scan_config: Record<string, unknown>;
+  enabled: boolean;
+  last_run: string | null;
+  next_run: string | null;
+  last_job_id: string | null;
+  created_at: string;
+  updated_at: string;
+  tenant_id: string;
+}
+
+export interface ScheduleCreateRequest {
+  name: string;
+  cron_expression: string;
+  scan_config?: Record<string, unknown>;
+  enabled?: boolean;
+  tenant_id?: string;
 }
 
 // ─── Gateway types ───────────────────────────────────────────────────────────
@@ -1021,6 +1147,23 @@ export const api = {
   updateFleetAgent: (agentId: string, update: Partial<FleetAgent>) =>
     put<unknown>(`/v1/fleet/${agentId}`, update),
   getFleetStats: () => get<FleetStatsResponse>("/v1/fleet/stats"),
+
+  // ── Connectors / sources ──
+  listConnectors: () => get<ConnectorsResponse>("/v1/connectors"),
+  getConnectorHealth: (name: string) => get<ConnectorHealthResponse>(`/v1/connectors/${encodeURIComponent(name)}/health`),
+  listSources: () => get<SourcesResponse>("/v1/sources"),
+  getSource: (sourceId: string) => get<SourceRecord>(`/v1/sources/${encodeURIComponent(sourceId)}`),
+  createSource: (body: SourceCreateRequest) => post<SourceRecord>("/v1/sources", body),
+  updateSource: (sourceId: string, body: SourceUpdateRequest) =>
+    put<SourceRecord>(`/v1/sources/${encodeURIComponent(sourceId)}`, body),
+  deleteSource: (sourceId: string) => del(`/v1/sources/${encodeURIComponent(sourceId)}`),
+  testSource: (sourceId: string) => post<SourceCheckResponse>(`/v1/sources/${encodeURIComponent(sourceId)}/test`, {}),
+  runSource: (sourceId: string) => post<SourceRunResponse>(`/v1/sources/${encodeURIComponent(sourceId)}/run`, {}),
+  listSourceJobs: (sourceId: string) => get<SourceJobsResponse>(`/v1/sources/${encodeURIComponent(sourceId)}/jobs`),
+  listSchedules: () => get<ScanSchedule[]>("/v1/schedules"),
+  createSchedule: (body: ScheduleCreateRequest) => post<ScanSchedule>("/v1/schedules", body),
+  toggleSchedule: (scheduleId: string) => put<ScanSchedule>(`/v1/schedules/${scheduleId}/toggle`, {}),
+  deleteSchedule: (scheduleId: string) => del(`/v1/schedules/${scheduleId}`),
 
   // ── Gateway ──
   listGatewayPolicies: () => get<GatewayPolicyResponse>("/v1/gateway/policies"),

@@ -27,7 +27,28 @@ from agent_bom.security import sanitize_error
 _logger = logging.getLogger(__name__)
 
 # ─── Shared executor ─────────────────────────────────────────────────────────
+# The scan pool is a module-level singleton so submit sites can reuse it across
+# requests, but graceful shutdown in the API lifespan calls `.shutdown()` — and
+# once that fires, the pool rejects further submissions with
+# ``RuntimeError: cannot schedule new futures after shutdown``. In long-lived
+# production processes the lifespan only fires at exit, so the effect is
+# invisible. In the test suite, any test that enters a ``TestClient`` context
+# manager exercises the full lifespan, leaves the global shut down, and breaks
+# every subsequent test that reaches the scan path. ``get_executor()`` restores
+# the pool on demand so shutdown becomes idempotent and recoverable rather than
+# terminal.
+_executor_lock = threading.Lock()
 _executor = ThreadPoolExecutor(max_workers=min(8, (os.cpu_count() or 4) + 2))
+
+
+def get_executor() -> ThreadPoolExecutor:
+    """Return the shared scan executor, recreating it if a prior lifespan shut it down."""
+    global _executor
+    with _executor_lock:
+        if _executor._shutdown:
+            _executor = ThreadPoolExecutor(max_workers=min(8, (os.cpu_count() or 4) + 2))
+        return _executor
+
 
 # ─── Constants ───────────────────────────────────────────────────────────────
 

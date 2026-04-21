@@ -453,6 +453,8 @@ curl -X POST https://agent-bom.example.com/v1/gateway/policies \
 Evaluated by the same code on every enforcement point:
 [`proxy_policy.py:check_policy`](../src/agent_bom/proxy_policy.py) (line 144).
 
+For the central gateway itself, tenant-scoped runtime throttling is now a separate deploy-time control from the policy bundle. Set `AGENT_BOM_GATEWAY_RATE_LIMIT_PER_TENANT_PER_MINUTE` (or `agent-bom gateway serve --runtime-rate-limit-per-tenant-per-minute <n>`) to bound relay volume per tenant, and pair it with Postgres-backed shared state in multi-replica deployments so limits are not multiplied by pod count.
+
 ### 6.6 Day-3 evidence for the auditor
 
 ```bash

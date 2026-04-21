@@ -11,7 +11,8 @@ Configuration via environment variables::
     AGENT_BOM_OIDC_AUDIENCE = "agent-bom"             # required when OIDC is enabled
     AGENT_BOM_OIDC_ROLE_CLAIM = "agent_bom_role"      # optional JWT claim for role
     AGENT_BOM_OIDC_TENANT_CLAIM = "tenant_id"         # optional JWT claim for tenant
-    AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM = "1"         # fail closed when claim absent
+    AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM = "1"         # optional override; strict is now the default
+    AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT = "1"         # explicit single-tenant compatibility mode
     AGENT_BOM_OIDC_REQUIRED_NONCE = "random-nonce"    # optional fail-closed nonce check
     AGENT_BOM_OIDC_REQUIRE_ROLE_CLAIM = "1"           # optional fail-closed role requirement
 
@@ -110,6 +111,13 @@ def _csv_env_list(value: str | None) -> tuple[str, ...]:
     if not value:
         return ()
     return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
+def _optional_env_bool(name: str) -> bool | None:
+    value = os.environ.get(name)
+    if value is None:
+        return None
+    return value.strip().lower() in {"1", "true", "yes"}
 
 
 # ── Discovery ──────────────────────────────────────────────────────────────────
@@ -416,20 +424,20 @@ class OIDCConfig:
         self.tenant_id = tenant_id or None
         self.tenant_providers = tenant_providers or {}
         self.allowed_jwks_uris = allowed_jwks_uris or _csv_env_list(os.environ.get("AGENT_BOM_OIDC_ALLOWED_JWKS_URIS"))
-        if require_tenant_claim is None:
-            require_tenant_claim = os.environ.get("AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM", "").strip().lower() in {
-                "1",
-                "true",
-                "yes",
-            }
-        self.require_tenant_claim = require_tenant_claim
+        require_tenant_claim_env = _optional_env_bool("AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM")
+        allow_default_tenant_env = _optional_env_bool("AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT")
         if allow_default_tenant is None:
-            allow_default_tenant = os.environ.get("AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT", "").strip().lower() in {
-                "1",
-                "true",
-                "yes",
-            }
+            allow_default_tenant = allow_default_tenant_env if allow_default_tenant_env is not None else False
         self.allow_default_tenant = allow_default_tenant
+        if require_tenant_claim is None:
+            if require_tenant_claim_env is not None:
+                require_tenant_claim = require_tenant_claim_env
+            else:
+                # Default to fail-closed tenant claim enforcement unless the
+                # operator explicitly opts into single-tenant compatibility
+                # mode via AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1.
+                require_tenant_claim = not self.allow_default_tenant
+        self.require_tenant_claim = require_tenant_claim
         if require_role_claim is None:
             require_role_claim = os.environ.get("AGENT_BOM_OIDC_REQUIRE_ROLE_CLAIM", "").strip().lower() in {
                 "1",

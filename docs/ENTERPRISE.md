@@ -21,7 +21,7 @@ It exists for a simple reason: the controls are real, but they should not requir
 |---|---|---|
 | API key auth + RBAC | API keys carry `admin` / `analyst` / `viewer` roles and are checked per route prefix | `src/agent_bom/api/auth.py`, `src/agent_bom/api/middleware.py` |
 | OIDC / SSO | Any standard OIDC provider can issue bearer tokens for API access | `src/agent_bom/api/oidc.py`, `src/agent_bom/api/middleware.py` |
-| Fail-closed tenant claims | If `AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM=1`, the token must carry the configured tenant claim | `src/agent_bom/api/oidc.py` |
+| Fail-closed tenant claims | Missing tenant claims now fail closed by default; `AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1` is the explicit single-tenant compatibility override | `src/agent_bom/api/oidc.py` |
 | Postgres tenant isolation | The authenticated tenant is pushed into the DB session as `app.tenant_id` before request handling | `src/agent_bom/api/middleware.py`, `src/agent_bom/api/postgres_store.py` |
 | PostgreSQL row-level security | Tenant-bearing tables have RLS policies keyed off the current tenant | `deploy/supabase/postgres/init.sql`, `src/agent_bom/api/postgres_store.py` |
 | API keys persisted in Postgres | Keys move from in-memory to transactional storage when `AGENT_BOM_POSTGRES_URL` is set | `src/agent_bom/api/server.py`, `src/agent_bom/api/postgres_store.py`, `src/agent_bom/api/auth.py` |
@@ -85,7 +85,8 @@ Implementation source: `src/agent_bom/api/middleware.py`
    - set `AGENT_BOM_OIDC_AUDIENCE`
    - map roles with `AGENT_BOM_OIDC_ROLE_CLAIM`
    - map tenants with `AGENT_BOM_OIDC_TENANT_CLAIM`
-   - fail closed with `AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM=1`
+   - missing tenant claims fail closed by default
+   - opt into single-tenant default mode only with `AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1`
    - optionally set `AGENT_BOM_OIDC_REQUIRED_NONCE` when your IdP flow includes a nonce claim
 
 Rate limiting also follows an explicit fail-closed contract for scaled control planes:

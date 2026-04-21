@@ -133,11 +133,11 @@ export AGENT_BOM_OIDC_ISSUER="https://idp.example.com"
 export AGENT_BOM_OIDC_AUDIENCE="agent-bom"
 export AGENT_BOM_OIDC_ROLE_CLAIM="agent_bom_role"
 export AGENT_BOM_OIDC_TENANT_CLAIM="tenant_id"      # or a custom claim like org_slug
-export AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM=1        # fail closed if the claim is absent
+# export AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1      # only for explicit single-tenant compatibility mode
 # export AGENT_BOM_OIDC_REQUIRED_NONCE="replace-me"  # optional when your IdP flow emits nonce
 ```
 
-That keeps API roles and tenant boundaries aligned with the upstream identity provider instead of silently falling back to a shared tenant when you expect strict isolation.
+That keeps API roles and tenant boundaries aligned with the upstream identity provider. Missing tenant claims now fail closed by default instead of silently falling back to a shared tenant; `AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1` is the explicit compatibility escape hatch for single-tenant deployments.
 
 For tenant-bound issuers, configure one issuer per tenant and do not also set `AGENT_BOM_OIDC_ISSUER`:
 

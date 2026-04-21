@@ -34,6 +34,99 @@ flowchart LR
     H[OIDC or SAML / API key auth] --> D
 ```
 
+## Enterprise deployment topology
+
+Everything agent-bom ships runs inside one trust boundary — the customer's
+VPC, EKS account, or self-managed cluster. The only arrows that cross that
+boundary are OIDC (inbound, terminated at ingress) and policy-audited MCP
+upstream calls (outbound). Enrichment to OSV/NVD is optional and
+allow-listable.
+
+| Layer | Lives in | Scales via | Talks to |
+|---|---|---|---|
+| **Ingress + auth** | ALB / Istio Gateway + OIDC | — | Corporate IdP (Okta / Entra / Google) |
+| **MCP traffic plane** | `gateway` + `proxy` Deployments | HPA + PDB | Remote MCPs, `/v1/proxy/audit` |
+| **Control plane** | `api`, `ui`, `jobs`, `backup` (Helm) | HPA + CronJob | Data plane, OTEL, Prometheus |
+| **Data plane** | Customer-owned Postgres (+ optional ClickHouse, S3) | Operator-managed | — |
+| **Platform glue** | ExternalSecrets, ServiceMonitor, OTEL collector | Operator-managed | AWS Secrets Manager / Vault / Grafana |
+
+```mermaid
+flowchart LR
+    subgraph outside["Outside customer trust boundary"]
+      dev["Developer laptop<br/>Claude Desktop · Cursor · Claude Code"]
+      gh["GitHub<br/>Actions runner"]
+      osv["OSV / NVD / GHSA<br/>optional egress, allow-listable"]
+      mcp_saas["Remote MCPs<br/>SaaS + partner tools"]
+      idp["Corporate IdP<br/>Okta · Entra · Google"]
+    end
+
+    subgraph vpc["Customer VPC / EKS account — single trust boundary"]
+      ingress["Ingress + TLS<br/>ALB / Istio Gateway"]
+
+      subgraph cp["Control plane — Helm chart: agent-bom"]
+        api["API + UI<br/>2× Deployment + HPA + PDB"]
+        gw["MCP gateway<br/>Deployment + HPA<br/>agent-bom gateway serve"]
+        px["MCP proxy sidecar<br/>stdio · SSE · HTTP<br/>sidecar or laptop wrapper"]
+        jobs["Scan + ingest workers<br/>CronJob + Job"]
+        backup["Backup CronJob<br/>pg_dump → S3"]
+      end
+
+      subgraph glue["Platform integration"]
+        es["ExternalSecrets<br/>AWS SM / Vault"]
+        otel["OTEL collector<br/>traces + metrics"]
+        prom["Prometheus<br/>ServiceMonitor"]
+      end
+
+      subgraph dataplane["Data plane in your account"]
+        pg["Postgres / Supabase<br/>jobs · fleet · graph · audit"]
+        ch["ClickHouse (optional)<br/>analytics + long-retention"]
+        s3["S3 (optional)<br/>backups + SBOM archive"]
+      end
+    end
+
+    idp -. OIDC .-> ingress
+    ingress --> api
+    ingress --> gw
+
+    dev -->|MCP JSON-RPC| px
+    px -->|audited relay| gw
+    gw -->|policy + audit| mcp_saas
+    gw -->|/v1/proxy/audit| api
+
+    gh -->|SARIF + findings| api
+
+    jobs --> api
+    api --> pg
+    api -. optional .-> ch
+    backup --> s3
+
+    api -. optional egress .-> osv
+
+    es --> api
+    es --> gw
+    api --> otel
+    gw --> otel
+    api --> prom
+    gw --> prom
+```
+
+*Everything in the boundary runs in your account. Only OIDC (inbound) and
+MCP upstream calls (outbound, policy-audited) cross it.*
+
+### How an MCP call actually flows
+
+1. Developer client (Claude Desktop / Cursor / Claude Code) speaks MCP
+   JSON-RPC to the local `agent-bom proxy` (stdio or SSE).
+2. The proxy inspects and audits the call, enforces policy, then relays to
+   the central `agent-bom gateway` inside your cluster.
+3. The gateway applies shared policy, records the audit event to
+   `/v1/proxy/audit`, and forwards to the remote MCP upstream.
+4. Responses flow back on the same path; screenshot/image responses run
+   through the `VisualLeakDetector` for OCR-based redaction before the
+   developer sees them.
+5. Every hop emits OTEL spans with a W3C trace context, so a single trace
+   ties developer → proxy → gateway → remote MCP → back.
+
 ## Same-origin default
 
 The UI runtime contract from `#1452` is what makes this honest.

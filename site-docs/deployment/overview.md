@@ -109,6 +109,70 @@ webhooks.
 | **API + UI** | you want one operator control plane | findings, graph, remediation, fleet review, audit, policy management | a hosted vendor control plane |
 | **MCP server** | you want `agent-bom` exposed as tools to assistants or remote clients | `agent-bom mcp server` tool surface | the same thing as the runtime proxy |
 
+## Hosted product checklist
+
+For the packaged product to feel end to end, the UI should drive the control
+plane instead of collecting data itself.
+
+| Operator action in UI | Backend/API owner | Data actually comes from |
+|---|---|---|
+| Create a scan job | `POST /v1/scan` | worker jobs that scan repos, images, IaC, MCP configs, or cloud targets |
+| Poll progress / stream status | `GET /v1/scan/{job_id}`, `GET /v1/scan/{job_id}/stream`, `GET /v1/jobs` | control-plane job state |
+| Export graph / licenses / VEX / reports | `GET /v1/scan/{job_id}/graph-export`, `/licenses`, `/vex`, `/skill-audit`; `GET /v1/compliance/{framework}/report` | normalized findings and graph state already stored in the control plane |
+| Schedule recurring collection | `POST /v1/schedules`, `GET /v1/schedules`, `PUT /v1/schedules/{id}/toggle`, `DELETE /v1/schedules/{id}` | scheduled worker execution |
+| Review fleet and endpoint inventory | `GET /v1/fleet`, `GET /v1/fleet/stats`, `GET /v1/fleet/{agent_id}` | endpoint or collector pushes to `POST /v1/fleet/sync` |
+| Review traces and pushed results | `POST /v1/traces`, `POST /v1/results/push`, `GET /v1/activity`, `GET /v1/governance` | OTLP, event collectors, or customer-owned push paths |
+| Manage runtime policy | `GET/POST/PUT/DELETE /v1/gateway/policies`, `POST /v1/gateway/evaluate` | proxy and gateway policy pull/evaluation |
+| Review runtime audit and health | `GET /v1/proxy/status`, `GET /v1/proxy/alerts`, `GET /v1/gateway/audit`, `GET /v1/gateway/stats` | `agent-bom proxy` and gateway audit push to `/v1/proxy/audit` |
+| Manage auth, keys, and audit export | `/v1/auth/*`, `/v1/audit*`, `/v1/exceptions*` | control-plane auth, RBAC, audit, and policy state |
+| Review graph, findings, posture, and compliance | `/v1/graph*`, `/v1/assets*`, `/v1/compliance*`, `/v1/posture*`, `/v1/governance*` | canonical entities, findings, events, and graph state in the control plane |
+
+That is the intended split:
+
+- `UI` = configure, trigger, schedule, review, export
+- `API / control plane` = auth, RBAC, tenant scope, orchestration, graph, persistence, audit, policy
+- `workers / connectors` = do the privileged read or collection work
+- `proxy / gateway` = enforce and audit runtime MCP traffic
+
+## Approved intake paths today
+
+“Approved” here means explicit, customer-controlled backend intake paths. The
+Node UI is not one of them.
+
+| Intake path | Code-backed today | How it enters `agent-bom` |
+|---|---|---|
+| Direct scan | yes | CLI, CI, or API-triggered worker job reads repos, lockfiles, images, IaC, MCP configs, and selected cloud targets |
+| Read-only integration | partial, source-dependent | backend connector or worker reads customer-approved cloud or warehouse APIs with customer-managed credentials |
+| Pushed ingest | yes | `POST /v1/fleet/sync`, `POST /v1/traces`, `POST /v1/results/push`, `POST /v1/proxy/audit` |
+| Imported artifact | yes | uploaded or provided SBOMs, inventories, and external scanner JSON are parsed by the backend |
+| Proxy enforcement | yes | `agent-bom proxy` sidecar or local wrapper inspects MCP traffic and pushes audit to the API |
+| Central gateway traffic plane | present, still maturing operationally | `agent-bom gateway serve` fronts remote MCP upstreams and pushes the same audit/policy signals back to the control plane |
+
+Covered source categories today:
+
+- repos, packages, and lockfiles
+- container images
+- IaC: Terraform, Kubernetes, Helm, CloudFormation, Dockerfile
+- agents, MCP servers, tools, skills, and instruction files
+- runtime traces and proxy/gateway audit events
+- fleet inventory pushed by endpoints or collectors
+- exported SBOMs and third-party scanner artifacts
+- selected cloud and AI infrastructure surfaces where the scanner or connector exists
+
+## What is live now vs still maturing
+
+The self-hosted control-plane pattern is live now. The rough edges are mostly
+operator polish, not the core trust boundary.
+
+| Area | Live now | Still maturing |
+|---|---|---|
+| API + UI control plane | findings, graph, remediation, fleet, audit, compliance, auth | source/connector UX should become more explicit in the UI |
+| Direct scans | repo, image, IaC, package, MCP, cloud-backed scan jobs | broader one-click source onboarding in the UI |
+| Pushed ingest | fleet sync, traces, proxy audit, pushed results | clearer product-level “data sources” management surface |
+| Proxy runtime path | sidecar and local wrapper deployment docs, metrics, audit, enforcement | more turnkey rollout guidance by workload type |
+| Gateway | central policy and audit are real; traffic-plane shape and docs exist | still more design/runbook than a single polished operator guide |
+| Hosted packaging | self-hosted API/UI and Helm control plane are real | release-path polish for every artifact path should stay under CI guard |
+
 ## Security and Data-Flow Boundaries
 
 The deployment model is intentionally split by trust boundary:

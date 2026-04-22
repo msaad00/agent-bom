@@ -48,6 +48,18 @@ scripts/deploy/install-eks-reference.sh \
   --enable-gateway
 ```
 
+If you want browser operators behind corporate SSO on day 1, add OIDC at install
+time:
+
+```bash
+scripts/deploy/install-eks-reference.sh \
+  --cluster-name corp-ai \
+  --region us-east-1 \
+  --hostname agent-bom.internal.example.com \
+  --oidc-issuer https://idp.example.com \
+  --oidc-audience agent-bom
+```
+
 ## What The Installer Owns
 
 The reference installer at `scripts/deploy/install-eks-reference.sh` is intentionally opinionated:
@@ -56,7 +68,7 @@ The reference installer at `scripts/deploy/install-eks-reference.sh` is intentio
 2. Applies the `agent-bom` AWS baseline Terraform module
 3. Creates the product secrets needed by the Helm release
 4. Installs the packaged Helm chart with production profile defaults
-5. Prints next-step commands for fleet onboarding and gateway rollout
+5. Prints next-step commands for fleet onboarding, gateway rollout, and post-deploy verification
 
 It does **not** try to replace a customer's full AWS platform stack. Keep these as platform-owned:
 
@@ -190,6 +202,11 @@ scripts/deploy/install-eks-reference.sh \
   --enable-gateway
 ```
 
+The installer now does two important safety checks before it mutates anything:
+
+- verifies the minimum supported `aws`, `kubectl`, `helm`, `eksctl`, and `terraform`/`tofu` versions
+- rejects OIDC installs without a stable `--hostname` same-origin entrypoint
+
 Under the hood this uses the baseline in `deploy/terraform/aws/baseline` to create:
 
 - RDS Postgres for the control plane
@@ -218,6 +235,32 @@ See also:
 
 - [Your Own AWS / EKS](own-infra-eks.md)
 - [Terraform AWS Baseline](terraform-aws-baseline.md)
+
+## Post-Deploy Verification
+
+After install, run the reference verification script before onboarding employees
+or shared upstream MCPs:
+
+```bash
+scripts/deploy/verify-eks-reference.sh \
+  --cluster-name corp-ai \
+  --region us-east-1 \
+  --namespace agent-bom \
+  --release agent-bom \
+  --base-url https://agent-bom.internal.example.com \
+  --api-key "$AGENT_BOM_API_KEY" \
+  --check-gateway
+```
+
+That check is intentionally narrow and release-focused:
+
+1. refresh kubeconfig for the target cluster
+2. confirm the Helm release exists
+3. wait for API and UI rollouts
+4. optionally verify the gateway rollout
+5. hit `/healthz`
+6. confirm the UI root is reachable
+7. verify `/v1/auth/debug` with the operator API key when provided
 - [Packaged API + UI Control Plane](control-plane-helm.md)
 
 ### 4. Endpoint and runtime onboarding

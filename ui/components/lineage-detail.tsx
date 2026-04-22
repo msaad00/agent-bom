@@ -322,6 +322,13 @@ export function LineageDetailPanel({
           </div>
         )}
 
+        {typeof data.attributes?.node_id === "string" && data.attributes.node_id && (
+          <div className="space-y-2">
+            <Label>Identifier</Label>
+            <CodeBlock label="Node ID" value={String(data.attributes.node_id)} />
+          </div>
+        )}
+
         {(data.neighborCount != null ||
           data.sourceCount != null ||
           data.incomingEdgeCount != null ||

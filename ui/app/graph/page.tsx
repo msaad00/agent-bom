@@ -651,6 +651,16 @@ export default function GraphPage() {
     graphData && graphData.pagination.limit > 0
       ? Math.max(1, Math.ceil(graphData.pagination.total / graphData.pagination.limit))
       : 1;
+  const relationshipScopeLabel =
+    filters.relationshipScope === "all"
+      ? "all relationships"
+      : `${filters.relationshipScope} relationships`;
+  const runtimeModeLabel =
+    filters.runtimeMode === "all"
+      ? "static + runtime"
+      : filters.runtimeMode === "static"
+        ? "static only"
+        : "runtime only";
 
   if (loadingSnapshots) {
     return (
@@ -840,6 +850,41 @@ export default function GraphPage() {
               refreshing graph
             </span>
           )}
+        </div>
+
+        {activeSnapshot && graphData && (
+          <div className="mt-4 grid gap-3 lg:grid-cols-4">
+            <SnapshotMetaCard
+              label="Snapshot"
+              value={`${activeSnapshot.scan_id.slice(0, 12)}…`}
+              detail={`Persisted ${new Date(activeSnapshot.created_at).toLocaleString()}`}
+            />
+            <SnapshotMetaCard
+              label="Topology"
+              value={`${activeSnapshot.node_count} nodes · ${activeSnapshot.edge_count} edges`}
+              detail={`${graphData.attack_paths.length} attack paths on this page`}
+            />
+            <SnapshotMetaCard
+              label="Scope"
+              value={filters.agentName ? filters.agentName : "all agents"}
+              detail={`${relationshipScopeLabel} · ${runtimeModeLabel}`}
+            />
+            <SnapshotMetaCard
+              label="Window"
+              value={graphData.pagination.total > 0 ? `${pageStart}-${pageEnd} of ${graphData.pagination.total}` : "empty"}
+              detail={`page ${pageNumber} of ${totalPages} · depth ${filters.maxDepth}`}
+            />
+          </div>
+        )}
+
+        <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 text-xs text-zinc-400">
+          <div className="font-medium text-zinc-200">How to read this graph</div>
+          <ul className="mt-2 space-y-1.5">
+            <li>Each snapshot is a persisted control-plane view of entities, edges, attack paths, and relationship counts at one capture time.</li>
+            <li>Node IDs are stable identifiers inside the graph model; the detail panel shows the node ID, first seen, last seen, sources, and edge counts.</li>
+            <li>Pagination changes the visible canvas, not the persisted snapshot itself. Narrow the scope when the graph gets large; page when you need broader coverage.</li>
+            <li>Focused view is for operator triage. Expanded view is for topology review. Attack-path cards are the fix-first shortlist, not the whole graph.</li>
+          </ul>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
@@ -1084,6 +1129,24 @@ function PathTagList({
           </span>
         ))}
       </div>
+    </div>
+  );
+}
+
+function SnapshotMetaCard({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+      <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</p>
+      <p className="mt-1 font-mono text-sm text-zinc-100">{value}</p>
+      <p className="mt-1 text-[11px] text-zinc-500">{detail}</p>
     </div>
   );
 }

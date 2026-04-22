@@ -7,9 +7,10 @@ import hashlib
 import hmac
 import json
 import logging
+import math
 import os
 import time
-from collections import Counter, defaultdict
+from collections import Counter, OrderedDict, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -516,25 +517,122 @@ def write_audit_record(log_file: "IO[str] | RotatingAuditLog", record: dict) -> 
 
 @dataclass
 class ReplayDetector:
-    """Detect replayed JSON-RPC messages by tracking payload hashes."""
+    """Detect replayed JSON-RPC messages with bounded probabilistic memory.
 
-    window_seconds: float = 300.0
+    Uses a rotating ring of Bloom filters so the replay window can be extended
+    materially without an unbounded in-memory hash map. This intentionally
+    trades a low false-positive rate for a fixed memory ceiling. Small
+    capacities stay on an exact bounded map to avoid pathological false
+    positives in tiny filters.
+    """
+
+    window_seconds: float = 86_400.0
     max_entries: int = 10_000
-    _seen: dict[str, float] = field(default_factory=dict)
+    false_positive_rate: float = 0.01
+    bucket_seconds: float | None = None
+    _bucket_count: int = field(init=False)
+    _bit_count: int = field(init=False)
+    _hash_count: int = field(init=False)
+    _bucket_bytes: int = field(init=False)
+    _buckets: list[bytearray] = field(init=False)
+    _current_bucket: int = field(default=0, init=False)
+    _current_bucket_started_at: float | None = field(default=None, init=False)
+    _exact_seen: OrderedDict[str, float] | None = field(default=None, init=False)
+
+    def __post_init__(self) -> None:
+        if self.max_entries <= 256:
+            self.bucket_seconds = None
+            self._bucket_count = 0
+            self._bit_count = 0
+            self._hash_count = 0
+            self._bucket_bytes = 0
+            self._buckets = []
+            self._exact_seen = OrderedDict()
+            return
+        effective_bucket_seconds = self.bucket_seconds
+        if effective_bucket_seconds is None:
+            if self.window_seconds <= 1.0:
+                effective_bucket_seconds = max(self.window_seconds, 0.001)
+            else:
+                effective_bucket_seconds = max(min(self.window_seconds / 24.0, 3600.0), 60.0)
+        self.bucket_seconds = max(effective_bucket_seconds, 0.001)
+        self._bucket_count = max(1, math.ceil(self.window_seconds / self.bucket_seconds))
+        entries_per_bucket = max(1, math.ceil(self.max_entries / self._bucket_count))
+        fp_rate = min(max(self.false_positive_rate, 1e-6), 0.5)
+        bit_count = math.ceil(-(entries_per_bucket * math.log(fp_rate)) / (math.log(2) ** 2))
+        self._bit_count = max(256, ((bit_count + 7) // 8) * 8)
+        self._bucket_bytes = self._bit_count // 8
+        self._hash_count = max(1, round((self._bit_count / entries_per_bucket) * math.log(2)))
+        self._buckets = [bytearray(self._bucket_bytes) for _ in range(self._bucket_count)]
+
+    @property
+    def memory_bytes(self) -> int:
+        if self._exact_seen is not None:
+            return self.max_entries * 72
+        return self._bucket_count * self._bucket_bytes
+
+    def _clear_bucket(self, index: int) -> None:
+        self._buckets[index] = bytearray(self._bucket_bytes)
+
+    def _advance(self, now: float) -> None:
+        bucket_seconds = self.bucket_seconds if self.bucket_seconds is not None else max(self.window_seconds, 0.001)
+        if self._current_bucket_started_at is None:
+            self._current_bucket_started_at = now
+            return
+        elapsed = now - self._current_bucket_started_at
+        if elapsed < bucket_seconds:
+            return
+        steps = int(elapsed // bucket_seconds)
+        if steps >= self._bucket_count:
+            for index in range(self._bucket_count):
+                self._clear_bucket(index)
+            self._current_bucket = 0
+        else:
+            for _ in range(steps):
+                self._current_bucket = (self._current_bucket + 1) % self._bucket_count
+                self._clear_bucket(self._current_bucket)
+        self._current_bucket_started_at = now - (elapsed % bucket_seconds)
+
+    @staticmethod
+    def _set_bit(bucket: bytearray, position: int) -> None:
+        bucket[position // 8] |= 1 << (position % 8)
+
+    @staticmethod
+    def _has_bit(bucket: bytearray, position: int) -> bool:
+        return bool(bucket[position // 8] & (1 << (position % 8)))
+
+    def _positions(self, payload_hash: str) -> list[int]:
+        digest = hashlib.sha256(payload_hash.encode("utf-8")).digest()
+        h1 = int.from_bytes(digest[:8], "big")
+        h2 = int.from_bytes(digest[8:16], "big") or 0x9E3779B185EBCA87
+        return [((h1 + i * h2) % self._bit_count) for i in range(self._hash_count)]
+
+    def _contains(self, positions: list[int]) -> bool:
+        return any(all(self._has_bit(bucket, position) for position in positions) for bucket in self._buckets)
+
+    def _insert(self, positions: list[int]) -> None:
+        bucket = self._buckets[self._current_bucket]
+        for position in positions:
+            self._set_bit(bucket, position)
 
     def check(self, msg: dict) -> bool:
-        h = compute_payload_hash(msg)
         now = time.monotonic()
-
-        if len(self._seen) >= self.max_entries:
-            self._seen = {k: v for k, v in self._seen.items() if (now - v) < self.window_seconds}
-            if len(self._seen) >= self.max_entries:
-                sorted_entries = sorted(self._seen.items(), key=lambda item: item[1])
-                keep_from = len(sorted_entries) // 2
-                self._seen = dict(sorted_entries[keep_from:])
-
-        if h in self._seen and (now - self._seen[h]) < self.window_seconds:
-            return True
-
-        self._seen[h] = now
-        return False
+        payload_hash = compute_payload_hash(msg)
+        if self._exact_seen is not None:
+            stale_before = now - self.window_seconds
+            while self._exact_seen:
+                oldest_hash, oldest_seen_at = next(iter(self._exact_seen.items()))
+                if oldest_seen_at >= stale_before:
+                    break
+                self._exact_seen.pop(oldest_hash)
+            seen = payload_hash in self._exact_seen
+            self._exact_seen[payload_hash] = now
+            self._exact_seen.move_to_end(payload_hash)
+            while len(self._exact_seen) > self.max_entries:
+                self._exact_seen.popitem(last=False)
+            return seen
+        self._advance(now)
+        positions = self._positions(payload_hash)
+        seen = self._contains(positions)
+        self._insert(positions)
+        return seen

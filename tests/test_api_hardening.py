@@ -242,6 +242,81 @@ def test_api_key_middleware_auth_key_list_requires_admin_role():
         set_key_store(original_store)
 
 
+def test_api_key_middleware_auth_key_rotate_requires_admin_role():
+    """Analyst API keys must not be able to rotate enterprise API keys."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    original_store = get_key_store()
+    store = KeyStore()
+    raw_key, analyst = create_api_key("analyst", Role.ANALYST, tenant_id="tenant-alpha")
+    store.add(analyst)
+    set_key_store(store)
+    try:
+        test_app = Starlette(routes=[Route("/v1/auth/keys/key-123/rotate", dummy, methods=["POST"])])
+        test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
+        client = TestClient(test_app)
+        resp = client.post("/v1/auth/keys/key-123/rotate", headers={"Authorization": f"Bearer {raw_key}"})
+        assert resp.status_code == 403
+        assert "requires admin role" in resp.json()["detail"]
+    finally:
+        set_key_store(original_store)
+
+
+def test_api_key_middleware_exception_approve_requires_admin_role():
+    """Analyst API keys must not be able to approve exceptions."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    original_store = get_key_store()
+    store = KeyStore()
+    raw_key, analyst = create_api_key("analyst", Role.ANALYST, tenant_id="tenant-alpha")
+    store.add(analyst)
+    set_key_store(store)
+    try:
+        test_app = Starlette(routes=[Route("/v1/exceptions/exc-1/approve", dummy, methods=["PUT"])])
+        test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
+        client = TestClient(test_app)
+        resp = client.put("/v1/exceptions/exc-1/approve", headers={"Authorization": f"Bearer {raw_key}"})
+        assert resp.status_code == 403
+        assert "requires admin role" in resp.json()["detail"]
+    finally:
+        set_key_store(original_store)
+
+
+def test_api_key_middleware_graph_preset_mutation_requires_analyst_role():
+    """Viewer API keys must not be able to create graph presets."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    original_store = get_key_store()
+    store = KeyStore()
+    raw_key, viewer = create_api_key("viewer", Role.VIEWER, tenant_id="tenant-alpha")
+    store.add(viewer)
+    set_key_store(store)
+    try:
+        test_app = Starlette(routes=[Route("/v1/graph/presets", dummy, methods=["POST"])])
+        test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
+        client = TestClient(test_app)
+        resp = client.post("/v1/graph/presets", headers={"Authorization": f"Bearer {raw_key}"})
+        assert resp.status_code == 403
+        assert "requires analyst role" in resp.json()["detail"]
+    finally:
+        set_key_store(original_store)
+
+
 def test_api_key_middleware_oidc_sets_tenant_from_custom_claim():
     """OIDC tenant scoping should honor AGENT_BOM_OIDC_TENANT_CLAIM semantics."""
     from starlette.applications import Starlette

@@ -333,6 +333,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("GET", "/v1/auth/policy", "admin"),
         ("GET", "/v1/auth/keys", "admin"),
         ("POST", "/v1/auth/keys", "admin"),
+        ("POST", "/v1/auth/keys/", "admin"),
         ("DELETE", "/v1/auth/keys/", "admin"),
         ("POST", "/v1/gateway/policies", "admin"),
         ("PUT", "/v1/gateway/policies/", "admin"),
@@ -360,7 +361,10 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("POST", "/v1/schedules", "analyst"),
         ("POST", "/v1/sources", "analyst"),
         ("POST", "/v1/sources/", "analyst"),
+        ("POST", "/v1/baseline/compare", "analyst"),
+        ("POST", "/v1/graph/presets", "analyst"),
         ("DELETE", "/v1/schedules/", "analyst"),
+        ("DELETE", "/v1/graph/presets/", "analyst"),
         ("PUT", "/v1/schedules/", "analyst"),
         ("PUT", "/v1/sources/", "analyst"),
     )

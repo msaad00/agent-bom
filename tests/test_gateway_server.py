@@ -357,6 +357,69 @@ def test_gateway_rate_limit_is_tenant_scoped(monkeypatch) -> None:
     assert other_tenant.status_code == 200
 
 
+def test_gateway_rate_limit_shared_store_holds_under_concurrency(monkeypatch) -> None:
+    class _FakeKeyStore:
+        def has_keys(self) -> bool:
+            return True
+
+        def verify(self, raw_key: str):
+            if raw_key == "tenant-alpha-key":
+                return SimpleNamespace(tenant_id="tenant-alpha")
+            return None
+
+    class _ConcurrentSharedStore:
+        def __init__(self) -> None:
+            self._lock = threading.Lock()
+            self._counts: dict[str, int] = {}
+            self._arrivals = 0
+            self._ready = threading.Event()
+
+        def hit(self, bucket: str, now: float) -> tuple[int, float]:
+            with self._lock:
+                self._arrivals += 1
+                if self._arrivals >= 2:
+                    self._ready.set()
+            self._ready.wait(timeout=0.5)
+            with self._lock:
+                count = self._counts.get(bucket, 0) + 1
+                self._counts[bucket] = count
+            return count, now + 60
+
+        @property
+        def counts(self) -> dict[str, int]:
+            with self._lock:
+                return dict(self._counts)
+
+    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+    shared_store = _ConcurrentSharedStore()
+    monkeypatch.setattr("agent_bom.gateway_server._build_gateway_rate_limit_store", lambda _settings: shared_store)
+
+    async def fake_caller(upstream, message, extra_headers):
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        upstream_caller=fake_caller,
+        runtime_rate_limit_per_tenant_per_minute=1,
+    )
+    with TestClient(create_gateway_app(settings)) as client:
+
+        def _post() -> int:
+            response = client.post(
+                "/mcp/filesystem",
+                headers={"X-API-Key": "tenant-alpha-key"},
+                json=_json_rpc("tools/call", name="read_file", arguments={"path": "/etc/hosts"}),
+            )
+            return response.status_code
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            statuses = list(executor.map(lambda _idx: _post(), range(2)))
+
+    assert sorted(statuses) == [200, 429]
+    assert shared_store.counts == {"gateway:tenant:tenant-alpha": 2}
+
+
 def test_gateway_rate_limit_can_require_shared_backend(monkeypatch) -> None:
     monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
     monkeypatch.setenv("AGENT_BOM_GATEWAY_REPLICAS", "2")

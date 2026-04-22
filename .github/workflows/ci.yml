@@ -261,6 +261,71 @@ jobs:
       - name: Render shipped Helm profiles
         run: python3 scripts/validate_helm_profiles.py
 
+  endpoint-packaging:
+    name: Endpoint Packaging (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: uv sync --extra dev
+
+      - name: Generate endpoint bundle
+        env:
+          BUNDLE_DIR: ${{ runner.temp }}/endpoint-bundle
+        run: |
+          uv run agent-bom proxy-bootstrap \
+            --bundle-dir "$BUNDLE_DIR" \
+            --control-plane-url https://agent-bom.internal.example.com \
+            --control-plane-token token-123 \
+            --push-url https://agent-bom.internal.example.com/v1/fleet/sync \
+            --push-api-key fleet-key
+        shell: bash
+
+      - name: Validate Homebrew formula renderer
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          VERSION=$(uv run python -c "from agent_bom import __version__; print(__version__)")
+          python scripts/render_homebrew_formula.py \
+            --version "$VERSION" \
+            --url "https://example.invalid/agent-bom-${VERSION}.tar.gz" \
+            --sha256 "$(python -c 'print(\"a\" * 64)')"
+
+      - name: Validate macOS pkg builder
+        if: matrix.os == 'macos-latest'
+        env:
+          BUNDLE_DIR: ${{ runner.temp }}/endpoint-bundle
+        run: |
+          VERSION=$(uv run python -c "from agent_bom import __version__; print(__version__)")
+          bash scripts/build-pkg.sh \
+            --bundle-dir "$BUNDLE_DIR" \
+            --output "$RUNNER_TEMP/agent-bom-endpoint.pkg" \
+            --version "$VERSION" \
+            --dry-run
+        shell: bash
+
+      - name: Validate Windows MSI builder
+        if: matrix.os == 'windows-latest'
+        env:
+          BUNDLE_DIR: ${{ runner.temp }}/endpoint-bundle
+        shell: pwsh
+        run: |
+          $version = uv run python -c "from agent_bom import __version__; print(__version__)"
+          ./scripts/build-msi.ps1 -BundleDir $env:BUNDLE_DIR -OutputPath (Join-Path $env:RUNNER_TEMP "agent-bom-endpoint.msi") -Version $version -DryRun
+
   # 3. Tests
   test:
     name: Test (Python ${{ matrix.python-version }})

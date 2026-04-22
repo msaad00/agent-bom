@@ -105,6 +105,54 @@ def render_fleet_sync_env(push_url: str, push_api_key: str | None) -> str:
     return "\n".join(lines) + "\n"
 
 
+def render_jamf_install_script(*, bundle_subdir: str = "agent-bom-endpoint") -> str:
+    """Render a Jamf-friendly shell installer wrapper."""
+    return f"""#!/bin/sh
+set -eu
+
+BUNDLE_ROOT="/Library/Application Support/{bundle_subdir}"
+mkdir -p "$BUNDLE_ROOT"
+cp "$(dirname "$0")/../install-agent-bom-endpoint.sh" "$BUNDLE_ROOT/install-agent-bom-endpoint.sh"
+chmod 755 "$BUNDLE_ROOT/install-agent-bom-endpoint.sh"
+"$BUNDLE_ROOT/install-agent-bom-endpoint.sh"
+"""
+
+
+def render_kandji_install_script(*, bundle_subdir: str = "agent-bom-endpoint") -> str:
+    """Render a Kandji custom-script wrapper."""
+    return f"""#!/bin/sh
+set -eu
+
+BUNDLE_ROOT="/Library/Application Support/{bundle_subdir}"
+mkdir -p "$BUNDLE_ROOT"
+cp "$(dirname "$0")/../install-agent-bom-endpoint.sh" "$BUNDLE_ROOT/install-agent-bom-endpoint.sh"
+chmod 755 "$BUNDLE_ROOT/install-agent-bom-endpoint.sh"
+su "${{CURRENT_USER:-$(stat -f %Su /dev/console)}}" -c "$BUNDLE_ROOT/install-agent-bom-endpoint.sh"
+"""
+
+
+def render_intune_install_script(*, bundle_subdir: str = "agent-bom-endpoint") -> str:
+    """Render an Intune remediation/install wrapper."""
+    return f"""$ErrorActionPreference = "Stop"
+
+$bundleRoot = Join-Path $env:ProgramData "{bundle_subdir}"
+New-Item -ItemType Directory -Force -Path $bundleRoot | Out-Null
+Copy-Item (Join-Path $PSScriptRoot "..\\install-agent-bom-endpoint.ps1") (Join-Path $bundleRoot "install-agent-bom-endpoint.ps1") -Force
+& (Join-Path $bundleRoot "install-agent-bom-endpoint.ps1")
+"""
+
+
+def render_intune_detect_script() -> str:
+    """Render a simple Intune detection script."""
+    return """$ErrorActionPreference = "Stop"
+
+if (Get-Command agent-bom -ErrorAction SilentlyContinue) {
+    exit 0
+}
+exit 1
+"""
+
+
 def render_launch_agent_plist(push_url: str, push_api_key: str | None) -> str:
     """Render a launchd plist with concrete fleet-sync values."""
     token_xml = (
@@ -185,6 +233,34 @@ def write_endpoint_onboarding_bundle(
         stat.S_IRUSR | stat.S_IWUSR,
     )
     artifacts["powershell_bootstrap"] = str(powershell_path)
+
+    jamf_path = _write_text(
+        bundle_dir / "jamf" / "install-agent-bom-endpoint.sh",
+        render_jamf_install_script(),
+        stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR,
+    )
+    artifacts["jamf_install"] = str(jamf_path)
+
+    kandji_path = _write_text(
+        bundle_dir / "kandji" / "install-agent-bom-endpoint.sh",
+        render_kandji_install_script(),
+        stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR,
+    )
+    artifacts["kandji_install"] = str(kandji_path)
+
+    intune_install_path = _write_text(
+        bundle_dir / "intune" / "install-agent-bom-endpoint.ps1",
+        render_intune_install_script(),
+        stat.S_IRUSR | stat.S_IWUSR,
+    )
+    artifacts["intune_install"] = str(intune_install_path)
+
+    intune_detect_path = _write_text(
+        bundle_dir / "intune" / "detect-agent-bom-endpoint.ps1",
+        render_intune_detect_script(),
+        stat.S_IRUSR | stat.S_IWUSR,
+    )
+    artifacts["intune_detect"] = str(intune_detect_path)
 
     if push_url:
         env_path = _write_text(

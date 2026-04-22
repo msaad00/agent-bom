@@ -4,8 +4,12 @@ from unittest.mock import patch
 
 from starlette.testclient import TestClient
 
+from agent_bom.api import stores as _stores
+from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState, InMemoryFleetStore
+from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.server import app
-from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package
+from agent_bom.api.store import InMemoryJobStore
+from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
 
 def _mock_agents():
@@ -15,6 +19,8 @@ def _mock_agents():
         command="npx",
         args=["-y", "test-server"],
         env={"API_KEY": "sk-test", "DEBUG": "1"},
+        transport=TransportType.SSE,
+        url="https://mcp.example.internal/sse",
         packages=[
             Package(name="express", version="4.18.2", ecosystem="npm"),
         ],
@@ -33,8 +39,59 @@ def _mock_agents():
     ]
 
 
+def _mock_fleet_store() -> InMemoryFleetStore:
+    store = InMemoryFleetStore()
+    store.put(
+        FleetAgent(
+            agent_id="fleet-1",
+            name="test-agent",
+            agent_type="claude_desktop",
+            config_path="/tmp/test-config.json",
+            lifecycle_state=FleetLifecycleState.APPROVED,
+            trust_score=87.5,
+            tenant_id="default",
+            last_discovery="2026-04-22T12:00:00Z",
+            last_scan="2026-04-22T12:05:00Z",
+            created_at="2026-04-22T12:00:00Z",
+            updated_at="2026-04-22T12:05:00Z",
+        )
+    )
+    return store
+
+
+def _mock_job_store() -> InMemoryJobStore:
+    store = InMemoryJobStore()
+    job = ScanJob(
+        job_id="job-1",
+        tenant_id="default",
+        status=JobStatus.DONE,
+        created_at="2026-04-22T11:58:00Z",
+        completed_at="2026-04-22T12:06:00Z",
+        request=ScanRequest(),
+    )
+    job.result = {
+        "scan_id": "scan-1",
+        "scan_sources": ["fleet_sync", "mcp_config"],
+        "agents": [
+            {
+                "name": "test-agent",
+                "servers": [
+                    {
+                        "name": "test-server",
+                        "url": "https://mcp.example.internal/sse",
+                        "transport": "sse",
+                    }
+                ],
+            }
+        ],
+    }
+    store.put(job)
+    return store
+
+
 @patch("agent_bom.discovery.discover_all", side_effect=_mock_agents)
-def test_agent_detail_found(_mock):
+@patch("agent_bom.api.routes.discovery._get_fleet_store", side_effect=_mock_fleet_store)
+def test_agent_detail_found(_fleet, _mock):
     """GET /v1/agents/{name} returns 200 with agent detail."""
     client = TestClient(app)
     resp = client.get("/v1/agents/test-agent")
@@ -46,6 +103,8 @@ def test_agent_detail_found(_mock):
     assert data["summary"]["total_credentials"] >= 1
     assert "blast_radius" in data
     assert "credentials" in data
+    assert data["fleet"]["lifecycle_state"] == "approved"
+    assert data["fleet"]["trust_score"] == 87.5
 
 
 @patch("agent_bom.discovery.discover_all", return_value=[])
@@ -94,6 +153,37 @@ def test_agent_detail_credential_detection(_mock):
     # API_KEY should be detected as credential, DEBUG should not
     assert "API_KEY" in data["credentials"]
     assert "DEBUG" not in data["credentials"]
+    server = data["agent"]["mcp_servers"][0]
+    assert server["command"] == "npx"
+    assert server["auth_mode"] == "env-credentials"
+
+
+@patch("agent_bom.discovery.discover_all", side_effect=_mock_agents)
+@patch("agent_bom.api.routes.discovery._get_fleet_store", side_effect=_mock_fleet_store)
+def test_agent_detail_exposes_server_provenance(_fleet, _mock):
+    prev_store = _stores._store
+    _stores._store = _mock_job_store()
+    try:
+        client = TestClient(app)
+        resp = client.get("/v1/agents/test-agent")
+        assert resp.status_code == 200
+        server = resp.json()["agent"]["mcp_servers"][0]
+        provenance = server["provenance"]
+        assert provenance["configured_locally"] is True
+        assert provenance["fleet_present"] is True
+        assert provenance["gateway_registered"] is True
+        assert provenance["runtime_observed"] is False
+        assert provenance["source_agents"] == ["test-agent"]
+        assert provenance["scan_sources"] == ["fleet_sync", "mcp_config"]
+        assert "local_discovery" in provenance["observed_via"]
+        assert "scan_result" in provenance["observed_via"]
+        assert "fleet_sync" in provenance["observed_via"]
+        assert "gateway_discovery" in provenance["observed_via"]
+        assert provenance["first_seen"] == "2026-04-22T11:58:00Z"
+        assert provenance["last_seen"] == "2026-04-22T12:00:00Z"
+        assert provenance["last_synced"] == "2026-04-22T12:05:00Z"
+    finally:
+        _stores._store = prev_store
 
 
 @patch("agent_bom.discovery.discover_all", side_effect=_mock_agents)

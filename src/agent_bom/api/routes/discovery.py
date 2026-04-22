@@ -10,11 +10,13 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import JobStatus
-from agent_bom.api.stores import _get_store
+from agent_bom.api.stores import _get_fleet_store, _get_store
 from agent_bom.security import sanitize_error
 
 router = APIRouter()
@@ -25,14 +27,165 @@ def _tenant_id(request: Request) -> str:
     return getattr(request.state, "tenant_id", "default")
 
 
+def _completed_jobs(tenant_id: str) -> list[Any]:
+    return [job for job in _get_store().list_all(tenant_id=tenant_id) if job.status == JobStatus.DONE and job.result]
+
+
+def _iter_report_servers(report: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    rows: list[tuple[str, dict[str, Any]]] = []
+    for agent in report.get("agents", []):
+        agent_name = str(agent.get("name") or agent.get("agent_name") or "").strip()
+        for server in agent.get("mcp_servers", []) or []:
+            if isinstance(server, dict):
+                rows.append((agent_name, server))
+        # Back-compat for older pushed reports and gateway discovery seed data.
+        for server in agent.get("servers", []) or []:
+            if isinstance(server, dict):
+                rows.append((agent_name, server))
+    return rows
+
+
+def _build_scan_history_index(tenant_id: str) -> dict[tuple[str, str], dict[str, Any]]:
+    index: dict[tuple[str, str], dict[str, Any]] = {}
+    for job in _completed_jobs(tenant_id):
+        report = job.result or {}
+        for report_agent_name, report_server in _iter_report_servers(report):
+            server_name = str(report_server.get("name") or "").strip()
+            if not report_agent_name or not server_name:
+                continue
+            key = (report_agent_name, server_name)
+            record = index.setdefault(
+                key,
+                {
+                    "scan_sources": set(),
+                    "first_seen": "",
+                    "last_seen": "",
+                },
+            )
+            for source in report.get("scan_sources", []) or []:
+                if source:
+                    record["scan_sources"].add(str(source))
+            created_at = str(job.created_at or "")
+            completed_at = str(job.completed_at or created_at)
+            if created_at and (not record["first_seen"] or created_at < record["first_seen"]):
+                record["first_seen"] = created_at
+            if completed_at and completed_at > record["last_seen"]:
+                record["last_seen"] = completed_at
+
+    return {
+        key: {
+            "present": True,
+            "scan_sources": sorted(value["scan_sources"]),
+            "first_seen": value["first_seen"] or None,
+            "last_seen": value["last_seen"] or None,
+        }
+        for key, value in index.items()
+    }
+
+
+def _build_gateway_index(tenant_id: str) -> dict[tuple[str, str], dict[str, Any]]:
+    index: dict[tuple[str, str], dict[str, Any]] = {}
+    for job in _completed_jobs(tenant_id):
+        for agent_name, report_server in _iter_report_servers(job.result or {}):
+            server_name = str(report_server.get("name") or "").strip()
+            server_url = str(report_server.get("url") or "").strip()
+            if not server_name or not server_url.startswith(("http://", "https://")):
+                continue
+            record = index.setdefault(
+                (server_name, server_url),
+                {
+                    "gateway_registered": True,
+                    "source_agents": set(),
+                },
+            )
+            if agent_name:
+                record["source_agents"].add(agent_name)
+    return {
+        key: {
+            "gateway_registered": value["gateway_registered"],
+            "source_agents": sorted(value["source_agents"]),
+        }
+        for key, value in index.items()
+    }
+
+
+def _serialize_agent(
+    agent,
+    *,
+    fleet_agent: dict[str, Any] | None = None,
+    scan_history_index: dict[tuple[str, str], dict[str, Any]] | None = None,
+    gateway_index: dict[tuple[str, str], dict[str, Any]] | None = None,
+) -> dict:
+    payload = asdict(agent)
+    payload["mcp_servers"] = []
+    for server in agent.mcp_servers:
+        server_payload = asdict(server)
+        credential_names = list(getattr(server, "credential_names", []) or [])
+        server_url = getattr(server, "url", None)
+        auth_mode = getattr(server, "auth_mode", None)
+        if auth_mode is None:
+            if credential_names:
+                auth_mode = "env-credentials"
+            elif server_url and "@" in server_url:
+                auth_mode = "url-embedded-credentials"
+            elif server_url:
+                auth_mode = "network-no-auth-observed"
+            else:
+                auth_mode = "local-stdio"
+        has_credentials = getattr(server, "has_credentials", None)
+        if has_credentials is None:
+            has_credentials = bool(credential_names)
+
+        server_payload["auth_mode"] = auth_mode
+        server_payload["has_credentials"] = has_credentials
+        server_payload["credential_env_vars"] = credential_names
+        server_payload.setdefault("args", list(getattr(server, "args", []) or []))
+        server_payload.setdefault("url", server_url)
+        server_payload.setdefault("config_path", getattr(server, "config_path", None))
+        server_payload.setdefault("security_warnings", list(getattr(server, "security_warnings", []) or []))
+        scan_history = (scan_history_index or {}).get(
+            (agent.name, server.name),
+            {"present": False, "scan_sources": [], "first_seen": None, "last_seen": None},
+        )
+        gateway_state = (gateway_index or {}).get(
+            (server.name, server_url or ""),
+            {"gateway_registered": False, "source_agents": []},
+        )
+        observed_via = ["local_discovery"]
+        observed_scopes = ["endpoint"]
+        if scan_history["present"]:
+            observed_via.append("scan_result")
+            observed_scopes.append("scan")
+        if fleet_agent is not None:
+            observed_via.append("fleet_sync")
+        if gateway_state["gateway_registered"]:
+            observed_via.append("gateway_discovery")
+            observed_scopes.append("gateway")
+        payload["mcp_servers"].append(server_payload)
+        server_payload["provenance"] = {
+            "observed_via": observed_via,
+            "observed_scopes": observed_scopes,
+            "scan_sources": scan_history["scan_sources"],
+            "source_agents": gateway_state["source_agents"],
+            "configured_locally": True,
+            "fleet_present": fleet_agent is not None,
+            "gateway_registered": gateway_state["gateway_registered"],
+            # Runtime correlation for per-server MCP objects is not yet wired through
+            # a canonical store. Keep this explicit instead of inferring from alert volume.
+            "runtime_observed": False,
+            "first_seen": scan_history["first_seen"],
+            "last_seen": fleet_agent.get("last_discovery") if fleet_agent else scan_history["last_seen"],
+            "last_synced": fleet_agent.get("updated_at") if fleet_agent else None,
+        }
+    return payload
+
+
 @router.get("/v1/agents", tags=["discovery"])
-async def list_agents() -> dict:
+async def list_agents(request: Request) -> dict:
     """Quick auto-discovery of local AI agent configs (Claude Desktop, Cursor, Windsurf...).
     No CVE scan — instant results for the UI sidebar.
     """
     try:
-        from dataclasses import asdict
-
         from agent_bom.discovery import discover_all
         from agent_bom.parsers import extract_packages
 
@@ -41,9 +194,19 @@ async def list_agents() -> dict:
             for server in agent.mcp_servers:
                 if not server.packages:
                     server.packages = extract_packages(server)
+        tenant_id = _tenant_id(request)
+        scan_history_index = _build_scan_history_index(tenant_id)
+        gateway_index = _build_gateway_index(tenant_id)
 
         return {
-            "agents": [asdict(a) for a in agents],
+            "agents": [
+                _serialize_agent(
+                    a,
+                    scan_history_index=scan_history_index,
+                    gateway_index=gateway_index,
+                )
+                for a in agents
+            ],
             "count": len(agents),
             "warnings": [],
         }
@@ -56,8 +219,6 @@ async def list_agents() -> dict:
 async def get_agent_detail(request: Request, agent_name: str) -> dict:
     """Get detailed view of a single agent with cross-referenced scan data."""
     try:
-        from dataclasses import asdict
-
         from agent_bom.discovery import discover_all
         from agent_bom.parsers import extract_packages
 
@@ -96,8 +257,22 @@ async def get_agent_detail(request: Request, agent_name: str) -> dict:
             if sev in severity_counts:
                 severity_counts[sev] += 1
 
+        fleet_agent = None
+        tenant_id = _tenant_id(request)
+        for candidate in _get_fleet_store().list_by_tenant(tenant_id):
+            if candidate.name == agent_name:
+                fleet_agent = candidate.model_dump()
+                break
+        scan_history_index = _build_scan_history_index(tenant_id)
+        gateway_index = _build_gateway_index(tenant_id)
+
         return {
-            "agent": asdict(agent),
+            "agent": _serialize_agent(
+                agent,
+                fleet_agent=fleet_agent,
+                scan_history_index=scan_history_index,
+                gateway_index=gateway_index,
+            ),
             "summary": {
                 "total_servers": len(agent.mcp_servers),
                 "total_packages": total_packages,
@@ -108,6 +283,7 @@ async def get_agent_detail(request: Request, agent_name: str) -> dict:
             },
             "blast_radius": agent_blast,
             "credentials": all_credentials,
+            "fleet": fleet_agent,
         }
     except HTTPException:
         raise
@@ -307,8 +483,6 @@ async def get_agent_mesh(request: Request) -> dict:
     as an interactive graph.
     """
     try:
-        from dataclasses import asdict
-
         from agent_bom.discovery import discover_all
         from agent_bom.output.agent_mesh import build_agent_mesh
         from agent_bom.parsers import extract_packages
@@ -319,7 +493,10 @@ async def get_agent_mesh(request: Request) -> dict:
                 if not server.packages:
                     server.packages = extract_packages(server)
 
-        agents_data = [asdict(a) for a in agents]
+        tenant_id = _tenant_id(request)
+        scan_history_index = _build_scan_history_index(tenant_id)
+        gateway_index = _build_gateway_index(tenant_id)
+        agents_data = [_serialize_agent(a, scan_history_index=scan_history_index, gateway_index=gateway_index) for a in agents]
 
         # Gather blast radius from completed scans for vuln overlay
         all_blast: list[dict] = []

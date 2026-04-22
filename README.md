@@ -52,15 +52,16 @@ The demo uses a curated sample so the output stays reproducible across releases.
 
 ## Pick your entrypoint
 
-| Goal | Run | What you get |
-|---|---|---|
-| Find what is installed and reachable | `agent-bom agents -p .` | Agent discovery, MCP mapping, project dependency findings, blast radius |
-| Turn findings into a fix plan | `agent-bom agents -p . --remediate remediation.md` | Prioritized remediation with fix versions and reachable impact |
-| Check a package before install | `agent-bom check flask@2.2.0 --ecosystem pypi` | Machine-readable pre-install verdict |
-| Scan a container image | `agent-bom image nginx:latest` | OS and package CVEs with fixability |
-| Audit IaC or cloud posture | `agent-bom iac Dockerfile k8s/ infra/main.tf` | Misconfigurations, manifest hardening, optional live cluster posture |
-| Review findings in a persistent graph | `agent-bom serve` | API plus bundled local UI on one machine; Kubernetes and Compose split the API image (`agentbom/agent-bom`) from the browser UI image (`agentbom/agent-bom-ui`) |
-| Inspect live MCP traffic | `agent-bom proxy "<server command>"` | Inline runtime inspection, detector chaining, response/argument review |
+| Goal | Run | Runs where | What it touches |
+|---|---|---|---|
+| Discover what is installed on this machine or repo | `agent-bom agents -p .` | local CLI, CI runner, or scan job | local agent configs, MCP servers, project manifests, lockfiles, blast radius |
+| Turn findings into a fix plan | `agent-bom agents -p . --remediate remediation.md` | same place as the scan | prioritized upgrades with reachable impact and remediation hints |
+| Check one package before install | `agent-bom check flask@2.2.0 --ecosystem pypi` | local CLI or CI gate | package metadata and vulnerability verdict only |
+| Scan a container image | `agent-bom image nginx:latest` | local CLI, CI runner, or scan job | image layers, OS packages, language packages, fixability |
+| Audit IaC or cloud posture | `agent-bom iac Dockerfile k8s/ infra/main.tf` | local CLI, CI runner, or scheduled job | Terraform, Kubernetes, Helm, Dockerfiles, optional live-cluster posture |
+| Run the control plane locally | `agent-bom serve` | one workstation or server | API + bundled local UI + persisted jobs/graph on the same machine |
+| Inspect live local MCP traffic | `agent-bom proxy "<server command>"` | next to the MCP client or workload | inline stdio/runtime inspection, policy evaluation, audit push |
+| Run a shared remote MCP traffic plane | `agent-bom gateway serve` | cluster or server | shared HTTP/SSE remote MCP traffic, tenant policy, audit, rate limits |
 
 ## Quick start
 
@@ -100,6 +101,9 @@ agent-bom agents -p . --compliance-export fedramp -o evidence.zip # tamper-evide
 pip install 'agent-bom[ui]' && agent-bom serve                    # API + bundled local UI
 ```
 
+<details>
+<summary><b>Product views</b> — dashboard, remediation, and graph surfaces</summary>
+
 ## Product views
 
 These come from the live product path, using the built-in demo data pushed through the API. See [`docs/CAPTURE.md`](docs/CAPTURE.md) for the canonical capture protocol.
@@ -127,6 +131,8 @@ Risk, reach, fix version, and framework context in one review table — operator
 Agent-centered shared-infrastructure graph — selected agents, their shared MCP servers, tools, packages, and findings.
 
 ![agent-bom agent mesh](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
+
+</details>
 
 <details>
 <summary><b>How a scan moves through the system</b> — five stages, no source code or credentials leave your machine</summary>
@@ -181,22 +187,19 @@ That is the adoption wedge behind the product:
 
 `proxy` and `gateway` are **peer runtime surfaces**, not a required serial chain.
 
-| Runtime surface | Best fit | What it is not |
-|---|---|---|
-| **`agent-bom proxy`** | local stdio MCPs, sidecars, workload-local enforcement | a mandatory dependency for inventory or the whole platform |
-| **`agent-bom gateway serve`** | shared remote MCP traffic over HTTP/SSE | a replacement for local proxy where stdio or sidecar enforcement is the right fit |
+| Surface | Deploy it when | Handles | Does not replace |
+|---|---|---|---|
+| **`agent-bom proxy`** | you need workload-local or endpoint-local MCP enforcement | stdio MCPs, sidecars, local audit, local policy decisions | inventory, fleet sync, or shared remote relay |
+| **`agent-bom gateway serve`** | you need a shared remote MCP plane | HTTP/SSE remote MCP traffic, tenant rate limits, shared policy, audit | local stdio enforcement or every runtime path |
 
-```mermaid
-flowchart LR
-    Client["Editors / workloads"] --> Inventory["Scan + fleet sync"]
-    Inventory --> API["API + UI + Postgres"]
-    Client --> Proxy["Optional proxy"]
-    Client --> Gateway["Optional gateway"]
-    Proxy --> API
-    Gateway --> API
-    Proxy --> Local["Local / sidecar MCPs"]
-    Gateway --> Remote["Remote MCPs"]
-```
+### How the product connects
+
+| Path | Starts from | Lands in | Why it exists |
+|---|---|---|---|
+| **Inventory path** | `agent-bom agents`, scan jobs, CI, fleet sync | API + UI + Postgres | discover what is installed, configured, risky, and reachable |
+| **Proxy path** | local editor, endpoint, or sidecar workload | local MCPs + control-plane audit/policy | inline runtime inspection close to the workload |
+| **Gateway path** | shared remote MCP clients | remote MCPs + control-plane audit/policy | central policy and shared remote MCP traffic |
+| **Control-plane path** | browser UI or API client | API + UI + Postgres | review findings, graph, remediation, audit, fleet, and policy |
 
 Deployment truth:
 
@@ -204,7 +207,7 @@ Deployment truth:
 - the **API owns state, auth, RBAC, graph, audit, and policy**
 - **workers do scans and ingest**
 - **fleet gives inventory without proxy**
-- **proxy and gateway add runtime depth later**
+- **proxy and gateway are core features deployed where they fit**
 
 ## What becomes visible before proxy rollout
 
@@ -244,6 +247,16 @@ Users should not think about that split directly:
 
 - **pilot**: one Compose file
 - **production**: one Helm chart
+
+## Local vs self-hosted
+
+| If you run... | It can scan or manage | It cannot directly reach |
+|---|---|---|
+| `agent-bom agents -p .` on your laptop | local repo, local MCP configs, local manifests, local endpoint context | cluster-only resources unless you pass credentials or run from that environment |
+| `agent-bom serve` on one machine | scans and UI workflows for paths that machine can access | another developer laptop's local files or cluster-internal services it cannot reach |
+| Helm / Compose control plane in your infra | scan jobs, fleet sync, graph, audit, remediation, API/UI workflows | endpoint-local stdio traffic unless proxy is deployed there |
+| `agent-bom proxy` on an endpoint or sidecar | that workload's live MCP traffic | shared remote MCP traffic that never passes through that proxy |
+| `agent-bom gateway serve` in cluster | shared remote MCP traffic routed through it | local stdio MCP sessions that stay on endpoints |
 
 ## Start here by scenario
 

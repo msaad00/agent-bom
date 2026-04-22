@@ -120,15 +120,35 @@ def _serialize_agent(
     payload["mcp_servers"] = []
     for server in agent.mcp_servers:
         server_payload = asdict(server)
-        server_payload["auth_mode"] = server.auth_mode
-        server_payload["has_credentials"] = server.has_credentials
-        server_payload["credential_env_vars"] = server.credential_names
+        credential_names = list(getattr(server, "credential_names", []) or [])
+        server_url = getattr(server, "url", None)
+        auth_mode = getattr(server, "auth_mode", None)
+        if auth_mode is None:
+            if credential_names:
+                auth_mode = "env-credentials"
+            elif server_url and "@" in server_url:
+                auth_mode = "url-embedded-credentials"
+            elif server_url:
+                auth_mode = "network-no-auth-observed"
+            else:
+                auth_mode = "local-stdio"
+        has_credentials = getattr(server, "has_credentials", None)
+        if has_credentials is None:
+            has_credentials = bool(credential_names)
+
+        server_payload["auth_mode"] = auth_mode
+        server_payload["has_credentials"] = has_credentials
+        server_payload["credential_env_vars"] = credential_names
+        server_payload.setdefault("args", list(getattr(server, "args", []) or []))
+        server_payload.setdefault("url", server_url)
+        server_payload.setdefault("config_path", getattr(server, "config_path", None))
+        server_payload.setdefault("security_warnings", list(getattr(server, "security_warnings", []) or []))
         scan_history = (scan_history_index or {}).get(
             (agent.name, server.name),
             {"present": False, "scan_sources": [], "first_seen": None, "last_seen": None},
         )
         gateway_state = (gateway_index or {}).get(
-            (server.name, server.url or ""),
+            (server.name, server_url or ""),
             {"gateway_registered": False, "source_agents": []},
         )
         observed_via = ["local_discovery"]

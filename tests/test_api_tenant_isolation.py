@@ -728,6 +728,11 @@ async def test_discovery_and_traces_are_tenant_scoped():
         with patch("agent_bom.parsers.extract_packages", return_value=[]):
             detail = await discovery_routes.get_agent_detail(req, "alpha")
             assert [item["vulnerability_id"] for item in detail["blast_radius"]] == ["CVE-alpha"]
+            server = detail["agent"]["mcp_servers"][0]
+            assert server["auth_mode"] == "local-stdio"
+            assert server["has_credentials"] is False
+            assert server["credential_env_vars"] == []
+            assert server["security_warnings"] == []
 
     def _parse(_body: dict) -> list:
         from agent_bom.otel_ingest import ToolCallTrace

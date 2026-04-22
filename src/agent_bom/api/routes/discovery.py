@@ -15,8 +15,9 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
+from agent_bom.api.mcp_observation_store import MCPObservation, merge_observations
 from agent_bom.api.models import JobStatus
-from agent_bom.api.stores import _get_fleet_store, _get_store
+from agent_bom.api.stores import _get_fleet_store, _get_mcp_observation_store, _get_store
 from agent_bom.security import sanitize_error
 
 router = APIRouter()
@@ -109,12 +110,24 @@ def _build_gateway_index(tenant_id: str) -> dict[tuple[str, str], dict[str, Any]
     }
 
 
+def _observation_ids(agent: Any, server: Any) -> tuple[str, str | None]:
+    current = f"{agent.name}:{getattr(server, 'stable_id', server.name)}"
+    legacy = None
+    command = getattr(server, "command", "") or ""
+    if command:
+        legacy = f"{agent.name}:{server.name}:{command}"
+        if legacy == current:
+            legacy = None
+    return current, legacy
+
+
 def _serialize_agent(
     agent,
     *,
     fleet_agent: dict[str, Any] | None = None,
     scan_history_index: dict[tuple[str, str], dict[str, Any]] | None = None,
     gateway_index: dict[tuple[str, str], dict[str, Any]] | None = None,
+    observation_index: dict[str, MCPObservation] | None = None,
 ) -> dict:
     payload = asdict(agent)
     payload["mcp_servers"] = []
@@ -143,6 +156,10 @@ def _serialize_agent(
         server_payload.setdefault("url", server_url)
         server_payload.setdefault("config_path", getattr(server, "config_path", None))
         server_payload.setdefault("security_warnings", list(getattr(server, "security_warnings", []) or []))
+        observation_id, legacy_observation_id = _observation_ids(agent, server)
+        stored_observation = (observation_index or {}).get(observation_id)
+        if stored_observation is None and legacy_observation_id:
+            stored_observation = (observation_index or {}).get(legacy_observation_id)
         scan_history = (scan_history_index or {}).get(
             (agent.name, server.name),
             {"present": False, "scan_sources": [], "first_seen": None, "last_seen": None},
@@ -161,23 +178,123 @@ def _serialize_agent(
         if gateway_state["gateway_registered"]:
             observed_via.append("gateway_discovery")
             observed_scopes.append("gateway")
+        if stored_observation is not None:
+            observed_via = sorted(set(stored_observation.observed_via) | set(observed_via))
+            observed_scopes = sorted(set(stored_observation.observed_scopes) | set(observed_scopes))
+            scan_sources = sorted(set(stored_observation.scan_sources) | set(scan_history["scan_sources"]))
+            source_agents = sorted(set(stored_observation.source_agents) | set(gateway_state["source_agents"]))
+            configured_locally = stored_observation.configured_locally
+            fleet_present = stored_observation.fleet_present or fleet_agent is not None
+            gateway_registered = stored_observation.gateway_registered or gateway_state["gateway_registered"]
+            runtime_observed = stored_observation.runtime_observed
+            first_seen = stored_observation.first_seen or scan_history["first_seen"]
+            last_seen = stored_observation.last_seen or (fleet_agent.get("last_discovery") if fleet_agent else scan_history["last_seen"])
+            last_synced = stored_observation.last_synced or (fleet_agent.get("updated_at") if fleet_agent else None)
+        else:
+            scan_sources = scan_history["scan_sources"]
+            source_agents = gateway_state["source_agents"]
+            configured_locally = True
+            fleet_present = fleet_agent is not None
+            gateway_registered = gateway_state["gateway_registered"]
+            runtime_observed = False
+            first_seen = scan_history["first_seen"]
+            last_seen = fleet_agent.get("last_discovery") if fleet_agent else scan_history["last_seen"]
+            last_synced = fleet_agent.get("updated_at") if fleet_agent else None
         payload["mcp_servers"].append(server_payload)
         server_payload["provenance"] = {
             "observed_via": observed_via,
             "observed_scopes": observed_scopes,
-            "scan_sources": scan_history["scan_sources"],
-            "source_agents": gateway_state["source_agents"],
-            "configured_locally": True,
-            "fleet_present": fleet_agent is not None,
-            "gateway_registered": gateway_state["gateway_registered"],
+            "scan_sources": scan_sources,
+            "source_agents": source_agents,
+            "configured_locally": configured_locally,
+            "fleet_present": fleet_present,
+            "gateway_registered": gateway_registered,
             # Runtime correlation for per-server MCP objects is not yet wired through
             # a canonical store. Keep this explicit instead of inferring from alert volume.
-            "runtime_observed": False,
-            "first_seen": scan_history["first_seen"],
-            "last_seen": fleet_agent.get("last_discovery") if fleet_agent else scan_history["last_seen"],
-            "last_synced": fleet_agent.get("updated_at") if fleet_agent else None,
+            "runtime_observed": runtime_observed,
+            "first_seen": first_seen,
+            "last_seen": last_seen,
+            "last_synced": last_synced,
         }
     return payload
+
+
+def _observation_index(tenant_id: str) -> dict[str, MCPObservation]:
+    return {row.observation_id: row for row in _get_mcp_observation_store().list_by_tenant(tenant_id)}
+
+
+def _persist_agent_observations(
+    tenant_id: str,
+    agent: Any,
+    *,
+    fleet_agent: dict[str, Any] | None,
+    scan_history_index: dict[tuple[str, str], dict[str, Any]],
+    gateway_index: dict[tuple[str, str], dict[str, Any]],
+) -> None:
+    store = _get_mcp_observation_store()
+    for server in agent.mcp_servers:
+        server_url = getattr(server, "url", None)
+        scan_history = scan_history_index.get(
+            (agent.name, server.name),
+            {"present": False, "scan_sources": [], "first_seen": None, "last_seen": None},
+        )
+        gateway_state = gateway_index.get(
+            (server.name, server_url or ""),
+            {"gateway_registered": False, "source_agents": []},
+        )
+        observed_via = ["local_discovery"]
+        observed_scopes = ["endpoint"]
+        if scan_history["present"]:
+            observed_via.append("scan_result")
+            observed_scopes.append("scan")
+        if fleet_agent is not None:
+            observed_via.append("fleet_sync")
+        if gateway_state["gateway_registered"]:
+            observed_via.append("gateway_discovery")
+            observed_scopes.append("gateway")
+        credential_names = list(getattr(server, "credential_names", []) or [])
+        auth_mode = getattr(server, "auth_mode", None)
+        if auth_mode is None:
+            if credential_names:
+                auth_mode = "env-credentials"
+            elif server_url and "@" in server_url:
+                auth_mode = "url-embedded-credentials"
+            elif server_url:
+                auth_mode = "network-no-auth-observed"
+            else:
+                auth_mode = "local-stdio"
+        observation_id, legacy_observation_id = _observation_ids(agent, server)
+        candidate = MCPObservation(
+            tenant_id=tenant_id,
+            observation_id=observation_id,
+            server_stable_id=getattr(server, "stable_id", server.name),
+            server_fingerprint=getattr(server, "fingerprint", ""),
+            server_name=server.name,
+            agent_name=agent.name,
+            transport=getattr(getattr(server, "transport", ""), "value", getattr(server, "transport", "")) or "",
+            url=server_url,
+            auth_mode=auth_mode,
+            command=getattr(server, "command", "") or "",
+            args=list(getattr(server, "args", []) or []),
+            config_path=getattr(server, "config_path", None),
+            credential_env_vars=credential_names,
+            security_warnings=list(getattr(server, "security_warnings", []) or []),
+            observed_via=observed_via,
+            observed_scopes=observed_scopes,
+            scan_sources=scan_history["scan_sources"],
+            source_agents=gateway_state["source_agents"],
+            configured_locally=True,
+            fleet_present=fleet_agent is not None,
+            gateway_registered=gateway_state["gateway_registered"],
+            runtime_observed=False,
+            first_seen=scan_history["first_seen"],
+            last_seen=fleet_agent.get("last_discovery") if fleet_agent else scan_history["last_seen"],
+            last_synced=fleet_agent.get("updated_at") if fleet_agent else None,
+        )
+        existing = store.get(tenant_id, observation_id)
+        if existing is None and legacy_observation_id:
+            existing = store.get(tenant_id, legacy_observation_id)
+        store.put(merge_observations(existing, candidate))
 
 
 @router.get("/v1/agents", tags=["discovery"])
@@ -197,13 +314,25 @@ async def list_agents(request: Request) -> dict:
         tenant_id = _tenant_id(request)
         scan_history_index = _build_scan_history_index(tenant_id)
         gateway_index = _build_gateway_index(tenant_id)
+        fleet_index = {item.name: item.model_dump() for item in _get_fleet_store().list_by_tenant(tenant_id)}
+        for agent in agents:
+            _persist_agent_observations(
+                tenant_id,
+                agent,
+                fleet_agent=fleet_index.get(agent.name),
+                scan_history_index=scan_history_index,
+                gateway_index=gateway_index,
+            )
+        observation_index = _observation_index(tenant_id)
 
         return {
             "agents": [
                 _serialize_agent(
                     a,
+                    fleet_agent=fleet_index.get(a.name),
                     scan_history_index=scan_history_index,
                     gateway_index=gateway_index,
+                    observation_index=observation_index,
                 )
                 for a in agents
             ],
@@ -265,6 +394,14 @@ async def get_agent_detail(request: Request, agent_name: str) -> dict:
                 break
         scan_history_index = _build_scan_history_index(tenant_id)
         gateway_index = _build_gateway_index(tenant_id)
+        _persist_agent_observations(
+            tenant_id,
+            agent,
+            fleet_agent=fleet_agent,
+            scan_history_index=scan_history_index,
+            gateway_index=gateway_index,
+        )
+        observation_index = _observation_index(tenant_id)
 
         return {
             "agent": _serialize_agent(
@@ -272,6 +409,7 @@ async def get_agent_detail(request: Request, agent_name: str) -> dict:
                 fleet_agent=fleet_agent,
                 scan_history_index=scan_history_index,
                 gateway_index=gateway_index,
+                observation_index=observation_index,
             ),
             "summary": {
                 "total_servers": len(agent.mcp_servers),
@@ -496,7 +634,26 @@ async def get_agent_mesh(request: Request) -> dict:
         tenant_id = _tenant_id(request)
         scan_history_index = _build_scan_history_index(tenant_id)
         gateway_index = _build_gateway_index(tenant_id)
-        agents_data = [_serialize_agent(a, scan_history_index=scan_history_index, gateway_index=gateway_index) for a in agents]
+        fleet_index = {item.name: item.model_dump() for item in _get_fleet_store().list_by_tenant(tenant_id)}
+        for agent in agents:
+            _persist_agent_observations(
+                tenant_id,
+                agent,
+                fleet_agent=fleet_index.get(agent.name),
+                scan_history_index=scan_history_index,
+                gateway_index=gateway_index,
+            )
+        observation_index = _observation_index(tenant_id)
+        agents_data = [
+            _serialize_agent(
+                a,
+                fleet_agent=fleet_index.get(a.name),
+                scan_history_index=scan_history_index,
+                gateway_index=gateway_index,
+                observation_index=observation_index,
+            )
+            for a in agents
+        ]
 
         # Gather blast radius from completed scans for vuln overlay
         all_blast: list[dict] = []

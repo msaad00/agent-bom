@@ -172,6 +172,9 @@ The same normalized model powers multiple purpose-built views.
 | Proxy / gateway | inspect and enforce runtime MCP traffic | runtime policy + audit path |
 | Analytics / warehouse | central event and trend analysis | ClickHouse or Snowflake |
 
+For the product-level contract that keeps those deployment surfaces aligned,
+see [Unified Platform Control Plane](unified-platform-control-plane.md).
+
 ## How the packaged app gets the data
 
 The packaged product is not “just the Node.js app.” The UI is a client of the

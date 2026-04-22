@@ -118,6 +118,7 @@ nav:
   - Architecture:
       - Overview: architecture/overview.md
       - How Agent-BOM Works: architecture/how-agent-bom-works.md
+      - Unified Platform Control Plane: architecture/unified-platform-control-plane.md
       - Self-Hosted Product Architecture: architecture/self-hosted-product-architecture.md
       - Hosted Product Control Plane: architecture/hosted-product-spec.md
       - AI Infrastructure Scanning: architecture/ai-infrastructure.md

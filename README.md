@@ -178,13 +178,13 @@ OSV/NVD is optional and allow-listable.
 | Layer | Lives in | Scales via | Talks to |
 |---|---|---|---|
 | **Ingress + auth** | ALB / Istio Gateway + OIDC | — | Corporate IdP (Okta / Entra / Google) |
-| **Runtime MCP plane** | `gateway` + selected `proxy` sidecars / local wrappers | HPA + PDB | Remote MCPs, `/v1/proxy/audit` |
+| **Runtime MCP plane** | optional `gateway` + selected `proxy` sidecars / local wrappers | HPA + PDB | Remote MCPs, local MCP workloads, `/v1/proxy/audit` |
 | **Control plane** | `api`, `ui`, `jobs`, `backup` (Helm) | HPA + CronJob | Data plane, OTEL, Prometheus |
 | **Data plane** | Customer-owned Postgres (+ optional ClickHouse, S3) | Operator-managed | — |
 | **Platform glue** | ExternalSecrets, ServiceMonitor, OTEL collector | Operator-managed | AWS Secrets Manager / Vault / Grafana |
 
 ```mermaid
-flowchart TB
+flowchart LR
     classDef ext  fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
     classDef edge fill:#111827,stroke:#38bdf8,color:#e0f2fe
     classDef ctrl fill:#0f172a,stroke:#6366f1,color:#e0e7ff
@@ -192,13 +192,19 @@ flowchart TB
     classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
     classDef ops  fill:#0f172a,stroke:#64748b,color:#cbd5e1
 
-    Browser["Browser operators"]:::ext
     IdP["Corporate IdP"]:::ext
-    CI["CI + scheduled scans"]:::ext
     Remote["Remote MCPs"]:::ext
     Intel["OSV / NVD / GHSA<br/>optional enrichment"]:::ext
 
-    subgraph Customer["Customer VPC / EKS / self-managed cluster"]
+    subgraph Endpoints["Customer endpoints and workloads"]
+      direction TB
+      Browser["Browser operators"]:::ext
+      Fleet["Developer endpoints / collectors"]:::ops
+      Proxy["Proxy<br/>local wrapper or sidecar"]:::run
+      LocalMCP["Selected local or in-cluster MCPs"]:::ops
+    end
+
+    subgraph Cluster["Customer VPC / EKS / self-managed cluster"]
       direction TB
       Ingress["Ingress + TLS"]:::edge
 
@@ -210,11 +216,7 @@ flowchart TB
         Backup["Backup job"]:::ctrl
       end
 
-      subgraph Runtime["Runtime MCP plane"]
-        direction LR
-        Proxy["Proxy<br/>sidecar or laptop wrapper"]:::run
-        Gateway["Gateway<br/>agent-bom gateway serve"]:::run
-      end
+      Gateway["Gateway<br/>optional shared MCP traffic plane"]:::run
 
       subgraph Data["Customer-owned data"]
         direction LR
@@ -231,14 +233,16 @@ flowchart TB
     end
 
     Browser --> Ingress
-    IdP -. OIDC .-> Ingress
+    IdP -. OIDC / SAML .-> Ingress
     Ingress --> UI
+    Ingress --> API
     UI -->|same-origin API calls| API
-    CI --> Jobs
     Jobs -->|results + inventory| API
-    Proxy -->|audited relay| Gateway
-    Gateway -->|POST /v1/proxy/audit| API
-    Gateway -->|policy-audited upstream| Remote
+    Fleet -->|fleet sync / pushed results| API
+    Proxy -->|policy pull + audit push| API
+    Proxy -->|inline runtime path| LocalMCP
+    Gateway -->|policy pull + audit push| API
+    Gateway -->|shared remote MCP traffic| Remote
     API --> PG
     API -. optional analytics .-> CH
     Backup --> S3
@@ -246,46 +250,54 @@ flowchart TB
     Secrets --> Gateway
     API --> Obs
     Gateway --> Obs
-    API -. optional egress .-> Intel
+    API -. optional enrichment .-> Intel
 ```
 
 *Deployment truth: the UI is not the collector. The browser drives workflows,
-the API owns control-plane state, workers do scans, and proxy plus gateway
-handle runtime MCP traffic. For the role split, see the [Self-Hosted Product
-Architecture](site-docs/architecture/self-hosted-product-architecture.md).*
+the API owns control-plane state, workers do scans, and proxy plus gateway are
+peer runtime surfaces, not a required serial chain. For the role split, see the
+[Self-Hosted Product Architecture](site-docs/architecture/self-hosted-product-architecture.md).*
 
 #### MCP proxy and gateway runtime flow
 
 ```mermaid
 sequenceDiagram
-    participant Client as Developer or workload client
+    participant Client as Editor or workload client
+    participant API as Control-plane API
     participant Proxy as agent-bom proxy
     participant Gateway as agent-bom gateway
-    participant API as Control-plane API
+    participant Local as Local / sidecar MCP
     participant Remote as Remote MCP
     participant Store as Postgres / audit store
 
-    Client->>Proxy: MCP JSON-RPC (stdio / SSE / HTTP)
-    Proxy->>Proxy: local policy + runtime checks
-    Proxy->>Gateway: audited relay
-    Gateway->>API: policy fetch / POST /v1/proxy/audit
-    Gateway->>Remote: upstream MCP call
-    Remote-->>Gateway: MCP response
-    Gateway-->>Proxy: response + shared policy result
-    Proxy->>Proxy: optional VLD / OCR redaction
-    Proxy-->>Client: safe response
+    par Local / sidecar enforcement path
+        Client->>Proxy: MCP request
+        Proxy->>API: policy pull / audit push
+        Proxy->>Local: direct MCP call
+        Local-->>Proxy: response
+        Proxy->>Proxy: detector chain + optional VLD
+        Proxy-->>Client: safe response
+    and Shared remote gateway path
+        Client->>Gateway: MCP request
+        Gateway->>API: policy pull / audit push
+        Gateway->>Remote: upstream MCP call
+        Remote-->>Gateway: response
+        Gateway->>Gateway: policy + rate limit + optional VLD
+        Gateway-->>Client: safe response
+    end
     API->>Store: persist audit, findings, graph links
 ```
 
-1. The client talks to a local or sidecar `agent-bom proxy`.
-2. The proxy applies local runtime checks and relays to the central
-   `agent-bom gateway`.
-3. The gateway evaluates shared policy, records audit to `/v1/proxy/audit`,
-   then calls the remote MCP upstream.
-4. The response returns on the same path; image responses can run through the
-   visual leak detector before the client sees them.
-5. The API persists audit, findings, and graph links for the UI, exports, and
-   compliance surfaces.
+1. Local stdio or workload-local MCPs use `agent-bom proxy` as the inline
+   runtime path.
+2. Shared remote MCPs can go directly to `agent-bom gateway serve` without a
+   local proxy hop.
+3. Both runtime surfaces pull policy from the control plane and push audit to
+   `/v1/proxy/audit`.
+4. Runtime detections, optional visual leak checks, and tenant-scoped limits
+   happen on the enforcement surface that handled the call.
+5. The API persists audit, findings, fleet/runtime evidence, and graph links
+   for the UI, exports, and compliance surfaces.
 
 #### Who owns what
 

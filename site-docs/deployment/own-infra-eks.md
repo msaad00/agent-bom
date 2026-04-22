@@ -256,6 +256,10 @@ That helper only removes product-owned `agent-bom` surfaces. It does not
 delete the EKS cluster, ingress controller, VPC, or other platform-owned
 infrastructure.
 
+When the chart is removed, packaged Helm pre/post-delete hooks also clean up
+product-owned in-cluster leftovers such as generated ExternalSecret target
+secrets, CronJobs, Jobs, and PVCs before Terraform destroys the AWS baseline.
+
 ## Recommended Topology
 
 Use two layers.

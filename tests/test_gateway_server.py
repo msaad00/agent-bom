@@ -22,6 +22,7 @@ from typing import Any
 
 from starlette.testclient import TestClient
 
+from agent_bom.api.tracing import parse_traceparent
 from agent_bom.gateway_server import GatewaySettings, create_gateway_app
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 
@@ -137,6 +138,74 @@ def test_relay_forwards_to_upstream_and_returns_response() -> None:
     assert resp.json()["result"]["content"][0]["text"] == "ok"
     assert upstream_calls[0]["name"] == "filesystem"
     assert upstream_calls[0]["url"] == "http://fs.local:8100"
+
+
+def test_relay_propagates_trace_context_to_headers_and_jsonrpc_meta() -> None:
+    upstream_calls: list[dict[str, Any]] = []
+
+    async def fake_caller(upstream, message, extra_headers):
+        upstream_calls.append({"message": message, "headers": dict(extra_headers)})
+        return {
+            "jsonrpc": "2.0",
+            "id": message["id"],
+            "result": {"content": [{"type": "text", "text": "ok"}]},
+        }
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        upstream_caller=fake_caller,
+    )
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post(
+        "/mcp/filesystem",
+        headers={
+            "traceparent": "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+            "tracestate": "vendor-a=foo",
+            "baggage": "tenant=acme",
+        },
+        json=_json_rpc("tools/call", name="read_file", arguments={"path": "/etc/hosts"}),
+    )
+
+    assert resp.status_code == 200
+    call = upstream_calls[0]
+    assert call["headers"]["traceparent"].startswith("00-0123456789abcdef0123456789abcdef-")
+    assert call["headers"]["traceparent"] != "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
+    assert call["headers"]["tracestate"] == "vendor-a=foo"
+    assert call["headers"]["baggage"] == "tenant=acme"
+    assert call["message"]["_meta"]["traceparent"] == call["headers"]["traceparent"]
+    assert call["message"]["_meta"]["tracestate"] == "vendor-a=foo"
+    assert call["message"]["_meta"]["baggage"] == "tenant=acme"
+    parsed = parse_traceparent(resp.headers["traceparent"])
+    assert parsed is not None
+    assert parsed["trace_id"] == "0123456789abcdef0123456789abcdef"
+    assert resp.headers["tracestate"] == "vendor-a=foo"
+    assert resp.headers["baggage"] == "tenant=acme"
+
+
+def test_relay_preserves_existing_jsonrpc_meta_fields_when_stitching_trace_context() -> None:
+    upstream_calls: list[dict[str, Any]] = []
+
+    async def fake_caller(upstream, message, extra_headers):
+        upstream_calls.append({"message": message, "headers": dict(extra_headers)})
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    settings = GatewaySettings(registry=_simple_registry(), policy={}, upstream_caller=fake_caller)
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post(
+        "/mcp/filesystem",
+        headers={"traceparent": "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"},
+        json={
+            **_json_rpc("tools/list"),
+            "_meta": {"client": "cursor", "traceparent": "old"},
+        },
+    )
+
+    assert resp.status_code == 200
+    meta = upstream_calls[0]["message"]["_meta"]
+    assert meta["client"] == "cursor"
+    assert meta["traceparent"].startswith("00-0123456789abcdef0123456789abcdef-")
+    assert meta["traceparent"] != "old"
 
 
 def test_relay_requires_gateway_token_when_configured() -> None:

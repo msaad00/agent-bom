@@ -1,8 +1,8 @@
 # Deployment Overview
 
 Use this page when the question is not "how do I install `agent-bom`?" but
-"what do I actually deploy in my own infrastructure, and what data path does it
-create?"
+"what should I deploy first, what does that give me, and when do I add runtime
+enforcement?"
 
 `agent-bom` is one product with two deployable images:
 
@@ -41,6 +41,35 @@ The published container split follows the same model:
   proxy-related entrypoints, and MCP server mode
 - `agentbom/agent-bom-ui` is only the standalone browser UI image used when the
   control plane runs the UI separately from the API
+
+## Adoption path
+
+The intended product path is:
+
+1. deploy the control plane
+2. turn on scans and fleet sync
+3. get MCP inventory, granted surface area, and findings
+4. add proxy or gateway only where runtime enforcement is worth the extra operational surface
+
+That is not a downgrade of runtime. It is a cleaner adoption model:
+
+- **inventory and discovery** should already be useful on day 1
+- **proxy and gateway** deepen that into live runtime control on day 2
+
+## Deployment modes
+
+| Mode | Deploy first | What it gives you |
+|---|---|---|
+| **Scan only** | CLI, CI, or scheduled scan jobs | packages, images, IaC, MCP config, findings, blast radius |
+| **Inventory-first** | API + UI + Postgres + scan jobs + fleet sync | endpoints, MCP servers, transports, declared tools, credential-backed servers, last sync |
+| **Runtime-upgrade** | inventory-first plus selected `proxy` or `gateway` | live MCP audit, inline policy enforcement, runtime rate limits, response inspection |
+
+## Runtime surfaces
+
+| Surface | Best fit | Not required for |
+|---|---|---|
+| **`agent-bom proxy`** | local stdio MCPs and workload-local sidecars | inventory, fleet, or findings review |
+| **`agent-bom gateway serve`** | shared remote MCP traffic over HTTP/SSE | local sidecar enforcement or basic MCP inventory |
 
 ## What You Can Offer In Customer-Controlled Infra
 
@@ -96,44 +125,13 @@ and cert-manager-backed webhook certificate renewal, see
 
 ```mermaid
 flowchart LR
-    subgraph Customer["Customer-controlled infrastructure"]
-      subgraph Sources["Scan and runtime surfaces"]
-        CI["CI / scheduled scan jobs"]
-        Endpoints["Developer laptops / workstations"]
-        Proxy["agent-bom proxy<br/>local wrapper or sidecar"]
-        LocalMCP["Selected local or in-cluster MCPs"]
-        Gateway["agent-bom gateway<br/>shared remote MCP traffic"]
-      end
-
-      subgraph Plane["agent-bom control plane"]
-        API["API + UI"]
-        Fleet["Fleet inventory"]
-        Policy["Gateway policy + audit"]
-        Findings["Findings / graph / remediation"]
-        PG["Postgres"]
-        CH["ClickHouse optional"]
-      end
-    end
-
-    subgraph Optional["Optional operator-enabled egress"]
-      Remote["Remote MCPs"]
-      Vuln["Vulnerability DB refresh"]
-      Enrich["Enrichment / package metadata / webhooks / SIEM"]
-    end
-
-    CI -->|scan output| Findings
-    Endpoints -->|fleet or results push| Fleet
-    Proxy -->|inline runtime path| LocalMCP
-    Proxy -->|policy pull + audit push| Policy
-    Gateway -->|policy pull + audit push| Policy
-    Gateway -->|shared remote MCP traffic| Remote
-    Findings --> API
-    Fleet --> API
-    Policy --> API
-    API --> PG
-    API --> CH
-    Findings -. optional .-> Vuln
-    API -. optional .-> Enrich
+    Scan["Scan jobs + CI"] --> API["API + UI + Postgres"]
+    Fleet["Fleet sync"] --> API
+    Proxy["Optional proxy"] --> API
+    Gateway["Optional gateway"] --> API
+    Proxy --> Local["Local / sidecar MCPs"]
+    Gateway --> Remote["Remote MCPs"]
+    API -. optional .-> Analytics["ClickHouse / SIEM / OTEL"]
 ```
 
 By default, the control plane, job results, fleet inventory, graph snapshots,

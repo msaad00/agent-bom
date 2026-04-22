@@ -43,6 +43,16 @@ In a normal self-hosted rollout:
 That means the product can feel end to end without making the browser do
 privileged collection work.
 
+## Adoption truth
+
+There are two valid starting points:
+
+- **inventory and discovery first** through scans, imports, and fleet sync
+- **runtime enforcement** through proxy or gateway where live MCP control is worth the operational overhead
+
+That does not make runtime secondary. It makes the product easier to adopt
+without pretending inventory depends on a full proxy rollout.
+
 ## Intake paths that are real today
 
 The backend can collect or accept data through these code-backed paths:

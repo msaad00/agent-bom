@@ -8,7 +8,7 @@ Use this path when you want one operator-controlled system for:
 - scheduled scans and discovery
 - endpoint fleet inventory
 - selected live MCP proxy enforcement
-- central gateway policy management
+- central gateway policy management and shared remote MCP traffic
 - API, UI, findings, graph, and remediation in your own infra
 
 The recommended rollout is:
@@ -46,7 +46,11 @@ a split between:
 
 - a **control plane** for auth, graph, findings, fleet, audit, and remediation
 - **inventory paths** for scans and fleet ingest
-- **runtime paths** for proxy and gateway, added only where needed
+- **runtime paths** for proxy and gateway, deployed selectively where they are needed
+
+Both `proxy` and `gateway` are core `agent-bom` product surfaces. The question
+is not whether they exist in the product; it is where you deploy them for your
+actual MCP traffic and operating model.
 
 ### Deployment topology
 
@@ -99,6 +103,15 @@ Architecture](../architecture/self-hosted-product-architecture.md).*
 | **Shared remote MCP control** | inventory-first plus `gateway` | local proxy where stdio or sidecar enforcement is still needed |
 | **Full self-hosted platform** | control plane + scans + fleet + selected proxy + selected gateway | ClickHouse, Snowflake, stricter platform controls |
 
+### What each profile makes visible
+
+| Profile | What operators can already see | What is added later |
+|---|---|---|
+| **Inventory-first** | endpoints, agents, MCP servers, transports, command or URL, declared tools, auth mode, credential-backed env vars, package and vuln context | live runtime calls, inline blocks, runtime policy events |
+| **Runtime on selected workloads** | everything in inventory-first plus local runtime evidence for the chosen workloads | shared remote relay and central gateway-only surfaces |
+| **Shared remote MCP control** | everything in inventory-first plus shared upstream inventory and gateway policy/audit | workload-local proxy evidence where stdio or sidecar inspection is required |
+| **Full self-hosted platform** | one correlated plane across scans, fleet, gateway, proxy, graph, findings, and audit | longer-retention analytics and stricter platform controls |
+
 ## Which Agent-BOM Surface Runs Where
 
 | Surface | Where it runs | Why you deploy it |
@@ -106,8 +119,8 @@ Architecture](../architecture/self-hosted-product-architecture.md).*
 | **API + UI** | in-cluster or on self-hosted compute behind your ingress | one operator plane for findings, graph, fleet, audit, gateway, and remediation |
 | **Scan** | CronJob, CI runner, or one-off job | Kubernetes, container, package, MCP, cloud, and inventory scanning |
 | **Fleet** | pushed into the control plane from endpoints or collectors | persisted workstation and collector inventory in `/fleet` |
-| **Proxy / runtime** | only next to the MCP workloads you want inline enforcement on | live JSON-RPC inspection, allow/warn/deny, audit push |
-| **Gateway** | central service in-cluster | store and manage policies, and optionally front shared remote MCP traffic |
+| **Proxy / runtime** | next to the MCP workloads you want inline enforcement on | live JSON-RPC inspection, allow/warn/deny, audit push |
+| **Gateway** | central service in-cluster | shared remote MCP traffic plane, policy distribution, audit, and rate limiting |
 | **MCP server** | wherever you expose `agent-bom` itself as a tool server | assistant-facing tool access, separate from the proxy path |
 
 The important boundary is that `agent-bom proxy` is the inline runtime path,

@@ -90,6 +90,10 @@ single onboarding bundle that can be:
 That gives you one operator story without pretending every workload needs the
 same runtime path.
 
+For the post-install maintenance path around proxy policy-signing key rotation
+and cert-manager-backed webhook certificate renewal, see
+[Runtime Operations](runtime-operations.md).
+
 ```mermaid
 flowchart LR
     subgraph Customer["Customer-controlled infrastructure"]

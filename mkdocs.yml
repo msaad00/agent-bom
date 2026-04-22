@@ -93,12 +93,15 @@ nav:
       - Overview: deployment/overview.md
       - Deployment Modes and Alignment: deployment/deployment-modes-and-alignment.md
       - AWS Company Rollout: deployment/aws-company-rollout.md
+      - Enterprise Auth and Tenancy: deployment/enterprise-auth-and-tenancy.md
       - Enterprise MCP / Endpoint Pilot: deployment/enterprise-pilot.md
       - Endpoint Fleet: deployment/endpoint-fleet.md
       - Focused EKS MCP Pilot: deployment/eks-mcp-pilot.md
       - Your Own AWS / EKS: deployment/own-infra-eks.md
       - Terraform AWS Baseline: deployment/terraform-aws-baseline.md
+      - Postgres Provisioning Workflow: deployment/postgres-provisioning.md
       - Packaged API + UI Control Plane: deployment/control-plane-helm.md
+      - Audit Chain vs Compliance Signing: deployment/audit-and-compliance-verification.md
       - Performance, Sizing, and Benchmarks: deployment/performance-and-sizing.md
       - Visual Leak Detection: deployment/visual-leak-detection.md
       - Worker and Scheduler Concurrency: deployment/worker-and-scheduler-concurrency.md

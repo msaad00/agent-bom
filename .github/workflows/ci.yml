@@ -374,7 +374,7 @@ jobs:
 
       - name: Install build deps (Alpine)
         run: |
-          apk add --no-cache gcc musl-dev libffi-dev openssl-dev git curl
+          apk add --no-cache bash gcc musl-dev libffi-dev openssl-dev git curl
 
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0

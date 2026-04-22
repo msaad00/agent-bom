@@ -55,6 +55,22 @@ backend and Helm values before running your own load tests.
 | Initial enterprise pilot | ~250-2,000 endpoints, scheduled endpoint sync, selected runtime sidecars, retained proxy audit | `Postgres`, packaged `HPA`, topology spread, internal ingress, add `ClickHouse` only if audit/query latency grows |
 | Broader rollout | 2,000+ endpoints or sustained high-volume proxy audit/event analytics | `Postgres` for transactional state plus `ClickHouse` for analytics, explicit retention policy, benchmark before rollout |
 
+## Practical switch points
+
+These are planning thresholds, not product-enforced limits.
+
+| Signal | Stay on Postgres only | Add ClickHouse |
+|---|---|---|
+| Endpoint count | up to ~2,000 endpoints | above ~2,000 endpoints with retained analytics needs |
+| Scan cadence | low to moderate scheduled scans/day | sustained high-volume scheduled scans across many tenants |
+| Runtime / proxy audit volume | recent operational visibility | long retention, heavy trend queries, event-style analytics |
+| Dashboard/query shape | mostly transactional reads | trend-heavy or fleet-wide historical analytics |
+
+The product intent is:
+
+- `Postgres` remains the transactional control-plane source of truth
+- `ClickHouse` is the scale-out answer for analytics-heavy workloads
+
 ## Control-plane sizing guidance
 
 Start from the packaged production example:
@@ -213,6 +229,25 @@ Run these in your own environment before broader rollout:
    retained analytics volume.
 5. Record your chosen replica floor, resource requests, and retention policy in
    your operator runbook.
+
+## Publish your own benchmark numbers
+
+`agent-bom` deliberately does not claim a universal scans/day SLA. Real
+throughput depends on:
+
+- scan shape
+- endpoint mix
+- retention window
+- whether analytics stays in Postgres or moves to ClickHouse
+
+What the project does ship is:
+
+- a benchmark harness
+- packaged HPA/PDB controls
+- explicit backend guidance
+
+That keeps the deployment story honest while still giving operators a concrete
+starting point.
 
 ## Current boundary
 

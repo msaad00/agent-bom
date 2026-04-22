@@ -27,6 +27,31 @@ This page documents what is wired today, not what might exist as a class on disk
 | Analytics / OLAP writes | No | No | Yes | No |
 | Snowflake governance discovery routes | No | No | No | Yes |
 
+## Route-level parity summary
+
+This is the operator-facing answer to: "which API surfaces are real on which
+backend?"
+
+| Route group | SQLite | Postgres / Supabase | ClickHouse | Snowflake |
+|---|---|---|---|---|
+| `/v1/scan*` job lifecycle | Yes | Yes | No | Yes |
+| `/v1/fleet*` | Yes | Yes | No | Yes |
+| `/v1/gateway/policies*` | Yes | Yes | No | Yes |
+| `/v1/audit*` primary trail | Yes | Yes | No | Partial; Snowflake policy audit exists, but it is not the full transactional audit replacement |
+| `/v1/auth/keys*` | No default API wiring | Yes | No | No |
+| `/v1/exceptions*` | No default API wiring | Yes | No | No |
+| `/v1/schedules*` | Yes | Yes | No | No |
+| `/v1/traces`, `/v1/proxy/audit`, `/v1/ocsf/ingest` analytics writes | No | No | Yes | No |
+| Snowflake governance/account discovery routes | No | No | No | Yes |
+
+The key distinction is:
+
+- transactional control-plane parity
+- analytics/event parity
+- warehouse-native discovery parity
+
+These are related, but not interchangeable.
+
 ## What This Means
 
 If you need the broadest control-plane coverage today, use `Postgres` or `Supabase`.
@@ -36,6 +61,10 @@ If you need local persistence, use `SQLite`.
 If you need high-volume analytics or time-series aggregation, add `ClickHouse`.
 
 If you need warehouse-native deployment or governance workflows in Snowflake, use `Snowflake` where the parity boundary is acceptable and explicit.
+
+If you need the widest route coverage with the fewest caveats, use
+`Postgres` / `Supabase` for the control plane and add `ClickHouse` only when
+analytics volume justifies it.
 
 ## Supported Deployment Modes
 
@@ -99,6 +128,16 @@ This mode is compatible with:
 | Team / enterprise API deployment | `Postgres` / `Supabase` |
 | Large analytics or trend workloads | `ClickHouse` alongside Postgres |
 | Snowflake-native governance and warehouse workflows | `Snowflake`, with explicit parity limits |
+
+## Recommended reading of this matrix
+
+Use it in this order:
+
+1. choose the backend that covers the routes you actually need
+2. treat `Postgres` as the default control-plane answer unless you have a
+   strong reason not to
+3. add `ClickHouse` when analytics scale justifies it
+4. use `Snowflake` where the documented parity boundary is acceptable
 
 ## Related Docs
 

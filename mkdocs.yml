@@ -104,6 +104,9 @@ nav:
       - Control-Plane Data Model and Store Parity: deployment/control-plane-data-model.md
       - Audit Chain vs Compliance Signing: deployment/audit-and-compliance-verification.md
       - Performance, Sizing, and Benchmarks: deployment/performance-and-sizing.md
+      - Visual Leak Detection: deployment/visual-leak-detection.md
+      - Worker and Scheduler Concurrency: deployment/worker-and-scheduler-concurrency.md
+      - Gateway Auto-Discovery: deployment/gateway-auto-discovery.md
       - Backend Parity: deployment/backend-parity.md
       - Snowflake-Native Backend: deployment/snowflake-backend.md
       - Docker: deployment/docker.md
@@ -124,6 +127,7 @@ nav:
       - MCP Tools: reference/mcp-tools.md
       - CLI Commands: reference/cli.md
       - CLI Debug Guide: reference/cli-debug.md
+      - Remediate Output Contract: reference/remediate-output.md
       - Configuration: reference/configuration.md
   - API Reference:
       - Models: api/models.md

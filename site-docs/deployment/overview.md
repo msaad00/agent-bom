@@ -258,6 +258,9 @@ YAML.
 - [Focused EKS MCP Pilot](eks-mcp-pilot.md)
 - [Packaged API + UI Control Plane](control-plane-helm.md)
 - [Performance, Sizing, and Benchmarks](performance-and-sizing.md)
+- [Visual Leak Detection](visual-leak-detection.md)
+- [Worker and Scheduler Concurrency](worker-and-scheduler-concurrency.md)
+- [Gateway Auto-Discovery From the Control Plane](gateway-auto-discovery.md)
 - [Backend Parity](backend-parity.md)
 
 ## Hosting and Storage Boundaries

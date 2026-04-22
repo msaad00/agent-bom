@@ -177,6 +177,12 @@ sequenceDiagram
 5. The API persists audit, findings, and graph links for the UI, exports, and
    compliance surfaces.
 
+For the runtime operator guides behind this flow, see:
+
+- [Visual Leak Detection](visual-leak-detection.md)
+- [Worker and Scheduler Concurrency](worker-and-scheduler-concurrency.md)
+- [Gateway Auto-Discovery From the Control Plane](gateway-auto-discovery.md)
+
 ## Same-origin default
 
 The UI runtime contract from `#1452` is what makes this honest.

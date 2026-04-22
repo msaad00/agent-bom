@@ -34,6 +34,10 @@ agent-bom teardown \
 That helper tears down the chart first and the product-owned Terraform baseline
 second, while leaving platform-owned cluster infrastructure alone.
 
+Chart removal now includes packaged Helm pre/post-delete hooks that clean up
+product-owned in-cluster leftovers such as generated ExternalSecret target
+secrets, CronJobs, Jobs, and PVCs before the Terraform baseline is destroyed.
+
 ## What the chart deploys
 
 When you set `controlPlane.enabled=true`, the Helm chart can package:

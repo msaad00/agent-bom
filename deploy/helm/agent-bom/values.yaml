@@ -140,6 +140,22 @@ gateway:
       cpu: 1
       memory: 1Gi
 
+teardownHooks:
+  enabled: true
+  deletePolicy: before-hook-creation,hook-succeeded
+  image:
+    repository: agentbom/agent-bom
+    # tag defaults to Chart.AppVersion
+    pullPolicy: IfNotPresent
+  extraTargetSecrets: []
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
 controlPlane:
   enabled: false
   serviceMesh:

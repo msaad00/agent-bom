@@ -1,0 +1,61 @@
+{{- if .Values.teardownHooks.enabled }}
+{{- $defaults := .Values.controlPlane.externalSecrets }}
+{{- $secrets := $defaults.secrets }}
+{{- if not $secrets }}
+{{- $secrets = list (dict "target" $defaults.target) }}
+{{- end }}
+{{- $targetSecretNames := list }}
+{{- range $secret := $secrets }}
+{{- $target := default (dict) (get $secret "target") }}
+{{- $targetSecretNames = append $targetSecretNames (default $defaults.target.name (get $target "name")) }}
+{{- end }}
+{{- $targetSecretNames = concat $targetSecretNames (.Values.teardownHooks.extraTargetSecrets | default list) }}
+{{- range $hook := list "pre-delete" "post-delete" }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "agent-bom.name" $ }}-{{ $hook }}-cleanup
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: teardown-hook
+  annotations:
+    helm.sh/hook: {{ $hook }}
+    helm.sh/hook-weight: "-1"
+    helm.sh/hook-delete-policy: {{ $.Values.teardownHooks.deletePolicy | quote }}
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        {{- include "agent-bom.labels" $ | nindent 8 }}
+        app.kubernetes.io/component: teardown-hook
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "agent-bom.name" $ }}-teardown-hook
+      securityContext:
+        {{- toYaml $.Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: cleanup
+          image: "{{ $.Values.teardownHooks.image.repository }}:{{ $.Values.teardownHooks.image.tag | default $.Chart.AppVersion }}"
+          imagePullPolicy: {{ $.Values.teardownHooks.image.pullPolicy }}
+          command:
+            - python
+            - -m
+            - agent_bom.deploy_k8s_cleanup
+            - --namespace
+            - {{ $.Release.Namespace }}
+            - --label-selector
+            - app.kubernetes.io/name={{ include "agent-bom.name" $ }},app.kubernetes.io/managed-by={{ $.Release.Service }}
+            {{- range $targetName := $targetSecretNames }}
+            - --target-secret
+            - {{ $targetName | quote }}
+            {{- end }}
+          securityContext:
+            {{- toYaml $.Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml $.Values.teardownHooks.resources | nindent 12 }}
+{{- end }}
+{{- end }}

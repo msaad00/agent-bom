@@ -248,6 +248,8 @@ def test_helm_templates_exist():
         "controlplane-ui-service.yaml",
         "gateway-hpa.yaml",
         "gateway-pdb.yaml",
+        "teardown-hook-rbac.yaml",
+        "teardown-hook-job.yaml",
         "serviceaccount.yaml",
         "rbac.yaml",
         "cronjob.yaml",
@@ -344,6 +346,16 @@ def test_helm_external_secrets_defaults():
     assert ext["secretStoreRef"]["kind"] == "ClusterSecretStore"
     assert ext["target"]["name"] == "agent-bom-control-plane"
     assert ext["secrets"] == []
+
+
+def test_helm_teardown_hooks_defaults():
+    """Teardown hooks should ship enabled with explicit runtime defaults."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    hooks = doc["teardownHooks"]
+    assert hooks["enabled"] is True
+    assert hooks["deletePolicy"] == "before-hook-creation,hook-succeeded"
+    assert hooks["image"]["repository"] == "agentbom/agent-bom"
+    assert hooks["extraTargetSecrets"] == []
 
 
 def test_helm_control_plane_observability_defaults():
@@ -538,6 +550,20 @@ def test_external_secret_template_supports_top_level_secret_store_defaults():
     assert 'get $secret "secretStoreRef"' in template
     assert 'default $defaults.secretStoreRef.kind (get $secretStoreRef "kind")' in template
     assert 'default $defaults.secretStoreRef.name (get $secretStoreRef "name")' in template
+
+
+def test_external_secret_template_labels_generated_target_secret():
+    """Generated target secrets should inherit chart labels for hook cleanup."""
+    template = (HELM_DIR / "templates" / "controlplane-externalsecret.yaml").read_text()
+    assert "template:" in template
+    assert "app.kubernetes.io/component: control-plane" in template
+
+
+def test_teardown_hook_template_uses_cleanup_module():
+    """Teardown hook jobs should call the packaged Python cleanup entrypoint."""
+    template = (HELM_DIR / "templates" / "teardown-hook-job.yaml").read_text()
+    assert "agent_bom.deploy_k8s_cleanup" in template
+    assert "helm.sh/hook: {{ $hook }}" in template
 
 
 def test_helm_single_node_sqlite_pilot_example_is_shipped():

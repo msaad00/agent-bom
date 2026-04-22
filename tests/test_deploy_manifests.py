@@ -209,6 +209,7 @@ def test_helm_values_yaml_keys():
         "runtimeImage",
         "scanner",
         "monitor",
+        "sidecarInjection",
         "controlPlane",
         "rbac",
         "serviceAccount",
@@ -248,6 +249,10 @@ def test_helm_templates_exist():
         "controlplane-ui-service.yaml",
         "gateway-hpa.yaml",
         "gateway-pdb.yaml",
+        "sidecar-injector-cert.yaml",
+        "sidecar-injector-deployment.yaml",
+        "sidecar-injector-service.yaml",
+        "sidecar-injector-webhook.yaml",
         "teardown-hook-rbac.yaml",
         "teardown-hook-job.yaml",
         "serviceaccount.yaml",
@@ -356,6 +361,17 @@ def test_helm_teardown_hooks_defaults():
     assert hooks["deletePolicy"] == "before-hook-creation,hook-succeeded"
     assert hooks["image"]["repository"] == "agentbom/agent-bom"
     assert hooks["extraTargetSecrets"] == []
+
+
+def test_helm_sidecar_injection_defaults():
+    """Sidecar injector ships as an opt-in chart surface with explicit selectors."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    injector = doc["sidecarInjection"]
+    assert injector["enabled"] is False
+    assert injector["replicas"] == 2
+    assert injector["selectors"]["namespaceLabelKey"] == "agent-bom.io/proxy-inject"
+    assert injector["selectors"]["podLabelKey"] == "agent-bom.io/proxy"
+    assert injector["certManager"]["enabled"] is True
 
 
 def test_helm_control_plane_observability_defaults():

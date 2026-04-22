@@ -1,0 +1,104 @@
+{{- if .Values.sidecarInjection.enabled }}
+{{- $name := include "agent-bom.sidecarInjectorName" . }}
+{{- $tlsSecretName := default (printf "%s-tls" $name) .Values.sidecarInjection.certManager.tlsSecretName }}
+{{- $apiUrl := .Values.sidecarInjection.controlPlane.apiUrl | default (printf "http://%s-api.%s.svc.cluster.local:%v" (include "agent-bom.name" .) .Release.Namespace .Values.controlPlane.api.port) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sidecar-injector
+spec:
+  replicas: {{ .Values.sidecarInjection.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+      app.kubernetes.io/component: sidecar-injector
+  template:
+    metadata:
+      labels:
+        {{- include "agent-bom.labels" . | nindent 8 }}
+        app.kubernetes.io/component: sidecar-injector
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: webhook
+          image: "{{ .Values.sidecarInjection.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.sidecarInjection.image.pullPolicy }}
+          args:
+            - sidecar-injector
+            - --host
+            - 0.0.0.0
+            - --port
+            - {{ .Values.sidecarInjection.service.targetPort | quote }}
+            - --tls-cert-file
+            - /tls/tls.crt
+            - --tls-key-file
+            - /tls/tls.key
+            - --proxy-image
+            - {{ printf "%s:%s" .Values.runtimeImage.repository .Values.runtimeImage.tag | quote }}
+            - --control-plane-url
+            - {{ $apiUrl | quote }}
+            - --control-plane-token-secret-name
+            - {{ .Values.sidecarInjection.controlPlane.tokenSecretName | quote }}
+            - --control-plane-token-secret-key
+            - {{ .Values.sidecarInjection.controlPlane.tokenSecretKey | quote }}
+            - --default-mcp-port
+            - {{ .Values.sidecarInjection.defaultMcpPort | quote }}
+            - --metrics-port
+            - {{ .Values.sidecarInjection.metricsPort | quote }}
+            - --policy-refresh-seconds
+            - {{ .Values.sidecarInjection.policyRefreshSeconds | quote }}
+            - --audit-push-interval
+            - {{ .Values.sidecarInjection.auditPushInterval | quote }}
+            - --tenant-label-key
+            - {{ .Values.sidecarInjection.selectors.tenantLabelKey | quote }}
+            {{- if .Values.sidecarInjection.detectCredentials }}
+            - --detect-credentials
+            {{- else }}
+            - --no-detect-credentials
+            {{- end }}
+            {{- if .Values.sidecarInjection.blockUndeclared }}
+            - --block-undeclared
+            {{- else }}
+            - --no-block-undeclared
+            {{- end }}
+            {{- if .Values.sidecarInjection.policyConfigMapName }}
+            - --policy-configmap-name
+            - {{ .Values.sidecarInjection.policyConfigMapName | quote }}
+            {{- end }}
+          ports:
+            - name: https
+              containerPort: {{ .Values.sidecarInjection.service.targetPort }}
+              protocol: TCP
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts:
+            - name: tls
+              mountPath: /tls
+              readOnly: true
+          resources:
+            {{- toYaml .Values.sidecarInjection.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              scheme: HTTPS
+              path: /healthz
+              port: https
+          readinessProbe:
+            httpGet:
+              scheme: HTTPS
+              path: /healthz
+              port: https
+      volumes:
+        - name: tls
+          secret:
+            secretName: {{ $tlsSecretName }}
+{{- end }}

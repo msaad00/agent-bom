@@ -266,9 +266,10 @@ main.add_command(doctor_cmd, "doctor")
 # ---------------------------------------------------------------------------
 # Deployment lifecycle command
 # ---------------------------------------------------------------------------
-from agent_bom.cli._deploy import teardown_cmd  # noqa: E402
+from agent_bom.cli._deploy import sidecar_injector_cmd, teardown_cmd  # noqa: E402
 
 main.add_command(teardown_cmd, "teardown")
+main.add_command(sidecar_injector_cmd, "sidecar-injector")
 
 # ---------------------------------------------------------------------------
 # Remediate command

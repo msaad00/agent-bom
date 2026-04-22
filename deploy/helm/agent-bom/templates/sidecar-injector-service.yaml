@@ -1,0 +1,21 @@
+{{- if .Values.sidecarInjection.enabled }}
+{{- $name := include "agent-bom.sidecarInjectorName" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sidecar-injector
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+    app.kubernetes.io/component: sidecar-injector
+  ports:
+    - name: https
+      port: {{ .Values.sidecarInjection.service.port }}
+      targetPort: https
+      protocol: TCP
+{{- end }}

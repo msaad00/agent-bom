@@ -15,6 +15,15 @@ Located in `deploy/k8s/`:
 
 Those static manifests are still the scanner/runtime path.
 
+The packaged Helm chart now also ships an optional mutating webhook for the
+HTTP/SSE sidecar path:
+
+- enable `sidecarInjection.enabled=true`
+- opt in an entire namespace with label `agent-bom.io/proxy-inject=enabled`
+- or opt in a single workload with pod label `agent-bom.io/proxy=true`
+- declare the local MCP target with annotation `agent-bom.io/mcp-url` or
+  `agent-bom.io/mcp-port`
+
 If you want the packaged API + dashboard control plane, use the Helm chart
 described below.
 
@@ -82,6 +91,7 @@ helm install agent-bom deploy/helm/agent-bom/ \
 | `controlPlane.enabled` | `false` | Package API + dashboard Deployments and Services |
 | `controlPlane.ingress.enabled` | `false` | Add same-origin ingress routing for UI + API |
 | `controlPlane.ui.env` | `NEXT_PUBLIC_API_URL=\"\"` | Blank by default so the browser uses same-origin paths |
+| `sidecarInjection.enabled` | `false` | Package the cert-manager-backed mutating webhook for proxy sidecar auto-injection |
 | `networkPolicy.restrictIngress` | `true` | Deny ingress by default; add explicit ingress policy rules for allowed callers |
 | `rbac.create` | `true` | Create RBAC resources |
 | `serviceAccount.annotations` | `{}` | Attach provider-specific identity such as AWS IRSA |

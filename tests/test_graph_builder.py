@@ -334,6 +334,61 @@ class TestIaCNodes:
         assert g.has_edge("misconfig:iac:K8S-007:deploy/k8s/api.yaml:27", "iac_target:kubernetes:deploy/k8s/api.yaml")
 
 
+class TestSkillAuditNodes:
+    def test_skill_audit_findings_become_misconfig_nodes_and_attach_to_inventory(self):
+        report = _minimal_report()
+        report["agents"][1]["mcp_servers"][0]["name"] = "mcp-git"
+        report["skill_audit"] = {
+            "findings": [
+                {
+                    "severity": "high",
+                    "category": "shell_access",
+                    "title": "Shell access in skill config",
+                    "detail": "Skill enables shell execution.",
+                    "source_file": "/home/user/.config/claude/config.json",
+                },
+                {
+                    "severity": "medium",
+                    "category": "unknown_package",
+                    "title": "Unknown skill package",
+                    "detail": "Package express was referenced by a skill.",
+                    "package": "express",
+                    "source_file": "/skills/demo.md",
+                },
+                {
+                    "severity": "medium",
+                    "category": "unverified_server",
+                    "title": "Unverified MCP server",
+                    "detail": "Server mcp-fs is not verified.",
+                    "server": "mcp-fs",
+                    "source_file": "/skills/demo.md",
+                },
+            ]
+        }
+
+        g = build_unified_graph_from_report(report)
+
+        misconfigs = g.nodes_by_type(EntityType.MISCONFIGURATION)
+        labels = {node.label for node in misconfigs}
+        assert "Shell access in skill config" in labels
+        assert "Unknown skill package" in labels
+        assert "Unverified MCP server" in labels
+
+        shell_node = g.nodes.get("misconfig:skill_audit:shell_access:1")
+        pkg_node = g.nodes.get("misconfig:skill_audit:unknown_package:2")
+        server_node = g.nodes.get("misconfig:skill_audit:unverified_server:3")
+        assert shell_node is not None
+        assert pkg_node is not None
+        assert server_node is not None
+        assert shell_node.data_sources == ["skill-audit"]
+        assert "skill_audit:shell_access" in shell_node.compliance_tags
+
+        assert g.has_edge("misconfig:skill_audit:shell_access:1", "agent:claude-desktop")
+        assert g.has_edge("misconfig:skill_audit:unknown_package:2", "pkg:express:npm:4.18.0")
+        assert g.has_edge("misconfig:skill_audit:unverified_server:3", "server:claude-desktop:mcp-fs")
+        assert not g.has_edge("misconfig:skill_audit:unverified_server:3", "server:cursor:mcp-git")
+
+
 class TestModelProvenance:
     def test_model_nodes_created(self):
         report = _minimal_report()

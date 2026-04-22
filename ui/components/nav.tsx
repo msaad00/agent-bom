@@ -7,6 +7,7 @@ import {
   Scan,
   Server,
   Bug,
+  MessageSquareQuote,
   Database,
   Activity,
   GitBranch,
@@ -440,6 +441,14 @@ export function Nav() {
       {/* Bottom section */}
       <div className={`border-t border-[color:var(--border-subtle)] ${collapsed ? "px-2 py-3" : "px-3 py-3"}`}>
         <div className="space-y-2">
+          <Link
+            href={`/help?from=${encodeURIComponent(path ?? "/")}`}
+            className={`flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[12px] text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)] ${collapsed ? "justify-center px-2" : ""}`}
+            title="Share feedback or report a bug"
+          >
+            <MessageSquareQuote className="h-4 w-4 shrink-0" />
+            {!collapsed && <span>Feedback &amp; Bug Report</span>}
+          </Link>
           <ThemeToggle compact={collapsed} />
           <ApiStatus collapsed={collapsed} />
         </div>

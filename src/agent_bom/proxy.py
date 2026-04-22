@@ -29,7 +29,15 @@ from typing import TYPE_CHECKING, Optional
 from agent_bom import proxy_audit as _proxy_audit
 from agent_bom import proxy_policy as _proxy_policy
 from agent_bom.agent_identity import check_identity
-from agent_bom.api.tracing import get_tracer, inject_current_trace_headers
+from agent_bom.api.tracing import (
+    build_traceparent,
+    get_tracer,
+    inject_current_trace_headers,
+    inject_trace_headers,
+    parse_baggage,
+    parse_traceparent,
+    parse_tracestate,
+)
 from agent_bom.async_stdin import create_async_stdin_reader, read_async_stdin_line
 from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_tool_call, scan_tool_response
 from agent_bom.security import validate_arguments, validate_command
@@ -169,8 +177,89 @@ def _control_plane_headers(token: str | None, etag: str | None = None) -> dict[s
     return inject_current_trace_headers(headers)
 
 
-def _proxy_request_headers(headers: dict[str, str] | None = None) -> dict[str, str]:
+def _proxy_request_headers(
+    headers: dict[str, str] | None = None,
+    *,
+    traceparent: str | None = None,
+    tracestate: str | None = None,
+    baggage: str | None = None,
+) -> dict[str, str]:
+    if traceparent or tracestate or baggage:
+        return inject_trace_headers(
+            headers,
+            traceparent=traceparent,
+            tracestate=tracestate,
+            baggage=baggage,
+        )
     return inject_current_trace_headers(headers)
+
+
+def _extract_jsonrpc_trace_meta(message: dict[str, object]) -> dict[str, str]:
+    """Return bounded W3C trace metadata carried in JSON-RPC `_meta`.
+
+    stdio JSON-RPC has no native header channel, so `_meta` is the least
+    surprising place to preserve trace context across proxy boundaries.
+    """
+    raw_meta = message.get("_meta")
+    if not isinstance(raw_meta, dict):
+        return {}
+    trace_meta: dict[str, str] = {}
+    traceparent = parse_traceparent(str(raw_meta.get("traceparent", "")).strip())
+    if traceparent:
+        trace_meta["traceparent"] = build_traceparent(
+            traceparent["trace_id"],
+            traceparent["parent_span_id"],
+            traceparent["trace_flags"],
+        )
+    tracestate = parse_tracestate(str(raw_meta.get("tracestate", "")).strip())
+    if tracestate:
+        trace_meta["tracestate"] = tracestate
+    baggage = parse_baggage(str(raw_meta.get("baggage", "")).strip())
+    if baggage:
+        trace_meta["baggage"] = baggage
+    return trace_meta
+
+
+def _inject_jsonrpc_trace_meta(
+    message: dict[str, object],
+    *,
+    traceparent: str | None = None,
+    tracestate: str | None = None,
+    baggage: str | None = None,
+) -> dict[str, object]:
+    """Return a JSON-RPC message with bounded W3C trace context in `_meta`."""
+    if not traceparent and not tracestate and not baggage:
+        return message
+    enriched = dict(message)
+    raw_meta = message.get("_meta")
+    meta = dict(raw_meta) if isinstance(raw_meta, dict) else {}
+    if traceparent:
+        meta["traceparent"] = traceparent
+    if tracestate:
+        meta["tracestate"] = tracestate
+    if baggage:
+        meta["baggage"] = baggage
+    enriched["_meta"] = meta
+    return enriched
+
+
+def _stitch_jsonrpc_trace_meta(
+    message: dict[str, object],
+    fallback_trace_meta: dict[str, str] | None,
+) -> dict[str, object]:
+    """Preserve response trace metadata or rehydrate it from the paired request."""
+    response_trace_meta = _extract_jsonrpc_trace_meta(message)
+    merged = {
+        "traceparent": response_trace_meta.get("traceparent") or (fallback_trace_meta or {}).get("traceparent"),
+        "tracestate": response_trace_meta.get("tracestate") or (fallback_trace_meta or {}).get("tracestate"),
+        "baggage": response_trace_meta.get("baggage") or (fallback_trace_meta or {}).get("baggage"),
+    }
+    return _inject_jsonrpc_trace_meta(
+        message,
+        traceparent=merged["traceparent"],
+        tracestate=merged["tracestate"],
+        baggage=merged["baggage"],
+    )
 
 
 def _gateway_policy_cache_path() -> Path:
@@ -479,6 +568,7 @@ async def _proxy_sse_server(
                     continue
 
                 tool_name = extract_tool_name(msg) or "unknown"
+                request_trace_meta = _extract_jsonrpc_trace_meta(msg)
                 arguments = extract_tool_arguments(msg)
                 msg_id = msg.get("id")
                 p_hash = compute_payload_hash(msg)
@@ -623,11 +713,21 @@ async def _proxy_sse_server(
                         if span is not None:
                             span.set_attribute("agent_bom.proxy.tool_name", tool_name)
                             span.set_attribute("agent_bom.proxy.call_counter", call_counter)
+                        forwarded_message = _inject_jsonrpc_trace_meta(
+                            msg,
+                            traceparent=request_trace_meta.get("traceparent"),
+                            tracestate=request_trace_meta.get("tracestate"),
+                            baggage=request_trace_meta.get("baggage"),
+                        )
                         resp = await client.post(
                             url.rstrip("/") + "/tools/call",
-                            json=msg,
+                            json=forwarded_message,
                             timeout=30,
-                            headers=_proxy_request_headers(),
+                            headers=_proxy_request_headers(
+                                traceparent=request_trace_meta.get("traceparent"),
+                                tracestate=request_trace_meta.get("tracestate"),
+                                baggage=request_trace_meta.get("baggage"),
+                            ),
                         )
                     resp.raise_for_status()
                     response_data = resp.json()
@@ -653,6 +753,7 @@ async def _proxy_sse_server(
                 ri_alerts = ResponseInspector().check(tool_name, resp_text)
                 _handle_alerts_sse(ri_alerts, log_file)
 
+                response_data = _stitch_jsonrpc_trace_meta(response_data, request_trace_meta)
                 sys.stdout.buffer.write((json.dumps(response_data) + "\n").encode())
                 sys.stdout.buffer.flush()
 
@@ -975,7 +1076,7 @@ async def run_proxy(
     declared_tools: set[str] = set()
     tools_list_request_ids: set[int | str] = set()
     # Track in-flight tool calls for latency measurement (with TTL cleanup)
-    pending_calls: dict[int | str, tuple[str, float]] = {}  # id → (tool_name, start_time)
+    pending_calls: dict[int | str, tuple[str, float, dict[str, str]]] = {}  # id → (tool_name, start_time, trace_meta)
     pending_call_ttl = 300.0  # 5 minutes — evict orphaned entries
 
     # Validate the server command before spawning
@@ -1010,6 +1111,7 @@ async def run_proxy(
 
             line_str = line.decode("utf-8", errors="replace")
             msg = parse_jsonrpc(line_str)
+            request_trace_meta = _extract_jsonrpc_trace_meta(msg) if msg else {}
 
             if msg:
                 metrics.total_messages_client_to_server += 1
@@ -1216,7 +1318,7 @@ async def run_proxy(
                     # Record allowed call + start latency timer
                     metrics.record_call(tool_name)
                     if "id" in msg:
-                        pending_calls[msg["id"]] = (tool_name, time.monotonic())
+                        pending_calls[msg["id"]] = (tool_name, time.monotonic(), request_trace_meta)
 
                     # Log allowed call with integrity fields
                     if log_file:
@@ -1239,6 +1341,14 @@ async def run_proxy(
                         span.set_attribute("agent_bom.proxy.tool_name", extract_tool_name(msg) or "unknown")
                 # Forward to server
                 if process.stdin:
+                    if msg is not None:
+                        forwarded_message = _inject_jsonrpc_trace_meta(
+                            msg,
+                            traceparent=request_trace_meta.get("traceparent"),
+                            tracestate=request_trace_meta.get("tracestate"),
+                            baggage=request_trace_meta.get("baggage"),
+                        )
+                        line = (json.dumps(forwarded_message) + "\n").encode()
                     process.stdin.write(line)
                     await process.stdin.drain()
 
@@ -1382,13 +1492,16 @@ async def run_proxy(
 
                 # Complete latency tracking for tool call responses
                 resp_id = msg.get("id")
+                fallback_trace_meta: dict[str, str] | None = None
                 if resp_id is not None and resp_id in pending_calls:
-                    _tool_name, start = pending_calls.pop(resp_id)
+                    _tool_name, start, fallback_trace_meta = pending_calls.pop(resp_id)
                     metrics.record_latency((time.monotonic() - start) * 1000)
+                msg = _stitch_jsonrpc_trace_meta(msg, fallback_trace_meta)
+                line = (json.dumps(msg) + "\n").encode()
 
                 # Evict orphaned pending_calls older than TTL
                 now_mono = time.monotonic()
-                stale = [k for k, (_, t) in pending_calls.items() if now_mono - t > pending_call_ttl]
+                stale = [k for k, (_tool, t, _trace) in pending_calls.items() if now_mono - t > pending_call_ttl]
                 for k in stale:
                     pending_calls.pop(k, None)
 

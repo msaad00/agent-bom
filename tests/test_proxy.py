@@ -14,9 +14,12 @@ from agent_bom.proxy import (
     ProxyMetrics,
     ReplayDetector,
     _control_plane_headers,
+    _extract_jsonrpc_trace_meta,
     _gateway_policy_cache_path,
+    _inject_jsonrpc_trace_meta,
     _load_cached_gateway_policies,
     _persist_gateway_policies_cache,
+    _stitch_jsonrpc_trace_meta,
     check_policy,
     compute_payload_hash,
     compute_response_hmac,
@@ -190,6 +193,73 @@ def test_control_plane_headers_propagate_w3c_trace_context(monkeypatch):
     assert headers["traceparent"].startswith("00-")
     assert headers["tracestate"] == "vendor-a=foo"
     assert headers["baggage"] == "tenant=acme"
+
+
+def test_extract_jsonrpc_trace_meta_returns_bounded_w3c_values():
+    message = {
+        "_meta": {
+            "traceparent": "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+            "tracestate": "vendor-a=foo,vendor-b=bar",
+            "baggage": "tenant=acme,release=v0.81.1",
+        }
+    }
+    trace_meta = _extract_jsonrpc_trace_meta(message)
+    assert trace_meta["traceparent"] == "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
+    assert trace_meta["tracestate"] == "vendor-a=foo,vendor-b=bar"
+    assert trace_meta["baggage"] == "tenant=acme,release=v0.81.1"
+
+
+def test_extract_jsonrpc_trace_meta_ignores_invalid_values():
+    trace_meta = _extract_jsonrpc_trace_meta({"_meta": {"traceparent": "broken", "tracestate": "", "baggage": ""}})
+    assert trace_meta == {}
+
+
+def test_inject_jsonrpc_trace_meta_preserves_existing_meta_fields():
+    message = {"jsonrpc": "2.0", "id": 1, "_meta": {"client": "cursor"}}
+    enriched = _inject_jsonrpc_trace_meta(
+        message,
+        traceparent="00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+        tracestate="vendor-a=foo",
+        baggage="tenant=acme",
+    )
+    assert enriched["_meta"]["client"] == "cursor"
+    assert enriched["_meta"]["traceparent"].startswith("00-0123456789abcdef0123456789abcdef-")
+    assert enriched["_meta"]["tracestate"] == "vendor-a=foo"
+    assert enriched["_meta"]["baggage"] == "tenant=acme"
+
+
+def test_stitch_jsonrpc_trace_meta_rehydrates_from_request_when_response_lacks_it():
+    response = {"jsonrpc": "2.0", "id": 1, "result": {"ok": True}}
+    stitched = _stitch_jsonrpc_trace_meta(
+        response,
+        {
+            "traceparent": "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+            "tracestate": "vendor-a=foo",
+            "baggage": "tenant=acme",
+        },
+    )
+    assert stitched["_meta"]["traceparent"] == "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
+    assert stitched["_meta"]["tracestate"] == "vendor-a=foo"
+    assert stitched["_meta"]["baggage"] == "tenant=acme"
+
+
+def test_stitch_jsonrpc_trace_meta_prefers_upstream_response_values():
+    stitched = _stitch_jsonrpc_trace_meta(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {"ok": True},
+            "_meta": {"traceparent": "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"},
+        },
+        {
+            "traceparent": "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
+            "tracestate": "vendor-a=foo",
+            "baggage": "tenant=acme",
+        },
+    )
+    assert stitched["_meta"]["traceparent"] == "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+    assert stitched["_meta"]["tracestate"] == "vendor-a=foo"
+    assert stitched["_meta"]["baggage"] == "tenant=acme"
 
 
 def test_gateway_policy_cache_path_defaults_to_user_cache_home(monkeypatch):

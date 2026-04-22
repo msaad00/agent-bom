@@ -216,7 +216,12 @@ export interface Agent {
 export interface MCPServer {
   name: string;
   command?: string;
+  args?: string[];
   transport?: string;
+  url?: string;
+  auth_mode?: string;
+  config_path?: string;
+  security_warnings?: string[];
   packages: Package[];
   tools?: Tool[];
   env?: Record<string, string>;
@@ -224,6 +229,21 @@ export interface MCPServer {
   has_credentials?: boolean;
   credential_env_vars?: string[];
   security_blocked?: boolean;
+  provenance?: MCPProvenance;
+}
+
+export interface MCPProvenance {
+  observed_via: string[];
+  observed_scopes: string[];
+  scan_sources: string[];
+  source_agents: string[];
+  configured_locally: boolean;
+  fleet_present: boolean;
+  gateway_registered: boolean;
+  runtime_observed: boolean;
+  first_seen?: string | null;
+  last_seen?: string | null;
+  last_synced?: string | null;
 }
 
 export interface Package {
@@ -835,6 +855,7 @@ export interface AgentDetailResponse {
   };
   blast_radius: BlastRadius[];
   credentials: string[];
+  fleet?: FleetAgent | null;
 }
 
 export interface AgentLifecycleResponse {

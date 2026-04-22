@@ -34,10 +34,12 @@ import {
   Bug,
   ChevronDown,
   ChevronRight,
+  Clock3,
   Download,
   GitBranch,
   Key,
   KeyRound,
+  Link2,
   Loader2,
   Network,
   Package,
@@ -45,6 +47,7 @@ import {
   Server,
   Shield,
   ShieldAlert,
+  TerminalSquare,
   Wrench,
   X,
 } from "lucide-react";
@@ -504,7 +507,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
     );
   }
 
-  const { agent, summary, blast_radius, credentials } = data;
+  const { agent, summary, blast_radius, credentials, fleet } = data;
   const sev = summary.severity_breakdown;
 
   const toggleServer = (name: string) => {
@@ -553,6 +556,33 @@ function AgentDetail({ agentName }: { agentName: string }) {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+        {fleet && (
+          <div className="rounded-xl border border-sky-900/60 bg-sky-950/20 p-4">
+            <p className="text-[11px] font-mono uppercase tracking-[0.2em] text-sky-400">Observed state</p>
+            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+                <div className="text-zinc-500 text-xs">Lifecycle state</div>
+                <div className="mt-1 text-sm font-semibold text-zinc-100">{fleet.lifecycle_state}</div>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+                <div className="text-zinc-500 text-xs">Trust score</div>
+                <div className="mt-1 text-sm font-semibold text-emerald-400">{fleet.trust_score.toFixed(1)}</div>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+                <div className="text-zinc-500 text-xs">Last discovery</div>
+                <div className="mt-1 text-sm font-semibold text-zinc-100">{fleet.last_discovery || "not synced yet"}</div>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+                <div className="text-zinc-500 text-xs">Last scan</div>
+                <div className="mt-1 text-sm font-semibold text-zinc-100">{fleet.last_scan || "not scanned yet"}</div>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+                <div className="text-zinc-500 text-xs">Updated</div>
+                <div className="mt-1 text-sm font-semibold text-zinc-100">{fleet.updated_at || "unknown"}</div>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/20 p-4">
           <p className="text-[11px] font-mono uppercase tracking-[0.2em] text-emerald-400">Inventory-first view</p>
           <p className="mt-1 text-sm leading-6 text-zinc-400">
@@ -561,7 +591,6 @@ function AgentDetail({ agentName }: { agentName: string }) {
             using discovery and scan data alone: server transport, exposed tools, env-backed credentials, and attached package risk.
           </p>
         </div>
-
         {/* Summary Stats */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <StatCard icon={Server} label="MCP Servers" value={summary.total_servers} color="text-blue-400" />
@@ -635,6 +664,19 @@ function AgentDetail({ agentName }: { agentName: string }) {
                           {srv.credential_env_vars?.length ?? 0} credential env
                         </span>
                       )}
+                      {srv.auth_mode && (
+                        <span className="rounded border border-sky-800 bg-sky-950 px-1.5 py-0.5 text-[10px] font-mono text-sky-300">
+                          {srv.auth_mode}
+                        </span>
+                      )}
+                      {srv.provenance?.observed_via?.map((source) => (
+                        <span
+                          key={source}
+                          className="rounded border border-emerald-900 bg-emerald-950 px-1.5 py-0.5 text-[10px] font-mono text-emerald-300"
+                        >
+                          {source}
+                        </span>
+                      ))}
                     </div>
                     <div className="flex items-center gap-3 text-xs text-zinc-500">
                       <span>{srvPkgs.length} pkgs</span>
@@ -646,6 +688,75 @@ function AgentDetail({ agentName }: { agentName: string }) {
                   </button>
                   {isExpanded && (
                     <div className="border-t border-zinc-800 px-4 py-3 space-y-3">
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {srv.command && (
+                          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+                            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                              <TerminalSquare className="h-3.5 w-3.5" />
+                              Command
+                            </div>
+                            <div className="font-mono text-xs text-zinc-300 break-all">
+                              {[srv.command, ...(srv.args || [])].join(" ")}
+                            </div>
+                          </div>
+                        )}
+                        {srv.url && (
+                          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+                            <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                              <Link2 className="h-3.5 w-3.5" />
+                              Remote URL
+                            </div>
+                            <div className="font-mono text-xs text-zinc-300 break-all">{srv.url}</div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        {srv.config_path && (
+                          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Config path</div>
+                            <div className="font-mono text-xs text-zinc-300 break-all">{srv.config_path}</div>
+                          </div>
+                        )}
+                        {srv.auth_mode && (
+                          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Auth mode</div>
+                            <div className="text-xs text-zinc-300">{srv.auth_mode}</div>
+                          </div>
+                        )}
+                        <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+                          <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                            <Clock3 className="h-3.5 w-3.5" />
+                            Discovery context
+                          </div>
+                          <div className="text-xs text-zinc-300">
+                            {fleet?.last_discovery ? `Seen in fleet sync at ${fleet.last_discovery}` : "Discovery-only, not synced through fleet yet"}
+                          </div>
+                        </div>
+                        {srv.provenance && (
+                          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2">
+                            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Provenance</div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {srv.provenance.observed_via.map((source) => (
+                                <span
+                                  key={source}
+                                  className="rounded border border-emerald-900 bg-emerald-950 px-1.5 py-0.5 text-[10px] font-mono text-emerald-300"
+                                >
+                                  {source}
+                                </span>
+                              ))}
+                            </div>
+                            <div className="mt-2 space-y-1 text-[11px] text-zinc-400">
+                              {srv.provenance.last_seen && <div>Last seen: <span className="text-zinc-300">{srv.provenance.last_seen}</span></div>}
+                              {srv.provenance.last_synced && <div>Last synced: <span className="text-zinc-300">{srv.provenance.last_synced}</span></div>}
+                              {srv.provenance.source_agents.length > 0 && (
+                                <div>
+                                  Gateway sources: <span className="text-zinc-300">{srv.provenance.source_agents.join(", ")}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                       {/* Tools */}
                       {srvTools.length > 0 && (
                         <div>
@@ -655,6 +766,18 @@ function AgentDetail({ agentName }: { agentName: string }) {
                               <span key={t.name} className="bg-purple-950 border border-purple-800 text-purple-300 px-2 py-0.5 rounded text-xs">
                                 {t.name}
                               </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {(srv.security_warnings?.length ?? 0) > 0 && (
+                        <div>
+                          <h4 className="text-xs font-semibold text-rose-400 mb-1">Security warnings</h4>
+                          <div className="space-y-1">
+                            {srv.security_warnings?.map((warning) => (
+                              <div key={warning} className="rounded border border-rose-900/60 bg-rose-950/20 px-3 py-2 text-xs text-rose-300">
+                                {warning}
+                              </div>
                             ))}
                           </div>
                         </div>

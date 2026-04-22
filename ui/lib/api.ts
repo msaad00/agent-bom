@@ -216,7 +216,12 @@ export interface Agent {
 export interface MCPServer {
   name: string;
   command?: string;
+  args?: string[];
   transport?: string;
+  url?: string;
+  auth_mode?: string;
+  config_path?: string;
+  security_warnings?: string[];
   packages: Package[];
   tools?: Tool[];
   env?: Record<string, string>;
@@ -835,6 +840,7 @@ export interface AgentDetailResponse {
   };
   blast_radius: BlastRadius[];
   credentials: string[];
+  fleet?: FleetAgent | null;
 }
 
 export interface AgentLifecycleResponse {

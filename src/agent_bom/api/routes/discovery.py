@@ -10,11 +10,12 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
 
 from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import JobStatus
-from agent_bom.api.stores import _get_store
+from agent_bom.api.stores import _get_fleet_store, _get_store
 from agent_bom.security import sanitize_error
 
 router = APIRouter()
@@ -25,14 +26,24 @@ def _tenant_id(request: Request) -> str:
     return getattr(request.state, "tenant_id", "default")
 
 
+def _serialize_agent(agent) -> dict:
+    payload = asdict(agent)
+    payload["mcp_servers"] = []
+    for server in agent.mcp_servers:
+        server_payload = asdict(server)
+        server_payload["auth_mode"] = server.auth_mode
+        server_payload["has_credentials"] = server.has_credentials
+        server_payload["credential_env_vars"] = server.credential_names
+        payload["mcp_servers"].append(server_payload)
+    return payload
+
+
 @router.get("/v1/agents", tags=["discovery"])
 async def list_agents() -> dict:
     """Quick auto-discovery of local AI agent configs (Claude Desktop, Cursor, Windsurf...).
     No CVE scan — instant results for the UI sidebar.
     """
     try:
-        from dataclasses import asdict
-
         from agent_bom.discovery import discover_all
         from agent_bom.parsers import extract_packages
 
@@ -43,7 +54,7 @@ async def list_agents() -> dict:
                     server.packages = extract_packages(server)
 
         return {
-            "agents": [asdict(a) for a in agents],
+            "agents": [_serialize_agent(a) for a in agents],
             "count": len(agents),
             "warnings": [],
         }
@@ -56,8 +67,6 @@ async def list_agents() -> dict:
 async def get_agent_detail(request: Request, agent_name: str) -> dict:
     """Get detailed view of a single agent with cross-referenced scan data."""
     try:
-        from dataclasses import asdict
-
         from agent_bom.discovery import discover_all
         from agent_bom.parsers import extract_packages
 
@@ -96,8 +105,14 @@ async def get_agent_detail(request: Request, agent_name: str) -> dict:
             if sev in severity_counts:
                 severity_counts[sev] += 1
 
+        fleet_agent = None
+        for candidate in _get_fleet_store().list_by_tenant(_tenant_id(request)):
+            if candidate.name == agent_name:
+                fleet_agent = candidate.model_dump()
+                break
+
         return {
-            "agent": asdict(agent),
+            "agent": _serialize_agent(agent),
             "summary": {
                 "total_servers": len(agent.mcp_servers),
                 "total_packages": total_packages,
@@ -108,6 +123,7 @@ async def get_agent_detail(request: Request, agent_name: str) -> dict:
             },
             "blast_radius": agent_blast,
             "credentials": all_credentials,
+            "fleet": fleet_agent,
         }
     except HTTPException:
         raise

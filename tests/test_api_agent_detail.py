@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from starlette.testclient import TestClient
 
+from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState, InMemoryFleetStore
 from agent_bom.api.server import app
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package
 
@@ -33,8 +34,29 @@ def _mock_agents():
     ]
 
 
+def _mock_fleet_store() -> InMemoryFleetStore:
+    store = InMemoryFleetStore()
+    store.put(
+        FleetAgent(
+            agent_id="fleet-1",
+            name="test-agent",
+            agent_type="claude_desktop",
+            config_path="/tmp/test-config.json",
+            lifecycle_state=FleetLifecycleState.APPROVED,
+            trust_score=87.5,
+            tenant_id="default",
+            last_discovery="2026-04-22T12:00:00Z",
+            last_scan="2026-04-22T12:05:00Z",
+            created_at="2026-04-22T12:00:00Z",
+            updated_at="2026-04-22T12:05:00Z",
+        )
+    )
+    return store
+
+
 @patch("agent_bom.discovery.discover_all", side_effect=_mock_agents)
-def test_agent_detail_found(_mock):
+@patch("agent_bom.api.routes.discovery._get_fleet_store", side_effect=_mock_fleet_store)
+def test_agent_detail_found(_fleet, _mock):
     """GET /v1/agents/{name} returns 200 with agent detail."""
     client = TestClient(app)
     resp = client.get("/v1/agents/test-agent")
@@ -46,6 +68,8 @@ def test_agent_detail_found(_mock):
     assert data["summary"]["total_credentials"] >= 1
     assert "blast_radius" in data
     assert "credentials" in data
+    assert data["fleet"]["lifecycle_state"] == "approved"
+    assert data["fleet"]["trust_score"] == 87.5
 
 
 @patch("agent_bom.discovery.discover_all", return_value=[])
@@ -94,6 +118,9 @@ def test_agent_detail_credential_detection(_mock):
     # API_KEY should be detected as credential, DEBUG should not
     assert "API_KEY" in data["credentials"]
     assert "DEBUG" not in data["credentials"]
+    server = data["agent"]["mcp_servers"][0]
+    assert server["command"] == "npx"
+    assert server["auth_mode"] == "env-credentials"
 
 
 @patch("agent_bom.discovery.discover_all", side_effect=_mock_agents)

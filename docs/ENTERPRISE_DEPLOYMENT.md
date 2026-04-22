@@ -103,10 +103,19 @@ agent-bom proxy-bootstrap \
 That bundle includes:
 - a macOS/Linux shell bootstrap script
 - a Windows PowerShell bootstrap script
+- Jamf and Kandji shell wrappers
+- Intune install and detect PowerShell wrappers
 - a `fleet-sync.env` file for the shipped timer/service assets
 - a rendered launchd plist for managed macOS rollout
 
 The generated bootstrap scripts install or upgrade `agent-bom`, then run `agent-bom proxy-configure --apply` with the control-plane policy/audit settings you chose, so supported JSON MCP clients no longer need manual config edits.
+
+For packaged rollout beyond shell scripts, the repo now also ships:
+
+- `scripts/build-pkg.sh` for macOS `.pkg` assembly from a generated endpoint bundle
+- `scripts/build-msi.ps1` for Windows `.msi` assembly via WiX from the same bundle
+- `scripts/render_homebrew_formula.py` for publishing a version-pinned Homebrew formula into your tap/release pipeline
+- static Jamf / Intune / Kandji templates under `deploy/endpoints/`
 
 ### 3. Centralized API Server — fleet dashboard
 

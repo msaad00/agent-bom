@@ -225,6 +225,8 @@ See also:
 After the control plane is live, onboard people and workloads, not just pods:
 
 - use `agent-bom proxy-bootstrap` to generate endpoint onboarding bundles
+- package the generated bundle into `.pkg` / `.msi` artifacts when IT needs
+  managed rollout instead of ad hoc shell execution
 - point MCP clients at the local `agent-bom proxy` wrapper
 - enable fleet sync for workstation visibility
 - add proxy sidecars only to workloads that need inline MCP policy enforcement
@@ -239,6 +241,33 @@ agent-bom proxy-bootstrap \
   --control-plane-token <api-key> \
   --push-url https://agent-bom.internal.example.com/v1/fleet/sync \
   --push-api-key <api-key>
+```
+
+For packaged endpoint rollout, reuse that same generated bundle:
+
+```bash
+bash scripts/build-pkg.sh \
+  --bundle-dir ./agent-bom-endpoint-bundle \
+  --output ./dist/agent-bom-endpoint.pkg \
+  --dry-run
+```
+
+```powershell
+./scripts/build-msi.ps1 `
+  -BundleDir .\agent-bom-endpoint-bundle `
+  -OutputPath .\dist\agent-bom-endpoint.msi `
+  -DryRun
+```
+
+The bundle also ships Jamf, Kandji, and Intune wrapper scripts plus a
+Homebrew formula renderer for organizations that distribute `agent-bom`
+through a managed tap instead of direct package upload.
+
+```bash
+python3 scripts/render_homebrew_formula.py \
+  --version 0.81.0 \
+  --url https://github.com/msaad00/agent-bom/archive/refs/tags/v0.81.0.tar.gz \
+  --sha256 <release-sha256>
 ```
 
 ## What Operators Get After Deploy

@@ -79,6 +79,14 @@ start with this shape:
 5. Use the gateway surface to manage policy centrally and front shared remote
    MCPs, while proxies pull the same policies and push audit events back.
 
+For managed endpoint rollout, `agent-bom proxy-bootstrap` now generates a
+single onboarding bundle that can be:
+
+- pushed directly as shell / PowerShell bootstrap assets
+- wrapped into Jamf, Kandji, or Intune rollout scripts
+- assembled into `.pkg` and `.msi` installers from the same generated bundle
+- published into a Homebrew tap via the shipped formula renderer
+
 That gives you one operator story without pretending every workload needs the
 same runtime path.
 

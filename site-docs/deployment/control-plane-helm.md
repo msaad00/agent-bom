@@ -34,6 +34,10 @@ agent-bom teardown \
 That helper tears down the chart first and the product-owned Terraform baseline
 second, while leaving platform-owned cluster infrastructure alone.
 
+Chart removal now includes packaged Helm pre/post-delete hooks that clean up
+product-owned in-cluster leftovers such as generated ExternalSecret target
+secrets, CronJobs, Jobs, and PVCs before the Terraform baseline is destroyed.
+
 ## What the chart deploys
 
 When you set `controlPlane.enabled=true`, the Helm chart can package:
@@ -345,6 +349,8 @@ That example adds:
 - packaged Postgres backup `CronJob` that runs `pg_dump` and uploads to S3 through IRSA with SSE or KMS
 - dedicated service-account hooks for gateway and backup jobs, inheriting the scanner IRSA annotations unless you override them
 - restricted ingress defaults for the chart network policy
+- optional cert-manager-backed sidecar auto-injection webhook for HTTP/SSE MCP
+  workloads
 
 For clusters that already standardize on a service mesh and policy controller,
 start from:

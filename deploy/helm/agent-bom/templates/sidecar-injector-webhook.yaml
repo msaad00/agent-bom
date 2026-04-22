@@ -1,0 +1,61 @@
+{{- if .Values.sidecarInjection.enabled }}
+{{- $name := include "agent-bom.sidecarInjectorName" . }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sidecar-injector
+  annotations:
+    cert-manager.io/inject-ca-from: {{ printf "%s/%s" .Release.Namespace $name | quote }}
+webhooks:
+  - name: namespace.{{ $name }}.agent-bom.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.sidecarInjection.webhook.failurePolicy }}
+    timeoutSeconds: {{ .Values.sidecarInjection.webhook.timeoutSeconds }}
+    reinvocationPolicy: {{ .Values.sidecarInjection.webhook.reinvocationPolicy }}
+    namespaceSelector:
+      matchExpressions:
+        - key: {{ .Values.sidecarInjection.selectors.namespaceLabelKey | quote }}
+          operator: In
+          values:
+            - {{ .Values.sidecarInjection.selectors.namespaceLabelValue | quote }}
+    clientConfig:
+      service:
+        namespace: {{ .Release.Namespace }}
+        name: {{ $name }}
+        path: /mutate
+        port: {{ .Values.sidecarInjection.service.port }}
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+        scope: "*"
+  - name: pod.{{ $name }}.agent-bom.io
+    admissionReviewVersions: ["v1"]
+    sideEffects: None
+    failurePolicy: {{ .Values.sidecarInjection.webhook.failurePolicy }}
+    timeoutSeconds: {{ .Values.sidecarInjection.webhook.timeoutSeconds }}
+    reinvocationPolicy: {{ .Values.sidecarInjection.webhook.reinvocationPolicy }}
+    objectSelector:
+      matchExpressions:
+        - key: {{ .Values.sidecarInjection.selectors.podLabelKey | quote }}
+          operator: In
+          values:
+            - {{ .Values.sidecarInjection.selectors.podLabelValue | quote }}
+    clientConfig:
+      service:
+        namespace: {{ .Release.Namespace }}
+        name: {{ $name }}
+        path: /mutate
+        port: {{ .Values.sidecarInjection.service.port }}
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+        scope: "*"
+{{- end }}

@@ -94,8 +94,9 @@ agent-bom teardown \
 The helper does the same two-phase decommission in the correct order:
 
 1. uninstall the Helm release
-2. wait for in-cluster workloads to disappear
-3. destroy the product-owned Terraform baseline
+2. run Helm pre/post-delete cleanup hooks for generated target secrets, CronJobs, Jobs, and PVCs
+3. wait for in-cluster workloads to disappear
+4. destroy the product-owned Terraform baseline
 
 If you want to inspect the plan first:
 

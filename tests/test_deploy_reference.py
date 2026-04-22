@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _write_fake_command(bin_dir: Path, name: str, body: str) -> None:
     path = bin_dir / name
-    path.write_text("#!/usr/bin/env bash\nset -euo pipefail\n" + body)
+    path.write_text("#!/bin/sh\nset -eu\n" + body)
     path.chmod(path.stat().st_mode | stat.S_IEXEC)
 
 

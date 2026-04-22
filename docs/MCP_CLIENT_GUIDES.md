@@ -82,6 +82,7 @@ args = ["proxy", "--log", "~/.agent-bom/logs/filesystem.jsonl", "--", "npx", "@m
 - `agent-bom proxy-configure --apply` targets JSON MCP configs and can now stamp control-plane policy/audit settings into the wrapped proxy command.
 - `agent-bom proxy-bootstrap --bundle-dir ./endpoint-bundle --control-plane-url https://agent-bom.example.com --push-url https://agent-bom.example.com/v1/fleet/sync` writes managed rollout artifacts for macOS/Linux and Windows without hand-editing JSON on every machine.
 - the bundle now also includes Jamf, Intune, and Kandji wrappers plus repo-shipped `.pkg` / `.msi` build scripts for IT-owned rollout
+- stdio transports have no native HTTP header channel. When a client or upstream includes W3C trace context in JSON-RPC `_meta.traceparent`, `_meta.tracestate`, or `_meta.baggage`, the proxy preserves those fields and rehydrates them onto the paired response when the upstream does not echo them back.
 - TOML clients like Codex CLI need manual proxy wrapping today.
 - SSE / HTTP clients can use `agent-bom mcp server --transport sse --bearer-token "$AGENT_BOM_MCP_BEARER_TOKEN"` or `--transport streamable-http`.
 - Non-loopback remote transports fail closed unless you configure `--bearer-token` / `AGENT_BOM_MCP_BEARER_TOKEN` or explicitly pass `--allow-insecure-no-auth`.

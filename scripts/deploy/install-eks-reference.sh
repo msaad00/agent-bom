@@ -12,6 +12,10 @@ INGRESS_CLASS="nginx"
 CREATE_CLUSTER=0
 ENABLE_GATEWAY=0
 ENABLE_FLEET=1
+OIDC_ISSUER="${AGENT_BOM_OIDC_ISSUER:-}"
+OIDC_AUDIENCE="${AGENT_BOM_OIDC_AUDIENCE:-agent-bom}"
+OIDC_TENANT_CLAIM="${AGENT_BOM_OIDC_TENANT_CLAIM:-tenant_id}"
+OIDC_ROLE_CLAIM="${AGENT_BOM_OIDC_ROLE_CLAIM:-agent_bom_role}"
 NODE_INSTANCE_TYPE="m7i.large"
 NODE_COUNT="3"
 K8S_VERSION="1.30"
@@ -41,6 +45,10 @@ Options:
   --create-cluster            Create a reference EKS cluster with eksctl before baseline + Helm
   --enable-gateway            Enable the packaged gateway Deployment and generate a bearer token
   --disable-fleet             Skip printing the endpoint onboarding bundle command
+  --oidc-issuer URL           Configure AGENT_BOM_OIDC_ISSUER in the control-plane auth secret
+  --oidc-audience VALUE       Configure AGENT_BOM_OIDC_AUDIENCE (default: agent-bom when OIDC is enabled)
+  --oidc-tenant-claim CLAIM   Configure AGENT_BOM_OIDC_TENANT_CLAIM (default: tenant_id)
+  --oidc-role-claim CLAIM     Configure AGENT_BOM_OIDC_ROLE_CLAIM (default: agent_bom_role)
   --node-instance-type TYPE   eksctl managed nodegroup instance type (default: m7i.large)
   --node-count COUNT          eksctl desired/min node count (default: 3)
   --k8s-version VERSION       EKS version for --create-cluster (default: 1.30)
@@ -67,6 +75,44 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
 }
 
+version_ge() {
+  python3 - "$1" "$2" <<'PY'
+import re
+import sys
+
+def normalize(raw: str) -> list[int]:
+    parts = [int(piece) for piece in re.findall(r"\d+", raw)]
+    return (parts + [0, 0, 0])[:3]
+
+current = normalize(sys.argv[1])
+minimum = normalize(sys.argv[2])
+raise SystemExit(0 if current >= minimum else 1)
+PY
+}
+
+extract_first_semver() {
+  python3 - "$1" <<'PY'
+import re
+import sys
+
+match = re.search(r"(\d+\.\d+(?:\.\d+)?)", sys.argv[1])
+if not match:
+    raise SystemExit(1)
+print(match.group(1))
+PY
+}
+
+check_tool_version() {
+  local tool="$1"
+  local minimum="$2"
+  shift 2
+  local version
+  version="$("$@")" || die "failed to determine ${tool} version"
+  version="${version//$'\n'/ }"
+  version="$(extract_first_semver "${version}")" || die "unable to parse ${tool} version from: ${version}"
+  version_ge "${version}" "${minimum}" || die "${tool} ${minimum}+ is required (found ${version})"
+}
+
 run() {
   if [ "$DRY_RUN" -eq 1 ]; then
     printf "+ %q" "$1"
@@ -91,6 +137,10 @@ while [ "$#" -gt 0 ]; do
     --create-cluster) CREATE_CLUSTER=1; shift ;;
     --enable-gateway) ENABLE_GATEWAY=1; shift ;;
     --disable-fleet) ENABLE_FLEET=0; shift ;;
+    --oidc-issuer) OIDC_ISSUER="$2"; shift 2 ;;
+    --oidc-audience) OIDC_AUDIENCE="$2"; shift 2 ;;
+    --oidc-tenant-claim) OIDC_TENANT_CLAIM="$2"; shift 2 ;;
+    --oidc-role-claim) OIDC_ROLE_CLAIM="$2"; shift 2 ;;
     --node-instance-type) NODE_INSTANCE_TYPE="$2"; shift 2 ;;
     --node-count) NODE_COUNT="$2"; shift 2 ;;
     --k8s-version) K8S_VERSION="$2"; shift 2 ;;
@@ -101,6 +151,15 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+if [ -n "${OIDC_ISSUER}" ]; then
+  case "${OIDC_ISSUER}" in
+    https://*) ;;
+    *) die "--oidc-issuer must use https:// (got ${OIDC_ISSUER})" ;;
+  esac
+  [ -n "${HOSTNAME}" ] || die "--hostname is required when --oidc-issuer is set so browser auth has a stable same-origin entrypoint"
+  [ -n "${OIDC_AUDIENCE}" ] || die "--oidc-audience is required when --oidc-issuer is set"
+fi
+
 need_cmd python3
 TERRAFORM_BIN="terraform"
 if [ "$DRY_RUN" -eq 0 ]; then
@@ -110,6 +169,13 @@ if [ "$DRY_RUN" -eq 0 ]; then
   need_cmd eksctl
   TERRAFORM_BIN="${TERRAFORM_BIN:-$(command -v terraform || command -v tofu || true)}"
   [ -n "$TERRAFORM_BIN" ] || die "terraform or tofu is required"
+
+  log "Running installer preflight checks"
+  check_tool_version "aws" "2.15.0" aws --version
+  check_tool_version "kubectl" "1.29.0" kubectl version --client=true
+  check_tool_version "helm" "3.14.0" helm version --template '{{.Version}}'
+  check_tool_version "eksctl" "0.178.0" eksctl version
+  check_tool_version "$("${TERRAFORM_BIN}" version | head -n 1 | awk '{print $1}')" "1.5.0" "${TERRAFORM_BIN}" version
 fi
 
 STATE_ROOT="${STATE_DIR}/${CLUSTER_NAME}"
@@ -270,6 +336,11 @@ PY
     --from-literal=AGENT_BOM_API_KEY="${API_KEY}" \
     --from-literal=AGENT_BOM_AUDIT_HMAC_KEY="${AUDIT_HMAC}" \
     --from-literal=AGENT_BOM_REQUIRE_AUDIT_HMAC=1 \
+    $( [ -n "${OIDC_ISSUER}" ] && printf -- "--from-literal=AGENT_BOM_OIDC_ISSUER=%s " "${OIDC_ISSUER}" ) \
+    $( [ -n "${OIDC_ISSUER}" ] && printf -- "--from-literal=AGENT_BOM_OIDC_AUDIENCE=%s " "${OIDC_AUDIENCE}" ) \
+    $( [ -n "${OIDC_ISSUER}" ] && printf -- "--from-literal=AGENT_BOM_OIDC_TENANT_CLAIM=%s " "${OIDC_TENANT_CLAIM}" ) \
+    $( [ -n "${OIDC_ISSUER}" ] && printf -- "--from-literal=AGENT_BOM_OIDC_ROLE_CLAIM=%s " "${OIDC_ROLE_CLAIM}" ) \
+    $( [ -n "${OIDC_ISSUER}" ] && printf -- "--from-literal=AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM=1 " ) \
     --dry-run=client -o yaml | kubectl apply -f -
 
   if [ -n "${DB_URL_SECRET_NAME}" ]; then
@@ -280,10 +351,27 @@ PY
   fi
 
   if [ -n "${AUTH_SECRET_NAME}" ]; then
+    AUTH_SECRET_PAYLOAD="$(python3 - <<PY
+import json
+
+payload = {
+    "AGENT_BOM_API_KEY": "${API_KEY}",
+    "AGENT_BOM_AUDIT_HMAC_KEY": "${AUDIT_HMAC}",
+    "AGENT_BOM_REQUIRE_AUDIT_HMAC": "1",
+}
+if "${OIDC_ISSUER}":
+    payload["AGENT_BOM_OIDC_ISSUER"] = "${OIDC_ISSUER}"
+    payload["AGENT_BOM_OIDC_AUDIENCE"] = "${OIDC_AUDIENCE}"
+    payload["AGENT_BOM_OIDC_TENANT_CLAIM"] = "${OIDC_TENANT_CLAIM}"
+    payload["AGENT_BOM_OIDC_ROLE_CLAIM"] = "${OIDC_ROLE_CLAIM}"
+    payload["AGENT_BOM_OIDC_REQUIRE_TENANT_CLAIM"] = "1"
+print(json.dumps(payload))
+PY
+)"
     aws secretsmanager put-secret-value \
       --region "${REGION}" \
       --secret-id "${AUTH_SECRET_NAME}" \
-      --secret-string "{\"AGENT_BOM_API_KEY\":\"${API_KEY}\",\"AGENT_BOM_AUDIT_HMAC_KEY\":\"${AUDIT_HMAC}\",\"AGENT_BOM_REQUIRE_AUDIT_HMAC\":\"1\"}" >/dev/null
+      --secret-string "${AUTH_SECRET_PAYLOAD}" >/dev/null
   fi
 fi
 
@@ -337,8 +425,13 @@ BASE_URL="http://localhost:8080"
 if [ -n "${HOSTNAME}" ]; then
   BASE_URL="https://${HOSTNAME}"
 fi
+VERIFY_GATEWAY_FLAG=""
+if [ "${ENABLE_GATEWAY}" -eq 1 ]; then
+  VERIFY_GATEWAY_FLAG=" --check-gateway"
+fi
 
 SUMMARY="${GENERATED_DIR}/operator-summary.txt"
+VERIFY_SCRIPT="${ROOT_DIR}/scripts/deploy/verify-eks-reference.sh"
 cat >"${SUMMARY}" <<EOF
 agent-bom reference install complete
 
@@ -351,6 +444,8 @@ terraform dir: ${TF_ROOT}
 helm values: ${HELM_VALUES_HINT}
 install overrides: ${INSTALL_OVERRIDES}
 mode: $( [ "$DRY_RUN" -eq 1 ] && printf dry-run || printf applied )
+auth mode: $( [ -n "${OIDC_ISSUER}" ] && printf 'oidc + api key fallback' || printf 'api key' )
+verify script: ${VERIFY_SCRIPT}
 EOF
 
 if [ "$DRY_RUN" -eq 0 ]; then
@@ -383,12 +478,17 @@ if [ "$DRY_RUN" -eq 0 ]; then
       echo "  customize deploy/helm/agent-bom/examples/gateway-upstreams.example.yaml"
       echo "  then re-run Helm with --set-file gateway.upstreamsYaml=./my-upstreams.yaml"
     fi
+    echo
+    echo "Post-deploy verify:"
+    echo "  ${VERIFY_SCRIPT} --cluster-name ${CLUSTER_NAME} --region ${REGION} --namespace ${NAMESPACE} --release ${RELEASE_NAME} --base-url ${BASE_URL} --api-key ${API_KEY}${VERIFY_GATEWAY_FLAG}"
   } | tee -a "${SUMMARY}"
 else
   {
     echo
     echo "Dry run only. No AWS, Kubernetes, or Helm resources were changed."
     echo "Inspect the generated Terraform root and Helm values files, then rerun without --dry-run."
+    echo "Verify flow after apply:"
+    echo "  ${VERIFY_SCRIPT} --cluster-name ${CLUSTER_NAME} --region ${REGION} --namespace ${NAMESPACE} --release ${RELEASE_NAME} --base-url ${BASE_URL}${VERIFY_GATEWAY_FLAG}"
   } | tee -a "${SUMMARY}"
 fi
 

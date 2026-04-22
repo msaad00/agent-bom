@@ -80,17 +80,52 @@ helm upgrade --install agent-bom deploy/helm/agent-bom \
 
 ## Destroy flow
 
-Use a two-phase decommission:
+Use the packaged teardown helper for the supported reverse path:
 
-1. `helm uninstall agent-bom -n agent-bom`
-2. wait for pods, CronJobs, and ExternalSecrets to disappear
-3. `terraform destroy`
+```bash
+agent-bom teardown \
+  --cluster-name agent-bom-prod \
+  --region us-east-1 \
+  --namespace agent-bom \
+  --release agent-bom \
+  --yes
+```
+
+The helper does the same two-phase decommission in the correct order:
+
+1. uninstall the Helm release
+2. wait for in-cluster workloads to disappear
+3. destroy the product-owned Terraform baseline
+
+If you want to inspect the plan first:
+
+```bash
+agent-bom teardown \
+  --cluster-name agent-bom-prod \
+  --region us-east-1 \
+  --namespace agent-bom \
+  --release agent-bom \
+  --dry-run
+```
+
+For teams working directly from a checked-out repo, the equivalent wrapper is:
+
+```bash
+scripts/deploy/teardown-eks-reference.sh --cluster-name agent-bom-prod --region us-east-1 --dry-run
+```
 
 That ordering avoids:
 
 - backup jobs still writing to S3 while the bucket is being removed
 - live pods holding IRSA assumptions while IAM roles are deleted
 - live API pods trying to reconnect to an RDS instance Terraform is tearing down
+
+The teardown helper intentionally does **not** delete platform-owned shared infrastructure such as:
+
+- the EKS cluster itself
+- VPC and subnet topology
+- ingress controllers, DNS, or cert-manager
+- shared ExternalSecrets or OTLP controllers
 
 ## What this does not do
 

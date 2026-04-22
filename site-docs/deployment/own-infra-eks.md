@@ -215,6 +215,22 @@ For teams that want Terraform to own the AWS baseline around the chart, use the
 backup bucket, and Secrets Manager ownership, then let Helm own the in-cluster
 workloads.
 
+For decommissioning, use the packaged reverse path instead of ad hoc `helm uninstall`
+plus cloud cleanup:
+
+```bash
+agent-bom teardown \
+  --cluster-name corp-ai \
+  --region us-east-1 \
+  --namespace agent-bom \
+  --release agent-bom \
+  --dry-run
+```
+
+That helper only removes product-owned `agent-bom` surfaces. It does not
+delete the EKS cluster, ingress controller, VPC, or other platform-owned
+infrastructure.
+
 ## Recommended Topology
 
 Use two layers.

@@ -20,6 +20,20 @@ cluster, pair this chart with the
 own RDS, S3, IAM/IRSA, and Secrets Manager; Helm should own the in-cluster
 Deployments, CronJobs, and ExternalSecret objects.
 
+The reverse path is now explicit too:
+
+```bash
+agent-bom teardown \
+  --cluster-name agent-bom-prod \
+  --region us-east-1 \
+  --namespace agent-bom \
+  --release agent-bom \
+  --dry-run
+```
+
+That helper tears down the chart first and the product-owned Terraform baseline
+second, while leaving platform-owned cluster infrastructure alone.
+
 ## What the chart deploys
 
 When you set `controlPlane.enabled=true`, the Helm chart can package:

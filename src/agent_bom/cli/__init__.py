@@ -264,6 +264,13 @@ from agent_bom.cli._doctor import doctor_cmd  # noqa: E402
 main.add_command(doctor_cmd, "doctor")
 
 # ---------------------------------------------------------------------------
+# Deployment lifecycle command
+# ---------------------------------------------------------------------------
+from agent_bom.cli._deploy import teardown_cmd  # noqa: E402
+
+main.add_command(teardown_cmd, "teardown")
+
+# ---------------------------------------------------------------------------
 # Remediate command
 # ---------------------------------------------------------------------------
 from agent_bom.cli._remediate import remediate_cmd  # noqa: E402

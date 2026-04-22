@@ -1,11 +1,11 @@
-$ErrorActionPreference = "Stop"
-
 param(
   [Parameter(Mandatory = $true)][string]$BundleDir,
   [Parameter(Mandatory = $true)][string]$OutputPath,
   [string]$Version = "0.0.0",
   [switch]$DryRun
 )
+
+$ErrorActionPreference = "Stop"
 
 $stageDir = Join-Path $env:TEMP "agent-bom-msi-stage"
 $wxsPath = Join-Path $stageDir "agent-bom-endpoint.wxs"

@@ -897,6 +897,68 @@ async def test_ocsf_ingest_is_tenant_scoped_and_audited(isolated_audit_log):
 
 
 @pytest.mark.asyncio
+async def test_ocsf_ingest_normalizes_expected_analytics_contract():
+    req = _request("tenant-alpha")
+
+    class _Analytics:
+        def __init__(self):
+            self.events = []
+            self.event_tenants: list[str] = []
+
+        def record_events(self, events, *, tenant_id: str = "default"):
+            self.events.extend(events)
+            self.event_tenants.append(tenant_id)
+
+    analytics = _Analytics()
+    payload = {
+        "class_uid": 2004,
+        "class_name": "Detection Finding",
+        "severity_id": 5,
+        "message": "Credential exposed in screenshot",
+        "time": "2026-04-22T04:00:00+00:00",
+        "finding_info": {
+            "uid": "finding-42",
+            "analytic": {"name": "visual_leak"},
+        },
+        "resources": [{"name": "screenshot-tool"}],
+        "metadata": {
+            "product": {"name": "splunk"},
+            "uid": "meta-1",
+        },
+    }
+
+    with patch("agent_bom.api.routes.observability._get_analytics_store", return_value=analytics):
+        result = await observability_routes.ingest_ocsf(req, payload)
+
+    assert result == {
+        "ingested": 1,
+        "tenant_id": "tenant-alpha",
+        "class_counts": {"2004": 1},
+        "sources": ["splunk"],
+    }
+    assert analytics.event_tenants == ["tenant-alpha"]
+    assert analytics.events == [
+        {
+            "event_id": "finding-42",
+            "event_timestamp": "2026-04-22T04:00:00+00:00",
+            "tenant_id": "tenant-alpha",
+            "event_type": "ocsf_detection_finding",
+            "detector": "visual_leak",
+            "severity": "critical",
+            "tool_name": "screenshot-tool",
+            "message": "Credential exposed in screenshot",
+            "agent_name": "",
+            "session_id": "",
+            "trace_id": "",
+            "request_id": "",
+            "source_id": "splunk",
+            "ocsf_class_uid": 2004,
+            "ocsf_class_name": "Detection Finding",
+        }
+    ]
+
+
+@pytest.mark.asyncio
 async def test_ocsf_ingest_rejects_non_event_payload():
     req = _request("tenant-alpha")
 

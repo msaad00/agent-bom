@@ -11,6 +11,13 @@ Use this path when you want one operator-controlled system for:
 - central gateway policy management
 - API, UI, findings, graph, and remediation in your own infra
 
+The recommended rollout is:
+
+1. stand up the control plane
+2. add scheduled scans and fleet sync
+3. use that for MCP inventory and granted surface area
+4. add proxy or gateway only where live runtime enforcement is actually needed
+
 If you want the narrower pilot shape first, start with
 [Focused EKS MCP Pilot](eks-mcp-pilot.md). If you want the broader rollout that
 also covers developer endpoints, pair this page with
@@ -35,109 +42,38 @@ This deployment model is built for teams that want:
 ## Best-In-Class EKS Shape
 
 The best current EKS rollout is not "put everything behind one service." It is
-a split between a control plane and the discovery/enforcement paths around it.
-Keep that story in two diagrams:
+a split between:
 
-- **deployment topology** for what you run in your AWS account
-- **runtime MCP flow** for how proxy, gateway, API, and remote MCP calls move
-  between those surfaces
+- a **control plane** for auth, graph, findings, fleet, audit, and remediation
+- **inventory paths** for scans and fleet ingest
+- **runtime paths** for proxy and gateway, added only where needed
+
+### Deployment topology
 
 ```mermaid
 flowchart LR
-    classDef ext  fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
-    classDef edge fill:#111827,stroke:#38bdf8,color:#e0f2fe
-    classDef ctrl fill:#0f172a,stroke:#6366f1,color:#e0e7ff
-    classDef run  fill:#0f172a,stroke:#10b981,color:#d1fae5
-    classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
-    classDef ops  fill:#0f172a,stroke:#64748b,color:#cbd5e1
-
-    IdP["Corporate IdP"]:::ext
-    Remote["Remote MCPs"]:::ext
-    Intel["OSV / NVD / GHSA<br/>optional enrichment"]:::ext
-
-    subgraph Endpoints["Customer endpoints and workloads"]
-      direction TB
-      Browser["Browser operators"]:::ext
-      Fleet["Developer endpoints / collectors"]:::ops
-      Proxy["Proxy<br/>local wrapper or sidecar"]:::run
-      LocalMCP["Selected local or in-cluster MCPs"]:::ops
-    end
-
-    subgraph Customer["Your AWS account / VPC / EKS cluster"]
-      direction TB
-      Ingress["Ingress + TLS"]:::edge
-
-      subgraph Control["Control plane"]
-        direction LR
-        UI["UI<br/>same-origin browser app"]:::ctrl
-        API["API<br/>auth · findings · fleet · audit"]:::ctrl
-        Jobs["Workers<br/>CronJob / Job"]:::ctrl
-        Backup["Backup job"]:::ctrl
-      end
-
-      Gateway["Gateway<br/>optional shared MCP traffic plane"]:::run
-
-      subgraph Data["Customer-owned data"]
-        direction LR
-        PG[("Postgres / Supabase")]:::data
-        CH[("ClickHouse optional")]:::data
-        S3[("S3 optional")]:::data
-      end
-
-      subgraph Platform["Platform services"]
-        direction LR
-        Secrets["ExternalSecrets / IRSA / Vault"]:::ops
-        Obs["OTEL + Prometheus"]:::ops
-      end
-    end
-
-    Browser --> Ingress
-    IdP -. OIDC / SAML .-> Ingress
-    Ingress --> UI
-    Ingress --> API
-    UI -->|same-origin API calls| API
-    Jobs -->|results + inventory| API
-    Fleet -->|fleet sync / pushed results| API
-    Proxy -->|policy pull + audit push| API
-    Proxy -->|inline runtime path| LocalMCP
-    Gateway -->|policy pull + audit push| API
-    Gateway -->|shared remote MCP traffic| Remote
-    API --> PG
-    API -. optional analytics .-> CH
-    Backup --> S3
-    Secrets --> API
-    Secrets --> Gateway
-    API --> Obs
-    Gateway --> Obs
-    API -. optional enrichment .-> Intel
+    IdP["Corporate IdP"] --> Ingress["Ingress + TLS"]
+    Browser["Browser operators"] --> Ingress
+    Ingress --> Control["API + UI + workers"]
+    Scans["Scan jobs + CI"] --> Control
+    Fleet["Fleet sync from endpoints"] --> Control
+    Control --> PG["Postgres"]
+    Control -. optional .-> CH["ClickHouse / S3 / OTEL"]
+    Proxy["Optional proxy"] --> Control
+    Gateway["Optional gateway"] --> Control
 ```
 
-```mermaid
-sequenceDiagram
-    participant Client as Editor or workload client
-    participant API as Control-plane API
-    participant Proxy as agent-bom proxy
-    participant Gateway as agent-bom gateway
-    participant Local as Local / sidecar MCP
-    participant Remote as Remote MCP
-    participant Store as Postgres / audit store
+### Runtime MCP flow
 
-    par Local / sidecar enforcement path
-        Client->>Proxy: MCP request
-        Proxy->>API: policy pull / audit push
-        Proxy->>Local: direct MCP call
-        Local-->>Proxy: response
-        Proxy->>Proxy: detector chain + optional VLD
-        Proxy-->>Client: safe response
-    and Shared remote gateway path
-        Client->>Gateway: MCP request
-        Gateway->>API: policy pull / audit push
-        Gateway->>Remote: upstream MCP call
-        Remote-->>Gateway: response
-        Gateway->>Gateway: policy + rate limit + optional VLD
-        Gateway-->>Client: safe response
-    end
-    API->>Store: persist audit, findings, graph links
+```mermaid
+flowchart LR
+    Client["Editor or workload client"] --> Proxy["Proxy"]
+    Client --> Gateway["Gateway"]
+    Proxy --> API["Control-plane API"]
+    Gateway --> API
+    Proxy --> Local["Local / sidecar MCP"]
+    Gateway --> Remote["Remote MCP"]
+    API --> Store["Postgres / audit store"]
 ```
 
 *Deployment truth: the browser drives workflows, the API owns control-plane
@@ -153,6 +89,15 @@ Architecture](../architecture/self-hosted-product-architecture.md).*
    `/v1/proxy/audit`.
 4. Runtime detections, optional visual leak checks, and tenant-scoped limits
    happen on the enforcement surface that handled the call.
+
+## Rollout profiles
+
+| Profile | Deploy first | Add later |
+|---|---|---|
+| **Inventory-first** | API + UI + Postgres + scans + fleet sync | proxy, gateway, ClickHouse |
+| **Runtime on selected workloads** | inventory-first plus `proxy` | gateway for shared remote MCPs |
+| **Shared remote MCP control** | inventory-first plus `gateway` | local proxy where stdio or sidecar enforcement is still needed |
+| **Full self-hosted platform** | control plane + scans + fleet + selected proxy + selected gateway | ClickHouse, Snowflake, stricter platform controls |
 
 ## Which Agent-BOM Surface Runs Where
 

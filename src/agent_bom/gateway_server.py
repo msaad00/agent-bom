@@ -32,6 +32,7 @@ import logging
 import os
 import threading
 import time
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable
 
@@ -41,10 +42,12 @@ from fastapi.responses import JSONResponse, Response
 from agent_bom.api.auth import get_key_store
 from agent_bom.api.metrics import record_gateway_relay, record_rate_limit_hit
 from agent_bom.api.middleware import InMemoryRateLimitStore, PostgresRateLimitStore
+from agent_bom.api.tracing import get_tracer, inject_trace_headers, make_request_trace
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 from agent_bom.proxy import check_policy, is_tools_call, parse_jsonrpc
 
 logger = logging.getLogger(__name__)
+_GATEWAY_TRACER = get_tracer("agent_bom.gateway")
 
 AuditSink = Callable[[dict[str, Any]], Awaitable[None]]
 UpstreamCaller = Callable[[UpstreamConfig, dict[str, Any], dict[str, str]], Awaitable[dict[str, Any]]]
@@ -201,6 +204,34 @@ def _authenticate_gateway_request(request: Request, settings: GatewaySettings) -
     return "default", "none"
 
 
+def _inject_jsonrpc_trace_meta(
+    message: dict[str, Any],
+    *,
+    traceparent: str | None,
+    tracestate: str | None,
+    baggage: str | None,
+) -> dict[str, Any]:
+    """Return a JSON-RPC message with bounded W3C trace context in `_meta`.
+
+    MCP clients and servers increasingly use `_meta` as the least-surprising
+    place to carry end-to-end trace context across JSON-RPC boundaries.
+    """
+    if not traceparent and not tracestate and not baggage:
+        return message
+
+    enriched = dict(message)
+    raw_meta = message.get("_meta")
+    meta = dict(raw_meta) if isinstance(raw_meta, dict) else {}
+    if traceparent:
+        meta["traceparent"] = traceparent
+    if tracestate:
+        meta["tracestate"] = tracestate
+    if baggage:
+        meta["baggage"] = baggage
+    enriched["_meta"] = meta
+    return enriched
+
+
 async def _default_upstream_caller(
     upstream: UpstreamConfig,
     message: dict[str, Any],
@@ -272,6 +303,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     @app.post("/mcp/{server_name}")
     async def relay(server_name: str, request: Request) -> JSONResponse:
         """Route an MCP JSON-RPC request to the named upstream after policy + audit."""
+        trace_meta = make_request_trace(dict(request.headers))
         tenant_id = "default"
         auth_method = "none"
         if _gateway_requires_auth(settings):
@@ -365,10 +397,38 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     headers=rate_limit_headers or None,
                 )
 
-        # Forward to the upstream.
-        extra_headers: dict[str, str] = {}
+        # Forward to the upstream with bounded W3C trace headers and JSON-RPC
+        # `_meta` so both HTTP-aware and JSON-RPC-aware upstreams can stitch
+        # the same end-to-end trace.
+        extra_headers = inject_trace_headers(
+            {},
+            traceparent=str(trace_meta["traceparent"]),
+            tracestate=str(trace_meta["tracestate"]) if trace_meta["tracestate"] else None,
+            baggage=str(trace_meta["baggage"]) if trace_meta["baggage"] else None,
+        )
+        forwarded_message = _inject_jsonrpc_trace_meta(
+            message,
+            traceparent=str(trace_meta["traceparent"]),
+            tracestate=str(trace_meta["tracestate"]) if trace_meta["tracestate"] else None,
+            baggage=str(trace_meta["baggage"]) if trace_meta["baggage"] else None,
+        )
+        span_cm = _GATEWAY_TRACER.start_as_current_span("gateway.relay_upstream") if _GATEWAY_TRACER else nullcontext()
         try:
-            upstream_response = await upstream_caller(upstream, message, extra_headers)
+            with span_cm as span:
+                if span is not None:
+                    span.set_attribute("agent_bom.gateway.upstream", upstream.name)
+                    span.set_attribute("agent_bom.gateway.tenant_id", tenant_id)
+                    span.set_attribute("agent_bom.gateway.method", str(message.get("method", "unknown")))
+                    span.set_attribute("agent_bom.gateway.trace_id", str(trace_meta["trace_id"]))
+                    span.set_attribute("agent_bom.gateway.span_id", str(trace_meta["span_id"]))
+                    span.set_attribute("agent_bom.gateway.incoming_traceparent", bool(trace_meta["incoming_traceparent"]))
+                    if trace_meta["parent_span_id"]:
+                        span.set_attribute("agent_bom.gateway.parent_span_id", str(trace_meta["parent_span_id"]))
+                    if trace_meta["tracestate"]:
+                        span.set_attribute("agent_bom.gateway.tracestate_present", True)
+                    if trace_meta["baggage"]:
+                        span.set_attribute("agent_bom.gateway.baggage_present", True)
+                upstream_response = await upstream_caller(upstream, forwarded_message, extra_headers)
         except asyncio.TimeoutError as exc:
             logger.warning("gateway upstream call timed out for %s", upstream.name)
             record_gateway_relay(upstream.name, "upstream_timeout")
@@ -453,7 +513,13 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     "tool": message.get("params", {}).get("name") if is_tools_call(message) else None,
                 }
             )
-        return JSONResponse(upstream_response, headers=rate_limit_headers or None)
+        response_headers = dict(rate_limit_headers)
+        response_headers["traceparent"] = str(trace_meta["traceparent"])
+        if trace_meta["tracestate"]:
+            response_headers["tracestate"] = str(trace_meta["tracestate"])
+        if trace_meta["baggage"]:
+            response_headers["baggage"] = str(trace_meta["baggage"])
+        return JSONResponse(upstream_response, headers=response_headers or None)
 
     return app
 

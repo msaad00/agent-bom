@@ -137,6 +137,19 @@ volumeMounts:
 
 Then add `--policy /etc/agent-bom/policy.json` to the proxy args.
 
+For the packaged Helm control-plane path, the chart now also ships an
+optional mutating webhook for the HTTP/SSE sidecar model. Enable
+`sidecarInjection.enabled=true`, then opt in either:
+
+- an entire namespace with `agent-bom.io/proxy-inject=enabled`
+- or a single workload with pod label `agent-bom.io/proxy=true`
+
+Each opted-in pod must still declare the local MCP target explicitly through
+`agent-bom.io/mcp-url` or `agent-bom.io/mcp-port`. The webhook injects the
+`agent-bom proxy` container, audit volume, metrics annotations, and
+control-plane policy/audit wiring; it does not try to infer stdio server
+commands for you.
+
 ---
 
 ## Log vs Enforce Mode

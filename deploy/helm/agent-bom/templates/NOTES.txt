@@ -10,3 +10,5 @@ Enterprise pilot notes:
   `kubectl label namespace {{ .Release.Namespace }} pod-security.kubernetes.io/enforce=restricted pod-security.kubernetes.io/audit=restricted pod-security.kubernetes.io/warn=restricted --overwrite`
 - The focused EKS pilot values lock ingress down; adjust `networkPolicy.ingress` if your ingress controller does not run in `ingress-nginx`.
 - For production operator defaults, start from `deploy/helm/agent-bom/examples/eks-production-values.yaml`.
+- `sidecarInjection.enabled=true` requires cert-manager because the chart packages
+  the webhook TLS certificate and CA injection path.

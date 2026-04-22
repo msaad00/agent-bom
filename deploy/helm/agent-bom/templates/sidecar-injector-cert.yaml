@@ -1,0 +1,36 @@
+{{- if and .Values.sidecarInjection.enabled .Values.sidecarInjection.certManager.enabled }}
+{{- $name := include "agent-bom.sidecarInjectorName" . }}
+{{- $tlsSecretName := default (printf "%s-tls" $name) .Values.sidecarInjection.certManager.tlsSecretName }}
+{{- if .Values.sidecarInjection.certManager.createSelfSignedIssuer }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sidecar-injector
+spec:
+  selfSigned: {}
+---
+{{- end }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sidecar-injector
+spec:
+  secretName: {{ $tlsSecretName }}
+  duration: {{ .Values.sidecarInjection.certManager.duration | quote }}
+  renewBefore: {{ .Values.sidecarInjection.certManager.renewBefore | quote }}
+  dnsNames:
+    - {{ printf "%s.%s.svc" $name .Release.Namespace | quote }}
+    - {{ printf "%s.%s.svc.cluster.local" $name .Release.Namespace | quote }}
+  issuerRef:
+    name: {{ default $name .Values.sidecarInjection.certManager.issuerRef.name | quote }}
+    kind: {{ default "Issuer" .Values.sidecarInjection.certManager.issuerRef.kind | quote }}
+    group: {{ default "cert-manager.io" .Values.sidecarInjection.certManager.issuerRef.group | quote }}
+{{- end }}

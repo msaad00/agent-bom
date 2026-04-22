@@ -140,6 +140,55 @@ gateway:
       cpu: 1
       memory: 1Gi
 
+sidecarInjection:
+  enabled: false
+  replicas: 2
+  image:
+    repository: agentbom/agent-bom
+    # tag defaults to Chart.AppVersion
+    pullPolicy: IfNotPresent
+  service:
+    port: 443
+    targetPort: 8443
+  certManager:
+    enabled: true
+    createSelfSignedIssuer: true
+    issuerRef:
+      name: ""
+      kind: Issuer
+      group: cert-manager.io
+    duration: 2160h
+    renewBefore: 360h
+    tlsSecretName: ""
+  webhook:
+    failurePolicy: Fail
+    timeoutSeconds: 10
+    reinvocationPolicy: IfNeeded
+  selectors:
+    namespaceLabelKey: agent-bom.io/proxy-inject
+    namespaceLabelValue: enabled
+    podLabelKey: agent-bom.io/proxy
+    podLabelValue: "true"
+    tenantLabelKey: agent-bom.io/tenant
+  defaultMcpPort: 3000
+  metricsPort: 8422
+  policyRefreshSeconds: 30
+  auditPushInterval: 10
+  detectCredentials: true
+  blockUndeclared: true
+  policyConfigMapName: ""
+  controlPlane:
+    apiUrl: ""
+    tokenSecretName: ""
+    tokenSecretKey: token
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
 teardownHooks:
   enabled: true
   deletePolicy: before-hook-creation,hook-succeeded

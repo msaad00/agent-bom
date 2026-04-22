@@ -349,6 +349,8 @@ That example adds:
 - packaged Postgres backup `CronJob` that runs `pg_dump` and uploads to S3 through IRSA with SSE or KMS
 - dedicated service-account hooks for gateway and backup jobs, inheriting the scanner IRSA annotations unless you override them
 - restricted ingress defaults for the chart network policy
+- optional cert-manager-backed sidecar auto-injection webhook for HTTP/SSE MCP
+  workloads
 
 For clusters that already standardize on a service mesh and policy controller,
 start from:

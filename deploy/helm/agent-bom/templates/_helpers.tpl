@@ -38,6 +38,13 @@ Gateway service account name.
 {{- end }}
 
 {{/*
+Sidecar injector full name.
+*/}}
+{{- define "agent-bom.sidecarInjectorName" -}}
+{{- printf "%s-sidecar-injector" (include "agent-bom.name" .) -}}
+{{- end }}
+
+{{/*
 Scanner service account name.
 */}}
 {{- define "agent-bom.scannerServiceAccountName" -}}

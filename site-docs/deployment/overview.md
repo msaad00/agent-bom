@@ -71,6 +71,9 @@ That is not a downgrade of runtime. It is a cleaner adoption model:
 | **`agent-bom proxy`** | local stdio MCPs and workload-local sidecars | inventory, fleet, or findings review |
 | **`agent-bom gateway serve`** | shared remote MCP traffic over HTTP/SSE | local sidecar enforcement or basic MCP inventory |
 
+If you need the concrete operator rule for where each one fits, see
+[When To Use Proxy vs Gateway vs Fleet](proxy-vs-gateway-vs-fleet.md).
+
 ## What You Can Offer In Customer-Controlled Infra
 
 This is the current code-backed self-hosted story:
@@ -276,6 +279,7 @@ YAML.
 - [Your Own AWS / EKS](own-infra-eks.md)
 - [Enterprise MCP / Endpoint Pilot](enterprise-pilot.md)
 - [Endpoint Fleet](endpoint-fleet.md)
+- [When To Use Proxy vs Gateway vs Fleet](proxy-vs-gateway-vs-fleet.md)
 - [Focused EKS MCP Pilot](eks-mcp-pilot.md)
 - [Packaged API + UI Control Plane](control-plane-helm.md)
 - [Performance, Sizing, and Benchmarks](performance-and-sizing.md)

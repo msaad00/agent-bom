@@ -6,6 +6,7 @@ from starlette.testclient import TestClient
 
 from agent_bom.api import stores as _stores
 from agent_bom.api.fleet_store import FleetAgent, FleetLifecycleState, InMemoryFleetStore
+from agent_bom.api.mcp_observation_store import InMemoryMCPObservationStore, MCPObservation
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.server import app
 from agent_bom.api.store import InMemoryJobStore
@@ -89,6 +90,38 @@ def _mock_job_store() -> InMemoryJobStore:
     return store
 
 
+def _mock_observation_store() -> InMemoryMCPObservationStore:
+    store = InMemoryMCPObservationStore()
+    store.put(
+        MCPObservation(
+            tenant_id="default",
+            observation_id="test-agent:test-server:npx",
+            server_stable_id="test-server:npx",
+            server_fingerprint="fp-1",
+            server_name="test-server",
+            agent_name="test-agent",
+            transport="sse",
+            url="https://mcp.example.internal/sse",
+            auth_mode="env-credentials",
+            command="npx",
+            args=["-y", "test-server"],
+            credential_env_vars=["API_KEY"],
+            observed_via=["fleet_sync", "scan_result"],
+            observed_scopes=["endpoint", "scan"],
+            scan_sources=["fleet_sync"],
+            source_agents=["test-agent"],
+            configured_locally=False,
+            fleet_present=True,
+            gateway_registered=True,
+            runtime_observed=False,
+            first_seen="2026-04-22T11:58:00Z",
+            last_seen="2026-04-22T12:01:00Z",
+            last_synced="2026-04-22T12:05:00Z",
+        )
+    )
+    return store
+
+
 @patch("agent_bom.discovery.discover_all", side_effect=_mock_agents)
 @patch("agent_bom.api.routes.discovery._get_fleet_store", side_effect=_mock_fleet_store)
 def test_agent_detail_found(_fleet, _mock):
@@ -162,14 +195,16 @@ def test_agent_detail_credential_detection(_mock):
 @patch("agent_bom.api.routes.discovery._get_fleet_store", side_effect=_mock_fleet_store)
 def test_agent_detail_exposes_server_provenance(_fleet, _mock):
     prev_store = _stores._store
+    prev_observation_store = getattr(_stores, "_mcp_observation_store", None)
     _stores._store = _mock_job_store()
+    _stores._mcp_observation_store = _mock_observation_store()
     try:
         client = TestClient(app)
         resp = client.get("/v1/agents/test-agent")
         assert resp.status_code == 200
         server = resp.json()["agent"]["mcp_servers"][0]
         provenance = server["provenance"]
-        assert provenance["configured_locally"] is True
+        assert provenance["configured_locally"] is False
         assert provenance["fleet_present"] is True
         assert provenance["gateway_registered"] is True
         assert provenance["runtime_observed"] is False
@@ -180,10 +215,11 @@ def test_agent_detail_exposes_server_provenance(_fleet, _mock):
         assert "fleet_sync" in provenance["observed_via"]
         assert "gateway_discovery" in provenance["observed_via"]
         assert provenance["first_seen"] == "2026-04-22T11:58:00Z"
-        assert provenance["last_seen"] == "2026-04-22T12:00:00Z"
+        assert provenance["last_seen"] == "2026-04-22T12:01:00Z"
         assert provenance["last_synced"] == "2026-04-22T12:05:00Z"
     finally:
         _stores._store = prev_store
+        _stores._mcp_observation_store = prev_observation_store
 
 
 @patch("agent_bom.discovery.discover_all", side_effect=_mock_agents)

@@ -16,8 +16,9 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 
+from agent_bom.api.mcp_observation_store import MCPObservation
 from agent_bom.api.models import FleetAgentUpdate, PushPayload, StateUpdate
-from agent_bom.api.stores import _get_fleet_store, _get_idempotency_store
+from agent_bom.api.stores import _get_fleet_store, _get_idempotency_store, _get_mcp_observation_store
 from agent_bom.api.tenant_quota import enforce_fleet_agents_quota
 
 router = APIRouter()
@@ -124,6 +125,56 @@ def _payload_counts(agent: dict) -> tuple[int, int, int, int]:
     return server_count, pkg_count, cred_count, vuln_count
 
 
+def _persist_payload_observations(tenant_id: str, agent: dict, *, last_discovery: str, last_synced: str) -> None:
+    store = _get_mcp_observation_store()
+    agent_name = str(agent.get("name", "unknown-agent"))
+    for idx, server in enumerate(agent.get("mcp_servers", []) or []):
+        server_name = str(server.get("name") or f"server-{idx}")
+        server_url = str(server.get("url") or "") or None
+        credential_names = list(server.get("credential_names", []) or [])
+        auth_mode = str(server.get("auth_mode") or "")
+        if not auth_mode:
+            if credential_names:
+                auth_mode = "env-credentials"
+            elif server_url and "@" in server_url:
+                auth_mode = "url-embedded-credentials"
+            elif server_url:
+                auth_mode = "network-no-auth-observed"
+            else:
+                auth_mode = "local-stdio"
+        transport = str(server.get("transport") or "")
+        stable_id = str(server.get("stable_id") or f"{server_name}:{server.get('command', '')}")
+        store.put(
+            MCPObservation(
+                tenant_id=tenant_id,
+                observation_id=f"{agent_name}:{stable_id}",
+                server_stable_id=stable_id,
+                server_fingerprint=str(server.get("fingerprint") or stable_id),
+                server_name=server_name,
+                agent_name=agent_name,
+                transport=transport,
+                url=server_url,
+                auth_mode=auth_mode,
+                command=str(server.get("command") or ""),
+                args=list(server.get("args", []) or []),
+                config_path=server.get("config_path"),
+                credential_env_vars=credential_names,
+                security_warnings=list(server.get("security_warnings", []) or []),
+                observed_via=["fleet_sync"],
+                observed_scopes=["endpoint"],
+                scan_sources=[],
+                source_agents=[agent_name] if server_url and transport.lower() in {"http", "https", "sse"} else [],
+                configured_locally=False,
+                fleet_present=True,
+                gateway_registered=bool(server_url and transport.lower() in {"http", "https", "sse"}),
+                runtime_observed=False,
+                first_seen=last_discovery,
+                last_seen=last_discovery,
+                last_synced=last_synced,
+            )
+        )
+
+
 @router.post("/v1/fleet/sync", tags=["fleet"])
 async def sync_fleet(request: Request, body: PushPayload | None = None):
     """Run discovery and sync results into the fleet registry.
@@ -194,6 +245,7 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
                 )
                 store.put(fleet_agent)
                 new_count += 1
+            _persist_payload_observations(tenant_id, payload_agent, last_discovery=now, last_synced=now)
     else:
         discovered = discover_all()
         existing_by_name = {agent.name: agent for agent in store.list_by_tenant(tenant_id)}

@@ -16,6 +16,7 @@ from agent_bom.config import API_MAX_IN_MEMORY_JOBS as _MAX_IN_MEMORY_JOBS
 
 if TYPE_CHECKING:
     from agent_bom.api.graph_store import GraphStoreProtocol
+    from agent_bom.api.mcp_observation_store import MCPObservationStore
     from agent_bom.api.models import ScanJob
     from agent_bom.api.schedule_store import ScheduleStore
     from agent_bom.api.source_store import SourceStore
@@ -196,6 +197,7 @@ def set_schedule_store(store: ScheduleStore) -> None:
 
 # ─── Source store (pluggable) ───────────────────────────────────────────────
 _source_store: SourceStore | None = None
+_mcp_observation_store: MCPObservationStore | None = None
 
 
 def _get_source_store() -> SourceStore:
@@ -209,6 +211,29 @@ def set_source_store(store: SourceStore) -> None:
     """Switch the source registry store backend."""
     global _source_store
     _source_store = store
+
+
+def _get_mcp_observation_store():
+    """Get the active persisted MCP observation store."""
+    global _mcp_observation_store
+    if _mcp_observation_store is None:
+        with _store_lock:
+            if _mcp_observation_store is None:
+                if os.environ.get("AGENT_BOM_DB"):
+                    from agent_bom.api.mcp_observation_store import SQLiteMCPObservationStore
+
+                    _mcp_observation_store = SQLiteMCPObservationStore(os.environ["AGENT_BOM_DB"])
+                else:
+                    from agent_bom.api.mcp_observation_store import InMemoryMCPObservationStore
+
+                    _mcp_observation_store = InMemoryMCPObservationStore()
+    return _mcp_observation_store
+
+
+def set_mcp_observation_store(store: Any) -> None:
+    """Switch the MCP observation store backend."""
+    global _mcp_observation_store
+    _mcp_observation_store = store
 
 
 # ─── Exception store (enterprise) ───────────────────────────────────────────

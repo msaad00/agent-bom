@@ -1,0 +1,129 @@
+"""Persisted MCP observation records for correlated inventory provenance."""
+
+from __future__ import annotations
+
+import sqlite3
+import threading
+from datetime import datetime, timezone
+from typing import Protocol
+
+from pydantic import BaseModel, Field
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+class MCPObservation(BaseModel):
+    tenant_id: str = "default"
+    observation_id: str
+    server_stable_id: str
+    server_fingerprint: str = ""
+    server_name: str
+    agent_name: str = ""
+    transport: str = ""
+    url: str | None = None
+    auth_mode: str = "local-stdio"
+    command: str = ""
+    args: list[str] = Field(default_factory=list)
+    config_path: str | None = None
+    credential_env_vars: list[str] = Field(default_factory=list)
+    security_warnings: list[str] = Field(default_factory=list)
+    observed_via: list[str] = Field(default_factory=list)
+    observed_scopes: list[str] = Field(default_factory=list)
+    scan_sources: list[str] = Field(default_factory=list)
+    source_agents: list[str] = Field(default_factory=list)
+    configured_locally: bool = False
+    fleet_present: bool = False
+    gateway_registered: bool = False
+    runtime_observed: bool = False
+    first_seen: str | None = None
+    last_seen: str | None = None
+    last_synced: str | None = None
+    updated_at: str = Field(default_factory=_now)
+
+
+class MCPObservationStore(Protocol):
+    def put(self, observation: MCPObservation) -> None: ...
+    def get(self, tenant_id: str, observation_id: str) -> MCPObservation | None: ...
+    def list_by_tenant(self, tenant_id: str) -> list[MCPObservation]: ...
+
+
+class InMemoryMCPObservationStore:
+    def __init__(self) -> None:
+        self._rows: dict[tuple[str, str], MCPObservation] = {}
+        self._lock = threading.Lock()
+
+    def put(self, observation: MCPObservation) -> None:
+        with self._lock:
+            self._rows[(observation.tenant_id, observation.observation_id)] = observation
+
+    def get(self, tenant_id: str, observation_id: str) -> MCPObservation | None:
+        with self._lock:
+            return self._rows.get((tenant_id, observation_id))
+
+    def list_by_tenant(self, tenant_id: str) -> list[MCPObservation]:
+        with self._lock:
+            return sorted(
+                [row for (row_tenant, _), row in self._rows.items() if row_tenant == tenant_id],
+                key=lambda row: (row.agent_name.lower(), row.server_name.lower(), row.observation_id),
+            )
+
+
+class SQLiteMCPObservationStore:
+    def __init__(self, db_path: str = "agent_bom_jobs.db") -> None:
+        self._db_path = db_path
+        self._local = threading.local()
+        self._init_db()
+
+    @property
+    def _conn(self) -> sqlite3.Connection:
+        if not hasattr(self._local, "conn") or self._local.conn is None:
+            self._local.conn = sqlite3.connect(self._db_path, check_same_thread=False)
+            self._local.conn.execute("PRAGMA journal_mode=WAL")
+        return self._local.conn
+
+    def _init_db(self) -> None:
+        self._conn.execute("""
+            CREATE TABLE IF NOT EXISTS mcp_observations (
+                tenant_id TEXT NOT NULL,
+                observation_id TEXT NOT NULL,
+                server_name TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                data TEXT NOT NULL,
+                PRIMARY KEY (tenant_id, observation_id)
+            )
+        """)
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_mcp_observations_tenant_server ON mcp_observations(tenant_id, server_name)")
+        self._conn.commit()
+
+    def put(self, observation: MCPObservation) -> None:
+        self._conn.execute(
+            """INSERT OR REPLACE INTO mcp_observations
+               (tenant_id, observation_id, server_name, updated_at, data)
+               VALUES (?, ?, ?, ?, ?)""",
+            (
+                observation.tenant_id,
+                observation.observation_id,
+                observation.server_name,
+                observation.updated_at,
+                observation.model_dump_json(),
+            ),
+        )
+        self._conn.commit()
+
+    def get(self, tenant_id: str, observation_id: str) -> MCPObservation | None:
+        row = self._conn.execute(
+            "SELECT data FROM mcp_observations WHERE tenant_id = ? AND observation_id = ?",
+            (tenant_id, observation_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return MCPObservation.model_validate_json(row[0])
+
+    def list_by_tenant(self, tenant_id: str) -> list[MCPObservation]:
+        rows = self._conn.execute(
+            "SELECT data FROM mcp_observations WHERE tenant_id = ? ORDER BY server_name, updated_at DESC",
+            (tenant_id,),
+        ).fetchall()
+        return [MCPObservation.model_validate_json(row[0]) for row in rows]

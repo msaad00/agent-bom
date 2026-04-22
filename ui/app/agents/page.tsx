@@ -89,7 +89,35 @@ function useAgentStats(agents: Agent[]) {
     }
   }
 
-  return { configured, notConfigured, totalServers, totalPackages, totalCredentials, ecosystems };
+  const serversWithCredentials = agents.reduce(
+    (count, agent) => count + agent.mcp_servers.filter((srv) => (srv.credential_env_vars?.length ?? 0) > 0 || srv.has_credentials).length,
+    0
+  );
+  const blockedServers = agents.reduce(
+    (count, agent) => count + agent.mcp_servers.filter((srv) => srv.security_blocked).length,
+    0
+  );
+  const remoteServers = agents.reduce(
+    (count, agent) =>
+      count +
+      agent.mcp_servers.filter((srv) => {
+        const transport = (srv.transport || "").toLowerCase();
+        return transport.includes("sse") || transport.includes("http");
+      }).length,
+    0
+  );
+
+  return {
+    configured,
+    notConfigured,
+    totalServers,
+    totalPackages,
+    totalCredentials,
+    ecosystems,
+    serversWithCredentials,
+    blockedServers,
+    remoteServers,
+  };
 }
 
 // ─── Agents List View ───────────────────────────────────────────────────────
@@ -113,7 +141,7 @@ function AgentsList() {
       .finally(() => setLoading(false));
   }, []);
 
-  const { configured, notConfigured: installedOnly, totalServers, totalPackages, totalCredentials, ecosystems } =
+  const { configured, notConfigured: installedOnly, totalServers, totalPackages, totalCredentials, ecosystems, serversWithCredentials, blockedServers, remoteServers } =
     useAgentStats(agents);
 
   const filteredConfigured = configured.filter((a) =>
@@ -137,6 +165,40 @@ function AgentsList() {
           Mesh View
         </Link>
       </div>
+
+      {!loading && agents.length > 0 && (
+        <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/20 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1">
+              <p className="text-[11px] font-mono uppercase tracking-[0.2em] text-emerald-400">Inventory-first value</p>
+              <h2 className="text-base font-semibold text-zinc-100">See MCP surface area before you deploy proxy</h2>
+              <p className="text-sm leading-6 text-zinc-400 max-w-3xl">
+                This page is useful on discovery alone. It shows which MCP servers are configured, what transport they use,
+                how many tools they expose, and whether they carry env-backed credentials or risky server state. Proxy and gateway
+                add runtime enforcement later; they are not required for inventory visibility.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs lg:min-w-[280px]">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+                <div className="text-zinc-500">Remote MCPs</div>
+                <div className="mt-1 text-sm font-semibold text-blue-400">{remoteServers}</div>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+                <div className="text-zinc-500">Servers with credentials</div>
+                <div className="mt-1 text-sm font-semibold text-yellow-400">{serversWithCredentials}</div>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+                <div className="text-zinc-500">Blocked or risky</div>
+                <div className="mt-1 text-sm font-semibold text-rose-400">{blockedServers}</div>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+                <div className="text-zinc-500">Configured agents</div>
+                <div className="mt-1 text-sm font-semibold text-emerald-400">{configured.length}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {!loading && agents.length > 0 && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -267,6 +329,16 @@ function AgentsList() {
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-mono font-semibold text-zinc-200">{srv.name}</span>
+                        {srv.security_blocked && (
+                          <span className="rounded border border-rose-800 bg-rose-950 px-1.5 py-0.5 text-[10px] font-mono text-rose-300">
+                            blocked
+                          </span>
+                        )}
+                        {(srv.credential_env_vars?.length ?? 0) > 0 && (
+                          <span className="rounded border border-yellow-800 bg-yellow-950 px-1.5 py-0.5 text-[10px] font-mono text-yellow-300">
+                            creds
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         {srv.transport && (
@@ -300,7 +372,27 @@ function AgentsList() {
                           {Object.keys(srv.env).length} credential{Object.keys(srv.env).length !== 1 ? "s" : ""}
                         </span>
                       )}
+                      {srv.security_blocked && (
+                        <span className="flex items-center gap-1 text-rose-400">
+                          <AlertCircle className="w-3 h-3" />
+                          blocked or policy risky
+                        </span>
+                      )}
                     </div>
+                    {(srv.credential_env_vars?.length ?? 0) > 0 && (
+                      <div className="mt-3">
+                        <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-yellow-400">
+                          Credential-backed env vars
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {srv.credential_env_vars?.map((envVar) => (
+                            <span key={envVar} className="rounded border border-yellow-800 bg-yellow-950 px-2 py-0.5 text-[11px] font-mono text-yellow-300">
+                              {envVar}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -461,6 +553,15 @@ function AgentDetail({ agentName }: { agentName: string }) {
       </div>
 
       <div className="max-w-7xl mx-auto px-6 py-6 space-y-6">
+        <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/20 p-4">
+          <p className="text-[11px] font-mono uppercase tracking-[0.2em] text-emerald-400">Inventory-first view</p>
+          <p className="mt-1 text-sm leading-6 text-zinc-400">
+            This detail page is valuable before runtime proxy rollout. It shows the granted MCP surface area for
+            <span className="mx-1 font-semibold text-zinc-200">{agent.name}</span>
+            using discovery and scan data alone: server transport, exposed tools, env-backed credentials, and attached package risk.
+          </p>
+        </div>
+
         {/* Summary Stats */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <StatCard icon={Server} label="MCP Servers" value={summary.total_servers} color="text-blue-400" />
@@ -524,6 +625,16 @@ function AgentDetail({ agentName }: { agentName: string }) {
                       <span className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded">
                         {srv.transport || "stdio"}
                       </span>
+                      {srv.security_blocked && (
+                        <span className="rounded border border-rose-800 bg-rose-950 px-1.5 py-0.5 text-[10px] font-mono text-rose-300">
+                          blocked
+                        </span>
+                      )}
+                      {(srv.credential_env_vars?.length ?? 0) > 0 && (
+                        <span className="rounded border border-yellow-800 bg-yellow-950 px-1.5 py-0.5 text-[10px] font-mono text-yellow-300">
+                          {srv.credential_env_vars?.length ?? 0} credential env
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 text-xs text-zinc-500">
                       <span>{srvPkgs.length} pkgs</span>
@@ -546,6 +657,24 @@ function AgentDetail({ agentName }: { agentName: string }) {
                               </span>
                             ))}
                           </div>
+                        </div>
+                      )}
+                      {(srv.credential_env_vars?.length ?? 0) > 0 && (
+                        <div>
+                          <h4 className="text-xs font-semibold text-yellow-400 mb-1">Credential-backed env vars</h4>
+                          <div className="flex flex-wrap gap-1.5">
+                            {srv.credential_env_vars?.map((envVar) => (
+                              <span key={envVar} className="rounded border border-yellow-800 bg-yellow-950 px-2 py-0.5 text-[11px] font-mono text-yellow-300">
+                                {envVar}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {srv.security_blocked && (
+                        <div className="rounded-lg border border-rose-900/60 bg-rose-950/20 px-3 py-2 text-xs text-rose-300">
+                          This server is marked as blocked or risky by the discovery/security pipeline. Inventory visibility works without
+                          runtime proxy; proxy and gateway are the later enforcement layer.
                         </div>
                       )}
                       {/* Packages */}

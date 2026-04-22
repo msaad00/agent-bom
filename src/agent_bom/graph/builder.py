@@ -8,6 +8,7 @@ used for current-state views, traversal, attack paths, and temporal diffs.
 from __future__ import annotations
 
 from collections import defaultdict
+from pathlib import PurePath
 from typing import Any
 
 from agent_bom.api.tracing import get_tracer
@@ -59,8 +60,12 @@ def build_unified_graph_from_report(
     cred_to_agents: dict[str, list[str]] = defaultdict(list)
     # Track server/package indexes for vuln edges
     pkg_key_to_servers: dict[str, list[str]] = defaultdict(list)
+    package_name_to_ids: dict[str, list[str]] = defaultdict(list)
+    server_name_to_ids: dict[str, list[str]] = defaultdict(list)
+    agent_name_to_ids: dict[str, list[str]] = defaultdict(list)
     server_name_to_agent_servers: dict[str, dict[str, str]] = defaultdict(dict)
     agent_to_server_ids: dict[str, set[str]] = defaultdict(set)
+    agent_config_path_to_id: dict[str, str] = {}
 
     # ── Agents → Servers → Packages → Tools → Credentials ───────────
     for agent_dict in agents_data:
@@ -97,6 +102,10 @@ def build_unified_graph_from_report(
                 data_sources=[data_source_tag],
             )
         )
+        agent_name_to_ids[agent_name].append(agent_id)
+        config_path = str(agent_dict.get("config_path", "") or "").strip()
+        if config_path:
+            agent_config_path_to_id[config_path] = agent_id
         graph.add_edge(
             UnifiedEdge(
                 source=provider_id,
@@ -131,6 +140,7 @@ def build_unified_graph_from_report(
                     data_sources=[data_source_tag],
                 )
             )
+            server_name_to_ids[srv_name].append(srv_id)
             graph.add_edge(
                 UnifiedEdge(
                     source=agent_id,
@@ -170,6 +180,7 @@ def build_unified_graph_from_report(
                         data_sources=[data_source_tag],
                     )
                 )
+                package_name_to_ids[pkg_name].append(pkg_id)
                 graph.add_edge(
                     UnifiedEdge(
                         source=srv_id,
@@ -566,6 +577,51 @@ def build_unified_graph_from_report(
                 )
             )
 
+    # ── Skill-audit findings as misconfiguration nodes ──────────────
+    skill_audit = report_json.get("skill_audit")
+    if skill_audit:
+        for index, finding in enumerate(skill_audit.get("findings", []), start=1):
+            category = str(finding.get("category", "skill_audit") or "skill_audit").lower()
+            package_name = str(finding.get("package", "") or "").strip()
+            server_name = str(finding.get("server", "") or "").strip()
+            source_file = str(finding.get("source_file", "") or "").strip()
+            finding_id = f"misconfig:skill_audit:{category}:{index}"
+            graph.add_node(
+                UnifiedNode(
+                    id=finding_id,
+                    entity_type=EntityType.MISCONFIGURATION,
+                    label=str(finding.get("title", "") or category or "Skill audit finding"),
+                    severity=str(finding.get("severity", "medium") or "medium").lower(),
+                    attributes={
+                        "category": category,
+                        "detail": finding.get("detail", ""),
+                        "source_file": source_file,
+                        "package": package_name,
+                        "server": server_name,
+                        "recommendation": finding.get("recommendation", ""),
+                        "context": finding.get("context", ""),
+                        "ai_analysis": finding.get("ai_analysis"),
+                        "ai_adjusted_severity": finding.get("ai_adjusted_severity"),
+                    },
+                    compliance_tags=[f"skill_audit:{category}"],
+                    data_sources=["skill-audit"],
+                )
+            )
+            for target_id in _resolve_skill_audit_target_ids(
+                finding,
+                package_name_to_ids=package_name_to_ids,
+                server_name_to_ids=server_name_to_ids,
+                agent_name_to_ids=agent_name_to_ids,
+                agent_config_path_to_id=agent_config_path_to_id,
+            ):
+                graph.add_edge(
+                    UnifiedEdge(
+                        source=finding_id,
+                        target=target_id,
+                        relationship=RelationshipType.AFFECTS,
+                    )
+                )
+
     # ── Runtime session graph (dynamic edges) ──────────────────────
     runtime_graph = report_json.get("runtime_session_graph")
     if runtime_graph:
@@ -791,3 +847,38 @@ def _resolve_model_id(graph: UnifiedGraph, model_uri: str) -> str:
         if graph.has_node(model_id):
             return model_id
     return ""
+
+
+def _resolve_skill_audit_target_ids(
+    finding: dict[str, Any],
+    *,
+    package_name_to_ids: dict[str, list[str]],
+    server_name_to_ids: dict[str, list[str]],
+    agent_name_to_ids: dict[str, list[str]],
+    agent_config_path_to_id: dict[str, str],
+) -> list[str]:
+    """Resolve graph target IDs for a serialized skill-audit finding."""
+    target_ids: set[str] = set()
+
+    package_name = str(finding.get("package", "") or "").strip()
+    if package_name:
+        target_ids.update(package_name_to_ids.get(package_name, []))
+
+    server_name = str(finding.get("server", "") or "").strip()
+    if server_name:
+        target_ids.update(server_name_to_ids.get(server_name, []))
+
+    source_file = str(finding.get("source_file", "") or "").strip()
+    if source_file:
+        if source_file in agent_config_path_to_id:
+            target_ids.add(agent_config_path_to_id[source_file])
+        source_name = PurePath(source_file).name
+        for config_path, agent_id in agent_config_path_to_id.items():
+            if source_name and source_name == PurePath(config_path).name:
+                target_ids.add(agent_id)
+
+    if not target_ids and len(agent_name_to_ids) == 1:
+        only_agent_ids = next(iter(agent_name_to_ids.values()))
+        target_ids.update(only_agent_ids)
+
+    return sorted(target_ids)

@@ -101,6 +101,7 @@ nav:
       - Terraform AWS Baseline: deployment/terraform-aws-baseline.md
       - Postgres Provisioning Workflow: deployment/postgres-provisioning.md
       - Packaged API + UI Control Plane: deployment/control-plane-helm.md
+      - Control-Plane Data Model and Store Parity: deployment/control-plane-data-model.md
       - Audit Chain vs Compliance Signing: deployment/audit-and-compliance-verification.md
       - Performance, Sizing, and Benchmarks: deployment/performance-and-sizing.md
       - Backend Parity: deployment/backend-parity.md

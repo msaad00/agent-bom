@@ -318,6 +318,54 @@ def test_gateway_serve_passes_runtime_rate_limit_settings(tmp_path):
     mock_run.assert_called_once()
 
 
+def test_gateway_serve_rejects_policy_reload_without_policy_file():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        upstreams = "upstreams.yaml"
+        with open(upstreams, "w", encoding="utf-8") as handle:
+            handle.write("upstreams:\n  - name: jira\n    url: https://jira.example.com/mcp\n")
+        result = runner.invoke(
+            gateway_serve_cmd,
+            ["--bind", "127.0.0.1:8090", "--upstreams", upstreams, "--policy-reload-seconds", "5"],
+        )
+    assert result.exit_code == 1
+    assert "--policy-reload-seconds requires --policy" in result.output
+
+
+def test_gateway_serve_passes_policy_reload_settings(tmp_path):
+    runner = CliRunner()
+    upstreams = tmp_path / "upstreams.yaml"
+    policy = tmp_path / "policy.json"
+    upstreams.write_text("upstreams:\n  - name: jira\n    url: https://jira.example.com/mcp\n")
+    policy.write_text('{"rules":[]}')
+
+    with (
+        patch("agent_bom.gateway_server.create_gateway_app") as mock_create_app,
+        patch("uvicorn.run") as mock_run,
+    ):
+        mock_create_app.return_value = object()
+        result = runner.invoke(
+            gateway_serve_cmd,
+            [
+                "--bind",
+                "127.0.0.1:8090",
+                "--upstreams",
+                str(upstreams),
+                "--policy",
+                str(policy),
+                "--policy-reload-seconds",
+                "5",
+            ],
+        )
+
+    assert result.exit_code == 0
+    settings = mock_create_app.call_args.args[0]
+    assert settings.policy_path == policy
+    assert settings.policy_reload_interval_seconds == 5
+    assert "Policy hot reload: enabled every 5s" in result.output
+    mock_run.assert_called_once()
+
+
 def test_mcp_server_cmd_missing_sdk():
     """Test mcp-server command when MCP SDK is not installed."""
     runner = CliRunner()

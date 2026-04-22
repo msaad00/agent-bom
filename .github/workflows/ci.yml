@@ -270,6 +270,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -295,7 +298,7 @@ jobs:
       - name: Validate Homebrew formula renderer
         if: matrix.os == 'ubuntu-latest'
         run: |
-          VERSION=$(python -c "from agent_bom import __version__; print(__version__)")
+          VERSION=$(uv run python -c "from agent_bom import __version__; print(__version__)")
           python scripts/render_homebrew_formula.py \
             --version "$VERSION" \
             --url "https://example.invalid/agent-bom-${VERSION}.tar.gz" \
@@ -306,7 +309,7 @@ jobs:
         env:
           BUNDLE_DIR: ${{ runner.temp }}/endpoint-bundle
         run: |
-          VERSION=$(python -c "from agent_bom import __version__; print(__version__)")
+          VERSION=$(uv run python -c "from agent_bom import __version__; print(__version__)")
           bash scripts/build-pkg.sh \
             --bundle-dir "$BUNDLE_DIR" \
             --output "$RUNNER_TEMP/agent-bom-endpoint.pkg" \
@@ -320,7 +323,7 @@ jobs:
           BUNDLE_DIR: ${{ runner.temp }}/endpoint-bundle
         shell: pwsh
         run: |
-          $version = python -c "from agent_bom import __version__; print(__version__)"
+          $version = uv run python -c "from agent_bom import __version__; print(__version__)"
           ./scripts/build-msi.ps1 -BundleDir $env:BUNDLE_DIR -OutputPath (Join-Path $env:RUNNER_TEMP "agent-bom-endpoint.msi") -Version $version -DryRun
 
   # 3. Tests

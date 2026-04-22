@@ -92,6 +92,7 @@ nav:
   - Deployment:
       - Overview: deployment/overview.md
       - Deployment Modes and Alignment: deployment/deployment-modes-and-alignment.md
+      - AWS Company Rollout: deployment/aws-company-rollout.md
       - Enterprise MCP / Endpoint Pilot: deployment/enterprise-pilot.md
       - Endpoint Fleet: deployment/endpoint-fleet.md
       - Focused EKS MCP Pilot: deployment/eks-mcp-pilot.md

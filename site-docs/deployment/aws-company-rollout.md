@@ -1,0 +1,279 @@
+# AWS Company Rollout
+
+Use this guide when the question is not just "how do I install `agent-bom`?" but
+"how would a company deploy `agent-bom` in AWS/EKS for fleet, gateway, proxy, and
+control-plane workflows?"
+
+This is a **reference rollout path** for self-hosted `agent-bom` on AWS:
+
+- the company platform team still owns the AWS account, VPC, EKS cluster, ingress, cert-manager, and shared controllers
+- `agent-bom` owns the product-specific baseline around that platform: Postgres, IRSA, backup bucket, auth secrets, Helm release, fleet onboarding, and optional gateway runtime
+
+`agent-bom` stays one product with two deployable images:
+
+- `agentbom/agent-bom` for scanner, API, jobs, proxy, gateway, and workers
+- `agentbom/agent-bom-ui` for the browser dashboard
+
+## Reference Entry Points
+
+Pilot on one workstation:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml
+docker compose -f docker-compose.pilot.yml up -d
+```
+
+Reference AWS/EKS rollout:
+
+```bash
+scripts/deploy/install-eks-reference.sh \
+  --create-cluster \
+  --cluster-name corp-ai \
+  --region us-east-1 \
+  --hostname agent-bom.internal.example.com \
+  --enable-gateway
+```
+
+If the company already has an EKS platform, reuse it:
+
+```bash
+scripts/deploy/install-eks-reference.sh \
+  --cluster-name corp-ai \
+  --region us-east-1 \
+  --hostname agent-bom.internal.example.com \
+  --enable-gateway
+```
+
+## What The Installer Owns
+
+The reference installer at `scripts/deploy/install-eks-reference.sh` is intentionally opinionated:
+
+1. Optionally creates a reference EKS cluster with `eksctl`
+2. Applies the `agent-bom` AWS baseline Terraform module
+3. Creates the product secrets needed by the Helm release
+4. Installs the packaged Helm chart with production profile defaults
+5. Prints next-step commands for fleet onboarding and gateway rollout
+
+It does **not** try to replace a customer's full AWS platform stack. Keep these as platform-owned:
+
+- corporate VPC topology and networking policy
+- DNS and ingress controller strategy
+- cert-manager and certificate issuance
+- shared logging, SIEM, and OTLP collectors
+- ExternalSecrets controller or other shared secret operators
+- organization-wide IAM, SCP, and account guardrails
+
+## Deployment Shape
+
+```mermaid
+flowchart LR
+    subgraph AWS["Customer AWS account"]
+      subgraph Platform["Company platform-owned layer"]
+        VPC["VPC / subnets / route tables"]
+        EKS["EKS cluster"]
+        Ingress["Ingress controller + DNS + TLS"]
+        Controllers["Shared controllers<br/>cert-manager / ExternalSecrets / observability"]
+      end
+
+      subgraph AgentBom["agent-bom product-owned layer"]
+        TF["AWS baseline<br/>Terraform module"]
+        RDS["RDS Postgres"]
+        S3["S3 backup bucket"]
+        IAM["IRSA roles"]
+        Secrets["Secrets Manager"]
+        Helm["agent-bom Helm release"]
+        API["API/runtime image"]
+        UI["UI image"]
+        Jobs["Scan jobs / workers"]
+        Gateway["Optional gateway"]
+      end
+    end
+
+    VPC --> EKS
+    Ingress --> EKS
+    Controllers --> EKS
+    TF --> RDS
+    TF --> S3
+    TF --> IAM
+    TF --> Secrets
+    TF --> Helm
+    Helm --> API
+    Helm --> UI
+    Helm --> Jobs
+    Helm --> Gateway
+    API --> RDS
+    Jobs --> RDS
+    API --> S3
+    API --> Secrets
+    API --> IAM
+```
+
+This is the clean ownership model:
+
+- **platform team** provides a compliant EKS landing zone
+- **`agent-bom` installer** wires the product-specific AWS and Kubernetes pieces on top
+- **security/platform operators** onboard endpoints and selected MCP runtimes after the control plane is live
+
+## Runtime Flow For Fleet, Proxy, And Gateway
+
+```mermaid
+flowchart LR
+    subgraph Endpoints["Developer laptops / workstations"]
+      IDE["Cursor / Claude / IDE"]
+      Proxy["agent-bom proxy"]
+      Fleet["Fleet sync push"]
+    end
+
+    subgraph Cluster["Customer EKS"]
+      UI["Browser UI"]
+      API["Control-plane API"]
+      GW["Gateway"]
+      Jobs["Scheduled scans / workers"]
+      ProxySidecar["Optional proxy sidecars"]
+      DB["Postgres"]
+    end
+
+    subgraph Upstreams["Remote MCP / registries / cloud APIs"]
+      MCP["Remote MCP upstreams"]
+      Cloud["Cloud / repo / image targets"]
+    end
+
+    IDE --> Proxy
+    Proxy -->|policy pull + audit push| API
+    Proxy -->|runtime MCP relay| GW
+    Fleet -->|/v1/fleet/sync| API
+    GW --> MCP
+    Jobs --> Cloud
+    Jobs --> API
+    ProxySidecar --> GW
+    API --> DB
+    GW --> API
+    UI --> API
+```
+
+What this means in practice:
+
+- developer endpoints can push fleet inventory and use `agent-bom proxy` as a local MCP wrapper
+- selected MCP workloads in-cluster can run with `agent-bom proxy` sidecars
+- the gateway is optional and centralizes policy/audit for shared upstreams
+- the control plane persists findings, graph, fleet state, auth, and audit inside the customer's infrastructure
+
+## Recommended Rollout Sequence
+
+### 1. Company platform baseline
+
+Start with one of these shapes:
+
+- existing EKS platform: preferred for real companies
+- reference EKS cluster from the installer: good for evaluation, pilot, and demos
+
+Before installing `agent-bom`, confirm:
+
+- `kubectl` access to the target cluster
+- ingress controller strategy is known
+- DNS / hostname decision is known, or accept port-forward for first bring-up
+- AWS account permissions can create RDS, S3, IAM roles, and Secrets Manager entries
+
+### 2. Product-specific AWS baseline
+
+Run the reference installer or the Terraform module directly:
+
+```bash
+scripts/deploy/install-eks-reference.sh \
+  --cluster-name corp-ai \
+  --region us-east-1 \
+  --hostname agent-bom.internal.example.com \
+  --enable-gateway
+```
+
+Under the hood this uses the baseline in `deploy/terraform/aws/baseline` to create:
+
+- RDS Postgres for the control plane
+- S3 backup bucket
+- IRSA roles for scan and backup jobs
+- Secrets Manager containers for DB/auth wiring
+
+### 3. Helm release on EKS
+
+The installer then applies the production Helm profile plus generated overrides:
+
+- UI and API/runtime images behind one same-origin entrypoint
+- scheduled jobs and workers
+- optional gateway
+- auth and DB secrets wired from generated values
+
+For manual control, use the packaged chart directly:
+
+```bash
+helm upgrade --install agent-bom deploy/helm/agent-bom \
+  --namespace agent-bom --create-namespace \
+  -f deploy/helm/agent-bom/examples/eks-production-values.yaml
+```
+
+See also:
+
+- [Your Own AWS / EKS](own-infra-eks.md)
+- [Terraform AWS Baseline](terraform-aws-baseline.md)
+- [Packaged API + UI Control Plane](control-plane-helm.md)
+
+### 4. Endpoint and runtime onboarding
+
+After the control plane is live, onboard people and workloads, not just pods:
+
+- use `agent-bom proxy-bootstrap` to generate endpoint onboarding bundles
+- point MCP clients at the local `agent-bom proxy` wrapper
+- enable fleet sync for workstation visibility
+- add proxy sidecars only to workloads that need inline MCP policy enforcement
+- enable the gateway when you need shared upstream policy and audit
+
+Typical endpoint bootstrap:
+
+```bash
+agent-bom proxy-bootstrap \
+  --bundle-dir ./agent-bom-endpoint-bundle \
+  --control-plane-url https://agent-bom.internal.example.com \
+  --control-plane-token <api-key> \
+  --push-url https://agent-bom.internal.example.com/v1/fleet/sync \
+  --push-api-key <api-key>
+```
+
+## What Operators Get After Deploy
+
+The goal is not just "pods are running." The goal is one coherent operator plane:
+
+- `/` for findings, graph, remediation, and operator workflows
+- `/fleet` for workstation and collector inventory
+- `/audit` for signed audit and auth workflows
+- `/gateway` and runtime views for policy/audit surfaces when enabled
+- one deployment story for pilot and production instead of two unrelated stacks
+
+## Dry-Run And Ownership Notes
+
+The reference installer supports `--dry-run` so teams can see the generated
+Terraform root, Helm values, and operator summary before any apply:
+
+```bash
+scripts/deploy/install-eks-reference.sh \
+  --cluster-name corp-ai \
+  --region us-east-1 \
+  --hostname agent-bom.internal.example.com \
+  --enable-gateway \
+  --dry-run
+```
+
+Use that mode when:
+
+- security wants to review what the installer owns
+- platform wants to compare the reference shape to their internal landing zone
+- you want to adapt the installer into your own wrappers without changing the product model
+
+## Recommended Positioning
+
+Use this wording consistently:
+
+> `agent-bom` is one self-hosted control plane for AI and MCP supply-chain
+> security. In AWS/EKS, the company platform owns the cluster and shared
+> controllers; `agent-bom` owns the product-specific baseline, Helm release,
+> fleet onboarding, and optional gateway/runtime surfaces.
+
+That keeps the architecture honest and the deployment story simple.

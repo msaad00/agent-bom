@@ -123,6 +123,9 @@ Four backends, one canonical model. Each store enforces tenant
 isolation either via a `tenant_id` column (Postgres / ClickHouse /
 Snowflake) or via per-tenant SQLite paths.
 
+For the operator-facing logical entity → store/table contract, see
+[`site-docs/deployment/control-plane-data-model.md`](../site-docs/deployment/control-plane-data-model.md).
+
 ### SQLite — `src/agent_bom/db/schema.py`
 
 Single-file local store. Used for the offline vuln DB and the
@@ -131,10 +134,14 @@ single-node `agent-bom serve` deployment.
 | Table | Purpose | Tenant-scoped? |
 |---|---|---|
 | `vulns`, `affected`, `epss_scores`, `kev_entries` | Bundled offline OSV/EPSS/KEV catalog | n/a (read-only catalog) |
-| `scan_jobs` | Scan job state | yes (per-tenant SQLite path or in-row column) |
+| `jobs` | Scan job state | yes (per-tenant SQLite path or in-row column) |
 | `fleet_agents` | Fleet inventory | yes |
 | `gateway_policies` | Gateway policy rules | yes |
+| `policy_audit_log` | Gateway policy mutation audit | yes |
+| `sources` | Source registry | yes |
 | `audit_log` | HMAC-chained audit | yes (in `details.tenant_id`) |
+| `idempotency_keys` | idempotent write tracking | yes |
+| `api_rate_limits` | shared runtime rate-limit state | yes |
 
 ### Postgres — `src/agent_bom/api/postgres_store.py`
 
@@ -158,6 +165,7 @@ list/put plus session-scoped `app.current_tenant` for RLS.
 ### ClickHouse — `src/agent_bom/cloud/clickhouse.py`
 
 OLAP-only. Append-only analytics for trends, runtime events, posture.
+This is not a transactional control-plane replacement.
 
 | Table | Source dataclass | tenant_id |
 |---|---|---|
@@ -175,9 +183,18 @@ is deliberately cross-tenant and reserved for admin surfaces.
 
 ### Snowflake — `src/agent_bom/api/snowflake_store.py`
 
-Warehouse-native deployment for governance-heavy customers. Mirrors
-Postgres tables with Snowflake-specific column types. Not yet at full
-control-plane parity — see roadmap for the gap list.
+Warehouse-native deployment for governance-heavy customers. Today it
+persists `scan_jobs`, `fleet_agents`, `gateway_policies`, and
+`policy_audit_log` with Snowflake-specific column types. It is not yet
+at full control-plane parity:
+
+- no source registry persistence
+- no API-key / RBAC persistence
+- no exceptions persistence
+- no schedule persistence
+- no graph persistence
+- no trend/baseline persistence
+- no full `audit_log` transactional replacement
 
 ### Deployment-context posture contract — `GET /v1/posture/counts`
 

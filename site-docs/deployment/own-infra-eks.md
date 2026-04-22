@@ -43,7 +43,7 @@ Keep that story in two diagrams:
   between those surfaces
 
 ```mermaid
-flowchart TB
+flowchart LR
     classDef ext  fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
     classDef edge fill:#111827,stroke:#38bdf8,color:#e0f2fe
     classDef ctrl fill:#0f172a,stroke:#6366f1,color:#e0e7ff
@@ -51,11 +51,17 @@ flowchart TB
     classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
     classDef ops  fill:#0f172a,stroke:#64748b,color:#cbd5e1
 
-    Browser["Browser operators"]:::ext
     IdP["Corporate IdP"]:::ext
-    CI["CI + scheduled scans"]:::ext
     Remote["Remote MCPs"]:::ext
     Intel["OSV / NVD / GHSA<br/>optional enrichment"]:::ext
+
+    subgraph Endpoints["Customer endpoints and workloads"]
+      direction TB
+      Browser["Browser operators"]:::ext
+      Fleet["Developer endpoints / collectors"]:::ops
+      Proxy["Proxy<br/>local wrapper or sidecar"]:::run
+      LocalMCP["Selected local or in-cluster MCPs"]:::ops
+    end
 
     subgraph Customer["Your AWS account / VPC / EKS cluster"]
       direction TB
@@ -69,11 +75,7 @@ flowchart TB
         Backup["Backup job"]:::ctrl
       end
 
-      subgraph Runtime["Runtime MCP plane"]
-        direction LR
-        Proxy["Proxy<br/>sidecar or laptop wrapper"]:::run
-        Gateway["Gateway<br/>agent-bom gateway serve"]:::run
-      end
+      Gateway["Gateway<br/>optional shared MCP traffic plane"]:::run
 
       subgraph Data["Customer-owned data"]
         direction LR
@@ -90,14 +92,16 @@ flowchart TB
     end
 
     Browser --> Ingress
-    IdP -. OIDC .-> Ingress
+    IdP -. OIDC / SAML .-> Ingress
     Ingress --> UI
+    Ingress --> API
     UI -->|same-origin API calls| API
-    CI --> Jobs
     Jobs -->|results + inventory| API
-    Proxy -->|audited relay| Gateway
-    Gateway -->|POST /v1/proxy/audit| API
-    Gateway -->|policy-audited upstream| Remote
+    Fleet -->|fleet sync / pushed results| API
+    Proxy -->|policy pull + audit push| API
+    Proxy -->|inline runtime path| LocalMCP
+    Gateway -->|policy pull + audit push| API
+    Gateway -->|shared remote MCP traffic| Remote
     API --> PG
     API -. optional analytics .-> CH
     Backup --> S3
@@ -105,34 +109,50 @@ flowchart TB
     Secrets --> Gateway
     API --> Obs
     Gateway --> Obs
-    API -. optional egress .-> Intel
+    API -. optional enrichment .-> Intel
 ```
 
 ```mermaid
 sequenceDiagram
-    participant Client as Developer or workload client
+    participant Client as Editor or workload client
+    participant API as Control-plane API
     participant Proxy as agent-bom proxy
     participant Gateway as agent-bom gateway
-    participant API as Control-plane API
+    participant Local as Local / sidecar MCP
     participant Remote as Remote MCP
     participant Store as Postgres / audit store
 
-    Client->>Proxy: MCP JSON-RPC (stdio / SSE / HTTP)
-    Proxy->>Proxy: local policy + runtime checks
-    Proxy->>Gateway: audited relay
-    Gateway->>API: policy fetch / POST /v1/proxy/audit
-    Gateway->>Remote: upstream MCP call
-    Remote-->>Gateway: MCP response
-    Gateway-->>Proxy: response + shared policy result
-    Proxy->>Proxy: optional VLD / OCR redaction
-    Proxy-->>Client: safe response
+    par Local / sidecar enforcement path
+        Client->>Proxy: MCP request
+        Proxy->>API: policy pull / audit push
+        Proxy->>Local: direct MCP call
+        Local-->>Proxy: response
+        Proxy->>Proxy: detector chain + optional VLD
+        Proxy-->>Client: safe response
+    and Shared remote gateway path
+        Client->>Gateway: MCP request
+        Gateway->>API: policy pull / audit push
+        Gateway->>Remote: upstream MCP call
+        Remote-->>Gateway: response
+        Gateway->>Gateway: policy + rate limit + optional VLD
+        Gateway-->>Client: safe response
+    end
     API->>Store: persist audit, findings, graph links
 ```
 
 *Deployment truth: the browser drives workflows, the API owns control-plane
-state, workers do scans, and proxy plus gateway handle runtime MCP traffic. For
-the role split, see the [Self-Hosted Product
+state, workers do scans, and proxy plus gateway are peer runtime surfaces, not
+a required serial chain. For the role split, see the [Self-Hosted Product
 Architecture](../architecture/self-hosted-product-architecture.md).*
+
+1. Local stdio or workload-local MCPs use `agent-bom proxy` as the inline
+   runtime path.
+2. Shared remote MCPs can go directly to `agent-bom gateway serve` without a
+   local proxy hop.
+3. Both runtime surfaces pull policy from the control plane and push audit to
+   `/v1/proxy/audit`.
+4. Runtime detections, optional visual leak checks, and tenant-scoped limits
+   happen on the enforcement surface that handled the call.
 
 ## Which Agent-BOM Surface Runs Where
 
@@ -142,12 +162,12 @@ Architecture](../architecture/self-hosted-product-architecture.md).*
 | **Scan** | CronJob, CI runner, or one-off job | Kubernetes, container, package, MCP, cloud, and inventory scanning |
 | **Fleet** | pushed into the control plane from endpoints or collectors | persisted workstation and collector inventory in `/fleet` |
 | **Proxy / runtime** | only next to the MCP workloads you want inline enforcement on | live JSON-RPC inspection, allow/warn/deny, audit push |
-| **Gateway** | central control plane API + UI | store and manage policies that proxies evaluate and pull |
+| **Gateway** | central service in-cluster | store and manage policies, and optionally front shared remote MCP traffic |
 | **MCP server** | wherever you expose `agent-bom` itself as a tool server | assistant-facing tool access, separate from the proxy path |
 
 The important boundary is that `agent-bom proxy` is the inline runtime path,
-while the gateway is the central policy surface. One does not replace the
-other.
+while the gateway is the central policy and shared remote MCP surface. One does
+not replace the other.
 
 For the concrete gateway startup path against discovered fleet MCPs, see
 [Gateway Auto-Discovery From the Control Plane](gateway-auto-discovery.md).
@@ -183,7 +203,7 @@ These are the current deployable capabilities this EKS model supports:
 | **Scan** | package, image, IaC, Kubernetes, MCP, cloud, and inventory scanning via CronJob, CI, or one-off runs |
 | **Fleet** | endpoint and collector inventory persistence, state review, trust/lifecycle tracking |
 | **Proxy / runtime** | MCP policy evaluation, undeclared-tool blocking, credential detection, audit push, local or sidecar deployment |
-| **Gateway** | central policy authoring, distribution, and evaluation surface for proxies |
+| **Gateway** | central policy authoring, distribution, and evaluation surface for proxies, plus optional shared remote MCP traffic |
 | **Storage** | Postgres-backed control-plane state, optional ClickHouse analytics, optional S3-backed backups/exports |
 
 This is the important product boundary: customers can deploy one or all of

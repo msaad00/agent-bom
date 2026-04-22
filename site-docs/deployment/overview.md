@@ -123,16 +123,22 @@ For the post-install maintenance path around proxy policy-signing key rotation
 and cert-manager-backed webhook certificate renewal, see
 [Runtime Operations](runtime-operations.md).
 
-```mermaid
-flowchart LR
-    Scan["Scan jobs + CI"] --> API["API + UI + Postgres"]
-    Fleet["Fleet sync"] --> API
-    Proxy["Optional proxy"] --> API
-    Gateway["Optional gateway"] --> API
-    Proxy --> Local["Local / sidecar MCPs"]
-    Gateway --> Remote["Remote MCPs"]
-    API -. optional .-> Analytics["ClickHouse / SIEM / OTEL"]
-```
+## How the surfaces connect
+
+| Path | Starts from | Ends at | Purpose |
+|---|---|---|---|
+| **Inventory** | scan jobs, CI, `agent-bom agents`, fleet sync | API + UI + Postgres | discover what is installed, configured, risky, and reachable |
+| **Proxy runtime** | endpoint or sidecar workload | local MCP + control-plane audit/policy | workload-local stdio/runtime enforcement |
+| **Gateway runtime** | shared remote MCP client | remote MCP + control-plane audit/policy | central remote MCP traffic plane |
+| **Analytics / archive** | control plane | ClickHouse, S3, SIEM, OTEL | optional longer retention, analytics, and exports |
+
+This is the product split to keep in mind:
+
+- **UI** drives workflows and review
+- **API** owns auth, RBAC, graph, audit, and policy
+- **workers** do scans and normalization
+- **fleet** persists endpoint inventory
+- **proxy and gateway** are runtime surfaces deployed where they fit
 
 By default, the control plane, job results, fleet inventory, graph snapshots,
 remediation output, and proxy audit data stay inside the customer's

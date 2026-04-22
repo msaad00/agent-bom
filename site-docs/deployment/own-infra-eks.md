@@ -54,36 +54,29 @@ actual MCP traffic and operating model.
 
 ### Deployment topology
 
-```mermaid
-flowchart LR
-    IdP["Corporate IdP"] --> Ingress["Ingress + TLS"]
-    Browser["Browser operators"] --> Ingress
-    Ingress --> Control["API + UI + workers"]
-    Scans["Scan jobs + CI"] --> Control
-    Fleet["Fleet sync from endpoints"] --> Control
-    Control --> PG["Postgres"]
-    Control -. optional .-> CH["ClickHouse / S3 / OTEL"]
-    Proxy["Optional proxy"] --> Control
-    Gateway["Optional gateway"] --> Control
-```
-
-### Runtime MCP flow
-
-```mermaid
-flowchart LR
-    Client["Editor or workload client"] --> Proxy["Proxy"]
-    Client --> Gateway["Gateway"]
-    Proxy --> API["Control-plane API"]
-    Gateway --> API
-    Proxy --> Local["Local / sidecar MCP"]
-    Gateway --> Remote["Remote MCP"]
-    API --> Store["Postgres / audit store"]
-```
+| Surface | Runs where | Talks to | Why it exists |
+|---|---|---|---|
+| **Browser UI** | operator browser | ingress -> API/UI | review findings, graph, remediation, fleet, audit, and policy |
+| **API + UI + workers** | EKS or self-hosted compute | Postgres, scan jobs, fleet sync, proxy/gateway audit | control-plane state, orchestration, graph, audit, remediation |
+| **Scan jobs + CI** | EKS CronJobs, CI runners, one-off jobs | API + stores | discovery, CVEs, IaC, cloud, MCP config, skills |
+| **Fleet sync** | employee endpoints or collectors | API `/v1/fleet/sync` | endpoint inventory without requiring runtime rollout first |
+| **Proxy** | selected endpoints or sidecars | local MCPs + API audit/policy | inline workload-local MCP inspection |
+| **Gateway** | shared cluster service | remote MCPs + API audit/policy | shared remote MCP traffic plane |
+| **Postgres** | RDS or self-managed | API/UI/workers | transactional control-plane truth |
+| **ClickHouse / S3 / OTEL** | optional adjacent services | control plane | analytics, archive, exports |
 
 *Deployment truth: the browser drives workflows, the API owns control-plane
 state, workers do scans, and proxy plus gateway are peer runtime surfaces, not
 a required serial chain. For the role split, see the [Self-Hosted Product
 Architecture](../architecture/self-hosted-product-architecture.md).*
+
+### Runtime MCP flow
+
+| Runtime path | Starts from | Ends at | Best fit |
+|---|---|---|---|
+| **Proxy path** | editor, endpoint, or sidecar workload | local or workload-local MCP | stdio MCPs, sidecars, workload-local enforcement |
+| **Gateway path** | shared remote MCP client | remote MCP over HTTP/SSE | central policy and shared remote MCP traffic |
+| **Inventory path** | scan jobs or fleet sync | API + Postgres | inventory, provenance, findings, and graph without runtime rollout |
 
 1. Local stdio or workload-local MCPs use `agent-bom proxy` as the inline
    runtime path.

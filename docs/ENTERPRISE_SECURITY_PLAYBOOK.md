@@ -241,6 +241,11 @@ agent-bom proxy --policy ./policy.json -- /usr/local/bin/your-stdio-mcp --arg ..
 
 Used for local MCPs the gateway can't front (stdio-only).
 
+Trace-context note: stdio has no raw HTTP header channel. The proxy preserves
+W3C trace context through JSON-RPC `_meta.traceparent`, `_meta.tracestate`, and
+`_meta.baggage` when those fields are present, and rehydrates them on the
+paired response if the upstream does not echo them back.
+
 ### 3.5 Shield SDK (for agent frameworks)
 
 ```python

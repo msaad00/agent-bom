@@ -14,9 +14,11 @@ paths a pilot team would actually run into.
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
@@ -68,7 +70,34 @@ def test_healthz_lists_configured_upstreams() -> None:
             "fail_closed": False,
             "message": "Gateway runtime rate limiting disabled.",
         },
+        "policy_runtime": {
+            "source": "inline",
+            "reload_enabled": False,
+            "reload_interval_seconds": 0,
+            "last_loaded_at": None,
+            "last_error": None,
+        },
     }
+
+
+def test_healthz_reports_policy_reload_runtime(tmp_path: Path) -> None:
+    policy_path = tmp_path / "gateway-policy.json"
+    policy_path.write_text('{"rules":[]}')
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        policy_path=policy_path,
+        policy_reload_interval_seconds=2,
+    )
+    with TestClient(create_gateway_app(settings)) as client:
+        resp = client.get("/healthz")
+        assert resp.status_code == 200
+        runtime = resp.json()["policy_runtime"]
+        assert runtime["source"] == str(policy_path)
+        assert runtime["reload_enabled"] is True
+        assert runtime["reload_interval_seconds"] == 2
+        assert runtime["last_loaded_at"] is not None
+        assert runtime["last_error"] is None
 
 
 def test_healthz_reports_visual_leak_readiness_when_enabled(monkeypatch) -> None:
@@ -418,7 +447,40 @@ def test_relay_allows_tool_not_in_blocklist() -> None:
         json=_json_rpc("tools/call", name="query_issues", arguments={"jql": "project = ACME"}),
     )
     assert resp.status_code == 200
-    assert resp.json()["result"]["ok"] is True
+
+
+def test_gateway_hot_reload_updates_policy_without_restart(tmp_path: Path) -> None:
+    policy_path = tmp_path / "gateway-policy.json"
+    policy_path.write_text(json.dumps({"rules": [{"id": "no-shell", "action": "block", "block_tools": ["run_shell"]}]}))
+
+    async def fake_caller(upstream, message, extra_headers):
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        upstream_caller=fake_caller,
+        policy_path=policy_path,
+        policy_reload_interval_seconds=1,
+    )
+    with TestClient(create_gateway_app(settings)) as client:
+        blocked = client.post(
+            "/mcp/filesystem",
+            json=_json_rpc("tools/call", name="run_shell", arguments={"command": "whoami"}),
+        )
+        assert blocked.status_code == 200
+        assert blocked.json()["error"]["code"] == -32001
+
+        time.sleep(1.1)
+        policy_path.write_text(json.dumps({"rules": []}))
+        time.sleep(1.2)
+
+        allowed = client.post(
+            "/mcp/filesystem",
+            json=_json_rpc("tools/call", name="run_shell", arguments={"command": "whoami"}),
+        )
+        assert allowed.status_code == 200
+        assert allowed.json()["result"]["ok"] is True
 
 
 # ─── Error cases ──────────────────────────────────────────────────────────

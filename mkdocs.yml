@@ -103,12 +103,14 @@ nav:
       - Packaged API + UI Control Plane: deployment/control-plane-helm.md
       - Control-Plane Data Model and Store Parity: deployment/control-plane-data-model.md
       - Audit Chain vs Compliance Signing: deployment/audit-and-compliance-verification.md
+      - Data Retention by Class: deployment/data-retention.md
       - Performance, Sizing, and Benchmarks: deployment/performance-and-sizing.md
       - Runtime Operations: deployment/runtime-operations.md
       - Visual Leak Detection: deployment/visual-leak-detection.md
       - Worker and Scheduler Concurrency: deployment/worker-and-scheduler-concurrency.md
       - Gateway Auto-Discovery: deployment/gateway-auto-discovery.md
       - Backend Parity: deployment/backend-parity.md
+      - Backend and Security-Lake Strategy: deployment/backend-and-security-lakes.md
       - Snowflake-Native Backend: deployment/snowflake-backend.md
       - Docker: deployment/docker.md
       - Kubernetes: deployment/kubernetes.md

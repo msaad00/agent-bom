@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -589,20 +590,20 @@ def test_replay_detector_different_messages_not_replay():
 
 
 def test_replay_detector_eviction_on_overflow():
-    """When max_entries is reached, stale entries are evicted."""
-    detector = ReplayDetector(max_entries=2, window_seconds=0.001)
-    # Fill with 2 entries
-    detector.check({"id": 1})
-    detector.check({"id": 2})
-    # Manually expire them — set to 0.0 which is always > 0.001s in the past
-    # because time.monotonic() returns seconds since an arbitrary epoch (boot).
-    for k in list(detector._seen):
-        detector._seen[k] = 0.0
-    # This should trigger eviction and NOT be a replay
-    msg_new = {"id": 3}
-    assert detector.check(msg_new) is False
-    # Stale entries should be gone
-    assert len(detector._seen) <= 2
+    """Replay detector memory stays bounded under sustained inserts."""
+    detector = ReplayDetector(max_entries=2, window_seconds=300.0)
+    baseline_bytes = detector.memory_bytes
+    for i in range(50):
+        assert detector.check({"id": i}) is False
+    assert detector.memory_bytes == baseline_bytes
+
+
+def test_replay_detector_expires_entries_after_window():
+    detector = ReplayDetector(window_seconds=0.01, bucket_seconds=0.01)
+    msg = {"jsonrpc": "2.0", "method": "tools/call", "id": 1}
+    assert detector.check(msg) is False
+    time.sleep(0.02)
+    assert detector.check(msg) is False
 
 
 # ── log_tool_call with integrity fields ─────────────────────────────────────

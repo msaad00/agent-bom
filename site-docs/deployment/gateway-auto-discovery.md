@@ -5,6 +5,10 @@ upstreams directly from fleet and scan data already stored in the control plane.
 
 This avoids starting from a blank `upstreams.yaml` for every pilot.
 
+If you are still deciding whether the right surface is `gateway`, `proxy`, or
+plain `fleet` inventory, see [When To Use Proxy vs Gateway vs
+Fleet](proxy-vs-gateway-vs-fleet.md).
+
 ## What auto-discovery does
 
 The gateway pulls:

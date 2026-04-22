@@ -96,6 +96,7 @@ nav:
       - Enterprise Auth and Tenancy: deployment/enterprise-auth-and-tenancy.md
       - Enterprise MCP / Endpoint Pilot: deployment/enterprise-pilot.md
       - Endpoint Fleet: deployment/endpoint-fleet.md
+      - Proxy vs Gateway vs Fleet: deployment/proxy-vs-gateway-vs-fleet.md
       - Focused EKS MCP Pilot: deployment/eks-mcp-pilot.md
       - Your Own AWS / EKS: deployment/own-infra-eks.md
       - Terraform AWS Baseline: deployment/terraform-aws-baseline.md

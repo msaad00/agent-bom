@@ -16,6 +16,10 @@ This is different from:
 - `runtime fleet`: EKS workloads and server-side MCP deployments
 - `cloud / platform inventory`: AWS, Snowflake, IaC, registries, containers
 
+If you are deciding whether this is the right entrypoint versus `proxy` or
+`gateway`, start with [When To Use Proxy vs Gateway vs
+Fleet](proxy-vs-gateway-vs-fleet.md).
+
 ## What ships today
 
 The endpoint-fleet path is real, but it is an opt-in scan + push model:

@@ -7,7 +7,7 @@ control-plane workflows?"
 This is a **reference rollout path** for self-hosted `agent-bom` on AWS:
 
 - the company platform team still owns the AWS account, VPC, EKS cluster, ingress, cert-manager, and shared controllers
-- `agent-bom` owns the product-specific baseline around that platform: Postgres, IRSA, backup bucket, auth secrets, Helm release, fleet onboarding, and optional gateway runtime
+- `agent-bom` owns the product-specific baseline around that platform: Postgres, IRSA, backup bucket, auth secrets, Helm release, fleet onboarding, gateway rollout, and proxy deployment patterns
 
 For the concrete runtime gateway discovery path after fleet and cluster scans
 have populated remote MCPs, see [Gateway Auto-Discovery From the Control
@@ -130,6 +130,20 @@ This is the clean ownership model:
 - **`agent-bom` installer** wires the product-specific AWS and Kubernetes pieces on top
 - **security/platform operators** onboard endpoints and selected MCP runtimes after the control plane is live
 
+## Product Surfaces In A Company EKS Rollout
+
+These are the product surfaces a real enterprise rollout usually cares about:
+
+- **control plane**: API, UI, auth, graph, findings, remediation, audit, policy
+- **scan and discovery**: repos, images, IaC, MCP configs, skills, cluster and cloud surfaces
+- **fleet**: endpoint and collector inventory pushed into the control plane
+- **gateway**: shared remote MCP traffic, policy, and audit in the cluster
+- **proxy**: laptop or sidecar runtime enforcement where inline MCP inspection is needed
+
+`gateway` and `proxy` are core features of the product. In practice they are
+deployed selectively by workload and traffic path, not to every process in the
+environment on day 1.
+
 ## Runtime Flow For Fleet, Proxy, And Gateway
 
 ```mermaid
@@ -171,8 +185,18 @@ What this means in practice:
 
 - developer endpoints can push fleet inventory and use `agent-bom proxy` as a local MCP wrapper
 - selected MCP workloads in-cluster can run with `agent-bom proxy` sidecars
-- the gateway is optional and centralizes policy/audit for shared upstreams
+- the gateway centralizes policy/audit for shared remote upstreams
 - the control plane persists findings, graph, fleet state, auth, and audit inside the customer's infrastructure
+
+## Scenario Matrix
+
+| Company need | Deploy | What becomes visible immediately |
+|---|---|---|
+| Know which MCPs employees are running | control plane + scans + fleet | endpoints, agents, MCP servers, transports, command or URL, declared tools, auth mode, credential-backed env vars |
+| Review risky MCP package exposure | control plane + scans + fleet | package context, vuln context, graph links, blast radius, exposed tools and credentials |
+| Govern shared remote MCP traffic | control plane + gateway | shared upstream MCP inventory, gateway policy/audit, remote MCP control plane surfaces |
+| Enforce inline on selected workloads | control plane + selected proxy deployment | workload-local runtime evidence, inline blocks, local audit push, selected sidecar/laptop inspection |
+| Run the full self-hosted platform | control plane + scans + fleet + selected gateway + selected proxy | one correlated operator plane across discovery, inventory, runtime, graph, findings, and audit |
 
 ## Recommended Rollout Sequence
 

@@ -112,3 +112,29 @@ def test_verify_wrapper_script_exists_and_parses():
 
     assert script_path.exists()
     assert result.returncode == 0, result.stderr
+
+
+def test_install_reference_dry_run_gateway_summary_includes_gateway_verify(tmp_path: Path):
+    result = subprocess.run(
+        [
+            "bash",
+            str(ROOT / "scripts" / "deploy" / "install-eks-reference.sh"),
+            "--cluster-name",
+            "corp-ai",
+            "--region",
+            "us-east-1",
+            "--state-dir",
+            str(tmp_path),
+            "--dry-run",
+            "--enable-gateway",
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    summary = tmp_path / "corp-ai" / "generated" / "operator-summary.txt"
+    rendered = summary.read_text()
+    assert "--check-gateway" in rendered

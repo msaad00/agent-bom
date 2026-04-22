@@ -8,6 +8,58 @@ Agent BOM can push events downstream in two formats:
 The product is not a SIEM and does not require OCSF to function. OCSF is an
 interoperability layer at the boundary.
 
+## Inbound OCSF ingest
+
+If your SIEM or security lake already emits OCSF events, Agent BOM can ingest
+them through the control plane without changing its internal data model.
+
+- endpoint: `POST /v1/ocsf/ingest`
+- auth + tenant scope: same as other analyst-scoped observability ingest routes
+- accepted payloads:
+  - a single OCSF event object
+  - a JSON array of OCSF event objects
+  - `{ "events": [...] }`
+- current normalization target: canonical runtime-event analytics plus one
+  signed audit record per ingest batch
+
+The design rule stays the same:
+
+- OCSF comes in at the interoperability boundary
+- Agent BOM normalizes it onto canonical internal event fields
+- audit, dashboards, and tenant scoping remain canonical-model first
+
+Example:
+
+```bash
+curl -X POST https://agent-bom.example.com/v1/ocsf/ingest \
+  -H "Authorization: Bearer $AGENT_BOM_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "events": [
+      {
+        "class_uid": 2004,
+        "class_name": "Detection Finding",
+        "severity_id": 4,
+        "message": "Prompt injection detected",
+        "time": 1746033600000,
+        "finding_info": {
+          "uid": "finding-1",
+          "types": ["prompt_injection"]
+        },
+        "resources": [{"name": "github-mcp"}],
+        "metadata": {"product": {"name": "splunk"}}
+      }
+    ]
+  }'
+```
+
+This path is intentionally narrow:
+
+- it does not replace the native scan or proxy ingest paths
+- it does not make OCSF the internal source of truth
+- it gives existing OCSF-based security programs a clean way to feed Agent BOM
+  without losing tenant scoping or auditability
+
 ## Choosing `raw` vs `ocsf`
 
 Use `raw` when:

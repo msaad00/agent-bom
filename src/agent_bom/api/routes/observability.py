@@ -3,6 +3,7 @@
 Endpoints:
     POST /v1/traces        ingest OpenTelemetry traces
     POST /v1/results/push  receive pushed scan results from CLI
+    POST /v1/ocsf/ingest   receive OCSF interoperability events
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import logging
 import uuid
 from collections import defaultdict
 from copy import deepcopy
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -18,6 +20,7 @@ from agent_bom.api.models import JobStatus, PushPayload, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _persist_graph_snapshot
 from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_store
 from agent_bom.api.tenant_quota import enforce_retained_jobs_quota
+from agent_bom.graph.severity import ocsf_to_severity
 from agent_bom.security import sanitize_error
 
 router = APIRouter()
@@ -25,8 +28,6 @@ _logger = logging.getLogger(__name__)
 
 
 def _now() -> str:
-    from datetime import datetime, timezone
-
     return datetime.now(timezone.utc).isoformat()
 
 
@@ -62,6 +63,141 @@ def _normalize_pushed_report(body: PushPayload, *, fallback_scan_id: str) -> dic
         normalized_agents.append(agent)
     report["agents"] = normalized_agents
     return report
+
+
+def _extract_ocsf_events(body: dict | list[dict]) -> list[dict]:
+    if isinstance(body, list):
+        events = body
+    elif isinstance(body, dict):
+        if isinstance(body.get("events"), list):
+            events = body["events"]
+        elif "class_uid" in body or "class_name" in body:
+            events = [body]
+        else:
+            raise ValueError("OCSF ingest expects a single event, a list of events, or an object with an 'events' array")
+    else:
+        raise ValueError("OCSF ingest payload must be an object or array")
+
+    normalized_events = [event for event in events if isinstance(event, dict)]
+    if len(normalized_events) != len(events):
+        raise ValueError("OCSF ingest events must be JSON objects")
+    return normalized_events
+
+
+def _slug(value: str) -> str:
+    return "_".join(part for part in value.lower().replace("/", " ").replace("-", " ").split() if part)
+
+
+def _ocsf_timestamp(value: object) -> str:
+    if isinstance(value, (int, float)):
+        seconds = float(value)
+        if seconds > 1_000_000_000_000:
+            seconds /= 1000.0
+        return datetime.fromtimestamp(seconds, tz=timezone.utc).isoformat()
+    if isinstance(value, str) and value.strip().isdigit():
+        return _ocsf_timestamp(int(value.strip()))
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return _now()
+
+
+def _resource_name(event: dict) -> str:
+    resources = event.get("resources")
+    if isinstance(resources, list):
+        for resource in resources:
+            if isinstance(resource, dict) and str(resource.get("name", "")).strip():
+                return str(resource["name"]).strip()
+    for key in ("resource", "tool_name", "tool"):
+        candidate = str(event.get(key, "")).strip()
+        if candidate:
+            return candidate
+    return ""
+
+
+def _ocsf_finding_message(event: dict) -> str:
+    if message := str(event.get("message", "")).strip():
+        return message
+    finding_info = event.get("finding_info")
+    if isinstance(finding_info, dict):
+        for key in ("title", "desc", "uid"):
+            candidate = str(finding_info.get(key, "")).strip()
+            if candidate:
+                return candidate
+    return str(event.get("class_name", "OCSF event")).strip() or "OCSF event"
+
+
+def _ocsf_finding_detector(event: dict) -> str:
+    finding_info = event.get("finding_info")
+    if isinstance(finding_info, dict):
+        analytic = finding_info.get("analytic")
+        if isinstance(analytic, dict):
+            for key in ("uid", "name", "type"):
+                candidate = str(analytic.get(key, "")).strip()
+                if candidate:
+                    return candidate
+        types = finding_info.get("types")
+        if isinstance(types, list):
+            for item in types:
+                candidate = str(item).strip()
+                if candidate:
+                    return candidate
+        if uid := str(finding_info.get("uid", "")).strip():
+            return uid
+    return _slug(str(event.get("class_name", "ocsf_event")).strip() or "ocsf_event")
+
+
+def _normalize_ocsf_event(event: dict, *, tenant_id: str) -> dict:
+    class_name = str(event.get("class_name", "")).strip() or "OCSF Event"
+    class_uid = event.get("class_uid")
+    class_slug = _slug(class_name) or "ocsf_event"
+    source_meta = event.get("metadata")
+    metadata_uid = ""
+    source_id = ""
+    if isinstance(source_meta, dict):
+        product = source_meta.get("product")
+        if isinstance(product, dict):
+            source_id = str(product.get("name", "")).strip()
+        if not source_id:
+            source_id = str(source_meta.get("log_name", "")).strip()
+        metadata_uid = str(source_meta.get("uid", "")).strip()
+    event_id = ""
+    finding_info = event.get("finding_info")
+    if isinstance(finding_info, dict):
+        event_id = str(finding_info.get("uid", "")).strip()
+    if not event_id:
+        event_id = metadata_uid or str(uuid.uuid4())
+    severity = str(event.get("severity", "")).strip().lower()
+    if not severity:
+        try:
+            severity = ocsf_to_severity(int(event.get("severity_id", 0)))
+        except Exception:
+            severity = "unknown"
+    normalized = {
+        "event_id": event_id,
+        "event_timestamp": _ocsf_timestamp(event.get("time") or event.get("start_time") or event.get("event_time")),
+        "tenant_id": tenant_id,
+        "event_type": f"ocsf_{class_slug}",
+        "detector": _ocsf_finding_detector(event),
+        "severity": severity or "unknown",
+        "tool_name": _resource_name(event),
+        "message": _ocsf_finding_message(event),
+        "agent_name": "",
+        "session_id": "",
+        "trace_id": "",
+        "request_id": "",
+        "source_id": source_id,
+        "ocsf_class_uid": class_uid,
+        "ocsf_class_name": class_name,
+    }
+    observables = event.get("observables")
+    if isinstance(observables, list):
+        for observable in observables:
+            if isinstance(observable, dict):
+                trace_id = str(observable.get("trace_id", "")).strip()
+                if trace_id:
+                    normalized["trace_id"] = trace_id
+                    break
+    return normalized
 
 
 @router.post("/v1/traces", tags=["observability"])
@@ -174,6 +310,46 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
         job.progress.append(f"Graph persistence skipped: {sanitize_error(exc)}")
     _get_store().put(job)
     return {"job_id": job.job_id, "source_id": body.source_id, "status": "stored"}
+
+
+@router.post("/v1/ocsf/ingest", tags=["observability"], status_code=202)
+async def ingest_ocsf(request: Request, body: dict | list[dict]) -> dict:
+    """Ingest OCSF events and normalize them onto the canonical runtime-event path."""
+    from agent_bom.api.audit_log import log_action
+
+    tenant_id = _tenant_id(request)
+    try:
+        ocsf_events = _extract_ocsf_events(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    normalized_events = [_normalize_ocsf_event(event, tenant_id=tenant_id) for event in ocsf_events]
+    class_counts: dict[str, int] = defaultdict(int)
+    for event in normalized_events:
+        class_counts[str(event.get("ocsf_class_uid", "unknown"))] += 1
+
+    try:
+        if normalized_events:
+            _get_analytics_store().record_events(normalized_events, tenant_id=tenant_id)
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("OCSF analytics ingest skipped: %s", exc)
+
+    source_ids = sorted({str(event.get("source_id", "")).strip() for event in normalized_events if str(event.get("source_id", "")).strip()})
+    log_action(
+        "ocsf.ingest",
+        actor=_triggered_by(request),
+        resource="ocsf/ingest",
+        tenant_id=tenant_id,
+        batch_size=len(normalized_events),
+        class_counts=dict(class_counts),
+        source_ids=source_ids,
+    )
+    return {
+        "ingested": len(normalized_events),
+        "tenant_id": tenant_id,
+        "class_counts": dict(class_counts),
+        "sources": source_ids,
+    }
 
 
 async def _render_prometheus_metrics(request: Request | None = None):

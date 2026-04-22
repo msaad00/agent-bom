@@ -355,6 +355,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("POST", "/v1/gateway/evaluate", "analyst"),
         ("POST", "/v1/proxy/audit", "analyst"),
         ("POST", "/v1/traces", "analyst"),
+        ("POST", "/v1/ocsf/ingest", "analyst"),
         ("POST", "/v1/results/push", "analyst"),
         ("POST", "/v1/schedules", "analyst"),
         ("POST", "/v1/sources", "analyst"),

@@ -831,6 +831,83 @@ async def test_asset_routes_are_tenant_scoped(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_ocsf_ingest_is_tenant_scoped_and_audited(isolated_audit_log):
+    req = _request("tenant-alpha")
+
+    class _Analytics:
+        def __init__(self):
+            self.events = []
+            self.event_tenants: list[str] = []
+
+        def record_events(self, events, *, tenant_id: str = "default"):
+            self.events.extend(events)
+            self.event_tenants.append(tenant_id)
+
+    analytics = _Analytics()
+    payload = {
+        "events": [
+            {
+                "class_uid": 2004,
+                "class_name": "Detection Finding",
+                "severity_id": 4,
+                "message": "Prompt injection detected",
+                "time": 1_746_033_600_000,
+                "finding_info": {
+                    "uid": "finding-1",
+                    "types": ["prompt_injection"],
+                    "analytic": {"name": "prompt_injection"},
+                },
+                "resources": [{"name": "github-mcp"}],
+                "metadata": {"product": {"name": "splunk"}},
+            },
+            {
+                "class_uid": 4001,
+                "class_name": "Network Activity",
+                "severity": "Low",
+                "time": 1_746_033_601_000,
+                "message": "Outbound MCP request observed",
+                "resources": [{"name": "proxy-relay"}],
+                "metadata": {"product": {"name": "datadog"}},
+            },
+        ]
+    }
+
+    with patch("agent_bom.api.routes.observability._get_analytics_store", return_value=analytics):
+        result = await observability_routes.ingest_ocsf(req, payload)
+
+    assert result == {
+        "ingested": 2,
+        "tenant_id": "tenant-alpha",
+        "class_counts": {"2004": 1, "4001": 1},
+        "sources": ["datadog", "splunk"],
+    }
+    assert analytics.event_tenants == ["tenant-alpha"]
+    assert analytics.events[0]["tenant_id"] == "tenant-alpha"
+    assert analytics.events[0]["event_type"] == "ocsf_detection_finding"
+    assert analytics.events[0]["detector"] == "prompt_injection"
+    assert analytics.events[0]["tool_name"] == "github-mcp"
+    assert analytics.events[0]["source_id"] == "splunk"
+    assert analytics.events[1]["event_type"] == "ocsf_network_activity"
+    assert analytics.events[1]["severity"] == "low"
+    entries = isolated_audit_log.list_entries()
+    assert entries[0].action == "ocsf.ingest"
+    assert entries[0].details["tenant_id"] == "tenant-alpha"
+    assert entries[0].details["batch_size"] == 2
+    assert entries[0].details["class_counts"] == {"2004": 1, "4001": 1}
+
+
+@pytest.mark.asyncio
+async def test_ocsf_ingest_rejects_non_event_payload():
+    req = _request("tenant-alpha")
+
+    with pytest.raises(HTTPException) as exc:
+        await observability_routes.ingest_ocsf(req, {"unsupported": True})
+
+    assert exc.value.status_code == 400
+    assert "expects a single event" in exc.value.detail
+
+
+@pytest.mark.asyncio
 async def test_posture_counts_include_deployment_context_by_tenant():
     job_store = InMemoryJobStore()
     fleet_store = InMemoryFleetStore()

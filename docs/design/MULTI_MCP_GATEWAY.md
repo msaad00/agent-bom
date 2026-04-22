@@ -1,6 +1,9 @@
 # Design: multi-MCP gateway — `agent-bom gateway serve`
 
-**Status:** design, not yet implemented. Tracked for the current pilot cycle.
+**Status:** implemented and operator-documented. The core relay, policy, audit,
+tenant auth, runtime rate limiting, visual leak detection, and control-plane
+auto-discovery paths now ship; this design doc remains the architectural
+overview behind those runtime surfaces.
 
 **Problem statement:** a pilot team wants to front-door every MCP connection in their environment through a single host so they can apply policy + audit centrally without touching every laptop's editor config. Today, `agent-bom proxy` is **per-MCP** — one instance per upstream server, either as a K8s sidecar next to a workload or as a stdio wrapper on a developer laptop. Central policy + audit already exist (`/v1/gateway/policies`, `/v1/proxy/audit`); central *traffic* does not.
 

@@ -121,6 +121,9 @@ That path now supports:
 - control-plane audit push
 - local inline MCP enforcement
 
+For OCR rollout on screenshot-heavy tools, see [Visual Leak
+Detection](visual-leak-detection.md).
+
 ## How this fits with the EKS pilot
 
 Use both when you want one pilot across laptops and infra:

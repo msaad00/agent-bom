@@ -64,6 +64,14 @@ def gateway_group() -> None:
     default=None,
     help="Optional runtime policy JSON file (same format as `agent-bom proxy --policy`).",
 )
+@click.option(
+    "--policy-reload-seconds",
+    type=int,
+    envvar="AGENT_BOM_GATEWAY_POLICY_RELOAD_SECONDS",
+    default=0,
+    show_default=True,
+    help="Reload the gateway policy JSON file in-process on this interval (0 disables hot reload).",
+)
 @click.option("--bind", default="0.0.0.0:8090", show_default=True, help="Bind address host:port.")
 @click.option(
     "--runtime-rate-limit-per-tenant-per-minute",
@@ -116,6 +124,7 @@ def serve_cmd(
     control_plane_url: str | None,
     control_plane_token: str | None,
     policy_path: Path | None,
+    policy_reload_seconds: int,
     bind: str,
     runtime_rate_limit_per_tenant_per_minute: int,
     require_shared_rate_limit: bool,
@@ -189,6 +198,10 @@ def serve_cmd(
         except (json.JSONDecodeError, OSError) as exc:
             click.echo(f"policy file error: {exc}", err=True)
             sys.exit(2)
+    if policy_reload_seconds < 0:
+        raise click.ClickException("--policy-reload-seconds must be >= 0")
+    if policy_reload_seconds > 0 and policy_path is None:
+        raise click.ClickException("--policy-reload-seconds requires --policy")
 
     host, _, port = bind.partition(":")
     host = host or "0.0.0.0"  # nosec B104
@@ -208,6 +221,8 @@ def serve_cmd(
         require_visual_leak_detection_ready=detect_visual_leaks and not allow_visual_leak_best_effort,
         runtime_rate_limit_per_tenant_per_minute=max(runtime_rate_limit_per_tenant_per_minute, 0),
         require_shared_rate_limit=require_shared_rate_limit,
+        policy_path=policy_path,
+        policy_reload_interval_seconds=max(policy_reload_seconds, 0),
     )
     app = create_gateway_app(settings)
 
@@ -225,6 +240,8 @@ def serve_cmd(
     if detect_visual_leaks:
         mode = "best-effort" if allow_visual_leak_best_effort else "required"
         click.echo(f"Visual leak detection: enabled ({mode})")
+    if policy_path and policy_reload_seconds > 0:
+        click.echo(f"Policy hot reload: enabled every {policy_reload_seconds}s from {policy_path}")
     uvicorn.run(app, host=host, port=port_num, log_level=log_level.lower())
 
 

@@ -28,12 +28,14 @@ Non-goals for MVP (see design doc):
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import threading
 import time
-from contextlib import nullcontext
+from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from fastapi import FastAPI, HTTPException, Request
@@ -92,6 +94,15 @@ class GatewaySettings:
     require_visual_leak_detection_ready: bool = False
     runtime_rate_limit_per_tenant_per_minute: int = 0
     require_shared_rate_limit: bool = False
+    policy_path: Path | None = None
+    policy_reload_interval_seconds: int = 0
+
+
+def _load_policy_file(policy_path: Path) -> dict[str, Any]:
+    payload = json.loads(policy_path.read_text())
+    if not isinstance(payload, dict):
+        raise ValueError("gateway policy file must contain a JSON object")
+    return payload
 
 
 def _gateway_configured_replicas() -> int:
@@ -268,17 +279,90 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
 
         require_visual_leak_runtime()
 
-    app = FastAPI(title="agent-bom gateway", version="1")
     upstream_caller = settings.upstream_caller or _default_upstream_caller
     rate_limit_store = _build_gateway_rate_limit_store(settings)
+    policy_state: dict[str, Any] = {
+        "policy": dict(settings.policy),
+        "source": str(settings.policy_path) if settings.policy_path else "inline",
+        "last_loaded_at": None,
+        "last_error": None,
+        "last_mtime": None,
+    }
+    policy_lock = asyncio.Lock()
+    reload_task: asyncio.Task[None] | None = None
+
+    async def _reload_policy_if_changed(force: bool = False) -> bool:
+        if settings.policy_path is None:
+            return False
+        try:
+            stat = settings.policy_path.stat()
+        except OSError as exc:
+            async with policy_lock:
+                policy_state["last_error"] = str(exc)
+            logger.warning("gateway policy reload failed for %s: %s", settings.policy_path, _sanitize_for_log(exc))
+            return False
+
+        mtime = stat.st_mtime
+        if not force and policy_state["last_mtime"] == mtime:
+            return False
+
+        try:
+            next_policy = _load_policy_file(settings.policy_path)
+        except Exception as exc:  # noqa: BLE001
+            async with policy_lock:
+                policy_state["last_error"] = str(exc)
+            logger.warning("gateway policy reload failed for %s: %s", settings.policy_path, _sanitize_for_log(exc))
+            return False
+
+        async with policy_lock:
+            policy_state["policy"] = next_policy
+            policy_state["last_loaded_at"] = time.time()
+            policy_state["last_error"] = None
+            policy_state["last_mtime"] = mtime
+        logger.info("gateway policy reloaded from %s", settings.policy_path)
+        return True
+
+    async def _policy_reload_loop() -> None:
+        while True:
+            await asyncio.sleep(max(settings.policy_reload_interval_seconds, 1))
+            await _reload_policy_if_changed()
+
+    @asynccontextmanager
+    async def _lifespan(_app: FastAPI):
+        nonlocal reload_task
+        try:
+            if settings.policy_path is not None:
+                await _reload_policy_if_changed(force=True)
+                if settings.policy_reload_interval_seconds > 0:
+                    reload_task = asyncio.create_task(_policy_reload_loop())
+            yield
+        finally:
+            if reload_task is not None:
+                reload_task.cancel()
+                try:
+                    await reload_task
+                except asyncio.CancelledError:
+                    pass
+                reload_task = None
+
+    app = FastAPI(title="agent-bom gateway", version="1", lifespan=_lifespan)
 
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:
+        async with policy_lock:
+            policy_runtime = {
+                "source": policy_state["source"],
+                "reload_enabled": bool(settings.policy_path and settings.policy_reload_interval_seconds > 0),
+                "reload_interval_seconds": settings.policy_reload_interval_seconds,
+                "last_loaded_at": policy_state["last_loaded_at"],
+                "last_error": policy_state["last_error"],
+            }
         health: dict[str, Any] = {
             "status": "ok",
             "upstreams": settings.registry.names(),
             "auth": {"incoming_token_required": _gateway_requires_auth(settings)},
             "rate_limit_runtime": _gateway_rate_limit_runtime_status(settings),
+            "policy_runtime": policy_runtime,
         }
         if settings.enable_visual_leak_detection:
             from agent_bom.runtime.visual_leak_detector import visual_leak_runtime_health
@@ -371,7 +455,9 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             params = message.get("params", {}) or {}
             tool_name = params.get("name", "")
             arguments = params.get("arguments", {}) or {}
-            allowed, reason = check_policy(settings.policy, tool_name, arguments)
+            async with policy_lock:
+                current_policy = dict(policy_state["policy"])
+            allowed, reason = check_policy(current_policy, tool_name, arguments)
             if not allowed:
                 record_gateway_relay(upstream.name, "blocked")
                 audit_event: dict[str, Any] = {

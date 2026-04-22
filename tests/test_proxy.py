@@ -7,6 +7,10 @@ import json
 import time
 from pathlib import Path
 
+import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
 import agent_bom.proxy as proxy_mod
 from agent_bom.api.policy_store import GatewayPolicy, GatewayRule
 from agent_bom.proxy import (
@@ -17,9 +21,11 @@ from agent_bom.proxy import (
     _control_plane_headers,
     _extract_jsonrpc_trace_meta,
     _gateway_policy_cache_path,
+    _gateway_policy_cache_signature_path,
     _inject_jsonrpc_trace_meta,
     _load_cached_gateway_policies,
     _persist_gateway_policies_cache,
+    _reset_gateway_policy_cache_signer_for_tests,
     _stitch_jsonrpc_trace_meta,
     check_policy,
     compute_payload_hash,
@@ -29,6 +35,14 @@ from agent_bom.proxy import (
     log_tool_call,
     parse_jsonrpc,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_policy_cache_signer():
+    _reset_gateway_policy_cache_signer_for_tests()
+    yield
+    _reset_gateway_policy_cache_signer_for_tests()
+
 
 # ── parse_jsonrpc ────────────────────────────────────────────────────────────
 
@@ -312,6 +326,66 @@ def test_gateway_policy_cache_rejects_stale_entries(tmp_path: Path, monkeypatch)
 def test_gateway_policy_cache_rejects_invalid_payload(tmp_path: Path):
     cache_path = tmp_path / "gateway-policies.json"
     cache_path.write_text('{"fetched_at": 10, "policies": [{"policy_id": "missing-name"}]}')
+    loaded_policies, loaded_etag = _load_cached_gateway_policies(cache_path, max_age_seconds=60)
+    assert loaded_policies is None
+    assert loaded_etag is None
+
+
+def _ed25519_private_key_pem() -> str:
+    private_key = Ed25519PrivateKey.generate()
+    return private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode()
+
+
+def test_gateway_policy_cache_round_trip_requires_valid_signature_when_enabled(tmp_path: Path, monkeypatch):
+    cache_path = tmp_path / "gateway-policies.json"
+    monkeypatch.setattr(proxy_mod.time, "time", lambda: 1234.0)
+    monkeypatch.setenv("AGENT_BOM_PROXY_POLICY_CACHE_ED25519_PRIVATE_KEY_PEM", _ed25519_private_key_pem())
+    _reset_gateway_policy_cache_signer_for_tests()
+
+    policies = [GatewayPolicy(policy_id="p1", name="signed", rules=[], tenant_id="tenant-a")]
+    _persist_gateway_policies_cache(cache_path, policies, "etag-signed")
+
+    signature_path = _gateway_policy_cache_signature_path(cache_path)
+    assert signature_path.exists()
+
+    loaded_policies, loaded_etag = _load_cached_gateway_policies(cache_path, max_age_seconds=60)
+    assert loaded_etag == "etag-signed"
+    assert loaded_policies is not None
+    assert loaded_policies[0].policy_id == "p1"
+
+
+def test_gateway_policy_cache_rejects_signature_mismatch(tmp_path: Path, monkeypatch):
+    cache_path = tmp_path / "gateway-policies.json"
+    monkeypatch.setattr(proxy_mod.time, "time", lambda: 1234.0)
+    monkeypatch.setenv("AGENT_BOM_PROXY_POLICY_CACHE_ED25519_PRIVATE_KEY_PEM", _ed25519_private_key_pem())
+    _reset_gateway_policy_cache_signer_for_tests()
+
+    policies = [GatewayPolicy(policy_id="p1", name="signed", rules=[], tenant_id="tenant-a")]
+    _persist_gateway_policies_cache(cache_path, policies, "etag-signed")
+
+    payload = json.loads(cache_path.read_text())
+    payload["policies"][0]["name"] = "tampered"
+    cache_path.write_text(json.dumps(payload))
+
+    loaded_policies, loaded_etag = _load_cached_gateway_policies(cache_path, max_age_seconds=60)
+    assert loaded_policies is None
+    assert loaded_etag is None
+
+
+def test_gateway_policy_cache_rejects_missing_signature_when_enabled(tmp_path: Path, monkeypatch):
+    cache_path = tmp_path / "gateway-policies.json"
+    monkeypatch.setattr(proxy_mod.time, "time", lambda: 1234.0)
+    monkeypatch.setenv("AGENT_BOM_PROXY_POLICY_CACHE_ED25519_PRIVATE_KEY_PEM", _ed25519_private_key_pem())
+    _reset_gateway_policy_cache_signer_for_tests()
+
+    policies = [GatewayPolicy(policy_id="p1", name="unsigned", rules=[], tenant_id="tenant-a")]
+    _persist_gateway_policies_cache(cache_path, policies, "etag-signed")
+    _gateway_policy_cache_signature_path(cache_path).unlink()
+
     loaded_policies, loaded_etag = _load_cached_gateway_policies(cache_path, max_age_seconds=60)
     assert loaded_policies is None
     assert loaded_etag is None

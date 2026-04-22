@@ -50,8 +50,8 @@ This is the current code-backed self-hosted story:
 |---|---|---|
 | **agent-bom Scan** | CronJobs, CI runners, one-off jobs, endpoint CLI runs | Discovers agents, MCP servers, packages, images, IaC, Kubernetes, and cloud assets; writes findings and graph state |
 | **agent-bom Fleet** | Endpoint collectors or workstation CLI pushes | Persists inventory and scan history into the control plane without requiring a separate endpoint daemon product |
-| **agent-bom Proxy** | Sidecar or local wrapper near selected MCP servers | Enforces allow/warn/deny policy, detects credential exposure, blocks undeclared tools, and emits signed audit logs |
-| **agent-bom Gateway** | Shared remote MCP traffic plane plus policy/audit surface | Stores, serves, and audits the policies consumed by proxies and managed runtime paths |
+| **agent-bom Proxy** | Sidecar or local wrapper near selected MCP servers | Enforces allow/warn/deny policy, detects credential exposure, blocks undeclared tools, emits signed audit logs, and can fail closed on tampered cached policy bundles |
+| **agent-bom Gateway** | Shared remote MCP traffic plane plus policy/audit surface | Stores, serves, and audits the policies consumed by proxies and managed runtime paths, including in-process reload for file-backed policy bundles |
 | **agent-bom Runtime** | Proxy + audit + policy pull + event persistence | Gives runtime visibility without forcing all traffic through one shared chokepoint |
 | **agent-bom Control Plane** | API + UI + Postgres, with optional ClickHouse | Presents findings, graph, remediation, fleet review, audit, and policy management from one operator-owned plane |
 

@@ -675,3 +675,7 @@ pytest && ruff check src/
 ---
 
 Apache 2.0 — [LICENSE](LICENSE)
+
+## Download History
+
+[![Download History](https://skill-history.com/chart/msaad00/agent-bom.svg)](https://skill-history.com/msaad00/agent-bom)

@@ -44,6 +44,10 @@ def test_write_endpoint_onboarding_bundle_writes_artifacts(tmp_path):
     assert set(artifacts) >= {
         "shell_bootstrap",
         "powershell_bootstrap",
+        "jamf_install",
+        "kandji_install",
+        "intune_install",
+        "intune_detect",
         "fleet_sync_env",
         "launch_agent_plist",
         "summary",
@@ -54,6 +58,10 @@ def test_write_endpoint_onboarding_bundle_writes_artifacts(tmp_path):
     env_file = Path(artifacts["fleet_sync_env"]).read_text()
     assert "AGENT_BOM_PUSH_URL" in env_file
     assert "AGENT_BOM_PUSH_API_KEY" in env_file
+    jamf_script = Path(artifacts["jamf_install"]).read_text()
+    assert "install-agent-bom-endpoint.sh" in jamf_script
+    intune_script = Path(artifacts["intune_install"]).read_text()
+    assert "install-agent-bom-endpoint.ps1" in intune_script
     summary = json.loads(Path(artifacts["summary"]).read_text())
     assert summary["control_plane_url"] == "https://agent-bom.internal.example.com"
     assert summary["artifacts"]["shell_bootstrap"] == artifacts["shell_bootstrap"]

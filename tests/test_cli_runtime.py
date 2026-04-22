@@ -230,6 +230,10 @@ def test_proxy_bootstrap_writes_bundle(tmp_path):
     assert "Wrote endpoint onboarding bundle" in result.output
     assert (tmp_path / "install-agent-bom-endpoint.sh").exists()
     assert (tmp_path / "install-agent-bom-endpoint.ps1").exists()
+    assert (tmp_path / "jamf" / "install-agent-bom-endpoint.sh").exists()
+    assert (tmp_path / "intune" / "install-agent-bom-endpoint.ps1").exists()
+    assert (tmp_path / "intune" / "detect-agent-bom-endpoint.ps1").exists()
+    assert (tmp_path / "kandji" / "install-agent-bom-endpoint.sh").exists()
     assert (tmp_path / "endpoint-onboarding-summary.json").exists()
 
 

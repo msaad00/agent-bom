@@ -19,6 +19,7 @@ This page documents what is wired today, not what might exist as a class on disk
 | Fleet agent persistence | Yes | Yes | No | Yes |
 | Gateway policy persistence | Yes | Yes | No | Yes |
 | Audit log persistence | Yes | Yes | No | Yes, via `SnowflakePolicyStore` |
+| Source registry persistence | Yes | Yes | No | No |
 | Exception workflow persistence | No default API wiring | Yes | No | No |
 | API key persistence / RBAC store | No default API wiring | Yes | No | No |
 | Schedule persistence | Yes | Yes | No | No |
@@ -37,6 +38,7 @@ backend?"
 | `/v1/scan*` job lifecycle | Yes | Yes | No | Yes |
 | `/v1/fleet*` | Yes | Yes | No | Yes |
 | `/v1/gateway/policies*` | Yes | Yes | No | Yes |
+| `/v1/sources*` source registry | Yes | Yes | No | No |
 | `/v1/audit*` primary trail | Yes | Yes | No | Partial; Snowflake policy audit exists, but it is not the full transactional audit replacement |
 | `/v1/auth/keys*` | No default API wiring | Yes | No | No |
 | `/v1/exceptions*` | No default API wiring | Yes | No | No |
@@ -51,6 +53,9 @@ The key distinction is:
 - warehouse-native discovery parity
 
 These are related, but not interchangeable.
+
+For the exact logical entity → table/store mapping, see
+[Control-Plane Data Model and Store Parity](control-plane-data-model.md).
 
 ## What This Means
 
@@ -141,6 +146,7 @@ Use it in this order:
 
 ## Related Docs
 
+- [Control-Plane Data Model and Store Parity](control-plane-data-model.md)
 - [Deployment Overview](overview.md)
 - [SIEM Integration](siem-integration.md)
 - [Canonical Model vs OCSF](../architecture/canonical-vs-ocsf.md)

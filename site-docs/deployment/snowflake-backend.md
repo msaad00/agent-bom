@@ -1,14 +1,15 @@
 # Snowflake-native backend
 
 `agent-bom` runs against Snowflake as the primary store for scan jobs,
-fleet agents, gateway policies, and the HMAC-chained audit log. Use this
+fleet agents, gateway policies, and the policy audit trail. Use this
 mode when your organisation already governs data in Snowflake and you
-want the control plane's persistence to land in the same warehouse.
+want selected control-plane persistence to land in the same warehouse.
 
-The parity boundary is explicit — some API surfaces (exceptions, API
-keys, schedules, trend, graph) have not been ported to
-`SnowflakeStore` yet. See [backend-parity.md](backend-parity.md) for
-the current capability matrix.
+The parity boundary is explicit — some API surfaces (source registry,
+exceptions, API keys, schedules, trend, graph, and the full audit
+chain) have not been ported to `SnowflakeStore` yet. See
+[backend-parity.md](backend-parity.md) for the current capability
+matrix.
 
 ---
 
@@ -19,13 +20,15 @@ Pick Snowflake when:
 - Your security and platform teams already have Snowflake as the system
   of record; adding another Postgres instance creates a data-governance
   headache.
-- You want the audit log, scan inventory, and compliance evidence in the
-  same warehouse that drives your other security analytics.
+- You want the policy audit trail, scan inventory, and compliance
+  evidence in the same warehouse that drives your other security
+  analytics.
 - You want to join `agent-bom` findings against other Snowflake
   governance data (user activity, cloud asset tables) without moving
   data across systems.
-- You want **one backend that covers transactional, streaming, and
-  analytical workloads**. Snowflake now ships:
+- You want **one backend that covers the Snowflake-supported
+  transactional, streaming, and analytical workloads**. Snowflake now
+  ships:
   - **Hybrid Tables** (row-oriented) for fast transactional writes to
     the scan / fleet / policy / audit stores.
   - **Standard columnar tables** for the analytics queries the
@@ -146,7 +149,8 @@ applies here. Snowflake-specific signals worth alerting on:
 
 ## Caveats
 
-- Exceptions, API-key persistence, scheduler, trend, graph — not yet on
+- Source registry, exceptions, API-key persistence, scheduler, trend,
+  graph, and the full HMAC-chained `audit_log` are not yet on
   `SnowflakeStore`. Run Postgres alongside for these, or wait for
   parity.
 - The scanner CronJob still runs in-cluster; it does not run inside

@@ -251,6 +251,7 @@ YAML.
 
 ## Start Here
 
+- [AWS Company Rollout](aws-company-rollout.md)
 - [Your Own AWS / EKS](own-infra-eks.md)
 - [Enterprise MCP / Endpoint Pilot](enterprise-pilot.md)
 - [Endpoint Fleet](endpoint-fleet.md)

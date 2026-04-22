@@ -270,8 +270,6 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-    env:
-      BUNDLE_DIR: ${{ runner.temp }}/endpoint-bundle
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -283,6 +281,8 @@ jobs:
         run: uv sync --extra dev
 
       - name: Generate endpoint bundle
+        env:
+          BUNDLE_DIR: ${{ runner.temp }}/endpoint-bundle
         run: |
           uv run agent-bom proxy-bootstrap \
             --bundle-dir "$BUNDLE_DIR" \
@@ -303,6 +303,8 @@ jobs:
 
       - name: Validate macOS pkg builder
         if: matrix.os == 'macos-latest'
+        env:
+          BUNDLE_DIR: ${{ runner.temp }}/endpoint-bundle
         run: |
           VERSION=$(python -c "from agent_bom import __version__; print(__version__)")
           bash scripts/build-pkg.sh \
@@ -314,6 +316,8 @@ jobs:
 
       - name: Validate Windows MSI builder
         if: matrix.os == 'windows-latest'
+        env:
+          BUNDLE_DIR: ${{ runner.temp }}/endpoint-bundle
         shell: pwsh
         run: |
           $version = python -c "from agent_bom import __version__; print(__version__)"

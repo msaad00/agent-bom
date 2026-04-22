@@ -9,6 +9,10 @@ This is a **reference rollout path** for self-hosted `agent-bom` on AWS:
 - the company platform team still owns the AWS account, VPC, EKS cluster, ingress, cert-manager, and shared controllers
 - `agent-bom` owns the product-specific baseline around that platform: Postgres, IRSA, backup bucket, auth secrets, Helm release, fleet onboarding, and optional gateway runtime
 
+For the concrete runtime gateway discovery path after fleet and cluster scans
+have populated remote MCPs, see [Gateway Auto-Discovery From the Control
+Plane](gateway-auto-discovery.md).
+
 `agent-bom` stays one product with two deployable images:
 
 - `agentbom/agent-bom` for scanner, API, jobs, proxy, gateway, and workers

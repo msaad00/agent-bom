@@ -17,6 +17,7 @@
 | `runtime proxy` | Runtime MCP proxy with enforcement |
 | `runtime protect` | 7-detector anomaly engine |
 | `runtime watch` | Config file change monitoring |
+| `remediate` | Generate a prioritized remediation plan |
 | `report` | History, diff, analytics, dashboard |
 | `policy` | Templates and remediation |
 | `serve` | Start REST API server |
@@ -27,6 +28,7 @@
 
 - `check` supports terminal output by default plus `--format json` for machine-readable pre-install verdicts.
 - `report history` and `report diff` support `--format json` for CI and automation.
+- `remediate` supports `--format json` as the machine-readable remediation contract.
 - Use `agent-bom agents -f <format> -o <path>` for SARIF, HTML, SBOM, and richer environment exports.
 - Use `agent-bom agents -f sarif -o -` when you need SARIF on stdout for piping.
 - `where` is available both as `agent-bom where` and `agent-bom mcp where`.
@@ -73,6 +75,9 @@ agent-bom agents --config-dir /path/to/configs
 ## Troubleshooting
 
 See [CLI Debug Guide](cli-debug.md) for quiet/logging behavior, stdout vs file output, discovery triage, and package verification workflows.
+
+For the JSON contract behind `agent-bom remediate`, see [`remediate` Output
+Contract](remediate-output.md).
 
 ## Environment variables
 

@@ -34,6 +34,9 @@ compliance(frameworks=["owasp-llm", "eu-ai-act"])
 ### remediate
 Generate a prioritized remediation plan for discovered vulnerabilities.
 
+For the JSON contract and example artifact shape, see [`remediate` Output
+Contract](remediate-output.md).
+
 ### skill_scan
 Scan instruction files such as `CLAUDE.md`, `.cursorrules`, `AGENTS.md`, and `skills/*.md` for package references, MCP server configs, credential env vars, trust verdicts, and audit findings.
 ```

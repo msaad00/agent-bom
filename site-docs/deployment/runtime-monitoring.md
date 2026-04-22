@@ -10,6 +10,7 @@ The runtime proxy (`agent-bom proxy`) intercepts MCP JSON-RPC messages between c
 - 7-detector anomaly engine (tool drift, argument analysis, credential leak, rate limiting, sequence analysis, response inspector, vector DB injection)
 - Policy enforcement with block/allow rules
 - Prometheus metrics on port 8422
+- Optional visual leak detection for image and screenshot responses
 
 ## Deployment modes
 
@@ -32,3 +33,9 @@ The `watch` command supports webhook alerts to:
 ```bash
 agent-bom watch --webhook-url https://hooks.slack.com/... --watch-interval 60
 ```
+
+## Operator guides
+
+- [Visual Leak Detection](visual-leak-detection.md)
+- [Worker and Scheduler Concurrency](worker-and-scheduler-concurrency.md)
+- [Gateway Auto-Discovery From the Control Plane](gateway-auto-discovery.md)

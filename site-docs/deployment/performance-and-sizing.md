@@ -130,6 +130,11 @@ If scans begin overlapping, do not immediately add more control-plane replicas.
 First widen the CronJob interval, split scope, or reduce introspection scope for
 the rollout phase.
 
+For the full execution model, including scheduler leader election, tenant quota
+enforcement, and the split between recurring schedules and the packaged scanner
+`CronJob`, see [Worker and Scheduler
+Concurrency](worker-and-scheduler-concurrency.md).
+
 ## Postgres vs ClickHouse
 
 Use `Postgres` as the source of truth for:

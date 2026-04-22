@@ -149,6 +149,11 @@ The important boundary is that `agent-bom proxy` is the inline runtime path,
 while the gateway is the central policy surface. One does not replace the
 other.
 
+For the concrete gateway startup path against discovered fleet MCPs, see
+[Gateway Auto-Discovery From the Control Plane](gateway-auto-discovery.md).
+For screenshot and OCR rollout on runtime paths, see [Visual Leak
+Detection](visual-leak-detection.md).
+
 ## What Stays In Your Infrastructure
 
 For this model, the sensitive operator surfaces stay inside your environment

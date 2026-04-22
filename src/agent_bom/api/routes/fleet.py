@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
 
-from agent_bom.api.mcp_observation_store import MCPObservation
+from agent_bom.api.mcp_observation_store import MCPObservation, merge_observations
 from agent_bom.api.models import FleetAgentUpdate, PushPayload, StateUpdate
 from agent_bom.api.stores import _get_fleet_store, _get_idempotency_store, _get_mcp_observation_store
 from agent_bom.api.tenant_quota import enforce_fleet_agents_quota
@@ -144,35 +144,35 @@ def _persist_payload_observations(tenant_id: str, agent: dict, *, last_discovery
                 auth_mode = "local-stdio"
         transport = str(server.get("transport") or "")
         stable_id = str(server.get("stable_id") or f"{server_name}:{server.get('command', '')}")
-        store.put(
-            MCPObservation(
-                tenant_id=tenant_id,
-                observation_id=f"{agent_name}:{stable_id}",
-                server_stable_id=stable_id,
-                server_fingerprint=str(server.get("fingerprint") or stable_id),
-                server_name=server_name,
-                agent_name=agent_name,
-                transport=transport,
-                url=server_url,
-                auth_mode=auth_mode,
-                command=str(server.get("command") or ""),
-                args=list(server.get("args", []) or []),
-                config_path=server.get("config_path"),
-                credential_env_vars=credential_names,
-                security_warnings=list(server.get("security_warnings", []) or []),
-                observed_via=["fleet_sync"],
-                observed_scopes=["endpoint"],
-                scan_sources=[],
-                source_agents=[agent_name] if server_url and transport.lower() in {"http", "https", "sse"} else [],
-                configured_locally=False,
-                fleet_present=True,
-                gateway_registered=bool(server_url and transport.lower() in {"http", "https", "sse"}),
-                runtime_observed=False,
-                first_seen=last_discovery,
-                last_seen=last_discovery,
-                last_synced=last_synced,
-            )
+        observation_id = f"{agent_name}:{stable_id}"
+        candidate = MCPObservation(
+            tenant_id=tenant_id,
+            observation_id=observation_id,
+            server_stable_id=stable_id,
+            server_fingerprint=str(server.get("fingerprint") or stable_id),
+            server_name=server_name,
+            agent_name=agent_name,
+            transport=transport,
+            url=server_url,
+            auth_mode=auth_mode,
+            command=str(server.get("command") or ""),
+            args=list(server.get("args", []) or []),
+            config_path=server.get("config_path"),
+            credential_env_vars=credential_names,
+            security_warnings=list(server.get("security_warnings", []) or []),
+            observed_via=["fleet_sync"],
+            observed_scopes=["endpoint"],
+            scan_sources=[],
+            source_agents=[agent_name] if server_url and transport.lower() in {"http", "https", "sse"} else [],
+            configured_locally=False,
+            fleet_present=True,
+            gateway_registered=bool(server_url and transport.lower() in {"http", "https", "sse"}),
+            runtime_observed=False,
+            first_seen=last_discovery,
+            last_seen=last_discovery,
+            last_synced=last_synced,
         )
+        store.put(merge_observations(store.get(tenant_id, observation_id), candidate))
 
 
 @router.post("/v1/fleet/sync", tags=["fleet"])

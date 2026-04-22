@@ -15,7 +15,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
-from agent_bom.api.mcp_observation_store import MCPObservation
+from agent_bom.api.mcp_observation_store import MCPObservation, merge_observations
 from agent_bom.api.models import JobStatus
 from agent_bom.api.stores import _get_fleet_store, _get_mcp_observation_store, _get_store
 from agent_bom.security import sanitize_error
@@ -110,6 +110,17 @@ def _build_gateway_index(tenant_id: str) -> dict[tuple[str, str], dict[str, Any]
     }
 
 
+def _observation_ids(agent: Any, server: Any) -> tuple[str, str | None]:
+    current = f"{agent.name}:{getattr(server, 'stable_id', server.name)}"
+    legacy = None
+    command = getattr(server, "command", "") or ""
+    if command:
+        legacy = f"{agent.name}:{server.name}:{command}"
+        if legacy == current:
+            legacy = None
+    return current, legacy
+
+
 def _serialize_agent(
     agent,
     *,
@@ -145,8 +156,10 @@ def _serialize_agent(
         server_payload.setdefault("url", server_url)
         server_payload.setdefault("config_path", getattr(server, "config_path", None))
         server_payload.setdefault("security_warnings", list(getattr(server, "security_warnings", []) or []))
-        observation_id = f"{agent.name}:{getattr(server, 'stable_id', server.name)}"
+        observation_id, legacy_observation_id = _observation_ids(agent, server)
         stored_observation = (observation_index or {}).get(observation_id)
+        if stored_observation is None and legacy_observation_id:
+            stored_observation = (observation_index or {}).get(legacy_observation_id)
         scan_history = (scan_history_index or {}).get(
             (agent.name, server.name),
             {"present": False, "scan_sources": [], "first_seen": None, "last_seen": None},
@@ -250,35 +263,38 @@ def _persist_agent_observations(
                 auth_mode = "network-no-auth-observed"
             else:
                 auth_mode = "local-stdio"
-        store.put(
-            MCPObservation(
-                tenant_id=tenant_id,
-                observation_id=f"{agent.name}:{getattr(server, 'stable_id', server.name)}",
-                server_stable_id=getattr(server, "stable_id", server.name),
-                server_fingerprint=getattr(server, "fingerprint", ""),
-                server_name=server.name,
-                agent_name=agent.name,
-                transport=getattr(getattr(server, "transport", ""), "value", getattr(server, "transport", "")) or "",
-                url=server_url,
-                auth_mode=auth_mode,
-                command=getattr(server, "command", "") or "",
-                args=list(getattr(server, "args", []) or []),
-                config_path=getattr(server, "config_path", None),
-                credential_env_vars=credential_names,
-                security_warnings=list(getattr(server, "security_warnings", []) or []),
-                observed_via=observed_via,
-                observed_scopes=observed_scopes,
-                scan_sources=scan_history["scan_sources"],
-                source_agents=gateway_state["source_agents"],
-                configured_locally=True,
-                fleet_present=fleet_agent is not None,
-                gateway_registered=gateway_state["gateway_registered"],
-                runtime_observed=False,
-                first_seen=scan_history["first_seen"],
-                last_seen=fleet_agent.get("last_discovery") if fleet_agent else scan_history["last_seen"],
-                last_synced=fleet_agent.get("updated_at") if fleet_agent else None,
-            )
+        observation_id, legacy_observation_id = _observation_ids(agent, server)
+        candidate = MCPObservation(
+            tenant_id=tenant_id,
+            observation_id=observation_id,
+            server_stable_id=getattr(server, "stable_id", server.name),
+            server_fingerprint=getattr(server, "fingerprint", ""),
+            server_name=server.name,
+            agent_name=agent.name,
+            transport=getattr(getattr(server, "transport", ""), "value", getattr(server, "transport", "")) or "",
+            url=server_url,
+            auth_mode=auth_mode,
+            command=getattr(server, "command", "") or "",
+            args=list(getattr(server, "args", []) or []),
+            config_path=getattr(server, "config_path", None),
+            credential_env_vars=credential_names,
+            security_warnings=list(getattr(server, "security_warnings", []) or []),
+            observed_via=observed_via,
+            observed_scopes=observed_scopes,
+            scan_sources=scan_history["scan_sources"],
+            source_agents=gateway_state["source_agents"],
+            configured_locally=True,
+            fleet_present=fleet_agent is not None,
+            gateway_registered=gateway_state["gateway_registered"],
+            runtime_observed=False,
+            first_seen=scan_history["first_seen"],
+            last_seen=fleet_agent.get("last_discovery") if fleet_agent else scan_history["last_seen"],
+            last_synced=fleet_agent.get("updated_at") if fleet_agent else None,
         )
+        existing = store.get(tenant_id, observation_id)
+        if existing is None and legacy_observation_id:
+            existing = store.get(tenant_id, legacy_observation_id)
+        store.put(merge_observations(existing, candidate))
 
 
 @router.get("/v1/agents", tags=["discovery"])

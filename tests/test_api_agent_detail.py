@@ -122,6 +122,56 @@ def _mock_observation_store() -> InMemoryMCPObservationStore:
     return store
 
 
+def test_merge_observations_preserves_persisted_provenance_contract():
+    existing = MCPObservation(
+        tenant_id="default",
+        observation_id="test-agent:test-server:npx",
+        server_stable_id="test-server:npx",
+        server_fingerprint="fp-1",
+        server_name="test-server",
+        agent_name="test-agent",
+        observed_via=["fleet_sync", "scan_result"],
+        observed_scopes=["endpoint", "scan"],
+        scan_sources=["fleet_sync"],
+        source_agents=["test-agent"],
+        configured_locally=False,
+        fleet_present=True,
+        gateway_registered=True,
+        first_seen="2026-04-22T11:58:00Z",
+        last_seen="2026-04-22T12:01:00Z",
+        last_synced="2026-04-22T12:05:00Z",
+    )
+    incoming = MCPObservation(
+        tenant_id="default",
+        observation_id="test-agent:test-server:npx",
+        server_stable_id="test-server:npx",
+        server_fingerprint="fp-1",
+        server_name="test-server",
+        agent_name="test-agent",
+        observed_via=["local_discovery"],
+        observed_scopes=["endpoint"],
+        scan_sources=["mcp_config"],
+        source_agents=[],
+        configured_locally=True,
+        fleet_present=False,
+        gateway_registered=False,
+        first_seen=None,
+        last_seen="2026-04-22T12:00:00Z",
+        last_synced=None,
+    )
+    from agent_bom.api.mcp_observation_store import merge_observations
+
+    merged = merge_observations(existing, incoming)
+    assert merged.configured_locally is False
+    assert merged.fleet_present is True
+    assert merged.gateway_registered is True
+    assert merged.observed_via == ["fleet_sync", "local_discovery", "scan_result"]
+    assert merged.scan_sources == ["fleet_sync", "mcp_config"]
+    assert merged.first_seen == "2026-04-22T11:58:00Z"
+    assert merged.last_seen == "2026-04-22T12:01:00Z"
+    assert merged.last_synced == "2026-04-22T12:05:00Z"
+
+
 @patch("agent_bom.discovery.discover_all", side_effect=_mock_agents)
 @patch("agent_bom.api.routes.discovery._get_fleet_store", side_effect=_mock_fleet_store)
 def test_agent_detail_found(_fleet, _mock):

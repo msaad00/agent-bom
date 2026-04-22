@@ -43,6 +43,47 @@ class MCPObservation(BaseModel):
     updated_at: str = Field(default_factory=_now)
 
 
+def _pick_timestamp(*values: str | None, prefer: str) -> str | None:
+    candidates = [value for value in values if value]
+    if not candidates:
+        return None
+    return min(candidates) if prefer == "min" else max(candidates)
+
+
+def merge_observations(existing: MCPObservation | None, incoming: MCPObservation) -> MCPObservation:
+    if existing is None:
+        return incoming
+    return MCPObservation(
+        tenant_id=incoming.tenant_id,
+        observation_id=incoming.observation_id,
+        server_stable_id=incoming.server_stable_id or existing.server_stable_id,
+        server_fingerprint=incoming.server_fingerprint or existing.server_fingerprint,
+        server_name=incoming.server_name or existing.server_name,
+        agent_name=incoming.agent_name or existing.agent_name,
+        transport=incoming.transport or existing.transport,
+        url=incoming.url or existing.url,
+        auth_mode=incoming.auth_mode or existing.auth_mode,
+        command=incoming.command or existing.command,
+        args=incoming.args or existing.args,
+        config_path=incoming.config_path or existing.config_path,
+        credential_env_vars=sorted(set(existing.credential_env_vars) | set(incoming.credential_env_vars)),
+        security_warnings=sorted(set(existing.security_warnings) | set(incoming.security_warnings)),
+        observed_via=sorted(set(existing.observed_via) | set(incoming.observed_via)),
+        observed_scopes=sorted(set(existing.observed_scopes) | set(incoming.observed_scopes)),
+        scan_sources=sorted(set(existing.scan_sources) | set(incoming.scan_sources)),
+        source_agents=sorted(set(existing.source_agents) | set(incoming.source_agents)),
+        # Preserve the strongest persisted assertion rather than letting a later
+        # read-path discovery pass rewrite provenance state opportunistically.
+        configured_locally=existing.configured_locally,
+        fleet_present=existing.fleet_present or incoming.fleet_present,
+        gateway_registered=existing.gateway_registered or incoming.gateway_registered,
+        runtime_observed=existing.runtime_observed or incoming.runtime_observed,
+        first_seen=_pick_timestamp(existing.first_seen, incoming.first_seen, prefer="min"),
+        last_seen=_pick_timestamp(existing.last_seen, incoming.last_seen, prefer="max"),
+        last_synced=_pick_timestamp(existing.last_synced, incoming.last_synced, prefer="max"),
+    )
+
+
 class MCPObservationStore(Protocol):
     def put(self, observation: MCPObservation) -> None: ...
     def get(self, tenant_id: str, observation_id: str) -> MCPObservation | None: ...

@@ -173,120 +173,58 @@ External calls are limited to package metadata, version lookups, and CVE enrichm
 
 **`agent-bom` runs inside your infrastructure: your VPC, your EKS cluster, your Postgres, your SSO, your KMS. No hosted control plane. No mandatory vendor backend. No mandatory telemetry.**
 
-The easiest way to understand the product is:
+The recommended motion is simple:
 
 - **start with inventory** using scans and fleet sync
-- **add runtime later** with proxy or gateway where you actually need enforcement
+- **prove findings, graph, and blast radius**
+- **add runtime later** with proxy or gateway only where enforcement is worth it
 
-That is the adoption wedge behind the product:
+That keeps the day-1 path easy while still giving you a full runtime story later.
 
-- inventory-first teams can see which MCP servers are running, what tools they expose, and which credentials back them
-- runtime-focused teams can layer in proxy or gateway without changing the control plane
-
-## Deployment modes
-
-| Mode | Deploy | Use when | Adds |
-|---|---|---|---|
-| **Local scan** | CLI or CI only | You want discovery, CVEs, IaC, image, and MCP config analysis | no persistent control plane |
-| **Inventory-first self-hosted** | API + UI + Postgres + scan jobs + fleet sync | You want endpoint and MCP inventory without rolling out runtime enforcement first | `/fleet`, `/agents`, findings, graph, remediation, audit |
-| **Selective runtime enforcement** | inventory-first, plus `proxy` on chosen workloads | You need inline MCP inspection near stdio or workload-local MCPs | policy enforcement, runtime audit, local blocking |
-| **Shared remote MCP control** | inventory-first, plus `gateway` | You want a central HTTP traffic plane for shared remote MCPs | central relay, shared rate limits, remote MCP policy/audit |
-| **Full self-hosted platform** | control plane + scan + fleet + selected proxy + selected gateway | You want one operator plane across inventory, findings, runtime, and evidence | the full product stack in your own infra |
-
-## Runtime model
-
-`proxy` and `gateway` are **peer runtime surfaces**, not a required serial chain.
-
-| Surface | Deploy it when | Handles | Does not replace |
-|---|---|---|---|
-| **`agent-bom proxy`** | you need workload-local or endpoint-local MCP enforcement | stdio MCPs, sidecars, local audit, local policy decisions | inventory, fleet sync, or shared remote relay |
-| **`agent-bom gateway serve`** | you need a shared remote MCP plane | HTTP/SSE remote MCP traffic, tenant rate limits, shared policy, audit | local stdio enforcement or every runtime path |
-
-### How the product connects
-
-| Path | Starts from | Lands in | Why it exists |
-|---|---|---|---|
-| **Inventory path** | `agent-bom agents`, scan jobs, CI, fleet sync | API + UI + Postgres | discover what is installed, configured, risky, and reachable |
-| **Proxy path** | local editor, endpoint, or sidecar workload | local MCPs + control-plane audit/policy | inline runtime inspection close to the workload |
-| **Gateway path** | shared remote MCP clients | remote MCPs + control-plane audit/policy | central policy and shared remote MCP traffic |
-| **Control-plane path** | browser UI or API client | API + UI + Postgres | review findings, graph, remediation, audit, fleet, and policy |
+```mermaid
+flowchart LR
+    Scan["Scans + Fleet"] --> API["API + UI + Postgres"]
+    API --> Graph["Findings + Graph + Audit"]
+    API --> Gateway["Optional Gateway"]
+    API --> Proxy["Optional Proxy"]
+```
 
 Deployment truth:
 
 - the **browser UI drives workflows**
-- the **API owns state, auth, RBAC, graph, audit, and policy**
+- the **API owns auth, RBAC, tenant scope, graph, audit, and policy**
 - **workers do scans and ingest**
 - **fleet gives inventory without proxy**
-- **proxy and gateway are core features deployed where they fit**
-
-## What becomes visible before proxy rollout
-
-With scans and fleet sync alone, teams can already see:
-
-- which endpoints have MCP clients or collectors
-- which MCP servers are configured
-- transport: `stdio`, `sse`, or `http`
-- declared tools
-- command or URL
-- credential-backed environment variables
-- last seen and last synced state
-- package, image, IaC, and related finding context
-
-That is why the inventory story matters: adoption should not require teams to
-start with a runtime rollout.
-
-## Self-hosted shape in one table
-
-| Layer | Usually deploy first | Notes |
-|---|---|---|
-| **Ingress + auth** | yes | OIDC or SAML in front of the control plane |
-| **API + UI** | yes | one operator plane, same-origin browser app |
-| **Workers / scan jobs** | yes | discovery, scans, imports, scheduled jobs |
-| **Fleet sync** | yes for endpoint visibility | gives MCP inventory without proxy |
-| **Proxy** | optional | add only where inline local enforcement is needed |
-| **Gateway** | optional | add only where shared remote MCP traffic needs a central plane |
-| **Postgres** | yes | primary transactional store |
-| **ClickHouse / S3** | optional | analytics and backup/export scale |
+- **proxy and gateway are peer runtime surfaces**, not a required serial chain
 
 ## One product, two deployable images
 
 - `agentbom/agent-bom` = CLI, API, jobs, gateway, proxy, MCP server mode
 - `agentbom/agent-bom-ui` = browser control-plane UI
 
-Users should not think about that split directly:
+Use this split:
 
-- **pilot**: one Compose file
-- **full self-hosted**: one reference installer
-- **advanced/manual**: one Helm chart
-
-Official deployment entrypoints:
-
-- **pilot on one machine**:
-  [deploy/docker-compose.pilot.yml](deploy/docker-compose.pilot.yml)
-- **full self-hosted in your own AWS / EKS**:
-  [scripts/deploy/install-eks-reference.sh](scripts/deploy/install-eks-reference.sh)
-
-Other Compose files in `deploy/` are advanced or component-specific examples,
-not the primary recommended deployment path.
-
-Recommended defaults:
-
-- **default control-plane backend**: Postgres
-- **default adoption path**: control plane + scans + fleet first
-- **shared remote runtime**: gateway
-- **workload-local runtime**: selected sidecar proxy
-- **node-wide runtime**: optional monitor only when a team explicitly wants that tradeoff
-- **advanced backends**: add ClickHouse, Snowflake, or OTEL exports only when the default Postgres-first path is no longer enough
-
-## Local vs self-hosted
-
-| If you run... | It can scan or manage | It cannot directly reach |
+| Goal | Recommended path | Default choice |
 |---|---|---|
-| `agent-bom agents -p .` on your laptop | local repo, local MCP configs, local manifests, local endpoint context | cluster-only resources unless you pass credentials or run from that environment |
-| `agent-bom serve` on one machine | scans and UI workflows for paths that machine can access | another developer laptop's local files or cluster-internal services it cannot reach |
-| Helm / scripted control plane in your infra | scan jobs, fleet sync, graph, audit, remediation, API/UI workflows | endpoint-local stdio traffic unless proxy is deployed there |
-| `agent-bom proxy` on an endpoint or sidecar | that workload's live MCP traffic | shared remote MCP traffic that never passes through that proxy |
-| `agent-bom gateway serve` in cluster | shared remote MCP traffic routed through it | local stdio MCP sessions that stay on endpoints |
+| **Fastest pilot** | [`deploy/docker-compose.pilot.yml`](deploy/docker-compose.pilot.yml) | one machine, API + UI |
+| **Production self-hosted** | [`scripts/deploy/install-eks-reference.sh`](scripts/deploy/install-eks-reference.sh) | EKS + Postgres |
+| **Advanced/manual** | Helm + your own values layering | only when you intentionally want to diverge |
+
+Runtime choices:
+
+| Need | Use |
+|---|---|
+| **Inventory first** | scans + fleet |
+| **Shared remote MCP traffic** | `agent-bom gateway serve` |
+| **Workload-local inline enforcement** | selected `agent-bom proxy` sidecars or local wrappers |
+| **Node-wide runtime coverage** | optional monitor only if your platform team explicitly wants a DaemonSet |
+
+Backend defaults:
+
+| Layer | Default | Add later only if needed |
+|---|---|---|
+| **control plane** | Postgres | Snowflake only when the published backend parity is the reason to choose it |
+| **analytics / archive** | none required | ClickHouse, OTEL, S3 |
 
 ## Start here by scenario
 
@@ -300,7 +238,20 @@ Recommended defaults:
 | trust model, auth, tenant isolation | [ENTERPRISE_SECURITY_PLAYBOOK.md](docs/ENTERPRISE_SECURITY_PLAYBOOK.md) |
 
 <details>
-<summary><b>Deep deployment notes</b></summary>
+<summary><b>Advanced deployment notes</b></summary>
+
+### What becomes visible before proxy rollout
+
+With scans and fleet sync alone, teams can already see:
+
+- which endpoints have MCP clients or collectors
+- which MCP servers are configured
+- transport: `stdio`, `sse`, or `http`
+- declared tools
+- command or URL
+- credential-backed environment variables
+- last seen and last synced state
+- package, image, IaC, and related finding context
 
 ### What each surface owns
 
@@ -313,29 +264,17 @@ Recommended defaults:
 | **Proxy** | local inline MCP inspection and audit relay | central policy storage |
 | **Gateway** | shared remote MCP traffic and shared runtime policy evaluation | full control-plane persistence |
 
-### Backend choices
+### Advanced references
 
-| Backend | Best for |
-|---|---|
-| **SQLite** | laptops and single-node local use |
-| **Postgres / Supabase** | default self-hosted control plane |
-| **ClickHouse** | audit/event analytics at higher scale |
-| **Snowflake** | warehouse-native governance workflows where the published backend parity fits |
-
-Default recommendation:
-
-- start with **Postgres**
-- add **ClickHouse** for event-scale analytics later
-- choose **Snowflake** only when the published backend parity and warehouse-native governance workflow are the reason you are deploying it
-
-### Shipped Helm examples
-
-| File | Use when |
-|---|---|
-| [`eks-mcp-pilot-values.yaml`](deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml) | focused MCP and fleet pilot |
-| [`eks-production-values.yaml`](deploy/helm/agent-bom/examples/eks-production-values.yaml) | production rollout |
-| [`eks-istio-kyverno-values.yaml`](deploy/helm/agent-bom/examples/eks-istio-kyverno-values.yaml) | zero-trust / regulated rollout |
-| [`eks-snowflake-values.yaml`](deploy/helm/agent-bom/examples/eks-snowflake-values.yaml) | Snowflake-backed deployment |
+- full deployment overview: [site-docs/deployment/overview.md](site-docs/deployment/overview.md)
+- self-hosted AWS / EKS rollout: [site-docs/deployment/own-infra-eks.md](site-docs/deployment/own-infra-eks.md)
+- endpoint inventory and fleet: [site-docs/deployment/endpoint-fleet.md](site-docs/deployment/endpoint-fleet.md)
+- proxy / gateway / fleet choice guide: [site-docs/deployment/proxy-vs-gateway-vs-fleet.md](site-docs/deployment/proxy-vs-gateway-vs-fleet.md)
+- runtime operations: [site-docs/deployment/runtime-operations.md](site-docs/deployment/runtime-operations.md)
+- EKS production values: [deploy/helm/agent-bom/examples/eks-production-values.yaml](deploy/helm/agent-bom/examples/eks-production-values.yaml)
+- focused pilot values: [deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml](deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml)
+- regulated/zero-trust example: [deploy/helm/agent-bom/examples/eks-istio-kyverno-values.yaml](deploy/helm/agent-bom/examples/eks-istio-kyverno-values.yaml)
+- Snowflake example: [deploy/helm/agent-bom/examples/eks-snowflake-values.yaml](deploy/helm/agent-bom/examples/eks-snowflake-values.yaml)
 
 </details>
 

@@ -625,6 +625,33 @@ def test_gateway_hot_reload_updates_policy_without_restart(tmp_path: Path) -> No
         assert allowed.json()["result"]["ok"] is True
 
 
+def test_gateway_hot_reload_tolerates_policy_file_removed_mid_reload(tmp_path: Path) -> None:
+    policy_path = tmp_path / "gateway-policy.json"
+    policy_path.write_text(json.dumps({"rules": []}))
+
+    async def fake_caller(upstream, message, extra_headers):
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        upstream_caller=fake_caller,
+        policy_path=policy_path,
+        policy_reload_interval_seconds=1,
+    )
+    with TestClient(create_gateway_app(settings)) as client:
+        healthy = client.get("/healthz")
+        assert healthy.status_code == 200
+        assert healthy.json()["policy_runtime"]["last_error"] is None
+
+        policy_path.unlink()
+        time.sleep(1.2)
+
+        reloaded = client.get("/healthz")
+        assert reloaded.status_code == 200
+        assert "No such file or directory" in (reloaded.json()["policy_runtime"]["last_error"] or "")
+
+
 # ─── Error cases ──────────────────────────────────────────────────────────
 
 

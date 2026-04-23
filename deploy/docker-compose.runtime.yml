@@ -27,7 +27,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/docker/Dockerfile.runtime
-    image: agentbom/agent-bom:0.81.0
+    image: agentbom/agent-bom:0.81.1
     container_name: agent-bom-runtime-proxy
     depends_on:
       - mcp-server

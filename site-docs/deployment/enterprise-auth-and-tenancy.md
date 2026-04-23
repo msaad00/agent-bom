@@ -80,9 +80,24 @@ and the route minimum-role map lives in
 Operationally:
 
 - `admin` can manage keys, policies, fleet writes, and configuration
-- `analyst` can run scans, push observability/runtime data, and create
+- `analyst` is the current backend role that the UI should present as a
+  **contributor** operator role; it can run scans, push observability/runtime data, and create
   exceptions
 - `viewer` is read-only
+
+The UI/session contract for that mapping now comes from:
+
+- `GET /v1/auth/me`
+
+That endpoint returns:
+
+- the authenticated actor and active tenant
+- the backend role (`admin` / `analyst` / `viewer`)
+- the UI role label (`admin` / `contributor` / `viewer`)
+- capability and access summaries the browser can use to explain:
+  - what the actor can see
+  - what the actor can do
+  - what remains blocked server-side
 
 ## Tenant propagation
 

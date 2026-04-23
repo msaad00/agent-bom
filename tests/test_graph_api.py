@@ -10,6 +10,7 @@ from starlette.testclient import TestClient
 
 from agent_bom.api import stores as api_stores
 from agent_bom.api.graph_store import SQLiteGraphStore
+from agent_bom.api.routes import graph as graph_routes
 from agent_bom.api.server import app
 from agent_bom.api.stores import set_graph_store
 from agent_bom.db.graph_store import _init_db, load_graph, save_graph
@@ -300,6 +301,19 @@ class TestGraphEndpointLogic:
         assert underscore_total == 1
         assert [node.id for node in underscore_results] == ["dataset:underscore"]
 
+    def test_sqlite_graph_store_search_falls_back_when_fts_match_errors(self, tmp_path, monkeypatch):
+        store = SQLiteGraphStore(tmp_path / "graph.db")
+        graph = UnifiedGraph(scan_id="search-scan", tenant_id="default")
+        graph.add_node(UnifiedNode(id="server:vector", entity_type=EntityType.SERVER, label="Vector Service"))
+        store.save_graph(graph)
+
+        monkeypatch.setattr(SQLiteGraphStore, "_search_query_expression", staticmethod(lambda query: '"'))
+
+        results, total = store.search_nodes(tenant_id="default", query="vector", offset=0, limit=10)
+
+        assert total == 1
+        assert [node.id for node in results] == ["server:vector"]
+
 
 class TestBackendDirectionality:
     """Regression: graph_backend must respect edge direction from unified graph."""
@@ -517,6 +531,25 @@ class TestGraphStoreBackendSelection:
         assert response.json()["results"][0]["id"] == "server:a"
         assert any(call[0] == "search_nodes" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
+
+    def test_graph_routes_offload_store_calls_to_thread(self, recording_graph_store, monkeypatch):
+        client = TestClient(app)
+        helper_calls: list[str] = []
+
+        async def _fake_graph_store_call(fn, /, *args, **kwargs):
+            helper_calls.append(fn.__name__)
+            return fn(*args, **kwargs)
+
+        monkeypatch.setattr(graph_routes, "_graph_store_call", _fake_graph_store_call)
+
+        graph_response = client.get("/v1/graph")
+        search_response = client.get("/v1/graph/search", params={"q": "agent"})
+
+        assert graph_response.status_code == 200
+        assert search_response.status_code == 200
+        assert "latest_snapshot_id" in helper_calls
+        assert "page_nodes" in helper_calls
+        assert "search_nodes" in helper_calls
 
     def test_graph_search_forwards_slice_filters(self, recording_graph_store):
         recording_graph_store.graph.add_node(

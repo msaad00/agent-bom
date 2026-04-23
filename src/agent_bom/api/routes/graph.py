@@ -17,6 +17,7 @@ Endpoints:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Literal, Optional
 
@@ -64,6 +65,11 @@ def _page_meta(total: int, offset: int, limit: int) -> dict:
         "limit": limit,
         "has_more": offset + limit < total,
     }
+
+
+async def _graph_store_call(fn, /, *args, **kwargs):
+    """Run sync graph store methods off the event loop."""
+    return await asyncio.to_thread(fn, *args, **kwargs)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -182,7 +188,7 @@ async def get_graph(
     graph_store = _get_graph_store_or_503()
     requested_scan_id = scan_id or ""
 
-    if not requested_scan_id and not graph_store.latest_snapshot_id(tenant_id=tenant):
+    if not requested_scan_id and not await _graph_store_call(graph_store.latest_snapshot_id, tenant_id=tenant):
         raise HTTPException(status_code=503, detail="Graph snapshots not found. Run a scan first.")
 
     et_set: set[str] | None = None
@@ -194,7 +200,8 @@ async def get_graph(
         min_rank = SEVERITY_RANK.get(min_severity.lower(), 0)
 
     if relationships or static_only or dynamic_only:
-        graph = graph_store.load_graph(
+        graph = await _graph_store_call(
+            graph_store.load_graph,
             scan_id=requested_scan_id,
             tenant_id=tenant,
             entity_types=et_set,
@@ -238,7 +245,8 @@ async def get_graph(
             "pagination": pagination,
         }
 
-    effective_scan_id, created_at, paged_nodes, total = graph_store.page_nodes(
+    effective_scan_id, created_at, paged_nodes, total = await _graph_store_call(
+        graph_store.page_nodes,
         scan_id=requested_scan_id,
         tenant_id=tenant,
         entity_types=et_set,
@@ -247,7 +255,8 @@ async def get_graph(
         limit=limit,
     )
     paged_ids = {n.id for n in paged_nodes}
-    paged_edges = graph_store.edges_for_node_ids(
+    paged_edges = await _graph_store_call(
+        graph_store.edges_for_node_ids,
         scan_id=effective_scan_id,
         tenant_id=tenant,
         node_ids=paged_ids,
@@ -260,7 +269,8 @@ async def get_graph(
         "edges": [e.to_dict() for e in paged_edges],
         "attack_paths": [],
         "interaction_risks": [],
-        "stats": graph_store.snapshot_stats(
+        "stats": await _graph_store_call(
+            graph_store.snapshot_stats,
             scan_id=effective_scan_id,
             tenant_id=tenant,
             entity_types=et_set,
@@ -277,7 +287,7 @@ async def get_graph_diff(
     new: str = Query(..., description="New scan ID"),
 ) -> dict:
     """Diff two scan snapshots — nodes/edges added, removed, changed."""
-    return _get_graph_store_or_503().diff_snapshots(old, new, tenant_id=_tenant(request))
+    return await _graph_store_call(_get_graph_store_or_503().diff_snapshots, old, new, tenant_id=_tenant(request))
 
 
 @router.get("/v1/graph/paths", tags=["graph"])
@@ -290,7 +300,7 @@ async def get_graph_paths(
     limit: int = Query(100, ge=1, le=1000, description="Max paths"),
 ) -> dict:
     """Find all attack paths from a source node via BFS."""
-    graph = _get_graph_store_or_503().load_graph(scan_id=scan_id or "", tenant_id=_tenant(request))
+    graph = await _graph_store_call(_get_graph_store_or_503().load_graph, scan_id=scan_id or "", tenant_id=_tenant(request))
     if not graph.has_node(source):
         raise HTTPException(status_code=404, detail=f"Node '{source}' not found in graph")
 
@@ -317,7 +327,7 @@ async def get_graph_impact(
     max_depth: int = Query(4, ge=1, le=10, description="Maximum reverse BFS depth"),
 ) -> dict:
     """Compute blast radius of a node — what depends on it?"""
-    graph = _get_graph_store_or_503().load_graph(scan_id=scan_id or "", tenant_id=_tenant(request))
+    graph = await _graph_store_call(_get_graph_store_or_503().load_graph, scan_id=scan_id or "", tenant_id=_tenant(request))
     if not graph.has_node(node):
         raise HTTPException(status_code=404, detail=f"Node '{node}' not found")
     return graph.impact_of(node, max_depth=max_depth)
@@ -340,7 +350,8 @@ async def search_graph(
     min_rank = SEVERITY_RANK.get(min_severity.lower(), 0) if min_severity else 0
     prefix_filters = {value.strip().upper() for value in compliance_prefixes.split(",") if value.strip()} if compliance_prefixes else None
     data_source_filters = {value.strip() for value in data_sources.split(",") if value.strip()} if data_sources else None
-    results, total = _get_graph_store_or_503().search_nodes(
+    results, total = await _graph_store_call(
+        _get_graph_store_or_503().search_nodes,
         scan_id=scan_id or "",
         tenant_id=_tenant(request),
         query=q,
@@ -374,7 +385,7 @@ async def search_graph(
 async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
     """Run a bounded programmable traversal over the canonical graph."""
 
-    graph = _get_graph_store_or_503().load_graph(scan_id=body.scan_id or "", tenant_id=_tenant(request))
+    graph = await _graph_store_call(_get_graph_store_or_503().load_graph, scan_id=body.scan_id or "", tenant_id=_tenant(request))
     missing_roots = [root for root in body.roots if not graph.has_node(root)]
     if missing_roots:
         raise HTTPException(status_code=404, detail={"message": "Root nodes not found", "missing_roots": missing_roots})
@@ -439,7 +450,7 @@ async def get_graph_node(
     scan_id: Optional[str] = Query(None, description="Scan ID"),
 ) -> dict:
     """Get a single node with its edges, neighbors, and impact stats."""
-    graph = _get_graph_store_or_503().load_graph(scan_id=scan_id or "", tenant_id=_tenant(request))
+    graph = await _graph_store_call(_get_graph_store_or_503().load_graph, scan_id=scan_id or "", tenant_id=_tenant(request))
     node = graph.get_node(node_id)
     if not node:
         raise HTTPException(status_code=404, detail=f"Node '{node_id}' not found")
@@ -460,7 +471,7 @@ async def get_graph_snapshots(
     limit: int = Query(50, ge=1, le=500, description="Max snapshots"),
 ) -> list[dict]:
     """List persisted scan snapshots ordered by creation time."""
-    return _get_graph_store_or_503().list_snapshots(tenant_id=_tenant(request), limit=limit)
+    return await _graph_store_call(_get_graph_store_or_503().list_snapshots, tenant_id=_tenant(request), limit=limit)
 
 
 @router.get("/v1/graph/compliance", tags=["graph"])
@@ -476,7 +487,7 @@ async def get_graph_compliance(
     """
     from collections import defaultdict
 
-    graph = _get_graph_store_or_503().load_graph(scan_id=scan_id or "", tenant_id=_tenant(request))
+    graph = await _graph_store_call(_get_graph_store_or_503().load_graph, scan_id=scan_id or "", tenant_id=_tenant(request))
 
     framework_stats: dict[str, dict] = defaultdict(
         lambda: {
@@ -545,7 +556,8 @@ async def create_preset(request: Request, body: PresetCreate) -> dict:
     from agent_bom.graph.util import _now_iso
 
     tenant = _tenant(request)
-    _get_graph_store_or_503().save_preset(
+    await _graph_store_call(
+        _get_graph_store_or_503().save_preset,
         tenant_id=tenant,
         name=body.name,
         description=body.description,
@@ -558,13 +570,13 @@ async def create_preset(request: Request, body: PresetCreate) -> dict:
 @router.get("/v1/graph/presets", tags=["graph"])
 async def list_presets(request: Request) -> list[dict]:
     """List saved filter presets for the current tenant."""
-    return _get_graph_store_or_503().list_presets(tenant_id=_tenant(request))
+    return await _graph_store_call(_get_graph_store_or_503().list_presets, tenant_id=_tenant(request))
 
 
 @router.delete("/v1/graph/presets/{name}", tags=["graph"])
 async def delete_preset(request: Request, name: str) -> dict:
     """Delete a saved filter preset."""
-    deleted = _get_graph_store_or_503().delete_preset(tenant_id=_tenant(request), name=name)
+    deleted = await _graph_store_call(_get_graph_store_or_503().delete_preset, tenant_id=_tenant(request), name=name)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Preset '{name}' not found")
     return {"name": name, "status": "deleted"}

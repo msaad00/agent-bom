@@ -153,10 +153,12 @@ def test_server_card_tool_count_matches_decorators():
     import inspect
     import re
 
-    from agent_bom import mcp_server_specialized
+    from agent_bom import mcp_server_runtime_catalog, mcp_server_specialized
     from agent_bom.mcp_server import _SERVER_CARD_TOOLS, create_mcp_server
 
-    source = inspect.getsource(create_mcp_server) + inspect.getsource(mcp_server_specialized)
+    source = (
+        inspect.getsource(create_mcp_server) + inspect.getsource(mcp_server_runtime_catalog) + inspect.getsource(mcp_server_specialized)
+    )
     decorator_count = len(re.findall(r"@mcp\.tool", source))
     card_count = len(_SERVER_CARD_TOOLS)
     assert card_count == decorator_count, (

@@ -13,11 +13,17 @@ This page is the operator-facing contract for how `agent-bom` handles:
 The goal is simple: identity, authorization, and tenant scoping should all
 resolve onto the same control-plane model.
 
+For the browser-to-API trust split inside the self-hosted control plane, see
+[UI, API, Auth, and Session Model](../architecture/auth-and-session-model.md).
+
 ## What is especially strong
 
 - **Tenant context is not UI-only.**
   It propagates from the authenticated request into the control-plane stores and
   Postgres row-level security.
+- **Authentication, RBAC, and tenant scope are one model.**
+  API keys, OIDC, SAML, and trusted proxy identity all converge onto the same
+  backend authorization and tenant-propagation path.
 - **Audit is tenant-scoped and tamper-evident.**
   Audit entries are HMAC-chained per tenant and can be filtered/exported by
   tenant.
@@ -39,6 +45,10 @@ resolve onto the same control-plane model.
 - **Good enterprise posture still depends on good IdP mapping.**
   Claim naming, tenant binding, and deployment configuration matter almost as
   much as the code paths.
+- **Current multi-tenancy is strong for self-hosted teams, not yet turnkey MSSP.**
+  Tenant isolation is enforced in auth, stores, audit, fleet, and now shared
+  gateway routing, but provider-style tenant lifecycle automation and richer
+  delegation/admin surfaces are still later work.
 
 ## Auth modes
 
@@ -224,6 +234,44 @@ For same-origin enterprise ingress:
 
 - use **trusted proxy mode** only when your reverse proxy is already enforcing
   user identity and tenant headers
+
+## Browser UI and API trust split
+
+The Node UI should be auth-aware and role-aware, but it should never be the
+authorization source of truth.
+
+The practical rule is:
+
+- the **UI handles experience**
+- the **API handles identity, authorization, tenancy, and audit**
+
+So a seamless self-hosted browser experience looks like this:
+
+1. the user authenticates through trusted proxy OIDC, direct OIDC bearer, or a
+   narrower fallback such as a short-lived or session-only API key
+2. the API resolves subject, role, tenant, and request trace context
+3. the UI adapts to that state
+4. the API still enforces every request server-side
+
+That means:
+
+- the UI can hide or disable actions for clarity
+- but the API must still return `401` or `403` when the actor is not allowed
+- tenant scope is always resolved server-side, not accepted from arbitrary UI
+  input
+
+For the full architecture contract, including request integrity, audit, and the
+recommended hosted/session evolution path, see
+[UI, API, Auth, and Session Model](../architecture/auth-and-session-model.md).
+
+## Honest security claim
+
+For auth, tenancy, and control-plane actions, the most accurate short claim is:
+
+> `agent-bom` already has strong attribution, tenant-scoped authorization, and
+> tamper-evident audit. Stronger signed approvals, richer browser-session
+> hardening, and turnkey MSSP-style tenancy administration are future
+> hardening, not current overclaims.
 
 ## Evidence and tests
 

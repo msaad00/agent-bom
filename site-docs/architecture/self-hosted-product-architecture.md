@@ -17,6 +17,9 @@ together inside the customer's environment.
 
 That split is what keeps the deployment secure, scalable, and true to the code.
 
+For the detailed browser-to-API trust contract, see
+[UI, API, Auth, and Session Model](auth-and-session-model.md).
+
 ## What each surface actually does
 
 | Surface | Runs where | Owns | Does not own |
@@ -101,4 +104,5 @@ productized yet.
 - [Deployment Overview](../deployment/overview.md)
 - [Deploy In Your Own AWS / EKS Infrastructure](../deployment/own-infra-eks.md)
 - [Packaged API + UI Control Plane](../deployment/control-plane-helm.md)
+- [UI, API, Auth, and Session Model](auth-and-session-model.md)
 - [Hosted Product Control-Plane Spec](hosted-product-spec.md)

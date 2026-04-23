@@ -96,6 +96,7 @@ That maps to the current runtime status surfaced by:
 
 - `GET /v1/auth/policy`
 - `GET /v1/auth/debug`
+- `GET /v1/auth/me`
 
 The current auth-policy endpoint already tells operators which UI mode is
 recommended:
@@ -155,8 +156,19 @@ The UI should use backend-provided auth/runtime state to drive experience:
 - current auth mode
 - resolved tenant
 - role
+- contributor/admin/viewer display semantics
 - allowed actions
 - current runtime policy mode
+
+The current UI-facing session contract now lives at:
+
+- `GET /v1/auth/me`
+
+That endpoint exists so the browser does not need to infer:
+
+- whether `analyst` should render as a contributor-level role in the UI
+- which actions should be enabled or disabled
+- what the current actor can see, do, and not do in the active tenant
 
 The browser may render a softer UX:
 

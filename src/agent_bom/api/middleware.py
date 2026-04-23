@@ -334,6 +334,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("GET", "/v1/compliance", "viewer"),
         ("GET", "/v1/posture", "viewer"),
         ("GET", "/v1/auth/debug", "viewer"),
+        ("GET", "/v1/auth/me", "viewer"),
         ("GET", "/v1/auth/policy", "admin"),
         ("GET", "/v1/auth/keys", "admin"),
         ("POST", "/v1/auth/keys", "admin"),

@@ -50,6 +50,44 @@ router = APIRouter()
 _logger = logging.getLogger(__name__)
 
 
+def _auth_session_state(request: Request) -> dict:
+    """Build the current request's auth/session state without leaking secrets."""
+    from agent_bom.api.middleware import get_auth_runtime_status
+    from agent_bom.rbac import summarize_role
+
+    method = getattr(request.state, "auth_method", None)
+    subject = getattr(request.state, "api_key_name", None)
+    role = getattr(request.state, "api_key_role", None)
+    tenant_id = getattr(request.state, "tenant_id", None) or "default"
+    request_id = getattr(request.state, "request_id", None)
+    trace_id = getattr(request.state, "trace_id", None)
+    span_id = getattr(request.state, "span_id", None)
+    issuer = getattr(request.state, "auth_issuer", None)
+    key_id = getattr(request.state, "api_key_id", None)
+    key_id_prefix = key_id[:8] if isinstance(key_id, str) else None
+
+    authenticated = bool(method and role)
+    auth_runtime = get_auth_runtime_status()
+    role_summary = summarize_role(role)
+
+    return {
+        "authenticated": authenticated,
+        "auth_required": auth_runtime["auth_required"],
+        "configured_modes": auth_runtime["configured_modes"],
+        "recommended_ui_mode": auth_runtime["recommended_ui_mode"],
+        "auth_method": method,
+        "subject": subject,
+        "role": role,
+        "tenant_id": tenant_id,
+        "oidc_issuer_suffix": issuer,
+        "api_key_id_prefix": key_id_prefix,
+        "request_id": request_id,
+        "trace_id": trace_id,
+        "span_id": span_id,
+        "role_summary": role_summary,
+    }
+
+
 # ── API Key Management (RBAC) ───────────────────────────────────────────────
 
 
@@ -243,35 +281,55 @@ async def auth_debug(request: Request) -> dict:
     non-secret identifying attributes (name, key_id prefix, role, tenant,
     auth method) so the endpoint is safe to log.
     """
-    from agent_bom.api.middleware import get_auth_runtime_status
-
-    method = getattr(request.state, "auth_method", None)
-    subject = getattr(request.state, "api_key_name", None)
-    role = getattr(request.state, "api_key_role", None)
-    tenant_id = getattr(request.state, "tenant_id", None) or "default"
-    request_id = getattr(request.state, "request_id", None)
-    trace_id = getattr(request.state, "trace_id", None)
-    span_id = getattr(request.state, "span_id", None)
-    issuer = getattr(request.state, "auth_issuer", None)
-    key_id = getattr(request.state, "api_key_id", None)
-    key_id_prefix = key_id[:8] if isinstance(key_id, str) else None
-
-    authenticated = bool(method and role)
-    auth_runtime = get_auth_runtime_status()
+    state = _auth_session_state(request)
     return {
-        "authenticated": authenticated,
-        "auth_required": auth_runtime["auth_required"],
-        "configured_modes": auth_runtime["configured_modes"],
-        "recommended_ui_mode": auth_runtime["recommended_ui_mode"],
-        "auth_method": method,
-        "subject": subject,
-        "role": role,
-        "tenant_id": tenant_id,
-        "oidc_issuer_suffix": issuer,
-        "api_key_id_prefix": key_id_prefix,
-        "request_id": request_id,
-        "trace_id": trace_id,
-        "span_id": span_id,
+        "authenticated": state["authenticated"],
+        "auth_required": state["auth_required"],
+        "configured_modes": state["configured_modes"],
+        "recommended_ui_mode": state["recommended_ui_mode"],
+        "auth_method": state["auth_method"],
+        "subject": state["subject"],
+        "role": state["role"],
+        "tenant_id": state["tenant_id"],
+        "oidc_issuer_suffix": state["oidc_issuer_suffix"],
+        "api_key_id_prefix": state["api_key_id_prefix"],
+        "request_id": state["request_id"],
+        "trace_id": state["trace_id"],
+        "span_id": state["span_id"],
+    }
+
+
+@router.get("/v1/auth/me", tags=["enterprise"])
+async def auth_me(request: Request) -> dict:
+    """Return the current UI-facing actor/session contract for the active tenant."""
+    state = _auth_session_state(request)
+    role_summary = state["role_summary"]
+    memberships = []
+    if role_summary is not None:
+        memberships.append(
+            {
+                "tenant_id": state["tenant_id"],
+                "role": role_summary["role"],
+                "ui_role": role_summary["ui_role"],
+                "display_name": role_summary["display_name"],
+                "active": True,
+            }
+        )
+
+    return {
+        "authenticated": state["authenticated"],
+        "auth_required": state["auth_required"],
+        "configured_modes": state["configured_modes"],
+        "recommended_ui_mode": state["recommended_ui_mode"],
+        "auth_method": state["auth_method"],
+        "subject": state["subject"],
+        "tenant_id": state["tenant_id"],
+        "role": state["role"],
+        "role_summary": role_summary,
+        "memberships": memberships,
+        "request_id": state["request_id"],
+        "trace_id": state["trace_id"],
+        "span_id": state["span_id"],
     }
 
 

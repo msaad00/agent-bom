@@ -273,7 +273,8 @@ That is a product-shape tradeoff, not hidden drift:
   stores, audit, fleet, and shared gateway routing, but `agent-bom` is not yet
   a turnkey "one provider serving many customer orgs" platform. The main gaps
   are tenant lifecycle automation, richer per-tenant delegation/templates, and
-  stronger provider-style quota and admin surfaces.
+  stronger provider-style quota and admin surfaces. That provider maturity is a
+  separate track from the current self-hosted platform story.
 - **Auto-injected runtime sidecars everywhere**: proxy and gateway are
   productized, but broad operator-driven sidecar attachment is still selective,
   not a universal default rollout.

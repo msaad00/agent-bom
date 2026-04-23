@@ -8,6 +8,7 @@ import logging
 import os
 import secrets
 import sys
+import threading
 import time
 import uuid
 from functools import lru_cache
@@ -102,34 +103,37 @@ class InMemoryRateLimitStore:
         self._window = window_seconds
         self._hits: dict[str, list[float]] = {}
         self._last_cleanup = time.time()
+        self._lock = threading.RLock()
 
     def _cleanup(self, now: float) -> None:
         """Prune stale entries to prevent unbounded memory growth."""
-        if now - self._last_cleanup < self._window:
-            return
-        self._last_cleanup = now
-        stale = [k for k, v in self._hits.items() if not v or v[-1] < now - self._window]
-        for k in stale:
-            del self._hits[k]
-        if len(self._hits) > self._MAX_ENTRIES:
-            overflow = len(self._hits) - self._MAX_ENTRIES
-            oldest_keys = sorted(self._hits, key=lambda key: self._hits[key][-1] if self._hits[key] else 0.0)[:overflow]
-            for key in oldest_keys:
-                del self._hits[key]
-            _logger.warning(
-                "In-memory rate limiter pruned %s oldest buckets to stay under %s entries",
-                overflow,
-                self._MAX_ENTRIES,
-            )
+        with self._lock:
+            if now - self._last_cleanup < self._window:
+                return
+            self._last_cleanup = now
+            stale = [k for k, v in self._hits.items() if not v or v[-1] < now - self._window]
+            for k in stale:
+                del self._hits[k]
+            if len(self._hits) > self._MAX_ENTRIES:
+                overflow = len(self._hits) - self._MAX_ENTRIES
+                oldest_keys = sorted(self._hits, key=lambda key: self._hits[key][-1] if self._hits[key] else 0.0)[:overflow]
+                for key in oldest_keys:
+                    del self._hits[key]
+                _logger.warning(
+                    "In-memory rate limiter pruned %s oldest buckets to stay under %s entries",
+                    overflow,
+                    self._MAX_ENTRIES,
+                )
 
     def hit(self, key: str, now: float) -> tuple[int, int]:
         """Record a request and return (hit_count, reset_epoch)."""
-        self._cleanup(now)
-        timestamps = [t for t in self._hits.get(key, []) if now - t < self._window]
-        timestamps.append(now)
-        self._hits[key] = timestamps
-        reset_at = int((timestamps[0] if timestamps else now) + self._window)
-        return len(timestamps), reset_at
+        with self._lock:
+            self._cleanup(now)
+            timestamps = [t for t in self._hits.get(key, []) if now - t < self._window]
+            timestamps.append(now)
+            self._hits[key] = timestamps
+            reset_at = int((timestamps[0] if timestamps else now) + self._window)
+            return len(timestamps), reset_at
 
 
 class PostgresRateLimitStore:

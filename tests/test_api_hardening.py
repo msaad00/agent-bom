@@ -3,6 +3,7 @@
 import base64
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -616,6 +617,22 @@ def test_in_memory_rate_limit_store_prunes_oldest_entries_instead_of_clearing_al
     assert count == 2
     assert "important" in store._hits
     assert len(store._hits) <= store._MAX_ENTRIES
+
+
+def test_in_memory_rate_limit_store_is_thread_safe_for_same_bucket():
+    """Concurrent hits on one bucket should not lose updates."""
+    store = InMemoryRateLimitStore(window_seconds=60)
+    now = time.time()
+
+    def _hit() -> int:
+        count, _ = store.hit("shared-bucket", now)
+        return count
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        counts = list(pool.map(lambda _: _hit(), range(64)))
+
+    assert len(store._hits["shared-bucket"]) == 64
+    assert max(counts) == 64
 
 
 def test_max_body_size_middleware():

@@ -325,6 +325,17 @@ def proxy_configure_cmd(
 )
 @click.option("--push-url", default=None, help="Optional fleet sync endpoint to write into managed endpoint artifacts")
 @click.option("--push-api-key", default=None, help="Optional fleet sync API key to write into managed endpoint artifacts")
+@click.option("--source-id", default=None, help="Optional stable endpoint source ID to embed in the rollout bundle")
+@click.option("--enrollment-name", default=None, help="Optional rollout or enrollment name to stamp into the bundle manifest")
+@click.option("--owner", default=None, help="Optional owning team or operator for the endpoint rollout manifest")
+@click.option("--environment", default=None, help="Optional environment label to stamp into the endpoint rollout manifest")
+@click.option("--tag", "tags", multiple=True, help="Optional repeated tag to stamp into the endpoint rollout manifest")
+@click.option(
+    "--mdm-provider",
+    type=click.Choice(["jamf", "intune", "kandji"], case_sensitive=False),
+    default=None,
+    help="Optional primary MDM provider label for the endpoint rollout manifest",
+)
 @click.option("--policy", type=click.Path(exists=True), default=None, help="Policy JSON file to pass to each proxy instance")
 @click.option(
     "--log-dir",
@@ -363,6 +374,12 @@ def proxy_bootstrap_cmd(
     control_plane_token,
     push_url,
     push_api_key,
+    source_id,
+    enrollment_name,
+    owner,
+    environment,
+    tags,
+    mdm_provider,
     policy,
     log_dir,
     secure_defaults,
@@ -407,6 +424,12 @@ def proxy_bootstrap_cmd(
         block_undeclared=block_undeclared,
         push_url=push_url,
         push_api_key=push_api_key,
+        source_id=source_id,
+        enrollment_name=enrollment_name,
+        owner=owner,
+        environment=environment,
+        tags=list(tags),
+        mdm_provider=mdm_provider,
     )
     con.print(f"[green]✓[/green] Wrote endpoint onboarding bundle to [bold]{bundle_path}[/bold]")
     for name, artifact_path in artifacts.items():

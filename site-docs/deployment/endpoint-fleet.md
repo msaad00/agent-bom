@@ -53,6 +53,36 @@ Important boundary:
 - there is no MDM or quarantine control channel today
 - the pilot model is explicit local execution on a schedule you control
 
+## Managed rollout-ready bundle contract
+
+`agent-bom proxy-bootstrap` now emits more than install scripts. The bundle also
+ships:
+
+- `endpoint-enrollment.json` — machine-readable rollout metadata for IT
+- `endpoint-onboarding-summary.json` — operator-facing bundle summary
+- optional stable `source_id` wiring via `AGENT_BOM_PUSH_SOURCE_ID`
+
+That means Jamf, Intune, or Kandji rollout can keep one explicit endpoint
+identity contract without pretending `agent-bom` is already a bidirectional
+managed agent.
+
+Example:
+
+```bash
+agent-bom proxy-bootstrap \
+  --bundle-dir ./bundle \
+  --control-plane-url https://agent-bom.internal.example.com \
+  --push-url https://agent-bom.internal.example.com/v1/fleet/sync \
+  --push-api-key "$AGENT_BOM_PUSH_API_KEY" \
+  --source-id device-acme-001 \
+  --enrollment-name corp-laptop-rollout \
+  --owner platform-security \
+  --environment production \
+  --tag developer-endpoint \
+  --tag mdm \
+  --mdm-provider jamf
+```
+
 ## Endpoint service templates
 
 Shipped templates:

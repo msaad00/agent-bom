@@ -12,6 +12,7 @@ import asyncio
 import copy
 import hashlib
 import logging
+import os
 import platform
 import uuid
 
@@ -22,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 def generate_source_id() -> str:
     """Generate a stable machine identifier (hostname SHA256[:12])."""
+    configured = os.environ.get("AGENT_BOM_PUSH_SOURCE_ID", "").strip()
+    if configured:
+        return configured
     hostname = platform.node() or "unknown"
     return hashlib.sha256(hostname.encode()).hexdigest()[:12]
 

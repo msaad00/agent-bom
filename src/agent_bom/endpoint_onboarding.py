@@ -7,6 +7,8 @@ import os
 import stat
 from pathlib import Path
 
+from agent_bom import __version__
+
 
 def _write_text(path: Path, body: str, mode: int) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -97,11 +99,13 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 """
 
 
-def render_fleet_sync_env(push_url: str, push_api_key: str | None) -> str:
+def render_fleet_sync_env(push_url: str, push_api_key: str | None, source_id: str | None = None) -> str:
     """Render a fleet-sync env file for the shipped timer/service assets."""
     lines = [f'AGENT_BOM_PUSH_URL="{push_url}"']
     if push_api_key:
         lines.append(f'AGENT_BOM_PUSH_API_KEY="{push_api_key}"')
+    if source_id:
+        lines.append(f'AGENT_BOM_PUSH_SOURCE_ID="{source_id}"')
     return "\n".join(lines) + "\n"
 
 
@@ -153,13 +157,20 @@ exit 1
 """
 
 
-def render_launch_agent_plist(push_url: str, push_api_key: str | None) -> str:
+def render_launch_agent_plist(push_url: str, push_api_key: str | None, source_id: str | None = None) -> str:
     """Render a launchd plist with concrete fleet-sync values."""
     token_xml = (
         f"""    <key>AGENT_BOM_PUSH_API_KEY</key>
     <string>{push_api_key}</string>
 """
         if push_api_key
+        else ""
+    )
+    source_xml = (
+        f"""    <key>AGENT_BOM_PUSH_SOURCE_ID</key>
+    <string>{source_id}</string>
+"""
+        if source_id
         else ""
     )
     return f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -178,7 +189,7 @@ def render_launch_agent_plist(push_url: str, push_api_key: str | None) -> str:
   <dict>
     <key>AGENT_BOM_PUSH_URL</key>
     <string>{push_url}</string>
-{token_xml}  </dict>
+{token_xml}{source_xml}  </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>StartInterval</key>
@@ -190,6 +201,58 @@ def render_launch_agent_plist(push_url: str, push_api_key: str | None) -> str:
 </dict>
 </plist>
 """
+
+
+def render_endpoint_enrollment_manifest(
+    *,
+    control_plane_url: str,
+    push_url: str | None,
+    source_id: str | None,
+    enrollment_name: str | None,
+    owner: str | None,
+    environment: str | None,
+    tags: list[str],
+    mdm_provider: str | None,
+    policy_refresh_seconds: int,
+    audit_push_interval: int,
+    log_dir: str,
+    secure_defaults: bool,
+    detect_credentials: bool,
+    block_undeclared: bool,
+) -> dict:
+    """Render machine-readable endpoint rollout metadata for IT-owned deployment."""
+    normalized_tags = sorted({tag.strip() for tag in tags if tag and tag.strip()})
+    return {
+        "agent_bom_version": __version__,
+        "enrollment_name": enrollment_name or "agent-bom-endpoint-rollout",
+        "owner": owner or "",
+        "environment": environment or "",
+        "tags": normalized_tags,
+        "mdm_provider": mdm_provider or "",
+        "device_identity": {
+            "source_id": source_id or "",
+            "source_id_strategy": "configured" if source_id else "hostname_sha256",
+            "source_id_env": "AGENT_BOM_PUSH_SOURCE_ID",
+        },
+        "control_plane": {
+            "url": control_plane_url,
+            "fleet_sync_url": push_url or "",
+        },
+        "runtime_defaults": {
+            "log_dir": log_dir,
+            "policy_refresh_seconds": policy_refresh_seconds,
+            "audit_push_interval": audit_push_interval,
+            "secure_defaults": secure_defaults,
+            "detect_credentials": detect_credentials,
+            "block_undeclared": block_undeclared,
+        },
+        "rollout_contract": {
+            "managed_agent": False,
+            "batch_fleet_sync": bool(push_url),
+            "local_proxy_bootstrap": True,
+            "mdm_wrapper_bundle": True,
+        },
+    }
 
 
 def write_endpoint_onboarding_bundle(
@@ -206,6 +269,12 @@ def write_endpoint_onboarding_bundle(
     block_undeclared: bool,
     push_url: str | None,
     push_api_key: str | None,
+    source_id: str | None = None,
+    enrollment_name: str | None = None,
+    owner: str | None = None,
+    environment: str | None = None,
+    tags: list[str] | None = None,
+    mdm_provider: str | None = None,
 ) -> dict[str, str]:
     """Write packaged endpoint onboarding artifacts to *bundle_dir*."""
     command = build_proxy_configure_command(
@@ -221,6 +290,7 @@ def write_endpoint_onboarding_bundle(
         apply=True,
     )
     artifacts: dict[str, str] = {}
+    normalized_tags = sorted({tag.strip() for tag in (tags or []) if tag and tag.strip()})
     shell_path = _write_text(
         bundle_dir / "install-agent-bom-endpoint.sh",
         render_shell_bootstrap_script(command),
@@ -265,18 +335,42 @@ def write_endpoint_onboarding_bundle(
     if push_url:
         env_path = _write_text(
             bundle_dir / "fleet-sync.env",
-            render_fleet_sync_env(push_url, push_api_key),
+            render_fleet_sync_env(push_url, push_api_key, source_id=source_id),
             stat.S_IRUSR | stat.S_IWUSR,
         )
         artifacts["fleet_sync_env"] = str(env_path)
         plist_path = _write_text(
             bundle_dir / "com.agentbom.fleet-sync.plist",
-            render_launch_agent_plist(push_url, push_api_key),
+            render_launch_agent_plist(push_url, push_api_key, source_id=source_id),
             stat.S_IRUSR | stat.S_IWUSR,
         )
         artifacts["launch_agent_plist"] = str(plist_path)
 
+    enrollment_manifest = render_endpoint_enrollment_manifest(
+        control_plane_url=control_plane_url,
+        push_url=push_url,
+        source_id=source_id,
+        enrollment_name=enrollment_name,
+        owner=owner,
+        environment=environment,
+        tags=normalized_tags,
+        mdm_provider=mdm_provider,
+        policy_refresh_seconds=policy_refresh_seconds,
+        audit_push_interval=audit_push_interval,
+        log_dir=log_dir,
+        secure_defaults=secure_defaults,
+        detect_credentials=detect_credentials,
+        block_undeclared=block_undeclared,
+    )
+    enrollment_path = _write_text(
+        bundle_dir / "endpoint-enrollment.json",
+        json.dumps(enrollment_manifest, indent=2),
+        stat.S_IRUSR | stat.S_IWUSR,
+    )
+    artifacts["enrollment_manifest"] = str(enrollment_path)
+
     summary = {
+        "agent_bom_version": __version__,
         "control_plane_url": control_plane_url,
         "log_dir": log_dir,
         "policy_path": policy_path,
@@ -285,6 +379,13 @@ def write_endpoint_onboarding_bundle(
         "secure_defaults": secure_defaults,
         "detect_credentials": detect_credentials,
         "block_undeclared": block_undeclared,
+        "source_id": source_id or "",
+        "source_id_strategy": "configured" if source_id else "hostname_sha256",
+        "enrollment_name": enrollment_name or "",
+        "owner": owner or "",
+        "environment": environment or "",
+        "tags": normalized_tags,
+        "mdm_provider": mdm_provider or "",
         "artifacts": artifacts,
     }
     summary_path = _write_text(

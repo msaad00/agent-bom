@@ -16,6 +16,15 @@ GLAMA_SERVER = ROOT / "integrations" / "glama" / "server.json"
 DOCKER_README = ROOT / "DOCKER_HUB_README.md"
 TOP_DOCKERFILE = ROOT / "Dockerfile"
 PYPROJECT = ROOT / "pyproject.toml"
+MANAGED_IMAGE_REFS: list[tuple[Path, re.Pattern[str]]] = [
+    (ROOT / "deploy" / "docker-compose.pilot.yml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)")),
+    (ROOT / "deploy" / "docker-compose.runtime.yml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)")),
+    (ROOT / "deploy" / "docker-compose.fullstack.yml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)")),
+    (ROOT / "deploy" / "docker-compose.platform.yml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)")),
+    (ROOT / "deploy" / "k8s" / "daemonset.yaml", re.compile(r"agentbom/agent-bom:([0-9]+\.[0-9]+\.[0-9]+)")),
+    (ROOT / "site-docs" / "deployment" / "docker.md", re.compile(r"agentbom/agent-bom:([0-9]+\.[0-9]+\.[0-9]+)")),
+    (ROOT / "docs" / "RUNTIME_MONITORING.md", re.compile(r"agentbom/agent-bom:([0-9]+\.[0-9]+\.[0-9]+)")),
+]
 
 
 def _load_version() -> str:
@@ -153,6 +162,11 @@ def main() -> int:
         _fail(f"DOCKER_HUB_README.md must mark {version} as the current stable version")
     if f"ARG VERSION={version}" not in TOP_DOCKERFILE.read_text():
         _fail(f"Dockerfile ARG VERSION must be {version}")
+    for path, pattern in MANAGED_IMAGE_REFS:
+        text = path.read_text()
+        versions = {match.group(1) for match in pattern.finditer(text)}
+        if versions and versions != {version}:
+            _fail(f"{path.relative_to(ROOT)} contains stale managed image version(s): {sorted(versions)} != {version}")
 
     print("README/PyPI/docs release consistency checks passed")
     return 0

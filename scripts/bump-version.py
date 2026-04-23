@@ -32,6 +32,12 @@ VERSION_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     # Snowpark Dockerfile
     ("deploy/docker/Dockerfile.snowpark", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
     ("Dockerfile", re.compile(r"^(ARG VERSION=)\S+", re.M), r"\g<1>{v}"),
+    # Compose + packaged manifests
+    ("deploy/docker-compose.pilot.yml", re.compile(r"(agentbom/agent-bom(?:-ui)?:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
+    ("deploy/docker-compose.runtime.yml", re.compile(r"(agentbom/agent-bom(?:-ui)?:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
+    ("deploy/docker-compose.fullstack.yml", re.compile(r"(agentbom/agent-bom(?:-ui)?:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
+    ("deploy/docker-compose.platform.yml", re.compile(r"(agentbom/agent-bom(?:-ui)?:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
+    ("deploy/k8s/daemonset.yaml", re.compile(r"(agentbom/agent-bom:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     # Helm chart
     ("deploy/helm/agent-bom/Chart.yaml", re.compile(r'^(appVersion:\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     ("deploy/helm/agent-bom/values.yaml", re.compile(r'^(\s*tag:\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
@@ -68,6 +74,8 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("docs/PUBLISHING.md", re.compile(r"(git tag v)\S+", re.M), r"\g<1>{v}"),
     ("docs/PUBLISHING.md", re.compile(r"(git push origin v)\S+", re.M), r"\g<1>{v}"),
     ("ui/tests/nav.test.tsx", re.compile(r"(version:\s*')\d+\.\d+\.\d+(')"), r"\g<1>{v}\g<2>"),
+    ("site-docs/deployment/docker.md", re.compile(r"(agentbom/agent-bom:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
+    ("docs/RUNTIME_MONITORING.md", re.compile(r"(agentbom/agent-bom:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     # cve-freshness.yml — SARIF fallback template version
     (".github/workflows/cve-freshness.yml", re.compile(r'("version":")\d+\.\d+\.\d+(")'), r"\g<1>{v}\g<2>"),
     # mcp-change-scan.yml — pinned agent-bom install version

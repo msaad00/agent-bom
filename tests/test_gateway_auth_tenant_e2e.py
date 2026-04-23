@@ -100,7 +100,7 @@ def _cp_client(tenant: str) -> TestClient:
     return c
 
 
-def test_full_pilot_flow_auth_tenant_discovery_relay_policy_audit_metrics(pilot_fleet) -> None:
+def test_full_pilot_flow_auth_tenant_discovery_relay_policy_audit_metrics(pilot_fleet, monkeypatch) -> None:
     """Walk the entire pilot flow — every seam guarded in one test."""
 
     # ── Stage 1: operator on tenant-alpha hits discovery, sees ONLY their MCPs
@@ -153,6 +153,17 @@ def test_full_pilot_flow_auth_tenant_discovery_relay_policy_audit_metrics(pilot_
             upstream_calls.append({"upstream": upstream.name, "tool": message.get("params", {}).get("name"), "headers": extra_headers})
             return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
 
+        class _FakeKeyStore:
+            def has_keys(self) -> bool:
+                return True
+
+            def verify(self, raw_key: str):
+                if raw_key == "tenant-alpha-gateway-key":
+                    return type("ApiKey", (), {"tenant_id": "tenant-alpha"})()
+                return None
+
+        monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+
         gw_settings = GatewaySettings(
             registry=registry,
             policy=policy,
@@ -164,6 +175,7 @@ def test_full_pilot_flow_auth_tenant_discovery_relay_policy_audit_metrics(pilot_
         # ── Stage 4: policy-blocked tool call — upstream must NOT be hit
         blocked = gw.post(
             "/mcp/jira",
+            headers={"X-API-Key": "tenant-alpha-gateway-key"},
             json={
                 "jsonrpc": "2.0",
                 "id": 1,
@@ -184,6 +196,7 @@ def test_full_pilot_flow_auth_tenant_discovery_relay_policy_audit_metrics(pilot_
         # ── Stage 5: allowed tool call — upstream hit, response returned
         allowed = gw.post(
             "/mcp/jira",
+            headers={"X-API-Key": "tenant-alpha-gateway-key"},
             json={
                 "jsonrpc": "2.0",
                 "id": 2,

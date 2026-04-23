@@ -108,6 +108,7 @@ agent-bom gateway serve \
 What `gateway` gives you today:
 
 - tenant-aware authentication at the gateway edge
+- tenant-scoped upstream routing keyed by the authenticated tenant, not just a global upstream name
 - inline policy evaluation for JSON-RPC requests
 - shared tenant rate limiting, including Postgres-backed multi-replica mode
 - audit logging back into the control plane

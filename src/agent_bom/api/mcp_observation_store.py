@@ -53,6 +53,8 @@ def _pick_timestamp(*values: str | None, prefer: str) -> str | None:
 def merge_observations(existing: MCPObservation | None, incoming: MCPObservation) -> MCPObservation:
     if existing is None:
         return incoming
+    if existing.tenant_id != incoming.tenant_id:
+        raise ValueError("tenant mismatch in observation merge")
     return MCPObservation(
         tenant_id=incoming.tenant_id,
         observation_id=incoming.observation_id,

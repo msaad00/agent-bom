@@ -235,6 +235,34 @@ That is an intentional self-hosted shape:
 - `agent-bom` is the control plane and security layer
 - your surrounding platform still owns identity, secrets, and environment policy
 
+## Centralized admin boundary
+
+If you compare this to a more centralized managed MCP gateway model, the honest
+difference today is:
+
+- `agent-bom` is stronger on self-hosted inventory + scan + fleet + proxy/gateway correlation
+- `agent-bom` is less turnkey on managed connections, profiles, and centralized
+  per-user connection administration
+
+What ships now:
+
+- tenant-aware control plane
+- gateway policy storage and evaluation
+- inventory and provenance across scans, fleet, gateway, and persisted observations
+- environment-backed credential overlays for remote MCP upstreams
+
+What is still behind the more centralized SaaS-style admin model:
+
+- one-click managed connection setup for many enterprise integrations
+- centralized personal-vs-managed connection UX
+- broader identity-centric runtime administration beyond the current control-plane auth and RBAC surface
+
+That is a product-shape tradeoff, not hidden drift:
+
+- self-hosted first
+- customer-owned platform integrations
+- runtime governance close to the customer's infra
+
 ## EKS shape
 
 In a customer EKS deployment, the common split is:

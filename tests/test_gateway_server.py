@@ -308,6 +308,85 @@ def test_relay_accepts_control_plane_api_key_and_applies_tenant(monkeypatch) -> 
     assert audit_events[-1]["tenant_id"] == "tenant-alpha"
 
 
+def test_relay_routes_same_upstream_name_by_authenticated_tenant(monkeypatch) -> None:
+    upstream_calls: list[dict[str, Any]] = []
+
+    async def fake_caller(upstream, message, extra_headers):
+        upstream_calls.append({"tenant_id": upstream.tenant_id, "url": upstream.url, "name": upstream.name})
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    class _FakeKeyStore:
+        def has_keys(self) -> bool:
+            return True
+
+        def verify(self, raw_key: str):
+            if raw_key == "tenant-alpha-key":
+                return SimpleNamespace(tenant_id="tenant-alpha")
+            if raw_key == "tenant-beta-key":
+                return SimpleNamespace(tenant_id="tenant-beta")
+            return None
+
+    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+    registry = UpstreamRegistry(
+        [
+            UpstreamConfig(name="jira", tenant_id="tenant-alpha", url="https://alpha.example.com/mcp"),
+            UpstreamConfig(name="jira", tenant_id="tenant-beta", url="https://beta.example.com/mcp"),
+        ]
+    )
+    settings = GatewaySettings(registry=registry, policy={}, upstream_caller=fake_caller)
+    client = TestClient(create_gateway_app(settings))
+
+    alpha = client.post(
+        "/mcp/jira",
+        headers={"X-API-Key": "tenant-alpha-key"},
+        json=_json_rpc("tools/call", name="query_issues", arguments={"jql": "project = ALPHA"}),
+    )
+    beta = client.post(
+        "/mcp/jira",
+        headers={"X-API-Key": "tenant-beta-key"},
+        json=_json_rpc("tools/call", name="query_issues", arguments={"jql": "project = BETA"}),
+    )
+
+    assert alpha.status_code == 200
+    assert beta.status_code == 200
+    assert upstream_calls == [
+        {"tenant_id": "tenant-alpha", "url": "https://alpha.example.com/mcp", "name": "jira"},
+        {"tenant_id": "tenant-beta", "url": "https://beta.example.com/mcp", "name": "jira"},
+    ]
+
+
+def test_relay_fails_closed_when_tenant_has_no_matching_upstream(monkeypatch) -> None:
+    async def fake_caller(upstream, message, extra_headers):
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    class _FakeKeyStore:
+        def has_keys(self) -> bool:
+            return True
+
+        def verify(self, raw_key: str):
+            if raw_key == "tenant-beta-key":
+                return SimpleNamespace(tenant_id="tenant-beta")
+            return None
+
+    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+    registry = UpstreamRegistry(
+        [
+            UpstreamConfig(name="jira", tenant_id="tenant-alpha", url="https://alpha.example.com/mcp"),
+            UpstreamConfig(name="jira", url="https://legacy-global.example.com/mcp"),
+        ]
+    )
+    settings = GatewaySettings(registry=registry, policy={}, upstream_caller=fake_caller)
+    client = TestClient(create_gateway_app(settings))
+
+    denied = client.post(
+        "/mcp/jira",
+        headers={"X-API-Key": "tenant-beta-key"},
+        json=_json_rpc("tools/call", name="query_issues", arguments={"jql": "project = BETA"}),
+    )
+    assert denied.status_code == 404
+    assert "tenant 'tenant-beta'" in denied.json()["detail"]
+
+
 def test_gateway_rate_limit_is_tenant_scoped(monkeypatch) -> None:
     class _FakeKeyStore:
         def has_keys(self) -> bool:

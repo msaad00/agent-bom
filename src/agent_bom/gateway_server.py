@@ -395,11 +395,14 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             request.state.tenant_id = tenant_id
             request.state.auth_method = auth_method
 
-        upstream = settings.registry.get(server_name)
+        upstream = settings.registry.get(server_name, tenant_id=tenant_id)
         if upstream is None:
             raise HTTPException(
                 status_code=404,
-                detail=f"unknown upstream {server_name!r}; known: {', '.join(settings.registry.names()) or '(none)'}",
+                detail=(
+                    f"unknown upstream {server_name!r} for tenant {tenant_id!r}; known: "
+                    f"{', '.join(settings.registry.names(tenant_id=tenant_id)) or '(none)'}"
+                ),
             )
 
         try:

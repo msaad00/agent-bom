@@ -269,6 +269,15 @@ Official deployment entrypoints:
 Other Compose files in `deploy/` are advanced or component-specific examples,
 not the primary recommended deployment path.
 
+Recommended defaults:
+
+- **default control-plane backend**: Postgres
+- **default adoption path**: control plane + scans + fleet first
+- **shared remote runtime**: gateway
+- **workload-local runtime**: selected sidecar proxy
+- **node-wide runtime**: optional monitor only when a team explicitly wants that tradeoff
+- **advanced backends**: add ClickHouse, Snowflake, or OTEL exports only when the default Postgres-first path is no longer enough
+
 ## Local vs self-hosted
 
 | If you run... | It can scan or manage | It cannot directly reach |
@@ -312,6 +321,12 @@ not the primary recommended deployment path.
 | **Postgres / Supabase** | default self-hosted control plane |
 | **ClickHouse** | audit/event analytics at higher scale |
 | **Snowflake** | warehouse-native governance workflows where the published backend parity fits |
+
+Default recommendation:
+
+- start with **Postgres**
+- add **ClickHouse** for event-scale analytics later
+- choose **Snowflake** only when the published backend parity and warehouse-native governance workflow are the reason you are deploying it
 
 ### Shipped Helm examples
 

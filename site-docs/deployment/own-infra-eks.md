@@ -18,6 +18,15 @@ The recommended rollout is:
 3. use that for MCP inventory and granted surface area
 4. add proxy or gateway only where live runtime enforcement is actually needed
 
+Recommended defaults for this path:
+
+- **control plane**: API + UI + Postgres
+- **inventory first**: scans + fleet
+- **shared remote MCPs**: gateway
+- **workload-local inline enforcement**: selected sidecar proxy
+- **node-wide runtime coverage**: optional monitor only when your platform team explicitly wants that tradeoff
+- **advanced storage**: add ClickHouse or Snowflake only when the default Postgres-first path is no longer enough
+
 If you want the narrower pilot shape first, start with
 [Focused EKS MCP Pilot](eks-mcp-pilot.md). If you want the broader rollout that
 also covers developer endpoints, pair this page with
@@ -76,6 +85,7 @@ Architecture](../architecture/self-hosted-product-architecture.md).*
 |---|---|---|---|
 | **Proxy path** | editor, endpoint, or sidecar workload | local or workload-local MCP | stdio MCPs, sidecars, workload-local enforcement |
 | **Gateway path** | shared remote MCP client | remote MCP over HTTP/SSE | central policy and shared remote MCP traffic |
+| **Optional monitor path** | node-wide daemon on selected clusters | per-node runtime coverage | only when an operator explicitly wants node-wide runtime monitoring |
 | **Inventory path** | scan jobs or fleet sync | API + Postgres | inventory, provenance, findings, and graph without runtime rollout |
 
 1. Local stdio or workload-local MCPs use `agent-bom proxy` as the inline

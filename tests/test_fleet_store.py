@@ -95,6 +95,34 @@ def test_update_state_missing():
     assert store.update_state("nope", FleetLifecycleState.APPROVED) is False
 
 
+def test_fleet_agent_normalizes_tenant_and_timestamps():
+    agent = FleetAgent(
+        agent_id="a-1",
+        name="test-agent",
+        agent_type="claude-desktop",
+        tenant_id=" tenant-a ",
+        created_at="2026-04-23T11:00:00Z",
+        updated_at="2026-04-23T07:05:00-04:00",
+        last_discovery="2026-04-23T11:10:00",
+    )
+    assert agent.tenant_id == "tenant-a"
+    assert agent.created_at == "2026-04-23T11:00:00+00:00"
+    assert agent.updated_at == "2026-04-23T11:05:00+00:00"
+    assert agent.last_discovery == "2026-04-23T11:10:00+00:00"
+
+
+def test_fleet_store_revalidates_agent_before_write():
+    store = InMemoryFleetStore()
+    agent = _make()
+    agent.tenant_id = " tenant-a "
+    agent.updated_at = "2026-04-23T11:05:00"
+    store.put(agent)
+    stored = store.get("a-1")
+    assert stored is not None
+    assert stored.tenant_id == "tenant-a"
+    assert stored.updated_at == "2026-04-23T11:05:00+00:00"
+
+
 # ── SQLiteFleetStore ──────────────────────────────────────────────────────────
 
 

@@ -4,14 +4,11 @@ from __future__ import annotations
 
 import sqlite3
 import threading
-from datetime import datetime, timezone
 from typing import Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+from agent_bom.platform_invariants import normalize_tenant_id, normalize_timestamp, now_utc_iso
 
 
 class MCPObservation(BaseModel):
@@ -40,7 +37,17 @@ class MCPObservation(BaseModel):
     first_seen: str | None = None
     last_seen: str | None = None
     last_synced: str | None = None
-    updated_at: str = Field(default_factory=_now)
+    updated_at: str = Field(default_factory=now_utc_iso)
+
+    @field_validator("tenant_id", mode="before")
+    @classmethod
+    def _normalize_tenant_id(cls, value: str | None) -> str:
+        return normalize_tenant_id(value)
+
+    @field_validator("first_seen", "last_seen", "last_synced", "updated_at", mode="before")
+    @classmethod
+    def _normalize_timestamp(cls, value: str | None) -> str | None:
+        return normalize_timestamp(value)
 
 
 def _pick_timestamp(*values: str | None, prefer: str) -> str | None:
@@ -98,8 +105,9 @@ class InMemoryMCPObservationStore:
         self._lock = threading.Lock()
 
     def put(self, observation: MCPObservation) -> None:
+        normalized = MCPObservation.model_validate(observation.model_dump())
         with self._lock:
-            self._rows[(observation.tenant_id, observation.observation_id)] = observation
+            self._rows[(normalized.tenant_id, normalized.observation_id)] = normalized
 
     def get(self, tenant_id: str, observation_id: str) -> MCPObservation | None:
         with self._lock:
@@ -141,16 +149,17 @@ class SQLiteMCPObservationStore:
         self._conn.commit()
 
     def put(self, observation: MCPObservation) -> None:
+        normalized = MCPObservation.model_validate(observation.model_dump())
         self._conn.execute(
             """INSERT OR REPLACE INTO mcp_observations
                (tenant_id, observation_id, server_name, updated_at, data)
                VALUES (?, ?, ?, ?, ?)""",
             (
-                observation.tenant_id,
-                observation.observation_id,
-                observation.server_name,
-                observation.updated_at,
-                observation.model_dump_json(),
+                normalized.tenant_id,
+                normalized.observation_id,
+                normalized.server_name,
+                normalized.updated_at,
+                normalized.model_dump_json(),
             ),
         )
         self._conn.commit()

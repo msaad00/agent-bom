@@ -11,6 +11,18 @@ The product should support four honest intake modes:
 
 Those are not the same thing, and the security model is different for each.
 
+## Platform record invariants
+
+Regardless of intake mode, the persisted platform record should keep a few
+stable invariants:
+
+- `tenant_id` is normalized server-side and never trusted from ad hoc UI state
+- timestamps are stored in UTC ISO-8601 form for correlation, graph windows, and audit
+- collectors may differ, but the canonical model stays the same across fleet, gateway, runtime, and findings
+
+That contract matters because graph slices, fleet rollups, runtime evidence, and
+audit trails all depend on consistent tenant and time semantics.
+
 ## The four intake modes
 
 | Mode | What agent-bom does | Typical examples | Security posture |

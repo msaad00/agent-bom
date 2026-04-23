@@ -9,11 +9,12 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
-from datetime import datetime, timezone
 from enum import Enum
 from typing import Protocol
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+from agent_bom.platform_invariants import normalize_tenant_id, normalize_timestamp, now_utc_iso
 
 # ─── Models ──────────────────────────────────────────────────────────────────
 
@@ -36,9 +37,9 @@ class FleetAgent(BaseModel):
     lifecycle_state: FleetLifecycleState = FleetLifecycleState.DISCOVERED
     owner: str | None = None
     environment: str | None = None
-    tags: list[str] = []
+    tags: list[str] = Field(default_factory=list)
     trust_score: float = 0.0
-    trust_factors: dict = {}
+    trust_factors: dict = Field(default_factory=dict)
     server_count: int = 0
     package_count: int = 0
     credential_count: int = 0
@@ -49,6 +50,24 @@ class FleetAgent(BaseModel):
     created_at: str = ""
     updated_at: str = ""
     notes: str = ""
+
+    @field_validator("tenant_id", mode="before")
+    @classmethod
+    def _normalize_tenant_id(cls, value: str | None) -> str:
+        return normalize_tenant_id(value)
+
+    @field_validator("last_discovery", "last_scan", "created_at", "updated_at", mode="before")
+    @classmethod
+    def _normalize_timestamps(cls, value: str | None) -> str | None:
+        return normalize_timestamp(value)
+
+    @model_validator(mode="after")
+    def _apply_defaults(self) -> FleetAgent:
+        if not self.created_at:
+            self.created_at = now_utc_iso()
+        if not self.updated_at:
+            self.updated_at = self.created_at
+        return self
 
 
 # ─── Protocol ────────────────────────────────────────────────────────────────
@@ -80,8 +99,9 @@ class InMemoryFleetStore:
         self._lock = threading.Lock()
 
     def put(self, agent: FleetAgent) -> None:
+        normalized = FleetAgent.model_validate(agent.model_dump())
         with self._lock:
-            self._agents[agent.agent_id] = agent
+            self._agents[normalized.agent_id] = normalized
 
     def get(self, agent_id: str) -> FleetAgent | None:
         with self._lock:
@@ -135,14 +155,15 @@ class InMemoryFleetStore:
             if agent is None:
                 return False
             agent.lifecycle_state = state
-            agent.updated_at = datetime.now(timezone.utc).isoformat()
+            agent.updated_at = now_utc_iso()
             return True
 
     def batch_put(self, agents: list[FleetAgent]) -> int:
         """Upsert multiple agents at once."""
         with self._lock:
             for agent in agents:
-                self._agents[agent.agent_id] = agent
+                normalized = FleetAgent.model_validate(agent.model_dump())
+                self._agents[normalized.agent_id] = normalized
             return len(agents)
 
 
@@ -185,17 +206,18 @@ class SQLiteFleetStore:
         self._conn.commit()
 
     def put(self, agent: FleetAgent) -> None:
+        normalized = FleetAgent.model_validate(agent.model_dump())
         self._conn.execute(
             """INSERT OR REPLACE INTO fleet_agents
                (agent_id, name, lifecycle_state, trust_score, updated_at, data)
                VALUES (?, ?, ?, ?, ?, ?)""",
             (
-                agent.agent_id,
-                agent.name,
-                agent.lifecycle_state.value,
-                agent.trust_score,
-                agent.updated_at,
-                agent.model_dump_json(),
+                normalized.agent_id,
+                normalized.name,
+                normalized.lifecycle_state.value,
+                normalized.trust_score,
+                normalized.updated_at,
+                normalized.model_dump_json(),
             ),
         )
         self._conn.commit()
@@ -253,7 +275,7 @@ class SQLiteFleetStore:
         return [{"tenant_id": r[0], "agent_count": r[1]} for r in rows]
 
     def update_state(self, agent_id: str, state: FleetLifecycleState) -> bool:
-        now = datetime.now(timezone.utc).isoformat()
+        now = now_utc_iso()
         agent = self.get(agent_id)
         if agent is None:
             return False

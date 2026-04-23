@@ -369,6 +369,32 @@ class _RecordingGraphStore:
         self.calls.append(("list_snapshots", tenant_id, limit))
         return [{"scan_id": self.graph.scan_id, "created_at": self.graph.created_at, "node_count": 1, "edge_count": 0, "risk_summary": {}}]
 
+    def snapshot_stats(self, *, tenant_id: str = "", scan_id: str = "", entity_types=None, min_severity_rank: int = 0) -> dict:
+        self.calls.append(("snapshot_stats", tenant_id, scan_id, entity_types, min_severity_rank))
+        return self.graph.stats()
+
+    def page_nodes(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        entity_types=None,
+        min_severity_rank: int = 0,
+        offset: int = 0,
+        limit: int = 500,
+    ):
+        self.calls.append(("page_nodes", tenant_id, scan_id, entity_types, min_severity_rank, offset, limit))
+        nodes = list(self.graph.nodes.values())
+        if entity_types:
+            nodes = [node for node in nodes if node.entity_type.value in entity_types]
+        if min_severity_rank:
+            nodes = [node for node in nodes if node.severity_id >= min_severity_rank]
+        return self.graph.scan_id, self.graph.created_at, nodes[offset : offset + limit], len(nodes)
+
+    def edges_for_node_ids(self, *, tenant_id: str = "", scan_id: str = "", node_ids: set[str]):
+        self.calls.append(("edges_for_node_ids", tenant_id, scan_id, tuple(sorted(node_ids))))
+        return [edge for edge in self.graph.edges if edge.source in node_ids and edge.target in node_ids]
+
     def search_nodes(
         self,
         *,
@@ -445,7 +471,8 @@ class TestGraphStoreBackendSelection:
         assert response.status_code == 200
         assert response.json()["scan_id"] == "store-scan"
         assert any(call[0] == "latest_snapshot_id" for call in recording_graph_store.calls)
-        assert any(call[0] == "load_graph" for call in recording_graph_store.calls)
+        assert any(call[0] == "page_nodes" for call in recording_graph_store.calls)
+        assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
 
     def test_graph_presets_use_pluggable_store(self, recording_graph_store):
         client = TestClient(app)

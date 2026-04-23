@@ -610,6 +610,206 @@ class PostgresGraphStore:
                 for row in rows
             ]
 
+    @staticmethod
+    def _space_token_filter(column: str, token: str) -> tuple[str, list[str]]:
+        escaped = _escape_like_query(token.lower())
+        clause = f"({column} = %s OR {column} LIKE %s ESCAPE '\\' OR {column} LIKE %s ESCAPE '\\' OR {column} LIKE %s ESCAPE '\\')"
+        return clause, [escaped, f"{escaped} %%", f"%% {escaped}", f"%% {escaped} %%"]
+
+    @staticmethod
+    def _compliance_prefix_filter(column: str, prefix: str) -> tuple[str, list[str]]:
+        escaped = _escape_like_query(prefix.lower())
+        clause = (
+            f"({column} = %s OR {column} LIKE %s ESCAPE '\\' OR "
+            f"{column} LIKE %s ESCAPE '\\' OR {column} LIKE %s ESCAPE '\\' OR {column} LIKE %s ESCAPE '\\')"
+        )
+        return clause, [escaped, f"{escaped}-%%", f"{escaped} %%", f"%% {escaped}-%%", f"%% {escaped} %%"]
+
+    def snapshot_stats(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        entity_types: set[str] | None = None,
+        min_severity_rank: int = 0,
+    ) -> dict[str, Any]:
+        effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
+        if not effective_scan_id:
+            return {
+                "total_nodes": 0,
+                "total_edges": 0,
+                "node_types": {},
+                "severity_counts": {},
+                "relationship_types": {},
+                "attack_path_count": 0,
+                "interaction_risk_count": 0,
+                "max_attack_path_risk": 0.0,
+                "highest_interaction_risk": 0.0,
+            }
+
+        node_where = ["tenant_id = %s", "scan_id = %s"]
+        params: list[Any] = [tenant_id, effective_scan_id]
+        if entity_types:
+            placeholders = ",".join(["%s"] * len(entity_types))
+            node_where.append(f"entity_type IN ({placeholders})")
+            params.extend(sorted(entity_types))
+        if min_severity_rank:
+            node_where.append("severity_id >= %s")
+            params.append(min_severity_rank)
+        where_sql = " AND ".join(node_where)
+
+        with _tenant_connection(self._pool) as conn:
+            total_nodes = int(
+                conn.execute(
+                    f"SELECT COUNT(*) FROM graph_nodes WHERE {where_sql}",  # nosec B608 - where_sql is built from static clause fragments
+                    params,
+                ).fetchone()[0]
+                or 0
+            )
+            node_type_rows = conn.execute(
+                f"SELECT entity_type, COUNT(*) FROM graph_nodes WHERE {where_sql} GROUP BY entity_type",  # nosec B608 - where_sql is built from static clause fragments
+                params,
+            ).fetchall()
+            severity_rows = conn.execute(
+                f"SELECT severity, COUNT(*) FROM graph_nodes WHERE {where_sql} AND severity <> '' GROUP BY severity",  # nosec B608 - where_sql is built from static clause fragments
+                params,
+            ).fetchall()
+            total_edges = int(
+                conn.execute(
+                    f"""
+                    SELECT COUNT(*)
+                    FROM graph_edges
+                    WHERE tenant_id = %s AND scan_id = %s
+                      AND source_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                      AND target_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                    """,  # nosec B608 - where_sql is built from static clause fragments
+                    [tenant_id, effective_scan_id, *params, *params],
+                ).fetchone()[0]
+                or 0
+            )
+            rel_rows = conn.execute(
+                f"""
+                SELECT relationship, COUNT(*)
+                FROM graph_edges
+                WHERE tenant_id = %s AND scan_id = %s
+                  AND source_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                  AND target_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                GROUP BY relationship
+                """,  # nosec B608 - where_sql is built from static clause fragments
+                [tenant_id, effective_scan_id, *params, *params],
+            ).fetchall()
+            attack_row = conn.execute(
+                "SELECT COUNT(*), COALESCE(MAX(composite_risk), 0.0) FROM attack_paths WHERE tenant_id = %s AND scan_id = %s",
+                (tenant_id, effective_scan_id),
+            ).fetchone()
+            interaction_row = conn.execute(
+                "SELECT COUNT(*), COALESCE(MAX(risk_score), 0.0) FROM interaction_risks WHERE tenant_id = %s AND scan_id = %s",
+                (tenant_id, effective_scan_id),
+            ).fetchone()
+            return {
+                "total_nodes": total_nodes,
+                "total_edges": total_edges,
+                "node_types": {str(row[0]): int(row[1]) for row in node_type_rows},
+                "severity_counts": {str(row[0]): int(row[1]) for row in severity_rows},
+                "relationship_types": {str(row[0]): int(row[1]) for row in rel_rows},
+                "attack_path_count": int((attack_row[0] if attack_row else 0) or 0),
+                "interaction_risk_count": int((interaction_row[0] if interaction_row else 0) or 0),
+                "max_attack_path_risk": float((attack_row[1] if attack_row else 0.0) or 0.0),
+                "highest_interaction_risk": float((interaction_row[1] if interaction_row else 0.0) or 0.0),
+            }
+
+    def page_nodes(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        entity_types: set[str] | None = None,
+        min_severity_rank: int = 0,
+        offset: int = 0,
+        limit: int = 500,
+    ) -> tuple[str, str, list[Any], int]:
+        effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
+        if not effective_scan_id:
+            return scan_id, "", [], 0
+        with _tenant_connection(self._pool) as conn:
+            created_row = conn.execute(
+                "SELECT created_at FROM graph_snapshots WHERE scan_id = %s AND tenant_id = %s",
+                (effective_scan_id, tenant_id),
+            ).fetchone()
+            where = ["tenant_id = %s", "scan_id = %s"]
+            params: list[Any] = [tenant_id, effective_scan_id]
+            if entity_types:
+                placeholders = ",".join(["%s"] * len(entity_types))
+                where.append(f"entity_type IN ({placeholders})")
+                params.extend(sorted(entity_types))
+            if min_severity_rank:
+                where.append("severity_id >= %s")
+                params.append(min_severity_rank)
+            where_sql = " AND ".join(where)
+            total = int(
+                conn.execute(
+                    f"SELECT COUNT(*) FROM graph_nodes WHERE {where_sql}",  # nosec B608 - where_sql is built from static clause fragments
+                    params,
+                ).fetchone()[0]
+                or 0
+            )
+            rows = conn.execute(
+                f"""
+                SELECT
+                    id, entity_type, label, category_uid, class_uid, type_uid,
+                    status, risk_score, severity, severity_id, first_seen, last_seen,
+                    attributes, compliance_tags, data_sources, dimensions
+                FROM graph_nodes
+                WHERE {where_sql}
+                ORDER BY severity_id DESC, risk_score DESC, label ASC, id ASC
+                LIMIT %s OFFSET %s
+                """,  # nosec B608 - where_sql is built from static clause fragments
+                [*params, limit, offset],
+            ).fetchall()
+            return effective_scan_id, str(created_row[0]) if created_row else "", [self._node_from_row(row) for row in rows], total
+
+    def edges_for_node_ids(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        node_ids: set[str],
+    ) -> list[Any]:
+        if not node_ids:
+            return []
+        effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
+        if not effective_scan_id:
+            return []
+        placeholders = ",".join(["%s"] * len(node_ids))
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                f"""
+                SELECT source_id, target_id, relationship, direction, weight, traversable, first_seen, last_seen, evidence, activity_id
+                FROM graph_edges
+                WHERE tenant_id = %s AND scan_id = %s
+                  AND source_id IN ({placeholders})
+                  AND target_id IN ({placeholders})
+                """,  # nosec B608 - placeholders are generated solely from "%s" markers
+                [tenant_id, effective_scan_id, *node_ids, *node_ids],
+            ).fetchall()
+            from agent_bom.graph import RelationshipType, UnifiedEdge
+
+            return [
+                UnifiedEdge(
+                    source=row[0],
+                    target=row[1],
+                    relationship=RelationshipType(row[2]),
+                    direction=row[3],
+                    weight=row[4],
+                    traversable=bool(row[5]),
+                    first_seen=row[6],
+                    last_seen=row[7],
+                    evidence=json.loads(row[8]),
+                    activity_id=row[9],
+                )
+                for row in rows
+            ]
+
     def search_nodes(
         self,
         *,
@@ -627,63 +827,59 @@ class PostgresGraphStore:
         if not effective_scan_id:
             return [], 0
 
-        like = f"%{_escape_like_query(query.lower())}%"
         with _tenant_connection(self._pool) as conn:
-            where = [
-                "tenant_id = %s",
-                "scan_id = %s",
-                "LOWER(search_text) LIKE %s ESCAPE '\\'",
+            search_where = [
+                "gns.tenant_id = %s",
+                "gns.scan_id = %s",
+                "LOWER(gns.search_text) LIKE %s ESCAPE '\\'",
             ]
-            params: list[Any] = [tenant_id, effective_scan_id, like]
+            params: list[Any] = [tenant_id, effective_scan_id, f"%{_escape_like_query(query.lower())}%"]
             if entity_types:
                 placeholders = ",".join(["%s"] * len(entity_types))
-                where.append(f"entity_type IN ({placeholders})")
+                search_where.append(f"gn.entity_type IN ({placeholders})")
                 params.extend(sorted(entity_types))
+            if min_severity_rank:
+                search_where.append("gn.severity_id >= %s")
+                params.append(min_severity_rank)
+            if compliance_prefixes:
+                prefix_filters = []
+                for prefix in sorted(compliance_prefixes):
+                    clause, clause_params = self._compliance_prefix_filter("gns.compliance_tags", prefix)
+                    prefix_filters.append(clause)
+                    params.extend(clause_params)
+                search_where.append("(" + " OR ".join(prefix_filters) + ")")
             if data_sources:
                 source_filters = []
                 for source in sorted(data_sources):
-                    source_filters.append("data_sources LIKE %s ESCAPE '\\'")
-                    params.append(f"%{_escape_like_query(source.lower())}%")
-                where.append("(" + " OR ".join(source_filters) + ")")
-            matching_ids = [
-                row[0]
-                for row in conn.execute(
-                    "SELECT node_id FROM graph_node_search WHERE " + " AND ".join(where),  # nosec B608 - clauses are static, values stay parameterized
-                    params,
-                ).fetchall()
-            ]
-            if not matching_ids:
+                    clause, clause_params = self._space_token_filter("gns.data_sources", source)
+                    source_filters.append(clause)
+                    params.extend(clause_params)
+                search_where.append("(" + " OR ".join(source_filters) + ")")
+            from_clause = """
+                FROM graph_node_search gns
+                JOIN graph_nodes gn
+                  ON gn.id = gns.node_id
+                 AND gn.scan_id = gns.scan_id
+                 AND gn.tenant_id = gns.tenant_id
+            """
+            where_sql = " AND ".join(search_where)
+            total = int(conn.execute("SELECT COUNT(*) " + from_clause + " WHERE " + where_sql, params).fetchone()[0] or 0)
+            if total == 0:
                 return [], 0
-            placeholders = ",".join(["%s"] * len(matching_ids))
-            rows_query = f"""
-                SELECT
-                    id, entity_type, label, category_uid, class_uid, type_uid,
-                    status, risk_score, severity, severity_id, first_seen, last_seen,
-                    attributes, compliance_tags, data_sources, dimensions
-                FROM graph_nodes
-                WHERE tenant_id = %s AND scan_id = %s AND id IN ({placeholders})
-                ORDER BY severity_id DESC, risk_score DESC, label ASC
-                """  # nosec B608 - placeholders are generated solely from "%s" markers
             rows = conn.execute(
-                rows_query,
-                [tenant_id, effective_scan_id, *matching_ids],
+                """
+                SELECT
+                    gn.id, gn.entity_type, gn.label, gn.category_uid, gn.class_uid, gn.type_uid,
+                    gn.status, gn.risk_score, gn.severity, gn.severity_id, gn.first_seen, gn.last_seen,
+                    gn.attributes, gn.compliance_tags, gn.data_sources, gn.dimensions
+                """
+                + from_clause
+                + " WHERE "
+                + where_sql
+                + " ORDER BY gn.severity_id DESC, gn.risk_score DESC, gn.label ASC, gn.id ASC LIMIT %s OFFSET %s",
+                [*params, limit, offset],
             ).fetchall()
-            prefix_filters = compliance_prefixes or set()
-            source_filters_set = data_sources or set()
-            filtered = []
-            for row in rows:
-                node = self._node_from_row(row)
-                if min_severity_rank and (row[9] or 0) < min_severity_rank:
-                    continue
-                if prefix_filters:
-                    prefixes = {tag.split("-")[0].upper() if "-" in tag else tag.upper() for tag in node.compliance_tags}
-                    if not prefixes.intersection(prefix_filters):
-                        continue
-                if source_filters_set and not set(node.data_sources).intersection(source_filters_set):
-                    continue
-                filtered.append(node)
-            total = len(filtered)
-            return filtered[offset : offset + limit], total
+            return [self._node_from_row(row) for row in rows], total
 
     def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict[str, Any], created_at: str) -> None:
         with _tenant_connection(self._pool) as conn:

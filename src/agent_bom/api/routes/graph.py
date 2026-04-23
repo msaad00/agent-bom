@@ -57,6 +57,15 @@ def _paginate(items: list, offset: int, limit: int) -> tuple[list, dict]:
     }
 
 
+def _page_meta(total: int, offset: int, limit: int) -> dict:
+    return {
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + limit < total,
+    }
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Preset model
 # ═══════════════════════════════════════════════════════════════════════════
@@ -184,14 +193,13 @@ async def get_graph(
     if min_severity:
         min_rank = SEVERITY_RANK.get(min_severity.lower(), 0)
 
-    graph = graph_store.load_graph(
-        scan_id=requested_scan_id,
-        tenant_id=tenant,
-        entity_types=et_set,
-        min_severity_rank=min_rank,
-    )
-
     if relationships or static_only or dynamic_only:
+        graph = graph_store.load_graph(
+            scan_id=requested_scan_id,
+            tenant_id=tenant,
+            entity_types=et_set,
+            min_severity_rank=min_rank,
+        )
         rel_set: set[RelationshipType] = set()
         if relationships:
             for r in relationships.split(","):
@@ -208,26 +216,57 @@ async def get_graph(
         )
         graph = graph.filtered_view(filters)
 
-    stats = graph.stats()
-    all_nodes = list(graph.nodes.values())
-    paged_nodes, pagination = _paginate(all_nodes, offset, limit)
-    paged_ids = {n.id for n in paged_nodes}
-    paged_edges = [e for e in graph.edges if e.source in paged_ids and e.target in paged_ids]
-    attack_paths = [p.to_dict() for p in graph.attack_paths if p.hops and all(hop in paged_ids for hop in p.hops)]
-    interaction_risks = [
-        r.to_dict() for r in graph.interaction_risks if r.agents and all(f"agent:{agent_name}" in paged_ids for agent_name in r.agents)
-    ]
+        stats = graph.stats()
+        all_nodes = list(graph.nodes.values())
+        paged_nodes, pagination = _paginate(all_nodes, offset, limit)
+        paged_ids = {n.id for n in paged_nodes}
+        paged_edges = [e for e in graph.edges if e.source in paged_ids and e.target in paged_ids]
+        attack_paths = [p.to_dict() for p in graph.attack_paths if p.hops and all(hop in paged_ids for hop in p.hops)]
+        interaction_risks = [
+            r.to_dict() for r in graph.interaction_risks if r.agents and all(f"agent:{agent_name}" in paged_ids for agent_name in r.agents)
+        ]
 
+        return {
+            "scan_id": graph.scan_id,
+            "tenant_id": graph.tenant_id,
+            "created_at": graph.created_at,
+            "nodes": [n.to_dict() for n in paged_nodes],
+            "edges": [e.to_dict() for e in paged_edges],
+            "attack_paths": attack_paths,
+            "interaction_risks": interaction_risks,
+            "stats": stats,
+            "pagination": pagination,
+        }
+
+    effective_scan_id, created_at, paged_nodes, total = graph_store.page_nodes(
+        scan_id=requested_scan_id,
+        tenant_id=tenant,
+        entity_types=et_set,
+        min_severity_rank=min_rank,
+        offset=offset,
+        limit=limit,
+    )
+    paged_ids = {n.id for n in paged_nodes}
+    paged_edges = graph_store.edges_for_node_ids(
+        scan_id=effective_scan_id,
+        tenant_id=tenant,
+        node_ids=paged_ids,
+    )
     return {
-        "scan_id": graph.scan_id,
-        "tenant_id": graph.tenant_id,
-        "created_at": graph.created_at,
+        "scan_id": effective_scan_id,
+        "tenant_id": tenant,
+        "created_at": created_at,
         "nodes": [n.to_dict() for n in paged_nodes],
         "edges": [e.to_dict() for e in paged_edges],
-        "attack_paths": attack_paths,
-        "interaction_risks": interaction_risks,
-        "stats": stats,
-        "pagination": pagination,
+        "attack_paths": [],
+        "interaction_risks": [],
+        "stats": graph_store.snapshot_stats(
+            scan_id=effective_scan_id,
+            tenant_id=tenant,
+            entity_types=et_set,
+            min_severity_rank=min_rank,
+        ),
+        "pagination": _page_meta(total, offset, limit),
     }
 
 

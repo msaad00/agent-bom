@@ -653,6 +653,95 @@ class TestSnowflakePolicyStore:
         assert any("tenant_id = %s" in call for call in sql_calls)
 
 
+# ─── SnowflakeScheduleStore ──────────────────────────────────────────────────
+
+
+class TestSnowflakeScheduleStore:
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def _make_store(self, mock_connect):
+        mock_connect.return_value = _mock_connection()
+        from agent_bom.api.snowflake_store import SnowflakeScheduleStore
+
+        return SnowflakeScheduleStore(SF_PARAMS)
+
+    def _make_schedule(self, schedule_id="sched-1", tenant_id="default", enabled=True, next_run="2025-01-01T00:00:00Z"):
+        from agent_bom.api.schedule_store import ScanSchedule
+
+        return ScanSchedule(
+            schedule_id=schedule_id,
+            name="nightly-scan",
+            cron_expression="0 */6 * * *",
+            scan_config={"images": ["nginx:latest"]},
+            enabled=enabled,
+            next_run=next_run,
+            created_at="2025-01-01T00:00:00Z",
+            updated_at="2025-01-01T00:00:00Z",
+            tenant_id=tenant_id,
+        )
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_init_creates_table(self, mock_connect):
+        conn = _mock_connection()
+        mock_connect.return_value = conn
+        from agent_bom.api.snowflake_store import SnowflakeScheduleStore
+
+        SnowflakeScheduleStore(SF_PARAMS)
+        create_call = conn.cursor().execute.call_args_list[0]
+        assert "CREATE TABLE IF NOT EXISTS scan_schedules" in create_call[0][0]
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_put(self, mock_connect):
+        conn = _mock_connection()
+        mock_connect.return_value = conn
+        store = self._make_store()
+        store.put(self._make_schedule())
+        calls = conn.cursor().execute.call_args_list
+        merge_call = [c for c in calls if "MERGE INTO scan_schedules" in str(c)]
+        assert len(merge_call) > 0
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_get_found(self, mock_connect):
+        schedule = self._make_schedule()
+        cur = _mock_cursor(fetchone_val=(schedule.model_dump_json(),))
+        conn = _mock_connection(cursor=cur)
+        mock_connect.return_value = conn
+        store = self._make_store()
+        result = store.get("sched-1")
+        assert result is not None
+        assert result.schedule_id == "sched-1"
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_list_all_tenant_filtered(self, mock_connect):
+        s1 = self._make_schedule("sched-1", tenant_id="tenant-a")
+        s2 = self._make_schedule("sched-2", tenant_id="tenant-a")
+        cur = _mock_cursor(fetchall_val=[(s1.model_dump_json(),), (s2.model_dump_json(),)])
+        conn = _mock_connection(cursor=cur)
+        mock_connect.return_value = conn
+        store = self._make_store()
+        result = store.list_all(tenant_id="tenant-a")
+        assert len(result) == 2
+        assert all(item.tenant_id == "tenant-a" for item in result)
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_list_due(self, mock_connect):
+        schedule = self._make_schedule("sched-due", enabled=True, next_run="2025-01-01T00:00:00Z")
+        cur = _mock_cursor(fetchall_val=[(schedule.model_dump_json(),)])
+        conn = _mock_connection(cursor=cur)
+        mock_connect.return_value = conn
+        store = self._make_store()
+        result = store.list_due("2025-06-01T00:00:00Z")
+        assert len(result) == 1
+        assert result[0].schedule_id == "sched-due"
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_delete_found(self, mock_connect):
+        cur = _mock_cursor(rowcount=1)
+        conn = _mock_connection(cursor=cur)
+        mock_connect.return_value = conn
+        store = self._make_store()
+        assert store.delete("sched-1") is True
+
+
 # ─── Server lifespan auto-detection ──────────────────────────────────────────
 
 
@@ -675,6 +764,7 @@ class TestServerLifespanAutoDetect:
         st._store = None
         st._fleet_store = None
         st._policy_store = None
+        st._schedule_store = None
 
         import asyncio
 
@@ -688,13 +778,16 @@ class TestServerLifespanAutoDetect:
             SnowflakeFleetStore,
             SnowflakeJobStore,
             SnowflakePolicyStore,
+            SnowflakeScheduleStore,
         )
 
         assert isinstance(st._store, SnowflakeJobStore)
         assert isinstance(st._fleet_store, SnowflakeFleetStore)
         assert isinstance(st._policy_store, SnowflakePolicyStore)
+        assert isinstance(st._schedule_store, SnowflakeScheduleStore)
 
         # Cleanup
         st._store = None
         st._fleet_store = None
         st._policy_store = None
+        st._schedule_store = None

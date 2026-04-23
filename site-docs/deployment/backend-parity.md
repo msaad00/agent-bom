@@ -22,7 +22,7 @@ This page documents what is wired today, not what might exist as a class on disk
 | Source registry persistence | Yes | Yes | No | No |
 | Exception workflow persistence | No default API wiring | Yes | No | No |
 | API key persistence / RBAC store | No default API wiring | Yes | No | No |
-| Schedule persistence | Yes | Yes | No | No |
+| Schedule persistence | Yes | Yes | No | Yes |
 | Trend / baseline persistence | Yes | Yes | No | No |
 | Graph persistence | Yes | Yes | No | No |
 | Analytics / OLAP writes | No | No | Yes | No |
@@ -42,7 +42,7 @@ backend?"
 | `/v1/audit*` primary trail | Yes | Yes | No | Partial; Snowflake policy audit exists, but it is not the full transactional audit replacement |
 | `/v1/auth/keys*` | No default API wiring | Yes | No | No |
 | `/v1/exceptions*` | No default API wiring | Yes | No | No |
-| `/v1/schedules*` | Yes | Yes | No | No |
+| `/v1/schedules*` | Yes | Yes | No | Yes |
 | `/v1/traces`, `/v1/proxy/audit`, `/v1/ocsf/ingest` analytics writes | No | No | Yes | No |
 | Snowflake governance/account discovery routes | No | No | No | Yes |
 
@@ -68,13 +68,11 @@ The Snowflake story should be read in three layers:
    - source registry
    - exceptions
    - API keys and RBAC persistence
-   - schedules
    - graph persistence
    - trend and baseline state
    - full HMAC-chained `audit_log`
 3. **Next parity targets, if warehouse-native control-plane coverage expands**
    - source registry
-   - schedules
    - selected baseline/trend state
 
 That means Snowflake is already a real backend mode, but it is still not the
@@ -129,7 +127,6 @@ Use when you want:
 
 Current limitations:
 
-- schedules do not persist to Snowflake
 - graph persistence does not persist to Snowflake
 - exceptions do not persist to Snowflake
 - API keys do not persist to Snowflake

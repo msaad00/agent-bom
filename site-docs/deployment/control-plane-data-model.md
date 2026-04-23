@@ -63,7 +63,7 @@ The main operator rule is:
 | Source registry | `sources` | `control_plane_sources` | No | No |
 | API keys / RBAC | No default API wiring | `api_keys` | No | No |
 | Exceptions | No default API wiring | `exceptions` | No | No |
-| Schedules | `scan_schedules` | `scan_schedules` | No | No |
+| Schedules | `scan_schedules` | `scan_schedules` | No | `scan_schedules` |
 | Audit chain | `audit_log` | `audit_log` | denormalized analytics copy only | No full transactional replacement |
 | Graph / attack path | SQLite graph tables | Postgres graph tables | No | No |
 | Trend / baseline | local control-plane tables | `trend_history` and related control-plane tables | analytics/event aggregation only | No |
@@ -128,8 +128,8 @@ use:
 - SQLite and Postgres `api_rate_limits` in the shared rate-limit path
 - Postgres `gateway_policies`, `policy_audit_log`, `scan_schedules`,
   `control_plane_sources`
-- Snowflake `scan_jobs`, `fleet_agents`, `gateway_policies`,
-  `policy_audit_log`
+- Snowflake `scan_jobs`, `fleet_agents`, `scan_schedules`,
+  `gateway_policies`, `policy_audit_log`
 
 This is why "table exists in SQL" and "route is fully supported on this
 backend" are different questions.
@@ -182,9 +182,9 @@ Use for:
 
 Current transactional parity boundary:
 
-- supported: `scan_jobs`, `fleet_agents`, `gateway_policies`,
-  `policy_audit_log`
-- not supported: source registry, API keys, exceptions, schedules,
+- supported: `scan_jobs`, `fleet_agents`, `scan_schedules`,
+  `gateway_policies`, `policy_audit_log`
+- not supported: source registry, API keys, exceptions,
   graph, trend/baseline, full audit-chain replacement
 
 ## Recommended selection

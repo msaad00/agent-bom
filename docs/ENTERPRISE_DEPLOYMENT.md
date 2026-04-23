@@ -173,7 +173,7 @@ For PostgreSQL-backed deployments, `agent-bom` now also pushes the authenticated
 
 For horizontally scaled control-plane APIs, shared rate limiting is mandatory. `agent-bom` now fails closed when `AGENT_BOM_CONTROL_PLANE_REPLICAS > 1` (or `AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1`) and no PostgreSQL-backed limiter is configured via `AGENT_BOM_POSTGRES_URL`.
 
-**Storage:** SQLite for single-node and local persistence, PostgreSQL-compatible backends such as PostgreSQL and Supabase for the transactional control plane, ClickHouse for analytics, and Snowflake for selected enterprise store paths where parity is explicitly implemented. Snowflake does not yet have full parity for every transactional API store, so PostgreSQL-compatible backends remain the primary control-plane default when you need tenant-scoped keys, exceptions, schedules, graph state, and trend history.
+**Storage:** SQLite for single-node and local persistence, PostgreSQL-compatible backends such as PostgreSQL and Supabase for the transactional control plane, ClickHouse for analytics, and Snowflake for selected enterprise store paths where parity is explicitly implemented. Snowflake does not yet have full parity for every transactional API store, so PostgreSQL-compatible backends remain the primary control-plane default when you need tenant-scoped keys, exceptions, graph state, and trend history.
 
 Use the backend story this way:
 

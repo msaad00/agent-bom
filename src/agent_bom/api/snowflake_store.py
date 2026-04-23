@@ -1,8 +1,9 @@
 """Snowflake-backed storage backends for agent-bom.
 
-Provides pluggable Snowflake persistence for all three store protocols:
+Provides pluggable Snowflake persistence for all four store protocols:
 - ``SnowflakeJobStore``    — scan job persistence
 - ``SnowflakeFleetStore``  — fleet agent lifecycle
+- ``SnowflakeScheduleStore`` — recurring scan schedules
 - ``SnowflakePolicyStore`` — gateway policies + audit log
 
 Requires ``pip install 'agent-bom[snowflake]'``.
@@ -363,6 +364,100 @@ class SnowflakeFleetStore:
             total += len(batch)
 
         return total
+
+
+# ─── Schedule Store ───────────────────────────────────────────────────────────
+
+
+class SnowflakeScheduleStore:
+    """Snowflake-backed recurring scan schedule persistence."""
+
+    def __init__(self, connection_params: dict) -> None:
+        self._conn_params = connection_params
+        self._init_tables()
+
+    def _connect(self):  # type: ignore[no-untyped-def]
+        return _sf_connect(**self._conn_params)
+
+    def _init_tables(self) -> None:
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS scan_schedules (
+                    schedule_id VARCHAR PRIMARY KEY,
+                    enabled BOOLEAN NOT NULL DEFAULT TRUE,
+                    next_run VARCHAR,
+                    tenant_id VARCHAR NOT NULL DEFAULT 'default',
+                    data VARIANT NOT NULL
+                )
+            """)
+            cur.execute("ALTER TABLE scan_schedules ADD COLUMN IF NOT EXISTS tenant_id VARCHAR NOT NULL DEFAULT 'default'")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_sched_tenant_due ON scan_schedules(tenant_id, enabled, next_run)")
+
+    def put(self, schedule) -> None:
+        with self._connect() as conn:
+            conn.cursor().execute(
+                """MERGE INTO scan_schedules t USING (SELECT %s AS schedule_id) s
+                   ON t.schedule_id = s.schedule_id
+                   WHEN MATCHED THEN UPDATE SET
+                     enabled = %s, next_run = %s, tenant_id = %s, data = PARSE_JSON(%s)
+                   WHEN NOT MATCHED THEN INSERT
+                     (schedule_id, enabled, next_run, tenant_id, data)
+                     VALUES (%s, %s, %s, %s, PARSE_JSON(%s))""",
+                (
+                    schedule.schedule_id,
+                    schedule.enabled,
+                    schedule.next_run,
+                    schedule.tenant_id,
+                    schedule.model_dump_json(),
+                    schedule.schedule_id,
+                    schedule.enabled,
+                    schedule.next_run,
+                    schedule.tenant_id,
+                    schedule.model_dump_json(),
+                ),
+            )
+
+    def get(self, schedule_id: str):
+        from .schedule_store import ScanSchedule
+
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT data FROM scan_schedules WHERE schedule_id = %s", (schedule_id,))
+            row = cur.fetchone()
+            if row is None:
+                return None
+            return ScanSchedule.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
+
+    def delete(self, schedule_id: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM scan_schedules WHERE schedule_id = %s", (schedule_id,))
+            return (cur.rowcount or 0) > 0
+
+    def list_all(self, tenant_id: str | None = None) -> list:
+        from .schedule_store import ScanSchedule
+
+        with self._connect() as conn:
+            cur = conn.cursor()
+            if tenant_id is None:
+                cur.execute("SELECT data FROM scan_schedules ORDER BY schedule_id")
+            else:
+                cur.execute("SELECT data FROM scan_schedules WHERE tenant_id = %s ORDER BY schedule_id", (tenant_id,))
+            return [ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
+
+    def list_due(self, now_iso: str) -> list:
+        from .schedule_store import ScanSchedule
+
+        with self._connect() as conn:
+            cur = conn.cursor()
+            cur.execute(
+                """SELECT data
+                   FROM scan_schedules
+                   WHERE enabled = TRUE AND next_run IS NOT NULL AND next_run <= %s""",
+                (now_iso,),
+            )
+            return [ScanSchedule.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in cur.fetchall()]
 
 
 # ─── Policy Store ─────────────────────────────────────────────────────────────

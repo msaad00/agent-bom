@@ -179,6 +179,7 @@ async def _lifespan(app_instance: FastAPI):
             SnowflakeFleetStore,
             SnowflakeJobStore,
             SnowflakePolicyStore,
+            SnowflakeScheduleStore,
             build_connection_params,
         )
 
@@ -189,6 +190,8 @@ async def _lifespan(app_instance: FastAPI):
             set_fleet_store(SnowflakeFleetStore(sf))
         if _stores._policy_store is None:
             set_policy_store(SnowflakePolicyStore(sf))
+        if _stores._schedule_store is None:
+            set_schedule_store(SnowflakeScheduleStore(sf))
     elif os.environ.get("AGENT_BOM_POSTGRES_URL"):
         from agent_bom.api import audit_log as _audit_log_mod
         from agent_bom.api import auth as _auth

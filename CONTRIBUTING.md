@@ -88,12 +88,15 @@ Branch naming: `feat/`, `fix/`, `docs/`, `chore/` prefixes. Always branch from a
 Do **not** use GitHub's **Update branch** button on active PRs unless the PR is
 actually non-mergeable and you cannot refresh it locally.
 
+If GitHub only says **"This branch is out-of-date with the base branch"**, that
+does **not** automatically mean there is a conflict. In this repo, that banner
+is informational unless merge protection explicitly blocks on being current with
+`main`.
+
 Preferred path:
 
 ```bash
-git fetch origin main
-git rebase origin/main
-git push --force-with-lease
+scripts/refresh-pr-branch.sh your-branch
 ```
 
 Why:
@@ -106,6 +109,15 @@ Why:
 If a PR ever shows "no checks reported", "expected" checks with no attached
 run, or obviously stale check-rollup state after an update, replace the branch
 head with a clean local rebase instead of retrying the GitHub button again.
+
+Manual equivalent:
+
+```bash
+git fetch origin
+git checkout your-branch
+git rebase origin/main
+git push --force-with-lease origin your-branch
+```
 
 ---
 

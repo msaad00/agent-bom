@@ -294,27 +294,23 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     async def _reload_policy_if_changed(force: bool = False) -> bool:
         if settings.policy_path is None:
             return False
-        try:
-            stat = settings.policy_path.stat()
-        except OSError as exc:
-            async with policy_lock:
-                policy_state["last_error"] = str(exc)
-            logger.warning("gateway policy reload failed for %s: %s", settings.policy_path, _sanitize_for_log(exc))
-            return False
-
-        mtime = stat.st_mtime
-        if not force and policy_state["last_mtime"] == mtime:
-            return False
-
-        try:
-            next_policy = _load_policy_file(settings.policy_path)
-        except Exception as exc:  # noqa: BLE001
-            async with policy_lock:
-                policy_state["last_error"] = str(exc)
-            logger.warning("gateway policy reload failed for %s: %s", settings.policy_path, _sanitize_for_log(exc))
-            return False
 
         async with policy_lock:
+            try:
+                stat = settings.policy_path.stat()
+                mtime = stat.st_mtime
+                if not force and policy_state["last_mtime"] == mtime:
+                    return False
+                next_policy = _load_policy_file(settings.policy_path)
+            except FileNotFoundError as exc:
+                policy_state["last_error"] = str(exc)
+                logger.warning("gateway policy reload failed for %s: %s", settings.policy_path, _sanitize_for_log(exc))
+                return False
+            except Exception as exc:  # noqa: BLE001
+                policy_state["last_error"] = str(exc)
+                logger.warning("gateway policy reload failed for %s: %s", settings.policy_path, _sanitize_for_log(exc))
+                return False
+
             policy_state["policy"] = next_policy
             policy_state["last_loaded_at"] = time.time()
             policy_state["last_error"] = None

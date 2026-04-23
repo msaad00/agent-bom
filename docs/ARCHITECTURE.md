@@ -101,7 +101,7 @@ sequenceDiagram
 
     CLI->>BlastRadius: Vulns + topology
     BlastRadius->>BlastRadius: CVE → package → server → agent → creds → tools
-    BlastRadius->>BlastRadius: Tag 15 compliance frameworks
+    BlastRadius->>BlastRadius: Tag 14 compliance frameworks
     BlastRadius-->>CLI: Scored + tagged findings
 
     CLI->>Reporter: Full results
@@ -147,7 +147,7 @@ graph LR
 
 ## 4. Compliance Tagging
 
-Every finding is tagged against 15 frameworks, grouped into four families.
+Every finding is tagged against 14 frameworks, grouped into four families.
 
 ```mermaid
 graph LR

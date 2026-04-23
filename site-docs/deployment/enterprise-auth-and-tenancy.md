@@ -16,6 +16,10 @@ resolve onto the same control-plane model.
 For the browser-to-API trust split inside the self-hosted control plane, see
 [UI, API, Auth, and Session Model](../architecture/auth-and-session-model.md).
 
+For the default self-hosted contract on who can see tenant logs, audit, and
+support data, see
+[Customer Data and Support Boundary](customer-data-and-support-boundary.md).
+
 ## What is especially strong
 
 - **Tenant context is not UI-only.**

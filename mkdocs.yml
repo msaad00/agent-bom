@@ -104,6 +104,7 @@ nav:
       - Packaged API + UI Control Plane: deployment/control-plane-helm.md
       - Control-Plane Data Model and Store Parity: deployment/control-plane-data-model.md
       - Audit Chain vs Compliance Signing: deployment/audit-and-compliance-verification.md
+      - Customer Data and Support Boundary: deployment/customer-data-and-support-boundary.md
       - Data Retention by Class: deployment/data-retention.md
       - Performance, Sizing, and Benchmarks: deployment/performance-and-sizing.md
       - Runtime Operations: deployment/runtime-operations.md

@@ -11,6 +11,16 @@ chain) have not been ported to `SnowflakeStore` yet. See
 [backend-parity.md](backend-parity.md) for the current capability
 matrix.
 
+The safest way to think about this mode is:
+
+- **real and supported**
+- **warehouse-native**
+- **not universal parity**
+
+It is the right answer for teams that want Snowflake-native inventory, fleet,
+policy, and governance workflows. It is not the default answer for every
+self-hosted control-plane deployment.
+
 ---
 
 ## When Snowflake is the right fit
@@ -47,6 +57,44 @@ Pick Postgres when you want broad API surface coverage and the fastest
 possible install, and you're comfortable adding ClickHouse only if
 audit/event volume justifies it. Pick Snowflake when you'd rather
 collapse both into one unified stack.
+
+## Supported Snowflake deployment modes
+
+### 1. Snowflake governance mode
+
+Use when you mainly want:
+
+- governance discovery
+- activity and observability joins
+- warehouse-native reporting and investigations
+
+In this mode, Snowflake is primarily the governance and security-lake system of
+record, while the rest of the control plane can remain on the default backend.
+
+### 2. Snowflake selected control-plane mode
+
+Use when you want these persisted in Snowflake:
+
+- scan jobs
+- fleet inventory
+- gateway policies
+- gateway policy audit
+
+This is the current partial-control-plane mode backed by
+`SnowflakeJobStore`, `SnowflakeFleetStore`, and `SnowflakePolicyStore`.
+
+### 3. Hybrid self-hosted control plane
+
+Use when you want:
+
+- `Postgres` for the broadest transactional control-plane coverage
+- `Snowflake` for governance, warehouse joins, and selected mirrored or
+  warehouse-native paths
+- optional `ClickHouse` only if event analytics scale justifies it
+
+This is often the cleanest enterprise answer because it keeps the default
+control-plane semantics broad while still respecting warehouse-centric data
+governance.
 
 ## Auth — zero-credential model
 
@@ -158,3 +206,11 @@ applies here. Snowflake-specific signals worth alerting on:
   ([`src/agent_bom/cloud/snowflake.py`](https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/cloud/snowflake.py)).
 - Time Travel + Fail-safe provide durability, but configure a retention
   window that matches your compliance retention policy.
+
+## Honest operator summary
+
+`Snowflake` is already a valid warehouse-native backend mode for governance,
+scan inventory, fleet state, and gateway policy paths. `Postgres` remains the
+default full control-plane answer. Use Snowflake when that warehouse-native
+shape is the goal, not because the product is pretending all backend roles are
+already identical.

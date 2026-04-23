@@ -38,6 +38,17 @@ Gateway service account name.
 {{- end }}
 
 {{/*
+Monitor service account name.
+*/}}
+{{- define "agent-bom.monitorServiceAccountName" -}}
+{{- if .Values.monitor.serviceAccount.create }}
+{{- default (printf "%s-monitor" (include "agent-bom.name" .)) .Values.monitor.serviceAccount.name }}
+{{- else }}
+{{- default (include "agent-bom.serviceAccountName" .) .Values.monitor.serviceAccount.name }}
+{{- end }}
+{{- end }}
+
+{{/*
 Sidecar injector full name.
 */}}
 {{- define "agent-bom.sidecarInjectorName" -}}

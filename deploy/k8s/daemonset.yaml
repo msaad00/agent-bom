@@ -17,10 +17,11 @@ spec:
         app.kubernetes.io/name: agent-bom
         app.kubernetes.io/component: monitor
     spec:
+      automountServiceAccountToken: false
       serviceAccountName: agent-bom
       containers:
         - name: monitor
-          image: agentbom/agent-bom:0.81.0
+          image: agentbom/agent-bom:0.81.1
           command: ["agent-bom"]
           args:
             - "protect"

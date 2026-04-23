@@ -64,7 +64,7 @@ from typing import Annotated, Any, Awaitable, Callable, Optional, TypeVar
 
 from mcp.server.lowlevel.server import request_ctx as _mcp_request_ctx
 from mcp.types import ToolAnnotations
-from pydantic import AnyHttpUrl, Field, TypeAdapter
+from pydantic import Field
 
 from agent_bom import mcp_server_runtime as _mcp_runtime
 from agent_bom import mcp_server_scan as _mcp_scan
@@ -79,6 +79,9 @@ from agent_bom.config import MCP_MAX_TOOL_METRICS as _MCP_MAX_TOOL_METRICS
 from agent_bom.config import MCP_TOOL_TIMEOUT_SECONDS as _MCP_TOOL_TIMEOUT_SECONDS
 from agent_bom.ecosystems import SUPPORTED_PACKAGE_ECOSYSTEM_SET
 from agent_bom.mcp_server_entrypoint import create_smithery_server as _create_smithery_server
+from agent_bom.mcp_server_factory import (
+    create_fastmcp_server as _create_fastmcp_server,
+)
 from agent_bom.mcp_server_metadata import (
     _SERVER_CARD_PROMPTS as _METADATA_SERVER_CARD_PROMPTS,
 )
@@ -95,7 +98,6 @@ from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
 _ToolReturn = TypeVar("_ToolReturn")
-_HTTP_URL_ADAPTER = TypeAdapter(AnyHttpUrl)
 
 # Backward-compatible exports for tests and downstream imports that still
 # read metadata directly from `agent_bom.mcp_server`.
@@ -345,39 +347,16 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
 
     setup_logging(level="INFO")
     _check_mcp_sdk()
-    from mcp.server.auth.settings import AuthSettings
-    from mcp.server.fastmcp import FastMCP
 
     from agent_bom import __version__
 
-    auth_settings = None
-    token_verifier = None
-    if bearer_token:
-        resource_url: AnyHttpUrl = _HTTP_URL_ADAPTER.validate_python(f"http://{host}:{port}")
-        auth_settings = AuthSettings(
-            issuer_url=resource_url,
-            resource_server_url=resource_url,
-            required_scopes=[],
-        )
-        token_verifier = _StaticBearerTokenVerifier(bearer_token)
-
-    mcp = FastMCP(
-        name="agent-bom",
+    mcp = _create_fastmcp_server(
         host=host,
         port=port,
-        auth=auth_settings,
-        token_verifier=token_verifier,
-        instructions=(
-            f"agent-bom v{__version__} — AI infrastructure security scanner with MCP security tools. "
-            "Scans packages and images for CVEs (OSV, NVD, EPSS, CISA KEV), maps blast radius "
-            "from vulnerabilities to credentials and tools, generates SBOMs (CycloneDX, SPDX), "
-            "enforces security policies, and maps to 14 compliance frameworks"
-            "(OWASP LLM/MCP/Agentic, MITRE ATLAS, NIST AI RMF/CSF/800-53, FedRAMP, EU AI Act, ISO 27001, SOC 2). "
-            "Discovers 30 MCP clients. Read-only, agentless, no credentials required."
-        ),
+        bearer_token=bearer_token,
+        version=__version__,
+        token_verifier_factory=_StaticBearerTokenVerifier,
     )
-    # Set the actual agent-bom version (FastMCP defaults to SDK version)
-    mcp._mcp_server.version = __version__
 
     # Import tool implementations
     from agent_bom.mcp_server_specialized import register_specialized_ai_tools

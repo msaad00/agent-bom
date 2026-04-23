@@ -208,7 +208,10 @@ def verify_hmac_entries(log: AuditLog, sign_key: str) -> tuple[int, int]:
             hashlib.sha256,
         ).hexdigest()
         # Compare constant-time
-        if hmac.compare_digest(expected, hmac_entry.hmac_sha256[:64]):
+        if len(hmac_entry.hmac_sha256) != 64:
+            failed += 1
+            continue
+        if hmac.compare_digest(expected, hmac_entry.hmac_sha256):
             verified += 1
         else:
             failed += 1

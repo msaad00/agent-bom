@@ -10,7 +10,7 @@ from fastapi import HTTPException
 
 from agent_bom.api.audit_log import AuditEntry, InMemoryAuditLog, get_audit_log, set_audit_log
 from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
-from agent_bom.api.exception_store import InMemoryExceptionStore, VulnException
+from agent_bom.api.exception_store import ExceptionStatus, InMemoryExceptionStore, VulnException
 from agent_bom.api.models import CreateKeyRequest, JobStatus, RotateKeyRequest, ScanJob, ScanRequest
 from agent_bom.api.routes import enterprise
 from agent_bom.api.store import InMemoryJobStore
@@ -166,6 +166,17 @@ async def test_approve_exception_uses_request_actor_and_tenant(isolated_exceptio
 
     assert approved["approved_by"] == "alice-admin"
     assert approved["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_revoke_exception_uses_authenticated_actor(isolated_exception_store):
+    exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha")
+    exc.status = ExceptionStatus.ACTIVE
+    isolated_exception_store.put(exc)
+
+    revoked = await enterprise.revoke_exception(_request("tenant-alpha", "alice-admin"), exc.exception_id)
+
+    assert revoked["status"] == "revoked"
 
 
 @pytest.mark.asyncio

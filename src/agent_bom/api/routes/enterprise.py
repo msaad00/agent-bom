@@ -561,13 +561,13 @@ async def get_exception(request: Request, exception_id: str) -> dict:
 
 
 @router.put("/v1/exceptions/{exception_id}/approve", tags=["enterprise"])
-async def approve_exception(request: Request, exception_id: str, approved_by: str = "") -> dict:
+async def approve_exception(request: Request, exception_id: str) -> dict:
     """Approve a pending exception (admin only)."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.exception_store import ExceptionStatus
 
     tenant_id = getattr(request.state, "tenant_id", "default")
-    actor = approved_by or getattr(request.state, "api_key_name", "")
+    actor = getattr(request.state, "api_key_name", "") or "system"
     store = _get_exception_store()
     exc = store.get(exception_id)
     if exc is None or exc.tenant_id != tenant_id:
@@ -583,13 +583,13 @@ async def approve_exception(request: Request, exception_id: str, approved_by: st
 
 
 @router.put("/v1/exceptions/{exception_id}/revoke", tags=["enterprise"])
-async def revoke_exception(request: Request, exception_id: str, revoked_by: str = "") -> dict:
+async def revoke_exception(request: Request, exception_id: str) -> dict:
     """Revoke an active exception."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.exception_store import ExceptionStatus
 
     tenant_id = getattr(request.state, "tenant_id", "default")
-    actor = revoked_by or getattr(request.state, "api_key_name", "")
+    actor = getattr(request.state, "api_key_name", "") or "system"
     store = _get_exception_store()
     exc = store.get(exception_id)
     if exc is None or exc.tenant_id != tenant_id:

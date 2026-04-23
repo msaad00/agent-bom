@@ -419,6 +419,16 @@ def test_verify_hmac_mismatch():
     assert failed == 1
 
 
+def test_verify_hmac_rejects_short_hmac():
+    log = AuditLog(
+        tool_calls=[ToolCallEntry(ts="", tool="t", policy="allowed", reason="", agent_id="", args={}, payload_sha256="abc", message_id=1)],
+        hmac_entries=[ResponseHMACEntry(ts="", message_id=1, hmac_sha256="deadbeef")],
+    )
+    verified, failed = verify_hmac_entries(log, "secret")
+    assert verified == 0
+    assert failed == 1
+
+
 def test_verify_hash_chain_passes_for_valid_records():
     p = _write_log(_chained([TOOL_CALL, BLOCKED_CALL]))
     verified, tampered = verify_hash_chain(p)

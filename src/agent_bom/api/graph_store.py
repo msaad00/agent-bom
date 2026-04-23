@@ -545,6 +545,7 @@ class SQLiteGraphStore:
         if conn is None:
             return [], 0
         try:
+            conn_ro: sqlite3.Connection = conn
             effective_scan_id = scan_id or sqlite_graph_store.latest_snapshot_id(conn, tenant_id=tenant_id)
             if not effective_scan_id:
                 return [], 0
@@ -554,33 +555,63 @@ class SQLiteGraphStore:
                 "gns.scan_id = ?",
             ]
             params: list[Any] = [tenant_id, effective_scan_id]
-            if fts_query and self._should_use_fts(query):
-                search_where.append("gns.graph_node_search MATCH ?")
-                params.append(fts_query)
-            else:
-                search_where.append("gns.search_text LIKE ? ESCAPE '\\'")
-                params.append(f"%{_escape_like_query(query.lower())}%")
-            if entity_types:
-                placeholders = ",".join("?" for _ in entity_types)
-                search_where.append(f"gn.entity_type IN ({placeholders})")
-                params.extend(sorted(entity_types))
-            if min_severity_rank:
-                search_where.append("gn.severity_id >= ?")
-                params.append(min_severity_rank)
-            if compliance_prefixes:
-                prefix_filters = []
-                for prefix in sorted(compliance_prefixes):
-                    clause, clause_params = self._compliance_prefix_filter("gns.compliance_tags", prefix)
-                    prefix_filters.append(clause)
-                    params.extend(clause_params)
-                search_where.append("(" + " OR ".join(prefix_filters) + ")")
-            if data_sources:
-                source_filters = []
-                for source in sorted(data_sources):
-                    clause, clause_params = self._space_token_filter("gns.data_sources", source)
-                    source_filters.append(clause)
-                    params.extend(clause_params)
-                search_where.append("(" + " OR ".join(source_filters) + ")")
+            like_query = f"%{_escape_like_query(query.lower())}%"
+
+            def _run_search(*, use_fts: bool) -> tuple[list[UnifiedNode], int]:
+                local_where = list(search_where)
+                local_params = list(params)
+                if use_fts:
+                    local_where.append("gns.graph_node_search MATCH ?")
+                    local_params.append(fts_query)
+                else:
+                    local_where.append("gns.search_text LIKE ? ESCAPE '\\'")
+                    local_params.append(like_query)
+                if entity_types:
+                    placeholders = ",".join("?" for _ in entity_types)
+                    local_where.append(f"gn.entity_type IN ({placeholders})")
+                    local_params.extend(sorted(entity_types))
+                if min_severity_rank:
+                    local_where.append("gn.severity_id >= ?")
+                    local_params.append(min_severity_rank)
+                if compliance_prefixes:
+                    prefix_filters = []
+                    for prefix in sorted(compliance_prefixes):
+                        clause, clause_params = self._compliance_prefix_filter("gns.compliance_tags", prefix)
+                        prefix_filters.append(clause)
+                        local_params.extend(clause_params)
+                    local_where.append("(" + " OR ".join(prefix_filters) + ")")
+                if data_sources:
+                    source_filters = []
+                    for source in sorted(data_sources):
+                        clause, clause_params = self._space_token_filter("gns.data_sources", source)
+                        source_filters.append(clause)
+                        local_params.extend(clause_params)
+                    local_where.append("(" + " OR ".join(source_filters) + ")")
+
+                where_sql = " AND ".join(local_where)
+                total = int(
+                    conn_ro.execute(
+                        "SELECT COUNT(*) " + from_clause + " WHERE " + where_sql,
+                        local_params,
+                    ).fetchone()[0]
+                    or 0
+                )
+                if total == 0:
+                    return [], 0
+                rows = conn_ro.execute(
+                    """
+                    SELECT
+                        gn.id, gn.entity_type, gn.label, gn.category_uid, gn.class_uid, gn.type_uid,
+                        gn.status, gn.risk_score, gn.severity, gn.severity_id, gn.first_seen, gn.last_seen,
+                        gn.attributes, gn.compliance_tags, gn.data_sources, gn.dimensions
+                    """
+                    + from_clause
+                    + " WHERE "
+                    + where_sql
+                    + " ORDER BY gn.severity_id DESC, gn.risk_score DESC, gn.label ASC, gn.id ASC LIMIT ? OFFSET ?",
+                    [*local_params, limit, offset],
+                ).fetchall()
+                return [self._node_from_row(row) for row in rows], total
 
             from_clause = """
                 FROM graph_node_search gns
@@ -589,30 +620,13 @@ class SQLiteGraphStore:
                  AND gn.scan_id = gns.scan_id
                  AND gn.tenant_id = gns.tenant_id
             """
-            where_sql = " AND ".join(search_where)
-            total = int(
-                conn.execute(
-                    "SELECT COUNT(*) " + from_clause + " WHERE " + where_sql,
-                    params,
-                ).fetchone()[0]
-                or 0
-            )
-            if total == 0:
-                return [], 0
-            rows = conn.execute(
-                """
-                SELECT
-                    gn.id, gn.entity_type, gn.label, gn.category_uid, gn.class_uid, gn.type_uid,
-                    gn.status, gn.risk_score, gn.severity, gn.severity_id, gn.first_seen, gn.last_seen,
-                    gn.attributes, gn.compliance_tags, gn.data_sources, gn.dimensions
-                """
-                + from_clause
-                + " WHERE "
-                + where_sql
-                + " ORDER BY gn.severity_id DESC, gn.risk_score DESC, gn.label ASC, gn.id ASC LIMIT ? OFFSET ?",
-                [*params, limit, offset],
-            ).fetchall()
-            return [self._node_from_row(row) for row in rows], total
+            use_fts = bool(fts_query and self._should_use_fts(query))
+            try:
+                return _run_search(use_fts=use_fts)
+            except sqlite3.OperationalError:
+                if not use_fts:
+                    raise
+                return _run_search(use_fts=False)
         finally:
             conn.close()
 

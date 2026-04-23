@@ -318,6 +318,55 @@ def test_api_key_middleware_graph_preset_mutation_requires_analyst_role():
         set_key_store(original_store)
 
 
+def test_api_key_middleware_enforces_scopes_when_present():
+    """Scoped keys should be denied when the route needs a missing scope."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    original_store = get_key_store()
+    store = KeyStore()
+    raw_key, analyst = create_api_key("analyst", Role.ANALYST, tenant_id="tenant-alpha", scopes=["graph.preset:write"])
+    store.add(analyst)
+    set_key_store(store)
+    try:
+        test_app = Starlette(routes=[Route("/v1/scan", dummy, methods=["POST"])])
+        test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
+        client = TestClient(test_app)
+        resp = client.post("/v1/scan", headers={"Authorization": f"Bearer {raw_key}"})
+        assert resp.status_code == 403
+        assert "requires scope scan:write" in resp.json()["detail"]
+    finally:
+        set_key_store(original_store)
+
+
+def test_api_key_middleware_empty_scopes_keep_legacy_access():
+    """Keys without scopes should preserve the legacy unrestricted behavior."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    original_store = get_key_store()
+    store = KeyStore()
+    raw_key, analyst = create_api_key("analyst", Role.ANALYST, tenant_id="tenant-alpha")
+    store.add(analyst)
+    set_key_store(store)
+    try:
+        test_app = Starlette(routes=[Route("/v1/scan", dummy, methods=["POST"])])
+        test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
+        client = TestClient(test_app)
+        resp = client.post("/v1/scan", headers={"Authorization": f"Bearer {raw_key}"})
+        assert resp.status_code == 200
+    finally:
+        set_key_store(original_store)
+
+
 def test_api_key_middleware_oidc_sets_tenant_from_custom_claim():
     """OIDC tenant scoping should honor AGENT_BOM_OIDC_TENANT_CLAIM semantics."""
     from starlette.applications import Starlette

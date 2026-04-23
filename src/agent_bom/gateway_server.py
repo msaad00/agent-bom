@@ -393,13 +393,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
 
         upstream = settings.registry.get(server_name, tenant_id=tenant_id)
         if upstream is None:
-            raise HTTPException(
-                status_code=404,
-                detail=(
-                    f"unknown upstream {server_name!r} for tenant {tenant_id!r}; known: "
-                    f"{', '.join(settings.registry.names(tenant_id=tenant_id)) or '(none)'}"
-                ),
-            )
+            raise HTTPException(status_code=404, detail=f"unknown upstream {server_name!r}")
 
         try:
             body = await request.json()

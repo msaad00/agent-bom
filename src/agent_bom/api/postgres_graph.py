@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from agent_bom.api.graph_store import _escape_like_query
+from agent_bom.api.graph_store import _escape_like_query, _node_search_text
 
 from .postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
 
@@ -139,12 +139,51 @@ class PostgresGraphStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS graph_node_search (
+                    node_id TEXT NOT NULL,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    scan_id TEXT NOT NULL,
+                    entity_type TEXT NOT NULL,
+                    severity TEXT DEFAULT '',
+                    compliance_tags TEXT DEFAULT '',
+                    data_sources TEXT DEFAULT '',
+                    search_text TEXT NOT NULL,
+                    PRIMARY KEY (node_id, scan_id, tenant_id)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_pg_graph_node_search_scope
+                ON graph_node_search(tenant_id, scan_id, entity_type)
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_pg_graph_node_search_severity
+                ON graph_node_search(tenant_id, scan_id, severity)
+                """
+            )
+            try:
+                conn.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
+                conn.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_pg_graph_node_search_trgm
+                    ON graph_node_search USING gin (search_text gin_trgm_ops)
+                    """
+                )
+            except Exception:
+                # Some managed Postgres environments restrict extension installs.
+                conn.rollback()
             _ensure_tenant_rls(conn, "graph_nodes", "tenant_id")
             _ensure_tenant_rls(conn, "graph_edges", "tenant_id")
             _ensure_tenant_rls(conn, "graph_snapshots", "tenant_id")
             _ensure_tenant_rls(conn, "attack_paths", "tenant_id")
             _ensure_tenant_rls(conn, "interaction_risks", "tenant_id")
             _ensure_tenant_rls(conn, "graph_filter_presets", "tenant_id")
+            _ensure_tenant_rls(conn, "graph_node_search", "tenant_id")
             conn.commit()
 
     def latest_snapshot_id(self, *, tenant_id: str = "") -> str:
@@ -259,6 +298,29 @@ class PostgresGraphStore:
                         json.dumps(node.dimensions.to_dict()),
                         scan,
                         tenant,
+                    ),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO graph_node_search (
+                        node_id, tenant_id, scan_id, entity_type, severity, compliance_tags, data_sources, search_text
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (node_id, scan_id, tenant_id) DO UPDATE SET
+                        entity_type = EXCLUDED.entity_type,
+                        severity = EXCLUDED.severity,
+                        compliance_tags = EXCLUDED.compliance_tags,
+                        data_sources = EXCLUDED.data_sources,
+                        search_text = EXCLUDED.search_text
+                    """,
+                    (
+                        node.id,
+                        tenant,
+                        scan,
+                        node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type),
+                        (node.severity or "").lower(),
+                        " ".join(node.compliance_tags).lower(),
+                        " ".join(node.data_sources).lower(),
+                        _node_search_text(node),
                     ),
                 )
 
@@ -554,6 +616,10 @@ class PostgresGraphStore:
         tenant_id: str = "",
         scan_id: str = "",
         query: str,
+        entity_types: set[str] | None = None,
+        min_severity_rank: int = 0,
+        compliance_prefixes: set[str] | None = None,
+        data_sources: set[str] | None = None,
         offset: int = 0,
         limit: int = 50,
     ):
@@ -563,37 +629,61 @@ class PostgresGraphStore:
 
         like = f"%{_escape_like_query(query.lower())}%"
         with _tenant_connection(self._pool) as conn:
-            where = """
-                FROM graph_nodes
-                WHERE tenant_id = %s AND scan_id = %s
-                  AND (
-                    LOWER(id) LIKE %s ESCAPE '\\' OR
-                    LOWER(label) LIKE %s ESCAPE '\\' OR
-                    LOWER(entity_type) LIKE %s ESCAPE '\\' OR
-                    LOWER(severity) LIKE %s ESCAPE '\\' OR
-                    LOWER(compliance_tags) LIKE %s ESCAPE '\\' OR
-                    LOWER(data_sources) LIKE %s ESCAPE '\\' OR
-                    LOWER(attributes) LIKE %s ESCAPE '\\' OR
-                    LOWER(dimensions) LIKE %s ESCAPE '\\'
-                  )
-            """
-            params: list[Any] = [tenant_id, effective_scan_id, like, like, like, like, like, like, like, like]
-            total_row = conn.execute("SELECT COUNT(*) " + where, params).fetchone()
-            rows = conn.execute(
-                """
+            where = [
+                "tenant_id = %s",
+                "scan_id = %s",
+                "LOWER(search_text) LIKE %s ESCAPE '\\'",
+            ]
+            params: list[Any] = [tenant_id, effective_scan_id, like]
+            if entity_types:
+                placeholders = ",".join(["%s"] * len(entity_types))
+                where.append(f"entity_type IN ({placeholders})")
+                params.extend(sorted(entity_types))
+            if data_sources:
+                source_filters = []
+                for source in sorted(data_sources):
+                    source_filters.append("data_sources LIKE %s ESCAPE '\\'")
+                    params.append(f"%{_escape_like_query(source.lower())}%")
+                where.append("(" + " OR ".join(source_filters) + ")")
+            matching_ids = [
+                row[0]
+                for row in conn.execute(
+                    "SELECT node_id FROM graph_node_search WHERE " + " AND ".join(where),  # nosec B608 - clauses are static, values stay parameterized
+                    params,
+                ).fetchall()
+            ]
+            if not matching_ids:
+                return [], 0
+            placeholders = ",".join(["%s"] * len(matching_ids))
+            rows_query = f"""
                 SELECT
                     id, entity_type, label, category_uid, class_uid, type_uid,
                     status, risk_score, severity, severity_id, first_seen, last_seen,
                     attributes, compliance_tags, data_sources, dimensions
-                """
-                + where
-                + """
+                FROM graph_nodes
+                WHERE tenant_id = %s AND scan_id = %s AND id IN ({placeholders})
                 ORDER BY severity_id DESC, risk_score DESC, label ASC
-                LIMIT %s OFFSET %s
-                """,
-                [*params, limit, offset],
+                """  # nosec B608 - placeholders are generated solely from "%s" markers
+            rows = conn.execute(
+                rows_query,
+                [tenant_id, effective_scan_id, *matching_ids],
             ).fetchall()
-            return [self._node_from_row(row) for row in rows], int(total_row[0] if total_row else 0)
+            prefix_filters = compliance_prefixes or set()
+            source_filters_set = data_sources or set()
+            filtered = []
+            for row in rows:
+                node = self._node_from_row(row)
+                if min_severity_rank and (row[9] or 0) < min_severity_rank:
+                    continue
+                if prefix_filters:
+                    prefixes = {tag.split("-")[0].upper() if "-" in tag else tag.upper() for tag in node.compliance_tags}
+                    if not prefixes.intersection(prefix_filters):
+                        continue
+                if source_filters_set and not set(node.data_sources).intersection(source_filters_set):
+                    continue
+                filtered.append(node)
+            total = len(filtered)
+            return filtered[offset : offset + limit], total
 
     def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict[str, Any], created_at: str) -> None:
         with _tenant_connection(self._pool) as conn:

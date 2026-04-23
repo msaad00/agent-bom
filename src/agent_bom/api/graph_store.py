@@ -9,6 +9,7 @@ provide the same contract for multi-tenant API deployments.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from pathlib import Path
 from typing import Any, Protocol
@@ -27,10 +28,38 @@ CREATE TABLE IF NOT EXISTS graph_filter_presets (
 )
 """
 
+_CREATE_SEARCH_TABLE_SQLITE = """\
+CREATE VIRTUAL TABLE IF NOT EXISTS graph_node_search
+USING fts5(
+    tenant_id UNINDEXED,
+    scan_id UNINDEXED,
+    node_id UNINDEXED,
+    entity_type,
+    severity,
+    compliance_tags,
+    data_sources,
+    search_text
+)
+"""
+
 
 def _escape_like_query(query: str) -> str:
     """Escape SQL LIKE wildcards so search terms are treated literally."""
     return query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _node_search_text(node: UnifiedNode) -> str:
+    parts: list[str] = [
+        node.id,
+        node.label,
+        node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type),
+        node.severity or "",
+        " ".join(node.compliance_tags),
+        " ".join(node.data_sources),
+        json.dumps(node.attributes, default=str, sort_keys=True),
+        json.dumps(node.dimensions.to_dict(), sort_keys=True),
+    ]
+    return " ".join(part for part in parts if part).lower()
 
 
 class GraphStoreProtocol(Protocol):
@@ -61,6 +90,10 @@ class GraphStoreProtocol(Protocol):
         tenant_id: str = "",
         scan_id: str = "",
         query: str,
+        entity_types: set[str] | None = None,
+        min_severity_rank: int = 0,
+        compliance_prefixes: set[str] | None = None,
+        data_sources: set[str] | None = None,
         offset: int = 0,
         limit: int = 50,
     ) -> tuple[list[UnifiedNode], int]: ...
@@ -90,6 +123,7 @@ class SQLiteGraphStore:
         conn.row_factory = sqlite3.Row
         sqlite_graph_store._init_db(conn)
         conn.execute(_CREATE_PRESET_TABLE_SQLITE)
+        conn.execute(_CREATE_SEARCH_TABLE_SQLITE)
         conn.commit()
         return conn
 
@@ -100,8 +134,61 @@ class SQLiteGraphStore:
         conn.row_factory = sqlite3.Row
         sqlite_graph_store._init_db(conn)
         conn.execute(_CREATE_PRESET_TABLE_SQLITE)
+        conn.execute(_CREATE_SEARCH_TABLE_SQLITE)
         conn.commit()
         return conn
+
+    @staticmethod
+    def _search_query_expression(query: str) -> str:
+        tokens = [token.strip() for token in re.findall(r"[A-Za-z0-9_.:-]+", query) if token.strip()]
+        if not tokens:
+            return ""
+        escaped = [token.replace('"', '""') for token in tokens]
+        return " AND ".join(f'"{token}"*' for token in escaped)
+
+    @staticmethod
+    def _should_use_fts(query: str) -> bool:
+        return any(char.isalnum() for char in query)
+
+    @staticmethod
+    def _matches_compliance_prefixes(node: UnifiedNode, prefixes: set[str]) -> bool:
+        if not prefixes:
+            return True
+        node_prefixes = {tag.split("-")[0].upper() if "-" in tag else tag.upper() for tag in node.compliance_tags}
+        return bool(node_prefixes.intersection(prefixes))
+
+    def _refresh_snapshot_search_index(self, conn: sqlite3.Connection, *, tenant_id: str, scan_id: str) -> None:
+        conn.execute("DELETE FROM graph_node_search WHERE tenant_id = ? AND scan_id = ?", (tenant_id, scan_id))
+        rows = conn.execute(
+            """
+            SELECT
+                id, entity_type, label, category_uid, class_uid, type_uid,
+                status, risk_score, severity, severity_id, first_seen, last_seen,
+                attributes, compliance_tags, data_sources, dimensions
+            FROM graph_nodes
+            WHERE tenant_id = ? AND scan_id = ?
+            """,
+            (tenant_id, scan_id),
+        ).fetchall()
+        for row in rows:
+            node = self._node_from_row(row)
+            conn.execute(
+                """
+                INSERT INTO graph_node_search (
+                    tenant_id, scan_id, node_id, entity_type, severity, compliance_tags, data_sources, search_text
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    tenant_id,
+                    scan_id,
+                    node.id,
+                    node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type),
+                    node.severity.lower(),
+                    " ".join(node.compliance_tags).lower(),
+                    " ".join(node.data_sources).lower(),
+                    _node_search_text(node),
+                ),
+            )
 
     @staticmethod
     def _node_from_row(row: sqlite3.Row) -> UnifiedNode:
@@ -145,7 +232,10 @@ class SQLiteGraphStore:
     def save_graph(self, graph: UnifiedGraph) -> None:
         with sqlite_graph_store.open_graph_db(self._db_path) as conn:
             conn.execute(_CREATE_PRESET_TABLE_SQLITE)
+            conn.execute(_CREATE_SEARCH_TABLE_SQLITE)
             sqlite_graph_store.save_graph(conn, graph)
+            self._refresh_snapshot_search_index(conn, tenant_id=graph.tenant_id, scan_id=graph.scan_id)
+            conn.commit()
 
     def load_graph(
         self,
@@ -199,6 +289,10 @@ class SQLiteGraphStore:
         tenant_id: str = "",
         scan_id: str = "",
         query: str,
+        entity_types: set[str] | None = None,
+        min_severity_rank: int = 0,
+        compliance_prefixes: set[str] | None = None,
+        data_sources: set[str] | None = None,
         offset: int = 0,
         limit: int = 50,
     ) -> tuple[list[UnifiedNode], int]:
@@ -209,39 +303,67 @@ class SQLiteGraphStore:
             effective_scan_id = scan_id or sqlite_graph_store.latest_snapshot_id(conn, tenant_id=tenant_id)
             if not effective_scan_id:
                 return [], 0
+            fts_query = self._search_query_expression(query)
+            where = [
+                "tenant_id = ?",
+                "scan_id = ?",
+            ]
+            params: list[Any] = [tenant_id, effective_scan_id]
+            if fts_query and self._should_use_fts(query):
+                where.append("graph_node_search MATCH ?")
+                params.append(fts_query)
+            else:
+                where.append("search_text LIKE ? ESCAPE '\\'")
+                params.append(f"%{_escape_like_query(query.lower())}%")
+            if entity_types:
+                placeholders = ",".join("?" for _ in entity_types)
+                where.append(f"entity_type IN ({placeholders})")
+                params.extend(sorted(entity_types))
+            if data_sources:
+                source_filters = []
+                for source in sorted(data_sources):
+                    source_filters.append("data_sources LIKE ? ESCAPE '\\'")
+                    params.append(f"%{_escape_like_query(source.lower())}%")
+                where.append("(" + " OR ".join(source_filters) + ")")
 
-            like = f"%{_escape_like_query(query.lower())}%"
-            where = """
-                FROM graph_nodes
-                WHERE tenant_id = ? AND scan_id = ?
-                  AND (
-                    lower(id) LIKE ? ESCAPE '\\' OR
-                    lower(label) LIKE ? ESCAPE '\\' OR
-                    lower(entity_type) LIKE ? ESCAPE '\\' OR
-                    lower(severity) LIKE ? ESCAPE '\\' OR
-                    lower(compliance_tags) LIKE ? ESCAPE '\\' OR
-                    lower(data_sources) LIKE ? ESCAPE '\\' OR
-                    lower(attributes) LIKE ? ESCAPE '\\' OR
-                    lower(dimensions) LIKE ? ESCAPE '\\'
-                  )
-            """
-            params: list[Any] = [tenant_id, effective_scan_id, like, like, like, like, like, like, like, like]
-            total_row = conn.execute("SELECT COUNT(*) " + where, params).fetchone()
-            rows = conn.execute(
-                """
+            matching_ids = [
+                row["node_id"]
+                for row in conn.execute(
+                    "SELECT node_id FROM graph_node_search WHERE " + " AND ".join(where),  # nosec B608 - clauses are static, values stay parameterized
+                    params,
+                ).fetchall()
+            ]
+            if not matching_ids:
+                return [], 0
+
+            placeholders = ",".join("?" for _ in matching_ids)
+            rows_query = f"""
                 SELECT
                     id, entity_type, label, category_uid, class_uid, type_uid,
                     status, risk_score, severity, severity_id, first_seen, last_seen,
                     attributes, compliance_tags, data_sources, dimensions
-                """
-                + where
-                + """
+                FROM graph_nodes
+                WHERE tenant_id = ? AND scan_id = ? AND id IN ({placeholders})
                 ORDER BY severity_id DESC, risk_score DESC, label ASC
-                LIMIT ? OFFSET ?
-                """,
-                [*params, limit, offset],
+                """  # nosec B608 - placeholders are generated solely from "?" markers
+            rows = conn.execute(
+                rows_query,
+                [tenant_id, effective_scan_id, *matching_ids],
             ).fetchall()
-            return [self._node_from_row(row) for row in rows], int(total_row[0] if total_row else 0)
+            filtered = []
+            prefix_filters = compliance_prefixes or set()
+            source_filters_set = data_sources or set()
+            for row in rows:
+                node = self._node_from_row(row)
+                if min_severity_rank and (row["severity_id"] or 0) < min_severity_rank:
+                    continue
+                if not self._matches_compliance_prefixes(node, prefix_filters):
+                    continue
+                if source_filters_set and not set(node.data_sources).intersection(source_filters_set):
+                    continue
+                filtered.append(node)
+            total = len(filtered)
+            return filtered[offset : offset + limit], total
         finally:
             conn.close()
 

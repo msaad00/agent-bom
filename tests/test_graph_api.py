@@ -245,6 +245,45 @@ class TestGraphEndpointLogic:
         assert total == 1
         assert [node.id for node in results] == ["server:acme:vector"]
 
+    def test_sqlite_graph_store_search_applies_slice_filters(self, tmp_path):
+        store = SQLiteGraphStore(tmp_path / "graph.db")
+        graph = UnifiedGraph(scan_id="search-scan", tenant_id="default")
+        graph.add_node(
+            UnifiedNode(
+                id="server:prod:vector",
+                entity_type=EntityType.SERVER,
+                label="Prod Vector Server",
+                severity="high",
+                compliance_tags=["CIS-5.4.1"],
+                data_sources=["runtime-proxy"],
+            )
+        )
+        graph.add_node(
+            UnifiedNode(
+                id="server:dev:vector",
+                entity_type=EntityType.SERVER,
+                label="Dev Vector Server",
+                severity="low",
+                compliance_tags=["SOC2-CC6"],
+                data_sources=["fleet-sync"],
+            )
+        )
+        store.save_graph(graph)
+
+        results, total = store.search_nodes(
+            tenant_id="default",
+            query="vector",
+            entity_types={"server"},
+            min_severity_rank=4,
+            compliance_prefixes={"CIS"},
+            data_sources={"runtime-proxy"},
+            offset=0,
+            limit=10,
+        )
+
+        assert total == 1
+        assert [node.id for node in results] == ["server:prod:vector"]
+
     def test_sqlite_graph_store_search_escapes_like_wildcards(self, tmp_path):
         store = SQLiteGraphStore(tmp_path / "graph.db")
         graph = UnifiedGraph(scan_id="search-scan", tenant_id="default")
@@ -330,9 +369,48 @@ class _RecordingGraphStore:
         self.calls.append(("list_snapshots", tenant_id, limit))
         return [{"scan_id": self.graph.scan_id, "created_at": self.graph.created_at, "node_count": 1, "edge_count": 0, "risk_summary": {}}]
 
-    def search_nodes(self, *, tenant_id: str = "", scan_id: str = "", query: str, offset: int = 0, limit: int = 50):
-        self.calls.append(("search_nodes", tenant_id, scan_id, query, offset, limit))
+    def search_nodes(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        query: str,
+        entity_types=None,
+        min_severity_rank: int = 0,
+        compliance_prefixes=None,
+        data_sources=None,
+        offset: int = 0,
+        limit: int = 50,
+    ):
+        self.calls.append(
+            (
+                "search_nodes",
+                tenant_id,
+                scan_id,
+                query,
+                entity_types,
+                min_severity_rank,
+                compliance_prefixes,
+                data_sources,
+                offset,
+                limit,
+            )
+        )
         matches = [node for node in self.graph.nodes.values() if query.lower() in node.label.lower()]
+        if entity_types:
+            matches = [node for node in matches if node.entity_type.value in entity_types]
+        if min_severity_rank:
+            matches = [node for node in matches if node.severity_id >= min_severity_rank]
+        if compliance_prefixes:
+            matches = [
+                node
+                for node in matches
+                if {tag.split("-")[0].upper() if "-" in tag else tag.upper() for tag in node.compliance_tags}.intersection(
+                    compliance_prefixes
+                )
+            ]
+        if data_sources:
+            matches = [node for node in matches if set(node.data_sources).intersection(data_sources)]
         return matches[offset : offset + limit], len(matches)
 
     def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict, created_at: str) -> None:
@@ -412,6 +490,47 @@ class TestGraphStoreBackendSelection:
         assert response.json()["results"][0]["id"] == "server:a"
         assert any(call[0] == "search_nodes" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
+
+    def test_graph_search_forwards_slice_filters(self, recording_graph_store):
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="server:prod",
+                entity_type=EntityType.SERVER,
+                label="prod server",
+                severity="high",
+                severity_id=4,
+                compliance_tags=["CIS-5.4.1"],
+                data_sources=["runtime-proxy"],
+            )
+        )
+        client = TestClient(app)
+
+        response = client.get(
+            "/v1/graph/search",
+            params={
+                "q": "server",
+                "entity_types": "server",
+                "min_severity": "high",
+                "compliance_prefixes": "CIS",
+                "data_sources": "runtime-proxy",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["pagination"]["total"] == 1
+        assert response.json()["results"][0]["id"] == "server:prod"
+        assert (
+            "search_nodes",
+            "default",
+            "",
+            "server",
+            {"server"},
+            4,
+            {"CIS"},
+            {"runtime-proxy"},
+            0,
+            50,
+        ) in recording_graph_store.calls
 
     def test_graph_paths_reachable_nodes_follow_traversable_edges_only(self, recording_graph_store):
         recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")

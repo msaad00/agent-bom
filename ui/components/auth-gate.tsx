@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { KeyRound, Loader2, Lock, ShieldCheck } from "lucide-react";
 
-import { api, type AuthDebugResponse } from "@/lib/api";
+import { useAuthState } from "@/components/auth-provider";
 import { clearSessionApiKey, getSessionApiKey, setSessionApiKey } from "@/lib/auth";
 
 function isAuthFailure(message: string): boolean {
@@ -12,32 +12,14 @@ function isAuthFailure(message: string): boolean {
 }
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
-  const [status, setStatus] = useState<AuthDebugResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { session, loading, error, refresh } = useAuthState();
   const [apiKey, setApiKey] = useState("");
-
-  const refresh = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const next = await api.getAuthDebug();
-      setStatus(next);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to determine auth status";
-      setStatus(null);
-      setError(message);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   useEffect(() => {
     const stored = getSessionApiKey();
     if (stored) {
       setApiKey(stored);
     }
-    void refresh();
   }, []);
 
   if (loading) {
@@ -48,7 +30,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (status && (!status.auth_required || status.authenticated)) {
+  if (session && (!session.auth_required || session.authenticated)) {
     return <>{children}</>;
   }
 
@@ -116,10 +98,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={async () => {
                     clearSessionApiKey();
                     setApiKey("");
-                    setError(null);
+                    await refresh();
                   }}
                   className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 transition hover:bg-zinc-900"
                 >

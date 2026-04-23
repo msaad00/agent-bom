@@ -72,12 +72,14 @@ export function KeyLifecyclePanel({
   policy,
   keys,
   onRefresh,
+  roleLabel,
 }: {
   loading: boolean;
   error: string | null;
   policy: AuthPolicyResponse | null;
   keys: ApiKeyRecord[];
   onRefresh: () => Promise<void> | void;
+  roleLabel?: string | null;
 }) {
   const [busyKeyId, setBusyKeyId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<"create" | "rotate" | "revoke" | null>(null);
@@ -384,6 +386,11 @@ export function KeyLifecyclePanel({
             <div>
               <p className="text-sm font-semibold text-amber-200">Admin access is required for key lifecycle operations</p>
               <p className="mt-1 text-sm text-amber-100/80">{error}</p>
+              {roleLabel ? (
+                <p className="mt-2 text-xs text-amber-100/70">
+                  Current role: {roleLabel}. Contributors and viewers can review audit state, but only admins can manage service keys.
+                </p>
+              ) : null}
             </div>
           </div>
         </div>

@@ -22,6 +22,7 @@ import {
   CheckCircle2,
   Filter,
 } from "lucide-react";
+import { useAuthState } from "@/components/auth-provider";
 import { KeyLifecyclePanel } from "@/components/key-lifecycle-panel";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -42,6 +43,7 @@ const PAGE_SIZE = 50;
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function AuditLogPage() {
+  const { session, loading: authSessionLoading, hasCapability } = useAuthState();
   const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [integrity, setIntegrity] = useState<AuditIntegrityResponse | null>(null);
@@ -57,6 +59,8 @@ export default function AuditLogPage() {
   const [actionFilter, setActionFilter] = useState<string>("");
   const [resourceFilter, setResourceFilter] = useState<string>("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const roleLabel = session?.role_summary?.display_name ?? session?.role ?? "Unknown";
+  const canManageKeys = hasCapability("keys.manage");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -82,8 +86,18 @@ export default function AuditLogPage() {
   }, [actionFilter, resourceFilter, page]);
 
   const loadAdmin = useCallback(async () => {
+    if (authSessionLoading) {
+      return;
+    }
     setAdminLoading(true);
     setAdminError(null);
+    if (!canManageKeys) {
+      setAuthPolicy(null);
+      setKeys([]);
+      setAdminError(`${roleLabel} access can review audit state but cannot manage API keys or auth policy.`);
+      setAdminLoading(false);
+      return;
+    }
     try {
       const [policy, keyList] = await Promise.all([api.getAuthPolicy(), api.listKeys()]);
       setAuthPolicy(policy);
@@ -93,15 +107,17 @@ export default function AuditLogPage() {
     } finally {
       setAdminLoading(false);
     }
-  }, []);
+  }, [authSessionLoading, canManageKeys, roleLabel]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void load();
-      void loadAdmin();
+      if (!authSessionLoading) {
+        void loadAdmin();
+      }
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [load, loadAdmin]);
+  }, [authSessionLoading, load, loadAdmin]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -145,6 +161,7 @@ export default function AuditLogPage() {
         policy={authPolicy}
         keys={keys}
         onRefresh={loadAdmin}
+        roleLabel={roleLabel}
       />
 
       {/* Integrity banner + stats */}

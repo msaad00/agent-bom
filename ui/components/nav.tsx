@@ -30,6 +30,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useAuthState } from "@/components/auth-provider";
 import { BrandMark } from "@/components/brand-mark";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
@@ -142,6 +143,7 @@ export function Nav() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const { counts } = useDeploymentContext();
+  const { session, loading: authLoading } = useAuthState();
 
   // Close mobile on route change
   useEffect(() => {
@@ -441,6 +443,7 @@ export function Nav() {
       {/* Bottom section */}
       <div className={`border-t border-[color:var(--border-subtle)] ${collapsed ? "px-2 py-3" : "px-3 py-3"}`}>
         <div className="space-y-2">
+          <SessionStatus collapsed={collapsed} loading={authLoading} session={session} />
           <Link
             href={`/help?from=${encodeURIComponent(path ?? "/")}`}
             className={`flex items-center gap-2 rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[12px] text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)] ${collapsed ? "justify-center px-2" : ""}`}
@@ -508,6 +511,57 @@ export function Nav() {
         />
       )}
     </>
+  );
+}
+
+function SessionStatus({
+  collapsed,
+  loading,
+  session,
+}: {
+  collapsed: boolean;
+  loading: boolean;
+  session: ReturnType<typeof useAuthState>["session"];
+}) {
+  if (collapsed) {
+    if (loading) {
+      return <div className="mx-auto h-2 w-2 rounded-full bg-zinc-500 animate-pulse" title="Checking session" />;
+    }
+    if (session?.authenticated) {
+      return (
+        <div
+          className="mx-auto h-2 w-2 rounded-full bg-emerald-500"
+          title={`${session.role_summary?.display_name ?? session.role ?? "Authenticated"} · tenant ${session.tenant_id}`}
+        />
+      );
+    }
+    return <div className="mx-auto h-2 w-2 rounded-full bg-amber-500" title="Authentication required" />;
+  }
+
+  if (loading) {
+    return (
+      <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2 text-[12px] text-[color:var(--text-secondary)]">
+        Checking session…
+      </div>
+    );
+  }
+
+  if (!session?.authenticated) {
+    return (
+      <div className="rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-[12px] text-amber-300">
+        Sign-in required for protected control-plane actions
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2">
+      <p className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Signed in</p>
+      <p className="mt-1 truncate text-[12px] font-medium text-[color:var(--foreground)]">{session.subject ?? "Authenticated user"}</p>
+      <p className="mt-1 text-[11px] text-[color:var(--text-secondary)]">
+        {session.role_summary?.display_name ?? session.role ?? "Unknown"} · tenant {session.tenant_id}
+      </p>
+    </div>
   );
 }
 

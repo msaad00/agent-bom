@@ -19,13 +19,13 @@ import {
 
 import {
   api,
-  type AuthDebugResponse,
   type ConnectorHealthResponse,
   type ScanSchedule,
   type SourceCreateRequest,
   type SourceKind,
   type SourceRecord,
 } from "@/lib/api";
+import { useAuthState } from "@/components/auth-provider";
 
 type IngestMode = "Direct scan" | "Read-only connector" | "Pushed ingest" | "Runtime" | "Imported artifact";
 
@@ -217,7 +217,7 @@ function toneForStatus(status: string): string {
 }
 
 export default function SourcesPage() {
-  const [authDebug, setAuthDebug] = useState<AuthDebugResponse | null>(null);
+  const { session, loading: authLoading, hasCapability } = useAuthState();
   const [connectorHealth, setConnectorHealth] = useState<ConnectorHealthResponse[]>([]);
   const [schedules, setSchedules] = useState<ScanSchedule[]>([]);
   const [sources, setSources] = useState<SourceRecord[]>([]);
@@ -265,6 +265,11 @@ export default function SourcesPage() {
     }
     return counts;
   }, [schedules]);
+  const roleSummary = session?.role_summary ?? null;
+  const roleLabel = roleSummary?.display_name ?? session?.role ?? "Unknown";
+  const canManageSources = hasCapability("sources.manage");
+  const canRunScans = hasCapability("scan.run");
+  const canManageFleet = hasCapability("fleet.manage");
 
   function updateForm<K extends keyof FormState>(field: K, value: FormState[K]) {
     setFormState((current) => ({ ...current, [field]: value }));
@@ -279,16 +284,11 @@ export default function SourcesPage() {
     setError(null);
 
     try {
-      const [authResult, connectorsResult, schedulesResult, sourcesResult] = await Promise.allSettled([
-        api.getAuthDebug(),
+      const [connectorsResult, schedulesResult, sourcesResult] = await Promise.allSettled([
         api.listConnectors(),
         api.listSchedules(),
         api.listSources(),
       ]);
-
-      if (authResult.status === "fulfilled") {
-        setAuthDebug(authResult.value);
-      }
 
       if (sourcesResult.status === "fulfilled") {
         setSources(sourcesResult.value.sources);
@@ -317,10 +317,10 @@ export default function SourcesPage() {
         setConnectorHealth([]);
       }
 
-      const failures = [authResult, connectorsResult, schedulesResult, sourcesResult].filter(
+      const failures = [connectorsResult, schedulesResult, sourcesResult].filter(
         (result) => result.status === "rejected"
       );
-      if (failures.length === 4) {
+      if (failures.length === 3) {
         setError("Failed to load control-plane source state.");
       }
     } finally {
@@ -494,7 +494,7 @@ export default function SourcesPage() {
             </button>
             <button
               onClick={handleFleetSync}
-              disabled={syncingFleet}
+              disabled={syncingFleet || !canManageFleet}
               className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Activity className="h-4 w-4" />
@@ -507,10 +507,10 @@ export default function SourcesPage() {
           <MetricCard
             icon={ShieldCheck}
             label="Auth mode"
-            value={authDebug?.auth_method ?? (loading ? "Loading…" : "Unknown")}
+            value={session?.auth_method ?? (authLoading ? "Loading…" : "Unknown")}
             detail={
-              authDebug
-                ? `${authDebug.role ?? "no role"} · tenant ${authDebug.tenant_id} · ${authDebug.recommended_ui_mode}`
+              session
+                ? `${roleLabel} · tenant ${session.tenant_id} · ${session.recommended_ui_mode}`
                 : "API/control plane owns auth and tenant scope"
             }
           />
@@ -538,6 +538,26 @@ export default function SourcesPage() {
         {formMessage ? <p className="mt-2 text-sm text-emerald-400">{formMessage}</p> : null}
         {error ? <p className="mt-2 text-sm text-red-400">{error}</p> : null}
       </section>
+
+      {roleSummary ? (
+        <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg shadow-black/5">
+          <div className="flex items-start gap-3">
+            <span className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2.5">
+              <Shield className="h-5 w-5 text-emerald-400" />
+            </span>
+            <div>
+              <h2 className="text-base font-semibold text-[var(--foreground)]">{roleSummary.display_name} access in this tenant</h2>
+              <p className="mt-1 text-sm text-[var(--text-secondary)]">{roleSummary.description}</p>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-3">
+            <AccessList title="Can see" items={roleSummary.can_see} tone="text-sky-300" />
+            <AccessList title="Can do" items={roleSummary.can_do} tone="text-emerald-300" />
+            <AccessList title="Blocked from" items={roleSummary.cannot_do} tone="text-amber-300" />
+          </div>
+        </section>
+      ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg shadow-black/5">
@@ -600,21 +620,21 @@ export default function SourcesPage() {
                     <div className="mt-4 flex flex-wrap gap-2">
                       <button
                         onClick={() => runSourceAction(source.source_id, "test")}
-                        disabled={isBusy}
+                        disabled={isBusy || !canManageSources}
                         className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-xs font-medium text-[var(--foreground)] transition hover:border-[color:var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {isBusy ? "Working…" : "Test"}
                       </button>
                       <button
                         onClick={() => runSourceAction(source.source_id, "run")}
-                        disabled={isBusy || !source.enabled}
+                        disabled={isBusy || !source.enabled || !canRunScans}
                         className="rounded-xl bg-emerald-500 px-3 py-2 text-xs font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Run now
                       </button>
                       <button
                         onClick={() => runSourceAction(source.source_id, "delete")}
-                        disabled={isBusy}
+                        disabled={isBusy || !canManageSources}
                         className="rounded-xl border border-red-900/60 bg-red-950/20 px-3 py-2 text-xs font-medium text-red-300 transition hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Delete
@@ -715,7 +735,7 @@ export default function SourcesPage() {
 
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || !canManageSources}
                 className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Plus className="h-4 w-4" />
@@ -817,7 +837,7 @@ export default function SourcesPage() {
                   </p>
                   <button
                     type="submit"
-                    disabled={submittingSchedule || schedulableSources.length === 0}
+                    disabled={submittingSchedule || schedulableSources.length === 0 || !canManageSources}
                     className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <CalendarClock className="h-4 w-4" />
@@ -860,14 +880,14 @@ export default function SourcesPage() {
                     <div className="mt-4 flex flex-wrap gap-2">
                       <button
                         onClick={() => runScheduleAction(schedule.schedule_id, "toggle")}
-                        disabled={isBusy}
+                        disabled={isBusy || !canManageSources}
                         className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-3 py-2 text-xs font-medium text-[var(--foreground)] transition hover:border-[color:var(--border-strong)] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         {isBusy ? "Working…" : schedule.enabled ? "Pause" : "Enable"}
                       </button>
                       <button
                         onClick={() => runScheduleAction(schedule.schedule_id, "delete")}
-                        disabled={isBusy}
+                        disabled={isBusy || !canManageSources}
                         className="rounded-xl border border-red-900/60 bg-red-950/20 px-3 py-2 text-xs font-medium text-red-300 transition hover:bg-red-950/40 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Delete
@@ -948,6 +968,23 @@ function MetricCard({
         </div>
       </div>
       <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">{detail}</p>
+    </div>
+  );
+}
+
+function AccessList({ title, items, tone }: { title: string; items: string[]; tone: string }) {
+  return (
+    <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
+      <p className={`text-xs uppercase tracking-[0.18em] ${tone}`}>{title}</p>
+      {items.length === 0 ? (
+        <p className="mt-3 text-sm text-[var(--text-secondary)]">No additional access in this category.</p>
+      ) : (
+        <ul className="mt-3 space-y-2 text-sm text-[var(--text-secondary)]">
+          {items.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

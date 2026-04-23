@@ -5,7 +5,6 @@ import SourcesPage from "@/app/sources/page";
 
 const { apiMock } = vi.hoisted(() => ({
   apiMock: {
-    getAuthDebug: vi.fn(),
     listConnectors: vi.fn(),
     getConnectorHealth: vi.fn(),
     listSchedules: vi.fn(),
@@ -25,26 +24,46 @@ vi.mock("next/link", () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
 }));
 
+vi.mock("@/components/auth-provider", () => ({
+  useAuthState: () => ({
+    session: {
+      authenticated: true,
+      auth_required: true,
+      configured_modes: ["oidc"],
+      recommended_ui_mode: "browser_oidc",
+      auth_method: "oidc",
+      subject: "user@example.com",
+      tenant_id: "tenant-acme",
+      role: "analyst",
+      role_summary: {
+        role: "analyst",
+        ui_role: "contributor",
+        display_name: "Contributor",
+        description: "Contributor-level operator access.",
+        capabilities: ["inventory.read", "scan.run", "sources.manage", "exceptions.manage", "runtime.ingest"],
+        capability_matrix: [],
+        can_see: ["Inventory, findings, fleet, graph, remediation, audit, and governance surfaces"],
+        can_do: ["Run scans, manage sources and schedules, and create exception workflows"],
+        cannot_do: ["Create, rotate, or revoke API keys"],
+      },
+      memberships: [],
+      request_id: "req-1",
+      trace_id: "trace-1",
+      span_id: "span-1",
+    },
+    loading: false,
+    error: null,
+    refresh: vi.fn(),
+    hasCapability: (capability: string) =>
+      ["inventory.read", "scan.run", "sources.manage", "exceptions.manage", "runtime.ingest"].includes(capability),
+  }),
+}));
+
 vi.mock("@/lib/api", () => ({
   api: apiMock,
 }));
 
 function primeApi() {
-  apiMock.getAuthDebug.mockResolvedValue({
-    authenticated: true,
-    auth_required: true,
-    configured_modes: ["oidc"],
-    recommended_ui_mode: "browser_oidc",
-    auth_method: "oidc",
-    subject: "user@example.com",
-    role: "admin",
-    tenant_id: "tenant-acme",
-    oidc_issuer_suffix: "issuer.example.com",
-    api_key_id_prefix: null,
-    request_id: "req-1",
-    trace_id: "trace-1",
-    span_id: "span-1",
-  });
   apiMock.listConnectors.mockResolvedValue({ connectors: ["jira"] });
   apiMock.getConnectorHealth.mockResolvedValue({
     connector: "jira",

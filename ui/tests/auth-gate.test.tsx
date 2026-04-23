@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, afterEach } from "vitest";
 
 import { AuthGate } from "@/components/auth-gate";
+import { AuthProvider } from "@/components/auth-provider";
 import { clearSessionApiKey, setSessionApiKey } from "@/lib/auth";
 
 const originalFetch = global.fetch;
@@ -27,8 +28,8 @@ describe("AuthGate", () => {
         subject: null,
         role: null,
         tenant_id: "default",
-        oidc_issuer_suffix: null,
-        api_key_id_prefix: null,
+        role_summary: null,
+        memberships: [],
         request_id: null,
         trace_id: null,
         span_id: null,
@@ -36,9 +37,11 @@ describe("AuthGate", () => {
     }) as typeof fetch;
 
     render(
-      <AuthGate>
-        <div>protected surface</div>
-      </AuthGate>,
+      <AuthProvider>
+        <AuthGate>
+          <div>protected surface</div>
+        </AuthGate>
+      </AuthProvider>,
     );
 
     await waitFor(() => expect(screen.getByText("protected surface")).toBeInTheDocument());
@@ -54,9 +57,11 @@ describe("AuthGate", () => {
     }) as typeof fetch;
 
     render(
-      <AuthGate>
-        <div>protected surface</div>
-      </AuthGate>,
+      <AuthProvider>
+        <AuthGate>
+          <div>protected surface</div>
+        </AuthGate>
+      </AuthProvider>,
     );
 
     await waitFor(() => expect(screen.getByText("Control-plane authentication required")).toBeInTheDocument());

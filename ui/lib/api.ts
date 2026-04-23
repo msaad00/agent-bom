@@ -487,6 +487,51 @@ export interface AuthDebugResponse {
   span_id: string | null;
 }
 
+export interface AuthRoleCapability {
+  id: string;
+  label: string;
+  description: string;
+  minimum_role: string;
+  minimum_role_label: string;
+  allowed: boolean;
+}
+
+export interface AuthRoleSummary {
+  role: string;
+  ui_role: string;
+  display_name: string;
+  description: string;
+  capabilities: string[];
+  capability_matrix: AuthRoleCapability[];
+  can_see: string[];
+  can_do: string[];
+  cannot_do: string[];
+}
+
+export interface AuthMembership {
+  tenant_id: string;
+  role: string;
+  ui_role: string;
+  display_name: string;
+  active: boolean;
+}
+
+export interface AuthMeResponse {
+  authenticated: boolean;
+  auth_required: boolean;
+  configured_modes: string[];
+  recommended_ui_mode: string;
+  auth_method: string | null;
+  subject: string | null;
+  tenant_id: string;
+  role: string | null;
+  role_summary: AuthRoleSummary | null;
+  memberships: AuthMembership[];
+  request_id: string | null;
+  trace_id: string | null;
+  span_id: string | null;
+}
+
 export interface AuthPolicyResponse {
   api_key: {
     default_ttl_seconds: number;
@@ -1089,6 +1134,7 @@ async function getBlob(path: string): Promise<Blob> {
 export const api = {
   health: () => get<HealthResponse>("/health"),
   version: () => get<VersionInfo>("/version"),
+  getAuthMe: () => get<AuthMeResponse>("/v1/auth/me"),
   getAuthDebug: () => get<AuthDebugResponse>("/v1/auth/debug"),
   getAuthPolicy: () => get<AuthPolicyResponse>("/v1/auth/policy"),
   listKeys: () => get<ListKeysResponse>("/v1/auth/keys"),

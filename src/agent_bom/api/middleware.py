@@ -374,6 +374,29 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("PUT", "/v1/sources/", "analyst"),
     )
 
+    _SCOPE_RULES: tuple[tuple[str, str, str], ...] = (
+        ("GET", "/v1/auth/keys", "auth.keys:read"),
+        ("POST", "/v1/auth/keys", "auth.keys:write"),
+        ("POST", "/v1/auth/keys/", "auth.keys:write"),
+        ("DELETE", "/v1/auth/keys/", "auth.keys:write"),
+        ("GET", "/v1/gateway/policies", "gateway.policy:read"),
+        ("POST", "/v1/gateway/policies", "gateway.policy:write"),
+        ("PUT", "/v1/gateway/policies/", "gateway.policy:write"),
+        ("DELETE", "/v1/gateway/policies/", "gateway.policy:write"),
+        ("GET", "/v1/gateway/audit", "audit:read"),
+        ("POST", "/v1/fleet/sync", "fleet:write"),
+        ("POST", "/v1/scan", "scan:write"),
+        ("DELETE", "/v1/scan/", "scan:delete"),
+        ("POST", "/v1/schedules", "schedule:write"),
+        ("DELETE", "/v1/schedules/", "schedule:write"),
+        ("PUT", "/v1/schedules/", "schedule:write"),
+        ("POST", "/v1/graph/presets", "graph.preset:write"),
+        ("DELETE", "/v1/graph/presets/", "graph.preset:write"),
+        ("POST", "/v1/exceptions", "exception:write"),
+        ("PUT", "/v1/exceptions/", "exception:write"),
+        ("DELETE", "/v1/exceptions/", "exception:write"),
+    )
+
     def __init__(self, app: ASGIApp, api_key: str) -> None:
         super().__init__(app)
         self._api_key = api_key
@@ -388,6 +411,13 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             if method == m and path.startswith(p):
                 return role
         return "viewer"
+
+    def _required_scope(self, method: str, path: str) -> str | None:
+        """Determine the optional scope required for a request."""
+        for m, p, scope in self._SCOPE_RULES:
+            if method == m and path.startswith(p):
+                return scope
+        return None
 
     async def dispatch(self, request: StarletteRequest, call_next):
         if request.url.path in self._EXEMPT_PATHS:
@@ -468,10 +498,17 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                         status_code=403,
                         content={"detail": f"Forbidden — requires {required} role, you have {api_key.role.value}"},
                     )
+                required_scope = self._required_scope(request.method, request.url.path)
+                if not api_key.has_scope(required_scope):
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": f"Forbidden — requires scope {required_scope}"},
+                    )
                 request.state.api_key_name = api_key.name
                 request.state.api_key_role = api_key.role.value
                 request.state.tenant_id = api_key.tenant_id
                 request.state.api_key_id = api_key.key_id
+                request.state.api_key_scopes = list(api_key.scopes)
                 # SAML-minted keys are named "saml:<subject>" — surface that
                 # as a distinct auth method so operators can trace who came
                 # in via which IdP path even after the key has been issued.

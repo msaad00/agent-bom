@@ -103,6 +103,23 @@ class ApiKey:
         """Check if this key's role meets or exceeds the required role."""
         return _ROLE_HIERARCHY.get(self.role, 0) >= _ROLE_HIERARCHY.get(required, 0)
 
+    def has_scope(self, required_scope: str | None) -> bool:
+        """Check whether this key's scopes allow the requested action."""
+        if not required_scope:
+            return True
+        if not self.scopes:
+            return True
+        if any(scope in {"saml-session", "browser-session", "oidc-session"} for scope in self.scopes):
+            return True
+        for scope in self.scopes:
+            if scope == "*" or scope == required_scope:
+                return True
+            if scope.endswith(":*") and required_scope.startswith(scope[:-1]):
+                return True
+            if scope.endswith(".*") and required_scope.startswith(scope[:-1]):
+                return True
+        return False
+
     def to_dict(self) -> dict:
         current = datetime.now(timezone.utc)
         overlap_remaining_seconds = None

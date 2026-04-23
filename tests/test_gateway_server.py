@@ -384,7 +384,7 @@ def test_relay_fails_closed_when_tenant_has_no_matching_upstream(monkeypatch) ->
         json=_json_rpc("tools/call", name="query_issues", arguments={"jql": "project = BETA"}),
     )
     assert denied.status_code == 404
-    assert "tenant 'tenant-beta'" in denied.json()["detail"]
+    assert denied.json()["detail"] == "unknown upstream 'jira'"
 
 
 def test_gateway_rate_limit_is_tenant_scoped(monkeypatch) -> None:

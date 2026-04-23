@@ -21,7 +21,7 @@ spec:
           serviceAccountName: agent-bom
           containers:
             - name: scanner
-              image: msaad02/agent-bom:latest
+              image: agentbom/agent-bom:0.81.2
               command: ["agent-bom"]
               args:
                 - "scan"

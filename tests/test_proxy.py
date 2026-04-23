@@ -215,13 +215,13 @@ def test_extract_jsonrpc_trace_meta_returns_bounded_w3c_values():
         "_meta": {
             "traceparent": "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01",
             "tracestate": "vendor-a=foo,vendor-b=bar",
-            "baggage": "tenant=acme,release=v0.81.1",
+            "baggage": "tenant=acme,release=v0.81.2",
         }
     }
     trace_meta = _extract_jsonrpc_trace_meta(message)
     assert trace_meta["traceparent"] == "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
     assert trace_meta["tracestate"] == "vendor-a=foo,vendor-b=bar"
-    assert trace_meta["baggage"] == "tenant=acme,release=v0.81.1"
+    assert trace_meta["baggage"] == "tenant=acme,release=v0.81.2"
 
 
 def test_extract_jsonrpc_trace_meta_ignores_invalid_values():

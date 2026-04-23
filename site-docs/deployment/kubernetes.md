@@ -1,5 +1,9 @@
 # Kubernetes Deployment
 
+If you still need to choose a rollout path, start with
+[Deployment Overview](overview.md). This page is Kubernetes reference material
+for teams that already know they want raw manifests or direct chart controls.
+
 ## Pre-built manifests
 
 Located in `deploy/k8s/`:

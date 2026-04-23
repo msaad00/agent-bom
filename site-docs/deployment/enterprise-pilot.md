@@ -8,6 +8,10 @@ open-source control plane for:
 - gateway policy management
 - selected inline proxy enforcement
 
+If you still need to choose between pilot and production rollout paths, start
+with [Deployment Overview](overview.md). This page is the narrower pilot guide
+once you have already chosen that shape.
+
 It is intentionally not an EDR-style managed agent product. The current
 contract is opt-in endpoint scans plus self-hosted control-plane and proxy
 surfaces.

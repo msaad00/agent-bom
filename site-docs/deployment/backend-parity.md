@@ -54,6 +54,32 @@ The key distinction is:
 
 These are related, but not interchangeable.
 
+## Snowflake parity target
+
+The Snowflake story should be read in three layers:
+
+1. **Current shipped parity**
+   - `scan_jobs`
+   - `fleet_agents`
+   - `gateway_policies`
+   - `policy_audit_log`
+   - governance and activity discovery routes
+2. **Current explicit non-parity**
+   - source registry
+   - exceptions
+   - API keys and RBAC persistence
+   - schedules
+   - graph persistence
+   - trend and baseline state
+   - full HMAC-chained `audit_log`
+3. **Next parity targets, if warehouse-native control-plane coverage expands**
+   - source registry
+   - schedules
+   - selected baseline/trend state
+
+That means Snowflake is already a real backend mode, but it is still not the
+same claim as “full transactional replacement for Postgres.”
+
 For the exact logical entity → table/store mapping, see
 [Control-Plane Data Model and Store Parity](control-plane-data-model.md).
 
@@ -111,6 +137,18 @@ Current limitations:
 
 That makes Snowflake viable for selected control-plane paths, but not yet a full transactional replacement for Postgres.
 
+Recommended fit:
+
+- teams already governed around Snowflake
+- warehouse-native inventory, policy, and fleet history
+- governance-heavy deployments where Snowflake is already the source of record
+
+Not the best fit:
+
+- broad control-plane admin workflows
+- API-key-heavy operational setups
+- graph-first operator workflows that expect backend-complete parity today
+
 ### 3. Warehouse-native governance mode
 
 Use when the primary goal is:
@@ -124,6 +162,12 @@ This mode is compatible with:
 - local CLI scans
 - API/UI deployments
 - hybrid control planes where the warehouse is the authoritative governance data source
+
+The practical shape is:
+
+- `Postgres` remains the easiest full control-plane default
+- `Snowflake` can be the warehouse-native governance and selected-store backend
+- customers can still export or mirror data without locking the product model to one backend
 
 ## Recommended Selection
 

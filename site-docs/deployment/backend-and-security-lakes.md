@@ -80,6 +80,10 @@ Use when:
 - they want warehouse-native joins and governance workflows
 - the documented Snowflake parity boundary is acceptable
 
+This should be read as a supported security-lake and governance mode, not as a
+claim that every transactional control-plane surface has already reached
+Snowflake parity.
+
 ### 4. Future lakehouse export target
 
 - control plane on `Postgres`
@@ -98,6 +102,13 @@ The product posture should be:
   already documented and implemented
 - `Databricks` is a supported direction for lakehouse export and governance once
   the implementation exists
+
+The operator rule stays simple:
+
+- default to `Postgres` for the control plane
+- add `ClickHouse` for event-scale analytics
+- choose `Snowflake` when warehouse-native governance or selected store parity
+  is the actual goal
 
 That keeps the story accurate without understating how customers actually run
 security lakes.

@@ -251,3 +251,11 @@ MCP_CALLER_RATE_LIMIT = _int("AGENT_BOM_MCP_CALLER_RATE_LIMIT", 120)
 MCP_CALLER_WINDOW_SECONDS = _float("AGENT_BOM_MCP_CALLER_WINDOW_SECONDS", 60.0)
 MCP_MAX_CALLER_STATES = _int("AGENT_BOM_MCP_MAX_CALLER_STATES", 256)
 MCP_MAX_REQUEST_TRACES = _int("AGENT_BOM_MCP_MAX_REQUEST_TRACES", 256)
+
+
+# ── Shield async bridge limits ───────────────────────────────────────────
+# The synchronous Shield SDK can be called from inside a running event loop.
+# Use a small shared pool for that bridge instead of spawning a fresh unbounded
+# executor per call.
+
+SHIELD_ASYNC_BRIDGE_MAX_WORKERS = _int("AGENT_BOM_SHIELD_ASYNC_BRIDGE_MAX_WORKERS", 4)

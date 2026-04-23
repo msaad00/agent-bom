@@ -24,6 +24,10 @@ Zero external dependencies beyond agent-bom itself.
 
 from __future__ import annotations
 
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
+from agent_bom.config import SHIELD_ASYNC_BRIDGE_MAX_WORKERS
 from agent_bom.runtime.detectors import (
     CredentialLeakDetector,
 )
@@ -32,6 +36,23 @@ from agent_bom.runtime.protection import (
     ShieldAssessment,
     ThreatLevel,
 )
+
+_SHIELD_ASYNC_BRIDGE = ThreadPoolExecutor(
+    max_workers=max(SHIELD_ASYNC_BRIDGE_MAX_WORKERS, 1),
+    thread_name_prefix="agent-bom-shield",
+)
+
+
+def _run_async_bridge(coro):
+    """Run a Shield coroutine from sync code, even inside an active event loop."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        return _SHIELD_ASYNC_BRIDGE.submit(asyncio.run, coro).result()
+    return asyncio.run(coro)
 
 
 class Shield:
@@ -82,23 +103,7 @@ class Shield:
         Runs all request-path detectors: argument analysis, rate limiting,
         sequence analysis. Returns alert dicts for any findings.
         """
-        import asyncio
-
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            # Already in async context — create task
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                return pool.submit(
-                    asyncio.run,
-                    self._engine.process_tool_call(tool_name, arguments),
-                ).result()
-        return asyncio.run(self._engine.process_tool_call(tool_name, arguments))
+        return _run_async_bridge(self._engine.process_tool_call(tool_name, arguments))
 
     def check_response(self, tool_name: str, response_text: str) -> list[dict]:
         """Check a tool response for credential leaks, injection, cloaking.
@@ -106,41 +111,11 @@ class Shield:
         Runs all response-path detectors: credential leak, PII detection,
         response inspection, vector DB injection.
         """
-        import asyncio
-
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                return pool.submit(
-                    asyncio.run,
-                    self._engine.process_tool_response(tool_name, response_text),
-                ).result()
-        return asyncio.run(self._engine.process_tool_response(tool_name, response_text))
+        return _run_async_bridge(self._engine.process_tool_response(tool_name, response_text))
 
     def check_drift(self, current_tools: list[str]) -> list[dict]:
         """Check for tool drift (new tools appearing after baseline)."""
-        import asyncio
-
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            import concurrent.futures
-
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                return pool.submit(
-                    asyncio.run,
-                    self._engine.check_tool_drift(current_tools),
-                ).result()
-        return asyncio.run(self._engine.check_tool_drift(current_tools))
+        return _run_async_bridge(self._engine.check_tool_drift(current_tools))
 
     @staticmethod
     def redact(text: str) -> str:

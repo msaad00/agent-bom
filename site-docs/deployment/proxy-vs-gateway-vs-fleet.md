@@ -248,6 +248,7 @@ difference today is:
 What ships now:
 
 - tenant-aware control plane
+- tenant-scoped gateway upstream routing keyed by the authenticated tenant
 - gateway policy storage and evaluation
 - inventory and provenance across scans, fleet, gateway, and persisted observations
 - environment-backed credential overlays for remote MCP upstreams
@@ -263,6 +264,23 @@ That is a product-shape tradeoff, not hidden drift:
 - self-hosted first
 - customer-owned platform integrations
 - runtime governance close to the customer's infra
+
+## What It Is Not Yet
+
+- **Managed SaaS**: no hosted vendor control plane; the supported model today
+  is self-hosted and customer-operated.
+- **MSSP-grade multi-tenancy**: tenant isolation is real in the control plane,
+  stores, audit, fleet, and shared gateway routing, but `agent-bom` is not yet
+  a turnkey "one provider serving many customer orgs" platform. The main gaps
+  are tenant lifecycle automation, richer per-tenant delegation/templates, and
+  stronger provider-style quota and admin surfaces.
+- **Auto-injected runtime sidecars everywhere**: proxy and gateway are
+  productized, but broad operator-driven sidecar attachment is still selective,
+  not a universal default rollout.
+- **Streaming SIEM product surface**: audit is durable, signed, and exportable,
+  but not yet a first-class Kafka or Splunk HEC style streaming experience.
+- **First-party IDE plugin ecosystem**: MCP server mode works with existing AI
+  clients, but dedicated editor plugins are not the primary distribution model.
 
 ## EKS shape
 

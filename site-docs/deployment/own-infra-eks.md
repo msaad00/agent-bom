@@ -234,6 +234,10 @@ Use two layers.
 That keeps scan, fleet, runtime enforcement, and gateway policy aligned
 without pretending every workload needs the same enforcement model.
 
+For the current boundary between strong self-hosted tenant isolation and
+provider-style MSSP multi-tenancy, see
+[When To Use Proxy vs Gateway vs Fleet](proxy-vs-gateway-vs-fleet.md).
+
 ## Helm Knobs That Matter
 
 | Value | Why it matters |

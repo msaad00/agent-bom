@@ -238,6 +238,36 @@ def test_merged_with_overlay_adds_new_upstreams_not_in_discovery() -> None:
     assert sorted(merged.names()) == ["custom-internal", "jira"]
 
 
+def test_tenant_scoped_registry_routes_same_name_to_tenant_specific_upstream() -> None:
+    registry = UpstreamRegistry(
+        [
+            UpstreamConfig(name="jira", tenant_id="tenant-alpha", url="https://alpha.example.com/mcp"),
+            UpstreamConfig(name="jira", tenant_id="tenant-beta", url="https://beta.example.com/mcp"),
+        ]
+    )
+    alpha = registry.get("jira", tenant_id="tenant-alpha")
+    beta = registry.get("jira", tenant_id="tenant-beta")
+    assert alpha is not None
+    assert beta is not None
+    assert alpha.url == "https://alpha.example.com/mcp"
+    assert beta.url == "https://beta.example.com/mcp"
+    assert registry.names(tenant_id="tenant-alpha") == ["jira"]
+    assert registry.names(tenant_id="tenant-beta") == ["jira"]
+
+
+def test_tenant_scoped_registry_fails_closed_on_cross_tenant_fallback() -> None:
+    registry = UpstreamRegistry(
+        [
+            UpstreamConfig(name="jira", tenant_id="tenant-alpha", url="https://alpha.example.com/mcp"),
+            UpstreamConfig(name="jira", url="https://legacy-global.example.com/mcp"),
+        ]
+    )
+    assert registry.get("jira", tenant_id="tenant-alpha") is not None
+    # A different tenant must not silently fall through to the global route
+    # once a tenant-bound upstream exists for this name.
+    assert registry.get("jira", tenant_id="tenant-beta") is None
+
+
 # ─── OAuth2 client-credentials ─────────────────────────────────────────────
 
 

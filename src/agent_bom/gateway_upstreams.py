@@ -82,10 +82,15 @@ class UpstreamConfig:
         use and cached until ~60 s before expiry.
     headers:
         Additional static headers to inject on every upstream request.
+    tenant_id:
+        Optional tenant owner for this upstream. When set, the gateway must
+        only route requests from that tenant to this upstream. When unset, the
+        upstream is treated as a legacy/global entry for single-tenant deploys.
     """
 
     name: str
     url: str
+    tenant_id: str | None = None
     auth: str = "none"
     token_env: str | None = None
     oauth_token_url: str | None = None
@@ -175,11 +180,16 @@ class UpstreamRegistry:
     """Registry of upstream MCP servers the gateway can route to."""
 
     def __init__(self, upstreams: list[UpstreamConfig]) -> None:
-        self._by_name: dict[str, UpstreamConfig] = {}
+        self._by_name: dict[tuple[str | None, str], UpstreamConfig] = {}
+        self._tenant_presence_by_name: dict[str, set[str]] = {}
         for upstream in upstreams:
-            if upstream.name in self._by_name:
-                raise UpstreamConfigError(f"duplicate upstream name: {upstream.name!r}")
-            self._by_name[upstream.name] = upstream
+            key = (upstream.tenant_id, upstream.name)
+            if key in self._by_name:
+                tenant_label = upstream.tenant_id or "global"
+                raise UpstreamConfigError(f"duplicate upstream name for tenant {tenant_label!r}: {upstream.name!r}")
+            self._by_name[key] = upstream
+            if upstream.tenant_id:
+                self._tenant_presence_by_name.setdefault(upstream.name, set()).add(upstream.tenant_id)
 
     @classmethod
     def from_yaml(cls, path: str | Path) -> "UpstreamRegistry":
@@ -212,7 +222,15 @@ class UpstreamRegistry:
         raw_upstreams = payload.get("upstreams") or []
         if not isinstance(raw_upstreams, list):
             raise UpstreamConfigError("discovery response must contain an 'upstreams' list")
-        upstreams = [_parse_upstream(raw, source="control-plane discovery") for raw in raw_upstreams]
+        response_tenant_id = payload.get("tenant_id")
+        upstreams = [
+            _parse_upstream(
+                raw,
+                source="control-plane discovery",
+                default_tenant_id=response_tenant_id if isinstance(response_tenant_id, str) and response_tenant_id else None,
+            )
+            for raw in raw_upstreams
+        ]
         logger.info("gateway: loaded %d upstreams from control-plane discovery", len(upstreams))
         return cls(upstreams)
 
@@ -223,24 +241,53 @@ class UpstreamRegistry:
         control plane AND the operator wants to override a subset (typically
         to attach bearer-token auth to an upstream discovery can't infer).
         """
-        merged: dict[str, UpstreamConfig] = dict(self._by_name)
-        for name, upstream in overlay._by_name.items():
-            merged[name] = upstream
+        merged: dict[tuple[str | None, str], UpstreamConfig] = dict(self._by_name)
+        for key, upstream in overlay._by_name.items():
+            merged[key] = upstream
         new = UpstreamRegistry.__new__(UpstreamRegistry)
         new._by_name = merged
+        new._tenant_presence_by_name = {}
+        for upstream in merged.values():
+            if upstream.tenant_id:
+                new._tenant_presence_by_name.setdefault(upstream.name, set()).add(upstream.tenant_id)
         return new
 
-    def get(self, name: str) -> UpstreamConfig | None:
-        return self._by_name.get(name)
+    def get(self, name: str, tenant_id: str | None = None) -> UpstreamConfig | None:
+        if tenant_id:
+            exact = self._by_name.get((tenant_id, name))
+            if exact is not None:
+                return exact
+            # Fail closed when this name has any tenant-bound entries. Falling
+            # back to a legacy/global entry here would let one tenant
+            # accidentally route into another tenant's administrative surface.
+            if tenant_id in self._tenant_presence_by_name.get(name, set()) or self._tenant_presence_by_name.get(name):
+                return None
+        global_match = self._by_name.get((None, name))
+        if global_match is not None:
+            return global_match
+        tenant_ids = self._tenant_presence_by_name.get(name, set())
+        if len(tenant_ids) == 1:
+            only_tenant = next(iter(tenant_ids))
+            return self._by_name.get((only_tenant, name))
+        return None
 
-    def names(self) -> list[str]:
-        return sorted(self._by_name.keys())
+    def names(self, tenant_id: str | None = None) -> list[str]:
+        if tenant_id:
+            names = {name for (entry_tenant, name) in self._by_name if entry_tenant == tenant_id}
+            # Only include global names when there is no tenant-bound variant
+            # for this name anywhere. That keeps single-tenant compatibility
+            # without silently advertising cross-tenant shared routes.
+            for (entry_tenant, name), _upstream in self._by_name.items():
+                if entry_tenant is None and name not in self._tenant_presence_by_name:
+                    names.add(name)
+            return sorted(names)
+        return sorted({name for (_tenant, name) in self._by_name})
 
     def __len__(self) -> int:
         return len(self._by_name)
 
     def __contains__(self, name: object) -> bool:
-        return isinstance(name, str) and name in self._by_name
+        return isinstance(name, str) and ((None, name) in self._by_name or name in self._tenant_presence_by_name)
 
 
 def fetch_discovered_upstreams(
@@ -271,7 +318,7 @@ def fetch_discovered_upstreams(
     return response.json()
 
 
-def _parse_upstream(raw: Any, *, source: str) -> UpstreamConfig:
+def _parse_upstream(raw: Any, *, source: str, default_tenant_id: str | None = None) -> UpstreamConfig:
     if not isinstance(raw, dict):
         raise UpstreamConfigError(f"{source}: every upstream entry must be a mapping, got {type(raw).__name__}")
 
@@ -297,9 +344,14 @@ def _parse_upstream(raw: Any, *, source: str) -> UpstreamConfig:
     if not isinstance(scopes_raw, list):
         raise UpstreamConfigError(f"{source}: upstream {name!r} scopes must be a list")
 
+    tenant_id = raw.get("tenant_id", default_tenant_id)
+    if tenant_id is not None and not isinstance(tenant_id, str):
+        raise UpstreamConfigError(f"{source}: upstream {name!r} tenant_id must be a string")
+
     return UpstreamConfig(
         name=name,
         url=url.rstrip("/"),
+        tenant_id=tenant_id,
         auth=auth,
         token_env=raw.get("token_env"),
         oauth_token_url=raw.get("oauth_token_url"),

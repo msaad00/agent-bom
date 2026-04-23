@@ -2,6 +2,7 @@
 
 from unittest.mock import patch
 
+import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api import stores as _stores
@@ -170,6 +171,25 @@ def test_merge_observations_preserves_persisted_provenance_contract():
     assert merged.first_seen == "2026-04-22T11:58:00Z"
     assert merged.last_seen == "2026-04-22T12:01:00Z"
     assert merged.last_synced == "2026-04-22T12:05:00Z"
+
+
+def test_merge_observations_rejects_tenant_mismatch():
+    existing = MCPObservation(
+        tenant_id="tenant-alpha",
+        observation_id="test-agent:test-server:npx",
+        server_stable_id="test-server:npx",
+        server_name="test-server",
+    )
+    incoming = MCPObservation(
+        tenant_id="tenant-beta",
+        observation_id="test-agent:test-server:npx",
+        server_stable_id="test-server:npx",
+        server_name="test-server",
+    )
+    from agent_bom.api.mcp_observation_store import merge_observations
+
+    with pytest.raises(ValueError, match="tenant mismatch"):
+        merge_observations(existing, incoming)
 
 
 @patch("agent_bom.discovery.discover_all", side_effect=_mock_agents)

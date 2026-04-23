@@ -32,8 +32,8 @@ class ScheduleStore(Protocol):
     """Protocol for schedule persistence."""
 
     def put(self, schedule: ScanSchedule) -> None: ...
-    def get(self, schedule_id: str) -> ScanSchedule | None: ...
-    def delete(self, schedule_id: str) -> bool: ...
+    def get(self, schedule_id: str, tenant_id: str | None = None) -> ScanSchedule | None: ...
+    def delete(self, schedule_id: str, tenant_id: str | None = None) -> bool: ...
     def list_all(self, tenant_id: str | None = None) -> list[ScanSchedule]: ...
     def list_due(self, now_iso: str) -> list[ScanSchedule]: ...
 
@@ -47,13 +47,22 @@ class InMemoryScheduleStore:
     def put(self, schedule: ScanSchedule) -> None:
         self._schedules[schedule.schedule_id] = schedule
 
-    def get(self, schedule_id: str) -> ScanSchedule | None:
-        return self._schedules.get(schedule_id)
+    def get(self, schedule_id: str, tenant_id: str | None = None) -> ScanSchedule | None:
+        schedule = self._schedules.get(schedule_id)
+        if schedule is None:
+            return None
+        if tenant_id is not None and schedule.tenant_id != tenant_id:
+            return None
+        return schedule
 
-    def delete(self, schedule_id: str) -> bool:
-        if schedule_id in self._schedules:
-            del self._schedules[schedule_id]
-            return True
+    def delete(self, schedule_id: str, tenant_id: str | None = None) -> bool:
+        schedule = self._schedules.get(schedule_id)
+        if schedule is None:
+            return False
+        if tenant_id is not None and schedule.tenant_id != tenant_id:
+            return False
+        del self._schedules[schedule_id]
+        return True
         return False
 
     def list_all(self, tenant_id: str | None = None) -> list[ScanSchedule]:
@@ -107,14 +116,26 @@ class SQLiteScheduleStore:
         )
         self._conn.commit()
 
-    def get(self, schedule_id: str) -> ScanSchedule | None:
-        row = self._conn.execute("SELECT data FROM schedules WHERE schedule_id = ?", (schedule_id,)).fetchone()
+    def get(self, schedule_id: str, tenant_id: str | None = None) -> ScanSchedule | None:
+        if tenant_id is None:
+            row = self._conn.execute("SELECT data FROM schedules WHERE schedule_id = ?", (schedule_id,)).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT data FROM schedules WHERE schedule_id = ? AND tenant_id = ?",
+                (schedule_id, tenant_id),
+            ).fetchone()
         if row is None:
             return None
         return ScanSchedule.model_validate_json(row[0])
 
-    def delete(self, schedule_id: str) -> bool:
-        cursor = self._conn.execute("DELETE FROM schedules WHERE schedule_id = ?", (schedule_id,))
+    def delete(self, schedule_id: str, tenant_id: str | None = None) -> bool:
+        if tenant_id is None:
+            cursor = self._conn.execute("DELETE FROM schedules WHERE schedule_id = ?", (schedule_id,))
+        else:
+            cursor = self._conn.execute(
+                "DELETE FROM schedules WHERE schedule_id = ? AND tenant_id = ?",
+                (schedule_id, tenant_id),
+            )
         self._conn.commit()
         return cursor.rowcount > 0
 

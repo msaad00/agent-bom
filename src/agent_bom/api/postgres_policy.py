@@ -229,19 +229,31 @@ class PostgresScheduleStore:
             )
             conn.commit()
 
-    def get(self, schedule_id: str):
+    def get(self, schedule_id: str, tenant_id: str | None = None):
         from .schedule_store import ScanSchedule
 
         with _tenant_connection(self._pool) as conn:
-            row = conn.execute("SELECT data FROM scan_schedules WHERE schedule_id = %s", (schedule_id,)).fetchone()
+            if tenant_id is None:
+                row = conn.execute("SELECT data FROM scan_schedules WHERE schedule_id = %s", (schedule_id,)).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT data FROM scan_schedules WHERE schedule_id = %s AND tenant_id = %s",
+                    (schedule_id, tenant_id),
+                ).fetchone()
             if row is None:
                 return None
             raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
             return ScanSchedule.model_validate_json(raw)
 
-    def delete(self, schedule_id: str) -> bool:
+    def delete(self, schedule_id: str, tenant_id: str | None = None) -> bool:
         with _tenant_connection(self._pool) as conn:
-            cursor = conn.execute("DELETE FROM scan_schedules WHERE schedule_id = %s", (schedule_id,))
+            if tenant_id is None:
+                cursor = conn.execute("DELETE FROM scan_schedules WHERE schedule_id = %s", (schedule_id,))
+            else:
+                cursor = conn.execute(
+                    "DELETE FROM scan_schedules WHERE schedule_id = %s AND tenant_id = %s",
+                    (schedule_id, tenant_id),
+                )
             conn.commit()
             return cursor.rowcount > 0
 

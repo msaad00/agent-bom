@@ -9,7 +9,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from agent_bom import __version__
-from agent_bom.api.server import _jobs, app, set_job_store
+from agent_bom.api.server import JobStatus, ScanJob, ScanRequest, _jobs, app, set_job_store
 from agent_bom.api.store import InMemoryJobStore
 
 
@@ -257,6 +257,105 @@ def test_delete_scan_not_found():
     client, _ = _fresh_client()
     resp = client.delete("/v1/scan/nonexistent")
     assert resp.status_code == 404
+
+
+def test_get_scan_passes_tenant_to_store():
+    import agent_bom.api.stores as api_stores
+
+    class RecordingJobStore:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str | None]] = []
+
+        def put(self, job) -> None:
+            raise NotImplementedError
+
+        def get(self, job_id: str, tenant_id: str | None = None):
+            self.calls.append((job_id, tenant_id))
+            return ScanJob(
+                job_id=job_id,
+                tenant_id=tenant_id or "default",
+                status=JobStatus.PENDING,
+                created_at="2026-01-01T00:00:00Z",
+                request=ScanRequest(),
+            )
+
+        def delete(self, job_id: str, tenant_id: str | None = None) -> bool:
+            raise NotImplementedError
+
+        def list_all(self, tenant_id: str | None = None):
+            return []
+
+        def list_summary(self, tenant_id: str | None = None):
+            return []
+
+        def cleanup_expired(self, ttl_seconds: int = 3600) -> int:
+            return 0
+
+    store = RecordingJobStore()
+    original = api_stores._store
+    try:
+        set_job_store(store)
+        _jobs.clear()
+        client = TestClient(app, raise_server_exceptions=False)
+
+        resp = client.get("/v1/scan/job-tenant-check")
+
+        assert resp.status_code == 200
+        assert store.calls == [("job-tenant-check", "default")]
+    finally:
+        set_job_store(original)
+        _jobs.clear()
+
+
+def test_delete_scan_passes_tenant_to_store():
+    import agent_bom.api.stores as api_stores
+
+    class RecordingJobStore:
+        def __init__(self) -> None:
+            self.get_calls: list[tuple[str, str | None]] = []
+            self.delete_calls: list[tuple[str, str | None]] = []
+
+        def put(self, job) -> None:
+            raise NotImplementedError
+
+        def get(self, job_id: str, tenant_id: str | None = None):
+            self.get_calls.append((job_id, tenant_id))
+            return ScanJob(
+                job_id=job_id,
+                tenant_id=tenant_id or "default",
+                status=JobStatus.PENDING,
+                created_at="2026-01-01T00:00:00Z",
+                request=ScanRequest(),
+            )
+
+        def delete(self, job_id: str, tenant_id: str | None = None) -> bool:
+            self.delete_calls.append((job_id, tenant_id))
+            return True
+
+        def list_all(self, tenant_id: str | None = None):
+            return []
+
+        def list_summary(self, tenant_id: str | None = None):
+            return []
+
+        def cleanup_expired(self, ttl_seconds: int = 3600) -> int:
+            return 0
+
+    store = RecordingJobStore()
+    original = api_stores._store
+    try:
+        set_job_store(store)
+        _jobs.clear()
+        client = TestClient(app, raise_server_exceptions=False)
+
+        resp = client.delete("/v1/scan/job-tenant-delete")
+
+        assert resp.status_code == 204
+        assert store.get_calls == [("job-tenant-delete", "default")]
+        assert store.delete_calls == [("job-tenant-delete", "default")]
+    finally:
+        set_job_store(original)
+        _jobs.clear()
 
 
 # ---------------------------------------------------------------------------

@@ -70,9 +70,9 @@ async def list_schedules(request: Request) -> list[dict]:
 @router.get("/v1/schedules/{schedule_id}", tags=["schedules"])
 async def get_schedule(request: Request, schedule_id: str) -> dict:
     """Get a specific schedule."""
-    s = _get_schedule_store().get(schedule_id)
     tenant_id = getattr(request.state, "tenant_id", "default")
-    if s is None or s.tenant_id != tenant_id:
+    s = _get_schedule_store().get(schedule_id, tenant_id=tenant_id)
+    if s is None:
         raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
     return s.model_dump()
 
@@ -82,12 +82,12 @@ async def delete_schedule(request: Request, schedule_id: str):
     """Delete a schedule."""
     from agent_bom.api.audit_log import log_action
 
-    s = _get_schedule_store().get(schedule_id)
     tenant_id = getattr(request.state, "tenant_id", "default")
     actor = getattr(request.state, "api_key_name", "") or "system"
-    if s is None or s.tenant_id != tenant_id:
+    s = _get_schedule_store().get(schedule_id, tenant_id=tenant_id)
+    if s is None:
         raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
-    _get_schedule_store().delete(schedule_id)
+    _get_schedule_store().delete(schedule_id, tenant_id=tenant_id)
     log_action("schedule.delete", actor=actor, resource=f"schedule/{schedule_id}", tenant_id=tenant_id)
 
 
@@ -96,10 +96,10 @@ async def toggle_schedule(request: Request, schedule_id: str) -> dict:
     """Enable or disable a schedule."""
     from agent_bom.api.audit_log import log_action
 
-    s = _get_schedule_store().get(schedule_id)
     tenant_id = getattr(request.state, "tenant_id", "default")
     actor = getattr(request.state, "api_key_name", "") or "system"
-    if s is None or s.tenant_id != tenant_id:
+    s = _get_schedule_store().get(schedule_id, tenant_id=tenant_id)
+    if s is None:
         raise HTTPException(status_code=404, detail=f"Schedule {schedule_id} not found")
     s.enabled = not s.enabled
     s.updated_at = datetime.now(timezone.utc).isoformat()

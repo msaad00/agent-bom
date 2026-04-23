@@ -119,19 +119,25 @@ class SnowflakeJobStore:
                 ),
             )
 
-    def get(self, job_id: str) -> ScanJob | None:
+    def get(self, job_id: str, tenant_id: str | None = None) -> ScanJob | None:
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT data FROM scan_jobs WHERE job_id = %s", (job_id,))
+            if tenant_id is None:
+                cur.execute("SELECT data FROM scan_jobs WHERE job_id = %s", (job_id,))
+            else:
+                cur.execute("SELECT data FROM scan_jobs WHERE job_id = %s AND tenant_id = %s", (job_id, tenant_id))
             row = cur.fetchone()
             if row is None:
                 return None
             return ScanJob.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
 
-    def delete(self, job_id: str) -> bool:
+    def delete(self, job_id: str, tenant_id: str | None = None) -> bool:
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute("DELETE FROM scan_jobs WHERE job_id = %s", (job_id,))
+            if tenant_id is None:
+                cur.execute("DELETE FROM scan_jobs WHERE job_id = %s", (job_id,))
+            else:
+                cur.execute("DELETE FROM scan_jobs WHERE job_id = %s AND tenant_id = %s", (job_id, tenant_id))
             return (cur.rowcount or 0) > 0
 
     def list_all(self, tenant_id: str | None = None) -> list[ScanJob]:
@@ -245,10 +251,13 @@ class SnowflakeFleetStore:
                 ),
             )
 
-    def get(self, agent_id: str) -> FleetAgent | None:
+    def get(self, agent_id: str, tenant_id: str | None = None) -> FleetAgent | None:
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT data FROM fleet_agents WHERE agent_id = %s", (agent_id,))
+            if tenant_id is None:
+                cur.execute("SELECT data FROM fleet_agents WHERE agent_id = %s", (agent_id,))
+            else:
+                cur.execute("SELECT data FROM fleet_agents WHERE agent_id = %s AND tenant_id = %s", (agent_id, tenant_id))
             row = cur.fetchone()
             if row is None:
                 return None
@@ -263,10 +272,13 @@ class SnowflakeFleetStore:
                 return None
             return FleetAgent.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
 
-    def delete(self, agent_id: str) -> bool:
+    def delete(self, agent_id: str, tenant_id: str | None = None) -> bool:
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute("DELETE FROM fleet_agents WHERE agent_id = %s", (agent_id,))
+            if tenant_id is None:
+                cur.execute("DELETE FROM fleet_agents WHERE agent_id = %s", (agent_id,))
+            else:
+                cur.execute("DELETE FROM fleet_agents WHERE agent_id = %s AND tenant_id = %s", (agent_id, tenant_id))
             return (cur.rowcount or 0) > 0
 
     def list_all(self) -> list[FleetAgent]:
@@ -419,21 +431,27 @@ class SnowflakeScheduleStore:
                 ),
             )
 
-    def get(self, schedule_id: str):
+    def get(self, schedule_id: str, tenant_id: str | None = None):
         from .schedule_store import ScanSchedule
 
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT data FROM scan_schedules WHERE schedule_id = %s", (schedule_id,))
+            if tenant_id is None:
+                cur.execute("SELECT data FROM scan_schedules WHERE schedule_id = %s", (schedule_id,))
+            else:
+                cur.execute("SELECT data FROM scan_schedules WHERE schedule_id = %s AND tenant_id = %s", (schedule_id, tenant_id))
             row = cur.fetchone()
             if row is None:
                 return None
             return ScanSchedule.model_validate_json(row[0] if isinstance(row[0], str) else json.dumps(row[0]))
 
-    def delete(self, schedule_id: str) -> bool:
+    def delete(self, schedule_id: str, tenant_id: str | None = None) -> bool:
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute("DELETE FROM scan_schedules WHERE schedule_id = %s", (schedule_id,))
+            if tenant_id is None:
+                cur.execute("DELETE FROM scan_schedules WHERE schedule_id = %s", (schedule_id,))
+            else:
+                cur.execute("DELETE FROM scan_schedules WHERE schedule_id = %s AND tenant_id = %s", (schedule_id, tenant_id))
             return (cur.rowcount or 0) > 0
 
     def list_all(self, tenant_id: str | None = None) -> list:
@@ -526,10 +544,13 @@ class SnowflakeExceptionStore:
                 ),
             )
 
-    def get(self, exception_id: str) -> VulnException | None:
+    def get(self, exception_id: str, tenant_id: str | None = None) -> VulnException | None:
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute("SELECT data FROM exceptions WHERE exception_id = %s", (exception_id,))
+            if tenant_id is None:
+                cur.execute("SELECT data FROM exceptions WHERE exception_id = %s", (exception_id,))
+            else:
+                cur.execute("SELECT data FROM exceptions WHERE exception_id = %s AND tenant_id = %s", (exception_id, tenant_id))
             row = cur.fetchone()
             if row is None:
                 return None
@@ -538,10 +559,13 @@ class SnowflakeExceptionStore:
             data["status"] = ExceptionStatus(data.get("status", ExceptionStatus.PENDING.value))
             return VulnException(**data)
 
-    def delete(self, exception_id: str) -> bool:
+    def delete(self, exception_id: str, tenant_id: str | None = None) -> bool:
         with self._connect() as conn:
             cur = conn.cursor()
-            cur.execute("DELETE FROM exceptions WHERE exception_id = %s", (exception_id,))
+            if tenant_id is None:
+                cur.execute("DELETE FROM exceptions WHERE exception_id = %s", (exception_id,))
+            else:
+                cur.execute("DELETE FROM exceptions WHERE exception_id = %s AND tenant_id = %s", (exception_id, tenant_id))
             return (cur.rowcount or 0) > 0
 
     def list_all(self, status: str | None = None, tenant_id: str = "default") -> list[VulnException]:

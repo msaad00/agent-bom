@@ -80,9 +80,9 @@ class FleetStore(Protocol):
     """Protocol for fleet agent persistence."""
 
     def put(self, agent: FleetAgent) -> None: ...
-    def get(self, agent_id: str) -> FleetAgent | None: ...
+    def get(self, agent_id: str, tenant_id: str | None = None) -> FleetAgent | None: ...
     def get_by_name(self, name: str) -> FleetAgent | None: ...
-    def delete(self, agent_id: str) -> bool: ...
+    def delete(self, agent_id: str, tenant_id: str | None = None) -> bool: ...
     def list_all(self) -> list[FleetAgent]: ...
     def list_summary(self) -> list[dict]: ...
     def list_by_tenant(self, tenant_id: str) -> list[FleetAgent]: ...
@@ -106,9 +106,14 @@ class InMemoryFleetStore:
         with self._lock:
             self._agents[normalized.agent_id] = normalized
 
-    def get(self, agent_id: str) -> FleetAgent | None:
+    def get(self, agent_id: str, tenant_id: str | None = None) -> FleetAgent | None:
         with self._lock:
-            return self._agents.get(agent_id)
+            agent = self._agents.get(agent_id)
+            if agent is None:
+                return None
+            if tenant_id is not None and agent.tenant_id != tenant_id:
+                return None
+            return agent
 
     def get_by_name(self, name: str) -> FleetAgent | None:
         with self._lock:
@@ -117,11 +122,15 @@ class InMemoryFleetStore:
                     return a
             return None
 
-    def delete(self, agent_id: str) -> bool:
+    def delete(self, agent_id: str, tenant_id: str | None = None) -> bool:
         with self._lock:
-            if agent_id in self._agents:
-                del self._agents[agent_id]
-                return True
+            agent = self._agents.get(agent_id)
+            if agent is None:
+                return False
+            if tenant_id is not None and agent.tenant_id != tenant_id:
+                return False
+            del self._agents[agent_id]
+            return True
             return False
 
     def list_all(self) -> list[FleetAgent]:
@@ -225,8 +234,14 @@ class SQLiteFleetStore:
         )
         self._conn.commit()
 
-    def get(self, agent_id: str) -> FleetAgent | None:
-        row = self._conn.execute("SELECT data FROM fleet_agents WHERE agent_id = ?", (agent_id,)).fetchone()
+    def get(self, agent_id: str, tenant_id: str | None = None) -> FleetAgent | None:
+        if tenant_id is None:
+            row = self._conn.execute("SELECT data FROM fleet_agents WHERE agent_id = ?", (agent_id,)).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT data FROM fleet_agents WHERE agent_id = ? AND json_extract(data, '$.tenant_id') = ?",
+                (agent_id, tenant_id),
+            ).fetchone()
         if row is None:
             return None
         return FleetAgent.model_validate_json(row[0])
@@ -237,8 +252,14 @@ class SQLiteFleetStore:
             return None
         return FleetAgent.model_validate_json(row[0])
 
-    def delete(self, agent_id: str) -> bool:
-        cursor = self._conn.execute("DELETE FROM fleet_agents WHERE agent_id = ?", (agent_id,))
+    def delete(self, agent_id: str, tenant_id: str | None = None) -> bool:
+        if tenant_id is None:
+            cursor = self._conn.execute("DELETE FROM fleet_agents WHERE agent_id = ?", (agent_id,))
+        else:
+            cursor = self._conn.execute(
+                "DELETE FROM fleet_agents WHERE agent_id = ? AND json_extract(data, '$.tenant_id') = ?",
+                (agent_id, tenant_id),
+            )
         self._conn.commit()
         return cursor.rowcount > 0
 

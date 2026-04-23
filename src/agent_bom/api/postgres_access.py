@@ -316,20 +316,35 @@ class PostgresExceptionStore:
             )
             conn.commit()
 
-    def get(self, exception_id: str) -> VulnException | None:
+    def get(self, exception_id: str, tenant_id: str | None = None) -> VulnException | None:
         with _tenant_connection(self._pool) as conn:
-            row = conn.execute(
-                """SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, approved_by,
-                          status, created_at, expires_at, approved_at, revoked_at, team_id
-                   FROM exceptions
-                   WHERE exception_id = %s""",
-                (exception_id,),
-            ).fetchone()
+            if tenant_id is None:
+                row = conn.execute(
+                    """SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, approved_by,
+                              status, created_at, expires_at, approved_at, revoked_at, team_id
+                       FROM exceptions
+                       WHERE exception_id = %s""",
+                    (exception_id,),
+                ).fetchone()
+            else:
+                row = conn.execute(
+                    """SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, approved_by,
+                              status, created_at, expires_at, approved_at, revoked_at, team_id
+                       FROM exceptions
+                       WHERE exception_id = %s AND team_id = %s""",
+                    (exception_id, tenant_id),
+                ).fetchone()
             return self._row_to_exception(row) if row else None
 
-    def delete(self, exception_id: str) -> bool:
+    def delete(self, exception_id: str, tenant_id: str | None = None) -> bool:
         with _tenant_connection(self._pool) as conn:
-            cursor = conn.execute("DELETE FROM exceptions WHERE exception_id = %s", (exception_id,))
+            if tenant_id is None:
+                cursor = conn.execute("DELETE FROM exceptions WHERE exception_id = %s", (exception_id,))
+            else:
+                cursor = conn.execute(
+                    "DELETE FROM exceptions WHERE exception_id = %s AND team_id = %s",
+                    (exception_id, tenant_id),
+                )
             conn.commit()
             return cursor.rowcount > 0
 

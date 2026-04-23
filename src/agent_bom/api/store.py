@@ -21,8 +21,8 @@ class JobStore(Protocol):
     """Protocol for scan job persistence."""
 
     def put(self, job: ScanJob) -> None: ...
-    def get(self, job_id: str) -> ScanJob | None: ...
-    def delete(self, job_id: str) -> bool: ...
+    def get(self, job_id: str, tenant_id: str | None = None) -> ScanJob | None: ...
+    def delete(self, job_id: str, tenant_id: str | None = None) -> bool: ...
     def list_all(self, tenant_id: str | None = None) -> list[ScanJob]: ...
     def list_summary(self, tenant_id: str | None = None) -> list[dict]: ...
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int: ...
@@ -39,15 +39,24 @@ class InMemoryJobStore:
         with self._lock:
             self._jobs[job.job_id] = job
 
-    def get(self, job_id: str) -> ScanJob | None:
+    def get(self, job_id: str, tenant_id: str | None = None) -> ScanJob | None:
         with self._lock:
-            return self._jobs.get(job_id)
+            job = self._jobs.get(job_id)
+            if job is None:
+                return None
+            if tenant_id is not None and job.tenant_id != tenant_id:
+                return None
+            return job
 
-    def delete(self, job_id: str) -> bool:
+    def delete(self, job_id: str, tenant_id: str | None = None) -> bool:
         with self._lock:
-            if job_id in self._jobs:
-                del self._jobs[job_id]
-                return True
+            job = self._jobs.get(job_id)
+            if job is None:
+                return False
+            if tenant_id is not None and job.tenant_id != tenant_id:
+                return False
+            del self._jobs[job_id]
+            return True
             return False
 
     def list_all(self, tenant_id: str | None = None) -> list[ScanJob]:
@@ -145,14 +154,26 @@ class SQLiteJobStore:
         )
         self._conn.commit()
 
-    def get(self, job_id: str) -> ScanJob | None:
-        row = self._conn.execute("SELECT data FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
+    def get(self, job_id: str, tenant_id: str | None = None) -> ScanJob | None:
+        if tenant_id is None:
+            row = self._conn.execute("SELECT data FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT data FROM jobs WHERE job_id = ? AND tenant_id = ?",
+                (job_id, tenant_id),
+            ).fetchone()
         if row is None:
             return None
         return self._deserialize(row[0])
 
-    def delete(self, job_id: str) -> bool:
-        cursor = self._conn.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
+    def delete(self, job_id: str, tenant_id: str | None = None) -> bool:
+        if tenant_id is None:
+            cursor = self._conn.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
+        else:
+            cursor = self._conn.execute(
+                "DELETE FROM jobs WHERE job_id = ? AND tenant_id = ?",
+                (job_id, tenant_id),
+            )
         self._conn.commit()
         return cursor.rowcount > 0
 

@@ -241,9 +241,11 @@ class TestSnowflakeJobStore:
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
-        result = store.get("j1")
+        result = store.get("j1", tenant_id="default")
         assert result is not None
         assert result.job_id == "j1"
+        sql = str(conn.cursor().execute.call_args_list[-1])
+        assert "WHERE job_id = %s AND tenant_id = %s" in sql
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_get_not_found(self, mock_connect):
@@ -272,7 +274,9 @@ class TestSnowflakeJobStore:
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
-        assert store.delete("j1") is True
+        assert store.delete("j1", tenant_id="default") is True
+        sql = str(conn.cursor().execute.call_args_list[-1])
+        assert "DELETE FROM scan_jobs WHERE job_id = %s AND tenant_id = %s" in sql
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_delete_not_found(self, mock_connect):
@@ -366,9 +370,11 @@ class TestSnowflakeFleetStore:
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
-        result = store.get("a1")
+        result = store.get("a1", tenant_id="tenant-alpha")
         assert result is not None
         assert result.agent_id == "a1"
+        sql = str(conn.cursor().execute.call_args_list[-1])
+        assert "WHERE agent_id = %s AND tenant_id = %s" in sql
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_get_not_found(self, mock_connect):
@@ -395,7 +401,9 @@ class TestSnowflakeFleetStore:
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
-        assert store.delete("a1") is True
+        assert store.delete("a1", tenant_id="tenant-alpha") is True
+        sql = str(conn.cursor().execute.call_args_list[-1])
+        assert "DELETE FROM fleet_agents WHERE agent_id = %s AND tenant_id = %s" in sql
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_list_all(self, mock_connect):
@@ -706,9 +714,11 @@ class TestSnowflakeScheduleStore:
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
-        result = store.get("sched-1")
+        result = store.get("sched-1", tenant_id="default")
         assert result is not None
         assert result.schedule_id == "sched-1"
+        sql = str(conn.cursor().execute.call_args_list[-1])
+        assert "WHERE schedule_id = %s AND tenant_id = %s" in sql
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_list_all_tenant_filtered(self, mock_connect):
@@ -739,7 +749,9 @@ class TestSnowflakeScheduleStore:
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
-        assert store.delete("sched-1") is True
+        assert store.delete("sched-1", tenant_id="default") is True
+        sql = str(conn.cursor().execute.call_args_list[-1])
+        assert "DELETE FROM scan_schedules WHERE schedule_id = %s AND tenant_id = %s" in sql
 
 
 # ─── SnowflakeExceptionStore ─────────────────────────────────────────────────
@@ -797,10 +809,12 @@ class TestSnowflakeExceptionStore:
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
-        result = store.get("exc-1")
+        result = store.get("exc-1", tenant_id="default")
         assert result is not None
         assert result.exception_id == "exc-1"
         assert result.tenant_id == "default"
+        sql = str(conn.cursor().execute.call_args_list[-1])
+        assert "WHERE exception_id = %s AND tenant_id = %s" in sql
 
     @patch("agent_bom.api.snowflake_store._sf_connect")
     def test_list_all_tenant_filtered(self, mock_connect):
@@ -832,7 +846,9 @@ class TestSnowflakeExceptionStore:
         conn = _mock_connection(cursor=cur)
         mock_connect.return_value = conn
         store = self._make_store()
-        assert store.delete("exc-1") is True
+        assert store.delete("exc-1", tenant_id="default") is True
+        sql = str(conn.cursor().execute.call_args_list[-1])
+        assert "DELETE FROM exceptions WHERE exception_id = %s AND tenant_id = %s" in sql
 
 
 # ─── Server lifespan auto-detection ──────────────────────────────────────────

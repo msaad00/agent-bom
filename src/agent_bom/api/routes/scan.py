@@ -147,8 +147,8 @@ def _job_for_request(request: Request, job_id: str) -> ScanJob:
     in_mem = _jobs_get(job_id)
     if in_mem is not None and _visible_to_tenant(in_mem, tenant_id):
         return in_mem
-    job = _get_store().get(job_id)
-    if job is None or not _visible_to_tenant(job, tenant_id):
+    job = _get_store().get(job_id, tenant_id=tenant_id)
+    if job is None:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
     return job
 
@@ -445,7 +445,7 @@ async def delete_scan(request: Request, job_id: str) -> None:
     """Discard a job record."""
     job = _job_for_request(request, job_id)
     in_memory = _jobs_pop(job_id) if _visible_to_tenant(job, _tenant_id(request)) else None
-    in_store = _get_store().delete(job_id)
+    in_store = _get_store().delete(job_id, tenant_id=_tenant_id(request))
     if not in_memory and not in_store:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
 

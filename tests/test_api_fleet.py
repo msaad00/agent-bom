@@ -122,6 +122,34 @@ def test_get_agent_not_found():
     assert resp.status_code == 404
 
 
+def test_get_agent_passes_tenant_to_store():
+    import agent_bom.api.stores as api_stores
+
+    class RecordingFleetStore:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, str | None]] = []
+
+        def get(self, agent_id: str, tenant_id: str | None = None):
+            self.calls.append((agent_id, tenant_id))
+            return _make(agent_id=agent_id, name="alpha", tenant_id=tenant_id or "default")
+
+        def list_by_tenant(self, tenant_id: str):
+            return []
+
+    store = RecordingFleetStore()
+    original = api_stores._fleet_store
+    try:
+        set_fleet_store(store)
+        client = TestClient(app)
+
+        resp = client.get("/v1/fleet/a-tenant-check")
+
+        assert resp.status_code == 200
+        assert store.calls == [("a-tenant-check", "default")]
+    finally:
+        set_fleet_store(original)
+
+
 # ── Sync ──────────────────────────────────────────────────────────────────────
 
 

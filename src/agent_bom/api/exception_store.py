@@ -93,8 +93,8 @@ class VulnException:
 
 class ExceptionStore(Protocol):
     def put(self, exc: VulnException) -> None: ...
-    def get(self, exception_id: str) -> VulnException | None: ...
-    def delete(self, exception_id: str) -> bool: ...
+    def get(self, exception_id: str, tenant_id: str | None = None) -> VulnException | None: ...
+    def delete(self, exception_id: str, tenant_id: str | None = None) -> bool: ...
     def list_all(self, status: str | None = None, tenant_id: str = "default") -> list[VulnException]: ...
     def find_matching(self, vuln_id: str, package_name: str, server_name: str = "", tenant_id: str = "default") -> VulnException | None: ...
 
@@ -108,12 +108,23 @@ class InMemoryExceptionStore:
         with self._lock:
             self._store[exc.exception_id] = exc
 
-    def get(self, exception_id: str) -> VulnException | None:
-        return self._store.get(exception_id)
+    def get(self, exception_id: str, tenant_id: str | None = None) -> VulnException | None:
+        exc = self._store.get(exception_id)
+        if exc is None:
+            return None
+        if tenant_id is not None and exc.tenant_id != tenant_id:
+            return None
+        return exc
 
-    def delete(self, exception_id: str) -> bool:
+    def delete(self, exception_id: str, tenant_id: str | None = None) -> bool:
         with self._lock:
-            return self._store.pop(exception_id, None) is not None
+            exc = self._store.get(exception_id)
+            if exc is None:
+                return False
+            if tenant_id is not None and exc.tenant_id != tenant_id:
+                return False
+            self._store.pop(exception_id, None)
+            return True
 
     def list_all(self, status: str | None = None, tenant_id: str = "default") -> list[VulnException]:
         with self._lock:
@@ -188,13 +199,21 @@ class SQLiteExceptionStore:
         )
         self._conn.commit()
 
-    def get(self, exception_id: str) -> VulnException | None:
-        row = self._conn.execute(
-            "SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, "
-            "approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id "
-            "FROM exceptions WHERE exception_id = ?",
-            (exception_id,),
-        ).fetchone()
+    def get(self, exception_id: str, tenant_id: str | None = None) -> VulnException | None:
+        if tenant_id is None:
+            row = self._conn.execute(
+                "SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, "
+                "approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id "
+                "FROM exceptions WHERE exception_id = ?",
+                (exception_id,),
+            ).fetchone()
+        else:
+            row = self._conn.execute(
+                "SELECT exception_id, vuln_id, package_name, server_name, reason, requested_by, "
+                "approved_by, status, created_at, expires_at, approved_at, revoked_at, tenant_id "
+                "FROM exceptions WHERE exception_id = ? AND tenant_id = ?",
+                (exception_id, tenant_id),
+            ).fetchone()
         if not row:
             return None
         return VulnException(
@@ -213,8 +232,14 @@ class SQLiteExceptionStore:
             tenant_id=row[12],
         )
 
-    def delete(self, exception_id: str) -> bool:
-        cursor = self._conn.execute("DELETE FROM exceptions WHERE exception_id = ?", (exception_id,))
+    def delete(self, exception_id: str, tenant_id: str | None = None) -> bool:
+        if tenant_id is None:
+            cursor = self._conn.execute("DELETE FROM exceptions WHERE exception_id = ?", (exception_id,))
+        else:
+            cursor = self._conn.execute(
+                "DELETE FROM exceptions WHERE exception_id = ? AND tenant_id = ?",
+                (exception_id, tenant_id),
+            )
         self._conn.commit()
         return cursor.rowcount > 0
 

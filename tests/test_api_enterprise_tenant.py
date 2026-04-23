@@ -216,6 +216,42 @@ async def test_delete_exception_audit_logs_actor_and_tenant(isolated_exception_s
 
 
 @pytest.mark.asyncio
+async def test_delete_exception_passes_tenant_to_store(monkeypatch):
+    class RecordingExceptionStore:
+        def __init__(self) -> None:
+            self.get_calls: list[tuple[str, str | None]] = []
+            self.delete_calls: list[tuple[str, str | None]] = []
+            self.exc = VulnException(vuln_id="CVE-1", package_name="pkg", tenant_id="tenant-alpha")
+
+        def put(self, exc: VulnException) -> None:
+            self.exc = exc
+
+        def get(self, exception_id: str, tenant_id: str | None = None) -> VulnException | None:
+            self.get_calls.append((exception_id, tenant_id))
+            if exception_id != self.exc.exception_id or tenant_id != self.exc.tenant_id:
+                return None
+            return self.exc
+
+        def delete(self, exception_id: str, tenant_id: str | None = None) -> bool:
+            self.delete_calls.append((exception_id, tenant_id))
+            return exception_id == self.exc.exception_id and tenant_id == self.exc.tenant_id
+
+        def list_all(self, status: str | None = None, tenant_id: str = "default"):
+            return []
+
+        def find_matching(self, vuln_id: str, package_name: str, server_name: str = "", tenant_id: str = "default"):
+            return None
+
+    store = RecordingExceptionStore()
+    monkeypatch.setattr(enterprise, "_get_exception_store", lambda: store)
+
+    await enterprise.delete_exception(_request("tenant-alpha", "alice-admin"), store.exc.exception_id)
+
+    assert store.get_calls == [(store.exc.exception_id, "tenant-alpha")]
+    assert store.delete_calls == [(store.exc.exception_id, "tenant-alpha")]
+
+
+@pytest.mark.asyncio
 async def test_create_jira_ticket_requires_header_token(monkeypatch):
     req = enterprise.JiraTicketRequest(
         jira_url="https://example.atlassian.net",

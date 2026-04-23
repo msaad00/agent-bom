@@ -95,19 +95,31 @@ class PostgresJobStore:
             )
             conn.commit()
 
-    def get(self, job_id: str):
+    def get(self, job_id: str, tenant_id: str | None = None):
         from .server import ScanJob
 
         with _tenant_connection(self._pool) as conn:
-            row = conn.execute("SELECT data FROM scan_jobs WHERE job_id = %s", (job_id,)).fetchone()
+            if tenant_id is None:
+                row = conn.execute("SELECT data FROM scan_jobs WHERE job_id = %s", (job_id,)).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT data FROM scan_jobs WHERE job_id = %s AND team_id = %s",
+                    (job_id, tenant_id),
+                ).fetchone()
             if row is None:
                 return None
             raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
             return ScanJob.model_validate_json(raw)
 
-    def delete(self, job_id: str) -> bool:
+    def delete(self, job_id: str, tenant_id: str | None = None) -> bool:
         with _tenant_connection(self._pool) as conn:
-            cursor = conn.execute("DELETE FROM scan_jobs WHERE job_id = %s", (job_id,))
+            if tenant_id is None:
+                cursor = conn.execute("DELETE FROM scan_jobs WHERE job_id = %s", (job_id,))
+            else:
+                cursor = conn.execute(
+                    "DELETE FROM scan_jobs WHERE job_id = %s AND team_id = %s",
+                    (job_id, tenant_id),
+                )
             conn.commit()
             return cursor.rowcount > 0
 
@@ -209,11 +221,17 @@ class PostgresFleetStore:
             )
             conn.commit()
 
-    def get(self, agent_id: str):
+    def get(self, agent_id: str, tenant_id: str | None = None):
         from .fleet_store import FleetAgent
 
         with _tenant_connection(self._pool) as conn:
-            row = conn.execute("SELECT data FROM fleet_agents WHERE agent_id = %s", (agent_id,)).fetchone()
+            if tenant_id is None:
+                row = conn.execute("SELECT data FROM fleet_agents WHERE agent_id = %s", (agent_id,)).fetchone()
+            else:
+                row = conn.execute(
+                    "SELECT data FROM fleet_agents WHERE agent_id = %s AND tenant_id = %s",
+                    (agent_id, tenant_id),
+                ).fetchone()
             if row is None:
                 return None
             raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
@@ -229,9 +247,15 @@ class PostgresFleetStore:
             raw = row[0] if isinstance(row[0], str) else json.dumps(row[0])
             return FleetAgent.model_validate_json(raw)
 
-    def delete(self, agent_id: str) -> bool:
+    def delete(self, agent_id: str, tenant_id: str | None = None) -> bool:
         with _tenant_connection(self._pool) as conn:
-            cursor = conn.execute("DELETE FROM fleet_agents WHERE agent_id = %s", (agent_id,))
+            if tenant_id is None:
+                cursor = conn.execute("DELETE FROM fleet_agents WHERE agent_id = %s", (agent_id,))
+            else:
+                cursor = conn.execute(
+                    "DELETE FROM fleet_agents WHERE agent_id = %s AND tenant_id = %s",
+                    (agent_id, tenant_id),
+                )
             conn.commit()
             return cursor.rowcount > 0
 

@@ -97,9 +97,9 @@ async def fleet_stats(request: Request):
 @router.get("/v1/fleet/{agent_id}", tags=["fleet"])
 async def get_fleet_agent(request: Request, agent_id: str):
     """Get a single fleet agent with trust score breakdown."""
-    agent = _get_fleet_store().get(agent_id)
     tenant_id = getattr(request.state, "tenant_id", "default")
-    if agent is None or agent.tenant_id != tenant_id:
+    agent = _get_fleet_store().get(agent_id, tenant_id=tenant_id)
+    if agent is None:
         raise HTTPException(status_code=404, detail="Fleet agent not found")
     return agent.model_dump()
 
@@ -356,8 +356,8 @@ async def update_fleet_state(request: Request, agent_id: str, body: StateUpdate)
     store = _get_fleet_store()
     tenant_id = getattr(request.state, "tenant_id", "default")
     actor = getattr(request.state, "api_key_name", "") or "system"
-    agent = store.get(agent_id)
-    if agent is None or agent.tenant_id != tenant_id:
+    agent = store.get(agent_id, tenant_id=tenant_id)
+    if agent is None:
         raise HTTPException(status_code=404, detail="Fleet agent not found")
     store.update_state(agent_id, new_state)
     log_action(
@@ -376,10 +376,10 @@ async def update_fleet_agent(request: Request, agent_id: str, body: FleetAgentUp
     from agent_bom.api.audit_log import log_action
 
     store = _get_fleet_store()
-    agent = store.get(agent_id)
     tenant_id = getattr(request.state, "tenant_id", "default")
     actor = getattr(request.state, "api_key_name", "") or "system"
-    if agent is None or agent.tenant_id != tenant_id:
+    agent = store.get(agent_id, tenant_id=tenant_id)
+    if agent is None:
         raise HTTPException(status_code=404, detail="Fleet agent not found")
     if body.owner is not None:
         agent.owner = body.owner

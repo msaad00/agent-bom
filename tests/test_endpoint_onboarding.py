@@ -66,10 +66,18 @@ def test_write_endpoint_onboarding_bundle_writes_artifacts(tmp_path):
     assert "AGENT_BOM_PUSH_URL" in env_file
     assert "AGENT_BOM_PUSH_API_KEY" in env_file
     assert 'AGENT_BOM_PUSH_SOURCE_ID="device-acme-001"' in env_file
+    assert 'AGENT_BOM_PUSH_ENROLLMENT_NAME="corp-laptop-rollout"' in env_file
+    assert 'AGENT_BOM_PUSH_OWNER="platform-security"' in env_file
+    assert 'AGENT_BOM_PUSH_ENVIRONMENT="production"' in env_file
+    assert 'AGENT_BOM_PUSH_TAGS="developer-endpoint,mdm"' in env_file
+    assert 'AGENT_BOM_PUSH_MDM_PROVIDER="jamf"' in env_file
     jamf_script = Path(artifacts["jamf_install"]).read_text()
     assert "install-agent-bom-endpoint.sh" in jamf_script
     intune_script = Path(artifacts["intune_install"]).read_text()
     assert "install-agent-bom-endpoint.ps1" in intune_script
+    plist = Path(artifacts["launch_agent_plist"]).read_text()
+    assert "AGENT_BOM_PUSH_ENROLLMENT_NAME" in plist
+    assert "AGENT_BOM_PUSH_MDM_PROVIDER" in plist
     enrollment = json.loads(Path(artifacts["enrollment_manifest"]).read_text())
     assert enrollment["enrollment_name"] == "corp-laptop-rollout"
     assert enrollment["owner"] == "platform-security"

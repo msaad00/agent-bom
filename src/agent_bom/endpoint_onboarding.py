@@ -99,13 +99,34 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 """
 
 
-def render_fleet_sync_env(push_url: str, push_api_key: str | None, source_id: str | None = None) -> str:
+def render_fleet_sync_env(
+    push_url: str,
+    push_api_key: str | None,
+    *,
+    source_id: str | None = None,
+    enrollment_name: str | None = None,
+    owner: str | None = None,
+    environment: str | None = None,
+    tags: list[str] | None = None,
+    mdm_provider: str | None = None,
+) -> str:
     """Render a fleet-sync env file for the shipped timer/service assets."""
     lines = [f'AGENT_BOM_PUSH_URL="{push_url}"']
     if push_api_key:
         lines.append(f'AGENT_BOM_PUSH_API_KEY="{push_api_key}"')
     if source_id:
         lines.append(f'AGENT_BOM_PUSH_SOURCE_ID="{source_id}"')
+    if enrollment_name:
+        lines.append(f'AGENT_BOM_PUSH_ENROLLMENT_NAME="{enrollment_name}"')
+    if owner:
+        lines.append(f'AGENT_BOM_PUSH_OWNER="{owner}"')
+    if environment:
+        lines.append(f'AGENT_BOM_PUSH_ENVIRONMENT="{environment}"')
+    normalized_tags = sorted({tag.strip() for tag in (tags or []) if tag and tag.strip()})
+    if normalized_tags:
+        lines.append(f'AGENT_BOM_PUSH_TAGS="{",".join(normalized_tags)}"')
+    if mdm_provider:
+        lines.append(f'AGENT_BOM_PUSH_MDM_PROVIDER="{mdm_provider}"')
     return "\n".join(lines) + "\n"
 
 
@@ -157,7 +178,17 @@ exit 1
 """
 
 
-def render_launch_agent_plist(push_url: str, push_api_key: str | None, source_id: str | None = None) -> str:
+def render_launch_agent_plist(
+    push_url: str,
+    push_api_key: str | None,
+    *,
+    source_id: str | None = None,
+    enrollment_name: str | None = None,
+    owner: str | None = None,
+    environment: str | None = None,
+    tags: list[str] | None = None,
+    mdm_provider: str | None = None,
+) -> str:
     """Render a launchd plist with concrete fleet-sync values."""
     token_xml = (
         f"""    <key>AGENT_BOM_PUSH_API_KEY</key>
@@ -171,6 +202,42 @@ def render_launch_agent_plist(push_url: str, push_api_key: str | None, source_id
     <string>{source_id}</string>
 """
         if source_id
+        else ""
+    )
+    enrollment_xml = (
+        f"""    <key>AGENT_BOM_PUSH_ENROLLMENT_NAME</key>
+    <string>{enrollment_name}</string>
+"""
+        if enrollment_name
+        else ""
+    )
+    owner_xml = (
+        f"""    <key>AGENT_BOM_PUSH_OWNER</key>
+    <string>{owner}</string>
+"""
+        if owner
+        else ""
+    )
+    environment_xml = (
+        f"""    <key>AGENT_BOM_PUSH_ENVIRONMENT</key>
+    <string>{environment}</string>
+"""
+        if environment
+        else ""
+    )
+    normalized_tags = sorted({tag.strip() for tag in (tags or []) if tag and tag.strip()})
+    tags_xml = (
+        f"""    <key>AGENT_BOM_PUSH_TAGS</key>
+    <string>{",".join(normalized_tags)}</string>
+"""
+        if normalized_tags
+        else ""
+    )
+    mdm_xml = (
+        f"""    <key>AGENT_BOM_PUSH_MDM_PROVIDER</key>
+    <string>{mdm_provider}</string>
+"""
+        if mdm_provider
         else ""
     )
     return f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -189,7 +256,7 @@ def render_launch_agent_plist(push_url: str, push_api_key: str | None, source_id
   <dict>
     <key>AGENT_BOM_PUSH_URL</key>
     <string>{push_url}</string>
-{token_xml}{source_xml}  </dict>
+{token_xml}{source_xml}{enrollment_xml}{owner_xml}{environment_xml}{tags_xml}{mdm_xml}  </dict>
   <key>RunAtLoad</key>
   <true/>
   <key>StartInterval</key>
@@ -335,13 +402,31 @@ def write_endpoint_onboarding_bundle(
     if push_url:
         env_path = _write_text(
             bundle_dir / "fleet-sync.env",
-            render_fleet_sync_env(push_url, push_api_key, source_id=source_id),
+            render_fleet_sync_env(
+                push_url,
+                push_api_key,
+                source_id=source_id,
+                enrollment_name=enrollment_name,
+                owner=owner,
+                environment=environment,
+                tags=normalized_tags,
+                mdm_provider=mdm_provider,
+            ),
             stat.S_IRUSR | stat.S_IWUSR,
         )
         artifacts["fleet_sync_env"] = str(env_path)
         plist_path = _write_text(
             bundle_dir / "com.agentbom.fleet-sync.plist",
-            render_launch_agent_plist(push_url, push_api_key, source_id=source_id),
+            render_launch_agent_plist(
+                push_url,
+                push_api_key,
+                source_id=source_id,
+                enrollment_name=enrollment_name,
+                owner=owner,
+                environment=environment,
+                tags=normalized_tags,
+                mdm_provider=mdm_provider,
+            ),
             stat.S_IRUSR | stat.S_IWUSR,
         )
         artifacts["launch_agent_plist"] = str(plist_path)

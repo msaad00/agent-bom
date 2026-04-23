@@ -20,6 +20,16 @@ docker compose -f docker-compose.pilot.yml up -d
 Production in your own cluster from a checked-out repo:
 
 ```bash
+scripts/deploy/install-eks-reference.sh \
+  --cluster-name corp-ai \
+  --region us-east-1 \
+  --hostname agent-bom.internal.example.com \
+  --enable-gateway
+```
+
+Advanced/manual chart install from a checked-out repo:
+
+```bash
 helm upgrade --install agent-bom deploy/helm/agent-bom \
   --namespace agent-bom --create-namespace \
   -f deploy/helm/agent-bom/examples/eks-production-values.yaml
@@ -55,6 +65,23 @@ That is not a downgrade of runtime. It is a cleaner adoption model:
 
 - **inventory and discovery** should already be useful on day 1
 - **proxy and gateway** deepen that into live runtime control on day 2
+
+## Official deployment entrypoints
+
+Use these first:
+
+| Goal | Recommended entrypoint | Why |
+|---|---|---|
+| One-machine pilot | `deploy/docker-compose.pilot.yml` | fastest path to API + UI with the shipped images |
+| Full self-hosted deployment in your own AWS / EKS | `scripts/deploy/install-eks-reference.sh` | creates or targets EKS, wires the AWS baseline, installs Helm, and prints verify/next-step commands |
+
+Use these only when you are intentionally going off the paved path:
+
+| Entry point | Use when |
+|---|---|
+| `helm upgrade --install ... -f deploy/helm/agent-bom/examples/eks-production-values.yaml` | you already manage your own Helm layering and do not want the reference installer |
+| `deploy/docker-compose.fullstack.yml` | you want a fuller local compose example on one machine, not the recommended production path |
+| `deploy/docker-compose.platform.yml` / `deploy/docker-compose.runtime.yml` | you are developing or demonstrating one part of the product surface, not doing the standard install |
 
 ## Deployment modes
 
@@ -97,6 +124,110 @@ This self-hosted shape is designed around a few explicit operating principles:
 - **Low latency**: runtime inspection stays close to the MCP workloads instead of hairpinning through a global gateway
 - **Cheap by default**: scan workers scale to zero, offline vuln DB reduces repeated network lookups, ClickHouse stays optional
 - **Interoperable**: one shared graph and policy model spans scanner, proxy, gateway, fleet, and API/UI
+
+## Enterprise Self-Hosted Diagrams
+
+Use two diagrams, not one overloaded graph:
+
+- **Enterprise Self-Hosted Topology** answers what runs where.
+- **Enterprise Self-Hosted Data and Runtime Flow** answers how data moves and
+  where policy, auth, RBAC, tenant scope, and audit are enforced.
+
+### Enterprise Self-Hosted Topology
+
+```mermaid
+flowchart LR
+    classDef edge fill:#111827,stroke:#38bdf8,color:#e0f2fe
+    classDef ctrl fill:#0f172a,stroke:#6366f1,color:#e0e7ff
+    classDef run fill:#0f172a,stroke:#10b981,color:#d1fae5
+    classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
+    classDef ext fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
+
+    Browser["Browser UI"]:::ext
+    IdP["Corporate IdP"]:::ext
+    Endpoints["Fleet endpoints / collectors"]:::ext
+    Remote["Remote MCPs"]:::ext
+
+    subgraph Customer["Customer VPC / EKS / self-hosted cluster"]
+      Ingress["Ingress + TLS"]:::edge
+
+      subgraph Control["Control plane"]
+        UI["UI"]:::ctrl
+        API["API"]:::ctrl
+        Jobs["Scan jobs / workers"]:::ctrl
+      end
+
+      Gateway["Gateway"]:::run
+      Proxy["Selected proxy sidecars / local wrappers"]:::run
+
+      subgraph Stores["Customer-owned stores"]
+        Postgres[("Postgres")]:::data
+        ClickHouse[("ClickHouse optional")]:::data
+        S3[("S3 optional")]:::data
+      end
+
+      Secrets["Secrets / IRSA / Vault"]:::edge
+      Obs["OTEL / Prometheus"]:::edge
+    end
+
+    Browser --> Ingress
+    IdP -. OIDC / SAML .-> Ingress
+    Ingress --> UI
+    Ingress --> API
+    UI --> API
+    Jobs --> API
+    Endpoints -->|fleet sync / pushed inventory| API
+    Proxy -->|policy pull / audit push| API
+    Gateway -->|policy pull / audit push| API
+    Proxy -->|local MCP traffic| Endpoints
+    Gateway -->|shared remote MCP traffic| Remote
+    API --> Postgres
+    API -. analytics .-> ClickHouse
+    API -. archive / export .-> S3
+    Secrets --> API
+    Secrets --> Gateway
+    API --> Obs
+    Gateway --> Obs
+```
+
+Truth block:
+- UI drives workflows; API owns auth, RBAC, tenant scope, graph, audit, and policy.
+- Proxy and gateway are peer runtime surfaces; scans and fleet build inventory
+  without requiring runtime rollout.
+
+### Enterprise Self-Hosted Data and Runtime Flow
+
+```mermaid
+flowchart TD
+    classDef src fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
+    classDef proc fill:#0f172a,stroke:#6366f1,color:#e0e7ff
+    classDef run fill:#0f172a,stroke:#10b981,color:#d1fae5
+    classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
+
+    Scan["Scans<br/>CLI / API / CI / UI-triggered jobs"]:::src
+    Fleet["Fleet sync<br/>endpoint pushes"]:::src
+    Proxy["Proxy runtime<br/>local / sidecar MCP traffic"]:::run
+    Gateway["Gateway runtime<br/>shared remote MCP traffic"]:::run
+
+    API["API / control plane<br/>auth · RBAC · tenant scope · audit"]:::proc
+    Graph["Graph / findings / policy / remediation"]:::proc
+    Store[("Postgres")]:::data
+    Exports["OTEL / SIEM / Snowflake / ClickHouse / S3"]:::data
+
+    Scan -->|normalized findings + inventory| API
+    Fleet -->|tenant-scoped inventory| API
+    Proxy -->|audit + policy evaluation| API
+    Gateway -->|audit + policy evaluation| API
+    API --> Graph
+    Graph --> Store
+    API -->|optional export / analytics| Exports
+```
+
+Truth block:
+- Auth, RBAC, tenant resolution, and audit happen in the control plane, not in
+  the browser.
+- Scans and fleet establish inventory first; proxy and gateway add runtime
+  enforcement and runtime evidence where deployed.
 
 ## Best Self-Hosted Path
 

@@ -20,6 +20,16 @@ docker compose -f docker-compose.pilot.yml up -d
 Production in your own cluster from a checked-out repo:
 
 ```bash
+scripts/deploy/install-eks-reference.sh \
+  --cluster-name corp-ai \
+  --region us-east-1 \
+  --hostname agent-bom.internal.example.com \
+  --enable-gateway
+```
+
+Advanced/manual chart install from a checked-out repo:
+
+```bash
 helm upgrade --install agent-bom deploy/helm/agent-bom \
   --namespace agent-bom --create-namespace \
   -f deploy/helm/agent-bom/examples/eks-production-values.yaml
@@ -55,6 +65,23 @@ That is not a downgrade of runtime. It is a cleaner adoption model:
 
 - **inventory and discovery** should already be useful on day 1
 - **proxy and gateway** deepen that into live runtime control on day 2
+
+## Official deployment entrypoints
+
+Use these first:
+
+| Goal | Recommended entrypoint | Why |
+|---|---|---|
+| One-machine pilot | `deploy/docker-compose.pilot.yml` | fastest path to API + UI with the shipped images |
+| Full self-hosted deployment in your own AWS / EKS | `scripts/deploy/install-eks-reference.sh` | creates or targets EKS, wires the AWS baseline, installs Helm, and prints verify/next-step commands |
+
+Use these only when you are intentionally going off the paved path:
+
+| Entry point | Use when |
+|---|---|
+| `helm upgrade --install ... -f deploy/helm/agent-bom/examples/eks-production-values.yaml` | you already manage your own Helm layering and do not want the reference installer |
+| `deploy/docker-compose.fullstack.yml` | you want a fuller local compose example on one machine, not the recommended production path |
+| `deploy/docker-compose.platform.yml` / `deploy/docker-compose.runtime.yml` | you are developing or demonstrating one part of the product surface, not doing the standard install |
 
 ## Deployment modes
 

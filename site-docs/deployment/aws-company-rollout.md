@@ -18,7 +18,7 @@ Plane](gateway-auto-discovery.md).
 - `agentbom/agent-bom` for scanner, API, jobs, proxy, gateway, and workers
 - `agentbom/agent-bom-ui` for the browser dashboard
 
-## Reference Entry Points
+## Official Entry Points
 
 Pilot on one workstation:
 
@@ -27,7 +27,7 @@ curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docke
 docker compose -f docker-compose.pilot.yml up -d
 ```
 
-Reference AWS/EKS rollout:
+Recommended full self-hosted AWS / EKS rollout:
 
 ```bash
 scripts/deploy/install-eks-reference.sh \
@@ -38,7 +38,7 @@ scripts/deploy/install-eks-reference.sh \
   --enable-gateway
 ```
 
-If the company already has an EKS platform, reuse it:
+If the company already has an EKS platform, reuse it with the same installer:
 
 ```bash
 scripts/deploy/install-eks-reference.sh \

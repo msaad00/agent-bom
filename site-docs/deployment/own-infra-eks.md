@@ -165,11 +165,13 @@ data to a vendor-hosted control plane.
 
 These are the maintained building blocks for this model:
 
+- recommended full self-hosted entrypoint:
+  [scripts/deploy/install-eks-reference.sh](https://github.com/msaad00/agent-bom/blob/main/scripts/deploy/install-eks-reference.sh)
 - control plane:
   [deploy/helm/agent-bom](https://github.com/msaad00/agent-bom/tree/main/deploy/helm/agent-bom)
 - AWS baseline module:
   [deploy/terraform/aws/baseline](https://github.com/msaad00/agent-bom/tree/main/deploy/terraform/aws/baseline)
-- Compose references:
+- advanced local Compose references, not the primary production path:
   [deploy/docker-compose.platform.yml](https://github.com/msaad00/agent-bom/blob/main/deploy/docker-compose.platform.yml)
   and
   [deploy/docker-compose.runtime.yml](https://github.com/msaad00/agent-bom/blob/main/deploy/docker-compose.runtime.yml)
@@ -185,6 +187,11 @@ These are the maintained building blocks for this model:
   [eks-production-values.yaml](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/examples/eks-production-values.yaml)
 - focused pilot values example:
   [eks-mcp-pilot-values.yaml](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml)
+
+If you want one official answer to "what is the full deployment path?", use the
+reference installer first. Drop to the raw Helm examples only when you
+intentionally want to manage the AWS baseline, secrets, and values layering
+yourself.
 
 For teams that want Terraform to own the AWS baseline around the chart, use the
 [Terraform AWS Baseline](terraform-aws-baseline.md) module for RDS, IRSA,
@@ -233,10 +240,6 @@ Use two layers.
 
 That keeps scan, fleet, runtime enforcement, and gateway policy aligned
 without pretending every workload needs the same enforcement model.
-
-For the current boundary between strong self-hosted tenant isolation and
-provider-style MSSP multi-tenancy, see
-[When To Use Proxy vs Gateway vs Fleet](proxy-vs-gateway-vs-fleet.md).
 
 ## Helm Knobs That Matter
 

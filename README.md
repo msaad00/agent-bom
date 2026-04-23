@@ -77,7 +77,7 @@ agent-bom image nginx:latest                  # container image scan
 agent-bom iac Dockerfile k8s/ infra/main.tf   # IaC scan, optionally `--k8s-live`
 ```
 
-Self-hosted pilot:
+Recommended pilot on one workstation:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docker-compose.pilot.yml -o docker-compose.pilot.yml
@@ -85,7 +85,17 @@ docker compose -f docker-compose.pilot.yml up -d
 # Dashboard -> http://localhost:3000
 ```
 
-Production chart from a checked-out repo:
+Recommended full self-hosted path in your own AWS / EKS:
+
+```bash
+scripts/deploy/install-eks-reference.sh \
+  --cluster-name corp-ai \
+  --region us-east-1 \
+  --hostname agent-bom.internal.example.com \
+  --enable-gateway
+```
+
+Advanced/manual path from a checked-out repo:
 
 ```bash
 helm upgrade --install agent-bom deploy/helm/agent-bom \
@@ -246,7 +256,18 @@ start with a runtime rollout.
 Users should not think about that split directly:
 
 - **pilot**: one Compose file
-- **production**: one Helm chart
+- **full self-hosted**: one reference installer
+- **advanced/manual**: one Helm chart
+
+Official deployment entrypoints:
+
+- **pilot on one machine**:
+  [deploy/docker-compose.pilot.yml](deploy/docker-compose.pilot.yml)
+- **full self-hosted in your own AWS / EKS**:
+  [scripts/deploy/install-eks-reference.sh](scripts/deploy/install-eks-reference.sh)
+
+Other Compose files in `deploy/` are advanced or component-specific examples,
+not the primary recommended deployment path.
 
 ## Local vs self-hosted
 
@@ -254,7 +275,7 @@ Users should not think about that split directly:
 |---|---|---|
 | `agent-bom agents -p .` on your laptop | local repo, local MCP configs, local manifests, local endpoint context | cluster-only resources unless you pass credentials or run from that environment |
 | `agent-bom serve` on one machine | scans and UI workflows for paths that machine can access | another developer laptop's local files or cluster-internal services it cannot reach |
-| Helm / Compose control plane in your infra | scan jobs, fleet sync, graph, audit, remediation, API/UI workflows | endpoint-local stdio traffic unless proxy is deployed there |
+| Helm / scripted control plane in your infra | scan jobs, fleet sync, graph, audit, remediation, API/UI workflows | endpoint-local stdio traffic unless proxy is deployed there |
 | `agent-bom proxy` on an endpoint or sidecar | that workload's live MCP traffic | shared remote MCP traffic that never passes through that proxy |
 | `agent-bom gateway serve` in cluster | shared remote MCP traffic routed through it | local stdio MCP sessions that stay on endpoints |
 

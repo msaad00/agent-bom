@@ -47,6 +47,12 @@ That gives you:
 - sanitized fleet sync to the self-hosted control plane
 - the same fleet/mesh/gateway review path as cluster-discovered MCPs
 
+Inventory confidence on this path:
+
+- MCP client presence, config paths, transports, command or URL targets, declared tools, auth mode, and credential-backed environment references are the strongest endpoint-fleet signals today
+- source-code-derived agent and tool extraction can still miss indirect or runtime-only registrations in some frameworks, so treat those as strong heuristic inventory rather than a claim of perfect dynamic coverage
+- if a rollout decision depends on one framework family, validate that family with a focused fixture or pilot before claiming full discovery coverage
+
 Important boundary:
 
 - this is not a managed endpoint agent

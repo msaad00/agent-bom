@@ -27,6 +27,19 @@ Recommended defaults for this path:
 - **node-wide runtime coverage**: optional monitor only when your platform team explicitly wants that tradeoff
 - **advanced storage**: add ClickHouse or Snowflake only when the default Postgres-first path is no longer enough
 
+## Operator defaults at a glance
+
+| Concern | Recommended default | Change when |
+|---|---|---|
+| **control-plane backend** | `Postgres` | retained analytics or warehouse-native requirements justify `ClickHouse` or selected Snowflake parity surfaces |
+| **ingress + auth** | same-origin ingress with OIDC or SAML in front of the control plane | you already run a different enterprise ingress/auth split and intentionally want to diverge |
+| **runtime rollout** | scans + fleet first, then selected `proxy` or `gateway` | live runtime enforcement is worth the extra operational surface |
+| **remote MCP traffic** | `gateway` | the traffic is actually local stdio or workload-local sidecar traffic instead |
+| **workload-local enforcement** | selected `proxy` sidecars or endpoint-local wrappers | you do not need inline runtime enforcement on that workload yet |
+| **node-wide coverage** | keep the monitor off | your platform team explicitly accepts a DaemonSet tradeoff for node-wide runtime visibility |
+| **graph operations** | investigate by snapshot, page, search, and blast radius | you have benchmarked your expected tenant size and know a wider graph window is safe |
+| **production sizing** | start from the packaged production values and benchmark before broad rollout | your endpoint/runtime volume exceeds the published pilot and initial-enterprise guidance |
+
 If you want the narrower pilot shape first, start with
 [Focused EKS MCP Pilot](eks-mcp-pilot.md). If you want the broader rollout that
 also covers developer endpoints, pair this page with
@@ -36,6 +49,9 @@ If you need the fastest packaged control-plane demo before standing up
 Postgres, there is now a single-node SQLite preset at
 [eks-control-plane-sqlite-pilot-values.yaml](https://github.com/msaad00/agent-bom/blob/main/deploy/helm/agent-bom/examples/eks-control-plane-sqlite-pilot-values.yaml).
 Use it only for pilots and demos; multi-replica EKS still belongs on Postgres.
+
+For sizing bands, graph investigation boundaries, and the shipped load-test
+harness, see [Performance, Sizing, and Benchmarks](performance-and-sizing.md).
 
 ## What This EKS Shape Is Optimized For
 

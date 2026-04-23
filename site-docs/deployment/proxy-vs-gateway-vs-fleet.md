@@ -19,6 +19,15 @@ These are all core product surfaces. They are not three different products.
 | **Proxy** | local stdio MCPs and sidecar enforcement | laptop, workstation, or selected workload | inline policy evaluation, detector chain, audit push, signed cached policy bundles, workload-local runtime visibility | shared remote MCP relay |
 | **Gateway** | shared remote MCP traffic over `http` / `sse` | cluster or shared service tier | remote MCP relay, shared policy surface, tenant auth, shared rate limits, audit, upstream discovery overlay | local stdio or every endpoint runtime path |
 
+## Recommended deployment matrix
+
+| If your goal is... | Deploy | Why |
+|---|---|---|
+| **inventory only** | scans + fleet | lowest-friction way to prove MCP exposure, findings, graph, and provenance |
+| **shared remote MCP control** | inventory-first plus `gateway` | best fit for governed remote `http` / `sse` MCP traffic |
+| **workload-local inline enforcement** | inventory-first plus selected `proxy` sidecars or local wrappers | best fit for local stdio MCPs and workload-local enforcement |
+| **node-wide runtime visibility** | optional monitor on selected clusters only | only when your platform team explicitly wants a higher-trust DaemonSet path |
+
 ## What each surface is for
 
 ### Fleet
@@ -51,6 +60,12 @@ What `fleet` is not:
 - not an always-on endpoint daemon product
 - not inline MCP enforcement
 - not a replacement for `proxy` or `gateway`
+
+Discovery confidence:
+
+- endpoint inventory, MCP config paths, transports, declared tools, auth mode, and credential-backed environment references are high-confidence surfaces
+- source-code agent and tool extraction still includes heuristic/static paths, so indirect or runtime-only registrations can under-report today
+- that is why `fleet` is the inventory wedge first, with deeper runtime or framework-specific validation layered on later when needed
 
 ### Proxy
 

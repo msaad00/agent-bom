@@ -211,6 +211,11 @@ Runtime choices:
 | **Workload-local inline enforcement** | selected `agent-bom proxy` sidecars or local wrappers |
 | **Node-wide runtime coverage** | optional monitor only if your platform team explicitly wants a DaemonSet |
 
+Current graph scale boundary:
+
+- the graph is strong for pilot and mid-market investigation flows, but larger tenants should stay windowed by snapshot, page, search, and blast-radius drilldown instead of expecting one giant browser canvas to stay smooth
+- operator sizing guidance and the shipped benchmark harness live in [Performance, Sizing, and Benchmarks](site-docs/deployment/performance-and-sizing.md)
+
 Backend defaults:
 
 | Layer | Default | Add later only if needed |
@@ -243,6 +248,12 @@ With scans and fleet sync alone, teams can already see:
 - credential-backed environment variables
 - last seen and last synced state
 - package, image, IaC, and related finding context
+
+### Discovery confidence boundaries
+
+- configured MCP clients, transports, declared tools, command paths, URLs, auth mode, and credential-backed environment references are high-confidence inventory surfaces
+- source-code agent and tool extraction still mixes static parsing and heuristics, so indirect or runtime-only registrations can under-report today
+- inventory is a strong operator baseline now, not a claim that every dynamic framework registration path is fully captured already
 
 ### What each surface owns
 

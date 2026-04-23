@@ -190,6 +190,38 @@ def test_sync_accepts_endpoint_push_payload():
     assert agents[0].vuln_count == 2
 
 
+def test_sync_persists_endpoint_identity_metadata():
+    client, store = _fresh_client()
+    resp = client.post(
+        "/v1/fleet/sync",
+        json={
+            "source_id": "device-acme-001",
+            "agents": [
+                {
+                    "name": "cursor",
+                    "agent_type": "cursor",
+                    "source_id": "device-acme-001",
+                    "enrollment_name": "corp-laptop-rollout",
+                    "owner": "platform-security",
+                    "environment": "production",
+                    "tags": ["developer-endpoint", "mdm"],
+                    "mdm_provider": "jamf",
+                    "trust_score": 82.5,
+                    "mcp_servers": [],
+                }
+            ],
+        },
+    )
+    assert resp.status_code == 200
+    agent = store.list_all()[0]
+    assert agent.source_id == "device-acme-001"
+    assert agent.enrollment_name == "corp-laptop-rollout"
+    assert agent.owner == "platform-security"
+    assert agent.environment == "production"
+    assert agent.tags == ["developer-endpoint", "mdm"]
+    assert agent.mdm_provider == "jamf"
+
+
 def test_sync_endpoint_push_is_idempotent():
     client, store = _fresh_client()
     payload = {

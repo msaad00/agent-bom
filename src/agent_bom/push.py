@@ -21,6 +21,24 @@ import httpx
 logger = logging.getLogger(__name__)
 
 
+def _csv_env(name: str) -> list[str]:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return []
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def _endpoint_identity_from_env() -> dict[str, str | list[str]]:
+    return {
+        "source_id": generate_source_id(),
+        "enrollment_name": os.environ.get("AGENT_BOM_PUSH_ENROLLMENT_NAME", "").strip(),
+        "owner": os.environ.get("AGENT_BOM_PUSH_OWNER", "").strip(),
+        "environment": os.environ.get("AGENT_BOM_PUSH_ENVIRONMENT", "").strip(),
+        "mdm_provider": os.environ.get("AGENT_BOM_PUSH_MDM_PROVIDER", "").strip(),
+        "tags": _csv_env("AGENT_BOM_PUSH_TAGS"),
+    }
+
+
 def generate_source_id() -> str:
     """Generate a stable machine identifier (hostname SHA256[:12])."""
     configured = os.environ.get("AGENT_BOM_PUSH_SOURCE_ID", "").strip()
@@ -39,6 +57,8 @@ def sanitize_results(results: dict) -> dict:
     """
     sanitized = copy.deepcopy(results)
 
+    endpoint_identity = _endpoint_identity_from_env()
+
     # Strip config_path from agents
     for agent in sanitized.get("agents", []):
         agent.pop("config_path", None)
@@ -47,9 +67,16 @@ def sanitize_results(results: dict) -> dict:
         for key, val in list(meta.items()):
             if isinstance(val, str) and _looks_like_secret(key):
                 meta[key] = "***REDACTED***"
+        for key in ("source_id", "enrollment_name", "owner", "environment", "mdm_provider"):
+            value = endpoint_identity.get(key, "")
+            if value and not agent.get(key):
+                agent[key] = value
+        tags = endpoint_identity.get("tags", [])
+        if tags and not agent.get("tags"):
+            agent["tags"] = tags
 
     # Add source identifier
-    sanitized["source_id"] = generate_source_id()
+    sanitized["source_id"] = str(endpoint_identity["source_id"])
     sanitized["idempotency_key"] = str(uuid.uuid4())
 
     return sanitized

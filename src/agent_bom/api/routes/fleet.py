@@ -125,6 +125,10 @@ def _payload_counts(agent: dict) -> tuple[int, int, int, int]:
     return server_count, pkg_count, cred_count, vuln_count
 
 
+def _payload_tags(agent: dict) -> list[str]:
+    return sorted({str(tag).strip() for tag in list(agent.get("tags", []) or []) if str(tag).strip()})
+
+
 def _persist_payload_observations(tenant_id: str, agent: dict, *, last_discovery: str, last_synced: str) -> None:
     store = _get_mcp_observation_store()
     agent_name = str(agent.get("name", "unknown-agent"))
@@ -212,6 +216,12 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
             server_count, pkg_count, cred_count, vuln_count = _payload_counts(payload_agent)
             score = float(payload_agent.get("trust_score", 0.0) or 0.0)
             factors = dict(payload_agent.get("trust_factors", {}) or {})
+            payload_source_id = str(payload_agent.get("source_id") or source_id or "")
+            payload_enrollment_name = str(payload_agent.get("enrollment_name") or "")
+            payload_mdm_provider = str(payload_agent.get("mdm_provider") or "")
+            payload_owner = payload_agent.get("owner")
+            payload_environment = payload_agent.get("environment")
+            payload_tags = _payload_tags(payload_agent)
             if existing:
                 existing.server_count = server_count
                 existing.package_count = pkg_count
@@ -223,6 +233,15 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
                 existing.updated_at = now
                 existing.config_path = ""
                 existing.agent_type = str(payload_agent.get("agent_type", existing.agent_type))
+                existing.source_id = payload_source_id or existing.source_id
+                existing.enrollment_name = payload_enrollment_name or existing.enrollment_name
+                existing.mdm_provider = payload_mdm_provider or existing.mdm_provider
+                if payload_owner is not None:
+                    existing.owner = str(payload_owner or "")
+                if payload_environment is not None:
+                    existing.environment = str(payload_environment or "")
+                if payload_tags:
+                    existing.tags = payload_tags
                 store.put(existing)
                 updated_count += 1
             else:
@@ -231,7 +250,13 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
                     name=name,
                     agent_type=str(payload_agent.get("agent_type", "unknown")),
                     config_path="",
+                    source_id=payload_source_id,
+                    enrollment_name=payload_enrollment_name,
+                    mdm_provider=payload_mdm_provider,
                     lifecycle_state=FleetLifecycleState.DISCOVERED,
+                    owner=str(payload_owner or "") or None,
+                    environment=str(payload_environment or "") or None,
+                    tags=payload_tags,
                     trust_score=score,
                     trust_factors=factors,
                     server_count=server_count,

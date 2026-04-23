@@ -104,6 +104,23 @@ class TestSanitizeResults:
         assert sanitized["summary"] == "ok"
         assert "source_id" in sanitized
 
+    def test_adds_endpoint_identity_metadata_from_env(self, monkeypatch):
+        monkeypatch.setenv("AGENT_BOM_PUSH_SOURCE_ID", "device-acme-001")
+        monkeypatch.setenv("AGENT_BOM_PUSH_ENROLLMENT_NAME", "corp-laptop-rollout")
+        monkeypatch.setenv("AGENT_BOM_PUSH_OWNER", "platform-security")
+        monkeypatch.setenv("AGENT_BOM_PUSH_ENVIRONMENT", "production")
+        monkeypatch.setenv("AGENT_BOM_PUSH_MDM_PROVIDER", "jamf")
+        monkeypatch.setenv("AGENT_BOM_PUSH_TAGS", "developer-endpoint, mdm")
+        results = {"agents": [{"name": "cursor"}]}
+        sanitized = sanitize_results(results)
+        agent = sanitized["agents"][0]
+        assert agent["source_id"] == "device-acme-001"
+        assert agent["enrollment_name"] == "corp-laptop-rollout"
+        assert agent["owner"] == "platform-security"
+        assert agent["environment"] == "production"
+        assert agent["mdm_provider"] == "jamf"
+        assert agent["tags"] == ["developer-endpoint", "mdm"]
+
 
 # ─── _looks_like_secret ──────────────────────────────────────────────────────
 

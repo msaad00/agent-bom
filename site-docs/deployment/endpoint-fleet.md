@@ -61,6 +61,12 @@ ships:
 - `endpoint-enrollment.json` — machine-readable rollout metadata for IT
 - `endpoint-onboarding-summary.json` — operator-facing bundle summary
 - optional stable `source_id` wiring via `AGENT_BOM_PUSH_SOURCE_ID`
+- optional enrolled endpoint metadata wiring via:
+  - `AGENT_BOM_PUSH_ENROLLMENT_NAME`
+  - `AGENT_BOM_PUSH_OWNER`
+  - `AGENT_BOM_PUSH_ENVIRONMENT`
+  - `AGENT_BOM_PUSH_TAGS`
+  - `AGENT_BOM_PUSH_MDM_PROVIDER`
 
 That means Jamf, Intune, or Kandji rollout can keep one explicit endpoint
 identity contract without pretending `agent-bom` is already a bidirectional
@@ -96,6 +102,7 @@ The wrapper script expects:
 
 - `AGENT_BOM_PUSH_URL`
 - optionally `AGENT_BOM_PUSH_API_KEY`
+- optionally the rollout metadata env vars listed above
 
 ## Linux systemd example
 
@@ -108,6 +115,12 @@ Example env file:
 ```bash
 AGENT_BOM_PUSH_URL=https://agent-bom.internal.example.com/v1/fleet/sync
 AGENT_BOM_PUSH_API_KEY=replace-me
+AGENT_BOM_PUSH_SOURCE_ID=device-acme-001
+AGENT_BOM_PUSH_ENROLLMENT_NAME=corp-laptop-rollout
+AGENT_BOM_PUSH_OWNER=platform-security
+AGENT_BOM_PUSH_ENVIRONMENT=production
+AGENT_BOM_PUSH_TAGS=developer-endpoint,mdm
+AGENT_BOM_PUSH_MDM_PROVIDER=jamf
 ```
 
 4. install the unit files:

@@ -34,6 +34,9 @@ class FleetAgent(BaseModel):
     name: str
     agent_type: str
     config_path: str = ""
+    source_id: str = ""
+    enrollment_name: str = ""
+    mdm_provider: str = ""
     lifecycle_state: FleetLifecycleState = FleetLifecycleState.DISCOVERED
     owner: str | None = None
     environment: str | None = None

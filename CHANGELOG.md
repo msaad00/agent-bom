@@ -13,6 +13,29 @@ Work targeting the next release.
 
 ---
 
+## [0.81.1] – 2026-04-22
+
+### Added
+- **Inventory-first MCP visibility** — the control plane now surfaces MCP command/URL, auth mode, credential-backed configuration, fleet timing, and provenance across scans, fleet sync, gateway discovery, and persisted observations instead of forcing operators to infer source context from summary badges.
+- **Operator feedback surface** — the shipped UI now includes in-product `Share feedback` and `Report bug` entry points with a copyable support bundle instead of relying on out-of-band issue filing alone.
+- **Runtime rollout packaging** — endpoint proxy bundles can now be rendered as `.pkg`, `.msi`, Homebrew, and MDM-oriented rollout assets, and Kubernetes deployments can opt into proxy sidecar auto-injection through the packaged mutating webhook path.
+
+### Changed
+- **Self-hosted runtime model clarity** — the product now documents `fleet`, `proxy`, and `gateway` as peer surfaces with explicit deployment/use guidance, tighter EKS rollout docs, clearer entrypoints, and an honest retention/security-lake model that matches the current code and storage backends.
+- **Security graph semantics** — the UI and docs now make snapshot identity, scope, timestamps, pagination, node identifiers, and blast-radius semantics explicit so graph investigation scales without inventing a second graph model in the operator workflow.
+- **Release-caveat guidance** — graph/load boundaries, screenshot-redaction scope, centralized managed-connection limits, and the contributor workflow around GitHub’s `Update branch` synthetic-head problem are now explicit in the shipped docs instead of living as tribal knowledge.
+
+### Fixed
+- **AWS/EKS operator path** — the reference installer now includes preflight checks and post-deploy verification so self-hosted rollout is not "install and guess" anymore.
+- **Skill-audit correlation gap** — skill-audit findings now feed the graph instead of landing as an orphan analysis surface outside the main inventory and blast-radius model.
+- **Runtime contract coverage** — gateway rate-limit behavior and inbound OCSF normalization now have explicit contract tests instead of relying on indirect coverage only.
+
+### Security
+- **Runtime hardening sweep** — middleware RBAC write-route coverage is closed, cached proxy policy bundles are Ed25519-signed and fail closed on mismatch, gateway policies can hot-reload without redeploy, and replay detection now uses a bounded long-window design instead of a short-lived exact-only cache.
+- **Deploy-time hardening** — the AWS/EKS rollout path now validates control-plane inputs before install, and packaged runtime operations document policy-signing rotation and cert-manager-backed webhook certificate renewal instead of leaving those as tribal knowledge.
+
+---
+
 ## [0.81.0] – 2026-04-21
 
 ### Added

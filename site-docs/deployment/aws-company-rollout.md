@@ -18,7 +18,12 @@ Plane](gateway-auto-discovery.md).
 - `agentbom/agent-bom` for scanner, API, jobs, proxy, gateway, and workers
 - `agentbom/agent-bom-ui` for the browser dashboard
 
-## Official Entry Points
+Use [Deployment Overview](overview.md) first if you still need to choose a
+path. Use [Deploy In Your Own AWS / EKS Infrastructure](own-infra-eks.md) for
+the paved production rollout. This page is the deeper AWS reference once that
+decision is already made.
+
+## Reference Entry Points
 
 Pilot on one workstation:
 
@@ -27,7 +32,7 @@ curl -fsSL https://raw.githubusercontent.com/msaad00/agent-bom/main/deploy/docke
 docker compose -f docker-compose.pilot.yml up -d
 ```
 
-Recommended full self-hosted AWS / EKS rollout:
+Reference full self-hosted AWS / EKS rollout:
 
 ```bash
 scripts/deploy/install-eks-reference.sh \

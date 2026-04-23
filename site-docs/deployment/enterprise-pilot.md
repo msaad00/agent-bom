@@ -24,141 +24,20 @@ This pilot keeps the product surface narrow on purpose:
 
 ## Enterprise deployment topology
 
-Use two diagrams, not one overloaded graph:
+The canonical self-hosted topology and runtime/data-flow diagrams now live in
+[Deployment Overview](overview.md#enterprise-self-hosted-diagrams).
 
-- **deployment topology** for what the pilot installs in the customer's
-  environment
-- **runtime MCP flow** for how proxy, gateway, API, and upstream MCP traffic
-  interact
+Use that page first when you need the high-level shape:
 
-Everything agent-bom ships runs inside one trust boundary: the customer's VPC,
-EKS account, or self-managed cluster. The normal cross-boundary paths are
-inbound OIDC and outbound, policy-audited MCP upstream calls. Enrichment to
-OSV/NVD is optional and allow-listable.
+- what runs in the customer VPC / EKS environment
+- how scans, fleet, proxy, and gateway feed the control plane
+- where auth, tenant scope, and audit are enforced
 
-| Layer | Lives in | Scales via | Talks to |
-|---|---|---|---|
-| **Ingress + auth** | ALB / Istio Gateway + OIDC | — | Corporate IdP (Okta / Entra / Google) |
-| **Runtime MCP plane** | `gateway` + selected `proxy` sidecars / local wrappers | HPA + PDB | Remote MCPs, `/v1/proxy/audit` |
-| **Control plane** | `api`, `ui`, `jobs`, `backup` (Helm) | HPA + CronJob | Data plane, OTEL, Prometheus |
-| **Data plane** | Customer-owned Postgres (+ optional ClickHouse, S3) | Operator-managed | — |
-| **Platform glue** | ExternalSecrets, ServiceMonitor, OTEL collector | Operator-managed | AWS Secrets Manager / Vault / Grafana |
+This pilot page stays focused on the narrower pilot contract:
 
-```mermaid
-flowchart LR
-    classDef ext  fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
-    classDef edge fill:#111827,stroke:#38bdf8,color:#e0f2fe
-    classDef ctrl fill:#0f172a,stroke:#6366f1,color:#e0e7ff
-    classDef run  fill:#0f172a,stroke:#10b981,color:#d1fae5
-    classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
-    classDef ops  fill:#0f172a,stroke:#64748b,color:#cbd5e1
-
-    IdP["Corporate IdP"]:::ext
-    Remote["Remote MCPs"]:::ext
-    Intel["OSV / NVD / GHSA<br/>optional enrichment"]:::ext
-
-    subgraph Endpoints["Customer endpoints and workloads"]
-      direction TB
-      Browser["Browser operators"]:::ext
-      Fleet["Developer endpoints / collectors"]:::ops
-      Proxy["Proxy<br/>local wrapper or sidecar"]:::run
-      LocalMCP["Selected local or in-cluster MCPs"]:::ops
-    end
-
-    subgraph Customer["Customer VPC / EKS / self-managed cluster"]
-      direction TB
-      Ingress["Ingress + TLS"]:::edge
-
-      subgraph Control["Control plane"]
-        direction LR
-        UI["UI<br/>same-origin browser app"]:::ctrl
-        API["API<br/>auth · findings · fleet · audit"]:::ctrl
-        Jobs["Workers<br/>CronJob / Job"]:::ctrl
-        Backup["Backup job"]:::ctrl
-      end
-
-      Gateway["Gateway<br/>optional shared MCP traffic plane"]:::run
-
-      subgraph Data["Customer-owned data"]
-        direction LR
-        PG[("Postgres / Supabase")]:::data
-        CH[("ClickHouse optional")]:::data
-        S3[("S3 optional")]:::data
-      end
-
-      subgraph Platform["Platform services"]
-        direction LR
-        Secrets["ExternalSecrets / IRSA / Vault"]:::ops
-        Obs["OTEL + Prometheus"]:::ops
-      end
-    end
-
-    Browser --> Ingress
-    IdP -. OIDC / SAML .-> Ingress
-    Ingress --> UI
-    Ingress --> API
-    UI -->|same-origin API calls| API
-    Jobs -->|results + inventory| API
-    Fleet -->|fleet sync / pushed results| API
-    Proxy -->|policy pull + audit push| API
-    Proxy -->|inline runtime path| LocalMCP
-    Gateway -->|policy pull + audit push| API
-    Gateway -->|shared remote MCP traffic| Remote
-    API --> PG
-    API -. optional analytics .-> CH
-    Backup --> S3
-    Secrets --> API
-    Secrets --> Gateway
-    API --> Obs
-    Gateway --> Obs
-    API -. optional enrichment .-> Intel
-```
-
-*Deployment truth: the UI is not the collector. The browser drives workflows,
-the API owns control-plane state, workers do scans, and proxy plus gateway are
-peer runtime surfaces, not a required serial chain. For the role split, see the
-[Self-Hosted Product Architecture](../architecture/self-hosted-product-architecture.md).*
-
-### MCP proxy and gateway runtime flow
-
-```mermaid
-sequenceDiagram
-    participant Client as Editor or workload client
-    participant API as Control-plane API
-    participant Proxy as agent-bom proxy
-    participant Gateway as agent-bom gateway
-    participant Local as Local / sidecar MCP
-    participant Remote as Remote MCP
-    participant Store as Postgres / audit store
-
-    par Local / sidecar enforcement path
-        Client->>Proxy: MCP request
-        Proxy->>API: policy pull / audit push
-        Proxy->>Local: direct MCP call
-        Local-->>Proxy: response
-        Proxy->>Proxy: detector chain + optional VLD
-        Proxy-->>Client: safe response
-    and Shared remote gateway path
-        Client->>Gateway: MCP request
-        Gateway->>API: policy pull / audit push
-        Gateway->>Remote: upstream MCP call
-        Remote-->>Gateway: response
-        Gateway->>Gateway: policy + rate limit + optional VLD
-        Gateway-->>Client: safe response
-    end
-    API->>Store: persist audit, findings, graph links
-```
-
-1. Local stdio or workload-local MCPs use `agent-bom proxy` as the inline
-   runtime path.
-2. Shared remote MCPs can go directly to `agent-bom gateway serve` without a
-   local proxy hop.
-3. Both runtime surfaces pull policy from the control plane and push audit to
-   `/v1/proxy/audit`.
-4. Runtime detections, optional visual leak checks, and tenant-scoped limits
-   happen on the enforcement surface that handled the call.
-5. The API persists audit, findings, fleet/runtime evidence, and graph links
-   for the UI, exports, and compliance surfaces.
+- what is in scope for the endpoint + MCP pilot
+- what is intentionally out of scope
+- which rollout steps and security properties matter for a focused first deployment
 
 ## What is in scope
 

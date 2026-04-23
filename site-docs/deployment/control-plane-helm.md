@@ -46,7 +46,8 @@ When you set `controlPlane.enabled=true`, the Helm chart can package:
 - UI Deployment + Service
 - same-origin Ingress that routes API paths to the API service and `/` to the UI
 - scanner CronJob
-- optional runtime monitor DaemonSet
+- optional runtime monitor DaemonSet with a dedicated service account and no
+  automounted service-account token by default
 
 The image split is intentional:
 
@@ -109,6 +110,9 @@ The chart packages the control plane, but it does not quietly weaken the
 runtime model.
 
 - API and UI pods run with `automountServiceAccountToken: false`
+- the optional monitor DaemonSet now also runs with
+  `automountServiceAccountToken: false` and its own service-account path instead
+  of inheriting the shared chart identity
 - the discovery service account and IRSA path stay attached to the scanner
 - the API still refuses non-loopback startup without `AGENT_BOM_API_KEY`,
   OIDC, SAML-issued session keys, or an explicit insecure override

@@ -19,7 +19,15 @@ The runtime proxy (`agent-bom proxy`) intercepts MCP JSON-RPC messages between c
 | Local sidecar | `agent-bom proxy -- npx server` | Dev/testing |
 | Docker sidecar | See [Docker](docker.md) | Production |
 | K8s sidecar | See [Kubernetes](kubernetes.md) | Fleet |
+| Optional node-wide monitor | Helm `monitor.enabled=true` | Broad runtime coverage only when a team explicitly accepts a DaemonSet |
 | Config watcher | `agent-bom watch` | Drift alerting |
+
+The node-wide monitor is:
+
+- optional
+- off by default
+- not required for scan/discovery, fleet, gateway, or selected sidecar proxy rollout
+- the highest-trust runtime shape, so it should be enabled only when the operator wants per-node runtime coverage
 
 ## Alert routing
 

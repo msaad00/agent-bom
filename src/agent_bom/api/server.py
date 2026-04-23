@@ -176,6 +176,7 @@ async def _lifespan(app_instance: FastAPI):
     # Priority: Snowflake > Postgres > SQLite > InMemory (lazy default)
     if os.environ.get("SNOWFLAKE_ACCOUNT"):
         from agent_bom.api.snowflake_store import (
+            SnowflakeExceptionStore,
             SnowflakeFleetStore,
             SnowflakeJobStore,
             SnowflakePolicyStore,
@@ -192,6 +193,8 @@ async def _lifespan(app_instance: FastAPI):
             set_policy_store(SnowflakePolicyStore(sf))
         if _stores._schedule_store is None:
             set_schedule_store(SnowflakeScheduleStore(sf))
+        if _stores._exception_store is None:
+            set_exception_store(SnowflakeExceptionStore(sf))
     elif os.environ.get("AGENT_BOM_POSTGRES_URL"):
         from agent_bom.api import audit_log as _audit_log_mod
         from agent_bom.api import auth as _auth

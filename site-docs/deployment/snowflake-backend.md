@@ -1,12 +1,12 @@
 # Snowflake-native backend
 
 `agent-bom` runs against Snowflake as the primary store for scan jobs,
-fleet agents, schedules, gateway policies, and the policy audit trail. Use this
+fleet agents, schedules, gateway policies, vulnerability exceptions, and the policy audit trail. Use this
 mode when your organisation already governs data in Snowflake and you
 want selected control-plane persistence to land in the same warehouse.
 
 The parity boundary is explicit — some API surfaces (source registry,
-exceptions, API keys, trend, graph, and the full audit
+API keys, trend, graph, and the full audit
 chain) have not been ported to `SnowflakeStore` yet. See
 [backend-parity.md](backend-parity.md) for the current capability
 matrix.
@@ -79,11 +79,12 @@ Use when you want these persisted in Snowflake:
 - fleet inventory
 - schedules
 - gateway policies
+- vulnerability exceptions
 - gateway policy audit
 
 This is the current partial-control-plane mode backed by
 `SnowflakeJobStore`, `SnowflakeFleetStore`, `SnowflakeScheduleStore`,
-and `SnowflakePolicyStore`.
+`SnowflakeExceptionStore`, and `SnowflakePolicyStore`.
 
 ### 3. Hybrid self-hosted control plane
 
@@ -163,7 +164,7 @@ The example file configures:
 
 ## Schema bootstrap
 
-`SnowflakeJobStore` / `SnowflakeFleetStore` / `SnowflakeScheduleStore` / `SnowflakePolicyStore`
+`SnowflakeJobStore` / `SnowflakeFleetStore` / `SnowflakeScheduleStore` / `SnowflakeExceptionStore` / `SnowflakePolicyStore`
 create their tables on first connect with `CREATE TABLE IF NOT EXISTS`.
 The schema lives in the database + schema you set via
 `SNOWFLAKE_DATABASE` / `SNOWFLAKE_SCHEMA`.
@@ -199,7 +200,7 @@ applies here. Snowflake-specific signals worth alerting on:
 
 ## Caveats
 
-- Source registry, exceptions, API-key persistence, trend,
+- Source registry, API-key persistence, trend,
   graph, and the full HMAC-chained `audit_log` are not yet on
   `SnowflakeStore`. Run Postgres alongside for these, or wait for
   parity.

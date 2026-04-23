@@ -20,7 +20,7 @@ This page documents what is wired today, not what might exist as a class on disk
 | Gateway policy persistence | Yes | Yes | No | Yes |
 | Audit log persistence | Yes | Yes | No | Yes, via `SnowflakePolicyStore` |
 | Source registry persistence | Yes | Yes | No | No |
-| Exception workflow persistence | No default API wiring | Yes | No | No |
+| Exception workflow persistence | No default API wiring | Yes | No | Yes |
 | API key persistence / RBAC store | No default API wiring | Yes | No | No |
 | Schedule persistence | Yes | Yes | No | Yes |
 | Trend / baseline persistence | Yes | Yes | No | No |
@@ -41,7 +41,7 @@ backend?"
 | `/v1/sources*` source registry | Yes | Yes | No | No |
 | `/v1/audit*` primary trail | Yes | Yes | No | Partial; Snowflake policy audit exists, but it is not the full transactional audit replacement |
 | `/v1/auth/keys*` | No default API wiring | Yes | No | No |
-| `/v1/exceptions*` | No default API wiring | Yes | No | No |
+| `/v1/exceptions*` | No default API wiring | Yes | No | Yes |
 | `/v1/schedules*` | Yes | Yes | No | Yes |
 | `/v1/traces`, `/v1/proxy/audit`, `/v1/ocsf/ingest` analytics writes | No | No | Yes | No |
 | Snowflake governance/account discovery routes | No | No | No | Yes |
@@ -63,10 +63,10 @@ The Snowflake story should be read in three layers:
    - `fleet_agents`
    - `gateway_policies`
    - `policy_audit_log`
+   - `exceptions`
    - governance and activity discovery routes
 2. **Current explicit non-parity**
    - source registry
-   - exceptions
    - API keys and RBAC persistence
    - graph persistence
    - trend and baseline state
@@ -128,7 +128,7 @@ Use when you want:
 Current limitations:
 
 - graph persistence does not persist to Snowflake
-- exceptions do not persist to Snowflake
+- exceptions persist to Snowflake
 - API keys do not persist to Snowflake
 - baseline/trend storage does not persist to Snowflake
 

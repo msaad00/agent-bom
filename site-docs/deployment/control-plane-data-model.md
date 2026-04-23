@@ -62,7 +62,7 @@ The main operator rule is:
 | Gateway policy audit | `policy_audit_log` | `policy_audit_log` | No | `policy_audit_log` |
 | Source registry | `sources` | `control_plane_sources` | No | No |
 | API keys / RBAC | No default API wiring | `api_keys` | No | No |
-| Exceptions | No default API wiring | `exceptions` | No | No |
+| Exceptions | No default API wiring | `exceptions` | No | `exceptions` |
 | Schedules | `scan_schedules` | `scan_schedules` | No | `scan_schedules` |
 | Audit chain | `audit_log` | `audit_log` | denormalized analytics copy only | No full transactional replacement |
 | Graph / attack path | SQLite graph tables | Postgres graph tables | No | No |
@@ -183,8 +183,8 @@ Use for:
 Current transactional parity boundary:
 
 - supported: `scan_jobs`, `fleet_agents`, `scan_schedules`,
-  `gateway_policies`, `policy_audit_log`
-- not supported: source registry, API keys, exceptions,
+  `gateway_policies`, `policy_audit_log`, `exceptions`
+- not supported: source registry, API keys,
   graph, trend/baseline, full audit-chain replacement
 
 ## Recommended selection

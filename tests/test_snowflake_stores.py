@@ -742,6 +742,99 @@ class TestSnowflakeScheduleStore:
         assert store.delete("sched-1") is True
 
 
+# ─── SnowflakeExceptionStore ─────────────────────────────────────────────────
+
+
+class TestSnowflakeExceptionStore:
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def _make_store(self, mock_connect):
+        mock_connect.return_value = _mock_connection()
+        from agent_bom.api.snowflake_store import SnowflakeExceptionStore
+
+        return SnowflakeExceptionStore(SF_PARAMS)
+
+    def _make_exception(self, exception_id="exc-1", tenant_id="default", status="pending"):
+        from agent_bom.api.exception_store import ExceptionStatus, VulnException
+
+        return VulnException(
+            exception_id=exception_id,
+            vuln_id="CVE-2026-0001",
+            package_name="express",
+            server_name="filesystem",
+            reason="accepted temporary risk",
+            requested_by="alice@example.com",
+            approved_by="bob@example.com" if status != "pending" else "",
+            status=ExceptionStatus(status),
+            created_at="2026-01-01T00:00:00Z",
+            expires_at="2026-06-01T00:00:00Z",
+            tenant_id=tenant_id,
+        )
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_init_creates_table(self, mock_connect):
+        conn = _mock_connection()
+        mock_connect.return_value = conn
+        from agent_bom.api.snowflake_store import SnowflakeExceptionStore
+
+        SnowflakeExceptionStore(SF_PARAMS)
+        create_call = conn.cursor().execute.call_args_list[0]
+        assert "CREATE TABLE IF NOT EXISTS exceptions" in create_call[0][0]
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_put(self, mock_connect):
+        conn = _mock_connection()
+        mock_connect.return_value = conn
+        store = self._make_store()
+        store.put(self._make_exception())
+        calls = conn.cursor().execute.call_args_list
+        merge_call = [c for c in calls if "MERGE INTO exceptions" in str(c)]
+        assert len(merge_call) > 0
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_get_found(self, mock_connect):
+        exc = self._make_exception()
+        cur = _mock_cursor(fetchone_val=(json.dumps(exc.to_dict()),))
+        conn = _mock_connection(cursor=cur)
+        mock_connect.return_value = conn
+        store = self._make_store()
+        result = store.get("exc-1")
+        assert result is not None
+        assert result.exception_id == "exc-1"
+        assert result.tenant_id == "default"
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_list_all_tenant_filtered(self, mock_connect):
+        exc = self._make_exception("exc-1", tenant_id="tenant-a", status="approved")
+        cur = _mock_cursor(fetchall_val=[(json.dumps(exc.to_dict()),)])
+        conn = _mock_connection(cursor=cur)
+        mock_connect.return_value = conn
+        store = self._make_store()
+        result = store.list_all(status="approved", tenant_id="tenant-a")
+        assert len(result) == 1
+        assert result[0].tenant_id == "tenant-a"
+        assert result[0].status.value == "approved"
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_find_matching_uses_approved_and_active(self, mock_connect):
+        approved = self._make_exception("exc-approved", tenant_id="tenant-a", status="approved")
+        active = self._make_exception("exc-active", tenant_id="tenant-a", status="active")
+        cur = _mock_cursor(fetchall_val=[(json.dumps(approved.to_dict()),), (json.dumps(active.to_dict()),)])
+        conn = _mock_connection(cursor=cur)
+        mock_connect.return_value = conn
+        store = self._make_store()
+        result = store.find_matching("CVE-2026-0001", "express", "filesystem", tenant_id="tenant-a")
+        assert result is not None
+        assert result.exception_id in {"exc-approved", "exc-active"}
+
+    @patch("agent_bom.api.snowflake_store._sf_connect")
+    def test_delete_found(self, mock_connect):
+        cur = _mock_cursor(rowcount=1)
+        conn = _mock_connection(cursor=cur)
+        mock_connect.return_value = conn
+        store = self._make_store()
+        assert store.delete("exc-1") is True
+
+
 # ─── Server lifespan auto-detection ──────────────────────────────────────────
 
 
@@ -765,6 +858,7 @@ class TestServerLifespanAutoDetect:
         st._fleet_store = None
         st._policy_store = None
         st._schedule_store = None
+        st._exception_store = None
 
         import asyncio
 
@@ -775,6 +869,7 @@ class TestServerLifespanAutoDetect:
         asyncio.run(_run())
 
         from agent_bom.api.snowflake_store import (
+            SnowflakeExceptionStore,
             SnowflakeFleetStore,
             SnowflakeJobStore,
             SnowflakePolicyStore,
@@ -785,9 +880,11 @@ class TestServerLifespanAutoDetect:
         assert isinstance(st._fleet_store, SnowflakeFleetStore)
         assert isinstance(st._policy_store, SnowflakePolicyStore)
         assert isinstance(st._schedule_store, SnowflakeScheduleStore)
+        assert isinstance(st._exception_store, SnowflakeExceptionStore)
 
         # Cleanup
         st._store = None
         st._fleet_store = None
         st._policy_store = None
         st._schedule_store = None
+        st._exception_store = None

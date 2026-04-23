@@ -18,6 +18,10 @@ from agent_bom.push import (
 
 
 class TestGenerateSourceId:
+    def test_env_override_takes_priority(self, monkeypatch):
+        monkeypatch.setenv("AGENT_BOM_PUSH_SOURCE_ID", "device-acme-001")
+        assert generate_source_id() == "device-acme-001"
+
     def test_stable(self):
         """Same machine produces same source_id."""
         id1 = generate_source_id()

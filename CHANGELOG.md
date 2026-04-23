@@ -13,6 +13,7 @@ Work targeting the next release.
 
 ### Changed
 - **Graph search and slice filtering** — the control plane now uses indexed graph-node search paths with server-side entity, severity, compliance-prefix, and data-source filters so larger tenant snapshots do not fall back to broad client-side graph scans.
+- **Endpoint onboarding bundles** — managed endpoint rollout bundles now carry a machine-readable enrollment manifest plus optional stable fleet `source_id` wiring so Jamf, Intune, and Kandji pushes can keep one explicit endpoint identity contract instead of only raw install scripts.
 
 ---
 

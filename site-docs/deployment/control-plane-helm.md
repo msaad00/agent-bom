@@ -4,6 +4,10 @@
 and dashboard inside their own Kubernetes environment instead of running custom
 Deployment manifests by hand.
 
+If you still need to choose a path, start with [Deployment Overview](overview.md).
+Use this page after you already know you want the chart itself, either through
+the reference installer or your own Helm layering.
+
 This is the right path when you want:
 
 - the API and UI in your own cluster

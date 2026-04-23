@@ -4,6 +4,10 @@ Use this page when the question is not "how do I install `agent-bom`?" but
 "what should I deploy first, what does that give me, and when do I add runtime
 enforcement?"
 
+Treat this as the primary deployment chooser. The rest of the deployment docs
+either deepen one of these supported paths or act as reference material for
+teams intentionally diverging from them.
+
 `agent-bom` is one product with two deployable images:
 
 - `agentbom/agent-bom` for scanner, API, jobs, gateway, proxy, and other non-browser runtimes
@@ -75,13 +79,24 @@ Use these first:
 | One-machine pilot | `deploy/docker-compose.pilot.yml` | fastest path to API + UI with the shipped images |
 | Full self-hosted deployment in your own AWS / EKS | `scripts/deploy/install-eks-reference.sh` | creates or targets EKS, wires the AWS baseline, installs Helm, and prints verify/next-step commands |
 
-Use these only when you are intentionally going off the paved path:
+Everything else is either advanced or specialized:
 
 | Entry point | Use when |
 |---|---|
 | `helm upgrade --install ... -f deploy/helm/agent-bom/examples/eks-production-values.yaml` | you already manage your own Helm layering and do not want the reference installer |
 | `deploy/docker-compose.fullstack.yml` | you want a fuller local compose example on one machine, not the recommended production path |
 | `deploy/docker-compose.platform.yml` / `deploy/docker-compose.runtime.yml` | you are developing or demonstrating one part of the product surface, not doing the standard install |
+
+## Supported path map
+
+Use these pages in this order:
+
+| If you need... | Read this first | Then use... |
+|---|---|---|
+| the fastest pilot | this page | `deploy/docker-compose.pilot.yml` |
+| the paved production rollout | this page | [Deploy In Your Own AWS / EKS Infrastructure](own-infra-eks.md) |
+| a focused endpoint + MCP pilot | this page | [Enterprise MCP / Endpoint Pilot](enterprise-pilot.md) |
+| raw Helm, Docker, Terraform, or Kubernetes details | this page | the matching reference page only after you know you are leaving the paved path |
 
 ## Deployment modes
 

@@ -97,6 +97,9 @@ from agent_bom.mcp_server_metadata import (
 from agent_bom.mcp_server_metadata import (
     build_server_card as _metadata_build_server_card,
 )
+from agent_bom.mcp_server_runtime_catalog import (
+    register_runtime_catalog_tools as _register_runtime_catalog_tools,
+)
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
@@ -379,14 +382,8 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         registry_lookup_impl,
     )
     from agent_bom.mcp_tools.runtime import (
-        inventory_impl,
         runtime_correlate_impl,
-        skill_scan_impl,
-        skill_trust_impl,
-        skill_verify_impl,
-        tool_risk_assessment_impl,
         verify_impl,
-        where_impl,
     )
     from agent_bom.mcp_tools.sbom import diff_impl, generate_sbom_impl, remediate_impl
     from agent_bom.mcp_tools.scanning import check_impl, code_scan_impl, scan_impl
@@ -717,71 +714,6 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             _truncate_response=_truncate_response,
         )
 
-    # ── Tool 9: skill_scan ───────────────────────────────────────────
-
-    @mcp.tool(annotations=_READ_ONLY, title="Skill Scan")
-    async def skill_scan(
-        path: Annotated[str, Field(description="Path to a skill/instruction file or directory to scan.")] = ".",
-    ) -> str:
-        """Scan skill and instruction files for trust, findings, and provenance.
-
-        Discovers supported files such as `CLAUDE.md`, `AGENTS.md`,
-        `.cursorrules`, and `skills/*.md`, then parses referenced packages,
-        MCP servers, credential env vars, audit findings, and trust verdicts.
-        """
-        return await _execute_tool_sync_async(
-            "skill_scan",
-            skill_scan_impl,
-            path=path,
-            _safe_path=_safe_path,
-            _truncate_response=_truncate_response,
-        )
-
-    # ── Tool 10: skill_verify ────────────────────────────────────────
-
-    @mcp.tool(annotations=_READ_ONLY, title="Skill Provenance Verify")
-    async def skill_verify(
-        path: Annotated[str, Field(description="Path to a skill/instruction file or directory to verify.")] = ".",
-    ) -> str:
-        """Verify Sigstore provenance for skill and instruction files."""
-        return await _execute_tool_sync_async(
-            "skill_verify",
-            skill_verify_impl,
-            path=path,
-            _safe_path=_safe_path,
-            _truncate_response=_truncate_response,
-        )
-
-    # ── Tool 11: skill_trust ──────────────────────────────────────────
-
-    @mcp.tool(annotations=_READ_ONLY, title="Skill Trust Assessment")
-    async def skill_trust(
-        skill_path: Annotated[str, Field(description="Path to a SKILL.md file (or any skill/instruction file) to assess.")],
-    ) -> str:
-        """Assess the trust level of a SKILL.md file using ClawHub-style categories.
-
-        Parses a SKILL.md file, runs security audit checks, then evaluates
-        trust across 5 categories: Purpose & Capability, Instruction Scope,
-        Install Mechanism, Credentials, and Persistence & Privilege.
-
-        Returns an overall verdict (benign/suspicious/malicious) with
-        confidence level and actionable recommendations.
-
-        Args:
-            skill_path: Path to a SKILL.md file (or any skill/instruction file).
-
-        Returns:
-            JSON with verdict, confidence, per-category assessments, and
-            recommendations.
-        """
-        return await _execute_tool_sync_async(
-            "skill_trust",
-            skill_trust_impl,
-            skill_path=skill_path,
-            _safe_path=_safe_path,
-            _truncate_response=_truncate_response,
-        )
-
     # ── Tool 12: verify ─────────────────────────────────────────────
 
     @mcp.tool(annotations=_READ_ONLY, title="Package Integrity Verify")
@@ -808,64 +740,13 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             _truncate_response=_truncate_response,
         )
 
-    # ── Tool 13: where ────────────────────────────────────────────
-
-    @mcp.tool(annotations=_READ_ONLY, title="Discovery Paths")
-    async def where() -> str:
-        """Show all MCP discovery paths and which config files exist.
-
-        Lists every known MCP client config path per platform, indicating
-        which files are present on the current system. Useful for debugging
-        discovery issues or understanding where MCP configs live.
-
-        Returns:
-            JSON with per-client config paths, existence status, and platform.
-        """
-        return await _execute_tool_sync_async("where", where_impl, _truncate_response=_truncate_response)
-
-    # ── Tool 14: inventory ────────────────────────────────────────
-
-    @mcp.tool(annotations=_READ_ONLY, title="Agent Inventory")
-    async def inventory(
-        config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
-    ) -> str:
-        """List all discovered MCP configurations and servers without CVE scanning.
-
-        Performs fast discovery and package extraction only — no vulnerability
-        scanning. Use this for a quick inventory of configs, servers, and packages.
-
-        Returns:
-            JSON with discovered agents, their MCP servers, packages, and
-            transport types.
-        """
-        return await _execute_tool_sync_async(
-            "inventory",
-            inventory_impl,
-            config_path=config_path,
-            _truncate_response=_truncate_response,
-        )
-
-    @mcp.tool(annotations=_READ_ONLY, title="Tool Capability Risk")
-    async def tool_risk_assessment(
-        config_path: Annotated[str | None, Field(description="Path to MCP client config directory. Auto-discovers all if omitted.")] = None,
-        timeout: Annotated[float, Field(description="Per-server introspection timeout in seconds.")] = 10.0,
-    ) -> str:
-        """Score live-introspected MCP tool capabilities and server risk.
-
-        Uses runtime `tools/list` data to classify tool capabilities
-        (READ/WRITE/EXECUTE/NETWORK/etc.) and compute a per-server risk profile.
-
-        Returns:
-            JSON with per-server tool profiles, capability counts, dangerous
-            combinations, and risk justification.
-        """
-        return await _execute_tool_sync_async(
-            "tool_risk_assessment",
-            tool_risk_assessment_impl,
-            config_path=config_path,
-            timeout=timeout,
-            _truncate_response=_truncate_response,
-        )
+    _register_runtime_catalog_tools(
+        mcp,
+        read_only=_READ_ONLY,
+        execute_tool_sync_async=_execute_tool_sync_async,
+        safe_path=_safe_path,
+        truncate_response=_truncate_response,
+    )
 
     # ── Tool 13: diff ─────────────────────────────────────────────
 

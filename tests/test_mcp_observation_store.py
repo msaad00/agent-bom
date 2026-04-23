@@ -38,9 +38,9 @@ def _sqlite_store() -> tuple[SQLiteMCPObservationStore, Path]:
 def test_observation_normalizes_tenant_and_timestamps() -> None:
     observation = _make_observation(tenant_id="  tenant-a  ")
     assert observation.tenant_id == "tenant-a"
-    assert observation.first_seen == "2026-04-23T11:00:00+00:00"
-    assert observation.last_seen == "2026-04-23T15:05:00+00:00"
-    assert observation.last_synced == "2026-04-23T15:06:00+00:00"
+    assert observation.first_seen == "2026-04-23T11:00:00Z"
+    assert observation.last_seen == "2026-04-23T15:05:00Z"
+    assert observation.last_synced == "2026-04-23T15:06:00Z"
 
 
 def test_merge_rejects_tenant_mismatch() -> None:
@@ -59,7 +59,7 @@ def test_inmemory_store_revalidates_observation_before_write() -> None:
     stored = store.get("tenant-a", "obs-1")
     assert stored is not None
     assert stored.tenant_id == "tenant-a"
-    assert stored.last_seen == "2026-04-23T11:05:00+00:00"
+    assert stored.last_seen == "2026-04-23T11:05:00Z"
 
 
 def test_sqlite_store_revalidates_observation_before_write() -> None:
@@ -70,6 +70,6 @@ def test_sqlite_store_revalidates_observation_before_write() -> None:
         stored = store.get("tenant-a", "obs-1")
         assert stored is not None
         assert stored.tenant_id == "tenant-a"
-        assert stored.updated_at == "2026-04-23T12:00:00+00:00"
+        assert stored.updated_at == "2026-04-23T12:00:00Z"
     finally:
         path.unlink(missing_ok=True)

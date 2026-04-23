@@ -37,4 +37,7 @@ def normalize_timestamp(value: str | None) -> str | None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     else:
         parsed = parsed.astimezone(timezone.utc)
-    return parsed.isoformat()
+    normalized = parsed.isoformat()
+    if normalized.endswith("+00:00"):
+        return f"{normalized[:-6]}Z"
+    return normalized

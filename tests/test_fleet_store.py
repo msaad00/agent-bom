@@ -106,9 +106,9 @@ def test_fleet_agent_normalizes_tenant_and_timestamps():
         last_discovery="2026-04-23T11:10:00",
     )
     assert agent.tenant_id == "tenant-a"
-    assert agent.created_at == "2026-04-23T11:00:00+00:00"
-    assert agent.updated_at == "2026-04-23T11:05:00+00:00"
-    assert agent.last_discovery == "2026-04-23T11:10:00+00:00"
+    assert agent.created_at == "2026-04-23T11:00:00Z"
+    assert agent.updated_at == "2026-04-23T11:05:00Z"
+    assert agent.last_discovery == "2026-04-23T11:10:00Z"
 
 
 def test_fleet_store_revalidates_agent_before_write():
@@ -120,7 +120,7 @@ def test_fleet_store_revalidates_agent_before_write():
     stored = store.get("a-1")
     assert stored is not None
     assert stored.tenant_id == "tenant-a"
-    assert stored.updated_at == "2026-04-23T11:05:00+00:00"
+    assert stored.updated_at == "2026-04-23T11:05:00Z"
 
 
 # ── SQLiteFleetStore ──────────────────────────────────────────────────────────

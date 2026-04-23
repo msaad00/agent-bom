@@ -11,6 +11,9 @@ For the shortest operator-facing explanation of inputs, engine, outputs, deploym
 For the next-phase hosted product plan that maps UI actions to control-plane
 entities, routes, and rollout order, see [Hosted Product Control-Plane Spec](hosted-product-spec.md).
 
+For the browser-to-API trust boundary and the current auth/session model, see
+[UI, API, Auth, and Session Model](auth-and-session-model.md).
+
 ## Scanning pipeline
 
 ```mermaid

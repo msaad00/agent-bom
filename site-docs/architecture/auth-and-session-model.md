@@ -80,6 +80,9 @@ That fallback is intentionally narrow:
 - it does not make the browser a trust anchor
 - the API still verifies the key and role on every request
 
+For the self-hosted data-ownership and support-sharing contract around these
+sessions, see [Customer Data and Support Boundary](../deployment/customer-data-and-support-boundary.md).
+
 ## Recommended self-hosted browser path
 
 For the cleanest enterprise deployment, use:

@@ -126,6 +126,9 @@ For the post-install maintenance path around proxy policy-signing key rotation
 and cert-manager-backed webhook certificate renewal, see
 [Runtime Operations](runtime-operations.md).
 
+For the default self-hosted data-ownership and support-sharing boundary, see
+[Customer Data and Support Boundary](customer-data-and-support-boundary.md).
+
 ## How the surfaces connect
 
 | Path | Starts from | Ends at | Purpose |
@@ -148,6 +151,10 @@ remediation output, and proxy audit data stay inside the customer's
 infrastructure. External egress only happens when the operator explicitly enables
 it for catalog refresh, enrichment, registry lookups, SIEM export, OTLP, or
 webhooks.
+
+That same self-hosted boundary also means `agent-bom` maintainers do not get
+silent access to tenant data. For the full operator-facing contract, see
+[Customer Data and Support Boundary](customer-data-and-support-boundary.md).
 
 ## Which Service Does What
 

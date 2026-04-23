@@ -174,7 +174,7 @@ def build_server_card() -> dict[str, Any]:
     return {
         "name": "agent-bom",
         "version": __version__,
-        "description": ("Security scanner and graph for agentic infrastructure — agents, MCP, runtime, and blast radius."),
+        "description": ("Security scanner and graph for AI supply chain and infrastructure — agents, MCP, runtime, and blast radius."),
         "repository": "https://github.com/msaad00/agent-bom",
         "transport": ["stdio", "sse", "streamable-http"],
         "tools": _SERVER_CARD_TOOLS,
@@ -209,7 +209,7 @@ def build_root_metadata(*, auth_required: bool) -> dict[str, Any]:
     return {
         "name": "agent-bom",
         "version": __version__,
-        "description": ("Security scanner and graph for agentic infrastructure — agents, MCP, runtime, and blast radius."),
+        "description": ("Security scanner and graph for AI supply chain and infrastructure — agents, MCP, runtime, and blast radius."),
         "homepage": "https://github.com/msaad00/agent-bom",
         "source": "https://github.com/msaad00/agent-bom",
         "license": "Apache-2.0",

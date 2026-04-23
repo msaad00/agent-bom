@@ -1,6 +1,6 @@
 # agent-bom
 
-**Open security scanner and graph for agentic infrastructure — discover agents and MCP, map blast radius, and inspect runtime.**
+**Open security scanner and graph for AI supply chain and infrastructure — discover agents and MCP, map blast radius, and inspect runtime.**
 
 Scan agents, MCP, packages, containers, Kubernetes, cloud, and GPU workloads with blast-radius context.
 

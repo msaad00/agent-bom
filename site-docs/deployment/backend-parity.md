@@ -41,6 +41,7 @@ backend?"
 | `/v1/sources*` source registry | Yes | Yes | No | No |
 | `/v1/audit*` primary trail | Yes | Yes | No | Partial; Snowflake policy audit exists, but it is not the full transactional audit replacement |
 | `/v1/auth/keys*` | No default API wiring | Yes | No | No |
+| `/v1/auth/me` capability contract | session-local only | Yes | No | No |
 | `/v1/exceptions*` | No default API wiring | Yes | No | Yes |
 | `/v1/schedules*` | Yes | Yes | No | Yes |
 | `/v1/traces`, `/v1/proxy/audit`, `/v1/ocsf/ingest` analytics writes | No | No | Yes | No |
@@ -64,6 +65,7 @@ The Snowflake story should be read in three layers:
    - `gateway_policies`
    - `policy_audit_log`
    - `exceptions`
+   - `scan_schedules`
    - governance and activity discovery routes
 2. **Current explicit non-parity**
    - source registry

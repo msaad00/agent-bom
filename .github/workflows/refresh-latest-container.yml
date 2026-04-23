@@ -103,7 +103,7 @@ jobs:
             org.opencontainers.image.version=${{ steps.release.outputs.version }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.title=agent-bom
-            org.opencontainers.image.description=Open security scanner for AI supply chain — agents, MCP, packages, containers, cloud, GPU, and runtime.
+            org.opencontainers.image.description=Open security scanner for AI supply chain and infrastructure — agents, MCP, packages, containers, cloud, GPU, and runtime.
             org.opencontainers.image.created=${{ github.run_id }}
             org.opencontainers.image.revision=${{ steps.release.outputs.tag }}
 
@@ -113,7 +113,7 @@ jobs:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           set -euo pipefail
-          SHORT_DESCRIPTION="Open security scanner for AI supply chain: agents, MCP, containers, cloud, GPU, and runtime."
+          SHORT_DESCRIPTION="Open security scanner for AI supply chain and infrastructure: agents, MCP, containers, cloud, GPU, and runtime."
           TOKEN=$(curl -sf -X POST "https://hub.docker.com/v2/users/login" \
             -H "Content-Type: application/json" \
             -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \

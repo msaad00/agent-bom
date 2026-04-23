@@ -35,6 +35,20 @@ The stable logical entities are:
 
 Those names are the product contract. Table names vary by backend.
 
+## Current invariants the stores now enforce
+
+These are part of the live control-plane contract, not aspirational notes:
+
+- tenant-scoped records are normalized to one canonical `tenant_id`
+- persisted timestamps are stored in UTC ISO-8601 form
+- fleet identity can carry explicit `source_id`, `enrollment_name`, owner,
+  environment, tags, and `mdm_provider` metadata
+- UI auth/bootstrap now reads one backend-authored session and capability
+  contract from `/v1/auth/me`
+
+That matters because graph, fleet, audit, schedules, and runtime evidence all
+depend on those fields staying stable across backends and ingest paths.
+
 ## Transactional vs analytics backends
 
 Not every backend is meant to carry the same workload.
@@ -69,6 +83,22 @@ The main operator rule is:
 | Trend / baseline | local control-plane tables | `trend_history` and related control-plane tables | analytics/event aggregation only | No |
 | Idempotency | `idempotency_keys` | `idempotency_keys` | No | No |
 | Rate-limit state | `api_rate_limits` | `api_rate_limits` | No | No shared runtime store |
+
+## Fleet identity fields
+
+The fleet model now treats these as first-class persisted fields rather than
+best-effort metadata:
+
+- `source_id`
+- `enrollment_name`
+- `owner`
+- `environment`
+- `tags`
+- `mdm_provider`
+
+Those fields are part of the current endpoint enrollment and fleet-sync
+contract and should stay aligned with the rollout bundle environment variables
+and the API payload model.
 
 ## Important naming differences
 

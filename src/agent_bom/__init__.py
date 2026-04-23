@@ -1,4 +1,4 @@
-"""agent-bom: Security scanner for AI infrastructure — from agent to runtime."""
+"""agent-bom: Security scanner for AI supply chain and infrastructure — from agent to runtime."""
 
 import re
 from importlib.metadata import PackageNotFoundError, version

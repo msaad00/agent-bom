@@ -11,10 +11,28 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 Work targeting the next release.
 
+### Added
+- **UI session and capability contract** — `/v1/auth/me` now exposes authenticated actor, tenant, backend role, UI-facing capability summaries, and explicit `can_see` / `can_do` guidance so the browser shell can reflect the real backend auth model instead of inferring permissions ad hoc.
+- **Endpoint enrollment identity contract** — managed endpoint onboarding bundles now emit stable `source_id`, `enrollment_name`, owner, environment, tag, and MDM metadata so fleet inventory can preserve one explicit endpoint identity model across Jamf, Intune, Kandji, and local rollout paths.
+
 ### Changed
+- **Release-managed version surfaces** — the bump/check scripts now manage compose and runtime version pins as first-class release surfaces so image/version drift fails fast in CI instead of leaking into post-tag cleanup.
 - **Snowflake schedule parity** — warehouse-native deployments now persist recurring scan schedules in Snowflake and wire `/v1/schedules*` through the same backend-selection path as jobs, fleet, and gateway policy stores.
+- **Snowflake exception parity** — exception workflows now persist through the Snowflake backend too, extending the warehouse-native control-plane boundary without overclaiming full Postgres parity.
 - **Graph search and slice filtering** — the control plane now uses indexed graph-node search paths with server-side entity, severity, compliance-prefix, and data-source filters so larger tenant snapshots do not fall back to broad client-side graph scans.
+- **Graph overview pagination** — the default `/v1/graph` overview path now pages nodes and page-local edges from the store instead of materializing whole snapshots in memory before pagination.
 - **Endpoint onboarding bundles** — managed endpoint rollout bundles now carry a machine-readable enrollment manifest plus optional stable fleet `source_id` wiring so Jamf, Intune, and Kandji pushes can keep one explicit endpoint identity contract instead of only raw install scripts.
+- **Deployment and product framing** — README, deployment docs, self-hosted diagrams, trust-boundary docs, and Snowflake-parity guidance now align around `AI supply chain and infrastructure`, one obvious pilot path, one obvious production path, and explicit self-hosted vs MSSP boundaries.
+- **MCP server modularization** — the monolith split continued with extracted shared scan pipeline, resource/prompt catalog, and FastMCP bootstrap helpers while keeping `create_mcp_server()` behavior and public imports stable.
+
+### Fixed
+- **Shield concurrency and API rate limiting** — shield now reuses a bounded async bridge instead of spinning up unbounded executor paths, and the in-memory API rate limiter is explicitly thread-safe.
+- **Platform record invariants** — persisted fleet and MCP observation records now normalize tenant identity and UTC ISO-8601 timestamps consistently on read/write so graph, fleet, runtime, and audit correlation work from the same canonical model.
+- **Audit and graph query hardening** — exception approval/revocation no longer allow actor spoofing, graph routes move sync store calls off the event loop, SQLite graph search falls back cleanly when FTS `MATCH` expressions error, and audit replay rejects malformed short HMAC values instead of truncating them into a false compare.
+
+### Security
+- **Gateway hardening** — scoped API keys are now enforced on the routes that already advertise scoped auth behavior, and gateway 404 responses no longer leak tenant-specific upstream details.
+- **Runtime monitor defaults** — the optional monitor DaemonSet now uses a dedicated service-account path, disables automounted service-account tokens, and is documented as an explicit zero-trust, off-by-default runtime surface rather than an assumed deployment requirement.
 
 ---
 
@@ -733,7 +751,7 @@ Work targeting the next release.
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.76.4...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.81.1...HEAD
 [0.76.4]: https://github.com/msaad00/agent-bom/compare/v0.76.2...v0.76.4
 [0.76.2]: https://github.com/msaad00/agent-bom/compare/v0.76.1...v0.76.2
 [0.76.1]: https://github.com/msaad00/agent-bom/compare/v0.76.0...v0.76.1

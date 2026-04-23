@@ -14,7 +14,7 @@
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
-<p align="center"><b>Open security scanner for AI supply chain — agents, MCP servers, packages, containers, cloud, GPU, and runtime.</b></p>
+<p align="center"><b>Open security scanner for AI supply chain and infrastructure — agents, MCP servers, packages, containers, cloud, GPU, and runtime.</b></p>
 
 <p align="center">Every CVE in your AI stack is a credential leak waiting to happen. <code>agent-bom</code> follows the chain end-to-end and tells you exactly which fix collapses it.</p>
 
@@ -167,6 +167,11 @@ The recommended motion is simple:
 - **add runtime later** with proxy or gateway only where enforcement is worth it
 
 That keeps the day-1 path easy while still giving you a full runtime story later.
+
+Two diagrams explain the self-hosted shape without collapsing into one overloaded chart:
+
+- [Enterprise Self-Hosted Topology](site-docs/deployment/overview.md#enterprise-self-hosted-topology)
+- [Enterprise Self-Hosted Data and Runtime Flow](site-docs/deployment/overview.md#enterprise-self-hosted-data-and-runtime-flow)
 
 ```mermaid
 flowchart LR

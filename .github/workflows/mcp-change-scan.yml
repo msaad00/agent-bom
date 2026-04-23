@@ -80,7 +80,7 @@ jobs:
 
           echo "" >> scan-report.md
           echo "---" >> scan-report.md
-          echo "*Scanned by [agent-bom](https://github.com/msaad00/agent-bom) — AI supply chain security scanner*" >> scan-report.md
+          echo "*Scanned by [agent-bom](https://github.com/msaad00/agent-bom) — AI supply chain and infrastructure security scanner*" >> scan-report.md
 
       - name: Comment on PR
         if: steps.scan.outputs.has_changes == 'true'

@@ -67,11 +67,12 @@ from mcp.types import ToolAnnotations
 from pydantic import AnyHttpUrl, Field, TypeAdapter
 
 from agent_bom import mcp_server_runtime as _mcp_runtime
+from agent_bom import mcp_server_scan as _mcp_scan
 from agent_bom.config import MCP_CALLER_RATE_LIMIT as _MCP_CALLER_RATE_LIMIT
 from agent_bom.config import MCP_CALLER_WINDOW_SECONDS as _MCP_CALLER_WINDOW_SECONDS
 from agent_bom.config import MCP_MAX_CALLER_STATES as _MCP_MAX_CALLER_STATES
 from agent_bom.config import MCP_MAX_CONCURRENT_TOOLS as _MCP_MAX_CONCURRENT_TOOLS
-from agent_bom.config import MCP_MAX_FILE_SIZE as _MAX_FILE_SIZE
+from agent_bom.config import MCP_MAX_FILE_SIZE as _MAX_FILE_SIZE  # noqa: F401 - retained public test import
 from agent_bom.config import MCP_MAX_REQUEST_TRACES as _MCP_MAX_REQUEST_TRACES
 from agent_bom.config import MCP_MAX_RESPONSE_CHARS as _MAX_RESPONSE_CHARS
 from agent_bom.config import MCP_MAX_TOOL_METRICS as _MCP_MAX_TOOL_METRICS
@@ -318,126 +319,15 @@ async def _run_scan_pipeline(
     enrich: bool = False,
     transitive: bool = False,
 ):
-    """Run discovery -> extraction -> scanning and return (agents, blast_radii, warnings).
-
-    Async version -- safe to call from within an existing event loop (e.g.
-    FastMCP's async context).  Falls back to asyncio.run() when no loop
-    is running (CLI usage).
-    """
-    from agent_bom.discovery import discover_all
-    from agent_bom.models import Agent, AgentType, MCPServer, TransportType
-    from agent_bom.parsers import extract_packages
-    from agent_bom.scanners import scan_agents, scan_agents_with_enrichment
-
-    warnings: list[str] = []
-    scan_sources: list[str] = []
-
-    # Validate user-provided paths against directory traversal
-    if config_path:
-        try:
-            config_path = str(_safe_path(config_path))
-        except ValueError as exc:
-            return json.dumps({"error": sanitize_error(exc)})
-
-    if sbom_path:
-        try:
-            sbom_path = str(_safe_path(sbom_path))
-        except ValueError as exc:
-            return json.dumps({"error": sanitize_error(exc)})
-
-    if image:
-        try:
-            from agent_bom.security import validate_image_ref
-
-            validate_image_ref(image)
-        except Exception as exc:
-            return json.dumps({"error": sanitize_error(exc)})
-
-    agents = discover_all(project_dir=config_path)
-    if agents:
-        scan_sources.append("agent_discovery")
-
-    # Docker image scanning
-    if image:
-        try:
-            from agent_bom.image import scan_image as _scan_image
-            from agent_bom.models import ServerSurface
-
-            img_packages, _strategy = _scan_image(image)
-            if img_packages:
-                img_server = MCPServer(
-                    name=f"image:{image}",
-                    command="",
-                    args=[],
-                    env={},
-                    transport=TransportType.UNKNOWN,
-                    packages=img_packages,
-                    surface=ServerSurface.CONTAINER_IMAGE,
-                )
-                agents.append(
-                    Agent(
-                        name=f"image:{image}",
-                        agent_type=AgentType.CUSTOM,
-                        config_path="",
-                        mcp_servers=[img_server],
-                    )
-                )
-                scan_sources.append("image")
-        except Exception as exc:
-            msg = f"Image scan failed for {image}: {sanitize_error(exc)}"
-            logger.warning(msg)
-            warnings.append(msg)
-
-    # SBOM ingestion
-    if sbom_path:
-        try:
-            # File size check
-            sbom_file = Path(sbom_path)
-            if sbom_file.exists() and sbom_file.stat().st_size > _MAX_FILE_SIZE:
-                msg = f"SBOM file too large ({sbom_file.stat().st_size} bytes, max {_MAX_FILE_SIZE})"
-                warnings.append(msg)
-            else:
-                from agent_bom.models import ServerSurface
-                from agent_bom.sbom import load_sbom
-
-                sbom_packages, _warnings, _sbom_name = load_sbom(sbom_path)
-                if sbom_packages:
-                    sbom_server = MCPServer(
-                        name=f"sbom:{Path(sbom_path).name}",
-                        command="",
-                        args=[],
-                        env={},
-                        transport=TransportType.UNKNOWN,
-                        packages=sbom_packages,
-                        surface=ServerSurface.SBOM,
-                    )
-                    agents.append(
-                        Agent(
-                            name=f"sbom:{Path(sbom_path).name}",
-                            agent_type=AgentType.CUSTOM,
-                            config_path=sbom_path,
-                            mcp_servers=[sbom_server],
-                        )
-                    )
-                    scan_sources.append("sbom")
-        except Exception as exc:
-            msg = f"SBOM load failed for {sbom_path}: {exc}"
-            logger.warning(msg)
-            warnings.append(msg)
-
-    if not agents:
-        return [], [], warnings, scan_sources
-
-    for agent in agents:
-        for server in agent.mcp_servers:
-            if not server.packages:
-                server.packages = extract_packages(server)
-
-    if enrich:
-        blast_radii = await scan_agents_with_enrichment(agents)
-    else:
-        blast_radii = await scan_agents(agents)
-    return agents, blast_radii, warnings, scan_sources
+    """Run discovery -> extraction -> scanning and return (agents, blast_radii, warnings)."""
+    return await _mcp_scan.run_scan_pipeline(
+        safe_path=_safe_path,
+        config_path=config_path,
+        image=image,
+        sbom_path=sbom_path,
+        enrich=enrich,
+        transitive=transitive,
+    )
 
 
 # ---------------------------------------------------------------------------

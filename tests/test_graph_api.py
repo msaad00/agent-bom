@@ -488,6 +488,30 @@ class TestGraphStoreBackendSelection:
         assert any(call[0] == "page_nodes" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
 
+    def test_graph_overview_filtered_page_stays_store_backed(self, recording_graph_store):
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="server:prod",
+                entity_type=EntityType.SERVER,
+                label="prod-server",
+                severity="high",
+                severity_id=4,
+            )
+        )
+        client = TestClient(app)
+
+        response = client.get(
+            "/v1/graph",
+            params={"entity_types": "agent,server", "min_severity": "high", "offset": 0, "limit": 1},
+        )
+
+        assert response.status_code == 200
+        helper_calls = [call[0] for call in recording_graph_store.calls]
+        assert helper_calls.count("page_nodes") == 1
+        assert helper_calls.count("edges_for_node_ids") == 1
+        assert helper_calls.count("snapshot_stats") == 1
+        assert "load_graph" not in helper_calls
+
     def test_graph_presets_use_pluggable_store(self, recording_graph_store):
         client = TestClient(app)
 

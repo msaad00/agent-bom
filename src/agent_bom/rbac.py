@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from dataclasses import dataclass
 from enum import Enum
 from typing import Callable
 
@@ -47,6 +48,128 @@ _PERMISSIONS: dict[str, set[Role]] = {
     "sla_write": {Role.ADMIN},
     "sla_read": {Role.ADMIN, Role.ANALYST, Role.VIEWER},
     "config": {Role.ADMIN},
+}
+
+
+@dataclass(frozen=True)
+class CapabilityDefinition:
+    id: str
+    label: str
+    description: str
+    minimum_role: Role
+
+
+_ROLE_HIERARCHY: dict[Role, int] = {
+    Role.ADMIN: 3,
+    Role.ANALYST: 2,
+    Role.VIEWER: 1,
+}
+
+_ROLE_DISPLAY_NAMES: dict[Role, str] = {
+    Role.ADMIN: "Admin",
+    Role.ANALYST: "Contributor",
+    Role.VIEWER: "Viewer",
+}
+
+_ROLE_UI_NAMES: dict[Role, str] = {
+    Role.ADMIN: "admin",
+    Role.ANALYST: "contributor",
+    Role.VIEWER: "viewer",
+}
+
+_ROLE_DESCRIPTIONS: dict[Role, str] = {
+    Role.ADMIN: "Full control-plane administration, protected writes, and tenant-scoped key/policy/fleet management.",
+    Role.ANALYST: "Contributor-level operator access for scans, source management, runtime ingest, and exception workflows.",
+    Role.VIEWER: "Read-only operator access to inventory, findings, graph, remediation, audit, and posture surfaces.",
+}
+
+_CAPABILITY_DEFINITIONS: tuple[CapabilityDefinition, ...] = (
+    CapabilityDefinition(
+        id="inventory.read",
+        label="View inventory, findings, graph, and audit",
+        description="See agents, fleet, findings, posture, compliance, graph, governance, and audit state.",
+        minimum_role=Role.VIEWER,
+    ),
+    CapabilityDefinition(
+        id="scan.run",
+        label="Run scans and imports",
+        description="Start scans, compare baselines, and push approved result or trace data into the control plane.",
+        minimum_role=Role.ANALYST,
+    ),
+    CapabilityDefinition(
+        id="sources.manage",
+        label="Manage sources and schedules",
+        description="Create, run, test, update, and schedule control-plane sources and collection jobs.",
+        minimum_role=Role.ANALYST,
+    ),
+    CapabilityDefinition(
+        id="exceptions.manage",
+        label="Create and manage exception workflows",
+        description="Create false-positive and exception records and drive remediation-related control-plane actions.",
+        minimum_role=Role.ANALYST,
+    ),
+    CapabilityDefinition(
+        id="runtime.ingest",
+        label="Push runtime evidence and evaluate policy",
+        description="Push traces, runtime events, proxy audit, OCSF, and gateway evaluations into the tenant control plane.",
+        minimum_role=Role.ANALYST,
+    ),
+    CapabilityDefinition(
+        id="keys.manage",
+        label="Manage API keys and auth policy",
+        description="Create, rotate, and revoke service keys and review auth/runtime policy configuration.",
+        minimum_role=Role.ADMIN,
+    ),
+    CapabilityDefinition(
+        id="fleet.manage",
+        label="Manage fleet writes and sync operations",
+        description="Run fleet sync and perform protected fleet mutations that affect tenant inventory state.",
+        minimum_role=Role.ADMIN,
+    ),
+    CapabilityDefinition(
+        id="policy.manage",
+        label="Manage protected policy and break-glass actions",
+        description="Change gateway policy, SIEM tests, shield state, and other protected control-plane administration.",
+        minimum_role=Role.ADMIN,
+    ),
+)
+
+_ROLE_ACCESS_SUMMARY: dict[Role, dict[str, list[str]]] = {
+    Role.ADMIN: {
+        "can_see": [
+            "All tenant inventory, findings, graph, fleet, runtime, and audit surfaces",
+            "Auth policy, API key lifecycle, and protected admin controls",
+        ],
+        "can_do": [
+            "Run scans, manage sources and schedules, and push runtime evidence",
+            "Manage API keys, gateway policy, fleet sync, and other protected control-plane writes",
+        ],
+        "cannot_do": [],
+    },
+    Role.ANALYST: {
+        "can_see": [
+            "Inventory, findings, fleet, graph, remediation, audit, and governance surfaces",
+            "Source registry and schedule state for the active tenant",
+        ],
+        "can_do": [
+            "Run scans, manage sources and schedules, and create exception workflows",
+            "Push runtime evidence and evaluate policy within the active tenant",
+        ],
+        "cannot_do": [
+            "Create, rotate, or revoke API keys",
+            "Change protected admin policy, fleet writes, or break-glass state",
+        ],
+    },
+    Role.VIEWER: {
+        "can_see": [
+            "Read-only inventory, findings, fleet, graph, remediation, governance, posture, and audit surfaces",
+        ],
+        "can_do": [],
+        "cannot_do": [
+            "Run scans or schedule collection jobs",
+            "Create or update sources, exceptions, keys, policy, or fleet state",
+        ],
+    },
 }
 
 # API key → role mapping (loaded from env or config)
@@ -132,6 +255,55 @@ def check_permission(role: Role, action: str) -> bool:
         logger.warning("Unknown action %r — denying by default", action)
         return False
     return role in allowed
+
+
+def role_rank(role: Role) -> int:
+    """Return the numeric rank for a role."""
+    return _ROLE_HIERARCHY.get(role, 0)
+
+
+def normalize_role(value: Role | str | None) -> Role | None:
+    """Normalize a role-like value into a Role enum when possible."""
+    if value is None:
+        return None
+    if isinstance(value, Role):
+        return value
+    try:
+        return Role(str(value).lower())
+    except ValueError:
+        return None
+
+
+def summarize_role(value: Role | str | None) -> dict | None:
+    """Return UI-facing role, capability, and access summary data."""
+    role = normalize_role(value)
+    if role is None:
+        return None
+
+    allowed_capabilities = [cap.id for cap in _CAPABILITY_DEFINITIONS if role_rank(role) >= role_rank(cap.minimum_role)]
+    capability_matrix = [
+        {
+            "id": cap.id,
+            "label": cap.label,
+            "description": cap.description,
+            "minimum_role": cap.minimum_role.value,
+            "minimum_role_label": _ROLE_DISPLAY_NAMES[cap.minimum_role],
+            "allowed": role_rank(role) >= role_rank(cap.minimum_role),
+        }
+        for cap in _CAPABILITY_DEFINITIONS
+    ]
+    summary = _ROLE_ACCESS_SUMMARY[role]
+    return {
+        "role": role.value,
+        "ui_role": _ROLE_UI_NAMES[role],
+        "display_name": _ROLE_DISPLAY_NAMES[role],
+        "description": _ROLE_DESCRIPTIONS[role],
+        "capabilities": allowed_capabilities,
+        "capability_matrix": capability_matrix,
+        "can_see": summary["can_see"],
+        "can_do": summary["can_do"],
+        "cannot_do": summary["cannot_do"],
+    }
 
 
 def require_permission(action: str) -> Callable:

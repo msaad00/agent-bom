@@ -11,6 +11,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 Work targeting the next release.
 
+### Changed
+- **Graph search and slice filtering** — the control plane now uses indexed graph-node search paths with server-side entity, severity, compliance-prefix, and data-source filters so larger tenant snapshots do not fall back to broad client-side graph scans.
+
 ---
 
 ## [0.81.1] – 2026-04-22

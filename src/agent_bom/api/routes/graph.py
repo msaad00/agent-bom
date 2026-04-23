@@ -289,19 +289,38 @@ async def search_graph(
     request: Request,
     q: str = Query(..., min_length=1, description="Search query"),
     scan_id: Optional[str] = Query(None, description="Scan ID"),
+    entity_types: Optional[str] = Query(None, description="Comma-separated entity types"),
+    min_severity: Optional[str] = Query(None, description="Minimum severity (critical/high/medium/low)"),
+    compliance_prefixes: Optional[str] = Query(None, description="Comma-separated compliance prefixes"),
+    data_sources: Optional[str] = Query(None, description="Comma-separated data sources"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     limit: int = Query(50, ge=1, le=500, description="Max results"),
 ) -> dict:
     """Search graph nodes by label, type, tags, and attributes."""
+    entity_type_filters = {value.strip() for value in entity_types.split(",") if value.strip()} if entity_types else None
+    min_rank = SEVERITY_RANK.get(min_severity.lower(), 0) if min_severity else 0
+    prefix_filters = {value.strip().upper() for value in compliance_prefixes.split(",") if value.strip()} if compliance_prefixes else None
+    data_source_filters = {value.strip() for value in data_sources.split(",") if value.strip()} if data_sources else None
     results, total = _get_graph_store_or_503().search_nodes(
         scan_id=scan_id or "",
         tenant_id=_tenant(request),
         query=q,
+        entity_types=entity_type_filters,
+        min_severity_rank=min_rank,
+        compliance_prefixes=prefix_filters,
+        data_sources=data_source_filters,
         offset=offset,
         limit=limit,
     )
     return {
         "query": q,
+        "filters": {
+            "scan_id": scan_id or "",
+            "entity_types": sorted(entity_type_filters) if entity_type_filters else [],
+            "min_severity": min_severity or "",
+            "compliance_prefixes": sorted(prefix_filters) if prefix_filters else [],
+            "data_sources": sorted(data_source_filters) if data_source_filters else [],
+        },
         "results": [n.to_dict() for n in results],
         "pagination": {
             "total": total,

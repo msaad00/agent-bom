@@ -286,10 +286,10 @@ def test_server_card_tools_count_matches_mcp_tools():
     import inspect
     import re
 
-    from agent_bom import mcp_server, mcp_server_specialized
+    from agent_bom import mcp_server, mcp_server_runtime_catalog, mcp_server_specialized
     from agent_bom.mcp_server import _SERVER_CARD_TOOLS
 
-    source = inspect.getsource(mcp_server) + inspect.getsource(mcp_server_specialized)
+    source = inspect.getsource(mcp_server) + inspect.getsource(mcp_server_runtime_catalog) + inspect.getsource(mcp_server_specialized)
     tool_count = len(re.findall(r"@mcp\.tool\(", source))
     card_count = len(_SERVER_CARD_TOOLS)
     assert card_count == tool_count, f"_SERVER_CARD_TOOLS has {card_count} entries but found {tool_count} @mcp.tool decorators"

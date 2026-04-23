@@ -67,7 +67,9 @@ environment/config through the same managed path used for initial install:
 agent-bom proxy-bootstrap \
   --bundle-dir ./bundle \
   --control-plane-url https://agent-bom.internal.example.com \
-  --control-plane-token "$CONTROL_PLANE_TOKEN"
+  --control-plane-token "$CONTROL_PLANE_TOKEN" \
+  --enrollment-name corp-laptop-rollout \
+  --mdm-provider jamf
 ```
 
 ### Break-glass recovery

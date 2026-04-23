@@ -40,6 +40,12 @@ def test_write_endpoint_onboarding_bundle_writes_artifacts(tmp_path):
         block_undeclared=False,
         push_url="https://agent-bom.internal.example.com/v1/fleet/sync",
         push_api_key="fleet-key",
+        source_id="device-acme-001",
+        enrollment_name="corp-laptop-rollout",
+        owner="platform-security",
+        environment="production",
+        tags=["mdm", "developer-endpoint"],
+        mdm_provider="jamf",
     )
     assert set(artifacts) >= {
         "shell_bootstrap",
@@ -50,6 +56,7 @@ def test_write_endpoint_onboarding_bundle_writes_artifacts(tmp_path):
         "intune_detect",
         "fleet_sync_env",
         "launch_agent_plist",
+        "enrollment_manifest",
         "summary",
     }
     shell_script = Path(artifacts["shell_bootstrap"]).read_text()
@@ -58,10 +65,20 @@ def test_write_endpoint_onboarding_bundle_writes_artifacts(tmp_path):
     env_file = Path(artifacts["fleet_sync_env"]).read_text()
     assert "AGENT_BOM_PUSH_URL" in env_file
     assert "AGENT_BOM_PUSH_API_KEY" in env_file
+    assert 'AGENT_BOM_PUSH_SOURCE_ID="device-acme-001"' in env_file
     jamf_script = Path(artifacts["jamf_install"]).read_text()
     assert "install-agent-bom-endpoint.sh" in jamf_script
     intune_script = Path(artifacts["intune_install"]).read_text()
     assert "install-agent-bom-endpoint.ps1" in intune_script
+    enrollment = json.loads(Path(artifacts["enrollment_manifest"]).read_text())
+    assert enrollment["enrollment_name"] == "corp-laptop-rollout"
+    assert enrollment["owner"] == "platform-security"
+    assert enrollment["environment"] == "production"
+    assert enrollment["mdm_provider"] == "jamf"
+    assert enrollment["device_identity"]["source_id"] == "device-acme-001"
+    assert enrollment["device_identity"]["source_id_strategy"] == "configured"
     summary = json.loads(Path(artifacts["summary"]).read_text())
     assert summary["control_plane_url"] == "https://agent-bom.internal.example.com"
+    assert summary["source_id"] == "device-acme-001"
+    assert summary["mdm_provider"] == "jamf"
     assert summary["artifacts"]["shell_bootstrap"] == artifacts["shell_bootstrap"]

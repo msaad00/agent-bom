@@ -224,6 +224,20 @@ def test_proxy_bootstrap_writes_bundle(tmp_path):
             "https://agent-bom.internal.example.com/v1/fleet/sync",
             "--push-api-key",
             "fleet-key",
+            "--source-id",
+            "device-acme-001",
+            "--enrollment-name",
+            "corp-rollout",
+            "--owner",
+            "platform-security",
+            "--environment",
+            "production",
+            "--tag",
+            "developer-endpoint",
+            "--tag",
+            "mdm",
+            "--mdm-provider",
+            "jamf",
         ],
     )
     assert result.exit_code == 0
@@ -235,6 +249,7 @@ def test_proxy_bootstrap_writes_bundle(tmp_path):
     assert (tmp_path / "intune" / "detect-agent-bom-endpoint.ps1").exists()
     assert (tmp_path / "kandji" / "install-agent-bom-endpoint.sh").exists()
     assert (tmp_path / "endpoint-onboarding-summary.json").exists()
+    assert (tmp_path / "endpoint-enrollment.json").exists()
 
 
 # ---------------------------------------------------------------------------

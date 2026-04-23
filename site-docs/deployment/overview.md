@@ -141,6 +141,18 @@ This self-hosted shape is designed around a few explicit operating principles:
 - **Cheap by default**: scan workers scale to zero, offline vuln DB reduces repeated network lookups, ClickHouse stays optional
 - **Interoperable**: one shared graph and policy model spans scanner, proxy, gateway, fleet, and API/UI
 
+## Self-hosted now, provider track later
+
+The supported strength today is the self-hosted enterprise path:
+
+- one organization running `agent-bom` in its own infrastructure
+- strong tenant-aware auth, RBAC, audit, fleet, graph, and gateway routing
+- customer-owned storage, telemetry, and support-sharing decisions
+
+That should not be read as a hidden claim of turnkey MSSP maturity. Provider
+surfaces such as tenant lifecycle automation, richer delegation templates, and
+provider-style admin operations remain a separate product track.
+
 ## Enterprise Self-Hosted Diagrams
 
 Use two diagrams, not one overloaded graph:

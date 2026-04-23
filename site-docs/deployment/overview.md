@@ -97,9 +97,25 @@ Use these only when you are intentionally going off the paved path:
 |---|---|---|
 | **`agent-bom proxy`** | local stdio MCPs and workload-local sidecars | inventory, fleet, or findings review |
 | **`agent-bom gateway serve`** | shared remote MCP traffic over HTTP/SSE | local sidecar enforcement or basic MCP inventory |
+| **optional monitor DaemonSet** | node-wide runtime coverage when an operator explicitly wants a higher-trust deployment shape | scans, fleet, gateway, or selected sidecar proxy rollout |
 
 If you need the concrete operator rule for where each one fits, see
 [When To Use Proxy vs Gateway vs Fleet](proxy-vs-gateway-vs-fleet.md).
+
+## Recommended defaults
+
+If you do not already have a strong reason to diverge, use these defaults:
+
+| Decision | Recommended default |
+|---|---|
+| **pilot path** | `deploy/docker-compose.pilot.yml` |
+| **production path** | `scripts/deploy/install-eks-reference.sh` |
+| **control-plane backend** | Postgres |
+| **first runtime step** | scans + fleet, without runtime rollout |
+| **shared remote MCP traffic** | gateway |
+| **workload-local inline enforcement** | selected sidecar proxy |
+| **node-wide runtime coverage** | optional monitor only when the operator explicitly accepts a DaemonSet |
+| **analytics and lake add-ons** | add ClickHouse, OTEL, or Snowflake only when the Postgres-first path is no longer enough |
 
 ## What You Can Offer In Customer-Controlled Infra
 
@@ -440,5 +456,11 @@ YAML.
 - **ClickHouse**: analytics add-on
 - **Snowflake**: warehouse-native governance surface with explicit parity
   limits, not the default full hosting contract
+
+Default guidance:
+
+- **Postgres** is the normal self-hosted control-plane answer
+- **ClickHouse** is the first analytics add-on when event volume grows
+- **Snowflake** is an explicit advanced path, not the default production recommendation
 
 For the detailed backend matrix, see [Backend Parity Matrix](backend-parity.md).

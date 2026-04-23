@@ -84,6 +84,34 @@ class GraphStoreProtocol(Protocol):
 
     def list_snapshots(self, *, tenant_id: str = "", limit: int = 50) -> list[dict[str, Any]]: ...
 
+    def snapshot_stats(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        entity_types: set[str] | None = None,
+        min_severity_rank: int = 0,
+    ) -> dict[str, Any]: ...
+
+    def page_nodes(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        entity_types: set[str] | None = None,
+        min_severity_rank: int = 0,
+        offset: int = 0,
+        limit: int = 500,
+    ) -> tuple[str, str, list[UnifiedNode], int]: ...
+
+    def edges_for_node_ids(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        node_ids: set[str],
+    ) -> list[Any]: ...
+
     def search_nodes(
         self,
         *,
@@ -156,6 +184,23 @@ class SQLiteGraphStore:
             return True
         node_prefixes = {tag.split("-")[0].upper() if "-" in tag else tag.upper() for tag in node.compliance_tags}
         return bool(node_prefixes.intersection(prefixes))
+
+    @staticmethod
+    def _space_token_filter(column: str, token: str) -> tuple[str, list[Any]]:
+        escaped = _escape_like_query(token.lower())
+        clause = f"({column} = ? OR {column} LIKE ? ESCAPE '\\' OR {column} LIKE ? ESCAPE '\\' OR {column} LIKE ? ESCAPE '\\')"
+        params = [escaped, f"{escaped} %", f"% {escaped}", f"% {escaped} %"]
+        return clause, params
+
+    @staticmethod
+    def _compliance_prefix_filter(column: str, prefix: str) -> tuple[str, list[Any]]:
+        escaped = _escape_like_query(prefix.lower())
+        clause = (
+            f"({column} = ? OR {column} LIKE ? ESCAPE '\\' OR "
+            f"{column} LIKE ? ESCAPE '\\' OR {column} LIKE ? ESCAPE '\\' OR {column} LIKE ? ESCAPE '\\')"
+        )
+        params = [escaped, f"{escaped}-%", f"{escaped} %", f"% {escaped}-%", f"% {escaped} %"]
+        return clause, params
 
     def _refresh_snapshot_search_index(self, conn: sqlite3.Connection, *, tenant_id: str, scan_id: str) -> None:
         conn.execute("DELETE FROM graph_node_search WHERE tenant_id = ? AND scan_id = ?", (tenant_id, scan_id))
@@ -283,6 +328,206 @@ class SQLiteGraphStore:
         finally:
             conn.close()
 
+    def snapshot_stats(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        entity_types: set[str] | None = None,
+        min_severity_rank: int = 0,
+    ) -> dict[str, Any]:
+        conn = self._open_ro_conn()
+        if conn is None:
+            return {
+                "total_nodes": 0,
+                "total_edges": 0,
+                "node_types": {},
+                "severity_counts": {},
+                "relationship_types": {},
+                "attack_path_count": 0,
+                "interaction_risk_count": 0,
+                "max_attack_path_risk": 0.0,
+                "highest_interaction_risk": 0.0,
+            }
+        try:
+            effective_scan_id, _created_at = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
+            if not effective_scan_id:
+                return {
+                    "total_nodes": 0,
+                    "total_edges": 0,
+                    "node_types": {},
+                    "severity_counts": {},
+                    "relationship_types": {},
+                    "attack_path_count": 0,
+                    "interaction_risk_count": 0,
+                    "max_attack_path_risk": 0.0,
+                    "highest_interaction_risk": 0.0,
+                }
+
+            node_where = ["tenant_id = ?", "scan_id = ?"]
+            params: list[Any] = [tenant_id, effective_scan_id]
+            if entity_types:
+                placeholders = ",".join("?" for _ in entity_types)
+                node_where.append(f"entity_type IN ({placeholders})")
+                params.extend(sorted(entity_types))
+            if min_severity_rank:
+                node_where.append("severity_id >= ?")
+                params.append(min_severity_rank)
+            where_sql = " AND ".join(node_where)
+
+            total_nodes = conn.execute(
+                f"SELECT COUNT(*) FROM graph_nodes WHERE {where_sql}",  # nosec B608 - where_sql is built from static clause fragments
+                params,
+            ).fetchone()[0]
+            node_type_rows = conn.execute(
+                f"SELECT entity_type, COUNT(*) FROM graph_nodes WHERE {where_sql} GROUP BY entity_type",  # nosec B608 - where_sql is built from static clause fragments
+                params,
+            ).fetchall()
+            severity_rows = conn.execute(
+                f"SELECT severity, COUNT(*) FROM graph_nodes WHERE {where_sql} AND severity <> '' GROUP BY severity",  # nosec B608 - where_sql is built from static clause fragments
+                params,
+            ).fetchall()
+            total_edges = conn.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM graph_edges
+                WHERE tenant_id = ? AND scan_id = ?
+                  AND source_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                  AND target_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                """,  # nosec B608 - where_sql is built from static clause fragments
+                [tenant_id, effective_scan_id, *params, *params],
+            ).fetchone()[0]
+            rel_rows = conn.execute(
+                f"""
+                SELECT relationship, COUNT(*)
+                FROM graph_edges
+                WHERE tenant_id = ? AND scan_id = ?
+                  AND source_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                  AND target_id IN (SELECT id FROM graph_nodes WHERE {where_sql})
+                GROUP BY relationship
+                """,  # nosec B608 - where_sql is built from static clause fragments
+                [tenant_id, effective_scan_id, *params, *params],
+            ).fetchall()
+            attack_row = conn.execute(
+                "SELECT COUNT(*), COALESCE(MAX(composite_risk), 0.0) FROM attack_paths WHERE tenant_id = ? AND scan_id = ?",
+                (tenant_id, effective_scan_id),
+            ).fetchone()
+            interaction_row = conn.execute(
+                "SELECT COUNT(*), COALESCE(MAX(risk_score), 0.0) FROM interaction_risks WHERE tenant_id = ? AND scan_id = ?",
+                (tenant_id, effective_scan_id),
+            ).fetchone()
+            return {
+                "total_nodes": int(total_nodes or 0),
+                "total_edges": int(total_edges or 0),
+                "node_types": {str(row[0]): int(row[1]) for row in node_type_rows},
+                "severity_counts": {str(row[0]): int(row[1]) for row in severity_rows},
+                "relationship_types": {str(row[0]): int(row[1]) for row in rel_rows},
+                "attack_path_count": int((attack_row[0] if attack_row else 0) or 0),
+                "interaction_risk_count": int((interaction_row[0] if interaction_row else 0) or 0),
+                "max_attack_path_risk": float((attack_row[1] if attack_row else 0.0) or 0.0),
+                "highest_interaction_risk": float((interaction_row[1] if interaction_row else 0.0) or 0.0),
+            }
+        finally:
+            conn.close()
+
+    def page_nodes(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        entity_types: set[str] | None = None,
+        min_severity_rank: int = 0,
+        offset: int = 0,
+        limit: int = 500,
+    ) -> tuple[str, str, list[UnifiedNode], int]:
+        conn = self._open_ro_conn()
+        if conn is None:
+            return scan_id, "", [], 0
+        try:
+            effective_scan_id, created_at = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
+            if not effective_scan_id:
+                return scan_id, "", [], 0
+            where = ["tenant_id = ?", "scan_id = ?"]
+            params: list[Any] = [tenant_id, effective_scan_id]
+            if entity_types:
+                placeholders = ",".join("?" for _ in entity_types)
+                where.append(f"entity_type IN ({placeholders})")
+                params.extend(sorted(entity_types))
+            if min_severity_rank:
+                where.append("severity_id >= ?")
+                params.append(min_severity_rank)
+            where_sql = " AND ".join(where)
+            total = int(
+                conn.execute(
+                    f"SELECT COUNT(*) FROM graph_nodes WHERE {where_sql}",  # nosec B608 - where_sql is built from static clause fragments
+                    params,
+                ).fetchone()[0]
+                or 0
+            )
+            rows = conn.execute(
+                f"""
+                SELECT
+                    id, entity_type, label, category_uid, class_uid, type_uid,
+                    status, risk_score, severity, severity_id, first_seen, last_seen,
+                    attributes, compliance_tags, data_sources, dimensions
+                FROM graph_nodes
+                WHERE {where_sql}
+                ORDER BY severity_id DESC, risk_score DESC, label ASC, id ASC
+                LIMIT ? OFFSET ?
+                """,  # nosec B608 - where_sql is built from static clause fragments
+                [*params, limit, offset],
+            ).fetchall()
+            return effective_scan_id, created_at, [self._node_from_row(row) for row in rows], total
+        finally:
+            conn.close()
+
+    def edges_for_node_ids(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        node_ids: set[str],
+    ) -> list[Any]:
+        if not node_ids:
+            return []
+        conn = self._open_ro_conn()
+        if conn is None:
+            return []
+        try:
+            effective_scan_id = scan_id or sqlite_graph_store.latest_snapshot_id(conn, tenant_id=tenant_id)
+            if not effective_scan_id:
+                return []
+            placeholders = ",".join("?" for _ in node_ids)
+            rows = conn.execute(
+                f"""
+                SELECT source_id, target_id, relationship, direction, weight, traversable, first_seen, last_seen, evidence, activity_id
+                FROM graph_edges
+                WHERE tenant_id = ? AND scan_id = ?
+                  AND source_id IN ({placeholders})
+                  AND target_id IN ({placeholders})
+                """,  # nosec B608 - placeholders are generated solely from "?" markers
+                [tenant_id, effective_scan_id, *node_ids, *node_ids],
+            ).fetchall()
+            from agent_bom.graph import RelationshipType, UnifiedEdge
+
+            return [
+                UnifiedEdge(
+                    source=row["source_id"],
+                    target=row["target_id"],
+                    relationship=RelationshipType(row["relationship"]),
+                    direction=row["direction"],
+                    weight=row["weight"],
+                    traversable=bool(row["traversable"]),
+                    first_seen=row["first_seen"],
+                    last_seen=row["last_seen"],
+                    evidence=json.loads(row["evidence"]),
+                    activity_id=row["activity_id"],
+                )
+                for row in rows
+            ]
+        finally:
+            conn.close()
+
     def search_nodes(
         self,
         *,
@@ -304,66 +549,70 @@ class SQLiteGraphStore:
             if not effective_scan_id:
                 return [], 0
             fts_query = self._search_query_expression(query)
-            where = [
-                "tenant_id = ?",
-                "scan_id = ?",
+            search_where = [
+                "gns.tenant_id = ?",
+                "gns.scan_id = ?",
             ]
             params: list[Any] = [tenant_id, effective_scan_id]
             if fts_query and self._should_use_fts(query):
-                where.append("graph_node_search MATCH ?")
+                search_where.append("gns.graph_node_search MATCH ?")
                 params.append(fts_query)
             else:
-                where.append("search_text LIKE ? ESCAPE '\\'")
+                search_where.append("gns.search_text LIKE ? ESCAPE '\\'")
                 params.append(f"%{_escape_like_query(query.lower())}%")
             if entity_types:
                 placeholders = ",".join("?" for _ in entity_types)
-                where.append(f"entity_type IN ({placeholders})")
+                search_where.append(f"gn.entity_type IN ({placeholders})")
                 params.extend(sorted(entity_types))
+            if min_severity_rank:
+                search_where.append("gn.severity_id >= ?")
+                params.append(min_severity_rank)
+            if compliance_prefixes:
+                prefix_filters = []
+                for prefix in sorted(compliance_prefixes):
+                    clause, clause_params = self._compliance_prefix_filter("gns.compliance_tags", prefix)
+                    prefix_filters.append(clause)
+                    params.extend(clause_params)
+                search_where.append("(" + " OR ".join(prefix_filters) + ")")
             if data_sources:
                 source_filters = []
                 for source in sorted(data_sources):
-                    source_filters.append("data_sources LIKE ? ESCAPE '\\'")
-                    params.append(f"%{_escape_like_query(source.lower())}%")
-                where.append("(" + " OR ".join(source_filters) + ")")
+                    clause, clause_params = self._space_token_filter("gns.data_sources", source)
+                    source_filters.append(clause)
+                    params.extend(clause_params)
+                search_where.append("(" + " OR ".join(source_filters) + ")")
 
-            matching_ids = [
-                row["node_id"]
-                for row in conn.execute(
-                    "SELECT node_id FROM graph_node_search WHERE " + " AND ".join(where),  # nosec B608 - clauses are static, values stay parameterized
+            from_clause = """
+                FROM graph_node_search gns
+                JOIN graph_nodes gn
+                  ON gn.id = gns.node_id
+                 AND gn.scan_id = gns.scan_id
+                 AND gn.tenant_id = gns.tenant_id
+            """
+            where_sql = " AND ".join(search_where)
+            total = int(
+                conn.execute(
+                    "SELECT COUNT(*) " + from_clause + " WHERE " + where_sql,
                     params,
-                ).fetchall()
-            ]
-            if not matching_ids:
+                ).fetchone()[0]
+                or 0
+            )
+            if total == 0:
                 return [], 0
-
-            placeholders = ",".join("?" for _ in matching_ids)
-            rows_query = f"""
-                SELECT
-                    id, entity_type, label, category_uid, class_uid, type_uid,
-                    status, risk_score, severity, severity_id, first_seen, last_seen,
-                    attributes, compliance_tags, data_sources, dimensions
-                FROM graph_nodes
-                WHERE tenant_id = ? AND scan_id = ? AND id IN ({placeholders})
-                ORDER BY severity_id DESC, risk_score DESC, label ASC
-                """  # nosec B608 - placeholders are generated solely from "?" markers
             rows = conn.execute(
-                rows_query,
-                [tenant_id, effective_scan_id, *matching_ids],
+                """
+                SELECT
+                    gn.id, gn.entity_type, gn.label, gn.category_uid, gn.class_uid, gn.type_uid,
+                    gn.status, gn.risk_score, gn.severity, gn.severity_id, gn.first_seen, gn.last_seen,
+                    gn.attributes, gn.compliance_tags, gn.data_sources, gn.dimensions
+                """
+                + from_clause
+                + " WHERE "
+                + where_sql
+                + " ORDER BY gn.severity_id DESC, gn.risk_score DESC, gn.label ASC, gn.id ASC LIMIT ? OFFSET ?",
+                [*params, limit, offset],
             ).fetchall()
-            filtered = []
-            prefix_filters = compliance_prefixes or set()
-            source_filters_set = data_sources or set()
-            for row in rows:
-                node = self._node_from_row(row)
-                if min_severity_rank and (row["severity_id"] or 0) < min_severity_rank:
-                    continue
-                if not self._matches_compliance_prefixes(node, prefix_filters):
-                    continue
-                if source_filters_set and not set(node.data_sources).intersection(source_filters_set):
-                    continue
-                filtered.append(node)
-            total = len(filtered)
-            return filtered[offset : offset + limit], total
+            return [self._node_from_row(row) for row in rows], total
         finally:
             conn.close()
 

@@ -46,6 +46,10 @@ monitor:
   enabled: false
   mode: http
   port: 8423
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
   service:
     enabled: true
     type: ClusterIP

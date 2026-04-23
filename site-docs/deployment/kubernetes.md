@@ -9,7 +9,7 @@ Located in `deploy/k8s/`:
 | `namespace.yaml` | `agent-bom` namespace |
 | `rbac.yaml` | ServiceAccount + ClusterRole (pod/namespace read) |
 | `cronjob.yaml` | Scheduled scan every 6 hours |
-| `daemonset.yaml` | Runtime protection on every node |
+| `daemonset.yaml` | Optional node-wide runtime monitor |
 | `sidecar-example.yaml` | Proxy sidecar alongside an MCP server |
 | `proxy-sidecar-pilot.yaml` | Focused EKS pilot sidecar pattern for selected MCP workloads |
 
@@ -60,7 +60,7 @@ agent-bom iac . --k8s-live --k8s-all-namespaces
 helm install agent-bom deploy/helm/agent-bom/ \
   -n agent-bom --create-namespace
 
-# Enable runtime monitoring
+# Enable the optional node-wide runtime monitor
 helm install agent-bom deploy/helm/agent-bom/ \
   -n agent-bom --create-namespace \
   --set monitor.enabled=true
@@ -86,8 +86,9 @@ helm install agent-bom deploy/helm/agent-bom/ \
 | `scanner.allNamespaces` | `true` | Scan all namespaces |
 | `scanner.extraArgs` | `[]` | Add scan flags like `--k8s-mcp`, `--enforce`, or `--introspect` |
 | `scanner.env` | `[]` | Extra environment variables for the scanner CronJob |
-| `monitor.enabled` | `false` | Deploy DaemonSet monitor |
+| `monitor.enabled` | `false` | Deploy the optional node-wide monitor DaemonSet |
 | `monitor.port` | `8423` | HTTP port for protect endpoint |
+| `monitor.serviceAccount.create` | `true` | Create a dedicated monitor service account instead of reusing the shared chart identity |
 | `controlPlane.enabled` | `false` | Package API + dashboard Deployments and Services |
 | `controlPlane.ingress.enabled` | `false` | Add same-origin ingress routing for UI + API |
 | `controlPlane.ui.env` | `NEXT_PUBLIC_API_URL=\"\"` | Blank by default so the browser uses same-origin paths |
@@ -98,6 +99,14 @@ helm install agent-bom deploy/helm/agent-bom/ \
 
 For the full control-plane topology and secret wiring, see
 [Packaged API + UI Control Plane](control-plane-helm.md).
+
+Use the monitor only when you explicitly want node-wide runtime coverage. The
+default secure path remains:
+
+- agentless scans
+- fleet sync
+- gateway for shared remote MCPs
+- selected sidecar proxies where inline enforcement matters
 
 For the narrower MCP and agents pilot, see
 [Focused EKS MCP Pilot](eks-mcp-pilot.md).

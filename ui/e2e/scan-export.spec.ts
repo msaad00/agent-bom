@@ -78,7 +78,7 @@ test("scan flow reaches result view and exports graph JSON", async ({ page }) =>
     });
   });
 
-  await page.route("**/v1/auth/debug", async (route) => {
+  await page.route("**/v1/auth/me", async (route) => {
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
@@ -89,9 +89,9 @@ test("scan flow reaches result view and exports graph JSON", async ({ page }) =>
         auth_method: null,
         subject: null,
         role: null,
+        role_summary: null,
         tenant_id: "default",
-        oidc_issuer_suffix: null,
-        api_key_id_prefix: null,
+        memberships: [],
         request_id: "req-e2e",
         trace_id: "trace-e2e",
         span_id: "span-e2e",

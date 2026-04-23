@@ -176,6 +176,41 @@ If any of these fail first:
 - overlapping scans: lengthen schedule or split scope
 - audit query drag: add retention boundaries and move analytics to `ClickHouse`
 
+## Security graph cardinality and windowing
+
+The security graph is one of the main operator surfaces, but it should be read
+as a persisted, filterable investigation view, not as a promise that every
+tenant should dump full topology into one browser canvas.
+
+Operationally important boundaries:
+
+- graph snapshots can contain many more nodes and edges than one page should
+  render at once
+- UI pagination, focus mode, search, and blast-radius drilldown are part of the
+  scaling model, not optional decoration
+- the operator workflow should narrow by tenant, snapshot, attack path, source,
+  or asset family before expecting one giant all-entity canvas to stay useful
+
+Recommended posture for larger tenants:
+
+1. keep graph investigation windowed by snapshot and page
+2. start from blast radius, focused graph, or asset search before expanding
+3. treat full-topology rendering as an exception path, not the default view
+4. benchmark the control plane with your expected snapshot size before calling
+   the graph production-ready at large scale
+
+What the product claims today:
+
+- persisted graph snapshots
+- stable node identifiers in the operator detail view
+- explicit snapshot metadata, scope, and timestamps
+- filterable graph investigation flows
+
+What it does not yet publish as a hard contract:
+
+- universal node/edge ceilings that apply to every tenant shape
+- a CI-enforced multi-tenant graph load harness
+
 ## Tenant quotas
 
 For multi-tenant or shared internal deployments, set explicit per-tenant quotas
@@ -223,6 +258,13 @@ Use that harness to validate:
 3. scaling behavior after enabling `HPA`
 4. the point where analytics should move to `ClickHouse`
 
+Current boundary:
+
+- the harness is shipped and operator-usable now
+- the harness is not yet a full multi-tenant performance gate in CI
+- published benchmark numbers should come from your environment until the repo
+  ships broader reference runs
+
 ## Minimal benchmark checklist
 
 Run these in your own environment before broader rollout:
@@ -258,6 +300,11 @@ starting point.
 
 `agent-bom` now ships the packaged control plane, pilot path, and operator
 defaults. What it still does not claim is:
+
+- one universal throughput number for every scan and tenant shape
+- one browser graph view that should render every tenant's full topology at once
+- CI-proven multi-tenant graph/load guarantees beyond the shipped focused
+  benchmark harness
 
 - fixed throughput guarantees
 - a bundled benchmark certification suite

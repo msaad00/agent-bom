@@ -28,6 +28,12 @@ The OCR pass joins all image blocks in a single response into one stitched
 canvas, extracts words above the current confidence floor, and matches them
 against the shipped credential and PII pattern sets.
 
+Current boundary:
+
+- this is response-image OCR and redaction, not universal screenshot governance
+- it only runs where `proxy` or `gateway` are actually deployed
+- it is not yet a default-on redaction layer for every screenshot-heavy runtime path
+
 Current matching behavior:
 
 - single-word and short multi-word matches
@@ -155,6 +161,23 @@ Recommended rollout:
 | EKS sidecar proxy | required | image contents are fully operator-controlled |
 | Shared gateway pilot | best effort first | easier to validate OCR packaging and latency |
 | Shared gateway production | required | fail closed only after runtime support is proven |
+
+## What is real now vs still narrower
+
+Shipped now:
+
+- OCR-backed response inspection on image content blocks
+- credential and PII leak detection categories
+- proxy and gateway startup/readiness behavior
+- redaction of matched bounding boxes before the response reaches the client
+
+Still intentionally narrower:
+
+- always-on screenshot redaction across every deployment mode
+- request-side OCR inspection
+- a claim that visual redaction is already the default runtime posture everywhere
+
+That is why the feature stays opt-in and rollout-first in this release.
 
 ## Related guides
 

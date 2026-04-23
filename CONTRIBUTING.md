@@ -83,6 +83,30 @@ gh pr create --base main            # or push + open PR on GitHub
 
 Branch naming: `feat/`, `fix/`, `docs/`, `chore/` prefixes. Always branch from and PR to `main`.
 
+### Important PR update rule
+
+Do **not** use GitHub's **Update branch** button on active PRs unless the PR is
+actually non-mergeable and you cannot refresh it locally.
+
+Preferred path:
+
+```bash
+git fetch origin main
+git rebase origin/main
+git push --force-with-lease
+```
+
+Why:
+
+- GitHub's synthetic merge head can leave PRs in a bad check state where
+  expected checks never attach cleanly
+- a real locally pushed head is more reliable for CI, branch protection, and
+  debugging
+
+If a PR ever shows "no checks reported", "expected" checks with no attached
+run, or obviously stale check-rollup state after an update, replace the branch
+head with a clean local rebase instead of retrying the GitHub button again.
+
 ---
 
 ## Tests

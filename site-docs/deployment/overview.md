@@ -125,6 +125,110 @@ This self-hosted shape is designed around a few explicit operating principles:
 - **Cheap by default**: scan workers scale to zero, offline vuln DB reduces repeated network lookups, ClickHouse stays optional
 - **Interoperable**: one shared graph and policy model spans scanner, proxy, gateway, fleet, and API/UI
 
+## Enterprise Self-Hosted Diagrams
+
+Use two diagrams, not one overloaded graph:
+
+- **Enterprise Self-Hosted Topology** answers what runs where.
+- **Enterprise Self-Hosted Data and Runtime Flow** answers how data moves and
+  where policy, auth, RBAC, tenant scope, and audit are enforced.
+
+### Enterprise Self-Hosted Topology
+
+```mermaid
+flowchart LR
+    classDef edge fill:#111827,stroke:#38bdf8,color:#e0f2fe
+    classDef ctrl fill:#0f172a,stroke:#6366f1,color:#e0e7ff
+    classDef run fill:#0f172a,stroke:#10b981,color:#d1fae5
+    classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
+    classDef ext fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
+
+    Browser["Browser UI"]:::ext
+    IdP["Corporate IdP"]:::ext
+    Endpoints["Fleet endpoints / collectors"]:::ext
+    Remote["Remote MCPs"]:::ext
+
+    subgraph Customer["Customer VPC / EKS / self-hosted cluster"]
+      Ingress["Ingress + TLS"]:::edge
+
+      subgraph Control["Control plane"]
+        UI["UI"]:::ctrl
+        API["API"]:::ctrl
+        Jobs["Scan jobs / workers"]:::ctrl
+      end
+
+      Gateway["Gateway"]:::run
+      Proxy["Selected proxy sidecars / local wrappers"]:::run
+
+      subgraph Stores["Customer-owned stores"]
+        Postgres[("Postgres")]:::data
+        ClickHouse[("ClickHouse optional")]:::data
+        S3[("S3 optional")]:::data
+      end
+
+      Secrets["Secrets / IRSA / Vault"]:::edge
+      Obs["OTEL / Prometheus"]:::edge
+    end
+
+    Browser --> Ingress
+    IdP -. OIDC / SAML .-> Ingress
+    Ingress --> UI
+    Ingress --> API
+    UI --> API
+    Jobs --> API
+    Endpoints -->|fleet sync / pushed inventory| API
+    Proxy -->|policy pull / audit push| API
+    Gateway -->|policy pull / audit push| API
+    Proxy -->|local MCP traffic| Endpoints
+    Gateway -->|shared remote MCP traffic| Remote
+    API --> Postgres
+    API -. analytics .-> ClickHouse
+    API -. archive / export .-> S3
+    Secrets --> API
+    Secrets --> Gateway
+    API --> Obs
+    Gateway --> Obs
+```
+
+Truth block:
+- UI drives workflows; API owns auth, RBAC, tenant scope, graph, audit, and policy.
+- Proxy and gateway are peer runtime surfaces; scans and fleet build inventory
+  without requiring runtime rollout.
+
+### Enterprise Self-Hosted Data and Runtime Flow
+
+```mermaid
+flowchart TD
+    classDef src fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
+    classDef proc fill:#0f172a,stroke:#6366f1,color:#e0e7ff
+    classDef run fill:#0f172a,stroke:#10b981,color:#d1fae5
+    classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
+
+    Scan["Scans<br/>CLI / API / CI / UI-triggered jobs"]:::src
+    Fleet["Fleet sync<br/>endpoint pushes"]:::src
+    Proxy["Proxy runtime<br/>local / sidecar MCP traffic"]:::run
+    Gateway["Gateway runtime<br/>shared remote MCP traffic"]:::run
+
+    API["API / control plane<br/>auth · RBAC · tenant scope · audit"]:::proc
+    Graph["Graph / findings / policy / remediation"]:::proc
+    Store[("Postgres")]:::data
+    Exports["OTEL / SIEM / Snowflake / ClickHouse / S3"]:::data
+
+    Scan -->|normalized findings + inventory| API
+    Fleet -->|tenant-scoped inventory| API
+    Proxy -->|audit + policy evaluation| API
+    Gateway -->|audit + policy evaluation| API
+    API --> Graph
+    Graph --> Store
+    API -->|optional export / analytics| Exports
+```
+
+Truth block:
+- Auth, RBAC, tenant resolution, and audit happen in the control plane, not in
+  the browser.
+- Scans and fleet establish inventory first; proxy and gateway add runtime
+  enforcement and runtime evidence where deployed.
+
 ## Best Self-Hosted Path
 
 If you want the best current self-hosted rollout in your own infrastructure,

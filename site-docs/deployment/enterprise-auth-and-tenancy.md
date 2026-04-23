@@ -52,7 +52,8 @@ support data, see
 - **Current multi-tenancy is strong for self-hosted teams, not yet turnkey MSSP.**
   Tenant isolation is enforced in auth, stores, audit, fleet, and now shared
   gateway routing, but provider-style tenant lifecycle automation and richer
-  delegation/admin surfaces are still later work.
+  delegation/admin surfaces are still later work. That is a separate maturity
+  track, not something the self-hosted deployment story is trying to imply.
 
 ## Auth modes
 
@@ -267,6 +268,25 @@ That means:
 For the full architecture contract, including request integrity, audit, and the
 recommended hosted/session evolution path, see
 [UI, API, Auth, and Session Model](../architecture/auth-and-session-model.md).
+
+## Self-hosted teams vs provider-style operators
+
+The supported strength today is:
+
+- a company or platform team running one self-hosted control plane for its own
+  organization
+- tenant-scoped auth, RBAC, audit, fleet, stores, and shared gateway routing
+- customer-owned data, storage, and telemetry choices
+
+That is not the same claim as:
+
+- a provider operating one control plane for many customer organizations
+- turnkey tenant onboarding lifecycle APIs
+- richer per-tenant delegation templates and quota surfaces
+- provider-style admin UX and support workflows
+
+Those provider/MSSP surfaces are a later product track. They should not be
+inferred from current self-hosted auth and tenancy strength.
 
 ## Honest security claim
 

@@ -85,6 +85,20 @@ default is a minimal, opt-in set such as:
 
 This is product-health telemetry, not customer content telemetry.
 
+## Self-hosted boundary vs provider operations
+
+This page describes the self-hosted default:
+
+- customer operators use the product inside their own infra
+- customer tenants see their own data by role
+- `agent-bom` maintainers do not silently inherit access
+
+That is intentionally different from a future provider-style or MSSP operating
+model where one operator plane serves many customer organizations. If that
+product track expands later, it should still preserve explicit access,
+auditable support flows, and least-privilege defaults instead of weakening the
+self-hosted trust boundary described here.
+
 ## Optional exports and interoperability
 
 `agent-bom` is designed so the customer can send their own data to the systems

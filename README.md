@@ -50,19 +50,6 @@ The demo uses a curated sample so the output stays reproducible across releases.
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom terminal demo — one CLI run produces blast radius, remediation, and SBOM" width="820" />
 </p>
 
-## Pick your entrypoint
-
-| Goal | Run | Runs where | What it touches |
-|---|---|---|---|
-| Discover what is installed on this machine or repo | `agent-bom agents -p .` | local CLI, CI runner, or scan job | local agent configs, MCP servers, project manifests, lockfiles, blast radius |
-| Turn findings into a fix plan | `agent-bom agents -p . --remediate remediation.md` | same place as the scan | prioritized upgrades with reachable impact and remediation hints |
-| Check one package before install | `agent-bom check flask@2.2.0 --ecosystem pypi` | local CLI or CI gate | package metadata and vulnerability verdict only |
-| Scan a container image | `agent-bom image nginx:latest` | local CLI, CI runner, or scan job | image layers, OS packages, language packages, fixability |
-| Audit IaC or cloud posture | `agent-bom iac Dockerfile k8s/ infra/main.tf` | local CLI, CI runner, or scheduled job | Terraform, Kubernetes, Helm, Dockerfiles, optional live-cluster posture |
-| Run the control plane locally | `agent-bom serve` | one workstation or server | API + bundled local UI + persisted jobs/graph on the same machine |
-| Inspect live local MCP traffic | `agent-bom proxy "<server command>"` | next to the MCP client or workload | inline stdio/runtime inspection, policy evaluation, audit push |
-| Run a shared remote MCP traffic plane | `agent-bom gateway serve` | cluster or server | shared HTTP/SSE remote MCP traffic, tenant policy, audit, rate limits |
-
 ## Quick start
 
 ```bash

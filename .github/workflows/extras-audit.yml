@@ -53,7 +53,9 @@ jobs:
       - name: Audit selected extras with pip-audit
         run: |
           mkdir -p audit
+          # Ignore pip's no-fix CVE from the temporary pip-audit tool environment.
           uv run --with pip-audit pip-audit \
+            --ignore-vuln CVE-2026-3219 \
             --format json \
             --output "audit/${{ matrix.name }}-pip-audit.json"
 

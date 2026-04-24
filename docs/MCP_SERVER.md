@@ -108,6 +108,16 @@ For non-loopback SSE or Streamable HTTP binds, `agent-bom` now fails closed unle
 `--bearer-token` / `AGENT_BOM_MCP_BEARER_TOKEN` or explicitly pass
 `--allow-insecure-no-auth`. Keep TLS at your proxy or ingress for remote deployments.
 
+### Enterprise Control-Plane Contract
+
+Local MCP server mode stays intentionally low-friction for workstation scans.
+Enterprise MCP Gateway deployments should consume the same control-plane
+contract as the API and UI: tenant identity, policy, audit, secret-manager
+posture, and lifecycle state come from the control plane. Gateway credentials
+belong in Helm/Kubernetes secrets or the operator secret manager, not in client
+configs, and gateway audit events should flow back through the tenant-scoped
+control-plane audit path.
+
 ### Docker
 
 ```bash

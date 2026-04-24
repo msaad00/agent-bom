@@ -437,6 +437,9 @@ jobs:
       - name: Verify README/docs consistency
         run: python scripts/check_release_consistency.py
 
+      - name: Verify product surface contract
+        run: python scripts/check_product_surface_contract.py
+
       - name: Install dependencies for CLI smoke checks
         run: uv sync --extra dev --extra api --extra mcp-server
 

@@ -362,9 +362,10 @@ Resources:
 ## ❄️ Snowflake Integration
 
 > **Note**: agent-bom integrates with Snowflake for **scanning Cortex Agents,
-> CoCo skills, and Snowpark resources** — not as a deployed Native App.
-> The architecture below is a proposed reference pattern for enterprise
-> teams that want to run agent-bom inside Snowflake infrastructure.
+> CoCo skills, Snowpark resources, and Snowflake-hosted app surfaces**.
+> The primary shipped web UI remains the packaged Next.js dashboard. The
+> Streamlit path below is a Snowflake-specific compatibility / native-view
+> option, not the default product dashboard.
 
 ### Reference Architecture
 
@@ -402,7 +403,7 @@ Resources:
    Enterprise networks can use the same proxy and custom-CA contract as the other maintained images:
    `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, `CURL_CA_BUNDLE`, and `PIP_CERT`.
 
-3. **Deploy SiS dashboard** — upload `deploy/snowflake/streamlit_app.py` and `deploy/snowflake/environment.yml` via the Snowflake web UI (Streamlit > + Streamlit App).
+3. **Optional: deploy the Snowflake-native Streamlit view** — upload `deploy/snowflake/streamlit_app.py` and `deploy/snowflake/environment.yml` via the Snowflake web UI (Streamlit > + Streamlit App).
 
 ### Authentication
 

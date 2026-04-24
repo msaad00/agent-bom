@@ -104,6 +104,7 @@ pip install 'agent-bom[ui]' && agent-bom serve                    # API + bundle
 ## Product views
 
 These come from the live product path, using the built-in demo data pushed through the API. See [`docs/CAPTURE.md`](docs/CAPTURE.md) for the canonical capture protocol.
+They are captured from the packaged Next.js dashboard served by `agent-bom serve`, not from the Snowflake Streamlit compatibility path.
 
 ### Dashboard — Risk overview
 

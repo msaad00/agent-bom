@@ -375,12 +375,12 @@ def test_helm_sidecar_injection_defaults():
 
 
 def test_helm_control_plane_observability_defaults():
-    """PrometheusRule and Grafana dashboard packaging is explicit and opt-in."""
+    """PrometheusRule alerts ship enabled while dashboards remain opt-in."""
     doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
     observability = doc["controlPlane"]["observability"]
     assert observability["grafanaDashboard"]["enabled"] is False
     assert observability["grafanaDashboard"]["folder"] == "agent-bom"
-    assert observability["prometheusRule"]["enabled"] is False
+    assert observability["prometheusRule"]["enabled"] is True
     assert observability["prometheusRule"]["rules"]["apiErrorRate"]["enabled"] is True
     assert observability["prometheusRule"]["rules"]["proxyAuditBacklog"]["backlogBytesThreshold"] == 10485760
 

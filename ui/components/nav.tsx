@@ -45,6 +45,7 @@ interface NavLink {
   href: string;
   label: string;
   icon: React.ElementType;
+  capability?: string;
 }
 
 interface NavGroup {
@@ -81,8 +82,8 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Scan,
     accent: "#f85149", // red — scanning layer
     links: [
-      { href: "/sources", label: "Data Sources", icon: Database },
-      { href: "/scan", label: "New Scan", icon: Scan },
+      { href: "/sources", label: "Data Sources", icon: Database, capability: "sources.manage" },
+      { href: "/scan", label: "New Scan", icon: Scan, capability: "scan.run" },
       { href: "/jobs", label: "Scan Jobs", icon: Clock },
       { href: "/findings", label: "Findings", icon: Bug },
     ],
@@ -106,9 +107,9 @@ const NAV_GROUPS: NavGroup[] = [
     icon: Shield,
     accent: "#f778ba", // pink — enforcement layer
     links: [
-      { href: "/proxy", label: "Proxy", icon: Shield },
+      { href: "/proxy", label: "Proxy", icon: Shield, capability: "runtime.ingest" },
       { href: "/audit", label: "Audit Log", icon: FileText },
-      { href: "/gateway", label: "Gateway", icon: Lock },
+      { href: "/gateway", label: "Gateway", icon: Lock, capability: "policy.manage" },
     ],
   },
   {
@@ -119,7 +120,7 @@ const NAV_GROUPS: NavGroup[] = [
     links: [
       { href: "/compliance", label: "Compliance", icon: Shield },
       { href: "/remediation", label: "Remediation", icon: Wrench },
-      { href: "/governance", label: "Governance", icon: Eye },
+      { href: "/governance", label: "Governance", icon: Eye, capability: "policy.manage" },
       { href: "/traces", label: "Traces", icon: Radio },
       { href: "/activity", label: "Activity", icon: Activity },
     ],
@@ -143,7 +144,7 @@ export function Nav() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const { counts } = useDeploymentContext();
-  const { session, loading: authLoading } = useAuthState();
+  const { session, loading: authLoading, hasCapability } = useAuthState();
 
   // Close mobile on route change
   useEffect(() => {
@@ -214,16 +215,31 @@ export function Nav() {
       })).filter((g) => g.links.length > 0)
     : NAV_GROUPS;
 
+  const roleAllowsLink = useCallback(
+    (link: NavLink) => {
+      if (!link.capability || !session?.auth_required) {
+        return true;
+      }
+      if (!session.authenticated || !session.role_summary) {
+        return false;
+      }
+      return hasCapability(link.capability);
+    },
+    [hasCapability, session]
+  );
+
   const navGroups = filteredGroups
     .map((group) => {
       if (searchQuery) {
-        return { ...group, visibleLinks: group.links, hiddenLinks: [] as NavLink[] };
+        return { ...group, visibleLinks: group.links.filter(roleAllowsLink), hiddenLinks: [] as NavLink[] };
       }
-      const visibleLinks = group.links.filter((link) => isNavLinkVisible(link.href, counts));
-      const hiddenLinks = group.links.filter((link) => !isNavLinkVisible(link.href, counts));
+      const roleAllowed = group.links.filter(roleAllowsLink);
+      const visibleLinks = roleAllowed.filter((link) => isNavLinkVisible(link.href, counts));
+      const hiddenLinks = roleAllowed.filter((link) => !isNavLinkVisible(link.href, counts));
       return { ...group, visibleLinks, hiddenLinks };
     })
     .filter((group) => group.visibleLinks.length > 0 || group.hiddenLinks.length > 0);
+  const commandLinks = navGroups.flatMap((group) => group.visibleLinks.map((link) => ({ ...link, group: group.label })));
 
   const sidebarContent = (
     <>
@@ -506,6 +522,7 @@ export function Nav() {
       {searchOpen && (
         <CommandPalette
           query={searchQuery}
+          links={commandLinks}
           setQuery={setSearchQuery}
           onClose={() => { setSearchOpen(false); setSearchQuery(""); }}
         />
@@ -567,24 +584,24 @@ function SessionStatus({
 
 // ─── Command Palette ────────────────────────────────────────────────────────
 
-const allLinks = NAV_GROUPS.flatMap((g) => g.links.map((l) => ({ ...l, group: g.label })));
-
 function CommandPalette({
   query,
+  links,
   setQuery,
   onClose,
 }: {
   query: string;
+  links: Array<NavLink & { group: string }>;
   setQuery: (q: string) => void;
   onClose: () => void;
 }) {
   const filtered = query
-    ? allLinks.filter(
+    ? links.filter(
         (l) =>
           l.label.toLowerCase().includes(query.toLowerCase()) ||
           l.group.toLowerCase().includes(query.toLowerCase())
       )
-    : allLinks;
+    : links;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

@@ -152,7 +152,10 @@ class TestPushResults:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("agent_bom.http_client.create_client", return_value=mock_client):
+        with (
+            patch("agent_bom.http_client.create_client", return_value=mock_client),
+            patch("agent_bom.security.validate_url", return_value=None),
+        ):
             result = push_results("https://dashboard.example.com/v1/results/push", {"agents": []})
         assert result is True
 
@@ -167,7 +170,11 @@ class TestPushResults:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("agent_bom.http_client.create_client", return_value=mock_client), patch("agent_bom.push.asyncio.sleep", new=AsyncMock()):
+        with (
+            patch("agent_bom.http_client.create_client", return_value=mock_client),
+            patch("agent_bom.push.asyncio.sleep", new=AsyncMock()),
+            patch("agent_bom.security.validate_url", return_value=None),
+        ):
             result = push_results("https://dashboard.example.com/v1/results/push", {"agents": []})
         assert result is False
         # 3 retry attempts by default
@@ -182,7 +189,10 @@ class TestPushResults:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("agent_bom.http_client.create_client", return_value=mock_client):
+        with (
+            patch("agent_bom.http_client.create_client", return_value=mock_client),
+            patch("agent_bom.security.validate_url", return_value=None),
+        ):
             result = push_results(
                 "https://dashboard.example.com/v1/results/push",
                 {"agents": []},
@@ -201,7 +211,11 @@ class TestPushResults:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("agent_bom.http_client.create_client", return_value=mock_client), patch("agent_bom.push.asyncio.sleep", new=AsyncMock()):
+        with (
+            patch("agent_bom.http_client.create_client", return_value=mock_client),
+            patch("agent_bom.push.asyncio.sleep", new=AsyncMock()),
+            patch("agent_bom.security.validate_url", return_value=None),
+        ):
             result = push_results("https://unreachable.example.com/push", {"agents": []})
         assert result is False
         assert mock_client.post.call_count == 3
@@ -222,7 +236,11 @@ class TestPushRetry:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("agent_bom.http_client.create_client", return_value=mock_client), patch("agent_bom.push.asyncio.sleep", new=AsyncMock()):
+        with (
+            patch("agent_bom.http_client.create_client", return_value=mock_client),
+            patch("agent_bom.push.asyncio.sleep", new=AsyncMock()),
+            patch("agent_bom.security.validate_url", return_value=None),
+        ):
             result = asyncio.run(_push_async("https://dashboard.example.com/push", {"agents": []}, max_attempts=3))
         assert result is True
         assert mock_client.post.call_count == 2
@@ -237,7 +255,11 @@ class TestPushRetry:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("agent_bom.http_client.create_client", return_value=mock_client), patch("agent_bom.push.asyncio.sleep", new=AsyncMock()):
+        with (
+            patch("agent_bom.http_client.create_client", return_value=mock_client),
+            patch("agent_bom.push.asyncio.sleep", new=AsyncMock()),
+            patch("agent_bom.security.validate_url", return_value=None),
+        ):
             result = asyncio.run(_push_async("https://dashboard.example.com/push", {"agents": []}, max_attempts=3))
         assert result is False
         assert mock_client.post.call_count == 1
@@ -252,7 +274,11 @@ class TestPushRetry:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("agent_bom.http_client.create_client", return_value=mock_client), patch("agent_bom.push.asyncio.sleep", new=AsyncMock()):
+        with (
+            patch("agent_bom.http_client.create_client", return_value=mock_client),
+            patch("agent_bom.push.asyncio.sleep", new=AsyncMock()),
+            patch("agent_bom.security.validate_url", return_value=None),
+        ):
             result = asyncio.run(_push_async("https://dashboard.example.com/push", {"agents": []}, max_attempts=3))
         assert result is True
         assert mock_client.post.call_count == 2

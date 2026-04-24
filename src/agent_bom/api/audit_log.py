@@ -219,6 +219,7 @@ def describe_audit_hmac_status() -> dict[str, object]:
     """Return operator-facing audit HMAC posture for auth/policy surfaces."""
     required = _env_enabled("AGENT_BOM_REQUIRE_AUDIT_HMAC")
     configured = bool(_HMAC_ENV_KEY)
+    key_id = (os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY_ID") or "").strip()
     rotation = _describe_rotation_posture(
         configured=configured,
         last_rotated_env="AGENT_BOM_AUDIT_HMAC_LAST_ROTATED",
@@ -237,6 +238,8 @@ def describe_audit_hmac_status() -> dict[str, object]:
             "required": required,
             "source": "AGENT_BOM_AUDIT_HMAC_KEY",
             "persists_across_restart": True,
+            "key_id_configured": bool(key_id),
+            "key_id": key_id or None,
             "message": (
                 "Audit log tamper detection uses a configured shared secret. "
                 "Signatures remain verifiable across restarts as long as the same key stays in place."
@@ -249,6 +252,8 @@ def describe_audit_hmac_status() -> dict[str, object]:
         "required": required,
         "source": "process_ephemeral",
         "persists_across_restart": False,
+        "key_id_configured": False,
+        "key_id": None,
         "message": (
             "Audit log tamper detection is using an in-process ephemeral secret. "
             "Integrity checks work only for this process lifetime and reset after restart."

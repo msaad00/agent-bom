@@ -228,9 +228,10 @@ For decommissioning, use the packaged reverse path instead of ad hoc `helm unins
 plus cloud cleanup:
 
 ```bash
+export AWS_REGION="<your-aws-region>"
 agent-bom teardown \
   --cluster-name corp-ai \
-  --region us-east-1 \
+  --region "$AWS_REGION" \
   --namespace agent-bom \
   --release agent-bom \
   --dry-run

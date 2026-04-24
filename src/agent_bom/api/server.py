@@ -450,7 +450,7 @@ def _apply_cors_middleware(origins: list[str]) -> None:
         allow_origins=origins,
         allow_credentials="*" not in origins,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-API-Key"],
+        allow_headers=["Content-Type", "Authorization", "X-API-Key", "X-Agent-Bom-CSRF"],
     )
     if app.middleware_stack is not None:
         app.middleware_stack = app.build_middleware_stack()

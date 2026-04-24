@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { KeyRound, Loader2, Lock, ShieldCheck } from "lucide-react";
 
 import { useAuthState } from "@/components/auth-provider";
+import { api } from "@/lib/api";
 import { clearSessionApiKey, getSessionApiKey, setSessionApiKey } from "@/lib/auth";
 
 function isAuthFailure(message: string): boolean {
@@ -14,6 +15,7 @@ function isAuthFailure(message: string): boolean {
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { session, loading, error, refresh } = useAuthState();
   const [apiKey, setApiKey] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = getSessionApiKey();
@@ -67,18 +69,31 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5"
               onSubmit={async (event) => {
                 event.preventDefault();
-                setSessionApiKey(apiKey);
+                setFormError(null);
+                try {
+                  await api.createAuthSession(apiKey);
+                  clearSessionApiKey();
+                } catch (nextError) {
+                  const message = nextError instanceof Error ? nextError.message : "Failed to create browser session";
+                  if (message.includes("404") || message.includes("405")) {
+                    setSessionApiKey(apiKey);
+                  } else {
+                    clearSessionApiKey();
+                    setFormError(message);
+                    return;
+                  }
+                }
                 await refresh();
               }}
             >
               <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-zinc-200">
                 <KeyRound className="h-4 w-4 text-amber-300" />
-                Session API key fallback
+                Browser session fallback
               </div>
               <p className="mb-4 text-sm leading-6 text-zinc-400">
-                Stored in
-                <code className="mx-1 rounded bg-zinc-950 px-1 py-0.5 font-mono text-zinc-200">sessionStorage</code>
-                only and cleared when the browser session ends.
+                Creates a same-origin
+                <code className="mx-1 rounded bg-zinc-950 px-1 py-0.5 font-mono text-zinc-200">httpOnly</code>
+                cookie when the API supports it; older static pilots fall back to session-only tab storage.
               </p>
               <label className="mb-3 block text-xs uppercase tracking-[0.2em] text-zinc-500">API key</label>
               <input
@@ -99,7 +114,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                 <button
                   type="button"
                   onClick={async () => {
+                    try {
+                      await api.deleteAuthSession();
+                    } catch {
+                      // Older API versions may not expose the cookie session endpoint.
+                    }
                     clearSessionApiKey();
+                    setFormError(null);
                     setApiKey("");
                     await refresh();
                   }}
@@ -114,6 +135,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           {error ? (
             <div className="mt-5 rounded-2xl border border-red-900/50 bg-red-950/20 px-4 py-3 text-sm text-red-300">
               {error}
+            </div>
+          ) : null}
+          {formError ? (
+            <div className="mt-5 rounded-2xl border border-red-900/50 bg-red-950/20 px-4 py-3 text-sm text-red-300">
+              {formError}
             </div>
           ) : null}
         </div>

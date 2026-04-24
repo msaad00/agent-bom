@@ -21,10 +21,17 @@ const policy: AuthPolicyResponse = {
     max_age_days: 90,
     message: "Rate-limit key is 4 days old; rotation interval is 30 days.",
   },
+  audit_hmac: {
+    status: "configured",
+    configured: true,
+    key_id_configured: true,
+    rotation_tracking_supported: true,
+  },
   ui: {
     recommended_mode: "reverse_proxy_oidc",
     configured_modes: ["trusted_proxy", "api_key"],
-    session_storage_fallback: "session_api_key",
+    browser_session: "signed_http_only_cookie",
+    session_storage_fallback: "legacy_static_export_only",
     credentials_mode: "include",
     trusted_proxy_headers: ["X-Agent-Bom-Role", "X-Agent-Bom-Tenant-ID"],
     message: "Recommended browser auth is same-origin reverse-proxy OIDC.",

@@ -1,6 +1,9 @@
 "use client";
 
+import { useEffect } from "react";
 import { ShieldX } from "lucide-react";
+
+import { api } from "@/lib/api";
 
 export default function GlobalError({
   error,
@@ -9,6 +12,17 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    void api
+      .reportClientError({
+        message: error.message,
+        digest: error.digest,
+        path: window.location.pathname,
+        component: "global-error-boundary",
+      })
+      .catch(() => {});
+  }, [error]);
+
   return (
     <div className="flex flex-col items-center justify-center h-[80vh] gap-4 text-center">
       <ShieldX className="w-12 h-12 text-red-500" />

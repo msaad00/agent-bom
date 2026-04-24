@@ -13,6 +13,7 @@ import uuid
 from collections import defaultdict
 from copy import deepcopy
 from datetime import datetime, timezone
+from typing import Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -21,10 +22,15 @@ from agent_bom.api.pipeline import _persist_graph_snapshot
 from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_store
 from agent_bom.api.tenant_quota import enforce_retained_jobs_quota
 from agent_bom.graph.severity import ocsf_to_severity
+from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
+
+
+def _dep(permission: str) -> Any:
+    return cast(Any, require_authenticated_permission(permission))
 
 
 def _now() -> str:
@@ -321,7 +327,7 @@ async def ingest_ocsf(request: Request, body: dict | list[dict]) -> dict:
     try:
         ocsf_events = _extract_ocsf_events(body)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
 
     normalized_events = [_normalize_ocsf_event(event, tenant_id=tenant_id) for event in ocsf_events]
     class_counts: dict[str, int] = defaultdict(int)
@@ -350,6 +356,44 @@ async def ingest_ocsf(request: Request, body: dict | list[dict]) -> dict:
         "class_counts": dict(class_counts),
         "sources": source_ids,
     }
+
+
+@router.post("/v1/ui/errors", tags=["observability"], dependencies=[_dep("read")])
+async def ingest_ui_error(request: Request, body: dict) -> dict:
+    """Ingest a sanitized client-side dashboard error report."""
+    from agent_bom.api.audit_log import log_action
+
+    def _sanitize_log_value(value: object, max_len: int) -> str:
+        text = str(value).replace("\r", " ").replace("\n", " ").replace("\t", " ").strip()
+        text = "".join(ch for ch in text if ch >= " " and ch != "\x7f")
+        return text[:max_len]
+
+    tenant_id = _tenant_id(request)
+    message = _sanitize_log_value(body.get("message", ""), 500)
+    digest = _sanitize_log_value(body.get("digest", ""), 128)
+    path = _sanitize_log_value(body.get("path", ""), 256)
+    component = _sanitize_log_value(body.get("component", "dashboard"), 128) or "dashboard"
+    log_action(
+        "ui.client_error",
+        actor=_triggered_by(request),
+        resource="ui/error",
+        tenant_id=tenant_id,
+        message=message,
+        digest=digest,
+        path=path,
+        component=component,
+    )
+    log_component = _sanitize_log_value(component, 128) or "dashboard"
+    log_digest = _sanitize_log_value(digest, 128)
+    log_path = _sanitize_log_value(path, 256)
+    _logger.warning(
+        "ui client error tenant=%s component=%s digest=%s path=%s",
+        tenant_id,
+        log_component,
+        log_digest,
+        log_path,
+    )
+    return {"ok": True}
 
 
 async def _render_prometheus_metrics(request: Request | None = None):
@@ -386,6 +430,6 @@ async def _render_prometheus_metrics(request: Request | None = None):
         return Response("# No metrics available\n", media_type="text/plain; version=0.0.4; charset=utf-8")
 
 
-@router.get("/metrics", tags=["observability"])
+@router.get("/metrics", tags=["observability"], dependencies=[_dep("read")])
 async def prometheus_metrics(request: Request):
     return await _render_prometheus_metrics(request)

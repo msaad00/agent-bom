@@ -447,6 +447,24 @@ def test_sanitize_respects_configured_scan_root(tmp_path, monkeypatch):
     assert result == os.path.realpath(str(project))
 
 
+def test_sanitize_rejects_symlink_leaf(tmp_path, monkeypatch):
+    import pytest
+
+    from agent_bom.api.server import _sanitize_api_path
+    from agent_bom.security import SecurityError
+
+    scan_root = tmp_path / "tenant-workspace"
+    scan_root.mkdir()
+    target = scan_root / "project"
+    target.mkdir()
+    link = scan_root / "project-link"
+    link.symlink_to(target, target_is_directory=True)
+    monkeypatch.setenv("AGENT_BOM_API_SCAN_ROOT", str(scan_root))
+
+    with pytest.raises(SecurityError, match="Symlink"):
+        _sanitize_api_path("project-link")
+
+
 def test_sanitize_can_disable_local_path_scans(tmp_path, monkeypatch):
     """Enterprise control planes can disable API-local filesystem scans."""
     import pytest

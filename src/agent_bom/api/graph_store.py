@@ -12,6 +12,7 @@ import base64
 import json
 import re
 import sqlite3
+import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Protocol
@@ -197,6 +198,8 @@ class GraphStoreProtocol(Protocol):
         direction: str = "forward",
         max_depth: int = 4,
         max_nodes: int = 500,
+        max_edges: int = 10_000,
+        deadline_monotonic: float | None = None,
         traversable_only: bool = False,
         relationship_types: set[RelationshipType] | None = None,
         static_only: bool = False,
@@ -496,6 +499,8 @@ class SQLiteGraphStore:
         direction: str,
         max_depth: int,
         max_nodes: int,
+        max_edges: int,
+        deadline_monotonic: float | None,
         traversable_only: bool,
         relationship_types: set[RelationshipType] | None,
         static_only: bool,
@@ -513,6 +518,7 @@ class SQLiteGraphStore:
         parent_by_node: dict[str, str] = {}
         discovery_order: list[str] = []
         truncated = False
+        edge_count = 0
 
         queue: list[tuple[str, int]] = []
         for root in roots:
@@ -525,6 +531,9 @@ class SQLiteGraphStore:
 
         index = 0
         while index < len(queue):
+            if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
+                truncated = True
+                break
             current, depth = queue[index]
             index += 1
             if depth >= max_depth:
@@ -540,6 +549,10 @@ class SQLiteGraphStore:
                 dynamic_only=dynamic_only,
             ):
                 edge = self._edge_from_row(row)
+                edge_count += 1
+                if edge_count > max_edges:
+                    truncated = True
+                    break
                 candidates: list[str] = []
                 if direction in {"forward", "both"}:
                     if edge.source == current:
@@ -568,6 +581,8 @@ class SQLiteGraphStore:
                     parent_by_node.setdefault(neighbor, current)
                     discovery_order.append(neighbor)
                     queue.append((neighbor, depth + 1))
+            if truncated and (edge_count > max_edges or (deadline_monotonic is not None and time.monotonic() >= deadline_monotonic)):
+                break
 
         if include_roots:
             visited.update(existing_roots)
@@ -604,6 +619,8 @@ class SQLiteGraphStore:
                 direction="forward",
                 max_depth=max_depth,
                 max_nodes=5000,
+                max_edges=25_000,
+                deadline_monotonic=None,
                 traversable_only=traversable_only,
                 relationship_types=None,
                 static_only=False,
@@ -651,6 +668,8 @@ class SQLiteGraphStore:
                 direction="reverse",
                 max_depth=max_depth,
                 max_nodes=5000,
+                max_edges=25_000,
+                deadline_monotonic=None,
                 traversable_only=False,
                 relationship_types=None,
                 static_only=False,
@@ -686,6 +705,8 @@ class SQLiteGraphStore:
         direction: str = "forward",
         max_depth: int = 4,
         max_nodes: int = 500,
+        max_edges: int = 10_000,
+        deadline_monotonic: float | None = None,
         traversable_only: bool = False,
         relationship_types: set[RelationshipType] | None = None,
         static_only: bool = False,
@@ -704,6 +725,8 @@ class SQLiteGraphStore:
                 direction=direction,
                 max_depth=max_depth,
                 max_nodes=max_nodes,
+                max_edges=max_edges,
+                deadline_monotonic=deadline_monotonic,
                 traversable_only=traversable_only,
                 relationship_types=relationship_types,
                 static_only=static_only,

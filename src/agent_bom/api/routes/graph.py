@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -93,6 +94,8 @@ class GraphQueryRequest(BaseModel):
     direction: Literal["forward", "reverse", "both"] = "forward"
     max_depth: int = Field(4, ge=1, le=10)
     max_nodes: int = Field(500, ge=1, le=5000)
+    max_edges: int = Field(10_000, ge=1, le=25_000)
+    timeout_ms: int = Field(2500, ge=100, le=5000)
     traversable_only: bool = False
     static_only: bool = False
     dynamic_only: bool = False
@@ -489,6 +492,7 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
         raise HTTPException(status_code=404, detail={"message": "Root nodes not found", "missing_roots": missing_roots})
 
     rel_types = {RelationshipType(rel) for rel in body.relationship_types} if body.relationship_types else None
+    deadline = time.monotonic() + (body.timeout_ms / 1000)
     traversal_graph, depth_by_node, truncated = await _graph_store_call(
         graph_store.traverse_subgraph,
         scan_id=body.scan_id or "",
@@ -497,6 +501,8 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
         direction=body.direction,
         max_depth=body.max_depth,
         max_nodes=body.max_nodes,
+        max_edges=body.max_edges,
+        deadline_monotonic=deadline,
         traversable_only=body.traversable_only,
         relationship_types=rel_types,
         static_only=body.static_only,
@@ -532,6 +538,8 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
         "direction": body.direction,
         "max_depth": body.max_depth,
         "max_nodes": body.max_nodes,
+        "max_edges": body.max_edges,
+        "timeout_ms": body.timeout_ms,
         "truncated": truncated,
         "missing_roots": [],
         "depth_by_node": {node_id: depth for node_id, depth in depth_by_node.items() if node_id in filtered_graph.nodes},

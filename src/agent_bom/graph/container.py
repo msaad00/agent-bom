@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -419,6 +420,8 @@ class UnifiedGraph:
         direction: str = "forward",
         max_depth: int = 4,
         max_nodes: int = 500,
+        max_edges: int = 10_000,
+        deadline_monotonic: float | None = None,
         traversable_only: bool = False,
         relationship_types: set[RelationshipType] | None = None,
         static_only: bool = False,
@@ -449,6 +452,7 @@ class UnifiedGraph:
             depth_by_node[root] = 0
 
         truncated = False
+        edge_count = 0
 
         def _edge_allowed(edge: UnifiedEdge) -> bool:
             if relationship_types and edge.relationship not in relationship_types:
@@ -462,6 +466,9 @@ class UnifiedGraph:
             return True
 
         while queue:
+            if deadline_monotonic is not None and time.monotonic() >= deadline_monotonic:
+                truncated = True
+                break
             current, depth = queue.popleft()
             if depth >= max_depth:
                 continue
@@ -475,6 +482,10 @@ class UnifiedGraph:
             for neighbor, edge in candidates:
                 if not _edge_allowed(edge):
                     continue
+                edge_count += 1
+                if edge_count > max_edges:
+                    truncated = True
+                    break
 
                 rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
                 traversed_edges[(edge.source, edge.target, rel)] = edge
@@ -487,6 +498,8 @@ class UnifiedGraph:
                 visited.add(neighbor)
                 depth_by_node[neighbor] = depth + 1
                 queue.append((neighbor, depth + 1))
+            if truncated and (edge_count > max_edges or (deadline_monotonic is not None and time.monotonic() >= deadline_monotonic)):
+                break
 
         if include_roots:
             visited.update(root for root in roots if root in self.nodes)

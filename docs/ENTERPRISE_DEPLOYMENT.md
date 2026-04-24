@@ -169,9 +169,21 @@ export AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON='{
 
 At startup, `agent-bom` treats `AGENT_BOM_OIDC_ISSUER` and `AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON` as mutually exclusive. Mixed configuration now fails closed instead of silently choosing one mode.
 
+For SCIM-backed enterprise identity provisioning, use the dedicated SCIM token and tenant binding:
+
+```bash
+export AGENT_BOM_SCIM_BEARER_TOKEN="replace-with-idp-scim-token"
+export AGENT_BOM_SCIM_TENANT_ID="tenant-alpha"
+# export AGENT_BOM_SCIM_BASE_PATH="/scim/v2"
+```
+
+SCIM lifecycle traffic is available under `/scim/v2/Users`, `/scim/v2/Groups`, `/scim/v2/ServiceProviderConfig`, `/scim/v2/Schemas`, and `/scim/v2/ResourceTypes`. These routes require `AGENT_BOM_SCIM_BEARER_TOKEN`; dashboard sessions and general API keys are not accepted. The tenant is always taken from `AGENT_BOM_SCIM_TENANT_ID`, so tenant fields in the IdP payload cannot steer writes into another tenant.
+
 For PostgreSQL-backed deployments, `agent-bom` now also pushes the authenticated tenant into the database session (`app.tenant_id`) so Postgres row-level security can enforce the same tenant boundary for fleet and schedule data. Internal scheduler work uses an explicit trusted bypass rather than silently reading across tenants.
 
 For horizontally scaled control-plane APIs, shared rate limiting is mandatory. `agent-bom` now fails closed when `AGENT_BOM_CONTROL_PLANE_REPLICAS > 1` (or `AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1`) and no PostgreSQL-backed limiter is configured via `AGENT_BOM_POSTGRES_URL`.
+
+For horizontally scaled SCIM, shared identity storage is also mandatory. Set `AGENT_BOM_POSTGRES_URL` for EKS or any multi-replica control plane, and keep `AGENT_BOM_REQUIRE_SHARED_SCIM_STORE=1` enabled in production values. SQLite is acceptable only for a single-node pilot.
 
 **Storage:** SQLite for single-node and local persistence, PostgreSQL-compatible backends such as PostgreSQL and Supabase for the transactional control plane, ClickHouse for analytics, and Snowflake for selected enterprise store paths where parity is explicitly implemented. Snowflake does not yet have full parity for every transactional API store, so PostgreSQL-compatible backends remain the primary control-plane default when you need tenant-scoped keys, exceptions, graph state, and trend history.
 

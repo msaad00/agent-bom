@@ -495,14 +495,17 @@ def configure_api(
     _rate_limit_rpm = rate_limit_rpm
 
     from agent_bom.api.oidc import oidc_enabled_from_env
+    from agent_bom.api.scim import scim_enabled_from_env
 
     oidc_enabled = oidc_enabled_from_env()
+    scim_enabled = scim_enabled_from_env()
     trusted_proxy_enabled = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
-    auth_required = bool(api_key or oidc_enabled or trusted_proxy_enabled)
+    auth_required = bool(api_key or oidc_enabled or trusted_proxy_enabled or scim_enabled)
     configure_auth_runtime(
         api_key_configured=bool(api_key),
         oidc_enabled=oidc_enabled,
         trusted_proxy_enabled=trusted_proxy_enabled,
+        scim_enabled=scim_enabled,
     )
 
     # Warn if API is exposed without authentication
@@ -550,6 +553,7 @@ from agent_bom.api.routes.privacy import router as _privacy_router  # noqa: E402
 from agent_bom.api.routes.proxy import router as _proxy_router  # noqa: E402
 from agent_bom.api.routes.scan import router as _scan_router  # noqa: E402
 from agent_bom.api.routes.schedules import router as _schedules_router  # noqa: E402
+from agent_bom.api.routes.scim import router as _scim_router  # noqa: E402
 from agent_bom.api.routes.sources import router as _sources_router  # noqa: E402
 
 app.include_router(_assets_router)
@@ -567,6 +571,7 @@ app.include_router(_privacy_router)
 app.include_router(_proxy_router)
 app.include_router(_scan_router)
 app.include_router(_schedules_router)
+app.include_router(_scim_router)
 app.include_router(_sources_router)
 
 # Re-export proxy push functions for backward compatibility

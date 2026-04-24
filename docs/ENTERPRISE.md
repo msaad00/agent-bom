@@ -10,6 +10,7 @@ It exists for a simple reason: the controls are real, but they should not requir
 
 - API key auth with ordered RBAC route rules
 - optional OIDC bearer auth with fail-closed tenant claims
+- dedicated SCIM user/group provisioning for enterprise IdPs
 - PostgreSQL-backed multi-tenant stores with row-level security
 - HMAC-chained audit logging
 - request tracing and `/health` observability contracts
@@ -22,6 +23,7 @@ It exists for a simple reason: the controls are real, but they should not requir
 | API key auth + RBAC | API keys carry `admin` / `analyst` / `viewer` roles and are checked per route prefix | `src/agent_bom/api/auth.py`, `src/agent_bom/api/middleware.py` |
 | OIDC / SSO | Any standard OIDC provider can issue bearer tokens for API access | `src/agent_bom/api/oidc.py`, `src/agent_bom/api/middleware.py` |
 | Fail-closed tenant claims | Missing tenant claims now fail closed by default; `AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1` is the explicit single-tenant compatibility override | `src/agent_bom/api/oidc.py` |
+| SCIM lifecycle provisioning | IdPs can create, list, patch, deactivate, and group users through a dedicated SCIM bearer surface | `src/agent_bom/api/routes/scim.py`, `src/agent_bom/api/scim_store.py`, `src/agent_bom/api/postgres_scim.py` |
 | Postgres tenant isolation | The authenticated tenant is pushed into the DB session as `app.tenant_id` before request handling | `src/agent_bom/api/middleware.py`, `src/agent_bom/api/postgres_store.py` |
 | PostgreSQL row-level security | Tenant-bearing tables have RLS policies keyed off the current tenant | `deploy/supabase/postgres/init.sql`, `src/agent_bom/api/postgres_store.py` |
 | API keys persisted in Postgres | Keys move from in-memory to transactional storage when `AGENT_BOM_POSTGRES_URL` is set | `src/agent_bom/api/server.py`, `src/agent_bom/api/postgres_store.py`, `src/agent_bom/api/auth.py` |
@@ -39,6 +41,10 @@ The API middleware uses ordered route rules. Narrower enterprise routes win over
 | Method | Route prefix | Minimum role |
 |---|---|---|
 | `GET` | `/v1/auth/keys` | `admin` |
+| `GET` | `/scim/v2` | `admin` |
+| `POST` | `/scim/v2` | `admin` |
+| `PATCH` | `/scim/v2` | `admin` |
+| `DELETE` | `/scim/v2` | `admin` |
 | `POST` | `/v1/auth/keys` | `admin` |
 | `POST` | `/v1/auth/keys/` | `admin` |
 | `DELETE` | `/v1/auth/keys/` | `admin` |
@@ -71,7 +77,7 @@ Implementation source: `src/agent_bom/api/middleware.py`
 
 ## Authentication Contract
 
-`agent-bom api` and `agent-bom serve` support three runtime postures:
+`agent-bom api` and `agent-bom serve` support four runtime postures:
 
 1. Loopback development
    - localhost binds are allowed without remote auth
@@ -88,6 +94,12 @@ Implementation source: `src/agent_bom/api/middleware.py`
    - missing tenant claims fail closed by default
    - opt into single-tenant default mode only with `AGENT_BOM_OIDC_ALLOW_DEFAULT_TENANT=1`
    - optionally set `AGENT_BOM_OIDC_REQUIRED_NONCE` when your IdP flow includes a nonce claim
+4. SCIM lifecycle provisioning
+   - set `AGENT_BOM_SCIM_BEARER_TOKEN` to enable `/scim/v2/Users`, `/scim/v2/Groups`, and `/scim/v2/ServiceProviderConfig`
+   - set `AGENT_BOM_SCIM_TENANT_ID` to bind all inbound SCIM lifecycle writes to one tenant; tenant IDs supplied by the IdP payload are ignored
+   - set `AGENT_BOM_SCIM_BASE_PATH` before API startup if your IdP requires a different SCIM path
+   - use PostgreSQL or Supabase for clustered, multi-node, or EKS deployments; SQLite is only for single-node pilots
+   - SCIM traffic uses the dedicated SCIM bearer token only and does not accept dashboard sessions or general API keys
 
 Rate limiting also follows an explicit fail-closed contract for scaled control planes:
 
@@ -105,7 +117,7 @@ Implementation source: `src/agent_bom/api/middleware.py`, `src/agent_bom/api/oid
 |---|---|---|
 | PostgreSQL | Full transactional control-plane backend | team and enterprise API deployments |
 | Supabase | Full transactional control-plane backend because it is PostgreSQL | managed Postgres deployments |
-| SQLite | single-node / local persistence | local or small deployments |
+| SQLite | single-node / local persistence | local or small deployments; not for clustered SCIM identity state |
 | ClickHouse | analytics backend | high-volume scan and posture analytics |
 | Snowflake | selected enterprise stores, not full transactional parity | governance / warehouse-native environments |
 

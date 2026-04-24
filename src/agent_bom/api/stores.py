@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from agent_bom.api.mcp_observation_store import MCPObservationStore
     from agent_bom.api.models import ScanJob
     from agent_bom.api.schedule_store import ScheduleStore
+    from agent_bom.api.scim_store import SCIMStore
     from agent_bom.api.source_store import SourceStore
     from agent_bom.api.tenant_quota_store import TenantQuotaStore
 
@@ -198,6 +199,7 @@ def set_schedule_store(store: ScheduleStore) -> None:
 
 # ─── Tenant quota override store (pluggable) ───────────────────────────────
 _tenant_quota_store: TenantQuotaStore | None = None
+_scim_store: SCIMStore | None = None
 
 
 def _get_tenant_quota_store() -> TenantQuotaStore:
@@ -225,6 +227,45 @@ def set_tenant_quota_store(store: TenantQuotaStore) -> None:
     """Switch the tenant quota override store backend."""
     global _tenant_quota_store
     _tenant_quota_store = store
+
+
+# ─── SCIM lifecycle store (enterprise identity) ────────────────────────────
+def _get_scim_store() -> SCIMStore:
+    """Get the active SCIM lifecycle store.
+
+    Postgres is selected for clustered self-hosted deployments. SQLite remains
+    a single-node pilot fallback and must not be used for multi-replica API
+    deployments because SCIM users/groups are identity state.
+    """
+    global _scim_store
+    if _scim_store is None:
+        with _store_lock:
+            if _scim_store is None:
+                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                    from agent_bom.api.postgres_scim import PostgresSCIMStore
+
+                    _scim_store = PostgresSCIMStore()
+                elif os.environ.get("AGENT_BOM_DB"):
+                    from agent_bom.api.scim import scim_enabled_from_env, scim_requires_shared_store
+                    from agent_bom.api.scim_store import SQLiteSCIMStore
+
+                    if scim_enabled_from_env() and scim_requires_shared_store():
+                        raise RuntimeError("SCIM lifecycle storage requires AGENT_BOM_POSTGRES_URL for multi-replica deployments")
+                    _scim_store = SQLiteSCIMStore(os.environ["AGENT_BOM_DB"])
+                else:
+                    from agent_bom.api.scim import scim_enabled_from_env, scim_requires_shared_store
+                    from agent_bom.api.scim_store import InMemorySCIMStore
+
+                    if scim_enabled_from_env() and scim_requires_shared_store():
+                        raise RuntimeError("SCIM lifecycle storage requires AGENT_BOM_POSTGRES_URL for multi-replica deployments")
+                    _scim_store = InMemorySCIMStore()
+    return _scim_store
+
+
+def set_scim_store(store: SCIMStore | None) -> None:
+    """Switch the SCIM lifecycle store backend."""
+    global _scim_store
+    _scim_store = store
 
 
 # ─── Source store (pluggable) ───────────────────────────────────────────────

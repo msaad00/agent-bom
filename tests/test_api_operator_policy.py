@@ -344,10 +344,32 @@ def test_auth_policy_reports_scim_configuration_posture(monkeypatch: pytest.Monk
     assert body["identity_provisioning"]["scim"]["status"] == "configured"
     assert body["identity_provisioning"]["scim"]["base_path"] == "/scim/v2"
     assert body["identity_provisioning"]["scim"]["token_configured"] is True
+    assert body["identity_provisioning"]["scim"]["tenant_id"] == "default"
+    assert body["identity_provisioning"]["scim"]["storage_backend"] == "memory"
+    assert body["identity_provisioning"]["scim"]["configured_api_replicas"] == 1
+    assert body["identity_provisioning"]["scim"]["shared_store_required"] is False
+    assert body["identity_provisioning"]["scim"]["multi_node_ready"] is False
+    assert body["identity_provisioning"]["scim"]["lifecycle_endpoints"]["users"] == "/scim/v2/Users"
+    assert body["identity_provisioning"]["scim"]["lifecycle_endpoints"]["groups"] == "/scim/v2/Groups"
     assert body["identity_provisioning"]["scim"]["role_attribute"] == "roles"
     assert body["identity_provisioning"]["scim"]["tenant_attribute"] == "organization_id"
     assert body["identity_provisioning"]["scim"]["external_id_attribute"] == "employeeNumber"
     assert body["identity_provisioning"]["scim"]["groups_required"] is True
+
+
+def test_auth_policy_flags_clustered_scim_without_postgres(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKEN", "super-secret")
+    monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "3")
+
+    client = TestClient(app)
+    body = client.get("/v1/auth/policy").json()
+
+    scim = body["identity_provisioning"]["scim"]
+    assert scim["configured"] is True
+    assert scim["status"] == "misconfigured"
+    assert scim["configured_api_replicas"] == 3
+    assert scim["shared_store_required"] is True
+    assert scim["multi_node_ready"] is False
 
 
 def test_rate_limit_runtime_reports_shared_backend(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -386,6 +408,9 @@ def test_auth_policy_requires_admin_role_in_api_middleware() -> None:
     middleware = APIKeyMiddleware(app, api_key="static-secret")
     assert middleware._required_role("GET", "/v1/auth/policy") == "admin"
     assert middleware._required_role("GET", "/v1/auth/scim/config") == "admin"
+    assert middleware._required_role("POST", "/scim/v2/Users") == "admin"
+    assert middleware._required_scope("POST", "/scim/v2/Users") == "auth.scim:write"
+    assert middleware._required_scope("GET", "/scim/v2/Groups") == "auth.scim:read"
     assert middleware._required_role("PUT", "/v1/auth/quota") == "admin"
     assert middleware._required_role("DELETE", "/v1/auth/quota") == "admin"
     assert middleware._required_role("GET", "/v1/tenant/tenant-a/data") == "admin"

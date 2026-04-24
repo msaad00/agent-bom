@@ -394,6 +394,8 @@ controlPlane:
         apiPaths:
           - path: /v1
             pathType: Prefix
+          - path: /scim
+            pathType: Prefix
           - path: /health
             pathType: Prefix
           - path: /docs

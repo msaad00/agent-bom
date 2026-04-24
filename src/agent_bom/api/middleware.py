@@ -69,6 +69,7 @@ def configure_auth_runtime(
     api_key_configured: bool,
     oidc_enabled: bool,
     trusted_proxy_enabled: bool,
+    scim_enabled: bool = False,
 ) -> None:
     """Track the active auth modes for operator/UI introspection surfaces."""
     configured_modes: list[str] = []
@@ -78,6 +79,8 @@ def configure_auth_runtime(
         configured_modes.append("oidc_bearer")
     if api_key_configured:
         configured_modes.append("api_key")
+    if scim_enabled:
+        configured_modes.append("scim_provisioning")
 
     recommended_ui_mode = "no_auth"
     if trusted_proxy_enabled:
@@ -345,6 +348,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("GET", "/v1/auth/me", "viewer"),
         ("GET", "/v1/auth/policy", "admin"),
         ("GET", "/v1/auth/scim/config", "admin"),
+        ("GET", "/scim/v2", "admin"),
+        ("POST", "/scim/v2", "admin"),
+        ("PATCH", "/scim/v2", "admin"),
+        ("PUT", "/scim/v2", "admin"),
+        ("DELETE", "/scim/v2", "admin"),
         ("GET", "/v1/auth/quota", "admin"),
         ("GET", "/v1/auth/keys", "admin"),
         ("GET", "/v1/tenant/", "admin"),
@@ -391,6 +399,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     _SCOPE_RULES: tuple[tuple[str, str, str], ...] = (
         ("GET", "/v1/auth/keys", "auth.keys:read"),
         ("GET", "/v1/auth/scim/config", "auth.scim:read"),
+        ("GET", "/scim/v2", "auth.scim:read"),
+        ("POST", "/scim/v2", "auth.scim:write"),
+        ("PATCH", "/scim/v2", "auth.scim:write"),
+        ("PUT", "/scim/v2", "auth.scim:write"),
+        ("DELETE", "/scim/v2", "auth.scim:write"),
         ("GET", "/v1/auth/quota", "auth.quota:read"),
         ("GET", "/v1/tenant/", "privacy.data:read"),
         ("POST", "/v1/auth/keys", "auth.keys:write"),
@@ -442,6 +455,9 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         if request.url.path in self._EXEMPT_PATHS:
             return await call_next(request)
+
+        if self._is_scim_path(request.url.path):
+            return await self._try_scim_bearer_auth(request, call_next)
 
         session_token = request.cookies.get(SESSION_COOKIE_NAME, "")
         if session_token:
@@ -545,6 +561,37 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             status_code=401,
             content={"detail": "Unauthorized — invalid API key"},
         )
+
+    def _is_scim_path(self, path: str) -> bool:
+        from agent_bom.api.scim import scim_base_path
+
+        base = scim_base_path()
+        return path == base or path.startswith(base + "/")
+
+    async def _try_scim_bearer_auth(self, request: StarletteRequest, call_next):
+        """Authenticate dedicated SCIM provisioning traffic.
+
+        SCIM uses its own bearer token and tenant binding so IdP lifecycle
+        traffic cannot be hijacked through dashboard sessions or general API
+        keys, and tenant routing cannot be supplied by the inbound payload.
+        """
+        configured = os.environ.get("AGENT_BOM_SCIM_BEARER_TOKEN", "").strip()
+        auth = request.headers.get("authorization", "")
+        raw_key = auth[7:] if auth.startswith("Bearer ") else ""
+        if not configured or not raw_key or not secrets.compare_digest(raw_key, configured):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Unauthorized — SCIM bearer token required"},
+            )
+
+        from agent_bom.api.scim import scim_tenant_id_from_env
+
+        request.state.api_key_name = "scim-provisioner"
+        request.state.api_key_role = "admin"
+        request.state.tenant_id = scim_tenant_id_from_env()
+        request.state.api_key_scopes = ["auth.scim:read", "auth.scim:write"]
+        request.state.auth_method = "scim_bearer"
+        return await self._call_with_tenant_context(request, call_next)
 
     async def _try_browser_session_auth(self, request: StarletteRequest, call_next, token: str):
         from agent_bom.api.auth import _ROLE_HIERARCHY, Role, get_key_store

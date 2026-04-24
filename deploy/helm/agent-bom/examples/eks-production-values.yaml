@@ -31,6 +31,8 @@ controlPlane:
         value: "5000"
       - name: AGENT_BOM_API_MAX_SCHEDULES_PER_TENANT
         value: "250"
+      - name: AGENT_BOM_REQUIRE_SHARED_SCIM_STORE
+        value: "1"
     autoscaling:
       enabled: true
       minReplicas: 2
@@ -96,6 +98,14 @@ controlPlane:
             remoteRef:
               key: REPLACE_ME_AUTH_SECRET_PATH
               property: REPLACE_ME_OIDC_AUDIENCE_PROPERTY
+          - secretKey: AGENT_BOM_SCIM_BEARER_TOKEN
+            remoteRef:
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_SCIM_BEARER_TOKEN_PROPERTY
+          - secretKey: AGENT_BOM_SCIM_TENANT_ID
+            remoteRef:
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_SCIM_TENANT_ID_PROPERTY
           - secretKey: AGENT_BOM_SAML_IDP_ENTITY_ID
             remoteRef:
               key: REPLACE_ME_AUTH_SECRET_PATH

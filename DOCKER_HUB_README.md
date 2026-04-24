@@ -105,6 +105,21 @@ runtime monolith. Teams typically deploy only the surfaces they need:
 - **gateway**: central policy management for those runtime paths
 - **API + UI**: the operator plane for findings, graph, remediation, audit, and policy workflows
 
+## Control-Plane Contract
+
+The API is the source of truth for auth, tenant resolution, RBAC, quotas,
+SCIM posture, fleet inventory, graph selectors, policy, secret posture, and
+audit. UI displays that posture from the API instead of inventing a parallel
+role or tenant model. MCP Gateway consumes the same tenant, policy, audit,
+secret-manager, and lifecycle posture model as the API. CLI and local MCP
+modes stay low-friction, but label local/dev behavior clearly when they are not
+enterprise-controlled.
+
+Helm, EKS examples, Docker metadata, and GitHub Actions should expose the same
+environment variable names, fail-closed defaults, and required checks. The
+runtime image and UI image are separate deployment units for scaling and patch
+cadence, not separate security products.
+
 ## OTEL and Policy
 
 `agent-bom` already supports OpenTelemetry as a real interoperability surface:

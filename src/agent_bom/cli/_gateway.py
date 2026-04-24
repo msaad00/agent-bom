@@ -165,6 +165,7 @@ def serve_cmd(
         UpstreamRegistry,
         fetch_discovered_upstreams,
     )
+    from agent_bom.proxy_policy import summarize_policy_bundle
     from agent_bom.runtime.visual_leak_detector import require_visual_leak_runtime
 
     registry: UpstreamRegistry | None = None
@@ -225,6 +226,7 @@ def serve_cmd(
         policy_reload_interval_seconds=max(policy_reload_seconds, 0),
     )
     app = create_gateway_app(settings)
+    policy_summary = summarize_policy_bundle(policy)
 
     # Binding to 0.0.0.0 is intentional for containerized deploys — ingress /
     # service mesh terminates external traffic in front of this pod. Set
@@ -244,6 +246,14 @@ def serve_cmd(
                 "Disabled by explicit override (--allow-insecure-no-auth)"
                 if allow_insecure_no_auth
                 else "Loopback-only without transport auth; add --bearer-token before exposing remotely"
+            ),
+        ),
+        (
+            "Policy",
+            (
+                f"{policy_summary['summary']} "
+                f"Rules={policy_summary['total_rules']} "
+                f"(block={policy_summary['blocking_rules']}, warn={policy_summary['advisory_rules']})"
             ),
         ),
     ]

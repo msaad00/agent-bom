@@ -11,6 +11,7 @@ from agent_bom.proxy import (
     compute_response_hmac,
     set_gateway_evaluator,
 )
+from agent_bom.proxy_policy import summarize_policy_bundle
 
 # ---------------------------------------------------------------------------
 # compute_payload_hash
@@ -239,6 +240,47 @@ def test_check_policy_blocks_non_allowlisted_host():
     allowed, reason = check_policy(policy, "web_fetch", {"endpoint": "https://evil.example/api"})
     assert allowed is False
     assert "allowlisted" in reason.lower()
+
+
+def test_summarize_policy_bundle_disabled():
+    summary = summarize_policy_bundle({})
+    assert summary["rollout_mode"] == "disabled"
+    assert summary["blocks_requests"] is False
+    assert summary["total_rules"] == 0
+
+
+def test_summarize_policy_bundle_advisory_only():
+    summary = summarize_policy_bundle(
+        {
+            "rules": [
+                {"id": "warn-exec", "action": "warn", "deny_tool_classes": ["execute"]},
+                {"id": "warn-secret", "block_secret_paths": True},
+            ]
+        }
+    )
+    assert summary["rollout_mode"] == "advisory_only"
+    assert summary["advisory_only"] is True
+    assert summary["blocking_rules"] == 0
+    assert summary["advisory_rules"] == 2
+    assert summary["denied_tool_classes"] == ["execute"]
+    assert summary["protects_secret_paths"] is True
+
+
+def test_summarize_policy_bundle_default_deny():
+    summary = summarize_policy_bundle(
+        {
+            "rules": [
+                {"id": "allow-read", "mode": "allowlist", "action": "block", "allow_tools": ["read_file"]},
+                {"id": "no-egress", "action": "block", "block_unknown_egress": True, "allowed_hosts": ["api.openai.com"]},
+            ]
+        }
+    )
+    assert summary["rollout_mode"] == "default_deny"
+    assert summary["blocks_requests"] is True
+    assert summary["default_deny"] is True
+    assert summary["allowlist_rules"] == 1
+    assert summary["default_deny_rules"] == 1
+    assert summary["restricts_unknown_egress"] is True
 
 
 # ---------------------------------------------------------------------------

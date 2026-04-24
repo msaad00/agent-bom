@@ -150,6 +150,77 @@ def resolve_rate_limit_threshold(policy: dict) -> int | None:
     return min(limits) if limits else None
 
 
+def summarize_policy_bundle(policy: dict) -> dict[str, object]:
+    """Summarize rollout posture and major controls for a runtime policy bundle."""
+    raw_rules = policy.get("rules", [])
+    rules = raw_rules if isinstance(raw_rules, list) else []
+
+    total_rules = len(rules)
+    blocking_rules = 0
+    advisory_rules = 0
+    allowlist_rules = 0
+    default_deny_rules = 0
+    read_only_rules = 0
+    secret_path_rules = 0
+    unknown_egress_rules = 0
+    denied_tool_classes: set[str] = set()
+
+    for raw_rule in rules:
+        rule = raw_rule if isinstance(raw_rule, dict) else {}
+        action = str(rule.get("action", "warn")).lower()
+        is_blocking = action in ("block", "fail")
+        if is_blocking:
+            blocking_rules += 1
+        else:
+            advisory_rules += 1
+        if str(rule.get("mode", "")).lower() == "allowlist":
+            allowlist_rules += 1
+            if is_blocking:
+                default_deny_rules += 1
+        if rule.get("read_only"):
+            read_only_rules += 1
+        if rule.get("block_secret_paths"):
+            secret_path_rules += 1
+        if rule.get("block_unknown_egress"):
+            unknown_egress_rules += 1
+        denied_tool_classes.update(str(item).lower() for item in rule.get("deny_tool_classes", []) if item)
+
+    if total_rules == 0:
+        rollout_mode = "disabled"
+        summary = "No runtime policy rules configured."
+    elif blocking_rules == 0:
+        rollout_mode = "advisory_only"
+        summary = "Policy matches are advisory only; runtime will not block."
+    elif blocking_rules > 0 and advisory_rules > 0:
+        rollout_mode = "mixed"
+        summary = "Mixed rollout: some rules block while others remain advisory."
+    elif default_deny_rules > 0:
+        rollout_mode = "default_deny"
+        summary = "Blocking allowlist enforcement is active for matched policy scope."
+    else:
+        rollout_mode = "blocking"
+        summary = "Blocking runtime enforcement is active."
+
+    return {
+        "rollout_mode": rollout_mode,
+        "summary": summary,
+        "total_rules": total_rules,
+        "blocking_rules": blocking_rules,
+        "advisory_rules": advisory_rules,
+        "allowlist_rules": allowlist_rules,
+        "default_deny_rules": default_deny_rules,
+        "read_only_rules": read_only_rules,
+        "secret_path_rules": secret_path_rules,
+        "unknown_egress_rules": unknown_egress_rules,
+        "denied_tool_classes": sorted(denied_tool_classes),
+        "blocks_requests": blocking_rules > 0,
+        "advisory_only": total_rules > 0 and blocking_rules == 0,
+        "default_deny": default_deny_rules > 0,
+        "protects_secret_paths": secret_path_rules > 0,
+        "restricts_unknown_egress": unknown_egress_rules > 0,
+    }
+
+
 def check_policy(policy: dict, tool_name: str, arguments: dict) -> tuple[bool, str]:
     """Evaluate runtime policy against a tools/call request."""
     rules = policy.get("rules", [])

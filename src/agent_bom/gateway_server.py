@@ -47,6 +47,7 @@ from agent_bom.api.middleware import InMemoryRateLimitStore, PostgresRateLimitSt
 from agent_bom.api.tracing import get_tracer, inject_trace_headers, make_request_trace
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 from agent_bom.proxy import check_policy, is_tools_call, parse_jsonrpc
+from agent_bom.proxy_policy import summarize_policy_bundle
 
 logger = logging.getLogger(__name__)
 _GATEWAY_TRACER = get_tracer("agent_bom.gateway")
@@ -346,12 +347,15 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
     @app.get("/healthz")
     async def healthz() -> dict[str, Any]:
         async with policy_lock:
+            policy_summary = summarize_policy_bundle(policy_state["policy"])
             policy_runtime = {
                 "source": policy_state["source"],
+                "source_kind": "file" if settings.policy_path else "inline",
                 "reload_enabled": bool(settings.policy_path and settings.policy_reload_interval_seconds > 0),
                 "reload_interval_seconds": settings.policy_reload_interval_seconds,
                 "last_loaded_at": policy_state["last_loaded_at"],
                 "last_error": policy_state["last_error"],
+                **policy_summary,
             }
         health: dict[str, Any] = {
             "status": "ok",

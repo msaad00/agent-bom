@@ -40,6 +40,15 @@ def test_serve_cmd_missing_uvicorn():
         assert result.exit_code == 1
 
 
+def test_serve_cmd_help_mentions_auth_for_non_loopback_bind():
+    runner = CliRunner()
+    result = runner.invoke(serve_cmd, ["--help"])
+    assert result.exit_code == 0
+    assert "non-loopback requires" in result.output
+    assert "--allow-insecure-no-auth" in result.output
+    assert "serve --host 0.0.0.0 --api-key <key>" in result.output
+
+
 # ---------------------------------------------------------------------------
 # api_cmd
 # ---------------------------------------------------------------------------

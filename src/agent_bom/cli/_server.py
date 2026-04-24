@@ -85,7 +85,12 @@ def _configure_analytics_backend(
 
 
 @click.command("serve")
-@click.option("--host", default="127.0.0.1", show_default=True, help="Host to bind to (use 0.0.0.0 for LAN access)")
+@click.option(
+    "--host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Host to bind to (non-loopback requires --api-key / OIDC or --allow-insecure-no-auth).",
+)
 @click.option("--port", default=8422, show_default=True, help="API server port")
 @click.option("--persist", default=None, metavar="DB_PATH", help="Enable persistent job storage via SQLite (e.g. --persist jobs.db).")
 @click.option("--cors-allow-all", is_flag=True, default=False, help="Allow all CORS origins (dev mode).")
@@ -171,6 +176,7 @@ def serve_cmd(
     \b
     Usage:
       agent-bom serve
+      agent-bom serve --host 0.0.0.0 --api-key <key>  # expose on LAN with auth
       agent-bom serve --port 8422 --persist jobs.db
     """
     from agent_bom.logging_config import setup_logging

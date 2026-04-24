@@ -249,6 +249,8 @@ def test_json_includes_stable_ids_and_resources():
     assert data["agents"][0]["mcp_servers"][0]["tools"][0]["stable_id"] == server.tools[0].stable_id
     assert data["agents"][0]["mcp_servers"][0]["resources"][0]["stable_id"] == server.resources[0].stable_id
     assert data["agents"][0]["mcp_servers"][0]["packages"][0]["stable_id"] == server.packages[0].stable_id
+    assert data["agents"][0]["mcp_servers"][0]["tools"][0]["discovery_source"] is None
+    assert data["agents"][0]["mcp_servers"][0]["tools"][0]["discovery_confidence"] is None
     assert data["agents"][0]["mcp_servers"][0]["tools"][0]["risk_score"] >= 1
     assert data["agents"][0]["mcp_servers"][0]["resources"][0]["risk_score"] >= 1
     snapshot = data["inventory_snapshot"]
@@ -257,6 +259,22 @@ def test_json_includes_stable_ids_and_resources():
     assert snapshot["summary"]["tools"] == 1
     assert snapshot["summary"]["resources"] == 1
     assert snapshot["summary"]["packages"] == 1
+
+
+def test_json_includes_tool_discovery_metadata():
+    from agent_bom.models import AIBOMReport, MCPServer, MCPTool
+    from agent_bom.output import to_json
+
+    server = MCPServer(
+        name="python-agent",
+        tools=[MCPTool(name="search_docs", description="agent tool", discovery_source="tool-constructor", discovery_confidence="medium")],
+    )
+    agent = Agent(name="crewai:researcher", agent_type=AgentType.CUSTOM, config_path="/tmp/project", mcp_servers=[server])
+
+    data = to_json(AIBOMReport(agents=[agent]))
+    tool = data["agents"][0]["mcp_servers"][0]["tools"][0]
+    assert tool["discovery_source"] == "tool-constructor"
+    assert tool["discovery_confidence"] == "medium"
 
 
 def test_json_includes_mcp_runtime_diff():

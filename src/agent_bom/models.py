@@ -404,6 +404,8 @@ class MCPTool:
 
     name: str
     description: str
+    discovery_source: Optional[str] = None
+    discovery_confidence: Optional[str] = None
     input_schema: Optional[dict] = None
     schema_findings: list[str] = field(default_factory=list)
     schema_rule_findings: list[dict] = field(default_factory=list)

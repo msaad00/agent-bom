@@ -185,16 +185,19 @@ is deliberately cross-tenant and reserved for admin surfaces.
 
 Warehouse-native deployment for governance-heavy customers. Today it
 persists `scan_jobs`, `fleet_agents`, `gateway_policies`, and
-`policy_audit_log` with Snowflake-specific column types. It is not yet
-at full control-plane parity:
+`policy_audit_log` with Snowflake-specific column types. It also supports
+`scan_schedules` and `exceptions`, so the warehouse-native contract is
+broader than the original jobs/fleet/policy slice. It is not yet at full
+control-plane parity:
 
 - no source registry persistence
 - no API-key / RBAC persistence
-- no exceptions persistence
-- no schedule persistence
 - no graph persistence
 - no trend/baseline persistence
 - no full `audit_log` transactional replacement
+
+For the operator-facing backend matrix and current parity boundaries, see
+`site-docs/deployment/backend-parity.md`.
 
 ### Deployment-context posture contract — `GET /v1/posture/counts`
 

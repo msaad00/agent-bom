@@ -80,6 +80,17 @@ The Snowflake story should be read in three layers:
 That means Snowflake is already a real backend mode, but it is still not the
 same claim as “full transactional replacement for Postgres.”
 
+## CI-Backed Snowflake Contract Coverage
+
+The documented Snowflake parity slice is enforced in CI with mocked
+connector-based tests:
+
+- `tests/test_snowflake_stores.py` covers the store-layer contracts for jobs,
+  fleet, gateway policies, schedules, and exceptions.
+- `tests/test_snowflake_backend_contract.py` covers the API-advertised backend
+  contract for health reporting and the supported schedule / exception routes
+  in warehouse-native mode.
+
 For the exact logical entity → table/store mapping, see
 [Control-Plane Data Model and Store Parity](control-plane-data-model.md).
 

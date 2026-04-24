@@ -272,6 +272,22 @@ class TestParsePipEnvironment:
             pkgs = parse_pip_environment()
         assert pkgs == []
 
+    def test_pip_unavailable_uses_metadata_fallback(self):
+        fallback_output = json.dumps(
+            [
+                {"name": "pytest", "version": "9.0.3"},
+                {"name": "agent-bom", "version": "0.81.3"},
+            ]
+        )
+        with patch("subprocess.run") as mock_run:
+            mock_run.side_effect = [
+                MagicMock(returncode=1, stdout="", stderr="No module named pip"),
+                MagicMock(returncode=0, stdout=fallback_output, stderr=""),
+            ]
+            pkgs = parse_pip_environment()
+        names = {p.name for p in pkgs}
+        assert names == {"pytest", "agent-bom"}
+
     def test_pip_timeout_returns_empty(self):
         with patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd=[], timeout=30)):
             pkgs = parse_pip_environment()

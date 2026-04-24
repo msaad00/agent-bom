@@ -384,7 +384,7 @@ def parse_pip_compile_inputs(directory: Path) -> list[Package]:
 
 
 def parse_pip_environment(python_exec: str | None = None) -> list[Package]:
-    """Scan an installed Python environment via ``pip list --format=json``.
+    """Scan an installed Python environment for installed packages.
 
     Useful when there is no lock file (e.g. bare virtualenv, conda env,
     system Python) and you want to audit what's actually installed.
@@ -395,10 +395,28 @@ def parse_pip_environment(python_exec: str | None = None) -> list[Package]:
 
     Returns:
         List of :class:`~agent_bom.models.Package` objects with
-        ``ecosystem="pypi"``.  Returns an empty list if ``pip`` is not
-        available in the target environment.
+        ``ecosystem="pypi"``.  Prefers ``pip list --format=json`` and falls
+        back to ``importlib.metadata`` for environments that intentionally do
+        not install the ``pip`` package.
     """
     import sys as _sys
+
+    def _packages_from_rows(rows: list[dict[str, str]]) -> list[Package]:
+        packages: list[Package] = []
+        for entry in rows:
+            name = entry.get("name", "")
+            version = entry.get("version", "unknown")
+            if name:
+                packages.append(
+                    Package(
+                        name=name,
+                        version=version,
+                        ecosystem="pypi",
+                        purl=f"pkg:pypi/{name.lower()}@{version}",
+                        is_direct=True,
+                    )
+                )
+        return packages
 
     exe = python_exec or _sys.executable
     try:
@@ -414,26 +432,41 @@ def parse_pip_environment(python_exec: str | None = None) -> list[Package]:
 
     if result.returncode != 0:
         logger.debug("parse_pip_environment: pip list failed: %s", result.stderr[:200])
-        return []
+        try:
+            fallback = subprocess.run(
+                [
+                    exe,
+                    "-c",
+                    (
+                        "import importlib.metadata as m, json; "
+                        "print(json.dumps(["
+                        "{'name': d.metadata.get('Name') or d.metadata.get('name') or '', "
+                        "'version': d.version} "
+                        "for d in m.distributions()]))"
+                    ),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+            logger.debug("parse_pip_environment: metadata fallback failed (%s)", exc)
+            return []
+        if fallback.returncode != 0:
+            logger.debug(
+                "parse_pip_environment: metadata fallback failed: %s",
+                fallback.stderr[:200],
+            )
+            return []
+        try:
+            raw = json.loads(fallback.stdout)
+        except json.JSONDecodeError:
+            return []
+        return _packages_from_rows(raw)
 
     try:
         raw = json.loads(result.stdout)
     except json.JSONDecodeError:
         return []
 
-    packages: list[Package] = []
-    for entry in raw:
-        name = entry.get("name", "")
-        version = entry.get("version", "unknown")
-        if name:
-            packages.append(
-                Package(
-                    name=name,
-                    version=version,
-                    ecosystem="pypi",
-                    purl=f"pkg:pypi/{name.lower()}@{version}",
-                    is_direct=True,
-                )
-            )
-
-    return packages
+    return _packages_from_rows(raw)

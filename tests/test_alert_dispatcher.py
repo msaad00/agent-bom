@@ -158,14 +158,16 @@ def test_dispatcher_dispatch_runtime_dict_adds_relationships():
     assert stored["event_relationships"]["resources"][0]["id"] == "/etc/passwd"
 
 
-def test_dispatcher_add_webhook():
+def test_dispatcher_add_webhook(monkeypatch):
+    monkeypatch.setattr("agent_bom.security.validate_url", lambda _url: None)
     d = AlertDispatcher()
     d.add_webhook("https://example.com/hook")
     assert d.stats()["webhook_count"] == 1
     assert d.stats()["channels_registered"] == 2
 
 
-def test_dispatcher_remove_webhooks():
+def test_dispatcher_remove_webhooks(monkeypatch):
+    monkeypatch.setattr("agent_bom.security.validate_url", lambda _url: None)
     d = AlertDispatcher()
     d.add_webhook("https://a.com")
     d.add_webhook("https://b.com")

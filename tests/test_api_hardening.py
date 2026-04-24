@@ -10,6 +10,12 @@ import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
+from agent_bom.api.browser_session import (
+    CSRF_COOKIE_NAME,
+    CSRF_HEADER_NAME,
+    SESSION_COOKIE_NAME,
+    create_browser_session_token,
+)
 from agent_bom.api.middleware import InMemoryRateLimitStore
 from agent_bom.api.oidc import OIDCConfig
 from agent_bom.api.server import (
@@ -123,6 +129,76 @@ def test_api_key_middleware_wrong_key():
     client = TestClient(test_app)
     resp = client.get("/v1/test", headers={"Authorization": "Bearer wrong-key"})
     assert resp.status_code == 401
+
+
+def test_api_key_middleware_accepts_signed_browser_session(monkeypatch):
+    """Signed httpOnly-cookie sessions authenticate browsers without raw key reuse."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "test-browser-session-signing-key")
+
+    async def dummy(request):
+        return StarletteJSONResponse(
+            {
+                "ok": True,
+                "role": request.state.api_key_role,
+                "tenant": request.state.tenant_id,
+                "method": request.state.auth_method,
+            }
+        )
+
+    token, csrf = create_browser_session_token(
+        subject="dashboard-user",
+        role="admin",
+        tenant_id="tenant-alpha",
+        auth_method="browser_session_static_api_key",
+        max_age_seconds=300,
+    )
+    test_app = Starlette(routes=[Route("/v1/scan", dummy, methods=["POST"])])
+    test_app.add_middleware(APIKeyMiddleware, api_key="static-key")
+
+    client = TestClient(test_app)
+    resp = client.post(
+        "/v1/scan",
+        headers={CSRF_HEADER_NAME: csrf},
+        cookies={SESSION_COOKIE_NAME: token, CSRF_COOKIE_NAME: csrf},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == {
+        "ok": True,
+        "role": "admin",
+        "tenant": "tenant-alpha",
+        "method": "browser_session_static_api_key",
+    }
+
+
+def test_api_key_middleware_rejects_browser_session_without_csrf(monkeypatch):
+    """Unsafe browser-session requests need the CSRF cookie/header pair."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "test-browser-session-signing-key")
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    token, csrf = create_browser_session_token(
+        subject="dashboard-user",
+        role="admin",
+        tenant_id="tenant-alpha",
+        auth_method="browser_session_static_api_key",
+        max_age_seconds=300,
+    )
+    test_app = Starlette(routes=[Route("/v1/scan", dummy, methods=["POST"])])
+    test_app.add_middleware(APIKeyMiddleware, api_key="static-key")
+
+    client = TestClient(test_app)
+    resp = client.post("/v1/scan", cookies={SESSION_COOKIE_NAME: token, CSRF_COOKIE_NAME: csrf})
+    assert resp.status_code == 403
+    assert resp.json()["detail"] == "Forbidden — missing or invalid CSRF token"
 
 
 def test_api_key_middleware_health_exempt():

@@ -197,6 +197,9 @@ class WebhookChannel:
     """Generic HTTP POST webhook for PagerDuty, Teams, custom endpoints."""
 
     def __init__(self, url: str, headers: dict[str, str] | None = None) -> None:
+        from agent_bom.security import validate_url
+
+        validate_url(url)
         self.url = url
         self.headers = headers or {}
 

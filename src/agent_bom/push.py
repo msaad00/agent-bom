@@ -121,8 +121,15 @@ async def _push_async(
     controller so both egress paths degrade the same way.
     """
     from agent_bom.http_client import create_client
+    from agent_bom.security import SecurityError, validate_url
 
     sanitized = sanitize_results(results)
+    try:
+        validate_url(push_url)
+    except SecurityError as exc:
+        logger.error("Push URL rejected by outbound URL policy: %s", exc)
+        return False
+
     headers: dict[str, str] = {"Content-Type": "application/json"}
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"

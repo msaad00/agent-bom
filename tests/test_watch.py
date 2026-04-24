@@ -161,7 +161,10 @@ def test_webhook_sink_success():
     mock_response = MagicMock()
     mock_response.status_code = 200
 
-    with patch("httpx.post", return_value=mock_response) as mock_post:
+    with (
+        patch("httpx.post", return_value=mock_response) as mock_post,
+        patch("agent_bom.security.validate_url", return_value=None),
+    ):
         sink = WebhookAlertSink("https://hooks.slack.com/test", retries=0)
         sink.send(alert)
 
@@ -188,12 +191,15 @@ def test_webhook_sink_retries_on_server_error():
     ok_resp = MagicMock()
     ok_resp.status_code = 200
 
-    with patch("httpx.post", side_effect=[fail_resp, ok_resp]) as mock_post:
-        with patch("time.sleep"):  # Skip actual sleep
-            sink = WebhookAlertSink("https://hooks.example.com/test", retries=2)
-            sink.send(alert)
+    with (
+        patch("httpx.post", side_effect=[fail_resp, ok_resp]) as mock_post,
+        patch("time.sleep"),
+        patch("agent_bom.security.validate_url", return_value=None),
+    ):
+        sink = WebhookAlertSink("https://hooks.example.com/test", retries=2)
+        sink.send(alert)
 
-            assert mock_post.call_count == 2
+        assert mock_post.call_count == 2
 
 
 # ── 9. WebhookAlertSink — no retry on 4xx ────────────────────────────────
@@ -206,7 +212,10 @@ def test_webhook_sink_no_retry_on_client_error():
     resp_403 = MagicMock()
     resp_403.status_code = 403
 
-    with patch("httpx.post", return_value=resp_403) as mock_post:
+    with (
+        patch("httpx.post", return_value=resp_403) as mock_post,
+        patch("agent_bom.security.validate_url", return_value=None),
+    ):
         sink = WebhookAlertSink("https://hooks.example.com/test", retries=2)
         sink.send(alert)
 
@@ -226,12 +235,15 @@ def test_webhook_sink_retries_on_network_error():
     ok_resp = MagicMock()
     ok_resp.status_code = 200
 
-    with patch("httpx.post", side_effect=[httpx.ConnectError("fail"), ok_resp]) as mock_post:
-        with patch("time.sleep"):
-            sink = WebhookAlertSink("https://hooks.example.com/test", retries=2)
-            sink.send(alert)
+    with (
+        patch("httpx.post", side_effect=[httpx.ConnectError("fail"), ok_resp]) as mock_post,
+        patch("time.sleep"),
+        patch("agent_bom.security.validate_url", return_value=None),
+    ):
+        sink = WebhookAlertSink("https://hooks.example.com/test", retries=2)
+        sink.send(alert)
 
-            assert mock_post.call_count == 2
+        assert mock_post.call_count == 2
 
 
 # ── 11. WebhookAlertSink — exhausted retries ─────────────────────────────
@@ -243,14 +255,17 @@ def test_webhook_sink_exhausted_retries():
 
     alert = Alert(alert_type="config_changed", severity="info", summary="Test")
 
-    with patch("httpx.post", side_effect=httpx.ConnectError("fail")) as mock_post:
-        with patch("time.sleep"):
-            sink = WebhookAlertSink("https://hooks.example.com/test", retries=1)
-            # Should not raise
-            sink.send(alert)
+    with (
+        patch("httpx.post", side_effect=httpx.ConnectError("fail")) as mock_post,
+        patch("time.sleep"),
+        patch("agent_bom.security.validate_url", return_value=None),
+    ):
+        sink = WebhookAlertSink("https://hooks.example.com/test", retries=1)
+        # Should not raise
+        sink.send(alert)
 
-            # 1 initial + 1 retry = 2 calls
-            assert mock_post.call_count == 2
+        # 1 initial + 1 retry = 2 calls
+        assert mock_post.call_count == 2
 
 
 # ── 12. WebhookAlertSink — payload format ────────────────────────────────
@@ -274,7 +289,10 @@ def test_webhook_payload_format():
         resp.status_code = 200
         return resp
 
-    with patch("httpx.post", side_effect=capture_post):
+    with (
+        patch("httpx.post", side_effect=capture_post),
+        patch("agent_bom.security.validate_url", return_value=None),
+    ):
         sink = WebhookAlertSink("https://hooks.slack.com/test")
         sink.send(alert)
 

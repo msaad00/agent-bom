@@ -140,7 +140,10 @@ class TestPushToGateway:
             request=httpx.Request("POST", "http://localhost:9091/metrics/job/agent-bom"),
         )
         with patch("agent_bom.http_client.sync_request_with_retry", return_value=mock_resp):
-            with patch("agent_bom.http_client.create_sync_client") as mock_client_factory:
+            with (
+                patch("agent_bom.http_client.create_sync_client") as mock_client_factory,
+                patch("agent_bom.security.validate_url", return_value=None),
+            ):
                 mock_client_factory.return_value.__enter__ = MagicMock(return_value=MagicMock())
                 mock_client_factory.return_value.__exit__ = MagicMock(return_value=False)
                 push_to_gateway("http://localhost:9091", report, job="test")
@@ -152,7 +155,10 @@ class TestPushToGateway:
             request=httpx.Request("POST", "http://localhost:9091/metrics/job/agent-bom/instance/host1"),
         )
         with patch("agent_bom.http_client.sync_request_with_retry", return_value=mock_resp):
-            with patch("agent_bom.http_client.create_sync_client") as mock_client_factory:
+            with (
+                patch("agent_bom.http_client.create_sync_client") as mock_client_factory,
+                patch("agent_bom.security.validate_url", return_value=None),
+            ):
                 mock_client_factory.return_value.__enter__ = MagicMock(return_value=MagicMock())
                 mock_client_factory.return_value.__exit__ = MagicMock(return_value=False)
                 push_to_gateway("http://localhost:9091", report, instance="host1")
@@ -165,7 +171,10 @@ class TestPushToGateway:
             request=httpx.Request("POST", "http://localhost:9091/metrics/job/agent-bom"),
         )
         with patch("agent_bom.http_client.sync_request_with_retry", return_value=mock_resp):
-            with patch("agent_bom.http_client.create_sync_client") as mock_client_factory:
+            with (
+                patch("agent_bom.http_client.create_sync_client") as mock_client_factory,
+                patch("agent_bom.security.validate_url", return_value=None),
+            ):
                 mock_client_factory.return_value.__enter__ = MagicMock(return_value=MagicMock())
                 mock_client_factory.return_value.__exit__ = MagicMock(return_value=False)
                 with pytest.raises(PushgatewayError):
@@ -174,7 +183,10 @@ class TestPushToGateway:
     def test_url_error_raises(self):
         report = AIBOMReport(agents=[])
         with patch("agent_bom.http_client.sync_request_with_retry", return_value=None):
-            with patch("agent_bom.http_client.create_sync_client") as mock_client_factory:
+            with (
+                patch("agent_bom.http_client.create_sync_client") as mock_client_factory,
+                patch("agent_bom.security.validate_url", return_value=None),
+            ):
                 mock_client_factory.return_value.__enter__ = MagicMock(return_value=MagicMock())
                 mock_client_factory.return_value.__exit__ = MagicMock(return_value=False)
                 with pytest.raises(PushgatewayError):

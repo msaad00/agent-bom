@@ -250,10 +250,12 @@ def push_to_gateway(
     Raises:
         PushgatewayError: If the HTTP push fails
     """
-    # Enforce http/https only — reject file://, ftp://, etc.
-    parsed_scheme = gateway_url.split("://", 1)[0].lower()
-    if parsed_scheme not in ("http", "https"):
-        raise PushgatewayError(f"Pushgateway URL must use http:// or https://, got: {gateway_url!r}")
+    from agent_bom.security import SecurityError, validate_url
+
+    try:
+        validate_url(gateway_url, allowed_schemes=("http", "https"))
+    except SecurityError as exc:
+        raise PushgatewayError(f"Pushgateway URL rejected by outbound URL policy: {exc}") from exc
 
     text = to_prometheus(report, blast_radii)
 
@@ -334,6 +336,13 @@ def push_otlp(
             "agent_bom.version": report.tool_version,
         }
     )
+
+    from agent_bom.security import SecurityError, validate_url
+
+    try:
+        validate_url(endpoint, allowed_schemes=("http", "https"))
+    except SecurityError as exc:
+        raise RuntimeError(f"OTLP endpoint rejected by outbound URL policy: {exc}") from exc
 
     otlp_url = endpoint.rstrip("/") + "/v1/metrics"
     exporter = OTLPMetricExporter(endpoint=otlp_url, timeout=timeout)

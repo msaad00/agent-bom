@@ -79,7 +79,10 @@ class TestWebhookAlertSink:
     def test_successful_send(self):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        with patch("httpx.post", return_value=mock_resp):
+        with (
+            patch("httpx.post", return_value=mock_resp),
+            patch("agent_bom.security.validate_url", return_value=None),
+        ):
             sink = WebhookAlertSink("https://hooks.slack.com/test")
             alert = Alert(alert_type="test", severity="high", summary="Alert!")
             sink.send(alert)
@@ -89,13 +92,19 @@ class TestWebhookAlertSink:
         mock_resp_500.status_code = 500
         mock_resp_200 = MagicMock()
         mock_resp_200.status_code = 200
-        with patch("httpx.post", side_effect=[mock_resp_500, mock_resp_200]):
+        with (
+            patch("httpx.post", side_effect=[mock_resp_500, mock_resp_200]),
+            patch("agent_bom.security.validate_url", return_value=None),
+        ):
             sink = WebhookAlertSink("https://hooks.slack.com/test", retries=1)
             alert = Alert(alert_type="test", severity="high", summary="Alert!")
             sink.send(alert)
 
     def test_exception_handling(self):
-        with patch("httpx.post", side_effect=ConnectionError("refused")):
+        with (
+            patch("httpx.post", side_effect=ConnectionError("refused")),
+            patch("agent_bom.security.validate_url", return_value=None),
+        ):
             sink = WebhookAlertSink("https://hooks.slack.com/test", retries=0)
             alert = Alert(alert_type="test", severity="high", summary="Alert!")
             sink.send(alert)
@@ -184,7 +193,10 @@ class TestWebhookAlertSink4xx:
         mock_resp = MagicMock()
         mock_resp.status_code = 403
 
-        with patch("httpx.post", return_value=mock_resp) as mock_post:
+        with (
+            patch("httpx.post", return_value=mock_resp) as mock_post,
+            patch("agent_bom.security.validate_url", return_value=None),
+        ):
             sink = WebhookAlertSink("https://hooks.example.com/test", retries=2)
             alert = Alert(severity="info", summary="forbidden")
             sink.send(alert)

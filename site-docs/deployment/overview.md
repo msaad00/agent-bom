@@ -24,9 +24,10 @@ docker compose -f docker-compose.pilot.yml up -d
 Production in your own cluster from a checked-out repo:
 
 ```bash
+export AWS_REGION="<your-aws-region>"
 scripts/deploy/install-eks-reference.sh \
   --cluster-name corp-ai \
-  --region us-east-1 \
+  --region "$AWS_REGION" \
   --hostname agent-bom.internal.example.com \
   --enable-gateway
 ```

@@ -338,7 +338,7 @@ def validate_json_file(path: Path) -> dict:
         raise SecurityError(f"Cannot read file {path}: {e}")
 
 
-def validate_url(url: str) -> None:
+def validate_url(url: str, *, allowed_schemes: tuple[str, ...] = ("https",), allow_private: bool = False) -> None:
     """
     Validate a URL for safety, including DNS rebinding protection.
 
@@ -362,14 +362,28 @@ def validate_url(url: str) -> None:
     except Exception as e:
         raise SecurityError(f"Invalid URL '{url}': {e}")
 
-    # Only allow HTTPS (not HTTP or other protocols)
-    if parsed.scheme not in ("https",):
-        raise SecurityError(f"Only HTTPS URLs are allowed, got: {parsed.scheme}")
+    allow_private = allow_private or os.environ.get("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+    if parsed.scheme not in allowed_schemes:
+        if allowed_schemes == ("https",):
+            raise SecurityError(f"URL must use HTTPS; got: {parsed.scheme}")
+        expected = ", ".join(f"{scheme}://" for scheme in allowed_schemes)
+        raise SecurityError(f"URL must use one of {expected}; got: {parsed.scheme}")
 
     # Validate domain is not localhost or internal IP
     hostname = parsed.hostname or ""
+    if not hostname:
+        raise SecurityError("URL must include a hostname")
     if hostname in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):  # nosec B104 - checking FOR these values to reject them, not binding to them
-        raise SecurityError(f"Cannot connect to localhost/internal IPs: {hostname}")
+        if not allow_private:
+            raise SecurityError(f"Cannot connect to localhost/internal IPs: {hostname}")
+        logger.warning("Private egress URL allowed by operator override")
+        return
 
     # Block cloud metadata endpoints (AWS/GCP/Azure)
     if hostname in ("169.254.169.254", "metadata.google.internal"):
@@ -379,7 +393,10 @@ def validate_url(url: str) -> None:
     try:
         addr = ipaddress.ip_address(hostname)
         if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
-            raise SecurityError(f"Cannot connect to private/reserved IP: {hostname}")
+            if not allow_private:
+                raise SecurityError(f"Cannot connect to private/reserved IP: {hostname}")
+            logger.warning("Private egress URL allowed by operator override")
+            return
     except ValueError:
         pass  # hostname is a domain name — resolve below
 
@@ -394,7 +411,10 @@ def validate_url(url: str) -> None:
         try:
             addr = ipaddress.ip_address(resolved_ip)
             if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
-                raise SecurityError(f"Hostname '{hostname}' resolves to private/reserved IP: {resolved_ip}")
+                if not allow_private:
+                    raise SecurityError(f"Hostname '{hostname}' resolves to private/reserved IP: {resolved_ip}")
+                logger.warning("Private egress URL allowed by operator override")
+                return
         except ValueError:
             continue
 

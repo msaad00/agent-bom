@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from agent_bom.api.graph_store import _escape_like_query, _node_search_text
+from agent_bom.api.graph_store import _escape_like_query, _node_search_text, decode_graph_cursor, encode_graph_cursor
 
 from .postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
 
@@ -725,12 +725,13 @@ class PostgresGraphStore:
         scan_id: str = "",
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
+        cursor: str | None = None,
         offset: int = 0,
         limit: int = 500,
-    ) -> tuple[str, str, list[Any], int]:
+    ) -> tuple[str, str, list[Any], int, str | None]:
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
         if not effective_scan_id:
-            return scan_id, "", [], 0
+            return scan_id, "", [], 0, None
         with _tenant_connection(self._pool) as conn:
             created_row = conn.execute(
                 "SELECT created_at FROM graph_snapshots WHERE scan_id = %s AND tenant_id = %s",
@@ -753,6 +754,21 @@ class PostgresGraphStore:
                 ).fetchone()[0]
                 or 0
             )
+            row_params = list(params)
+            cursor_clause = ""
+            if cursor:
+                severity_id, risk_score, label, node_id = decode_graph_cursor(cursor)
+                cursor_clause = """
+                AND (
+                    severity_id < %s
+                    OR (severity_id = %s AND risk_score < %s)
+                    OR (severity_id = %s AND risk_score = %s AND label > %s)
+                    OR (severity_id = %s AND risk_score = %s AND label = %s AND id > %s)
+                )
+                """
+                row_params.extend(
+                    [severity_id, severity_id, risk_score, severity_id, risk_score, label, severity_id, risk_score, label, node_id]
+                )
             rows = conn.execute(
                 f"""
                 SELECT
@@ -761,12 +777,17 @@ class PostgresGraphStore:
                     attributes, compliance_tags, data_sources, dimensions
                 FROM graph_nodes
                 WHERE {where_sql}
+                {cursor_clause}
                 ORDER BY severity_id DESC, risk_score DESC, label ASC, id ASC
                 LIMIT %s OFFSET %s
                 """,  # nosec B608 - where_sql is built from static clause fragments
-                [*params, limit, offset],
+                [*row_params, limit + 1 if cursor else limit, 0 if cursor else offset],
             ).fetchall()
-            return effective_scan_id, str(created_row[0]) if created_row else "", [self._node_from_row(row) for row in rows], total
+            has_more = len(rows) > limit if cursor else offset + limit < total
+            rows = rows[:limit]
+            nodes = [self._node_from_row(row) for row in rows]
+            next_cursor = encode_graph_cursor(nodes[-1]) if has_more and nodes else None
+            return effective_scan_id, str(created_row[0]) if created_row else "", nodes, total, next_cursor
 
     def edges_for_node_ids(
         self,
@@ -820,12 +841,13 @@ class PostgresGraphStore:
         min_severity_rank: int = 0,
         compliance_prefixes: set[str] | None = None,
         data_sources: set[str] | None = None,
+        cursor: str | None = None,
         offset: int = 0,
         limit: int = 50,
     ):
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
         if not effective_scan_id:
-            return [], 0
+            return [], 0, None
 
         with _tenant_connection(self._pool) as conn:
             search_where = [
@@ -865,7 +887,22 @@ class PostgresGraphStore:
             where_sql = " AND ".join(search_where)
             total = int(conn.execute("SELECT COUNT(*) " + from_clause + " WHERE " + where_sql, params).fetchone()[0] or 0)
             if total == 0:
-                return [], 0
+                return [], 0, None
+            row_params = list(params)
+            cursor_clause = ""
+            if cursor:
+                severity_id, risk_score, label, node_id = decode_graph_cursor(cursor)
+                cursor_clause = """
+                AND (
+                    gn.severity_id < %s
+                    OR (gn.severity_id = %s AND gn.risk_score < %s)
+                    OR (gn.severity_id = %s AND gn.risk_score = %s AND gn.label > %s)
+                    OR (gn.severity_id = %s AND gn.risk_score = %s AND gn.label = %s AND gn.id > %s)
+                )
+                """
+                row_params.extend(
+                    [severity_id, severity_id, risk_score, severity_id, risk_score, label, severity_id, risk_score, label, node_id]
+                )
             rows = conn.execute(
                 """
                 SELECT
@@ -876,10 +913,15 @@ class PostgresGraphStore:
                 + from_clause
                 + " WHERE "
                 + where_sql
+                + cursor_clause
                 + " ORDER BY gn.severity_id DESC, gn.risk_score DESC, gn.label ASC, gn.id ASC LIMIT %s OFFSET %s",
-                [*params, limit, offset],
+                [*row_params, limit + 1 if cursor else limit, 0 if cursor else offset],
             ).fetchall()
-            return [self._node_from_row(row) for row in rows], total
+            has_more = len(rows) > limit if cursor else offset + limit < total
+            rows = rows[:limit]
+            nodes = [self._node_from_row(row) for row in rows]
+            next_cursor = encode_graph_cursor(nodes[-1]) if has_more and nodes else None
+            return nodes, total, next_cursor
 
     def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict[str, Any], created_at: str) -> None:
         with _tenant_connection(self._pool) as conn:

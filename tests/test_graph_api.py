@@ -241,10 +241,11 @@ class TestGraphEndpointLogic:
         )
         store.save_graph(graph)
 
-        results, total = store.search_nodes(tenant_id="default", query="vector", offset=0, limit=10)
+        results, total, next_cursor = store.search_nodes(tenant_id="default", query="vector", offset=0, limit=10)
 
         assert total == 1
         assert [node.id for node in results] == ["server:acme:vector"]
+        assert next_cursor is None
 
     def test_sqlite_graph_store_search_applies_slice_filters(self, tmp_path):
         store = SQLiteGraphStore(tmp_path / "graph.db")
@@ -271,7 +272,7 @@ class TestGraphEndpointLogic:
         )
         store.save_graph(graph)
 
-        results, total = store.search_nodes(
+        results, total, next_cursor = store.search_nodes(
             tenant_id="default",
             query="vector",
             entity_types={"server"},
@@ -284,6 +285,7 @@ class TestGraphEndpointLogic:
 
         assert total == 1
         assert [node.id for node in results] == ["server:prod:vector"]
+        assert next_cursor is None
 
     def test_sqlite_graph_store_search_escapes_like_wildcards(self, tmp_path):
         store = SQLiteGraphStore(tmp_path / "graph.db")
@@ -293,8 +295,8 @@ class TestGraphEndpointLogic:
         graph.add_node(UnifiedNode(id="agent:plain", entity_type=EntityType.AGENT, label="plain agent"))
         store.save_graph(graph)
 
-        percent_results, percent_total = store.search_nodes(tenant_id="default", query="%", offset=0, limit=10)
-        underscore_results, underscore_total = store.search_nodes(tenant_id="default", query="_", offset=0, limit=10)
+        percent_results, percent_total, _ = store.search_nodes(tenant_id="default", query="%", offset=0, limit=10)
+        underscore_results, underscore_total, _ = store.search_nodes(tenant_id="default", query="_", offset=0, limit=10)
 
         assert percent_total == 1
         assert [node.id for node in percent_results] == ["server:percent"]
@@ -309,7 +311,7 @@ class TestGraphEndpointLogic:
 
         monkeypatch.setattr(SQLiteGraphStore, "_search_query_expression", staticmethod(lambda query: '"'))
 
-        results, total = store.search_nodes(tenant_id="default", query="vector", offset=0, limit=10)
+        results, total, _ = store.search_nodes(tenant_id="default", query="vector", offset=0, limit=10)
 
         assert total == 1
         assert [node.id for node in results] == ["server:vector"]
@@ -394,16 +396,49 @@ class _RecordingGraphStore:
         scan_id: str = "",
         entity_types=None,
         min_severity_rank: int = 0,
+        cursor: str | None = None,
         offset: int = 0,
         limit: int = 500,
     ):
-        self.calls.append(("page_nodes", tenant_id, scan_id, entity_types, min_severity_rank, offset, limit))
-        nodes = list(self.graph.nodes.values())
+        self.calls.append(("page_nodes", tenant_id, scan_id, entity_types, min_severity_rank, cursor, offset, limit))
+        nodes = sorted(
+            self.graph.nodes.values(),
+            key=lambda node: (-node.severity_id, -(node.risk_score or 0.0), node.label, node.id),
+        )
         if entity_types:
             nodes = [node for node in nodes if node.entity_type.value in entity_types]
         if min_severity_rank:
             nodes = [node for node in nodes if node.severity_id >= min_severity_rank]
-        return self.graph.scan_id, self.graph.created_at, nodes[offset : offset + limit], len(nodes)
+        full_total = len(nodes)
+        if cursor:
+            from agent_bom.api.graph_store import decode_graph_cursor, encode_graph_cursor
+
+            severity_id, risk_score, label, node_id = decode_graph_cursor(cursor)
+            nodes = [
+                node
+                for node in nodes
+                if (
+                    node.severity_id < severity_id
+                    or (node.severity_id == severity_id and (node.risk_score or 0.0) < risk_score)
+                    or (node.severity_id == severity_id and (node.risk_score or 0.0) == risk_score and node.label > label)
+                    or (
+                        node.severity_id == severity_id
+                        and (node.risk_score or 0.0) == risk_score
+                        and node.label == label
+                        and node.id > node_id
+                    )
+                )
+            ]
+            page = nodes[:limit]
+            next_cursor = encode_graph_cursor(page[-1]) if len(nodes) > limit and page else None
+            return self.graph.scan_id, self.graph.created_at, page, full_total, next_cursor
+        page = nodes[offset : offset + limit]
+        next_cursor = None
+        if offset + limit < full_total and page:
+            from agent_bom.api.graph_store import encode_graph_cursor
+
+            next_cursor = encode_graph_cursor(page[-1])
+        return self.graph.scan_id, self.graph.created_at, page, full_total, next_cursor
 
     def edges_for_node_ids(self, *, tenant_id: str = "", scan_id: str = "", node_ids: set[str]):
         self.calls.append(("edges_for_node_ids", tenant_id, scan_id, tuple(sorted(node_ids))))
@@ -419,6 +454,7 @@ class _RecordingGraphStore:
         min_severity_rank: int = 0,
         compliance_prefixes=None,
         data_sources=None,
+        cursor: str | None = None,
         offset: int = 0,
         limit: int = 50,
     ):
@@ -432,6 +468,7 @@ class _RecordingGraphStore:
                 min_severity_rank,
                 compliance_prefixes,
                 data_sources,
+                cursor,
                 offset,
                 limit,
             )
@@ -451,7 +488,37 @@ class _RecordingGraphStore:
             ]
         if data_sources:
             matches = [node for node in matches if set(node.data_sources).intersection(data_sources)]
-        return matches[offset : offset + limit], len(matches)
+        matches = sorted(matches, key=lambda node: (-node.severity_id, -(node.risk_score or 0.0), node.label, node.id))
+        full_total = len(matches)
+        if cursor:
+            from agent_bom.api.graph_store import decode_graph_cursor, encode_graph_cursor
+
+            severity_id, risk_score, label, node_id = decode_graph_cursor(cursor)
+            matches = [
+                node
+                for node in matches
+                if (
+                    node.severity_id < severity_id
+                    or (node.severity_id == severity_id and (node.risk_score or 0.0) < risk_score)
+                    or (node.severity_id == severity_id and (node.risk_score or 0.0) == risk_score and node.label > label)
+                    or (
+                        node.severity_id == severity_id
+                        and (node.risk_score or 0.0) == risk_score
+                        and node.label == label
+                        and node.id > node_id
+                    )
+                )
+            ]
+            page = matches[:limit]
+            next_cursor = encode_graph_cursor(page[-1]) if len(matches) > limit and page else None
+            return page, full_total, next_cursor
+        page = matches[offset : offset + limit]
+        next_cursor = None
+        if offset + limit < full_total and page:
+            from agent_bom.api.graph_store import encode_graph_cursor
+
+            next_cursor = encode_graph_cursor(page[-1])
+        return page, full_total, next_cursor
 
     def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict, created_at: str) -> None:
         self.calls.append(("save_preset", tenant_id, name))
@@ -612,9 +679,50 @@ class TestGraphStoreBackendSelection:
             4,
             {"CIS"},
             {"runtime-proxy"},
+            None,
             0,
             50,
         ) in recording_graph_store.calls
+
+    def test_graph_overview_supports_cursor_pagination(self, recording_graph_store):
+        recording_graph_store.graph.add_node(
+            UnifiedNode(id="server:b", entity_type=EntityType.SERVER, label="server-b", severity="high", severity_id=4)
+        )
+        recording_graph_store.graph.add_node(
+            UnifiedNode(id="server:c", entity_type=EntityType.SERVER, label="server-c", severity="high", severity_id=4)
+        )
+        client = TestClient(app)
+
+        first = client.get("/v1/graph", params={"entity_types": "agent,server", "limit": 2})
+        assert first.status_code == 200
+        next_cursor = first.json()["pagination"]["next_cursor"]
+        assert next_cursor
+
+        second = client.get("/v1/graph", params={"entity_types": "agent,server", "limit": 2, "cursor": next_cursor})
+        assert second.status_code == 200
+        assert second.json()["pagination"]["cursor"] == next_cursor
+        assert second.json()["pagination"]["offset"] == 0
+
+    def test_graph_search_supports_cursor_pagination(self, recording_graph_store):
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:b", entity_type=EntityType.SERVER, label="agent-b server"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:c", entity_type=EntityType.SERVER, label="agent-c server"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:d", entity_type=EntityType.SERVER, label="agent-d server"))
+        client = TestClient(app)
+
+        first = client.get("/v1/graph/search", params={"q": "server", "limit": 2})
+        assert first.status_code == 200
+        next_cursor = first.json()["pagination"]["next_cursor"]
+        assert next_cursor
+
+        second = client.get("/v1/graph/search", params={"q": "server", "limit": 2, "cursor": next_cursor})
+        assert second.status_code == 200
+        assert second.json()["pagination"]["cursor"] == next_cursor
+
+    def test_graph_cursor_rejects_invalid_values(self, recording_graph_store):
+        client = TestClient(app)
+        response = client.get("/v1/graph", params={"cursor": "not-a-real-cursor"})
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Invalid graph cursor"
 
     def test_graph_paths_reachable_nodes_follow_traversable_edges_only(self, recording_graph_store):
         recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")

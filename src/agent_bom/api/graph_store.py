@@ -8,6 +8,7 @@ provide the same contract for multi-tenant API deployments.
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 import sqlite3
@@ -62,6 +63,28 @@ def _node_search_text(node: UnifiedNode) -> str:
     return " ".join(part for part in parts if part).lower()
 
 
+def _node_sort_key(node: UnifiedNode) -> tuple[int, float, str, str]:
+    return (int(node.severity_id or 0), float(node.risk_score or 0.0), node.label or "", node.id)
+
+
+def encode_graph_cursor(node: UnifiedNode) -> str:
+    payload = json.dumps(list(_node_sort_key(node)), separators=(",", ":"), ensure_ascii=True).encode()
+    return base64.urlsafe_b64encode(payload).decode().rstrip("=")
+
+
+def decode_graph_cursor(cursor: str) -> tuple[int, float, str, str]:
+    try:
+        padded = cursor + "=" * (-len(cursor) % 4)
+        raw = base64.urlsafe_b64decode(padded.encode()).decode()
+        values = json.loads(raw)
+        if not isinstance(values, list) or len(values) != 4:
+            raise ValueError
+        severity_id, risk_score, label, node_id = values
+        return int(severity_id), float(risk_score), str(label), str(node_id)
+    except Exception as exc:  # pragma: no cover - normalized into ValueError for route handling
+        raise ValueError("Invalid graph cursor") from exc
+
+
 class GraphStoreProtocol(Protocol):
     """Shared graph store contract used by the API pipeline and routes."""
 
@@ -100,9 +123,10 @@ class GraphStoreProtocol(Protocol):
         scan_id: str = "",
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
+        cursor: str | None = None,
         offset: int = 0,
         limit: int = 500,
-    ) -> tuple[str, str, list[UnifiedNode], int]: ...
+    ) -> tuple[str, str, list[UnifiedNode], int, str | None]: ...
 
     def edges_for_node_ids(
         self,
@@ -122,9 +146,10 @@ class GraphStoreProtocol(Protocol):
         min_severity_rank: int = 0,
         compliance_prefixes: set[str] | None = None,
         data_sources: set[str] | None = None,
+        cursor: str | None = None,
         offset: int = 0,
         limit: int = 50,
-    ) -> tuple[list[UnifiedNode], int]: ...
+    ) -> tuple[list[UnifiedNode], int, str | None]: ...
 
     def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict[str, Any], created_at: str) -> None: ...
 
@@ -437,16 +462,17 @@ class SQLiteGraphStore:
         scan_id: str = "",
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
+        cursor: str | None = None,
         offset: int = 0,
         limit: int = 500,
-    ) -> tuple[str, str, list[UnifiedNode], int]:
+    ) -> tuple[str, str, list[UnifiedNode], int, str | None]:
         conn = self._open_ro_conn()
         if conn is None:
-            return scan_id, "", [], 0
+            return scan_id, "", [], 0, None
         try:
             effective_scan_id, created_at = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
             if not effective_scan_id:
-                return scan_id, "", [], 0
+                return scan_id, "", [], 0, None
             where = ["tenant_id = ?", "scan_id = ?"]
             params: list[Any] = [tenant_id, effective_scan_id]
             if entity_types:
@@ -464,6 +490,21 @@ class SQLiteGraphStore:
                 ).fetchone()[0]
                 or 0
             )
+            row_params = list(params)
+            cursor_clause = ""
+            if cursor:
+                severity_id, risk_score, label, node_id = decode_graph_cursor(cursor)
+                cursor_clause = """
+                AND (
+                    severity_id < ?
+                    OR (severity_id = ? AND risk_score < ?)
+                    OR (severity_id = ? AND risk_score = ? AND label > ?)
+                    OR (severity_id = ? AND risk_score = ? AND label = ? AND id > ?)
+                )
+                """
+                row_params.extend(
+                    [severity_id, severity_id, risk_score, severity_id, risk_score, label, severity_id, risk_score, label, node_id]
+                )
             rows = conn.execute(
                 f"""
                 SELECT
@@ -472,12 +513,17 @@ class SQLiteGraphStore:
                     attributes, compliance_tags, data_sources, dimensions
                 FROM graph_nodes
                 WHERE {where_sql}
+                {cursor_clause}
                 ORDER BY severity_id DESC, risk_score DESC, label ASC, id ASC
                 LIMIT ? OFFSET ?
                 """,  # nosec B608 - where_sql is built from static clause fragments
-                [*params, limit, offset],
+                [*row_params, limit + 1 if cursor else limit, 0 if cursor else offset],
             ).fetchall()
-            return effective_scan_id, created_at, [self._node_from_row(row) for row in rows], total
+            has_more = len(rows) > limit if cursor else offset + limit < total
+            rows = rows[:limit]
+            nodes = [self._node_from_row(row) for row in rows]
+            next_cursor = encode_graph_cursor(nodes[-1]) if has_more and nodes else None
+            return effective_scan_id, created_at, nodes, total, next_cursor
         finally:
             conn.close()
 
@@ -538,17 +584,18 @@ class SQLiteGraphStore:
         min_severity_rank: int = 0,
         compliance_prefixes: set[str] | None = None,
         data_sources: set[str] | None = None,
+        cursor: str | None = None,
         offset: int = 0,
         limit: int = 50,
-    ) -> tuple[list[UnifiedNode], int]:
+    ) -> tuple[list[UnifiedNode], int, str | None]:
         conn = self._open_ro_conn()
         if conn is None:
-            return [], 0
+            return [], 0, None
         try:
             conn_ro: sqlite3.Connection = conn
             effective_scan_id = scan_id or sqlite_graph_store.latest_snapshot_id(conn, tenant_id=tenant_id)
             if not effective_scan_id:
-                return [], 0
+                return [], 0, None
             fts_query = self._search_query_expression(query)
             search_where = [
                 "gns.tenant_id = ?",
@@ -557,7 +604,7 @@ class SQLiteGraphStore:
             params: list[Any] = [tenant_id, effective_scan_id]
             like_query = f"%{_escape_like_query(query.lower())}%"
 
-            def _run_search(*, use_fts: bool) -> tuple[list[UnifiedNode], int]:
+            def _run_search(*, use_fts: bool) -> tuple[list[UnifiedNode], int, str | None]:
                 local_where = list(search_where)
                 local_params = list(params)
                 if use_fts:
@@ -587,6 +634,21 @@ class SQLiteGraphStore:
                         source_filters.append(clause)
                         local_params.extend(clause_params)
                     local_where.append("(" + " OR ".join(source_filters) + ")")
+                row_params = list(local_params)
+                cursor_clause = ""
+                if cursor:
+                    severity_id, risk_score, label, node_id = decode_graph_cursor(cursor)
+                    cursor_clause = """
+                    AND (
+                        gn.severity_id < ?
+                        OR (gn.severity_id = ? AND gn.risk_score < ?)
+                        OR (gn.severity_id = ? AND gn.risk_score = ? AND gn.label > ?)
+                        OR (gn.severity_id = ? AND gn.risk_score = ? AND gn.label = ? AND gn.id > ?)
+                    )
+                    """
+                    row_params.extend(
+                        [severity_id, severity_id, risk_score, severity_id, risk_score, label, severity_id, risk_score, label, node_id]
+                    )
 
                 where_sql = " AND ".join(local_where)
                 total = int(
@@ -597,7 +659,7 @@ class SQLiteGraphStore:
                     or 0
                 )
                 if total == 0:
-                    return [], 0
+                    return [], 0, None
                 rows = conn_ro.execute(
                     """
                     SELECT
@@ -608,10 +670,15 @@ class SQLiteGraphStore:
                     + from_clause
                     + " WHERE "
                     + where_sql
+                    + cursor_clause
                     + " ORDER BY gn.severity_id DESC, gn.risk_score DESC, gn.label ASC, gn.id ASC LIMIT ? OFFSET ?",
-                    [*local_params, limit, offset],
+                    [*row_params, limit + 1 if cursor else limit, 0 if cursor else offset],
                 ).fetchall()
-                return [self._node_from_row(row) for row in rows], total
+                has_more = len(rows) > limit if cursor else offset + limit < total
+                rows = rows[:limit]
+                nodes = [self._node_from_row(row) for row in rows]
+                next_cursor = encode_graph_cursor(nodes[-1]) if has_more and nodes else None
+                return nodes, total, next_cursor
 
             from_clause = """
                 FROM graph_node_search gns

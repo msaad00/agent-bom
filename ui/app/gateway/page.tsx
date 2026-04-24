@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   api,
   type GatewayPolicy,
+  type GatewayPolicyRuntimeSummary,
   type GatewayStatsResponse,
   type PolicyAuditEntry,
   type PolicyMode,
@@ -38,6 +39,14 @@ import {
 const MODE_COLORS: Record<PolicyMode, string> = {
   audit: "bg-blue-950 text-blue-300 border-blue-800",
   enforce: "bg-red-950 text-red-300 border-red-800",
+};
+
+const RUNTIME_COLORS: Record<GatewayPolicyRuntimeSummary["rollout_mode"], string> = {
+  disabled: "bg-zinc-900 text-zinc-300 border-zinc-700",
+  advisory_only: "bg-blue-950 text-blue-300 border-blue-800",
+  mixed: "bg-amber-950 text-amber-300 border-amber-800",
+  default_deny: "bg-red-950 text-red-300 border-red-800",
+  blocking: "bg-emerald-950 text-emerald-300 border-emerald-800",
 };
 
 // ─── Page ───────────────────────────────────────────────────────────────────
@@ -161,12 +170,15 @@ export default function GatewayPage() {
 
       {/* Stats */}
       {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard label="Total Policies" value={stats.total_policies} icon={Lock} color="text-zinc-400" />
-          <StatCard label="Enforce Mode" value={stats.enforce_count} icon={ShieldAlert} color="text-red-400" />
-          <StatCard label="Audit Mode" value={stats.audit_count} icon={ShieldCheck} color="text-blue-400" />
-          <StatCard label="Blocked" value={stats.blocked_count} icon={ShieldAlert} color="text-orange-400" />
-        </div>
+        <>
+          <RuntimePostureCard runtime={stats.policy_runtime} />
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <StatCard label="Total Policies" value={stats.total_policies} icon={Lock} color="text-zinc-400" />
+            <StatCard label="Enforce Mode" value={stats.enforce_count} icon={ShieldAlert} color="text-red-400" />
+            <StatCard label="Audit Mode" value={stats.audit_count} icon={ShieldCheck} color="text-blue-400" />
+            <StatCard label="Blocked" value={stats.blocked_count} icon={ShieldAlert} color="text-orange-400" />
+          </div>
+        </>
       )}
 
       {/* Tabs */}
@@ -531,6 +543,53 @@ function StatCard({
       <Icon className={`w-4 h-4 mb-2 ${color}`} />
       <div className="text-2xl font-bold font-mono">{value}</div>
       <div className="text-xs text-zinc-500 mt-0.5">{label}</div>
+    </div>
+  );
+}
+
+function RuntimePostureCard({ runtime }: { runtime: GatewayPolicyRuntimeSummary }) {
+  const highlights = [
+    { label: "Enabled policies", value: String(runtime.enabled_policies) },
+    { label: "Blocking rules", value: String(runtime.blocking_rules) },
+    { label: "Advisory rules", value: String(runtime.advisory_rules) },
+    { label: "Allowlist rules", value: String(runtime.allowlist_rules) },
+  ];
+
+  if (runtime.protects_secret_paths) {
+    highlights.push({ label: "Secret path guard", value: "On" });
+  }
+  if (runtime.restricts_unknown_egress) {
+    highlights.push({ label: "Unknown egress guard", value: "On" });
+  }
+
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-[linear-gradient(135deg,rgba(24,24,27,0.98),rgba(9,9,11,0.98))] p-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+              Runtime posture
+            </span>
+            <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] ${RUNTIME_COLORS[runtime.rollout_mode]}`}>
+              {runtime.rollout_mode.replaceAll("_", " ")}
+            </span>
+          </div>
+          <p className="max-w-2xl text-sm text-zinc-300">{runtime.summary}</p>
+          {runtime.denied_tool_classes.length > 0 && (
+            <p className="text-xs text-zinc-500">
+              Denied tool classes: {runtime.denied_tool_classes.join(", ")}
+            </p>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {highlights.map((item) => (
+            <div key={item.label} className="rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+              <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-600">{item.label}</div>
+              <div className="mt-1 text-sm font-semibold text-zinc-100">{item.value}</div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

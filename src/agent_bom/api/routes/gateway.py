@@ -344,13 +344,22 @@ async def discovered_upstreams(request: Request) -> dict:
 @router.get("/v1/gateway/stats", tags=["gateway"], dependencies=[_dep("audit_read")])
 async def gateway_stats(request: Request):
     """Gateway-wide statistics."""
+    from agent_bom.gateway import summarize_gateway_policies
+
     tenant_id = getattr(request.state, "tenant_id", "default")
     policies = _get_policy_store().list_policies(tenant_id=tenant_id)
     audit = _get_policy_store().list_audit_entries(limit=10000, tenant_id=tenant_id)
-    enforce_count = sum(1 for p in policies if p.mode.value == "enforce" and p.enabled)
-    audit_count = sum(1 for p in policies if p.mode.value == "audit" and p.enabled)
+    active_policies = [p for p in policies if p.enabled]
+    enforce_count = sum(1 for p in active_policies if p.mode.value == "enforce")
+    audit_count = sum(1 for p in active_policies if p.mode.value == "audit")
     blocked = sum(1 for e in audit if e.action_taken == "blocked")
     alerted = sum(1 for e in audit if e.action_taken == "alerted")
+    policy_runtime = {
+        "source": "control_plane",
+        "source_kind": "policy_store",
+        "enabled_policies": len(active_policies),
+        **summarize_gateway_policies(active_policies),
+    }
     return {
         "total_policies": len(policies),
         "enforce_count": enforce_count,
@@ -360,4 +369,5 @@ async def gateway_stats(request: Request):
         "audit_entries": len(audit),
         "blocked_count": blocked,
         "alerted_count": alerted,
+        "policy_runtime": policy_runtime,
     }

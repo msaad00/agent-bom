@@ -58,12 +58,14 @@ def _paginate(items: list, offset: int, limit: int) -> tuple[list, dict]:
     }
 
 
-def _page_meta(total: int, offset: int, limit: int) -> dict:
+def _page_meta(total: int, offset: int, limit: int, *, cursor: str | None = None, next_cursor: str | None = None) -> dict:
     return {
         "total": total,
         "offset": offset,
         "limit": limit,
-        "has_more": offset + limit < total,
+        "cursor": cursor or "",
+        "next_cursor": next_cursor or "",
+        "has_more": bool(next_cursor) if cursor else offset + limit < total,
     }
 
 
@@ -174,6 +176,7 @@ async def get_graph(
     static_only: bool = Query(False, description="Exclude runtime edges"),
     dynamic_only: bool = Query(False, description="Only runtime edges"),
     max_depth: Optional[int] = Query(None, ge=1, le=20, description="Max traversal depth"),
+    cursor: Optional[str] = Query(None, description="Opaque cursor for keyset node pagination"),
     offset: int = Query(0, ge=0, description="Pagination offset for nodes"),
     limit: int = Query(500, ge=1, le=5000, description="Max nodes to return"),
 ) -> dict:
@@ -245,15 +248,19 @@ async def get_graph(
             "pagination": pagination,
         }
 
-    effective_scan_id, created_at, paged_nodes, total = await _graph_store_call(
-        graph_store.page_nodes,
-        scan_id=requested_scan_id,
-        tenant_id=tenant,
-        entity_types=et_set,
-        min_severity_rank=min_rank,
-        offset=offset,
-        limit=limit,
-    )
+    try:
+        effective_scan_id, created_at, paged_nodes, total, next_cursor = await _graph_store_call(
+            graph_store.page_nodes,
+            scan_id=requested_scan_id,
+            tenant_id=tenant,
+            entity_types=et_set,
+            min_severity_rank=min_rank,
+            cursor=cursor,
+            offset=offset,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     paged_ids = {n.id for n in paged_nodes}
     paged_edges = await _graph_store_call(
         graph_store.edges_for_node_ids,
@@ -276,7 +283,7 @@ async def get_graph(
             entity_types=et_set,
             min_severity_rank=min_rank,
         ),
-        "pagination": _page_meta(total, offset, limit),
+        "pagination": _page_meta(total, offset, limit, cursor=cursor, next_cursor=next_cursor),
     }
 
 
@@ -342,6 +349,7 @@ async def search_graph(
     min_severity: Optional[str] = Query(None, description="Minimum severity (critical/high/medium/low)"),
     compliance_prefixes: Optional[str] = Query(None, description="Comma-separated compliance prefixes"),
     data_sources: Optional[str] = Query(None, description="Comma-separated data sources"),
+    cursor: Optional[str] = Query(None, description="Opaque cursor for keyset search pagination"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     limit: int = Query(50, ge=1, le=500, description="Max results"),
 ) -> dict:
@@ -350,18 +358,22 @@ async def search_graph(
     min_rank = SEVERITY_RANK.get(min_severity.lower(), 0) if min_severity else 0
     prefix_filters = {value.strip().upper() for value in compliance_prefixes.split(",") if value.strip()} if compliance_prefixes else None
     data_source_filters = {value.strip() for value in data_sources.split(",") if value.strip()} if data_sources else None
-    results, total = await _graph_store_call(
-        _get_graph_store_or_503().search_nodes,
-        scan_id=scan_id or "",
-        tenant_id=_tenant(request),
-        query=q,
-        entity_types=entity_type_filters,
-        min_severity_rank=min_rank,
-        compliance_prefixes=prefix_filters,
-        data_sources=data_source_filters,
-        offset=offset,
-        limit=limit,
-    )
+    try:
+        results, total, next_cursor = await _graph_store_call(
+            _get_graph_store_or_503().search_nodes,
+            scan_id=scan_id or "",
+            tenant_id=_tenant(request),
+            query=q,
+            entity_types=entity_type_filters,
+            min_severity_rank=min_rank,
+            compliance_prefixes=prefix_filters,
+            data_sources=data_source_filters,
+            cursor=cursor,
+            offset=offset,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {
         "query": q,
         "filters": {
@@ -376,7 +388,9 @@ async def search_graph(
             "total": total,
             "offset": offset,
             "limit": limit,
-            "has_more": offset + limit < total,
+            "cursor": cursor or "",
+            "next_cursor": next_cursor or "",
+            "has_more": bool(next_cursor) if cursor else offset + limit < total,
         },
     }
 

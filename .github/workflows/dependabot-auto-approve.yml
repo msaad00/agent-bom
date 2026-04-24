@@ -1,8 +1,10 @@
-# Auto-approve dependabot patch/minor PRs when CI passes.
+# Auto-approve dependabot patch/minor PRs after a short quarantine window.
 #
 # Dependabot PRs still require branch protection checks (CI, linting,
 # security scan) — this workflow only adds the second approval so the
-# 2-review requirement is satisfied without human toil.
+# 2-review requirement is satisfied without human toil. New dependency PRs are
+# intentionally not approved immediately so newly published malicious packages
+# have time to be flagged by registries and advisory feeds.
 #
 # Major version bumps are NOT auto-approved and require manual review.
 
@@ -29,10 +31,30 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
+      - name: Enforce dependency quarantine window
+        id: quarantine
+        env:
+          PR_CREATED_AT: ${{ github.event.pull_request.created_at }}
+          MIN_AGE_SECONDS: "86400"
+        run: |
+          created_epoch="$(date -u -d "$PR_CREATED_AT" +%s)"
+          now_epoch="$(date -u +%s)"
+          age_seconds="$((now_epoch - created_epoch))"
+          if [ "$age_seconds" -lt "$MIN_AGE_SECONDS" ]; then
+            remaining="$((MIN_AGE_SECONDS - age_seconds))"
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping Dependabot auto-approval until the 24h quarantine window has elapsed (${remaining}s remaining). Re-run this workflow after the window if CI is still green."
+            exit 0
+          fi
+          echo "eligible=true" >> "$GITHUB_OUTPUT"
+
       - name: Auto-approve patch and minor updates
         if: >-
-          steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
-          steps.metadata.outputs.update-type == 'version-update:semver-minor'
+          steps.quarantine.outputs.eligible == 'true' &&
+          (
+            steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+            steps.metadata.outputs.update-type == 'version-update:semver-minor'
+          )
         run: gh pr review --approve "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}

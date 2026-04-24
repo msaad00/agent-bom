@@ -181,9 +181,32 @@ fi
 
 STATE_ROOT="${STATE_DIR}/${CLUSTER_NAME}"
 mkdir -p "${STATE_ROOT}"
+chmod 700 "${STATE_ROOT}" 2>/dev/null || true
 TF_ROOT="${STATE_ROOT}/terraform"
 GENERATED_DIR="${STATE_ROOT}/generated"
 mkdir -p "${TF_ROOT}" "${GENERATED_DIR}"
+
+cat >"${STATE_ROOT}/README.state-security.md" <<EOF
+# agent-bom EKS reference installer state
+
+This directory is local operator state for the EKS reference installer.
+Terraform/OpenTofu state can contain generated database credentials, secret
+ARNs, IAM identifiers, and Helm override paths.
+
+For production and shared admin workstations:
+
+- store this directory on encrypted disk with access limited to the deployment operator
+- prefer a remote Terraform backend such as S3 with SSE-KMS, bucket versioning,
+  object lock where available, and DynamoDB/S3-native state locking
+- do not commit this directory, copy it into tickets, or attach it to support
+  requests without redacting Terraform state and generated secret material
+
+The installer uses local state only for the reference path so pilots can run
+without pre-existing backend infrastructure. Regulated deployments should move
+the generated Terraform root to a customer-managed encrypted backend before
+long-lived operation.
+EOF
+warn "Terraform/OpenTofu state under ${STATE_ROOT} may contain secret material; use encrypted storage or migrate to an S3+KMS remote backend for production."
 
 if [ "$CREATE_CLUSTER" -eq 1 ]; then
   CLUSTER_CONFIG="${GENERATED_DIR}/eksctl-cluster.yaml"

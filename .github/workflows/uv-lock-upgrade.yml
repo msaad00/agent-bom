@@ -49,17 +49,19 @@ jobs:
             echo "AUTOMATION_SSH_SIGNING_KEY is required for signed automation PRs." >&2
             exit 1
           fi
-          mkdir -p "$HOME/.ssh"
-          printf '%s\n' "$AUTOMATION_SSH_SIGNING_KEY" > "$HOME/.ssh/automation_signing_key"
-          chmod 600 "$HOME/.ssh/automation_signing_key"
-          ssh-keygen -y -f "$HOME/.ssh/automation_signing_key" > "$HOME/.ssh/automation_signing_key.pub"
           eval "$(ssh-agent -s)"
-          ssh-add "$HOME/.ssh/automation_signing_key"
+          ssh-add - <<< "$AUTOMATION_SSH_SIGNING_KEY"
+          pubkey_path="$RUNNER_TEMP/automation_signing_key.pub"
+          ssh-keygen -y -f <(printf '%s\n' "$AUTOMATION_SSH_SIGNING_KEY") > "$pubkey_path"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config gpg.format ssh
-          git config user.signingkey "$HOME/.ssh/automation_signing_key.pub"
+          git config user.signingkey "$pubkey_path"
           git config commit.gpgsign true
+          {
+            echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK"
+            echo "SSH_AGENT_PID=$SSH_AGENT_PID"
+          } >> "$GITHUB_ENV"
 
       - name: Open PR if lockfile changed
         if: steps.diff.outputs.changed == 'true'
@@ -92,6 +94,11 @@ jobs:
               --body "$BODY" \
               --base main
           fi
+
+      - name: Stop signing agent
+        if: always() && steps.diff.outputs.changed == 'true'
+        run: |
+          ssh-agent -k || true
 
       - name: No changes
         if: steps.diff.outputs.changed == 'false'

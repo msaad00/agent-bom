@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
   type FleetAgent,
@@ -73,6 +73,8 @@ const TRANSITIONS: Record<FleetLifecycleState, FleetLifecycleState[]> = {
   decommissioned: [],
 };
 
+const FLEET_PAGE_SIZE = 100;
+
 function trustColor(score: number): string {
   if (score >= 80) return "bg-emerald-500";
   if (score >= 50) return "bg-yellow-500";
@@ -96,6 +98,8 @@ export default function FleetPage() {
   const [syncing, setSyncing] = useState(false);
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [fleetTotal, setFleetTotal] = useState(0);
+  const [fleetOffset, setFleetOffset] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [trustThreshold, setTrustThreshold] = useState(50);
   const [autoQuarantine, setAutoQuarantine] = useState(false);
@@ -106,16 +110,25 @@ export default function FleetPage() {
     [agents, trustThreshold]
   );
 
-  const load = () => {
+  const load = useCallback(() => {
     setLoading(true);
     setError(null);
     setWarning(null);
-    Promise.allSettled([api.listFleet(), api.getFleetStats()])
+    const filters = {
+      state: stateFilter === "all" ? undefined : stateFilter,
+      search: search.trim() || undefined,
+      include_quarantined: stateFilter !== "all",
+      limit: FLEET_PAGE_SIZE,
+      offset: fleetOffset,
+    };
+    Promise.allSettled([api.listFleet(filters), api.getFleetStats()])
       .then(([fleetResult, statsResult]) => {
         if (fleetResult.status === "fulfilled") {
           setAgents(fleetResult.value.agents);
+          setFleetTotal(fleetResult.value.total);
         } else {
           setAgents([]);
+          setFleetTotal(0);
         }
 
         if (statsResult.status === "fulfilled") {
@@ -139,9 +152,15 @@ export default function FleetPage() {
         }
       })
       .finally(() => setLoading(false));
-  };
+  }, [fleetOffset, search, stateFilter]);
 
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    setFleetOffset(0);
+  }, [search, stateFilter]);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -168,17 +187,11 @@ export default function FleetPage() {
     });
   };
 
-  const filtered = agents
-    .filter((a) => stateFilter === "all" || a.lifecycle_state === stateFilter)
-    .filter((a) => {
-      if (!search) return true;
-      const q = search.toLowerCase();
-      return (
-        a.name.toLowerCase().includes(q) ||
-        (a.owner ?? "").toLowerCase().includes(q) ||
-        (a.environment ?? "").toLowerCase().includes(q)
-      );
-    });
+  const filtered = agents;
+  const pageStart = fleetTotal > 0 ? fleetOffset + 1 : 0;
+  const pageEnd = fleetTotal > 0 ? Math.min(fleetOffset + agents.length, fleetTotal) : 0;
+  const pageNumber = Math.floor(fleetOffset / FLEET_PAGE_SIZE) + 1;
+  const totalPages = Math.max(1, Math.ceil(fleetTotal / FLEET_PAGE_SIZE));
 
   return (
     <div className="space-y-6">
@@ -311,15 +324,27 @@ export default function FleetPage() {
       })()}
 
       {/* Search + Filter tabs */}
-      <div className="relative w-full sm:w-72">
-        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" />
-        <input
-          type="text"
-          placeholder="Search by name, owner, environment…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-8 pr-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
-        />
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="relative w-full sm:w-96">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-600" />
+          <input
+            type="text"
+            placeholder="Search by name, owner, environment, or tag..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full bg-zinc-900 border border-zinc-700 rounded-lg pl-8 pr-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+          />
+        </div>
+        <div className="text-xs text-zinc-500">
+          {fleetTotal > 0 ? (
+            <span>
+              Showing <span className="font-mono text-zinc-300">{pageStart}-{pageEnd}</span> of{" "}
+              <span className="font-mono text-zinc-300">{fleetTotal}</span> agents
+            </span>
+          ) : (
+            <span>No matching agents</span>
+          )}
+        </div>
       </div>
 
       <div className="flex gap-1.5 flex-wrap">
@@ -483,6 +508,33 @@ export default function FleetPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {!loading && fleetTotal > FLEET_PAGE_SIZE && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3">
+          <div className="text-xs text-zinc-500">
+            Page <span className="font-mono text-zinc-300">{pageNumber}</span> of{" "}
+            <span className="font-mono text-zinc-300">{totalPages}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setFleetOffset((current) => Math.max(0, current - FLEET_PAGE_SIZE))}
+              disabled={fleetOffset === 0}
+              className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              onClick={() => setFleetOffset((current) => current + FLEET_PAGE_SIZE)}
+              disabled={fleetOffset + agents.length >= fleetTotal}
+              className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
         </div>
       )}
     </div>

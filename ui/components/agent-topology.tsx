@@ -17,6 +17,9 @@ import "@xyflow/react/dist/style.css";
 import { Lock, Network, Package, Server, ShieldAlert, Wrench } from "lucide-react";
 import type { Agent } from "@/lib/api";
 
+const MAX_RENDERED_AGENTS = 75;
+const MAX_RENDERED_SERVERS = 220;
+
 // ─── Custom Node Components with proper Handles ─────────────────────────────
 
 function AgentNode({ data }: { data: { label: string; type: string; serverCount: number; vulnCount: number } }) {
@@ -248,6 +251,31 @@ export function AgentTopology({ agents, direction = "LR" }: { agents: Agent[]; d
       credentialedServers,
     };
   }, [agents]);
+  const displayAgents = useMemo(() => {
+    let renderedServers = 0;
+    return [...agents]
+      .sort((left, right) => {
+        const leftServers = left.mcp_servers ?? [];
+        const rightServers = right.mcp_servers ?? [];
+        const leftVulns = leftServers.reduce(
+          (total, server) => total + (server.packages ?? []).reduce((sum, pkg) => sum + (pkg.vulnerabilities?.length ?? 0), 0),
+          0,
+        );
+        const rightVulns = rightServers.reduce(
+          (total, server) => total + (server.packages ?? []).reduce((sum, pkg) => sum + (pkg.vulnerabilities?.length ?? 0), 0),
+          0,
+        );
+        return rightVulns - leftVulns || rightServers.length - leftServers.length || left.name.localeCompare(right.name);
+      })
+      .filter((agent) => {
+        if (renderedServers >= MAX_RENDERED_SERVERS) return false;
+        renderedServers += agent.mcp_servers?.length ?? 0;
+        return true;
+      })
+      .slice(0, MAX_RENDERED_AGENTS);
+  }, [agents]);
+  const hiddenAgentCount = Math.max(0, agents.length - displayAgents.length);
+  const hiddenServerCount = Math.max(0, summary.servers - displayAgents.flatMap((agent) => agent.mcp_servers ?? []).length);
 
   const handleAgentClick = useCallback(
     (name: string) => {
@@ -290,9 +318,16 @@ export function AgentTopology({ agents, direction = "LR" }: { agents: Agent[]; d
           </div>
         </div>
       </div>
+      {(hiddenAgentCount > 0 || hiddenServerCount > 0) && (
+        <div className="border-b border-zinc-800/80 bg-zinc-950/70 px-4 py-2 text-xs text-zinc-400">
+          Showing the highest-risk {displayAgents.length} agents and{" "}
+          {displayAgents.flatMap((agent) => agent.mcp_servers ?? []).length} servers to keep the canvas responsive. Use Fleet search or the
+          Security Graph for the remaining {hiddenAgentCount} agents and {hiddenServerCount} servers.
+        </div>
+      )}
       <div className="px-2 pb-2 pt-1" style={{ height: 400 }}>
         <ReactFlowProvider>
-          <TopologyFlow agents={agents} onAgentClick={handleAgentClick} direction={direction} />
+          <TopologyFlow agents={displayAgents} onAgentClick={handleAgentClick} direction={direction} />
         </ReactFlowProvider>
       </div>
     </div>

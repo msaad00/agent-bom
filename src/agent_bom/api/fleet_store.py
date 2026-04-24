@@ -86,6 +86,18 @@ class FleetStore(Protocol):
     def list_all(self) -> list[FleetAgent]: ...
     def list_summary(self) -> list[dict]: ...
     def list_by_tenant(self, tenant_id: str) -> list[FleetAgent]: ...
+    def query_by_tenant(
+        self,
+        tenant_id: str,
+        *,
+        state: str | None = None,
+        environment: str | None = None,
+        min_trust: float | None = None,
+        search: str | None = None,
+        include_quarantined: bool = False,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[FleetAgent], int]: ...
     def list_tenants(self) -> list[dict]: ...
     def update_state(self, agent_id: str, state: FleetLifecycleState) -> bool: ...
     def batch_put(self, agents: list[FleetAgent]) -> int: ...
@@ -154,6 +166,41 @@ class InMemoryFleetStore:
         with self._lock:
             return [a for a in self._agents.values() if a.tenant_id == tenant_id]
 
+    def query_by_tenant(
+        self,
+        tenant_id: str,
+        *,
+        state: str | None = None,
+        environment: str | None = None,
+        min_trust: float | None = None,
+        search: str | None = None,
+        include_quarantined: bool = False,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[FleetAgent], int]:
+        agents = self.list_by_tenant(tenant_id)
+        if not include_quarantined and state is None:
+            agents = [a for a in agents if a.lifecycle_state.value not in ("quarantined", "decommissioned")]
+        if state:
+            agents = [a for a in agents if a.lifecycle_state.value == state]
+        if environment:
+            agents = [a for a in agents if a.environment == environment]
+        if min_trust is not None:
+            agents = [a for a in agents if (a.trust_score or 0.0) >= min_trust]
+        if search:
+            needle = search.lower()
+            agents = [
+                a
+                for a in agents
+                if needle in a.name.lower()
+                or needle in (a.owner or "").lower()
+                or needle in (a.environment or "").lower()
+                or any(needle in tag.lower() for tag in a.tags)
+            ]
+        agents = sorted(agents, key=lambda a: (a.name.lower(), a.agent_id))
+        total = len(agents)
+        return agents[offset : offset + limit], total
+
     def list_tenants(self) -> list[dict]:
         with self._lock:
             counts: dict[str, int] = {}
@@ -215,6 +262,7 @@ class SQLiteFleetStore:
         """)
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_name ON fleet_agents(name)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_state ON fleet_agents(lifecycle_state)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_state_trust_name ON fleet_agents(lifecycle_state, trust_score DESC, name)")
         self._conn.commit()
 
     def put(self, agent: FleetAgent) -> None:
@@ -288,6 +336,41 @@ class SQLiteFleetStore:
             (tenant_id,),
         ).fetchall()
         return [FleetAgent.model_validate_json(r[0]) for r in rows]
+
+    def query_by_tenant(
+        self,
+        tenant_id: str,
+        *,
+        state: str | None = None,
+        environment: str | None = None,
+        min_trust: float | None = None,
+        search: str | None = None,
+        include_quarantined: bool = False,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[FleetAgent], int]:
+        agents = self.list_by_tenant(tenant_id)
+        if not include_quarantined and state is None:
+            agents = [a for a in agents if a.lifecycle_state.value not in ("quarantined", "decommissioned")]
+        if state:
+            agents = [a for a in agents if a.lifecycle_state.value == state]
+        if environment:
+            agents = [a for a in agents if a.environment == environment]
+        if min_trust is not None:
+            agents = [a for a in agents if (a.trust_score or 0.0) >= min_trust]
+        if search:
+            needle = search.lower()
+            agents = [
+                a
+                for a in agents
+                if needle in a.name.lower()
+                or needle in (a.owner or "").lower()
+                or needle in (a.environment or "").lower()
+                or any(needle in tag.lower() for tag in a.tags)
+            ]
+        agents = sorted(agents, key=lambda a: (a.name.lower(), a.agent_id))
+        total = len(agents)
+        return agents[offset : offset + limit], total
 
     def list_tenants(self) -> list[dict]:
         rows = self._conn.execute(

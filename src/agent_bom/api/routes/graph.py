@@ -6,6 +6,7 @@ Endpoints:
   GET  /v1/graph/paths          — attack paths from a source node
   GET  /v1/graph/impact         — blast radius of a node (reverse BFS)
   GET  /v1/graph/search         — full-text graph search
+  GET  /v1/graph/agents         — paginated agent node selector
   POST /v1/graph/query          — programmable traversal query
   GET  /v1/graph/node/{id}      — single node detail with edges + impact
   GET  /v1/graph/snapshots      — list persisted scan snapshots
@@ -412,6 +413,63 @@ async def search_graph(
             "next_cursor": next_cursor or "",
             "has_more": bool(next_cursor) if cursor else offset + limit < total,
         },
+    }
+
+
+@router.get("/v1/graph/agents", tags=["graph"])
+async def list_graph_agents(
+    request: Request,
+    q: str = Query("", description="Optional agent label/id search"),
+    scan_id: Optional[str] = Query(None, description="Scan ID"),
+    cursor: Optional[str] = Query(None, description="Opaque cursor for keyset pagination"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    limit: int = Query(100, ge=1, le=500, description="Max agents"),
+) -> dict:
+    """List agent nodes for large-graph selectors without loading the full graph."""
+    graph_store = _get_graph_store_or_503()
+    tenant_id = _tenant(request)
+    query = q.strip()
+    if query:
+        agents, total, next_cursor = await _graph_store_call(
+            graph_store.search_nodes,
+            scan_id=scan_id or "",
+            tenant_id=tenant_id,
+            query=query,
+            entity_types={"agent"},
+            cursor=cursor,
+            offset=offset,
+            limit=limit,
+        )
+        effective_scan_id = scan_id or await _graph_store_call(graph_store.latest_snapshot_id, tenant_id=tenant_id)
+        created_at = ""
+    else:
+        effective_scan_id, created_at, agents, total, next_cursor = await _graph_store_call(
+            graph_store.page_nodes,
+            scan_id=scan_id or "",
+            tenant_id=tenant_id,
+            entity_types={"agent"},
+            cursor=cursor,
+            offset=offset,
+            limit=limit,
+        )
+    return {
+        "scan_id": effective_scan_id,
+        "tenant_id": tenant_id,
+        "created_at": created_at,
+        "agents": [
+            {
+                "id": node.id,
+                "label": node.label,
+                "risk_score": node.risk_score,
+                "severity": node.severity,
+                "status": node.status.value if hasattr(node.status, "value") else str(node.status),
+                "data_sources": node.data_sources,
+                "first_seen": node.first_seen,
+                "last_seen": node.last_seen,
+            }
+            for node in agents
+        ],
+        "pagination": _page_meta(total, offset, limit, cursor=cursor, next_cursor=next_cursor),
     }
 
 

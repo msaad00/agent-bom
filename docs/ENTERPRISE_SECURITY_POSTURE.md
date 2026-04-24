@@ -145,6 +145,7 @@ See `site-docs/deployment/backup-restore.md` for the operator runbook.
 A procurement packet should include:
 
 - this security posture
+- `docs/ENTERPRISE_PROCUREMENT_PACKET.md`
 - `docs/CONTROL_MAPPING.md`
 - `docs/SECURITY_ARCHITECTURE.md`
 - `docs/THREAT_MODEL.md`

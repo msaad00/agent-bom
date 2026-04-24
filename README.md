@@ -235,6 +235,7 @@ Backend defaults:
 | proxy and gateway runtime operations | [Runtime Operations](site-docs/deployment/runtime-operations.md) |
 | trust model, auth, tenant isolation | [ENTERPRISE_SECURITY_PLAYBOOK.md](docs/ENTERPRISE_SECURITY_PLAYBOOK.md) |
 | procurement security posture | [ENTERPRISE_SECURITY_POSTURE.md](docs/ENTERPRISE_SECURITY_POSTURE.md) |
+| procurement evidence packet | [ENTERPRISE_PROCUREMENT_PACKET.md](docs/ENTERPRISE_PROCUREMENT_PACKET.md) |
 | SOC 2 / ISO / CIS control mapping | [CONTROL_MAPPING.md](docs/CONTROL_MAPPING.md) |
 
 <details>

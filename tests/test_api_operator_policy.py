@@ -41,6 +41,12 @@ def _clear_rate_limit_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AGENT_BOM_RATE_LIMIT_KEY", raising=False)
     monkeypatch.delenv("AGENT_BOM_AUDIT_HMAC_KEY", raising=False)
     monkeypatch.delenv("AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED", raising=False)
+    monkeypatch.delenv("AGENT_BOM_AUDIT_HMAC_LAST_ROTATED", raising=False)
+    monkeypatch.delenv("AGENT_BOM_AUDIT_HMAC_ROTATION_DAYS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_AUDIT_HMAC_MAX_AGE_DAYS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_COMPLIANCE_SIGNING_LAST_ROTATED", raising=False)
+    monkeypatch.delenv("AGENT_BOM_COMPLIANCE_SIGNING_ROTATION_DAYS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_COMPLIANCE_SIGNING_MAX_AGE_DAYS", raising=False)
 
 
 def _reload_config() -> None:
@@ -152,7 +158,23 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "configured_api_replicas" in body["rate_limit_runtime"]
     assert "fail_closed" in body["rate_limit_runtime"]
     assert body["secret_integrity"]["audit_hmac"]["status"] in {"configured", "ephemeral"}
+    assert body["secret_integrity"]["audit_hmac"]["rotation_tracking_supported"] is True
+    assert body["secret_integrity"]["audit_hmac"]["rotation_status"] in {
+        "ok",
+        "unknown_age",
+        "ephemeral",
+        "rotation_due",
+        "max_age_exceeded",
+    }
     assert body["secret_integrity"]["compliance_signing"]["algorithm"] in {"HMAC-SHA256", "Ed25519"}
+    assert body["secret_integrity"]["compliance_signing"]["rotation_tracking_supported"] is True
+    assert body["secret_integrity"]["compliance_signing"]["rotation_status"] in {
+        "ok",
+        "unknown_age",
+        "ephemeral",
+        "rotation_due",
+        "max_age_exceeded",
+    }
     assert body["tenant_quotas"]["active_scan_jobs"] >= 1
     assert body["tenant_quotas"]["retained_scan_jobs"] >= 1
     assert body["tenant_quotas"]["fleet_agents"] >= 1
@@ -177,6 +199,14 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_auth_policy_reports_secret_integrity_posture(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_rate_limit_env(monkeypatch)
     monkeypatch.setenv("AGENT_BOM_AUDIT_HMAC_KEY", "audit-secret")
+    audit_rotated = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
+    compliance_rotated = (datetime.now(timezone.utc) - timedelta(days=40)).isoformat()
+    monkeypatch.setenv("AGENT_BOM_AUDIT_HMAC_LAST_ROTATED", audit_rotated)
+    monkeypatch.setenv("AGENT_BOM_AUDIT_HMAC_ROTATION_DAYS", "30")
+    monkeypatch.setenv("AGENT_BOM_AUDIT_HMAC_MAX_AGE_DAYS", "90")
+    monkeypatch.setenv("AGENT_BOM_COMPLIANCE_SIGNING_LAST_ROTATED", compliance_rotated)
+    monkeypatch.setenv("AGENT_BOM_COMPLIANCE_SIGNING_ROTATION_DAYS", "30")
+    monkeypatch.setenv("AGENT_BOM_COMPLIANCE_SIGNING_MAX_AGE_DAYS", "180")
     private_key = Ed25519PrivateKey.generate()
     pem = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
@@ -192,21 +222,31 @@ def test_auth_policy_reports_secret_integrity_posture(monkeypatch: pytest.Monkey
     client = TestClient(app)
     body = client.get("/v1/auth/policy").json()
 
-    assert body["secret_integrity"]["audit_hmac"] == {
-        "status": "configured",
-        "configured": True,
-        "required": False,
-        "source": "AGENT_BOM_AUDIT_HMAC_KEY",
-        "persists_across_restart": True,
-        "rotation_tracking_supported": False,
-        "message": (
-            "Audit log tamper detection uses a configured shared secret. "
-            "Signatures remain verifiable across restarts as long as the same key stays in place."
-        ),
-    }
-    assert body["secret_integrity"]["compliance_signing"]["algorithm"] == "Ed25519"
-    assert body["secret_integrity"]["compliance_signing"]["mode"] == "asymmetric_public_key"
-    assert body["secret_integrity"]["compliance_signing"]["public_key_endpoint"] == "/v1/compliance/verification-key"
+    audit_hmac = body["secret_integrity"]["audit_hmac"]
+    assert audit_hmac["status"] == "configured"
+    assert audit_hmac["configured"] is True
+    assert audit_hmac["required"] is False
+    assert audit_hmac["source"] == "AGENT_BOM_AUDIT_HMAC_KEY"
+    assert audit_hmac["persists_across_restart"] is True
+    assert audit_hmac["rotation_tracking_supported"] is True
+    assert audit_hmac["rotation_status"] == "ok"
+    assert audit_hmac["rotation_method"] == "env_swap_and_restart"
+    assert audit_hmac["rotation_days"] == 30
+    assert audit_hmac["max_age_days"] == 90
+    assert audit_hmac["last_rotated"] == audit_rotated
+    assert audit_hmac["age_days"] == 10
+
+    signing = body["secret_integrity"]["compliance_signing"]
+    assert signing["algorithm"] == "Ed25519"
+    assert signing["mode"] == "asymmetric_public_key"
+    assert signing["public_key_endpoint"] == "/v1/compliance/verification-key"
+    assert signing["rotation_tracking_supported"] is True
+    assert signing["rotation_status"] == "rotation_due"
+    assert signing["rotation_method"] == "env_swap_and_restart"
+    assert signing["rotation_days"] == 30
+    assert signing["max_age_days"] == 180
+    assert signing["last_rotated"] == compliance_rotated
+    assert signing["age_days"] == 40
 
 
 def test_auth_quota_update_persists_tenant_override(monkeypatch: pytest.MonkeyPatch) -> None:

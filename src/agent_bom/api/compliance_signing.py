@@ -32,6 +32,7 @@ import hashlib
 import logging
 import os
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Final
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,86 @@ class _Ed25519Signer:
 
 _signer_cache: _Ed25519Signer | None = None
 _signer_init_error: str | None = None
+
+
+def _env_int(name: str) -> int | None:
+    value = (os.environ.get(name) or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = int(value)
+    except ValueError:
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _describe_rotation_posture() -> dict[str, object]:
+    rotation_days = _env_int("AGENT_BOM_COMPLIANCE_SIGNING_ROTATION_DAYS")
+    max_age_days = _env_int("AGENT_BOM_COMPLIANCE_SIGNING_MAX_AGE_DAYS")
+    raw_last_rotated = (os.environ.get("AGENT_BOM_COMPLIANCE_SIGNING_LAST_ROTATED") or "").strip()
+
+    if not raw_last_rotated:
+        return {
+            "rotation_tracking_supported": True,
+            "rotation_status": "unknown_age",
+            "rotation_method": "env_swap_and_restart",
+            "rotation_days": rotation_days,
+            "max_age_days": max_age_days,
+            "last_rotated": None,
+            "age_days": None,
+            "rotation_message": (
+                "Compliance signing is configured but AGENT_BOM_COMPLIANCE_SIGNING_LAST_ROTATED is unset. "
+                "Record an ISO-8601 rotation timestamp to expose key age in operator surfaces."
+            ),
+        }
+
+    try:
+        rotated = datetime.fromisoformat(raw_last_rotated)
+    except ValueError:
+        return {
+            "rotation_tracking_supported": True,
+            "rotation_status": "unknown_age",
+            "rotation_method": "env_swap_and_restart",
+            "rotation_days": rotation_days,
+            "max_age_days": max_age_days,
+            "last_rotated": raw_last_rotated,
+            "age_days": None,
+            "rotation_message": (
+                "AGENT_BOM_COMPLIANCE_SIGNING_LAST_ROTATED is set but is not a valid ISO-8601 timestamp. "
+                "Use a value like '2026-04-17T00:00:00+00:00'."
+            ),
+        }
+
+    if rotated.tzinfo is None:
+        rotated = rotated.replace(tzinfo=timezone.utc)
+    age_days = max(0, int((datetime.now(timezone.utc) - rotated).total_seconds() // 86400))
+
+    if max_age_days is not None and age_days >= max_age_days:
+        status = "max_age_exceeded"
+        message = (
+            f"Compliance signing key is {age_days} days old, exceeding the configured maximum ({max_age_days} days). "
+            "Rotate the signing key, redeploy, and update the recorded rotation timestamp."
+        )
+    elif rotation_days is not None and age_days >= rotation_days:
+        status = "rotation_due"
+        message = f"Compliance signing key is {age_days} days old, past the configured rotation interval ({rotation_days} days)."
+    else:
+        status = "ok"
+        if rotation_days is not None:
+            message = f"Compliance signing key is {age_days} days old; configured rotation interval is {rotation_days} days."
+        else:
+            message = f"Compliance signing key is {age_days} days old. No explicit rotation interval is configured."
+
+    return {
+        "rotation_tracking_supported": True,
+        "rotation_status": status,
+        "rotation_method": "env_swap_and_restart",
+        "rotation_days": rotation_days,
+        "max_age_days": max_age_days,
+        "last_rotated": rotated.isoformat(),
+        "age_days": age_days,
+        "rotation_message": message,
+    }
 
 
 def _load_ed25519_signer() -> _Ed25519Signer | None:
@@ -185,6 +266,7 @@ def describe_signing_posture() -> dict[str, object]:
                 "Compliance evidence bundles are signed with Ed25519. "
                 "External verifiers only need the public key, not shared secret material."
             ),
+            **_describe_rotation_posture(),
         }
 
     from agent_bom.api.audit_log import describe_audit_hmac_status
@@ -202,5 +284,15 @@ def describe_signing_posture() -> dict[str, object]:
         "message": (
             "Compliance evidence bundles are signed with the same shared secret family as the audit export path. "
             "For auditor-distributable verification, switch to Ed25519."
+        ),
+        "rotation_tracking_supported": bool(audit_hmac["rotation_tracking_supported"]),
+        "rotation_status": audit_hmac["rotation_status"],
+        "rotation_method": audit_hmac["rotation_method"],
+        "rotation_days": audit_hmac["rotation_days"],
+        "max_age_days": audit_hmac["max_age_days"],
+        "last_rotated": audit_hmac["last_rotated"],
+        "age_days": audit_hmac["age_days"],
+        "rotation_message": (
+            "Compliance evidence currently inherits audit HMAC rotation posture because HMAC signing reuses the audit secret family."
         ),
     }

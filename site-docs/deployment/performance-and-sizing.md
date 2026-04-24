@@ -205,6 +205,8 @@ What the product claims today:
 - stable node identifiers in the operator detail view
 - explicit snapshot metadata, scope, and timestamps
 - filterable graph investigation flows
+- paginated agent-node selectors through `GET /v1/graph/agents`
+- bounded fleet list windows through `GET /v1/fleet?limit=...&offset=...`
 
 What it does not yet publish as a hard contract:
 
@@ -242,6 +244,13 @@ Recommended starting posture:
 - keep retained jobs bounded to match your retention expectations
 - keep fleet-agent quotas aligned to your actual endpoint/runtime rollout size
 - keep schedule quotas low unless you deliberately expose scheduled scans to many tenants
+
+For large tenants with thousands of agents, do not drive dashboards from a full
+fleet dump. Use server-side fleet search and pagination, graph agent selectors,
+and node-context drilldown. The UI should show a readable working set first,
+then let the operator expand by search, lifecycle state, environment, or graph
+neighborhood. Treat the exact fleet size as an operator sizing input, not a
+fixed product ceiling.
 
 ## Benchmark before production rollout
 

@@ -105,6 +105,77 @@ def test_list_filter_min_trust():
     assert data["agents"][0]["agent_id"] == "a-2"
 
 
+def test_list_uses_server_side_search_and_pagination():
+    client, store = _fresh_client()
+    for idx in range(12):
+        store.put(
+            _make(
+                agent_id=f"a-{idx:02d}",
+                name=f"agent-{idx:02d}",
+                owner="platform" if idx % 2 == 0 else "security",
+                environment="prod" if idx % 3 == 0 else "dev",
+                tags=["critical"] if idx == 10 else [],
+            )
+        )
+
+    resp = client.get("/v1/fleet?search=platform&limit=3&offset=3")
+    data = resp.json()
+
+    assert resp.status_code == 200
+    assert data["count"] == 3
+    assert data["total"] == 6
+    assert data["limit"] == 3
+    assert data["offset"] == 3
+    assert data["has_more"] is False
+    assert [agent["name"] for agent in data["agents"]] == ["agent-06", "agent-08", "agent-10"]
+
+
+def test_list_falls_back_for_legacy_fleet_store_without_query_api():
+    import agent_bom.api.stores as api_stores
+
+    class LegacyFleetStore:
+        def __init__(self) -> None:
+            self.agents = [
+                _make(agent_id="a-1", name="agent-01", owner="platform", environment="prod"),
+                _make(agent_id="a-2", name="agent-02", owner="security", environment="prod"),
+                _make(agent_id="a-3", name="agent-03", owner="platform", environment="dev"),
+                _make(agent_id="a-4", name="agent-04", owner="platform", environment="prod"),
+            ]
+
+        def list_by_tenant(self, tenant_id: str):
+            return [agent for agent in self.agents if agent.tenant_id == tenant_id]
+
+    store = LegacyFleetStore()
+    original = api_stores._fleet_store
+    try:
+        set_fleet_store(store)
+        client = TestClient(app)
+
+        resp = client.get("/v1/fleet?search=platform&limit=2&offset=1")
+        data = resp.json()
+
+        assert resp.status_code == 200
+        assert data["count"] == 2
+        assert data["total"] == 3
+        assert data["has_more"] is False
+        assert [agent["agent_id"] for agent in data["agents"]] == ["a-3", "a-4"]
+    finally:
+        set_fleet_store(original)
+
+
+def test_list_explicit_quarantined_state_is_not_hidden_by_default_exclusion():
+    client, store = _fresh_client()
+    store.put(_make(agent_id="a-1", state=FleetLifecycleState.QUARANTINED))
+    store.put(_make(agent_id="a-2", state=FleetLifecycleState.APPROVED))
+
+    all_resp = client.get("/v1/fleet")
+    quarantined_resp = client.get("/v1/fleet?state=quarantined")
+
+    assert all_resp.json()["total"] == 1
+    assert quarantined_resp.json()["total"] == 1
+    assert quarantined_resp.json()["agents"][0]["lifecycle_state"] == "quarantined"
+
+
 # ── Get ───────────────────────────────────────────────────────────────────────
 
 

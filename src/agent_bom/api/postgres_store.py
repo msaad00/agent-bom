@@ -202,6 +202,18 @@ class PostgresFleetStore:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_name ON fleet_agents(name)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_state ON fleet_agents(lifecycle_state)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_fleet_tenant ON fleet_agents(tenant_id)")
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_fleet_tenant_state_trust_name
+                ON fleet_agents(tenant_id, lifecycle_state, trust_score DESC, name)
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_fleet_tenant_name_lower
+                ON fleet_agents(tenant_id, lower(name))
+                """
+            )
             _ensure_tenant_rls(conn, "fleet_agents", "tenant_id")
             conn.commit()
 
@@ -278,6 +290,62 @@ class PostgresFleetStore:
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute("SELECT data FROM fleet_agents WHERE tenant_id = %s ORDER BY name", (tenant_id,)).fetchall()
             return [FleetAgent.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
+
+    def query_by_tenant(
+        self,
+        tenant_id: str,
+        *,
+        state: str | None = None,
+        environment: str | None = None,
+        min_trust: float | None = None,
+        search: str | None = None,
+        include_quarantined: bool = False,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list, int]:
+        from .fleet_store import FleetAgent
+
+        clauses = ["tenant_id = %s"]
+        params: list[object] = [tenant_id]
+        if not include_quarantined and state is None:
+            clauses.append("lifecycle_state NOT IN ('quarantined', 'decommissioned')")
+        if state:
+            clauses.append("lifecycle_state = %s")
+            params.append(state)
+        if min_trust is not None:
+            clauses.append("trust_score >= %s")
+            params.append(float(min_trust))
+        if environment:
+            clauses.append("data->>'environment' = %s")
+            params.append(environment)
+        if search:
+            needle = f"%{search.lower()}%"
+            clauses.append(
+                """
+                (
+                    lower(name) LIKE %s
+                    OR lower(COALESCE(data->>'owner', '')) LIKE %s
+                    OR lower(COALESCE(data->>'environment', '')) LIKE %s
+                    OR lower(COALESCE(data->>'tags', '')) LIKE %s
+                )
+                """
+            )
+            params.extend([needle, needle, needle, needle])
+        where = " AND ".join(clauses)
+        with _tenant_connection(self._pool) as conn:
+            total_row = conn.execute(f"SELECT COUNT(*) FROM fleet_agents WHERE {where}", tuple(params)).fetchone()  # nosec B608 - clauses are static
+            rows = conn.execute(
+                f"""
+                SELECT data
+                FROM fleet_agents
+                WHERE {where}
+                ORDER BY name, agent_id
+                LIMIT %s OFFSET %s
+                """,  # nosec B608 - clauses are static
+                (*params, int(limit), int(offset)),
+            ).fetchall()
+            agents = [FleetAgent.model_validate_json(r[0] if isinstance(r[0], str) else json.dumps(r[0])) for r in rows]
+            return agents, int(total_row[0] if total_row else 0)
 
     def list_tenants(self) -> list[dict]:
         with _tenant_connection(self._pool) as conn:

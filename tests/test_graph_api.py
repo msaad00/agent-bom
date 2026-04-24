@@ -287,6 +287,29 @@ class TestGraphEndpointLogic:
         assert [node.id for node in results] == ["server:prod:vector"]
         assert next_cursor is None
 
+    def test_graph_agents_endpoint_lists_agent_nodes_without_full_graph_load(self, tmp_path):
+        store = SQLiteGraphStore(tmp_path / "graph.db")
+        graph = UnifiedGraph(scan_id="agent-selector-scan", tenant_id="default")
+        graph.add_node(UnifiedNode(id="agent:alpha", entity_type=EntityType.AGENT, label="Alpha Agent", risk_score=8.0))
+        graph.add_node(UnifiedNode(id="agent:beta", entity_type=EntityType.AGENT, label="Beta Agent", risk_score=2.0))
+        graph.add_node(UnifiedNode(id="server:alpha:fs", entity_type=EntityType.SERVER, label="Filesystem Server"))
+        store.save_graph(graph)
+        original_store = api_stores._graph_store
+        try:
+            set_graph_store(store)
+            client = TestClient(app)
+
+            response = client.get("/v1/graph/agents?scan_id=agent-selector-scan&limit=1")
+
+            assert response.status_code == 200
+            body = response.json()
+            assert body["pagination"]["total"] == 2
+            assert body["pagination"]["has_more"] is True
+            assert len(body["agents"]) == 1
+            assert body["agents"][0]["id"].startswith("agent:")
+        finally:
+            set_graph_store(original_store)
+
     def test_sqlite_graph_store_search_escapes_like_wildcards(self, tmp_path):
         store = SQLiteGraphStore(tmp_path / "graph.db")
         graph = UnifiedGraph(scan_id="search-scan", tenant_id="default")

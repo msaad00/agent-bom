@@ -24,6 +24,50 @@ from agent_bom.api.tenant_quota import enforce_fleet_agents_quota
 router = APIRouter()
 
 
+def _state_value(agent) -> str:
+    state = getattr(agent, "lifecycle_state", "")
+    return str(getattr(state, "value", state) or "")
+
+
+def _agent_text(value) -> str:
+    return str(value or "").lower()
+
+
+def _query_fleet_fallback(
+    agents: list,
+    *,
+    state: str | None,
+    environment: str | None,
+    min_trust: float | None,
+    search: str | None,
+    include_quarantined: bool,
+    limit: int,
+    offset: int,
+) -> tuple[list, int]:
+    filtered = list(agents)
+    if not include_quarantined and state is None:
+        filtered = [a for a in filtered if _state_value(a) not in ("quarantined", "decommissioned")]
+    if state:
+        filtered = [a for a in filtered if _state_value(a) == state]
+    if environment:
+        filtered = [a for a in filtered if getattr(a, "environment", None) == environment]
+    if min_trust is not None:
+        filtered = [a for a in filtered if float(getattr(a, "trust_score", 0.0) or 0.0) >= min_trust]
+    if search:
+        needle = search.lower()
+        filtered = [
+            a
+            for a in filtered
+            if needle in _agent_text(getattr(a, "name", ""))
+            or needle in _agent_text(getattr(a, "owner", ""))
+            or needle in _agent_text(getattr(a, "environment", ""))
+            or any(needle in _agent_text(tag) for tag in getattr(a, "tags", []) or [])
+        ]
+    filtered = sorted(filtered, key=lambda a: (_agent_text(getattr(a, "name", "")), str(getattr(a, "agent_id", ""))))
+    total = len(filtered)
+    return filtered[offset : offset + limit], total
+
+
 def _request_header(request: Request, key: str) -> str:
     headers = getattr(request, "headers", None)
     if headers is None:
@@ -37,6 +81,7 @@ async def list_fleet(
     state: str | None = None,
     environment: str | None = None,
     min_trust: float | None = None,
+    search: str | None = None,
     include_quarantined: bool = False,
     limit: int = 50,
     offset: int = 0,
@@ -50,24 +95,42 @@ async def list_fleet(
     limit = max(1, min(limit, 200))
     offset = max(0, offset)
     tenant_id = getattr(request.state, "tenant_id", "default")
-    agents = _get_fleet_store().list_by_tenant(tenant_id)
-    if not include_quarantined:
-        agents = [a for a in agents if a.lifecycle_state.value not in ("quarantined", "decommissioned")]
-    if state:
-        agents = [a for a in agents if a.lifecycle_state.value == state]
-    if environment:
-        agents = [a for a in agents if a.environment == environment]
-    if min_trust is not None:
-        _threshold = float(min_trust)
-        agents = [a for a in agents if (a.trust_score or 0.0) >= _threshold]
-    total = len(agents)
-    page = agents[offset : offset + limit]
+    min_trust_value = float(min_trust) if min_trust is not None else None
+    search_value = (search or "").strip() or None
+    store = _get_fleet_store()
+    result = None
+    query_by_tenant = getattr(store, "query_by_tenant", None)
+    if callable(query_by_tenant):
+        result = query_by_tenant(
+            tenant_id,
+            state=state,
+            environment=environment,
+            min_trust=min_trust_value,
+            search=search_value,
+            include_quarantined=include_quarantined,
+            limit=limit,
+            offset=offset,
+        )
+    if isinstance(result, tuple) and len(result) == 2:
+        page, total = result
+    else:
+        page, total = _query_fleet_fallback(
+            store.list_by_tenant(tenant_id),
+            state=state,
+            environment=environment,
+            min_trust=min_trust_value,
+            search=search_value,
+            include_quarantined=include_quarantined,
+            limit=limit,
+            offset=offset,
+        )
     return {
         "agents": [a.model_dump() for a in page],
         "count": len(page),
         "total": total,
         "limit": limit,
         "offset": offset,
+        "has_more": offset + len(page) < total,
     }
 
 

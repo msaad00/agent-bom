@@ -101,6 +101,8 @@ export interface GraphPagination {
   offset: number;
   limit: number;
   has_more: boolean;
+  cursor?: string;
+  next_cursor?: string;
 }
 
 export interface GraphSnapshot {
@@ -135,6 +137,25 @@ export interface GraphNodeDetailResponse {
 export interface GraphSearchResponse {
   query: string;
   results: UnifiedNode[];
+  pagination: GraphPagination;
+}
+
+export interface GraphAgentSelectorItem {
+  id: string;
+  label: string;
+  risk_score: number;
+  severity: string;
+  status: string;
+  data_sources: string[];
+  first_seen: string;
+  last_seen: string;
+}
+
+export interface GraphAgentsResponse {
+  scan_id: string;
+  tenant_id: string;
+  created_at: string;
+  agents: GraphAgentSelectorItem[];
   pagination: GraphPagination;
 }
 
@@ -1060,6 +1081,10 @@ export interface FleetAgent {
 export interface FleetResponse {
   agents: FleetAgent[];
   count: number;
+  total: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
 }
 
 export interface FleetStatsResponse {
@@ -1408,6 +1433,18 @@ export const api = {
     return get<GraphSearchResponse>(`/v1/graph/search?${params.toString()}`);
   },
 
+  /** List agent nodes for large graph selectors without loading the full graph */
+  listGraphAgents: (filters?: { query?: string; scanId?: string; offset?: number; limit?: number; cursor?: string }) => {
+    const params = new URLSearchParams();
+    if (filters?.query) params.set("q", filters.query);
+    if (filters?.scanId) params.set("scan_id", filters.scanId);
+    if (filters?.offset != null) params.set("offset", String(filters.offset));
+    if (filters?.limit != null) params.set("limit", String(filters.limit));
+    if (filters?.cursor) params.set("cursor", filters.cursor);
+    const qs = params.toString();
+    return get<GraphAgentsResponse>(`/v1/graph/agents${qs ? `?${qs}` : ""}`);
+  },
+
   /** Load one graph node plus impact and neighbor context */
   getGraphNode: (nodeId: string, scanId?: string) => {
     const params = new URLSearchParams();
@@ -1458,11 +1495,23 @@ export const api = {
     get<ComplianceNarrativeResponse>(`/v1/compliance/narrative/${encodeURIComponent(framework)}`),
 
   /** Fleet management */
-  listFleet: (filters?: { state?: string; environment?: string; min_trust?: number }) => {
+  listFleet: (filters?: {
+    state?: string;
+    environment?: string;
+    min_trust?: number;
+    search?: string;
+    include_quarantined?: boolean;
+    limit?: number;
+    offset?: number;
+  }) => {
     const params = new URLSearchParams();
     if (filters?.state) params.set("state", filters.state);
     if (filters?.environment) params.set("environment", filters.environment);
     if (filters?.min_trust != null) params.set("min_trust", String(filters.min_trust));
+    if (filters?.search) params.set("search", filters.search);
+    if (filters?.include_quarantined) params.set("include_quarantined", "true");
+    if (filters?.limit != null) params.set("limit", String(filters.limit));
+    if (filters?.offset != null) params.set("offset", String(filters.offset));
     const qs = params.toString();
     return get<FleetResponse>(`/v1/fleet${qs ? `?${qs}` : ""}`);
   },

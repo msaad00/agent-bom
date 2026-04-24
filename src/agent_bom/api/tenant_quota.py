@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from fastapi import HTTPException
 
 from agent_bom.api.audit_log import log_action
@@ -112,3 +114,49 @@ def enforce_schedule_quota(tenant_id: str, attempted: int = 1) -> None:
             current=current,
             attempted=attempted,
         )
+
+
+def get_tenant_quota_runtime(tenant_id: str) -> dict[str, object]:
+    """Return operator-facing quota status for a tenant.
+
+    Quotas are process-wide configuration today. This surface makes that
+    explicit while still showing the tenant's current usage so the UI can
+    explain whether an operator is close to the enforced limits.
+    """
+
+    def _entry(limit: int, current: int) -> dict[str, int | bool | None]:
+        return {
+            "limit": limit,
+            "current": current,
+            "remaining": None if limit <= 0 else max(limit - current, 0),
+            "enforced": limit > 0,
+        }
+
+    def _safe_count(fn: Callable[[], int]) -> int:
+        try:
+            return fn()
+        except RuntimeError:
+            # Operator status should stay readable during partial startup and tests
+            # even if optional stores are not initialized yet.
+            return 0
+
+    active_jobs = _safe_count(
+        lambda: sum(1 for job in _get_store().list_all(tenant_id=tenant_id) if job.status in (JobStatus.PENDING, JobStatus.RUNNING))
+    )
+    retained_jobs = _safe_count(lambda: len(_get_store().list_all(tenant_id=tenant_id)))
+    fleet_agents = _safe_count(lambda: len(_get_fleet_store().list_by_tenant(tenant_id)))
+    schedules = _safe_count(lambda: len(_get_schedule_store().list_all(tenant_id=tenant_id)))
+
+    return {
+        "source": "static_process_config",
+        "per_tenant_overrides": False,
+        "message": (
+            "Tenant quotas are enforced from control-plane configuration today. Per-tenant override management is not yet exposed."
+        ),
+        "usage": {
+            "active_scan_jobs": _entry(API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT, active_jobs),
+            "retained_scan_jobs": _entry(API_MAX_RETAINED_JOBS_PER_TENANT, retained_jobs),
+            "fleet_agents": _entry(API_MAX_FLEET_AGENTS_PER_TENANT, fleet_agents),
+            "schedules": _entry(API_MAX_SCHEDULES_PER_TENANT, schedules),
+        },
+    }

@@ -41,6 +41,30 @@ const policy: AuthPolicyResponse = {
     fleet_agents: 5000,
     schedules: 25,
   },
+  tenant_quota_runtime: {
+    source: "static_process_config",
+    per_tenant_overrides: false,
+    message: "Tenant quotas are enforced from control-plane configuration today.",
+    usage: {
+      active_scan_jobs: { limit: 10, current: 2, remaining: 8, enforced: true },
+      retained_scan_jobs: { limit: 100, current: 12, remaining: 88, enforced: true },
+      fleet_agents: { limit: 5000, current: 48, remaining: 4952, enforced: true },
+      schedules: { limit: 25, current: 3, remaining: 22, enforced: true },
+    },
+  },
+  identity_provisioning: {
+    scim: {
+      supported: false,
+      configured: false,
+      status: "not_implemented",
+      message: "SCIM provisioning is not implemented yet.",
+    },
+    session_revocation: {
+      service_keys: "API key revocation takes effect immediately at the control-plane auth layer.",
+      session_api_key: "The browser fallback key is scoped to the current browser session.",
+      browser_sessions: "OIDC or reverse-proxy browser sessions must be terminated at the upstream identity provider or trusted proxy.",
+    },
+  },
 };
 
 const keys: ApiKeyRecord[] = [
@@ -80,7 +104,10 @@ describe("KeyLifecyclePanel", () => {
     expect(screen.getByText("Tenant guardrails")).toBeInTheDocument();
     expect(screen.getByText("Active scan jobs")).toBeInTheDocument();
     expect(screen.getByText("5000")).toBeInTheDocument();
+    expect(screen.getByText("Current 48 · Remaining 4952")).toBeInTheDocument();
+    expect(screen.getByText("Identity lifecycle")).toBeInTheDocument();
+    expect(screen.getByText("SCIM provisioning")).toBeInTheDocument();
     expect(screen.getByText("Revocation boundaries")).toBeInTheDocument();
-    expect(screen.getByText("Reverse-proxy or OIDC sessions")).toBeInTheDocument();
+    expect(screen.getByText("OIDC or reverse-proxy browser sessions must be terminated at the upstream identity provider or trusted proxy.")).toBeInTheDocument();
   });
 });

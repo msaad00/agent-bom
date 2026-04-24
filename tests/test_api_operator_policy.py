@@ -136,6 +136,13 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["tenant_quotas"]["retained_scan_jobs"] >= 1
     assert body["tenant_quotas"]["fleet_agents"] >= 1
     assert body["tenant_quotas"]["schedules"] >= 1
+    assert body["tenant_quota_runtime"]["source"] == "static_process_config"
+    assert body["tenant_quota_runtime"]["per_tenant_overrides"] is False
+    assert body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["current"] >= 0
+    assert body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["limit"] >= 1
+    assert body["identity_provisioning"]["scim"]["status"] == "not_implemented"
+    assert body["identity_provisioning"]["scim"]["supported"] is False
+    assert "service_keys" in body["identity_provisioning"]["session_revocation"]
 
 
 def test_rate_limit_runtime_reports_shared_backend(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import secrets
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -22,6 +23,8 @@ CSRF_HEADER_NAME = "x-agent-bom-csrf"
 
 _logger = logging.getLogger(__name__)
 _EPHEMERAL_SIGNING_KEY = secrets.token_bytes(32)
+_REVOKED_SESSION_NONCES: dict[str, int] = {}
+_REVOKED_LOCK = threading.Lock()
 
 
 class BrowserSessionError(Exception):
@@ -71,6 +74,7 @@ def create_browser_session_token(
 ) -> tuple[str, str]:
     now = datetime.now(timezone.utc)
     csrf = secrets.token_urlsafe(32)
+    nonce = secrets.token_urlsafe(16)
     payload: dict[str, Any] = {
         "v": 1,
         "sub": subject[:256],
@@ -79,10 +83,10 @@ def create_browser_session_token(
         "auth_method": auth_method,
         "key_id": key_id,
         "scopes": scopes or [],
-        "csrf_sha256": hashlib.sha256(csrf.encode("utf-8")).hexdigest(),
+        "csrf_sha256": hashlib.sha256(f"{nonce}:{csrf}".encode("utf-8")).hexdigest(),
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(seconds=max_age_seconds)).timestamp()),
-        "nonce": secrets.token_urlsafe(16),
+        "nonce": nonce,
     }
     payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     encoded_payload = _b64encode(payload_bytes)
@@ -108,6 +112,13 @@ def verify_browser_session_token(token: str) -> dict[str, Any]:
     exp = int(payload.get("exp") or 0)
     if exp <= int(datetime.now(timezone.utc).timestamp()):
         raise BrowserSessionError("browser session is expired")
+    nonce = str(payload.get("nonce") or "")
+    with _REVOKED_LOCK:
+        expires_at = _REVOKED_SESSION_NONCES.get(nonce)
+        if expires_at is not None:
+            if expires_at > int(datetime.now(timezone.utc).timestamp()):
+                raise BrowserSessionError("browser session has been revoked")
+            _REVOKED_SESSION_NONCES.pop(nonce, None)
     return payload
 
 
@@ -115,5 +126,25 @@ def verify_csrf(payload: dict[str, Any], csrf_cookie: str, csrf_header: str) -> 
     if not csrf_cookie or not csrf_header or not hmac.compare_digest(csrf_cookie, csrf_header):
         return False
     expected = str(payload.get("csrf_sha256") or "")
-    actual = hashlib.sha256(csrf_cookie.encode("utf-8")).hexdigest()
+    nonce = str(payload.get("nonce") or "")
+    actual = hashlib.sha256(f"{nonce}:{csrf_cookie}".encode("utf-8")).hexdigest()
     return hmac.compare_digest(actual, expected)
+
+
+def revoke_browser_session_token(token: str) -> bool:
+    """Revoke a signed browser session nonce until its natural expiry."""
+    try:
+        payload = verify_browser_session_token(token)
+    except BrowserSessionError:
+        return False
+    nonce = str(payload.get("nonce") or "")
+    exp = int(payload.get("exp") or 0)
+    if not nonce or exp <= int(datetime.now(timezone.utc).timestamp()):
+        return False
+    with _REVOKED_LOCK:
+        now = int(datetime.now(timezone.utc).timestamp())
+        expired = [key for key, expires_at in _REVOKED_SESSION_NONCES.items() if expires_at <= now]
+        for key in expired:
+            _REVOKED_SESSION_NONCES.pop(key, None)
+        _REVOKED_SESSION_NONCES[nonce] = exp
+    return True

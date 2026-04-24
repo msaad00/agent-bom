@@ -75,6 +75,28 @@ class TestSanitizeResults:
         assert meta["api_key"] == "***REDACTED***"
         assert meta["display_name"] == "My Bot"
 
+    def test_redacts_nested_secret_fields(self):
+        results = {
+            "agents": [
+                {
+                    "name": "agent-1",
+                    "metadata": {
+                        "nested": {
+                            "api_key": "key-xyz",
+                            "safe": "visible",
+                        },
+                        "tools": [{"auth_token": "tok-123", "name": "search"}],
+                    },
+                }
+            ]
+        }
+        sanitized = sanitize_results(results)
+        meta = sanitized["agents"][0]["metadata"]
+        assert meta["nested"]["api_key"] == "***REDACTED***"
+        assert meta["nested"]["safe"] == "visible"
+        assert meta["tools"][0]["auth_token"] == "***REDACTED***"
+        assert meta["tools"][0]["name"] == "search"
+
     def test_adds_source_id(self):
         results = {"agents": []}
         sanitized = sanitize_results(results)

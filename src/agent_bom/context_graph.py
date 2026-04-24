@@ -14,6 +14,7 @@ single source of truth for the entire graph subsystem.
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from enum import Enum
@@ -38,6 +39,15 @@ from agent_bom.graph import (
     UnifiedGraph,
     UnifiedNode,
 )
+
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
+_UNTRUSTED_PREFIX = "[UNTRUSTED MCP METADATA] "
+
+
+def _untrusted_metadata_text(value: object, *, max_length: int = 1000) -> str:
+    text = _CONTROL_CHARS_RE.sub(" ", str(value)).replace("\u2028", " ").replace("\u2029", " ")
+    return f"{_UNTRUSTED_PREFIX}{text[:max_length]}"
+
 
 # ── Enums (backward-compat — existing consumers import these) ────────────
 # These map 1:1 to graph_schema.EntityType / RelationshipType but keep the
@@ -235,7 +245,8 @@ def build_context_graph(
                         kind=NodeKind.TOOL,
                         label=tool_name,
                         metadata={
-                            "description": tool_desc,
+                            "description": _untrusted_metadata_text(tool_desc),
+                            "description_trust": "untrusted_external_mcp_metadata",
                             "capabilities": capabilities,
                             "server": srv_id,
                             "agent": agent_name,

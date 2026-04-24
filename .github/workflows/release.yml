@@ -690,6 +690,7 @@ jobs:
           fi
 
       - name: Update floating major tag (v0)
+        if: ${{ vars.AGENT_BOM_UPDATE_FLOATING_MAJOR_TAGS == '1' }}
         run: |
           MAJOR=$(echo "${{ github.ref_name }}" | grep -oP '^v\d+')
           if [ -n "$MAJOR" ]; then

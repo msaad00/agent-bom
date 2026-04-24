@@ -305,6 +305,23 @@ CREATE TABLE IF NOT EXISTS graph_filter_presets (
     PRIMARY KEY (name, tenant_id)
 );
 
+CREATE TABLE IF NOT EXISTS graph_node_search (
+    node_id         TEXT NOT NULL,
+    tenant_id       TEXT NOT NULL DEFAULT 'default',
+    scan_id         TEXT NOT NULL,
+    entity_type     TEXT NOT NULL,
+    severity        TEXT DEFAULT '',
+    compliance_tags TEXT DEFAULT '',
+    data_sources    TEXT DEFAULT '',
+    search_text     TEXT NOT NULL,
+    PRIMARY KEY (node_id, scan_id, tenant_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pg_graph_node_search_scope
+    ON graph_node_search(tenant_id, scan_id, entity_type);
+CREATE INDEX IF NOT EXISTS idx_pg_graph_node_search_severity
+    ON graph_node_search(tenant_id, scan_id, severity);
+
 -- ── Tables: OSV Scan Cache ────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS osv_cache (
@@ -789,6 +806,24 @@ BEGIN
           AND policyname = 'graph_filter_presets_tenant_isolation'
     ) THEN
         CREATE POLICY graph_filter_presets_tenant_isolation ON graph_filter_presets
+            USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+ALTER TABLE graph_node_search ENABLE ROW LEVEL SECURITY;
+ALTER TABLE graph_node_search FORCE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'graph_node_search'
+          AND policyname = 'graph_node_search_tenant_isolation'
+    ) THEN
+        CREATE POLICY graph_node_search_tenant_isolation ON graph_node_search
             USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())
             WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant());
     END IF;

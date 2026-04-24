@@ -85,6 +85,22 @@ def test_slack_payload_format():
     assert "Test alert" in payload["blocks"][0]["text"]["text"]
 
 
+def test_slack_payload_escapes_untrusted_mrkdwn():
+    payload = _build_slack_payload(
+        {
+            "severity": "high",
+            "message": "*page* <@U123>\nnext",
+            "detector": "scan`cve`",
+            "details": {"affected_agents": ["agent_*_one"], "credentials_exposed": ["TOKEN\nabc"]},
+        }
+    )
+    rendered = "\n".join(block.get("text", {}).get("text", "") for block in payload["blocks"] if "text" in block)
+    assert "<@U123>" not in rendered
+    assert "\nnext" not in rendered
+    assert "`" not in rendered
+    assert "agentone" in rendered
+
+
 # ─── WebhookChannel ──────────────────────────────────────────────────────────
 
 

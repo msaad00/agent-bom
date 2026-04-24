@@ -15,6 +15,7 @@ from agent_bom.api.browser_session import (
     CSRF_HEADER_NAME,
     SESSION_COOKIE_NAME,
     create_browser_session_token,
+    revoke_browser_session_token,
 )
 from agent_bom.api.middleware import InMemoryRateLimitStore
 from agent_bom.api.oidc import OIDCConfig
@@ -199,6 +200,74 @@ def test_api_key_middleware_rejects_browser_session_without_csrf(monkeypatch):
     resp = client.post("/v1/scan", cookies={SESSION_COOKIE_NAME: token, CSRF_COOKIE_NAME: csrf})
     assert resp.status_code == 403
     assert resp.json()["detail"] == "Forbidden — missing or invalid CSRF token"
+
+
+def test_api_key_middleware_rejects_csrf_from_another_session(monkeypatch):
+    """CSRF tokens are bound to the signed browser-session nonce."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "test-browser-session-signing-key")
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    token_a, _csrf_a = create_browser_session_token(
+        subject="dashboard-user",
+        role="admin",
+        tenant_id="tenant-alpha",
+        auth_method="browser_session_static_api_key",
+        max_age_seconds=300,
+    )
+    _token_b, csrf_b = create_browser_session_token(
+        subject="dashboard-user",
+        role="admin",
+        tenant_id="tenant-alpha",
+        auth_method="browser_session_static_api_key",
+        max_age_seconds=300,
+    )
+    test_app = Starlette(routes=[Route("/v1/scan", dummy, methods=["POST"])])
+    test_app.add_middleware(APIKeyMiddleware, api_key="static-key")
+
+    client = TestClient(test_app)
+    resp = client.post(
+        "/v1/scan",
+        headers={CSRF_HEADER_NAME: csrf_b},
+        cookies={SESSION_COOKIE_NAME: token_a, CSRF_COOKIE_NAME: csrf_b},
+    )
+    assert resp.status_code == 403
+
+
+def test_api_key_middleware_rejects_revoked_browser_session(monkeypatch):
+    """Logout-side nonce revocation should invalidate a live signed session."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "test-browser-session-signing-key")
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    token, csrf = create_browser_session_token(
+        subject="dashboard-user",
+        role="admin",
+        tenant_id="tenant-alpha",
+        auth_method="browser_session_static_api_key",
+        max_age_seconds=300,
+    )
+    assert revoke_browser_session_token(token) is True
+    test_app = Starlette(routes=[Route("/v1/scan", dummy, methods=["POST"])])
+    test_app.add_middleware(APIKeyMiddleware, api_key="static-key")
+
+    client = TestClient(test_app)
+    resp = client.post(
+        "/v1/scan",
+        headers={CSRF_HEADER_NAME: csrf},
+        cookies={SESSION_COOKIE_NAME: token, CSRF_COOKIE_NAME: csrf},
+    )
+    assert resp.status_code == 401
 
 
 def test_api_key_middleware_health_exempt():
@@ -698,6 +767,25 @@ def test_rate_limit_middleware_scopes_by_auth_credential():
     assert client.get("/v1/test", headers={"X-API-Key": "alpha"}).status_code == 200
     assert client.get("/v1/test", headers={"X-API-Key": "alpha"}).status_code == 200
     assert client.get("/v1/test", headers={"X-API-Key": "beta"}).status_code == 200
+
+
+def test_rate_limit_middleware_ignores_untrusted_tenant_state():
+    """Forged tenant state must not move unauthenticated requests into fresh buckets."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        request.state.tenant_id = request.headers.get("X-Agent-Bom-Tenant-ID", "default")
+        return StarletteJSONResponse({"ok": True})
+
+    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    limiter = RateLimitMiddleware(test_app, scan_rpm=3, read_rpm=2)
+    client = TestClient(limiter)
+
+    assert client.get("/v1/test", headers={"X-Agent-Bom-Tenant-ID": "tenant-a"}).status_code == 200
+    assert client.get("/v1/test", headers={"X-Agent-Bom-Tenant-ID": "tenant-b"}).status_code == 200
+    assert client.get("/v1/test", headers={"X-Agent-Bom-Tenant-ID": "tenant-c"}).status_code == 429
 
 
 def test_rate_limit_middleware_scopes_api_keys_by_tenant():

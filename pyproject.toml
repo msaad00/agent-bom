@@ -180,6 +180,8 @@ Documentation = "https://github.com/msaad00/agent-bom#readme"
 # Prevents `uv sync` from pulling heavy optional deps (azure, gcp, etc.)
 # which break on Python 3.14 and bloat CI/container builds.
 default-groups = []
+# Override litellm's stale exact transitive pin to avoid CVE-2026-28684.
+override-dependencies = ["python-dotenv>=1.2.2"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

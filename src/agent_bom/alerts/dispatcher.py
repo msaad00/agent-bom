@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 
 def _escape_slack_text(value: object) -> str:
     text = str(value).replace("\r", " ").replace("\n", " ").replace("\t", " ")
-    text = re.sub(r"[*_~`]", "", text)
+    text = re.sub(r"[*~`]", "", text)
+    text = re.sub(r"_{2,}", "", text)
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")[:3000]
 
 

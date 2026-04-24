@@ -498,18 +498,22 @@ async def get_graph_node(
     scan_id: Optional[str] = Query(None, description="Scan ID"),
 ) -> dict:
     """Get a single node with its edges, neighbors, and impact stats."""
-    graph = await _graph_store_call(_get_graph_store_or_503().load_graph, scan_id=scan_id or "", tenant_id=_tenant(request))
-    node = graph.get_node(node_id)
-    if not node:
+    node_context = await _graph_store_call(
+        _get_graph_store_or_503().node_context,
+        scan_id=scan_id or "",
+        tenant_id=_tenant(request),
+        node_id=node_id,
+    )
+    if node_context is None:
         raise HTTPException(status_code=404, detail=f"Node '{node_id}' not found")
 
     return {
-        "node": node.to_dict(),
-        "edges_out": [e.to_dict() for e in graph.edges_from(node_id)],
-        "edges_in": [e.to_dict() for e in graph.edges_to(node_id)],
-        "neighbors": graph.neighbors(node_id),
-        "sources": graph.sources_of(node_id),
-        "impact": graph.impact_of(node_id),
+        "node": node_context["node"].to_dict(),
+        "edges_out": [edge.to_dict() for edge in node_context["edges_out"]],
+        "edges_in": [edge.to_dict() for edge in node_context["edges_in"]],
+        "neighbors": node_context["neighbors"],
+        "sources": node_context["sources"],
+        "impact": node_context["impact"],
     }
 
 
@@ -533,53 +537,12 @@ async def get_graph_compliance(
     Returns per-framework finding counts, severity breakdown, affected entity
     counts, and the list of tagged findings. Filter by framework to drill down.
     """
-    from collections import defaultdict
-
-    graph = await _graph_store_call(_get_graph_store_or_503().load_graph, scan_id=scan_id or "", tenant_id=_tenant(request))
-
-    framework_stats: dict[str, dict] = defaultdict(
-        lambda: {
-            "total_findings": 0,
-            "by_severity": defaultdict(int),
-            "by_entity_type": defaultdict(int),
-            "tags": set(),
-            "node_ids": [],
-        }
+    return await _graph_store_call(
+        _get_graph_store_or_503().compliance_summary,
+        scan_id=scan_id or "",
+        tenant_id=_tenant(request),
+        framework=framework or "",
     )
-
-    for node in graph.nodes.values():
-        if not node.compliance_tags:
-            continue
-        for tag in node.compliance_tags:
-            prefix = tag.split("-")[0].upper() if "-" in tag else tag.upper()
-            if framework and framework.upper() != prefix:
-                continue
-            stats = framework_stats[prefix]
-            stats["total_findings"] += 1
-            stats["by_severity"][node.severity or "unknown"] += 1
-            et = node.entity_type.value if hasattr(node.entity_type, "value") else node.entity_type
-            stats["by_entity_type"][et] += 1
-            stats["tags"].add(tag)
-            if node.id not in stats["node_ids"]:
-                stats["node_ids"].append(node.id)
-
-    result = {}
-    for fw, stats in sorted(framework_stats.items()):
-        result[fw] = {
-            "total_findings": stats["total_findings"],
-            "by_severity": dict(stats["by_severity"]),
-            "by_entity_type": dict(stats["by_entity_type"]),
-            "tags": sorted(stats["tags"]),
-            "node_count": len(stats["node_ids"]),
-            "node_ids": stats["node_ids"][:100],
-        }
-
-    return {
-        "scan_id": graph.scan_id,
-        "framework_count": len(result),
-        "total_tagged_findings": sum(s["total_findings"] for s in result.values()),
-        "frameworks": result,
-    }
 
 
 @router.get("/v1/graph/legend", tags=["graph"])

@@ -12,6 +12,7 @@ import base64
 import json
 import re
 import sqlite3
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -209,6 +210,22 @@ class GraphStoreProtocol(Protocol):
         source_ids: set[str],
     ) -> list[AttackPath]: ...
 
+    def node_context(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        node_id: str,
+    ) -> dict[str, Any] | None: ...
+
+    def compliance_summary(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        framework: str = "",
+    ) -> dict[str, Any]: ...
+
     def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict[str, Any], created_at: str) -> None: ...
 
     def list_presets(self, *, tenant_id: str) -> list[dict[str, Any]]: ...
@@ -352,6 +369,21 @@ class SQLiteGraphStore:
             last_seen=row["last_seen"],
             evidence=json.loads(row["evidence"]),
             activity_id=row["activity_id"],
+        )
+
+    @staticmethod
+    def _reverse_edge(edge: UnifiedEdge) -> UnifiedEdge:
+        return UnifiedEdge(
+            source=edge.target,
+            target=edge.source,
+            relationship=edge.relationship,
+            direction=edge.direction,
+            weight=edge.weight,
+            traversable=edge.traversable,
+            first_seen=edge.first_seen,
+            last_seen=edge.last_seen,
+            evidence=edge.evidence,
+            activity_id=edge.activity_id,
         )
 
     def _filtered_edge_rows(
@@ -705,6 +737,148 @@ class SQLiteGraphStore:
                 )
                 for row in rows
             ]
+        finally:
+            conn.close()
+
+    def node_context(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        node_id: str,
+    ) -> dict[str, Any] | None:
+        conn = self._open_ro_conn()
+        if conn is None:
+            return None
+        try:
+            effective_scan_id, _created_at = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
+            if not effective_scan_id:
+                return None
+            nodes = self.nodes_by_ids(tenant_id=tenant_id, scan_id=effective_scan_id, node_ids={node_id})
+            if not nodes:
+                return None
+            rows = conn.execute(
+                """
+                SELECT source_id, target_id, relationship, direction, weight, traversable, first_seen, last_seen, evidence, activity_id
+                FROM graph_edges
+                WHERE tenant_id = ? AND scan_id = ? AND (source_id = ? OR target_id = ?)
+                ORDER BY source_id ASC, target_id ASC, relationship ASC
+                """,
+                [tenant_id, effective_scan_id, node_id, node_id],
+            ).fetchall()
+
+            edges_out: list[UnifiedEdge] = []
+            edges_in: list[UnifiedEdge] = []
+            neighbors: list[str] = []
+            sources: list[str] = []
+
+            for row in rows:
+                edge = self._edge_from_row(row)
+                if edge.source == node_id:
+                    edges_out.append(edge)
+                    neighbors.append(edge.target)
+                    if edge.is_bidirectional:
+                        reverse = self._reverse_edge(edge)
+                        edges_in.append(reverse)
+                        sources.append(edge.target)
+                if edge.target == node_id:
+                    edges_in.append(edge)
+                    sources.append(edge.source)
+                    if edge.is_bidirectional:
+                        reverse = self._reverse_edge(edge)
+                        edges_out.append(reverse)
+                        neighbors.append(edge.source)
+
+            return {
+                "node": nodes[0],
+                "edges_out": edges_out,
+                "edges_in": edges_in,
+                "neighbors": neighbors,
+                "sources": sources,
+                "impact": self.impact_of(tenant_id=tenant_id, scan_id=effective_scan_id, node_id=node_id),
+            }
+        finally:
+            conn.close()
+
+    def compliance_summary(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        framework: str = "",
+    ) -> dict[str, Any]:
+        conn = self._open_ro_conn()
+        if conn is None:
+            return {
+                "scan_id": scan_id,
+                "framework_count": 0,
+                "total_tagged_findings": 0,
+                "frameworks": {},
+            }
+        try:
+            effective_scan_id, _created_at = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
+            if not effective_scan_id:
+                return {
+                    "scan_id": scan_id,
+                    "framework_count": 0,
+                    "total_tagged_findings": 0,
+                    "frameworks": {},
+                }
+
+            rows = conn.execute(
+                """
+                SELECT id, entity_type, severity, compliance_tags
+                FROM graph_nodes
+                WHERE tenant_id = ? AND scan_id = ? AND json_array_length(compliance_tags) > 0
+                ORDER BY id ASC
+                """,
+                [tenant_id, effective_scan_id],
+            ).fetchall()
+
+            framework_filter = framework.upper()
+            framework_stats: dict[str, dict[str, Any]] = defaultdict(
+                lambda: {
+                    "total_findings": 0,
+                    "by_severity": defaultdict(int),
+                    "by_entity_type": defaultdict(int),
+                    "tags": set(),
+                    "node_ids": [],
+                }
+            )
+
+            for row in rows:
+                tags = json.loads(row["compliance_tags"])
+                if not tags:
+                    continue
+                for tag in tags:
+                    prefix = tag.split("-")[0].upper() if "-" in tag else tag.upper()
+                    if framework_filter and framework_filter != prefix:
+                        continue
+                    stats = framework_stats[prefix]
+                    stats["total_findings"] += 1
+                    stats["by_severity"][row["severity"] or "unknown"] += 1
+                    stats["by_entity_type"][row["entity_type"]] += 1
+                    stats["tags"].add(tag)
+                    if row["id"] not in stats["node_ids"]:
+                        stats["node_ids"].append(row["id"])
+
+            frameworks: dict[str, Any] = {}
+            for name, stats in sorted(framework_stats.items()):
+                frameworks[name] = {
+                    "total_findings": stats["total_findings"],
+                    "by_severity": dict(stats["by_severity"]),
+                    "by_entity_type": dict(stats["by_entity_type"]),
+                    "tags": sorted(stats["tags"]),
+                    "node_count": len(stats["node_ids"]),
+                    "node_ids": stats["node_ids"][:100],
+                }
+
+            return {
+                "scan_id": effective_scan_id,
+                "framework_count": len(frameworks),
+                "total_tagged_findings": sum(stats["total_findings"] for stats in frameworks.values()),
+                "frameworks": frameworks,
+            }
         finally:
             conn.close()
 

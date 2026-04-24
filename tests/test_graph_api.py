@@ -369,6 +369,62 @@ class TestGraphEndpointLogic:
         assert len(attack_paths) == 1
         assert attack_paths[0].target == "vuln:cve"
 
+    def test_sqlite_graph_store_node_context_preserves_bidirectional_neighbors(self, tmp_path):
+        store = SQLiteGraphStore(tmp_path / "graph.db")
+        graph = UnifiedGraph(scan_id="node-context-scan", tenant_id="default")
+        graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        graph.add_node(UnifiedNode(id="agent:b", entity_type=EntityType.AGENT, label="agent-b"))
+        graph.add_edge(
+            UnifiedEdge(
+                source="agent:a",
+                target="agent:b",
+                relationship=RelationshipType.SHARES_SERVER,
+                direction="bidirectional",
+            )
+        )
+        store.save_graph(graph)
+
+        node_context = store.node_context(tenant_id="default", scan_id="node-context-scan", node_id="agent:b")
+
+        assert node_context is not None
+        assert node_context["neighbors"] == ["agent:a"]
+        assert node_context["sources"] == ["agent:a"]
+        assert node_context["edges_out"][0].target == "agent:a"
+        assert node_context["edges_in"][0].source == "agent:a"
+
+    def test_sqlite_graph_store_compliance_summary_aggregates_frameworks_without_loading_graph(self, tmp_path):
+        store = SQLiteGraphStore(tmp_path / "graph.db")
+        graph = UnifiedGraph(scan_id="compliance-scan", tenant_id="default")
+        graph.add_node(
+            UnifiedNode(
+                id="vuln:cve",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-2026-1",
+                severity="critical",
+                severity_id=5,
+                compliance_tags=["CIS-5.4.1", "OWASP-A01"],
+            )
+        )
+        graph.add_node(
+            UnifiedNode(
+                id="agent:a",
+                entity_type=EntityType.AGENT,
+                label="agent-a",
+                severity="high",
+                severity_id=4,
+                compliance_tags=["CIS-6.2"],
+            )
+        )
+        store.save_graph(graph)
+
+        summary = store.compliance_summary(tenant_id="default", scan_id="compliance-scan")
+
+        assert summary["framework_count"] == 2
+        assert summary["total_tagged_findings"] == 3
+        assert summary["frameworks"]["CIS"]["total_findings"] == 2
+        assert summary["frameworks"]["CIS"]["node_count"] == 2
+        assert summary["frameworks"]["OWASP"]["total_findings"] == 1
+
 
 class TestBackendDirectionality:
     """Regression: graph_backend must respect edge direction from unified graph."""
@@ -635,6 +691,62 @@ class _RecordingGraphStore:
     def attack_paths_for_sources(self, *, tenant_id: str = "", scan_id: str = "", source_ids: set[str]):
         self.calls.append(("attack_paths_for_sources", tenant_id, scan_id, tuple(sorted(source_ids))))
         return [ap for ap in self.graph.attack_paths if ap.source in source_ids]
+
+    def node_context(self, *, tenant_id: str = "", scan_id: str = "", node_id: str):
+        self.calls.append(("node_context", tenant_id, scan_id, node_id))
+        node = self.graph.get_node(node_id)
+        if not node:
+            return None
+        return {
+            "node": node,
+            "edges_out": self.graph.edges_from(node_id),
+            "edges_in": self.graph.edges_to(node_id),
+            "neighbors": self.graph.neighbors(node_id),
+            "sources": self.graph.sources_of(node_id),
+            "impact": self.graph.impact_of(node_id),
+        }
+
+    def compliance_summary(self, *, tenant_id: str = "", scan_id: str = "", framework: str = ""):
+        self.calls.append(("compliance_summary", tenant_id, scan_id, framework))
+        frameworks: dict[str, dict] = {}
+        for node in self.graph.nodes.values():
+            for tag in node.compliance_tags:
+                prefix = tag.split("-")[0].upper() if "-" in tag else tag.upper()
+                if framework and framework.upper() != prefix:
+                    continue
+                stats = frameworks.setdefault(
+                    prefix,
+                    {
+                        "total_findings": 0,
+                        "by_severity": {},
+                        "by_entity_type": {},
+                        "tags": set(),
+                        "node_ids": [],
+                    },
+                )
+                stats["total_findings"] += 1
+                stats["by_severity"][node.severity or "unknown"] = stats["by_severity"].get(node.severity or "unknown", 0) + 1
+                entity_type = node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
+                stats["by_entity_type"][entity_type] = stats["by_entity_type"].get(entity_type, 0) + 1
+                stats["tags"].add(tag)
+                if node.id not in stats["node_ids"]:
+                    stats["node_ids"].append(node.id)
+        return {
+            "scan_id": self.graph.scan_id,
+            "framework_count": len(frameworks),
+            "total_tagged_findings": sum(stats["total_findings"] for stats in frameworks.values()),
+            "frameworks": {
+                name: {
+                    "total_findings": stats["total_findings"],
+                    "by_severity": stats["by_severity"],
+                    "by_entity_type": stats["by_entity_type"],
+                    "tags": sorted(stats["tags"]),
+                    "node_count": len(stats["node_ids"]),
+                    "node_ids": stats["node_ids"][:100],
+                }
+                for name, stats in sorted(frameworks.items())
+            },
+        }
 
     def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict, created_at: str) -> None:
         self.calls.append(("save_preset", tenant_id, name))
@@ -941,6 +1053,47 @@ class TestGraphStoreBackendSelection:
         }
         assert body["attack_paths"][0]["target"] == "vuln:CVE-2026-1"
         assert any(call[0] == "traverse_subgraph" for call in recording_graph_store.calls)
+        assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
+
+    def test_graph_node_uses_store_native_context(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES, traversable=True)
+        )
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/node/server:s")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["node"]["id"] == "server:s"
+        assert body["sources"] == ["agent:a"]
+        assert any(call[0] == "node_context" for call in recording_graph_store.calls)
+        assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
+
+    def test_graph_compliance_uses_store_native_summary(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="vuln:cve",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-2026-1",
+                severity="critical",
+                severity_id=5,
+                compliance_tags=["CIS-5.4.1", "OWASP-A01"],
+            )
+        )
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/compliance", params={"framework": "CIS"})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["framework_count"] == 1
+        assert body["frameworks"]["CIS"]["total_findings"] == 1
+        assert any(call[0] == "compliance_summary" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
 
     def test_graph_query_filters_by_compliance_and_source(self, recording_graph_store):

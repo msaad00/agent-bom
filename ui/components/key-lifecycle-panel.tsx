@@ -62,6 +62,10 @@ function stateLabel(state: ApiKeyRecord["state"]): string {
   }
 }
 
+type TenantQuotaUsageEntry =
+  AuthPolicyResponse["tenant_quota_runtime"]["usage"][keyof AuthPolicyResponse["tenant_quota_runtime"]["usage"]];
+type QuotaCard = readonly [label: string, value: TenantQuotaUsageEntry];
+
 function isSessionKey(key: ApiKeyRecord): boolean {
   return key.name.startsWith("saml:") || key.scopes.includes("saml-session");
 }
@@ -140,7 +144,7 @@ export function KeyLifecyclePanel({
     }, {});
   }, [keys]);
 
-  const quotaCards = useMemo(
+  const quotaCards = useMemo<QuotaCard[]>(
     () =>
       policy
         ? [

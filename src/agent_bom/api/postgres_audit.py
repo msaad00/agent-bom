@@ -17,6 +17,7 @@ class PostgresAuditLog:
         self._pool = pool or _get_pool()
         self._last_sig_by_tenant: dict[str, str] = {}
         self._init_tables()
+        self._hydrate_last_signatures()
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
@@ -47,10 +48,21 @@ class PostgresAuditLog:
     def _latest_signature_for_tenant(self, tenant_id: str) -> str:
         with self._pool.connection() as conn:
             row = conn.execute(
-                "SELECT hmac_signature FROM audit_log WHERE team_id = %s ORDER BY timestamp DESC LIMIT 1",
+                "SELECT hmac_signature FROM audit_log WHERE team_id = %s ORDER BY timestamp DESC, entry_id DESC LIMIT 1",
                 (tenant_id,),
             ).fetchone()
         return row[0] if row else ""
+
+    def _hydrate_last_signatures(self) -> None:
+        with self._pool.connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT DISTINCT ON (team_id) team_id, hmac_signature
+                FROM audit_log
+                ORDER BY team_id, timestamp DESC, entry_id DESC
+                """
+            ).fetchall()
+        self._last_sig_by_tenant = {str(row[0]): str(row[1] or "") for row in rows}
 
     def append(self, entry: AuditEntry) -> None:
         tenant_id = str((entry.details or {}).get("tenant_id") or _current_tenant.get())

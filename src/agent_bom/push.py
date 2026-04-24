@@ -56,17 +56,13 @@ def sanitize_results(results: dict) -> dict:
     - Adds source_id
     """
     sanitized = copy.deepcopy(results)
+    sanitized = _redact_nested_secrets(sanitized)
 
     endpoint_identity = _endpoint_identity_from_env()
 
     # Strip config_path from agents
     for agent in sanitized.get("agents", []):
         agent.pop("config_path", None)
-        # Redact env vars in metadata
-        meta = agent.get("metadata", {})
-        for key, val in list(meta.items()):
-            if isinstance(val, str) and _looks_like_secret(key):
-                meta[key] = "***REDACTED***"
         for key in ("source_id", "enrollment_name", "owner", "environment", "mdm_provider"):
             value = endpoint_identity.get(key, "")
             if value and not agent.get(key):
@@ -87,6 +83,20 @@ def _looks_like_secret(key: str) -> bool:
     patterns = ("token", "key", "secret", "password", "credential", "auth")
     lower = key.lower()
     return any(p in lower for p in patterns)
+
+
+def _redact_nested_secrets(value):
+    if isinstance(value, dict):
+        redacted = {}
+        for key, child in value.items():
+            if _looks_like_secret(str(key)) and isinstance(child, (str, int, float, bool)):
+                redacted[key] = "***REDACTED***"
+            else:
+                redacted[key] = _redact_nested_secrets(child)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_nested_secrets(item) for item in value]
+    return value
 
 
 _DEFAULT_PUSH_MAX_ATTEMPTS = 3

@@ -32,7 +32,29 @@ afterEach(() => {
 })
 
 describe('api.listJobs', () => {
-  it('prefers the runtime API URL over the build-time env', async () => {
+  it('prefers a same-origin runtime API URL over the build-time env', async () => {
+    const oldApiUrl = process.env.NEXT_PUBLIC_API_URL
+    process.env.NEXT_PUBLIC_API_URL = "https://build.example"
+    window.__AGENT_BOM_CONFIG__ = { apiUrl: "/agent-bom-api" }
+
+    const fetchMock = mockFetch({ jobs: [], count: 0 })
+    global.fetch = fetchMock
+
+    await api.listJobs()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/agent-bom-api/v1/jobs",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+
+    if (oldApiUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_URL
+    } else {
+      process.env.NEXT_PUBLIC_API_URL = oldApiUrl
+    }
+  })
+
+  it('rejects cross-origin runtime API URLs', async () => {
     const oldApiUrl = process.env.NEXT_PUBLIC_API_URL
     process.env.NEXT_PUBLIC_API_URL = "https://build.example"
     window.__AGENT_BOM_CONFIG__ = { apiUrl: "https://runtime.example" }
@@ -43,7 +65,7 @@ describe('api.listJobs', () => {
     await api.listJobs()
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://runtime.example/v1/jobs",
+      "/v1/jobs",
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
 
@@ -101,7 +123,7 @@ describe('api.listJobs', () => {
       "/v1/jobs",
       expect.objectContaining({
         credentials: "include",
-        headers: { Authorization: "Bearer pilot-key-123" },
+        headers: expect.objectContaining({ Authorization: "Bearer pilot-key-123" }),
         signal: expect.any(AbortSignal),
       }),
     )
@@ -271,7 +293,11 @@ describe('api key lifecycle helpers', () => {
     expect(result.keys[0].name).toBe('ci-service')
     expect(fetchMock).toHaveBeenCalledWith(
       "/v1/auth/keys",
-      expect.objectContaining({ credentials: "include", signal: expect.any(AbortSignal) }),
+      expect.objectContaining({
+        credentials: "include",
+        headers: expect.any(Object),
+        signal: expect.any(AbortSignal),
+      }),
     )
   })
 
@@ -327,7 +353,7 @@ describe('api.downloadScanGraph', () => {
       '/v1/scan/job-1/graph-export?format=json',
       expect.objectContaining({
         credentials: 'include',
-        headers: { Authorization: 'Bearer pilot-key-123' },
+        headers: expect.objectContaining({ Authorization: 'Bearer pilot-key-123' }),
         signal: expect.any(AbortSignal),
       }),
     )

@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pr-security-gate-${{ github.event.pull_request.head.sha || github.sha }}
+  group: pr-security-gate-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

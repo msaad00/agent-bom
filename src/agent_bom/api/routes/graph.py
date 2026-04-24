@@ -307,13 +307,26 @@ async def get_graph_paths(
     limit: int = Query(100, ge=1, le=1000, description="Max paths"),
 ) -> dict:
     """Find all attack paths from a source node via BFS."""
-    graph = await _graph_store_call(_get_graph_store_or_503().load_graph, scan_id=scan_id or "", tenant_id=_tenant(request))
-    if not graph.has_node(source):
+    graph_store = _get_graph_store_or_503()
+    source_nodes = await _graph_store_call(graph_store.nodes_by_ids, scan_id=scan_id or "", tenant_id=_tenant(request), node_ids={source})
+    if not source_nodes:
         raise HTTPException(status_code=404, detail=f"Node '{source}' not found in graph")
 
-    all_paths = graph.bfs(source, max_depth=max_depth, traversable_only=True)
+    all_paths, reachable = await _graph_store_call(
+        graph_store.bfs_paths,
+        scan_id=scan_id or "",
+        tenant_id=_tenant(request),
+        source=source,
+        max_depth=max_depth,
+        traversable_only=True,
+    )
     paged_paths, pagination = _paginate(all_paths, offset, limit)
-    reachable = graph.reachable_from(source, max_depth=max_depth, traversable_only=True, include_source=False)
+    attack_paths = await _graph_store_call(
+        graph_store.attack_paths_for_sources,
+        scan_id=scan_id or "",
+        tenant_id=_tenant(request),
+        source_ids={source},
+    )
 
     return {
         "source": source,
@@ -321,7 +334,7 @@ async def get_graph_paths(
         "reachable_count": len(reachable),
         "reachable_nodes": sorted(reachable),
         "paths": [{"target": p[-1], "hops": p, "depth": len(p) - 1} for p in paged_paths],
-        "attack_paths": [ap.to_dict() for ap in graph.attack_paths if ap.source == source],
+        "attack_paths": [ap.to_dict() for ap in attack_paths if ap.source == source],
         "pagination": pagination,
     }
 
@@ -334,10 +347,16 @@ async def get_graph_impact(
     max_depth: int = Query(4, ge=1, le=10, description="Maximum reverse BFS depth"),
 ) -> dict:
     """Compute blast radius of a node — what depends on it?"""
-    graph = await _graph_store_call(_get_graph_store_or_503().load_graph, scan_id=scan_id or "", tenant_id=_tenant(request))
-    if not graph.has_node(node):
+    impact = await _graph_store_call(
+        _get_graph_store_or_503().impact_of,
+        scan_id=scan_id or "",
+        tenant_id=_tenant(request),
+        node_id=node,
+        max_depth=max_depth,
+    )
+    if impact is None:
         raise HTTPException(status_code=404, detail=f"Node '{node}' not found")
-    return graph.impact_of(node, max_depth=max_depth)
+    return impact
 
 
 @router.get("/v1/graph/search", tags=["graph"])
@@ -398,15 +417,24 @@ async def search_graph(
 @router.post("/v1/graph/query", tags=["graph"])
 async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
     """Run a bounded programmable traversal over the canonical graph."""
-
-    graph = await _graph_store_call(_get_graph_store_or_503().load_graph, scan_id=body.scan_id or "", tenant_id=_tenant(request))
-    missing_roots = [root for root in body.roots if not graph.has_node(root)]
+    graph_store = _get_graph_store_or_503()
+    root_nodes = await _graph_store_call(
+        graph_store.nodes_by_ids,
+        scan_id=body.scan_id or "",
+        tenant_id=_tenant(request),
+        node_ids=set(body.roots),
+    )
+    known_roots = {node.id for node in root_nodes}
+    missing_roots = [root for root in body.roots if root not in known_roots]
     if missing_roots:
         raise HTTPException(status_code=404, detail={"message": "Root nodes not found", "missing_roots": missing_roots})
 
     rel_types = {RelationshipType(rel) for rel in body.relationship_types} if body.relationship_types else None
-    traversal_graph, depth_by_node, truncated = graph.traverse_subgraph(
-        body.roots,
+    traversal_graph, depth_by_node, truncated = await _graph_store_call(
+        graph_store.traverse_subgraph,
+        scan_id=body.scan_id or "",
+        tenant_id=_tenant(request),
+        roots=body.roots,
         direction=body.direction,
         max_depth=body.max_depth,
         max_nodes=body.max_nodes,
@@ -428,8 +456,14 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
 
     attack_paths = []
     if body.include_attack_paths:
+        root_attack_paths = await _graph_store_call(
+            graph_store.attack_paths_for_sources,
+            scan_id=body.scan_id or "",
+            tenant_id=_tenant(request),
+            source_ids=set(body.roots),
+        )
         attack_paths = [
-            ap.to_dict() for ap in graph.attack_paths if ap.source in body.roots and all(hop in filtered_graph.nodes for hop in ap.hops)
+            ap.to_dict() for ap in root_attack_paths if ap.source in body.roots and all(hop in filtered_graph.nodes for hop in ap.hops)
         ]
 
     return {

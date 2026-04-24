@@ -596,14 +596,20 @@ export interface AuthPolicyResponse {
   tenant_quota_runtime: {
     source: string;
     per_tenant_overrides: boolean;
+    active_override: boolean;
+    override_endpoint: string;
     message: string;
+    overrides: Partial<Record<"active_scan_jobs" | "retained_scan_jobs" | "fleet_agents" | "schedules", number>>;
     usage: Record<
       "active_scan_jobs" | "retained_scan_jobs" | "fleet_agents" | "schedules",
       {
         limit: number;
+        default_limit: number;
+        override_limit: number | null;
         current: number;
         remaining: number | null;
         enforced: boolean;
+        source: string;
       }
     >;
   };
@@ -668,6 +674,13 @@ export interface RotateApiKeyResponse extends ApiKeyRecord {
   overlap_until: string;
   overlap_seconds: number;
   message: string;
+}
+
+export interface TenantQuotaUpdateRequest {
+  active_scan_jobs?: number | null;
+  retained_scan_jobs?: number | null;
+  fleet_agents?: number | null;
+  schedules?: number | null;
 }
 
 export interface ConnectorsResponse {
@@ -1209,6 +1222,10 @@ export const api = {
   getAuthMe: () => get<AuthMeResponse>("/v1/auth/me"),
   getAuthDebug: () => get<AuthDebugResponse>("/v1/auth/debug"),
   getAuthPolicy: () => get<AuthPolicyResponse>("/v1/auth/policy"),
+  getTenantQuota: () => get<AuthPolicyResponse["tenant_quota_runtime"]>("/v1/auth/quota"),
+  updateTenantQuota: (body: TenantQuotaUpdateRequest) =>
+    put<AuthPolicyResponse["tenant_quota_runtime"]>("/v1/auth/quota", body),
+  resetTenantQuota: () => del("/v1/auth/quota"),
   listKeys: () => get<ListKeysResponse>("/v1/auth/keys"),
   createKey: (body: CreateApiKeyRequest) => post<CreateApiKeyResponse>("/v1/auth/keys", body),
   rotateKey: (keyId: string, body: RotateApiKeyRequest) =>

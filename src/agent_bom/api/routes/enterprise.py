@@ -42,6 +42,7 @@ from agent_bom.api.models import (
     JiraTicketRequest,
     RotateKeyRequest,
     SAMLLoginRequest,
+    TenantQuotaUpdateRequest,
 )
 from agent_bom.api.stores import _get_exception_store, _get_store, _get_trend_store
 from agent_bom.security import sanitize_error
@@ -227,19 +228,14 @@ async def auth_policy(request: Request) -> dict:
         get_rate_limit_key_status,
         get_rate_limit_runtime_status,
     )
-    from agent_bom.api.tenant_quota import get_tenant_quota_runtime
-    from agent_bom.config import (
-        API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT,
-        API_MAX_FLEET_AGENTS_PER_TENANT,
-        API_MAX_RETAINED_JOBS_PER_TENANT,
-        API_MAX_SCHEDULES_PER_TENANT,
-    )
+    from agent_bom.api.tenant_quota import default_tenant_quotas, get_tenant_quota_runtime
 
     api_policy = get_api_key_policy()
     rl_status = get_rate_limit_key_status()
     rl_runtime = get_rate_limit_runtime_status()
     auth_runtime = get_auth_runtime_status()
     tenant_id = getattr(request.state, "tenant_id", "default")
+    defaults = default_tenant_quotas()
     return {
         "api_key": {
             "default_ttl_seconds": api_policy.default_ttl_seconds,
@@ -266,12 +262,7 @@ async def auth_policy(request: Request) -> dict:
             "audit_hmac": describe_audit_hmac_status(),
             "compliance_signing": describe_signing_posture(),
         },
-        "tenant_quotas": {
-            "active_scan_jobs": API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT,
-            "retained_scan_jobs": API_MAX_RETAINED_JOBS_PER_TENANT,
-            "fleet_agents": API_MAX_FLEET_AGENTS_PER_TENANT,
-            "schedules": API_MAX_SCHEDULES_PER_TENANT,
-        },
+        "tenant_quotas": defaults,
         "tenant_quota_runtime": get_tenant_quota_runtime(tenant_id),
         "identity_provisioning": {
             "scim": {
@@ -294,6 +285,65 @@ async def auth_policy(request: Request) -> dict:
             },
         },
     }
+
+
+@router.get("/v1/auth/quota", tags=["enterprise"])
+async def auth_quota(request: Request) -> dict:
+    """Return the effective tenant quota runtime surface for the current tenant."""
+    from agent_bom.api.tenant_quota import get_tenant_quota_runtime
+
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    return get_tenant_quota_runtime(tenant_id)
+
+
+@router.put("/v1/auth/quota", tags=["enterprise"])
+async def update_auth_quota(request: Request, req: TenantQuotaUpdateRequest) -> dict:
+    """Update tenant-specific quota overrides for the current tenant."""
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.tenant_quota import (
+        QUOTA_NAMES,
+        get_tenant_quota_overrides,
+        get_tenant_quota_runtime,
+        set_tenant_quota_overrides,
+    )
+
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = getattr(request.state, "api_key_name", "") or "system"
+    updates = {name: getattr(req, name) for name in QUOTA_NAMES if name in req.model_fields_set}
+    if not updates:
+        raise HTTPException(status_code=400, detail="Provide at least one quota field to update.")
+
+    previous = get_tenant_quota_overrides(tenant_id)
+    current = set_tenant_quota_overrides(tenant_id, updates)
+    log_action(
+        "tenant.quota_updated",
+        actor=actor,
+        resource=f"tenant/{tenant_id}",
+        tenant_id=tenant_id,
+        previous_overrides=previous,
+        current_overrides=current,
+        updated_fields=sorted(updates),
+    )
+    return get_tenant_quota_runtime(tenant_id)
+
+
+@router.delete("/v1/auth/quota", tags=["enterprise"], status_code=204)
+async def reset_auth_quota(request: Request) -> None:
+    """Clear all tenant-specific quota overrides for the current tenant."""
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.tenant_quota import clear_tenant_quota_overrides, get_tenant_quota_overrides
+
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = getattr(request.state, "api_key_name", "") or "system"
+    previous = get_tenant_quota_overrides(tenant_id)
+    clear_tenant_quota_overrides(tenant_id)
+    log_action(
+        "tenant.quota_reset",
+        actor=actor,
+        resource=f"tenant/{tenant_id}",
+        tenant_id=tenant_id,
+        previous_overrides=previous,
+    )
 
 
 @router.get("/v1/auth/debug", tags=["enterprise"])

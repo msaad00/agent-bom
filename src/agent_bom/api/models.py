@@ -447,6 +447,13 @@ class RotateKeyRequest(BaseModel):
     overlap_seconds: int | None = None
 
 
+class TenantQuotaUpdateRequest(BaseModel):
+    active_scan_jobs: int | None = Field(default=None, ge=0)
+    retained_scan_jobs: int | None = Field(default=None, ge=0)
+    fleet_agents: int | None = Field(default=None, ge=0)
+    schedules: int | None = Field(default=None, ge=0)
+
+
 class ExceptionRequest(BaseModel):
     vuln_id: str
     package_name: str

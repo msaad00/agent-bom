@@ -64,14 +64,17 @@ const policy: AuthPolicyResponse = {
     schedules: 25,
   },
   tenant_quota_runtime: {
-    source: "static_process_config",
-    per_tenant_overrides: false,
-    message: "Tenant quotas are enforced from control-plane configuration today.",
+    source: "global_default",
+    per_tenant_overrides: true,
+    active_override: false,
+    override_endpoint: "/v1/auth/quota",
+    message: "Tenant quotas resolve from global defaults. Tenant-specific overrides can be configured when needed.",
+    overrides: {},
     usage: {
-      active_scan_jobs: { limit: 10, current: 2, remaining: 8, enforced: true },
-      retained_scan_jobs: { limit: 100, current: 12, remaining: 88, enforced: true },
-      fleet_agents: { limit: 5000, current: 48, remaining: 4952, enforced: true },
-      schedules: { limit: 25, current: 3, remaining: 22, enforced: true },
+      active_scan_jobs: { limit: 10, default_limit: 10, override_limit: null, current: 2, remaining: 8, enforced: true, source: "global_default" },
+      retained_scan_jobs: { limit: 100, default_limit: 100, override_limit: null, current: 12, remaining: 88, enforced: true, source: "global_default" },
+      fleet_agents: { limit: 5000, default_limit: 5000, override_limit: null, current: 48, remaining: 4952, enforced: true, source: "global_default" },
+      schedules: { limit: 25, default_limit: 25, override_limit: null, current: 3, remaining: 22, enforced: true, source: "global_default" },
     },
   },
   identity_provisioning: {
@@ -124,9 +127,13 @@ describe("KeyLifecyclePanel", () => {
     expect(screen.getByText("Recommended: Reverse Proxy OIDC")).toBeInTheDocument();
     expect(screen.getByText("Runtime rate-limit backend")).toBeInTheDocument();
     expect(screen.getByText("Tenant guardrails")).toBeInTheDocument();
-    expect(screen.getByText("Active scan jobs")).toBeInTheDocument();
+    expect(screen.getAllByText("Active scan jobs").length).toBeGreaterThan(0);
     expect(screen.getByText("5000")).toBeInTheDocument();
     expect(screen.getByText("Current 48 · Remaining 4952")).toBeInTheDocument();
+    expect(screen.getByText("Override management")).toBeInTheDocument();
+    expect(screen.getByText("Manage overrides at /v1/auth/quota.")).toBeInTheDocument();
+    expect(screen.getAllByText("Global default").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Save overrides" })).toBeInTheDocument();
     expect(screen.getByText("Secret and integrity posture")).toBeInTheDocument();
     expect(screen.getByText("Audit HMAC")).toBeInTheDocument();
     expect(screen.getByText("Compliance evidence signing")).toBeInTheDocument();

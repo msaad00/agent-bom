@@ -19,8 +19,11 @@ from starlette.testclient import TestClient
 from agent_bom.api import audit_log as audit_log_module
 from agent_bom.api import compliance_signing as compliance_signing_module
 from agent_bom.api import server as _server_mod
+from agent_bom.api import stores as _stores
 from agent_bom.api.middleware import APIKeyMiddleware, get_rate_limit_key_status, get_rate_limit_runtime_status
 from agent_bom.api.server import app
+from agent_bom.api.stores import set_tenant_quota_store
+from agent_bom.api.tenant_quota_store import InMemoryTenantQuotaStore
 
 # ─── Rate-limit key status ────────────────────────────────────────────────────
 
@@ -154,10 +157,14 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["tenant_quotas"]["retained_scan_jobs"] >= 1
     assert body["tenant_quotas"]["fleet_agents"] >= 1
     assert body["tenant_quotas"]["schedules"] >= 1
-    assert body["tenant_quota_runtime"]["source"] == "static_process_config"
-    assert body["tenant_quota_runtime"]["per_tenant_overrides"] is False
+    assert body["tenant_quota_runtime"]["source"] == "global_default"
+    assert body["tenant_quota_runtime"]["per_tenant_overrides"] is True
+    assert body["tenant_quota_runtime"]["active_override"] is False
+    assert body["tenant_quota_runtime"]["override_endpoint"] == "/v1/auth/quota"
     assert body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["current"] >= 0
     assert body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["limit"] >= 1
+    assert body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["source"] == "global_default"
+    assert body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["override_limit"] is None
     assert body["identity_provisioning"]["scim"]["status"] == "not_implemented"
     assert body["identity_provisioning"]["scim"]["supported"] is False
     assert "service_keys" in body["identity_provisioning"]["session_revocation"]
@@ -198,6 +205,42 @@ def test_auth_policy_reports_secret_integrity_posture(monkeypatch: pytest.Monkey
     assert body["secret_integrity"]["compliance_signing"]["public_key_endpoint"] == "/v1/compliance/verification-key"
 
 
+def test_auth_quota_update_persists_tenant_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    _reload_config()
+    _server_mod.configure_api(api_key=None)
+    original_store = _stores._tenant_quota_store
+    try:
+        quota_store = InMemoryTenantQuotaStore()
+        set_tenant_quota_store(quota_store)
+
+        client = TestClient(app)
+        headers = {
+            "X-Agent-Bom-Role": "admin",
+            "X-Agent-Bom-Tenant-ID": "tenant-alpha",
+        }
+        resp = client.put(
+            "/v1/auth/quota",
+            headers=headers,
+            json={"active_scan_jobs": 7, "schedules": 3},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["source"] == "tenant_override"
+        assert body["active_override"] is True
+        assert body["overrides"] == {"active_scan_jobs": 7, "schedules": 3}
+        assert body["usage"]["active_scan_jobs"]["limit"] == 7
+        assert body["usage"]["active_scan_jobs"]["source"] == "tenant_override"
+        assert body["usage"]["active_scan_jobs"]["override_limit"] == 7
+        assert body["usage"]["retained_scan_jobs"]["source"] == "global_default"
+
+        policy = client.get("/v1/auth/policy", headers=headers).json()
+        assert policy["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["limit"] == 7
+        assert policy["tenant_quota_runtime"]["usage"]["schedules"]["limit"] == 3
+    finally:
+        _stores._tenant_quota_store = original_store
+
+
 def test_rate_limit_runtime_reports_shared_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example/test")
     monkeypatch.setenv("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT", "1")
@@ -233,6 +276,8 @@ def test_rate_limit_runtime_reports_single_replica_process_local_backend(monkeyp
 def test_auth_policy_requires_admin_role_in_api_middleware() -> None:
     middleware = APIKeyMiddleware(app, api_key="static-secret")
     assert middleware._required_role("GET", "/v1/auth/policy") == "admin"
+    assert middleware._required_role("PUT", "/v1/auth/quota") == "admin"
+    assert middleware._required_role("DELETE", "/v1/auth/quota") == "admin"
     assert middleware._required_role("GET", "/v1/auth/debug") == "viewer"
 
 

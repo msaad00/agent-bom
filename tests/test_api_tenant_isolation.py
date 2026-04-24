@@ -26,7 +26,16 @@ from agent_bom.api.routes import scan as scan_routes
 from agent_bom.api.routes import schedules as schedule_routes
 from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule
 from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
-from agent_bom.api.stores import _jobs, set_fleet_store, set_graph_store, set_job_store, set_policy_store, set_schedule_store
+from agent_bom.api.stores import (
+    _jobs,
+    set_fleet_store,
+    set_graph_store,
+    set_job_store,
+    set_policy_store,
+    set_schedule_store,
+    set_tenant_quota_store,
+)
+from agent_bom.api.tenant_quota_store import InMemoryTenantQuotaStore
 from agent_bom.asset_tracker import AssetTracker
 
 
@@ -563,6 +572,32 @@ async def test_schedule_routes_enforce_tenant_schedule_quota(monkeypatch):
         )
     assert exc.value.status_code == 429
     assert "schedules" in exc.value.detail
+
+
+def test_effective_quota_override_relaxes_process_default(monkeypatch):
+    store = InMemoryJobStore()
+    set_job_store(store)
+    from agent_bom.api import stores as _stores
+
+    original_store = _stores._tenant_quota_store
+    try:
+        quota_store = InMemoryTenantQuotaStore()
+        quota_store.put("tenant-alpha", {"active_scan_jobs": 2})
+        set_tenant_quota_store(quota_store)
+
+        pending = ScanJob(
+            job_id="job-alpha",
+            tenant_id="tenant-alpha",
+            status=JobStatus.PENDING,
+            created_at=_now(),
+            request=ScanRequest(),
+        )
+        store.put(pending)
+        monkeypatch.setattr(tenant_quota_module, "API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT", 1)
+
+        tenant_quota_module.enforce_active_scan_quota("tenant-alpha")
+    finally:
+        _stores._tenant_quota_store = original_store
 
 
 def test_sqlite_job_store_filters_by_tenant(tmp_path):

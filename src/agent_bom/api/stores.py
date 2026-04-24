@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from agent_bom.api.models import ScanJob
     from agent_bom.api.schedule_store import ScheduleStore
     from agent_bom.api.source_store import SourceStore
+    from agent_bom.api.tenant_quota_store import TenantQuotaStore
 
 # ── Shared lock (protects lazy init of all stores) ───────────────────────────
 _store_lock = threading.Lock()
@@ -193,6 +194,37 @@ def set_schedule_store(store: ScheduleStore) -> None:
     """Switch the schedule store backend."""
     global _schedule_store
     _schedule_store = store
+
+
+# ─── Tenant quota override store (pluggable) ───────────────────────────────
+_tenant_quota_store: TenantQuotaStore | None = None
+
+
+def _get_tenant_quota_store() -> TenantQuotaStore:
+    """Get the active tenant quota override store."""
+    global _tenant_quota_store
+    if _tenant_quota_store is None:
+        with _store_lock:
+            if _tenant_quota_store is None:
+                if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+                    from agent_bom.api.postgres_tenant_quota import PostgresTenantQuotaStore
+
+                    _tenant_quota_store = PostgresTenantQuotaStore()
+                elif os.environ.get("AGENT_BOM_DB"):
+                    from agent_bom.api.tenant_quota_store import SQLiteTenantQuotaStore
+
+                    _tenant_quota_store = SQLiteTenantQuotaStore(os.environ["AGENT_BOM_DB"])
+                else:
+                    from agent_bom.api.tenant_quota_store import InMemoryTenantQuotaStore
+
+                    _tenant_quota_store = InMemoryTenantQuotaStore()
+    return _tenant_quota_store
+
+
+def set_tenant_quota_store(store: TenantQuotaStore) -> None:
+    """Switch the tenant quota override store backend."""
+    global _tenant_quota_store
+    _tenant_quota_store = store
 
 
 # ─── Source store (pluggable) ───────────────────────────────────────────────

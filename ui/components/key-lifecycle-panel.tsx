@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   api,
   type ApiKeyRecord,
   type AuthPolicyResponse,
   type CreateApiKeyRequest,
   type RotateApiKeyRequest,
+  type TenantQuotaUpdateRequest,
   formatDate,
 } from "@/lib/api";
 import {
@@ -64,7 +65,13 @@ function stateLabel(state: ApiKeyRecord["state"]): string {
 
 type TenantQuotaUsageEntry =
   AuthPolicyResponse["tenant_quota_runtime"]["usage"][keyof AuthPolicyResponse["tenant_quota_runtime"]["usage"]];
-type QuotaCard = readonly [label: string, value: TenantQuotaUsageEntry];
+type QuotaKey = keyof AuthPolicyResponse["tenant_quota_runtime"]["usage"];
+type QuotaCard = {
+  field: QuotaKey;
+  label: string;
+  value: TenantQuotaUsageEntry;
+};
+type QuotaForm = Record<QuotaKey, string>;
 
 function isSessionKey(key: ApiKeyRecord): boolean {
   return key.name.startsWith("saml:") || key.scopes.includes("saml-session");
@@ -99,6 +106,10 @@ function modeTone(value: string): string {
   }
 }
 
+function quotaInputValue(value: number | null | undefined): string {
+  return value == null ? "" : String(value);
+}
+
 export function KeyLifecyclePanel({
   loading,
   error,
@@ -115,7 +126,7 @@ export function KeyLifecyclePanel({
   roleLabel?: string | null;
 }) {
   const [busyKeyId, setBusyKeyId] = useState<string | null>(null);
-  const [busyAction, setBusyAction] = useState<"create" | "rotate" | "revoke" | null>(null);
+  const [busyAction, setBusyAction] = useState<"create" | "rotate" | "revoke" | "quota" | null>(null);
   const [copied, setCopied] = useState(false);
   const [issuedSecret, setIssuedSecret] = useState<{
     title: string;
@@ -136,6 +147,12 @@ export function KeyLifecyclePanel({
     expiresAt: "",
     overlapSeconds: "",
   });
+  const [quotaForm, setQuotaForm] = useState<QuotaForm>({
+    active_scan_jobs: "",
+    retained_scan_jobs: "",
+    fleet_agents: "",
+    schedules: "",
+  });
 
   const stateCounts = useMemo(() => {
     return keys.reduce<Record<string, number>>((acc, key) => {
@@ -144,18 +161,25 @@ export function KeyLifecyclePanel({
     }, {});
   }, [keys]);
 
-  const quotaCards = useMemo<QuotaCard[]>(
-    () =>
-      policy
-        ? [
-            ["Active scan jobs", policy.tenant_quota_runtime.usage.active_scan_jobs],
-            ["Retained scan jobs", policy.tenant_quota_runtime.usage.retained_scan_jobs],
-            ["Fleet agents", policy.tenant_quota_runtime.usage.fleet_agents],
-            ["Schedules", policy.tenant_quota_runtime.usage.schedules],
-          ]
-        : [],
-    [policy]
-  );
+  const quotaCards = useMemo<QuotaCard[]>(() => {
+    if (!policy) return [];
+    return [
+      { field: "active_scan_jobs", label: "Active scan jobs", value: policy.tenant_quota_runtime.usage.active_scan_jobs },
+      { field: "retained_scan_jobs", label: "Retained scan jobs", value: policy.tenant_quota_runtime.usage.retained_scan_jobs },
+      { field: "fleet_agents", label: "Fleet agents", value: policy.tenant_quota_runtime.usage.fleet_agents },
+      { field: "schedules", label: "Schedules", value: policy.tenant_quota_runtime.usage.schedules },
+    ];
+  }, [policy]);
+
+  useEffect(() => {
+    if (!policy) return;
+    setQuotaForm({
+      active_scan_jobs: quotaInputValue(policy.tenant_quota_runtime.usage.active_scan_jobs.override_limit),
+      retained_scan_jobs: quotaInputValue(policy.tenant_quota_runtime.usage.retained_scan_jobs.override_limit),
+      fleet_agents: quotaInputValue(policy.tenant_quota_runtime.usage.fleet_agents.override_limit),
+      schedules: quotaInputValue(policy.tenant_quota_runtime.usage.schedules.override_limit),
+    });
+  }, [policy]);
 
   async function copyIssuedSecret() {
     if (!issuedSecret?.rawKey) return;
@@ -234,6 +258,46 @@ export function KeyLifecyclePanel({
       setFormError(nextError instanceof Error ? nextError.message : "Failed to revoke API key");
     } finally {
       setBusyKeyId(null);
+      setBusyAction(null);
+    }
+  }
+
+  async function handleQuotaSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusyAction("quota");
+    setFormError(null);
+    try {
+      const payload: TenantQuotaUpdateRequest = {};
+      for (const [name, raw] of Object.entries(quotaForm) as Array<[QuotaKey, string]>) {
+        const value = raw.trim();
+        if (!value) {
+          payload[name] = null;
+          continue;
+        }
+        const parsed = Number(value);
+        if (!Number.isInteger(parsed) || parsed < 0) {
+          throw new Error(`${name.replaceAll("_", " ")} must be a whole number greater than or equal to 0`);
+        }
+        payload[name] = parsed;
+      }
+      await api.updateTenantQuota(payload);
+      await onRefresh();
+    } catch (nextError) {
+      setFormError(nextError instanceof Error ? nextError.message : "Failed to update tenant quotas");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function handleQuotaReset() {
+    setBusyAction("quota");
+    setFormError(null);
+    try {
+      await api.resetTenantQuota();
+      await onRefresh();
+    } catch (nextError) {
+      setFormError(nextError instanceof Error ? nextError.message : "Failed to reset tenant quotas");
+    } finally {
       setBusyAction(null);
     }
   }
@@ -489,21 +553,69 @@ export function KeyLifecyclePanel({
                 <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Quota source</p>
                 <p className="mt-2 text-sm font-semibold text-zinc-100">
                   {policy.tenant_quota_runtime.source}
-                  {policy.tenant_quota_runtime.per_tenant_overrides ? " · tenant overrides enabled" : " · global defaults only"}
+                  {policy.tenant_quota_runtime.active_override ? " · tenant override active" : " · global defaults active"}
                 </p>
+                <p className="mt-1 text-xs text-zinc-400">Manage overrides at {policy.tenant_quota_runtime.override_endpoint}.</p>
               </div>
               <div className="mt-3 grid grid-cols-2 gap-3">
-                {quotaCards.map(([label, value]) => (
-                  <div key={label} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                {quotaCards.map(({ field, label, value }) => (
+                  <div key={field} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
                     <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">{label}</p>
                     <p className="mt-2 text-lg font-semibold text-zinc-100">{value.limit}</p>
                     <p className="mt-1 text-xs text-zinc-400">
                       Current {value.current}
                       {value.remaining != null ? ` · Remaining ${value.remaining}` : " · Unlimited"}
                     </p>
+                    <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-zinc-500">
+                      {value.source === "tenant_override" ? "Tenant override" : "Global default"}
+                    </p>
                   </div>
                 ))}
               </div>
+              <form onSubmit={handleQuotaSubmit} className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Override management</p>
+                <p className="mt-2 text-xs text-zinc-400">
+                  Leave a field blank to inherit the global default. Set `0` only when you intentionally want an unlimited or disabled guardrail.
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  {quotaCards.map(({ field, label, value }) => (
+                    <label key={field} className="space-y-2 text-sm text-zinc-300">
+                      <span>{label}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={quotaForm[field]}
+                        onChange={(event) => setQuotaForm((current) => ({ ...current, [field]: event.target.value }))}
+                        className="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-emerald-500"
+                        placeholder={`Default ${value.default_limit}`}
+                      />
+                    </label>
+                  ))}
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <p className="text-xs text-zinc-500">
+                    {policy.tenant_quota_runtime.active_override ? "Tenant-specific overrides are active." : "No tenant-specific overrides are active."}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleQuotaReset()}
+                      disabled={busyAction === "quota"}
+                      className="rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-60"
+                    >
+                      Reset overrides
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={busyAction === "quota"}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-emerald-400 disabled:opacity-60"
+                    >
+                      {busyAction === "quota" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                      Save overrides
+                    </button>
+                  </div>
+                </div>
+              </form>
             </section>
           </div>
 

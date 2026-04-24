@@ -230,6 +230,7 @@ async def auth_policy(request: Request) -> dict:
     )
     from agent_bom.api.oidc import describe_oidc_posture
     from agent_bom.api.saml import describe_saml_posture
+    from agent_bom.api.scim import describe_scim_posture
     from agent_bom.api.tenant_quota import default_tenant_quotas, get_tenant_quota_runtime
 
     api_policy = get_api_key_policy()
@@ -269,15 +270,7 @@ async def auth_policy(request: Request) -> dict:
         "identity_provisioning": {
             "oidc": describe_oidc_posture(),
             "saml": describe_saml_posture(),
-            "scim": {
-                "supported": False,
-                "configured": False,
-                "status": "not_implemented",
-                "message": (
-                    "SCIM provisioning is not implemented yet. User and group lifecycle still depends on the upstream "
-                    "identity provider, reverse proxy, or manual API-key administration."
-                ),
-            },
+            "scim": describe_scim_posture(),
             "session_revocation": {
                 "service_keys": "API key revocation takes effect immediately at the control-plane auth layer.",
                 "session_api_key": (
@@ -289,6 +282,14 @@ async def auth_policy(request: Request) -> dict:
             },
         },
     }
+
+
+@router.get("/v1/auth/scim/config", tags=["enterprise"])
+async def auth_scim_config() -> dict:
+    """Return the operator-facing SCIM configuration posture."""
+    from agent_bom.api.scim import describe_scim_posture
+
+    return describe_scim_posture()
 
 
 @router.get("/v1/auth/quota", tags=["enterprise"])

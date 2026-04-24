@@ -32,6 +32,26 @@ from agent_bom.models import Agent, AgentStatus, AgentType, MCPServer, Transport
 from agent_bom.security import sanitize_env_vars
 
 console = Console(stderr=True)
+
+
+def _read_text_no_symlink(path: Path, *, encoding: str = "utf-8") -> str:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(path, flags)
+    try:
+        with os.fdopen(fd, "rb") as fh:
+            fd = -1
+            return fh.read().decode(encoding, errors="replace")
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
+def _read_json_config_no_symlink(path: Path) -> dict:
+    return json.loads(_read_text_no_symlink(path))
+
+
 logger = logging.getLogger(__name__)
 
 # Config file locations per platform
@@ -421,7 +441,7 @@ def discover_global_configs(agent_types: Optional[list[AgentType]] = None) -> li
                         servers = parse_snowflake_connections(str(config_path))
                     else:
                         # Default JSON parsing
-                        config_data = json.loads(config_path.read_text())
+                        config_data = _read_json_config_no_symlink(config_path)
                         servers = parse_mcp_config(config_data, str(config_path))
 
                         # Claude Code ~/.claude.json has project-level MCP servers
@@ -458,7 +478,7 @@ def discover_project_configs(project_dir: Optional[str] = None) -> list[Agent]:
                     # Codex project config
                     servers = parse_codex_config(str(config_path))
                 else:
-                    config_data = json.loads(config_path.read_text())
+                    config_data = _read_json_config_no_symlink(config_path)
                     servers = parse_mcp_config(config_data, str(config_path))
 
                 if servers:
@@ -1115,7 +1135,7 @@ def discover_filesystem_mcps(root: Path) -> list[Agent]:
                 try:
                     servers: list[MCPServer] = []
                     if config_path.suffix == ".json":
-                        config_data = json.loads(config_path.read_text(encoding="utf-8"))
+                        config_data = _read_json_config_no_symlink(config_path)
                         servers = parse_mcp_config(config_data, str(config_path))
                     elif config_path.suffix == ".toml" and agent_type == AgentType.CODEX_CLI:
                         servers = parse_codex_config(str(config_path))

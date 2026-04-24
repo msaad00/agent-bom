@@ -17,6 +17,7 @@ Security note — SQL injection mitigation:
 
 from __future__ import annotations
 
+import json
 import logging
 import queue
 import re
@@ -96,6 +97,10 @@ class AnalyticsStore(Protocol):
         """Append a compliance control measurement."""
         ...
 
+    def record_cis_benchmark_checks(self, checks: list[dict], *, tenant_id: str = "default") -> None:
+        """Append normalized CIS benchmark check rows."""
+        ...
+
     def record_audit_event(self, event: dict) -> None:
         """Append an audit event for analytics/trending."""
         ...
@@ -134,6 +139,19 @@ class AnalyticsStore(Protocol):
 
     def query_compliance_heatmap(self, days: int = 30, *, tenant_id: str | None = None) -> list[dict]:
         """Compliance control pass/fail summary grouped by framework."""
+        ...
+
+    def query_cis_benchmark_checks(
+        self,
+        *,
+        cloud: str | None = None,
+        status: str | None = None,
+        priority: int | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        tenant_id: str | None = None,
+    ) -> list[dict]:
+        """List normalized CIS benchmark checks."""
         ...
 
     def record_scan_metadata(self, metadata: dict, *, tenant_id: str = "default") -> None:
@@ -178,6 +196,9 @@ class NullAnalyticsStore:
     def record_compliance_control(self, control: dict, *, tenant_id: str = "default") -> None:
         pass
 
+    def record_cis_benchmark_checks(self, checks: list[dict], *, tenant_id: str = "default") -> None:
+        pass
+
     def record_audit_event(self, event: dict) -> None:
         pass
 
@@ -209,6 +230,18 @@ class NullAnalyticsStore:
         return []
 
     def query_compliance_heatmap(self, days: int = 30, *, tenant_id: str | None = None) -> list[dict]:
+        return []
+
+    def query_cis_benchmark_checks(
+        self,
+        *,
+        cloud: str | None = None,
+        status: str | None = None,
+        priority: int | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        tenant_id: str | None = None,
+    ) -> list[dict]:
         return []
 
     def record_scan_metadata(self, metadata: dict, *, tenant_id: str = "default") -> None:
@@ -360,6 +393,11 @@ class ClickHouseAnalyticsStore:
             [self._compliance_row(control, tenant_id=tenant_id)],
         )
 
+    def record_cis_benchmark_checks(self, checks: list[dict], *, tenant_id: str = "default") -> None:
+        rows = [self._cis_check_row(check, tenant_id=tenant_id) for check in checks if check]
+        if rows:
+            self._client.insert_json("cis_benchmark_checks", rows)
+
     def _compliance_row(self, control: dict, *, tenant_id: str = "default") -> dict[str, Any]:
         return {
             "measured_at": control.get("measured_at"),
@@ -371,6 +409,28 @@ class ClickHouseAnalyticsStore:
             "status": control.get("status", "unknown"),
             "finding_count": int(control.get("finding_count", 0)),
             "score": float(control.get("score", 0.0)),
+        }
+
+    def _cis_check_row(self, check: dict, *, tenant_id: str = "default") -> dict[str, Any]:
+        return {
+            "measured_at": _coerce_clickhouse_timestamp(check.get("measured_at")),
+            "scan_id": check.get("scan_id", ""),
+            "tenant_id": str(check.get("tenant_id") or tenant_id or "default"),
+            "cloud": check.get("cloud", ""),
+            "check_id": check.get("check_id", ""),
+            "title": check.get("title", ""),
+            "status": check.get("status", "unknown"),
+            "severity": check.get("severity", "unknown"),
+            "cis_section": check.get("cis_section", ""),
+            "evidence": check.get("evidence", ""),
+            "resource_ids": list(check.get("resource_ids", []) or []),
+            "remediation": json.dumps(check.get("remediation", {}) or {}, sort_keys=True),
+            "fix_cli": check.get("fix_cli", ""),
+            "fix_console": check.get("fix_console", ""),
+            "effort": check.get("effort", ""),
+            "priority": int(check.get("priority", 0) or 0),
+            "guardrails": list(check.get("guardrails", []) or []),
+            "requires_human_review": int(bool(check.get("requires_human_review", False))),
         }
 
     def record_audit_event(self, event: dict) -> None:
@@ -482,6 +542,37 @@ class ClickHouseAnalyticsStore:
         )
         return self._client.query_json(query)
 
+    def query_cis_benchmark_checks(
+        self,
+        *,
+        cloud: str | None = None,
+        status: str | None = None,
+        priority: int | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        tenant_id: str | None = None,
+    ) -> list[dict]:
+        clauses: list[str] = []
+        if tenant_id is not None:
+            clauses.append(f"tenant_id = '{_escape(tenant_id)}'")
+        if cloud:
+            clauses.append(f"cloud = '{_escape(cloud)}'")
+        if status:
+            clauses.append(f"status = '{_escape(status)}'")
+        if priority is not None:
+            clauses.append(f"priority = {int(priority)}")
+        where = " AND ".join(clauses) if clauses else "1"
+        safe_limit = max(1, min(int(limit), 500))
+        safe_offset = max(0, int(offset))
+        query = (
+            "SELECT scan_id, measured_at, tenant_id, cloud, check_id, title, status, severity, cis_section, "
+            "evidence, resource_ids, remediation, fix_cli, fix_console, effort, priority, guardrails, "
+            "requires_human_review "  # nosec B608
+            f"FROM cis_benchmark_checks WHERE {where} "
+            f"ORDER BY measured_at DESC, priority ASC, cloud, check_id LIMIT {safe_limit} OFFSET {safe_offset}"
+        )
+        return self._client.query_json(query)
+
     def record_scan_metadata(self, metadata: dict, *, tenant_id: str = "default") -> None:
         self._client.insert_json(
             "scan_metadata",
@@ -553,6 +644,10 @@ class BufferedAnalyticsStore:
     def record_compliance_control(self, control: dict, *, tenant_id: str = "default") -> None:
         self._queue.put(("compliance", (control, tenant_id)))
 
+    def record_cis_benchmark_checks(self, checks: list[dict], *, tenant_id: str = "default") -> None:
+        if checks:
+            self._queue.put(("cis_checks", (checks, tenant_id)))
+
     def record_audit_event(self, event: dict) -> None:
         self._queue.put(("audit", (event,)))
 
@@ -592,6 +687,26 @@ class BufferedAnalyticsStore:
         self._flush_pending()
         return self._store.query_compliance_heatmap(days=days, tenant_id=tenant_id)
 
+    def query_cis_benchmark_checks(
+        self,
+        *,
+        cloud: str | None = None,
+        status: str | None = None,
+        priority: int | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        tenant_id: str | None = None,
+    ) -> list[dict]:
+        self._flush_pending()
+        return self._store.query_cis_benchmark_checks(
+            cloud=cloud,
+            status=status,
+            priority=priority,
+            limit=limit,
+            offset=offset,
+            tenant_id=tenant_id,
+        )
+
     def close(self) -> None:
         self._stop.set()
         self._thread.join(timeout=max(1.0, self._flush_interval * 4))
@@ -623,6 +738,7 @@ class BufferedAnalyticsStore:
         metadata_rows: list[dict[str, Any]] = []
         fleet_rows: list[dict[str, Any]] = []
         compliance_rows: list[dict[str, Any]] = []
+        cis_check_rows: list[dict[str, Any]] = []
         audit_rows: list[dict[str, Any]] = []
 
         for kind, payload in drained:
@@ -647,6 +763,9 @@ class BufferedAnalyticsStore:
             elif kind == "compliance":
                 control, tenant_id = payload
                 compliance_rows.append(self._store._compliance_row(dict(control), tenant_id=str(tenant_id)))
+            elif kind == "cis_checks":
+                checks, tenant_id = payload
+                cis_check_rows.extend(self._store._cis_check_row(dict(check), tenant_id=str(tenant_id)) for check in checks if check)
             elif kind == "audit":
                 (event,) = payload
                 audit_rows.append(self._store._audit_row(dict(event)))
@@ -664,6 +783,8 @@ class BufferedAnalyticsStore:
                 self._store._client.insert_json("fleet_agents", fleet_rows)
             if compliance_rows:
                 self._store._client.insert_json("compliance_controls", compliance_rows)
+            if cis_check_rows:
+                self._store._client.insert_json("cis_benchmark_checks", cis_check_rows)
             if audit_rows:
                 self._store._client.insert_json("audit_events", audit_rows)
         except Exception:

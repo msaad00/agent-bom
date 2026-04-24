@@ -14,6 +14,7 @@
 -- Tables
 --   teams              Multi-tenant team registry
 --   scan_jobs          Async scan job lifecycle + results
+--   cis_benchmark_checks Columnar CIS benchmark check observations
 --   findings           Normalized vulnerability findings (per scan)
 --   agents             Discovered AI agents/clients (per scan)
 --   policy_results     Per-scan policy evaluation outcomes
@@ -76,6 +77,38 @@ CREATE INDEX IF NOT EXISTS idx_jobs_status  ON scan_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_created ON scan_jobs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_jobs_team_status  ON scan_jobs(team_id, status);
 CREATE INDEX IF NOT EXISTS idx_jobs_team_created ON scan_jobs(team_id, created_at DESC);
+
+-- ── Table: CIS Benchmark Checks ──────────────────────────────────────────────
+-- Normalized cloud CIS benchmark observations extracted from scan JSON blobs.
+-- This supports indexed compliance analytics without JSONB extraction hot paths.
+
+CREATE TABLE IF NOT EXISTS cis_benchmark_checks (
+    id                    BIGSERIAL PRIMARY KEY,
+    scan_id               TEXT NOT NULL REFERENCES scan_jobs(job_id) ON DELETE CASCADE,
+    team_id               TEXT NOT NULL DEFAULT 'default' REFERENCES teams(team_id) ON DELETE CASCADE,
+    cloud                 TEXT NOT NULL,
+    check_id              TEXT NOT NULL,
+    title                 TEXT NOT NULL DEFAULT '',
+    status                TEXT NOT NULL DEFAULT 'unknown',
+    severity              TEXT NOT NULL DEFAULT 'unknown',
+    cis_section           TEXT NOT NULL DEFAULT '',
+    evidence              TEXT NOT NULL DEFAULT '',
+    resource_ids          JSONB NOT NULL DEFAULT '[]'::jsonb,
+    remediation           JSONB NOT NULL DEFAULT '{}'::jsonb,
+    fix_cli               TEXT NOT NULL DEFAULT '',
+    fix_console           TEXT NOT NULL DEFAULT '',
+    effort                TEXT NOT NULL DEFAULT '',
+    priority              INTEGER NOT NULL DEFAULT 0,
+    guardrails            TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+    requires_human_review BOOLEAN NOT NULL DEFAULT FALSE,
+    measured_at           TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+);
+
+CREATE INDEX IF NOT EXISTS idx_cis_checks_scan ON cis_benchmark_checks(scan_id);
+CREATE INDEX IF NOT EXISTS idx_cis_checks_team_cloud_status_priority
+    ON cis_benchmark_checks(team_id, cloud, status, priority, measured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_cis_checks_team_check
+    ON cis_benchmark_checks(team_id, cloud, check_id, measured_at DESC);
 
 -- ── Tables: Fleet Agents ──────────────────────────────────────────────────────
 
@@ -528,6 +561,9 @@ ALTER TABLE fleet_agents FORCE ROW LEVEL SECURITY;
 ALTER TABLE scan_jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE scan_jobs FORCE ROW LEVEL SECURITY;
 
+ALTER TABLE cis_benchmark_checks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cis_benchmark_checks FORCE ROW LEVEL SECURITY;
+
 DO $$
 BEGIN
     IF NOT EXISTS (
@@ -537,6 +573,21 @@ BEGIN
           AND policyname = 'scan_jobs_tenant_isolation'
     ) THEN
         CREATE POLICY scan_jobs_tenant_isolation ON scan_jobs
+            USING (public.abom_rls_bypass() OR team_id = public.abom_current_tenant())
+            WITH CHECK (public.abom_rls_bypass() OR team_id = public.abom_current_tenant());
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = 'public'
+          AND tablename = 'cis_benchmark_checks'
+          AND policyname = 'cis_benchmark_checks_tenant_isolation'
+    ) THEN
+        CREATE POLICY cis_benchmark_checks_tenant_isolation ON cis_benchmark_checks
             USING (public.abom_rls_bypass() OR team_id = public.abom_current_tenant())
             WITH CHECK (public.abom_rls_bypass() OR team_id = public.abom_current_tenant());
     END IF;

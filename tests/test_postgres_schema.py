@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 
 INIT_SQL = Path(__file__).parent.parent / "deploy" / "supabase" / "postgres" / "init.sql"
+MIGRATION = Path(__file__).parent.parent / "scripts" / "migrations" / "backfill_cis_benchmark_checks.py"
 SQL = INIT_SQL.read_text()
 
 
@@ -78,6 +79,7 @@ def test_all_expected_tables_exist():
     expected = {
         "teams",
         "scan_jobs",
+        "cis_benchmark_checks",
         "findings",
         "agents",
         "policy_results",
@@ -185,6 +187,36 @@ def test_scan_jobs_team_status_index():
 def test_scan_jobs_rls_policy_exists():
     assert "ALTER TABLE scan_jobs ENABLE ROW LEVEL SECURITY" in SQL
     assert "CREATE POLICY scan_jobs_tenant_isolation ON scan_jobs" in SQL
+
+
+def test_cis_benchmark_checks_table_is_indexed_and_tenant_scoped():
+    cols = _columns_for("cis_benchmark_checks")
+    for col in (
+        "scan_id",
+        "team_id",
+        "cloud",
+        "check_id",
+        "status",
+        "severity",
+        "cis_section",
+        "resource_ids",
+        "remediation",
+        "fix_cli",
+        "priority",
+        "guardrails",
+        "requires_human_review",
+    ):
+        assert col in cols, f"cis_benchmark_checks missing column: {col}"
+    assert "idx_cis_checks_team_cloud_status_priority" in _indexes()
+    assert "ALTER TABLE cis_benchmark_checks ENABLE ROW LEVEL SECURITY" in SQL
+    assert "CREATE POLICY cis_benchmark_checks_tenant_isolation ON cis_benchmark_checks" in SQL
+
+
+def test_cis_benchmark_backfill_migration_is_idempotent():
+    body = MIGRATION.read_text()
+    assert "build_cis_benchmark_check_rows" in body
+    assert "DELETE FROM cis_benchmark_checks WHERE scan_id = %s AND team_id = %s" in body
+    assert "INSERT INTO cis_benchmark_checks" in body
 
 
 # ── findings ─────────────────────────────────────────────────────────────────

@@ -99,7 +99,7 @@ agent-bom agents -p . --compliance-export fedramp -o evidence.zip # tamper-evide
 pip install 'agent-bom[ui]' && agent-bom serve                    # API + bundled local UI
 ```
 
-<details>
+<details open>
 <summary><b>Product views</b> — dashboard, remediation, and graph surfaces</summary>
 
 ## Product views

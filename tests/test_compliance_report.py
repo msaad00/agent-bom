@@ -39,7 +39,7 @@ from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.routes import compliance as compliance_routes
 from agent_bom.api.server import app
 from agent_bom.api.store import InMemoryJobStore
-from agent_bom.api.stores import _get_store, set_job_store
+from agent_bom.api.stores import _get_store, set_analytics_store, set_job_store
 
 
 def _now_iso() -> str:
@@ -86,6 +86,53 @@ def _seed_jobs_with_findings(tenant_id: str = "tenant-alpha") -> list[ScanJob]:
     return [job_a]
 
 
+def _seed_job_with_cis(tenant_id: str = "tenant-alpha") -> ScanJob:
+    job = ScanJob(
+        job_id="scan-cis",
+        tenant_id=tenant_id,
+        status=JobStatus.DONE,
+        created_at=_now_iso(),
+        completed_at=_now_iso(),
+        request=ScanRequest(),
+    )
+    job.result = {
+        "scan_id": "scan-cis",
+        "cis_benchmark": {
+            "checks": [
+                {
+                    "check_id": "1.5",
+                    "title": "Ensure MFA is enabled for the root user",
+                    "status": "fail",
+                    "severity": "high",
+                    "cis_section": "1 - Identity and Access Management",
+                    "evidence": "Root user MFA is not enabled.",
+                    "resource_ids": ["root"],
+                    "remediation": {
+                        "fix_cli": "",
+                        "fix_console": "AWS Console -> IAM",
+                        "effort": "medium",
+                        "priority": 1,
+                        "guardrails": ["identity"],
+                        "requires_human_review": True,
+                    },
+                }
+            ]
+        },
+        "azure_cis_benchmark": {
+            "checks": [
+                {
+                    "check_id": "2.1",
+                    "title": "Storage account secure transfer required",
+                    "status": "pass",
+                    "severity": "medium",
+                    "remediation": {"priority": 3},
+                }
+            ]
+        },
+    }
+    return job
+
+
 def _setup_audit_log() -> InMemoryAuditLog:
     audit = InMemoryAuditLog()
     audit.append(
@@ -110,6 +157,54 @@ def _setup_audit_log() -> InMemoryAuditLog:
     )
     set_audit_log(audit)
     return audit
+
+
+def test_list_cis_checks_filters_scan_job_fallback():
+    store = InMemoryJobStore()
+    set_job_store(store)
+    store.put(_seed_job_with_cis())
+
+    class _NoAnalytics:
+        def query_cis_benchmark_checks(self, **_kwargs):
+            return []
+
+    set_analytics_store(_NoAnalytics())
+    body = asyncio.run(
+        compliance_routes.list_cis_benchmark_checks(
+            _request("tenant-alpha"),
+            cloud="aws",
+            status="fail",
+            priority=1,
+        )
+    )
+    assert body["source"] == "scan_jobs"
+    assert body["count"] == 1
+    assert body["checks"][0]["check_id"] == "1.5"
+    assert body["checks"][0]["remediation"]["priority"] == 1
+
+
+def test_list_cis_checks_prefers_columnar_store():
+    class _ColumnarStore(InMemoryJobStore):
+        def query_cis_benchmark_checks(self, tenant_id: str, **kwargs):
+            assert tenant_id == "tenant-alpha"
+            assert kwargs["cloud"] == "aws"
+            return [
+                {
+                    "scan_id": "scan-cis",
+                    "tenant_id": tenant_id,
+                    "cloud": "aws",
+                    "check_id": "1.5",
+                    "title": "Root MFA",
+                    "status": "fail",
+                    "severity": "high",
+                    "remediation": '{"priority": 1}',
+                }
+            ]
+
+    set_job_store(_ColumnarStore())
+    body = asyncio.run(compliance_routes.list_cis_benchmark_checks(_request("tenant-alpha"), cloud="aws"))
+    assert body["source"] == "columnar"
+    assert body["checks"][0]["remediation"] == {"priority": 1}
 
 
 def _patched_get_compliance_returns(payload: dict):

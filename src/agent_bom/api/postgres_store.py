@@ -76,8 +76,37 @@ class PostgresJobStore:
                 END
                 $$;
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS cis_benchmark_checks (
+                    id BIGSERIAL PRIMARY KEY,
+                    scan_id TEXT NOT NULL REFERENCES scan_jobs(job_id) ON DELETE CASCADE,
+                    team_id TEXT NOT NULL DEFAULT 'default',
+                    cloud TEXT NOT NULL,
+                    check_id TEXT NOT NULL,
+                    title TEXT NOT NULL DEFAULT '',
+                    status TEXT NOT NULL DEFAULT 'unknown',
+                    severity TEXT NOT NULL DEFAULT 'unknown',
+                    cis_section TEXT NOT NULL DEFAULT '',
+                    evidence TEXT NOT NULL DEFAULT '',
+                    resource_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    remediation JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    fix_cli TEXT NOT NULL DEFAULT '',
+                    fix_console TEXT NOT NULL DEFAULT '',
+                    effort TEXT NOT NULL DEFAULT '',
+                    priority INTEGER NOT NULL DEFAULT 0,
+                    guardrails TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
+                    requires_human_review BOOLEAN NOT NULL DEFAULT FALSE,
+                    measured_at TEXT NOT NULL DEFAULT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+                )
+            """)
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_jobs_team_created ON scan_jobs(team_id, created_at DESC)")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cis_checks_team_cloud_status_priority "
+                "ON cis_benchmark_checks(team_id, cloud, status, priority, measured_at DESC)"
+            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_cis_checks_scan ON cis_benchmark_checks(scan_id)")
             _ensure_tenant_rls(conn, "scan_jobs", "team_id")
+            _ensure_tenant_rls(conn, "cis_benchmark_checks", "team_id")
             conn.commit()
 
     def put(self, job) -> None:
@@ -94,6 +123,7 @@ class PostgresJobStore:
                      data = EXCLUDED.data""",
                 (job.job_id, job.status.value, job.created_at, job.completed_at, job.tenant_id, getattr(job, "triggered_by", None), data),
             )
+            self._replace_cis_checks(conn, job)
             conn.commit()
 
     def get(self, job_id: str, tenant_id: str | None = None):
@@ -163,6 +193,63 @@ class PostgresJobStore:
                 for row in rows
             ]
 
+    def query_cis_benchmark_checks(
+        self,
+        tenant_id: str,
+        *,
+        cloud: str | None = None,
+        status: str | None = None,
+        priority: int | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict]:
+        clauses = ["team_id = %s"]
+        params: list[object] = [tenant_id]
+        if cloud:
+            clauses.append("cloud = %s")
+            params.append(cloud)
+        if status:
+            clauses.append("status = %s")
+            params.append(status)
+        if priority is not None:
+            clauses.append("priority = %s")
+            params.append(int(priority))
+        params.extend([max(1, min(int(limit), 500)), max(0, int(offset))])
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                f"""SELECT scan_id, team_id, cloud, check_id, title, status, severity, cis_section, evidence,
+                          resource_ids, remediation, fix_cli, fix_console, effort, priority, guardrails,
+                          requires_human_review, measured_at
+                   FROM cis_benchmark_checks
+                   WHERE {" AND ".join(clauses)}
+                   ORDER BY measured_at DESC, priority ASC, cloud, check_id
+                   LIMIT %s OFFSET %s""",  # nosec B608 - clauses are fixed fragments, values are parameters.
+                params,
+            ).fetchall()
+        return [
+            {
+                "scan_id": row[0],
+                "tenant_id": row[1],
+                "cloud": row[2],
+                "check_id": row[3],
+                "title": row[4],
+                "status": row[5],
+                "severity": row[6],
+                "cis_section": row[7],
+                "evidence": row[8],
+                "resource_ids": row[9] if isinstance(row[9], list) else json.loads(row[9] or "[]"),
+                "remediation": row[10] if isinstance(row[10], dict) else json.loads(row[10] or "{}"),
+                "fix_cli": row[11],
+                "fix_console": row[12],
+                "effort": row[13],
+                "priority": row[14],
+                "guardrails": list(row[15] or []),
+                "requires_human_review": bool(row[16]),
+                "measured_at": row[17],
+            }
+            for row in rows
+        ]
+
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
         with _tenant_connection(self._pool) as conn:
             cursor = conn.execute(
@@ -174,6 +261,47 @@ class PostgresJobStore:
             )
             conn.commit()
             return cursor.rowcount
+
+    def _replace_cis_checks(self, conn, job) -> None:
+        result = getattr(job, "result", None)
+        if not isinstance(result, dict):
+            return
+        from agent_bom.analytics_contract import build_cis_benchmark_check_rows
+
+        tenant_id = str(getattr(job, "tenant_id", None) or "default")
+        measured_at = getattr(job, "completed_at", None) or getattr(job, "created_at", None)
+        rows = build_cis_benchmark_check_rows(result, str(job.job_id), measured_at=measured_at)
+        conn.execute("DELETE FROM cis_benchmark_checks WHERE scan_id = %s AND team_id = %s", (job.job_id, tenant_id))
+        for row in rows:
+            conn.execute(
+                """INSERT INTO cis_benchmark_checks (
+                       scan_id, team_id, cloud, check_id, title, status, severity, cis_section, evidence,
+                       resource_ids, remediation, fix_cli, fix_console, effort, priority, guardrails,
+                       requires_human_review, measured_at
+                   ) VALUES (
+                       %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s, %s, %s
+                   )""",
+                (
+                    job.job_id,
+                    tenant_id,
+                    row["cloud"],
+                    row["check_id"],
+                    row["title"],
+                    row["status"],
+                    row["severity"],
+                    row["cis_section"],
+                    row["evidence"],
+                    json.dumps(row["resource_ids"]),
+                    json.dumps(row["remediation"], sort_keys=True),
+                    row["fix_cli"],
+                    row["fix_console"],
+                    row["effort"],
+                    int(row["priority"]),
+                    row["guardrails"],
+                    bool(row["requires_human_review"]),
+                    row["measured_at"] or getattr(job, "completed_at", None) or getattr(job, "created_at", ""),
+                ),
+            )
 
 
 # ── PostgresFleetStore ─────────────────────────────────────────────────────

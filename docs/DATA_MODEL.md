@@ -151,6 +151,7 @@ list/put plus session-scoped `app.current_tenant` for RLS.
 | Table | Source dataclass | Notes |
 |---|---|---|
 | `scan_jobs` | `ScanJob` (api/models.py) | global `job_id` PK + tenant column (`team_id` / `tenant_id`) |
+| `cis_benchmark_checks` | CIS benchmark JSON blobs normalized via `analytics_contract.build_cis_benchmark_check_rows` | indexed cloud/status/priority remediation rows for `/v1/cis/checks`; backfilled by `scripts/migrations/backfill_cis_benchmark_checks.py` |
 | `fleet_agents` | `FleetAgent` (api/fleet_store.py) | trust score + lifecycle state |
 | `api_keys` | `ApiKey` (api/auth.py) | scrypt hashes, expiry, role, tenant |
 | `exceptions` | `Exception` (api/exceptions.py) | suppression workflow |
@@ -175,6 +176,7 @@ This is not a transactional control-plane replacement.
 | `scan_metadata` | analytics_contract.scan_metadata | yes (#1501) |
 | `fleet_agents` | `FleetAgent` snapshot | yes (native) |
 | `compliance_controls` | per-control measurement | yes (#1501) |
+| `cis_benchmark_checks` | normalized cloud CIS check rows + remediation | yes |
 | `audit_events` | `AuditEntry` denormalized | yes (native) |
 
 Every `query_*` method on the analytics store accepts `tenant_id` and

@@ -252,6 +252,31 @@ CREATE TABLE IF NOT EXISTS audit_events (
 ORDER BY (event_timestamp, tenant_id, action)
 PARTITION BY toYYYYMM(event_timestamp)
 TTL event_timestamp + INTERVAL 2 YEAR""",
+    # 8. CIS benchmark check observations with remediation fields indexed
+    """\
+CREATE TABLE IF NOT EXISTS cis_benchmark_checks (
+    measured_at DateTime DEFAULT now(),
+    scan_id String,
+    tenant_id String DEFAULT 'default',
+    cloud LowCardinality(String),
+    check_id String,
+    title String,
+    status LowCardinality(String),
+    severity LowCardinality(String),
+    cis_section String,
+    evidence String,
+    resource_ids Array(String),
+    remediation String,
+    fix_cli String,
+    fix_console String,
+    effort LowCardinality(String),
+    priority UInt8,
+    guardrails Array(String),
+    requires_human_review UInt8
+) ENGINE = MergeTree()
+ORDER BY (measured_at, tenant_id, cloud, status, priority, check_id)
+PARTITION BY toYYYYMM(measured_at)
+TTL measured_at + INTERVAL 2 YEAR""",
 ]
 
 
@@ -272,4 +297,6 @@ _TABLE_MIGRATIONS: list[str] = [
     "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS session_id String DEFAULT ''",
     "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS trace_id String DEFAULT ''",
     "ALTER TABLE audit_events ADD COLUMN IF NOT EXISTS request_id String DEFAULT ''",
+    "ALTER TABLE cis_benchmark_checks ADD COLUMN IF NOT EXISTS tenant_id String DEFAULT 'default'",
+    "ALTER TABLE cis_benchmark_checks ADD COLUMN IF NOT EXISTS remediation String DEFAULT '{}'",
 ]

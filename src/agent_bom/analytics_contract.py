@@ -27,6 +27,7 @@ class ScanAnalyticsPayload:
     posture_snapshots: dict[str, dict[str, Any]]
     fleet_snapshots: list[dict[str, Any]]
     compliance_controls: list[dict[str, Any]]
+    cis_benchmark_checks: list[dict[str, Any]]
 
 
 def build_scan_analytics_payload(
@@ -71,6 +72,7 @@ def build_scan_analytics_payload(
         posture_snapshots=posture_snapshots,
         fleet_snapshots=_build_fleet_snapshots(report),
         compliance_controls=_build_compliance_controls(report, data),
+        cis_benchmark_checks=_build_cis_benchmark_checks(report, data, final_scan_id),
     )
 
 
@@ -230,6 +232,65 @@ def _build_compliance_controls(report: AIBOMReport, data: dict[str, Any]) -> lis
                 "score": float(check.get("score", aisvs.get("overall_score", 0.0)) or 0.0),
                 "measured_at": measured_at,
                 "scan_id": report.scan_id,
+            }
+        )
+    return rows
+
+
+def build_cis_benchmark_check_rows(data: dict[str, Any], scan_id: str, *, measured_at: str | None = None) -> list[dict[str, Any]]:
+    """Normalize serialized CIS benchmark blobs into indexable analytics rows."""
+    rows: list[dict[str, Any]] = []
+    measured = measured_at or str(data.get("generated_at") or data.get("scan_timestamp") or "")
+    benchmark_sources = (
+        ("aws", data.get("cis_benchmark")),
+        ("azure", data.get("azure_cis_benchmark")),
+        ("gcp", data.get("gcp_cis_benchmark")),
+        ("snowflake", data.get("snowflake_cis_benchmark")),
+        ("databricks", data.get("databricks_cis_benchmark")),
+    )
+    for cloud, benchmark in benchmark_sources:
+        if not isinstance(benchmark, dict):
+            continue
+        rows.extend(_cis_rows_for_cloud(cloud, benchmark, scan_id, measured))
+    return rows
+
+
+def _build_cis_benchmark_checks(report: AIBOMReport, data: dict[str, Any], scan_id: str) -> list[dict[str, Any]]:
+    measured_at = report.generated_at.isoformat()
+    return build_cis_benchmark_check_rows(data, scan_id, measured_at=measured_at)
+
+
+def _cis_rows_for_cloud(cloud: str, benchmark: dict[str, Any], scan_id: str, measured_at: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for check in benchmark.get("checks", []) or []:
+        if not isinstance(check, dict):
+            continue
+        raw_remediation = check.get("remediation")
+        remediation: dict[str, Any] = dict(raw_remediation) if isinstance(raw_remediation, dict) else {}
+        priority = remediation.get("priority", check.get("priority", 0))
+        try:
+            priority_int = int(priority or 0)
+        except (TypeError, ValueError):
+            priority_int = 0
+        rows.append(
+            {
+                "scan_id": scan_id,
+                "measured_at": measured_at,
+                "cloud": cloud,
+                "check_id": str(check.get("check_id", "")),
+                "title": str(check.get("title", "")),
+                "status": str(check.get("status", "unknown")).lower() or "unknown",
+                "severity": str(check.get("severity", "unknown")).lower() or "unknown",
+                "cis_section": str(check.get("cis_section", "")),
+                "evidence": str(check.get("evidence", "")),
+                "resource_ids": [str(item) for item in check.get("resource_ids", []) or []],
+                "remediation": remediation,
+                "fix_cli": str(remediation.get("fix_cli") or ""),
+                "fix_console": str(remediation.get("fix_console") or ""),
+                "effort": str(remediation.get("effort") or ""),
+                "priority": priority_int,
+                "guardrails": [str(item) for item in remediation.get("guardrails", []) or []],
+                "requires_human_review": bool(remediation.get("requires_human_review", False)),
             }
         )
     return rows

@@ -24,7 +24,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from agent_bom.api.models import ComplianceReportBundle, JobStatus
-from agent_bom.api.stores import _get_fleet_store, _get_policy_store, _get_store
+from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_policy_store, _get_store
 from agent_bom.rbac import require_authenticated_permission
 
 if TYPE_CHECKING:
@@ -64,6 +64,12 @@ def _tenant_id(request: Request) -> str:
 
 def _tenant_jobs(request: Request) -> list:
     return _get_store().list_all(tenant_id=_tenant_id(request))
+
+
+def _normalize_csv_filter(value: str | None) -> set[str]:
+    if not value:
+        return set()
+    return {item.strip().lower() for item in value.split(",") if item.strip()}
 
 
 def _result_has_runtime_signals(result: dict[str, Any]) -> bool:
@@ -376,6 +382,90 @@ async def get_compliance(request: Request) -> dict:
             "pci_dss_fail": pf,
         },
     }
+
+
+@router.get("/v1/cis/checks", tags=["compliance"])
+async def list_cis_benchmark_checks(
+    request: Request,
+    cloud: str | None = None,
+    status: str | None = None,
+    priority: int | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> dict:
+    """List tenant-scoped CIS benchmark checks with indexed filters where available."""
+    tenant_id = _tenant_id(request)
+    safe_limit = max(1, min(int(limit), 500))
+    safe_offset = max(0, int(offset))
+    cloud_filter = _normalize_csv_filter(cloud)
+    status_filter = _normalize_csv_filter(status)
+    if priority is not None and priority < 0:
+        raise HTTPException(status_code=400, detail="priority must be >= 0")
+
+    job_store = _get_store()
+    store_query = getattr(job_store, "query_cis_benchmark_checks", None)
+    if callable(store_query) and len(cloud_filter) <= 1 and len(status_filter) <= 1:
+        rows = store_query(
+            tenant_id,
+            cloud=next(iter(cloud_filter), None),
+            status=next(iter(status_filter), None),
+            priority=priority,
+            limit=safe_limit,
+            offset=safe_offset,
+        )
+        if rows:
+            return {"checks": [_coerce_cis_row(row) for row in rows], "count": len(rows), "source": "columnar"}
+
+    analytics_store = _get_analytics_store()
+    query_fn = getattr(analytics_store, "query_cis_benchmark_checks", None)
+    if callable(query_fn) and len(cloud_filter) <= 1 and len(status_filter) <= 1:
+        try:
+            rows = query_fn(
+                cloud=next(iter(cloud_filter), None),
+                status=next(iter(status_filter), None),
+                priority=priority,
+                limit=safe_limit,
+                offset=safe_offset,
+                tenant_id=tenant_id,
+            )
+            if rows:
+                return {"checks": [_coerce_cis_row(row) for row in rows], "count": len(rows), "source": "analytics"}
+        except Exception:
+            pass
+
+    from agent_bom.analytics_contract import build_cis_benchmark_check_rows
+
+    all_rows: list[dict[str, Any]] = []
+    for job in _tenant_jobs(request):
+        if job.status != JobStatus.DONE or not isinstance(getattr(job, "result", None), dict):
+            continue
+        all_rows.extend(
+            build_cis_benchmark_check_rows(
+                job.result,
+                str(job.result.get("scan_id") or job.job_id),
+                measured_at=getattr(job, "completed_at", None) or getattr(job, "created_at", None),
+            )
+        )
+    filtered = [
+        row
+        for row in all_rows
+        if (not cloud_filter or row["cloud"].lower() in cloud_filter)
+        and (not status_filter or row["status"].lower() in status_filter)
+        and (priority is None or int(row["priority"]) == priority)
+    ]
+    filtered.sort(key=lambda row: (str(row.get("measured_at") or ""), -int(row.get("priority") or 0)), reverse=True)
+    return {"checks": filtered[safe_offset : safe_offset + safe_limit], "count": len(filtered), "source": "scan_jobs"}
+
+
+def _coerce_cis_row(row: dict[str, Any]) -> dict[str, Any]:
+    coerced = dict(row)
+    remediation = coerced.get("remediation")
+    if isinstance(remediation, str):
+        try:
+            coerced["remediation"] = json.loads(remediation)
+        except json.JSONDecodeError:
+            coerced["remediation"] = {}
+    return coerced
 
 
 # ─── Compliance Narrative ─────────────────────────────────────────────────

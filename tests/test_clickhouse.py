@@ -269,6 +269,7 @@ class TestClickHouseAnalyticsStore:
             buffered.record_scan_metadata({"scan_id": "scan-1", "vuln_count": 4})
             buffered.record_fleet_snapshot({"agent_name": "agent-1", "trust_score": 42.0})
             buffered.record_compliance_control({"framework": "owasp-llm-top10", "control_id": "LLM01"})
+            buffered.record_cis_benchmark_checks([{"scan_id": "scan-1", "cloud": "aws", "check_id": "1.5", "priority": 1}])
             buffered.record_audit_event({"action": "auth.key_created", "actor": "system"})
             buffered.close()
 
@@ -276,7 +277,45 @@ class TestClickHouseAnalyticsStore:
         assert any(table == "scan_metadata" for table, _rows in inserted)
         assert any(table == "fleet_agents" for table, _rows in inserted)
         assert any(table == "compliance_controls" for table, _rows in inserted)
+        assert any(table == "cis_benchmark_checks" for table, _rows in inserted)
         assert any(table == "audit_events" for table, _rows in inserted)
+
+    def test_record_cis_benchmark_checks_normalizes_remediation(self):
+        from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
+
+        inserted = {}
+
+        class _Client:
+            def ensure_tables(self):
+                return None
+
+            def insert_json(self, table, rows):
+                inserted["table"] = table
+                inserted["rows"] = rows
+
+        with patch("agent_bom.cloud.clickhouse.ClickHouseClient", return_value=_Client()):
+            store = ClickHouseAnalyticsStore(url="http://localhost:8123")
+            store.record_cis_benchmark_checks(
+                [
+                    {
+                        "scan_id": "scan-1",
+                        "cloud": "aws",
+                        "check_id": "1.5",
+                        "status": "fail",
+                        "priority": 1,
+                        "remediation": {"fix_console": "AWS Console", "priority": 1},
+                        "requires_human_review": True,
+                    }
+                ],
+                tenant_id="tenant-alpha",
+            )
+
+        assert inserted["table"] == "cis_benchmark_checks"
+        row = inserted["rows"][0]
+        assert row["tenant_id"] == "tenant-alpha"
+        assert row["priority"] == 1
+        assert json.loads(row["remediation"])["priority"] == 1
+        assert row["requires_human_review"] == 1
 
     def test_buffered_store_flushes_before_query(self):
         from agent_bom.api.clickhouse_store import BufferedAnalyticsStore, ClickHouseAnalyticsStore
@@ -427,6 +466,30 @@ def test_build_scan_analytics_payload_splits_findings_by_agent():
     assert any(row["framework"] == "owasp-llm-top10" for row in payload.compliance_controls)
 
 
+def test_build_scan_analytics_payload_extracts_cis_checks():
+    from agent_bom.analytics_contract import build_scan_analytics_payload
+    from agent_bom.models import AIBOMReport
+
+    report = AIBOMReport(scan_id="scan-cis")
+    report.cis_benchmark_data = {
+        "checks": [
+            {
+                "check_id": "1.5",
+                "title": "Root MFA",
+                "status": "fail",
+                "severity": "high",
+                "remediation": {"priority": 1, "guardrails": ["identity"]},
+            }
+        ]
+    }
+
+    payload = build_scan_analytics_payload(report, source="api")
+
+    assert payload.cis_benchmark_checks[0]["cloud"] == "aws"
+    assert payload.cis_benchmark_checks[0]["priority"] == 1
+    assert payload.cis_benchmark_checks[0]["guardrails"] == ["identity"]
+
+
 def test_clickhouse_store_queries_fleet_and_compliance():
     from agent_bom.api.clickhouse_store import ClickHouseAnalyticsStore
 
@@ -444,8 +507,11 @@ def test_clickhouse_store_queries_fleet_and_compliance():
         store = ClickHouseAnalyticsStore(url="http://localhost:8123")
         assert store.query_top_riskiest_agents(limit=5) == [{"ok": True}]
         assert store.query_compliance_heatmap(days=7) == [{"ok": True}]
+        assert store.query_cis_benchmark_checks(cloud="aws", status="fail", priority=1, tenant_id="tenant-a") == [{"ok": True}]
 
     assert "FROM fleet_agents" in queries[0]
     assert "LIMIT 5" in queries[0]
     assert "FROM compliance_controls" in queries[1]
+    assert "FROM cis_benchmark_checks" in queries[2]
+    assert "tenant_id = 'tenant-a'" in queries[2]
     assert "INTERVAL 7 DAY" in queries[1]

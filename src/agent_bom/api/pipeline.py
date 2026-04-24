@@ -641,6 +641,7 @@ def _run_scan_sync(job: ScanJob) -> None:
                 analytics_store.record_fleet_snapshot(fleet_snapshot)
             for control in analytics.compliance_controls:
                 analytics_store.record_compliance_control(control, tenant_id=tenant_id)
+            analytics_store.record_cis_benchmark_checks(analytics.cis_benchmark_checks, tenant_id=tenant_id)
         except Exception as analytics_exc:  # noqa: BLE001
             _logger.warning("API ClickHouse analytics persistence failed: %s", analytics_exc)
             with lock:

@@ -104,6 +104,7 @@ def run_integrations(
                     _ch_store.record_fleet_snapshot(fleet_snapshot)
                 for control in analytics.compliance_controls:
                     _ch_store.record_compliance_control(control, tenant_id=_ch_tenant_id)
+                _ch_store.record_cis_benchmark_checks(analytics.cis_benchmark_checks, tenant_id=_ch_tenant_id)
             if not quiet:
                 _finding_count = sum(len(findings) for findings in analytics.agent_findings.values()) if ctx.report else 0
                 con.print(f"  [green]✓[/green] Analytics: {_finding_count} finding(s) recorded to ClickHouse")

@@ -56,6 +56,7 @@ def test_api_pipeline_persists_clickhouse_analytics(monkeypatch):
             self.posture_calls: list[tuple[str, dict, str]] = []
             self.fleet_calls: list[dict] = []
             self.compliance_calls: list[tuple[dict, str]] = []
+            self.cis_check_calls: list[tuple[list[dict], str]] = []
 
         def record_scan(
             self,
@@ -78,6 +79,9 @@ def test_api_pipeline_persists_clickhouse_analytics(monkeypatch):
 
         def record_compliance_control(self, control: dict, *, tenant_id: str = "default") -> None:
             self.compliance_calls.append((control, tenant_id))
+
+        def record_cis_benchmark_checks(self, checks: list[dict], *, tenant_id: str = "default") -> None:
+            self.cis_check_calls.append((checks, tenant_id))
 
     analytics = _AnalyticsStore()
 

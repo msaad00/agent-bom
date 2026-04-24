@@ -234,6 +234,8 @@ Backend defaults:
 | endpoint inventory and laptop rollout | [Endpoint Fleet](site-docs/deployment/endpoint-fleet.md) |
 | proxy and gateway runtime operations | [Runtime Operations](site-docs/deployment/runtime-operations.md) |
 | trust model, auth, tenant isolation | [ENTERPRISE_SECURITY_PLAYBOOK.md](docs/ENTERPRISE_SECURITY_PLAYBOOK.md) |
+| procurement security posture | [ENTERPRISE_SECURITY_POSTURE.md](docs/ENTERPRISE_SECURITY_POSTURE.md) |
+| SOC 2 / ISO / CIS control mapping | [CONTROL_MAPPING.md](docs/CONTROL_MAPPING.md) |
 
 <details>
 <summary><b>Advanced deployment notes</b></summary>
@@ -297,7 +299,7 @@ agent-bom is a **read-only scanner**. It never writes configs, never executes MC
 | `verify` | Package + version | PyPI / npm integrity endpoints | don't run `verify` |
 | Optional integrations | Finding summaries | Slack / Jira / Vanta / Drata | don't pass those flags |
 
-Full trust model: [SECURITY_ARCHITECTURE.md](docs/SECURITY_ARCHITECTURE.md) · [PERMISSIONS.md](docs/PERMISSIONS.md) · [SUPPLY_CHAIN.md](docs/SUPPLY_CHAIN.md) · [RELEASE_VERIFICATION.md](docs/RELEASE_VERIFICATION.md).
+Full trust model: [SECURITY_ARCHITECTURE.md](docs/SECURITY_ARCHITECTURE.md) · [PERMISSIONS.md](docs/PERMISSIONS.md) · [SUPPLY_CHAIN.md](docs/SUPPLY_CHAIN.md) · [RELEASE_VERIFICATION.md](docs/RELEASE_VERIFICATION.md) · [ENTERPRISE_SECURITY_POSTURE.md](docs/ENTERPRISE_SECURITY_POSTURE.md) · [CONTROL_MAPPING.md](docs/CONTROL_MAPPING.md).
 
 ## Compliance
 

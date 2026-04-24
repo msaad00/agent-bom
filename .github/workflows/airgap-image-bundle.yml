@@ -1,0 +1,48 @@
+name: Air-gapped image bundle
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version or tag suffix, for example 0.81.3 or v0.81.3
+        required: true
+        type: string
+      platform:
+        description: Image platform to bundle
+        required: true
+        default: linux/amd64
+        type: choice
+        options:
+          - linux/amd64
+          - linux/arm64
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: Build air-gapped image bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+
+      - name: Build bundle
+        env:
+          BUNDLE_VERSION: ${{ inputs.version }}
+          BUNDLE_PLATFORM: ${{ inputs.platform }}
+        run: |
+          scripts/release/build-airgap-image-bundle.sh \
+            --version "$BUNDLE_VERSION" \
+            --platform "$BUNDLE_PLATFORM" \
+            --output-dir dist/airgap
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: agent-bom-airgap-${{ inputs.version }}
+          path: dist/airgap/agent-bom-airgap-*.tar.gz
+          if-no-files-found: error
+          retention-days: 30

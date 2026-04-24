@@ -1,0 +1,148 @@
+# Enterprise Security Posture
+
+This is the procurement-facing security posture for self-hosted `agent-bom`.
+It summarizes what the product does, where trust boundaries sit, and what an
+enterprise buyer must configure in its own environment.
+
+## Executive Summary
+
+`agent-bom` is designed for customer-controlled deployment. The recommended
+enterprise posture runs the API, UI, jobs, gateway, Postgres, optional
+ClickHouse, and backup archive inside the customer's infrastructure. There is
+no mandatory vendor-hosted control plane and no mandatory telemetry path.
+
+The product security model is defense in depth:
+
+- read-only discovery by default
+- explicit runtime enforcement only where proxy or gateway is deployed
+- API authentication through API keys, OIDC, SAML metadata, or trusted proxy
+  headers
+- middleware-enforced RBAC and tenant propagation
+- tenant-scoped stores and export paths
+- HMAC-chained audit logs and Ed25519-signed compliance evidence
+- pinned release artifacts, lockfiles, dependency review, and image scanning
+- restore-tested Postgres backup path for the packaged control plane
+
+## Trust Boundaries
+
+| Boundary | Trust level | Controls |
+|---|---|---|
+| Browser to UI/API | authenticated enterprise user | ingress TLS, OIDC/proxy auth, httpOnly same-origin session cookie, CSRF protection |
+| API to stores | trusted service path | tenant propagation, Postgres RLS, parameterized stores, bounded connection pools |
+| Scanner to local files | local user trust boundary | read-only config parsing, path validation, redaction of credential values |
+| Scanner to public vuln APIs | untrusted external data | HTTPS, defensive parsers, no code execution from responses |
+| Gateway/proxy to upstream MCPs | untrusted upstream | policy evaluation, credential/PII leak detectors, SSRF/private egress blocking |
+| API to SIEM/webhook/export targets | operator-approved egress | scheme and private-network validation before outbound push |
+| Release artifacts to operator | public supply chain | Sigstore, SLSA provenance, SBOMs, dependency review, image scan gates |
+
+## Data Classification
+
+| Data class | Examples | Default handling |
+|---|---|---|
+| Inventory metadata | packages, MCP server names, tool names, endpoint IDs | stored in customer-owned Postgres or export files |
+| Findings | CVEs, risky permissions, policy hits, blast radius | tenant-scoped API and store paths |
+| Audit records | actor, action, resource, tenant, details digest | HMAC-chained per tenant, exportable and verifiable |
+| Credentials | API keys, OAuth client secrets, cloud tokens | values are not stored in scan output; deployment secrets live in operator secret stores |
+| Compliance evidence | signed bundles, verification keys, audit export | Ed25519 preferred for auditor-distributable verification |
+| Telemetry | Prometheus metrics, traces, client error reports | self-hosted endpoints; no mandatory vendor telemetry |
+
+## Encryption And Signing Matrix
+
+| Surface | In transit | At rest | Integrity |
+|---|---|---|---|
+| Browser/API traffic | customer ingress TLS | Postgres/customer store | request ID, audit entry |
+| API keys | HTTPS/TLS at ingress | scrypt-hashed or stored key metadata only | rotation and revocation audit |
+| Browser session cookie | same-origin secure cookie in production | signed token payload, no JS-readable bearer token needed | HMAC signature with configured or ephemeral key |
+| Audit log | API transport | Postgres or configured audit store | per-tenant HMAC chain |
+| Compliance bundle | API transport | operator archive | Ed25519 signature, HMAC fallback |
+| Postgres backup | S3/TLS | S3 SSE-S3 or SSE-KMS | restore drill and checksum verification |
+| Release artifacts | GitHub/Docker registry TLS | operator artifact store | Sigstore, SLSA, SBOM, image signatures |
+
+## Identity And Access
+
+The self-hosted control plane supports:
+
+- API keys with expiry, rotation overlap, and revocation
+- OIDC bearer validation with tenant claim enforcement
+- SAML SP metadata for enterprise IdP wiring
+- trusted reverse-proxy identity headers when a customer-owned proxy handles
+  authentication
+- admin, analyst, and viewer RBAC enforced in API middleware
+
+Browser authentication can use same-origin httpOnly cookies for the dashboard
+while keeping bearer-token support for CLI and service clients.
+
+## Tenant Isolation
+
+Tenant isolation is enforced across API middleware, stores, audit export,
+fleet routes, ClickHouse analytics, and shared gateway routing. The control
+plane test suite includes cross-tenant matrix and concurrent-write leakage
+coverage. Operators should still deploy separate environments for separate
+legal entities when regulatory or contractual requirements prohibit shared
+infrastructure.
+
+## Secrets Lifecycle
+
+Recommended production posture:
+
+- source API, OIDC, OAuth2, audit HMAC, Ed25519, Postgres, and webhook secrets
+  from the customer's secret manager
+- mount Kubernetes secrets through External Secrets or equivalent CSI/IRSA
+  controls
+- set rotation timestamps for audit HMAC and compliance signing keys so posture
+  endpoints can expose key age
+- rotate API keys through the API rather than replacing all clients at once
+- restart API/gateway workloads after rotating mounted signing or OAuth client
+  secrets
+
+`agent-bom` does not replace the customer's KMS, Vault, IdP, or privileged
+access management system. The product exposes posture and supports rotation
+paths; the operator owns secret authority, approval workflow, and key custody.
+
+## Logging, Monitoring, And Incident Response
+
+Relevant security signals:
+
+- authenticated `/metrics` for Prometheus scraping
+- SIEM integration for audit and finding export
+- client error telemetry for dashboard failures
+- HMAC audit export and verification endpoints
+- PrometheusRule defaults for high-risk runtime and control-plane alerts
+- private vulnerability reporting through GitHub Security Advisories
+
+Incident response ownership remains with the self-hosting organization. The
+published security policy defines maintainer disclosure SLAs for product
+vulnerabilities; customer deployment incidents follow customer process.
+
+## Availability, Backup, And Restore
+
+The Helm chart includes an optional Postgres backup CronJob that writes custom
+format `pg_dump` artifacts to S3-compatible storage. The restore script is
+tested in CI through a MinIO-backed round trip. Production deployments should
+set real RPO/RTO targets, bucket retention, KMS keys, object lock where needed,
+and restore-drill cadence.
+
+See `site-docs/deployment/backup-restore.md` for the operator runbook.
+
+## Procurement Package
+
+A procurement packet should include:
+
+- this security posture
+- `docs/CONTROL_MAPPING.md`
+- `docs/SECURITY_ARCHITECTURE.md`
+- `docs/THREAT_MODEL.md`
+- `docs/SUPPLY_CHAIN.md`
+- `docs/RELEASE_VERIFICATION.md`
+- `docs/PENTEST_READINESS.md`
+- `site-docs/deployment/customer-data-and-support-boundary.md`
+- customer-owned DPA, subprocessors, support-access policy, and retention
+  schedule
+
+## Current Boundaries
+
+The self-hosted enterprise posture is ready for teams operating the product
+behind their own identity, network, storage, and monitoring controls. Turnkey
+external multi-tenant SaaS procurement still needs separate hosted-service
+controls such as data-subject automation, provider-style tenant lifecycle
+operations, and formal legal templates owned by the service provider.

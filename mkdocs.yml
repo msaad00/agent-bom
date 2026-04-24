@@ -106,6 +106,8 @@ nav:
       - Audit Chain vs Compliance Signing: deployment/audit-and-compliance-verification.md
       - Customer Data and Support Boundary: deployment/customer-data-and-support-boundary.md
       - Data Retention by Class: deployment/data-retention.md
+      - Backup and Restore Runbook: deployment/backup-restore.md
+      - Air-Gapped Image Bundle: deployment/airgapped-image-bundle.md
       - Performance, Sizing, and Benchmarks: deployment/performance-and-sizing.md
       - Runtime Operations: deployment/runtime-operations.md
       - Visual Leak Detection: deployment/visual-leak-detection.md

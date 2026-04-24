@@ -138,6 +138,7 @@ This is the public verification path. Release trust is not hidden inside CI.
 - [Threat Model](THREAT_MODEL.md)
 - [Release Verification](RELEASE_VERIFICATION.md)
 - [Permissions and Trust](PERMISSIONS.md)
+- [Air-Gapped Image Bundle](../site-docs/deployment/airgapped-image-bundle.md)
 
 ## Operational guidance
 

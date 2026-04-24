@@ -5,9 +5,11 @@ Keep top-level `docs/` focused on operator-facing and externally useful material
 Canonical docs here:
 
 - `ARCHITECTURE.md`
+- `CONTROL_MAPPING.md`
 - `DEPLOYMENT.md`
 - `ENTERPRISE.md`
 - `ENTERPRISE_DEPLOYMENT.md`
+- `ENTERPRISE_SECURITY_POSTURE.md`
 - `MCP_CLIENT_GUIDES.md`
 - `MCP_SERVER.md`
 - `PERMISSIONS.md`

@@ -7,6 +7,10 @@ the resulting graph is actually informative. PR #1445 regressed
 (`claude-code`) had no servers in the local data — this protocol exists so
 that does not happen again.
 
+The canonical published web UI is the packaged Next.js dashboard served by
+`agent-bom serve`. Do not publish README or docs screenshots from archived
+pre-Next.js views or from the Snowflake Streamlit compatibility surface.
+
 ## Canonical capture environment
 
 1. Clean checkout on the release tag.

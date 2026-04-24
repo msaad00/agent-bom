@@ -72,7 +72,7 @@ agent-bom scan --aws --aws-region us-east-1 \
   --aws-include-lambda --aws-include-eks --aws-include-step-functions \
   --enrich -f json -o ai-bom-aws.json
 
-# Snowflake — Cortex Agents, MCP Servers, Search, Snowpark, Streamlit
+# Snowflake — Cortex Agents, MCP Servers, Search, Snowpark, optional Streamlit-native surfaces
 agent-bom scan --snowflake --enrich -f json -o ai-bom-snowflake.json
 
 # Azure AI Foundry + Container Apps

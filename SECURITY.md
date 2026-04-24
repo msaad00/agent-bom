@@ -57,7 +57,19 @@ agent-bom is a **read-only scanner**. It does not modify agent configurations, e
 - **Dependency scanning**: Dependabot weekly (Python + npm)
 - **Container image scanning**: Trivy in CI pipeline
 - **Pre-commit hooks**: ruff, ruff-format, detect-private-key, check-yaml, end-of-file-fixer
-- No third-party penetration testing yet (planned for v1.0)
+- **Third-party penetration testing**: not completed yet; required before `v1.0` runtime-enforcement GA. Scope and exit criteria are documented in [docs/PENTEST_READINESS.md](docs/PENTEST_READINESS.md)
+
+## Third-Party Pentest Plan
+
+The independent assessment planned before `v1.0` is expected to cover:
+
+- runtime proxy enforcement and audit integrity
+- multi-MCP gateway auth, policy evaluation, and upstream relay behavior
+- control-plane tenant isolation across API and dashboard surfaces
+- reference EKS / Helm deployment hardening
+
+The tracked scope, environment expectations, and `v1.0` release criteria live
+in [docs/PENTEST_READINESS.md](docs/PENTEST_READINESS.md).
 
 ## Release verification and dependency controls
 

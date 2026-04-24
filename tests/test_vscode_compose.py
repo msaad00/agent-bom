@@ -89,6 +89,29 @@ def test_vscode_env_vars_redacted():
     assert servers[0].env.get("GITHUB_TOKEN") == "***REDACTED***"
 
 
+def test_vscode_rejects_non_string_args_and_urls():
+    """Parser should not silently coerce dict/list labels into command args or URLs."""
+    from agent_bom.discovery import parse_mcp_config
+
+    config = {
+        "servers": {
+            "typed": {
+                "type": "http",
+                "uri": {"host": "internal"},
+                "command": {"cmd": "npx"},
+                "args": {"unexpected": "shape"},
+                "bearer_token_env_var": {"name": "TOKEN"},
+            }
+        }
+    }
+    servers = parse_mcp_config(config, "/fake/mcp.json")
+    assert len(servers) == 1
+    assert servers[0].command == ""
+    assert servers[0].args == []
+    assert servers[0].url is None
+    assert servers[0].env == {}
+
+
 def test_vscode_uri_fallback_to_url():
     """Parser handles both 'uri' (VS Code) and 'url' (standard) fields."""
     from agent_bom.discovery import parse_mcp_config

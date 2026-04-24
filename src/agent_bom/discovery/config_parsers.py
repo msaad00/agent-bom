@@ -29,6 +29,18 @@ console = Console(stderr=True)
 logger = logging.getLogger(__name__)
 
 
+def _string_field(value: object) -> str:
+    return value if isinstance(value, str) else ""
+
+
+def _args_field(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, str)]
+    return []
+
+
 # ---------------------------------------------------------------------------
 # JSON config parsers
 # ---------------------------------------------------------------------------
@@ -85,7 +97,7 @@ def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
             # Include blocked server in report for visibility — no silent skips
             blocked_server = MCPServer(
                 name=name,
-                command=server_def.get("command", ""),
+                command=_string_field(server_def.get("command", "")),
                 config_path=config_path,
                 security_blocked=True,
                 security_warnings=[str(e)],
@@ -100,19 +112,19 @@ def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
         vscode_type = server_def.get("type", "")
         if vscode_type == "sse":
             transport = TransportType.SSE
-            url = server_def.get("uri") or server_def.get("url")
+            url = _string_field(server_def.get("uri") or server_def.get("url"))
         elif vscode_type == "http":
             transport = TransportType.STREAMABLE_HTTP
-            url = server_def.get("uri") or server_def.get("url")
+            url = _string_field(server_def.get("uri") or server_def.get("url"))
         elif "url" in server_def or "uri" in server_def:
-            url = server_def.get("url") or server_def.get("uri")
+            url = _string_field(server_def.get("url") or server_def.get("uri"))
             if url and "sse" in url.lower():
                 transport = TransportType.SSE
             else:
                 transport = TransportType.STREAMABLE_HTTP
 
-        command = server_def.get("command", "")
-        args = server_def.get("args", [])
+        command = _string_field(server_def.get("command", ""))
+        args = _args_field(server_def.get("args", []))
         raw_env = server_def.get("env", {})
 
         # ✅ Security: redact credential values before storing in MCPServer
@@ -122,7 +134,7 @@ def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
         server = MCPServer(
             name=name,
             command=command,
-            args=args if isinstance(args, list) else [args],
+            args=args,
             env=env,
             transport=transport,
             url=url,
@@ -201,9 +213,9 @@ def parse_codex_config(config_path: str) -> list[MCPServer]:
 
         # Determine transport
         transport = TransportType.STDIO
-        url = server_def.get("url")
-        command = server_def.get("command", "")
-        args = server_def.get("args", [])
+        url = _string_field(server_def.get("url"))
+        command = _string_field(server_def.get("command", ""))
+        args = _args_field(server_def.get("args", []))
 
         if url:
             transport = TransportType.SSE if "sse" in url.lower() else TransportType.STREAMABLE_HTTP
@@ -212,14 +224,14 @@ def parse_codex_config(config_path: str) -> list[MCPServer]:
         env = sanitize_env_vars(raw_env) if isinstance(raw_env, dict) else {}
 
         # Bearer token env var → track as credential
-        bearer_var = server_def.get("bearer_token_env_var")
+        bearer_var = _string_field(server_def.get("bearer_token_env_var"))
         if bearer_var:
             env[bearer_var] = "***REDACTED***"
 
         server = MCPServer(
             name=name,
             command=command,
-            args=args if isinstance(args, list) else [args],
+            args=args,
             env=env,
             transport=transport,
             url=url,

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { severityColor } from "@/lib/api";
+import { getOsvVulnerabilityUrl } from "@/lib/vulnerabilities";
 import type { LineageNodeData } from "./lineage-nodes";
 
 const TYPE_ICON = {
@@ -95,6 +96,7 @@ export function LineageDetailPanel({
   onClose: () => void;
 }) {
   const Icon = TYPE_ICON[data.nodeType];
+  const osvUrl = data.nodeType === "vulnerability" ? getOsvVulnerabilityUrl(data.label) : null;
   const extraAttributes = Object.entries(data.attributes ?? {}).filter(([key]) => {
     return !new Set([
       "agent_type",
@@ -252,15 +254,17 @@ export function LineageDetailPanel({
             {data.fixedVersion && <Row label="Fix version" value={data.fixedVersion} className="text-emerald-400" />}
             {data.owaspTags && data.owaspTags.length > 0 && <TagList label="OWASP" tags={data.owaspTags} />}
             {data.atlasTags && data.atlasTags.length > 0 && <TagList label="ATLAS" tags={data.atlasTags} />}
-            <a
-              href={`https://osv.dev/vulnerability/${data.label}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
-            >
-              <ExternalLink className="w-3 h-3" />
-              View on OSV
-            </a>
+            {osvUrl && (
+              <a
+                href={osvUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
+              >
+                <ExternalLink className="w-3 h-3" />
+                View on OSV
+              </a>
+            )}
           </div>
         )}
 

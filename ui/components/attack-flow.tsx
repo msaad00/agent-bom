@@ -18,6 +18,7 @@ import {
 import type { AttackFlowNodeData, AttackFlowResponse } from "@/lib/api";
 import { SeverityBadge } from "@/components/severity-badge";
 import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, ATTACK_FLOW_MINIMAP_COLORS } from "@/lib/graph-utils";
+import { getOsvVulnerabilityUrl } from "@/lib/vulnerabilities";
 import { FullscreenButton } from "@/components/graph-chrome";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -100,6 +101,7 @@ const nodeTypes = { attackFlowNode: AttackFlowNode };
 function DetailPanel({ data, onClose }: { data: AttackFlowNodeData; onClose: () => void }) {
   const typeLabels: Record<string, string> = { cve: "Vulnerability", package: "Package", server: "MCP Server", agent: "Agent", credential: "Credential", tool: "Tool" };
   const borderColors: Record<string, string> = { cve: "border-red-700", package: "border-zinc-700", server: "border-blue-700", agent: "border-emerald-700", credential: "border-yellow-700", tool: "border-purple-700" };
+  const osvUrl = data.nodeType === "cve" ? getOsvVulnerabilityUrl(data.label) : null;
 
   return (
     <div className={`absolute right-0 top-0 bottom-0 w-80 bg-zinc-950/95 backdrop-blur-sm border-l ${borderColors[data.nodeType] ?? "border-zinc-700"} z-50 overflow-y-auto`}>
@@ -124,9 +126,11 @@ function DetailPanel({ data, onClose }: { data: AttackFlowNodeData; onClose: () 
             {data.owasp_mcp_tags && data.owasp_mcp_tags.length > 0 && <FrameworkTags title="OWASP MCP Top 10" tags={data.owasp_mcp_tags} catalog={OWASP_MCP_TOP10} color="amber" />}
             {data.atlas_tags && data.atlas_tags.length > 0 && <FrameworkTags title="MITRE ATLAS" tags={data.atlas_tags} catalog={MITRE_ATLAS} color="cyan" />}
             {data.risk_score != null && <div className="text-xs text-zinc-400">Risk score: <span className="text-red-400 font-mono font-bold">{data.risk_score}</span></div>}
-            <a href={`https://osv.dev/vulnerability/${data.label}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors">
-              <ExternalLink className="w-3 h-3" />View on OSV
-            </a>
+            {osvUrl && (
+              <a href={osvUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 transition-colors">
+                <ExternalLink className="w-3 h-3" />View on OSV
+              </a>
+            )}
           </div>
         )}
         {data.nodeType === "package" && <div className="space-y-2">{data.version && <div className="text-xs text-zinc-400 font-mono">Version: {data.version}</div>}{data.ecosystem && <div className="text-xs text-zinc-400 font-mono">Ecosystem: {data.ecosystem}</div>}</div>}

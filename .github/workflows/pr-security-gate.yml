@@ -7,7 +7,7 @@ name: PR Security Gate
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
     branches: [main]
   merge_group:

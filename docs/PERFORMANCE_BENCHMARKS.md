@@ -1,9 +1,10 @@
-# Performance Benchmarks
+# Performance Benchmarks and Target SLOs
 
 Measured numbers for the agent-bom scanner hot paths that matter at
 pilot scale. Run on a MacBook Pro (M-series, 2026) with Python 3.13.
 Your infra will vary — treat these as the reference curve, not the
-SLO.
+contract. The target SLOs below are the operator envelope we use for
+pilot and production readiness decisions.
 
 Run them yourself:
 
@@ -11,6 +12,14 @@ Run them yourself:
 pip install 'agent-bom[dev]'
 pytest tests/benchmarks/ --benchmark-only --benchmark-columns=min,mean,max,stddev,ops
 AGENT_BOM_BENCH_FULL=1 pytest tests/benchmarks/ --benchmark-only -k 50k  # heaviest
+```
+
+For control-plane and graph API baselines against a running deployment:
+
+```bash
+k6 run deploy/loadtest/k6-control-plane-api.js
+k6 run deploy/loadtest/k6-graph-api.js
+k6 run deploy/loadtest/k6-proxy-audit.js
 ```
 
 ---
@@ -125,6 +134,45 @@ team runs against during pilot smoke-testing. Run
 | `/v1/compliance/{framework}/report` at 50k findings | < 500 ms p99 | < 1 s p99 |
 | jsonl bundle streaming (first byte) | < 50 ms | < 100 ms |
 
+## Graph and control-plane operator targets
+
+These are the target envelopes for the main operator flows after the
+0.81.x store-backed graph improvements. They are not yet universal
+guarantees for every tenant shape; they are the thresholds we expect a
+healthy self-hosted rollout to validate with the bundled k6 harness.
+
+| Operation | Baseline path | Target (pilot) | Target (production) |
+|---|---|---:|---:|
+| `GET /v1/graph?limit=100` | store-backed overview page | < 300 ms p95 | < 500 ms p95 |
+| `GET /v1/graph/search?q=agent&limit=25` | store-backed search page | < 250 ms p95 | < 400 ms p95 |
+| `GET /v1/fleet?limit=25` | authenticated fleet read | < 200 ms p95 | < 350 ms p95 |
+| `GET /v1/fleet/stats` | fleet summary read | < 150 ms p95 | < 300 ms p95 |
+| `POST /v1/proxy/audit` | proxy audit ingest batch | < 300 ms p95 | < 500 ms p95 |
+
+### How to measure the operator targets
+
+Run against the deployment you actually intend to operate:
+
+```bash
+export AGENT_BOM_BASE_URL=https://agent-bom.internal.example.com
+export AGENT_BOM_API_TOKEN=replace-me
+export AGENT_BOM_GRAPH_SCAN_ID=$(curl -s -H "Authorization: Bearer $AGENT_BOM_API_TOKEN" \
+  "$AGENT_BOM_BASE_URL/v1/graph/snapshots?limit=1" | jq -r '.[0].scan_id')
+
+k6 run deploy/loadtest/k6-control-plane-api.js
+k6 run deploy/loadtest/k6-graph-api.js
+k6 run deploy/loadtest/k6-proxy-audit.js
+```
+
+Interpretation:
+
+- if graph overview/search breaches target first, keep the graph windowed by
+  snapshot and page size before widening runtime rollout
+- if fleet reads breach target first, tune API HPA and database size before
+  assuming the graph is the bottleneck
+- if proxy audit ingest breaches target first, adjust batch size, retention,
+  or analytics backend before widening sidecar/gateway deployment
+
 Latency budget for a bundle export at 50k findings on Postgres:
 
 - `_tenant_jobs` store read: ~10 ms (index on tenant_id)
@@ -149,6 +197,14 @@ Pilot-default Helm values ([`eks-mcp-pilot-values.yaml`](../deploy/helm/agent-bo
 Scale-out signal: `agent_bom_rate_limit_hits_total` hitting a tenant
 bucket for > 10 minutes, OR `p95` on `/v1/compliance/*` above 800 ms.
 Both show up on the shipped Grafana dashboard.
+
+For graph/runtime-heavy rollouts, treat these as the next scale-out
+signals too:
+
+- `/v1/graph` `p95` consistently above `500 ms`
+- `/v1/graph/search` `p95` consistently above `400 ms`
+- `POST /v1/proxy/audit` `p95` consistently above `500 ms`
+- rising queueing or timeout behavior during the bundled k6 graph/control-plane runs
 
 ---
 

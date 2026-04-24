@@ -249,14 +249,16 @@ The repo now ships a small benchmark harness under:
 
 - [deploy/loadtest/README.md](https://github.com/msaad00/agent-bom/blob/main/deploy/loadtest/README.md)
 - [k6-control-plane-api.js](https://github.com/msaad00/agent-bom/blob/main/deploy/loadtest/k6-control-plane-api.js)
+- [k6-graph-api.js](https://github.com/msaad00/agent-bom/blob/main/deploy/loadtest/k6-graph-api.js)
 - [k6-proxy-audit.js](https://github.com/msaad00/agent-bom/blob/main/deploy/loadtest/k6-proxy-audit.js)
 
 Use that harness to validate:
 
 1. authenticated control-plane read paths
-2. proxy audit ingest write paths
-3. scaling behavior after enabling `HPA`
-4. the point where analytics should move to `ClickHouse`
+2. graph overview and graph search operator paths
+3. proxy audit ingest write paths
+4. scaling behavior after enabling `HPA`
+5. the point where analytics should move to `ClickHouse`
 
 Current boundary:
 
@@ -270,12 +272,29 @@ Current boundary:
 Run these in your own environment before broader rollout:
 
 1. Baseline the API with the control-plane script at low and medium concurrency.
-2. Baseline proxy audit ingest with realistic batch sizes.
-3. Repeat both runs with `HPA` enabled.
-4. Repeat with `ClickHouse` disabled, then enabled if your rollout expects high
+2. Baseline graph overview/search with the graph script against a representative snapshot.
+3. Baseline proxy audit ingest with realistic batch sizes.
+4. Repeat all runs with `HPA` enabled.
+5. Repeat with `ClickHouse` disabled, then enabled if your rollout expects high
    retained analytics volume.
-5. Record your chosen replica floor, resource requests, and retention policy in
+6. Record your chosen replica floor, resource requests, and retention policy in
    your operator runbook.
+
+## Target operator latency envelope
+
+These are the current target thresholds for self-hosted rollouts using the
+bundled k6 harness:
+
+| Flow | Target (pilot) | Target (production) |
+|---|---:|---:|
+| Graph overview `GET /v1/graph?limit=100` | < 300 ms p95 | < 500 ms p95 |
+| Graph search `GET /v1/graph/search?q=agent&limit=25` | < 250 ms p95 | < 400 ms p95 |
+| Fleet read `GET /v1/fleet?limit=25` | < 200 ms p95 | < 350 ms p95 |
+| Fleet stats `GET /v1/fleet/stats` | < 150 ms p95 | < 300 ms p95 |
+| Proxy audit ingest `POST /v1/proxy/audit` | < 300 ms p95 | < 500 ms p95 |
+
+These are not universal guarantees for every tenant shape. They are the
+thresholds operators should validate before calling a rollout production-ready.
 
 ## Publish your own benchmark numbers
 

@@ -548,6 +548,92 @@ class PostgresGraphStore:
 
             return graph
 
+    def nodes_by_ids(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        node_ids: set[str],
+    ) -> list[Any]:
+        if not node_ids:
+            return []
+        graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
+        return [node for node_id, node in graph.nodes.items() if node_id in node_ids]
+
+    def bfs_paths(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        source: str,
+        max_depth: int = 4,
+        traversable_only: bool = True,
+    ) -> tuple[list[list[str]], set[str]]:
+        graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
+        if not graph.has_node(source):
+            return [], set()
+        paths = graph.bfs(source, max_depth=max_depth, traversable_only=traversable_only)
+        reachable = graph.reachable_from(
+            source,
+            max_depth=max_depth,
+            traversable_only=traversable_only,
+            include_source=False,
+        )
+        return paths, reachable
+
+    def impact_of(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        node_id: str,
+        max_depth: int = 4,
+    ) -> dict[str, Any] | None:
+        graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
+        if not graph.has_node(node_id):
+            return None
+        return graph.impact_of(node_id, max_depth=max_depth)
+
+    def traverse_subgraph(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        roots: list[str],
+        direction: str = "forward",
+        max_depth: int = 4,
+        max_nodes: int = 500,
+        traversable_only: bool = False,
+        relationship_types=None,
+        static_only: bool = False,
+        dynamic_only: bool = False,
+        include_roots: bool = True,
+    ) -> tuple[Any, dict[str, int], bool]:
+        graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
+        return graph.traverse_subgraph(
+            roots,
+            direction=direction,
+            max_depth=max_depth,
+            max_nodes=max_nodes,
+            traversable_only=traversable_only,
+            relationship_types=relationship_types,
+            static_only=static_only,
+            dynamic_only=dynamic_only,
+            include_roots=include_roots,
+        )
+
+    def attack_paths_for_sources(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        source_ids: set[str],
+    ) -> list[Any]:
+        if not source_ids:
+            return []
+        graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
+        return [attack_path for attack_path in graph.attack_paths if attack_path.source in source_ids]
+
     def diff_snapshots(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]:
         with _tenant_connection(self._pool) as conn:
             old_nodes = {

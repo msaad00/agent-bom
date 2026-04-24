@@ -316,6 +316,59 @@ class TestGraphEndpointLogic:
         assert total == 1
         assert [node.id for node in results] == ["server:vector"]
 
+    def test_sqlite_graph_store_bfs_paths_uses_persisted_edges(self, tmp_path):
+        store = SQLiteGraphStore(tmp_path / "graph.db")
+        graph = UnifiedGraph(scan_id="traversal-scan", tenant_id="default")
+        graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        graph.add_node(UnifiedNode(id="vuln:cve", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1"))
+        graph.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES, traversable=True))
+        graph.add_edge(UnifiedEdge(source="server:s", target="vuln:cve", relationship=RelationshipType.VULNERABLE_TO, traversable=True))
+        store.save_graph(graph)
+
+        paths, reachable = store.bfs_paths(tenant_id="default", scan_id="traversal-scan", source="agent:a", max_depth=3)
+
+        assert reachable == {"server:s", "vuln:cve"}
+        assert paths == [["agent:a", "server:s"], ["agent:a", "server:s", "vuln:cve"]]
+
+    def test_sqlite_graph_store_impact_of_uses_reverse_edges(self, tmp_path):
+        store = SQLiteGraphStore(tmp_path / "graph.db")
+        graph = UnifiedGraph(scan_id="impact-scan", tenant_id="default")
+        graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        graph.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+        store.save_graph(graph)
+
+        impact = store.impact_of(tenant_id="default", scan_id="impact-scan", node_id="server:s", max_depth=3)
+
+        assert impact is not None
+        assert impact["affected_nodes"] == ["agent:a"]
+        assert impact["affected_by_type"] == {"agent": 1}
+
+    def test_sqlite_graph_store_attack_paths_for_sources_returns_persisted_paths(self, tmp_path):
+        store = SQLiteGraphStore(tmp_path / "graph.db")
+        graph = UnifiedGraph(scan_id="attack-path-scan", tenant_id="default")
+        graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        graph.add_node(UnifiedNode(id="vuln:cve", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1"))
+        graph.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+        graph.add_edge(UnifiedEdge(source="server:s", target="vuln:cve", relationship=RelationshipType.VULNERABLE_TO))
+        graph.attack_paths.append(
+            AttackPath(
+                source="agent:a",
+                target="vuln:cve",
+                hops=["agent:a", "server:s", "vuln:cve"],
+                edges=["uses", "vulnerable_to"],
+                composite_risk=9.8,
+            )
+        )
+        store.save_graph(graph)
+
+        attack_paths = store.attack_paths_for_sources(tenant_id="default", scan_id="attack-path-scan", source_ids={"agent:a"})
+
+        assert len(attack_paths) == 1
+        assert attack_paths[0].target == "vuln:cve"
+
 
 class TestBackendDirectionality:
     """Regression: graph_backend must respect edge direction from unified graph."""
@@ -519,6 +572,69 @@ class _RecordingGraphStore:
 
             next_cursor = encode_graph_cursor(page[-1])
         return page, full_total, next_cursor
+
+    def nodes_by_ids(self, *, tenant_id: str = "", scan_id: str = "", node_ids: set[str]):
+        self.calls.append(("nodes_by_ids", tenant_id, scan_id, tuple(sorted(node_ids))))
+        return [node for node_id, node in self.graph.nodes.items() if node_id in node_ids]
+
+    def bfs_paths(self, *, tenant_id: str = "", scan_id: str = "", source: str, max_depth: int = 4, traversable_only: bool = True):
+        self.calls.append(("bfs_paths", tenant_id, scan_id, source, max_depth, traversable_only))
+        paths = self.graph.bfs(source, max_depth=max_depth, traversable_only=traversable_only)
+        reachable = self.graph.reachable_from(source, max_depth=max_depth, traversable_only=traversable_only, include_source=False)
+        return paths, reachable
+
+    def impact_of(self, *, tenant_id: str = "", scan_id: str = "", node_id: str, max_depth: int = 4):
+        self.calls.append(("impact_of", tenant_id, scan_id, node_id, max_depth))
+        if not self.graph.has_node(node_id):
+            return None
+        return self.graph.impact_of(node_id, max_depth=max_depth)
+
+    def traverse_subgraph(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        roots: list[str],
+        direction: str = "forward",
+        max_depth: int = 4,
+        max_nodes: int = 500,
+        traversable_only: bool = False,
+        relationship_types=None,
+        static_only: bool = False,
+        dynamic_only: bool = False,
+        include_roots: bool = True,
+    ):
+        self.calls.append(
+            (
+                "traverse_subgraph",
+                tenant_id,
+                scan_id,
+                tuple(roots),
+                direction,
+                max_depth,
+                max_nodes,
+                traversable_only,
+                relationship_types,
+                static_only,
+                dynamic_only,
+                include_roots,
+            )
+        )
+        return self.graph.traverse_subgraph(
+            roots,
+            direction=direction,
+            max_depth=max_depth,
+            max_nodes=max_nodes,
+            traversable_only=traversable_only,
+            relationship_types=relationship_types,
+            static_only=static_only,
+            dynamic_only=dynamic_only,
+            include_roots=include_roots,
+        )
+
+    def attack_paths_for_sources(self, *, tenant_id: str = "", scan_id: str = "", source_ids: set[str]):
+        self.calls.append(("attack_paths_for_sources", tenant_id, scan_id, tuple(sorted(source_ids))))
+        return [ap for ap in self.graph.attack_paths if ap.source in source_ids]
 
     def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict, created_at: str) -> None:
         self.calls.append(("save_preset", tenant_id, name))
@@ -744,6 +860,26 @@ class TestGraphStoreBackendSelection:
         assert body["reachable_count"] == 1
         assert body["reachable_nodes"] == ["server:s"]
         assert [path["target"] for path in body["paths"]] == ["server:s"]
+        assert any(call[0] == "bfs_paths" for call in recording_graph_store.calls)
+        assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
+
+    def test_graph_impact_uses_store_native_traversal(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES, traversable=True)
+        )
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/impact", params={"node": "server:s", "max_depth": 4})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["node_id"] == "server:s"
+        assert body["affected_nodes"] == ["agent:a"]
+        assert any(call[0] == "impact_of" for call in recording_graph_store.calls)
+        assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
 
     def test_graph_query_returns_bounded_directional_subgraph(self, recording_graph_store):
         recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
@@ -804,6 +940,8 @@ class TestGraphStoreBackendSelection:
             ("server:s", "vuln:CVE-2026-1"),
         }
         assert body["attack_paths"][0]["target"] == "vuln:CVE-2026-1"
+        assert any(call[0] == "traverse_subgraph" for call in recording_graph_store.calls)
+        assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
 
     def test_graph_query_filters_by_compliance_and_source(self, recording_graph_store):
         recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")

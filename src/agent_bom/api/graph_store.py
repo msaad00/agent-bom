@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from agent_bom.db import graph_store as sqlite_graph_store
-from agent_bom.graph import EntityType, NodeDimensions, NodeStatus, UnifiedGraph, UnifiedNode
+from agent_bom.graph import AttackPath, EntityType, NodeDimensions, NodeStatus, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
 
 _CREATE_PRESET_TABLE_SQLITE = """\
 CREATE TABLE IF NOT EXISTS graph_filter_presets (
@@ -85,6 +85,13 @@ def decode_graph_cursor(cursor: str) -> tuple[int, float, str, str]:
         raise ValueError("Invalid graph cursor") from exc
 
 
+_DYNAMIC_RELATIONSHIP_VALUES = {
+    RelationshipType.INVOKED.value,
+    RelationshipType.ACCESSED.value,
+    RelationshipType.DELEGATED_TO.value,
+}
+
+
 class GraphStoreProtocol(Protocol):
     """Shared graph store contract used by the API pipeline and routes."""
 
@@ -150,6 +157,57 @@ class GraphStoreProtocol(Protocol):
         offset: int = 0,
         limit: int = 50,
     ) -> tuple[list[UnifiedNode], int, str | None]: ...
+
+    def nodes_by_ids(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        node_ids: set[str],
+    ) -> list[UnifiedNode]: ...
+
+    def bfs_paths(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        source: str,
+        max_depth: int = 4,
+        traversable_only: bool = True,
+    ) -> tuple[list[list[str]], set[str]]: ...
+
+    def impact_of(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        node_id: str,
+        max_depth: int = 4,
+    ) -> dict[str, Any] | None: ...
+
+    def traverse_subgraph(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        roots: list[str],
+        direction: str = "forward",
+        max_depth: int = 4,
+        max_nodes: int = 500,
+        traversable_only: bool = False,
+        relationship_types: set[RelationshipType] | None = None,
+        static_only: bool = False,
+        dynamic_only: bool = False,
+        include_roots: bool = True,
+    ) -> tuple[UnifiedGraph, dict[str, int], bool]: ...
+
+    def attack_paths_for_sources(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        source_ids: set[str],
+    ) -> list[AttackPath]: ...
 
     def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict[str, Any], created_at: str) -> None: ...
 
@@ -280,6 +338,375 @@ class SQLiteGraphStore:
             data_sources=json.loads(row["data_sources"]),
             dimensions=NodeDimensions.from_dict(json.loads(row["dimensions"])),
         )
+
+    @staticmethod
+    def _edge_from_row(row: sqlite3.Row) -> UnifiedEdge:
+        return UnifiedEdge(
+            source=row["source_id"],
+            target=row["target_id"],
+            relationship=RelationshipType(row["relationship"]),
+            direction=row["direction"],
+            weight=row["weight"],
+            traversable=bool(row["traversable"]),
+            first_seen=row["first_seen"],
+            last_seen=row["last_seen"],
+            evidence=json.loads(row["evidence"]),
+            activity_id=row["activity_id"],
+        )
+
+    def _filtered_edge_rows(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        tenant_id: str,
+        scan_id: str,
+        frontier: set[str],
+        traversable_only: bool = False,
+        relationship_types: set[RelationshipType] | None = None,
+        static_only: bool = False,
+        dynamic_only: bool = False,
+    ) -> list[sqlite3.Row]:
+        if not frontier:
+            return []
+        placeholders = ",".join("?" for _ in frontier)
+        where = [
+            "tenant_id = ?",
+            "scan_id = ?",
+            f"(source_id IN ({placeholders}) OR target_id IN ({placeholders}))",
+        ]
+        params: list[Any] = [tenant_id, scan_id, *frontier, *frontier]
+        if traversable_only:
+            where.append("traversable = 1")
+        if relationship_types:
+            rel_values = sorted(rel.value if isinstance(rel, RelationshipType) else str(rel) for rel in relationship_types)
+            rel_placeholders = ",".join("?" for _ in rel_values)
+            where.append(f"relationship IN ({rel_placeholders})")
+            params.extend(rel_values)
+        if static_only:
+            dynamic_placeholders = ",".join("?" for _ in _DYNAMIC_RELATIONSHIP_VALUES)
+            where.append(f"relationship NOT IN ({dynamic_placeholders})")
+            params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
+        if dynamic_only:
+            dynamic_placeholders = ",".join("?" for _ in _DYNAMIC_RELATIONSHIP_VALUES)
+            where.append(f"relationship IN ({dynamic_placeholders})")
+            params.extend(sorted(_DYNAMIC_RELATIONSHIP_VALUES))
+        return conn.execute(
+            f"""
+            SELECT source_id, target_id, relationship, direction, weight, traversable, first_seen, last_seen, evidence, activity_id
+            FROM graph_edges
+            WHERE {" AND ".join(where)}
+            """,  # nosec B608 - clause fragments and placeholders are generated internally
+            params,
+        ).fetchall()
+
+    def nodes_by_ids(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        node_ids: set[str],
+    ) -> list[UnifiedNode]:
+        if not node_ids:
+            return []
+        conn = self._open_ro_conn()
+        if conn is None:
+            return []
+        try:
+            effective_scan_id, _created_at = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
+            if not effective_scan_id:
+                return []
+            placeholders = ",".join("?" for _ in node_ids)
+            rows = conn.execute(
+                f"""
+                SELECT
+                    id, entity_type, label, category_uid, class_uid, type_uid,
+                    status, risk_score, severity, severity_id, first_seen, last_seen,
+                    attributes, compliance_tags, data_sources, dimensions
+                FROM graph_nodes
+                WHERE tenant_id = ? AND scan_id = ? AND id IN ({placeholders})
+                """,  # nosec B608 - placeholders are generated internally
+                [tenant_id, effective_scan_id, *node_ids],
+            ).fetchall()
+            return [self._node_from_row(row) for row in rows]
+        finally:
+            conn.close()
+
+    def _walk_graph(
+        self,
+        conn: sqlite3.Connection,
+        *,
+        tenant_id: str,
+        scan_id: str,
+        roots: list[str],
+        direction: str,
+        max_depth: int,
+        max_nodes: int,
+        traversable_only: bool,
+        relationship_types: set[RelationshipType] | None,
+        static_only: bool,
+        dynamic_only: bool,
+        include_roots: bool,
+    ) -> tuple[str, str, set[str], dict[str, int], dict[tuple[str, str, str], UnifiedEdge], dict[str, str], list[str], bool]:
+        effective_scan_id, created_at = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
+        if not effective_scan_id:
+            return scan_id, "", set(), {}, {}, {}, [], False
+
+        existing_roots = {node.id for node in self.nodes_by_ids(tenant_id=tenant_id, scan_id=effective_scan_id, node_ids=set(roots))}
+        visited: set[str] = set()
+        depth_by_node: dict[str, int] = {}
+        traversed_edges: dict[tuple[str, str, str], UnifiedEdge] = {}
+        parent_by_node: dict[str, str] = {}
+        discovery_order: list[str] = []
+        truncated = False
+
+        queue: list[tuple[str, int]] = []
+        for root in roots:
+            if root not in existing_roots:
+                continue
+            queue.append((root, 0))
+            depth_by_node[root] = 0
+            if include_roots:
+                visited.add(root)
+
+        index = 0
+        while index < len(queue):
+            current, depth = queue[index]
+            index += 1
+            if depth >= max_depth:
+                continue
+            for row in self._filtered_edge_rows(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=effective_scan_id,
+                frontier={current},
+                traversable_only=traversable_only,
+                relationship_types=relationship_types,
+                static_only=static_only,
+                dynamic_only=dynamic_only,
+            ):
+                edge = self._edge_from_row(row)
+                candidates: list[str] = []
+                if direction in {"forward", "both"}:
+                    if edge.source == current:
+                        candidates.append(edge.target)
+                    elif edge.is_bidirectional and edge.target == current:
+                        candidates.append(edge.source)
+                if direction in {"reverse", "both"}:
+                    if edge.target == current:
+                        candidates.append(edge.source)
+                    elif edge.is_bidirectional and edge.source == current:
+                        candidates.append(edge.target)
+                if not candidates:
+                    continue
+
+                rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
+                traversed_edges.setdefault((edge.source, edge.target, rel), edge)
+
+                for neighbor in candidates:
+                    if neighbor in visited:
+                        continue
+                    if len(visited) >= max_nodes:
+                        truncated = True
+                        continue
+                    visited.add(neighbor)
+                    depth_by_node[neighbor] = depth + 1
+                    parent_by_node.setdefault(neighbor, current)
+                    discovery_order.append(neighbor)
+                    queue.append((neighbor, depth + 1))
+
+        if include_roots:
+            visited.update(existing_roots)
+
+        return effective_scan_id, created_at, visited, depth_by_node, traversed_edges, parent_by_node, discovery_order, truncated
+
+    def bfs_paths(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        source: str,
+        max_depth: int = 4,
+        traversable_only: bool = True,
+    ) -> tuple[list[list[str]], set[str]]:
+        conn = self._open_ro_conn()
+        if conn is None:
+            return [], set()
+        try:
+            (
+                _effective_scan_id,
+                _created_at,
+                visited,
+                _depth_by_node,
+                _edges,
+                parent_by_node,
+                discovery_order,
+                _truncated,
+            ) = self._walk_graph(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=scan_id,
+                roots=[source],
+                direction="forward",
+                max_depth=max_depth,
+                max_nodes=5000,
+                traversable_only=traversable_only,
+                relationship_types=None,
+                static_only=False,
+                dynamic_only=False,
+                include_roots=True,
+            )
+            if source not in visited:
+                return [], set()
+
+            paths: list[list[str]] = []
+            for node_id in discovery_order:
+                if node_id == source:
+                    continue
+                path = [node_id]
+                current = node_id
+                while current in parent_by_node:
+                    current = parent_by_node[current]
+                    path.append(current)
+                path.reverse()
+                if path and path[0] == source:
+                    paths.append(path)
+            reachable = set(visited)
+            reachable.discard(source)
+            return paths, reachable
+        finally:
+            conn.close()
+
+    def impact_of(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        node_id: str,
+        max_depth: int = 4,
+    ) -> dict[str, Any] | None:
+        conn = self._open_ro_conn()
+        if conn is None:
+            return None
+        try:
+            effective_scan_id, _created_at, visited, depth_by_node, _edges, _parents, _order, _truncated = self._walk_graph(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=scan_id,
+                roots=[node_id],
+                direction="reverse",
+                max_depth=max_depth,
+                max_nodes=5000,
+                traversable_only=False,
+                relationship_types=None,
+                static_only=False,
+                dynamic_only=False,
+                include_roots=True,
+            )
+            if not effective_scan_id or node_id not in visited:
+                return None
+
+            affected_nodes = sorted(node for node in visited if node != node_id)
+            affected_node_rows = self.nodes_by_ids(tenant_id=tenant_id, scan_id=effective_scan_id, node_ids=set(affected_nodes))
+            affected_by_type: dict[str, int] = {}
+            for node in affected_node_rows:
+                entity_type = node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
+                affected_by_type[entity_type] = affected_by_type.get(entity_type, 0) + 1
+
+            return {
+                "node_id": node_id,
+                "affected_nodes": affected_nodes,
+                "affected_by_type": affected_by_type,
+                "affected_count": len(affected_nodes),
+                "max_depth_reached": max((depth_by_node.get(node, 0) for node in affected_nodes), default=0),
+            }
+        finally:
+            conn.close()
+
+    def traverse_subgraph(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        roots: list[str],
+        direction: str = "forward",
+        max_depth: int = 4,
+        max_nodes: int = 500,
+        traversable_only: bool = False,
+        relationship_types: set[RelationshipType] | None = None,
+        static_only: bool = False,
+        dynamic_only: bool = False,
+        include_roots: bool = True,
+    ) -> tuple[UnifiedGraph, dict[str, int], bool]:
+        conn = self._open_ro_conn()
+        if conn is None:
+            return UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id), {}, False
+        try:
+            effective_scan_id, created_at, visited, depth_by_node, traversed_edges, _parents, _order, truncated = self._walk_graph(
+                conn,
+                tenant_id=tenant_id,
+                scan_id=scan_id,
+                roots=roots,
+                direction=direction,
+                max_depth=max_depth,
+                max_nodes=max_nodes,
+                traversable_only=traversable_only,
+                relationship_types=relationship_types,
+                static_only=static_only,
+                dynamic_only=dynamic_only,
+                include_roots=include_roots,
+            )
+            graph = UnifiedGraph(scan_id=effective_scan_id, tenant_id=tenant_id, created_at=created_at)
+            if not effective_scan_id:
+                return graph, {}, False
+            node_rows = self.nodes_by_ids(tenant_id=tenant_id, scan_id=effective_scan_id, node_ids=visited)
+            for node in node_rows:
+                graph.add_node(node)
+            for edge in traversed_edges.values():
+                if edge.source in graph.nodes and edge.target in graph.nodes:
+                    graph.add_edge(edge)
+            return graph, depth_by_node, truncated
+        finally:
+            conn.close()
+
+    def attack_paths_for_sources(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        source_ids: set[str],
+    ) -> list[AttackPath]:
+        if not source_ids:
+            return []
+        conn = self._open_ro_conn()
+        if conn is None:
+            return []
+        try:
+            effective_scan_id, _created_at = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
+            if not effective_scan_id:
+                return []
+            placeholders = ",".join("?" for _ in source_ids)
+            rows = conn.execute(
+                f"""
+                SELECT source_node, target_node, path_nodes, path_edges, composite_risk, credential_exposure, vuln_ids
+                FROM attack_paths
+                WHERE tenant_id = ? AND scan_id = ? AND source_node IN ({placeholders})
+                """,  # nosec B608 - placeholders are generated internally
+                [tenant_id, effective_scan_id, *source_ids],
+            ).fetchall()
+            return [
+                AttackPath(
+                    source=row["source_node"],
+                    target=row["target_node"],
+                    hops=json.loads(row["path_nodes"]),
+                    edges=json.loads(row["path_edges"]),
+                    composite_risk=row["composite_risk"],
+                    credential_exposure=json.loads(row["credential_exposure"]),
+                    vuln_ids=json.loads(row["vuln_ids"]),
+                )
+                for row in rows
+            ]
+        finally:
+            conn.close()
 
     def latest_snapshot_id(self, *, tenant_id: str = "") -> str:
         conn = self._open_ro_conn()

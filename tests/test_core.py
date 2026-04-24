@@ -1926,6 +1926,59 @@ def test_python_agents_synthetic_entry_when_no_def(tmp_path):
     assert "crewai" in pkgs
 
 
+def test_python_agents_detects_tools_via_intermediate_list_variable(tmp_path):
+    (tmp_path / "requirements.txt").write_text("openai-agents==0.0.11\n")
+    (tmp_path / "agent.py").write_text(
+        "from agents import Agent, function_tool\n\n"
+        "@function_tool\ndef search_docs(query: str): ...\n\n"
+        "shared_tools = [search_docs]\n"
+        "agent = Agent(name='support-bot', tools=shared_tools)\n"
+    )
+    from agent_bom.python_agents import scan_python_agents
+
+    agents, _warnings = scan_python_agents(str(tmp_path))
+    server = next(a.mcp_servers[0] for a in agents if a.name == "openai-agents:support-bot")
+    tool = next(t for t in server.tools if t.name == "search_docs")
+    assert tool.discovery_source == "decorator"
+    assert tool.discovery_confidence == "high"
+
+
+def test_python_agents_detects_tool_constructor_names(tmp_path):
+    (tmp_path / "requirements.txt").write_text("crewai==0.51.0\n")
+    (tmp_path / "crew.py").write_text(
+        "from crewai import Agent\n"
+        "from langchain_core.tools import StructuredTool\n\n"
+        "search_tool = StructuredTool(name='search_docs', description='Search docs', func=lambda query: query)\n"
+        "toolset = [search_tool]\n"
+        "agent = Agent(role='researcher', tools=toolset)\n"
+    )
+    from agent_bom.python_agents import scan_python_agents
+
+    agents, _warnings = scan_python_agents(str(tmp_path))
+    server = next(a.mcp_servers[0] for a in agents if a.name == "crewai:researcher")
+    tool = next(t for t in server.tools if t.name == "search_docs")
+    assert tool.discovery_source == "tool-constructor"
+    assert tool.discovery_confidence == "medium"
+
+
+def test_python_agents_detects_langgraph_positional_tools_arg(tmp_path):
+    (tmp_path / "requirements.txt").write_text("langgraph==0.2.0\n")
+    (tmp_path / "graph.py").write_text(
+        "from langgraph.prebuilt import create_react_agent\n"
+        "from langchain_core.tools import tool\n\n"
+        "@tool\ndef lookup_status(order_id: str): ...\n\n"
+        "toolset = [lookup_status]\n"
+        "agent = create_react_agent('gpt-4o-mini', toolset)\n"
+    )
+    from agent_bom.python_agents import scan_python_agents
+
+    agents, _warnings = scan_python_agents(str(tmp_path))
+    server = next(a.mcp_servers[0] for a in agents if a.name == "langchain:react-agent")
+    tool = next(t for t in server.tools if t.name == "lookup_status")
+    assert tool.discovery_source == "decorator+positional-tools-arg"
+    assert tool.discovery_confidence == "high"
+
+
 def test_cli_scan_has_agent_project_flag():
     """CLI scan command exposes --agent-project flag."""
     runner = CliRunner()

@@ -545,6 +545,9 @@ export interface AuthPolicyResponse {
     status: string;
     last_rotated: string | null;
     age_days: number | null;
+    rotation_days?: number | null;
+    max_age_days?: number | null;
+    message?: string;
     fallback_source?: string | null;
     [key: string]: unknown;
   };
@@ -573,6 +576,13 @@ export interface AuthPolicyResponse {
       source: string;
       persists_across_restart: boolean;
       rotation_tracking_supported: boolean;
+      rotation_status: string;
+      rotation_method: string;
+      rotation_days: number | null;
+      max_age_days: number | null;
+      last_rotated: string | null;
+      age_days: number | null;
+      rotation_message: string;
       message: string;
     };
     compliance_signing: {
@@ -584,6 +594,14 @@ export interface AuthPolicyResponse {
       auditor_distributable: boolean;
       uses_audit_hmac_secret: boolean;
       persists_across_restart: boolean;
+      rotation_tracking_supported: boolean;
+      rotation_status: string;
+      rotation_method: string;
+      rotation_days: number | null;
+      max_age_days: number | null;
+      last_rotated: string | null;
+      age_days: number | null;
+      rotation_message: string;
       message: string;
     };
   };

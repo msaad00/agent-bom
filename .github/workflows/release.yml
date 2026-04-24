@@ -355,6 +355,35 @@ jobs:
           subject-digest: ${{ steps.build-ui-image.outputs.digest }}
           push-to-registry: true
 
+  published-image-self-scan:
+    name: Self-scan published image
+    needs: docker-publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: "3.11"
+
+      - name: Extract version from tag
+        id: meta
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Pull published API image
+        run: docker pull agentbom/agent-bom:${{ steps.meta.outputs.version }}
+
+      - name: Scan published API image with agent-bom
+        run: uv run agent-bom image agentbom/agent-bom:${{ steps.meta.outputs.version }} --format json --output published-image-self-scan.json
+
+      - name: Upload published image self-scan artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: published-image-self-scan
+          path: published-image-self-scan.json
+
   helm-publish:
     name: Publish Helm chart to OCI
     needs: [version-guard, self-scan-gate, container-gate]
@@ -458,6 +487,9 @@ jobs:
 
       - name: Install agent-bom (from source)
         run: uv sync --extra dev
+
+      - name: Verify release consistency map
+        run: python scripts/check_release_consistency.py
 
       - name: npm audit (ui/ deps) — block release on high/critical
         run: |
@@ -606,8 +638,7 @@ jobs:
 
   github-release:
     name: Create GitHub Release
-    # Only requires PyPI publish — Docker Hub is best-effort (needs external secrets)
-    needs: [pypi-publish, sign, provenance, sbom, helm-publish]
+    needs: [pypi-publish, docker-publish, docker-publish-ui, published-image-self-scan, sign, provenance, sbom, helm-publish]
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -255,7 +255,7 @@ controlPlane:
       annotations: {}
       folder: agent-bom
     prometheusRule:
-      enabled: false
+      enabled: true
       namespace: ""
       labels: {}
       annotations: {}

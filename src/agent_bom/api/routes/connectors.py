@@ -18,8 +18,6 @@ from pathlib import Path as _Path
 
 from fastapi import APIRouter, HTTPException
 
-from agent_bom.security import sanitize_error
-
 router = APIRouter()
 _logger = logging.getLogger(__name__)
 
@@ -110,7 +108,7 @@ async def connector_health(name: str) -> dict:
         status = check_connector_health(name)
         return {"connector": status.connector, "state": status.state.value, "message": status.message, "api_version": status.api_version}
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=sanitize_error(str(exc))) from exc
+        raise HTTPException(status_code=404, detail="Connector not found") from exc
 
 
 # ─── Registry endpoints ──────────────────────────────────────────────────────

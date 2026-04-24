@@ -35,10 +35,11 @@ docker compose -f docker-compose.pilot.yml up -d
 Reference full self-hosted AWS / EKS rollout:
 
 ```bash
+export AWS_REGION="<your-aws-region>"
 scripts/deploy/install-eks-reference.sh \
   --create-cluster \
   --cluster-name corp-ai \
-  --region us-east-1 \
+  --region "$AWS_REGION" \
   --hostname agent-bom.internal.example.com \
   --enable-gateway
 ```
@@ -46,9 +47,10 @@ scripts/deploy/install-eks-reference.sh \
 If the company already has an EKS platform, reuse it with the same installer:
 
 ```bash
+export AWS_REGION="<your-aws-region>"
 scripts/deploy/install-eks-reference.sh \
   --cluster-name corp-ai \
-  --region us-east-1 \
+  --region "$AWS_REGION" \
   --hostname agent-bom.internal.example.com \
   --enable-gateway
 ```
@@ -57,9 +59,10 @@ If you want browser operators behind corporate SSO on day 1, add OIDC at install
 time:
 
 ```bash
+export AWS_REGION="<your-aws-region>"
 scripts/deploy/install-eks-reference.sh \
   --cluster-name corp-ai \
-  --region us-east-1 \
+  --region "$AWS_REGION" \
   --hostname agent-bom.internal.example.com \
   --oidc-issuer https://idp.example.com \
   --oidc-audience agent-bom
@@ -224,9 +227,10 @@ Before installing `agent-bom`, confirm:
 Run the reference installer or the Terraform module directly:
 
 ```bash
+export AWS_REGION="<your-aws-region>"
 scripts/deploy/install-eks-reference.sh \
   --cluster-name corp-ai \
-  --region us-east-1 \
+  --region "$AWS_REGION" \
   --hostname agent-bom.internal.example.com \
   --enable-gateway
 ```
@@ -271,9 +275,10 @@ After install, run the reference verification script before onboarding employees
 or shared upstream MCPs:
 
 ```bash
+export AWS_REGION="<your-aws-region>"
 scripts/deploy/verify-eks-reference.sh \
   --cluster-name corp-ai \
-  --region us-east-1 \
+  --region "$AWS_REGION" \
   --namespace agent-bom \
   --release agent-bom \
   --base-url https://agent-bom.internal.example.com \
@@ -358,9 +363,10 @@ The reference installer supports `--dry-run` so teams can see the generated
 Terraform root, Helm values, and operator summary before any apply:
 
 ```bash
+export AWS_REGION="<your-aws-region>"
 scripts/deploy/install-eks-reference.sh \
   --cluster-name corp-ai \
-  --region us-east-1 \
+  --region "$AWS_REGION" \
   --hostname agent-bom.internal.example.com \
   --enable-gateway \
   --dry-run

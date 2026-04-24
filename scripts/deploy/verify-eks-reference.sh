@@ -27,9 +27,10 @@ Options:
   -h, --help            Show this help
 
 Examples:
+  export AWS_REGION="<your-aws-region>"
   scripts/deploy/verify-eks-reference.sh \
     --cluster-name corp-ai \
-    --region us-east-1 \
+    --region "$AWS_REGION" \
     --base-url https://agent-bom.internal.example.com \
     --api-key "$AGENT_BOM_API_KEY"
 EOF

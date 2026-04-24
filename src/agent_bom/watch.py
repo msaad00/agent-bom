@@ -79,6 +79,9 @@ class WebhookAlertSink:
     """
 
     def __init__(self, url: str, retries: int = 2, timeout: float = 10.0):
+        from agent_bom.security import validate_url
+
+        validate_url(url)
         self.url = url
         self.retries = retries
         self.timeout = timeout

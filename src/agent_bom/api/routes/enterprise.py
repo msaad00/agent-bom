@@ -30,10 +30,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
+from pydantic import BaseModel, Field
 
 from agent_bom.api.models import (
     CreateKeyRequest,
@@ -49,6 +52,14 @@ from agent_bom.security import sanitize_error
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
+
+
+class BrowserSessionRequest(BaseModel):
+    api_key: str = Field(
+        ...,
+        min_length=1,
+        description="API key to exchange for a same-origin httpOnly browser session cookie",
+    )
 
 
 def _auth_session_state(request: Request) -> dict:
@@ -89,7 +100,166 @@ def _auth_session_state(request: Request) -> dict:
     }
 
 
+def _session_cookie_secure(request: Request) -> bool:
+    raw = os.environ.get("AGENT_BOM_SESSION_COOKIE_SECURE", "").strip().lower()
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip().lower()
+    return request.url.scheme == "https" or forwarded_proto == "https"
+
+
+def _session_cookie_max_age() -> int:
+    raw = os.environ.get("AGENT_BOM_SESSION_COOKIE_MAX_AGE_SECONDS", "").strip()
+    if not raw:
+        return 8 * 60 * 60
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return 8 * 60 * 60
+    return max(60, min(parsed, 24 * 60 * 60))
+
+
+def _set_browser_session_cookie(
+    response: Response,
+    request: Request,
+    *,
+    subject: str,
+    role: str,
+    tenant_id: str,
+    auth_method: str,
+    key_id: str | None = None,
+    scopes: list[str] | None = None,
+) -> None:
+    from agent_bom.api.browser_session import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME, create_browser_session_token
+
+    max_age = _session_cookie_max_age()
+    token, csrf = create_browser_session_token(
+        subject=subject,
+        role=role,
+        tenant_id=tenant_id,
+        auth_method=auth_method,
+        key_id=key_id,
+        scopes=scopes,
+        max_age_seconds=max_age,
+    )
+    secure = _session_cookie_secure(request)
+    response.set_cookie(
+        SESSION_COOKIE_NAME,
+        token,
+        max_age=max_age,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        path="/",
+    )
+    response.set_cookie(
+        CSRF_COOKIE_NAME,
+        csrf,
+        max_age=max_age,
+        httponly=False,
+        secure=secure,
+        samesite="lax",
+        path="/",
+    )
+
+
+def _clear_browser_session_cookie(response: Response, request: Request) -> None:
+    from agent_bom.api.browser_session import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME
+
+    secure = _session_cookie_secure(request)
+    response.delete_cookie(
+        SESSION_COOKIE_NAME,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        path="/",
+    )
+    response.delete_cookie(
+        CSRF_COOKIE_NAME,
+        httponly=False,
+        secure=secure,
+        samesite="lax",
+        path="/",
+    )
+
+
 # ── API Key Management (RBAC) ───────────────────────────────────────────────
+
+
+@router.post("/v1/auth/session", tags=["enterprise"], status_code=204)
+async def create_browser_session(request: Request, response: Response, body: BrowserSessionRequest) -> None:
+    """Exchange an API key for a same-origin httpOnly browser session cookie.
+
+    This is the dashboard-safe fallback for deployments that are not fronted by
+    reverse-proxy OIDC. The raw key is never returned and should be typed only
+    into the first-party UI served from the same origin as the API.
+    """
+    from agent_bom.api.audit_log import log_action
+    from agent_bom.api.auth import get_key_store
+
+    raw_key = body.api_key.strip()
+    if not raw_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    static_key = os.environ.get("AGENT_BOM_API_KEY", "")
+    if static_key and secrets.compare_digest(raw_key, static_key):
+        _set_browser_session_cookie(
+            response,
+            request,
+            subject="static-key",
+            role="admin",
+            tenant_id="default",
+            auth_method="browser_session_static_api_key",
+        )
+        log_action(
+            "auth.browser_session_created",
+            actor="static-key",
+            resource="auth/session",
+            tenant_id="default",
+            method="static_api_key",
+        )
+        return None
+
+    store = get_key_store()
+    if store.has_keys():
+        api_key = store.verify(raw_key)
+        if api_key:
+            _set_browser_session_cookie(
+                response,
+                request,
+                subject=api_key.name,
+                role=api_key.role.value,
+                tenant_id=api_key.tenant_id,
+                auth_method="browser_session",
+                key_id=api_key.key_id,
+                scopes=list(api_key.scopes),
+            )
+            log_action(
+                "auth.browser_session_created",
+                actor=api_key.name,
+                resource="auth/session",
+                tenant_id=api_key.tenant_id,
+                method="api_key",
+                key_id=api_key.key_id,
+                role=api_key.role.value,
+            )
+            return None
+
+    raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+@router.delete("/v1/auth/session", tags=["enterprise"], status_code=204)
+async def delete_browser_session(request: Request, response: Response) -> None:
+    """Clear the same-origin browser session cookie."""
+    from agent_bom.api.audit_log import log_action
+
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = getattr(request.state, "api_key_name", "") or "browser-session"
+    _clear_browser_session_cookie(response, request)
+    log_action("auth.browser_session_cleared", actor=actor, resource="auth/session", tenant_id=tenant_id)
+    return None
 
 
 @router.post("/v1/auth/keys", tags=["enterprise"], status_code=201)
@@ -115,7 +285,7 @@ async def create_key(request: Request, req: CreateKeyRequest) -> dict:
             tenant_id=tenant_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
     get_key_store().add(api_key)
 
     log_action(
@@ -167,7 +337,7 @@ async def rotate_key(request: Request, key_id: str, req: RotateKeyRequest) -> di
             tenant_id=current_key.tenant_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
 
     store.add(replacement)
     if not store.mark_rotating(current_key.key_id, replacement_key_id=replacement.key_id, overlap_until=overlap_until):
@@ -249,15 +419,18 @@ async def auth_policy(request: Request) -> dict:
             "rotation_endpoint": "/v1/auth/keys/{key_id}/rotate",
         },
         "rate_limit_key": rl_status,
+        "audit_hmac": describe_audit_hmac_status(),
         "ui": {
             "recommended_mode": auth_runtime["recommended_ui_mode"],
             "configured_modes": auth_runtime["configured_modes"],
-            "session_storage_fallback": "session_api_key",
+            "browser_session": "signed_http_only_cookie",
+            "session_storage_fallback": "legacy_static_export_only",
             "credentials_mode": "include",
             "trusted_proxy_headers": ["X-Agent-Bom-Role", "X-Agent-Bom-Tenant-ID"],
             "message": (
                 "Recommended browser auth is same-origin reverse-proxy OIDC with the proxy injecting trusted "
-                "X-Agent-Bom-* headers. For single-user local or pilot access, the UI also supports a session-only API key."
+                "X-Agent-Bom-* headers. For single-user local or pilot access, the UI exchanges an API key for a "
+                "signed, expiring, CSRF-bound httpOnly browser session cookie."
             ),
         },
         "rate_limit_runtime": rl_runtime,
@@ -442,7 +615,7 @@ async def saml_metadata() -> PlainTextResponse:
     try:
         metadata = SAMLConfig.from_env().metadata_xml()
     except SAMLError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail=sanitize_error(exc)) from exc
     return PlainTextResponse(content=metadata, media_type="application/samlmetadata+xml")
 
 
@@ -457,7 +630,7 @@ async def saml_login(req: SAMLLoginRequest) -> dict:
         cfg = SAMLConfig.from_env()
         assertion = cfg.verify_response(req.saml_response, relay_state=req.relay_state)
     except SAMLError as exc:
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
+        raise HTTPException(status_code=401, detail=sanitize_error(exc)) from exc
 
     expires_at = (datetime.now(timezone.utc) + timedelta(seconds=cfg.session_ttl_seconds)).isoformat()
     raw_key, api_key = create_api_key(
@@ -795,7 +968,8 @@ async def test_siem_connection(request: Request, siem_type: str = "", url: str =
         )
         return {"siem_type": siem_type, "healthy": healthy}
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=sanitize_error(str(exc)))
+        _logger.info("Invalid SIEM test request: %s", sanitize_error(exc))
+        raise HTTPException(status_code=400, detail="Invalid SIEM connector request") from exc
     except Exception as exc:
         _logger.exception(
             "Unexpected error while testing SIEM connection: %s",

@@ -152,7 +152,9 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "max_overlap_seconds" in body["api_key"]
     assert body["rate_limit_key"]["status"] in {"ok", "ephemeral", "unknown_age", "rotation_due", "max_age_exceeded"}
     assert body["ui"]["recommended_mode"] in {"no_auth", "reverse_proxy_oidc", "oidc_bearer", "session_api_key"}
-    assert body["ui"]["session_storage_fallback"] == "session_api_key"
+    assert body["ui"]["browser_session"] == "signed_http_only_cookie"
+    assert body["ui"]["session_storage_fallback"] == "legacy_static_export_only"
+    assert body["audit_hmac"]["rotation_tracking_supported"] is True
     assert body["rate_limit_runtime"]["backend"] in {"inmemory_single_process", "postgres_shared"}
     assert "shared_across_replicas" in body["rate_limit_runtime"]
     assert "configured_api_replicas" in body["rate_limit_runtime"]
@@ -372,6 +374,22 @@ def test_auth_policy_requires_admin_role_in_api_middleware() -> None:
     assert middleware._required_role("PUT", "/v1/auth/quota") == "admin"
     assert middleware._required_role("DELETE", "/v1/auth/quota") == "admin"
     assert middleware._required_role("GET", "/v1/auth/debug") == "viewer"
+
+
+def test_metrics_requires_authenticated_access() -> None:
+    client = TestClient(app)
+    unauthenticated = client.get("/metrics")
+    assert unauthenticated.status_code == 401
+
+    authenticated = client.get(
+        "/metrics",
+        headers={
+            "X-Agent-Bom-Role": "viewer",
+            "X-Agent-Bom-Tenant-ID": "tenant-alpha",
+        },
+    )
+    assert authenticated.status_code == 200
+    assert "agent_bom_" in authenticated.text
 
 
 def test_auth_debug_reports_runtime_auth_modes(monkeypatch: pytest.MonkeyPatch) -> None:

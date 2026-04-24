@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from agent_bom.api.stores import _get_graph_store
 from agent_bom.graph import SEVERITY_RANK, GraphFilterOptions, RelationshipType, UnifiedGraph
+from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -260,7 +261,7 @@ async def get_graph(
             limit=limit,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
     paged_ids = {n.id for n in paged_nodes}
     paged_edges = await _graph_store_call(
         graph_store.edges_for_node_ids,
@@ -392,7 +393,7 @@ async def search_graph(
             limit=limit,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=sanitize_error(exc)) from exc
     return {
         "query": q,
         "filters": {

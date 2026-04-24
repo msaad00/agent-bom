@@ -27,9 +27,10 @@ Deployments, CronJobs, and ExternalSecret objects.
 The reverse path is now explicit too:
 
 ```bash
+export AWS_REGION="<your-aws-region>"
 agent-bom teardown \
   --cluster-name agent-bom-prod \
-  --region us-east-1 \
+  --region "$AWS_REGION" \
   --namespace agent-bom \
   --release agent-bom \
   --dry-run

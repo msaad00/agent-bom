@@ -16,6 +16,14 @@ from typing import TYPE_CHECKING
 
 from agent_bom import __version__
 from agent_bom.api.auth import get_key_store
+from agent_bom.api.browser_session import (
+    CSRF_COOKIE_NAME,
+    CSRF_HEADER_NAME,
+    SESSION_COOKIE_NAME,
+    BrowserSessionError,
+    verify_browser_session_token,
+    verify_csrf,
+)
 from agent_bom.api.tracing import configure_otel_tracing, make_request_trace
 
 if TYPE_CHECKING:
@@ -310,10 +318,10 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             "/health",
             "/readyz",
             "/version",
-            "/metrics",
             "/docs",
             "/redoc",
             "/openapi.json",
+            "/v1/auth/session",
             "/v1/auth/saml/metadata",
             "/v1/auth/saml/login",
         }
@@ -323,7 +331,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             "/health",
             "/readyz",
             "/version",
-            "/metrics",
+            "/v1/auth/session",
             "/v1/auth/saml/metadata",
             "/v1/auth/saml/login",
         }
@@ -431,7 +439,13 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if request.url.path in self._EXEMPT_PATHS:
             return await call_next(request)
 
-        # Extract raw key from headers
+        session_token = request.cookies.get(SESSION_COOKIE_NAME, "")
+        if session_token:
+            session_response = await self._try_browser_session_auth(request, call_next, session_token)
+            if session_response is not None:
+                return session_response
+
+        # Extract raw key from headers for CLI and service clients.
         raw_key = ""
         auth = request.headers.get("authorization", "")
         if auth.startswith("Bearer "):
@@ -527,6 +541,47 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             status_code=401,
             content={"detail": "Unauthorized — invalid API key"},
         )
+
+    async def _try_browser_session_auth(self, request: StarletteRequest, call_next, token: str):
+        from agent_bom.api.auth import _ROLE_HIERARCHY, Role, get_key_store
+
+        try:
+            payload = verify_browser_session_token(token)
+            session_role = Role(str(payload.get("role", "")).lower())
+        except (BrowserSessionError, ValueError):
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized — invalid browser session"})
+
+        required = Role(self._required_role(request.method, request.url.path))
+        if _ROLE_HIERARCHY.get(session_role, 0) < _ROLE_HIERARCHY.get(required, 0):
+            return JSONResponse(
+                status_code=403,
+                content={"detail": f"Forbidden — requires {required.value} role, browser session has {session_role.value}"},
+            )
+
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            csrf_cookie = request.cookies.get(CSRF_COOKIE_NAME, "")
+            csrf_header = request.headers.get(CSRF_HEADER_NAME, "")
+            if not verify_csrf(payload, csrf_cookie, csrf_header):
+                return JSONResponse(status_code=403, content={"detail": "Forbidden — missing or invalid CSRF token"})
+
+        store = get_key_store()
+        key_id = str(payload.get("key_id") or "")
+        tenant_id = str(payload.get("tenant_id") or "default")
+        if key_id:
+            stored = store.get(key_id)
+            if stored is None or stored.tenant_id != tenant_id or not stored.is_usable():
+                return JSONResponse(status_code=401, content={"detail": "Unauthorized — browser session key is no longer active"})
+            required_scope = self._required_scope(request.method, request.url.path)
+            if not stored.has_scope(required_scope):
+                return JSONResponse(status_code=403, content={"detail": f"Forbidden — requires scope {required_scope}"})
+
+        request.state.api_key_name = str(payload.get("sub") or "browser-session")
+        request.state.api_key_role = session_role.value
+        request.state.tenant_id = tenant_id
+        request.state.api_key_id = key_id or None
+        request.state.api_key_scopes = list(payload.get("scopes") or [])
+        request.state.auth_method = str(payload.get("auth_method") or "browser_session")
+        return await self._call_with_tenant_context(request, call_next)
 
     async def _try_proxy_header_auth(self, request: StarletteRequest, call_next):
         if not self._trusted_proxy_auth:

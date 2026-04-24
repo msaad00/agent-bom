@@ -551,9 +551,17 @@ export interface AuthPolicyResponse {
     fallback_source?: string | null;
     [key: string]: unknown;
   };
+  audit_hmac: {
+    status: string;
+    configured: boolean;
+    key_id_configured?: boolean;
+    rotation_tracking_supported?: boolean;
+    [key: string]: unknown;
+  };
   ui: {
     recommended_mode: string;
     configured_modes: string[];
+    browser_session: string;
     session_storage_fallback: string;
     credentials_mode: string;
     trusted_proxy_headers: string[];
@@ -1234,6 +1242,17 @@ async function post<T>(path: string, body: unknown, headers: Record<string, stri
   return res.json() as Promise<T>;
 }
 
+async function postVoid(path: string, body: unknown, headers: Record<string, string> = {}): Promise<void> {
+  const res = await fetch(`${getConfiguredApiUrl()}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...getSessionAuthHeaders(), ...headers },
+    body: JSON.stringify(body),
+    signal: withTimeout(),
+  });
+  if (!res.ok) throw new Error(await errorMessage(res));
+}
+
 async function put<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${getConfiguredApiUrl()}${path}`, {
     method: "PUT",
@@ -1278,6 +1297,10 @@ export const api = {
   updateTenantQuota: (body: TenantQuotaUpdateRequest) =>
     put<AuthPolicyResponse["tenant_quota_runtime"]>("/v1/auth/quota", body),
   resetTenantQuota: () => del("/v1/auth/quota"),
+  createAuthSession: (apiKey: string) => postVoid("/v1/auth/session", { api_key: apiKey }),
+  deleteAuthSession: () => del("/v1/auth/session"),
+  reportClientError: (body: { message: string; digest?: string; path?: string; component?: string }) =>
+    post<{ ok: boolean }>("/v1/ui/errors", body),
   listKeys: () => get<ListKeysResponse>("/v1/auth/keys"),
   createKey: (body: CreateApiKeyRequest) => post<CreateApiKeyResponse>("/v1/auth/keys", body),
   rotateKey: (keyId: string, body: RotateApiKeyRequest) =>

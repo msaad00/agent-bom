@@ -83,9 +83,10 @@ helm upgrade --install agent-bom deploy/helm/agent-bom \
 Use the packaged teardown helper for the supported reverse path:
 
 ```bash
+export AWS_REGION="<your-aws-region>"
 agent-bom teardown \
   --cluster-name agent-bom-prod \
-  --region us-east-1 \
+  --region "$AWS_REGION" \
   --namespace agent-bom \
   --release agent-bom \
   --yes
@@ -101,9 +102,10 @@ The helper does the same two-phase decommission in the correct order:
 If you want to inspect the plan first:
 
 ```bash
+export AWS_REGION="<your-aws-region>"
 agent-bom teardown \
   --cluster-name agent-bom-prod \
-  --region us-east-1 \
+  --region "$AWS_REGION" \
   --namespace agent-bom \
   --release agent-bom \
   --dry-run
@@ -112,7 +114,8 @@ agent-bom teardown \
 For teams working directly from a checked-out repo, the equivalent wrapper is:
 
 ```bash
-scripts/deploy/teardown-eks-reference.sh --cluster-name agent-bom-prod --region us-east-1 --dry-run
+export AWS_REGION="<your-aws-region>"
+scripts/deploy/teardown-eks-reference.sh --cluster-name agent-bom-prod --region "$AWS_REGION" --dry-run
 ```
 
 That ordering avoids:

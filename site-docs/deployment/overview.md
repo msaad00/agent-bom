@@ -186,31 +186,39 @@ flowchart LR
     classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
     classDef ext fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
 
-    Browser["Browser UI"]:::ext
+    Browser["Browser"]:::ext
     IdP["Corporate IdP"]:::ext
-    Endpoints["Fleet endpoints / collectors"]:::ext
+    Fleet["Fleet collectors"]:::ext
     Remote["Remote MCPs"]:::ext
 
     subgraph Customer["Customer VPC / EKS / self-hosted cluster"]
-      Ingress["Ingress + TLS"]:::edge
+      direction LR
+
+      subgraph Access["Access"]
+        Ingress["Ingress / TLS"]:::edge
+        Secrets["Secrets / IRSA / Vault"]:::edge
+      end
 
       subgraph Control["Control plane"]
-        UI["UI"]:::ctrl
+        direction TB
+        UI["Web UI"]:::ctrl
         API["API"]:::ctrl
-        Jobs["Scan jobs / workers"]:::ctrl
+        Jobs["Scan workers"]:::ctrl
       end
 
-      Gateway["Gateway"]:::run
-      Proxy["Selected proxy sidecars / local wrappers"]:::run
+      subgraph Runtime["Data plane"]
+        direction TB
+        Proxy["Local proxies"]:::run
+        Gateway["Gateway"]:::run
+      end
 
-      subgraph Stores["Customer-owned stores"]
+      subgraph Stores["Customer-managed stores"]
+        direction TB
         Postgres[("Postgres")]:::data
-        ClickHouse[("ClickHouse optional")]:::data
-        S3[("S3 optional")]:::data
+        ClickHouse[("ClickHouse")]:::data
+        S3[("S3 archive")]:::data
+        Obs["OTEL / Prometheus"]:::edge
       end
-
-      Secrets["Secrets / IRSA / Vault"]:::edge
-      Obs["OTEL / Prometheus"]:::edge
     end
 
     Browser --> Ingress
@@ -219,24 +227,26 @@ flowchart LR
     Ingress --> API
     UI --> API
     Jobs --> API
-    Endpoints -->|fleet sync / pushed inventory| API
-    Proxy -->|policy pull / audit push| API
-    Gateway -->|policy pull / audit push| API
-    Proxy -->|local MCP traffic| Endpoints
-    Gateway -->|shared remote MCP traffic| Remote
-    API --> Postgres
-    API -. analytics .-> ClickHouse
-    API -. archive / export .-> S3
+    Fleet -->|inventory sync| API
+    Proxy -->|policy / audit| API
+    Gateway -->|policy / audit| API
+    Gateway -->|remote MCP traffic| Remote
     Secrets --> API
     Secrets --> Gateway
+    API --> Postgres
+    API -. analytics .-> ClickHouse
+    API -. evidence export .-> S3
     API --> Obs
     Gateway --> Obs
 ```
 
 Truth block:
-- UI drives workflows; API owns auth, RBAC, tenant scope, graph, audit, and policy.
-- Proxy and gateway are peer runtime surfaces; scans and fleet build inventory
-  without requiring runtime rollout.
+- Users enter through ingress; the API remains the single control-plane authority
+  for auth, RBAC, tenant scope, graph, audit, and policy.
+- Fleet sync, scan workers, and runtime surfaces all report back to the same API,
+  so inventory and enforcement stay aligned.
+- Gateway fronts shared remote MCP traffic; optional analytics and archive stores
+  stay visually secondary to Postgres, which remains the required system of record.
 
 ### Enterprise Self-Hosted Data and Runtime Flow
 

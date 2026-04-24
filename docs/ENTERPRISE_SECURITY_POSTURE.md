@@ -89,11 +89,20 @@ Recommended production posture:
   from the customer's secret manager
 - mount Kubernetes secrets through External Secrets or equivalent CSI/IRSA
   controls
-- set rotation timestamps for audit HMAC and compliance signing keys so posture
-  endpoints can expose key age
+- set `AGENT_BOM_SECRET_PROVIDER` and `AGENT_BOM_EXTERNAL_SECRETS_ENABLED=1`
+  when the deployment is backed by AWS Secrets Manager, Vault, External
+  Secrets, or an equivalent customer secret manager
+- set rotation timestamps for audit HMAC, compliance signing, SCIM bearer, and
+  browser-session signing keys so posture endpoints can expose key age
 - rotate API keys through the API rather than replacing all clients at once
 - restart API/gateway workloads after rotating mounted signing or OAuth client
   secrets
+
+`GET /v1/auth/secrets/lifecycle` and `GET /v1/auth/policy` expose a non-secret
+summary of this posture. They report configured sources, key IDs when supplied,
+rotation age, missing required secrets, and whether the deployment has declared
+an external secret-manager authority. These endpoints never return secret
+values.
 
 `agent-bom` does not replace the customer's KMS, Vault, IdP, or privileged
 access management system. The product exposes posture and supports rotation

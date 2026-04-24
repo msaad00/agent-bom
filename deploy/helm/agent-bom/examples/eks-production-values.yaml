@@ -33,6 +33,10 @@ controlPlane:
         value: "250"
       - name: AGENT_BOM_REQUIRE_SHARED_SCIM_STORE
         value: "1"
+      - name: AGENT_BOM_SECRET_PROVIDER
+        value: "aws_secrets_manager"
+      - name: AGENT_BOM_EXTERNAL_SECRETS_ENABLED
+        value: "1"
     autoscaling:
       enabled: true
       minReplicas: 2
@@ -102,10 +106,22 @@ controlPlane:
             remoteRef:
               key: REPLACE_ME_AUTH_SECRET_PATH
               property: REPLACE_ME_SCIM_BEARER_TOKEN_PROPERTY
+          - secretKey: AGENT_BOM_SCIM_BEARER_TOKEN_LAST_ROTATED
+            remoteRef:
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_SCIM_BEARER_TOKEN_LAST_ROTATED_PROPERTY
           - secretKey: AGENT_BOM_SCIM_TENANT_ID
             remoteRef:
               key: REPLACE_ME_AUTH_SECRET_PATH
               property: REPLACE_ME_SCIM_TENANT_ID_PROPERTY
+          - secretKey: AGENT_BOM_BROWSER_SESSION_SIGNING_KEY
+            remoteRef:
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_BROWSER_SESSION_SIGNING_KEY_PROPERTY
+          - secretKey: AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_LAST_ROTATED
+            remoteRef:
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_BROWSER_SESSION_SIGNING_KEY_LAST_ROTATED_PROPERTY
           - secretKey: AGENT_BOM_SAML_IDP_ENTITY_ID
             remoteRef:
               key: REPLACE_ME_AUTH_SECRET_PATH

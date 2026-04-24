@@ -401,6 +401,7 @@ async def auth_policy(request: Request) -> dict:
     from agent_bom.api.oidc import describe_oidc_posture
     from agent_bom.api.saml import describe_saml_posture
     from agent_bom.api.scim import describe_scim_posture
+    from agent_bom.api.secret_lifecycle import describe_secret_lifecycle_posture
     from agent_bom.api.tenant_quota import default_tenant_quotas, get_tenant_quota_runtime
 
     api_policy = get_api_key_policy()
@@ -438,6 +439,7 @@ async def auth_policy(request: Request) -> dict:
             "audit_hmac": describe_audit_hmac_status(),
             "compliance_signing": describe_signing_posture(),
         },
+        "secret_lifecycle": describe_secret_lifecycle_posture(),
         "tenant_quotas": defaults,
         "tenant_quota_runtime": get_tenant_quota_runtime(tenant_id),
         "identity_provisioning": {
@@ -455,6 +457,14 @@ async def auth_policy(request: Request) -> dict:
             },
         },
     }
+
+
+@router.get("/v1/auth/secrets/lifecycle", tags=["enterprise"])
+async def auth_secret_lifecycle() -> dict:
+    """Return non-secret lifecycle posture for configured control-plane secrets."""
+    from agent_bom.api.secret_lifecycle import describe_secret_lifecycle_posture
+
+    return describe_secret_lifecycle_posture()
 
 
 @router.get("/v1/auth/scim/config", tags=["enterprise"])

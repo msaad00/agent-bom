@@ -185,6 +185,21 @@ For horizontally scaled control-plane APIs, shared rate limiting is mandatory. `
 
 For horizontally scaled SCIM, shared identity storage is also mandatory. Set `AGENT_BOM_POSTGRES_URL` for EKS or any multi-replica control plane, and keep `AGENT_BOM_REQUIRE_SHARED_SCIM_STORE=1` enabled in production values. SQLite is acceptable only for a single-node pilot.
 
+For secret lifecycle posture, production deployments should declare the external
+secret authority and rotation metadata without exposing secret values:
+
+```bash
+export AGENT_BOM_SECRET_PROVIDER="aws_secrets_manager" # or hashicorp_vault, external_secrets, csi
+export AGENT_BOM_EXTERNAL_SECRETS_ENABLED=1
+export AGENT_BOM_AUDIT_HMAC_LAST_ROTATED="2026-04-24T00:00:00+00:00"
+export AGENT_BOM_COMPLIANCE_SIGNING_LAST_ROTATED="2026-04-24T00:00:00+00:00"
+export AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_LAST_ROTATED="2026-04-24T00:00:00+00:00"
+export AGENT_BOM_SCIM_BEARER_TOKEN_LAST_ROTATED="2026-04-24T00:00:00+00:00"
+```
+
+Operators can verify the non-secret posture at `GET /v1/auth/secrets/lifecycle`
+or inside `GET /v1/auth/policy`.
+
 **Storage:** SQLite for single-node and local persistence, PostgreSQL-compatible backends such as PostgreSQL and Supabase for the transactional control plane, ClickHouse for analytics, and Snowflake for selected enterprise store paths where parity is explicitly implemented. Snowflake does not yet have full parity for every transactional API store, so PostgreSQL-compatible backends remain the primary control-plane default when you need tenant-scoped keys, exceptions, graph state, and trend history.
 
 Use the backend story this way:

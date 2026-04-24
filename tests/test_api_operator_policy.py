@@ -47,6 +47,18 @@ def _clear_rate_limit_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AGENT_BOM_COMPLIANCE_SIGNING_LAST_ROTATED", raising=False)
     monkeypatch.delenv("AGENT_BOM_COMPLIANCE_SIGNING_ROTATION_DAYS", raising=False)
     monkeypatch.delenv("AGENT_BOM_COMPLIANCE_SIGNING_MAX_AGE_DAYS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", raising=False)
+    monkeypatch.delenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_LAST_ROTATED", raising=False)
+    monkeypatch.delenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_ROTATION_DAYS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_MAX_AGE_DAYS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_SCIM_BEARER_TOKEN", raising=False)
+    monkeypatch.delenv("AGENT_BOM_SCIM_BEARER_TOKEN_ID", raising=False)
+    monkeypatch.delenv("AGENT_BOM_SCIM_BEARER_TOKEN_LAST_ROTATED", raising=False)
+    monkeypatch.delenv("AGENT_BOM_SCIM_BEARER_TOKEN_ROTATION_DAYS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_SCIM_BEARER_TOKEN_MAX_AGE_DAYS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_REQUIRE_SCIM", raising=False)
+    monkeypatch.delenv("AGENT_BOM_SECRET_PROVIDER", raising=False)
+    monkeypatch.delenv("AGENT_BOM_EXTERNAL_SECRETS_ENABLED", raising=False)
 
 
 def _reload_config() -> None:
@@ -177,6 +189,10 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
         "rotation_due",
         "max_age_exceeded",
     }
+    assert body["secret_lifecycle"]["status"] in {"ok", "attention_required", "blocked"}
+    assert body["secret_lifecycle"]["secrets"]["browser_session_signing"]["status"] in {"configured", "ephemeral"}
+    assert body["secret_lifecycle"]["secrets"]["scim_bearer"]["status"] in {"configured", "not_configured", "missing_required"}
+    assert body["secret_lifecycle"]["external_secret_provider"]["status"] in {"configured", "not_declared"}
     assert body["tenant_quotas"]["active_scan_jobs"] >= 1
     assert body["tenant_quotas"]["retained_scan_jobs"] >= 1
     assert body["tenant_quotas"]["fleet_agents"] >= 1
@@ -264,6 +280,41 @@ def test_auth_policy_reports_secret_integrity_posture(monkeypatch: pytest.Monkey
     assert signing["max_age_days"] == 180
     assert signing["last_rotated"] == compliance_rotated
     assert signing["age_days"] == 40
+
+
+def test_auth_policy_reports_secret_lifecycle_posture(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_rate_limit_env(monkeypatch)
+    browser_rotated = (datetime.now(timezone.utc) - timedelta(days=12)).isoformat()
+    scim_rotated = (datetime.now(timezone.utc) - timedelta(days=95)).isoformat()
+    monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "browser-secret")
+    monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_LAST_ROTATED", browser_rotated)
+    monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_ROTATION_DAYS", "30")
+    monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_MAX_AGE_DAYS", "90")
+    monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKEN", "scim-secret")
+    monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKEN_ID", "scim-2026-04")
+    monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKEN_LAST_ROTATED", scim_rotated)
+    monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKEN_ROTATION_DAYS", "30")
+    monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKEN_MAX_AGE_DAYS", "90")
+    monkeypatch.setenv("AGENT_BOM_SECRET_PROVIDER", "aws_secrets_manager")
+    monkeypatch.setenv("AGENT_BOM_EXTERNAL_SECRETS_ENABLED", "1")
+
+    client = TestClient(app)
+    body = client.get("/v1/auth/policy").json()
+    lifecycle = body["secret_lifecycle"]
+
+    assert lifecycle["status"] == "blocked"
+    assert lifecycle["external_secret_provider"]["status"] == "configured"
+    assert lifecycle["external_secret_provider"]["provider"] == "aws_secrets_manager"
+    assert lifecycle["secrets"]["browser_session_signing"]["status"] == "configured"
+    assert lifecycle["secrets"]["browser_session_signing"]["rotation_status"] == "ok"
+    assert lifecycle["secrets"]["browser_session_signing"]["age_days"] == 12
+    assert lifecycle["secrets"]["scim_bearer"]["status"] == "configured"
+    assert lifecycle["secrets"]["scim_bearer"]["key_id"] == "scim-2026-04"
+    assert lifecycle["secrets"]["scim_bearer"]["rotation_status"] == "max_age_exceeded"
+    assert "scim_bearer" in lifecycle["blockers"]
+
+    endpoint = client.get("/v1/auth/secrets/lifecycle").json()
+    assert endpoint["secrets"]["scim_bearer"]["rotation_status"] == "max_age_exceeded"
 
 
 def test_auth_quota_update_persists_tenant_override(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -407,6 +458,8 @@ def test_rate_limit_runtime_reports_single_replica_process_local_backend(monkeyp
 def test_auth_policy_requires_admin_role_in_api_middleware() -> None:
     middleware = APIKeyMiddleware(app, api_key="static-secret")
     assert middleware._required_role("GET", "/v1/auth/policy") == "admin"
+    assert middleware._required_role("GET", "/v1/auth/secrets/lifecycle") == "admin"
+    assert middleware._required_scope("GET", "/v1/auth/secrets/lifecycle") == "auth.secrets:read"
     assert middleware._required_role("GET", "/v1/auth/scim/config") == "admin"
     assert middleware._required_role("POST", "/scim/v2/Users") == "admin"
     assert middleware._required_scope("POST", "/scim/v2/Users") == "auth.scim:write"

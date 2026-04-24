@@ -634,6 +634,80 @@ class PostgresGraphStore:
         graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
         return [attack_path for attack_path in graph.attack_paths if attack_path.source in source_ids]
 
+    def node_context(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        node_id: str,
+    ) -> dict[str, Any] | None:
+        graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
+        node = graph.get_node(node_id)
+        if not node:
+            return None
+        return {
+            "node": node,
+            "edges_out": graph.edges_from(node_id),
+            "edges_in": graph.edges_to(node_id),
+            "neighbors": graph.neighbors(node_id),
+            "sources": graph.sources_of(node_id),
+            "impact": graph.impact_of(node_id),
+        }
+
+    def compliance_summary(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        framework: str = "",
+    ) -> dict[str, Any]:
+        from collections import defaultdict
+
+        graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
+        framework_stats: dict[str, dict[str, Any]] = defaultdict(
+            lambda: {
+                "total_findings": 0,
+                "by_severity": defaultdict(int),
+                "by_entity_type": defaultdict(int),
+                "tags": set(),
+                "node_ids": [],
+            }
+        )
+
+        for node in graph.nodes.values():
+            if not node.compliance_tags:
+                continue
+            for tag in node.compliance_tags:
+                prefix = tag.split("-")[0].upper() if "-" in tag else tag.upper()
+                if framework and framework.upper() != prefix:
+                    continue
+                stats = framework_stats[prefix]
+                stats["total_findings"] += 1
+                stats["by_severity"][node.severity or "unknown"] += 1
+                entity_type = node.entity_type.value if hasattr(node.entity_type, "value") else node.entity_type
+                stats["by_entity_type"][entity_type] += 1
+                stats["tags"].add(tag)
+                if node.id not in stats["node_ids"]:
+                    stats["node_ids"].append(node.id)
+
+        frameworks: dict[str, Any] = {}
+        for name, stats in sorted(framework_stats.items()):
+            frameworks[name] = {
+                "total_findings": stats["total_findings"],
+                "by_severity": dict(stats["by_severity"]),
+                "by_entity_type": dict(stats["by_entity_type"]),
+                "tags": sorted(stats["tags"]),
+                "node_count": len(stats["node_ids"]),
+                "node_ids": stats["node_ids"][:100],
+            }
+
+        return {
+            "scan_id": graph.scan_id,
+            "framework_count": len(frameworks),
+            "total_tagged_findings": sum(stats["total_findings"] for stats in frameworks.values()),
+            "frameworks": frameworks,
+        }
+
     def diff_snapshots(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]:
         with _tenant_connection(self._pool) as conn:
             old_nodes = {

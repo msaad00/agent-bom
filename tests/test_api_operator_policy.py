@@ -325,6 +325,38 @@ def test_auth_policy_reports_secret_lifecycle_posture(monkeypatch: pytest.Monkey
     assert endpoint["secrets"]["scim_bearer"]["rotation_status"] == "max_age_exceeded"
 
 
+def test_auth_secret_rotation_plan_is_non_secret_and_actionable(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_rate_limit_env(monkeypatch)
+    scim_rotated = (datetime.now(timezone.utc) - timedelta(days=95)).isoformat()
+    monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKEN", "super-secret-token")
+    monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKEN_ID", "scim-2026-04")
+    monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKEN_LAST_ROTATED", scim_rotated)
+    monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKEN_ROTATION_DAYS", "30")
+    monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKEN_MAX_AGE_DAYS", "90")
+    monkeypatch.setenv("AGENT_BOM_SECRET_PROVIDER", "aws_secrets_manager")
+    monkeypatch.setenv("AGENT_BOM_EXTERNAL_SECRETS_ENABLED", "1")
+
+    client = TestClient(app)
+    resp = client.get("/v1/auth/secrets/rotation-plan")
+    assert resp.status_code == 200
+    plan = resp.json()
+
+    assert plan["status"] == "action_required"
+    assert plan["secret_values_included"] is False
+    assert plan["provider"] == "aws_secrets_manager"
+    assert plan["action_count"] >= 1
+    assert "super-secret-token" not in str(plan)
+    scim_action = next(action for action in plan["actions"] if action["name"] == "scim_bearer")
+    assert scim_action["status"] == "max_age_exceeded"
+    assert scim_action["source_env"] == "AGENT_BOM_SCIM_BEARER_TOKEN"
+    assert scim_action["last_rotated_env"] == "AGENT_BOM_SCIM_BEARER_TOKEN_LAST_ROTATED"
+    assert scim_action["provider_rotation"]["tool"] == "aws-secrets-manager"
+    assert "aws secretsmanager put-secret-value" in scim_action["provider_rotation"]["command"]
+    assert scim_action["rollout"]["required"] is True
+    assert "kubectl rollout restart deployment/agent-bom-api -n agent-bom" in scim_action["rollout"]["commands"]
+    assert scim_action["record_timestamp"]["value_format"].startswith("ISO-8601")
+
+
 def test_auth_quota_update_persists_tenant_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
     _reload_config()
@@ -467,7 +499,9 @@ def test_auth_policy_requires_admin_role_in_api_middleware() -> None:
     middleware = APIKeyMiddleware(app, api_key="static-secret")
     assert middleware._required_role("GET", "/v1/auth/policy") == "admin"
     assert middleware._required_role("GET", "/v1/auth/secrets/lifecycle") == "admin"
+    assert middleware._required_role("GET", "/v1/auth/secrets/rotation-plan") == "admin"
     assert middleware._required_scope("GET", "/v1/auth/secrets/lifecycle") == "auth.secrets:read"
+    assert middleware._required_scope("GET", "/v1/auth/secrets/rotation-plan") == "auth.secrets:read"
     assert middleware._required_role("GET", "/v1/auth/scim/config") == "admin"
     assert middleware._required_role("POST", "/scim/v2/Users") == "admin"
     assert middleware._required_scope("POST", "/scim/v2/Users") == "auth.scim:write"

@@ -348,6 +348,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         ("GET", "/v1/auth/me", "viewer"),
         ("GET", "/v1/auth/policy", "admin"),
         ("GET", "/v1/auth/secrets/lifecycle", "admin"),
+        ("GET", "/v1/auth/secrets/rotation-plan", "admin"),
         ("GET", "/v1/auth/scim/config", "admin"),
         ("GET", "/scim/v2", "admin"),
         ("POST", "/scim/v2", "admin"),
@@ -400,6 +401,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     _SCOPE_RULES: tuple[tuple[str, str, str], ...] = (
         ("GET", "/v1/auth/keys", "auth.keys:read"),
         ("GET", "/v1/auth/secrets/lifecycle", "auth.secrets:read"),
+        ("GET", "/v1/auth/secrets/rotation-plan", "auth.secrets:read"),
         ("GET", "/v1/auth/scim/config", "auth.scim:read"),
         ("GET", "/scim/v2", "auth.scim:read"),
         ("POST", "/scim/v2", "auth.scim:write"),

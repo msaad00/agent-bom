@@ -467,6 +467,14 @@ async def auth_secret_lifecycle() -> dict:
     return describe_secret_lifecycle_posture()
 
 
+@router.get("/v1/auth/secrets/rotation-plan", tags=["enterprise"])
+async def auth_secret_rotation_plan() -> dict:
+    """Return a non-secret operator plan for rotating control-plane secrets."""
+    from agent_bom.api.secret_lifecycle import build_secret_rotation_plan
+
+    return build_secret_rotation_plan()
+
+
 @router.get("/v1/auth/scim/config", tags=["enterprise"])
 async def auth_scim_config() -> dict:
     """Return the operator-facing SCIM configuration posture."""

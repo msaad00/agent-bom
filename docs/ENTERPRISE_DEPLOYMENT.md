@@ -207,7 +207,11 @@ export AGENT_BOM_SCIM_BEARER_TOKEN_LAST_ROTATED="2026-04-24T00:00:00+00:00"
 ```
 
 Operators can verify the non-secret posture at `GET /v1/auth/secrets/lifecycle`
-or inside `GET /v1/auth/policy`.
+or inside `GET /v1/auth/policy`. For change windows, use
+`GET /v1/auth/secrets/rotation-plan` to generate a non-secret operator plan
+that names the affected env vars, customer secret-manager action, rollout
+commands, verification curl, and `*_LAST_ROTATED` timestamp to record. The plan
+never returns secret values and is safe to attach to an internal change ticket.
 
 **Storage:** SQLite for single-node and local persistence, PostgreSQL-compatible backends such as PostgreSQL and Supabase for the transactional control plane, ClickHouse for analytics, and Snowflake for selected enterprise store paths where parity is explicitly implemented. Snowflake does not yet have full parity for every transactional API store, so PostgreSQL-compatible backends remain the primary control-plane default when you need tenant-scoped keys, exceptions, graph state, and trend history.
 

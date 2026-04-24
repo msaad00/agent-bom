@@ -217,6 +217,114 @@ def _external_secret_provider_posture() -> dict[str, Any]:
     }
 
 
+def _provider_command(provider: str | None, secret_name: str, source_env: str | None) -> dict[str, str]:
+    label = source_env or secret_name
+    if provider == "aws_secrets_manager":
+        return {
+            "tool": "aws-secrets-manager",
+            "command": f"aws secretsmanager put-secret-value --secret-id <secret-id-for-{label}> --secret-string file://<new-secret-file>",
+        }
+    if provider == "hashicorp_vault":
+        return {
+            "tool": "vault",
+            "command": f"vault kv put <mount/path/agent-bom> {label}=@<new-secret-file>",
+        }
+    if provider in {"external_secrets", "csi"}:
+        return {
+            "tool": provider,
+            "command": "rotate the upstream provider value, then let External Secrets/CSI refresh the mounted Kubernetes Secret",
+        }
+    return {
+        "tool": "operator-secret-manager",
+        "command": f"update {label} in the customer secret manager; do not put raw secret values in Git or Helm values",
+    }
+
+
+def _rotation_priority(posture: dict[str, Any]) -> int:
+    status = str(posture.get("rotation_status") or posture.get("status") or "")
+    return {
+        "missing_required": 0,
+        "max_age_exceeded": 1,
+        "rotation_due": 2,
+        "unknown_age": 3,
+        "ephemeral": 4,
+        "not_configured": 5,
+        "ok": 9,
+        "configured": 9,
+    }.get(status, 6)
+
+
+def _rotation_action(name: str, posture: dict[str, Any], provider: str | None) -> dict[str, Any]:
+    source_env = posture.get("source") if isinstance(posture.get("source"), str) else None
+    last_rotated_env = f"{source_env}_LAST_ROTATED" if source_env else f"AGENT_BOM_{name.upper()}_LAST_ROTATED"
+    status = str(posture.get("rotation_status") or posture.get("status") or "unknown")
+    needs_rotation = status in {"missing_required", "max_age_exceeded", "rotation_due", "unknown_age", "ephemeral"}
+    return {
+        "name": name,
+        "status": status,
+        "priority": _rotation_priority(posture),
+        "needs_rotation": needs_rotation,
+        "source_env": source_env,
+        "key_id": posture.get("key_id"),
+        "last_rotated_env": last_rotated_env,
+        "rotation_days": posture.get("rotation_days"),
+        "max_age_days": posture.get("max_age_days"),
+        "provider": provider or "operator_secret_manager",
+        "provider_rotation": _provider_command(provider, name, source_env),
+        "rollout": {
+            "required": needs_rotation,
+            "commands": [
+                "kubectl rollout restart deployment/agent-bom-api -n agent-bom",
+                "kubectl rollout status deployment/agent-bom-api -n agent-bom",
+            ],
+        },
+        "verification": [
+            'curl -fsS "$AGENT_BOM_URL/v1/auth/secrets/lifecycle" -H "Authorization: Bearer $AGENT_BOM_ADMIN_TOKEN"',
+            "confirm this secret no longer reports rotation_due, max_age_exceeded, unknown_age, missing_required, or ephemeral",
+        ],
+        "record_timestamp": {
+            "env": last_rotated_env,
+            "value_format": "ISO-8601 UTC timestamp, for example 2026-04-24T00:00:00+00:00",
+        },
+        "notes": posture.get("rotation_message") or posture.get("message") or "",
+    }
+
+
+def build_secret_rotation_plan(posture: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return a non-secret operator plan for rotating configured control-plane secrets."""
+    lifecycle = posture or describe_secret_lifecycle_posture()
+    provider_info = lifecycle.get("external_secret_provider", {})
+    provider = provider_info.get("provider") if isinstance(provider_info, dict) else None
+    provider_name = str(provider) if provider else None
+    secrets = lifecycle.get("secrets", {})
+    secret_items = secrets.items() if isinstance(secrets, dict) else ()
+    actions = [_rotation_action(name, value, provider_name) for name, value in secret_items if isinstance(value, dict)]
+    actions.sort(key=lambda item: (int(item["priority"]), str(item["name"])))
+    active_actions = [item for item in actions if item["needs_rotation"]]
+    return {
+        "status": "action_required" if active_actions else "ok",
+        "generated_from": "/v1/auth/secrets/lifecycle",
+        "secret_values_included": False,
+        "provider": provider_name or "operator_secret_manager",
+        "external_secret_provider_configured": bool(provider_info.get("configured")) if isinstance(provider_info, dict) else False,
+        "action_count": len(active_actions),
+        "actions": active_actions,
+        "all_secrets": actions,
+        "operator_sequence": [
+            "generate replacement secret in the customer-owned secret manager",
+            "update the mounted Kubernetes Secret or external secret provider reference",
+            "roll out API and gateway workloads that consume the secret",
+            "record the matching *_LAST_ROTATED timestamp",
+            "verify /v1/auth/secrets/lifecycle and audit events before closing the change",
+        ],
+        "message": (
+            "Rotation actions are required for one or more control-plane secrets."
+            if active_actions
+            else "No rotation actions are currently required."
+        ),
+    }
+
+
 def describe_secret_lifecycle_posture() -> dict[str, Any]:
     """Return a consolidated, non-secret lifecycle posture surface."""
     from agent_bom.api.audit_log import describe_audit_hmac_status

@@ -104,6 +104,13 @@ rotation age, missing required secrets, and whether the deployment has declared
 an external secret-manager authority. These endpoints never return secret
 values.
 
+`GET /v1/auth/secrets/rotation-plan` turns that posture into a non-secret
+operator change plan. It prioritizes due, unknown-age, ephemeral, and required
+missing secrets; includes AWS Secrets Manager, Vault, External Secrets/CSI, or
+generic secret-manager command templates; and lists rollout, verification, and
+timestamp-recording steps. The response is designed for change tickets and does
+not automate custody-sensitive secret generation.
+
 `agent-bom` does not replace the customer's KMS, Vault, IdP, or privileged
 access management system. The product exposes posture and supports rotation
 paths; the operator owns secret authority, approval workflow, and key custody.

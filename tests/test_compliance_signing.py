@@ -12,7 +12,7 @@ Covers:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -73,6 +73,9 @@ def _seed_tagged_scan(tenant_id: str = "tenant-alpha") -> InMemoryJobStore:
 @pytest.fixture
 def clean_signer_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM", raising=False)
+    monkeypatch.delenv("AGENT_BOM_COMPLIANCE_SIGNING_LAST_ROTATED", raising=False)
+    monkeypatch.delenv("AGENT_BOM_COMPLIANCE_SIGNING_ROTATION_DAYS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_COMPLIANCE_SIGNING_MAX_AGE_DAYS", raising=False)
     reset_signer_cache_for_tests()
     yield
     reset_signer_cache_for_tests()
@@ -185,6 +188,10 @@ def test_malformed_pem_falls_back_to_hmac(monkeypatch: pytest.MonkeyPatch, clean
 def test_describe_signing_posture_reports_ed25519(monkeypatch: pytest.MonkeyPatch, clean_signer_env: None) -> None:
     pem, _ = _generate_ed25519_pem()
     monkeypatch.setenv("AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM", pem)
+    rotated = (datetime.now(timezone.utc) - timedelta(days=45)).isoformat()
+    monkeypatch.setenv("AGENT_BOM_COMPLIANCE_SIGNING_LAST_ROTATED", rotated)
+    monkeypatch.setenv("AGENT_BOM_COMPLIANCE_SIGNING_ROTATION_DAYS", "30")
+    monkeypatch.setenv("AGENT_BOM_COMPLIANCE_SIGNING_MAX_AGE_DAYS", "180")
     reset_signer_cache_for_tests()
 
     posture = describe_signing_posture()
@@ -192,3 +199,10 @@ def test_describe_signing_posture_reports_ed25519(monkeypatch: pytest.MonkeyPatc
     assert posture["mode"] == "asymmetric_public_key"
     assert posture["auditor_distributable"] is True
     assert posture["public_key_endpoint"] == "/v1/compliance/verification-key"
+    assert posture["rotation_tracking_supported"] is True
+    assert posture["rotation_status"] == "rotation_due"
+    assert posture["rotation_method"] == "env_swap_and_restart"
+    assert posture["rotation_days"] == 30
+    assert posture["max_age_days"] == 180
+    assert posture["last_rotated"] == rotated
+    assert posture["age_days"] == 45

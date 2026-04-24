@@ -15,8 +15,11 @@ const policy: AuthPolicyResponse = {
   },
   rate_limit_key: {
     status: "ok",
-    last_rotated: null,
-    age_days: null,
+    last_rotated: "2026-04-20T00:00:00Z",
+    age_days: 4,
+    rotation_days: 30,
+    max_age_days: 90,
+    message: "Rate-limit key is 4 days old; rotation interval is 30 days.",
   },
   ui: {
     recommended_mode: "reverse_proxy_oidc",
@@ -42,7 +45,14 @@ const policy: AuthPolicyResponse = {
       required: false,
       source: "AGENT_BOM_AUDIT_HMAC_KEY",
       persists_across_restart: true,
-      rotation_tracking_supported: false,
+      rotation_tracking_supported: true,
+      rotation_status: "ok",
+      rotation_method: "env_swap_and_restart",
+      rotation_days: 90,
+      max_age_days: 180,
+      last_rotated: "2026-04-01T00:00:00Z",
+      age_days: 23,
+      rotation_message: "Audit HMAC secret is 23 days old; configured rotation interval is 90 days.",
       message: "Audit log tamper detection uses a configured shared secret.",
     },
     compliance_signing: {
@@ -54,6 +64,14 @@ const policy: AuthPolicyResponse = {
       auditor_distributable: true,
       uses_audit_hmac_secret: false,
       persists_across_restart: true,
+      rotation_tracking_supported: true,
+      rotation_status: "rotation_due",
+      rotation_method: "env_swap_and_restart",
+      rotation_days: 30,
+      max_age_days: 180,
+      last_rotated: "2026-03-10T00:00:00Z",
+      age_days: 45,
+      rotation_message: "Compliance signing key is 45 days old, past the configured rotation interval (30 days).",
       message: "Compliance evidence bundles are signed with Ed25519.",
     },
   },
@@ -168,6 +186,18 @@ describe("KeyLifecyclePanel", () => {
     expect(
       screen.getByText("Ed25519 · asymmetric public key · key deadbeefcafebabe · /v1/compliance/verification-key")
     ).toBeInTheDocument();
+    expect(screen.getByText("Rotation posture")).toBeInTheDocument();
+    expect(screen.getByText("Service API keys")).toBeInTheDocument();
+    expect(screen.getByText("Rate-limit key")).toBeInTheDocument();
+    expect(screen.getByText("Audit HMAC rotation")).toBeInTheDocument();
+    expect(screen.getByText("Compliance signing rotation")).toBeInTheDocument();
+    expect(screen.getByText("enforced · 15m default overlap · /v1/auth/keys/{key_id}/rotate")).toBeInTheDocument();
+    expect(screen.getByText("Rate-limit key is 4 days old; rotation interval is 30 days.")).toBeInTheDocument();
+    expect(screen.getByText("Audit HMAC secret is 23 days old; configured rotation interval is 90 days.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Compliance signing key is 45 days old, past the configured rotation interval (30 days).")
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/env swap and restart/).length).toBeGreaterThan(0);
     expect(screen.getByText("Identity lifecycle")).toBeInTheDocument();
     expect(screen.getByText("OIDC browser / bearer")).toBeInTheDocument();
     expect(screen.getByText("SAML assertion exchange")).toBeInTheDocument();

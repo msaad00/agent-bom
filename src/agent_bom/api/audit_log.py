@@ -34,6 +34,106 @@ def _env_enabled(name: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_int(name: str) -> int | None:
+    value = (os.environ.get(name) or "").strip()
+    if not value:
+        return None
+    try:
+        parsed = int(value)
+    except ValueError:
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _describe_rotation_posture(
+    *,
+    configured: bool,
+    last_rotated_env: str,
+    rotation_days_env: str,
+    max_age_days_env: str,
+    subject: str,
+    not_configured_status: str,
+    not_configured_message: str,
+) -> dict[str, object]:
+    rotation_days = _env_int(rotation_days_env)
+    max_age_days = _env_int(max_age_days_env)
+    raw_last_rotated = (os.environ.get(last_rotated_env) or "").strip()
+
+    if not configured:
+        return {
+            "rotation_tracking_supported": True,
+            "rotation_status": not_configured_status,
+            "rotation_method": "env_swap_and_restart",
+            "rotation_days": rotation_days,
+            "max_age_days": max_age_days,
+            "last_rotated": None,
+            "age_days": None,
+            "rotation_message": not_configured_message,
+        }
+
+    if not raw_last_rotated:
+        return {
+            "rotation_tracking_supported": True,
+            "rotation_status": "unknown_age",
+            "rotation_method": "env_swap_and_restart",
+            "rotation_days": rotation_days,
+            "max_age_days": max_age_days,
+            "last_rotated": None,
+            "age_days": None,
+            "rotation_message": (
+                f"{subject} is configured but {last_rotated_env} is unset. Record an ISO-8601 rotation timestamp "
+                "to expose key age in operator surfaces."
+            ),
+        }
+
+    try:
+        rotated = datetime.fromisoformat(raw_last_rotated)
+    except ValueError:
+        return {
+            "rotation_tracking_supported": True,
+            "rotation_status": "unknown_age",
+            "rotation_method": "env_swap_and_restart",
+            "rotation_days": rotation_days,
+            "max_age_days": max_age_days,
+            "last_rotated": raw_last_rotated,
+            "age_days": None,
+            "rotation_message": (
+                f"{last_rotated_env} is set but is not a valid ISO-8601 timestamp. Use a value like '2026-04-17T00:00:00+00:00'."
+            ),
+        }
+
+    if rotated.tzinfo is None:
+        rotated = rotated.replace(tzinfo=timezone.utc)
+    age_days = max(0, int((datetime.now(timezone.utc) - rotated).total_seconds() // 86400))
+
+    if max_age_days is not None and age_days >= max_age_days:
+        status = "max_age_exceeded"
+        message = (
+            f"{subject} is {age_days} days old, exceeding the configured maximum ({max_age_days} days). Rotate the "
+            "secret, restart the control plane, and update the recorded rotation timestamp."
+        )
+    elif rotation_days is not None and age_days >= rotation_days:
+        status = "rotation_due"
+        message = f"{subject} is {age_days} days old, past the configured rotation interval ({rotation_days} days)."
+    else:
+        status = "ok"
+        if rotation_days is not None:
+            message = f"{subject} is {age_days} days old; configured rotation interval is {rotation_days} days."
+        else:
+            message = f"{subject} is {age_days} days old. No explicit rotation interval is configured."
+
+    return {
+        "rotation_tracking_supported": True,
+        "rotation_status": status,
+        "rotation_method": "env_swap_and_restart",
+        "rotation_days": rotation_days,
+        "max_age_days": max_age_days,
+        "last_rotated": rotated.isoformat(),
+        "age_days": age_days,
+        "rotation_message": message,
+    }
+
+
 # HMAC key for audit log tamper detection.  When unset, an ephemeral
 # per-process key is generated — signatures verify within the same process
 # but provide no cross-restart integrity.  Production deployments MUST set
@@ -118,18 +218,30 @@ def sign_export_payload(payload: bytes) -> str:
 def describe_audit_hmac_status() -> dict[str, object]:
     """Return operator-facing audit HMAC posture for auth/policy surfaces."""
     required = _env_enabled("AGENT_BOM_REQUIRE_AUDIT_HMAC")
-    if _HMAC_ENV_KEY:
+    configured = bool(_HMAC_ENV_KEY)
+    rotation = _describe_rotation_posture(
+        configured=configured,
+        last_rotated_env="AGENT_BOM_AUDIT_HMAC_LAST_ROTATED",
+        rotation_days_env="AGENT_BOM_AUDIT_HMAC_ROTATION_DAYS",
+        max_age_days_env="AGENT_BOM_AUDIT_HMAC_MAX_AGE_DAYS",
+        subject="Audit HMAC secret",
+        not_configured_status="ephemeral",
+        not_configured_message=(
+            "Audit integrity is currently backed by a process-ephemeral secret, so there is no stable rotation history to track."
+        ),
+    )
+    if configured:
         return {
             "status": "configured",
             "configured": True,
             "required": required,
             "source": "AGENT_BOM_AUDIT_HMAC_KEY",
             "persists_across_restart": True,
-            "rotation_tracking_supported": False,
             "message": (
                 "Audit log tamper detection uses a configured shared secret. "
                 "Signatures remain verifiable across restarts as long as the same key stays in place."
             ),
+            **rotation,
         }
     return {
         "status": "ephemeral",
@@ -137,11 +249,11 @@ def describe_audit_hmac_status() -> dict[str, object]:
         "required": required,
         "source": "process_ephemeral",
         "persists_across_restart": False,
-        "rotation_tracking_supported": False,
         "message": (
             "Audit log tamper detection is using an in-process ephemeral secret. "
             "Integrity checks work only for this process lifetime and reset after restart."
         ),
+        **rotation,
     }
 
 

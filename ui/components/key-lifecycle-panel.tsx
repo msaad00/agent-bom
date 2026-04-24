@@ -110,6 +110,48 @@ function quotaInputValue(value: number | null | undefined): string {
   return value == null ? "" : String(value);
 }
 
+function formatStatusLabel(value: string): string {
+  return value.replaceAll("_", " ");
+}
+
+function formatCadence(rotationDays: number | null, maxAgeDays: number | null): string | null {
+  const parts = [];
+  if (rotationDays != null) parts.push(`rotate ${rotationDays}d`);
+  if (maxAgeDays != null) parts.push(`max ${maxAgeDays}d`);
+  return parts.length ? parts.join(" · ") : null;
+}
+
+function formatRotationDetail(posture: {
+  rotation_status: string;
+  rotation_method: string;
+  last_rotated: string | null;
+  age_days: number | null;
+  rotation_days: number | null;
+  max_age_days: number | null;
+}): string {
+  return [
+    formatStatusLabel(posture.rotation_status),
+    posture.last_rotated ? `rotated ${formatDate(posture.last_rotated)}` : "timestamp unset",
+    posture.age_days != null ? `${posture.age_days}d old` : null,
+    formatCadence(posture.rotation_days, posture.max_age_days),
+    posture.rotation_method.replaceAll("_", " "),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+function formatRateLimitRotationDetail(rateLimit: AuthPolicyResponse["rate_limit_key"]): string {
+  return [
+    formatStatusLabel(rateLimit.status),
+    rateLimit.last_rotated ? `rotated ${formatDate(rateLimit.last_rotated)}` : "timestamp unset",
+    rateLimit.age_days != null ? `${rateLimit.age_days}d old` : null,
+    formatCadence(rateLimit.rotation_days ?? null, rateLimit.max_age_days ?? null),
+    rateLimit.fallback_source ? `fallback ${rateLimit.fallback_source}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 export function KeyLifecyclePanel({
   loading,
   error,
@@ -637,6 +679,32 @@ export function KeyLifecyclePanel({
                 detail={`${policy.secret_integrity.compliance_signing.algorithm} · ${policy.secret_integrity.compliance_signing.mode.replaceAll("_", " ")}${
                   policy.secret_integrity.compliance_signing.key_id ? ` · key ${policy.secret_integrity.compliance_signing.key_id}` : ""
                 }${policy.secret_integrity.compliance_signing.public_key_endpoint ? ` · ${policy.secret_integrity.compliance_signing.public_key_endpoint}` : ""}`}
+              />
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Rotation posture</p>
+            <div className="mt-3 grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
+              <BoundaryCard
+                title="Service API keys"
+                body="Service keys rotate through an overlap-aware replacement flow so callers can roll without downtime."
+                detail={`enforced · ${formatSeconds(policy.api_key.default_overlap_seconds)} default overlap · ${policy.api_key.rotation_endpoint}`}
+              />
+              <BoundaryCard
+                title="Rate-limit key"
+                body={policy.rate_limit_key.message ?? "Rate-limit fingerprint rotation posture is not available."}
+                detail={formatRateLimitRotationDetail(policy.rate_limit_key)}
+              />
+              <BoundaryCard
+                title="Audit HMAC rotation"
+                body={policy.secret_integrity.audit_hmac.rotation_message}
+                detail={formatRotationDetail(policy.secret_integrity.audit_hmac)}
+              />
+              <BoundaryCard
+                title="Compliance signing rotation"
+                body={policy.secret_integrity.compliance_signing.rotation_message}
+                detail={formatRotationDetail(policy.secret_integrity.compliance_signing)}
               />
             </div>
           </section>

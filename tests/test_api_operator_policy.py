@@ -198,6 +198,21 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "service_keys" in body["identity_provisioning"]["session_revocation"]
 
 
+def test_auth_policy_redacts_oidc_config_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON", '{"tenant-secret":')
+
+    client = TestClient(app)
+    resp = client.get("/v1/auth/policy")
+
+    assert resp.status_code == 200
+    oidc = resp.json()["identity_provisioning"]["oidc"]
+    assert oidc["mode"] == "invalid"
+    assert oidc["message"] == "OIDC configuration is invalid. Check control-plane logs and OIDC environment settings."
+    assert "tenant-secret" not in oidc["message"]
+    assert "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON" not in oidc["message"]
+
+
 def test_auth_policy_reports_secret_integrity_posture(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_rate_limit_env(monkeypatch)
     monkeypatch.setenv("AGENT_BOM_AUDIT_HMAC_KEY", "audit-secret")

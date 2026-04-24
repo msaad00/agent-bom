@@ -602,6 +602,9 @@ def describe_oidc_posture() -> dict[str, object]:
     try:
         config = OIDCConfig.from_env()
     except OIDCError as exc:
+        from agent_bom.security import sanitize_error
+
+        logger.warning("OIDC posture config is invalid: %s", sanitize_error(exc))
         return {
             "supported": True,
             "configured": False,
@@ -615,7 +618,7 @@ def describe_oidc_posture() -> dict[str, object]:
             "require_tenant_claim": False,
             "allow_default_tenant": False,
             "required_nonce": False,
-            "message": str(exc),
+            "message": "OIDC configuration is invalid. Check control-plane logs and OIDC environment settings.",
         }
 
     if not config.enabled:

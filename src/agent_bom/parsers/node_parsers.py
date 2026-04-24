@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from agent_bom.models import MCPServer, Package
+from agent_bom.parsers.file_limits import read_json_limited, read_text_limited
 
 logger = logging.getLogger(__name__)
 
@@ -37,14 +38,14 @@ def parse_npm_packages(directory: Path) -> list[Package]:
     lock_file = directory / "package-lock.json"
     if lock_file.exists():
         try:
-            lock_data = json.loads(lock_file.read_text())
+            lock_data = read_json_limited(lock_file)
             lock_packages = lock_data.get("packages", lock_data.get("dependencies", {}))
 
             # Get direct dependencies from package.json
             pkg_json = directory / "package.json"
             direct_deps = set()
             if pkg_json.exists():
-                pkg_data = json.loads(pkg_json.read_text())
+                pkg_data = read_json_limited(pkg_json)
                 direct_deps = set(pkg_data.get("dependencies", {}).keys())
                 direct_deps.update(pkg_data.get("devDependencies", {}).keys())
 
@@ -72,7 +73,7 @@ def parse_npm_packages(directory: Path) -> list[Package]:
     # Fallback to package.json only
     elif (directory / "package.json").exists():
         try:
-            pkg_data = json.loads((directory / "package.json").read_text())
+            pkg_data = read_json_limited(directory / "package.json")
             for dep_type in ("dependencies", "devDependencies"):
                 for name, version_spec in pkg_data.get(dep_type, {}).items():
                     version = version_spec.lstrip("^~>=< ")
@@ -117,7 +118,7 @@ def parse_yarn_lock(directory: Path) -> list[Package]:
 
     packages: list[Package] = []
     try:
-        content = lock_file.read_text()
+        content = read_text_limited(lock_file)
         # Berry v2+ detection
         is_berry = "__metadata:" in content
 
@@ -206,7 +207,7 @@ def parse_pnpm_lock(directory: Path) -> list[Package]:
             logger.debug("PyYAML not installed; skipping pnpm-lock.yaml parsing")
             return []
 
-        data = yaml.safe_load(lock_file.read_text()) or {}
+        data = yaml.safe_load(read_text_limited(lock_file)) or {}
         pkg_map = data.get("packages", {})
         for key in pkg_map:
             # key formats (pnpm v6): "/name@version", "/@scope/name@version"
@@ -280,7 +281,7 @@ def parse_bun_packages(directory: Path) -> list[Package]:
 
     packages: list[Package] = []
     try:
-        content = bun_lock.read_text(encoding="utf-8")
+        content = read_text_limited(bun_lock, encoding="utf-8")
         # State machine: track which top-level section we are in.
         # We only care about "dependencies" and "devDependencies".
         deps_sections = {"dependencies:", "devDependencies:"}

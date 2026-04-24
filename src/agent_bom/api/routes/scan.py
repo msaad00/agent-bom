@@ -152,6 +152,31 @@ def _sanitize_api_path(user_path: str) -> str:
     if os.path.commonpath([root, os.path.realpath(str(resolved_path))]) != root:
         raise SecurityError("Path resolves outside configured scan root")
 
+    current = Path(root)
+    for part in Path(user_path).parts:
+        current = current / part
+        try:
+            if current.is_symlink():
+                raise SecurityError("Symlink path components are not allowed for API local scans")
+        except OSError as exc:
+            raise SecurityError("Path does not exist inside configured scan root") from exc
+
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = -1
+    try:
+        fd = os.open(candidate, flags)
+        opened = os.fstat(fd)
+        resolved_stat = resolved_path.stat()
+        if (opened.st_dev, opened.st_ino) != (resolved_stat.st_dev, resolved_stat.st_ino):
+            raise SecurityError("Path changed during validation")
+    except OSError as exc:
+        raise SecurityError("Path cannot be opened safely inside configured scan root") from exc
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
     _enforce_api_scan_path_owner(resolved_path, scan_root)
 
     return str(resolved_path)

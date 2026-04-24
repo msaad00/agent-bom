@@ -12,6 +12,7 @@ import logging
 from pathlib import Path
 
 from agent_bom.models import Package
+from agent_bom.parsers.file_limits import read_json_limited
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,7 @@ def parse_composer_lock(directory: str | Path) -> list[Package]:
         return []
 
     try:
-        data = json.loads(lockfile.read_text(encoding="utf-8", errors="replace"))
+        data = read_json_limited(lockfile, encoding="utf-8", errors="replace")
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("Cannot read %s: %s", lockfile, exc)
         return []
@@ -43,7 +44,7 @@ def parse_composer_lock(directory: str | Path) -> list[Package]:
     composer_json = Path(directory) / "composer.json"
     if composer_json.is_file():
         try:
-            cj = json.loads(composer_json.read_text(encoding="utf-8", errors="replace"))
+            cj = read_json_limited(composer_json, encoding="utf-8", errors="replace")
             for section in ("require", "require-dev"):
                 for name in cj.get(section, {}):
                     # Skip PHP platform reqs (php, ext-*)
@@ -115,7 +116,7 @@ def parse_php_packages(directory: str | Path) -> list[Package]:
         return []
 
     try:
-        data = json.loads(composer_json.read_text(encoding="utf-8", errors="replace"))
+        data = read_json_limited(composer_json, encoding="utf-8", errors="replace")
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("Cannot read %s: %s", composer_json, exc)
         return []

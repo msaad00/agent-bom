@@ -13,6 +13,7 @@ import subprocess
 from pathlib import Path
 
 from agent_bom.models import Package
+from agent_bom.parsers.file_limits import read_json_limited, read_text_limited
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ def parse_poetry_lock(directory: Path) -> list[Package]:
             except ImportError:
                 import toml as tomllib  # type: ignore[no-redef,no-reattr,import-not-found,import-untyped]
 
-        data = tomllib.loads(lock_file.read_text())
+        data = tomllib.loads(read_text_limited(lock_file))
         for pkg in data.get("package", []):
             name = pkg.get("name", "")
             version = pkg.get("version", "unknown")
@@ -84,13 +85,13 @@ def parse_uv_lock(directory: Path) -> list[Package]:
             except ImportError:
                 import toml as tomllib  # type: ignore[no-redef,no-reattr,import-not-found,import-untyped]
 
-        data = tomllib.loads(lock_file.read_text())
+        data = tomllib.loads(read_text_limited(lock_file))
         # Collect direct dep names from pyproject.toml if available
         direct_names: set[str] = set()
         pyproject = directory / "pyproject.toml"
         if pyproject.exists():
             try:
-                proj = tomllib.loads(pyproject.read_text())
+                proj = tomllib.loads(read_text_limited(pyproject))
                 for dep_str in proj.get("project", {}).get("dependencies", []):
                     m = re.match(r"^([a-zA-Z0-9_.-]+)", dep_str)
                     if m:
@@ -141,7 +142,7 @@ def parse_conda_environment(directory: Path) -> list[Package]:
             logger.debug("PyYAML not installed; skipping conda environment.yml parsing")
             return []
 
-        data = yaml.safe_load(env_file.read_text()) or {}
+        data = yaml.safe_load(read_text_limited(env_file)) or {}
         for dep in data.get("dependencies", []):
             if isinstance(dep, str):
                 # conda package: "name=version=build" or "name=version" or "name"
@@ -204,7 +205,7 @@ def parse_pip_packages(directory: Path) -> list[Package]:
     # Try requirements.txt
     req_file = directory / "requirements.txt"
     if req_file.exists():
-        for line in req_file.read_text().splitlines():
+        for line in read_text_limited(req_file).splitlines():
             line = line.strip()
             if not line or line.startswith("#") or line.startswith("-"):
                 continue
@@ -238,7 +239,7 @@ def parse_pip_packages(directory: Path) -> list[Package]:
     pipfile_lock = directory / "Pipfile.lock"
     if pipfile_lock.exists() and not packages:
         try:
-            lock_data = json.loads(pipfile_lock.read_text())
+            lock_data = read_json_limited(pipfile_lock)
             for section in ("default", "develop"):
                 for name, info in lock_data.get(section, {}).items():
                     if isinstance(info, dict):
@@ -261,7 +262,7 @@ def parse_pip_packages(directory: Path) -> list[Package]:
         try:
             import toml
 
-            proj_data = toml.loads(pyproject.read_text())
+            proj_data = toml.loads(read_text_limited(pyproject))
             deps = proj_data.get("project", {}).get("dependencies", [])
             for dep in deps:
                 match = re.match(r"^([a-zA-Z0-9_.-]+)\s*([=<>!~]+)\s*([a-zA-Z0-9_.*+-]+)", dep)

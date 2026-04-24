@@ -282,6 +282,27 @@ def test_stats_empty():
     data = resp.json()
     assert data["total_policies"] == 0
     assert data["blocked_count"] == 0
+    assert data["policy_runtime"] == {
+        "source": "control_plane",
+        "source_kind": "policy_store",
+        "enabled_policies": 0,
+        "rollout_mode": "disabled",
+        "summary": "No runtime policy rules configured.",
+        "total_rules": 0,
+        "blocking_rules": 0,
+        "advisory_rules": 0,
+        "allowlist_rules": 0,
+        "default_deny_rules": 0,
+        "read_only_rules": 0,
+        "secret_path_rules": 0,
+        "unknown_egress_rules": 0,
+        "denied_tool_classes": [],
+        "blocks_requests": False,
+        "advisory_only": False,
+        "default_deny": False,
+        "protects_secret_paths": False,
+        "restricts_unknown_egress": False,
+    }
 
 
 def test_stats_populated():
@@ -307,3 +328,42 @@ def test_stats_populated():
     assert data["enforce_count"] == 1
     assert data["audit_count"] == 1
     assert data["blocked_count"] == 1
+    assert data["policy_runtime"]["enabled_policies"] == 2
+    assert data["policy_runtime"]["rollout_mode"] == "mixed"
+    assert data["policy_runtime"]["blocking_rules"] == 1
+    assert data["policy_runtime"]["advisory_rules"] == 1
+
+
+def test_stats_reflect_protective_controls():
+    client, store = _fresh_client()
+    ts = _now()
+    store.put_policy(
+        GatewayPolicy(
+            policy_id="p-protect",
+            name="protective-controls",
+            mode=PolicyMode.ENFORCE,
+            rules=[
+                GatewayRule(
+                    id="r-protect",
+                    action="block",
+                    block_tools=["fetch_url"],
+                    description="Protect secrets and outbound egress",
+                    block_secret_paths=True,
+                    block_unknown_egress=True,
+                    allowed_hosts=["api.openai.com"],
+                    deny_tool_classes=["network"],
+                )
+            ],
+            created_at=ts,
+            updated_at=ts,
+            tenant_id="default",
+        )
+    )
+
+    resp = client.get("/v1/gateway/stats")
+    data = resp.json()["policy_runtime"]
+    assert data["rollout_mode"] == "blocking"
+    assert data["blocking_rules"] == 1
+    assert data["protects_secret_paths"] is True
+    assert data["restricts_unknown_egress"] is True
+    assert data["denied_tool_classes"] == ["network"]

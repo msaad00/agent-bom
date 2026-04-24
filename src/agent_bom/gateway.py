@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from agent_bom.proxy import check_policy
+from agent_bom.proxy_policy import summarize_policy_bundle
 
 if TYPE_CHECKING:
     from agent_bom.api.policy_store import GatewayPolicy
@@ -47,6 +48,31 @@ def gateway_policy_to_proxy_format(policy: "GatewayPolicy") -> dict:
             d["rate_limit"] = rule.rate_limit
         rules.append(d)
     return {"rules": rules}
+
+
+def gateway_policies_to_proxy_bundle(policies: list["GatewayPolicy"]) -> dict:
+    """Convert enabled gateway policies into an effective proxy policy bundle.
+
+    Audit-mode policies are translated to advisory-only rules so any rollout
+    summary reflects actual runtime behavior rather than raw stored rule
+    actions.
+    """
+    rules: list[dict] = []
+    for policy in policies:
+        if not policy.enabled:
+            continue
+        proxy_fmt = gateway_policy_to_proxy_format(policy)
+        for rule in proxy_fmt["rules"]:
+            effective_rule = dict(rule)
+            if policy.mode.value != "enforce" and effective_rule.get("action", "block") in ("block", "fail"):
+                effective_rule["action"] = "warn"
+            rules.append(effective_rule)
+    return {"rules": rules}
+
+
+def summarize_gateway_policies(policies: list["GatewayPolicy"]) -> dict[str, object]:
+    """Summarize the effective runtime posture of control-plane gateway policies."""
+    return summarize_policy_bundle(gateway_policies_to_proxy_bundle(policies))
 
 
 def evaluate_gateway_policies(

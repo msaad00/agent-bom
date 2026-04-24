@@ -1038,6 +1038,29 @@ export interface GatewayStatsResponse {
   audit_entries: number;
   blocked_count: number;
   alerted_count: number;
+  policy_runtime: GatewayPolicyRuntimeSummary;
+}
+
+export interface GatewayPolicyRuntimeSummary {
+  source: string;
+  source_kind: string;
+  enabled_policies: number;
+  rollout_mode: "disabled" | "advisory_only" | "mixed" | "default_deny" | "blocking";
+  summary: string;
+  total_rules: number;
+  blocking_rules: number;
+  advisory_rules: number;
+  allowlist_rules: number;
+  default_deny_rules: number;
+  read_only_rules: number;
+  secret_path_rules: number;
+  unknown_egress_rules: number;
+  denied_tool_classes: string[];
+  blocks_requests: boolean;
+  advisory_only: boolean;
+  default_deny: boolean;
+  protects_secret_paths: boolean;
+  restricts_unknown_egress: boolean;
 }
 
 export interface EvaluateResult {

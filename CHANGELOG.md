@@ -11,6 +11,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 Work targeting the next release.
 
+---
+
+## [0.81.2] – 2026-04-23
+
 ### Added
 - **UI session and capability contract** — `/v1/auth/me` now exposes authenticated actor, tenant, backend role, UI-facing capability summaries, and explicit `can_see` / `can_do` guidance so the browser shell can reflect the real backend auth model instead of inferring permissions ad hoc.
 - **Endpoint enrollment identity contract** — managed endpoint onboarding bundles now emit stable `source_id`, `enrollment_name`, owner, environment, tag, and MDM metadata so fleet inventory can preserve one explicit endpoint identity model across Jamf, Intune, Kandji, and local rollout paths.
@@ -19,11 +23,12 @@ Work targeting the next release.
 - **Release-managed version surfaces** — the bump/check scripts now manage compose and runtime version pins as first-class release surfaces so image/version drift fails fast in CI instead of leaking into post-tag cleanup.
 - **Snowflake schedule parity** — warehouse-native deployments now persist recurring scan schedules in Snowflake and wire `/v1/schedules*` through the same backend-selection path as jobs, fleet, and gateway policy stores.
 - **Snowflake exception parity** — exception workflows now persist through the Snowflake backend too, extending the warehouse-native control-plane boundary without overclaiming full Postgres parity.
+- **Snowflake tenant-scoped store lookups** — job, fleet, schedule, and exception lookups/deletes now carry tenant scope into the Snowflake store layer instead of relying only on post-hoc route checks, keeping the warehouse path aligned with the platform’s defense-in-depth tenant model.
 - **Graph search and slice filtering** — the control plane now uses indexed graph-node search paths with server-side entity, severity, compliance-prefix, and data-source filters so larger tenant snapshots do not fall back to broad client-side graph scans.
 - **Graph overview pagination** — the default `/v1/graph` overview path now pages nodes and page-local edges from the store instead of materializing whole snapshots in memory before pagination.
 - **Endpoint onboarding bundles** — managed endpoint rollout bundles now carry a machine-readable enrollment manifest plus optional stable fleet `source_id` wiring so Jamf, Intune, and Kandji pushes can keep one explicit endpoint identity contract instead of only raw install scripts.
 - **Deployment and product framing** — README, deployment docs, self-hosted diagrams, trust-boundary docs, and Snowflake-parity guidance now align around `AI supply chain and infrastructure`, one obvious pilot path, one obvious production path, and explicit self-hosted vs MSSP boundaries.
-- **MCP server modularization** — the monolith split continued with extracted shared scan pipeline, resource/prompt catalog, and FastMCP bootstrap helpers while keeping `create_mcp_server()` behavior and public imports stable.
+- **MCP server modularization** — the monolith split continued with extracted shared scan pipeline, resource/prompt catalog, FastMCP bootstrap helpers, and runtime catalog tool registration while keeping `create_mcp_server()` behavior and public imports stable.
 
 ### Fixed
 - **Shield concurrency and API rate limiting** — shield now reuses a bounded async bridge instead of spinning up unbounded executor paths, and the in-memory API rate limiter is explicitly thread-safe.

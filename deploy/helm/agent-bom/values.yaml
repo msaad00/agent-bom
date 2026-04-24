@@ -79,11 +79,14 @@ monitor:
 #
 # See docs/design/MULTI_MCP_GATEWAY.md for the full design + rollout plan.
 #
-# ── Operator must provide (no auto-discovery): ───────────────────────────────
-#   1. gateway.upstreamsYaml — the list of MCP servers the gateway should
+# ── Operator must provide at least one upstream source: ──────────────────────
+#   1. gateway.upstreamsYaml — a static list of MCP servers the gateway should
 #      route to. Start from deploy/helm/agent-bom/examples/gateway-upstreams.example.yaml
 #      and customise; pass via --set-file gateway.upstreamsYaml=./my-upstreams.yaml.
-#   2. A Kubernetes Secret exposing any bearer tokens referenced by
+#   2. gateway.controlPlaneDiscovery.url — optional control-plane discovery
+#      source for live remote MCP inventory. Use env/envFrom to provide
+#      AGENT_BOM_CONTROL_PLANE_TOKEN when the control plane requires auth.
+#   3. A Kubernetes Secret exposing any bearer tokens referenced by
 #      `token_env` in upstreamsYaml (e.g. SNOWFLAKE_JIRA_MCP_TOKEN,
 #      GITHUB_MCP_TOKEN). Point gateway.envFrom at it:
 #
@@ -92,7 +95,7 @@ monitor:
 #            - secretRef:
 #                name: agent-bom-gateway-upstream-tokens
 #
-#   3. An ingress (same cluster as controlPlane) pointing at the
+#   4. An ingress (same cluster as controlPlane) pointing at the
 #      agent-bom-{release}-gateway Service on port 8090.
 # ─────────────────────────────────────────────────────────────────────────────
 gateway:
@@ -116,8 +119,22 @@ gateway:
   # until you redeploy with a populated list.
   upstreamsYaml: |
     upstreams: []
+  controlPlaneDiscovery:
+    # Optional URL for --from-control-plane discovery.
+    # Example: https://agent-bom.internal.example.com
+    url: ""
   # Optional runtime policy JSON path (mounted via extraVolumes + extraVolumeMounts).
   policyPath: ""
+  # In-process policy file reload interval; requires policyPath when > 0.
+  policyReloadSeconds: 0
+  # Tenant-scoped runtime request limit for gateway relay traffic (0 disables).
+  runtimeRateLimitPerTenantPerMinute: 0
+  # Fail closed unless runtime rate limiting uses a shared backend.
+  requireSharedRateLimit: false
+  # OCR-scan image responses for leaked credentials/PII.
+  detectVisualLeaks: false
+  # Allow startup to continue when OCR runtime support is unavailable.
+  allowVisualLeakBestEffort: false
   # Typical deploy-time auth/runtime wiring:
   #   env:
   #     - name: AGENT_BOM_GATEWAY_DETECT_VISUAL_LEAKS
@@ -128,6 +145,7 @@ gateway:
   #
   # Where `agent-bom-gateway-auth` contains:
   #   AGENT_BOM_GATEWAY_BEARER_TOKEN=<token for incoming gateway clients>
+  #   AGENT_BOM_CONTROL_PLANE_TOKEN=<token for gateway control-plane discovery>
   env: []
   envFrom: []
   serviceAccount:

@@ -43,9 +43,30 @@ spec:
             - "0.0.0.0:8090"
             - --upstreams
             - /etc/agent-bom/gateway/upstreams.yaml
+            {{- if .Values.gateway.controlPlaneDiscovery.url }}
+            - --from-control-plane
+            - {{ .Values.gateway.controlPlaneDiscovery.url | quote }}
+            {{- end }}
             {{- if .Values.gateway.policyPath }}
             - --policy
             - {{ .Values.gateway.policyPath }}
+            {{- end }}
+            {{- if gt (int (.Values.gateway.policyReloadSeconds | default 0)) 0 }}
+            - --policy-reload-seconds
+            - {{ .Values.gateway.policyReloadSeconds | quote }}
+            {{- end }}
+            {{- if gt (int (.Values.gateway.runtimeRateLimitPerTenantPerMinute | default 0)) 0 }}
+            - --runtime-rate-limit-per-tenant-per-minute
+            - {{ .Values.gateway.runtimeRateLimitPerTenantPerMinute | quote }}
+            {{- end }}
+            {{- if .Values.gateway.requireSharedRateLimit }}
+            - --require-shared-rate-limit
+            {{- end }}
+            {{- if .Values.gateway.detectVisualLeaks }}
+            - --detect-visual-leaks
+            {{- end }}
+            {{- if .Values.gateway.allowVisualLeakBestEffort }}
+            - --allow-visual-leak-best-effort
             {{- end }}
           ports:
             - name: http

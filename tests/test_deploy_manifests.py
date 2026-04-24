@@ -422,10 +422,37 @@ def test_helm_control_plane_backup_defaults():
 def test_helm_gateway_service_account_defaults():
     """Gateway service account knobs stay explicit for IRSA-style rollout."""
     doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
-    sa = doc["gateway"]["serviceAccount"]
+    gateway = doc["gateway"]
+    sa = gateway["serviceAccount"]
     assert sa["create"] is True
     assert sa["name"] == ""
     assert sa["annotations"] == {}
+    assert gateway["controlPlaneDiscovery"]["url"] == ""
+    assert gateway["policyReloadSeconds"] == 0
+    assert gateway["runtimeRateLimitPerTenantPerMinute"] == 0
+    assert gateway["requireSharedRateLimit"] is False
+    assert gateway["detectVisualLeaks"] is False
+    assert gateway["allowVisualLeakBestEffort"] is False
+
+
+def test_helm_gateway_template_wires_control_plane_and_runtime_flags():
+    """Gateway deployment should expose the CLI's deploy-time control knobs."""
+    template = (HELM_DIR / "templates" / "gateway-deployment.yaml").read_text()
+    assert "--from-control-plane" in template
+    assert ".Values.gateway.controlPlaneDiscovery.url" in template
+    assert "--policy-reload-seconds" in template
+    assert ".Values.gateway.policyReloadSeconds" in template
+    assert "--runtime-rate-limit-per-tenant-per-minute" in template
+    assert ".Values.gateway.runtimeRateLimitPerTenantPerMinute" in template
+    assert "--require-shared-rate-limit" in template
+    assert "--detect-visual-leaks" in template
+    assert "--allow-visual-leak-best-effort" in template
+
+
+def test_helm_examples_do_not_ship_duplicate_sqlite_pilot_profile():
+    """Packaged Helm example profiles should have one canonical sqlite pilot file."""
+    duplicate = HELM_DIR / "examples" / "eks-control-plane-sqlite-pilot-values 2.yaml"
+    assert not duplicate.exists()
 
 
 def test_helm_gateway_autoscaling_defaults():

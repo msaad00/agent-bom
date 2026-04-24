@@ -328,6 +328,16 @@ def test_docker_save_repo_tags():
     assert result.image_tags == ["myapp:v1.0"]
 
 
+def test_docker_save_skips_layer_over_uncompressed_limit(monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_OCI_MAX_LAYER_UNCOMPRESSED_BYTES", "10")
+    tar = _make_docker_save_tar([{"huge.txt": b"x" * 11}])
+
+    result = parse_oci_tarball(tar)
+
+    assert result.packages == []
+    assert any("uncompressed extraction limit" in warning for warning in result.warnings)
+
+
 def test_docker_save_empty_layers():
     tar = _make_docker_save_tar([{}, {}])
     result = parse_oci_tarball(tar)

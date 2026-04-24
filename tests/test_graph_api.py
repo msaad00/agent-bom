@@ -677,6 +677,8 @@ class _RecordingGraphStore:
         direction: str = "forward",
         max_depth: int = 4,
         max_nodes: int = 500,
+        max_edges: int = 10_000,
+        deadline_monotonic: float | None = None,
         traversable_only: bool = False,
         relationship_types=None,
         static_only: bool = False,
@@ -692,6 +694,8 @@ class _RecordingGraphStore:
                 direction,
                 max_depth,
                 max_nodes,
+                max_edges,
+                deadline_monotonic is not None,
                 traversable_only,
                 relationship_types,
                 static_only,
@@ -704,6 +708,8 @@ class _RecordingGraphStore:
             direction=direction,
             max_depth=max_depth,
             max_nodes=max_nodes,
+            max_edges=max_edges,
+            deadline_monotonic=deadline_monotonic,
             traversable_only=traversable_only,
             relationship_types=relationship_types,
             static_only=static_only,
@@ -1095,6 +1101,23 @@ class TestGraphStoreBackendSelection:
         assert body["sources"] == ["agent:a"]
         assert any(call[0] == "node_context" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
+
+    def test_graph_query_truncates_on_edge_cap(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="tool:t", entity_type=EntityType.TOOL, label="tool-t"))
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="server:s", target="tool:t", relationship=RelationshipType.PROVIDES_TOOL))
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/graph/query",
+            json={"roots": ["agent:a"], "max_depth": 3, "max_edges": 1},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["truncated"] is True
 
     def test_graph_compliance_uses_store_native_summary(self, recording_graph_store):
         recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")

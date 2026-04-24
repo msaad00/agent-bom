@@ -34,6 +34,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
 import posixpath
 import re
 import sqlite3
@@ -49,6 +50,31 @@ from agent_bom.models import Package, PackageOccurrence
 from agent_bom.package_utils import parse_debian_source_name
 
 _logger = logging.getLogger(__name__)
+_MAX_JSON_MEMBER_BYTES = 100 * 1024 * 1024
+_MAX_LAYER_UNCOMPRESSED_BYTES = 5 * 1024 * 1024 * 1024
+_MAX_JAR_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return default
+
+
+def _max_json_member_bytes() -> int:
+    return _env_int("AGENT_BOM_MAX_MANIFEST_BYTES", _MAX_JSON_MEMBER_BYTES)
+
+
+def _max_layer_uncompressed_bytes() -> int:
+    return _env_int("AGENT_BOM_OCI_MAX_LAYER_UNCOMPRESSED_BYTES", _MAX_LAYER_UNCOMPRESSED_BYTES)
+
+
+def _max_jar_uncompressed_bytes() -> int:
+    return _env_int("AGENT_BOM_OCI_MAX_JAR_UNCOMPRESSED_BYTES", _MAX_JAR_UNCOMPRESSED_BYTES)
 
 
 # ── Tar member safety ────────────────────────────────────────────────────────
@@ -322,13 +348,48 @@ def _read_json_member_from_tar(tf: tarfile.TarFile, member_path: str) -> dict | 
     member = _resolve_tar_member(tf, member_path)
     if member is None:
         return None
+    if member.size > _max_json_member_bytes():
+        _logger.debug("Skipping oversized JSON member %s", member_path)
+        return None
     fileobj = tf.extractfile(member)
     if fileobj is None:
         return None
     try:
-        return json.loads(fileobj.read().decode("utf-8"))
+        data = fileobj.read(_max_json_member_bytes() + 1)
+        if len(data) > _max_json_member_bytes():
+            return None
+        return json.loads(data.decode("utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError):
         return None
+
+
+def _read_json_path_limited(path: Path) -> dict | list | None:
+    try:
+        if path.stat().st_size > _max_json_member_bytes():
+            _logger.debug("Skipping oversized JSON file: %s", path)
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+
+
+def _tar_uncompressed_regular_size(tf: tarfile.TarFile) -> int:
+    total = 0
+    for member in tf.getmembers():
+        if member.isfile() and _is_safe_tar_member_name(member.name):
+            total += max(0, int(member.size))
+            if total > _max_layer_uncompressed_bytes():
+                break
+    return total
+
+
+def _zip_uncompressed_size(zf: zipfile.ZipFile) -> int:
+    total = 0
+    for info in zf.infolist():
+        total += max(0, int(info.file_size))
+        if total > _max_jar_uncompressed_bytes():
+            break
+    return total
 
 
 # ─── RPM header parser ────────────────────────────────────────────────────────
@@ -761,6 +822,9 @@ def _extract_packages_from_layer(
                 continue
             jar_bytes = f.read()
             with zipfile.ZipFile(io.BytesIO(jar_bytes)) as zf:
+                if _zip_uncompressed_size(zf) > _max_jar_uncompressed_bytes():
+                    _logger.debug("Skipping oversized JAR payload: %s", member_name)
+                    continue
                 jar_names = zf.namelist()
                 # Prefer META-INF/maven/*/pom.properties (groupId/artifactId/version)
                 pom_props_paths = [n for n in jar_names if re.match(r"META-INF/maven/[^/]+/[^/]+/pom\.properties$", n)]
@@ -996,10 +1060,15 @@ def _parse_docker_save_manifest(tf: tarfile.TarFile) -> list[OCIManifest]:
     """Parse manifest.json from a Docker save tarball."""
     try:
         member = tf.getmember("manifest.json")
+        if member.size > _max_json_member_bytes():
+            raise OCIParseError("manifest.json exceeds parser size limit")
         f = tf.extractfile(member)
         if f is None:
             raise OCIParseError("manifest.json is not a regular file")
-        raw = json.loads(f.read().decode("utf-8"))
+        data = f.read(_max_json_member_bytes() + 1)
+        if len(data) > _max_json_member_bytes():
+            raise OCIParseError("manifest.json exceeds parser size limit")
+        raw = json.loads(data.decode("utf-8"))
     except KeyError:
         raise OCIParseError("No manifest.json found — not a Docker save tarball")
     except json.JSONDecodeError as e:
@@ -1064,6 +1133,10 @@ def _parse_layers_from_tarball(
             continue
         try:
             with tarfile.open(fileobj=io.BytesIO(layer_bytes), mode="r:*") as layer_tf:
+                uncompressed_bytes = _tar_uncompressed_regular_size(layer_tf)
+                if uncompressed_bytes > _max_layer_uncompressed_bytes():
+                    warnings.append(f"Layer {layer_path} exceeds uncompressed extraction limit — skipped")
+                    continue
                 layer_distro_name, layer_distro_version = _read_os_release_from_layer(layer_tf, all_deleted)
                 if layer_distro_name:
                     detected_distro_name = layer_distro_name
@@ -1093,10 +1166,15 @@ def _parse_oci_layout_manifest_from_tar(tf: tarfile.TarFile) -> tuple[dict, list
         member = _resolve_tar_member(tf, "index.json")
         if member is None:
             raise OCIParseError("No index.json found — not an OCI image layout tarball")
+        if member.size > _max_json_member_bytes():
+            raise OCIParseError("index.json exceeds parser size limit")
         f = tf.extractfile(member)
         if f is None:
             raise OCIParseError("index.json is not a regular file")
-        index = json.loads(f.read().decode("utf-8"))
+        data = f.read(_max_json_member_bytes() + 1)
+        if len(data) > _max_json_member_bytes():
+            raise OCIParseError("index.json exceeds parser size limit")
+        index = json.loads(data.decode("utf-8"))
     except json.JSONDecodeError as e:
         raise OCIParseError(f"Invalid index.json: {e}")
 
@@ -1219,10 +1297,9 @@ def parse_oci_layout_dir(path: Path) -> OCIParseResult:
     if not index_path.exists():
         raise OCIParseError(f"index.json not found in {path}")
 
-    try:
-        index = json.loads(index_path.read_text())
-    except (json.JSONDecodeError, OSError) as e:
-        raise OCIParseError(f"Failed to read index.json: {e}")
+    index = _read_json_path_limited(index_path)
+    if not isinstance(index, dict):
+        raise OCIParseError("Failed to read index.json")
 
     manifests = index.get("manifests", [])
     if not manifests:
@@ -1237,10 +1314,9 @@ def parse_oci_layout_dir(path: Path) -> OCIParseResult:
     if not manifest_blob.exists():
         raise OCIParseError(f"Manifest blob not found: {manifest_blob}")
 
-    try:
-        manifest = json.loads(manifest_blob.read_text())
-    except (json.JSONDecodeError, OSError) as e:
-        raise OCIParseError(f"Failed to read manifest blob: {e}")
+    manifest = _read_json_path_limited(manifest_blob)
+    if not isinstance(manifest, dict):
+        raise OCIParseError("Failed to read manifest blob")
 
     layer_digests = [
         digest[len("sha256:") :] for layer in manifest.get("layers", []) if (digest := layer.get("digest", "")).startswith("sha256:")
@@ -1251,10 +1327,8 @@ def parse_oci_layout_dir(path: Path) -> OCIParseResult:
     if config_digest.startswith("sha256:"):
         config_blob = path / "blobs" / "sha256" / config_digest[len("sha256:") :]
         if config_blob.exists():
-            try:
-                config = json.loads(config_blob.read_text())
-            except (json.JSONDecodeError, OSError):
-                config = None
+            maybe_config = _read_json_path_limited(config_blob)
+            config = maybe_config if isinstance(maybe_config, dict) else None
     layer_metadata = _build_layer_metadata(layer_paths, config)
 
     packages_by_key: dict[tuple[str, str], Package] = {}
@@ -1269,6 +1343,10 @@ def parse_oci_layout_dir(path: Path) -> OCIParseResult:
             continue
         try:
             with tarfile.open(str(blob_path), mode="r:*") as layer_tf:
+                uncompressed_bytes = _tar_uncompressed_regular_size(layer_tf)
+                if uncompressed_bytes > _max_layer_uncompressed_bytes():
+                    warnings.append(f"Layer {layer_hash[:12]} exceeds uncompressed extraction limit — skipped")
+                    continue
                 whiteouts = _extract_packages_from_layer(layer_tf, packages_by_key, packages, all_deleted, layer)
                 all_deleted.update(whiteouts)
         except tarfile.TarError as e:

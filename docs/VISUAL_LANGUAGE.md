@@ -3,6 +3,10 @@
 Three media, used deliberately. Picking the right one keeps the README
 readable, mobile-friendly, and easy to keep in sync with code.
 
+For product screenshots, the source of truth is the packaged Next.js
+dashboard. Snowflake Streamlit views may still exist for Snowflake-native
+deployments, but they are not the primary product visuals for README or docs.
+
 ## SVG — for hero visuals + dense product imagery
 
 Use when:
@@ -23,7 +27,7 @@ Current SVG inventory:
 | `engine-internals-{light,dark}.svg` | Inside the scanner | "How a scan moves" |
 | `topology-{light,dark}.svg` | Focused graph view (start scoped, expand) | "How a scan moves" |
 | `compliance-{light,dark}.svg` | Finding → control → evidence packet | Compliance section |
-| `dashboard-live.png` `dashboard-paths-live.png` `mesh-live.png` `remediation-live.png` | Live UI screenshots | Product views |
+| `dashboard-live.png` `dashboard-paths-live.png` `mesh-live.png` `remediation-live.png` | Live packaged Next.js dashboard screenshots | Product views |
 | `demo-latest.gif` | Terminal demo (1.04MB after compression) | "Try the demo" |
 
 ## Mermaid — for code-true flows that evolve

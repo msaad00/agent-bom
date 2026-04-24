@@ -661,10 +661,15 @@ export function KeyLifecyclePanel({
               <BoundaryCard
                 title="SCIM provisioning"
                 body={policy.identity_provisioning.scim.message}
+                detail={`${policy.identity_provisioning.scim.status.replaceAll("_", " ")} · ${policy.identity_provisioning.scim.base_path} · ${
+                  policy.identity_provisioning.scim.token_configured ? "token configured" : "token missing"
+                }`}
               />
               <BoundaryCard
                 title="Provisioning posture"
-                body={`${policy.identity_provisioning.scim.status.replaceAll("_", " ")}${policy.identity_provisioning.scim.configured ? " · configured" : " · not configured yet"}`}
+                body={`Role ${policy.identity_provisioning.scim.role_attribute} · tenant ${policy.identity_provisioning.scim.tenant_attribute} · external ID ${policy.identity_provisioning.scim.external_id_attribute}${
+                  policy.identity_provisioning.scim.groups_required ? " · groups required" : ""
+                }`}
               />
             </div>
           </section>

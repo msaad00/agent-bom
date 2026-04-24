@@ -646,6 +646,12 @@ export interface AuthPolicyResponse {
       supported: boolean;
       configured: boolean;
       status: string;
+      base_path: string;
+      token_configured: boolean;
+      external_id_attribute: string;
+      role_attribute: string;
+      tenant_attribute: string;
+      groups_required: boolean;
       message: string;
     };
     session_revocation: {

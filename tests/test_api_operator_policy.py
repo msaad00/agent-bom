@@ -167,8 +167,10 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["override_limit"] is None
     assert body["identity_provisioning"]["oidc"]["mode"] == "disabled"
     assert body["identity_provisioning"]["saml"]["configured"] is False
-    assert body["identity_provisioning"]["scim"]["status"] == "not_implemented"
-    assert body["identity_provisioning"]["scim"]["supported"] is False
+    assert body["identity_provisioning"]["scim"]["status"] == "disabled"
+    assert body["identity_provisioning"]["scim"]["supported"] is True
+    assert body["identity_provisioning"]["scim"]["base_path"] == "/scim/v2"
+    assert body["identity_provisioning"]["scim"]["token_configured"] is False
     assert "service_keys" in body["identity_provisioning"]["session_revocation"]
 
 
@@ -270,6 +272,27 @@ def test_auth_policy_reports_identity_provider_posture(monkeypatch: pytest.Monke
     assert body["identity_provisioning"]["saml"]["session_ttl_seconds"] == 1800
 
 
+def test_auth_policy_reports_scim_configuration_posture(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKEN", "super-secret")
+    monkeypatch.setenv("AGENT_BOM_SCIM_BASE_PATH", "/scim/v2")
+    monkeypatch.setenv("AGENT_BOM_SCIM_ROLE_ATTRIBUTE", "roles")
+    monkeypatch.setenv("AGENT_BOM_SCIM_TENANT_ATTRIBUTE", "organization_id")
+    monkeypatch.setenv("AGENT_BOM_SCIM_EXTERNAL_ID_ATTRIBUTE", "employeeNumber")
+    monkeypatch.setenv("AGENT_BOM_SCIM_REQUIRE_GROUPS", "1")
+
+    client = TestClient(app)
+    body = client.get("/v1/auth/policy").json()
+
+    assert body["identity_provisioning"]["scim"]["configured"] is True
+    assert body["identity_provisioning"]["scim"]["status"] == "configured"
+    assert body["identity_provisioning"]["scim"]["base_path"] == "/scim/v2"
+    assert body["identity_provisioning"]["scim"]["token_configured"] is True
+    assert body["identity_provisioning"]["scim"]["role_attribute"] == "roles"
+    assert body["identity_provisioning"]["scim"]["tenant_attribute"] == "organization_id"
+    assert body["identity_provisioning"]["scim"]["external_id_attribute"] == "employeeNumber"
+    assert body["identity_provisioning"]["scim"]["groups_required"] is True
+
+
 def test_rate_limit_runtime_reports_shared_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://example/test")
     monkeypatch.setenv("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT", "1")
@@ -305,6 +328,7 @@ def test_rate_limit_runtime_reports_single_replica_process_local_backend(monkeyp
 def test_auth_policy_requires_admin_role_in_api_middleware() -> None:
     middleware = APIKeyMiddleware(app, api_key="static-secret")
     assert middleware._required_role("GET", "/v1/auth/policy") == "admin"
+    assert middleware._required_role("GET", "/v1/auth/scim/config") == "admin"
     assert middleware._required_role("PUT", "/v1/auth/quota") == "admin"
     assert middleware._required_role("DELETE", "/v1/auth/quota") == "admin"
     assert middleware._required_role("GET", "/v1/auth/debug") == "viewer"

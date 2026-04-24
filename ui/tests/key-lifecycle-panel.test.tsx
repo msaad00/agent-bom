@@ -107,10 +107,16 @@ const policy: AuthPolicyResponse = {
       message: "SAML assertion exchange is enabled and mints short-lived session API keys after IdP verification.",
     },
     scim: {
-      supported: false,
-      configured: false,
-      status: "not_implemented",
-      message: "SCIM provisioning is not implemented yet.",
+      supported: true,
+      configured: true,
+      status: "configured",
+      base_path: "/scim/v2",
+      token_configured: true,
+      external_id_attribute: "externalId",
+      role_attribute: "agent_bom_role",
+      tenant_attribute: "tenant_id",
+      groups_required: false,
+      message: "SCIM provisioning bootstrap is configured.",
     },
     session_revocation: {
       service_keys: "API key revocation takes effect immediately at the control-plane auth layer.",
@@ -172,6 +178,8 @@ describe("KeyLifecyclePanel", () => {
     expect(screen.getByText("OIDC browser / bearer")).toBeInTheDocument();
     expect(screen.getByText("SAML assertion exchange")).toBeInTheDocument();
     expect(screen.getByText("SCIM provisioning")).toBeInTheDocument();
+    expect(screen.getByText("configured · /scim/v2 · token configured")).toBeInTheDocument();
+    expect(screen.getByText("Role agent_bom_role · tenant tenant_id · external ID externalId")).toBeInTheDocument();
     expect(screen.getByText("Revocation boundaries")).toBeInTheDocument();
     expect(screen.getByText("OIDC or reverse-proxy browser sessions must be terminated at the upstream identity provider or trusted proxy.")).toBeInTheDocument();
   });

@@ -54,7 +54,8 @@ def main():
       agent-bom agents                               discover + scan local agents and MCP servers
       agent-bom agents -p .                          scan project manifests plus agent/MCP context
       agent-bom where                                show MCP discovery paths checked on this machine
-      agent-bom mesh --project .                     show the live agent/MCP topology
+      agent-bom mesh                                 show the live machine-wide agent/MCP topology
+      agent-bom mesh --project .                     show project-local topology only
       agent-bom skills scan .                        scan skills and instruction files
       agent-bom skills rescan                        revisit previously cataloged skills
       agent-bom check flask@2.0.0 --ecosystem pypi  pre-install CVE gate

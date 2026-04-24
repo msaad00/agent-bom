@@ -312,6 +312,17 @@ def test_mesh_cmd_quiet_suppresses_summary_heading():
         assert "filesystem" in result.output
 
 
+def test_mesh_cmd_project_scope_empty_message():
+    runner = CliRunner()
+
+    with patch("agent_bom.discovery.discover_all", return_value=[]):
+        result = runner.invoke(mesh_cmd, ["--project", "."])
+
+    assert result.exit_code == 0
+    assert "No project-local agents discovered." in result.output
+    assert "agent-bom mesh" in result.output
+
+
 # ---------------------------------------------------------------------------
 # dashboard_cmd
 # ---------------------------------------------------------------------------

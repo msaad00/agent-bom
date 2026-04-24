@@ -284,7 +284,7 @@ def graph_cmd(scan_file: str, fmt: str, output_path: Optional[str], quiet: bool)
     "project_dir",
     type=click.Path(exists=True, file_okay=False),
     default=None,
-    help="Discover agents relative to a project directory.",
+    help="Restrict discovery to a project directory (replaces machine-wide discovery).",
 )
 @click.option(
     "--format",
@@ -303,7 +303,7 @@ def mesh_cmd(scan_file: Optional[str], project_dir: Optional[str], fmt: str, out
     \b
     Examples:
       agent-bom mesh
-      agent-bom mesh --project .
+      agent-bom mesh --project .   # project-local discovery only
       agent-bom mesh report.json --format json --output mesh.json
     """
     from agent_bom.output.agent_mesh import build_agent_mesh
@@ -317,7 +317,10 @@ def mesh_cmd(scan_file: Optional[str], project_dir: Optional[str], fmt: str, out
         raise SystemExit(1) from exc
 
     if not agents_data:
-        con.print("[yellow]No agents discovered.[/yellow]")
+        if project_dir:
+            con.print("[yellow]No project-local agents discovered.[/yellow] Try [bold]agent-bom mesh[/bold] for machine-wide discovery.")
+        else:
+            con.print("[yellow]No agents discovered.[/yellow]")
         return
 
     mesh = build_agent_mesh(agents_data, blast_radius)

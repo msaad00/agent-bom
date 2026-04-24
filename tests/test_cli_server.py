@@ -62,6 +62,7 @@ def test_api_cmd_missing_uvicorn():
         result = runner.invoke(api_cmd, [])
         assert result.exit_code == 1
         assert "uvicorn" in result.output.lower()
+        assert "uv pip install 'agent-bom[api]'" in result.output
 
 
 def test_api_cmd_rejects_unauthenticated_non_loopback_bind():
@@ -87,6 +88,18 @@ def test_api_cmd_allows_non_loopback_bind_with_api_key():
     mock_configure.assert_called_once()
     mock_run.assert_called_once()
     assert "API key required" in result.output
+
+
+def test_api_cmd_loopback_no_auth_warns_local_mode():
+    runner = CliRunner()
+
+    with patch("agent_bom.api.server.configure_api") as mock_configure, patch("uvicorn.run") as mock_run:
+        result = runner.invoke(api_cmd, [])
+
+    assert result.exit_code == 0
+    mock_configure.assert_called_once()
+    mock_run.assert_called_once()
+    assert "local unauthenticated mode" in result.output
 
 
 def test_api_cmd_enables_clickhouse_analytics():
@@ -151,6 +164,18 @@ def test_serve_cmd_configures_api_auth():
     mock_configure.assert_called_once()
     mock_run.assert_called_once()
     assert "API key required" in result.output
+
+
+def test_serve_cmd_loopback_no_auth_warns_local_mode():
+    runner = CliRunner()
+
+    with patch("agent_bom.api.server.configure_api") as mock_configure, patch("uvicorn.run") as mock_run:
+        result = runner.invoke(serve_cmd, [])
+
+    assert result.exit_code == 0
+    mock_configure.assert_called_once()
+    mock_run.assert_called_once()
+    assert "local unauthenticated mode" in result.output
 
 
 def test_serve_cmd_enables_clickhouse_analytics():

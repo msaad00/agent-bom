@@ -181,7 +181,9 @@ def serve_cmd(
         import uvicorn  # noqa: F401
     except ImportError:
         click.echo(
-            "ERROR: FastAPI + Uvicorn are required for `agent-bom serve`.\nInstall them with:  pip install 'agent-bom[ui]'",
+            "ERROR: FastAPI + Uvicorn are required for `agent-bom serve`.\n"
+            "Install them with:  uv pip install 'agent-bom[ui]'  "
+            "(or: pip install 'agent-bom[ui]')",
             err=True,
         )
         sys.exit(1)
@@ -222,6 +224,8 @@ def serve_cmd(
         click.echo("  Auth:       OIDC bearer token required")
     elif allow_insecure_no_auth and not _is_loopback_host(host):
         click.echo("  Auth:       disabled by explicit override (--allow-insecure-no-auth)")
+    else:
+        click.echo("  Auth:       local unauthenticated mode (loopback only); set --api-key or OIDC for authenticated access")
     if resolved_backend == "clickhouse":
         mode = "buffered" if analytics_buffered else "direct"
         click.echo(f"  Analytics:  ClickHouse ({mode}, batch={max(1, analytics_max_batch)}, flush={analytics_flush_interval:.2f}s)")
@@ -243,7 +247,12 @@ def serve_cmd(
 
 
 @click.command("api")
-@click.option("--host", default="127.0.0.1", show_default=True, help="Host to bind to (use 0.0.0.0 for LAN access)")
+@click.option(
+    "--host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Host to bind to (non-loopback requires --api-key / OIDC or --allow-insecure-no-auth).",
+)
 @click.option("--port", default=8422, show_default=True, help="Port to listen on")
 @click.option("--reload", is_flag=True, help="Auto-reload on code changes (development mode)")
 @click.option("--workers", default=1, show_default=True, help="Number of worker processes")
@@ -360,7 +369,7 @@ def api_cmd(
     \b
     Usage:
       agent-bom api                           # local dev: http://127.0.0.1:8422
-      agent-bom api --host 0.0.0.0            # expose on LAN
+      agent-bom api --host 0.0.0.0 --api-key <key>  # expose on LAN with auth
       agent-bom api --port 9000               # custom port
       agent-bom api --reload                  # dev mode
     """
@@ -372,7 +381,9 @@ def api_cmd(
         import uvicorn
     except ImportError:
         click.echo(
-            "ERROR: uvicorn is required for `agent-bom api`.\nInstall it with:  pip install 'agent-bom[api]'",
+            "ERROR: uvicorn is required for `agent-bom api`.\n"
+            "Install it with:  uv pip install 'agent-bom[api]'  "
+            "(or: pip install 'agent-bom[api]')",
             err=True,
         )
         sys.exit(1)
@@ -420,6 +431,8 @@ def api_cmd(
         click.echo("  Auth:         OIDC bearer token required")
     elif allow_insecure_no_auth and not _is_loopback_host(host):
         click.echo("  Auth:         disabled by explicit override (--allow-insecure-no-auth)")
+    else:
+        click.echo("  Auth:         local unauthenticated mode (loopback only); set --api-key or OIDC for authenticated access")
     if pg_url and not persist:
         click.echo("  Storage:      PostgreSQL")
     elif persist:

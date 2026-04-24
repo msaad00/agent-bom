@@ -212,7 +212,7 @@ async def list_keys(request: Request) -> dict:
 
 
 @router.get("/v1/auth/policy", tags=["enterprise"])
-async def auth_policy() -> dict:
+async def auth_policy(request: Request) -> dict:
     """Report API key and rate-limit key rotation policy + status.
 
     Operators surface this in dashboards and runbooks to confirm that
@@ -225,6 +225,7 @@ async def auth_policy() -> dict:
         get_rate_limit_key_status,
         get_rate_limit_runtime_status,
     )
+    from agent_bom.api.tenant_quota import get_tenant_quota_runtime
     from agent_bom.config import (
         API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT,
         API_MAX_FLEET_AGENTS_PER_TENANT,
@@ -236,6 +237,7 @@ async def auth_policy() -> dict:
     rl_status = get_rate_limit_key_status()
     rl_runtime = get_rate_limit_runtime_status()
     auth_runtime = get_auth_runtime_status()
+    tenant_id = getattr(request.state, "tenant_id", "default")
     return {
         "api_key": {
             "default_ttl_seconds": api_policy.default_ttl_seconds,
@@ -263,6 +265,27 @@ async def auth_policy() -> dict:
             "retained_scan_jobs": API_MAX_RETAINED_JOBS_PER_TENANT,
             "fleet_agents": API_MAX_FLEET_AGENTS_PER_TENANT,
             "schedules": API_MAX_SCHEDULES_PER_TENANT,
+        },
+        "tenant_quota_runtime": get_tenant_quota_runtime(tenant_id),
+        "identity_provisioning": {
+            "scim": {
+                "supported": False,
+                "configured": False,
+                "status": "not_implemented",
+                "message": (
+                    "SCIM provisioning is not implemented yet. User and group lifecycle still depends on the upstream "
+                    "identity provider, reverse proxy, or manual API-key administration."
+                ),
+            },
+            "session_revocation": {
+                "service_keys": "API key revocation takes effect immediately at the control-plane auth layer.",
+                "session_api_key": (
+                    "The browser fallback key is scoped to the current browser session and disappears when that local session is cleared."
+                ),
+                "browser_sessions": (
+                    "OIDC or reverse-proxy browser sessions must be terminated at the upstream identity provider or trusted proxy."
+                ),
+            },
         },
     }
 

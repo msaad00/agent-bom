@@ -571,6 +571,33 @@ export interface AuthPolicyResponse {
     fleet_agents: number;
     schedules: number;
   };
+  tenant_quota_runtime: {
+    source: string;
+    per_tenant_overrides: boolean;
+    message: string;
+    usage: Record<
+      "active_scan_jobs" | "retained_scan_jobs" | "fleet_agents" | "schedules",
+      {
+        limit: number;
+        current: number;
+        remaining: number | null;
+        enforced: boolean;
+      }
+    >;
+  };
+  identity_provisioning: {
+    scim: {
+      supported: boolean;
+      configured: boolean;
+      status: string;
+      message: string;
+    };
+    session_revocation: {
+      service_keys: string;
+      session_api_key: string;
+      browser_sessions: string;
+    };
+  };
 }
 
 export type ApiKeyLifecycleState = "active" | "rotation_overlap" | "rotated" | "revoked" | "expired";

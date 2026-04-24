@@ -144,10 +144,10 @@ export function KeyLifecyclePanel({
     () =>
       policy
         ? [
-            ["Active scan jobs", policy.tenant_quotas.active_scan_jobs],
-            ["Retained scan jobs", policy.tenant_quotas.retained_scan_jobs],
-            ["Fleet agents", policy.tenant_quotas.fleet_agents],
-            ["Schedules", policy.tenant_quotas.schedules],
+            ["Active scan jobs", policy.tenant_quota_runtime.usage.active_scan_jobs],
+            ["Retained scan jobs", policy.tenant_quota_runtime.usage.retained_scan_jobs],
+            ["Fleet agents", policy.tenant_quota_runtime.usage.fleet_agents],
+            ["Schedules", policy.tenant_quota_runtime.usage.schedules],
           ]
         : [],
     [policy]
@@ -480,31 +480,57 @@ export function KeyLifecyclePanel({
 
             <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Tenant guardrails</p>
+              <p className="mt-3 text-sm text-zinc-300">{policy.tenant_quota_runtime.message}</p>
+              <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Quota source</p>
+                <p className="mt-2 text-sm font-semibold text-zinc-100">
+                  {policy.tenant_quota_runtime.source}
+                  {policy.tenant_quota_runtime.per_tenant_overrides ? " · tenant overrides enabled" : " · global defaults only"}
+                </p>
+              </div>
               <div className="mt-3 grid grid-cols-2 gap-3">
                 {quotaCards.map(([label, value]) => (
                   <div key={label} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
                     <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">{label}</p>
-                    <p className="mt-2 text-lg font-semibold text-zinc-100">{value}</p>
+                    <p className="mt-2 text-lg font-semibold text-zinc-100">{value.limit}</p>
+                    <p className="mt-1 text-xs text-zinc-400">
+                      Current {value.current}
+                      {value.remaining != null ? ` · Remaining ${value.remaining}` : " · Unlimited"}
+                    </p>
                   </div>
                 ))}
               </div>
             </section>
           </div>
 
+          <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Identity lifecycle</p>
+            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+              <BoundaryCard
+                title="SCIM provisioning"
+                body={policy.identity_provisioning.scim.message}
+              />
+              <BoundaryCard
+                title="Provisioning posture"
+                body={`${policy.identity_provisioning.scim.status.replaceAll("_", " ")}${policy.identity_provisioning.scim.configured ? " · configured" : " · not configured yet"}`}
+              />
+            </div>
+          </section>
+
           <section className="rounded-2xl border border-amber-900/40 bg-amber-950/10 p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-amber-200/70">Revocation boundaries</p>
             <div className="mt-3 grid gap-3 lg:grid-cols-3">
               <BoundaryCard
                 title="Service keys"
-                body="Revoke stops that key at the API auth layer immediately. Rotation overlap is explicit and bounded by policy."
+                body={policy.identity_provisioning.session_revocation.service_keys}
               />
               <BoundaryCard
                 title="Session API key fallback"
-                body="The browser-only fallback lives in sessionStorage for the current tab or browser session. Clearing the session removes it locally."
+                body={policy.identity_provisioning.session_revocation.session_api_key}
               />
               <BoundaryCard
                 title="Reverse-proxy or OIDC sessions"
-                body="Cookie or IdP session invalidation happens at the upstream proxy or identity provider. This panel does not force-log-out existing browser sessions."
+                body={policy.identity_provisioning.session_revocation.browser_sessions}
               />
             </div>
           </section>

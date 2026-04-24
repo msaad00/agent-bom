@@ -138,6 +138,7 @@ flowchart LR
 ## Related Docs
 
 - `docs/ENTERPRISE_DEPLOYMENT.md`
+- `docs/CONTROL_PLANE_TESTING.md`
 - `docs/RUNTIME_MONITORING.md`
 - `docs/PERMISSIONS.md`
 - `docs/SECURITY_ARCHITECTURE.md`

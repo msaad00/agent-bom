@@ -245,6 +245,24 @@ class PostgresGraphStore:
             ).fetchone()
             return str(row[0]) if row else ""
 
+    def delete_tenant(self, *, tenant_id: str = "") -> int:
+        """Delete graph rows for one tenant and return the number of rows removed."""
+        total = 0
+        with _tenant_connection(self._pool) as conn:
+            for table in (
+                "graph_node_search",
+                "attack_paths",
+                "interaction_risks",
+                "graph_edges",
+                "graph_nodes",
+                "graph_snapshots",
+                "graph_filter_presets",
+            ):
+                cursor = conn.execute(f"DELETE FROM {table} WHERE tenant_id = %s", (tenant_id,))  # nosec B608 - table list is static
+                total += max(int(cursor.rowcount or 0), 0)
+            conn.commit()
+        return total
+
     def save_graph(self, graph) -> None:
         from agent_bom.graph import RelationshipType
 

@@ -546,6 +546,7 @@ from agent_bom.api.routes.gateway import router as _gateway_router  # noqa: E402
 from agent_bom.api.routes.governance import router as _governance_router  # noqa: E402
 from agent_bom.api.routes.graph import router as _graph_router  # noqa: E402
 from agent_bom.api.routes.observability import router as _observability_router  # noqa: E402
+from agent_bom.api.routes.privacy import router as _privacy_router  # noqa: E402
 from agent_bom.api.routes.proxy import router as _proxy_router  # noqa: E402
 from agent_bom.api.routes.scan import router as _scan_router  # noqa: E402
 from agent_bom.api.routes.schedules import router as _schedules_router  # noqa: E402
@@ -562,6 +563,7 @@ app.include_router(_gateway_router)
 app.include_router(_governance_router)
 app.include_router(_graph_router)
 app.include_router(_observability_router)
+app.include_router(_privacy_router)
 app.include_router(_proxy_router)
 app.include_router(_scan_router)
 app.include_router(_schedules_router)

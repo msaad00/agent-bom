@@ -373,6 +373,10 @@ def test_auth_policy_requires_admin_role_in_api_middleware() -> None:
     assert middleware._required_role("GET", "/v1/auth/scim/config") == "admin"
     assert middleware._required_role("PUT", "/v1/auth/quota") == "admin"
     assert middleware._required_role("DELETE", "/v1/auth/quota") == "admin"
+    assert middleware._required_role("GET", "/v1/tenant/tenant-a/data") == "admin"
+    assert middleware._required_role("DELETE", "/v1/tenant/tenant-a/data") == "admin"
+    assert middleware._required_scope("GET", "/v1/tenant/tenant-a/data") == "privacy.data:read"
+    assert middleware._required_scope("DELETE", "/v1/tenant/tenant-a/data") == "privacy.data:delete"
     assert middleware._required_role("GET", "/v1/auth/debug") == "viewer"
 
 

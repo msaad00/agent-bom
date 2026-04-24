@@ -115,6 +115,8 @@ class GraphStoreProtocol(Protocol):
 
     def list_snapshots(self, *, tenant_id: str = "", limit: int = 50) -> list[dict[str, Any]]: ...
 
+    def delete_tenant(self, *, tenant_id: str = "") -> int: ...
+
     def snapshot_stats(
         self,
         *,
@@ -334,6 +336,27 @@ class SQLiteGraphStore:
                     _node_search_text(node),
                 ),
             )
+
+    def delete_tenant(self, *, tenant_id: str = "") -> int:
+        """Delete graph rows for one tenant and return the number of rows removed."""
+        conn = self._open_rw_conn()
+        try:
+            total = 0
+            for table in (
+                "graph_node_search",
+                "attack_paths",
+                "interaction_risks",
+                "graph_edges",
+                "graph_nodes",
+                "graph_snapshots",
+                "graph_filter_presets",
+            ):
+                cursor = conn.execute(f"DELETE FROM {table} WHERE tenant_id = ?", (tenant_id,))  # nosec B608 - table list is static
+                total += max(cursor.rowcount, 0)
+            conn.commit()
+            return total
+        finally:
+            conn.close()
 
     @staticmethod
     def _node_from_row(row: sqlite3.Row) -> UnifiedNode:

@@ -84,6 +84,38 @@ The product should be clear about retention in three places:
 If a tenant asks "how long do we keep this?", the answer should not require
 opening the database.
 
+## Tenant data export and deletion
+
+Self-hosted operators can inspect and remove tenant-scoped control-plane data
+through the admin-only data subject endpoint:
+
+```bash
+curl -H "Authorization: Bearer $AGENT_BOM_API_KEY" \
+  "https://agent-bom.example.com/v1/tenant/$TENANT_ID/data"
+
+curl -X DELETE -H "Authorization: Bearer $AGENT_BOM_API_KEY" \
+  "https://agent-bom.example.com/v1/tenant/$TENANT_ID/data?dry_run=true"
+
+curl -X DELETE -H "Authorization: Bearer $AGENT_BOM_API_KEY" \
+  "https://agent-bom.example.com/v1/tenant/$TENANT_ID/data?dry_run=false&confirm_tenant_id=$TENANT_ID"
+```
+
+The endpoint is intentionally conservative:
+
+- only `admin` role callers can use it
+- scoped keys must carry `privacy.data:read` or `privacy.data:delete`
+- the path tenant must match the authenticated tenant context
+- destructive deletes default to `dry_run=true`
+- `dry_run=false` requires `confirm_tenant_id` to exactly match the path tenant
+- source registry exports redact credential references and connector config
+
+Delete removes tenant-scoped jobs, fleet records, gateway policies, scan
+schedules, source records, exceptions, quota overrides, and graph rows. Audit
+logs and policy audit entries are retained as immutable security evidence so
+the HMAC chain and compliance history remain verifiable. API keys are managed
+through the API-key lifecycle endpoints rather than silently removed by tenant
+data deletion.
+
 ## EKS guidance
 
 For the self-hosted EKS shape, the practical answer is:

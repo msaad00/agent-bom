@@ -25,6 +25,15 @@ from agent_bom.api.server import app
 # ─── Rate-limit key status ────────────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _restore_runtime_modules():
+    yield
+    _reload_config()
+    importlib.reload(audit_log_module)
+    importlib.reload(compliance_signing_module)
+    compliance_signing_module.reset_signer_cache_for_tests()
+
+
 def _clear_rate_limit_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AGENT_BOM_RATE_LIMIT_KEY", raising=False)
     monkeypatch.delenv("AGENT_BOM_AUDIT_HMAC_KEY", raising=False)

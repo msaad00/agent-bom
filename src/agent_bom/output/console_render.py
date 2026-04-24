@@ -1074,6 +1074,34 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
         }
     )
     severity_order = {Severity.CRITICAL: 4, Severity.HIGH: 3, Severity.MEDIUM: 2, Severity.LOW: 1, Severity.NONE: 0}
+    priority_order = {"P1": 0, "P2": 1, "P3": 2, "P4": 3}
+
+    def _ranking_reasons(group: dict) -> list[str]:
+        reasons: list[str] = []
+        if group["has_kev"]:
+            reasons.append("actively exploited")
+        if group["creds"]:
+            cred_count = len(group["creds"])
+            reasons.append(f"{cred_count} exposed credential{'s' if cred_count != 1 else ''}")
+        if group["tools"]:
+            tool_count = len(group["tools"])
+            reasons.append(f"{tool_count} reachable tool{'s' if tool_count != 1 else ''}")
+        if group["agents"]:
+            agent_count = len(group["agents"])
+            reasons.append(f"{agent_count} affected agent{'s' if agent_count != 1 else ''}")
+        if group["max_risk_score"]:
+            reasons.append(f"blast radius risk {group['max_risk_score']:.1f}/10")
+        return reasons
+
+    def _ranking_rationale(group: dict) -> str:
+        reasons = group["ranking_reasons"]
+        if not reasons:
+            return f"Prioritized as {group['priority']} based on grouped remediation impact."
+        if len(reasons) == 1:
+            detail = reasons[0]
+        else:
+            detail = ", ".join(reasons[:-1]) + f", and {reasons[-1]}"
+        return f"Prioritized as {group['priority']} because {detail}."
 
     for br in blast_radii:
         key = (br.package.name, br.package.ecosystem, br.package.version)
@@ -1164,6 +1192,20 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
             if g["suppressed_prerelease_fixes"]:
                 g["reason"] = "prerelease fix suppressed by default"
                 action = f"Wait for a stable {g['package']} release; prerelease fix exists but is suppressed by default"
+        g["credential_count"] = len(g["creds"])
+        g["tool_count"] = len(g["tools"])
+        g["agent_count"] = len(g["agents"])
+        g["ranking_reasons"] = _ranking_reasons(g)
+        g["ranking_rationale"] = _ranking_rationale(g)
+        g["ranking_score"] = round(
+            g["impact"]
+            + (1.5 if g["has_kev"] else 0.0)
+            + min(g["credential_count"] * 0.5, 2.0)
+            + min(g["tool_count"] * 0.2, 1.0)
+            + min(g["agent_count"] * 0.15, 0.75)
+            + (0.25 if g["ai_risk"] else 0.0),
+            2,
+        )
         if g["creds"]:
             action += "; rotate exposed credentials"
         if g["tools"]:
@@ -1173,7 +1215,17 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
         g["action"] = action
         plan.append(g)
 
-    plan.sort(key=lambda x: x["impact"], reverse=True)
+    plan.sort(
+        key=lambda x: (
+            priority_order.get(x["priority"], 99),
+            -x["ranking_score"],
+            -x["impact"],
+            -x["credential_count"],
+            -x["tool_count"],
+            -x["agent_count"],
+            x["package"],
+        )
+    )
     return plan
 
 

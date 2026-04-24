@@ -117,6 +117,8 @@ def test_remediate_json_contains_plan_key():
     assert "package" in item
     assert "blast_radius_score" in item
     assert "references" in item
+    assert "ranking_rationale" in item
+    assert "ranking_reasons" in item
 
 
 def test_remediate_fixable_only_filters():
@@ -177,6 +179,34 @@ def test_remediate_priority_filter():
     data = json.loads(result.output)
     for item in data["remediation_plan"]:
         assert item["priority"] == "P1", f"Non-P1 item leaked: {item['package']} ({item['priority']})"
+
+
+def test_remediate_orders_same_priority_items_by_credential_aware_rank():
+    from agent_bom.models import Severity
+
+    cred_br = _make_mock_blast_radius(
+        pkg_name="cred-first",
+        severity_val=Severity.CRITICAL,
+        vuln_id="CVE-2023-1111",
+        risk_score=7.0,
+    )
+    cred_br.exposed_credentials = ["OPENAI_API_KEY", "DB_TOKEN"]
+
+    plain_br = _make_mock_blast_radius(
+        pkg_name="plain-second",
+        severity_val=Severity.CRITICAL,
+        vuln_id="CVE-2023-2222",
+        risk_score=7.0,
+    )
+
+    runner = CliRunner()
+    with _patch_scan(blast_radii=[plain_br, cred_br]):
+        result = runner.invoke(remediate_cmd, ["--demo", "--offline", "-f", "json"])
+
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.output)
+    assert data["remediation_plan"][0]["package"] == "cred-first"
+    assert "exposed credentials" in data["remediation_plan"][0]["ranking_rationale"]
 
 
 def test_remediate_markdown_output():

@@ -929,6 +929,8 @@ def test_build_remediation_json():
     report = _make_report_cov2(agents=[agent], blast_radii=[br])
     result = _build_remediation_json(report)
     assert isinstance(result, list)
+    assert "ranking_rationale" in result[0]
+    assert result[0]["ranking_reasons"]
 
 
 def test_build_remediation_json_includes_reason_for_unfixable_item():

@@ -76,6 +76,8 @@ def _render_markdown(plan_items: list[dict], blast_radii) -> str:
             lines.append(f"### {i}. {item['package']} {item['current']} -> {item['fix']}")
             lines.append("")
             lines.append(f"- **Priority**: {item['priority']}")
+            if item.get("ranking_rationale"):
+                lines.append(f"- **Why first**: {item['ranking_rationale']}")
             lines.append(f"- **Ecosystem**: {item['ecosystem']}")
             lines.append(f"- **Vulnerabilities**: {', '.join(item['vulns'][:5])}")
             if item.get("agents"):
@@ -117,6 +119,9 @@ def _plan_to_json(plan_items: list[dict]) -> dict:
                 "current_version": item["current"],
                 "fixed_version": item.get("fix"),
                 "priority": item["priority"],
+                "ranking_score": item.get("ranking_score", item.get("impact", 0)),
+                "ranking_reasons": item.get("ranking_reasons", []),
+                "ranking_rationale": item.get("ranking_rationale", ""),
                 "action": item.get("action", ""),
                 "command": item.get("command"),
                 "verify_command": item.get("verify_command"),
@@ -203,7 +208,7 @@ def remediate_cmd(
     """Generate a prioritized remediation plan for discovered vulnerabilities.
 
     \b
-    Runs a scan, then builds a remediation plan ordered by blast-radius impact.
+    Runs a scan, then builds a remediation plan ordered by priority and blast-radius impact.
     Each item includes fix commands, verification steps, and compliance tags.
 
     \b

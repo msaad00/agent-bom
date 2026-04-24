@@ -29,6 +29,9 @@
     "react-dom": "19.2.5",
     "recharts": "^3.8.1"
   },
+  "overrides": {
+    "postcss": "8.5.10"
+  },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
     "@next/eslint-plugin-next": "^16.2.4",

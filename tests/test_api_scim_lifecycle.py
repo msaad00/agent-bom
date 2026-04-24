@@ -158,6 +158,109 @@ def test_scim_group_create_patch_and_delete(scim_client: TestClient) -> None:
     assert scim_client.get(f"/scim/v2/Groups/{group_id}", headers=_headers()).status_code == 404
 
 
+@pytest.mark.parametrize(
+    ("idp_name", "payload", "patch_body", "expected_created_display", "expected_patched_display"),
+    [
+        (
+            "okta",
+            {
+                "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+                "userName": "okta.user@example.com",
+                "externalId": "00u-okta-user",
+                "displayName": "Okta User",
+                "active": True,
+                "emails": [{"value": "okta.user@example.com", "type": "work", "primary": True}],
+                "groups": [{"value": "grp-okta", "$ref": "/Groups/grp-okta", "display": "Agent BOM Admins"}],
+                "tenant_id": "payload-tenant-must-not-win",
+            },
+            {"Operations": [{"op": "replace", "path": "active", "value": False}]},
+            "Okta User",
+            "Okta User",
+        ),
+        (
+            "microsoft_entra_id",
+            {
+                "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+                "userName": "entra.user@example.com",
+                "externalId": "entra-object-id",
+                "displayName": "Entra User",
+                "active": True,
+                "emails": [{"value": "entra.user@example.com", "type": "work", "primary": True}],
+            },
+            {"Operations": [{"op": "Replace", "value": {"displayName": "Entra User Renamed", "active": False}}]},
+            "Entra User",
+            "Entra User Renamed",
+        ),
+        (
+            "google_cloud_identity",
+            {
+                "schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+                "userName": "google.user@example.com",
+                "externalId": "google-directory-id",
+                "name": {"formatted": "Google User"},
+                "active": True,
+                "emails": [{"value": "google.user@example.com", "type": "work", "primary": True}],
+            },
+            {"Operations": [{"op": "replace", "path": "active", "value": False}]},
+            "Google User",
+            "Google User",
+        ),
+    ],
+)
+def test_scim_user_lifecycle_accepts_common_idp_payloads(
+    scim_client: TestClient,
+    idp_name: str,
+    payload: dict,
+    patch_body: dict,
+    expected_created_display: str,
+    expected_patched_display: str,
+) -> None:
+    created = scim_client.post("/scim/v2/Users", headers=_headers(), json=payload)
+    assert created.status_code == 201, idp_name
+    user = created.json()
+    assert user["userName"] == payload["userName"]
+    assert user["displayName"] == expected_created_display
+    assert user["externalId"] == payload["externalId"]
+
+    patched = scim_client.patch(f"/scim/v2/Users/{user['id']}", headers=_headers(), json=patch_body)
+    assert patched.status_code == 200, idp_name
+    assert patched.json()["displayName"] == expected_patched_display
+    assert patched.json()["active"] is False
+
+    listed = scim_client.get(f'/scim/v2/Users?filter=externalId eq "{payload["externalId"]}"', headers=_headers())
+    assert listed.status_code == 200
+    assert listed.json()["totalResults"] == 1
+
+
+def test_scim_group_lifecycle_accepts_common_idp_members(scim_client: TestClient) -> None:
+    user = scim_client.post(
+        "/scim/v2/Users",
+        headers=_headers(),
+        json={"userName": "member@example.com", "externalId": "member-1", "displayName": "Member One"},
+    ).json()
+    created = scim_client.post(
+        "/scim/v2/Groups",
+        headers=_headers(),
+        json={
+            "schemas": ["urn:ietf:params:scim:schemas:core:2.0:Group"],
+            "displayName": "Agent BOM Reviewers",
+            "externalId": "idp-group-reviewers",
+            "members": [{"value": user["id"], "display": "Member One", "$ref": f"/scim/v2/Users/{user['id']}"}],
+        },
+    )
+    assert created.status_code == 201
+    group_id = created.json()["id"]
+    assert created.json()["members"][0]["value"] == user["id"]
+
+    patched = scim_client.patch(
+        f"/scim/v2/Groups/{group_id}",
+        headers=_headers(),
+        json={"Operations": [{"op": "remove", "path": f'members[value eq "{user["id"]}"]'}]},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["members"] == []
+
+
 def test_scim_store_fails_closed_without_postgres_for_multi_replica(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKEN", "scim-secret")
     monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "2")

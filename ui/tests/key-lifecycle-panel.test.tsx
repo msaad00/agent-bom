@@ -96,10 +96,10 @@ const policy: AuthPolicyResponse = {
     message: "Tenant quotas resolve from global defaults. Tenant-specific overrides can be configured when needed.",
     overrides: {},
     usage: {
-      active_scan_jobs: { limit: 10, default_limit: 10, override_limit: null, current: 2, remaining: 8, enforced: true, source: "global_default" },
-      retained_scan_jobs: { limit: 100, default_limit: 100, override_limit: null, current: 12, remaining: 88, enforced: true, source: "global_default" },
-      fleet_agents: { limit: 5000, default_limit: 5000, override_limit: null, current: 48, remaining: 4952, enforced: true, source: "global_default" },
-      schedules: { limit: 25, default_limit: 25, override_limit: null, current: 3, remaining: 22, enforced: true, source: "global_default" },
+      active_scan_jobs: { limit: 10, default_limit: 10, override_limit: null, current: 2, remaining: 8, enforced: true, source: "global_default", utilization_pct: 20, status: "ok", recommended_action: "Usage is within the enforced tenant quota." },
+      retained_scan_jobs: { limit: 100, default_limit: 100, override_limit: null, current: 12, remaining: 88, enforced: true, source: "global_default", utilization_pct: 12, status: "ok", recommended_action: "Usage is within the enforced tenant quota." },
+      fleet_agents: { limit: 5000, default_limit: 5000, override_limit: null, current: 48, remaining: 4952, enforced: true, source: "global_default", utilization_pct: 1, status: "ok", recommended_action: "Usage is within the enforced tenant quota." },
+      schedules: { limit: 25, default_limit: 25, override_limit: null, current: 3, remaining: 22, enforced: true, source: "global_default", utilization_pct: 12, status: "ok", recommended_action: "Usage is within the enforced tenant quota." },
     },
   },
   identity_provisioning: {
@@ -141,6 +141,11 @@ const policy: AuthPolicyResponse = {
       role_attribute: "agent_bom_role",
       tenant_attribute: "tenant_id",
       groups_required: false,
+      verified_idp_templates: [
+        { idp: "okta", status: "contract_tested", notes: "Okta lifecycle payloads are covered." },
+        { idp: "microsoft_entra_id", status: "contract_tested", notes: "Entra lifecycle payloads are covered." },
+        { idp: "google_cloud_identity", status: "contract_tested", notes: "Google lifecycle payloads are covered." },
+      ],
       message: "SCIM provisioning bootstrap is configured.",
     },
     session_revocation: {
@@ -189,6 +194,8 @@ describe("KeyLifecyclePanel", () => {
     expect(screen.getAllByText("Active scan jobs").length).toBeGreaterThan(0);
     expect(screen.getByText("5000")).toBeInTheDocument();
     expect(screen.getByText("Current 48 · Remaining 4952")).toBeInTheDocument();
+    expect(screen.getAllByText("ok").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Usage is within the enforced tenant quota.").length).toBeGreaterThan(0);
     expect(screen.getByText("Override management")).toBeInTheDocument();
     expect(screen.getByText("Manage overrides at /v1/auth/quota.")).toBeInTheDocument();
     expect(screen.getAllByText("Global default").length).toBeGreaterThan(0);

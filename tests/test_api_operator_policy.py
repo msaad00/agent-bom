@@ -205,12 +205,20 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["limit"] >= 1
     assert body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["source"] == "global_default"
     assert body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["override_limit"] is None
+    assert body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["status"] in {"ok", "near_limit", "at_limit", "unlimited"}
+    assert body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["utilization_pct"] is not None
+    assert "recommended_action" in body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]
     assert body["identity_provisioning"]["oidc"]["mode"] == "disabled"
     assert body["identity_provisioning"]["saml"]["configured"] is False
     assert body["identity_provisioning"]["scim"]["status"] == "disabled"
     assert body["identity_provisioning"]["scim"]["supported"] is True
     assert body["identity_provisioning"]["scim"]["base_path"] == "/scim/v2"
     assert body["identity_provisioning"]["scim"]["token_configured"] is False
+    assert {entry["idp"] for entry in body["identity_provisioning"]["scim"]["verified_idp_templates"]} == {
+        "okta",
+        "microsoft_entra_id",
+        "google_cloud_identity",
+    }
     assert "service_keys" in body["identity_provisioning"]["session_revocation"]
 
 

@@ -194,6 +194,15 @@ For horizontally scaled control-plane APIs, shared rate limiting is mandatory. `
 
 For horizontally scaled SCIM, shared identity storage is also mandatory. Set `AGENT_BOM_POSTGRES_URL` for EKS or any multi-replica control plane, and keep `AGENT_BOM_REQUIRE_SHARED_SCIM_STORE=1` enabled in production values. SQLite is acceptable only for a single-node pilot.
 
+API-local filesystem scan endpoints are meant for workstation pilots. In EKS
+and other shared control planes, keep `AGENT_BOM_API_LOCAL_PATH_SCANS=disabled`
+and collect filesystem evidence through endpoint agents or mounted tenant
+workspaces. If a single-tenant deployment must enable API-local scans, set
+`AGENT_BOM_API_SCAN_ROOT` to the tenant workspace mount; paths are still
+relative-only, resolved through symlinks, confined to that root, and rejected
+when owned outside the API process unless `AGENT_BOM_API_SCAN_ALLOW_FOREIGN_OWNER=1`
+is explicitly set.
+
 For secret lifecycle posture, production deployments should declare the external
 secret authority and rotation metadata without exposing secret values:
 

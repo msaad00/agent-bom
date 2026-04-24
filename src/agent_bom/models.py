@@ -13,10 +13,11 @@ if TYPE_CHECKING:
 
 from agent_bom.advisory_sources import merge_advisory_sources
 from agent_bom.package_utils import (
-    host_matches_domain as _host_matches_domain,
+    canonical_package_key,
+    normalize_package_name,
 )
 from agent_bom.package_utils import (
-    normalize_package_name,
+    host_matches_domain as _host_matches_domain,
 )
 from agent_bom.package_utils import parse_debian_source_name as parse_debian_source_name  # noqa: F401
 from agent_bom.package_utils import (
@@ -357,8 +358,7 @@ class Package:
         import uuid as _uuid
 
         _ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
-        purl = self.purl or f"pkg:{self.ecosystem}/{self.name}@{self.version}"
-        fingerprint = f"package:{purl.lower().strip()}"
+        fingerprint = f"package:{canonical_package_key(self.name, self.version, self.ecosystem, self.purl)}"
         return str(_uuid.uuid5(_ns, fingerprint))
 
     @property

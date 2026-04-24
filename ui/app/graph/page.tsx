@@ -28,7 +28,7 @@ import {
   type FilterState,
 } from "@/components/lineage-filter";
 import { lineageNodeTypes, type LineageNodeData, type LineageNodeType } from "@/components/lineage-nodes";
-import { applyDagreLayout } from "@/lib/dagre-layout";
+import { useDagreLayout } from "@/lib/use-dagre-layout";
 import {
   EntityType,
   RelationshipType,
@@ -464,19 +464,13 @@ export default function GraphPage() {
     [flow.nodes],
   );
 
-  const { nodes: layoutNodes, edges: layoutEdges } = useMemo(
-    () =>
-      flow.nodes.length > 0
-        ? applyDagreLayout(flow.nodes, flow.edges, {
-            direction: filters.agentName || filters.vulnOnly ? "TB" : "LR",
-            nodeWidth: filters.agentName ? 208 : 188,
-            nodeHeight: 72,
-            rankSep: filters.agentName ? 118 : 104,
-            nodeSep: filters.agentName ? 22 : 28,
-          })
-        : { nodes: [], edges: [] },
-    [flow.nodes, flow.edges, filters.agentName, filters.vulnOnly],
-  );
+  const { nodes: layoutNodes, edges: layoutEdges } = useDagreLayout(flow.nodes, flow.edges, {
+    direction: filters.agentName || filters.vulnOnly ? "TB" : "LR",
+    nodeWidth: filters.agentName ? 208 : 188,
+    nodeHeight: 72,
+    rankSep: filters.agentName ? 118 : 104,
+    nodeSep: filters.agentName ? 22 : 28,
+  });
 
   const connectedIds = useMemo(
     () => (hoveredNodeId ? getConnectedIds(hoveredNodeId, layoutEdges) : null),

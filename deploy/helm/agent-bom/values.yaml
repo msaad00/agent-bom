@@ -301,7 +301,9 @@ controlPlane:
       - 0.0.0.0
       - --port
       - "8422"
-    env: []
+    env:
+      - name: AGENT_BOM_API_LOCAL_PATH_SCANS
+        value: "disabled"
     envFrom: []
     extraVolumes: []
     extraVolumeMounts: []

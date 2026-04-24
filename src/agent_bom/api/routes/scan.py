@@ -24,12 +24,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
+from werkzeug.security import safe_join
 
 from agent_bom.api.models import (
     BrowserExtensionsRequest,
@@ -54,30 +57,77 @@ from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retain
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
+_LOCAL_SCAN_DISABLE_VALUES = {"0", "false", "no", "off", "disabled"}
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
 
+def _api_local_scans_enabled() -> bool:
+    configured = os.getenv("AGENT_BOM_API_LOCAL_PATH_SCANS", os.getenv("AGENT_BOM_ENABLE_LOCAL_PATH_SCANS", "enabled"))
+    return configured.strip().lower() not in _LOCAL_SCAN_DISABLE_VALUES
+
+
+def _api_scan_root() -> Path:
+    """Return the configured API filesystem scan root.
+
+    Workstation pilots keep the historical default of ``$HOME``. Shared
+    control-plane deployments should set ``AGENT_BOM_API_SCAN_ROOT`` to a
+    tenant workspace mount, or disable these endpoints and scan via endpoint
+    agents instead.
+    """
+    configured = os.getenv("AGENT_BOM_API_SCAN_ROOT", "").strip()
+    root = Path(configured).expanduser() if configured else Path.home()
+    try:
+        resolved = root.resolve()
+    except (OSError, RuntimeError) as exc:
+        from agent_bom.security import SecurityError
+
+        raise SecurityError("Configured scan root is not available") from exc
+    if not resolved.exists() or not resolved.is_dir():
+        from agent_bom.security import SecurityError
+
+        raise SecurityError("Configured scan root is not available")
+    return resolved
+
+
+def _enforce_api_scan_path_owner(resolved: Path, root: Path) -> None:
+    """Reject paths not owned by the API process unless explicitly allowed."""
+    if os.getenv("AGENT_BOM_API_SCAN_ALLOW_FOREIGN_OWNER", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return
+    if os.name == "nt":
+        return
+    from agent_bom.security import SecurityError
+
+    try:
+        uid = os.getuid()
+        root_stat = root.stat()
+        path_stat = resolved.stat()
+    except OSError as exc:
+        raise SecurityError("Path is not available") from exc
+    if root_stat.st_uid != uid or path_stat.st_uid != uid:
+        raise SecurityError("Path owner is outside the API scan boundary")
+
+
 def _sanitize_api_path(user_path: str) -> str:
     """Validate and sanitize a user-supplied path from an API request.
 
-    Interprets ``user_path`` as relative to the current user's home directory
+    Interprets ``user_path`` as relative to the configured API scan root
     (absolute paths are rejected). The resolved path is normalised, has any
-    symlinks resolved, and is verified to remain within the home directory
+    symlinks resolved, and is verified to remain within the scan root
     using ``os.path.commonpath`` before being returned.
     """
-    import os
-    from pathlib import Path
-
     from agent_bom.security import SecurityError
+
+    if not _api_local_scans_enabled():
+        raise SecurityError("Local filesystem scan endpoints are disabled")
 
     # Normalise basic whitespace
     user_path = (user_path or "").strip()
     if not user_path:
         raise SecurityError("Empty paths are not allowed")
 
-    # 1. Reject absolute paths — API callers must use paths relative to $HOME
+    # 1. Reject absolute paths — API callers must use paths relative to the scan root.
     if os.path.isabs(user_path):
         raise SecurityError(f"Absolute paths are not allowed: {user_path}")
 
@@ -86,19 +136,35 @@ def _sanitize_api_path(user_path: str) -> str:
         raise SecurityError(f"Path traversal not allowed: {user_path}")
 
     # 3. Compute fixed root and join user path under it
-    home = os.path.realpath(str(Path.home()))
-    # Normalise the user-provided relative path before joining
-    relative = os.path.normpath(user_path)
-    candidate = os.path.join(home, relative)
+    scan_root = _api_scan_root()
+    root = os.path.realpath(str(scan_root))
+    candidate = safe_join(root, user_path)
+    if candidate is None:
+        raise SecurityError("Path resolves outside configured scan root")
 
     # 4. Resolve to real absolute path (follows symlinks)
-    resolved = os.path.realpath(candidate)
+    try:
+        resolved_path = Path(candidate).resolve(strict=True)
+    except OSError as exc:
+        raise SecurityError("Path does not exist inside configured scan root") from exc
 
-    # 5. Containment check — ensure resolved path stays within $HOME
-    if os.path.commonpath([home, resolved]) != home:
-        raise SecurityError(f"Path resolves outside home directory: {user_path}")
+    # 5. Containment check — ensure resolved path stays within the configured root.
+    if os.path.commonpath([root, os.path.realpath(str(resolved_path))]) != root:
+        raise SecurityError("Path resolves outside configured scan root")
 
-    return resolved
+    _enforce_api_scan_path_owner(resolved_path, scan_root)
+
+    return str(resolved_path)
+
+
+def _api_scan_path_or_400(user_path: str) -> str:
+    from agent_bom.security import SecurityError
+
+    try:
+        return _sanitize_api_path(user_path)
+    except SecurityError as exc:
+        _logger.warning("blocked local API scan path: %s", exc)
+        raise HTTPException(status_code=400, detail="Invalid scan path") from exc
 
 
 def _dataclass_to_dict(obj: object) -> object:
@@ -562,23 +628,15 @@ async def scan_dataset_cards(request: DatasetCardsRequest) -> dict:
     Returns dataset metadata, license info, and security flags
     (unlicensed data, missing cards, unversioned data, remote sources).
     """
-    import os
-    from pathlib import Path
-
     from agent_bom.parsers.dataset_cards import scan_dataset_directory
-    from agent_bom.security import SecurityError
 
-    home = os.path.realpath(str(Path.home()))
     results = []
     safe_dirs = []
     for d in request.directories:
-        resolved = _sanitize_api_path(d)
-        if os.path.commonpath([home, resolved]) == home:
-            safe_dirs.append(resolved)
-            result = scan_dataset_directory(resolved)
-            results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
-        else:
-            raise SecurityError(f"Path escapes safe root: {d}")
+        resolved = _api_scan_path_or_400(d)
+        safe_dirs.append(resolved)
+        result = scan_dataset_directory(resolved)
+        results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
 
     return {"scan_type": "dataset-cards", "directories": safe_dirs, "results": results}
 
@@ -590,23 +648,15 @@ async def scan_training_pipelines(request: TrainingPipelinesRequest) -> dict:
     Detects MLflow runs, W&B metadata, Kubeflow pipeline definitions.
     Flags unsafe serialization (pickle), missing provenance, exposed credentials.
     """
-    import os
-    from pathlib import Path
-
     from agent_bom.parsers.training_pipeline import scan_training_directory
-    from agent_bom.security import SecurityError
 
-    home = os.path.realpath(str(Path.home()))
     results = []
     safe_dirs = []
     for d in request.directories:
-        resolved = _sanitize_api_path(d)
-        if os.path.commonpath([home, resolved]) == home:
-            safe_dirs.append(resolved)
-            result = scan_training_directory(resolved)
-            results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
-        else:
-            raise SecurityError(f"Path escapes safe root: {d}")
+        resolved = _api_scan_path_or_400(d)
+        safe_dirs.append(resolved)
+        result = scan_training_directory(resolved)
+        results.append(result.to_dict() if hasattr(result, "to_dict") else _dataclass_to_dict(result))
 
     return {"scan_type": "training-pipelines", "directories": safe_dirs, "results": results}
 
@@ -664,27 +714,16 @@ async def scan_prompts(request: PromptScanRequest) -> dict:
     Detects prompt injection, jailbreak patterns, hardcoded API keys,
     shell execution instructions, and data exfiltration patterns.
     """
-    import os
-    from pathlib import Path
-
     from agent_bom.parsers.prompt_scanner import scan_prompt_files
-    from agent_bom.security import SecurityError
 
-    home = os.path.realpath(str(Path.home()))
     safe_dirs: list[Path] = []
     all_paths: list[Path] = []
     for d in request.directories:
-        resolved = _sanitize_api_path(d)
-        if os.path.commonpath([home, resolved]) == home:
-            safe_dirs.append(Path(resolved))
-        else:
-            raise SecurityError(f"Path escapes safe root: {d}")
+        resolved = _api_scan_path_or_400(d)
+        safe_dirs.append(Path(resolved))
     for f in request.files:
-        resolved = _sanitize_api_path(f)
-        if os.path.commonpath([home, resolved]) == home:
-            all_paths.append(Path(resolved))
-        else:
-            raise SecurityError(f"Path escapes safe root: {f}")
+        resolved = _api_scan_path_or_400(f)
+        all_paths.append(Path(resolved))
 
     results = []
     for safe in safe_dirs:
@@ -704,27 +743,19 @@ async def scan_model_files_endpoint(request: ModelFilesRequest) -> dict:
     Detects pickle deserialization risks (.pkl, .pt), verifies file integrity,
     and flags unsafe model formats.
     """
-    import os
-    from pathlib import Path
-
     from agent_bom.model_files import scan_model_files, scan_model_manifests, verify_model_hash
-    from agent_bom.security import SecurityError
 
-    home = os.path.realpath(str(Path.home()))
     all_files = []
     all_manifests = []
     all_warnings = []
     for d in request.directories:
-        resolved = _sanitize_api_path(d)
-        if os.path.commonpath([home, resolved]) == home:
-            files, warnings = scan_model_files(resolved)
-            manifests, manifest_warnings = scan_model_manifests(resolved)
-            all_files.extend(files)
-            all_manifests.extend(manifests)
-            all_warnings.extend(warnings)
-            all_warnings.extend(manifest_warnings)
-        else:
-            raise SecurityError(f"Path escapes safe root: {d}")
+        resolved = _api_scan_path_or_400(d)
+        files, warnings = scan_model_files(resolved)
+        manifests, manifest_warnings = scan_model_manifests(resolved)
+        all_files.extend(files)
+        all_manifests.extend(manifests)
+        all_warnings.extend(warnings)
+        all_warnings.extend(manifest_warnings)
 
     if request.verify_hashes:
         for f in all_files:

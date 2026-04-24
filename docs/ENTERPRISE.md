@@ -107,6 +107,12 @@ Rate limiting also follows an explicit fail-closed contract for scaled control p
 - multi-replica API or `AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1`: PostgreSQL-backed shared limiter is required
 - if shared rate limiting is required and `AGENT_BOM_POSTGRES_URL` is absent or broken, API startup now fails instead of silently falling back to process-local state
 
+API-local filesystem scans follow the same pilot-vs-control-plane split:
+
+- workstation pilot: relative paths under the API process home are allowed by default
+- EKS/shared control plane: Helm disables API-local filesystem scans by default with `AGENT_BOM_API_LOCAL_PATH_SCANS=disabled`
+- explicit single-tenant enablement: set `AGENT_BOM_API_SCAN_ROOT` to a mounted tenant workspace; the API still rejects absolute paths, traversal, symlink escapes, missing paths, and foreign-owned paths unless explicitly overridden
+
 Implementation source: `src/agent_bom/api/middleware.py`, `src/agent_bom/api/oidc.py`
 
 ## Storage Compatibility

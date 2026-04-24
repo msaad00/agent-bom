@@ -6,7 +6,7 @@ import {
   ReactFlow, Background, Controls, MiniMap, type Node, type Edge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { applyDagreLayout } from "@/lib/dagre-layout";
+import { useDagreLayout } from "@/lib/use-dagre-layout";
 import { ArrowLeft, Loader2, AlertTriangle } from "lucide-react";
 import { api, type ScanJob } from "@/lib/api";
 import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nodes";
@@ -38,12 +38,13 @@ export function ScanMeshView({ id }: { id: string }) {
     return { rawNodes: nodes, rawEdges: edges, stats };
   }, [job]);
 
-  const { nodes: layoutNodes, edges: layoutEdges } = useMemo(
-    () => rawNodes.length > 0
-      ? applyDagreLayout(rawNodes, rawEdges, { direction: "LR", nodeWidth: 200, nodeHeight: 70, rankSep: 140, nodeSep: 25 })
-      : { nodes: [] as Node[], edges: [] as Edge[] },
-    [rawNodes, rawEdges]
-  );
+  const { nodes: layoutNodes, edges: layoutEdges } = useDagreLayout(rawNodes, rawEdges, {
+    direction: "LR",
+    nodeWidth: 200,
+    nodeHeight: 70,
+    rankSep: 140,
+    nodeSep: 25,
+  });
 
   const connectedIds = useMemo(() => (hoveredNodeId ? getConnectedIds(hoveredNodeId, layoutEdges) : null), [hoveredNodeId, layoutEdges]);
 

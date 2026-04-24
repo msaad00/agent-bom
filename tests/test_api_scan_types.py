@@ -429,3 +429,48 @@ def test_sanitize_resolves_relative_to_home(tmp_path, monkeypatch):
 
     result = _sanitize_api_path("projects")
     assert result == os.path.realpath(str(subdir))
+
+
+def test_sanitize_respects_configured_scan_root(tmp_path, monkeypatch):
+    """_sanitize_api_path uses AGENT_BOM_API_SCAN_ROOT instead of service $HOME when set."""
+    import os
+
+    from agent_bom.api.server import _sanitize_api_path
+
+    scan_root = tmp_path / "tenant-workspace"
+    project = scan_root / "projects"
+    project.mkdir(parents=True)
+    monkeypatch.setenv("AGENT_BOM_API_SCAN_ROOT", str(scan_root))
+
+    result = _sanitize_api_path("projects")
+
+    assert result == os.path.realpath(str(project))
+
+
+def test_sanitize_can_disable_local_path_scans(tmp_path, monkeypatch):
+    """Enterprise control planes can disable API-local filesystem scans."""
+    import pytest
+
+    from agent_bom.api.server import _sanitize_api_path
+    from agent_bom.security import SecurityError
+
+    scan_root = tmp_path / "tenant-workspace"
+    scan_root.mkdir()
+    monkeypatch.setenv("AGENT_BOM_API_SCAN_ROOT", str(scan_root))
+    monkeypatch.setenv("AGENT_BOM_API_LOCAL_PATH_SCANS", "disabled")
+
+    with pytest.raises(SecurityError, match="disabled"):
+        _sanitize_api_path(".")
+
+
+def test_endpoint_returns_generic_invalid_scan_path(tmp_path, monkeypatch):
+    """Scan endpoints must not echo server filesystem details on path rejection."""
+    client, _ = _fresh_client()
+    scan_root = tmp_path / "tenant-workspace"
+    scan_root.mkdir()
+    monkeypatch.setenv("AGENT_BOM_API_SCAN_ROOT", str(scan_root))
+
+    resp = client.post("/v1/scan/dataset-cards", json={"directories": ["missing"]})
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"] == "Invalid scan path"

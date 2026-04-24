@@ -42,7 +42,7 @@ from agent_bom.nist_csf import tag_blast_radius as tag_nist_csf
 from agent_bom.owasp import tag_blast_radius
 from agent_bom.owasp_agentic import tag_blast_radius as tag_owasp_agentic
 from agent_bom.owasp_mcp import tag_blast_radius as tag_owasp_mcp
-from agent_bom.package_utils import normalize_package_name
+from agent_bom.package_utils import canonical_package_identity, canonical_package_key, normalize_package_name
 from agent_bom.scanners.blast_radius import _HOP_RISK_FACTORS, expand_blast_radius_hops
 from agent_bom.scanners.osv import candidate_package_names as _candidate_package_names
 from agent_bom.scanners.osv import enrich_results_if_needed as _enrich_results_if_needed_impl
@@ -438,8 +438,7 @@ def deduplicate_packages(packages: list) -> list:
         name = getattr(pkg, "name", "") or ""
         ecosystem = getattr(pkg, "ecosystem", "") or ""
         version = getattr(pkg, "version", "") or ""
-        norm_name = normalize_package_name(name, ecosystem)
-        key = (ecosystem.lower(), norm_name, version.lower())
+        key = canonical_package_identity(name, version, ecosystem, getattr(pkg, "purl", None))
         if key not in seen:
             seen.add(key)
             result.append(pkg)
@@ -965,7 +964,7 @@ async def scan_agents(
         console.print("\n[bold blue]🛡️  Scanning for vulnerabilities...[/bold blue]\n")
 
     def _pkg_key(pkg: Package) -> str:
-        return f"{pkg.ecosystem.lower()}:{normalize_package_name(pkg.name, pkg.ecosystem)}@{pkg.version}"
+        return canonical_package_key(pkg.name, pkg.version, pkg.ecosystem, pkg.purl)
 
     # Collect all unique packages
     all_packages = []

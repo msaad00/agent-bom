@@ -17,6 +17,7 @@ from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
 from agent_bom.graph.severity import SEVERITY_RISK_SCORE
 from agent_bom.graph.types import EntityType, RelationshipType
+from agent_bom.package_utils import canonical_package_key, normalize_package_name
 
 try:
     from agent_bom.constants import is_credential_key as _is_credential_key
@@ -157,7 +158,8 @@ def build_unified_graph_from_report(
                 pkg_name = pkg_dict.get("name", "unknown")
                 pkg_version = pkg_dict.get("version", "")
                 ecosystem = pkg_dict.get("ecosystem", "")
-                pkg_id = f"pkg:{pkg_name}:{ecosystem}:{pkg_version}"
+                pkg_id = _package_node_id(pkg_dict)
+                package_evidence = _package_evidence(pkg_dict, data_source_tag)
 
                 graph.add_node(
                     UnifiedNode(
@@ -181,19 +183,23 @@ def build_unified_graph_from_report(
                     )
                 )
                 package_name_to_ids[pkg_name].append(pkg_id)
+                normalized_pkg_name = normalize_package_name(pkg_name, ecosystem)
+                if normalized_pkg_name != pkg_name:
+                    package_name_to_ids[normalized_pkg_name].append(pkg_id)
                 graph.add_edge(
                     UnifiedEdge(
                         source=srv_id,
                         target=pkg_id,
                         relationship=RelationshipType.DEPENDS_ON,
+                        evidence=package_evidence,
                     )
                 )
-                pkg_key = f"{ecosystem}:{pkg_name}:{pkg_version}"
+                pkg_key = _package_graph_key(pkg_name, pkg_version, ecosystem, pkg_dict.get("purl"))
                 pkg_key_to_servers[pkg_key].append(srv_id)
 
                 # ── Package-level vulnerabilities ──
                 for vuln_dict in pkg_dict.get("vulnerabilities", []):
-                    _add_vuln_node(graph, vuln_dict, pkg_id, data_source_tag)
+                    _add_vuln_node(graph, vuln_dict, pkg_id, data_source_tag, package_evidence)
 
             # ── Tools ──
             for tool_dict in srv_dict.get("tools", []):
@@ -285,7 +291,7 @@ def build_unified_graph_from_report(
 
         # Link package → vulnerability
         if pkg_name:
-            pkg_id = f"pkg:{pkg_name}:{ecosystem}:{pkg_version}"
+            pkg_id = _package_node_id_from_parts(pkg_name, pkg_version, ecosystem, br_dict.get("package_purl") or br_dict.get("purl"))
             if graph.has_node(pkg_id):
                 graph.add_edge(
                     UnifiedEdge(
@@ -293,6 +299,7 @@ def build_unified_graph_from_report(
                         target=vuln_node_id,
                         relationship=RelationshipType.VULNERABLE_TO,
                         weight=SEVERITY_RISK_SCORE.get(severity, 1.0),
+                        evidence=_blast_radius_package_evidence(br_dict, data_source_tag),
                     )
                 )
 
@@ -313,7 +320,7 @@ def build_unified_graph_from_report(
                     target=vuln_node_id,
                     relationship=RelationshipType.VULNERABLE_TO,
                     weight=SEVERITY_RISK_SCORE.get(severity, 1.0),
-                    evidence={"package": br_dict.get("package", "")},
+                    evidence=_blast_radius_package_evidence(br_dict, data_source_tag),
                 )
             )
 
@@ -716,6 +723,7 @@ def _add_vuln_node(
     vuln_dict: dict[str, Any],
     pkg_id: str,
     data_source: str,
+    package_evidence: dict[str, Any] | None = None,
 ) -> None:
     """Add a vulnerability node and link it to its package."""
     vuln_id_str = vuln_dict.get("id", "")
@@ -746,6 +754,7 @@ def _add_vuln_node(
             target=vuln_node_id,
             relationship=RelationshipType.VULNERABLE_TO,
             weight=SEVERITY_RISK_SCORE.get(severity, 1.0),
+            evidence=package_evidence or {"source": data_source},
         )
     )
 
@@ -780,7 +789,7 @@ def _resolve_affected_server_ids(
     """
     candidate_ids: set[str] = set()
     if pkg_name:
-        pkg_key = f"{ecosystem}:{pkg_name}:{pkg_version}"
+        pkg_key = _package_graph_key(pkg_name, pkg_version, ecosystem, br_dict.get("package_purl") or br_dict.get("purl"))
         candidate_ids.update(pkg_key_to_servers.get(pkg_key, []))
 
     server_names = {name for name in (_normalize_server_name(server) for server in br_dict.get("affected_servers", [])) if name}
@@ -798,6 +807,85 @@ def _resolve_affected_server_ids(
         candidate_ids = (candidate_ids & agent_ids) if candidate_ids else agent_ids
 
     return sorted(candidate_ids)
+
+
+def _package_graph_key(name: str, version: str, ecosystem: str, purl: str | None = None) -> str:
+    return canonical_package_key(name, version, ecosystem, purl)
+
+
+def _package_node_id(pkg_dict: dict[str, Any]) -> str:
+    return _package_node_id_from_parts(
+        str(pkg_dict.get("name", "unknown") or "unknown"),
+        str(pkg_dict.get("version", "") or ""),
+        str(pkg_dict.get("ecosystem", "") or ""),
+        pkg_dict.get("purl"),
+    )
+
+
+def _package_node_id_from_parts(name: str, version: str, ecosystem: str, purl: str | None = None) -> str:
+    return f"pkg:{_package_graph_key(name, version, ecosystem, purl)}"
+
+
+def _package_evidence(pkg_dict: dict[str, Any], data_source_tag: str) -> dict[str, Any]:
+    """Build bounded provenance evidence for package graph edges."""
+    occurrences = pkg_dict.get("occurrences", [])
+    if not isinstance(occurrences, list):
+        occurrences = []
+    normalized_occurrences: list[dict[str, Any]] = []
+    for occurrence in occurrences[:10]:
+        if not isinstance(occurrence, dict):
+            continue
+        item = {
+            key: occurrence.get(key)
+            for key in (
+                "layer_index",
+                "layer_id",
+                "layer_path",
+                "package_path",
+                "created_by",
+                "dockerfile_instruction",
+                "source_file",
+                "line",
+                "parser",
+            )
+            if occurrence.get(key) not in (None, "")
+        }
+        if item:
+            normalized_occurrences.append(item)
+
+    evidence = {
+        "source": data_source_tag,
+        "package": pkg_dict.get("name", ""),
+        "version": pkg_dict.get("version", ""),
+        "ecosystem": pkg_dict.get("ecosystem", ""),
+        "purl": pkg_dict.get("purl", ""),
+        "stable_id": pkg_dict.get("stable_id", ""),
+        "source_package": pkg_dict.get("source_package", ""),
+        "version_source": pkg_dict.get("version_source", ""),
+        "occurrence_count": pkg_dict.get("occurrence_count", len(occurrences)),
+        "occurrences": normalized_occurrences,
+    }
+    introduced = pkg_dict.get("introduced_in_layer")
+    if isinstance(introduced, dict):
+        evidence["introduced_in_layer"] = {
+            key: introduced.get(key)
+            for key in ("layer_index", "layer_id", "layer_path", "package_path", "created_by", "dockerfile_instruction")
+            if introduced.get(key) not in (None, "")
+        }
+    return {key: value for key, value in evidence.items() if value not in (None, "", [])}
+
+
+def _blast_radius_package_evidence(br_dict: dict[str, Any], data_source_tag: str) -> dict[str, Any]:
+    evidence = {
+        "source": data_source_tag,
+        "package": br_dict.get("package", ""),
+        "package_name": br_dict.get("package_name", ""),
+        "package_version": br_dict.get("package_version", ""),
+        "package_stable_id": br_dict.get("package_stable_id", ""),
+        "purl": br_dict.get("package_purl") or br_dict.get("purl", ""),
+        "reachability": br_dict.get("reachability", ""),
+    }
+    return {key: value for key, value in evidence.items() if value not in (None, "", [])}
 
 
 def _collect_compliance_tags(br_dict: dict[str, Any]) -> list[str]:

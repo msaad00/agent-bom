@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from agent_bom.models import Package
+from agent_bom.package_utils import canonical_package_key
 from agent_bom.sbom import parse_sbom_document
 
 HISTORY_DIR = Path.home() / ".agent-bom" / "history"
@@ -273,7 +274,12 @@ def _get_inventory_snapshot(report: dict) -> dict:
                 if server_id and resource_id:
                     relationships.append({"from": server_id, "to": resource_id, "type": "exposes_resource"})
             for pkg in server.get("packages", []):
-                pkg_id = pkg.get("stable_id") or f"{pkg.get('ecosystem', 'unknown')}:{pkg.get('name', '')}@{pkg.get('version', '')}"
+                pkg_id = pkg.get("stable_id") or canonical_package_key(
+                    str(pkg.get("name", "") or ""),
+                    str(pkg.get("version", "") or ""),
+                    str(pkg.get("ecosystem", "unknown") or "unknown"),
+                    str(pkg.get("purl", "") or "") or None,
+                )
                 if pkg_id and pkg_id not in seen_packages:
                     packages.append({"id": pkg_id, "name": pkg.get("name", ""), "version": pkg.get("version", "")})
                     seen_packages.add(pkg_id)

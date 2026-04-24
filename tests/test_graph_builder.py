@@ -159,13 +159,50 @@ class TestBuildUnifiedGraphFromReport:
 
     def test_package_to_vuln_edge(self):
         g = build_unified_graph_from_report(_minimal_report())
-        pkg_id = "pkg:express:npm:4.18.0"
+        pkg_id = "pkg:npm:express@4.18.0"
         vuln_id = "vuln:CVE-2024-1234"
         assert g.has_edge(pkg_id, vuln_id)
 
     def test_server_to_package_edge(self):
         g = build_unified_graph_from_report(_minimal_report())
-        assert g.has_edge("server:claude-desktop:mcp-fs", "pkg:express:npm:4.18.0")
+        assert g.has_edge("server:claude-desktop:mcp-fs", "pkg:npm:express@4.18.0")
+
+    def test_package_edges_include_discovery_provenance(self):
+        report = _minimal_report()
+        report["agents"][0]["mcp_servers"][0]["packages"][0]["purl"] = "pkg:npm/express@4.18.0"
+        report["agents"][0]["mcp_servers"][0]["packages"][0]["occurrences"] = [
+            {
+                "layer_index": 2,
+                "layer_id": "sha256:abc",
+                "package_path": "app/package-lock.json",
+                "source_file": "package-lock.json",
+                "line": 42,
+                "parser": "npm-lock",
+            }
+        ]
+        report["agents"][0]["mcp_servers"][0]["packages"][0]["occurrence_count"] = 1
+        g = build_unified_graph_from_report(report)
+
+        edge = next(e for e in g.edges if e.source == "server:claude-desktop:mcp-fs" and e.target == "pkg:npm:express@4.18.0")
+        assert edge.evidence["source"] == "mcp-scan"
+        assert edge.evidence["purl"] == "pkg:npm/express@4.18.0"
+        assert edge.evidence["occurrences"][0]["package_path"] == "app/package-lock.json"
+        assert edge.evidence["occurrences"][0]["line"] == 42
+
+    def test_package_node_id_uses_canonical_identity(self):
+        report = _minimal_report()
+        report["agents"][0]["mcp_servers"][0]["packages"][0]["name"] = "torch_audio"
+        report["agents"][0]["mcp_servers"][0]["packages"][0]["ecosystem"] = "PyPI"
+        report["agents"][0]["mcp_servers"][0]["packages"][0]["version"] = "1.0.0"
+        report["agents"][0]["mcp_servers"][0]["packages"][0]["purl"] = "pkg:pypi/torch.audio@1.0.0"
+        report["blast_radius"][0]["package_name"] = "torch-audio"
+        report["blast_radius"][0]["package_version"] = "1.0.0"
+        report["blast_radius"][0]["ecosystem"] = "pypi"
+
+        g = build_unified_graph_from_report(report)
+
+        assert "pkg:pypi:torch-audio@1.0.0" in g.nodes
+        assert g.has_edge("pkg:pypi:torch-audio@1.0.0", "vuln:CVE-2024-1234")
 
     def test_agent_to_server_edge(self):
         g = build_unified_graph_from_report(_minimal_report())
@@ -218,7 +255,7 @@ class TestBuildUnifiedGraphFromReport:
 
     def test_dimensions_populated(self):
         g = build_unified_graph_from_report(_minimal_report())
-        pkg = g.nodes.get("pkg:express:npm:4.18.0")
+        pkg = g.nodes.get("pkg:npm:express@4.18.0")
         assert pkg is not None
         assert pkg.dimensions.ecosystem == "npm"
 
@@ -384,7 +421,7 @@ class TestSkillAuditNodes:
         assert "skill_audit:shell_access" in shell_node.compliance_tags
 
         assert g.has_edge("misconfig:skill_audit:shell_access:1", "agent:claude-desktop")
-        assert g.has_edge("misconfig:skill_audit:unknown_package:2", "pkg:express:npm:4.18.0")
+        assert g.has_edge("misconfig:skill_audit:unknown_package:2", "pkg:npm:express@4.18.0")
         assert g.has_edge("misconfig:skill_audit:unverified_server:3", "server:claude-desktop:mcp-fs")
         assert not g.has_edge("misconfig:skill_audit:unverified_server:3", "server:cursor:mcp-git")
 

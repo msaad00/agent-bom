@@ -26,7 +26,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { api, type JobListItem, type ScanJob } from "@/lib/api";
-import { applyDagreLayout } from "@/lib/dagre-layout";
+import { useDagreLayout } from "@/lib/use-dagre-layout";
 import {
   lineageNodeTypes,
   type LineageNodeData,
@@ -305,19 +305,13 @@ export default function ContextPage() {
     return { rawNodes: nodes, rawEdges: edges };
   }, [graphData, selectedAgent]);
 
-  const { nodes: layoutNodes, edges: layoutEdges } = useMemo(
-    () =>
-      rawNodes.length > 0
-        ? applyDagreLayout(rawNodes, rawEdges, {
-            direction: "LR",
-            nodeWidth: 200,
-            nodeHeight: 70,
-            rankSep: 140,
-            nodeSep: 25,
-          })
-        : { nodes: [] as Node[], edges: [] as Edge[] },
-    [rawNodes, rawEdges]
-  );
+  const { nodes: layoutNodes, edges: layoutEdges } = useDagreLayout(rawNodes, rawEdges, {
+    direction: "LR",
+    nodeWidth: 200,
+    nodeHeight: 70,
+    rankSep: 140,
+    nodeSep: 25,
+  });
 
   // Search highlighting
   const searchMatches = useMemo(

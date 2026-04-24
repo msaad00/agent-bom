@@ -130,6 +130,15 @@ def test_package_stable_id_uses_purl_when_available():
     assert p_different_purl.stable_id != p_without_purl.stable_id
 
 
+def test_package_stable_id_uses_canonical_package_identity():
+    """PyPI separator/case variants must not split scan history identity."""
+    p_hyphen = Package(name="torch-audio", version="1.0.0", ecosystem="pypi")
+    p_under = Package(name="torch_audio", version="1.0.0", ecosystem="pypi")
+    p_dot = Package(name="Torch.Audio", version="1.0.0", ecosystem="PyPI", purl="pkg:pypi/Torch.Audio@1.0.0")
+
+    assert p_hyphen.stable_id == p_under.stable_id == p_dot.stable_id
+
+
 # ---------------------------------------------------------------------------
 # MCPServer stable_id
 # ---------------------------------------------------------------------------

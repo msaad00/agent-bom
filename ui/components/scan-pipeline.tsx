@@ -29,7 +29,7 @@ import {
   Clock,
   SkipForward,
 } from "lucide-react";
-import { applyDagreLayout } from "@/lib/dagre-layout";
+import { useDagreLayout } from "@/lib/use-dagre-layout";
 import type { StepEvent, StepStatus } from "@/lib/api";
 import { PIPELINE_STEPS } from "@/lib/api";
 
@@ -193,7 +193,7 @@ interface ScanPipelineProps {
 }
 
 function ScanPipelineInner({ steps, className }: ScanPipelineProps) {
-  const { nodes, edges } = useMemo(() => {
+  const { rawNodes, rawEdges } = useMemo(() => {
     const rawNodes: Node[] = PIPELINE_STEPS?.map((step) => ({
       id: step.id,
       type: "pipelineStep",
@@ -234,14 +234,16 @@ function ScanPipelineInner({ steps, className }: ScanPipelineProps) {
       };
     });
 
-    return applyDagreLayout(rawNodes, rawEdges, {
-      direction: "LR",
-      nodeWidth: 190,
-      nodeHeight: 90,
-      rankSep: 50,
-      nodeSep: 20,
-    });
+    return { rawNodes, rawEdges };
   }, [steps]);
+
+  const { nodes, edges } = useDagreLayout(rawNodes, rawEdges, {
+    direction: "LR",
+    nodeWidth: 190,
+    nodeHeight: 90,
+    rankSep: 50,
+    nodeSep: 20,
+  });
 
   return (
     <div className={`h-[180px] ${className ?? ""}`}>

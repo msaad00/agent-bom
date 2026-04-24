@@ -4,7 +4,7 @@
  */
 
 import dagre from "@dagrejs/dagre";
-import { type Node, type Edge, Position } from "@xyflow/react";
+import { type Edge, type Node, type Position } from "@xyflow/react";
 
 export interface LayoutOptions {
   direction?: "LR" | "TB";
@@ -51,8 +51,8 @@ export function applyDagreLayout(
         x: pos.x - nodeWidth / 2,
         y: pos.y - nodeHeight / 2,
       },
-      sourcePosition: isHorizontal ? Position.Right : Position.Bottom,
-      targetPosition: isHorizontal ? Position.Left : Position.Top,
+      sourcePosition: (isHorizontal ? "right" : "bottom") as Position,
+      targetPosition: (isHorizontal ? "left" : "top") as Position,
     };
   });
 

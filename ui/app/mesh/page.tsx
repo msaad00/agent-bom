@@ -12,7 +12,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { ShieldAlert, Loader2, AlertTriangle, Search, SlidersHorizontal, Network, GitBranch } from "lucide-react";
 import { api, type JobListItem, type ScanJob } from "@/lib/api";
-import { applyDagreLayout } from "@/lib/dagre-layout";
+import { useDagreLayout } from "@/lib/use-dagre-layout";
 import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nodes";
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import { MeshStats } from "@/components/mesh-stats";
@@ -294,19 +294,13 @@ export default function MeshPage() {
     return { rawNodes: nodes, rawEdges: edges, stats };
   }, [activeResult, nodeFilter, severityFilter, selectedAgents, vulnerableOnly]);
 
-  const { nodes: layoutNodes, edges: layoutEdges } = useMemo(
-    () =>
-      rawNodes.length > 0
-        ? applyDagreLayout(rawNodes, rawEdges, {
-            direction: layoutMode,
-            nodeWidth: 200,
-            nodeHeight: 70,
-            rankSep: 140,
-            nodeSep: 25,
-          })
-        : { nodes: [] as Node[], edges: [] as Edge[] },
-    [rawNodes, rawEdges, layoutMode]
-  );
+  const { nodes: layoutNodes, edges: layoutEdges } = useDagreLayout(rawNodes, rawEdges, {
+    direction: layoutMode,
+    nodeWidth: 200,
+    nodeHeight: 70,
+    rankSep: 140,
+    nodeSep: 25,
+  });
 
   // Search highlighting
   const searchMatches = useMemo(

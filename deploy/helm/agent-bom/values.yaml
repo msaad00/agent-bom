@@ -1,16 +1,16 @@
 image:
   repository: agentbom/agent-bom
-  tag: "0.81.2"
+  tag: "0.81.3"
   pullPolicy: IfNotPresent
 
 uiImage:
   repository: agentbom/agent-bom-ui
-  tag: "0.81.2"
+  tag: "0.81.3"
   pullPolicy: IfNotPresent
 
 runtimeImage:
   repository: agentbom/agent-bom
-  tag: "0.81.2"
+  tag: "0.81.3"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []

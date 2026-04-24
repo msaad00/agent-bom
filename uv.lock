@@ -15,7 +15,7 @@ resolution-markers = [
 
 [[package]]
 name = "agent-bom"
-version = "0.81.2"
+version = "0.81.3"
 source = { editable = "." }
 dependencies = [
     { name = "click" },

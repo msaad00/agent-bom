@@ -13,6 +13,17 @@ Work targeting the next release.
 
 ---
 
+## [0.81.3] – 2026-04-23
+
+### Changed
+- **Deployment and runtime guidance** — the README, self-hosted EKS guide, endpoint fleet guide, and proxy-vs-gateway-vs-fleet guide now surface the current graph scale boundary, recommended self-hosted defaults, runtime deployment matrix, and discovery-confidence boundaries where operators actually make rollout decisions.
+
+### Fixed
+- **Graph overview regression guardrail** — the graph API test suite now locks the default `/v1/graph` overview path to the store-backed `page_nodes` / `edges_for_node_ids` / `snapshot_stats` flow so filtered paging cannot silently fall back to full `load_graph()` materialization.
+- **Docker Hub release sync** — the release workflow now uses a Docker Hub short description that stays under the registry API byte limit, preventing the `Publish to Docker Hub` job from failing after image push.
+
+---
+
 ## [0.81.2] – 2026-04-23
 
 ### Added

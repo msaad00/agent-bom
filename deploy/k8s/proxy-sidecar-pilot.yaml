@@ -109,7 +109,7 @@ spec:
               cpu: "500m"
 
         - name: agent-bom-proxy
-          image: agentbom/agent-bom:0.81.2
+          image: agentbom/agent-bom:0.81.3
           args:
             - "--policy"
             - "/etc/agent-bom/policy.json"

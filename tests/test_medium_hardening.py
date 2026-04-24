@@ -15,13 +15,14 @@ from unittest.mock import MagicMock, patch
 
 
 def test_create_client_default_redirects():
-    """create_client sets max_redirects=5 by default."""
+    """create_client disables redirect following by default."""
     import asyncio
 
     from agent_bom.http_client import create_client
 
     client = create_client()
-    assert client.max_redirects == 5
+    assert client.max_redirects == 0
+    assert client.follow_redirects is False
     asyncio.run(client.aclose())
 
 
@@ -36,14 +37,14 @@ def test_create_client_custom_redirects():
     asyncio.run(client.aclose())
 
 
-def test_create_client_follows_redirects():
-    """create_client enables follow_redirects."""
+def test_create_client_does_not_follow_redirects():
+    """Redirect following must be opt-in so SSRF validation cannot be bypassed."""
     import asyncio
 
     from agent_bom.http_client import create_client
 
     client = create_client()
-    assert client.follow_redirects is True
+    assert client.follow_redirects is False
     asyncio.run(client.aclose())
 
 

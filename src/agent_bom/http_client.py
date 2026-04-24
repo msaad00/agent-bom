@@ -94,7 +94,7 @@ def _jittered_wait(wait: float) -> float:
     return min(wait + random.uniform(0.0, wait * 0.1), MAX_BACKOFF)
 
 
-def create_client(timeout: float | None = None, max_redirects: int = 5) -> httpx.AsyncClient:
+def create_client(timeout: float | None = None, max_redirects: int = 0) -> httpx.AsyncClient:
     """Create an httpx.AsyncClient with connection-level retries.
 
     Uses httpx's built-in transport retry for connection failures (DNS, TCP reset).
@@ -102,7 +102,9 @@ def create_client(timeout: float | None = None, max_redirects: int = 5) -> httpx
 
     Args:
         timeout: Per-request timeout in seconds.
-        max_redirects: Maximum number of HTTP redirects to follow (default 5).
+        max_redirects: Maximum redirects available if a caller explicitly
+            enables redirects on a request. Redirect following is disabled by
+            default so SSRF validation cannot be bypassed by a Location header.
     """
     check_offline()
     from agent_bom.config import HTTP_DEFAULT_TIMEOUT
@@ -113,7 +115,7 @@ def create_client(timeout: float | None = None, max_redirects: int = 5) -> httpx
     return httpx.AsyncClient(
         timeout=timeout,
         transport=transport,
-        follow_redirects=True,
+        follow_redirects=False,
         max_redirects=max_redirects,
         verify=True,  # Explicit: always verify TLS certificates (defense-in-depth)
     )
@@ -234,7 +236,7 @@ async def request_with_retry(
 # cannot use asyncio (db/sync.py, parsers, cloud probes, CLI).
 
 
-def create_sync_client(timeout: float | None = None, max_redirects: int = 5) -> httpx.Client:
+def create_sync_client(timeout: float | None = None, max_redirects: int = 0) -> httpx.Client:
     """Create an httpx.Client (sync) with connection-level retries."""
     check_offline()
     from agent_bom.config import HTTP_DEFAULT_TIMEOUT
@@ -245,7 +247,7 @@ def create_sync_client(timeout: float | None = None, max_redirects: int = 5) -> 
     return httpx.Client(
         timeout=timeout,
         transport=transport,
-        follow_redirects=True,
+        follow_redirects=False,
         max_redirects=max_redirects,
         verify=True,
     )

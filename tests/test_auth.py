@@ -277,6 +277,12 @@ class TestKeyStore:
 
 
 class TestRotationPolicy:
+    def test_policy_default_overlap_is_zero(self, monkeypatch):
+        monkeypatch.delenv("AGENT_BOM_API_KEY_DEFAULT_OVERLAP_SECONDS", raising=False)
+        from agent_bom.api.auth import get_api_key_policy
+
+        assert get_api_key_policy().default_overlap_seconds == 0
+
     def test_normalize_overlap_uses_policy_default(self):
         policy = ApiKeyPolicy(default_overlap_seconds=300, max_overlap_seconds=3600)
         assert normalize_rotation_overlap_seconds(None, policy=policy) == 300

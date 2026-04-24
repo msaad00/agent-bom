@@ -126,6 +126,21 @@ def test_remaining_tenant_tables_have_rls():
         assert f"CREATE POLICY {table}_tenant_isolation ON {table}" in SQL
 
 
+def test_graph_tables_have_rls_policies():
+    for table in (
+        "graph_nodes",
+        "graph_edges",
+        "graph_snapshots",
+        "attack_paths",
+        "interaction_risks",
+        "graph_filter_presets",
+        "graph_node_search",
+    ):
+        assert f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY" in SQL
+        assert f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY" in SQL
+        assert f"CREATE POLICY {table}_tenant_isolation ON {table}" in SQL
+
+
 def test_schema_summary_comment_is_current():
     assert "--  Schema (21+ tables):" in SQL
     assert "--   api_rate_limits    — shared API rate-limiter buckets" in SQL

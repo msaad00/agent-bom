@@ -106,7 +106,8 @@ def _session_cookie_secure(request: Request) -> bool:
         return True
     if raw in {"0", "false", "no", "off"}:
         return False
-    forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip().lower()
+    trusted_proxy = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
+    forwarded_proto = request.headers.get("x-forwarded-proto", "").split(",", 1)[0].strip().lower() if trusted_proxy else ""
     return request.url.scheme == "https" or forwarded_proto == "https"
 
 
@@ -166,9 +167,10 @@ def _set_browser_session_cookie(
 
 
 def _clear_browser_session_cookie(response: Response, request: Request) -> None:
-    from agent_bom.api.browser_session import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME
+    from agent_bom.api.browser_session import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME, revoke_browser_session_token
 
     secure = _session_cookie_secure(request)
+    revoke_browser_session_token(request.cookies.get(SESSION_COOKIE_NAME, ""))
     response.delete_cookie(
         SESSION_COOKIE_NAME,
         httponly=True,

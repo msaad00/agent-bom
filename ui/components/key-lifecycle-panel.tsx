@@ -643,7 +643,21 @@ export function KeyLifecyclePanel({
 
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Identity lifecycle</p>
-            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+              <BoundaryCard
+                title="OIDC browser / bearer"
+                body={policy.identity_provisioning.oidc.message}
+                detail={`${formatModeLabel(policy.identity_provisioning.oidc.mode)} · ${policy.identity_provisioning.oidc.provider_count} issuer${
+                  policy.identity_provisioning.oidc.provider_count === 1 ? "" : "s"
+                } · ${policy.identity_provisioning.oidc.require_tenant_claim ? "tenant claim required" : "default tenant allowed"}`}
+              />
+              <BoundaryCard
+                title="SAML assertion exchange"
+                body={policy.identity_provisioning.saml.message}
+                detail={`${policy.identity_provisioning.saml.metadata_endpoint}${
+                  policy.identity_provisioning.saml.acs_path ? ` · ${policy.identity_provisioning.saml.acs_path}` : ""
+                } · ${formatSeconds(policy.identity_provisioning.saml.session_ttl_seconds)} session`}
+              />
               <BoundaryCard
                 title="SCIM provisioning"
                 body={policy.identity_provisioning.scim.message}

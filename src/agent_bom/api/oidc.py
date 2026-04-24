@@ -384,6 +384,11 @@ def oidc_enabled_from_env() -> bool:
     return bool(os.environ.get("AGENT_BOM_OIDC_ISSUER", "").strip() or os.environ.get("AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON", "").strip())
 
 
+def _issuer_host(value: str) -> str:
+    parsed = urlparse(value)
+    return parsed.netloc or parsed.path or value
+
+
 # ── OIDCConfig helper ──────────────────────────────────────────────────────────
 
 
@@ -590,3 +595,69 @@ class OIDCConfig:
                 providers[normalized_tenant] = provider
             return cls(tenant_providers=providers)
         return cls()
+
+
+def describe_oidc_posture() -> dict[str, object]:
+    """Return operator-facing OIDC posture for auth policy surfaces."""
+    try:
+        config = OIDCConfig.from_env()
+    except OIDCError as exc:
+        return {
+            "supported": True,
+            "configured": False,
+            "mode": "invalid",
+            "issuer_hosts": [],
+            "provider_count": 0,
+            "audience_configured": False,
+            "role_claim": None,
+            "tenant_claim": None,
+            "require_role_claim": False,
+            "require_tenant_claim": False,
+            "allow_default_tenant": False,
+            "required_nonce": False,
+            "message": str(exc),
+        }
+
+    if not config.enabled:
+        return {
+            "supported": True,
+            "configured": False,
+            "mode": "disabled",
+            "issuer_hosts": [],
+            "provider_count": 0,
+            "audience_configured": False,
+            "role_claim": None,
+            "tenant_claim": None,
+            "require_role_claim": False,
+            "require_tenant_claim": False,
+            "allow_default_tenant": False,
+            "required_nonce": False,
+            "message": (
+                "OIDC bearer auth is not configured. For browser access, the preferred production posture remains "
+                "same-origin reverse-proxy OIDC with trusted header injection."
+            ),
+        }
+
+    providers = list(config.tenant_providers.values()) if config.tenant_providers else [config]
+    primary = providers[0]
+    mode = "tenant_bound" if config.tenant_providers else "single_issuer"
+    issuer_hosts = sorted({_issuer_host(provider.issuer) for provider in providers if provider.issuer})
+    return {
+        "supported": True,
+        "configured": True,
+        "mode": mode,
+        "issuer_hosts": issuer_hosts,
+        "provider_count": len(providers),
+        "audience_configured": all(bool(provider.audience) for provider in providers),
+        "role_claim": primary.role_claim,
+        "tenant_claim": primary.tenant_claim,
+        "require_role_claim": any(provider.require_role_claim for provider in providers),
+        "require_tenant_claim": all(provider.require_tenant_claim for provider in providers),
+        "allow_default_tenant": any(provider.allow_default_tenant for provider in providers),
+        "required_nonce": any(bool(provider.required_nonce) for provider in providers),
+        "message": (
+            "OIDC bearer auth is enabled with tenant-bound issuers and fail-closed tenant routing."
+            if config.tenant_providers
+            else "OIDC bearer auth is enabled for a single issuer."
+        ),
+    }

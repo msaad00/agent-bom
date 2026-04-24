@@ -165,6 +165,8 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["limit"] >= 1
     assert body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["source"] == "global_default"
     assert body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["override_limit"] is None
+    assert body["identity_provisioning"]["oidc"]["mode"] == "disabled"
+    assert body["identity_provisioning"]["saml"]["configured"] is False
     assert body["identity_provisioning"]["scim"]["status"] == "not_implemented"
     assert body["identity_provisioning"]["scim"]["supported"] is False
     assert "service_keys" in body["identity_provisioning"]["session_revocation"]
@@ -239,6 +241,33 @@ def test_auth_quota_update_persists_tenant_override(monkeypatch: pytest.MonkeyPa
         assert policy["tenant_quota_runtime"]["usage"]["schedules"]["limit"] == 3
     finally:
         _stores._tenant_quota_store = original_store
+
+
+def test_auth_policy_reports_identity_provider_posture(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_OIDC_ISSUER", "https://login.example.com")
+    monkeypatch.setenv("AGENT_BOM_OIDC_AUDIENCE", "agent-bom")
+    monkeypatch.setenv("AGENT_BOM_OIDC_REQUIRE_ROLE_CLAIM", "1")
+    monkeypatch.setenv("AGENT_BOM_SAML_IDP_ENTITY_ID", "https://idp.example.com/metadata")
+    monkeypatch.setenv("AGENT_BOM_SAML_IDP_SSO_URL", "https://idp.example.com/sso")
+    monkeypatch.setenv("AGENT_BOM_SAML_IDP_X509_CERT", "-----BEGIN CERTIFICATE-----test-----END CERTIFICATE-----")
+    monkeypatch.setenv("AGENT_BOM_SAML_SP_ENTITY_ID", "https://agent-bom.example.com/saml/metadata")
+    monkeypatch.setenv("AGENT_BOM_SAML_SP_ACS_URL", "https://agent-bom.example.com/v1/auth/saml/login")
+    monkeypatch.setenv("AGENT_BOM_SAML_SESSION_TTL_SECONDS", "1800")
+
+    client = TestClient(app)
+    body = client.get("/v1/auth/policy").json()
+
+    assert body["identity_provisioning"]["oidc"]["configured"] is True
+    assert body["identity_provisioning"]["oidc"]["mode"] == "single_issuer"
+    assert body["identity_provisioning"]["oidc"]["issuer_hosts"] == ["login.example.com"]
+    assert body["identity_provisioning"]["oidc"]["provider_count"] == 1
+    assert body["identity_provisioning"]["oidc"]["require_role_claim"] is True
+    assert body["identity_provisioning"]["oidc"]["require_tenant_claim"] is True
+    assert body["identity_provisioning"]["saml"]["configured"] is True
+    assert body["identity_provisioning"]["saml"]["metadata_endpoint"] == "/v1/auth/saml/metadata"
+    assert body["identity_provisioning"]["saml"]["acs_path"] == "/v1/auth/saml/login"
+    assert body["identity_provisioning"]["saml"]["idp_host"] == "idp.example.com"
+    assert body["identity_provisioning"]["saml"]["session_ttl_seconds"] == 1800
 
 
 def test_rate_limit_runtime_reports_shared_backend(monkeypatch: pytest.MonkeyPatch) -> None:

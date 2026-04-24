@@ -228,6 +228,8 @@ async def auth_policy(request: Request) -> dict:
         get_rate_limit_key_status,
         get_rate_limit_runtime_status,
     )
+    from agent_bom.api.oidc import describe_oidc_posture
+    from agent_bom.api.saml import describe_saml_posture
     from agent_bom.api.tenant_quota import default_tenant_quotas, get_tenant_quota_runtime
 
     api_policy = get_api_key_policy()
@@ -265,6 +267,8 @@ async def auth_policy(request: Request) -> dict:
         "tenant_quotas": defaults,
         "tenant_quota_runtime": get_tenant_quota_runtime(tenant_id),
         "identity_provisioning": {
+            "oidc": describe_oidc_posture(),
+            "saml": describe_saml_posture(),
             "scim": {
                 "supported": False,
                 "configured": False,

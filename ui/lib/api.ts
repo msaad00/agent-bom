@@ -614,6 +614,34 @@ export interface AuthPolicyResponse {
     >;
   };
   identity_provisioning: {
+    oidc: {
+      supported: boolean;
+      configured: boolean;
+      mode: string;
+      issuer_hosts: string[];
+      provider_count: number;
+      audience_configured: boolean;
+      role_claim: string | null;
+      tenant_claim: string | null;
+      require_role_claim: boolean;
+      require_tenant_claim: boolean;
+      allow_default_tenant: boolean;
+      required_nonce: boolean;
+      message: string;
+    };
+    saml: {
+      supported: boolean;
+      configured: boolean;
+      metadata_endpoint: string;
+      acs_path: string | null;
+      idp_host: string | null;
+      role_attribute: string;
+      tenant_attribute: string;
+      require_role_attribute: boolean;
+      require_tenant_attribute: boolean;
+      session_ttl_seconds: number;
+      message: string;
+    };
     scim: {
       supported: boolean;
       configured: boolean;

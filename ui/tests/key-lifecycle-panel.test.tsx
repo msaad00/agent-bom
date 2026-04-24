@@ -78,6 +78,34 @@ const policy: AuthPolicyResponse = {
     },
   },
   identity_provisioning: {
+    oidc: {
+      supported: true,
+      configured: true,
+      mode: "single_issuer",
+      issuer_hosts: ["login.example.com"],
+      provider_count: 1,
+      audience_configured: true,
+      role_claim: "agent_bom_role",
+      tenant_claim: "tenant_id",
+      require_role_claim: true,
+      require_tenant_claim: true,
+      allow_default_tenant: false,
+      required_nonce: false,
+      message: "OIDC bearer auth is enabled for a single issuer.",
+    },
+    saml: {
+      supported: true,
+      configured: true,
+      metadata_endpoint: "/v1/auth/saml/metadata",
+      acs_path: "/v1/auth/saml/login",
+      idp_host: "idp.example.com",
+      role_attribute: "agent_bom_role",
+      tenant_attribute: "tenant_id",
+      require_role_attribute: false,
+      require_tenant_attribute: false,
+      session_ttl_seconds: 3600,
+      message: "SAML assertion exchange is enabled and mints short-lived session API keys after IdP verification.",
+    },
     scim: {
       supported: false,
       configured: false,
@@ -141,6 +169,8 @@ describe("KeyLifecyclePanel", () => {
       screen.getByText("Ed25519 · asymmetric public key · key deadbeefcafebabe · /v1/compliance/verification-key")
     ).toBeInTheDocument();
     expect(screen.getByText("Identity lifecycle")).toBeInTheDocument();
+    expect(screen.getByText("OIDC browser / bearer")).toBeInTheDocument();
+    expect(screen.getByText("SAML assertion exchange")).toBeInTheDocument();
     expect(screen.getByText("SCIM provisioning")).toBeInTheDocument();
     expect(screen.getByText("Revocation boundaries")).toBeInTheDocument();
     expect(screen.getByText("OIDC or reverse-proxy browser sessions must be terminated at the upstream identity provider or trusted proxy.")).toBeInTheDocument();

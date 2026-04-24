@@ -241,3 +241,40 @@ class SAMLConfig:
     @classmethod
     def from_env(cls) -> "SAMLConfig":
         return cls()
+
+
+def describe_saml_posture() -> dict[str, object]:
+    """Return operator-facing SAML posture for auth policy surfaces."""
+    config = SAMLConfig.from_env()
+    if not config.enabled:
+        return {
+            "supported": True,
+            "configured": False,
+            "metadata_endpoint": "/v1/auth/saml/metadata",
+            "acs_path": None,
+            "idp_host": None,
+            "role_attribute": config.role_attribute,
+            "tenant_attribute": config.tenant_attribute,
+            "require_role_attribute": config.require_role_attribute,
+            "require_tenant_attribute": config.require_tenant_attribute,
+            "session_ttl_seconds": config.session_ttl_seconds,
+            "message": (
+                "SAML assertion exchange is not configured. When enabled, agent-bom verifies the IdP assertion and mints "
+                "a short-lived session API key for the UI."
+            ),
+        }
+
+    acs = urlparse(config.sp_acs_url)
+    return {
+        "supported": True,
+        "configured": True,
+        "metadata_endpoint": "/v1/auth/saml/metadata",
+        "acs_path": acs.path or "/v1/auth/saml/login",
+        "idp_host": urlparse(config.idp_sso_url).netloc or config.idp_sso_url,
+        "role_attribute": config.role_attribute,
+        "tenant_attribute": config.tenant_attribute,
+        "require_role_attribute": config.require_role_attribute,
+        "require_tenant_attribute": config.require_tenant_attribute,
+        "session_ttl_seconds": config.session_ttl_seconds,
+        "message": "SAML assertion exchange is enabled and mints short-lived session API keys after IdP verification.",
+    }

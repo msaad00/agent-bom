@@ -34,6 +34,14 @@ helm upgrade --install agent-bom deploy/helm/agent-bom \
 - `agentbom/agent-bom` = runtime image for scanner, API, jobs, gateway, proxy
 - `agentbom/agent-bom-ui` = dashboard image for the same self-hosted control plane
 
+## Control-Plane Contract
+
+The UI consumes the API control-plane contract. Auth posture comes from
+`/v1/auth/policy`, tenant quota state from `/v1/auth/quota`, scalable graph
+agent selection from `/v1/graph/agents`, and fleet inventory from `/v1/fleet`.
+The dashboard should display those API facts and role capabilities; it should
+not create a separate role, tenant, gateway, or secret lifecycle model.
+
 ## Links
 
 - GitHub: https://github.com/msaad00/agent-bom

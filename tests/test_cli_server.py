@@ -46,6 +46,8 @@ def test_serve_cmd_help_mentions_auth_for_non_loopback_bind():
     assert result.exit_code == 0
     assert "non-loopback requires" in result.output
     assert "--allow-insecure-no-auth" in result.output
+    assert "Local only:" in result.output
+    assert "Remote with auth:" in result.output
     assert "serve --host 0.0.0.0 --api-key <key>" in result.output
 
 
@@ -97,6 +99,7 @@ def test_api_cmd_allows_non_loopback_bind_with_api_key():
     mock_configure.assert_called_once()
     mock_run.assert_called_once()
     assert "API key required" in result.output
+    assert "Bind" in result.output
 
 
 def test_api_cmd_loopback_no_auth_warns_local_mode():
@@ -109,6 +112,7 @@ def test_api_cmd_loopback_no_auth_warns_local_mode():
     mock_configure.assert_called_once()
     mock_run.assert_called_once()
     assert "local unauthenticated mode" in result.output
+    assert "In-memory (ephemeral)" in result.output
 
 
 def test_api_cmd_enables_clickhouse_analytics():
@@ -136,7 +140,8 @@ def test_api_cmd_enables_clickhouse_analytics():
     assert result.exit_code == 0
     mock_configure.assert_called_once()
     mock_run.assert_called_once()
-    assert "Analytics:    ClickHouse" in result.output
+    assert "ClickHouse" in result.output
+    assert "Analytics URL" in result.output
 
 
 def test_api_cmd_requires_clickhouse_url_for_backend():
@@ -173,6 +178,7 @@ def test_serve_cmd_configures_api_auth():
     mock_configure.assert_called_once()
     mock_run.assert_called_once()
     assert "API key required" in result.output
+    assert "Storage" in result.output
 
 
 def test_serve_cmd_loopback_no_auth_warns_local_mode():
@@ -185,6 +191,7 @@ def test_serve_cmd_loopback_no_auth_warns_local_mode():
     mock_configure.assert_called_once()
     mock_run.assert_called_once()
     assert "local unauthenticated mode" in result.output
+    assert "In-memory (ephemeral)" in result.output
 
 
 def test_serve_cmd_enables_clickhouse_analytics():
@@ -203,7 +210,8 @@ def test_serve_cmd_enables_clickhouse_analytics():
     assert result.exit_code == 0
     mock_configure.assert_called_once()
     mock_run.assert_called_once()
-    assert "Analytics:  ClickHouse" in result.output
+    assert "ClickHouse" in result.output
+    assert "Analytics URL" in result.output
 
 
 def test_serve_cmd_requires_clickhouse_url_for_backend():
@@ -270,6 +278,7 @@ def test_mcp_server_cmd_allows_remote_bind_with_bearer_token():
     mock_create.assert_called_once_with(host="0.0.0.0", port=8423, bearer_token="test-token")
     mock_server.run.assert_called_once_with(transport="sse")
     assert "Bearer token required" in result.output
+    assert "Transport" in result.output
 
 
 def test_mcp_server_cmd_stdio_warns_when_bearer_token_is_unused():
@@ -304,6 +313,8 @@ def test_gateway_serve_allows_non_loopback_bind_with_bearer_token(tmp_path):
 
     assert result.exit_code == 0
     assert "token required" in result.output
+    assert "Upstreams" in result.output
+    assert "Bind" in result.output
     mock_run.assert_called_once()
 
 

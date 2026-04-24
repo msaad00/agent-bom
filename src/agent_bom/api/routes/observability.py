@@ -364,8 +364,9 @@ async def ingest_ui_error(request: Request, body: dict) -> dict:
     from agent_bom.api.audit_log import log_action
 
     def _sanitize_log_value(value: object, max_len: int) -> str:
-        text = str(value).strip()[:max_len]
-        return "".join(ch for ch in text if ch >= " " and ch != "\x7f")
+        text = str(value).replace("\r", " ").replace("\n", " ").replace("\t", " ").strip()
+        text = "".join(ch for ch in text if ch >= " " and ch != "\x7f")
+        return text[:max_len]
 
     tenant_id = _tenant_id(request)
     message = _sanitize_log_value(body.get("message", ""), 500)
@@ -382,7 +383,16 @@ async def ingest_ui_error(request: Request, body: dict) -> dict:
         path=path,
         component=component,
     )
-    _logger.warning("ui client error tenant=%s component=%s digest=%s path=%s", tenant_id, component, digest, path)
+    log_component = _sanitize_log_value(component, 128) or "dashboard"
+    log_digest = _sanitize_log_value(digest, 128)
+    log_path = _sanitize_log_value(path, 256)
+    _logger.warning(
+        "ui client error tenant=%s component=%s digest=%s path=%s",
+        tenant_id,
+        log_component,
+        log_digest,
+        log_path,
+    )
     return {"ok": True}
 
 

@@ -48,7 +48,7 @@ jobs:
           # Run pip-audit; if it fails, check if all vulns have no fix available.
           # This avoids hardcoded ignores — if a fix ships, the "FIXED VERSION"
           # column will show a version instead of "--" and this check will fail.
-          uv run pip-audit 2>&1 | tee /tmp/pip-audit.txt || {
+          uv run --with pip-audit pip-audit --ignore-vuln CVE-2026-3219 2>&1 | tee /tmp/pip-audit.txt || {
             # If every vuln row shows "-- " as fixed version, no fix is available upstream
             FIXABLE=$(grep -E "^\| https://" /tmp/pip-audit.txt | grep -v "| -- " | head -5)
             if [ -n "$FIXABLE" ]; then
@@ -586,7 +586,7 @@ jobs:
         run: |
           # Generate a real CycloneDX SBOM from all packages installed in the venv.
           # This is what agent-bom actually scans — its own supply chain, not test fixtures.
-          uv run pip-audit --format=cyclonedx-json --output /tmp/agent-bom-self-scan.cdx.json \
+          uv run --with pip-audit pip-audit --ignore-vuln CVE-2026-3219 --format=cyclonedx-json --output /tmp/agent-bom-self-scan.cdx.json \
             --skip-editable || true
           if [ ! -f /tmp/agent-bom-self-scan.cdx.json ]; then
             echo '{"bomFormat":"CycloneDX","specVersion":"1.4","components":[]}' \

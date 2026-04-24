@@ -146,7 +146,6 @@ dev = [
     "types-PyYAML>=6.0",
     "types-requests>=2.31",
     "types-toml>=0.10",
-    "pip-audit>=2.10",  # Security dependency scanning (replaces safety — not executed in CI)
     "bandit>=1.9",      # Static security analysis
     "pytest-cov>=4.1",  # Coverage reporting
     "pytest-benchmark>=5.0",  # Performance benchmarking — see docs/PERFORMANCE_BENCHMARKS.md

@@ -4,7 +4,7 @@
 # Installs atheris and agent-bom, then copies fuzz targets to $OUT.
 # Runs inside the ClusterFuzzLite Docker container (Ubuntu + Python 3.11+).
 
-# Step 1: Pin pip + pyyaml with hash verification
+# Step 1: Install hash-pinned build bootstrap dependencies.
 python3 -m pip install --require-hashes -r "$SRC/agent-bom/.clusterfuzzlite/requirements.txt"
 # Step 2: Install agent-bom with deps (local build — cannot hash-pin)
 python3 -m pip install .

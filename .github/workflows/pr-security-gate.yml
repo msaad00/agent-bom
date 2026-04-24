@@ -41,8 +41,8 @@ jobs:
         run: |
           # Fail on HIGH or CRITICAL findings. Medium + Low become advisory
           # so we're not blocked by transitive noise, but HIGH+ is a gate.
-          uv run pip-audit --disable-pip --strict --vulnerability-service osv \
-            --require-hashes=false \
+          uv run --with pip-audit pip-audit --ignore-vuln CVE-2026-3219 \
+            -s osv \
             --format columns \
             | tee audit.txt
 

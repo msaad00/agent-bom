@@ -179,6 +179,15 @@ export AGENT_BOM_SCIM_TENANT_ID="tenant-alpha"
 
 SCIM lifecycle traffic is available under `/scim/v2/Users`, `/scim/v2/Groups`, `/scim/v2/ServiceProviderConfig`, `/scim/v2/Schemas`, and `/scim/v2/ResourceTypes`. These routes require `AGENT_BOM_SCIM_BEARER_TOKEN`; dashboard sessions and general API keys are not accepted. The tenant is always taken from `AGENT_BOM_SCIM_TENANT_ID`, so tenant fields in the IdP payload cannot steer writes into another tenant.
 
+Compatibility coverage is maintained for common IdP payload shapes:
+
+- Okta user/group lifecycle payloads with `externalId`, `emails`, `groups`, and active-state patches
+- Microsoft Entra ID SCIM replace patches that send a value object instead of a single path
+- Google Cloud Identity payloads that rely on `name.formatted` when `displayName` is absent
+
+Check `/v1/auth/policy` or `/v1/auth/scim/config` for the non-secret
+`verified_idp_templates` posture before procurement or IdP rollout reviews.
+
 For PostgreSQL-backed deployments, `agent-bom` now also pushes the authenticated tenant into the database session (`app.tenant_id`) so Postgres row-level security can enforce the same tenant boundary for fleet and schedule data. Internal scheduler work uses an explicit trusted bypass rather than silently reading across tenants.
 
 For horizontally scaled control-plane APIs, shared rate limiting is mandatory. `agent-bom` now fails closed when `AGENT_BOM_CONTROL_PLANE_REPLICAS > 1` (or `AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1`) and no PostgreSQL-backed limiter is configured via `AGENT_BOM_POSTGRES_URL`.

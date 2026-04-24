@@ -92,6 +92,27 @@ def describe_scim_posture() -> dict[str, object]:
         "role_attribute": role_attribute,
         "tenant_attribute": tenant_attribute,
         "groups_required": groups_required,
+        "verified_idp_templates": [
+            {
+                "idp": "okta",
+                "status": "contract_tested",
+                "notes": "Accepts Okta-style User and Group lifecycle payloads with externalId, emails, groups, and active patches.",
+            },
+            {
+                "idp": "microsoft_entra_id",
+                "status": "contract_tested",
+                "notes": (
+                    "Accepts Microsoft Entra ID SCIM replace patches with value objects and standard userName/displayName/email fields."
+                ),
+            },
+            {
+                "idp": "google_cloud_identity",
+                "status": "contract_tested",
+                "notes": (
+                    "Accepts Google Cloud Identity-style name.formatted fallback, externalId, active state, and group membership payloads."
+                ),
+            },
+        ],
         "message": (
             (
                 "SCIM lifecycle provisioning is configured with Postgres-backed shared state."

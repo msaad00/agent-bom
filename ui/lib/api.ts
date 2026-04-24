@@ -657,6 +657,9 @@ export interface AuthPolicyResponse {
         remaining: number | null;
         enforced: boolean;
         source: string;
+        utilization_pct: number | null;
+        status: "ok" | "near_limit" | "at_limit" | "unlimited" | string;
+        recommended_action: string;
       }
     >;
   };
@@ -699,6 +702,11 @@ export interface AuthPolicyResponse {
       role_attribute: string;
       tenant_attribute: string;
       groups_required: boolean;
+      verified_idp_templates?: Array<{
+        idp: string;
+        status: string;
+        notes: string;
+      }>;
       message: string;
     };
     session_revocation: {

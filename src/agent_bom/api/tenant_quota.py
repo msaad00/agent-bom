@@ -186,6 +186,20 @@ def get_tenant_quota_runtime(tenant_id: str) -> dict[str, object]:
 
     def _entry(quota_name: QuotaName, current: int) -> dict[str, int | bool | str | None]:
         limit = effective[quota_name]
+        utilization_pct: int | None = None
+        status = "unlimited"
+        recommended_action = "No enforced limit is configured."
+        if limit > 0:
+            utilization_pct = min(100, int(round((current / limit) * 100)))
+            if current >= limit:
+                status = "at_limit"
+                recommended_action = "Usage is at the enforced limit. Raise the tenant quota or reduce usage before new work starts."
+            elif utilization_pct >= 80:
+                status = "near_limit"
+                recommended_action = "Usage is approaching the enforced limit. Review rollout size before adding more workload."
+            else:
+                status = "ok"
+                recommended_action = "Usage is within the enforced tenant quota."
         return {
             "limit": limit,
             "default_limit": defaults[quota_name],
@@ -194,6 +208,9 @@ def get_tenant_quota_runtime(tenant_id: str) -> dict[str, object]:
             "remaining": None if limit <= 0 else max(limit - current, 0),
             "enforced": limit > 0,
             "source": "tenant_override" if quota_name in overrides else "global_default",
+            "utilization_pct": utilization_pct,
+            "status": status,
+            "recommended_action": recommended_action,
         }
 
     def _safe_count(fn: Callable[[], int]) -> int:

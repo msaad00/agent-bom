@@ -110,6 +110,24 @@ function quotaInputValue(value: number | null | undefined): string {
   return value == null ? "" : String(value);
 }
 
+function quotaStatusTone(status: string): string {
+  switch (status) {
+    case "ok":
+      return "border-emerald-900/60 bg-emerald-950/30 text-emerald-300";
+    case "near_limit":
+      return "border-amber-900/60 bg-amber-950/30 text-amber-300";
+    case "at_limit":
+      return "border-red-900/60 bg-red-950/30 text-red-300";
+    case "unlimited":
+    default:
+      return "border-zinc-800 bg-zinc-900 text-zinc-400";
+  }
+}
+
+function quotaStatusLabel(status: string): string {
+  return status.replaceAll("_", " ");
+}
+
 function formatStatusLabel(value: string): string {
   return value.replaceAll("_", " ");
 }
@@ -602,12 +620,26 @@ export function KeyLifecyclePanel({
               <div className="mt-3 grid grid-cols-2 gap-3">
                 {quotaCards.map(({ field, label, value }) => (
                   <div key={field} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
-                    <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">{label}</p>
-                    <p className="mt-2 text-lg font-semibold text-zinc-100">{value.limit}</p>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">{label}</p>
+                      <span className={`rounded-md border px-1.5 py-0.5 text-[10px] uppercase tracking-[0.12em] ${quotaStatusTone(value.status)}`}>
+                        {quotaStatusLabel(value.status)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-lg font-semibold text-zinc-100">{value.enforced ? value.limit : "Unlimited"}</p>
                     <p className="mt-1 text-xs text-zinc-400">
                       Current {value.current}
                       {value.remaining != null ? ` · Remaining ${value.remaining}` : " · Unlimited"}
                     </p>
+                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-zinc-800" aria-hidden="true">
+                      <div
+                        className={`h-full rounded-full ${
+                          value.status === "at_limit" ? "bg-red-500" : value.status === "near_limit" ? "bg-amber-400" : "bg-emerald-400"
+                        }`}
+                        style={{ width: `${value.utilization_pct ?? 0}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs text-zinc-500">{value.recommended_action}</p>
                     <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-zinc-500">
                       {value.source === "tenant_override" ? "Tenant override" : "Global default"}
                     </p>

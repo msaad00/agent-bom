@@ -57,6 +57,15 @@ helm upgrade --install agent-bom deploy/helm/agent-bom \
   -f deploy/helm/agent-bom/examples/eks-production-values.yaml
 ```
 
+## State Security
+
+Terraform/OpenTofu state can contain generated credentials, resource ARNs, and
+customer infrastructure identifiers. For production, keep state in a
+customer-managed encrypted backend such as S3 with SSE-KMS, bucket versioning,
+least-privilege IAM, and state locking. Local state under
+`~/.agent-bom/eks-reference` is intended only for pilots and should live on
+encrypted disk with operator-only permissions.
+
 Populate the chart-facing database URL secret after the first apply:
 
 ```bash

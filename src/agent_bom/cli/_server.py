@@ -84,6 +84,69 @@ def _configure_analytics_backend(
     return resolved_backend, resolved_url
 
 
+def _emit_runtime_summary(title: str, rows: list[tuple[str, str]], *, err: bool = False) -> None:
+    """Print a compact, aligned startup summary block."""
+    click.echo("", err=err)
+    click.echo(f"  {title}", err=err)
+    for label, value in rows:
+        click.echo(f"  {label:<11} {value}", err=err)
+    click.echo("  Press Ctrl+C to stop.\n", err=err)
+
+
+def _auth_summary(
+    *,
+    host: str,
+    api_key: str | None = None,
+    bearer_token: str | None = None,
+    allow_insecure_no_auth: bool = False,
+    oidc_enabled: bool = False,
+    mcp_remote: bool = False,
+) -> str:
+    """Return a user-facing summary for the active auth mode."""
+    if api_key:
+        return "API key required (Bearer / X-API-Key)"
+    if bearer_token:
+        return "Bearer token required"
+    if oidc_enabled:
+        return "OIDC bearer token required"
+    if allow_insecure_no_auth and not _is_loopback_host(host):
+        return "Disabled by explicit override (--allow-insecure-no-auth)"
+    if mcp_remote:
+        return "Loopback-only without transport auth; add --bearer-token before exposing remotely"
+    return "local unauthenticated mode (loopback only); add --api-key or OIDC before exposing remotely"
+
+
+def _storage_summary(*, persist: str | None) -> str:
+    """Describe the active API job storage mode."""
+    pg_url = os.environ.get("AGENT_BOM_POSTGRES_URL")
+    if pg_url and not persist:
+        return "PostgreSQL"
+    if persist:
+        return f"SQLite ({persist})"
+    return "In-memory (ephemeral)"
+
+
+def _analytics_summary_rows(
+    *,
+    resolved_backend: str,
+    resolved_url: str | None,
+    analytics_buffered: bool,
+    analytics_flush_interval: float,
+    analytics_max_batch: int,
+) -> list[tuple[str, str]]:
+    """Describe analytics mode in one or two aligned rows."""
+    if resolved_backend != "clickhouse":
+        return [("Analytics", "Disabled")]
+    mode = "buffered" if analytics_buffered else "direct"
+    return [
+        (
+            "Analytics",
+            f"ClickHouse ({mode}, batch={max(1, analytics_max_batch)}, flush={analytics_flush_interval:.2f}s)",
+        ),
+        ("Analytics URL", resolved_url or "(unset)"),
+    ]
+
+
 @click.command("serve")
 @click.option(
     "--host",
@@ -175,9 +238,12 @@ def serve_cmd(
 
     \b
     Usage:
-      agent-bom serve
-      agent-bom serve --host 0.0.0.0 --api-key <key>  # expose on LAN with auth
-      agent-bom serve --port 8422 --persist jobs.db
+      Local only:
+        agent-bom serve
+      Remote with auth:
+        agent-bom serve --host 0.0.0.0 --api-key <key>
+      Persistent jobs:
+        agent-bom serve --port 8422 --persist jobs.db
     """
     from agent_bom.logging_config import setup_logging
 
@@ -218,27 +284,24 @@ def serve_cmd(
     )
 
     _ui_dist = Path(__file__).resolve().parents[1] / "ui_dist"
-    click.echo(f"\n  API server  →  http://{host}:{port}")
-    click.echo(f"  API docs    →  http://{host}:{port}/docs")
-    if (_ui_dist / "index.html").exists():
-        click.echo(f"  Dashboard   →  http://{host}:{port}")
-    else:
-        click.echo("  Dashboard   →  not bundled (run: make build-ui)")
-    if api_key:
-        click.echo("  Auth:       API key required (Bearer / X-API-Key)")
-    elif _oidc_enabled():
-        click.echo("  Auth:       OIDC bearer token required")
-    elif allow_insecure_no_auth and not _is_loopback_host(host):
-        click.echo("  Auth:       disabled by explicit override (--allow-insecure-no-auth)")
-    else:
-        click.echo("  Auth:       local unauthenticated mode (loopback only); set --api-key or OIDC for authenticated access")
-    if resolved_backend == "clickhouse":
-        mode = "buffered" if analytics_buffered else "direct"
-        click.echo(f"  Analytics:  ClickHouse ({mode}, batch={max(1, analytics_max_batch)}, flush={analytics_flush_interval:.2f}s)")
-        click.echo(f"              {resolved_url}")
-    else:
-        click.echo("  Analytics:  disabled")
-    click.echo("  Press Ctrl+C to stop.\n")
+    rows = [
+        ("API", f"http://{host}:{port}"),
+        ("Docs", f"http://{host}:{port}/docs"),
+        (
+            "Dashboard",
+            f"http://{host}:{port}" if (_ui_dist / "index.html").exists() else "Not bundled (run: make build-ui)",
+        ),
+        ("Auth", _auth_summary(host=host, api_key=api_key, allow_insecure_no_auth=allow_insecure_no_auth, oidc_enabled=_oidc_enabled())),
+        ("Storage", _storage_summary(persist=persist)),
+        *_analytics_summary_rows(
+            resolved_backend=resolved_backend,
+            resolved_url=resolved_url,
+            analytics_buffered=analytics_buffered,
+            analytics_flush_interval=analytics_flush_interval,
+            analytics_max_batch=analytics_max_batch,
+        ),
+    ]
+    _emit_runtime_summary("agent-bom serve", rows)
 
     import uvicorn as _uvicorn
 
@@ -374,10 +437,13 @@ def api_cmd(
 
     \b
     Usage:
-      agent-bom api                           # local dev: http://127.0.0.1:8422
-      agent-bom api --host 0.0.0.0 --api-key <key>  # expose on LAN with auth
-      agent-bom api --port 9000               # custom port
-      agent-bom api --reload                  # dev mode
+      Local only:
+        agent-bom api
+      Remote with auth:
+        agent-bom api --host 0.0.0.0 --api-key <key>
+      Custom port / dev reload:
+        agent-bom api --port 9000
+        agent-bom api --reload
     """
     from agent_bom.logging_config import setup_logging
 
@@ -428,28 +494,21 @@ def api_cmd(
 
         set_job_store(SQLiteJobStore(db_path=persist))
 
-    click.echo(f"  agent-bom API v{_ver}")
-    click.echo(f"  Listening on http://{host}:{port}")
-    click.echo(f"  Docs:         http://{host}:{port}/docs")
-    if api_key:
-        click.echo("  Auth:         API key required (Bearer / X-API-Key)")
-    elif _oidc_enabled():
-        click.echo("  Auth:         OIDC bearer token required")
-    elif allow_insecure_no_auth and not _is_loopback_host(host):
-        click.echo("  Auth:         disabled by explicit override (--allow-insecure-no-auth)")
-    else:
-        click.echo("  Auth:         local unauthenticated mode (loopback only); set --api-key or OIDC for authenticated access")
-    if pg_url and not persist:
-        click.echo("  Storage:      PostgreSQL")
-    elif persist:
-        click.echo(f"  Storage:      SQLite ({persist})")
-    if resolved_backend == "clickhouse":
-        mode = "buffered" if analytics_buffered else "direct"
-        click.echo(f"  Analytics:    ClickHouse ({mode}, batch={max(1, analytics_max_batch)}, flush={analytics_flush_interval:.2f}s)")
-        click.echo(f"                {resolved_url}")
-    else:
-        click.echo("  Analytics:    disabled")
-    click.echo("  Press Ctrl+C to stop.\n")
+    rows = [
+        ("Version", _ver),
+        ("Bind", f"http://{host}:{port}"),
+        ("Docs", f"http://{host}:{port}/docs"),
+        ("Auth", _auth_summary(host=host, api_key=api_key, allow_insecure_no_auth=allow_insecure_no_auth, oidc_enabled=_oidc_enabled())),
+        ("Storage", _storage_summary(persist=persist)),
+        *_analytics_summary_rows(
+            resolved_backend=resolved_backend,
+            resolved_url=resolved_url,
+            analytics_buffered=analytics_buffered,
+            analytics_flush_interval=analytics_flush_interval,
+            analytics_max_batch=analytics_max_batch,
+        ),
+    ]
+    _emit_runtime_summary("agent-bom API", rows)
 
     uvicorn.run(
         "agent_bom.api.server:app",
@@ -546,9 +605,11 @@ def mcp_server_cmd(
 
     \b
     Usage:
-      agent-bom mcp server                                # stdio (Claude Desktop, Cursor)
-      agent-bom mcp server --transport sse                # SSE (remote clients)
-      agent-bom mcp server --transport streamable-http    # Streamable HTTP (Smithery, etc.)
+      Local stdio:
+        agent-bom mcp server
+      Remote with bearer auth:
+        agent-bom mcp server --transport sse --bearer-token <token>
+        agent-bom mcp server --transport streamable-http --bearer-token <token>
 
     \b
     Claude Desktop config (~/.claude/claude_desktop_config.json):
@@ -575,13 +636,21 @@ def mcp_server_cmd(
     if transport in ("sse", "streamable-http"):
         from agent_bom import __version__ as _ver
 
-        click.echo(f"  agent-bom MCP Server v{_ver}", err=True)
-        click.echo(f"  Transport: {transport} on http://{host}:{port}", err=True)
-        if bearer_token:
-            click.echo("  Auth:      Bearer token required", err=True)
-        elif allow_insecure_no_auth and not _is_loopback_host(host):
-            click.echo("  Auth:      disabled by explicit override (--allow-insecure-no-auth)", err=True)
-        click.echo("  Press Ctrl+C to stop.\n", err=True)
+        rows = [
+            ("Version", _ver),
+            ("Transport", transport),
+            ("Bind", f"http://{host}:{port}"),
+            (
+                "Auth",
+                _auth_summary(
+                    host=host,
+                    bearer_token=bearer_token,
+                    allow_insecure_no_auth=allow_insecure_no_auth,
+                    mcp_remote=True,
+                ),
+            ),
+        ]
+        _emit_runtime_summary("agent-bom MCP server", rows, err=True)
         server.run(transport=transport)
     else:
         if bearer_token:

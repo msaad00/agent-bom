@@ -233,15 +233,30 @@ def serve_cmd(
     port_num = int(port or "8090")
 
     click.echo(f"agent-bom gateway serving on http://{host}:{port_num} fronting {len(registry)} upstream(s): {', '.join(registry.names())}")
-    if bearer_token:
-        click.echo("Auth: bearer/API-key token required for incoming gateway clients")
-    elif allow_insecure_no_auth:
-        click.echo("Auth: disabled by explicit override (--allow-insecure-no-auth)")
+    rows = [
+        ("Bind", f"http://{host}:{port_num}"),
+        ("Upstreams", f"{len(registry)} configured: {', '.join(registry.names()) or '(none)'}"),
+        (
+            "Auth",
+            "Bearer/API-key token required for incoming gateway clients"
+            if bearer_token
+            else (
+                "Disabled by explicit override (--allow-insecure-no-auth)"
+                if allow_insecure_no_auth
+                else "Loopback-only without transport auth; add --bearer-token before exposing remotely"
+            ),
+        ),
+    ]
     if detect_visual_leaks:
         mode = "best-effort" if allow_visual_leak_best_effort else "required"
-        click.echo(f"Visual leak detection: enabled ({mode})")
+        rows.append(("Visual leaks", f"Enabled ({mode})"))
     if policy_path and policy_reload_seconds > 0:
-        click.echo(f"Policy hot reload: enabled every {policy_reload_seconds}s from {policy_path}")
+        rows.append(("Policy reload", f"Policy hot reload: enabled every {policy_reload_seconds}s from {policy_path}"))
+    click.echo("")
+    click.echo("  agent-bom gateway")
+    for label, value in rows:
+        click.echo(f"  {label:<11} {value}")
+    click.echo("  Press Ctrl+C to stop.\n")
     uvicorn.run(app, host=host, port=port_num, log_level=log_level.lower())
 
 

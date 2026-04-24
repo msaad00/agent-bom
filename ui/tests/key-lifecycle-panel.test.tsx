@@ -35,6 +35,28 @@ const policy: AuthPolicyResponse = {
     fail_closed: true,
     message: "Shared rate limiting is enabled across replicas.",
   },
+  secret_integrity: {
+    audit_hmac: {
+      status: "configured",
+      configured: true,
+      required: false,
+      source: "AGENT_BOM_AUDIT_HMAC_KEY",
+      persists_across_restart: true,
+      rotation_tracking_supported: false,
+      message: "Audit log tamper detection uses a configured shared secret.",
+    },
+    compliance_signing: {
+      algorithm: "Ed25519",
+      mode: "asymmetric_public_key",
+      configured: true,
+      key_id: "deadbeefcafebabe",
+      public_key_endpoint: "/v1/compliance/verification-key",
+      auditor_distributable: true,
+      uses_audit_hmac_secret: false,
+      persists_across_restart: true,
+      message: "Compliance evidence bundles are signed with Ed25519.",
+    },
+  },
   tenant_quotas: {
     active_scan_jobs: 10,
     retained_scan_jobs: 100,
@@ -105,6 +127,12 @@ describe("KeyLifecyclePanel", () => {
     expect(screen.getByText("Active scan jobs")).toBeInTheDocument();
     expect(screen.getByText("5000")).toBeInTheDocument();
     expect(screen.getByText("Current 48 · Remaining 4952")).toBeInTheDocument();
+    expect(screen.getByText("Secret and integrity posture")).toBeInTheDocument();
+    expect(screen.getByText("Audit HMAC")).toBeInTheDocument();
+    expect(screen.getByText("Compliance evidence signing")).toBeInTheDocument();
+    expect(
+      screen.getByText("Ed25519 · asymmetric public key · key deadbeefcafebabe · /v1/compliance/verification-key")
+    ).toBeInTheDocument();
     expect(screen.getByText("Identity lifecycle")).toBeInTheDocument();
     expect(screen.getByText("SCIM provisioning")).toBeInTheDocument();
     expect(screen.getByText("Revocation boundaries")).toBeInTheDocument();

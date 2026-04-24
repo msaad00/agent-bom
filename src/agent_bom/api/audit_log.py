@@ -38,8 +38,8 @@ def _env_enabled(name: str) -> bool:
 # per-process key is generated — signatures verify within the same process
 # but provide no cross-restart integrity.  Production deployments MUST set
 # AGENT_BOM_AUDIT_HMAC_KEY for meaningful tamper detection.
-_HMAC_ENV_KEY = os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY")
-if _HMAC_ENV_KEY is not None:
+_HMAC_ENV_KEY = (os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY") or "").strip()
+if _HMAC_ENV_KEY:
     _HMAC_KEY = _HMAC_ENV_KEY.encode()
 else:
     if _env_enabled("AGENT_BOM_REQUIRE_AUDIT_HMAC"):
@@ -113,6 +113,36 @@ class AuditEntry:
 def sign_export_payload(payload: bytes) -> str:
     """Sign an exported audit payload so downstream consumers can verify it."""
     return hmac.new(_HMAC_KEY, payload, hashlib.sha256).hexdigest()
+
+
+def describe_audit_hmac_status() -> dict[str, object]:
+    """Return operator-facing audit HMAC posture for auth/policy surfaces."""
+    required = _env_enabled("AGENT_BOM_REQUIRE_AUDIT_HMAC")
+    if _HMAC_ENV_KEY:
+        return {
+            "status": "configured",
+            "configured": True,
+            "required": required,
+            "source": "AGENT_BOM_AUDIT_HMAC_KEY",
+            "persists_across_restart": True,
+            "rotation_tracking_supported": False,
+            "message": (
+                "Audit log tamper detection uses a configured shared secret. "
+                "Signatures remain verifiable across restarts as long as the same key stays in place."
+            ),
+        }
+    return {
+        "status": "ephemeral",
+        "configured": False,
+        "required": required,
+        "source": "process_ephemeral",
+        "persists_across_restart": False,
+        "rotation_tracking_supported": False,
+        "message": (
+            "Audit log tamper detection is using an in-process ephemeral secret. "
+            "Integrity checks work only for this process lifetime and reset after restart."
+        ),
+    }
 
 
 class AuditLogStore(Protocol):

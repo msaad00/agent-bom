@@ -508,6 +508,28 @@ export function KeyLifecyclePanel({
           </div>
 
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Secret and integrity posture</p>
+            <div className="mt-3 grid gap-3 lg:grid-cols-2">
+              <BoundaryCard
+                title="Audit HMAC"
+                body={policy.secret_integrity.audit_hmac.message}
+                accent="teal"
+                detail={`${policy.secret_integrity.audit_hmac.status.replaceAll("_", " ")} · ${policy.secret_integrity.audit_hmac.source}${
+                  policy.secret_integrity.audit_hmac.persists_across_restart ? " · survives restart" : " · resets on restart"
+                }`}
+              />
+              <BoundaryCard
+                title="Compliance evidence signing"
+                body={policy.secret_integrity.compliance_signing.message}
+                accent="teal"
+                detail={`${policy.secret_integrity.compliance_signing.algorithm} · ${policy.secret_integrity.compliance_signing.mode.replaceAll("_", " ")}${
+                  policy.secret_integrity.compliance_signing.key_id ? ` · key ${policy.secret_integrity.compliance_signing.key_id}` : ""
+                }${policy.secret_integrity.compliance_signing.public_key_endpoint ? ` · ${policy.secret_integrity.compliance_signing.public_key_endpoint}` : ""}`}
+              />
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Identity lifecycle</p>
             <div className="mt-3 grid gap-3 lg:grid-cols-2">
               <BoundaryCard
@@ -653,11 +675,34 @@ function MetricCard({ label, value, hint }: { label: string; value: string; hint
   );
 }
 
-function BoundaryCard({ title, body }: { title: string; body: string }) {
+function BoundaryCard({
+  title,
+  body,
+  detail,
+  accent = "amber",
+}: {
+  title: string;
+  body: string;
+  detail?: string;
+  accent?: "amber" | "teal";
+}) {
+  const tone =
+    accent === "teal"
+      ? {
+          border: "border-teal-900/30",
+          title: "text-teal-100",
+          detail: "text-teal-200/70",
+        }
+      : {
+          border: "border-amber-900/30",
+          title: "text-amber-100",
+          detail: "text-amber-200/70",
+        };
   return (
-    <div className="rounded-xl border border-amber-900/30 bg-zinc-950/50 p-3">
-      <p className="text-sm font-semibold text-amber-100">{title}</p>
+    <div className={`rounded-xl border bg-zinc-950/50 p-3 ${tone.border}`}>
+      <p className={`text-sm font-semibold ${tone.title}`}>{title}</p>
       <p className="mt-1 text-xs leading-5 text-zinc-300">{body}</p>
+      {detail ? <p className={`mt-2 text-[11px] uppercase tracking-[0.14em] ${tone.detail}`}>{detail}</p> : null}
     </div>
   );
 }

@@ -166,3 +166,41 @@ def current_key_id() -> str | None:
     """Return the Ed25519 key_id, or None when only HMAC is configured."""
     signer = _load_ed25519_signer()
     return signer.key_id if signer is not None else None
+
+
+def describe_signing_posture() -> dict[str, object]:
+    """Return operator-facing compliance bundle signing posture."""
+    signer = _load_ed25519_signer()
+    if signer is not None:
+        return {
+            "algorithm": "Ed25519",
+            "mode": "asymmetric_public_key",
+            "configured": True,
+            "key_id": signer.key_id,
+            "public_key_endpoint": "/v1/compliance/verification-key",
+            "auditor_distributable": True,
+            "uses_audit_hmac_secret": False,
+            "persists_across_restart": True,
+            "message": (
+                "Compliance evidence bundles are signed with Ed25519. "
+                "External verifiers only need the public key, not shared secret material."
+            ),
+        }
+
+    from agent_bom.api.audit_log import describe_audit_hmac_status
+
+    audit_hmac = describe_audit_hmac_status()
+    return {
+        "algorithm": "HMAC-SHA256",
+        "mode": "shared_secret",
+        "configured": bool(audit_hmac["configured"]),
+        "key_id": None,
+        "public_key_endpoint": None,
+        "auditor_distributable": False,
+        "uses_audit_hmac_secret": True,
+        "persists_across_restart": bool(audit_hmac["persists_across_restart"]),
+        "message": (
+            "Compliance evidence bundles are signed with the same shared secret family as the audit export path. "
+            "For auditor-distributable verification, switch to Ed25519."
+        ),
+    }

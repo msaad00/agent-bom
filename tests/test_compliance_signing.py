@@ -22,6 +22,7 @@ from starlette.testclient import TestClient
 from agent_bom.api import stores as _stores
 from agent_bom.api.compliance_signing import (
     describe_current_signer,
+    describe_signing_posture,
     reset_signer_cache_for_tests,
     sign_compliance_bundle,
 )
@@ -179,3 +180,15 @@ def test_malformed_pem_falls_back_to_hmac(monkeypatch: pytest.MonkeyPatch, clean
     assert algorithm == "HMAC-SHA256"
     assert key_id is None
     assert pem is None
+
+
+def test_describe_signing_posture_reports_ed25519(monkeypatch: pytest.MonkeyPatch, clean_signer_env: None) -> None:
+    pem, _ = _generate_ed25519_pem()
+    monkeypatch.setenv("AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM", pem)
+    reset_signer_cache_for_tests()
+
+    posture = describe_signing_posture()
+    assert posture["algorithm"] == "Ed25519"
+    assert posture["mode"] == "asymmetric_public_key"
+    assert posture["auditor_distributable"] is True
+    assert posture["public_key_endpoint"] == "/v1/compliance/verification-key"

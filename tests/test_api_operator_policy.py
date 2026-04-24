@@ -8,11 +8,16 @@ Covers:
 
 from __future__ import annotations
 
+import importlib
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from starlette.testclient import TestClient
 
+from agent_bom.api import audit_log as audit_log_module
+from agent_bom.api import compliance_signing as compliance_signing_module
 from agent_bom.api import server as _server_mod
 from agent_bom.api.middleware import APIKeyMiddleware, get_rate_limit_key_status, get_rate_limit_runtime_status
 from agent_bom.api.server import app
@@ -114,6 +119,8 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_rate_limit_env(monkeypatch)
     monkeypatch.setenv("AGENT_BOM_RATE_LIMIT_KEY", "secret-key")
     _reload_config()
+    importlib.reload(audit_log_module)
+    compliance_signing_module.reset_signer_cache_for_tests()
 
     client = TestClient(app)
     resp = client.get("/v1/auth/policy")
@@ -132,6 +139,8 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "shared_across_replicas" in body["rate_limit_runtime"]
     assert "configured_api_replicas" in body["rate_limit_runtime"]
     assert "fail_closed" in body["rate_limit_runtime"]
+    assert body["secret_integrity"]["audit_hmac"]["status"] in {"configured", "ephemeral"}
+    assert body["secret_integrity"]["compliance_signing"]["algorithm"] in {"HMAC-SHA256", "Ed25519"}
     assert body["tenant_quotas"]["active_scan_jobs"] >= 1
     assert body["tenant_quotas"]["retained_scan_jobs"] >= 1
     assert body["tenant_quotas"]["fleet_agents"] >= 1
@@ -143,6 +152,41 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["identity_provisioning"]["scim"]["status"] == "not_implemented"
     assert body["identity_provisioning"]["scim"]["supported"] is False
     assert "service_keys" in body["identity_provisioning"]["session_revocation"]
+
+
+def test_auth_policy_reports_secret_integrity_posture(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_AUDIT_HMAC_KEY", "audit-secret")
+    private_key = Ed25519PrivateKey.generate()
+    pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode()
+    monkeypatch.setenv("AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM", pem)
+    _reload_config()
+    importlib.reload(audit_log_module)
+    importlib.reload(compliance_signing_module)
+    compliance_signing_module.reset_signer_cache_for_tests()
+
+    client = TestClient(app)
+    body = client.get("/v1/auth/policy").json()
+
+    assert body["secret_integrity"]["audit_hmac"] == {
+        "status": "configured",
+        "configured": True,
+        "required": False,
+        "source": "AGENT_BOM_AUDIT_HMAC_KEY",
+        "persists_across_restart": True,
+        "rotation_tracking_supported": False,
+        "message": (
+            "Audit log tamper detection uses a configured shared secret. "
+            "Signatures remain verifiable across restarts as long as the same key stays in place."
+        ),
+    }
+    assert body["secret_integrity"]["compliance_signing"]["algorithm"] == "Ed25519"
+    assert body["secret_integrity"]["compliance_signing"]["mode"] == "asymmetric_public_key"
+    assert body["secret_integrity"]["compliance_signing"]["public_key_endpoint"] == "/v1/compliance/verification-key"
 
 
 def test_rate_limit_runtime_reports_shared_backend(monkeypatch: pytest.MonkeyPatch) -> None:

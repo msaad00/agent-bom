@@ -565,6 +565,28 @@ export interface AuthPolicyResponse {
     fail_closed: boolean;
     message: string;
   };
+  secret_integrity: {
+    audit_hmac: {
+      status: string;
+      configured: boolean;
+      required: boolean;
+      source: string;
+      persists_across_restart: boolean;
+      rotation_tracking_supported: boolean;
+      message: string;
+    };
+    compliance_signing: {
+      algorithm: string;
+      mode: string;
+      configured: boolean;
+      key_id: string | null;
+      public_key_endpoint: string | null;
+      auditor_distributable: boolean;
+      uses_audit_hmac_secret: boolean;
+      persists_across_restart: boolean;
+      message: string;
+    };
+  };
   tenant_quotas: {
     active_scan_jobs: number;
     retained_scan_jobs: number;

@@ -219,7 +219,9 @@ async def auth_policy(request: Request) -> dict:
     rotation cadence is enforced and that no fingerprint key has aged
     past the configured maximum.
     """
+    from agent_bom.api.audit_log import describe_audit_hmac_status
     from agent_bom.api.auth import get_api_key_policy
+    from agent_bom.api.compliance_signing import describe_signing_posture
     from agent_bom.api.middleware import (
         get_auth_runtime_status,
         get_rate_limit_key_status,
@@ -260,6 +262,10 @@ async def auth_policy(request: Request) -> dict:
             ),
         },
         "rate_limit_runtime": rl_runtime,
+        "secret_integrity": {
+            "audit_hmac": describe_audit_hmac_status(),
+            "compliance_signing": describe_signing_posture(),
+        },
         "tenant_quotas": {
             "active_scan_jobs": API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT,
             "retained_scan_jobs": API_MAX_RETAINED_JOBS_PER_TENANT,

@@ -66,6 +66,35 @@ function isSessionKey(key: ApiKeyRecord): boolean {
   return key.name.startsWith("saml:") || key.scopes.includes("saml-session");
 }
 
+function formatModeLabel(value: string): string {
+  const acronyms: Record<string, string> = {
+    oidc: "OIDC",
+    api: "API",
+    ui: "UI",
+  };
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((segment) => acronyms[segment] ?? (segment[0].toUpperCase() + segment.slice(1)))
+    .join(" ");
+}
+
+function modeTone(value: string): string {
+  switch (value) {
+    case "reverse_proxy_oidc":
+    case "trusted_proxy":
+      return "border-emerald-900/60 bg-emerald-950/30 text-emerald-300";
+    case "oidc_bearer":
+      return "border-sky-900/60 bg-sky-950/30 text-sky-300";
+    case "session_api_key":
+    case "api_key":
+      return "border-amber-900/60 bg-amber-950/30 text-amber-300";
+    case "no_auth":
+    default:
+      return "border-zinc-800 bg-zinc-900 text-zinc-400";
+  }
+}
+
 export function KeyLifecyclePanel({
   loading,
   error,
@@ -110,6 +139,19 @@ export function KeyLifecyclePanel({
       return acc;
     }, {});
   }, [keys]);
+
+  const quotaCards = useMemo(
+    () =>
+      policy
+        ? [
+            ["Active scan jobs", policy.tenant_quotas.active_scan_jobs],
+            ["Retained scan jobs", policy.tenant_quotas.retained_scan_jobs],
+            ["Fleet agents", policy.tenant_quotas.fleet_agents],
+            ["Schedules", policy.tenant_quotas.schedules],
+          ]
+        : [],
+    [policy]
+  );
 
   async function copyIssuedSecret() {
     if (!issuedSecret?.rawKey) return;
@@ -399,9 +441,73 @@ export function KeyLifecyclePanel({
           <div className="grid gap-3 md:grid-cols-4">
             <MetricCard label="Default TTL" value={formatSeconds(policy.api_key.default_ttl_seconds)} hint="Issued key lifetime" />
             <MetricCard label="Default overlap" value={formatSeconds(policy.api_key.default_overlap_seconds)} hint="Rotation grace window" />
-            <MetricCard label="Recommended UI mode" value={policy.ui.recommended_mode} hint="Browser auth posture" />
+            <MetricCard label="Recommended UI mode" value={formatModeLabel(policy.ui.recommended_mode)} hint="Browser auth posture" />
             <MetricCard label="Active keys" value={String(stateCounts.active ?? 0)} hint={`${keys.length} total in tenant`} />
           </div>
+
+          <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
+            <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Operator guidance</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs ${modeTone(policy.ui.recommended_mode)}`}>
+                  Recommended: {formatModeLabel(policy.ui.recommended_mode)}
+                </span>
+                {policy.ui.configured_modes.map((mode) => (
+                  <span key={mode} className={`inline-flex rounded-full border px-2.5 py-1 text-xs ${modeTone(mode)}`}>
+                    {formatModeLabel(mode)}
+                  </span>
+                ))}
+              </div>
+              <p className="mt-3 text-sm text-zinc-300">{policy.ui.message}</p>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                  <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Runtime rate-limit backend</p>
+                  <p className="mt-2 text-sm font-semibold text-zinc-100">
+                    {policy.rate_limit_runtime.backend}
+                    {policy.rate_limit_runtime.shared_across_replicas ? " · shared" : " · process-local"}
+                  </p>
+                  <p className="mt-1 text-xs text-zinc-400">{policy.rate_limit_runtime.message}</p>
+                </div>
+                <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                  <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Trusted browser path</p>
+                  <p className="mt-2 text-sm font-semibold text-zinc-100">{policy.ui.credentials_mode === "include" ? "Cookie-backed browser session" : policy.ui.credentials_mode}</p>
+                  <p className="mt-1 text-xs text-zinc-400">
+                    Trusted headers: {policy.ui.trusted_proxy_headers.length ? policy.ui.trusted_proxy_headers.join(", ") : "none"}.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Tenant guardrails</p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                {quotaCards.map(([label, value]) => (
+                  <div key={label} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                    <p className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">{label}</p>
+                    <p className="mt-2 text-lg font-semibold text-zinc-100">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <section className="rounded-2xl border border-amber-900/40 bg-amber-950/10 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-amber-200/70">Revocation boundaries</p>
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+              <BoundaryCard
+                title="Service keys"
+                body="Revoke stops that key at the API auth layer immediately. Rotation overlap is explicit and bounded by policy."
+              />
+              <BoundaryCard
+                title="Session API key fallback"
+                body="The browser-only fallback lives in sessionStorage for the current tab or browser session. Clearing the session removes it locally."
+              />
+              <BoundaryCard
+                title="Reverse-proxy or OIDC sessions"
+                body="Cookie or IdP session invalidation happens at the upstream proxy or identity provider. This panel does not force-log-out existing browser sessions."
+              />
+            </div>
+          </section>
 
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -513,6 +619,15 @@ function MetricCard({ label, value, hint }: { label: string; value: string; hint
       <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">{label}</p>
       <p className="mt-2 text-lg font-semibold text-zinc-100">{value}</p>
       <p className="mt-1 text-xs text-zinc-500">{hint}</p>
+    </div>
+  );
+}
+
+function BoundaryCard({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-xl border border-amber-900/30 bg-zinc-950/50 p-3">
+      <p className="text-sm font-semibold text-amber-100">{title}</p>
+      <p className="mt-1 text-xs leading-5 text-zinc-300">{body}</p>
     </div>
   );
 }

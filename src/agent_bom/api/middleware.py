@@ -38,6 +38,16 @@ from starlette.types import ASGIApp
 
 _logger = logging.getLogger(__name__)
 _RATE_LIMIT_FINGERPRINT_FALLBACK = secrets.token_bytes(32)
+_TENANT_SCOPED_AUTH_METHODS = {
+    "api_key",
+    "browser_session",
+    "browser_session_static_api_key",
+    "oidc",
+    "proxy_header",
+    "saml",
+    "scim_bearer",
+    "static_api_key",
+}
 _AUTH_RUNTIME_STATUS: dict[str, object] = {
     "auth_required": False,
     "configured_modes": [],
@@ -720,7 +730,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
     def _resolve_tenant_scope(self, request: StarletteRequest, raw_key: str) -> str | None:
         tenant_id = getattr(request.state, "tenant_id", "").strip() or None
-        if tenant_id and tenant_id != "default":
+        auth_method = str(getattr(request.state, "auth_method", "") or "")
+        if tenant_id and tenant_id != "default" and auth_method in _TENANT_SCOPED_AUTH_METHODS:
             return tenant_id
         if raw_key:
             try:

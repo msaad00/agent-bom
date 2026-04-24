@@ -150,7 +150,7 @@ class ApiKeyPolicy:
 
     default_ttl_seconds: int = 30 * 24 * 60 * 60
     max_ttl_seconds: int = 90 * 24 * 60 * 60
-    default_overlap_seconds: int = 15 * 60
+    default_overlap_seconds: int = 0
     max_overlap_seconds: int = 24 * 60 * 60
 
 
@@ -158,7 +158,7 @@ def get_api_key_policy() -> ApiKeyPolicy:
     """Load API key lifetime policy from env with safe defaults."""
     default_ttl = int(os.environ.get("AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS", str(30 * 24 * 60 * 60)))
     max_ttl = int(os.environ.get("AGENT_BOM_API_KEY_MAX_TTL_SECONDS", str(90 * 24 * 60 * 60)))
-    default_overlap = int(os.environ.get("AGENT_BOM_API_KEY_DEFAULT_OVERLAP_SECONDS", str(15 * 60)))
+    default_overlap = int(os.environ.get("AGENT_BOM_API_KEY_DEFAULT_OVERLAP_SECONDS", "0"))
     max_overlap = int(os.environ.get("AGENT_BOM_API_KEY_MAX_OVERLAP_SECONDS", str(24 * 60 * 60)))
     if default_ttl <= 0:
         raise ValueError("AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS must be > 0")

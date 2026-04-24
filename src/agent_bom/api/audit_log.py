@@ -358,6 +358,7 @@ class SQLiteAuditLog:
         self._local = threading.local()
         self._last_sig_by_tenant: dict[str, str] = defaultdict(str)
         self._init_db()
+        self._hydrate_last_signatures()
         if os.path.exists(self._db_path):
             os.chmod(self._db_path, 0o600)
 
@@ -389,13 +390,33 @@ class SQLiteAuditLog:
             """
             SELECT hmac_signature
             FROM audit_log
-            WHERE json_extract(details, '$.tenant_id') = ?
-            ORDER BY timestamp DESC
+            WHERE COALESCE(NULLIF(json_extract(details, '$.tenant_id'), ''), 'default') = ?
+            ORDER BY timestamp DESC, rowid DESC
             LIMIT 1
             """,
             (tenant_id,),
         ).fetchone()
         return row[0] if row else ""
+
+    def _hydrate_last_signatures(self) -> None:
+        rows = self._conn.execute(
+            """
+            SELECT tenant_id, hmac_signature
+            FROM (
+                SELECT
+                    COALESCE(NULLIF(json_extract(details, '$.tenant_id'), ''), 'default') AS tenant_id,
+                    hmac_signature,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY COALESCE(NULLIF(json_extract(details, '$.tenant_id'), ''), 'default')
+                        ORDER BY timestamp DESC, rowid DESC
+                    ) AS rn
+                FROM audit_log
+            )
+            WHERE rn = 1
+            """
+        ).fetchall()
+        for tenant_id, signature in rows:
+            self._last_sig_by_tenant[str(tenant_id)] = str(signature or "")
 
     def append(self, entry: AuditEntry) -> None:
         tenant_id = _entry_tenant(entry)

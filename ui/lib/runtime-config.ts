@@ -15,9 +15,27 @@ function normalizeApiUrl(value: string | undefined | null): string | undefined {
   return value.trim();
 }
 
+function sameOriginRuntimeApiUrl(value: string | undefined): string | undefined {
+  if (value === undefined || typeof window === "undefined") {
+    return value;
+  }
+  if (value === "") {
+    return "";
+  }
+  try {
+    const parsed = new URL(value, window.location.origin);
+    if (parsed.origin !== window.location.origin) {
+      return "";
+    }
+    return parsed.origin === window.location.origin ? parsed.pathname.replace(/\/$/, "") : "";
+  } catch {
+    return "";
+  }
+}
+
 export function getConfiguredApiUrl(): string {
   if (typeof window !== "undefined") {
-    const runtimeValue = normalizeApiUrl(window.__AGENT_BOM_CONFIG__?.apiUrl);
+    const runtimeValue = sameOriginRuntimeApiUrl(normalizeApiUrl(window.__AGENT_BOM_CONFIG__?.apiUrl));
     if (runtimeValue !== undefined) {
       return runtimeValue;
     }

@@ -315,6 +315,7 @@ def test_gateway_serve_allows_non_loopback_bind_with_bearer_token(tmp_path):
     assert "token required" in result.output
     assert "Upstreams" in result.output
     assert "Bind" in result.output
+    assert "No runtime policy rules configured." in result.output
     mock_run.assert_called_once()
 
 
@@ -408,6 +409,36 @@ def test_gateway_serve_passes_policy_reload_settings(tmp_path):
     assert settings.policy_path == policy
     assert settings.policy_reload_interval_seconds == 5
     assert "Policy hot reload: enabled every 5s" in result.output
+    mock_run.assert_called_once()
+
+
+def test_gateway_serve_reports_advisory_only_policy_summary(tmp_path):
+    runner = CliRunner()
+    upstreams = tmp_path / "upstreams.yaml"
+    policy = tmp_path / "policy.json"
+    upstreams.write_text("upstreams:\n  - name: jira\n    url: https://jira.example.com/mcp\n")
+    policy.write_text('{"rules":[{"id":"warn-secret","block_secret_paths":true}]}')
+
+    with (
+        patch("agent_bom.gateway_server.create_gateway_app") as mock_create_app,
+        patch("uvicorn.run") as mock_run,
+    ):
+        mock_create_app.return_value = object()
+        result = runner.invoke(
+            gateway_serve_cmd,
+            [
+                "--bind",
+                "127.0.0.1:8090",
+                "--upstreams",
+                str(upstreams),
+                "--policy",
+                str(policy),
+            ],
+        )
+
+    assert result.exit_code == 0
+    assert "Policy matches are advisory only; runtime will not block." in result.output
+    assert "Rules=1 (block=0, warn=1)" in result.output
     mock_run.assert_called_once()
 
 

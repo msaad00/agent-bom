@@ -72,10 +72,27 @@ def test_healthz_lists_configured_upstreams() -> None:
         },
         "policy_runtime": {
             "source": "inline",
+            "source_kind": "inline",
             "reload_enabled": False,
             "reload_interval_seconds": 0,
             "last_loaded_at": None,
             "last_error": None,
+            "rollout_mode": "disabled",
+            "summary": "No runtime policy rules configured.",
+            "total_rules": 0,
+            "blocking_rules": 0,
+            "advisory_rules": 0,
+            "allowlist_rules": 0,
+            "default_deny_rules": 0,
+            "read_only_rules": 0,
+            "secret_path_rules": 0,
+            "unknown_egress_rules": 0,
+            "denied_tool_classes": [],
+            "blocks_requests": False,
+            "advisory_only": False,
+            "default_deny": False,
+            "protects_secret_paths": False,
+            "restricts_unknown_egress": False,
         },
     }
 
@@ -94,10 +111,40 @@ def test_healthz_reports_policy_reload_runtime(tmp_path: Path) -> None:
         assert resp.status_code == 200
         runtime = resp.json()["policy_runtime"]
         assert runtime["source"] == str(policy_path)
+        assert runtime["source_kind"] == "file"
         assert runtime["reload_enabled"] is True
         assert runtime["reload_interval_seconds"] == 2
         assert runtime["last_loaded_at"] is not None
         assert runtime["last_error"] is None
+        assert runtime["rollout_mode"] == "disabled"
+
+
+def test_healthz_reports_policy_rollout_summary_for_advisory_rules() -> None:
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={"rules": [{"id": "warn-secret", "block_secret_paths": True}]},
+    )
+    client = TestClient(create_gateway_app(settings))
+    resp = client.get("/healthz")
+    runtime = resp.json()["policy_runtime"]
+    assert runtime["rollout_mode"] == "advisory_only"
+    assert runtime["blocks_requests"] is False
+    assert runtime["advisory_only"] is True
+    assert runtime["protects_secret_paths"] is True
+
+
+def test_healthz_reports_policy_rollout_summary_for_default_deny() -> None:
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={"rules": [{"id": "allow-read", "mode": "allowlist", "action": "block", "allow_tools": ["read_file"]}]},
+    )
+    client = TestClient(create_gateway_app(settings))
+    resp = client.get("/healthz")
+    runtime = resp.json()["policy_runtime"]
+    assert runtime["rollout_mode"] == "default_deny"
+    assert runtime["blocks_requests"] is True
+    assert runtime["default_deny"] is True
+    assert runtime["allowlist_rules"] == 1
 
 
 def test_healthz_reports_visual_leak_readiness_when_enabled(monkeypatch) -> None:

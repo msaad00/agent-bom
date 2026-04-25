@@ -21,6 +21,7 @@ jobs:
   analyze-python:
     name: Analyze (python)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       security-events: write
       actions: read
@@ -47,6 +48,7 @@ jobs:
   analyze-actions:
     name: Analyze (actions)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       security-events: write
       actions: read

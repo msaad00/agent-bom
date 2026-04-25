@@ -23,6 +23,7 @@ jobs:
   bundle:
     name: Build air-gapped image bundle
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 

@@ -24,7 +24,7 @@ CLOUD_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
     [
         ("Cloud Providers", ["aws", "azure", "gcp"]),
         ("AI Platforms", ["snowflake", "databricks", "huggingface", "ollama"]),
-        ("Posture", ["posture"]),
+        ("Posture", ["posture", "resilience"]),
     ]
 )
 
@@ -65,11 +65,12 @@ def cloud():
 
 # ── Register cloud provider commands (reuse from _cloud_group.py) ────────────
 
-from agent_bom.cli._cloud_group import aws_cmd, azure_cmd, gcp_cmd  # noqa: E402
+from agent_bom.cli._cloud_group import aws_cmd, azure_cmd, gcp_cmd, resilience_cmd  # noqa: E402
 
 cloud.add_command(aws_cmd, "aws")
 cloud.add_command(azure_cmd, "azure")
 cloud.add_command(gcp_cmd, "gcp")
+cloud.add_command(resilience_cmd, "resilience")
 
 # ── Thin commands for AI platforms (delegate to scan with flags) ─────────────
 

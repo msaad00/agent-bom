@@ -22,6 +22,17 @@ def test_inventory_no_agents():
         assert "No MCP configurations" in result.output
 
 
+def test_inventory_json_no_agents_includes_completeness():
+    runner = CliRunner()
+    with patch("agent_bom.cli._inventory.discover_all", return_value=[]):
+        result = runner.invoke(inventory, ["--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        assert data["agents"] == []
+        assert data["discovery_completeness"]["path_count"] >= 1
+        assert "actual_server_count" in data["discovery_completeness"]
+
+
 def test_inventory_with_agents():
     runner = CliRunner()
     from agent_bom.models import Agent, AgentType, MCPServer, TransportType
@@ -46,6 +57,22 @@ def test_inventory_with_config_file(tmp_path):
     with patch("agent_bom.cli._inventory.extract_packages", return_value=[]):
         result = runner.invoke(inventory, ["--config", str(config_file)])
         assert result.exit_code == 0
+
+
+def test_inventory_json_with_config_reports_completeness(tmp_path):
+    runner = CliRunner()
+    config = {"mcpServers": {"test": {"command": "npx", "args": ["-y", "@example/server"]}}}
+    config_file = tmp_path / "config.json"
+    config_file.write_text(json.dumps(config))
+
+    with patch("agent_bom.cli._inventory.extract_packages", return_value=[]):
+        result = runner.invoke(inventory, ["--config", str(config_file), "--json"])
+        assert result.exit_code == 0
+        data = json.loads(result.output)
+        completeness = data["discovery_completeness"]
+        assert completeness["expected_server_count"] == 1
+        assert completeness["actual_server_count"] == 1
+        assert completeness["sources"][0]["status"] == "present"
 
 
 def test_inventory_with_bad_config(tmp_path):
@@ -144,6 +171,19 @@ def test_where_json():
     data = json.loads(result.output)
     assert "platform" in data
     assert "paths" in data
+    assert "completeness" in data
+    assert data["completeness"]["path_count"] == data["path_count"]
+
+
+def test_discovery_completeness_counts_parse_errors(tmp_path):
+    from agent_bom.discovery.coverage import discovery_completeness_summary
+
+    bad_config = tmp_path / "bad.json"
+    bad_config.write_text("{not-json")
+    data = discovery_completeness_summary([("custom", str(bad_config))])
+    assert data["found_source_count"] == 1
+    assert data["parse_error_count"] == 1
+    assert data["confidence"] == "low"
 
 
 # ---------------------------------------------------------------------------

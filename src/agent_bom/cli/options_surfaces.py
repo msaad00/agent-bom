@@ -67,6 +67,23 @@ def discovery_options(fn):
                 "--model-provenance", is_flag=True, help="Enable SHA-256 hash and Sigstore signature checks for --model-files scans"
             ),
             click.option(
+                "--model-policy-mode",
+                type=click.Choice(["off", "warn", "enforce"]),
+                default="off",
+                show_default=True,
+                help="Evaluate model artifact provenance policy without changing local scan defaults.",
+            ),
+            click.option(
+                "--require-model-signatures",
+                is_flag=True,
+                help="Warn or fail, based on --model-policy-mode, when model files lack Sigstore/cosign-compatible signature evidence.",
+            ),
+            click.option(
+                "--block-unsafe-model-formats",
+                is_flag=True,
+                help="Warn or fail, based on --model-policy-mode, for executable-on-load model formats such as pickle, PyTorch, and .bin.",
+            ),
+            click.option(
                 "--ai-inventory",
                 "ai_inventory_paths",
                 multiple=True,

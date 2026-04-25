@@ -167,6 +167,7 @@ class TestSummarizeModelSupplyChain:
         assert summary["adapter_lineage_refs"] == 1
         assert summary["manifests_with_security_flags"] == 1
         assert summary["hash_verification"]["tampered"] == 1
+        assert summary["ai_model_advisories"]["count"] == 0
 
 
 class TestEvaluateModelProvenancePolicy:
@@ -245,6 +246,24 @@ class TestCheckHuggingFaceProvenance:
         assert result["gated"] is True
         assert result["downloads"] == 500000
         assert result["security_flags"] == []
+        assert result["model_advisory_feed"]["status"] == "available"
+
+    @patch("agent_bom.http_client.sync_get")
+    def test_model_card_custom_code_advisory_is_separate_from_security_flags(self, mock_sync_get):
+        mock_sync_get.return_value = _mock_hf_response(
+            {
+                "author": "org",
+                "cardData": {"license": "apache-2.0"},
+                "gated": False,
+                "downloads": 100,
+                "tags": ["custom_code"],
+                "siblings": [{"rfilename": "model.safetensors", "lfs": {"sha256": "abc123"}}],
+            }
+        )
+        result = check_huggingface_provenance("org/custom-model")
+        assert result["security_flags"] == []
+        assert result["model_advisories"]
+        assert result["model_advisories"][0]["risk_type"] == "remote_code_on_model_load"
 
     @patch("agent_bom.http_client.sync_get")
     def test_no_model_card_flags(self, mock_sync_get):

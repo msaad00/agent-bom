@@ -14,6 +14,7 @@ from agent_bom.security import (
     create_safe_subprocess_env,
     sanitize_env_vars,
     sanitize_error,
+    sanitize_log_label,
     validate_arguments,
     validate_command,
     validate_environment,
@@ -25,6 +26,20 @@ from agent_bom.security import (
     validate_path,
     validate_url,
 )
+
+
+def test_sanitize_log_label_strips_ansi_and_line_controls():
+    cleaned = sanitize_log_label("srv\x1b[31m-red\x1b[0m\r\nnext\tline")
+    assert cleaned == "srv-red next line"
+    assert "\x1b" not in cleaned
+    assert "\n" not in cleaned
+    assert "\r" not in cleaned
+    assert "\t" not in cleaned
+
+
+def test_sanitize_log_label_bounds_length():
+    assert sanitize_log_label("x" * 20, max_len=7) == "x" * 7
+
 
 # ---------------------------------------------------------------------------
 # validate_command

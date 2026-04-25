@@ -11,22 +11,19 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Protocol
 
+from agent_bom.security import sanitize_log_label
+
 logger = logging.getLogger(__name__)
-_ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
 def _log_value(value: object, max_len: int = 500) -> str:
-    text = _ANSI_RE.sub("", str(value))
-    text = text.replace("\r", " ").replace("\n", " ").replace("\t", " ")
-    text = "".join(ch for ch in text if ch >= " " and ch != "\x7f")
-    return re.sub(r" {2,}", " ", text)[:max_len]
+    return sanitize_log_label(value, max_len=max_len)
 
 
 # ─── Alert model ─────────────────────────────────────────────────────────────
@@ -62,6 +59,7 @@ class ConsoleAlertSink:
 
     def send(self, alert: Alert) -> None:
         from rich.console import Console
+        from rich.markup import escape
 
         con = Console(stderr=True)
         severity_styles = {
@@ -72,10 +70,13 @@ class ConsoleAlertSink:
             "info": "cyan",
         }
         style = severity_styles.get(alert.severity, "white")
-        con.print(f"  [{style}][{alert.severity.upper()}][/{style}] {alert.summary}")
+        summary = escape(_log_value(alert.summary))
+        con.print(f"  [{style}][{alert.severity.upper()}][/{style}] {summary}")
         if alert.details:
             for key, val in alert.details.items():
-                con.print(f"    [dim]{key}: {val}[/dim]")
+                safe_key = escape(_log_value(key, max_len=120))
+                safe_val = escape(_log_value(val))
+                con.print(f"    [dim]{safe_key}: {safe_val}[/dim]")
 
 
 class WebhookAlertSink:

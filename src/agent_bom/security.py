@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 # Allowed executables for MCP servers (security allowlist).
 # Includes package managers, runtimes, and container tools commonly used
@@ -75,6 +76,14 @@ SENSITIVE_PATTERNS = [
     r"bearer",
     r"jwt",
 ]
+
+
+def sanitize_log_label(value: object, max_len: int = 500) -> str:
+    """Return a single-line, ANSI-free label for logs and terminal output."""
+    text = ANSI_ESCAPE_RE.sub("", str(value))
+    text = text.replace("\r", " ").replace("\n", " ").replace("\t", " ")
+    text = "".join(ch for ch in text if ch >= " " and ch != "\x7f")
+    return re.sub(r" {2,}", " ", text).strip()[:max_len]
 
 
 class SecurityError(Exception):

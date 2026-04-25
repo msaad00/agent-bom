@@ -10,6 +10,7 @@ import httpx
 from agent_bom.model_files import (
     check_huggingface_provenance,
     check_sigstore_signature,
+    evaluate_model_provenance_policy,
     summarize_model_supply_chain,
     verify_model_hash,
 )
@@ -166,6 +167,47 @@ class TestSummarizeModelSupplyChain:
         assert summary["adapter_lineage_refs"] == 1
         assert summary["manifests_with_security_flags"] == 1
         assert summary["hash_verification"]["tampered"] == 1
+
+
+class TestEvaluateModelProvenancePolicy:
+    def test_enforce_blocks_unsigned_model(self):
+        result = evaluate_model_provenance_policy(
+            [{"filename": "model.safetensors", "extension": ".safetensors", "signed": False}],
+            mode="enforce",
+            require_signatures=True,
+        )
+        assert result["passed"] is False
+        assert result["violations"][0]["type"] == "UNSIGNED_MODEL"
+
+    def test_enforce_blocks_unsafe_format(self):
+        result = evaluate_model_provenance_policy(
+            [{"filename": "adapter.pkl", "extension": ".pkl", "signed": True}],
+            mode="enforce",
+            block_unsafe_formats=True,
+        )
+        assert result["passed"] is False
+        assert result["violations"][0]["type"] == "UNSAFE_MODEL_FORMAT"
+
+    def test_safe_signed_model_passes(self):
+        result = evaluate_model_provenance_policy(
+            [{"filename": "model.onnx", "extension": ".onnx", "signed": True}],
+            mode="enforce",
+            require_signatures=True,
+            block_unsafe_formats=True,
+        )
+        assert result["passed"] is True
+        assert result["violations"] == []
+
+    def test_warn_mode_reports_without_blocking(self):
+        result = evaluate_model_provenance_policy(
+            [{"filename": "model.bin", "extension": ".bin", "signed": False}],
+            mode="warn",
+            require_signatures=True,
+            block_unsafe_formats=True,
+        )
+        assert result["passed"] is True
+        assert result["violations"] == []
+        assert {warning["type"] for warning in result["warnings"]} == {"UNSIGNED_MODEL", "UNSAFE_MODEL_FORMAT"}
 
 
 # ── check_huggingface_provenance ─────────────────────────────────

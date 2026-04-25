@@ -595,3 +595,69 @@ def summarize_model_supply_chain(
             "has_tampering": bool(hash_verification.get("has_tampering", False)),
         },
     }
+
+
+def evaluate_model_provenance_policy(
+    model_files: list[dict],
+    *,
+    mode: str = "warn",
+    require_signatures: bool = False,
+    block_unsafe_formats: bool = False,
+) -> dict:
+    """Evaluate local model artifact policy without inventing new signing.
+
+    The evaluator consumes fields already produced by ``scan_model_files`` and
+    ``check_sigstore_signature``. ``warn`` mode reports violations without
+    blocking; ``enforce`` mode marks the policy as failed.
+    """
+
+    normalized_mode = mode if mode in {"off", "warn", "enforce"} else "warn"
+    violations: list[dict[str, str]] = []
+    warnings: list[dict[str, str]] = []
+
+    if normalized_mode == "off":
+        return {
+            "mode": "off",
+            "passed": True,
+            "require_signatures": require_signatures,
+            "block_unsafe_formats": block_unsafe_formats,
+            "violations": [],
+            "warnings": [],
+            "checked_files": len(model_files),
+        }
+
+    for model_file in model_files:
+        filename = str(model_file.get("filename") or Path(str(model_file.get("path", "model"))).name)
+        extension = str(model_file.get("extension", "")).lower()
+        if require_signatures and model_file.get("signed") is not True:
+            violations.append(
+                {
+                    "type": "UNSIGNED_MODEL",
+                    "severity": "HIGH",
+                    "file": filename,
+                    "message": "model artifact has no Sigstore/cosign-compatible signature evidence",
+                }
+            )
+        if block_unsafe_formats and extension in _UNSAFE_MODEL_EXTENSIONS:
+            violations.append(
+                {
+                    "type": "UNSAFE_MODEL_FORMAT",
+                    "severity": "HIGH",
+                    "file": filename,
+                    "message": f"model artifact uses unsafe or executable-on-load format {extension}",
+                }
+            )
+
+    if normalized_mode == "warn":
+        warnings = violations
+        violations = []
+
+    return {
+        "mode": normalized_mode,
+        "passed": not violations,
+        "require_signatures": require_signatures,
+        "block_unsafe_formats": block_unsafe_formats,
+        "violations": violations,
+        "warnings": warnings,
+        "checked_files": len(model_files),
+    }

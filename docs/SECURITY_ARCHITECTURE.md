@@ -104,6 +104,7 @@ For cross-agent correlation and the broader 8-detector protection engine, run `a
 - Local model scans surface risky formats, bundle manifests, adapter lineage, signature presence, and per-file security flags
 - HuggingFace provenance checks surface author, card presence, digest availability, and gated/private posture
 - Hash verification can compare local weights against HuggingFace Hub metadata and report verified, unverified, offline, or tampered states
+- Operators can enable advisory or enforce mode for model artifact policy with `--model-policy-mode`, `--require-model-signatures`, and `--block-unsafe-model-formats`; warn mode reports unsigned or unsafe artifacts while enforce mode fails closed through the normal scan policy exit path
 
 ### What a Formal Pentest Should Cover
 

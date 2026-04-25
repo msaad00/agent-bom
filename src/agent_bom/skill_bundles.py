@@ -85,11 +85,32 @@ def _resolve_local_refs(primary_path: Path, content: str) -> list[Path]:
     refs: list[Path] = []
     seen: set[Path] = set()
     for ref in sorted(_candidate_local_refs(content)):
-        candidate = (base / ref).resolve()
+        raw_candidate = base / ref
+        if _ref_path_uses_symlink(base, ref):
+            continue
+        candidate = raw_candidate.resolve()
         if candidate.is_file() and candidate != primary_path.resolve() and candidate not in seen:
             seen.add(candidate)
             refs.append(candidate)
     return refs
+
+
+def _ref_path_uses_symlink(base: Path, ref: str) -> bool:
+    """Return True when a local reference traverses a symlinked path component."""
+    current = base
+    for part in Path(ref).parts:
+        if part in ("", "."):
+            continue
+        if part == "..":
+            current = current.parent
+        else:
+            current = current / part
+        try:
+            if current.is_symlink():
+                return True
+        except OSError:
+            return True
+    return False
 
 
 def build_skill_bundle(path: Path, content: str | None = None) -> SkillBundle:

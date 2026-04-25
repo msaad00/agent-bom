@@ -136,9 +136,10 @@ def _score_discovery_provenance(agent: "Agent") -> tuple[float, list[str]]:
         return 5.0, ["at least one MCP server was observed by multiple discovery sources"]
     if any(count == 1 for count in source_counts):
         return 3.0, ["MCP server discovery includes source provenance"]
-    if agent.source:
-        return 2.0, [f"agent source recorded as {agent.source}"]
-    if agent.config_path:
+    agent_source = getattr(agent, "source", None)
+    if agent_source:
+        return 2.0, [f"agent source recorded as {agent_source}"]
+    if getattr(agent, "config_path", None):
         return 1.0, ["agent has a concrete config path but no merged source provenance"]
     return -5.0, ["agent has no config path or discovery source provenance"]
 
@@ -179,10 +180,11 @@ def _score_inventory_freshness(agent: "Agent") -> tuple[float, list[str]]:
 
 
 def _inventory_age_hours(agent: "Agent") -> float | None:
-    raw_age = agent.metadata.get("inventory_age_hours") if isinstance(agent.metadata, dict) else None
+    metadata = getattr(agent, "metadata", {})
+    raw_age = metadata.get("inventory_age_hours") if isinstance(metadata, dict) else None
     if isinstance(raw_age, int | float):
         return float(raw_age)
-    raw_seen = agent.metadata.get("last_seen_at") if isinstance(agent.metadata, dict) else None
+    raw_seen = metadata.get("last_seen_at") if isinstance(metadata, dict) else None
     if not isinstance(raw_seen, str):
         return None
     try:

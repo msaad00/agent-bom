@@ -95,6 +95,7 @@ class AIComponentReport:
     shadow_ai: list[AIComponent] = field(default_factory=list)  # in code, not in manifest
     deprecated_models: list[AIComponent] = field(default_factory=list)
     api_keys: list[AIComponent] = field(default_factory=list)  # hardcoded keys
+    framework_agents: list[dict] = field(default_factory=list)  # non-MCP agent framework relationships
     scan_paths: list[str] = field(default_factory=list)
     files_scanned: int = 0
     warnings: list[str] = field(default_factory=list)
@@ -136,6 +137,7 @@ class AIComponentReport:
             "shadow_ai": [c.to_dict() for c in self.shadow_ai],
             "deprecated_models": [c.to_dict() for c in self.deprecated_models],
             "api_keys": [c.to_dict() for c in self.api_keys],
+            "framework_agents": list(self.framework_agents),
             "scan_paths": list(self.scan_paths),
             "files_scanned": self.files_scanned,
             "warnings": list(self.warnings),
@@ -144,6 +146,7 @@ class AIComponentReport:
                 "shadow_ai": len(self.shadow_ai),
                 "deprecated_models": len(self.deprecated_models),
                 "api_keys": len(self.api_keys),
+                "framework_agents": len(self.framework_agents),
                 "unique_sdks": sorted(self.unique_sdks),
                 "unique_models": sorted(self.unique_models),
                 "by_language": {lang: len(items) for lang, items in self.by_language.items()},

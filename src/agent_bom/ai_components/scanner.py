@@ -103,8 +103,19 @@ def scan_source(
     report.shadow_ai = [c for c in report.components if c.is_shadow]
     report.deprecated_models = [c for c in report.components if c.component_type == AIComponentType.DEPRECATED_MODEL]
     report.api_keys = [c for c in report.components if c.component_type == AIComponentType.API_KEY]
+    report.framework_agents = _scan_framework_relationships(*paths)
 
     return report
+
+
+def _scan_framework_relationships(*paths: str | Path) -> list[dict]:
+    """Attach first-class non-MCP agent framework relationships."""
+    try:
+        from agent_bom.ai_components.framework_agents import scan_framework_agents
+    except Exception:
+        logger.debug("framework-agent scanner unavailable", exc_info=True)
+        return []
+    return [agent.to_dict() for agent in scan_framework_agents(*paths)]
 
 
 def _walk_directory(

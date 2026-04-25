@@ -278,6 +278,28 @@ class TestResolveNpmDependencies:
             assert result[0].name == "body-parser"
             assert result[0].is_direct is False
             assert result[0].parent_package == "express"
+            assert result[0].dependency_scope == "runtime"
+            assert result[0].reachability_evidence == "runtime_dependency"
+
+    @pytest.mark.asyncio
+    async def test_optional_and_peer_dependencies_are_declaration_evidence(self):
+        pkg = Package(name="plugin-host", version="1.0.0", ecosystem="npm")
+        mock_metadata = {
+            "dependencies": {"runtime-lib": "^1.0.0"},
+            "optionalDependencies": {"optional-lib": "^2.0.0"},
+            "peerDependencies": {"react": "^19.0.0"},
+        }
+        client = AsyncMock()
+        with patch("agent_bom.transitive.fetch_npm_metadata", return_value=mock_metadata):
+            result = await resolve_npm_dependencies(pkg, client, max_depth=1)
+
+        by_name = {p.name: p for p in result}
+        assert by_name["runtime-lib"].dependency_scope == "runtime"
+        assert by_name["runtime-lib"].reachability_evidence == "runtime_dependency"
+        assert by_name["optional-lib"].dependency_scope == "optional"
+        assert by_name["optional-lib"].reachability_evidence == "declaration_only"
+        assert by_name["react"].dependency_scope == "peer"
+        assert by_name["react"].reachability_evidence == "declaration_only"
 
     @pytest.mark.asyncio
     async def test_max_depth_stops_recursion(self):
@@ -320,7 +342,7 @@ class TestResolvePypiDependencies:
             assert "certifi" in names
 
     @pytest.mark.asyncio
-    async def test_skips_extras(self):
+    async def test_marks_extras_as_declaration_only(self):
         pkg = Package(name="requests", version="2.31.0", ecosystem="pypi")
         mock_metadata = {
             "info": {
@@ -333,8 +355,11 @@ class TestResolvePypiDependencies:
         client = AsyncMock()
         with patch("agent_bom.transitive.fetch_pypi_metadata", return_value=mock_metadata):
             result = await resolve_pypi_dependencies(pkg, client, max_depth=1)
-            names = [p.name for p in result]
-            assert "urllib3" in names
+            by_name = {p.name: p for p in result}
+            assert by_name["urllib3"].dependency_scope == "runtime"
+            assert by_name["urllib3"].reachability_evidence == "runtime_dependency"
+            assert by_name["PySocks"].dependency_scope == "extra"
+            assert by_name["PySocks"].reachability_evidence == "declaration_only"
 
     @pytest.mark.asyncio
     async def test_strips_env_markers(self):
@@ -351,6 +376,8 @@ class TestResolvePypiDependencies:
             result = await resolve_pypi_dependencies(pkg, client, max_depth=1)
             assert len(result) == 1
             assert result[0].name == "typing-extensions"
+            assert result[0].dependency_scope == "conditional"
+            assert result[0].reachability_evidence == "declaration_only"
 
     @pytest.mark.asyncio
     async def test_empty_requires_dist(self):

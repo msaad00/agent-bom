@@ -311,6 +311,8 @@ class Package:
     is_direct: bool = True  # vs transitive dependency
     parent_package: Optional[str] = None  # Name of parent package (for transitive deps)
     dependency_depth: int = 0  # 0 for direct, 1+ for transitive
+    dependency_scope: str = "runtime"  # runtime, optional, peer, extra, conditional, dev, unknown
+    reachability_evidence: str = "runtime_dependency"  # runtime_dependency, declaration_only, lockfile, unknown
     resolved_from_registry: bool = False  # True if resolved dynamically vs from lock file
     registry_version: Optional[str] = None  # Latest version from registry (for drift comparison)
     version_source: str = "detected"  # "detected" | "manifest" | "registry_fallback"
@@ -803,9 +805,12 @@ class BlastRadius:
         is_direct = self.package.is_direct
         is_high = self.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH)
         has_agents = bool(self.affected_agents)
+        declaration_only = self.package.reachability_evidence == "declaration_only"
 
         if (has_creds or has_tools) and is_direct:
             return "confirmed"
+        if declaration_only and not has_creds and not has_tools:
+            return "unknown"
         if has_creds or has_tools or (is_direct and has_agents) or is_high:
             return "likely"
         if not is_direct and not has_creds and not has_tools:

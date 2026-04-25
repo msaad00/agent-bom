@@ -22,6 +22,15 @@ k6 run deploy/loadtest/k6-graph-api.js
 k6 run deploy/loadtest/k6-proxy-audit.js
 ```
 
+Release-quality scale evidence for 1k / 5k / 10k estate claims is tracked
+under [`docs/perf/`](perf/). Those pages carry the exact commands,
+environment fields, raw-result locations, and gaps used for enterprise
+procurement evidence. Validate the scaffold with:
+
+```bash
+python scripts/check_scale_evidence.py
+```
+
 ---
 
 ## Scanner hot paths

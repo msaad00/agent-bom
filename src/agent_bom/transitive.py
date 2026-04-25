@@ -263,35 +263,66 @@ async def resolve_npm_dependencies(
         return []
 
     dependencies = []
-    dep_dict = metadata.get("dependencies", {})
+    dependency_sections = (
+        ("dependencies", "runtime", "runtime_dependency", True),
+        ("optionalDependencies", "optional", "declaration_only", False),
+        ("peerDependencies", "peer", "declaration_only", False),
+    )
 
-    for dep_name, dep_version in dep_dict.items():
-        # Clean version spec (remove ^, ~, etc.)
-        clean_version = dep_version.lstrip("^~>=<")
+    for section, dependency_scope, reachability_evidence, recurse in dependency_sections:
+        dep_dict = metadata.get(section, {}) or {}
+        for dep_name, dep_version in dep_dict.items():
+            # Clean version spec (remove ^, ~, etc.)
+            clean_version = dep_version.lstrip("^~>=<")
 
-        transitive_pkg = Package(
-            name=dep_name,
-            version=clean_version,
-            ecosystem="npm",
-            purl=f"pkg:npm/{dep_name}@{clean_version}",
-            is_direct=False,
-            parent_package=package.name,
-            dependency_depth=current_depth + 1,
-            resolved_from_registry=True,
-        )
-        dependencies.append(transitive_pkg)
+            transitive_pkg = Package(
+                name=dep_name,
+                version=clean_version,
+                ecosystem="npm",
+                purl=f"pkg:npm/{dep_name}@{clean_version}",
+                is_direct=False,
+                parent_package=package.name,
+                dependency_depth=current_depth + 1,
+                dependency_scope=dependency_scope,
+                reachability_evidence=reachability_evidence,
+                resolved_from_registry=True,
+            )
+            dependencies.append(transitive_pkg)
 
-        # Recursively resolve this package's dependencies
-        nested_deps = await resolve_npm_dependencies(
-            transitive_pkg,
-            client,
-            max_depth,
-            current_depth + 1,
-            seen,
-        )
-        dependencies.extend(nested_deps)
+            if not recurse:
+                continue
+
+            # Recursively resolve this package's runtime dependencies. Optional
+            # and peer declarations are surfaced as evidence, but not expanded
+            # as confirmed runtime paths.
+            nested_deps = await resolve_npm_dependencies(
+                transitive_pkg,
+                client,
+                max_depth,
+                current_depth + 1,
+                seen,
+            )
+            dependencies.extend(nested_deps)
 
     return dependencies
+
+
+def _split_requires_dist_marker(dep_spec: str) -> tuple[str, str]:
+    """Return the requirement body and optional PEP 508 marker."""
+    if ";" not in dep_spec:
+        return dep_spec.strip(), ""
+    requirement, marker = dep_spec.split(";", 1)
+    return requirement.strip(), marker.strip()
+
+
+def _scope_for_pypi_marker(marker: str) -> tuple[str, str]:
+    """Classify PyPI dependency markers without evaluating the local runtime."""
+    normalized = marker.lower().replace('"', "'")
+    if "extra ==" in normalized:
+        return "extra", "declaration_only"
+    if marker:
+        return "conditional", "declaration_only"
+    return "runtime", "runtime_dependency"
 
 
 async def resolve_pypi_dependencies(
@@ -329,12 +360,8 @@ async def resolve_pypi_dependencies(
 
     for dep_spec in requires_dist:
         # Parse dependency specification (e.g., "requests>=2.28.0")
-        # Skip extras and environment markers
-        if ";" in dep_spec:
-            dep_spec = dep_spec.split(";")[0].strip()
-
-        if "extra ==" in dep_spec:
-            continue  # Skip optional dependencies
+        dep_spec, marker = _split_requires_dist_marker(dep_spec)
+        dependency_scope, reachability_evidence = _scope_for_pypi_marker(marker)
 
         # Extract package name and version
         match = re.match(r"^([a-zA-Z0-9_.-]+)\s*([<>=!~]+)?\s*([a-zA-Z0-9_.*+-]+)?", dep_spec)
@@ -352,9 +379,14 @@ async def resolve_pypi_dependencies(
             is_direct=False,
             parent_package=package.name,
             dependency_depth=current_depth + 1,
+            dependency_scope=dependency_scope,
+            reachability_evidence=reachability_evidence,
             resolved_from_registry=True,
         )
         dependencies.append(transitive_pkg)
+
+        if reachability_evidence == "declaration_only":
+            continue
 
         # Recursively resolve this package's dependencies
         nested_deps = await resolve_pypi_dependencies(

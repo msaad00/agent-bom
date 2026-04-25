@@ -60,6 +60,62 @@ export function GraphEmptyState({
   );
 }
 
+export function GraphPanelSkeleton({
+  title = "Loading graph",
+  detail = "Fetching a bounded graph window and preparing the visible topology.",
+}: {
+  title?: string;
+  detail?: string;
+}) {
+  return (
+    <div className="flex h-full items-center justify-center p-6" data-testid="graph-panel-skeleton">
+      <div className="w-full max-w-4xl rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="h-3 w-28 animate-pulse rounded-full bg-[color:var(--surface-elevated)]" />
+            <h3 className="mt-3 text-base font-semibold text-[color:var(--foreground)]">{title}</h3>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-[color:var(--text-secondary)]">{detail}</p>
+          </div>
+          <div className="h-10 w-24 animate-pulse rounded-xl bg-[color:var(--surface-elevated)]" />
+        </div>
+        <div className="mt-6 grid gap-4 md:grid-cols-3">
+          <SkeletonColumn bars={4} />
+          <SkeletonColumn bars={5} />
+          <SkeletonColumn bars={4} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function GraphRefreshOverlay({ label = "Refreshing graph window" }: { label?: string }) {
+  return (
+    <div
+      className="pointer-events-none absolute right-4 top-4 z-10 rounded-xl border border-sky-500/30 bg-sky-950/80 px-3 py-2 text-xs text-sky-100 shadow-lg backdrop-blur"
+      data-testid="graph-refresh-overlay"
+    >
+      {label}
+    </div>
+  );
+}
+
+function SkeletonColumn({ bars }: { bars: number }) {
+  return (
+    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
+      <div className="h-4 w-24 animate-pulse rounded-full bg-[color:var(--surface-elevated)]" />
+      <div className="mt-4 space-y-3">
+        {Array.from({ length: bars }, (_, index) => (
+          <div
+            key={index}
+            className="h-3 animate-pulse rounded-full bg-[color:var(--surface-elevated)]"
+            style={{ width: `${92 - index * 11}%` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function GraphFindingsFallback({
   nodes,
   onSelect,

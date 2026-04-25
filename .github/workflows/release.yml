@@ -695,6 +695,12 @@ jobs:
           MAJOR=$(echo "${{ github.ref_name }}" | grep -oP '^v\d+')
           if [ -n "$MAJOR" ]; then
             git tag -f "$MAJOR" "${{ github.ref_name }}"
-            git push origin "$MAJOR" --force
+            REMOTE_TAG_SHA="$(git ls-remote --tags origin "refs/tags/${MAJOR}" | awk '{print $1}')"
+            if [ -n "$REMOTE_TAG_SHA" ]; then
+              git push origin "refs/tags/${MAJOR}:refs/tags/${MAJOR}" \
+                --force-with-lease="refs/tags/${MAJOR}:${REMOTE_TAG_SHA}"
+            else
+              git push origin "refs/tags/${MAJOR}:refs/tags/${MAJOR}"
+            fi
             echo "Updated floating tag $MAJOR → ${{ github.ref_name }}"
           fi

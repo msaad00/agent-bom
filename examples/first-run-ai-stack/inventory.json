@@ -1,0 +1,110 @@
+{
+  "schema_version": "1",
+  "source": "agent-bom-first-run-sample",
+  "generated_at": "2026-04-25T00:00:00Z",
+  "agents": [
+    {
+      "name": "Cursor First-Run Workspace",
+      "agent_type": "cursor",
+      "config_path": "examples/first-run-ai-stack/.cursor/mcp.json",
+      "source": "bundled-first-run-sample",
+      "mcp_servers": [
+        {
+          "name": "research-filesystem",
+          "command": "python",
+          "args": ["services/research-mcp/server.py"],
+          "transport": "stdio",
+          "working_dir": "examples/first-run-ai-stack/services/research-mcp",
+          "config_path": "examples/first-run-ai-stack/.cursor/mcp.json",
+          "env": {
+            "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+            "VECTOR_DB_TOKEN": "${VECTOR_DB_TOKEN}"
+          },
+          "tools": [
+            {
+              "name": "read_project_file",
+              "description": "Read files inside the sample project workspace"
+            },
+            {
+              "name": "summarize_research_notes",
+              "description": "Summarize local notes for the agent"
+            }
+          ],
+          "packages": [
+            {
+              "name": "flask",
+              "version": "2.2.0",
+              "ecosystem": "pypi"
+            },
+            {
+              "name": "werkzeug",
+              "version": "2.2.2",
+              "ecosystem": "pypi"
+            }
+          ]
+        },
+        {
+          "name": "browser-helper",
+          "command": "node",
+          "args": ["services/browser-helper/server.js"],
+          "transport": "stdio",
+          "working_dir": "examples/first-run-ai-stack/services/browser-helper",
+          "config_path": "examples/first-run-ai-stack/.cursor/mcp.json",
+          "env": {
+            "BROWSER_SESSION_TOKEN": "${BROWSER_SESSION_TOKEN}"
+          },
+          "tools": [
+            {
+              "name": "fetch_page_title",
+              "description": "Fetch a page title for demo automation"
+            }
+          ],
+          "packages": [
+            {
+              "name": "axios",
+              "version": "1.4.0",
+              "ecosystem": "npm"
+            },
+            {
+              "name": "lodash",
+              "version": "4.17.20",
+              "ecosystem": "npm"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Claude Review Bot",
+      "agent_type": "claude-code",
+      "config_path": "examples/first-run-ai-stack/.cursor/mcp.json",
+      "source": "bundled-first-run-sample",
+      "mcp_servers": [
+        {
+          "name": "research-filesystem",
+          "command": "python",
+          "args": ["services/research-mcp/server.py"],
+          "transport": "stdio",
+          "working_dir": "examples/first-run-ai-stack/services/research-mcp",
+          "config_path": "examples/first-run-ai-stack/.cursor/mcp.json",
+          "env": {
+            "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}"
+          },
+          "tools": [
+            {
+              "name": "read_project_file",
+              "description": "Read files inside the sample project workspace"
+            }
+          ],
+          "packages": [
+            {
+              "name": "flask",
+              "version": "2.2.0",
+              "ecosystem": "pypi"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

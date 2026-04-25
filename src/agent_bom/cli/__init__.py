@@ -53,6 +53,7 @@ def main():
     Quick start:
       agent-bom agents                               discover + scan local agents and MCP servers
       agent-bom agents -p .                          scan project manifests plus agent/MCP context
+      agent-bom samples first-run                    write an inspectable sample AI stack
       agent-bom where                                show MCP discovery paths checked on this machine
       agent-bom mesh                                 show the live machine-wide agent/MCP topology
       agent-bom mesh --project .                     show project-local topology only
@@ -201,6 +202,10 @@ main.add_command(report_group)
 from agent_bom.cli._db import db_cmd  # noqa: E402
 
 main.add_command(db_cmd, "db")
+
+from agent_bom.cli._samples import samples_group  # noqa: E402
+
+main.add_command(samples_group)
 
 # ---------------------------------------------------------------------------
 # MCP command group — `agent-bom mcp [inventory|introspect|registry|server]`

@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "research-filesystem": {
+      "command": "python",
+      "args": ["services/research-mcp/server.py"],
+      "env": {
+        "OPENAI_API_KEY": "${OPENAI_API_KEY}",
+        "VECTOR_DB_TOKEN": "${VECTOR_DB_TOKEN}"
+      }
+    },
+    "browser-helper": {
+      "command": "node",
+      "args": ["services/browser-helper/server.js"],
+      "env": {
+        "BROWSER_SESSION_TOKEN": "${BROWSER_SESSION_TOKEN}"
+      }
+    }
+  }
+}

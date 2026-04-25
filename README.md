@@ -46,6 +46,19 @@ agent-bom agents --demo --offline
 
 The demo uses a curated sample so the output stays reproducible across releases. Every CVE shown is a real OSV/GHSA match against a genuinely vulnerable package version — no fabricated findings (locked in by [`tests/test_demo_inventory_accuracy.py`](tests/test_demo_inventory_accuracy.py)). For a real scan, run `agent-bom agents`, or add `-p .` to fold project manifests and lockfiles into the same result.
 
+Want an inspectable sample before scanning your own repo? Run the bundled
+first-run AI stack:
+
+```bash
+agent-bom samples first-run
+agent-bom agents --inventory agent-bom-first-run/inventory.json -p agent-bom-first-run --enrich
+```
+
+That sample includes agent inventory, MCP server definitions, placeholder
+credential environment variable names, Python/npm manifests, and a prompt file.
+See [`docs/FIRST_RUN.md`](docs/FIRST_RUN.md) for the guided path from CLI to
+dashboard.
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/demo-latest.gif" alt="agent-bom terminal demo — one CLI run produces blast radius, remediation, and SBOM" width="820" />
 </p>
@@ -59,6 +72,7 @@ pip install agent-bom                  # CLI
 
 agent-bom agents                              # discover + scan local AI agents and MCP servers
 agent-bom agents -p .                         # add project lockfiles + manifests
+agent-bom samples first-run                   # write an inspectable sample AI stack
 agent-bom check flask@2.0.0 --ecosystem pypi  # pre-install CVE gate
 agent-bom image nginx:latest                  # container image scan
 agent-bom iac Dockerfile k8s/ infra/main.tf   # IaC scan, optionally `--k8s-live`

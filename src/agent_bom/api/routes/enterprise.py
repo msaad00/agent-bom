@@ -6,10 +6,12 @@ Endpoints:
     GET    /v1/auth/keys                      list API keys
     DELETE /v1/auth/keys/{key_id}             revoke API key
     GET    /v1/auth/saml/metadata             generate SP metadata for IdP setup
+    POST   /v1/auth/saml/relay-state          issue one-time RelayState nonce
     POST   /v1/auth/saml/login                verify a SAML assertion and mint a short-lived API key
     GET    /v1/audit                          audit log entries
     GET    /v1/audit/integrity                verify audit HMAC integrity
     GET    /v1/audit/export                   export audit evidence packet
+    POST   /v1/audit/export/verify            verify a signed audit export packet
     POST   /v1/exceptions                     create vuln exception
     GET    /v1/exceptions                     list exceptions
     GET    /v1/exceptions/{exception_id}      get exception
@@ -32,7 +34,10 @@ import json
 import logging
 import os
 import secrets
+import threading
+import time
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
@@ -60,6 +65,80 @@ class BrowserSessionRequest(BaseModel):
         min_length=1,
         description="API key to exchange for a same-origin httpOnly browser session cookie",
     )
+
+
+class AuditExportVerifyRequest(BaseModel):
+    payload: Any = Field(..., description="Audit export payload object, JSON string, or JSONL text")
+    signature: str = Field(..., min_length=64, max_length=128, description="X-Agent-Bom-Audit-Export-Signature value")
+
+
+_AUTH_SESSION_ATTEMPTS: dict[str, list[float]] = {}
+_AUTH_SESSION_LOCK = threading.Lock()
+_SAML_RELAY_STATES: dict[str, float] = {}
+_SAML_RELAY_LOCK = threading.Lock()
+
+
+def _client_fingerprint(request: Request) -> str:
+    forwarded = (request.headers.get("x-forwarded-for") or "").split(",", 1)[0].strip()
+    host = forwarded or (request.client.host if request.client else "unknown")
+    return host[:128]
+
+
+def _auth_session_limit() -> int:
+    raw = (os.environ.get("AGENT_BOM_AUTH_SESSION_ATTEMPTS_PER_MINUTE") or "12").strip()
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 12
+
+
+def _check_auth_session_rate_limit(request: Request) -> None:
+    now = time.monotonic()
+    window_start = now - 60
+    key = _client_fingerprint(request)
+    with _AUTH_SESSION_LOCK:
+        attempts = [ts for ts in _AUTH_SESSION_ATTEMPTS.get(key, []) if ts >= window_start]
+        if len(attempts) >= _auth_session_limit():
+            _AUTH_SESSION_ATTEMPTS[key] = attempts
+            raise HTTPException(status_code=429, detail="Too many browser session attempts")
+        attempts.append(now)
+        _AUTH_SESSION_ATTEMPTS[key] = attempts
+
+
+def _saml_relay_ttl_seconds() -> int:
+    raw = (os.environ.get("AGENT_BOM_SAML_RELAY_STATE_TTL_SECONDS") or "300").strip()
+    try:
+        return max(60, min(int(raw), 900))
+    except ValueError:
+        return 300
+
+
+def _relay_state_digest(relay_state: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(relay_state.encode("utf-8")).hexdigest()
+
+
+def _new_saml_relay_state() -> tuple[str, str]:
+    relay_state = secrets.token_urlsafe(32)
+    expires_at = time.monotonic() + _saml_relay_ttl_seconds()
+    with _SAML_RELAY_LOCK:
+        _SAML_RELAY_STATES[_relay_state_digest(relay_state)] = expires_at
+    return relay_state, (datetime.now(timezone.utc) + timedelta(seconds=_saml_relay_ttl_seconds())).isoformat()
+
+
+def _consume_saml_relay_state(relay_state: str | None) -> None:
+    if not relay_state:
+        return
+    now = time.monotonic()
+    digest = _relay_state_digest(relay_state)
+    with _SAML_RELAY_LOCK:
+        expired = [key for key, expires_at in _SAML_RELAY_STATES.items() if expires_at < now]
+        for key in expired:
+            _SAML_RELAY_STATES.pop(key, None)
+        expires_at = _SAML_RELAY_STATES.pop(digest, None)
+    if expires_at is None or expires_at < now:
+        raise HTTPException(status_code=401, detail="Invalid or expired SAML relay_state")
 
 
 def _auth_session_state(request: Request) -> dict:
@@ -201,6 +280,7 @@ async def create_browser_session(request: Request, response: Response, body: Bro
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.auth import get_key_store
 
+    _check_auth_session_rate_limit(request)
     raw_key = body.api_key.strip()
     if not raw_key:
         raise HTTPException(status_code=401, detail="Invalid API key")
@@ -639,6 +719,17 @@ async def saml_metadata() -> PlainTextResponse:
     return PlainTextResponse(content=metadata, media_type="application/samlmetadata+xml")
 
 
+@router.post("/v1/auth/saml/relay-state", tags=["enterprise"])
+async def saml_relay_state() -> dict:
+    """Issue a one-time RelayState nonce for SP-initiated SAML login."""
+    relay_state, expires_at = _new_saml_relay_state()
+    return {
+        "relay_state": relay_state,
+        "expires_at": expires_at,
+        "ttl_seconds": _saml_relay_ttl_seconds(),
+    }
+
+
 @router.post("/v1/auth/saml/login", tags=["enterprise"], status_code=201)
 async def saml_login(req: SAMLLoginRequest) -> dict:
     """Verify a SAML assertion and return a short-lived API key."""
@@ -647,6 +738,7 @@ async def saml_login(req: SAMLLoginRequest) -> dict:
     from agent_bom.api.saml import SAMLConfig, SAMLError
 
     try:
+        _consume_saml_relay_state(req.relay_state)
         cfg = SAMLConfig.from_env()
         assertion = cfg.verify_response(req.saml_response, relay_state=req.relay_state)
     except SAMLError as exc:
@@ -786,6 +878,30 @@ async def export_audit_entries(
             "X-Agent-Bom-Audit-Export-Signature": sign_export_payload(payload),
         },
     )
+
+
+@router.post("/v1/audit/export/verify", tags=["enterprise"])
+async def verify_audit_export(request: Request, body: AuditExportVerifyRequest) -> dict:
+    """Verify a signed audit export packet without returning HMAC key material."""
+    from agent_bom.api.audit_log import log_action, verify_export_payload
+
+    if isinstance(body.payload, str):
+        payload = body.payload.encode("utf-8")
+    else:
+        payload = json.dumps(body.payload, sort_keys=True).encode("utf-8")
+
+    valid = verify_export_payload(payload, body.signature)
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = getattr(request.state, "api_key_name", "") or "system"
+    log_action(
+        "audit.export_verify",
+        actor=actor,
+        resource="audit/export/verify",
+        tenant_id=tenant_id,
+        valid=valid,
+        payload_bytes=len(payload),
+    )
+    return {"valid": valid, "payload_bytes": len(payload)}
 
 
 # ── Exception / Waiver Management ────────────────────────────────────────────

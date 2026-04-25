@@ -18,6 +18,7 @@ import hmac
 import json
 import logging
 import os
+import re
 import sqlite3
 import threading
 from collections import defaultdict
@@ -27,6 +28,13 @@ from typing import Protocol
 from uuid import uuid4
 
 logger = logging.getLogger(__name__)
+_AUDIT_DETAIL_KEY_RE = re.compile(r"[^a-zA-Z0-9_.:-]+")
+_MAX_AUDIT_DETAIL_KEYS = 64
+_MAX_AUDIT_DETAIL_KEY_LENGTH = 96
+_MAX_AUDIT_DETAIL_STRING_LENGTH = 2048
+_MAX_AUDIT_DETAIL_COLLECTION_ITEMS = 32
+_MAX_AUDIT_DETAIL_DEPTH = 4
+_MAX_AUDIT_DETAILS_JSON_BYTES = 16 * 1024
 
 
 def _env_enabled(name: str) -> bool:
@@ -213,6 +221,12 @@ class AuditEntry:
 def sign_export_payload(payload: bytes) -> str:
     """Sign an exported audit payload so downstream consumers can verify it."""
     return hmac.new(_HMAC_KEY, payload, hashlib.sha256).hexdigest()
+
+
+def verify_export_payload(payload: bytes, signature: str) -> bool:
+    """Verify a signed audit export payload without exposing key material."""
+    expected = sign_export_payload(payload)
+    return hmac.compare_digest(signature.strip(), expected)
 
 
 def describe_audit_hmac_status() -> dict[str, object]:
@@ -559,6 +573,58 @@ def _default_tenant_id(details: dict[str, object]) -> str:
     return "default"
 
 
+def _sanitize_detail_key(key: object) -> str:
+    cleaned = _AUDIT_DETAIL_KEY_RE.sub("_", str(key).strip())[:_MAX_AUDIT_DETAIL_KEY_LENGTH].strip("._:-")
+    cleaned = cleaned.strip("_")
+    return cleaned or "detail"
+
+
+def _sanitize_detail_value(value: object, *, depth: int = 0) -> object:
+    if depth >= _MAX_AUDIT_DETAIL_DEPTH:
+        return "[truncated]"
+    if value is None or isinstance(value, bool | int | float):
+        return value
+    if isinstance(value, str):
+        text = value.replace("\r", " ").replace("\n", " ").replace("\t", " ")
+        return text[:_MAX_AUDIT_DETAIL_STRING_LENGTH]
+    if isinstance(value, dict):
+        out: dict[str, object] = {}
+        for index, (raw_key, raw_value) in enumerate(value.items()):
+            if index >= _MAX_AUDIT_DETAIL_COLLECTION_ITEMS:
+                out["_truncated"] = True
+                break
+            out[_sanitize_detail_key(raw_key)] = _sanitize_detail_value(raw_value, depth=depth + 1)
+        return out
+    if isinstance(value, list | tuple | set):
+        items = list(value)
+        list_out = [_sanitize_detail_value(item, depth=depth + 1) for item in items[:_MAX_AUDIT_DETAIL_COLLECTION_ITEMS]]
+        if len(items) > _MAX_AUDIT_DETAIL_COLLECTION_ITEMS:
+            list_out.append("[truncated]")
+        return list_out
+    return str(value)[:_MAX_AUDIT_DETAIL_STRING_LENGTH]
+
+
+def sanitize_audit_details(details: dict[str, object]) -> dict[str, object]:
+    """Bound audit metadata shape and size before persistence/export."""
+    sanitized: dict[str, object] = {}
+    for index, (raw_key, raw_value) in enumerate(details.items()):
+        if index >= _MAX_AUDIT_DETAIL_KEYS:
+            sanitized["_truncated"] = True
+            break
+        sanitized[_sanitize_detail_key(raw_key)] = _sanitize_detail_value(raw_value)
+
+    encoded = json.dumps(sanitized, sort_keys=True, default=str, ensure_ascii=False).encode("utf-8")
+    if len(encoded) <= _MAX_AUDIT_DETAILS_JSON_BYTES:
+        return sanitized
+
+    tenant_id = sanitized.get("tenant_id", "default")
+    return {
+        "tenant_id": str(tenant_id)[:_MAX_AUDIT_DETAIL_STRING_LENGTH],
+        "_truncated": True,
+        "_original_bytes": len(encoded),
+    }
+
+
 def set_audit_log(store: AuditLogStore) -> None:
     global _audit_log
     with _audit_lock:
@@ -569,6 +635,7 @@ def log_action(action: str, actor: str = "system", resource: str = "", **details
     """Convenience: append an audit entry."""
     audit_details = dict(details)
     audit_details["tenant_id"] = _default_tenant_id(audit_details)
+    audit_details = sanitize_audit_details(audit_details)
     entry = AuditEntry(action=action, actor=actor, resource=resource, details=audit_details)
     get_audit_log().append(entry)
     try:

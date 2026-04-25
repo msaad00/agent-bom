@@ -238,16 +238,59 @@ def classify_tool(tool_name: str, description: str = "") -> list[ToolCapability]
     return sorted(caps, key=lambda c: c.value)
 
 
+_DECLARED_CAPABILITY_ALIASES: dict[str, ToolCapability] = {
+    "read": ToolCapability.READ,
+    "readonly": ToolCapability.READ,
+    "read_only": ToolCapability.READ,
+    "write": ToolCapability.WRITE,
+    "delete": ToolCapability.DELETE,
+    "destructive": ToolCapability.DELETE,
+    "execute": ToolCapability.EXECUTE,
+    "exec": ToolCapability.EXECUTE,
+    "execution": ToolCapability.EXECUTE,
+    "network": ToolCapability.NETWORK,
+    "network_egress": ToolCapability.NETWORK,
+    "egress": ToolCapability.NETWORK,
+    "auth": ToolCapability.AUTH,
+    "credential": ToolCapability.AUTH,
+    "credentials": ToolCapability.AUTH,
+    "admin": ToolCapability.ADMIN,
+    "administrative": ToolCapability.ADMIN,
+}
+
+
+def _normalize_declared_capability(value: str) -> ToolCapability | None:
+    key = value.strip().lower().replace("-", "_").replace(" ", "_")
+    return _DECLARED_CAPABILITY_ALIASES.get(key)
+
+
+def classify_mcp_tool(tool: MCPTool) -> list[ToolCapability]:
+    """Classify an MCP tool, preferring explicit manifest/runtime capabilities.
+
+    Names and descriptions are untrusted labels. They remain a legacy fallback
+    for tools that do not expose a declared capability field yet, but they do
+    not override an explicit manifest declaration.
+    """
+    declared = {
+        cap
+        for raw in getattr(tool, "declared_capabilities", [])
+        if isinstance(raw, str) and (cap := _normalize_declared_capability(raw)) is not None
+    }
+    if declared:
+        return sorted(declared, key=lambda c: c.value)
+    return classify_tool(tool.name, tool.description)
+
+
 def has_capability(tools: list[MCPTool], capability: ToolCapability) -> bool:
     """Check if any tool in the list has the given capability."""
-    return any(capability in classify_tool(t.name, t.description) for t in tools)
+    return any(capability in classify_mcp_tool(t) for t in tools)
 
 
 def get_capabilities(tools: list[MCPTool]) -> dict[ToolCapability, list[str]]:
     """Map each capability to the tool names that provide it."""
     result: dict[ToolCapability, list[str]] = {cap: [] for cap in ToolCapability}
     for tool in tools:
-        for cap in classify_tool(tool.name, tool.description):
+        for cap in classify_mcp_tool(tool):
             result[cap].append(tool.name)
     return {cap: names for cap, names in result.items() if names}
 
@@ -305,7 +348,7 @@ def score_tool_risk(tool: MCPTool) -> ToolRiskProfile:
         SERVER_RISK_MEDIUM_THRESHOLD,
     )
 
-    capabilities = classify_tool(tool.name, tool.description)
+    capabilities = classify_mcp_tool(tool)
     capability_weight = sum(CAPABILITY_WEIGHTS.get(cap, 1.0) for cap in capabilities)
     schema_risk_score = tool.risk_score
     risk_score = min(capability_weight + (schema_risk_score * 0.5), 10.0)
@@ -321,7 +364,8 @@ def score_tool_risk(tool: MCPTool) -> ToolRiskProfile:
 
     parts: list[str] = []
     if capabilities:
-        parts.append("Capabilities: " + ", ".join(cap.value.upper() for cap in capabilities) + ".")
+        source = "Declared" if tool.declared_capabilities else "Inferred"
+        parts.append(f"{source} capabilities: " + ", ".join(cap.value.upper() for cap in capabilities) + ".")
     if tool.schema_findings:
         parts.append("Schema signals: " + ", ".join(tool.schema_findings[:3]) + ".")
     if not parts:

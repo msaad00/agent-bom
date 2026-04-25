@@ -146,6 +146,31 @@ def _resolve_server_command(server: str) -> list[str]:
     is_flag=True,
     help="Suppress agent-bom startup messages.",
 )
+@click.option(
+    "--isolate/--no-isolate",
+    default=False,
+    envvar="AGENT_BOM_MCP_SANDBOX",
+    help="Run the MCP server through a hardened Docker/Podman container.",
+)
+@click.option(
+    "--sandbox-runtime",
+    default=None,
+    envvar="AGENT_BOM_MCP_SANDBOX_RUNTIME",
+    type=click.Choice(["auto", "docker", "podman"]),
+    help="Container runtime for --isolate (default: auto).",
+)
+@click.option(
+    "--sandbox-image",
+    default=None,
+    envvar="AGENT_BOM_MCP_SANDBOX_IMAGE",
+    help="Container image used to run non-container server commands in --isolate mode.",
+)
+@click.option(
+    "--sandbox-mount",
+    multiple=True,
+    metavar="HOST:CONTAINER[:ro|rw]",
+    help="Explicit bind mount for --isolate. Defaults to read-only.",
+)
 @click.pass_context
 def run_cmd(
     ctx: click.Context,
@@ -158,6 +183,10 @@ def run_cmd(
     detect_visual_leaks: bool,
     log_only: bool,
     quiet: bool,
+    isolate: bool,
+    sandbox_runtime: str | None,
+    sandbox_image: str | None,
+    sandbox_mount: tuple[str, ...],
 ) -> None:
     """Launch SERVER through agent-bom's runtime proxy.
 
@@ -187,6 +216,7 @@ def run_cmd(
     """
     from agent_bom.project_config import get_policy_path, load_project_config
     from agent_bom.proxy import run_proxy
+    from agent_bom.proxy_sandbox import sandbox_config_from_env
 
     # Auto-load .agent-bom.yaml policy if --policy not explicitly given
     if not policy:
@@ -208,6 +238,18 @@ def run_cmd(
         )
         if policy:
             click.echo(f"agent-bom: policy: {policy}", err=True)
+        if isolate:
+            click.echo("agent-bom: MCP container isolation enabled", err=True)
+
+    try:
+        sandbox_config = sandbox_config_from_env(
+            enabled=isolate,
+            runtime=sandbox_runtime,
+            image=sandbox_image,
+            mounts=sandbox_mount,
+        )
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
 
     # Build env for child process — no mutation of current env needed here;
     # run_proxy spawns the subprocess itself and inherits os.environ.
@@ -221,6 +263,7 @@ def run_cmd(
             detect_visual_leaks=detect_visual_leaks,
             rate_limit_threshold=rate_limit,
             log_only=log_only,
+            sandbox_config=sandbox_config,
         )
     )
     sys.exit(exit_code)

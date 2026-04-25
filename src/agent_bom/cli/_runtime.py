@@ -63,6 +63,31 @@ from rich.console import Console
     envvar="AGENT_BOM_PROXY_URL",
     help="SSE/HTTP MCP server URL (use instead of server_cmd for HTTP/SSE transport)",
 )
+@click.option(
+    "--isolate/--no-isolate",
+    default=False,
+    envvar="AGENT_BOM_MCP_SANDBOX",
+    help="Run the stdio MCP server through a hardened Docker/Podman container.",
+)
+@click.option(
+    "--sandbox-runtime",
+    default=None,
+    envvar="AGENT_BOM_MCP_SANDBOX_RUNTIME",
+    type=click.Choice(["auto", "docker", "podman"]),
+    help="Container runtime for --isolate (default: auto).",
+)
+@click.option(
+    "--sandbox-image",
+    default=None,
+    envvar="AGENT_BOM_MCP_SANDBOX_IMAGE",
+    help="Container image used to run non-container server commands in --isolate mode.",
+)
+@click.option(
+    "--sandbox-mount",
+    multiple=True,
+    metavar="HOST:CONTAINER[:ro|rw]",
+    help="Explicit bind mount for --isolate. Defaults to read-only.",
+)
 @click.argument("server_cmd", nargs=-1, required=False)
 def proxy_cmd(
     policy,
@@ -81,6 +106,10 @@ def proxy_cmd(
     audit_push_interval,
     response_sign_key,
     url,
+    isolate,
+    sandbox_runtime,
+    sandbox_image,
+    sandbox_mount,
     server_cmd,
 ):
     """Run an MCP server through agent-bom's security proxy.
@@ -156,6 +185,17 @@ def proxy_cmd(
         raise click.UsageError("Provide a server command (e.g. -- npx @mcp/server-filesystem /tmp) or --url for SSE/HTTP mode.")
 
     from agent_bom.proxy import run_proxy
+    from agent_bom.proxy_sandbox import sandbox_config_from_env
+
+    try:
+        sandbox_config = sandbox_config_from_env(
+            enabled=isolate,
+            runtime=sandbox_runtime,
+            image=sandbox_image,
+            mounts=tuple(sandbox_mount),
+        )
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
 
     exit_code = asyncio.run(
         run_proxy(
@@ -175,6 +215,7 @@ def proxy_cmd(
             policy_refresh_seconds=policy_refresh_seconds,
             audit_push_interval=audit_push_interval,
             response_signing_key=response_sign_key,
+            sandbox_config=sandbox_config,
         )
     )
     sys.exit(exit_code)

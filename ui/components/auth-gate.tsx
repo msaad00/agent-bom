@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { KeyRound, Loader2, Lock, ShieldCheck } from "lucide-react";
 
 import { useAuthState } from "@/components/auth-provider";
 import { api } from "@/lib/api";
-import { clearSessionApiKey, getSessionApiKey, setSessionApiKey } from "@/lib/auth";
-import { allowSessionStorageApiKeyFallback } from "@/lib/runtime-config";
+import { clearSessionApiKey } from "@/lib/auth";
 
 function isAuthFailure(message: string): boolean {
   const normalized = message.toLowerCase();
@@ -17,13 +16,6 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const { session, loading, error, refresh } = useAuthState();
   const [apiKey, setApiKey] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const stored = getSessionApiKey();
-    if (stored) {
-      setApiKey(stored);
-    }
-  }, []);
 
   if (loading) {
     return (
@@ -76,13 +68,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   clearSessionApiKey();
                 } catch (nextError) {
                   const message = nextError instanceof Error ? nextError.message : "Failed to create browser session";
-                  if ((message.includes("404") || message.includes("405")) && allowSessionStorageApiKeyFallback()) {
-                    setSessionApiKey(apiKey);
-                  } else if (message.includes("404") || message.includes("405")) {
+                  if (message.includes("404") || message.includes("405")) {
                     clearSessionApiKey();
-                    setFormError(
-                      "Browser session endpoint unavailable; sessionStorage API-key fallback is disabled for this deployment."
-                    );
+                    setFormError("Browser session endpoint unavailable; update the API before using browser API-key exchange.");
                     return;
                   } else {
                     clearSessionApiKey();
@@ -95,15 +83,18 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
             >
               <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-zinc-200">
                 <KeyRound className="h-4 w-4 text-amber-300" />
-                Browser session fallback
+                Browser session
               </div>
               <p className="mb-4 text-sm leading-6 text-zinc-400">
                 Creates a same-origin
                 <code className="mx-1 rounded bg-zinc-950 px-1 py-0.5 font-mono text-zinc-200">httpOnly</code>
-                cookie. Legacy tab storage must be explicitly enabled by the deployment.
+                cookie. The API key is exchanged with the control plane and is never stored in browser storage.
               </p>
-              <label className="mb-3 block text-xs uppercase tracking-[0.2em] text-zinc-500">API key</label>
+              <label htmlFor="agent-bom-browser-session-api-key" className="mb-3 block text-xs uppercase tracking-[0.2em] text-zinc-500">
+                API key
+              </label>
               <input
+                id="agent-bom-browser-session-api-key"
                 type="password"
                 value={apiKey}
                 onChange={(event) => setApiKey(event.target.value)}

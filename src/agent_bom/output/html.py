@@ -1864,6 +1864,16 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     var sidebar = document.getElementById('nodeDetailSidebar');
     var sidebarCloseBtn = document.getElementById('sidebarClose');
 
+    function escHtml(value) {{
+      return String(value == null ? '' : value).replace(/[&<>"']/g, function(ch) {{
+        return {{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[ch];
+      }});
+    }}
+
+    function urlPart(value) {{
+      return encodeURIComponent(String(value == null ? '' : value));
+    }}
+
     function showSidebar(node) {{
       var d = node.data();
       var t = d.type || '';
@@ -1888,7 +1898,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
         neighbors.forEach(function(n) {{
           var nt = n.data('type') || '';
           var icon = nt === 'agent' ? '&#x1f916;' : nt.indexOf('server')===0 ? '&#x2699;' : nt === 'pkg_vuln' ? '&#x1f4e6;' : nt.indexOf('cve_')===0 ? '&#x1f41b;' : '&#x25cf;';
-          h += '<li>' + icon + ' ' + (n.data('label') || n.data('id')).replace('\\n',' ') + '</li>';
+          h += '<li>' + icon + ' ' + escHtml((n.data('label') || n.data('id')).replace('\\n',' ')) + '</li>';
         }});
         h += '</ul>';
         document.getElementById('sidebarConnected').innerHTML = h;
@@ -1915,14 +1925,14 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
         var creds = []; try {{ creds = JSON.parse(d.credentials || '[]'); }} catch(e) {{}}
         if (creds.length > 0) {{
           var ch = '<div class="sidebar-label">Credentials (' + creds.length + ')</div><ul class="sidebar-list">';
-          creds.forEach(function(c) {{ ch += '<li>&#x1f511; <span class="sidebar-cred">' + c + '</span></li>'; }});
+          creds.forEach(function(c) {{ ch += '<li>&#x1f511; <span class="sidebar-cred">' + escHtml(c) + '</span></li>'; }});
           ch += '</ul>';
           document.getElementById('sidebarCredentials').innerHTML = ch;
         }}
         var tools = []; try {{ tools = JSON.parse(d.toolNames || '[]'); }} catch(e) {{}}
         if (tools.length > 0) {{
           var th = '<div class="sidebar-label">MCP Tools (' + tools.length + ')</div><ul class="sidebar-list">';
-          tools.forEach(function(tl) {{ th += '<li>&#x1f527; ' + tl + '</li>'; }});
+          tools.forEach(function(tl) {{ th += '<li>&#x1f527; ' + escHtml(tl) + '</li>'; }});
           th += '</ul>';
           document.getElementById('sidebarRemediation').innerHTML = th;
         }}
@@ -1940,7 +1950,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
         if (vids.length > 0) {{
           var vh = '<div class="sidebar-label">CVEs (' + vids.length + ')</div><ul class="sidebar-list">';
           vids.forEach(function(vid) {{
-            vh += '<li><a class="sidebar-link" href="https://osv.dev/vulnerability/' + vid + '" target="_blank" rel="noopener noreferrer">' + vid + ' &#x2197;</a></li>';
+            vh += '<li><a class="sidebar-link" href="https://osv.dev/vulnerability/' + urlPart(vid) + '" target="_blank" rel="noopener noreferrer">' + escHtml(vid) + ' &#x2197;</a></li>';
           }});
           vh += '</ul>';
           document.getElementById('sidebarCves').innerHTML = vh;
@@ -1955,17 +1965,17 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
         if (d.cvssScore) mp.push('CVSS: ' + d.cvssScore);
         document.getElementById('sidebarMeta').textContent = mp.join(' \\u00b7 ');
         if (d.summary) {{
-          document.getElementById('sidebarCredentials').innerHTML = '<div class="sidebar-label">Summary</div><p style="font-size:.8rem;color:#cbd5e1;margin:0">' + d.summary + '</p>';
+          document.getElementById('sidebarCredentials').innerHTML = '<div class="sidebar-label">Summary</div><p style="font-size:.8rem;color:#cbd5e1;margin:0">' + escHtml(d.summary) + '</p>';
         }}
         var rh = '<div class="sidebar-label">Remediation</div><ul class="sidebar-list">';
         if (d.fixVersion) {{
-          rh += '<li style="color:#4ade80">&#x2705; Fix: upgrade to <code>' + d.fixVersion + '</code></li>';
+          rh += '<li style="color:#4ade80">&#x2705; Fix: upgrade to <code>' + escHtml(d.fixVersion) + '</code></li>';
         }} else {{
           rh += '<li style="color:#f59e0b">&#x26a0; No fix available</li>';
         }}
         var lbl = d.label || '';
-        rh += '<li><a class="sidebar-link" href="https://osv.dev/vulnerability/' + lbl + '" target="_blank" rel="noopener noreferrer">View on OSV &#x2197;</a></li>';
-        rh += '<li><a class="sidebar-link" href="https://nvd.nist.gov/vuln/detail/' + lbl + '" target="_blank" rel="noopener noreferrer">View on NVD &#x2197;</a></li>';
+        rh += '<li><a class="sidebar-link" href="https://osv.dev/vulnerability/' + urlPart(lbl) + '" target="_blank" rel="noopener noreferrer">View on OSV &#x2197;</a></li>';
+        rh += '<li><a class="sidebar-link" href="https://nvd.nist.gov/vuln/detail/' + urlPart(lbl) + '" target="_blank" rel="noopener noreferrer">View on NVD &#x2197;</a></li>';
         rh += '</ul>';
         document.getElementById('sidebarRemediation').innerHTML = rh;
       }}

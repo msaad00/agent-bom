@@ -1371,6 +1371,24 @@ def test_html_contains_cytoscape_graph():
     assert "cy.nodes" in html
 
 
+def test_html_sidebar_dynamic_values_are_escaped_before_innerhtml():
+    from agent_bom.output.html import to_html
+
+    report, blast_radii = _make_report_with_vuln()
+    html = to_html(report, blast_radii)
+
+    assert "function escHtml(value)" in html
+    assert "function urlPart(value)" in html
+    assert "escHtml(d.summary)" in html
+    assert "escHtml(d.fixVersion)" in html
+    assert "escHtml(c)" in html
+    assert "escHtml(tl)" in html
+    assert "escHtml(vid)" in html
+    assert "urlPart(vid)" in html
+    assert "+ d.summary +" not in html
+    assert "+ d.fixVersion +" not in html
+
+
 def test_html_clean_report_shows_clean_status():
     from agent_bom.output.html import to_html
 

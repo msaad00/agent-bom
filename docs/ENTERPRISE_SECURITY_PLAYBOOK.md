@@ -84,6 +84,14 @@ Every enforcement point calls the same [`check_policy`](../src/agent_bom/proxy_p
 
 agent-bom scans laptop editor configs for the code-backed client matrix exposed by `agent-bom where --json`: 29 first-class client types today, plus project-level, Docker Compose, Docker MCP Toolkit, dynamic filesystem, process, container, and Kubernetes discovery. The matrix is generated from [`src/agent_bom/discovery/coverage.py`](../src/agent_bom/discovery/coverage.py) and the concrete paths in [`src/agent_bom/discovery/__init__.py`](../src/agent_bom/discovery/__init__.py), so product claims stay tied to tested code. `agent-bom where --json` and `agent-bom inventory --json` also expose non-secret completeness telemetry: source paths checked, present/missing sources, parse errors, expected MCP server counts where the config shape is known, and actual discovered server counts. Each discovered MCP server is serialised with its transport + URL ([`models.py:509 MCPServer`](../src/agent_bom/models.py)) and pushed to the control plane via `agent-bom agents --push-url`.
 
+Source scanning also emits first-class non-MCP framework relationships for
+LangGraph/LangChain, AutoGen, CrewAI, OpenAI Assistants/Agents patterns, and
+Claude/Anthropic SDK call sites where evidence exists. These records appear
+under `ai_inventory.framework_agents` with capabilities, model references,
+credential env var names, dynamic-edge flags, and source provenance. They are
+kept separate from MCP server records so graph and fleet views can represent
+framework-native agents without inventing fake MCP servers.
+
 **End-to-end:**
 1. `agent-bom agents --preset enterprise --introspect --push-url https://agent-bom.example.com/v1/fleet/sync`
 2. Control plane ingest → [`api/routes/fleet.py:127 POST /v1/fleet/sync`](../src/agent_bom/api/routes/fleet.py)

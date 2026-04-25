@@ -129,8 +129,21 @@ def test_root_uses_dashboard_friendly_csp_when_bundled(tmp_path: Path, monkeypat
     assert resp.status_code == 200
     csp = resp.headers.get("content-security-policy", "")
     assert "script-src 'self' 'unsafe-inline'" in csp
+    assert "script-src-attr 'none'" in csp
     assert "style-src 'self' 'unsafe-inline'" in csp
     assert "frame-ancestors 'none'" in csp
+
+
+def test_ui_csp_headers_do_not_allow_eval():
+    """Static and hosted UI headers should not permit eval-style script execution."""
+    root = Path(__file__).parent.parent
+    next_config = (root / "ui" / "next.config.ts").read_text(encoding="utf-8")
+    vercel_config = (root / "ui" / "vercel.json").read_text(encoding="utf-8")
+
+    assert "'unsafe-eval'" not in next_config
+    assert "'unsafe-eval'" not in vercel_config
+    assert "script-src-attr 'none'" in next_config
+    assert "script-src-attr 'none'" in vercel_config
 
 
 def test_root_allows_head_when_dashboard_is_bundled(tmp_path: Path, monkeypatch):

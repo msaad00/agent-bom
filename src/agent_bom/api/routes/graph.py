@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from typing import Literal, Optional
 
@@ -33,6 +34,18 @@ from agent_bom.security import sanitize_error
 logger = logging.getLogger(__name__)
 router = APIRouter()
 _ALLOWED_ENTITY_TYPES = {entity_type.value for entity_type in EntityType}
+_GRAPH_QUERY_ABSOLUTE_LIMITS = {
+    "max_depth": 10,
+    "max_nodes": 5000,
+    "max_edges": 25_000,
+    "timeout_ms": 5000,
+}
+_GRAPH_QUERY_DEFAULT_BUDGET = {
+    "max_depth": 5,
+    "max_nodes": 1000,
+    "max_edges": 10_000,
+    "timeout_ms": 2500,
+}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -89,6 +102,55 @@ def _validate_entity_type_list(values: list[str]) -> list[str]:
     if invalid:
         raise HTTPException(status_code=422, detail=f"Unsupported graph entity type: {invalid[0]}")
     return cleaned
+
+
+def _bounded_env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return min(max(value, minimum), maximum)
+
+
+def _graph_query_budget() -> dict[str, int]:
+    """Return the deployer-configured graph traversal budget.
+
+    Pydantic keeps absolute request ceilings. This budget is the lower,
+    operator-tunable resource control used by the traversal endpoint.
+    """
+    return {
+        key: _bounded_env_int(
+            f"AGENT_BOM_GRAPH_QUERY_{key.upper()}",
+            default,
+            minimum=1 if key != "timeout_ms" else 100,
+            maximum=_GRAPH_QUERY_ABSOLUTE_LIMITS[key],
+        )
+        for key, default in _GRAPH_QUERY_DEFAULT_BUDGET.items()
+    }
+
+
+def _enforce_graph_query_budget(body: GraphQueryRequest) -> dict[str, int]:
+    budget = _graph_query_budget()
+    requested = {
+        "max_depth": body.max_depth,
+        "max_nodes": body.max_nodes,
+        "max_edges": body.max_edges,
+        "timeout_ms": body.timeout_ms,
+    }
+    violations = {key: {"requested": value, "allowed": budget[key]} for key, value in requested.items() if value > budget[key]}
+    if violations:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Graph query exceeds tenant query budget",
+                "violations": violations,
+                "budget": budget,
+            },
+        )
+    return budget
 
 
 async def _graph_store_call(fn, /, *args, **kwargs):
@@ -497,6 +559,7 @@ async def list_graph_agents(
 async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
     """Run a bounded programmable traversal over the canonical graph."""
     graph_store = _get_graph_store_or_503()
+    budget = _enforce_graph_query_budget(body)
     root_nodes = await _graph_store_call(
         graph_store.nodes_by_ids,
         scan_id=body.scan_id or "",
@@ -557,6 +620,7 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
         "max_nodes": body.max_nodes,
         "max_edges": body.max_edges,
         "timeout_ms": body.timeout_ms,
+        "budget": budget,
         "truncated": truncated,
         "missing_roots": [],
         "depth_by_node": {node_id: depth for node_id, depth in depth_by_node.items() if node_id in filtered_graph.nodes},

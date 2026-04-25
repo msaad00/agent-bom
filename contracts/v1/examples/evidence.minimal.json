@@ -1,0 +1,11 @@
+{
+  "evidence_id": "evidence-demo-001",
+  "framework": "soc2-tsc",
+  "control_id": "CC6.1",
+  "status": "pass",
+  "finding_count": 0,
+  "source": "agent-bom",
+  "collected_at": "2026-04-25T00:00:00Z",
+  "code_paths": ["src/agent_bom/api/middleware.py"],
+  "tests": ["tests/test_api_compliance_auth.py"]
+}

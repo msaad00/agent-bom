@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-bom.dev/contracts/v1/finding-feedback.schema.json",
+  "title": "agent-bom finding feedback v1",
+  "type": "object",
+  "required": ["tenant_id", "finding_id", "state", "actor", "created_at"],
+  "properties": {
+    "tenant_id": { "type": "string", "minLength": 1 },
+    "finding_id": { "type": "string", "minLength": 1 },
+    "state": {
+      "type": "string",
+      "enum": ["false_positive", "accepted_risk", "not_applicable", "fixed_verified"]
+    },
+    "actor": { "type": "string", "minLength": 1 },
+    "reason": { "type": "string" },
+    "expires_at": { "type": ["string", "null"], "format": "date-time" },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "additionalProperties": true
+}

@@ -1,0 +1,24 @@
+{
+  "document_type": "AI-BOM",
+  "spec_version": "1.0",
+  "scan_id": "scan-demo-001",
+  "ai_bom_version": "0.81.3",
+  "generated_at": "2026-04-25T00:00:00Z",
+  "scan_sources": ["demo"],
+  "summary": {
+    "total_agents": 1,
+    "total_mcp_servers": 1,
+    "total_packages": 1,
+    "total_vulnerabilities": 0,
+    "critical_findings": 0
+  },
+  "agents": [
+    {
+      "name": "demo-agent",
+      "stable_id": "agent:demo-agent",
+      "type": "custom",
+      "status": "configured",
+      "mcp_servers": []
+    }
+  ]
+}

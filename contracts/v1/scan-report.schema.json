@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-bom.dev/contracts/v1/scan-report.schema.json",
+  "title": "agent-bom scan report v1",
+  "type": "object",
+  "required": ["document_type", "spec_version", "scan_id", "generated_at", "summary", "agents"],
+  "properties": {
+    "document_type": { "const": "AI-BOM" },
+    "spec_version": { "type": "string", "pattern": "^1(\\.\\d+)?$" },
+    "scan_id": { "type": "string", "minLength": 1 },
+    "ai_bom_version": { "type": "string" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "scan_sources": { "type": "array", "items": { "type": "string" } },
+    "summary": {
+      "type": "object",
+      "required": ["total_agents", "total_mcp_servers", "total_packages", "total_vulnerabilities"],
+      "properties": {
+        "total_agents": { "type": "integer", "minimum": 0 },
+        "total_mcp_servers": { "type": "integer", "minimum": 0 },
+        "total_packages": { "type": "integer", "minimum": 0 },
+        "total_vulnerabilities": { "type": "integer", "minimum": 0 },
+        "critical_findings": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
+    "agents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "stable_id", "type", "status", "mcp_servers"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "stable_id": { "type": "string", "minLength": 1 },
+          "type": { "type": "string", "minLength": 1 },
+          "status": { "type": "string", "minLength": 1 },
+          "mcp_servers": { "type": "array" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "blast_radius": { "type": "array" },
+    "inventory_snapshot": { "type": "object" }
+  },
+  "additionalProperties": true
+}

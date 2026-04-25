@@ -43,7 +43,7 @@ from agent_bom.api.stores import set_job_store
 from agent_bom.gateway_server import GatewaySettings, create_gateway_app
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 
-PROXY_SECRET = "test-proxy-secret"
+PROXY_SECRET = "test-proxy-secret-with-32-plus-bytes"
 
 
 def setup_module() -> None:

@@ -4,7 +4,7 @@ from starlette.testclient import TestClient
 
 from agent_bom.api.server import app
 
-PROXY_SECRET = "test-proxy-secret"
+PROXY_SECRET = "test-proxy-secret-with-32-plus-bytes"
 
 
 def test_gateway_policy_create_rejects_spoofed_role_without_attestation() -> None:

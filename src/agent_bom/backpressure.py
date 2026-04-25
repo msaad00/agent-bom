@@ -179,7 +179,7 @@ def describe_backpressure_posture() -> dict[str, Any]:
         "enabled": enabled,
         "status": "active" if any(path["state"] == "open" for path in paths) else "ready",
         "paths": paths,
-        "notes": "Process-local adaptive backpressure. Static budgets still apply before traversal.",
+        "notes": "Process-local adaptive backpressure. Static budgets and source circuit breakers still apply.",
     }
 
 

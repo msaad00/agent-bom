@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,6 +16,7 @@ from agent_bom.registry import (
     compare_versions,
     detect_version_drift,
     list_registry,
+    registry_freshness_status,
     search_registry,
     update_registry_versions,
 )
@@ -248,6 +250,56 @@ def test_list_real_registry_filter_npm():
     assert all(e["ecosystem"] == "npm" for e in entries)
 
 
+# ── Registry freshness ─────────────────────────────────────────────────────
+
+
+def test_registry_freshness_status_fresh():
+    status = registry_freshness_status(
+        stale_after_days=14,
+        now=datetime(2026, 4, 10, tzinfo=timezone.utc),
+        data={"_updated": "2026-04-06", "_sources": ["mcp-official"], "servers": {"a": {}}},
+    )
+
+    assert status.status == "fresh"
+    assert status.is_fresh is True
+    assert status.age_days == 4
+    assert status.server_count == 1
+    assert status.sources == ["mcp-official"]
+
+
+def test_registry_freshness_status_stale():
+    status = registry_freshness_status(
+        stale_after_days=14,
+        now=datetime(2026, 4, 25, tzinfo=timezone.utc),
+        data={"_updated": "2026-04-06", "_sources": ["mcp-official"], "servers": {}},
+    )
+
+    assert status.status == "stale"
+    assert status.is_fresh is False
+    assert status.age_days == 19
+
+
+def test_registry_freshness_status_never_synced():
+    status = registry_freshness_status(now=datetime(2026, 4, 25, tzinfo=timezone.utc), data={"servers": {}})
+
+    assert status.status == "never_synced"
+    assert status.age_days is None
+    assert status.error == "missing_or_invalid_last_synced_at"
+
+
+def test_registry_freshness_status_airgapped_stale(monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_REGISTRY_AIRGAPPED", "1")
+
+    status = registry_freshness_status(
+        stale_after_days=1,
+        now=datetime(2026, 4, 25, tzinfo=timezone.utc),
+        data={"_last_synced_at": "2026-04-01T00:00:00Z", "servers": {}},
+    )
+
+    assert status.status == "airgapped_stale"
+    assert status.airgapped is True
+
+
 # ── Update (mocked) ────────────────────────────────────────────────────────
 
 
@@ -322,6 +374,7 @@ def test_cli_registry_help():
     assert "update" in result.output
     assert "list" in result.output
     assert "search" in result.output
+    assert "status" in result.output
 
 
 def test_cli_registry_list():
@@ -369,6 +422,20 @@ def test_cli_registry_search_no_match():
     result = runner.invoke(main, ["registry", "search", "zzzzz-nonexistent-pkg"])
     assert result.exit_code == 0
     assert "No results" in result.output or "0" in result.output
+
+
+def test_cli_registry_status_json():
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["registry", "status", "-f", "json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["status"] in {"fresh", "stale", "airgapped_stale", "never_synced"}
+    assert data["server_count"] >= 100
+    assert "stale_after_days" in data
 
 
 # ── Dataclass construction ──────────────────────────────────────────────────

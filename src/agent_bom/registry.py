@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -40,6 +42,37 @@ class RegistryUpdateResult:
     details: list[dict] = field(default_factory=list)
 
 
+@dataclass
+class RegistryFreshnessStatus:
+    """Operator-facing MCP registry freshness posture."""
+
+    status: str
+    last_synced_at: str | None
+    age_days: int | None
+    stale_after_days: int
+    server_count: int
+    sources: list[str]
+    airgapped: bool = False
+    error: str = ""
+
+    @property
+    def is_fresh(self) -> bool:
+        return self.status == "fresh"
+
+    def to_dict(self) -> dict:
+        return {
+            "status": self.status,
+            "is_fresh": self.is_fresh,
+            "last_synced_at": self.last_synced_at,
+            "age_days": self.age_days,
+            "stale_after_days": self.stale_after_days,
+            "server_count": self.server_count,
+            "sources": self.sources,
+            "airgapped": self.airgapped,
+            "error": self.error,
+        }
+
+
 def _load_registry() -> dict:
     """Load the bundled MCP registry JSON."""
     try:
@@ -56,6 +89,76 @@ def _load_registry_full() -> dict:
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning("Failed to load full MCP registry from %s: %s", _REGISTRY_PATH, exc)
         return {"servers": {}}
+
+
+def _parse_registry_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    try:
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+    except ValueError:
+        pass
+    try:
+        return datetime.strptime(value.strip(), "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def registry_freshness_status(
+    *,
+    stale_after_days: int = 14,
+    data: dict | None = None,
+    now: datetime | None = None,
+) -> RegistryFreshnessStatus:
+    """Return freshness posture for the bundled MCP registry.
+
+    The registry can be refreshed from several sources, but normal scans should
+    stay offline/read-only. This summarizes the local catalog's age so operators
+    can decide whether to refresh before relying on registry-derived evidence.
+    """
+    stale_after_days = max(int(stale_after_days), 0)
+    registry_data = data if data is not None else _load_registry_full()
+    servers = registry_data.get("servers", {})
+    if not isinstance(servers, dict):
+        servers = {}
+
+    raw_sources = registry_data.get("_sources", [])
+    sources = [str(source) for source in raw_sources] if isinstance(raw_sources, list) else []
+    airgapped = os.environ.get("AGENT_BOM_REGISTRY_AIRGAPPED", "").strip().lower() in {"1", "true", "yes", "on"}
+    raw_synced = registry_data.get("_last_synced_at") or registry_data.get("_updated")
+    parsed = _parse_registry_timestamp(raw_synced)
+    if parsed is None:
+        return RegistryFreshnessStatus(
+            status="airgapped" if airgapped else "never_synced",
+            last_synced_at=str(raw_synced) if raw_synced else None,
+            age_days=None,
+            stale_after_days=stale_after_days,
+            server_count=len(servers),
+            sources=sources,
+            airgapped=airgapped,
+            error="missing_or_invalid_last_synced_at",
+        )
+
+    current = now.astimezone(timezone.utc) if now is not None else datetime.now(timezone.utc)
+    age_days = max((current - parsed).days, 0)
+    status = "fresh" if age_days <= stale_after_days else "stale"
+    if airgapped and status == "stale":
+        status = "airgapped_stale"
+    return RegistryFreshnessStatus(
+        status=status,
+        last_synced_at=parsed.isoformat(),
+        age_days=age_days,
+        stale_after_days=stale_after_days,
+        server_count=len(servers),
+        sources=sources,
+        airgapped=airgapped,
+    )
 
 
 def _parse_version(version: str) -> Optional[tuple[int, ...]]:

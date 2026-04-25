@@ -187,6 +187,46 @@ def registry_search(query, category):
     con.print(table)
 
 
+@registry.command("status")
+@click.option("--stale-after-days", type=int, default=14, show_default=True, help="Mark registry stale after this many days.")
+@click.option("--format", "-f", "fmt", type=click.Choice(["table", "json"]), default="table", help="Output format.")
+def registry_status(stale_after_days: int, fmt: str):
+    """Show MCP registry freshness and source posture."""
+    from rich.console import Console
+    from rich.table import Table
+
+    from agent_bom.registry import registry_freshness_status
+
+    status = registry_freshness_status(stale_after_days=stale_after_days)
+    payload = status.to_dict()
+    if fmt == "json":
+        click.echo(json.dumps(payload, indent=2))
+        return
+
+    con = Console()
+    color = {
+        "fresh": "green",
+        "stale": "yellow",
+        "airgapped": "cyan",
+        "airgapped_stale": "yellow",
+        "never_synced": "red",
+    }.get(status.status, "white")
+    table = Table(title="MCP Registry Freshness")
+    table.add_column("Field", style="cyan")
+    table.add_column("Value")
+    table.add_row("Status", f"[{color}]{status.status}[/{color}]")
+    table.add_row("Last synced", status.last_synced_at or "unknown")
+    table.add_row("Age", "unknown" if status.age_days is None else f"{status.age_days} day(s)")
+    table.add_row("Stale after", f"{status.stale_after_days} day(s)")
+    table.add_row("Servers", str(status.server_count))
+    table.add_row("Sources", ", ".join(status.sources) if status.sources else "unknown")
+    if status.airgapped:
+        table.add_row("Airgapped", "yes")
+    if status.error:
+        table.add_row("Error", status.error)
+    con.print(table)
+
+
 @registry.command("update")
 @click.option("--concurrency", default=5, type=int, help="Max concurrent API requests.")
 @click.option("--dry-run", is_flag=True, help="Show what would be updated without writing.")

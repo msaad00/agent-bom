@@ -403,8 +403,12 @@ jobs:
       - name: Install Helm
         run: |
           set -euo pipefail
-          curl -fsSL https://get.helm.sh/helm-v3.18.6-linux-amd64.tar.gz -o /tmp/helm.tar.gz
-          tar -xzf /tmp/helm.tar.gz -C /tmp
+          HELM_VERSION="3.18.6"
+          HELM_SHA256="3f43c0aa57243852dd542493a0f54f1396c0bc8ec7296bbb2c01e802010819ce"
+          HELM_ARCHIVE="helm-v${HELM_VERSION}-linux-amd64.tar.gz"
+          curl -fsSLo "/tmp/${HELM_ARCHIVE}" "https://get.helm.sh/${HELM_ARCHIVE}"
+          echo "${HELM_SHA256}  /tmp/${HELM_ARCHIVE}" | sha256sum -c -
+          tar -xzf "/tmp/${HELM_ARCHIVE}" -C /tmp
           sudo mv /tmp/linux-amd64/helm /usr/local/bin/helm
           helm version
 

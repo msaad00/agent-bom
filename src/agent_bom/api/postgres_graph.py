@@ -577,8 +577,23 @@ class PostgresGraphStore:
     ) -> list[Any]:
         if not node_ids:
             return []
-        graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
-        return [node for node_id, node in graph.nodes.items() if node_id in node_ids]
+        effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
+        if not effective_scan_id:
+            return []
+        placeholders = ",".join(["%s"] * len(node_ids))
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                f"""
+                SELECT
+                    id, entity_type, label, category_uid, class_uid, type_uid,
+                    status, risk_score, severity, severity_id, first_seen, last_seen,
+                    attributes, compliance_tags, data_sources, dimensions
+                FROM graph_nodes
+                WHERE tenant_id = %s AND scan_id = %s AND id IN ({placeholders})
+                """,  # nosec B608 - placeholders are generated internally
+                [tenant_id, effective_scan_id, *sorted(node_ids)],
+            ).fetchall()
+        return [self._node_from_row(row) for row in rows]
 
     def bfs_paths(
         self,
@@ -655,8 +670,35 @@ class PostgresGraphStore:
     ) -> list[Any]:
         if not source_ids:
             return []
-        graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
-        return [attack_path for attack_path in graph.attack_paths if attack_path.source in source_ids]
+        effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
+        if not effective_scan_id:
+            return []
+        placeholders = ",".join(["%s"] * len(source_ids))
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(
+                f"""
+                SELECT source_node, target_node, path_nodes, path_edges, composite_risk, credential_exposure, vuln_ids
+                FROM attack_paths
+                WHERE tenant_id = %s AND scan_id = %s AND source_node IN ({placeholders})
+                ORDER BY composite_risk DESC, source_node ASC, target_node ASC
+                """,  # nosec B608 - placeholders are generated internally
+                [tenant_id, effective_scan_id, *sorted(source_ids)],
+            ).fetchall()
+
+        from agent_bom.graph import AttackPath
+
+        return [
+            AttackPath(
+                source=row[0],
+                target=row[1],
+                hops=json.loads(row[2]),
+                edges=json.loads(row[3]),
+                composite_risk=row[4],
+                credential_exposure=json.loads(row[5]),
+                vuln_ids=json.loads(row[6]),
+            )
+            for row in rows
+        ]
 
     def node_context(
         self,

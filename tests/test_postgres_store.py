@@ -75,6 +75,10 @@ class MockConnection:
                     table = "control_plane_schema_versions"
                 elif "osv_cache" in sql:
                     table = "osv_cache"
+                elif "graph_nodes" in sql:
+                    table = "graph_nodes"
+                elif "attack_paths" in sql:
+                    table = "attack_paths"
                 if table not in self._store:
                     self._store[table] = {}
                 self._store[table][params[0]] = params
@@ -172,6 +176,25 @@ class MockConnection:
             elif "from fleet_agents" in sql_lower and "agent_id, name, lifecycle_state, trust_score" in sql_lower:
                 rows = list(self._store.get("fleet_agents", {}).values())
                 cursor.rows = [(r[0], r[1], r[2], r[3]) for r in rows]
+            elif "from graph_nodes" in sql_lower and "id, entity_type, label" in sql_lower:
+                rows = list(self._store.get("graph_nodes", {}).values())
+                if params:
+                    tenant_id = params[0]
+                    scan_id = params[1] if len(params) > 1 else ""
+                    requested_ids = set(params[2:])
+                    rows = [r for r in rows if r[17] == tenant_id and r[16] == scan_id and (not requested_ids or r[0] in requested_ids)]
+                cursor.rows = [tuple(r[:16]) for r in rows]
+            elif "from attack_paths" in sql_lower and "source_node, target_node" in sql_lower:
+                rows = list(self._store.get("attack_paths", {}).values())
+                if params:
+                    tenant_id = params[0]
+                    scan_id = params[1] if len(params) > 1 else ""
+                    requested_sources = set(params[2:])
+                    rows = [
+                        r for r in rows if r[9] == tenant_id and r[8] == scan_id and (not requested_sources or r[0] in requested_sources)
+                    ]
+                rows.sort(key=lambda r: (-float(r[3]), str(r[0]), str(r[1])))
+                cursor.rows = [(r[0], r[1], r[4], r[5], r[3], r[6], r[7]) for r in rows]
             elif params:
                 for table_data in self._store.values():
                     for pk, row in table_data.items():
@@ -1123,6 +1146,61 @@ def test_graph_store_init_adds_query_indexes(mock_pool):
     assert any("idx_pg_graph_edges_scan_source" in sql for sql, _ in mock_pool._conn.executed)
     assert any("idx_pg_graph_edges_scan_target" in sql for sql, _ in mock_pool._conn.executed)
     assert any("idx_pg_attack_paths_scan_risk" in sql for sql, _ in mock_pool._conn.executed)
+
+
+def test_graph_store_nodes_by_ids_uses_node_table(mock_pool, monkeypatch):
+    from agent_bom.api.postgres_store import PostgresGraphStore
+    from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
+
+    store = PostgresGraphStore(pool=mock_pool)
+    graph = UnifiedGraph(scan_id="scan-graph", tenant_id="tenant-alpha")
+    graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="Agent A"))
+    graph.add_node(UnifiedNode(id="tool:t", entity_type=EntityType.TOOL, label="Tool T"))
+    store.save_graph(graph)
+
+    def _fail_load_graph(**_kwargs):
+        raise AssertionError("nodes_by_ids must query graph_nodes directly")
+
+    monkeypatch.setattr(store, "load_graph", _fail_load_graph)
+    nodes = store.nodes_by_ids(tenant_id="tenant-alpha", scan_id="scan-graph", node_ids={"tool:t"})
+
+    assert [node.id for node in nodes] == ["tool:t"]
+    select_sql = "\n".join(sql for sql, _params in mock_pool._conn.executed if "FROM graph_nodes" in sql)
+    assert "id IN" in select_sql
+
+
+def test_graph_store_attack_paths_for_sources_uses_materialized_table(mock_pool, monkeypatch):
+    from agent_bom.api.postgres_store import PostgresGraphStore
+    from agent_bom.graph import AttackPath, EntityType, UnifiedGraph, UnifiedNode
+
+    store = PostgresGraphStore(pool=mock_pool)
+    graph = UnifiedGraph(scan_id="scan-graph", tenant_id="tenant-alpha")
+    graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="Agent A"))
+    graph.add_node(UnifiedNode(id="vuln:cve", entity_type=EntityType.VULNERABILITY, label="CVE-2026-0001"))
+    graph.attack_paths.append(
+        AttackPath(
+            source="agent:a",
+            target="vuln:cve",
+            hops=["agent:a", "vuln:cve"],
+            edges=["edge:1"],
+            composite_risk=9.4,
+            credential_exposure=["API_KEY"],
+            vuln_ids=["CVE-2026-0001"],
+        )
+    )
+    store.save_graph(graph)
+
+    def _fail_load_graph(**_kwargs):
+        raise AssertionError("attack_paths_for_sources must query attack_paths directly")
+
+    monkeypatch.setattr(store, "load_graph", _fail_load_graph)
+    paths = store.attack_paths_for_sources(tenant_id="tenant-alpha", scan_id="scan-graph", source_ids={"agent:a"})
+
+    assert len(paths) == 1
+    assert paths[0].target == "vuln:cve"
+    assert paths[0].credential_exposure == ["API_KEY"]
+    select_sql = "\n".join(sql for sql, _params in mock_pool._conn.executed if "FROM attack_paths" in sql)
+    assert "source_node IN" in select_sql
 
 
 def test_scan_cache_put_get(mock_pool):

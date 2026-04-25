@@ -357,6 +357,43 @@ async def test_export_audit_entries_returns_signed_json(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_verify_audit_export_accepts_signed_json(monkeypatch):
+    store = InMemoryAuditLog()
+    store.append(AuditEntry(action="scan", actor="alice", resource="job/1", details={"tenant_id": "tenant-alpha"}))
+    monkeypatch.setattr("agent_bom.api.audit_log.get_audit_log", lambda: store)
+
+    response = await enterprise.export_audit_entries(_request("tenant-alpha", "alice-admin"))
+    payload = json.loads(response.body.decode())
+    signature = response.headers["x-agent-bom-audit-export-signature"]
+
+    verified = await enterprise.verify_audit_export(
+        _request("tenant-alpha", "alice-admin"),
+        enterprise.AuditExportVerifyRequest(payload=payload, signature=signature),
+    )
+
+    assert verified["valid"] is True
+    assert verified["payload_bytes"] > 0
+
+
+@pytest.mark.asyncio
+async def test_verify_audit_export_rejects_tampered_payload(monkeypatch):
+    store = InMemoryAuditLog()
+    store.append(AuditEntry(action="scan", actor="alice", resource="job/1", details={"tenant_id": "tenant-alpha"}))
+    monkeypatch.setattr("agent_bom.api.audit_log.get_audit_log", lambda: store)
+
+    response = await enterprise.export_audit_entries(_request("tenant-alpha", "alice-admin"))
+    payload = json.loads(response.body.decode())
+    payload["tenant_id"] = "tenant-beta"
+
+    verified = await enterprise.verify_audit_export(
+        _request("tenant-alpha", "alice-admin"),
+        enterprise.AuditExportVerifyRequest(payload=payload, signature=response.headers["x-agent-bom-audit-export-signature"]),
+    )
+
+    assert verified["valid"] is False
+
+
+@pytest.mark.asyncio
 async def test_export_audit_entries_supports_jsonl(monkeypatch):
     store = InMemoryAuditLog()
     store.append(AuditEntry(action="scan", actor="alice", resource="job/1", details={"tenant_id": "tenant-alpha"}))

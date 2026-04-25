@@ -4,9 +4,11 @@ import base64
 import json
 import time
 from concurrent.futures import ThreadPoolExecutor
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastapi import Response
 from starlette.testclient import TestClient
 
 from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
@@ -39,6 +41,29 @@ def test_health_no_auth():
     client = TestClient(app)
     resp = client.get("/health")
     assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_browser_session_exchange_has_targeted_rate_limit(monkeypatch):
+    from fastapi import HTTPException
+
+    from agent_bom.api.routes import enterprise
+
+    enterprise._AUTH_SESSION_ATTEMPTS.clear()
+    monkeypatch.setenv("AGENT_BOM_AUTH_SESSION_ATTEMPTS_PER_MINUTE", "2")
+    monkeypatch.setenv("AGENT_BOM_API_KEY", "valid-key")
+    request = SimpleNamespace(headers={}, client=SimpleNamespace(host="203.0.113.10"))
+
+    with pytest.raises(HTTPException) as first:
+        await enterprise.create_browser_session(request, Response(), enterprise.BrowserSessionRequest(api_key="bad-1"))
+    assert first.value.status_code == 401
+    with pytest.raises(HTTPException) as second:
+        await enterprise.create_browser_session(request, Response(), enterprise.BrowserSessionRequest(api_key="bad-2"))
+    assert second.value.status_code == 401
+    with pytest.raises(HTTPException) as error:
+        await enterprise.create_browser_session(request, Response(), enterprise.BrowserSessionRequest(api_key="valid-key"))
+
+    assert error.value.status_code == 429
 
 
 def test_trust_headers_present():

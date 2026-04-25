@@ -336,6 +336,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             "/openapi.json",
             "/v1/auth/session",
             "/v1/auth/saml/metadata",
+            "/v1/auth/saml/relay-state",
             "/v1/auth/saml/login",
         }
         if not _DOCS_DISABLED
@@ -346,6 +347,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             "/version",
             "/v1/auth/session",
             "/v1/auth/saml/metadata",
+            "/v1/auth/saml/relay-state",
             "/v1/auth/saml/login",
         }
     )

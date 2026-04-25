@@ -190,6 +190,28 @@ class TestAuditLog:
         assert len(entries) == 1
         assert entries[0].details == {"packages": 42, "tenant_id": "default"}
 
+    def test_log_action_bounds_detail_schema(self):
+        from agent_bom.api.audit_log import InMemoryAuditLog, log_action, set_audit_log
+
+        store = InMemoryAuditLog()
+        set_audit_log(store)
+        log_action(
+            "scan",
+            actor="admin",
+            resource="job/test",
+            **{
+                "tenant_id": "tenant-alpha",
+                "bad key\r\n": "x" * 3000,
+                "nested": {"items": list(range(100))},
+            },
+        )
+
+        details = store.list_entries()[0].details
+        assert "bad_key" in details
+        assert len(details["bad_key"]) == 2048
+        assert details["nested"]["items"][-1] == "[truncated]"
+        assert details["tenant_id"] == "tenant-alpha"
+
     def test_audit_bounded_size(self):
         from agent_bom.api.audit_log import AuditEntry, InMemoryAuditLog
 

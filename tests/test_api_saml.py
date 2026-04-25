@@ -145,6 +145,47 @@ async def test_saml_login_mints_short_lived_api_key(isolated_key_store, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_saml_login_rejects_unissued_relay_state(isolated_key_store, monkeypatch):
+    monkeypatch.setattr(
+        "agent_bom.api.saml.SAMLConfig.verify_response",
+        lambda self, saml_response, relay_state=None: None,
+    )
+
+    with pytest.raises(HTTPException) as error:
+        await enterprise.saml_login(SAMLLoginRequest(saml_response="assertion", relay_state="attacker-controlled"))
+
+    assert error.value.status_code == 401
+    assert error.value.detail == "Invalid or expired SAML relay_state"
+
+
+@pytest.mark.asyncio
+async def test_saml_relay_state_is_one_time(isolated_key_store, monkeypatch):
+    relay = await enterprise.saml_relay_state()
+
+    monkeypatch.setattr(
+        "agent_bom.api.saml.SAMLConfig.verify_response",
+        lambda self, saml_response, relay_state=None: type(
+            "Assertion",
+            (),
+            {
+                "subject": "alice@example.com",
+                "attributes": {"agent_bom_role": "admin", "tenant_id": "tenant-alpha"},
+                "role": "admin",
+                "tenant_id": "tenant-alpha",
+                "session_index": "session-1",
+            },
+        )(),
+    )
+
+    response = await enterprise.saml_login(SAMLLoginRequest(saml_response="assertion", relay_state=relay["relay_state"]))
+    assert response["tenant_id"] == "tenant-alpha"
+
+    with pytest.raises(HTTPException) as error:
+        await enterprise.saml_login(SAMLLoginRequest(saml_response="assertion", relay_state=relay["relay_state"]))
+    assert error.value.status_code == 401
+
+
+@pytest.mark.asyncio
 async def test_saml_login_rejects_invalid_assertion(monkeypatch):
     def _raise_bad_saml(self, saml_response, relay_state=None):
         raise SAMLError("bad saml")

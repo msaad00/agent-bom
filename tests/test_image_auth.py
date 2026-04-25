@@ -14,9 +14,12 @@ from agent_bom.image import (
     _build_scanner_env,
     _docker_inspect,
     _scan_with_docker,
+    _scan_with_grype,
+    _scan_with_syft,
     detect_multi_arch,
     scan_image,
 )
+from agent_bom.security import SecurityError
 
 # ─── _build_scanner_env ─────────────────────────────────────────────────────
 
@@ -130,6 +133,38 @@ def test_docker_pull_platform_flag(monkeypatch):
     assert len(pull_cmds) > 0
     assert "--platform" in pull_cmds[0]
     assert "linux/arm64" in pull_cmds[0]
+
+
+def test_external_scanner_helpers_validate_image_ref():
+    """Internal Grype/Syft wrappers should not bypass image-ref validation."""
+    try:
+        _scan_with_grype("-o=json")
+        assert False, "Expected SecurityError"
+    except SecurityError as exc:
+        assert "Invalid image reference" in str(exc)
+
+
+def test_external_scanner_helpers_validate_platform():
+    """External scanner platform args are fixed values, not shell fragments."""
+    try:
+        _scan_with_syft("nginx:latest", platform="linux/amd64;id")
+        assert False, "Expected SecurityError"
+    except SecurityError as exc:
+        assert "Invalid container platform" in str(exc)
+
+
+def test_docker_helpers_validate_platform_before_subprocess(monkeypatch):
+    """Native Docker helper rejects invalid platform before invoking docker."""
+    calls = []
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: calls.append(args))
+
+    try:
+        _docker_inspect("nginx:latest", platform="--privileged")
+        assert False, "Expected SecurityError"
+    except SecurityError:
+        pass
+
+    assert calls == []
 
 
 def test_native_scan_errors_on_zero_extracted_packages(monkeypatch, tmp_path):

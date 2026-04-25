@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -38,6 +39,7 @@ from agent_bom.sbom import parse_cyclonedx
 from agent_bom.security import validate_image_ref
 
 _logger = logging.getLogger(__name__)
+_PLATFORM_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(/[A-Za-z0-9][A-Za-z0-9._-]*){1,2}$")
 
 
 class ImageScanError(Exception):
@@ -63,6 +65,16 @@ _GRYPE_TYPE_MAP: dict[str, str] = {
 
 def _grype_available() -> bool:
     return shutil.which("grype") is not None
+
+
+def _validate_platform(platform: Optional[str]) -> Optional[str]:
+    if platform is None:
+        return None
+    if not _PLATFORM_RE.match(platform):
+        from agent_bom.security import SecurityError
+
+        raise SecurityError(f"Invalid container platform: {platform!r}")
+    return platform
 
 
 def _build_scanner_env(
@@ -96,6 +108,8 @@ def _scan_with_grype(
     (npm, cargo, go modules, maven, gems, .NET, deb, rpm, apk, Python).
     No secondary OSV query is needed for image packages.
     """
+    image_ref = validate_image_ref(image_ref)
+    platform = _validate_platform(platform)
     cmd = ["grype", image_ref, "-o", "json", "--quiet"]
     if platform:
         cmd += ["--platform", platform]
@@ -196,6 +210,8 @@ def _scan_with_syft(
     platform: Optional[str] = None,
 ) -> list[Package]:
     """Run Syft and parse its CycloneDX JSON output."""
+    image_ref = validate_image_ref(image_ref)
+    platform = _validate_platform(platform)
     cmd = ["syft", image_ref, "-o", "cyclonedx-json", "--quiet"]
     if platform:
         cmd += ["--platform", platform]
@@ -234,6 +250,8 @@ def _docker_available() -> bool:
 
 def _docker_inspect(image_ref: str, platform: Optional[str] = None) -> dict:
     """Return docker inspect output for the image (pulls if needed)."""
+    image_ref = validate_image_ref(image_ref)
+    platform = _validate_platform(platform)
     try:
         result = subprocess.run(
             ["docker", "inspect", "--type", "image", image_ref],
@@ -516,6 +534,9 @@ def _scan_with_docker(image_ref: str, platform: Optional[str] = None) -> list[Pa
     """Scan a Docker image natively and fail if no packages can be extracted."""
     from agent_bom.oci_parser import OCIParseError, scan_oci
 
+    image_ref = validate_image_ref(image_ref)
+    platform = _validate_platform(platform)
+
     # Confirm image exists / pull it
     _docker_inspect(image_ref, platform=platform)
 
@@ -605,6 +626,7 @@ def detect_multi_arch(image_ref: str) -> list[str]:
     Returns list of platform strings like ``["linux/amd64", "linux/arm64"]``.
     Returns empty list if not a manifest list or docker is unavailable.
     """
+    image_ref = validate_image_ref(image_ref)
     if not _docker_available():
         return []
     try:
@@ -666,6 +688,7 @@ def scan_image(
                         or native package extraction fails.
     """
     validate_image_ref(image_ref)
+    _validate_platform(platform)
 
     if not _docker_available():
         raise ImageScanError(

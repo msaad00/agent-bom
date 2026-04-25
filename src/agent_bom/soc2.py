@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 
 from agent_bom.constants import AI_PACKAGES as _AI_PACKAGES
 from agent_bom.constants import high_risk_severities
-from agent_bom.risk_analyzer import ToolCapability, classify_tool
+from agent_bom.risk_analyzer import ToolCapability, classify_mcp_tool
 
 if TYPE_CHECKING:
     from agent_bom.models import BlastRadius
@@ -67,7 +67,7 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
 
     has_exec = False
     for tool in br.exposed_tools:
-        caps = classify_tool(tool.name, tool.description)
+        caps = classify_mcp_tool(tool)
         if ToolCapability.EXECUTE in caps:
             has_exec = True
 

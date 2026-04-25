@@ -456,6 +456,8 @@ def check_huggingface_provenance(
         "gated": False,
         "downloads": None,
         "tags": [],
+        "model_advisories": [],
+        "model_advisory_feed": {},
         "security_flags": [],
     }
 
@@ -487,12 +489,21 @@ def check_huggingface_provenance(
         )
         return result
 
+    card_data = data.get("cardData") if isinstance(data.get("cardData"), dict) else {}
     result["author"] = data.get("author")
-    result["license"] = data.get("cardData", {}).get("license") if data.get("cardData") else data.get("license")
-    result["has_model_card"] = data.get("cardData") is not None or data.get("hasModelCard", False)
+    result["license"] = card_data.get("license") if card_data else data.get("license")
+    result["has_model_card"] = bool(card_data) or data.get("hasModelCard", False)
     result["gated"] = data.get("gated", False)
     result["downloads"] = data.get("downloads")
-    result["tags"] = data.get("tags", [])
+    tags = data.get("tags", [])
+    result["tags"] = tags if isinstance(tags, list) else []
+
+    from agent_bom.model_advisories import feed_posture, match_model_advisories, model_advisories_to_dict
+
+    feed = None
+    advisories = match_model_advisories(model_name, registry="huggingface", tags=result["tags"], card_data=card_data, feed=feed)
+    result["model_advisories"] = model_advisories_to_dict(advisories)
+    result["model_advisory_feed"] = feed_posture(feed)
 
     # Check if siblings include sha256-bearing files
     siblings = data.get("siblings", [])
@@ -564,7 +575,16 @@ def summarize_model_supply_chain(
     provenance_with_digest = sum(1 for item in provenance if item.get("has_digest") is True or item.get("sha256_available") is True)
     gated_models = sum(1 for item in provenance if item.get("is_gated") is True or item.get("gated") is True)
     sources = sorted({str(item.get("source", "huggingface")) for item in provenance})
+    model_advisories: list[dict] = []
+    for item in provenance:
+        advisories = item.get("model_advisories", [])
+        if not isinstance(advisories, list):
+            continue
+        model_advisories.extend(advisory for advisory in advisories if isinstance(advisory, dict))
+    advisory_severities = sorted({str(item.get("severity", "unknown")) for item in model_advisories})
     manifest_types = sorted({str(item.get("manifest_type")) for item in manifests if item.get("manifest_type")})
+
+    from agent_bom.model_advisories import feed_posture
 
     return {
         "model_files": len(model_files),
@@ -580,6 +600,12 @@ def summarize_model_supply_chain(
         "gated_models": gated_models,
         "provenance_with_security_flags": provenance_with_flags,
         "provenance_sources": sources,
+        "ai_model_advisories": {
+            "count": len(model_advisories),
+            "severities": advisory_severities,
+            "items": model_advisories,
+            "feed": feed_posture(),
+        },
         "manifest_files": len(manifests),
         "manifest_types": manifest_types,
         "manifests_with_repo_id": sum(1 for item in manifests if item.get("repo_id")),

@@ -105,6 +105,7 @@ For cross-agent correlation and the broader 8-detector protection engine, run `a
 - HuggingFace provenance checks surface author, card presence, digest availability, and gated/private posture
 - Hash verification can compare local weights against HuggingFace Hub metadata and report verified, unverified, offline, or tampered states
 - Operators can enable advisory or enforce mode for model artifact policy with `--model-policy-mode`, `--require-model-signatures`, and `--block-unsafe-model-formats`; warn mode reports unsigned or unsafe artifacts while enforce mode fails closed through the normal scan policy exit path
+- AI model advisories stay separate from package CVEs: `src/agent_bom/model_advisories.py` loads the bundled or customer-provided `AGENT_BOM_AI_MODEL_ADVISORY_FEED`, matches model-card signals such as `custom_code`, and adds source-attributed `model_advisories` plus feed freshness posture to `model_supply_chain_data`.
 
 ### What a Formal Pentest Should Cover
 

@@ -17,6 +17,7 @@ from rich.console import Console
 
 from agent_bom.config import ENRICHMENT_MAX_CACHE_ENTRIES as _MAX_ENRICHMENT_CACHE_ENTRIES
 from agent_bom.config import ENRICHMENT_TTL_SECONDS as _ENRICHMENT_TTL
+from agent_bom.enrichment_posture import record_enrichment_source
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Vulnerability
 
@@ -127,6 +128,7 @@ async def fetch_nvd_data(cve_id: str, client: httpx.AsyncClient, api_key: Option
         cached_at = cached.get("_cached_at", 0)
         if _now - cached_at < _nvd_max_age_secs:
             data = {k: v for k, v in cached.items() if k != "_cached_at"}
+            record_enrichment_source("nvd", "cache")
             return data if data else None
         # Stale — fall through to refetch
 
@@ -151,12 +153,16 @@ async def fetch_nvd_data(cve_id: str, client: httpx.AsyncClient, api_key: Option
                 # Store in persistent cache
                 _nvd_file_cache[cve_id] = {**result, "_cached_at": time.time()}
                 _evict_oldest(_nvd_file_cache, _MAX_ENRICHMENT_CACHE_ENTRIES)
+                record_enrichment_source("nvd", "success")
                 return result
         except (ValueError, KeyError) as e:
+            record_enrichment_source("nvd", "failure", error=f"parse error: {e}")
             console.print(f"  [dim yellow]NVD parse error for {cve_id}: {e}[/dim yellow]")
     elif response and response.status_code == 403:
+        record_enrichment_source("nvd", "failure", error="HTTP 403 rate limited")
         _logger.warning("NVD rate limited (HTTP 403) for %s — consider using NVD_API_KEY", cve_id)
     elif response and response.status_code not in (200, 404):
+        record_enrichment_source("nvd", "failure", error=f"HTTP {response.status_code}")
         _logger.warning("NVD returned HTTP %d for %s", response.status_code, cve_id)
 
     return None
@@ -192,6 +198,7 @@ async def fetch_epss_scores(cve_ids: list[str], client: httpx.AsyncClient) -> di
             cached_at = cached.get("_cached_at", 0)
             if now - cached_at < _max_age_secs:
                 scores[cve_id] = {k: v for k, v in cached.items() if k != "_cached_at"}
+                record_enrichment_source("epss", "cache")
             else:
                 uncached.append(cve_id)  # Stale — refetch
         else:
@@ -216,6 +223,7 @@ async def fetch_epss_scores(cve_ids: list[str], client: httpx.AsyncClient) -> di
         if response and response.status_code == 200:
             try:
                 data = response.json()
+                record_enrichment_source("epss", "success")
                 for item in data.get("data", []):
                     cve = item.get("cve")
                     if cve:
@@ -236,8 +244,14 @@ async def fetch_epss_scores(cve_ids: list[str], client: httpx.AsyncClient) -> di
                         scores[cve] = entry
                         _epss_file_cache[cve] = {**entry, "_cached_at": time.time()}
             except (ValueError, KeyError) as e:
+                record_enrichment_source("epss", "failure", error=f"parse error: {e}")
                 _logger.warning("EPSS parse error for batch starting at %d: %s", batch_start, e)
         else:
+            record_enrichment_source(
+                "epss",
+                "failure",
+                error=f"HTTP {response.status_code}" if response else "unreachable after retries",
+            )
             _logger.warning(
                 "EPSS API request failed for %d CVEs (batch %d–%d)",
                 len(batch),
@@ -267,6 +281,7 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
     if _kev_cache and _kev_cache_time:
         age = datetime.now(timezone.utc) - _kev_cache_time
         if age.total_seconds() < _KEV_CACHE_TTL_SECONDS:
+            record_enrichment_source("cisa_kev", "cache")
             return _kev_cache
 
     # Try loading from disk cache if in-memory cache is stale
@@ -277,6 +292,7 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
             if (time.time() - cached_at) < _KEV_CACHE_TTL_SECONDS:
                 _kev_cache = disk_data.get("data") or {}
                 _kev_cache_time = datetime.fromtimestamp(cached_at, tz=timezone.utc)
+                record_enrichment_source("cisa_kev", "cache")
                 return _kev_cache  # type: ignore[return-value]  # dict from disk cache
         except (OSError, json.JSONDecodeError, ValueError) as exc:
             _logger.warning("Failed to load KEV disk cache: %s", exc)
@@ -302,6 +318,7 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
 
             _kev_cache = kev_dict
             _kev_cache_time = datetime.now(timezone.utc)
+            record_enrichment_source("cisa_kev", "success")
 
             # Persist to disk for cross-session resilience
             try:
@@ -312,6 +329,7 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
 
             return kev_dict
         except (ValueError, KeyError) as e:
+            record_enrichment_source("cisa_kev", "failure", error=f"parse error: {e}")
             console.print(f"  [dim yellow]CISA KEV parse error: {e}[/dim yellow]")
 
     # Fallback: serve stale disk cache if API is down
@@ -327,6 +345,7 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
                     len(stale_data),
                 )
                 console.print("  [dim yellow]⚠ Using stale CISA KEV cache (API unreachable)[/dim yellow]")
+                record_enrichment_source("cisa_kev", "failure", error=f"using stale cache {stale_age_hours:.0f}h old")
                 _kev_cache = stale_data
                 # Cache in memory for 1h before retrying API — prevents
                 # hitting disk on every call within this session while still
@@ -338,6 +357,7 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
         except (OSError, json.JSONDecodeError) as exc:
             _logger.warning("Failed to read stale KEV cache: %s", exc)
 
+    record_enrichment_source("cisa_kev", "failure", error="unreachable and no usable cache")
     return {}
 
 

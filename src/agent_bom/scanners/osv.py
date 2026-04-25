@@ -11,6 +11,7 @@ from rich.console import Console
 
 from agent_bom.config import SCANNER_BATCH_DELAY as BATCH_DELAY_SECONDS
 from agent_bom.config import SCANNER_BATCH_SIZE as _BATCH_SIZE
+from agent_bom.enrichment_posture import record_enrichment_source
 from agent_bom.http_client import OfflineModeError, create_client, request_with_retry
 from agent_bom.models import Package
 from agent_bom.package_utils import normalize_package_name
@@ -303,6 +304,7 @@ async def query_osv_batch_impl(
     try:
         client_ctx = create_client_fn(timeout=30.0)
     except OfflineModeError:
+        record_enrichment_source("osv", "failure", error="offline mode")
         _logger.info("Offline mode: skipping OSV batch query for %d packages", len(queries))
         console.print("  [yellow]⚠[/yellow] Offline mode — CVE scanning skipped. Use local DB or remove --offline.")
         record_scan_warning("offline mode skipped remote CVE lookups")
@@ -320,6 +322,7 @@ async def query_osv_batch_impl(
                 if response and response.status_code == 200:
                     try:
                         data = response.json()
+                        record_enrichment_source("osv", "success")
                         osv_results = data.get("results", [])
                         if len(osv_results) != len(batch):
                             _logger.warning(
@@ -353,12 +356,14 @@ async def query_osv_batch_impl(
                                     existing.append(vuln)
                                     seen_ids.add(vuln.get("id"))
                     except (ValueError, KeyError) as exc:
+                        record_enrichment_source("osv", "failure", error=f"parse error: {exc}")
                         console.print(f"  [red]✗[/red] OSV response parse error: {exc}")
                         for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
                             pkg_err = pkg_index.get(idx)
                             if pkg_err:
                                 lookup_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, f"parse error: {exc}"))
                 elif response and response.status_code == 429:
+                    record_enrichment_source("osv", "failure", error="HTTP 429 rate limited")
                     retry_after_hdr = response.headers.get("Retry-After")
                     pipeline_wait = _PIPELINE_429_BACKOFF
                     if retry_after_hdr:
@@ -370,12 +375,14 @@ async def query_osv_batch_impl(
                     _logger.warning("OSV rate limit hit after all retries; pausing pipeline %.0fs", pipeline_wait)
                     await asyncio.sleep(pipeline_wait)
                 elif response:
+                    record_enrichment_source("osv", "failure", error=f"HTTP {response.status_code}")
                     console.print(f"  [red]✗[/red] OSV API error: HTTP {response.status_code}")
                     for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
                         pkg_err = pkg_index.get(idx)
                         if pkg_err:
                             lookup_errors.append((pkg_err[0].name, pkg_err[0].ecosystem, f"HTTP {response.status_code}"))
                 else:
+                    record_enrichment_source("osv", "failure", error="unreachable after retries")
                     console.print("  [red]✗[/red] OSV API unreachable after retries")
                     for idx in range(batch_start, min(batch_start + len(batch), len(queries))):
                         pkg_err = pkg_index.get(idx)

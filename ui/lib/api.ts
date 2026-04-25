@@ -1232,6 +1232,26 @@ export interface PostureResponse {
   dimensions: Record<string, { score: number; label: string; details?: string }>;
 }
 
+export interface EnrichmentSourcePosture {
+  source: string;
+  status: "ok" | "stale" | "degraded" | "unknown" | string;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  last_cache_at: string | null;
+  age_seconds: number | null;
+  slo_seconds: number;
+  success_count: number;
+  failure_count: number;
+  cache_hit_count: number;
+  message: string;
+}
+
+export interface EnrichmentPostureResponse {
+  status: "ok" | "stale" | "degraded" | "unknown" | string;
+  sources: EnrichmentSourcePosture[];
+  operator_message: string;
+}
+
 // ─── Fetch helpers ────────────────────────────────────────────────────────────
 
 const FETCH_TIMEOUT_MS = 30_000;
@@ -1485,6 +1505,9 @@ export const api = {
 
   /** Full posture grade + dimensions */
   getPosture: () => get<PostureResponse>("/v1/posture"),
+
+  /** Runtime health for external vulnerability enrichment sources */
+  getEnrichmentPosture: () => get<EnrichmentPostureResponse>("/v1/posture/enrichment"),
 
   /** Lightweight aggregate counts + scan context for nav badges */
   getPostureCounts: () => get<PostureCountsResponse>("/v1/posture/counts"),

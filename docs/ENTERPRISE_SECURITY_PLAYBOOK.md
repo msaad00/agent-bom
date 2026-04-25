@@ -82,7 +82,7 @@ Every enforcement point calls the same [`check_policy`](../src/agent_bom/proxy_p
 
 ### 2.1 Discovery: "Will agent-bom see every MCP my employees use?"
 
-agent-bom scans laptop editor configs for **30+ MCP client surfaces** (Cursor, Claude Desktop, Claude Code, VS Code, Copilot, Codex, Continue, Cline, Roo, Amazon Q, Cortex Code, Windsurf, …) from [`src/agent_bom/discovery/config_parsers.py`](../src/agent_bom/discovery/config_parsers.py). Each discovered MCP server is serialised with its transport + URL ([`models.py:509 MCPServer`](../src/agent_bom/models.py)) and pushed to the control plane via `agent-bom agents --push-url`.
+agent-bom scans laptop editor configs for the code-backed client matrix exposed by `agent-bom where --json`: 29 first-class client types today, plus project-level, Docker Compose, Docker MCP Toolkit, dynamic filesystem, process, container, and Kubernetes discovery. The matrix is generated from [`src/agent_bom/discovery/coverage.py`](../src/agent_bom/discovery/coverage.py) and the concrete paths in [`src/agent_bom/discovery/__init__.py`](../src/agent_bom/discovery/__init__.py), so product claims stay tied to tested code. Each discovered MCP server is serialised with its transport + URL ([`models.py:509 MCPServer`](../src/agent_bom/models.py)) and pushed to the control plane via `agent-bom agents --push-url`.
 
 **End-to-end:**
 1. `agent-bom agents --preset enterprise --introspect --push-url https://agent-bom.example.com/v1/fleet/sync`

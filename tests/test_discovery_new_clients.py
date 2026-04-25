@@ -1,6 +1,7 @@
 """Tests for new CLI client discovery: Codex CLI, Gemini CLI, Goose, Snowflake CLI, Cortex Code."""
 
 import json
+from pathlib import Path
 
 import toml
 import yaml
@@ -15,6 +16,7 @@ from agent_bom.discovery import (
     parse_goose_config,
     parse_snowflake_connections,
 )
+from agent_bom.discovery.coverage import discovery_coverage_summary, supported_clients
 from agent_bom.models import AgentType, TransportType
 
 # ── 1. AgentType enum existence ────────────────────────────────────────────
@@ -618,6 +620,27 @@ def test_discovery_paths_include_new_clients():
 def test_total_agent_types_is_30():
     """AgentType enum should now have 29 client types + CUSTOM."""
     assert len(AgentType) == 30  # 29 clients + CUSTOM
+
+
+def test_supported_client_matrix_matches_agent_types():
+    """Supported-client telemetry should stay tied to the code-backed enum."""
+    clients = supported_clients()
+    assert len(clients) == len(AgentType) - 1
+    assert {client.agent_type for client in clients} == {agent_type.value for agent_type in AgentType if agent_type is not AgentType.CUSTOM}
+    codex = next(client for client in clients if client.agent_type == "codex-cli")
+    assert codex.parser == "parse_codex_config"
+
+
+def test_discovery_coverage_summary_exposes_non_secret_counts(tmp_path, monkeypatch):
+    """Coverage telemetry exposes counts and client matrix without leaking expanded local paths."""
+    monkeypatch.chdir(tmp_path)
+    Path(".mcp.json").write_text('{"mcpServers": {}}', encoding="utf-8")
+    missing = tmp_path / "missing-codex-config.toml"
+    summary = discovery_coverage_summary("Darwin", [("Project config", ".mcp.json"), ("codex-cli", str(missing))])
+    assert summary["supported_client_count"] == len(AgentType) - 1
+    assert summary["path_count"] == 2
+    assert summary["found_path_count"] == 1
+    assert summary["paths"][0]["path_kind"] == "project_relative"
 
 
 # ── 11. Binary detection ──────────────────────────────────────────────────

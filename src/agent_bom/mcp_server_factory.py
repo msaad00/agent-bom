@@ -14,7 +14,8 @@ def _server_instructions(version: str) -> str:
         "from vulnerabilities to credentials and tools, generates SBOMs (CycloneDX, SPDX), "
         "enforces security policies, and maps to 14 compliance frameworks"
         "(OWASP LLM/MCP/Agentic, MITRE ATLAS, NIST AI RMF/CSF/800-53, FedRAMP, EU AI Act, ISO 27001, SOC 2). "
-        "Discovers 30 MCP clients. Read-only, agentless, no credentials required."
+        "Discovers 29 first-class MCP client types plus dynamic/project surfaces. "
+        "Read-only, agentless, no credentials required."
     )
 
 

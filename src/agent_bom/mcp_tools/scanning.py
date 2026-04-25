@@ -60,6 +60,9 @@ async def scan_impl(
             if scan_warnings:
                 result["warnings"] = scan_warnings
             return _truncate_response(json.dumps(result))
+        from agent_bom.vex import active_blast_radii
+
+        active_findings = active_blast_radii(blast_radii)
 
         # Integrity verification
         if verify_integrity:
@@ -128,7 +131,7 @@ async def scan_impl(
             from agent_bom.policy import _validate_policy, evaluate_policy
 
             _validate_policy(policy)
-            result["policy_results"] = evaluate_policy(policy, blast_radii)
+            result["policy_results"] = evaluate_policy(policy, active_findings)
 
         # Severity gate (fail)
         if fail_severity:
@@ -142,7 +145,7 @@ async def scan_impl(
                 raise ToolError(f"Invalid severity: {fail_severity}. Use: critical, high, medium, low")
             gate_fail = any(
                 severity_order.index(sev) <= threshold_idx
-                for br in blast_radii
+                for br in active_findings
                 if (sev := br.vulnerability.severity.value) in severity_order
             )
             result["gate_status"] = "fail" if gate_fail else "pass"
@@ -160,7 +163,7 @@ async def scan_impl(
                 raise ToolError(f"Invalid warn_severity: {warn_severity}. Use: critical, high, medium, low")
             warn_matches = [
                 br
-                for br in blast_radii
+                for br in active_findings
                 if br.vulnerability.severity.value in severity_order
                 and severity_order.index(br.vulnerability.severity.value) <= warn_threshold_idx
             ]

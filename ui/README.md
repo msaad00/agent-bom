@@ -44,9 +44,9 @@ paths to the backend service without rebuilding the UI image.
 The dashboard supports two browser auth modes:
 
 - Recommended: same-origin reverse-proxy OIDC/session auth. The proxy keeps the browser session and injects trusted `X-Agent-Bom-Role` plus `X-Agent-Bom-Tenant-ID` headers to the API. Enable `AGENT_BOM_TRUST_PROXY_AUTH=1` on the backend for this mode.
-- Fallback: a short-lived API key entered into the dashboard and stored in `sessionStorage` for the current browser tab/session only.
+- Local-only fallback: a short-lived API key entered into the dashboard. The UI first exchanges it for a same-origin `httpOnly` browser session cookie. Legacy `sessionStorage` forwarding is disabled by default and must be explicitly enabled with `window.__AGENT_BOM_CONFIG__.allowSessionStorageApiKey = true` or `NEXT_PUBLIC_ALLOW_SESSION_STORAGE_API_KEY=1` for single-user static pilots only.
 
-All browser fetches use `credentials: "include"` so proxy-managed sessions work without custom patches.
+All browser fetches and EventSource streams use same-origin URLs plus `credentials: "include"` so proxy-managed sessions work without custom patches and runtime config cannot redirect browser credentials to a different origin.
 
 ## Frontend quality gates
 

@@ -11,6 +11,37 @@ from typing import Literal
 SandboxRuntime = Literal["auto", "docker", "podman"]
 SandboxEgressPolicy = Literal["deny", "allow_all"]
 
+_DEFAULT_SANDBOX_CPUS = "1"
+_DEFAULT_SANDBOX_MEMORY = "512m"
+_DEFAULT_SANDBOX_PIDS_LIMIT = 256
+_DEFAULT_SANDBOX_TMPFS_SIZE = "64m"
+_DEFAULT_SANDBOX_TIMEOUT_SECONDS = 300
+
+_SENSITIVE_EXACT_MOUNT_SOURCES = (Path("/"),)
+
+_SENSITIVE_ABSOLUTE_MOUNT_SOURCES = (
+    Path("/etc"),
+    Path("/proc"),
+    Path("/sys"),
+    Path("/dev"),
+    Path("/var/run"),
+    Path("/run"),
+    Path("/var/run/docker.sock"),
+    Path("/run/docker.sock"),
+)
+
+
+def _sensitive_user_mount_sources() -> tuple[Path, ...]:
+    home = Path.home()
+    return (
+        home / ".aws",
+        home / ".azure",
+        home / ".config" / "gcloud",
+        home / ".docker",
+        home / ".kube",
+        home / ".ssh",
+    )
+
 
 @dataclass(frozen=True)
 class SandboxMount:
@@ -35,11 +66,11 @@ class SandboxConfig:
     mounts: tuple[SandboxMount, ...] = field(default_factory=tuple)
     network: str = "none"
     egress_policy: SandboxEgressPolicy = "deny"
-    cpus: str | None = None
-    memory: str | None = None
-    pids_limit: int | None = None
-    tmpfs_size: str | None = None
-    timeout_seconds: int | None = None
+    cpus: str | None = _DEFAULT_SANDBOX_CPUS
+    memory: str | None = _DEFAULT_SANDBOX_MEMORY
+    pids_limit: int | None = _DEFAULT_SANDBOX_PIDS_LIMIT
+    tmpfs_size: str | None = _DEFAULT_SANDBOX_TMPFS_SIZE
+    timeout_seconds: int | None = _DEFAULT_SANDBOX_TIMEOUT_SECONDS
     read_only_rootfs: bool = True
     drop_capabilities: bool = True
     no_new_privileges: bool = True
@@ -78,11 +109,40 @@ def parse_sandbox_mount(value: str) -> SandboxMount:
     parts = value.split(":")
     if len(parts) not in (2, 3) or not parts[0] or not parts[1]:
         raise ValueError("sandbox mounts must use host_path:container_path[:ro|rw]")
+    if not parts[1].startswith("/"):
+        raise ValueError("sandbox mount container path must be absolute")
     mode = parts[2].lower() if len(parts) == 3 else "ro"
     if mode not in {"ro", "rw", "readonly"}:
         raise ValueError("sandbox mount mode must be ro or rw")
-    source = str(Path(parts[0]).expanduser().resolve())
+    raw_source = Path(parts[0]).expanduser()
+    _validate_sandbox_mount_source(raw_source.resolve(strict=False))
+    source_path = raw_source.resolve(strict=True)
+    _validate_sandbox_mount_source(source_path)
+    source = str(source_path)
     return SandboxMount(source=source, target=parts[1], readonly=mode != "rw")
+
+
+def _validate_sandbox_mount_source(source: Path) -> None:
+    denied_exact = tuple(path.resolve(strict=False) for path in _SENSITIVE_EXACT_MOUNT_SOURCES)
+    if source in denied_exact:
+        raise ValueError(f"sandbox mount source is too sensitive to expose to an MCP server: {source}")
+    denied_candidates = (
+        path
+        for path in (*_SENSITIVE_ABSOLUTE_MOUNT_SOURCES, *_sensitive_user_mount_sources())
+        if path not in _SENSITIVE_EXACT_MOUNT_SOURCES
+    )
+    denied_roots = tuple(path.resolve(strict=False) for path in denied_candidates)
+    for denied in denied_roots:
+        if _path_is_relative_to(source, denied):
+            raise ValueError(f"sandbox mount source is too sensitive to expose to an MCP server: {source}")
+
+
+def _path_is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        return False
+    return True
 
 
 def sandbox_config_from_env(
@@ -115,18 +175,18 @@ def sandbox_config_from_env(
     env_mounts = tuple(item.strip() for item in os.environ.get("AGENT_BOM_MCP_SANDBOX_MOUNTS", "").split(",") if item.strip())
     parsed_mounts = tuple(parse_sandbox_mount(item) for item in (*mounts, *env_mounts))
     requested_user = user or os.environ.get("AGENT_BOM_MCP_SANDBOX_USER")
-    requested_cpus = cpus or os.environ.get("AGENT_BOM_MCP_SANDBOX_CPUS")
-    requested_memory = memory or os.environ.get("AGENT_BOM_MCP_SANDBOX_MEMORY")
-    requested_tmpfs_size = tmpfs_size or os.environ.get("AGENT_BOM_MCP_SANDBOX_TMPFS_SIZE")
+    requested_cpus = cpus or os.environ.get("AGENT_BOM_MCP_SANDBOX_CPUS") or _DEFAULT_SANDBOX_CPUS
+    requested_memory = memory or os.environ.get("AGENT_BOM_MCP_SANDBOX_MEMORY") or _DEFAULT_SANDBOX_MEMORY
+    requested_tmpfs_size = tmpfs_size or os.environ.get("AGENT_BOM_MCP_SANDBOX_TMPFS_SIZE") or _DEFAULT_SANDBOX_TMPFS_SIZE
     requested_pids_limit = (
         _validate_positive_int("sandbox pids limit", pids_limit)
         if pids_limit is not None
-        else _optional_positive_int("AGENT_BOM_MCP_SANDBOX_PIDS_LIMIT")
+        else _optional_positive_int("AGENT_BOM_MCP_SANDBOX_PIDS_LIMIT", default=_DEFAULT_SANDBOX_PIDS_LIMIT)
     )
     requested_timeout = (
         _validate_positive_int("sandbox timeout seconds", timeout_seconds)
         if timeout_seconds is not None
-        else _optional_positive_int("AGENT_BOM_MCP_SANDBOX_TIMEOUT_SECONDS")
+        else _optional_positive_int("AGENT_BOM_MCP_SANDBOX_TIMEOUT_SECONDS", default=_DEFAULT_SANDBOX_TIMEOUT_SECONDS)
     )
     return SandboxConfig(
         enabled=enabled,
@@ -266,10 +326,10 @@ def _effective_network(config: SandboxConfig) -> str:
     return "none" if config.egress_policy == "deny" else "bridge"
 
 
-def _optional_positive_int(env_name: str) -> int | None:
+def _optional_positive_int(env_name: str, *, default: int | None = None) -> int | None:
     value = os.environ.get(env_name)
     if not value:
-        return None
+        return default
     try:
         parsed = int(value)
     except ValueError as exc:

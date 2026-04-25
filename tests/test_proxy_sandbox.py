@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from agent_bom.proxy_sandbox import (
@@ -26,6 +28,52 @@ def test_parse_sandbox_mount_accepts_rw(tmp_path):
     assert mount.as_docker_mount().endswith(",rw")
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "/",
+        "/etc",
+        "/proc",
+        "/sys",
+        "/dev",
+        "/var/run",
+        "/var/run/docker.sock",
+    ],
+)
+def test_parse_sandbox_mount_rejects_sensitive_host_sources(source):
+    with pytest.raises(ValueError, match="too sensitive"):
+        parse_sandbox_mount(f"{source}:/workspace")
+
+
+def test_parse_sandbox_mount_rejects_common_user_secret_dirs(monkeypatch, tmp_path):
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+    ssh_dir = tmp_path / ".ssh"
+    ssh_dir.mkdir()
+
+    with pytest.raises(ValueError, match="too sensitive"):
+        parse_sandbox_mount(f"{ssh_dir}:/workspace")
+
+
+def test_parse_sandbox_mount_rejects_symlink_to_sensitive_path(tmp_path):
+    link = tmp_path / "etc-link"
+    link.symlink_to("/etc", target_is_directory=True)
+
+    with pytest.raises(ValueError, match="too sensitive"):
+        parse_sandbox_mount(f"{link}:/workspace")
+
+
+def test_parse_sandbox_mount_requires_existing_source(tmp_path):
+    missing = tmp_path / "missing"
+
+    with pytest.raises(FileNotFoundError):
+        parse_sandbox_mount(f"{missing}:/workspace")
+
+
+def test_parse_sandbox_mount_requires_absolute_container_target(tmp_path):
+    with pytest.raises(ValueError, match="container path must be absolute"):
+        parse_sandbox_mount(f"{tmp_path}:workspace")
+
+
 def test_sandbox_config_from_env_parses_operator_values(monkeypatch, tmp_path):
     monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX", "true")
     monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX_RUNTIME", "podman")
@@ -40,8 +88,13 @@ def test_sandbox_config_from_env_parses_operator_values(monkeypatch, tmp_path):
     assert config.mounts[0].target == "/workspace"
 
 
-def test_sandbox_config_default_egress_is_network_none(monkeypatch):
+def test_sandbox_config_defaults_are_bounded_and_network_none(monkeypatch):
     monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX_EGRESS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX_CPUS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX_MEMORY", raising=False)
+    monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX_PIDS_LIMIT", raising=False)
+    monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX_TMPFS_SIZE", raising=False)
+    monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX_TIMEOUT_SECONDS", raising=False)
     monkeypatch.setattr("agent_bom.proxy_sandbox.resolve_container_runtime", lambda runtime: "docker")
 
     config = sandbox_config_from_env(enabled=True, image="ghcr.io/acme/mcp-sandbox:1")
@@ -49,8 +102,17 @@ def test_sandbox_config_default_egress_is_network_none(monkeypatch):
 
     assert config.egress_policy == "deny"
     assert command[command.index("--network") + 1] == "none"
+    assert command[command.index("--cpus") + 1] == "1"
+    assert command[command.index("--memory") + 1] == "512m"
+    assert command[command.index("--pids-limit") + 1] == "256"
+    assert command[command.index("--tmpfs") + 1] == "/tmp:size=64m,mode=1777"
     assert evidence["egress_policy"] == "deny"
     assert evidence["network"] == "none"
+    assert evidence["cpus"] == "1"
+    assert evidence["memory"] == "512m"
+    assert evidence["pids_limit"] == 256
+    assert evidence["tmpfs_size"] == "64m"
+    assert evidence["timeout_seconds"] == 300
 
 
 def test_build_sandboxed_command_wraps_non_container_command(monkeypatch):

@@ -36,6 +36,7 @@ def cloud_group(ctx: click.Context) -> None:
       aws          AWS — Bedrock, Lambda, ECS, EKS + CIS v3.0 (60 checks)
       azure        Azure — AI Foundry, Container Apps + CIS v2.0 (95 checks)
       gcp          GCP — Vertex AI, Cloud Run + CIS v3.0 (59 checks)
+      resilience   Provider pagination/retry/partial-failure evidence
     """
     if ctx.invoked_subcommand is None:
         # Check if any cloud credentials are configured before running all
@@ -182,3 +183,37 @@ def gcp_cmd(
 cloud_group.add_command(aws_cmd, "aws")
 cloud_group.add_command(azure_cmd, "azure")
 cloud_group.add_command(gcp_cmd, "gcp")
+
+
+@click.command("resilience")
+@click.option("-f", "--format", "output_format", type=click.Choice(["console", "json"]), default="console")
+def resilience_cmd(output_format: str) -> None:
+    """Show cloud provider pagination, retry, and partial-failure posture."""
+    from agent_bom.cloud.resilience import provider_resilience_summary
+
+    summary = provider_resilience_summary()
+    if output_format == "json":
+        import json
+
+        click.echo(json.dumps(summary, indent=2, sort_keys=True))
+        return
+
+    from rich.console import Console
+    from rich.table import Table
+
+    table = Table(title="Cloud provider resilience")
+    table.add_column("Provider")
+    table.add_column("Status")
+    table.add_column("Pagination")
+    table.add_column("Partial failure")
+    for profile in summary["providers"]:
+        table.add_row(
+            profile["provider"],
+            profile["status"],
+            profile["pagination"],
+            profile["partial_failure"],
+        )
+    Console().print(table)
+
+
+cloud_group.add_command(resilience_cmd, "resilience")

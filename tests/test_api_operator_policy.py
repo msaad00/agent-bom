@@ -173,7 +173,7 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["rate_limit_key"]["status"] in {"ok", "ephemeral", "unknown_age", "rotation_due", "max_age_exceeded"}
     assert body["ui"]["recommended_mode"] in {"no_auth", "reverse_proxy_oidc", "oidc_bearer", "session_api_key"}
     assert body["ui"]["browser_session"] == "signed_http_only_cookie"
-    assert body["ui"]["session_storage_fallback"] == "legacy_static_export_only"
+    assert body["ui"]["session_storage_fallback"] == "disabled"
     assert body["audit_hmac"]["rotation_tracking_supported"] is True
     assert body["rate_limit_runtime"]["backend"] in {"inmemory_single_process", "postgres_shared"}
     assert "shared_across_replicas" in body["rate_limit_runtime"]

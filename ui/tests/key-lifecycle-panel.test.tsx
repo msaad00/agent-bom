@@ -31,7 +31,7 @@ const policy: AuthPolicyResponse = {
     recommended_mode: "reverse_proxy_oidc",
     configured_modes: ["trusted_proxy", "api_key"],
     browser_session: "signed_http_only_cookie",
-    session_storage_fallback: "legacy_static_export_only",
+    session_storage_fallback: "disabled",
     credentials_mode: "include",
     trusted_proxy_headers: ["X-Agent-Bom-Role", "X-Agent-Bom-Tenant-ID"],
     message: "Recommended browser auth is same-origin reverse-proxy OIDC.",

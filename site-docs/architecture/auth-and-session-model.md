@@ -68,7 +68,7 @@ These are the code-backed control-plane access modes today.
 | **Trusted reverse proxy** | enterprise same-origin ingress | reverse proxy authenticates user, injects trusted `X-Agent-Bom-*` headers | best current operator UX |
 | **OIDC bearer** | direct API/browser integration with corporate IdP | API verifies JWT issuer, audience, role, and tenant claim | secure, but more operator wiring |
 | **SAML -> short-lived API key** | SAML-only environments | SAML assertion is verified, then converted into a short-lived control-plane key | workable, but not a full browser session framework |
-| **Session-only API key fallback** | local single-user or pilot setups | browser stores an API key in `sessionStorage`, API verifies it on every request | convenience mode, not the preferred enterprise path |
+| **Browser session API-key exchange** | local single-user or pilot setups | API key is exchanged for a same-origin `httpOnly` browser session cookie | convenience mode, not the preferred enterprise path |
 
 The current UI auth helper lives in:
 
@@ -76,9 +76,9 @@ The current UI auth helper lives in:
 
 That fallback is intentionally narrow:
 
-- it uses `sessionStorage`
+- it does not store or replay raw API keys from browser storage
 - it does not make the browser a trust anchor
-- the API still verifies the key and role on every request
+- the API verifies the exchanged session and role on every request
 
 For the self-hosted data-ownership and support-sharing contract around these
 sessions, see [Customer Data and Support Boundary](../deployment/customer-data-and-support-boundary.md).

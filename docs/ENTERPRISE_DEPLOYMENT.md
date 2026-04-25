@@ -131,6 +131,8 @@ agent-bom serve --port 8422 --persist jobs.db
 - `POST /v1/fleet/sync` — ingest endpoint scan results
 - `GET /v1/compliance` — 14-framework compliance posture
 
+Fleet trust scoring is advisory and evidence-backed. The score combines registry verification, active vulnerability posture, credential hygiene, permission profile, configuration quality, discovery provenance, package provenance attestation, runtime drift evidence, and inventory freshness. API responses include factor breakdowns plus evidence references so operators can explain why an agent is trusted or risky instead of treating the score as an opaque compliance certification.
+
 **Authentication:** localhost binds are allowed for local development. Non-loopback binds fail closed unless you set `AGENT_BOM_API_KEY`, configure `AGENT_BOM_OIDC_ISSUER`, configure `AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON`, or explicitly pass `--allow-insecure-no-auth`. Rate limiting and CORS controls are built in.
 
 **Tracing:** every API response includes `X-Request-ID`, `X-Trace-ID`, `X-Span-ID`, and W3C `traceparent`. If your ingress or collector already sends `traceparent`, `tracestate`, or bounded W3C `baggage`, `agent-bom` preserves the upstream trace context and continues the chain. `GET /health` also reports the current tracing contract (`w3c_trace_context`, `w3c_tracestate`, `w3c_baggage`) plus OTLP export state so operators can confirm whether tracing is merely available or actively exported. Set `AGENT_BOM_OTEL_TRACES_ENDPOINT` to export API request spans over OTLP/HTTP, and use `AGENT_BOM_OTEL_TRACES_HEADERS` for collector auth headers when needed.

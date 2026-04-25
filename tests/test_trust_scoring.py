@@ -27,15 +27,20 @@ def _server(
     env: dict | None = None,
     tools: list | None = None,
     priv: str | None = None,
+    discovery_sources: list[str] | None = None,
+    provenance_attested: bool | None = None,
 ) -> MCPServer:
+    package = Package(name="pkg", version="1.0.0", ecosystem="npm")
+    package.provenance_attested = provenance_attested
     srv = MCPServer(
         name=name,
         command="npx",
         args=["-y", name],
         env=env or {},
-        packages=[Package(name="pkg", version="1.0.0", ecosystem="npm")],
+        packages=[package],
         tools=tools or [],
         registry_verified=verified,
+        discovery_sources=discovery_sources or [],
     )
     if priv:
         if priv == "critical":
@@ -154,3 +159,41 @@ def test_config_quality_bonus():
     _, factors = compute_trust_score(agent)
     # config_path=3 + version=2 + servers=2 + tools=3 = 10
     assert factors["configuration_quality"] == 10.0
+
+
+def test_cross_source_discovery_provenance_raises_score():
+    """Multiple discovery sources provide stronger inventory evidence."""
+    plain = _agent(servers=[_server()])
+    provenanced = _agent(servers=[_server(discovery_sources=["config:/tmp/a.json", "process:pid:42"])])
+
+    plain_score, _ = compute_trust_score(plain)
+    provenanced_score, factors = compute_trust_score(provenanced)
+
+    assert provenanced_score > plain_score
+    assert factors["discovery_provenance"] == 5.0
+    assert "discovery_provenance" in factors["evidence"]
+
+
+def test_supply_chain_provenance_affects_score():
+    """Attested package provenance raises score; failed provenance lowers it."""
+    attested = _agent(servers=[_server(provenance_attested=True)])
+    unattested = _agent(servers=[_server(provenance_attested=False)])
+
+    attested_score, attested_factors = compute_trust_score(attested)
+    unattested_score, unattested_factors = compute_trust_score(unattested)
+
+    assert attested_score > unattested_score
+    assert attested_factors["supply_chain_provenance"] == 5.0
+    assert unattested_factors["supply_chain_provenance"] == -5.0
+
+
+def test_runtime_drift_and_stale_inventory_lower_score():
+    """Runtime drift and stale inventory are explicit trust penalties."""
+    agent = _agent(servers=[_server()], metadata={"inventory_age_hours": 240})
+
+    clean_score, _ = compute_trust_score(agent, runtime_findings=[])
+    drift_score, factors = compute_trust_score(agent, runtime_findings=[{"category": "drift"}])
+
+    assert drift_score < clean_score
+    assert factors["runtime_drift"] == -10.0
+    assert factors["inventory_freshness"] == -8.0

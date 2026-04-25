@@ -630,7 +630,7 @@ def check_over_permission(server: MCPServer, agent_type: str | None = None) -> l
     - chat agents (claude-desktop): READ only
     - automation agents (goose, crewai): READ + WRITE + NETWORK
     """
-    from agent_bom.risk_analyzer import ToolCapability, classify_tool
+    from agent_bom.risk_analyzer import ToolCapability, classify_mcp_tool
 
     findings: list[EnforcementFinding] = []
     if not server.tools:
@@ -665,7 +665,7 @@ def check_over_permission(server: MCPServer, agent_type: str | None = None) -> l
     # Classify actual capabilities
     actual: set[ToolCapability] = set()
     for tool in server.tools:
-        actual.update(classify_tool(tool.name, tool.description))
+        actual.update(classify_mcp_tool(tool))
 
     excess = actual - expected
     if excess:

@@ -136,12 +136,15 @@ class LateralPath:
 # ── Tool capability classification (lazy import to avoid circular) ────────
 
 
-def _classify_tool(name: str, description: str = "") -> list[str]:
+def _classify_tool(name: str, description: str = "", declared_capabilities: object = None) -> list[str]:
     """Classify tool capabilities, returning capability value strings."""
     try:
-        from agent_bom.risk_analyzer import classify_tool
+        from agent_bom.models import MCPTool
+        from agent_bom.risk_analyzer import classify_mcp_tool
 
-        return [c.value for c in classify_tool(name, description)]
+        declared = [str(value) for value in declared_capabilities] if isinstance(declared_capabilities, list) else []
+        tool = MCPTool(name=name, description=description, declared_capabilities=declared)
+        return [c.value for c in classify_mcp_tool(tool)]
     except ImportError:
         return []
 
@@ -238,7 +241,7 @@ def build_context_graph(
                 tool_name = tool_dict.get("name", "unknown")
                 tool_desc = tool_dict.get("description", "")
                 tool_id = f"tool:{srv_id}:{tool_name}"
-                capabilities = _classify_tool(tool_name, tool_desc)
+                capabilities = _classify_tool(tool_name, tool_desc, tool_dict.get("capabilities"))
                 graph.add_node(
                     GraphNode(
                         id=tool_id,

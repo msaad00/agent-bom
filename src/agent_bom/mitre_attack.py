@@ -249,7 +249,7 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     """
     from agent_bom.constants import high_risk_severities
     from agent_bom.mitre_fetch import get_cwe_to_attack
-    from agent_bom.risk_analyzer import ToolCapability, classify_tool
+    from agent_bom.risk_analyzer import ToolCapability, classify_mcp_tool
 
     cwe_map = get_cwe_to_attack()
     techniques: set[str] = set()
@@ -283,7 +283,7 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
 
     # Reachable exec tools → execution tactic
     for tool in br.exposed_tools:
-        caps = classify_tool(tool.name, tool.description)
+        caps = classify_mcp_tool(tool)
         if ToolCapability.EXECUTE in caps:
             tactic_phases.add("execution")
             break

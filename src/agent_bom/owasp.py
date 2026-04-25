@@ -21,7 +21,7 @@ from agent_bom.constants import (
 from agent_bom.constants import (
     high_risk_severities,
 )
-from agent_bom.risk_analyzer import ToolCapability, classify_tool
+from agent_bom.risk_analyzer import ToolCapability, classify_mcp_tool
 
 if TYPE_CHECKING:
     from agent_bom.models import BlastRadius
@@ -76,7 +76,7 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
 
     # LLM02 / LLM07 — tool-level risks via semantic capability analysis
     for tool in br.exposed_tools:
-        caps = classify_tool(tool.name, tool.description)
+        caps = classify_mcp_tool(tool)
         if ToolCapability.EXECUTE in caps:
             tags.add("LLM02")
         if ToolCapability.READ in caps:

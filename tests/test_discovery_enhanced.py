@@ -232,6 +232,7 @@ def test_json_includes_stable_ids_and_resources():
         name="filesystem",
         command="npx",
         mcp_version="2024-11-05",
+        discovery_sources=["config:/test/config.json", "process:pid:123"],
         tools=[MCPTool(name="read_file", description="Read a file", schema_findings=["read_file.path: filesystem-capability"])],
         resources=[MCPResource(uri="file:///workspace", name="workspace", content_findings=["file:///workspace: mutable-resource"])],
         packages=[Package(name="requests", version="2.31.0", ecosystem="pypi")],
@@ -249,6 +250,7 @@ def test_json_includes_stable_ids_and_resources():
     assert data["agents"][0]["mcp_servers"][0]["tools"][0]["stable_id"] == server.tools[0].stable_id
     assert data["agents"][0]["mcp_servers"][0]["resources"][0]["stable_id"] == server.resources[0].stable_id
     assert data["agents"][0]["mcp_servers"][0]["packages"][0]["stable_id"] == server.packages[0].stable_id
+    assert data["agents"][0]["mcp_servers"][0]["discovery_sources"] == ["config:/test/config.json", "process:pid:123"]
     assert data["agents"][0]["mcp_servers"][0]["tools"][0]["discovery_source"] is None
     assert data["agents"][0]["mcp_servers"][0]["tools"][0]["discovery_confidence"] is None
     assert data["agents"][0]["mcp_servers"][0]["tools"][0]["risk_score"] >= 1

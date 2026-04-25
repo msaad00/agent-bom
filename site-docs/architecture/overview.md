@@ -26,7 +26,7 @@ graph LR
     F --> G[Output]
 
     D --> |OSV, NVD, EPSS| H[(Vuln DBs)]
-    B --> |30 clients| I[Config Files]
+    B --> |29 first-class clients| I[Config Files]
 ```
 
 `agent-bom` is best read as an open security scanner and graph for AI supply chain and infrastructure: one model spanning agents, MCP, packages, cloud, GPU, runtime, and operator-owned control planes.

@@ -519,6 +519,7 @@ def to_json(report: AIBOMReport) -> dict:
                         "credential_env_vars": server.credential_names,
                         "security_blocked": server.security_blocked,
                         "security_warnings": server.security_warnings,
+                        "discovery_sources": server.discovery_sources,
                         "tools": [
                             {
                                 "name": t.name,

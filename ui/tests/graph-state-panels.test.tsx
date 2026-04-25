@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { GraphFindingsFallback } from '@/components/graph-state-panels'
+import { GraphFindingsFallback, GraphPanelSkeleton, GraphRefreshOverlay } from '@/components/graph-state-panels'
 import type { LineageNodeData } from '@/components/lineage-nodes'
 
 function finding(index: number): { id: string; data: LineageNodeData } {
@@ -47,5 +47,21 @@ describe('GraphFindingsFallback', () => {
     fireEvent.click(screen.getAllByRole('button', { name: /open evidence/i })[0])
 
     expect(onSelect).toHaveBeenCalledWith('CVE-2026-0000', nodes[0].data)
+  })
+})
+
+describe('Graph loading states', () => {
+  it('renders a bounded graph panel skeleton', () => {
+    render(<GraphPanelSkeleton title="Loading graph window" detail="Fetching a bounded graph window." />)
+
+    expect(screen.getByTestId('graph-panel-skeleton')).toBeInTheDocument()
+    expect(screen.getByText('Loading graph window')).toBeInTheDocument()
+    expect(screen.getByText('Fetching a bounded graph window.')).toBeInTheDocument()
+  })
+
+  it('renders a non-interactive refresh overlay', () => {
+    render(<GraphRefreshOverlay label="Refreshing graph window" />)
+
+    expect(screen.getByTestId('graph-refresh-overlay')).toHaveTextContent('Refreshing graph window')
   })
 })

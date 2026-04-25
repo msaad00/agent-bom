@@ -72,6 +72,16 @@ The self-hosted control plane supports:
 Browser authentication can use same-origin httpOnly cookies for the dashboard
 while keeping bearer-token support for CLI and service clients.
 
+## Vulnerability Enrichment Posture
+
+The scanner can enrich findings with OSV, NVD, EPSS, CISA KEV, and GHSA data.
+Those sources are treated as untrusted external inputs and are fetched over
+HTTPS with defensive parsing. `GET /v1/posture/enrichment` exposes a non-secret
+runtime posture for each source: latest success, latest failure, cache hits,
+configured SLO, and whether the current process sees the source as `ok`,
+`stale`, `degraded`, or `unknown`. Operators should review this surface before
+treating KEV, EPSS, or NVD-derived risk scoring as complete.
+
 ## Tenant Isolation
 
 Tenant isolation is enforced across API middleware, stores, audit export,

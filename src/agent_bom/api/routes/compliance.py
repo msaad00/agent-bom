@@ -1147,6 +1147,15 @@ async def get_posture_scorecard(request: Request) -> dict:
     }
 
 
+@router.get("/v1/posture/enrichment", tags=["compliance"])
+async def get_enrichment_posture() -> dict:
+    """Report runtime health for external vulnerability enrichment sources."""
+
+    from agent_bom.enrichment_posture import describe_enrichment_posture
+
+    return describe_enrichment_posture()
+
+
 @router.get("/v1/posture/counts", tags=["compliance"])
 async def get_posture_counts(request: Request) -> dict:
     """Aggregate vulnerability counts across all completed scans.

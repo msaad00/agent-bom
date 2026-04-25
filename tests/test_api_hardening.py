@@ -66,6 +66,29 @@ async def test_browser_session_exchange_has_targeted_rate_limit(monkeypatch):
     assert error.value.status_code == 429
 
 
+def test_browser_session_cookies_use_strict_samesite(monkeypatch):
+    from agent_bom.api.routes import enterprise
+
+    monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "test-browser-session-signing-key")
+    request = SimpleNamespace(headers={}, url=SimpleNamespace(scheme="https"))
+    response = Response()
+
+    enterprise._set_browser_session_cookie(
+        response,
+        request,
+        subject="dashboard-user",
+        role="admin",
+        tenant_id="tenant-alpha",
+        auth_method="browser_session_static_api_key",
+    )
+
+    set_cookie_values = [value.decode("latin-1") for key, value in response.raw_headers if key.lower() == b"set-cookie"]
+    assert len(set_cookie_values) == 2
+    assert all("SameSite=strict" in value for value in set_cookie_values)
+    assert any("HttpOnly" in value and SESSION_COOKIE_NAME in value for value in set_cookie_values)
+    assert any(CSRF_COOKIE_NAME in value for value in set_cookie_values)
+
+
 def test_trust_headers_present():
     """Every response should include read-only trust headers."""
     client = TestClient(app)

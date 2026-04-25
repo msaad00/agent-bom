@@ -273,7 +273,7 @@ def _set_browser_session_cookie(
         max_age=max_age,
         httponly=True,
         secure=secure,
-        samesite="lax",
+        samesite="strict",
         path="/",
     )
     response.set_cookie(
@@ -282,7 +282,7 @@ def _set_browser_session_cookie(
         max_age=max_age,
         httponly=False,
         secure=secure,
-        samesite="lax",
+        samesite="strict",
         path="/",
     )
 
@@ -296,14 +296,14 @@ def _clear_browser_session_cookie(response: Response, request: Request) -> None:
         SESSION_COOKIE_NAME,
         httponly=True,
         secure=secure,
-        samesite="lax",
+        samesite="strict",
         path="/",
     )
     response.delete_cookie(
         CSRF_COOKIE_NAME,
         httponly=False,
         secure=secure,
-        samesite="lax",
+        samesite="strict",
         path="/",
     )
 

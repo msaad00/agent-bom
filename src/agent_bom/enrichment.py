@@ -15,6 +15,7 @@ from typing import Optional
 import httpx
 from rich.console import Console
 
+from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.config import ENRICHMENT_MAX_CACHE_ENTRIES as _MAX_ENRICHMENT_CACHE_ENTRIES
 from agent_bom.config import ENRICHMENT_TTL_SECONDS as _ENRICHMENT_TTL
 from agent_bom.enrichment_posture import record_enrichment_source
@@ -43,6 +44,19 @@ _ENRICHMENT_CACHE_DIR = Path.home() / ".agent-bom"
 _nvd_file_cache: dict[str, dict] = {}
 _epss_file_cache: dict[str, dict] = {}
 _enrichment_cache_loaded = False
+
+
+def _record_enrichment_backpressure(exc: BackpressureRejectedError) -> None:
+    """Record adaptive shedding without failing the whole scan."""
+    message = f"adaptive backpressure: {exc.reason}; retry after {exc.retry_after_seconds}s"
+    record_enrichment_source("runtime_backpressure", "failure", error=message)
+    try:
+        from agent_bom.scanners.state import record_scan_warning
+
+        record_scan_warning("external enrichment skipped by adaptive backpressure")
+    except Exception as warning_exc:  # pragma: no cover - defensive against import cycles
+        _logger.debug("Failed to record enrichment backpressure scan warning: %s", warning_exc)
+    _logger.warning("External enrichment skipped by adaptive backpressure: %s", message)
 
 
 def _evict_oldest(cache: dict[str, dict], max_entries: int) -> None:
@@ -473,8 +487,14 @@ async def enrich_vulnerabilities(
 
             return result_data, skipped, len(nvd_needed)
 
-        # Run all three concurrently
-        epss_data, kev_data, nvd_result = await asyncio.gather(_fetch_epss(), _fetch_kev(), _fetch_nvd())
+        # Run all three concurrently, bounded by adaptive runtime posture.
+        try:
+            async with adaptive_backpressure("enrichment"):
+                epss_data, kev_data, nvd_result = await asyncio.gather(_fetch_epss(), _fetch_kev(), _fetch_nvd())
+        except BackpressureRejectedError as exc:
+            _record_enrichment_backpressure(exc)
+            console.print("  [yellow]⚠[/yellow] External enrichment skipped by adaptive backpressure")
+            return 0
         nvd_data, nvd_skipped, nvd_total = nvd_result
 
         # Report results

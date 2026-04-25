@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { api } from '@/lib/api'
-import { setSessionApiKey, clearSessionApiKey } from '@/lib/auth'
+import { clearSessionApiKey, setSessionApiKey } from '@/lib/auth'
 
 // ─── Mock fetch globally ───────────────────────────────────────────────────────
 
@@ -28,7 +28,6 @@ const originalFetch = global.fetch
 afterEach(() => {
   global.fetch = originalFetch
   window.__AGENT_BOM_CONFIG__ = undefined
-  delete process.env.NEXT_PUBLIC_ALLOW_SESSION_STORAGE_API_KEY
   clearSessionApiKey()
   vi.restoreAllMocks()
 })
@@ -136,8 +135,7 @@ describe('api.listJobs', () => {
     expect(result.count).toBe(1)
   })
 
-  it('propagates a session API key and browser credentials', async () => {
-    window.__AGENT_BOM_CONFIG__ = { allowSessionStorageApiKey: true }
+  it('does not propagate browser-stored API keys and relies on same-origin credentials', async () => {
     setSessionApiKey("pilot-key-123")
     const fetchMock = mockFetch({ jobs: [], count: 0 })
     global.fetch = fetchMock
@@ -148,13 +146,14 @@ describe('api.listJobs', () => {
       "/v1/jobs",
       expect.objectContaining({
         credentials: "include",
-        headers: expect.objectContaining({ Authorization: "Bearer pilot-key-123" }),
+        headers: {},
         signal: expect.any(AbortSignal),
       }),
     )
   })
 
-  it('does not propagate sessionStorage API keys unless explicitly enabled', async () => {
+  it('ignores legacy browser token setter paths', async () => {
+    window.__AGENT_BOM_CONFIG__ = { apiUrl: "" }
     setSessionApiKey("pilot-key-123")
     const fetchMock = mockFetch({ jobs: [], count: 0 })
     global.fetch = fetchMock
@@ -383,8 +382,7 @@ describe('api key lifecycle helpers', () => {
 })
 
 describe('api.downloadScanGraph', () => {
-  it('downloads graph export with session auth headers', async () => {
-    window.__AGENT_BOM_CONFIG__ = { allowSessionStorageApiKey: true }
+  it('downloads graph export with same-origin browser credentials only', async () => {
     setSessionApiKey('pilot-key-123')
     const fetchMock = mockBlobFetch('{"nodes":[],"edges":[]}')
     global.fetch = fetchMock
@@ -396,7 +394,7 @@ describe('api.downloadScanGraph', () => {
       '/v1/scan/job-1/graph-export?format=json',
       expect.objectContaining({
         credentials: 'include',
-        headers: expect.objectContaining({ Authorization: 'Bearer pilot-key-123' }),
+        headers: {},
         signal: expect.any(AbortSignal),
       }),
     )

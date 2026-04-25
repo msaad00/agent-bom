@@ -3,7 +3,7 @@ import { describe, expect, it, vi, afterEach } from "vitest";
 
 import { AuthGate } from "@/components/auth-gate";
 import { AuthProvider } from "@/components/auth-provider";
-import { clearSessionApiKey, setSessionApiKey } from "@/lib/auth";
+import { clearSessionApiKey } from "@/lib/auth";
 
 const originalFetch = global.fetch;
 
@@ -48,9 +48,7 @@ describe("AuthGate", () => {
     await waitFor(() => expect(screen.getByText("protected surface")).toBeInTheDocument());
   });
 
-  it("shows the session API key fallback when the API returns 401", async () => {
-    window.__AGENT_BOM_CONFIG__ = { allowSessionStorageApiKey: true };
-    setSessionApiKey("stale-key")
+  it("shows the browser session form when the API returns 401 without prefilled browser storage", async () => {
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 401,
@@ -67,6 +65,6 @@ describe("AuthGate", () => {
     );
 
     await waitFor(() => expect(screen.getByText("Control-plane authentication required")).toBeInTheDocument());
-    expect(screen.getByDisplayValue("stale-key")).toBeInTheDocument();
+    expect(screen.getByLabelText("API key")).toHaveValue("");
   });
 });

@@ -14,7 +14,7 @@ import os
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Generator
+from typing import Any, Generator, Iterable, Iterator, Sequence
 
 from agent_bom.graph import (
     SEVERITY_RANK,
@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 # ═══════════════════════════════════════════════════════════════════════════
 
 _GRAPH_SCHEMA_VERSION = 2
+_DEFAULT_GRAPH_WRITE_BATCH_SIZE = 1000
 
 _CREATE_TABLES = """\
 -- ── Graph nodes (one row per node per scan) ──
@@ -178,6 +179,39 @@ def _init_db(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _graph_write_batch_size() -> int:
+    raw = os.environ.get("AGENT_BOM_GRAPH_WRITE_BATCH_SIZE", str(_DEFAULT_GRAPH_WRITE_BATCH_SIZE))
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return _DEFAULT_GRAPH_WRITE_BATCH_SIZE
+
+
+def _batched_rows(rows: Iterable[Sequence[Any]], batch_size: int) -> Iterator[list[Sequence[Any]]]:
+    batch: list[Sequence[Any]] = []
+    for row in rows:
+        batch.append(row)
+        if len(batch) >= batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
+def _executemany_batched(
+    conn: sqlite3.Connection,
+    sql: str,
+    rows: Iterable[Sequence[Any]],
+    *,
+    batch_size: int,
+) -> int:
+    total = 0
+    for batch in _batched_rows(rows, batch_size):
+        conn.executemany(sql, batch)
+        total += len(batch)
+    return total
+
+
 @contextmanager
 def open_graph_db(db_path: str | Path) -> Generator[sqlite3.Connection, None, None]:
     """Open (or create) a graph database with schema initialisation."""
@@ -255,12 +289,12 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
     tenant = graph.tenant_id
     scan = graph.scan_id
     now = _now_iso()
+    batch_size = _graph_write_batch_size()
 
     # ── Nodes ──
-    node_rows = []
-    for node in graph.nodes.values():
-        node_rows.append(
-            (
+    def node_rows() -> Iterator[tuple[Any, ...]]:
+        for node in graph.nodes.values():
+            yield (
                 node.id,
                 node.entity_type.value if isinstance(node.entity_type, EntityType) else node.entity_type,
                 node.label,
@@ -280,8 +314,9 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
                 scan,
                 tenant,
             )
-        )
-    conn.executemany(
+
+    _executemany_batched(
+        conn,
         """\
         INSERT OR REPLACE INTO graph_nodes (
             id, entity_type, label, category_uid, class_uid, type_uid,
@@ -290,15 +325,15 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
             data_sources, dimensions, scan_id, tenant_id
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        node_rows,
+        node_rows(),
+        batch_size=batch_size,
     )
 
     # ── Edges ──
-    edge_rows = []
-    for edge in graph.edges:
-        rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else edge.relationship
-        edge_rows.append(
-            (
+    def edge_rows() -> Iterator[tuple[Any, ...]]:
+        for edge in graph.edges:
+            rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else edge.relationship
+            yield (
                 edge.source,
                 edge.target,
                 rel,
@@ -312,8 +347,9 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
                 scan,
                 tenant,
             )
-        )
-    conn.executemany(
+
+    _executemany_batched(
+        conn,
         """\
         INSERT OR REPLACE INTO graph_edges (
             source_id, target_id, relationship, direction, weight,
@@ -321,7 +357,8 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
             activity_id, scan_id, tenant_id
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        edge_rows,
+        edge_rows(),
+        batch_size=batch_size,
     )
 
     # ── Attack paths ──

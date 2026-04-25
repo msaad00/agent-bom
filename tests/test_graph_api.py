@@ -83,6 +83,22 @@ def graph_db():
 class TestScanPipelineWiring:
     """Test that scan pipeline correctly produces and persists unified graphs."""
 
+    def test_sqlite_graph_write_batches_rows_without_full_buffer(self):
+        from agent_bom.db.graph_store import _executemany_batched
+
+        class FakeConnection:
+            def __init__(self) -> None:
+                self.calls: list[list[tuple[int]]] = []
+
+            def executemany(self, _sql, rows):
+                self.calls.append(list(rows))
+
+        conn = FakeConnection()
+        total = _executemany_batched(conn, "INSERT", ((idx,) for idx in range(5)), batch_size=2)
+
+        assert total == 5
+        assert [len(call) for call in conn.calls] == [2, 2, 1]
+
     def test_context_graph_to_unified_round_trip(self, graph_db):
         """Build context graph → bridge → persist → load → verify."""
         from agent_bom.context_graph import build_context_graph, find_lateral_paths, to_unified_graph

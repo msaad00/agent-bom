@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Iterable, Iterator, Sequence
 
 from agent_bom.api.graph_store import _escape_like_query, _node_search_text, decode_graph_cursor, encode_graph_cursor
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
@@ -14,6 +15,47 @@ from agent_bom.graph import EntityType
 from .postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
 
 _ALLOWED_ENTITY_TYPES = {entity_type.value for entity_type in EntityType}
+_DEFAULT_GRAPH_WRITE_BATCH_SIZE = 1000
+
+
+def _graph_write_batch_size() -> int:
+    raw = os.environ.get("AGENT_BOM_GRAPH_WRITE_BATCH_SIZE", str(_DEFAULT_GRAPH_WRITE_BATCH_SIZE))
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return _DEFAULT_GRAPH_WRITE_BATCH_SIZE
+
+
+def _batched_rows(rows: Iterable[Sequence[Any]], batch_size: int) -> Iterator[list[Sequence[Any]]]:
+    batch: list[Sequence[Any]] = []
+    for row in rows:
+        batch.append(row)
+        if len(batch) >= batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
+
+
+def _execute_many_batched(conn, sql: str, rows: Iterable[Sequence[Any]], *, batch_size: int) -> int:
+    """Execute DML rows in bounded batches.
+
+    psycopg connections expose ``cursor().executemany``. Tests and light mocks
+    often only expose ``execute`` or ``executemany`` directly, so keep a small
+    compatibility fallback while preserving bounded memory behavior.
+    """
+    total = 0
+    for batch in _batched_rows(rows, batch_size):
+        if hasattr(conn, "executemany"):
+            conn.executemany(sql, batch)
+        elif hasattr(conn, "cursor"):
+            with conn.cursor() as cur:
+                cur.executemany(sql, batch)
+        else:
+            for row in batch:
+                conn.execute(sql, row)
+        total += len(batch)
+    return total
 
 
 def _assert_allowed_entity_types(entity_types: set[str] | None) -> None:
@@ -282,35 +324,13 @@ class PostgresGraphStore:
         scan = graph.scan_id or ""
         tenant = graph.tenant_id or "default"
         now = graph.created_at or datetime.now(timezone.utc).isoformat()
+        batch_size = _graph_write_batch_size()
 
         with _tenant_connection(self._pool) as conn:
-            for node in graph.nodes.values():
-                conn.execute(
-                    """
-                    INSERT INTO graph_nodes (
-                        id, entity_type, label, category_uid, class_uid, type_uid,
-                        status, risk_score, severity, severity_id,
-                        first_seen, last_seen, attributes, compliance_tags,
-                        data_sources, dimensions, scan_id, tenant_id
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (id, scan_id, tenant_id) DO UPDATE SET
-                        entity_type = EXCLUDED.entity_type,
-                        label = EXCLUDED.label,
-                        category_uid = EXCLUDED.category_uid,
-                        class_uid = EXCLUDED.class_uid,
-                        type_uid = EXCLUDED.type_uid,
-                        status = EXCLUDED.status,
-                        risk_score = EXCLUDED.risk_score,
-                        severity = EXCLUDED.severity,
-                        severity_id = EXCLUDED.severity_id,
-                        first_seen = EXCLUDED.first_seen,
-                        last_seen = EXCLUDED.last_seen,
-                        attributes = EXCLUDED.attributes,
-                        compliance_tags = EXCLUDED.compliance_tags,
-                        data_sources = EXCLUDED.data_sources,
-                        dimensions = EXCLUDED.dimensions
-                    """,
-                    (
+
+            def node_rows() -> Iterator[tuple[Any, ...]]:
+                for node in graph.nodes.values():
+                    yield (
                         node.id,
                         node.entity_type.value if hasattr(node.entity_type, "value") else node.entity_type,
                         node.label,
@@ -329,21 +349,11 @@ class PostgresGraphStore:
                         json.dumps(node.dimensions.to_dict()),
                         scan,
                         tenant,
-                    ),
-                )
-                conn.execute(
-                    """
-                    INSERT INTO graph_node_search (
-                        node_id, tenant_id, scan_id, entity_type, severity, compliance_tags, data_sources, search_text
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (node_id, scan_id, tenant_id) DO UPDATE SET
-                        entity_type = EXCLUDED.entity_type,
-                        severity = EXCLUDED.severity,
-                        compliance_tags = EXCLUDED.compliance_tags,
-                        data_sources = EXCLUDED.data_sources,
-                        search_text = EXCLUDED.search_text
-                    """,
-                    (
+                    )
+
+            def node_search_rows() -> Iterator[tuple[Any, ...]]:
+                for node in graph.nodes.values():
+                    yield (
                         node.id,
                         tenant,
                         scan,
@@ -352,28 +362,12 @@ class PostgresGraphStore:
                         " ".join(node.compliance_tags).lower(),
                         " ".join(node.data_sources).lower(),
                         _node_search_text(node),
-                    ),
-                )
+                    )
 
-            for edge in graph.edges:
-                rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else edge.relationship
-                conn.execute(
-                    """
-                    INSERT INTO graph_edges (
-                        source_id, target_id, relationship, direction, weight,
-                        traversable, first_seen, last_seen, evidence,
-                        activity_id, scan_id, tenant_id
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (source_id, target_id, relationship, scan_id, tenant_id) DO UPDATE SET
-                        direction = EXCLUDED.direction,
-                        weight = EXCLUDED.weight,
-                        traversable = EXCLUDED.traversable,
-                        first_seen = EXCLUDED.first_seen,
-                        last_seen = EXCLUDED.last_seen,
-                        evidence = EXCLUDED.evidence,
-                        activity_id = EXCLUDED.activity_id
-                    """,
-                    (
+            def edge_rows() -> Iterator[tuple[Any, ...]]:
+                for edge in graph.edges:
+                    rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else edge.relationship
+                    yield (
                         edge.source,
                         edge.target,
                         rel,
@@ -386,27 +380,11 @@ class PostgresGraphStore:
                         edge.activity_id,
                         scan,
                         tenant,
-                    ),
-                )
+                    )
 
-            for ap in graph.attack_paths:
-                conn.execute(
-                    """
-                    INSERT INTO attack_paths (
-                        source_node, target_node, hop_count, composite_risk,
-                        path_nodes, path_edges, credential_exposure, vuln_ids,
-                        scan_id, tenant_id, computed_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (source_node, target_node, scan_id, tenant_id) DO UPDATE SET
-                        hop_count = EXCLUDED.hop_count,
-                        composite_risk = EXCLUDED.composite_risk,
-                        path_nodes = EXCLUDED.path_nodes,
-                        path_edges = EXCLUDED.path_edges,
-                        credential_exposure = EXCLUDED.credential_exposure,
-                        vuln_ids = EXCLUDED.vuln_ids,
-                        computed_at = EXCLUDED.computed_at
-                    """,
-                    (
+            def attack_path_rows() -> Iterator[tuple[Any, ...]]:
+                for ap in graph.attack_paths:
+                    yield (
                         ap.source,
                         ap.target,
                         len(ap.hops),
@@ -418,22 +396,11 @@ class PostgresGraphStore:
                         scan,
                         tenant,
                         now,
-                    ),
-                )
+                    )
 
-            for ir in graph.interaction_risks:
-                conn.execute(
-                    """
-                    INSERT INTO interaction_risks (
-                        pattern, agents, risk_score, description,
-                        owasp_agentic_tag, scan_id, tenant_id
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (pattern, agents, scan_id, tenant_id) DO UPDATE SET
-                        risk_score = EXCLUDED.risk_score,
-                        description = EXCLUDED.description,
-                        owasp_agentic_tag = EXCLUDED.owasp_agentic_tag
-                    """,
-                    (
+            def interaction_risk_rows() -> Iterator[tuple[Any, ...]]:
+                for ir in graph.interaction_risks:
+                    yield (
                         ir.pattern,
                         json.dumps(sorted(ir.agents)),
                         ir.risk_score,
@@ -441,8 +408,108 @@ class PostgresGraphStore:
                         ir.owasp_agentic_tag,
                         scan,
                         tenant,
-                    ),
-                )
+                    )
+
+            _execute_many_batched(
+                conn,
+                """
+                INSERT INTO graph_nodes (
+                    id, entity_type, label, category_uid, class_uid, type_uid,
+                    status, risk_score, severity, severity_id,
+                    first_seen, last_seen, attributes, compliance_tags,
+                    data_sources, dimensions, scan_id, tenant_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id, scan_id, tenant_id) DO UPDATE SET
+                    entity_type = EXCLUDED.entity_type,
+                    label = EXCLUDED.label,
+                    category_uid = EXCLUDED.category_uid,
+                    class_uid = EXCLUDED.class_uid,
+                    type_uid = EXCLUDED.type_uid,
+                    status = EXCLUDED.status,
+                    risk_score = EXCLUDED.risk_score,
+                    severity = EXCLUDED.severity,
+                    severity_id = EXCLUDED.severity_id,
+                    first_seen = EXCLUDED.first_seen,
+                    last_seen = EXCLUDED.last_seen,
+                    attributes = EXCLUDED.attributes,
+                    compliance_tags = EXCLUDED.compliance_tags,
+                    data_sources = EXCLUDED.data_sources,
+                    dimensions = EXCLUDED.dimensions
+                """,
+                node_rows(),
+                batch_size=batch_size,
+            )
+            _execute_many_batched(
+                conn,
+                """
+                INSERT INTO graph_node_search (
+                    node_id, tenant_id, scan_id, entity_type, severity, compliance_tags, data_sources, search_text
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (node_id, scan_id, tenant_id) DO UPDATE SET
+                    entity_type = EXCLUDED.entity_type,
+                    severity = EXCLUDED.severity,
+                    compliance_tags = EXCLUDED.compliance_tags,
+                    data_sources = EXCLUDED.data_sources,
+                    search_text = EXCLUDED.search_text
+                """,
+                node_search_rows(),
+                batch_size=batch_size,
+            )
+            _execute_many_batched(
+                conn,
+                """
+                INSERT INTO graph_edges (
+                    source_id, target_id, relationship, direction, weight,
+                    traversable, first_seen, last_seen, evidence,
+                    activity_id, scan_id, tenant_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (source_id, target_id, relationship, scan_id, tenant_id) DO UPDATE SET
+                    direction = EXCLUDED.direction,
+                    weight = EXCLUDED.weight,
+                    traversable = EXCLUDED.traversable,
+                    first_seen = EXCLUDED.first_seen,
+                    last_seen = EXCLUDED.last_seen,
+                    evidence = EXCLUDED.evidence,
+                    activity_id = EXCLUDED.activity_id
+                """,
+                edge_rows(),
+                batch_size=batch_size,
+            )
+            _execute_many_batched(
+                conn,
+                """
+                INSERT INTO attack_paths (
+                    source_node, target_node, hop_count, composite_risk,
+                    path_nodes, path_edges, credential_exposure, vuln_ids,
+                    scan_id, tenant_id, computed_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (source_node, target_node, scan_id, tenant_id) DO UPDATE SET
+                    hop_count = EXCLUDED.hop_count,
+                    composite_risk = EXCLUDED.composite_risk,
+                    path_nodes = EXCLUDED.path_nodes,
+                    path_edges = EXCLUDED.path_edges,
+                    credential_exposure = EXCLUDED.credential_exposure,
+                    vuln_ids = EXCLUDED.vuln_ids,
+                    computed_at = EXCLUDED.computed_at
+                """,
+                attack_path_rows(),
+                batch_size=batch_size,
+            )
+            _execute_many_batched(
+                conn,
+                """
+                INSERT INTO interaction_risks (
+                    pattern, agents, risk_score, description,
+                    owasp_agentic_tag, scan_id, tenant_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (pattern, agents, scan_id, tenant_id) DO UPDATE SET
+                    risk_score = EXCLUDED.risk_score,
+                    description = EXCLUDED.description,
+                    owasp_agentic_tag = EXCLUDED.owasp_agentic_tag
+                """,
+                interaction_risk_rows(),
+                batch_size=batch_size,
+            )
 
             stats = graph.stats()
             conn.execute(

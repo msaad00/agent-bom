@@ -34,6 +34,16 @@ class MockConnection:
         self._store: dict[str, dict] = {}  # table -> {pk: data}
         self._cursors: list[MockCursor] = []
         self.executed: list[tuple[str, object]] = []
+        self.executemany_calls: list[tuple[str, list[object]]] = []
+
+    def executemany(self, sql, param_seq):
+        rows = list(param_seq)
+        self.executemany_calls.append((sql, rows))
+        cursor = MockCursor()
+        cursor.rowcount = len(rows)
+        for params in rows:
+            self.execute(sql, params)
+        return cursor
 
     def execute(self, sql, params=None):
         cursor = MockCursor()
@@ -77,8 +87,14 @@ class MockConnection:
                     table = "osv_cache"
                 elif "graph_nodes" in sql:
                     table = "graph_nodes"
+                elif "graph_edges" in sql:
+                    table = "graph_edges"
+                elif "graph_node_search" in sql:
+                    table = "graph_node_search"
                 elif "attack_paths" in sql:
                     table = "attack_paths"
+                elif "interaction_risks" in sql:
+                    table = "interaction_risks"
                 if table not in self._store:
                     self._store[table] = {}
                 self._store[table][params[0]] = params
@@ -1225,6 +1241,31 @@ def test_graph_store_nodes_by_ids_uses_node_table(mock_pool, monkeypatch):
     assert [node.id for node in nodes] == ["tool:t"]
     select_sql = "\n".join(sql for sql, _params in mock_pool._conn.executed if "FROM graph_nodes" in sql)
     assert "id IN" in select_sql
+
+
+def test_graph_store_save_graph_batches_postgres_writes(mock_pool, monkeypatch):
+    from agent_bom.api.postgres_store import PostgresGraphStore
+    from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
+
+    monkeypatch.setenv("AGENT_BOM_GRAPH_WRITE_BATCH_SIZE", "2")
+    store = PostgresGraphStore(pool=mock_pool)
+    graph = UnifiedGraph(scan_id="scan-batch", tenant_id="tenant-alpha")
+    for idx in range(3):
+        graph.add_node(UnifiedNode(id=f"agent:{idx}", entity_type=EntityType.AGENT, label=f"Agent {idx}"))
+    graph.add_edge(UnifiedEdge(source="agent:0", target="agent:1", relationship=RelationshipType.DELEGATED_TO))
+    graph.add_edge(UnifiedEdge(source="agent:1", target="agent:2", relationship=RelationshipType.DELEGATED_TO))
+
+    store.save_graph(graph)
+
+    graph_node_batches = [
+        rows for sql, rows in mock_pool._conn.executemany_calls if "INSERT INTO graph_nodes" in sql and "graph_node_search" not in sql
+    ]
+    graph_search_batches = [rows for sql, rows in mock_pool._conn.executemany_calls if "INSERT INTO graph_node_search" in sql]
+    graph_edge_batches = [rows for sql, rows in mock_pool._conn.executemany_calls if "INSERT INTO graph_edges" in sql]
+
+    assert [len(batch) for batch in graph_node_batches] == [2, 1]
+    assert [len(batch) for batch in graph_search_batches] == [2, 1]
+    assert [len(batch) for batch in graph_edge_batches] == [2]
 
 
 def test_graph_store_attack_paths_for_sources_uses_materialized_table(mock_pool, monkeypatch):

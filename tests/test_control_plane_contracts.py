@@ -26,6 +26,15 @@ from agent_bom.api.stores import set_graph_store, set_job_store
 from agent_bom.gateway_server import GatewaySettings, create_gateway_app
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 from agent_bom.graph import EntityType, RelationshipType, UnifiedEdge, UnifiedGraph, UnifiedNode
+from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
+
+
+def setup_module() -> None:
+    enable_trusted_proxy_env()
+
+
+def teardown_module() -> None:
+    disable_trusted_proxy_env()
 
 
 def _now() -> str:
@@ -34,7 +43,7 @@ def _now() -> str:
 
 def _cp_client(tenant: str) -> TestClient:
     client = TestClient(app)
-    client.headers.update({"X-Agent-Bom-Role": "admin", "X-Agent-Bom-Tenant-ID": tenant})
+    client.headers.update(proxy_headers(role="admin", tenant=tenant))
     return client
 
 

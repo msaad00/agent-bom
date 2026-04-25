@@ -31,6 +31,15 @@ from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.server import app
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import set_job_store
+from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
+
+
+def setup_module() -> None:
+    enable_trusted_proxy_env()
+
+
+def teardown_module() -> None:
+    disable_trusted_proxy_env()
 
 
 def _now() -> str:
@@ -79,12 +88,7 @@ def two_tenants_seeded():
 
 def _client_for(tenant: str) -> TestClient:
     client = TestClient(app)
-    client.headers.update(
-        {
-            "X-Agent-Bom-Role": "admin",
-            "X-Agent-Bom-Tenant-ID": tenant,
-        }
-    )
+    client.headers.update(proxy_headers(role="admin", tenant=tenant))
     return client
 
 

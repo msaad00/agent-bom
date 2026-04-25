@@ -44,7 +44,7 @@ settings in the customer environment.
 
 | Annex A control | How agent-bom supports it | Evidence |
 |---|---|---|
-| A.5.15 Access control | RBAC, OIDC tenant claims, API-key lifecycle, trusted proxy headers | `src/agent_bom/api/middleware.py`, `src/agent_bom/api/oidc.py`, `src/agent_bom/api/auth.py` |
+| A.5.15 Access control | RBAC, OIDC tenant claims, API-key lifecycle, attested trusted-proxy headers | `src/agent_bom/api/middleware.py`, `src/agent_bom/api/oidc.py`, `src/agent_bom/api/auth.py` |
 | A.5.16 Identity management | External IdP integration, SAML metadata, tenant-bound OIDC providers | `src/agent_bom/api/oidc.py`, `src/agent_bom/api/saml.py` |
 | A.5.17 Authentication information | API-key hashing, bearer-token verification, browser cookie signing, CSRF protection | `src/agent_bom/api/auth.py`, `src/agent_bom/api/browser_session.py` |
 | A.5.23 Cloud services | Self-hosted deployment guidance, customer-managed storage, cloud read-only roles | `site-docs/deployment/own-infra-eks.md`, `scripts/provision/README.md` |

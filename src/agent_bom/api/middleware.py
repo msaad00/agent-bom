@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import logging
 import os
 import secrets
@@ -451,6 +452,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._api_key = api_key
         self._trusted_proxy_auth = _env_flag("AGENT_BOM_TRUST_PROXY_AUTH")
+        self._trusted_proxy_secret = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "").strip()
         # OIDC config loaded lazily from env on first request
         self._oidc_config: OIDCConfig | None = None
         self._oidc_checked = False
@@ -659,6 +661,15 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         tenant_id = request.headers.get("x-agent-bom-tenant-id", "").strip()
         if not role_header:
             return None
+        if not self._trusted_proxy_secret:
+            _logger.error("AGENT_BOM_TRUST_PROXY_AUTH is enabled without AGENT_BOM_TRUST_PROXY_AUTH_SECRET")
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Trusted proxy authentication is not securely configured"},
+            )
+        presented_secret = request.headers.get("x-agent-bom-proxy-secret", "").strip()
+        if not hmac.compare_digest(presented_secret, self._trusted_proxy_secret):
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized — invalid trusted proxy attestation"})
         if not tenant_id:
             return JSONResponse(
                 status_code=401,
@@ -688,6 +699,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         request.state.api_key_role = proxy_role.value
         request.state.tenant_id = tenant_id
         request.state.auth_method = "proxy_header"
+        request.state.proxy_auth_attested = True
         request.state.auth_issuer = request.headers.get("x-agent-bom-auth-issuer") or None
         return await self._call_with_tenant_context(request, call_next)
 

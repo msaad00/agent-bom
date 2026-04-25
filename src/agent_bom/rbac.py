@@ -7,12 +7,15 @@ Roles:
     analyst  — Read + scan: run scans, view results, create exceptions (not approve)
     viewer   — Read-only: view results, posture, compliance (no scans or mutations)
 
-Authentication is delegated to the upstream reverse proxy (e.g., API gateway,
-OAuth2 proxy). RBAC only checks the X-Agent-Bom-Role header or API key mapping.
+Authentication is established by the API middleware (API key, OIDC, SAML,
+browser session, SCIM, or attested trusted proxy headers). RBAC consumes the
+authenticated role placed on ``request.state`` and must not trust raw client
+headers directly.
 """
 
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 import threading
@@ -214,9 +217,7 @@ def resolve_role(api_key: str | None = None, role_header: str | None = None) -> 
 
     Priority:
         1. API key lookup (if AGENT_BOM_API_KEYS configured)
-        2. X-Agent-Bom-Role header (trusted from reverse proxy)
-        3. Default role from AGENT_BOM_DEFAULT_ROLE env var
-        4. admin (for backward compatibility when RBAC not configured)
+        2. Default role from AGENT_BOM_DEFAULT_ROLE env var
     """
     # API key takes priority
     if api_key:
@@ -225,12 +226,8 @@ def resolve_role(api_key: str | None = None, role_header: str | None = None) -> 
         if role:
             return role
 
-    # Header from reverse proxy
     if role_header:
-        try:
-            return Role(role_header.lower())
-        except ValueError:
-            pass
+        logger.warning("Ignoring unauthenticated X-Agent-Bom-Role header outside API middleware attestation")
 
     # Default role — least privilege (viewer) unless explicitly overridden
     default = os.environ.get("AGENT_BOM_DEFAULT_ROLE", "viewer")
@@ -315,10 +312,17 @@ def require_permission(action: str) -> Callable:
     from fastapi import Depends, Header, HTTPException
 
     async def _check(
+        request: Request,
         x_api_key: str | None = Header(None, alias="X-Api-Key"),
-        x_role: str | None = Header(None, alias="X-Agent-Bom-Role"),
     ) -> Role:
-        role = resolve_role(api_key=x_api_key, role_header=x_role)
+        state_role = getattr(request.state, "api_key_role", None)
+        if state_role:
+            try:
+                role = Role(str(state_role).lower())
+            except ValueError as exc:
+                raise HTTPException(status_code=403, detail=f"Invalid authenticated role '{state_role}'") from exc
+        else:
+            role = resolve_role(api_key=x_api_key)
         if not check_permission(role, action):
             raise HTTPException(
                 status_code=403,
@@ -345,6 +349,7 @@ def require_authenticated_permission(action: str) -> Callable:
         request: Request,
         x_role: str | None = Header(None, alias="X-Agent-Bom-Role"),
         x_tenant_id: str | None = Header(None, alias="X-Agent-Bom-Tenant-ID"),
+        x_proxy_secret: str | None = Header(None, alias="X-Agent-Bom-Proxy-Secret"),
     ) -> Role:
         state_role = getattr(request.state, "api_key_role", None)
         if state_role:
@@ -356,31 +361,37 @@ def require_authenticated_permission(action: str) -> Callable:
                 request.state.tenant_id = "default"
             return _authorize(role, action)
 
-        if not x_role:
-            raise HTTPException(
-                status_code=401,
-                detail=(
-                    "Authentication required — provide an authenticated API key/token "
-                    "or trusted proxy headers (X-Agent-Bom-Role + X-Agent-Bom-Tenant-ID)"
-                ),
-            )
+        trusted_proxy_enabled = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        proxy_secret = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "").strip()
+        if x_role and trusted_proxy_enabled and proxy_secret and hmac.compare_digest(x_proxy_secret or "", proxy_secret):
+            try:
+                role = Role(x_role.lower())
+            except ValueError as exc:
+                raise HTTPException(status_code=403, detail=f"Invalid proxy role '{x_role}'") from exc
+            if not x_tenant_id:
+                raise HTTPException(
+                    status_code=401,
+                    detail="Authentication required — trusted proxy requests must include X-Agent-Bom-Tenant-ID",
+                )
+            request.state.api_key_role = role.value
+            request.state.tenant_id = x_tenant_id
+            request.state.api_key_name = getattr(request.state, "api_key_name", None) or "proxy-header"
+            request.state.auth_method = getattr(request.state, "auth_method", None) or "proxy_header"
+            request.state.proxy_auth_attested = True
+            return _authorize(role, action)
 
-        try:
-            role = Role(x_role.lower())
-        except ValueError as exc:
-            raise HTTPException(status_code=403, detail=f"Invalid proxy role '{x_role}'") from exc
-
-        if not x_tenant_id:
-            raise HTTPException(
-                status_code=401,
-                detail="Authentication required — trusted proxy requests must include X-Agent-Bom-Tenant-ID",
-            )
-
-        request.state.api_key_role = role.value
-        request.state.tenant_id = x_tenant_id
-        request.state.api_key_name = getattr(request.state, "api_key_name", None) or "proxy-header"
-        request.state.auth_method = getattr(request.state, "auth_method", None) or "proxy_header"
-        return _authorize(role, action)
+        raise HTTPException(
+            status_code=401,
+            detail=(
+                "Authentication required — provide an authenticated API key, browser session, "
+                "OIDC/SAML token, or attested trusted proxy identity"
+            ),
+        )
 
     return Depends(_check)
 

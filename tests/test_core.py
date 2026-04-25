@@ -22,6 +22,7 @@ from agent_bom.models import (
 )
 from agent_bom.output import export_sarif, to_cyclonedx, to_json, to_sarif, to_spdx
 from agent_bom.parsers import parse_npm_packages, parse_pip_packages
+from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 # ─── Model Tests ────────────────────────────────────────────────────────────
 
@@ -3962,10 +3963,11 @@ def test_api_posture_counts_empty():
 
     tenant_id = "counts-empty"
     client = TestClient(app)
-    resp = client.get(
-        "/v1/posture/counts",
-        headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Tenant-ID": tenant_id},
-    )
+    enable_trusted_proxy_env()
+    try:
+        resp = client.get("/v1/posture/counts", headers=proxy_headers(tenant=tenant_id))
+    finally:
+        disable_trusted_proxy_env()
     assert resp.status_code == 200
     body = resp.json()
     assert "critical" in body
@@ -4023,10 +4025,11 @@ def test_api_posture_counts_with_data():
         },
     )
     _get_store().put(job)
-    resp = client.get(
-        "/v1/posture/counts",
-        headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Tenant-ID": tenant_id},
-    )
+    enable_trusted_proxy_env()
+    try:
+        resp = client.get("/v1/posture/counts", headers=proxy_headers(tenant=tenant_id))
+    finally:
+        disable_trusted_proxy_env()
     assert resp.status_code == 200
     body = resp.json()
     assert body["critical"] >= 1
@@ -4063,10 +4066,11 @@ def test_api_posture_counts_ci_cd_only_is_not_treated_as_local_runtime():
         },
     )
     _get_store().put(job)
-    resp = client.get(
-        "/v1/posture/counts",
-        headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Tenant-ID": tenant_id},
-    )
+    enable_trusted_proxy_env()
+    try:
+        resp = client.get("/v1/posture/counts", headers=proxy_headers(tenant=tenant_id))
+    finally:
+        disable_trusted_proxy_env()
     assert resp.status_code == 200
     body = resp.json()
     assert body["deployment_mode"] == "local"

@@ -6,11 +6,17 @@ from starlette.testclient import TestClient
 
 from agent_bom.api.server import JobStatus, _get_store, app
 from agent_bom.api.store import InMemoryJobStore
+from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
-_AUTH_HEADERS = {
-    "X-Agent-Bom-Role": "viewer",
-    "X-Agent-Bom-Tenant-ID": "default",
-}
+_AUTH_HEADERS = proxy_headers(tenant="default")
+
+
+def setup_module() -> None:
+    enable_trusted_proxy_env()
+
+
+def teardown_module() -> None:
+    disable_trusted_proxy_env()
 
 
 def _clear_jobs():

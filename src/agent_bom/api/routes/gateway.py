@@ -25,7 +25,7 @@ from fastapi.responses import JSONResponse, Response
 
 from agent_bom.api.models import EvaluateRequest, JobStatus, PolicyCreate, PolicyUpdate
 from agent_bom.api.stores import _get_policy_store, _get_store
-from agent_bom.rbac import require_authenticated_permission, require_permission
+from agent_bom.rbac import require_authenticated_permission
 
 if TYPE_CHECKING:
     from agent_bom.api.policy_store import GatewayPolicy
@@ -34,7 +34,7 @@ router = APIRouter()
 
 
 def _dep(permission: str) -> Any:
-    return cast(Any, require_permission(permission))
+    return cast(Any, require_authenticated_permission(permission))
 
 
 def _policy_collection_etag(policies: list["GatewayPolicy"]) -> str:

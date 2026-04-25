@@ -24,6 +24,7 @@ from agent_bom.api.middleware import APIKeyMiddleware, get_rate_limit_key_status
 from agent_bom.api.server import app
 from agent_bom.api.stores import set_tenant_quota_store
 from agent_bom.api.tenant_quota_store import InMemoryTenantQuotaStore
+from tests.auth_helpers import PROXY_SECRET, proxy_headers
 
 # ─── Rate-limit key status ────────────────────────────────────────────────────
 
@@ -359,6 +360,7 @@ def test_auth_secret_rotation_plan_is_non_secret_and_actionable(monkeypatch: pyt
 
 def test_auth_quota_update_persists_tenant_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", PROXY_SECRET)
     _reload_config()
     _server_mod.configure_api(api_key=None)
     original_store = _stores._tenant_quota_store
@@ -367,10 +369,7 @@ def test_auth_quota_update_persists_tenant_override(monkeypatch: pytest.MonkeyPa
         set_tenant_quota_store(quota_store)
 
         client = TestClient(app)
-        headers = {
-            "X-Agent-Bom-Role": "admin",
-            "X-Agent-Bom-Tenant-ID": "tenant-alpha",
-        }
+        headers = proxy_headers(role="admin", tenant="tenant-alpha")
         resp = client.put(
             "/v1/auth/quota",
             headers=headers,
@@ -515,17 +514,16 @@ def test_auth_policy_requires_admin_role_in_api_middleware() -> None:
     assert middleware._required_role("GET", "/v1/auth/debug") == "viewer"
 
 
-def test_metrics_requires_authenticated_access() -> None:
+def test_metrics_requires_authenticated_access(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", PROXY_SECRET)
     client = TestClient(app)
     unauthenticated = client.get("/metrics")
     assert unauthenticated.status_code == 401
 
     authenticated = client.get(
         "/metrics",
-        headers={
-            "X-Agent-Bom-Role": "viewer",
-            "X-Agent-Bom-Tenant-ID": "tenant-alpha",
-        },
+        headers=proxy_headers(role="viewer", tenant="tenant-alpha"),
     )
     assert authenticated.status_code == 200
     assert "agent_bom_" in authenticated.text
@@ -533,16 +531,14 @@ def test_metrics_requires_authenticated_access() -> None:
 
 def test_auth_debug_reports_runtime_auth_modes(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", PROXY_SECRET)
     _reload_config()
     _server_mod.configure_api(api_key=None)
 
     client = TestClient(app)
     resp = client.get(
         "/v1/auth/debug",
-        headers={
-            "X-Agent-Bom-Role": "viewer",
-            "X-Agent-Bom-Tenant-ID": "tenant-alpha",
-        },
+        headers=proxy_headers(role="viewer", tenant="tenant-alpha"),
     )
     assert resp.status_code == 200
     body = resp.json()

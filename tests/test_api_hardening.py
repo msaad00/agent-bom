@@ -328,6 +328,7 @@ def test_api_key_middleware_proxy_headers_authenticate_when_enabled(monkeypatch)
         )
 
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "test-proxy-secret")
     test_app = Starlette(routes=[Route("/v1/test", dummy)])
     test_app.add_middleware(APIKeyMiddleware, api_key="")
 
@@ -337,6 +338,7 @@ def test_api_key_middleware_proxy_headers_authenticate_when_enabled(monkeypatch)
         headers={
             "X-Agent-Bom-Role": "analyst",
             "X-Agent-Bom-Tenant-ID": "tenant-alpha",
+            "X-Agent-Bom-Proxy-Secret": "test-proxy-secret",
             "X-Agent-Bom-Subject": "alice@corp.example",
         },
     )
@@ -354,11 +356,15 @@ def test_api_key_middleware_proxy_headers_require_tenant(monkeypatch):
         return StarletteJSONResponse({"ok": True})
 
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "test-proxy-secret")
     test_app = Starlette(routes=[Route("/v1/test", dummy)])
     test_app.add_middleware(APIKeyMiddleware, api_key="")
 
     client = TestClient(test_app)
-    resp = client.get("/v1/test", headers={"X-Agent-Bom-Role": "viewer"})
+    resp = client.get(
+        "/v1/test",
+        headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Proxy-Secret": "test-proxy-secret"},
+    )
     assert resp.status_code == 401
     assert "X-Agent-Bom-Tenant-ID" in resp.json()["detail"]
 

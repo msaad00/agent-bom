@@ -509,11 +509,12 @@ async def auth_policy(request: Request) -> dict:
             "browser_session": "signed_http_only_cookie",
             "session_storage_fallback": "legacy_static_export_only",
             "credentials_mode": "include",
-            "trusted_proxy_headers": ["X-Agent-Bom-Role", "X-Agent-Bom-Tenant-ID"],
+            "trusted_proxy_headers": ["X-Agent-Bom-Role", "X-Agent-Bom-Tenant-ID", "X-Agent-Bom-Proxy-Secret"],
+            "trusted_proxy_secret_env": "AGENT_BOM_TRUST_PROXY_AUTH_SECRET",
             "message": (
                 "Recommended browser auth is same-origin reverse-proxy OIDC with the proxy injecting trusted "
-                "X-Agent-Bom-* headers. For single-user local or pilot access, the UI exchanges an API key for a "
-                "signed, expiring, CSRF-bound httpOnly browser session cookie."
+                "X-Agent-Bom-* headers plus X-Agent-Bom-Proxy-Secret attestation. For single-user local or pilot "
+                "access, the UI exchanges an API key for a signed, expiring, CSRF-bound httpOnly browser session cookie."
             ),
         },
         "rate_limit_runtime": rl_runtime,

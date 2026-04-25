@@ -211,17 +211,16 @@ Current response hardening already includes:
 - `X-Content-Type-Options`
 - `Cache-Control: no-store`
 
+HSTS defaults to `max-age=31536000; includeSubDomains`. Operators can set
+`AGENT_BOM_HSTS_PRELOAD=1` only after confirming HTTPS is permanent for the
+deployment domain and every subdomain. The effective non-secret header posture
+is exposed under `GET /v1/auth/policy` as `security_headers`.
+
 ### About browser sessions
 
-Today, `agent-bom` supports a practical pilot-friendly browser fallback:
-
-- session-only API key storage in the browser
-
-That is useful for:
-
-- local single-user control plane access
-- pilot demos
-- operator debugging
+Today, `agent-bom` treats the httpOnly browser session cookie as the browser
+control-plane path. The dashboard does not persist API keys in browser storage.
+CLI and service clients should continue using bearer API keys directly.
 
 It is **not** the highest-trust enterprise session model.
 

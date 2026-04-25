@@ -134,6 +134,16 @@ def test_root_uses_dashboard_friendly_csp_when_bundled(tmp_path: Path, monkeypat
     assert "frame-ancestors 'none'" in csp
 
 
+def test_hsts_preload_is_operator_opt_in(monkeypatch):
+    client, _ = _fresh_client()
+    resp = client.get("/health")
+    assert resp.headers["strict-transport-security"] == "max-age=31536000; includeSubDomains"
+
+    monkeypatch.setenv("AGENT_BOM_HSTS_PRELOAD", "1")
+    resp = client.get("/health")
+    assert resp.headers["strict-transport-security"] == "max-age=31536000; includeSubDomains; preload"
+
+
 def test_ui_csp_headers_do_not_allow_eval():
     """Static and hosted UI headers should not permit eval-style script execution."""
     root = Path(__file__).parent.parent

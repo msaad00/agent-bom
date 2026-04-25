@@ -8,6 +8,7 @@ import pytest
 
 from agent_bom.models import (
     Agent,
+    AgentType,
     AIBOMReport,
     BlastRadius,
     MCPServer,
@@ -20,6 +21,7 @@ from agent_bom.vex import (
     VexJustification,
     VexStatement,
     VexStatus,
+    active_blast_radii,
     apply_vex,
     export_openvex,
     generate_vex,
@@ -591,3 +593,62 @@ class TestIsVexSuppressed:
         active = [v for v in all_vulns if not is_vex_suppressed(v)]
         assert len(active) == 1
         assert active[0].id == "CVE-2024-B"
+
+    def test_apply_vex_zeros_suppressed_blast_radius_risk(self):
+        """VEX not_affected is enforced in blast-radius scoring, not just labels."""
+        vuln = _vuln("CVE-2024-2000", severity=Severity.CRITICAL)
+        report = _report([(vuln, _pkg(vulns=[vuln]))])
+        br = report.blast_radii[0]
+        br.risk_score = 9.8
+        br.transitive_risk_score = 8.0
+
+        doc = VexDocument(
+            statements=[
+                VexStatement(
+                    vulnerability_id="CVE-2024-2000",
+                    status=VexStatus.NOT_AFFECTED,
+                    justification=VexJustification.VULNERABLE_CODE_NOT_PRESENT,
+                ),
+            ]
+        )
+
+        assert apply_vex(report, doc) == 1
+        assert br.risk_score == 0.0
+        assert br.transitive_risk_score == 0.0
+        assert br.is_actionable is False
+        assert active_blast_radii(report.blast_radii) == []
+
+    def test_suppressed_vex_does_not_trigger_policy_or_posture_penalty(self):
+        from agent_bom.policy import evaluate_policy
+        from agent_bom.posture import compute_posture_scorecard
+
+        suppressed = _vuln("CVE-2024-3000", severity=Severity.CRITICAL)
+        suppressed.vex_status = "not_affected"
+        active = _vuln("CVE-2024-3001", severity=Severity.LOW)
+        report = _report([(suppressed, _pkg(name="suppressed", vulns=[suppressed])), (active, _pkg(name="active", vulns=[active]))])
+        for br in report.blast_radii:
+            br.calculate_risk_score()
+
+        policy_result = evaluate_policy(
+            {"rules": [{"id": "no-critical", "severity_gte": "critical", "action": "fail"}]},
+            report.blast_radii,
+        )
+        assert policy_result["passed"] is True
+        assert policy_result["violations"] == []
+
+        scorecard = compute_posture_scorecard(report)
+        assert scorecard.dimensions["vulnerability_posture"].details == "1 vulns (1 low), 0 fixable"
+
+    def test_json_marks_vex_suppressed_blast_radius(self):
+        from agent_bom.output import to_json
+
+        vuln = _vuln("CVE-2024-4000", severity=Severity.HIGH)
+        vuln.vex_status = "fixed"
+        report = _report([(vuln, _pkg(vulns=[vuln]))])
+        report.agents[0].agent_type = AgentType.CLAUDE_DESKTOP
+        report.blast_radii[0].calculate_risk_score()
+
+        item = to_json(report)["blast_radius"][0]
+        assert item["risk_score"] == 0.0
+        assert item["vex_status"] == "fixed"
+        assert item["vex_suppressed"] is True

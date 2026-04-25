@@ -37,6 +37,8 @@ from starlette.requests import Request as StarletteRequest
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp
 
+from agent_bom.api.dashboard_csp import dashboard_csp_header, describe_dashboard_csp_posture
+
 _logger = logging.getLogger(__name__)
 _RATE_LIMIT_FINGERPRINT_FALLBACK = secrets.token_bytes(32)
 _TENANT_SCOPED_AUTH_METHODS = {
@@ -55,24 +57,12 @@ _AUTH_RUNTIME_STATUS: dict[str, object] = {
     "recommended_ui_mode": "no_auth",
 }
 _API_CSP = "default-src 'self'"
-_DASHBOARD_CSP = (
-    "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline'; "
-    "script-src-attr 'none'; "
-    "style-src 'self' 'unsafe-inline'; "
-    "img-src 'self' data: blob:; "
-    "font-src 'self' data:; "
-    "connect-src 'self'; "
-    "object-src 'none'; "
-    "base-uri 'self'; "
-    "frame-ancestors 'none'"
-)
 
 
 def _content_security_policy(path: str, content_type: str) -> str:
     """Return a route-aware CSP that keeps the API strict and the dashboard usable."""
     if "text/html" in content_type and not path.startswith(("/v1/", "/docs", "/redoc", "/openapi.json")):
-        return _DASHBOARD_CSP
+        return dashboard_csp_header()
     return _API_CSP
 
 
@@ -114,11 +104,7 @@ def describe_security_header_posture() -> dict[str, object]:
             "max_age_env": "AGENT_BOM_HSTS_MAX_AGE_SECONDS",
             "preload_guidance": ("Only enable preload after confirming HTTPS is permanent for the domain and every subdomain."),
         },
-        "csp": {
-            "api": _API_CSP,
-            "dashboard_allows_inline_bootstrap": "'unsafe-inline'" in _DASHBOARD_CSP,
-            "dashboard_inline_bootstrap_reason": "Next static export requires inline bootstrap until the nonce/hash migration lands.",
-        },
+        "csp": {"api": _API_CSP, "dashboard": describe_dashboard_csp_posture()},
     }
 
 

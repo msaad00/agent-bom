@@ -153,6 +153,13 @@ domain-level commitment. Operators can also set
 `security_headers` so change windows can record whether preload is enabled and
 which CSP mode is active.
 
+Packaged self-hosted dashboard builds generate `ui_dist/csp-hashes.json` during
+`scripts/build-ui.sh` and release packaging. When that manifest is present, the
+API serves dashboard HTML with hash-based `script-src` entries instead of
+`script-src 'unsafe-inline'`. If the manifest is absent, the dashboard posture
+reports `inline_compat` so operators can see that the static export is using the
+compatibility fallback.
+
 ## Availability, Backup, And Restore
 
 The Helm chart includes an optional Postgres backup CronJob that writes custom

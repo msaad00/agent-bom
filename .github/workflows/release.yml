@@ -71,6 +71,7 @@ jobs:
         run: |
           cd ui && npm ci && NEXT_EXPORT=1 npm run build
           cp -r out ../src/agent_bom/ui_dist
+          python ../scripts/generate_ui_csp_hashes.py ../src/agent_bom/ui_dist
 
       - name: Build package
         run: rm -rf dist/ && uv run --with build==1.4.0 python -m build

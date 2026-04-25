@@ -12,5 +12,6 @@ NEXT_EXPORT=1 npm run build
 echo "Copying static output to package..."
 rm -rf "$ROOT_DIR/src/agent_bom/ui_dist"
 cp -r out "$ROOT_DIR/src/agent_bom/ui_dist"
+python "$ROOT_DIR/scripts/generate_ui_csp_hashes.py" "$ROOT_DIR/src/agent_bom/ui_dist"
 
 echo "Dashboard bundled → src/agent_bom/ui_dist/"

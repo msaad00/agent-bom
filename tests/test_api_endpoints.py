@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 
@@ -118,10 +119,11 @@ def test_root_serves_dashboard_when_bundled(tmp_path: Path, monkeypatch):
 
 
 def test_root_uses_dashboard_friendly_csp_when_bundled(tmp_path: Path, monkeypatch):
-    """Packaged dashboard HTML should allow the inline bootstrap it ships with."""
+    """Dashboard HTML keeps inline compatibility when no generated hash manifest exists."""
     index_file = tmp_path / "index.html"
     index_file.write_text("<html><body>agent-bom dashboard</body></html>", encoding="utf-8")
     monkeypatch.setattr("agent_bom.api.server._dashboard_index_file", lambda: str(index_file))
+    monkeypatch.delenv("AGENT_BOM_DASHBOARD_CSP_HASH_MANIFEST", raising=False)
 
     client, _ = _fresh_client()
     resp = client.get("/", follow_redirects=False)
@@ -132,6 +134,29 @@ def test_root_uses_dashboard_friendly_csp_when_bundled(tmp_path: Path, monkeypat
     assert "script-src-attr 'none'" in csp
     assert "style-src 'self' 'unsafe-inline'" in csp
     assert "frame-ancestors 'none'" in csp
+
+
+def test_root_uses_hash_manifest_csp_when_bundled(tmp_path: Path, monkeypatch):
+    """Packaged dashboard HTML should remove script unsafe-inline when release hashes exist."""
+    index_file = tmp_path / "index.html"
+    index_file.write_text("<html><body>agent-bom dashboard</body></html>", encoding="utf-8")
+    manifest = tmp_path / "csp-hashes.json"
+    manifest.write_text(
+        json.dumps({"script_hashes": ["sha256-abc123"], "style_hashes": ["sha256-style123"]}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("agent_bom.api.server._dashboard_index_file", lambda: str(index_file))
+    monkeypatch.setenv("AGENT_BOM_DASHBOARD_CSP_HASH_MANIFEST", str(manifest))
+
+    client, _ = _fresh_client()
+    resp = client.get("/", follow_redirects=False)
+
+    assert resp.status_code == 200
+    csp = resp.headers.get("content-security-policy", "")
+    script_directive = csp.split("script-src ", 1)[1].split(";", 1)[0]
+    assert script_directive == "'self' sha256-abc123"
+    assert "'unsafe-inline'" not in script_directive
+    assert "style-src 'self' 'unsafe-inline' sha256-style123" in csp
 
 
 def test_hsts_preload_is_operator_opt_in(monkeypatch):

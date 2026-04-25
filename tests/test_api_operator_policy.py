@@ -181,7 +181,8 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "fail_closed" in body["rate_limit_runtime"]
     assert body["security_headers"]["hsts"]["preload"] is False
     assert body["security_headers"]["hsts"]["header"] == "max-age=31536000; includeSubDomains"
-    assert body["security_headers"]["csp"]["dashboard_allows_inline_bootstrap"] is True
+    assert body["security_headers"]["csp"]["dashboard"]["mode"] in {"inline_compat", "hash_manifest"}
+    assert "allows_inline_script" in body["security_headers"]["csp"]["dashboard"]
     assert body["secret_integrity"]["audit_hmac"]["status"] in {"configured", "ephemeral"}
     assert body["secret_integrity"]["audit_hmac"]["rotation_tracking_supported"] is True
     assert body["secret_integrity"]["audit_hmac"]["rotation_status"] in {

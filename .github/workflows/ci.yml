@@ -17,8 +17,46 @@ on:
     branches: [main]
   merge_group:
     types: [checks_requested]
+  workflow_dispatch:
 
 jobs:
+  changes:
+    name: PR Path Classifier
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    if: github.event_name == 'pull_request'
+    outputs:
+      action: ${{ steps.classify.outputs.action }}
+      alpine: ${{ steps.classify.outputs.alpine }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed paths
+        id: classify
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")"
+          action=false
+          alpine=false
+          if printf '%s\n' "$changed" | grep -Eq '^(action\.yml|\.github/actions/|tests/fixtures/test-(sbom|policy)\.json$)'; then
+            action=true
+          fi
+          if printf '%s\n' "$changed" | grep -Eq '^(src/|tests/|pyproject\.toml|uv\.lock|Dockerfile|scripts/|\.github/actions/setup-python/)'; then
+            alpine=true
+          fi
+          echo "action=${action}" >> "$GITHUB_OUTPUT"
+          echo "alpine=${alpine}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### PR path classification"
+            echo ""
+            echo "- GitHub Action dogfood required: \`${action}\`"
+            echo "- Alpine/musl compatibility required: \`${alpine}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # 1. Security Scanning
   security:
     name: Security Scan
@@ -365,9 +403,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --extra dev --extra api --extra mcp-server
 
-      - name: Run tests with coverage
+      - name: Run tests
         run: |
-          if [ "${{ matrix.python-version }}" = "3.11" ]; then
+          if [ "${{ matrix.python-version }}" = "3.11" ] && [ "${{ github.event_name }}" != "pull_request" ]; then
             uv run pytest tests/ -v --tb=short --cov=agent_bom --cov-report=term-missing --cov-fail-under=75 -m "not network"
           else
             uv run pytest tests/ -q --tb=short -m "not network"
@@ -378,9 +416,11 @@ jobs:
   # glibc-only assumptions in code, compiled extensions, or path handling.
   test-alpine:
     name: Test (Alpine/musl)
+    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.alpine == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    needs: [changes]
     container:
       image: python:3.12-alpine@sha256:7747d47f92cfca63a6e2b50275e23dba8407c30d8ae929a88ddd49a5d3f2d331
     steps:
@@ -630,10 +670,11 @@ jobs:
   # 7. Dogfood GitHub Action (test action.yml via uses: ./)
   action-dogfood:
     name: Dogfood GitHub Action
+    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.action == 'true')
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    needs: [test]
+    needs: [changes]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 

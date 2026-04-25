@@ -298,6 +298,14 @@ def test_ci_pipeline_validates_helm_profiles():
     assert any("scripts/validate_helm_profiles.py" in run for run in step_runs)
 
 
+def test_release_floating_major_tag_uses_lease():
+    """Floating release tags should fail closed if the remote tag moved."""
+    workflow = (Path(__file__).parent.parent / ".github" / "workflows" / "release.yml").read_text()
+    assert "AGENT_BOM_UPDATE_FLOATING_MAJOR_TAGS == '1'" in workflow
+    assert '--force-with-lease="refs/tags/${MAJOR}:${REMOTE_TAG_SHA}"' in workflow
+    assert 'git push origin "$MAJOR" --force' not in workflow
+
+
 def test_helm_scanner_defaults():
     """Scanner defaults are reasonable."""
     doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())

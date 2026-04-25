@@ -15,6 +15,7 @@ jobs:
   rescan:
     name: Rescan — ${{ matrix.platform }}
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 35
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     permissions:

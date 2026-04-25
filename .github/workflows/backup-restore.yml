@@ -30,6 +30,7 @@ jobs:
   roundtrip:
     name: Dump → S3 → restore → verify
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     # aws-cli honors AWS_ENDPOINT_URL / AWS_ENDPOINT_URL_S3 in v2 so the
     # production restore script runs unmodified against MinIO.
     env:

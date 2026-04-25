@@ -23,6 +23,7 @@ jobs:
   changes:
     name: PR Path Classifier
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
     if: github.event_name == 'pull_request'
@@ -61,6 +62,7 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -178,6 +180,7 @@ jobs:
   lint:
     name: Lint and Type Check
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -199,6 +202,7 @@ jobs:
   ui:
     name: UI Validate
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     permissions:
       contents: read
     steps:
@@ -294,6 +298,7 @@ jobs:
   helm-profiles:
     name: Helm Profile Validate
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -317,6 +322,7 @@ jobs:
   endpoint-packaging:
     name: Endpoint Packaging (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     permissions:
       contents: read
     strategy:
@@ -383,6 +389,7 @@ jobs:
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     permissions:
       contents: read
     strategy:
@@ -419,6 +426,7 @@ jobs:
     name: Test (Alpine/musl)
     if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.alpine == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     permissions:
       contents: read
     needs: [changes]
@@ -448,6 +456,7 @@ jobs:
   base-branch-check:
     name: PR Base Branch Guard
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
     if: github.event_name == 'pull_request'
@@ -469,6 +478,7 @@ jobs:
   version-check:
     name: Version Alignment
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -509,6 +519,7 @@ jobs:
   build:
     name: Build Package
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     needs: [security, lint, test]
@@ -536,6 +547,7 @@ jobs:
     name: Docker (multi-arch)
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
     needs: [security, lint, test]
@@ -621,6 +633,7 @@ jobs:
     name: agent-bom Self-Scan
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: [test]
     permissions:
       contents: read
@@ -673,6 +686,7 @@ jobs:
     name: Dogfood GitHub Action
     if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.action == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     needs: [changes]

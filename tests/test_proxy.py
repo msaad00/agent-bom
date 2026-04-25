@@ -37,6 +37,10 @@ from agent_bom.proxy import (
 )
 
 
+def test_proxy_message_size_budget_is_two_mib_or_less():
+    assert proxy_mod._MAX_MESSAGE_BYTES <= 2 * 1024 * 1024
+
+
 @pytest.fixture(autouse=True)
 def _reset_policy_cache_signer():
     _reset_gateway_policy_cache_signer_for_tests()

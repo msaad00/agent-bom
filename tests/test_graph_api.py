@@ -836,6 +836,14 @@ class TestGraphStoreBackendSelection:
         assert helper_calls.count("snapshot_stats") == 1
         assert "load_graph" not in helper_calls
 
+    def test_graph_overview_rejects_unknown_entity_type(self, recording_graph_store):
+        client = TestClient(app)
+
+        response = client.get("/v1/graph", params={"entity_types": "agent,not_a_type"})
+
+        assert response.status_code == 422
+        assert "Unsupported graph entity type" in response.json()["detail"]
+
     def test_graph_presets_use_pluggable_store(self, recording_graph_store):
         client = TestClient(app)
 

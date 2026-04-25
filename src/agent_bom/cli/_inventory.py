@@ -150,22 +150,20 @@ def where(as_json: bool):
     if as_json:
         import json as _json
 
-        entries = []
-        for client, path in get_all_discovery_paths(current_platform):
-            expanded = str(expand_path(path)) if not path.startswith(".") else path
-            entries.append(
-                {
-                    "client": client,
-                    "path": path,
-                    "expanded": expanded,
-                    "exists": expand_path(path).exists() if not path.startswith(".") else Path(path).exists(),
-                }
-            )
-        click.echo(_json.dumps({"platform": current_platform, "paths": entries}, indent=2))
+        from agent_bom.discovery.coverage import discovery_coverage_summary
+
+        summary = discovery_coverage_summary(current_platform, get_all_discovery_paths(current_platform))
+        for entry in summary["paths"]:
+            path = str(entry["path"])
+            entry["expanded"] = str(expand_path(path)) if not path.startswith(".") else path
+        click.echo(_json.dumps(summary, indent=2))
         return
 
     console = Console()
     console.print("\n[bold]MCP Client Configuration Locations[/bold]\n")
+    from agent_bom.discovery.coverage import supported_clients
+
+    console.print(f"[dim]Code-backed first-class client types: {len(supported_clients())}[/dim]\n")
 
     total_paths = 0
     found_paths = 0

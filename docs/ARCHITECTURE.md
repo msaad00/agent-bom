@@ -44,7 +44,7 @@ graph TB
     end
 
     subgraph Core["Core Engine"]
-        Discovery["Discovery\n30 MCP clients"]
+        Discovery["Discovery\n29 first-class clients"]
         Parser["Package Parser\n15 ecosystems"]
         Scanner["CVE Scanner\nOSV + NVD + GHSA"]
         Blast["Blast Radius\nCVE → agent → credentials → tools"]
@@ -218,7 +218,7 @@ graph TB
 | Module | Path | Responsibility |
 |--------|------|----------------|
 | CLI | `src/agent_bom/cli/` | Click entry point, command dispatch |
-| Discovery | `src/agent_bom/discovery/__init__.py` | MCP client config discovery (30 clients) |
+| Discovery | `src/agent_bom/discovery/__init__.py` | MCP client config discovery (29 first-class client types plus dynamic/project surfaces) |
 | Parsers | `src/agent_bom/parsers/__init__.py` | Package extraction + MCP registry lookup |
 | Scanners | `src/agent_bom/scanners/__init__.py` | OSV batch scan + CVSS + compliance tagging |
 | Enrichment | `src/agent_bom/enrichment.py` | NVD + EPSS + CISA KEV enrichment |

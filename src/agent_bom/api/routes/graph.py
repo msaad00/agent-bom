@@ -27,11 +27,12 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from agent_bom.api.stores import _get_graph_store
-from agent_bom.graph import SEVERITY_RANK, GraphFilterOptions, RelationshipType, UnifiedGraph
+from agent_bom.graph import SEVERITY_RANK, EntityType, GraphFilterOptions, RelationshipType, UnifiedGraph
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+_ALLOWED_ENTITY_TYPES = {entity_type.value for entity_type in EntityType}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -70,6 +71,24 @@ def _page_meta(total: int, offset: int, limit: int, *, cursor: str | None = None
         "next_cursor": next_cursor or "",
         "has_more": bool(next_cursor) if cursor else offset + limit < total,
     }
+
+
+def _parse_entity_type_filter(raw: str | None) -> set[str] | None:
+    if not raw:
+        return None
+    values = {value.strip() for value in raw.split(",") if value.strip()}
+    invalid = sorted(values - _ALLOWED_ENTITY_TYPES)
+    if invalid:
+        raise HTTPException(status_code=422, detail=f"Unsupported graph entity type: {invalid[0]}")
+    return values or None
+
+
+def _validate_entity_type_list(values: list[str]) -> list[str]:
+    cleaned = [value.strip() for value in values if value.strip()]
+    invalid = sorted(set(cleaned) - _ALLOWED_ENTITY_TYPES)
+    if invalid:
+        raise HTTPException(status_code=422, detail=f"Unsupported graph entity type: {invalid[0]}")
+    return cleaned
 
 
 async def _graph_store_call(fn, /, *args, **kwargs):
@@ -199,9 +218,7 @@ async def get_graph(
     if not requested_scan_id and not await _graph_store_call(graph_store.latest_snapshot_id, tenant_id=tenant):
         raise HTTPException(status_code=503, detail="Graph snapshots not found. Run a scan first.")
 
-    et_set: set[str] | None = None
-    if entity_types:
-        et_set = {t.strip() for t in entity_types.split(",") if t.strip()}
+    et_set = _parse_entity_type_filter(entity_types)
 
     min_rank = 0
     if min_severity:
@@ -378,7 +395,7 @@ async def search_graph(
     limit: int = Query(50, ge=1, le=500, description="Max results"),
 ) -> dict:
     """Search graph nodes by label, type, tags, and attributes."""
-    entity_type_filters = {value.strip() for value in entity_types.split(",") if value.strip()} if entity_types else None
+    entity_type_filters = _parse_entity_type_filter(entity_types)
     min_rank = SEVERITY_RANK.get(min_severity.lower(), 0) if min_severity else 0
     prefix_filters = {value.strip().upper() for value in compliance_prefixes.split(",") if value.strip()} if compliance_prefixes else None
     data_source_filters = {value.strip() for value in data_sources.split(",") if value.strip()} if data_sources else None
@@ -513,7 +530,7 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
     filtered_graph = _filtered_query_graph(
         traversal_graph,
         roots=body.roots,
-        entity_types=set(body.entity_types),
+        entity_types=set(_validate_entity_type_list(body.entity_types)),
         min_severity_rank=SEVERITY_RANK.get(body.min_severity.lower(), 0) if body.min_severity else 0,
         compliance_prefixes={prefix.upper() for prefix in body.compliance_prefixes},
         data_sources=set(body.data_sources),

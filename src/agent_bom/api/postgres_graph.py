@@ -9,8 +9,19 @@ from typing import Any
 
 from agent_bom.api.graph_store import _escape_like_query, _node_search_text, decode_graph_cursor, encode_graph_cursor
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
+from agent_bom.graph import EntityType
 
 from .postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
+
+_ALLOWED_ENTITY_TYPES = {entity_type.value for entity_type in EntityType}
+
+
+def _assert_allowed_entity_types(entity_types: set[str] | None) -> None:
+    if not entity_types:
+        return
+    invalid = sorted(entity_types - _ALLOWED_ENTITY_TYPES)
+    if invalid:
+        raise ValueError(f"Unsupported graph entity type: {invalid[0]}")
 
 
 class PostgresGraphStore:
@@ -463,6 +474,7 @@ class PostgresGraphStore:
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
     ):
+        _assert_allowed_entity_types(entity_types)
         from agent_bom.graph import (
             SEVERITY_RANK,
             AttackPath,
@@ -859,6 +871,7 @@ class PostgresGraphStore:
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
     ) -> dict[str, Any]:
+        _assert_allowed_entity_types(entity_types)
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
         if not effective_scan_id:
             return {
@@ -955,6 +968,7 @@ class PostgresGraphStore:
         offset: int = 0,
         limit: int = 500,
     ) -> tuple[str, str, list[Any], int, str | None]:
+        _assert_allowed_entity_types(entity_types)
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
         if not effective_scan_id:
             return scan_id, "", [], 0, None
@@ -1071,6 +1085,7 @@ class PostgresGraphStore:
         offset: int = 0,
         limit: int = 50,
     ):
+        _assert_allowed_entity_types(entity_types)
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
         if not effective_scan_id:
             return [], 0, None

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -18,6 +19,14 @@ from pathlib import Path
 from typing import Optional, Protocol
 
 logger = logging.getLogger(__name__)
+_ANSI_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
+
+def _log_value(value: object, max_len: int = 500) -> str:
+    text = _ANSI_RE.sub("", str(value))
+    text = text.replace("\r", " ").replace("\n", " ").replace("\t", " ")
+    text = "".join(ch for ch in text if ch >= " " and ch != "\x7f")
+    return re.sub(r" {2,}", " ", text)[:max_len]
 
 
 # ─── Alert model ─────────────────────────────────────────────────────────────
@@ -173,7 +182,7 @@ class ConfigChangeHandler:
             return  # Debounce
 
         self._last_trigger[path] = now
-        logger.info("Config change detected: %s", path)
+        logger.info("Config change detected: %s", _log_value(path))
         self._scan_and_alert(path)
 
     def _scan_and_alert(self, config_path: str) -> None:
@@ -221,7 +230,7 @@ class ConfigChangeHandler:
             self._last_scan = current_scan
 
         except Exception as exc:  # noqa: BLE001
-            logger.error("Scan failed after config change: %s", exc)
+            logger.error("Scan failed after config change: %s", _log_value(exc))
 
     def _process_diff(self, diff: dict, config_path: str) -> None:
         """Generate alerts from a scan diff."""

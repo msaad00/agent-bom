@@ -13,6 +13,7 @@ from agent_bom.watch import (
     ConsoleAlertSink,
     FileAlertSink,
     WebhookAlertSink,
+    _log_value,
     discover_config_dirs,
     discover_config_paths,
 )
@@ -33,6 +34,15 @@ class TestAlert:
         )
         assert alert.severity == "critical"
         assert alert.summary == "Critical CVE found"
+
+
+def test_log_value_strips_ansi_and_control_characters():
+    cleaned = _log_value("server\x1b[31m-red\x1b[0m\r\nnext\tline")
+    assert "\x1b" not in cleaned
+    assert "\n" not in cleaned
+    assert "\r" not in cleaned
+    assert "\t" not in cleaned
+    assert "server-red next line" == cleaned
 
 
 class TestConsoleAlertSink:

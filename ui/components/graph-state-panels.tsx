@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ExternalLink, Route, SearchX } from "lucide-react";
 
+import { getOsvVulnerabilityUrl } from "@/lib/vulnerabilities";
 import type { LineageNodeData } from "./lineage-nodes";
 
 export function GraphControlGroup({
@@ -84,6 +85,7 @@ export function GraphFindingsFallback({
           const severity = data.severity?.toUpperCase() ?? "UNKNOWN";
           const cvss = typeof data.cvssScore === "number" ? data.cvssScore.toFixed(1) : "N/A";
           const epss = typeof data.epssScore === "number" ? `${(data.epssScore * 100).toFixed(1)}%` : "N/A";
+          const osvUrl = getOsvVulnerabilityUrl(data.label);
           const tone =
             data.severity === "critical"
               ? "border-red-800 bg-red-950/20"
@@ -133,15 +135,17 @@ export function GraphFindingsFallback({
                   <Route className="h-3 w-3" />
                   Open in findings
                 </Link>
-                <a
-                  href={`https://osv.dev/vulnerability/${encodeURIComponent(data.label)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs font-medium text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-                >
-                  View on OSV
-                  <ExternalLink className="h-3 w-3" />
-                </a>
+                {osvUrl && (
+                  <a
+                    href={osvUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs font-medium text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                  >
+                    View on OSV
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
               </div>
             </div>
           );

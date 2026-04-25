@@ -27,6 +27,9 @@ class EnrichmentSourceState:
     success_count: int = 0
     failure_count: int = 0
     cache_hit_count: int = 0
+    consecutive_failure_count: int = 0
+    circuit_opened_at: str | None = None
+    circuit_open_until: str | None = None
 
 
 _lock = threading.RLock()
@@ -46,6 +49,28 @@ def _source_slo_seconds(source: str) -> int:
         except ValueError:
             pass
     return _DEFAULT_SOURCE_SLOS_SECONDS.get(source, 24 * 60 * 60)
+
+
+def _source_failure_threshold(source: str) -> int:
+    env_name = f"AGENT_BOM_ENRICHMENT_{source.upper()}_CIRCUIT_FAILURES"
+    raw = (os.environ.get(env_name) or "").strip()
+    if raw:
+        try:
+            return max(1, int(raw))
+        except ValueError:
+            pass
+    return 3
+
+
+def _source_circuit_open_seconds(source: str) -> int:
+    env_name = f"AGENT_BOM_ENRICHMENT_{source.upper()}_CIRCUIT_OPEN_SECONDS"
+    raw = (os.environ.get(env_name) or "").strip()
+    if raw:
+        try:
+            return max(60, int(raw))
+        except ValueError:
+            pass
+    return 5 * 60
 
 
 def _parse_iso(value: str | None) -> datetime | None:
@@ -77,6 +102,9 @@ def record_enrichment_source(source: str, outcome: str, *, error: str = "") -> N
             state.last_success_at = timestamp
             state.last_error = ""
             state.success_count += 1
+            state.consecutive_failure_count = 0
+            state.circuit_opened_at = None
+            state.circuit_open_until = None
         elif outcome == "cache":
             state.last_cache_at = timestamp
             state.cache_hit_count += 1
@@ -84,6 +112,36 @@ def record_enrichment_source(source: str, outcome: str, *, error: str = "") -> N
             state.last_failure_at = timestamp
             state.last_error = str(error).replace("\r", " ").replace("\n", " ").strip()[:300]
             state.failure_count += 1
+            state.consecutive_failure_count += 1
+            if state.consecutive_failure_count >= _source_failure_threshold(normalized):
+                open_until = datetime.now(timezone.utc).timestamp() + _source_circuit_open_seconds(normalized)
+                state.circuit_opened_at = timestamp
+                state.circuit_open_until = datetime.fromtimestamp(open_until, tz=timezone.utc).isoformat()
+
+
+def enrichment_source_available(source: str) -> bool:
+    """Return False when a source circuit is open.
+
+    Callers should skip non-critical enrichment requests while this is false.
+    Cached data can still be used and should be recorded with outcome ``cache``.
+    """
+
+    normalized = source.strip().lower().replace("-", "_")
+    if not normalized:
+        return True
+    now = datetime.now(timezone.utc)
+    with _lock:
+        state = _states.get(normalized)
+        if state is None:
+            return True
+        open_until = _parse_iso(state.circuit_open_until)
+        if open_until is None:
+            return True
+        if open_until <= now:
+            state.circuit_open_until = None
+            state.circuit_opened_at = None
+            return True
+        return False
 
 
 def reset_enrichment_posture_for_tests() -> None:
@@ -108,7 +166,10 @@ def describe_enrichment_posture() -> dict[str, Any]:
         last_failure = _parse_iso(state.last_failure_at)
         age_seconds = int((now - last_good).total_seconds()) if last_good else None
         slo_seconds = _source_slo_seconds(source)
-        if last_failure and (last_good is None or last_failure >= last_good):
+        if _parse_iso(state.circuit_open_until) and not enrichment_source_available(source):
+            status = "circuit_open"
+            message = "enrichment source circuit is open after consecutive failures"
+        elif last_failure and (last_good is None or last_failure >= last_good):
             status = "degraded"
             message = state.last_error or "latest enrichment attempt failed"
         elif age_seconds is None:
@@ -132,11 +193,16 @@ def describe_enrichment_posture() -> dict[str, Any]:
                 "success_count": state.success_count,
                 "failure_count": state.failure_count,
                 "cache_hit_count": state.cache_hit_count,
+                "consecutive_failure_count": state.consecutive_failure_count,
+                "circuit_opened_at": state.circuit_opened_at,
+                "circuit_open_until": state.circuit_open_until,
+                "circuit_failure_threshold": _source_failure_threshold(source),
+                "circuit_open_seconds": _source_circuit_open_seconds(source),
                 "message": message,
             }
         )
 
-    worst_order = {"degraded": 0, "stale": 1, "unknown": 2, "ok": 3}
+    worst_order = {"circuit_open": 0, "degraded": 1, "stale": 2, "unknown": 3, "ok": 4}
     worst = min(rows, key=lambda item: worst_order.get(str(item["status"]), 0)) if rows else None
     return {
         "status": worst["status"] if worst else "unknown",

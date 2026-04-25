@@ -11,7 +11,7 @@ from rich.console import Console
 
 from agent_bom.config import SCANNER_BATCH_DELAY as BATCH_DELAY_SECONDS
 from agent_bom.config import SCANNER_BATCH_SIZE as _BATCH_SIZE
-from agent_bom.enrichment_posture import record_enrichment_source
+from agent_bom.enrichment_posture import enrichment_source_available, record_enrichment_source
 from agent_bom.http_client import OfflineModeError, create_client, request_with_retry
 from agent_bom.models import Package
 from agent_bom.package_utils import normalize_package_name
@@ -297,6 +297,12 @@ async def query_osv_batch_impl(
         return await enrich_results_if_needed_fn(results)
     bump_scan_perf("osv_packages_queried", len(packages_to_query))
     bump_scan_perf("osv_queries_sent", len(queries))
+
+    if not enrichment_source_available("osv"):
+        _logger.warning("OSV enrichment circuit is open; skipping %d remote query item(s)", len(queries))
+        console.print("  [yellow]⚠[/yellow] OSV enrichment circuit open — using cache/local data only")
+        record_scan_warning("OSV enrichment circuit open")
+        return await enrich_results_if_needed_fn(results)
 
     lookup_errors: list[tuple[str, str, str]] = []
     batch_size = min(_BATCH_SIZE, 1000)

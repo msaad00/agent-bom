@@ -83,6 +83,13 @@ from rich.console import Console
     help="Container image used to run non-container server commands in --isolate mode.",
 )
 @click.option(
+    "--sandbox-image-pin-policy",
+    default=None,
+    envvar="AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY",
+    type=click.Choice(["off", "warn", "enforce"]),
+    help="Require digest-pinned sandbox images: off, warn, or enforce.",
+)
+@click.option(
     "--sandbox-mount",
     multiple=True,
     metavar="HOST:CONTAINER[:ro|rw]",
@@ -138,6 +145,7 @@ def proxy_cmd(
     isolate,
     sandbox_runtime,
     sandbox_image,
+    sandbox_image_pin_policy,
     sandbox_mount,
     sandbox_cpus,
     sandbox_memory,
@@ -227,6 +235,7 @@ def proxy_cmd(
             enabled=isolate,
             runtime=sandbox_runtime,
             image=sandbox_image,
+            image_pin_policy=sandbox_image_pin_policy,
             mounts=tuple(sandbox_mount),
             cpus=sandbox_cpus,
             memory=sandbox_memory,

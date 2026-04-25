@@ -305,6 +305,28 @@ bundled k6 harness:
 These are not universal guarantees for every tenant shape. They are the
 thresholds operators should validate before calling a rollout production-ready.
 
+## Graph write batching
+
+Graph persistence uses one batch-size knob across SQLite and Postgres:
+
+```bash
+AGENT_BOM_GRAPH_WRITE_BATCH_SIZE=1000
+```
+
+Both backends persist the same logical graph objects through the same
+`save_graph(graph)` contract: nodes, search rows, edges, attack paths, and
+interaction risks. The backend implementations differ internally, but the
+operator tuning model stays consistent.
+
+The write path uses lazy row generation and bounded batches. Memory is therefore
+tied to the configured batch window instead of total graph size. Raising the
+batch size can improve write throughput, while lowering it can reduce per-batch
+memory and parameter pressure.
+
+This setting controls graph writes only. Graph read latency is governed by
+snapshot windowing, pagination, search indexes, materialized drilldowns, and UI
+virtualization.
+
 ## Publish your own benchmark numbers
 
 `agent-bom` deliberately does not claim a universal scans/day SLA. Real

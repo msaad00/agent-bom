@@ -328,7 +328,7 @@ def test_api_key_middleware_proxy_headers_authenticate_when_enabled(monkeypatch)
         )
 
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
-    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "test-proxy-secret")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "test-proxy-secret-with-32-plus-bytes")
     test_app = Starlette(routes=[Route("/v1/test", dummy)])
     test_app.add_middleware(APIKeyMiddleware, api_key="")
 
@@ -338,7 +338,7 @@ def test_api_key_middleware_proxy_headers_authenticate_when_enabled(monkeypatch)
         headers={
             "X-Agent-Bom-Role": "analyst",
             "X-Agent-Bom-Tenant-ID": "tenant-alpha",
-            "X-Agent-Bom-Proxy-Secret": "test-proxy-secret",
+            "X-Agent-Bom-Proxy-Secret": "test-proxy-secret-with-32-plus-bytes",
             "X-Agent-Bom-Subject": "alice@corp.example",
         },
     )
@@ -356,17 +356,72 @@ def test_api_key_middleware_proxy_headers_require_tenant(monkeypatch):
         return StarletteJSONResponse({"ok": True})
 
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
-    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "test-proxy-secret")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "test-proxy-secret-with-32-plus-bytes")
     test_app = Starlette(routes=[Route("/v1/test", dummy)])
     test_app.add_middleware(APIKeyMiddleware, api_key="")
 
     client = TestClient(test_app)
     resp = client.get(
         "/v1/test",
-        headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Proxy-Secret": "test-proxy-secret"},
+        headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Proxy-Secret": "test-proxy-secret-with-32-plus-bytes"},
     )
     assert resp.status_code == 401
     assert "X-Agent-Bom-Tenant-ID" in resp.json()["detail"]
+
+
+def test_api_key_middleware_proxy_headers_reject_weak_secret(monkeypatch):
+    """Trusted proxy auth must fail closed when attestation secret is too weak."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "short")
+    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app.add_middleware(APIKeyMiddleware, api_key="")
+
+    client = TestClient(test_app)
+    resp = client.get(
+        "/v1/test",
+        headers={
+            "X-Agent-Bom-Role": "viewer",
+            "X-Agent-Bom-Tenant-ID": "tenant-alpha",
+            "X-Agent-Bom-Proxy-Secret": "short",
+        },
+    )
+    assert resp.status_code == 503
+
+
+def test_api_key_middleware_proxy_headers_require_pinned_issuer(monkeypatch):
+    """When configured, trusted proxy auth must bind to the expected upstream issuer."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    secret = "test-proxy-secret-with-32-plus-bytes"
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", secret)
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_ISSUER", "corp-oidc-proxy")
+    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app.add_middleware(APIKeyMiddleware, api_key="")
+
+    client = TestClient(test_app)
+    resp = client.get(
+        "/v1/test",
+        headers={
+            "X-Agent-Bom-Role": "viewer",
+            "X-Agent-Bom-Tenant-ID": "tenant-alpha",
+            "X-Agent-Bom-Proxy-Secret": secret,
+            "X-Agent-Bom-Auth-Issuer": "other-proxy",
+        },
+    )
+    assert resp.status_code == 401
 
 
 def test_api_key_middleware_exception_create_allows_analyst_role():

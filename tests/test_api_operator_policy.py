@@ -21,7 +21,12 @@ from agent_bom.api import audit_log as audit_log_module
 from agent_bom.api import compliance_signing as compliance_signing_module
 from agent_bom.api import server as _server_mod
 from agent_bom.api import stores as _stores
-from agent_bom.api.middleware import APIKeyMiddleware, get_rate_limit_key_status, get_rate_limit_runtime_status
+from agent_bom.api.middleware import (
+    APIKeyMiddleware,
+    get_rate_limit_key_status,
+    get_rate_limit_runtime_status,
+    get_trusted_proxy_auth_status,
+)
 from agent_bom.api.server import app
 from agent_bom.api.storage_schema import (
     CONTROL_PLANE_SCHEMA_TABLE,
@@ -97,13 +102,13 @@ def test_status_unknown_age_when_key_without_rotation_timestamp(
     assert status["fallback_source"] is None
 
 
-def test_status_fallback_source_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_status_does_not_fallback_to_audit_hmac(monkeypatch: pytest.MonkeyPatch) -> None:
     _clear_rate_limit_env(monkeypatch)
     monkeypatch.setenv("AGENT_BOM_AUDIT_HMAC_KEY", "audit-fallback-key")
     _reload_config()
     status = get_rate_limit_key_status()
-    assert status["fallback_source"] == "AGENT_BOM_AUDIT_HMAC_KEY"
-    assert status["status"] == "unknown_age"
+    assert status["fallback_source"] is None
+    assert status["status"] == "ephemeral"
 
 
 def test_status_ok_within_rotation_interval(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -148,6 +153,14 @@ def test_status_invalid_timestamp_reports_unknown_age(monkeypatch: pytest.Monkey
     _reload_config()
     status = get_rate_limit_key_status()
     assert status["status"] == "unknown_age"
+
+
+def test_trusted_proxy_status_requires_strong_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "short")
+    status = get_trusted_proxy_auth_status()
+    assert status["status"] == "weak_secret"
+    assert status["secret_min_bytes"] == 32
 
 
 # ─── /v1/auth/policy surface ──────────────────────────────────────────────────

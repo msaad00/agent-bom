@@ -8,6 +8,7 @@ session and row-level-security setup.
 
 from __future__ import annotations
 
+import inspect
 import logging
 import os
 from contextlib import contextmanager
@@ -40,11 +41,20 @@ def reset_current_tenant(token: Token[str]) -> None:
 @contextmanager
 def bypass_tenant_rls():
     """Temporarily disable Postgres tenant RLS for trusted internal tasks."""
+    stack = inspect.stack(context=0)
+    frame = stack[1] if len(stack) > 1 else None
+    caller = f"{frame.filename}:{frame.lineno}" if frame else "unknown"
+    logger.warning("Postgres tenant RLS bypass activated caller=%s", caller)
     token = _bypass_tenant_rls.set(True)
     try:
         yield
     finally:
         _bypass_tenant_rls.reset(token)
+
+
+def is_tenant_rls_bypassed() -> bool:
+    """Return whether the current task is running with tenant RLS bypassed."""
+    return _bypass_tenant_rls.get()
 
 
 def _get_pool():

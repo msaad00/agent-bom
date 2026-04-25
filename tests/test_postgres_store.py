@@ -92,6 +92,12 @@ class MockConnection:
                     if current is None or (row[1], row[0]) > (current[1], current[0]):
                         latest_by_tenant[tenant_id] = row
                 cursor.rows = [(row[5], row[8]) for row in latest_by_tenant.values()]
+            elif "select hmac_signature from audit_log" in sql_lower:
+                rows = list(self._store.get("audit_log", {}).values())
+                if params:
+                    rows = [row for row in rows if row[5] == params[0]]
+                rows = sorted(rows, key=lambda row: (row[1], row[0]), reverse=True)
+                cursor.rows = [(rows[0][8],)] if rows else []
             elif "group by" in sql_lower:
                 # Aggregate query — return empty list
                 cursor.rows = []

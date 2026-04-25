@@ -46,7 +46,7 @@ _SERVER_CARD_TOOLS = [
     },
     {
         "name": "where",
-        "description": "List all 30 MCP client config discovery paths with existence status — useful for debugging discovery issues",
+        "description": "List supported MCP client discovery paths and coverage telemetry — useful for debugging discovery issues",
         "annotations": {"readOnlyHint": True},
     },
     {

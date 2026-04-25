@@ -1,0 +1,17 @@
+{
+  "tenant_id": "tenant-demo",
+  "exported_at": "2026-04-25T00:00:00Z",
+  "entries": [
+    {
+      "timestamp": "2026-04-25T00:00:00Z",
+      "action": "scan.completed",
+      "actor": "system",
+      "hmac_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "prev_hmac_sha256": null
+    }
+  ],
+  "verification": {
+    "hmac_chain_valid": true,
+    "entry_count": 1
+  }
+}

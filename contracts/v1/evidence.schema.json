@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-bom.dev/contracts/v1/evidence.schema.json",
+  "title": "agent-bom compliance evidence v1",
+  "type": "object",
+  "required": ["evidence_id", "framework", "control_id", "status", "collected_at", "source"],
+  "properties": {
+    "evidence_id": { "type": "string", "minLength": 1 },
+    "framework": { "type": "string", "minLength": 1 },
+    "control_id": { "type": "string", "minLength": 1 },
+    "status": { "type": "string", "enum": ["pass", "fail", "warning", "not_applicable"] },
+    "finding_count": { "type": "integer", "minimum": 0 },
+    "source": { "type": "string", "minLength": 1 },
+    "collected_at": { "type": "string", "format": "date-time" },
+    "code_paths": { "type": "array", "items": { "type": "string" } },
+    "tests": { "type": "array", "items": { "type": "string" } }
+  },
+  "additionalProperties": true
+}

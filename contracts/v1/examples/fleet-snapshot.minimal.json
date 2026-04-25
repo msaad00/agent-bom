@@ -1,0 +1,12 @@
+{
+  "tenant_id": "tenant-demo",
+  "agent_name": "demo-agent",
+  "agent_type": "custom",
+  "lifecycle_state": "discovered",
+  "trust_score": 98,
+  "server_count": 1,
+  "package_count": 1,
+  "credential_count": 0,
+  "vuln_count": 0,
+  "last_seen": "2026-04-25T00:00:00Z"
+}

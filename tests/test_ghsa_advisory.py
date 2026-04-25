@@ -182,6 +182,27 @@ def test_advisory_filtered_by_package_name():
     assert pkg.vulnerabilities[0].fixed_version == "4.19.0"
 
 
+def test_ghsa_advisory_records_enrichment_posture():
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from agent_bom.enrichment_posture import describe_enrichment_posture, reset_enrichment_posture_for_tests
+    from agent_bom.scanners.ghsa_advisory import check_github_advisories
+
+    reset_enrichment_posture_for_tests()
+    pkg = Package(name="express", version="4.17.1", ecosystem="npm")
+
+    async def run():
+        with patch("agent_bom.scanners.ghsa_advisory._fetch_advisories_for_package", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = []
+            return await check_github_advisories([pkg])
+
+    assert asyncio.run(run()) == 0
+    sources = {source["source"]: source for source in describe_enrichment_posture()["sources"]}
+    assert sources["ghsa"]["status"] == "ok"
+    assert sources["ghsa"]["success_count"] == 1
+
+
 def test_advisory_no_match_skipped():
     """Advisory with no matching package is completely skipped."""
     import asyncio

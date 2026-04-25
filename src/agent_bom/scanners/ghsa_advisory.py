@@ -12,6 +12,7 @@ import logging
 
 import httpx
 
+from agent_bom.enrichment_posture import record_enrichment_source
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Package, Severity, Vulnerability
 from agent_bom.package_utils import normalize_package_name
@@ -240,89 +241,100 @@ async def check_github_advisories(
 
     total_new = 0
     semaphore = asyncio.Semaphore(5)
+    fetch_errors: list[str] = []
 
-    async with create_client(timeout=15.0) as client:
-        tasks = [_fetch_advisories_for_package(p, client, semaphore) for p in queryable]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+    try:
+        async with create_client(timeout=15.0) as client:
+            tasks = [_fetch_advisories_for_package(p, client, semaphore) for p in queryable]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        for i, result in enumerate(results):
-            if isinstance(result, BaseException):
-                logger.debug("GHSA fetch failed for %s: %s", queryable[i].name, result)
-                continue
-            if not result:
-                continue
-
-            pkg = queryable[i]
-            eco = _ECOSYSTEM_MAP.get(pkg.ecosystem.lower(), "")
-            key = f"{eco}:{pkg.name.lower()}"
-            target_pkgs = pkg_groups.get(key, [pkg])
-
-            for advisory in result:
-                ghsa_id = advisory.get("ghsa_id", "")
-                cve_id = advisory.get("cve_id") or ""
-                vuln_id = cve_id or ghsa_id
-                if not vuln_id:
+            for i, result in enumerate(results):
+                if isinstance(result, BaseException):
+                    logger.debug("GHSA fetch failed for %s: %s", queryable[i].name, result)
+                    fetch_errors.append(str(result))
+                    continue
+                if not result:
                     continue
 
-                severity, cvss_score = _parse_ghsa_severity(advisory)
-                summary = advisory.get("summary", "") or f"GitHub Advisory ({vuln_id})"
-                cwe_ids = _get_cwe_ids(advisory)
-                refs = [advisory.get("html_url", "")] if advisory.get("html_url") else []
+                pkg = queryable[i]
+                eco = _ECOSYSTEM_MAP.get(pkg.ecosystem.lower(), "")
+                key = f"{eco}:{pkg.name.lower()}"
+                target_pkgs = pkg_groups.get(key, [pkg])
 
-                for target_pkg in target_pkgs:
-                    # Verify this advisory actually affects the target package
-                    # (GitHub API does substring matching, so "express" returns
-                    # advisories for "express-session", "express-validator", etc.)
-                    # Use PEP 503 normalization so "Requests_OAuthlib" matches
-                    # the already-normalized target name "requests-oauthlib".
-                    target_eco = target_pkg.ecosystem
-                    advisory_pkg_names = {
-                        normalize_package_name(v.get("package", {}).get("name", ""), v.get("package", {}).get("ecosystem", target_eco))
-                        for v in advisory.get("vulnerabilities", [])
-                    }
-                    if normalize_package_name(target_pkg.name, target_eco) not in advisory_pkg_names:
+                for advisory in result:
+                    ghsa_id = advisory.get("ghsa_id", "")
+                    cve_id = advisory.get("cve_id") or ""
+                    vuln_id = cve_id or ghsa_id
+                    if not vuln_id:
                         continue
 
-                    existing_ids = {v.id for v in target_pkg.vulnerabilities}
-                    for v in target_pkg.vulnerabilities:
-                        existing_ids.update(v.aliases)
-                    # Skip if CVE or GHSA ID already present (including aliases)
-                    if vuln_id in existing_ids or (cve_id and cve_id in existing_ids) or (ghsa_id and ghsa_id in existing_ids):
-                        continue
+                    severity, cvss_score = _parse_ghsa_severity(advisory)
+                    summary = advisory.get("summary", "") or f"GitHub Advisory ({vuln_id})"
+                    cwe_ids = _get_cwe_ids(advisory)
+                    refs = [advisory.get("html_url", "")] if advisory.get("html_url") else []
 
-                    fixed = _extract_fixed_version(advisory, target_pkg.name, target_pkg.ecosystem)
+                    for target_pkg in target_pkgs:
+                        # Verify this advisory actually affects the target package
+                        # (GitHub API does substring matching, so "express" returns
+                        # advisories for "express-session", "express-validator", etc.)
+                        # Use PEP 503 normalization so "Requests_OAuthlib" matches
+                        # the already-normalized target name "requests-oauthlib".
+                        target_eco = target_pkg.ecosystem
+                        advisory_pkg_names = {
+                            normalize_package_name(v.get("package", {}).get("name", ""), v.get("package", {}).get("ecosystem", target_eco))
+                            for v in advisory.get("vulnerabilities", [])
+                        }
+                        if normalize_package_name(target_pkg.name, target_eco) not in advisory_pkg_names:
+                            continue
 
-                    # Skip if the installed version is already at or beyond the fix.
-                    if target_pkg.version:
-                        if fixed:
-                            # compare_versions returns True only when fix > current
-                            # (upgrade needed).  False = already patched → skip.
-                            from agent_bom.version_utils import compare_versions
+                        existing_ids = {v.id for v in target_pkg.vulnerabilities}
+                        for v in target_pkg.vulnerabilities:
+                            existing_ids.update(v.aliases)
+                        # Skip if CVE or GHSA ID already present (including aliases)
+                        if vuln_id in existing_ids or (cve_id and cve_id in existing_ids) or (ghsa_id and ghsa_id in existing_ids):
+                            continue
 
-                            if not compare_versions(target_pkg.version, fixed, target_pkg.ecosystem):
-                                continue
-                        else:
-                            # patched_versions is null in current GHSA API responses.
-                            # Use vulnerable_version_range to check whether the
-                            # installed version actually falls in the affected range.
-                            # An advisory may list MULTIPLE disjoint ranges for the same
-                            # package — version is affected if it matches ANY of them.
-                            vuln_ranges = _get_vulnerable_ranges_for_package(advisory, target_pkg.name, target_pkg.ecosystem)
-                            if vuln_ranges and not any(_installed_version_is_affected(target_pkg.version, r) for r in vuln_ranges):
-                                continue
+                        fixed = _extract_fixed_version(advisory, target_pkg.name, target_pkg.ecosystem)
 
-                    vuln = Vulnerability(
-                        id=vuln_id,
-                        summary=summary[:200],
-                        severity=severity,
-                        cvss_score=cvss_score,
-                        fixed_version=fixed,
-                        references=refs,
-                        cwe_ids=cwe_ids,
-                        advisory_sources=["ghsa"],
-                    )
-                    target_pkg.vulnerabilities.append(vuln)
-                    total_new += 1
+                        # Skip if the installed version is already at or beyond the fix.
+                        if target_pkg.version:
+                            if fixed:
+                                # compare_versions returns True only when fix > current
+                                # (upgrade needed).  False = already patched → skip.
+                                from agent_bom.version_utils import compare_versions
+
+                                if not compare_versions(target_pkg.version, fixed, target_pkg.ecosystem):
+                                    continue
+                            else:
+                                # patched_versions is null in current GHSA API responses.
+                                # Use vulnerable_version_range to check whether the
+                                # installed version actually falls in the affected range.
+                                # An advisory may list MULTIPLE disjoint ranges for the same
+                                # package — version is affected if it matches ANY of them.
+                                vuln_ranges = _get_vulnerable_ranges_for_package(advisory, target_pkg.name, target_pkg.ecosystem)
+                                if vuln_ranges and not any(_installed_version_is_affected(target_pkg.version, r) for r in vuln_ranges):
+                                    continue
+
+                        vuln = Vulnerability(
+                            id=vuln_id,
+                            summary=summary[:200],
+                            severity=severity,
+                            cvss_score=cvss_score,
+                            fixed_version=fixed,
+                            references=refs,
+                            cwe_ids=cwe_ids,
+                            advisory_sources=["ghsa"],
+                        )
+                        target_pkg.vulnerabilities.append(vuln)
+                        total_new += 1
+    except Exception as exc:
+        record_enrichment_source("ghsa", "failure", error=str(exc))
+        raise
+
+    if fetch_errors:
+        record_enrichment_source("ghsa", "failure", error=fetch_errors[0])
+    else:
+        record_enrichment_source("ghsa", "success")
 
     if total_new:
         logger.info("GHSA advisories: found %d new CVE(s)", total_new)

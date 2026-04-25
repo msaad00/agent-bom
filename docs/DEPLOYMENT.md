@@ -721,7 +721,7 @@ def scan_with_audit(user, target):
 
 | Feature | agent-bom |
 |---------|-----------|
-| AI agent config discovery | ✅ (30 MCP clients) |
+| AI agent config discovery | ✅ (29 first-class client types + dynamic/project surfaces) |
 | MCP server support | ✅ |
 | Transitive deps | ✅ |
 | Blast radius (AI-specific) | ✅ |

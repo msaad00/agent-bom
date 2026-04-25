@@ -10,6 +10,7 @@ from typing import Any, Iterable, Iterator, Sequence
 
 from agent_bom.api.graph_store import _escape_like_query, _node_search_text, decode_graph_cursor, encode_graph_cursor
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
+from agent_bom.config import POSTGRES_GRAPH_SEARCH_TIMEOUT_MS, POSTGRES_STATEMENT_TIMEOUT_MS
 from agent_bom.graph import EntityType
 
 from .postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
@@ -56,6 +57,26 @@ def _execute_many_batched(conn, sql: str, rows: Iterable[Sequence[Any]], *, batc
                 conn.execute(sql, row)
         total += len(batch)
     return total
+
+
+def _graph_search_timeout_ms() -> int:
+    """Return the per-query Postgres graph search timeout.
+
+    The graph search budget is allowed to be lower than the general Postgres
+    statement timeout, but not higher. Operators can disable the search-specific
+    timeout by setting it to 0.
+    """
+    if POSTGRES_GRAPH_SEARCH_TIMEOUT_MS <= 0:
+        return 0
+    if POSTGRES_STATEMENT_TIMEOUT_MS <= 0:
+        return max(1, POSTGRES_GRAPH_SEARCH_TIMEOUT_MS)
+    return max(1, min(POSTGRES_GRAPH_SEARCH_TIMEOUT_MS, POSTGRES_STATEMENT_TIMEOUT_MS))
+
+
+def _apply_graph_search_timeout(conn) -> None:
+    timeout_ms = _graph_search_timeout_ms()
+    if timeout_ms > 0:
+        conn.execute("SELECT set_config('statement_timeout', %s, true)", (str(timeout_ms),))
 
 
 def _assert_allowed_entity_types(entity_types: set[str] | None) -> None:
@@ -1158,6 +1179,7 @@ class PostgresGraphStore:
             return [], 0, None
 
         with _tenant_connection(self._pool) as conn:
+            _apply_graph_search_timeout(conn)
             search_where = [
                 "gns.tenant_id = %s",
                 "gns.scan_id = %s",

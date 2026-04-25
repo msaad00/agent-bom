@@ -1268,6 +1268,32 @@ def test_graph_store_save_graph_batches_postgres_writes(mock_pool, monkeypatch):
     assert [len(batch) for batch in graph_edge_batches] == [2]
 
 
+def test_graph_store_search_applies_local_timeout(mock_pool, monkeypatch):
+    from agent_bom.api import postgres_graph
+    from agent_bom.api.postgres_store import PostgresGraphStore
+    from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
+
+    monkeypatch.setattr(postgres_graph, "POSTGRES_GRAPH_SEARCH_TIMEOUT_MS", 2500)
+    monkeypatch.setattr(postgres_graph, "POSTGRES_STATEMENT_TIMEOUT_MS", 15_000)
+    store = PostgresGraphStore(pool=mock_pool)
+    graph = UnifiedGraph(scan_id="scan-search", tenant_id="tenant-alpha")
+    graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="Agent Alpha"))
+    store.save_graph(graph)
+
+    store.search_nodes(tenant_id="tenant-alpha", scan_id="scan-search", query="agent", limit=10)
+
+    assert ("SELECT set_config('statement_timeout', %s, true)", ("2500",)) in mock_pool._conn.executed
+
+
+def test_graph_store_search_timeout_is_capped_by_statement_timeout(monkeypatch):
+    from agent_bom.api import postgres_graph
+
+    monkeypatch.setattr(postgres_graph, "POSTGRES_GRAPH_SEARCH_TIMEOUT_MS", 30_000)
+    monkeypatch.setattr(postgres_graph, "POSTGRES_STATEMENT_TIMEOUT_MS", 12_000)
+
+    assert postgres_graph._graph_search_timeout_ms() == 12_000
+
+
 def test_graph_store_attack_paths_for_sources_uses_materialized_table(mock_pool, monkeypatch):
     from agent_bom.api.postgres_store import PostgresGraphStore
     from agent_bom.graph import AttackPath, EntityType, UnifiedGraph, UnifiedNode

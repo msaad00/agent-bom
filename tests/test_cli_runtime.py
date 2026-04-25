@@ -86,6 +86,32 @@ def test_proxy_cmd_passes_control_plane_settings():
     assert mock_run.await_args.kwargs["audit_push_interval"] == 15
 
 
+def test_proxy_cmd_passes_sandbox_config():
+    runner = CliRunner()
+    with (
+        patch("agent_bom.proxy.run_proxy", new_callable=AsyncMock, return_value=0) as mock_run,
+        patch("agent_bom.project_config.load_project_config", return_value=None),
+    ):
+        result = runner.invoke(
+            proxy_cmd,
+            [
+                "--isolate",
+                "--sandbox-runtime",
+                "docker",
+                "--sandbox-image",
+                "ghcr.io/acme/mcp-sandbox:1",
+                "--",
+                "npx",
+                "@mcp/server",
+            ],
+        )
+        assert result.exit_code == 0
+    config = mock_run.await_args.kwargs["sandbox_config"]
+    assert config.enabled is True
+    assert config.runtime == "docker"
+    assert config.image == "ghcr.io/acme/mcp-sandbox:1"
+
+
 # ---------------------------------------------------------------------------
 # proxy_configure_cmd
 # ---------------------------------------------------------------------------

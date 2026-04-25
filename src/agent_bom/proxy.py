@@ -39,6 +39,7 @@ from agent_bom.api.tracing import (
     parse_tracestate,
 )
 from agent_bom.async_stdin import create_async_stdin_reader, read_async_stdin_line
+from agent_bom.proxy_sandbox import SandboxConfig, build_sandboxed_command
 from agent_bom.proxy_scanner import ScanConfig, load_scan_config, scan_tool_call, scan_tool_response
 from agent_bom.security import validate_arguments, validate_command
 
@@ -895,6 +896,7 @@ async def run_proxy(
     policy_refresh_seconds: int = 30,
     audit_push_interval: int = 10,
     response_signing_key: Optional[str] = None,
+    sandbox_config: SandboxConfig | None = None,
 ) -> int:
     """Main proxy loop. Spawns server subprocess, relays JSON-RPC.
 
@@ -915,6 +917,7 @@ async def run_proxy(
         metrics_token: Optional bearer token for Prometheus /metrics endpoint.
         control_plane_url: Optional control-plane URL for policy pull and audit push.
         control_plane_token: Optional bearer/API token for control-plane auth.
+        sandbox_config: Optional container isolation posture for stdio MCP servers.
 
     Returns the server process exit code.
     """
@@ -1193,10 +1196,34 @@ async def run_proxy(
     pending_calls: dict[int | str, tuple[str, float, dict[str, str]]] = {}  # id → (tool_name, start_time, trace_meta)
     pending_call_ttl = 300.0  # 5 minutes — evict orphaned entries
 
-    # Validate the server command before spawning
+    sandbox_evidence: dict[str, object] = {"enabled": False}
+    if sandbox_config and sandbox_config.enabled:
+        server_cmd, sandbox_evidence = build_sandboxed_command(server_cmd, sandbox_config)
+        logger.info(
+            "MCP server isolation enabled using %s (%s)",
+            sandbox_evidence.get("runtime"),
+            sandbox_evidence.get("mode"),
+        )
+    elif sandbox_config:
+        sandbox_evidence = sandbox_config.evidence()
+
+    # Validate the effective server command before spawning
     validate_command(server_cmd[0])
     if len(server_cmd) > 1:
         validate_arguments(list(server_cmd[1:]))
+
+    if log_file:
+        write_audit_record(
+            log_file,
+            {
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "type": "mcp_execution_posture",
+                "execution_posture": {
+                    "mode": "container_isolated" if sandbox_evidence.get("enabled") else "observation_only",
+                    "sandbox_evidence": sandbox_evidence,
+                },
+            },
+        )
 
     # Spawn the actual MCP server
     process = await asyncio.create_subprocess_exec(
@@ -1663,6 +1690,10 @@ async def run_proxy(
         # Write metrics summary + runtime alerts to audit log before closing
         summary = metrics.summary()
         summary.update(summarize_runtime_alerts(runtime_alerts))
+        summary["execution_posture"] = {
+            "mode": "container_isolated" if sandbox_evidence.get("enabled") else "observation_only",
+            "sandbox_evidence": sandbox_evidence,
+        }
         if audit_task:
             audit_task.cancel()
         if refresh_task:

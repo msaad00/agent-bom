@@ -113,6 +113,7 @@ def test_run_help():
     assert "--policy" in result.output
     assert "--audit-log" in result.output
     assert "--rate-limit" in result.output
+    assert "--isolate" in result.output
 
 
 def test_run_still_works_as_hidden_command():
@@ -164,6 +165,30 @@ def test_run_passes_policy_to_run_proxy():
         mock_asyncio_run.assert_called_once()
     finally:
         os.unlink(policy_path)
+
+
+def test_run_passes_sandbox_config_to_run_proxy():
+    runner = CliRunner()
+
+    with (
+        patch("agent_bom.cli.run.asyncio.run") as mock_asyncio_run,
+        patch("agent_bom.project_config.load_project_config", return_value=None),
+    ):
+        mock_asyncio_run.side_effect = _consume_coroutine_and_return()
+        result = runner.invoke(
+            run_cmd,
+            [
+                "uvx/mcp-server-git",
+                "--quiet",
+                "--isolate",
+                "--sandbox-runtime",
+                "podman",
+                "--sandbox-image",
+                "ghcr.io/acme/mcp-sandbox:1",
+            ],
+        )
+    assert result.exit_code == 0
+    mock_asyncio_run.assert_called_once()
 
 
 def test_run_command_not_found_handled(tmp_path):

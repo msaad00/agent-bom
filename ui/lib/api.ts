@@ -159,6 +159,14 @@ export interface GraphAgentsResponse {
   pagination: GraphPagination;
 }
 
+export interface GraphDiffResponse {
+  nodes_added: string[];
+  nodes_removed: string[];
+  nodes_changed: string[];
+  edges_added: [string, string, string][];
+  edges_removed: [string, string, string][];
+}
+
 export type GraphExportFormat = "json" | "dot" | "mermaid" | "graphml" | "cypher";
 
 export type DeploymentMode = "local" | "fleet" | "cluster" | "hybrid";
@@ -1420,6 +1428,14 @@ export const api = {
 
   /** List persisted unified graph snapshots */
   getGraphSnapshots: (limit = 50) => get<GraphSnapshot[]>(`/v1/graph/snapshots?limit=${limit}`),
+
+  /** Diff two persisted graph snapshots without loading either full graph */
+  getGraphDiff: (oldScanId: string, newScanId: string) => {
+    const params = new URLSearchParams();
+    params.set("old", oldScanId);
+    params.set("new", newScanId);
+    return get<GraphDiffResponse>(`/v1/graph/diff?${params.toString()}`);
+  },
 
   /** Load the unified graph for a specific snapshot or the latest persisted state */
   getGraph: (filters?: {

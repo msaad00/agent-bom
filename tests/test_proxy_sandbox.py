@@ -40,9 +40,31 @@ def test_sandbox_config_from_env_parses_operator_values(monkeypatch, tmp_path):
     assert config.mounts[0].target == "/workspace"
 
 
+def test_sandbox_config_default_egress_is_network_none(monkeypatch):
+    monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX_EGRESS", raising=False)
+    monkeypatch.setattr("agent_bom.proxy_sandbox.resolve_container_runtime", lambda runtime: "docker")
+
+    config = sandbox_config_from_env(enabled=True, image="ghcr.io/acme/mcp-sandbox:1")
+    command, evidence = build_sandboxed_command(["npx", "--yes", "@mcp/server"], config)
+
+    assert config.egress_policy == "deny"
+    assert command[command.index("--network") + 1] == "none"
+    assert evidence["egress_policy"] == "deny"
+    assert evidence["network"] == "none"
+
+
 def test_build_sandboxed_command_wraps_non_container_command(monkeypatch):
     monkeypatch.setattr("agent_bom.proxy_sandbox.resolve_container_runtime", lambda runtime: "docker")
-    config = SandboxConfig(enabled=True, runtime="auto", image="ghcr.io/acme/mcp-sandbox:1")
+    config = SandboxConfig(
+        enabled=True,
+        runtime="auto",
+        image="ghcr.io/acme/mcp-sandbox:1",
+        cpus="0.5",
+        memory="256m",
+        pids_limit=64,
+        tmpfs_size="32m",
+        timeout_seconds=300,
+    )
 
     command, evidence = build_sandboxed_command(["npx", "--yes", "@mcp/server"], config)
 
@@ -50,10 +72,15 @@ def test_build_sandboxed_command_wraps_non_container_command(monkeypatch):
     assert "--read-only" in command
     assert ["--cap-drop", "ALL"] == command[command.index("--cap-drop") : command.index("--cap-drop") + 2]
     assert ["--network", "none"] == command[command.index("--network") : command.index("--network") + 2]
+    assert ["--cpus", "0.5"] == command[command.index("--cpus") : command.index("--cpus") + 2]
+    assert ["--memory", "256m"] == command[command.index("--memory") : command.index("--memory") + 2]
+    assert ["--pids-limit", "64"] == command[command.index("--pids-limit") : command.index("--pids-limit") + 2]
+    assert ["/tmp:size=32m,mode=1777"] == command[command.index("--tmpfs") + 1 : command.index("--tmpfs") + 2]
     assert "ghcr.io/acme/mcp-sandbox:1" in command
     assert command[-3:] == ["npx", "--yes", "@mcp/server"]
     assert evidence["mode"] == "wrap_command_in_image"
     assert evidence["enabled"] is True
+    assert evidence["timeout_seconds"] == 300
 
 
 def test_build_sandboxed_command_hardens_existing_container_run(monkeypatch):
@@ -83,6 +110,7 @@ def test_build_sandboxed_command_strips_weaker_existing_container_flags(monkeypa
             "host",
             "--privileged",
             "--cap-add=SYS_ADMIN",
+            "--memory=8g",
             "ghcr.io/acme/server:1",
         ],
         config,
@@ -91,7 +119,19 @@ def test_build_sandboxed_command_strips_weaker_existing_container_flags(monkeypa
     assert "host" not in command
     assert "--privileged" not in command
     assert "--cap-add=SYS_ADMIN" not in command
+    assert "--memory=8g" not in command
     assert command[command.index("--network") + 1] == "none"
+
+
+def test_allow_all_egress_uses_bridge_network(monkeypatch):
+    monkeypatch.setattr("agent_bom.proxy_sandbox.resolve_container_runtime", lambda runtime: "docker")
+    config = SandboxConfig(enabled=True, runtime="docker", image="ghcr.io/acme/server:1", egress_policy="allow_all")
+
+    command, evidence = build_sandboxed_command(["npx", "@mcp/server"], config)
+
+    assert command[command.index("--network") + 1] == "bridge"
+    assert evidence["egress_policy"] == "allow_all"
+    assert evidence["network"] == "bridge"
 
 
 def test_build_sandboxed_command_requires_image_for_plain_commands(monkeypatch):

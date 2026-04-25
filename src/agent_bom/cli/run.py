@@ -171,6 +171,35 @@ def _resolve_server_command(server: str) -> list[str]:
     metavar="HOST:CONTAINER[:ro|rw]",
     help="Explicit bind mount for --isolate. Defaults to read-only.",
 )
+@click.option("--sandbox-cpus", default=None, envvar="AGENT_BOM_MCP_SANDBOX_CPUS", help="CPU limit for isolated MCP server.")
+@click.option("--sandbox-memory", default=None, envvar="AGENT_BOM_MCP_SANDBOX_MEMORY", help="Memory limit for isolated MCP server.")
+@click.option(
+    "--sandbox-pids-limit",
+    default=None,
+    type=int,
+    envvar="AGENT_BOM_MCP_SANDBOX_PIDS_LIMIT",
+    help="Process limit for isolated MCP server.",
+)
+@click.option(
+    "--sandbox-tmpfs-size",
+    default=None,
+    envvar="AGENT_BOM_MCP_SANDBOX_TMPFS_SIZE",
+    help="Writable /tmp tmpfs size for isolated MCP server, for example 64m.",
+)
+@click.option(
+    "--sandbox-timeout-seconds",
+    default=None,
+    type=int,
+    envvar="AGENT_BOM_MCP_SANDBOX_TIMEOUT_SECONDS",
+    help="Optional max runtime before the isolated MCP server is terminated.",
+)
+@click.option(
+    "--sandbox-egress",
+    default=None,
+    envvar="AGENT_BOM_MCP_SANDBOX_EGRESS",
+    type=click.Choice(["deny", "allow-all"]),
+    help="Network egress posture for isolated MCP server.",
+)
 @click.pass_context
 def run_cmd(
     ctx: click.Context,
@@ -187,6 +216,12 @@ def run_cmd(
     sandbox_runtime: str | None,
     sandbox_image: str | None,
     sandbox_mount: tuple[str, ...],
+    sandbox_cpus: str | None,
+    sandbox_memory: str | None,
+    sandbox_pids_limit: int | None,
+    sandbox_tmpfs_size: str | None,
+    sandbox_timeout_seconds: int | None,
+    sandbox_egress: str | None,
 ) -> None:
     """Launch SERVER through agent-bom's runtime proxy.
 
@@ -247,6 +282,12 @@ def run_cmd(
             runtime=sandbox_runtime,
             image=sandbox_image,
             mounts=sandbox_mount,
+            cpus=sandbox_cpus,
+            memory=sandbox_memory,
+            pids_limit=sandbox_pids_limit,
+            tmpfs_size=sandbox_tmpfs_size,
+            timeout_seconds=sandbox_timeout_seconds,
+            egress_policy=sandbox_egress,
         )
     except ValueError as exc:
         raise click.UsageError(str(exc)) from exc

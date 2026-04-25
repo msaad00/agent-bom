@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -922,6 +923,33 @@ class TestGraphStoreBackendSelection:
         assert "latest_snapshot_id" in helper_calls
         assert "page_nodes" in helper_calls
         assert "search_nodes" in helper_calls
+
+    def test_graph_route_returns_429_when_backpressure_opens(self, recording_graph_store, monkeypatch):
+        from agent_bom.backpressure import reset_backpressure_for_tests
+
+        monkeypatch.setenv("AGENT_BOM_BACKPRESSURE_GRAPH_P99_MS", "1")
+        monkeypatch.setenv("AGENT_BOM_BACKPRESSURE_GRAPH_MIN_SAMPLES", "1")
+        monkeypatch.setenv("AGENT_BOM_BACKPRESSURE_GRAPH_COOLDOWN_SECONDS", "30")
+        reset_backpressure_for_tests()
+
+        original_latest_snapshot_id = recording_graph_store.latest_snapshot_id
+
+        def _slow_latest_snapshot_id(*, tenant_id: str = "") -> str:
+            time.sleep(0.01)
+            return original_latest_snapshot_id(tenant_id=tenant_id)
+
+        monkeypatch.setattr(recording_graph_store, "latest_snapshot_id", _slow_latest_snapshot_id)
+        client = TestClient(app)
+
+        try:
+            response = client.get("/v1/graph")
+            assert response.status_code == 429
+            body = response.json()["detail"]
+            assert body["path"] == "graph"
+            assert body["reason"] == "p99_latency_threshold"
+            assert int(response.headers["Retry-After"]) >= 1
+        finally:
+            reset_backpressure_for_tests()
 
     def test_graph_search_forwards_slice_filters(self, recording_graph_store):
         recording_graph_store.graph.add_node(

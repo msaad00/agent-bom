@@ -28,6 +28,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from agent_bom.api.stores import _get_graph_store
+from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
 from agent_bom.graph import SEVERITY_RANK, EntityType, GraphFilterOptions, RelationshipType, UnifiedGraph
 from agent_bom.security import sanitize_error
 
@@ -155,7 +156,11 @@ def _enforce_graph_query_budget(body: GraphQueryRequest) -> dict[str, int]:
 
 async def _graph_store_call(fn, /, *args, **kwargs):
     """Run sync graph store methods off the event loop."""
-    return await asyncio.to_thread(fn, *args, **kwargs)
+    try:
+        async with adaptive_backpressure("graph"):
+            return await asyncio.to_thread(fn, *args, **kwargs)
+    except BackpressureRejectedError as exc:
+        raise HTTPException(status_code=429, detail=exc.to_dict(), headers={"Retry-After": str(exc.retry_after_seconds)}) from exc
 
 
 # ═══════════════════════════════════════════════════════════════════════════

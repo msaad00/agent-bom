@@ -125,6 +125,45 @@ fleet_group.add_command(fleet_sync_cmd, "sync")
 fleet_group.add_command(fleet_list_cmd, "list")
 fleet_group.add_command(fleet_stats_cmd, "stats")
 
+
+@click.command("reconcile-k8s")
+@click.option("--previous", type=click.Path(exists=True), required=True, help="Previous inventory JSON snapshot")
+@click.option("--current", type=click.Path(exists=True), required=True, help="Current inventory JSON snapshot")
+@click.option("--stale-after-seconds", type=int, default=6 * 60 * 60, show_default=True)
+@click.option("--json", "as_json", is_flag=True, help="Emit the reconciliation contract as JSON")
+def fleet_reconcile_k8s_cmd(previous: str, current: str, stale_after_seconds: int, as_json: bool) -> None:
+    """Compare Kubernetes inventory snapshots for continuous fleet reconciliation."""
+    import json
+
+    from rich.console import Console
+
+    from agent_bom.fleet.k8s_reconcile import (
+        load_k8s_inventory_snapshot,
+        reconcile_k8s_inventory,
+    )
+
+    result = reconcile_k8s_inventory(
+        load_k8s_inventory_snapshot(previous),
+        load_k8s_inventory_snapshot(current),
+        stale_after_seconds=stale_after_seconds,
+    )
+    if as_json:
+        click.echo(json.dumps(result, indent=2, sort_keys=True))
+        return
+
+    con = Console()
+    summary = result["summary"]
+    con.print("[bold]Kubernetes inventory reconciliation[/bold]")
+    con.print(
+        "  "
+        f"current={summary['current']} previous={summary['previous']} "
+        f"added={summary['added']} changed={summary['changed']} "
+        f"missing={summary['missing']} stale={summary['stale']}"
+    )
+
+
+fleet_group.add_command(fleet_reconcile_k8s_cmd, "reconcile-k8s")
+
 # ── Connectors command (new) ─────────────────────────────────────────────────
 
 

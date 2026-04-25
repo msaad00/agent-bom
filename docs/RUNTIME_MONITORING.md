@@ -373,6 +373,27 @@ To enable runtime monitoring on all nodes:
 kubectl apply -f deploy/k8s/daemonset.yaml
 ```
 
+### Continuous Kubernetes Inventory Reconciliation
+
+For fleet deployments, treat Kubernetes discovery as a repeated reconciliation
+loop rather than a one-off scan. Capture the previous and current inventory
+snapshots, then compare them with:
+
+```bash
+agent-bom fleet reconcile-k8s \
+  --previous /state/previous-inventory.json \
+  --current /state/current-inventory.json \
+  --json
+```
+
+The reconciliation contract emits stable Kubernetes identity keys, added,
+changed, missing, and stale records. The identity key intentionally uses
+tenant, cluster, namespace, workload, agent, server, and surface metadata
+instead of pod UID/name so normal rollout churn does not create duplicate
+assets. CronJobs, selected-node DaemonSets, and future operators can publish
+that JSON alongside `agent-bom inventory --json` to prove whether the inventory
+is current and what changed since the last observation.
+
 ---
 
 ## Helm Chart

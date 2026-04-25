@@ -8,6 +8,24 @@ updates:
       - "dependencies"
       - "github-actions"
 
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "daily"
+    labels:
+      - "dependencies"
+      - "docker"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "docker"
+    directory: "/ui"
+    schedule:
+      interval: "daily"
+    labels:
+      - "dependencies"
+      - "docker"
+    open-pull-requests-limit: 5
+
   - package-ecosystem: "pip"
     directory: "/"
     schedule:

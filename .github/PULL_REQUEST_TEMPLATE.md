@@ -19,6 +19,7 @@
 
 ## Checklist
 - [ ] Version bumped if this is a release PR (`scripts/bump-version.py`)
+- [ ] CHANGELOG entry added if this changes released behavior, user-facing docs, packaging, deployment, security posture, or compatibility
 - [ ] Docs/diagrams updated if features changed (`ARCHITECTURE.md`, `README.md`, SVGs)
 - [ ] No secrets, credentials, or personally identifiable data in diff
 - [ ] Backend, CLI, UI, docs, schema, deploy config, and tests are aligned for this change

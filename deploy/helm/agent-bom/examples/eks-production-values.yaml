@@ -122,6 +122,22 @@ controlPlane:
             remoteRef:
               key: REPLACE_ME_AUTH_SECRET_PATH
               property: REPLACE_ME_BROWSER_SESSION_SIGNING_KEY_LAST_ROTATED_PROPERTY
+          - secretKey: AGENT_BOM_RATE_LIMIT_KEY
+            remoteRef:
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_RATE_LIMIT_KEY_PROPERTY
+          - secretKey: AGENT_BOM_RATE_LIMIT_KEY_LAST_ROTATED
+            remoteRef:
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_RATE_LIMIT_KEY_LAST_ROTATED_PROPERTY
+          - secretKey: AGENT_BOM_TRUST_PROXY_AUTH_SECRET
+            remoteRef:
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_TRUST_PROXY_AUTH_SECRET_PROPERTY
+          - secretKey: AGENT_BOM_TRUST_PROXY_AUTH_ISSUER
+            remoteRef:
+              key: REPLACE_ME_AUTH_SECRET_PATH
+              property: REPLACE_ME_TRUST_PROXY_AUTH_ISSUER_PROPERTY
           - secretKey: AGENT_BOM_SAML_IDP_ENTITY_ID
             remoteRef:
               key: REPLACE_ME_AUTH_SECRET_PATH

@@ -10,7 +10,7 @@ from agent_bom.api.server import app
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import set_job_store
 
-PROXY_SECRET = "test-proxy-secret"
+PROXY_SECRET = "test-proxy-secret-with-32-plus-bytes"
 
 
 def _proxy_headers(role: str = "viewer", tenant: str = "tenant-alpha") -> dict[str, str]:

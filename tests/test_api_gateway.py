@@ -12,7 +12,7 @@ from agent_bom.api.policy_store import (
 )
 from agent_bom.api.server import app, set_policy_store
 
-PROXY_SECRET = "test-proxy-secret"
+PROXY_SECRET = "test-proxy-secret-with-32-plus-bytes"
 ADMIN_HEADERS = {
     "X-Agent-Bom-Role": "admin",
     "X-Agent-Bom-Tenant-ID": "default",

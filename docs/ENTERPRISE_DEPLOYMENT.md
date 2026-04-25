@@ -194,6 +194,15 @@ For horizontally scaled control-plane APIs, shared rate limiting is mandatory. `
 
 For horizontally scaled SCIM, shared identity storage is also mandatory. Set `AGENT_BOM_POSTGRES_URL` for EKS or any multi-replica control plane, and keep `AGENT_BOM_REQUIRE_SHARED_SCIM_STORE=1` enabled in production values. SQLite is acceptable only for a single-node pilot.
 
+Production deployments must keep cryptographic keys separated by purpose:
+
+- `AGENT_BOM_AUDIT_HMAC_KEY` signs the tamper-evident audit chain and audit exports.
+- `AGENT_BOM_RATE_LIMIT_KEY` fingerprints API keys for rate-limit buckets.
+- `AGENT_BOM_BROWSER_SESSION_SIGNING_KEY` signs httpOnly browser session cookies.
+- `AGENT_BOM_TRUST_PROXY_AUTH_SECRET` attests trusted reverse-proxy identity headers and must contain at least 32 bytes of secret material.
+
+Do not reuse the API key or audit HMAC key as a rate-limit, browser-session, or proxy-attestation secret. Set `AGENT_BOM_TRUST_PROXY_AUTH_ISSUER` when the upstream proxy can inject a stable issuer identifier; the API will then reject trusted-proxy requests from any other issuer.
+
 API-local filesystem scan endpoints are meant for workstation pilots. In EKS
 and other shared control planes, keep `AGENT_BOM_API_LOCAL_PATH_SCANS=disabled`
 and collect filesystem evidence through endpoint agents or mounted tenant

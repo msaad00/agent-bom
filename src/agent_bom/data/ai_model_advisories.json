@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "source": "agent-bom bundled AI model advisory rules",
+  "last_updated": "2026-04-25",
+  "freshness": "bundled",
+  "entries": [
+    {
+      "id": "AGENT-BOM-HF-CUSTOM-CODE-001",
+      "registry": "huggingface",
+      "model_id_pattern": "*",
+      "match": {
+        "tag": "custom_code"
+      },
+      "risk_type": "remote_code_on_model_load",
+      "severity": "high",
+      "confidence": "high",
+      "summary": "Model metadata indicates custom code is required. Loading may execute repository code and should be gated by policy review.",
+      "evidence_url": "https://huggingface.co/docs/transformers/main/en/model_doc/auto#transformers.AutoConfig.from_pretrained",
+      "source": "huggingface_model_card_metadata",
+      "freshness": "bundled"
+    },
+    {
+      "id": "AGENT-BOM-HF-UNSAFE-SERIALIZATION-001",
+      "registry": "huggingface",
+      "model_id_pattern": "*",
+      "match": {
+        "tag": "pytorch"
+      },
+      "risk_type": "unsafe_weight_serialization_possible",
+      "severity": "medium",
+      "confidence": "medium",
+      "summary": "PyTorch model artifacts may use pickle-backed serialization. Prefer signed safetensors artifacts where available.",
+      "evidence_url": "https://huggingface.co/docs/safetensors/index",
+      "source": "huggingface_model_card_metadata",
+      "freshness": "bundled"
+    }
+  ]
+}

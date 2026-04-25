@@ -79,7 +79,16 @@ class MockConnection:
                     self._store[table] = {}
                 self._store[table][params[0]] = params
         elif sql_lower.startswith("select"):
-            if "group by" in sql_lower:
+            if "select distinct on (team_id) team_id, hmac_signature" in sql_lower:
+                rows = list(self._store.get("audit_log", {}).values())
+                latest_by_tenant: dict[str, tuple] = {}
+                for row in rows:
+                    tenant_id = row[5]
+                    current = latest_by_tenant.get(tenant_id)
+                    if current is None or (row[1], row[0]) > (current[1], current[0]):
+                        latest_by_tenant[tenant_id] = row
+                cursor.rows = [(row[5], row[8]) for row in latest_by_tenant.values()]
+            elif "group by" in sql_lower:
                 # Aggregate query — return empty list
                 cursor.rows = []
             elif "count(*)" in sql_lower:
@@ -767,6 +776,25 @@ def test_postgres_audit_log_roundtrip(mock_pool):
     verified, tampered = store.verify_integrity()
     assert verified == 1
     assert tampered == 0
+
+
+def test_postgres_audit_hydrates_last_signature_after_restart(mock_pool):
+    from agent_bom.api.audit_log import AuditEntry
+    from agent_bom.api.postgres_store import PostgresAuditLog
+
+    first = PostgresAuditLog(pool=mock_pool)
+    first_entry = AuditEntry(action="scan", actor="admin", resource="job/1", details={"tenant_id": "tenant-alpha"})
+    first.append(first_entry)
+    first_sig = first._last_sig_by_tenant["tenant-alpha"]
+
+    restarted = PostgresAuditLog(pool=mock_pool)
+    assert restarted._last_sig_by_tenant["tenant-alpha"] == first_sig
+
+    second_entry = AuditEntry(action="scan", actor="admin", resource="job/2", details={"tenant_id": "tenant-alpha"})
+    restarted.append(second_entry)
+
+    assert second_entry.prev_signature == first_sig
+    assert restarted._last_sig_by_tenant["tenant-alpha"] == second_entry.hmac_signature
 
 
 def test_postgres_trend_store_roundtrip(mock_pool):

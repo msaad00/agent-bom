@@ -690,6 +690,11 @@ class BlastRadius:
     nist_800_53_tags: list[str] = field(default_factory=list)  # NIST 800-53 Rev 5, e.g. ["RA-5", "SI-2"]
     fedramp_tags: list[str] = field(default_factory=list)  # FedRAMP Moderate baseline, e.g. ["RA-5"]
     ai_summary: Optional[str] = None  # LLM-generated contextual risk narrative
+    suppressed: bool = False  # True when a tenant suppression/feedback rule covers this finding
+    suppression_id: Optional[str] = None
+    suppression_state: Optional[str] = None
+    suppression_reason: Optional[str] = None
+    unsuppressed_risk_score: Optional[float] = None
 
     # CWE-aware impact context
     impact_category: str = "code-execution"  # CWE-derived: code-execution, file-access, availability, etc.
@@ -712,6 +717,11 @@ class BlastRadius:
         documentation.
         """
         from agent_bom.vex import is_vex_suppressed
+
+        if self.suppressed:
+            self.risk_score = 0.0
+            self.transitive_risk_score = 0.0
+            return self.risk_score
 
         if is_vex_suppressed(self.vulnerability):
             self.risk_score = 0.0
@@ -811,6 +821,8 @@ class BlastRadius:
         """
         from agent_bom.vex import is_vex_suppressed
 
+        if self.suppressed:
+            return False
         if is_vex_suppressed(self.vulnerability):
             return False
         if self.vulnerability.is_kev:

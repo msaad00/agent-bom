@@ -561,6 +561,17 @@ def _run_scan_sync(job: ScanJob) -> None:
             _min = _sev_order.get(req.min_severity.lower(), 0)
             blast_radii = [br for br in blast_radii if _sev_order.get(br.vulnerability.severity.value.lower(), 0) >= _min]
 
+        try:
+            from agent_bom.api.stores import _get_exception_store
+            from agent_bom.suppression_rules import apply_tenant_suppression_rules
+
+            suppression = apply_tenant_suppression_rules(blast_radii, _get_exception_store(), tenant_id=job.tenant_id or "default")
+            if suppression["suppressed"]:
+                warnings_all.append(f"{suppression['suppressed']} finding(s) suppressed by tenant feedback/rules")
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("Tenant suppression-rule evaluation skipped: %s", sanitize_error(exc))
+            warnings_all.append("Tenant suppression-rule evaluation skipped")
+
         # ── Enrichment phase ──
         if req.enrich:
             pipeline.start_step("enrichment", "Enriching with NVD CVSS, EPSS, CISA KEV...")

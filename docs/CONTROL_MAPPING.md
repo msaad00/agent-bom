@@ -23,6 +23,7 @@ settings in the customer environment.
 | Compliance report | `GET /v1/compliance/{framework}/report` | `src/agent_bom/api/routes/compliance.py` |
 | Evidence bundle signing posture | `GET /v1/compliance/signing/status` | `src/agent_bom/api/compliance_signing.py` |
 | Auth and secret posture | `GET /v1/auth/policy` | `src/agent_bom/api/routes/auth.py`, `src/agent_bom/api/audit_log.py` |
+| Security header posture | `GET /v1/auth/policy` | `src/agent_bom/api/middleware.py`, `tests/test_api_operator_policy.py` |
 | Release artifact verification | GitHub Release assets | `docs/RELEASE_VERIFICATION.md`, `.github/workflows/release.yml` |
 | Dependency and image audit | CI artifacts and release SBOM | `docs/SUPPLY_CHAIN.md`, `.github/workflows/pr-security-gate.yml`, `.github/workflows/extras-audit.yml` |
 | Backup restore proof | CI workflow and operator runbook | `.github/workflows/backup-restore.yml`, `deploy/ops/restore-postgres-backup.sh` |

@@ -72,11 +72,26 @@ You can also run `agent-bom` against that SBOM directly:
 agent-bom sbom agent-bom-sbom.cdx.json -f json
 ```
 
+## Inspect scanner accuracy evidence
+
+Release candidates also carry a checked-in scanner accuracy baseline:
+
+```bash
+uv run python scripts/generate_accuracy_baseline.py --check
+jq '.runtime_red_team, .finding_state_accounting' docs/accuracy-baseline.json
+```
+
+The baseline separates active unresolved findings from VEX-suppressed,
+fixed-verified, accepted-risk, and false-positive states. It is intentionally
+not a claim of customer-wide real-world false-positive or false-negative rates;
+those require a published external corpus.
+
 ## What this proves
 
 - the distribution artifacts were signed by GitHub Actions OIDC via Sigstore
 - the build provenance is available as SLSA attestations
 - the release includes a self-SBOM that can be inspected or rescanned later
+- scanner accuracy claims are backed by a versioned local evidence artifact
 
 This is the release trust baseline. Runtime trust, container attestations, and
 registry-specific provenance still live in their own workflows and docs.

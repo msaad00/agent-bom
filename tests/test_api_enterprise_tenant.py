@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from agent_bom.api.audit_log import AuditEntry, InMemoryAuditLog, get_audit_log, set_audit_log
 from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
 from agent_bom.api.exception_store import ExceptionStatus, InMemoryExceptionStore, VulnException
-from agent_bom.api.models import CreateKeyRequest, JobStatus, RotateKeyRequest, ScanJob, ScanRequest
+from agent_bom.api.models import CreateKeyRequest, FindingFeedbackRequest, JobStatus, RotateKeyRequest, ScanJob, ScanRequest
 from agent_bom.api.routes import enterprise
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import _get_store, _get_trend_store, set_job_store, set_trend_store
@@ -336,6 +336,95 @@ async def test_remove_false_positive_returns_404_for_wrong_tenant(isolated_excep
 
     assert error.value.status_code == 404
     assert isolated_exception_store.get(exc.exception_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_finding_feedback_uses_authenticated_actor_and_tenant(isolated_exception_store, isolated_audit_log):
+    result = await enterprise.create_finding_feedback(
+        _request("tenant-alpha", "alice-admin"),
+        FindingFeedbackRequest(
+            vulnerability_id="CVE-2026-0001",
+            package="requests",
+            state="accepted_risk",
+            reason="compensating control",
+            expires_at="2026-12-31T00:00:00Z",
+        ),
+    )
+
+    assert result["state"] == "accepted_risk"
+    assert result["marked_by"] == "alice-admin"
+    assert result["tenant_id"] == "tenant-alpha"
+    stored = isolated_exception_store.get(result["id"], tenant_id="tenant-alpha")
+    assert stored is not None
+    assert stored.requested_by == "alice-admin"
+    assert stored.reason.startswith("[finding_feedback:accepted_risk]")
+
+    entries = isolated_audit_log.list_entries()
+    assert entries[0].action == "findings.feedback_recorded"
+    assert entries[0].actor == "alice-admin"
+    assert entries[0].details["state"] == "accepted_risk"
+    assert entries[0].details["tenant_id"] == "tenant-alpha"
+
+
+@pytest.mark.asyncio
+async def test_finding_feedback_list_is_tenant_scoped(isolated_exception_store):
+    alpha = VulnException(
+        vuln_id="CVE-2026-0001",
+        package_name="requests",
+        reason="[finding_feedback:false_positive] scanner noise",
+        requested_by="alice",
+        tenant_id="tenant-alpha",
+    )
+    beta = VulnException(
+        vuln_id="CVE-2026-0002",
+        package_name="django",
+        reason="[finding_feedback:false_positive] beta only",
+        requested_by="bob",
+        tenant_id="tenant-beta",
+    )
+    isolated_exception_store.put(alpha)
+    isolated_exception_store.put(beta)
+
+    result = await enterprise.list_finding_feedback(_request("tenant-alpha"), state="false_positive")
+
+    assert result["total"] == 1
+    assert result["feedback"][0]["id"] == alpha.exception_id
+    assert result["feedback"][0]["tenant_id"] == "tenant-alpha"
+
+
+@pytest.mark.asyncio
+async def test_remove_finding_feedback_returns_404_for_wrong_tenant(isolated_exception_store):
+    feedback = VulnException(
+        vuln_id="CVE-2026-0001",
+        package_name="requests",
+        reason="[finding_feedback:not_applicable] beta only",
+        tenant_id="tenant-beta",
+    )
+    isolated_exception_store.put(feedback)
+
+    with pytest.raises(HTTPException) as error:
+        await enterprise.remove_finding_feedback(_request("tenant-alpha"), feedback.exception_id)
+
+    assert error.value.status_code == 404
+    assert isolated_exception_store.get(feedback.exception_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_false_positive_ignores_client_marked_by(isolated_exception_store):
+    result = await enterprise.mark_false_positive(
+        _request("tenant-alpha", "alice-admin"),
+        enterprise.FalsePositiveRequest(
+            vulnerability_id="CVE-2026-0001",
+            package="requests",
+            reason="scanner noise",
+            marked_by="mallory",
+        ),
+    )
+
+    assert result["marked_by"] == "alice-admin"
+    stored = isolated_exception_store.get(result["id"], tenant_id="tenant-alpha")
+    assert stored is not None
+    assert stored.requested_by == "alice-admin"
 
 
 @pytest.mark.asyncio

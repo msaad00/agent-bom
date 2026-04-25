@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 from starlette.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from agent_bom.api.server import (
     app,
@@ -60,6 +61,36 @@ def test_proxy_status_with_metrics():
     assert data["recent_alerts"] == []
 
     # Cleanup
+    proxy_mod._proxy_metrics = None
+
+
+def test_proxy_metrics_websocket_rejects_query_token(monkeypatch):
+    """WebSocket auth must not accept API keys in URL query strings."""
+    monkeypatch.setenv("AGENT_BOM_API_KEY", "ws-secret")
+    client = TestClient(app)
+
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect("/ws/proxy/metrics?token=ws-secret"):
+            pass
+
+    assert exc.value.code == 4001
+
+
+def test_proxy_metrics_websocket_first_message_auth(monkeypatch):
+    """Browser WebSocket clients authenticate with a first-message handshake."""
+    import agent_bom.api.routes.proxy as proxy_mod
+
+    monkeypatch.setenv("AGENT_BOM_API_KEY", "ws-secret")
+    push_proxy_metrics({"type": "proxy_summary", "total_tool_calls": 2, "total_blocked": 1})
+    client = TestClient(app)
+
+    with client.websocket_connect("/ws/proxy/metrics") as websocket:
+        websocket.send_json({"type": "auth", "token": "ws-secret"})
+        assert websocket.receive_json() == {"type": "auth", "status": "ok"}
+        data = websocket.receive_json()
+        assert data["total_tool_calls"] == 2
+        assert data["total_blocked"] == 1
+
     proxy_mod._proxy_metrics = None
 
 

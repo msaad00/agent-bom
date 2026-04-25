@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from dataclasses import dataclass, field
 
 # ---------------------------------------------------------------------------
@@ -123,6 +124,29 @@ _PAYLOAD_VULN_PATTERNS: list[tuple[re.Pattern, str, str]] = [
 # Helpers
 # ---------------------------------------------------------------------------
 
+_UNICODE_CONTROL_CHARS = {
+    "\u200b",  # zero-width space
+    "\u200c",  # zero-width non-joiner
+    "\u200d",  # zero-width joiner
+    "\u2060",  # word joiner
+    "\ufeff",  # zero-width no-break space / BOM
+    "\u202a",  # left-to-right embedding
+    "\u202b",  # right-to-left embedding
+    "\u202c",  # pop directional formatting
+    "\u202d",  # left-to-right override
+    "\u202e",  # right-to-left override
+    "\u2066",  # left-to-right isolate
+    "\u2067",  # right-to-left isolate
+    "\u2068",  # first strong isolate
+    "\u2069",  # pop directional isolate
+}
+
+
+def _normalize_detector_text(text: str) -> str:
+    """Normalize detector input so invisible Unicode controls cannot split patterns."""
+    normalized = unicodedata.normalize("NFKC", text)
+    return "".join(ch for ch in normalized if ch not in _UNICODE_CONTROL_CHARS)
+
 
 def _redact_excerpt(match_text: str, max_len: int = 12) -> str:
     """Return a safely redacted preview of a match."""
@@ -196,6 +220,7 @@ def scan_content(text: str, config: ScanConfig) -> list[ScanResult]:
     if not config.enabled or not text:
         return []
 
+    text = _normalize_detector_text(text)
     is_enforce = config.mode == "enforce"
     results: list[ScanResult] = []
 

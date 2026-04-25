@@ -1,0 +1,83 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from agent_bom.ai_components import scan_source
+from agent_bom.ai_components.framework_agents import scan_framework_agents
+
+
+def test_langgraph_agent_relationships_are_not_mcp_servers(tmp_path: Path):
+    app = tmp_path / "graph_agent.py"
+    app.write_text(
+        "import os\n"
+        "from langgraph.prebuilt import create_react_agent\n"
+        "from langchain_core.tools import tool\n"
+        "\n"
+        "@tool\n"
+        "def search(query: str) -> str:\n"
+        "    return query\n"
+        "\n"
+        "model = os.getenv('OPENAI_API_KEY')\n"
+        "agent = create_react_agent('gpt-4o', [search])\n",
+        encoding="utf-8",
+    )
+
+    agents = scan_framework_agents(tmp_path)
+
+    assert len(agents) == 1
+    agent = agents[0].to_dict()
+    assert agent["kind"] == "framework_agent"
+    assert agent["framework"] == "langgraph"
+    assert agent["model_refs"] == ["gpt-4o"]
+    assert agent["credential_refs"] == ["OPENAI_API_KEY"]
+    assert agent["capabilities"][0]["name"] == "search"
+    assert agent["provenance"]["relationship_model"] == "non-mcp-framework"
+
+
+def test_autogen_and_crewai_relationships_preserve_framework_context(tmp_path: Path):
+    (tmp_path / "autogen_app.py").write_text(
+        "from autogen_agentchat.agents import AssistantAgent\n"
+        "\n"
+        "def lookup(query):\n"
+        "    return query\n"
+        "\n"
+        "planner = AssistantAgent('planner', model='gpt-4o-mini', tools=[lookup])\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "crew_app.py").write_text(
+        "from crewai import Agent\n\ndef summarize(text):\n    return text\n\nresearcher = Agent(role='Researcher', tools=[summarize])\n",
+        encoding="utf-8",
+    )
+
+    payloads = [agent.to_dict() for agent in scan_framework_agents(tmp_path)]
+    by_framework = {agent["framework"]: agent for agent in payloads}
+
+    assert by_framework["autogen"]["name"] == "planner"
+    assert by_framework["autogen"]["model_refs"] == ["gpt-4o-mini"]
+    assert by_framework["autogen"]["capabilities"][0]["name"] == "lookup"
+    assert by_framework["crewai"]["name"] == "Researcher"
+    assert by_framework["crewai"]["capabilities"][0]["name"] == "summarize"
+
+
+def test_ai_component_report_includes_framework_agent_relationships(tmp_path: Path):
+    (tmp_path / "assistant.py").write_text(
+        "from openai import OpenAI\n"
+        "\n"
+        "client = OpenAI()\n"
+        "assistant = client.beta.assistants.create(\n"
+        "    name='support-assistant',\n"
+        "    model='gpt-4o',\n"
+        "    tools=[{'type': 'function', 'function': {'name': 'lookup_ticket'}}],\n"
+        ")\n",
+        encoding="utf-8",
+    )
+
+    report = scan_source(tmp_path)
+    data = report.to_dict()
+
+    assert data["stats"]["framework_agents"] == 1
+    agent = data["framework_agents"][0]
+    assert agent["framework"] == "openai-assistants"
+    assert agent["name"] == "support-assistant"
+    assert agent["model_refs"] == ["gpt-4o"]
+    assert agent["capabilities"][0]["name"] == "lookup_ticket"

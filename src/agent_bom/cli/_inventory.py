@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import sys
+from contextlib import nullcontext, redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
 from typing import Optional
 
@@ -24,7 +26,8 @@ from agent_bom.parsers import extract_packages
 @click.option("--transitive", is_flag=True, help="Resolve transitive dependencies for npx/uvx packages")
 @click.option("--max-depth", type=int, default=3, help="Maximum depth for transitive dependency resolution")
 @click.option("--quiet", "-q", is_flag=True, help="Suppress all output except results")
-def inventory(config: Optional[str], project: Optional[str], transitive: bool, max_depth: int, quiet: bool):
+@click.option("--json", "as_json", is_flag=True, help="Output inventory and completeness telemetry as JSON")
+def inventory(config: Optional[str], project: Optional[str], transitive: bool, max_depth: int, quiet: bool, as_json: bool):
     """Show discovered agents and MCP servers (no vulnerability scan)."""
     con = _make_console(quiet=quiet)
 
@@ -32,39 +35,46 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
 
     _out.console = con
 
-    if config:
-        config_path = Path(config)
-        try:
-            config_data = json.loads(config_path.read_text())
-            from agent_bom.discovery import parse_mcp_config
-            from agent_bom.models import Agent, AgentType
+    discovery_stdout = redirect_stdout(StringIO()) if as_json else nullcontext()
+    discovery_stderr = redirect_stderr(StringIO()) if as_json else nullcontext()
+    with discovery_stdout, discovery_stderr:
+        if config:
+            config_path = Path(config)
+            try:
+                config_data = json.loads(config_path.read_text())
+                from agent_bom.discovery import parse_mcp_config
+                from agent_bom.models import Agent, AgentType
 
-            servers = parse_mcp_config(config_data, str(config_path))
-            agents = (
-                [
-                    Agent(
-                        name=f"custom:{config_path.stem}",
-                        agent_type=AgentType.CUSTOM,
-                        config_path=str(config_path),
-                        mcp_servers=servers,
-                    )
-                ]
-                if servers
-                else []
-            )
-        except Exception as e:
-            con.print(f"[red]Error parsing config: {e}[/red]")
-            sys.exit(1)
-    else:
-        agents = discover_all(project_dir=project)
+                servers = parse_mcp_config(config_data, str(config_path))
+                agents = (
+                    [
+                        Agent(
+                            name=f"custom:{config_path.stem}",
+                            agent_type=AgentType.CUSTOM,
+                            config_path=str(config_path),
+                            mcp_servers=servers,
+                        )
+                    ]
+                    if servers
+                    else []
+                )
+            except Exception as e:
+                con.print(f"[red]Error parsing config: {e}[/red]")
+                sys.exit(1)
+        else:
+            agents = discover_all(project_dir=project)
 
     if not agents:
+        if as_json:
+            _print_inventory_json(agents, config)
+            return
         con.print("\n[yellow]No MCP configurations found.[/yellow]")
         sys.exit(0)
 
-    con.print("\n[bold blue]Extracting package dependencies...[/bold blue]\n")
-    if transitive:
-        con.print(f"  [cyan]Transitive resolution enabled (max depth: {max_depth})[/cyan]\n")
+    if not as_json:
+        con.print("\n[bold blue]Extracting package dependencies...[/bold blue]\n")
+        if transitive:
+            con.print(f"  [cyan]Transitive resolution enabled (max depth: {max_depth})[/cyan]\n")
 
     for agent in agents:
         for server in agent.mcp_servers:
@@ -72,9 +82,25 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
                 continue  # Don't extract from security-blocked servers
             server.packages = extract_packages(server, resolve_transitive=transitive, max_depth=max_depth)
 
+    if as_json:
+        _print_inventory_json(agents, config)
+        return
+
     report = AIBOMReport(agents=agents)
     print_summary(report)
     print_agent_tree(report)
+
+
+def _print_inventory_json(agents, config: Optional[str]) -> None:
+    from agent_bom.discovery import get_all_discovery_paths, get_platform
+    from agent_bom.discovery.coverage import discovery_completeness_summary
+    from agent_bom.output.json_fmt import to_json
+
+    report = AIBOMReport(agents=agents, scan_sources=["agent_discovery"])
+    data = to_json(report)
+    path_entries = [("custom", str(Path(config)))] if config else get_all_discovery_paths(get_platform())
+    data["discovery_completeness"] = discovery_completeness_summary(path_entries, agents=agents)
+    click.echo(json.dumps(data, indent=2))
 
 
 @click.command()

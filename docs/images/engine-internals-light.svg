@@ -37,7 +37,7 @@
   <!-- Modules -->
   <rect x="38" y="130" width="172" height="28" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
   <text x="50" y="148" class="mod-name">MCP Config Parser</text>
-  <text x="210" y="148" text-anchor="end" class="mod-sub" fill="#2563eb">30 clients</text>
+  <text x="210" y="148" text-anchor="end" class="mod-sub" fill="#2563eb">29 clients</text>
 
   <rect x="38" y="164" width="172" height="28" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
   <text x="50" y="182" class="mod-name">Cloud Connectors</text>

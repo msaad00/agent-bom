@@ -1,6 +1,6 @@
 """Shared test helpers for attested trusted-proxy auth."""
 
-PROXY_SECRET = "test-proxy-secret"
+PROXY_SECRET = "test-proxy-secret-with-32-plus-bytes"
 
 
 def proxy_headers(role: str = "viewer", tenant: str = "tenant-alpha") -> dict[str, str]:

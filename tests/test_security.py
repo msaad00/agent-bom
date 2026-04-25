@@ -255,6 +255,11 @@ def test_validate_url_private_ip():
         validate_url("https://10.0.0.1/api")
 
 
+def test_validate_url_rejects_ipv6_link_local():
+    with pytest.raises(SecurityError, match="private"):
+        validate_url("https://[fe80::1]/api")
+
+
 # ---------------------------------------------------------------------------
 # validate_package_name
 # ---------------------------------------------------------------------------

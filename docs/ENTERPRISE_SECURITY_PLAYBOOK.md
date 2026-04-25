@@ -82,7 +82,7 @@ Every enforcement point calls the same [`check_policy`](../src/agent_bom/proxy_p
 
 ### 2.1 Discovery: "Will agent-bom see every MCP my employees use?"
 
-agent-bom scans laptop editor configs for **30+ MCP client surfaces** (Cursor, Claude Desktop, Claude Code, VS Code, Copilot, Codex, Continue, Cline, Roo, Amazon Q, Cortex Code, Windsurf, …) from [`src/agent_bom/discovery/config_parsers.py`](../src/agent_bom/discovery/config_parsers.py). Each discovered MCP server is serialised with its transport + URL ([`models.py:509 MCPServer`](../src/agent_bom/models.py)) and pushed to the control plane via `agent-bom agents --push-url`.
+agent-bom scans laptop editor configs for the code-backed client matrix exposed by `agent-bom where --json`: 29 first-class client types today, plus project-level, Docker Compose, Docker MCP Toolkit, dynamic filesystem, process, container, and Kubernetes discovery. The matrix is generated from [`src/agent_bom/discovery/coverage.py`](../src/agent_bom/discovery/coverage.py) and the concrete paths in [`src/agent_bom/discovery/__init__.py`](../src/agent_bom/discovery/__init__.py), so product claims stay tied to tested code. Each discovered MCP server is serialised with its transport + URL ([`models.py:509 MCPServer`](../src/agent_bom/models.py)) and pushed to the control plane via `agent-bom agents --push-url`.
 
 **End-to-end:**
 1. `agent-bom agents --preset enterprise --introspect --push-url https://agent-bom.example.com/v1/fleet/sync`
@@ -183,7 +183,7 @@ Horizontal scale via Helm HPA on both control plane and gateway. ClickHouse is t
 - **API keys** with enforced lifetime policy (`AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS`, `AGENT_BOM_API_KEY_MAX_TTL_SECONDS`) and zero-downtime rotation (`POST /v1/auth/keys/{key_id}/rotate`) — [`api/auth.py`](../src/agent_bom/api/auth.py), [`api/middleware.py`](../src/agent_bom/api/middleware.py).
 - **OIDC** — any IdP (Okta, Auth0, Azure AD, Google). Config in [`api/oidc.py`](../src/agent_bom/api/oidc.py).
 - **SAML** — SP metadata at [`/v1/auth/saml/metadata`](../src/agent_bom/api/saml.py). Install `pip install 'agent-bom[saml]'`.
-- **Trusted proxy headers** — RBAC via `X-Agent-Bom-Role` + `X-Agent-Bom-Tenant-ID` only when an authed reverse proxy also injects `X-Agent-Bom-Proxy-Secret` matching `AGENT_BOM_TRUST_PROXY_AUTH_SECRET`. Direct client-supplied role/tenant headers are ignored. [`rbac.py require_authenticated_permission`](../src/agent_bom/rbac.py).
+- **Trusted proxy headers** — RBAC via `X-Agent-Bom-Role` + `X-Agent-Bom-Tenant-ID` only when an authed reverse proxy also injects `X-Agent-Bom-Proxy-Secret` matching a 32+ byte `AGENT_BOM_TRUST_PROXY_AUTH_SECRET`. Set `AGENT_BOM_TRUST_PROXY_AUTH_ISSUER` to pin a stable upstream proxy issuer. Direct client-supplied role/tenant headers are ignored. [`rbac.py require_authenticated_permission`](../src/agent_bom/rbac.py).
 - **Gateway upstream auth** — `none`, `bearer` (env), `oauth2_client_credentials` with token cache + early refresh — [`gateway_upstreams.py UpstreamConfig.resolve_auth_headers`](../src/agent_bom/gateway_upstreams.py). Snowflake MCPs use the OAuth2 path.
 
 ### 2.11 Secrets never touch agent-bom's disk

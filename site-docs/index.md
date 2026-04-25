@@ -35,7 +35,7 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 
 | Capability | Description |
 |---|---|
-| **Discovery** | Auto-detect 30 MCP clients (Claude, Cursor, Windsurf, VS Code, etc.) |
+| **Discovery** | Auto-detect 29 first-class MCP client types plus dynamic/project surfaces |
 | **CVE scanning** | OSV + NVD CVSS v4 + EPSS + CISA KEV + GHSA |
 | **Blast radius** | Map CVE impact: package → server → agent → credentials → tools |
 | **Registry** | 427+ MCP server security metadata entries |

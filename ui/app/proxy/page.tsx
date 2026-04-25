@@ -98,9 +98,6 @@ export default function ProxyDashboard() {
     const base = getConfiguredApiUrl() || window.location.origin;
     const wsTarget = new URL(base.replace(/^http/, "ws") + "/ws/proxy/metrics");
     const token = getSessionWebSocketToken();
-    if (token) {
-      wsTarget.searchParams.set("token", token);
-    }
     const wsUrl = wsTarget.toString();
 
     let ws: WebSocket;
@@ -110,7 +107,12 @@ export default function ProxyDashboard() {
       ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
-      ws.onopen = () => setWsConnected(true);
+      ws.onopen = () => {
+        if (token) {
+          ws.send(JSON.stringify({ type: "auth", token }));
+        }
+        setWsConnected(true);
+      };
       ws.onclose = () => {
         setWsConnected(false);
         reconnectTimer = setTimeout(connect, 5000);
@@ -118,7 +120,11 @@ export default function ProxyDashboard() {
       ws.onerror = () => ws.close();
       ws.onmessage = (e) => {
         try {
-          setLive(JSON.parse(e.data));
+          const payload = JSON.parse(e.data);
+          if (payload?.type === "auth") {
+            return;
+          }
+          setLive(payload);
         } catch {
           // ignore parse errors
         }

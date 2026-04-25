@@ -324,22 +324,60 @@ async def proxy_alerts(
 # ── WebSocket endpoints ─────────────────────────────────────────────────────
 
 
-def _ws_check_auth(websocket: WebSocket) -> bool:
-    """Return True if the WebSocket connection is authorized.
+def _ws_header_token(websocket: WebSocket) -> str:
+    """Extract non-URL WebSocket auth tokens from headers when present."""
+    authorization = websocket.headers.get("authorization", "")
+    if authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+    for protocol in websocket.headers.get("sec-websocket-protocol", "").split(","):
+        value = protocol.strip()
+        if value.startswith("agent-bom-token."):
+            return value.removeprefix("agent-bom-token.").strip()
+    return ""
 
-    When ``AGENT_BOM_API_KEY`` is set, callers must pass ``?token=<key>`` in
-    the WebSocket URL.  When the env var is unset the endpoint is open (local
-    dev / single-user mode).
+
+async def _ws_accept_and_check_auth(websocket: WebSocket) -> bool:
+    """Accept the WebSocket only into an authenticated streaming state.
+
+    API keys in query strings are intentionally rejected because URLs are
+    commonly captured by browser history, access logs, and reverse proxies.
+    Browser callers should send ``{"type":"auth","token":"..."}`` as the first
+    message after connect. Non-browser callers may use ``Authorization:
+    Bearer`` or ``Sec-WebSocket-Protocol: agent-bom-token.<token>``.
     """
+    import asyncio as _asyncio
+    import hmac as _hmac
     import os as _os
 
     api_key = _os.environ.get("AGENT_BOM_API_KEY")
     if not api_key:
-        return True  # no auth configured — open
-    token = websocket.query_params.get("token", "")
-    import hmac as _hmac
+        await websocket.accept()
+        return True  # no auth configured — local dev / single-user mode
 
-    return bool(token and _hmac.compare_digest(token, api_key))
+    if websocket.query_params.get("token"):
+        await websocket.close(code=4001)
+        return False
+
+    token = _ws_header_token(websocket)
+    if token and _hmac.compare_digest(token, api_key):
+        await websocket.accept()
+        return True
+
+    await websocket.accept()
+    try:
+        payload = await _asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+    except Exception:  # noqa: BLE001 - auth handshake failures all close the stream
+        await websocket.close(code=4001)
+        return False
+
+    if isinstance(payload, dict) and payload.get("type") == "auth":
+        token = str(payload.get("token", ""))
+        if token and _hmac.compare_digest(token, api_key):
+            await websocket.send_json({"type": "auth", "status": "ok"})
+            return True
+
+    await websocket.close(code=4001)
+    return False
 
 
 @router.websocket("/ws/proxy/metrics")
@@ -350,7 +388,9 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
     stream of proxy metrics as JSON objects.  Useful for building real-time
     dashboards without polling.
 
-    Authentication: pass ``?token=<AGENT_BOM_API_KEY>`` when the env var is set.
+    Authentication: send ``{"type":"auth","token":"..."}`` as the first
+    message when ``AGENT_BOM_API_KEY`` is set. API keys in query strings are
+    rejected to keep credentials out of URL logs.
 
     Message format (sent every second):
     ::
@@ -373,11 +413,9 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
     except ImportError:
         from starlette.websockets import WebSocketDisconnect  # type: ignore[no-reattr]
 
-    if not _ws_check_auth(websocket):
-        await websocket.close(code=4001)
+    if not await _ws_accept_and_check_auth(websocket):
         return
 
-    await websocket.accept()
     try:
         while True:
             now = _time.time()
@@ -423,7 +461,9 @@ async def ws_proxy_alerts(websocket: WebSocket) -> None:
     Streams new alerts in real time.  Each message is a single alert object.
     Useful for live security dashboards that need immediate notification.
 
-    Authentication: pass ``?token=<AGENT_BOM_API_KEY>`` when the env var is set.
+    Authentication: send ``{"type":"auth","token":"..."}`` as the first
+    message when ``AGENT_BOM_API_KEY`` is set. API keys in query strings are
+    rejected to keep credentials out of URL logs.
 
     Uses a monotonic total counter (not deque length) to detect new alerts
     correctly even when old entries are evicted from the 1000-entry ring buffer.
@@ -435,11 +475,9 @@ async def ws_proxy_alerts(websocket: WebSocket) -> None:
     except ImportError:
         from starlette.websockets import WebSocketDisconnect  # type: ignore[no-reattr]
 
-    if not _ws_check_auth(websocket):
-        await websocket.close(code=4001)
+    if not await _ws_accept_and_check_auth(websocket):
         return
 
-    await websocket.accept()
     seen = _proxy_alerts_total  # monotonic — tracks absolute count, not deque position
     try:
         while True:

@@ -1,2 +1,14 @@
 # Default code owners — PRs require review from at least one owner
 * @msaad00 @andres-linero
+
+# Release and supply-chain control surfaces.
+/.github/workflows/release.yml @msaad00 @andres-linero
+/.github/workflows/ci.yml @msaad00 @andres-linero
+/.github/workflows/pr-security-gate.yml @msaad00 @andres-linero
+/.github/workflows/cve-freshness.yml @msaad00 @andres-linero
+/.github/workflows/dependabot-auto-approve.yml @msaad00 @andres-linero
+/.github/dependabot.yml @msaad00 @andres-linero
+/.github/CODEOWNERS @msaad00 @andres-linero
+/.trivyignore @msaad00 @andres-linero
+/Dockerfile @msaad00 @andres-linero
+/ui/Dockerfile @msaad00 @andres-linero

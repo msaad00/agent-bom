@@ -47,6 +47,7 @@ import {
 } from "@/lib/graph-utils";
 import {
   api,
+  type GraphDiffResponse,
   type GraphNodeDetailResponse,
   type GraphSnapshot,
   type UnifiedGraphResponse,
@@ -284,7 +285,10 @@ export default function GraphPage() {
   const [pageOffset, setPageOffset] = useState(0);
   const [loadingSnapshots, setLoadingSnapshots] = useState(true);
   const [loadingGraph, setLoadingGraph] = useState(false);
+  const [loadingDiff, setLoadingDiff] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [diffError, setDiffError] = useState<string | null>(null);
+  const [graphDiff, setGraphDiff] = useState<GraphDiffResponse | null>(null);
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedAttackPathKey, setSelectedAttackPathKey] = useState<string | null>(null);
@@ -393,6 +397,36 @@ export default function GraphPage() {
     () => snapshots.find((snapshot) => snapshot.scan_id === selectedScanId) ?? null,
     [snapshots, selectedScanId],
   );
+  const previousSnapshot = useMemo(() => {
+    const index = snapshots.findIndex((snapshot) => snapshot.scan_id === selectedScanId);
+    if (index < 0 || index + 1 >= snapshots.length) return null;
+    return snapshots[index + 1];
+  }, [snapshots, selectedScanId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setGraphDiff(null);
+    setDiffError(null);
+    if (!selectedScanId || !previousSnapshot) {
+      setLoadingDiff(false);
+      return;
+    }
+    setLoadingDiff(true);
+    api
+      .getGraphDiff(previousSnapshot.scan_id, selectedScanId)
+      .then((result) => {
+        if (!cancelled) setGraphDiff(result);
+      })
+      .catch((e) => {
+        if (!cancelled) setDiffError(e.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingDiff(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [previousSnapshot, selectedScanId]);
 
   useEffect(() => {
     if (!selectedNodeId || !selectedScanId) return;
@@ -871,6 +905,47 @@ export default function GraphPage() {
           </div>
         )}
 
+        {activeSnapshot && (
+          <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.24em] text-sky-400">Snapshot diff</p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  {previousSnapshot
+                    ? `Compared with ${previousSnapshot.scan_id.slice(0, 12)} captured ${new Date(previousSnapshot.created_at).toLocaleString()}`
+                    : "No older snapshot available for this tenant."}
+                </p>
+              </div>
+              {loadingDiff && (
+                <span className="flex items-center gap-1 text-xs text-sky-400">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  loading diff
+                </span>
+              )}
+            </div>
+            {diffError ? (
+              <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                {diffError}
+              </div>
+            ) : (
+              <div className="mt-3 grid gap-2 md:grid-cols-3 xl:grid-cols-5">
+                <DiffMetric label="nodes added" value={graphDiff?.nodes_added.length ?? 0} tone="green" />
+                <DiffMetric label="nodes removed" value={graphDiff?.nodes_removed.length ?? 0} tone="amber" />
+                <DiffMetric label="nodes changed" value={graphDiff?.nodes_changed.length ?? 0} tone="blue" />
+                <DiffMetric label="edges added" value={graphDiff?.edges_added.length ?? 0} tone="green" />
+                <DiffMetric label="edges removed" value={graphDiff?.edges_removed.length ?? 0} tone="amber" />
+              </div>
+            )}
+            {graphDiff && (graphDiff.nodes_added.length > 0 || graphDiff.nodes_changed.length > 0 || graphDiff.nodes_removed.length > 0) && (
+              <div className="mt-3 grid gap-2 lg:grid-cols-3">
+                <DiffPreview label="Added" items={graphDiff.nodes_added} />
+                <DiffPreview label="Changed" items={graphDiff.nodes_changed} />
+                <DiffPreview label="Removed" items={graphDiff.nodes_removed} />
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 text-xs text-zinc-400">
           <div className="font-medium text-zinc-200">How to read this graph</div>
           <ul className="mt-2 space-y-1.5">
@@ -1141,6 +1216,52 @@ function SnapshotMetaCard({
       <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</p>
       <p className="mt-1 font-mono text-sm text-zinc-100">{value}</p>
       <p className="mt-1 text-[11px] text-zinc-500">{detail}</p>
+    </div>
+  );
+}
+
+function DiffMetric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "green" | "amber" | "blue";
+}) {
+  const toneClass =
+    tone === "green"
+      ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+      : tone === "amber"
+        ? "border-amber-500/20 bg-amber-500/10 text-amber-200"
+        : "border-sky-500/20 bg-sky-500/10 text-sky-200";
+
+  return (
+    <div className={`rounded-xl border px-3 py-2 ${toneClass}`}>
+      <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</p>
+      <p className="mt-1 font-mono text-lg text-zinc-100">{value}</p>
+    </div>
+  );
+}
+
+function DiffPreview({ label, items }: { label: string; items: string[] }) {
+  const visible = items.slice(0, 5);
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</p>
+        <span className="font-mono text-[11px] text-zinc-500">{items.length}</span>
+      </div>
+      <div className="mt-2 space-y-1">
+        {visible.map((item) => (
+          <p key={`${label}-${item}`} className="truncate font-mono text-[11px] text-zinc-300">
+            {item}
+          </p>
+        ))}
+        {items.length > visible.length && (
+          <p className="text-[11px] text-zinc-500">+{items.length - visible.length} more</p>
+        )}
+      </div>
     </div>
   );
 }

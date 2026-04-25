@@ -186,6 +186,8 @@ def test_run_passes_sandbox_config_to_run_proxy():
                 "podman",
                 "--sandbox-image",
                 "ghcr.io/acme/mcp-sandbox:1",
+                "--sandbox-image-pin-policy",
+                "warn",
             ],
         )
     assert result.exit_code == 0

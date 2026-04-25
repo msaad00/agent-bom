@@ -11,6 +11,8 @@ from agent_bom.proxy_sandbox import (
     sandbox_config_from_env,
 )
 
+PINNED_IMAGE = "ghcr.io/acme/mcp-sandbox:1@sha256:" + "a" * 64
+
 
 def test_parse_sandbox_mount_defaults_to_readonly(tmp_path):
     mount = parse_sandbox_mount(f"{tmp_path}:/workspace")
@@ -78,6 +80,7 @@ def test_sandbox_config_from_env_parses_operator_values(monkeypatch, tmp_path):
     monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX", "true")
     monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX_RUNTIME", "podman")
     monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX_IMAGE", "ghcr.io/acme/mcp-sandbox:1")
+    monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY", "enforce")
     monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX_MOUNTS", f"{tmp_path}:/workspace")
 
     config = sandbox_config_from_env()
@@ -85,6 +88,7 @@ def test_sandbox_config_from_env_parses_operator_values(monkeypatch, tmp_path):
     assert config.enabled is True
     assert config.runtime == "podman"
     assert config.image == "ghcr.io/acme/mcp-sandbox:1"
+    assert config.image_pin_policy == "enforce"
     assert config.mounts[0].target == "/workspace"
 
 
@@ -113,6 +117,9 @@ def test_sandbox_config_defaults_are_bounded_and_network_none(monkeypatch):
     assert evidence["pids_limit"] == 256
     assert evidence["tmpfs_size"] == "64m"
     assert evidence["timeout_seconds"] == 300
+    assert evidence["image_pin_policy"] == "warn"
+    assert evidence["image_pinned"] is False
+    assert evidence["image_pin_warning"]
 
 
 def test_build_sandboxed_command_wraps_non_container_command(monkeypatch):
@@ -143,6 +150,30 @@ def test_build_sandboxed_command_wraps_non_container_command(monkeypatch):
     assert evidence["mode"] == "wrap_command_in_image"
     assert evidence["enabled"] is True
     assert evidence["timeout_seconds"] == 300
+    assert evidence["image_pin_policy"] == "warn"
+    assert evidence["image_pinned"] is False
+    assert evidence["image_pin_warning"]
+
+
+def test_build_sandboxed_command_records_digest_pinned_image(monkeypatch):
+    monkeypatch.setattr("agent_bom.proxy_sandbox.resolve_container_runtime", lambda runtime: "docker")
+    config = SandboxConfig(enabled=True, runtime="docker", image=PINNED_IMAGE, image_pin_policy="enforce")
+
+    command, evidence = build_sandboxed_command(["npx", "--yes", "@mcp/server"], config)
+
+    assert PINNED_IMAGE in command
+    assert evidence["image"] == PINNED_IMAGE
+    assert evidence["image_pinned"] is True
+    assert evidence["image_pin_policy"] == "enforce"
+    assert evidence["image_pin_warning"] is None
+
+
+def test_build_sandboxed_command_rejects_tag_only_image_in_enforce_mode(monkeypatch):
+    monkeypatch.setattr("agent_bom.proxy_sandbox.resolve_container_runtime", lambda runtime: "docker")
+    config = SandboxConfig(enabled=True, runtime="docker", image="ghcr.io/acme/server:1", image_pin_policy="enforce")
+
+    with pytest.raises(RuntimeError, match="requires a digest"):
+        build_sandboxed_command(["npx", "@mcp/server"], config)
 
 
 def test_build_sandboxed_command_hardens_existing_container_run(monkeypatch):
@@ -158,6 +189,16 @@ def test_build_sandboxed_command_hardens_existing_container_run(monkeypatch):
     assert evidence["mode"] == "harden_existing_container"
     assert evidence["runtime"] == "podman"
     assert evidence["image"] == "ghcr.io/acme/server:1"
+    assert evidence["image_pinned"] is False
+    assert evidence["image_pin_warning"]
+
+
+def test_build_sandboxed_command_enforces_digest_for_existing_container_run(monkeypatch):
+    monkeypatch.setattr("agent_bom.proxy_sandbox.resolve_container_runtime", lambda runtime: "docker")
+    config = SandboxConfig(enabled=True, runtime="docker", image_pin_policy="enforce")
+
+    with pytest.raises(RuntimeError, match="requires a digest"):
+        build_sandboxed_command(["docker", "run", "ghcr.io/acme/server:1"], config)
 
 
 def test_build_sandboxed_command_strips_weaker_existing_container_flags(monkeypatch):

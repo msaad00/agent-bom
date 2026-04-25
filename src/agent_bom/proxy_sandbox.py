@@ -10,6 +10,7 @@ from typing import Literal
 
 SandboxRuntime = Literal["auto", "docker", "podman"]
 SandboxEgressPolicy = Literal["deny", "allow_all"]
+SandboxImagePinPolicy = Literal["off", "warn", "enforce"]
 
 _DEFAULT_SANDBOX_CPUS = "1"
 _DEFAULT_SANDBOX_MEMORY = "512m"
@@ -63,6 +64,7 @@ class SandboxConfig:
     enabled: bool = False
     runtime: SandboxRuntime = "auto"
     image: str | None = None
+    image_pin_policy: SandboxImagePinPolicy = "warn"
     mounts: tuple[SandboxMount, ...] = field(default_factory=tuple)
     network: str = "none"
     egress_policy: SandboxEgressPolicy = "deny"
@@ -82,6 +84,9 @@ class SandboxConfig:
             "enabled": self.enabled,
             "runtime": self.runtime,
             "image": self.image,
+            "image_pinned": _image_reference_has_digest(self.image),
+            "image_pin_policy": self.image_pin_policy,
+            "image_pin_warning": _image_pin_warning(self.image, self.image_pin_policy),
             "network": _effective_network(self),
             "egress_policy": self.egress_policy,
             "cpus": self.cpus,
@@ -158,6 +163,7 @@ def sandbox_config_from_env(
     pids_limit: int | None = None,
     tmpfs_size: str | None = None,
     timeout_seconds: int | None = None,
+    image_pin_policy: str | None = None,
 ) -> SandboxConfig:
     """Build sandbox config from CLI values and AGENT_BOM_MCP_SANDBOX_* env vars."""
     if enabled is None:
@@ -172,6 +178,9 @@ def sandbox_config_from_env(
     if requested_egress not in {"deny", "allow_all"}:
         raise ValueError("sandbox egress policy must be deny or allow-all")
     requested_image = image or os.environ.get("AGENT_BOM_MCP_SANDBOX_IMAGE")
+    requested_image_pin_policy = (image_pin_policy or os.environ.get("AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY") or "warn").strip().lower()
+    if requested_image_pin_policy not in {"off", "warn", "enforce"}:
+        raise ValueError("sandbox image pin policy must be off, warn, or enforce")
     env_mounts = tuple(item.strip() for item in os.environ.get("AGENT_BOM_MCP_SANDBOX_MOUNTS", "").split(",") if item.strip())
     parsed_mounts = tuple(parse_sandbox_mount(item) for item in (*mounts, *env_mounts))
     requested_user = user or os.environ.get("AGENT_BOM_MCP_SANDBOX_USER")
@@ -192,6 +201,7 @@ def sandbox_config_from_env(
         enabled=enabled,
         runtime=requested_runtime,  # type: ignore[arg-type]
         image=requested_image,
+        image_pin_policy=requested_image_pin_policy,  # type: ignore[arg-type]
         mounts=parsed_mounts,
         user=requested_user,
         egress_policy=requested_egress,  # type: ignore[arg-type]
@@ -226,15 +236,20 @@ def build_sandboxed_command(server_cmd: list[str], config: SandboxConfig) -> tup
         image_index = _container_image_index(server_cmd)
         before_image = _strip_conflicting_run_options(server_cmd[2:image_index])
         image_and_args = server_cmd[image_index:]
+        if image_and_args:
+            _validate_image_pin_policy(image_and_args[0], config.image_pin_policy)
         command = [runtime, "run", *before_image, *docker_args, *image_and_args]
         evidence = dict(config.evidence())
         evidence.update({"runtime": runtime, "mode": "harden_existing_container"})
         if image_and_args:
             evidence["image"] = image_and_args[0]
+            evidence["image_pinned"] = _image_reference_has_digest(image_and_args[0])
+            evidence["image_pin_warning"] = _image_pin_warning(image_and_args[0], config.image_pin_policy)
         return command, evidence
 
     if not config.image:
         raise RuntimeError("MCP sandbox isolation for non-container commands requires --sandbox-image or AGENT_BOM_MCP_SANDBOX_IMAGE")
+    _validate_image_pin_policy(config.image, config.image_pin_policy)
     command = [runtime, "run", *docker_args, config.image, *server_cmd]
     evidence = dict(config.evidence())
     evidence.update({"runtime": runtime, "mode": "wrap_command_in_image"})
@@ -324,6 +339,24 @@ def _effective_network(config: SandboxConfig) -> str:
     if config.network != "none":
         return config.network
     return "none" if config.egress_policy == "deny" else "bridge"
+
+
+def _image_reference_has_digest(image: str | None) -> bool:
+    if not image or "@sha256:" not in image:
+        return False
+    digest = image.rsplit("@sha256:", 1)[1]
+    return len(digest) == 64 and all(ch in "0123456789abcdefABCDEF" for ch in digest)
+
+
+def _image_pin_warning(image: str | None, policy: SandboxImagePinPolicy) -> str | None:
+    if policy != "warn" or _image_reference_has_digest(image):
+        return None
+    return "sandbox image is mutable; use an image digest or enforce pinning for production isolation"
+
+
+def _validate_image_pin_policy(image: str, policy: SandboxImagePinPolicy) -> None:
+    if policy == "enforce" and not _image_reference_has_digest(image):
+        raise RuntimeError("MCP sandbox image pin policy requires a digest reference such as image:tag@sha256:<digest>")
 
 
 def _optional_positive_int(env_name: str, *, default: int | None = None) -> int | None:

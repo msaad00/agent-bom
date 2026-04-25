@@ -100,6 +100,8 @@ def test_proxy_cmd_passes_sandbox_config():
                 "docker",
                 "--sandbox-image",
                 "ghcr.io/acme/mcp-sandbox:1",
+                "--sandbox-image-pin-policy",
+                "enforce",
                 "--sandbox-cpus",
                 "0.5",
                 "--sandbox-memory",
@@ -122,6 +124,7 @@ def test_proxy_cmd_passes_sandbox_config():
     assert config.enabled is True
     assert config.runtime == "docker"
     assert config.image == "ghcr.io/acme/mcp-sandbox:1"
+    assert config.image_pin_policy == "enforce"
     assert config.cpus == "0.5"
     assert config.memory == "256m"
     assert config.pids_limit == 64

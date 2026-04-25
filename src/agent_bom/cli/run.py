@@ -166,6 +166,13 @@ def _resolve_server_command(server: str) -> list[str]:
     help="Container image used to run non-container server commands in --isolate mode.",
 )
 @click.option(
+    "--sandbox-image-pin-policy",
+    default=None,
+    envvar="AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY",
+    type=click.Choice(["off", "warn", "enforce"]),
+    help="Require digest-pinned sandbox images: off, warn, or enforce.",
+)
+@click.option(
     "--sandbox-mount",
     multiple=True,
     metavar="HOST:CONTAINER[:ro|rw]",
@@ -215,6 +222,7 @@ def run_cmd(
     isolate: bool,
     sandbox_runtime: str | None,
     sandbox_image: str | None,
+    sandbox_image_pin_policy: str | None,
     sandbox_mount: tuple[str, ...],
     sandbox_cpus: str | None,
     sandbox_memory: str | None,
@@ -281,6 +289,7 @@ def run_cmd(
             enabled=isolate,
             runtime=sandbox_runtime,
             image=sandbox_image,
+            image_pin_policy=sandbox_image_pin_policy,
             mounts=sandbox_mount,
             cpus=sandbox_cpus,
             memory=sandbox_memory,

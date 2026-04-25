@@ -8,7 +8,7 @@ scan their own repo first, but it still looks like a real AI workspace:
 - one Cursor-style agent and one Claude Code-style agent
 - two MCP servers, including a shared server
 - credential environment variable names with placeholder values only
-- Python and npm manifests with known package versions
+- Python and npm manifests with safe, known package versions
 - a prompt file so instruction scanning has something concrete to inspect
 
 The sample is for product orientation, screenshots, demos, and local smoke
@@ -51,8 +51,9 @@ agent-bom agents \
   two MCP servers from `inventory.json`.
 - **Graph:** the `research-filesystem` MCP server is shared by both agents,
   so package risk and credential exposure should fan out across both.
-- **Findings:** vulnerable package versions are present in the manifests and
-  inventory. Exact CVEs depend on the local DB and enrichment mode.
+- **Findings:** the release-pinned offline demo carries deterministic CVE
+  examples. This first-run sample keeps installable manifests safe so repo
+  security gates do not train users to accept vulnerable fixtures.
 - **Credentials:** only environment variable names are modeled. Placeholder
   values such as `${OPENAI_API_KEY}` are not secrets.
 - **Evidence:** project manifests and lockfiles provide package provenance

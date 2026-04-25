@@ -31,14 +31,15 @@ agent-bom agents \
   --enrich
 ```
 
-This path shows how real inputs fit together:
+This path shows how real inputs fit together without committing vulnerable
+fixture dependencies:
 
 - `inventory.json` models agents, MCP servers, credential env var names, and
   tools.
 - `services/research-mcp/requirements.txt` contributes Python package
   evidence.
 - `services/browser-helper/package-lock.json` contributes npm lockfile
-  evidence.
+  evidence with safe package versions.
 - `prompts/agent-system-prompt.md` is available for instruction and prompt
   scanning workflows.
 

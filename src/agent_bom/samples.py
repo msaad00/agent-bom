@@ -46,8 +46,8 @@ not contain real credentials.
             {"name": "summarize_research_notes", "description": "Summarize local notes for the agent"}
           ],
           "packages": [
-            {"name": "flask", "version": "2.2.0", "ecosystem": "pypi"},
-            {"name": "werkzeug", "version": "2.2.2", "ecosystem": "pypi"}
+            {"name": "flask", "version": "3.1.3", "ecosystem": "pypi"},
+            {"name": "werkzeug", "version": "3.1.8", "ecosystem": "pypi"}
           ]
         },
         {
@@ -64,8 +64,8 @@ not contain real credentials.
             {"name": "fetch_page_title", "description": "Fetch a page title for demo automation"}
           ],
           "packages": [
-            {"name": "axios", "version": "1.4.0", "ecosystem": "npm"},
-            {"name": "lodash", "version": "4.17.20", "ecosystem": "npm"}
+            {"name": "axios", "version": "1.15.2", "ecosystem": "npm"},
+            {"name": "lodash", "version": "4.18.0", "ecosystem": "npm"}
           ]
         }
       ]
@@ -90,7 +90,7 @@ not contain real credentials.
             {"name": "read_project_file", "description": "Read files inside the sample project workspace"}
           ],
           "packages": [
-            {"name": "flask", "version": "2.2.0", "ecosystem": "pypi"}
+            {"name": "flask", "version": "3.1.3", "ecosystem": "pypi"}
           ]
         }
       ]
@@ -118,7 +118,7 @@ not contain real credentials.
   }
 }
 """,
-    "services/research-mcp/requirements.txt": "flask==2.2.0\nwerkzeug==2.2.2\nrequests==2.28.0\n",
+    "services/research-mcp/requirements.txt": "flask==3.1.3\nwerkzeug==3.1.8\nrequests==2.33.1\n",
     "services/research-mcp/server.py": '''"""Tiny placeholder MCP-like server for first-run scanning."""
 
 from pathlib import Path
@@ -136,11 +136,8 @@ def read_project_file(relative_path: str) -> str:
   "version": "0.1.0",
   "private": true,
   "dependencies": {
-    "axios": "1.4.0",
-    "lodash": "4.17.20"
-  },
-  "devDependencies": {
-    "eslint": "8.57.0"
+    "axios": "1.15.2",
+    "lodash": "4.18.0"
   }
 }
 """,
@@ -154,16 +151,12 @@ def read_project_file(relative_path: str) -> str:
       "name": "agent-bom-first-run-browser-helper",
       "version": "0.1.0",
       "dependencies": {
-        "axios": "1.4.0",
-        "lodash": "4.17.20"
-      },
-      "devDependencies": {
-        "eslint": "8.57.0"
+        "axios": "1.15.2",
+        "lodash": "4.18.0"
       }
     },
-    "node_modules/axios": {"version": "1.4.0"},
-    "node_modules/lodash": {"version": "4.17.20"},
-    "node_modules/eslint": {"version": "8.57.0", "dev": true}
+    "node_modules/axios": {"version": "1.15.2"},
+    "node_modules/lodash": {"version": "4.18.0"}
   }
 }
 """,

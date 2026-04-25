@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 import type { LineageNodeType } from "./lineage-nodes";
@@ -114,6 +114,10 @@ const LAYER_LABELS: { key: LineageNodeType; label: string; color: string }[] = [
   { key: "credential", label: "Credentials", color: "bg-amber-500" },
   { key: "tool", label: "Tools", color: "bg-purple-500" },
 ];
+
+const AGENT_OPTION_HEIGHT = 32;
+const AGENT_VISIBLE_ROWS = 8;
+const AGENT_OVERSCAN_ROWS = 4;
 
 export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps) {
   const [openSections, setOpenSections] = useState({
@@ -245,16 +249,11 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
           onToggle={() => toggleSection("agent")}
           summary={filters.agentName ?? "all agents"}
         >
-          <select
-            value={filters.agentName ?? ""}
-            onChange={(e) => onChange({ ...filters, agentName: e.target.value || null })}
-            className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
-          >
-            <option value="">All agents</option>
-            {agentNames?.map((n) => (
-              <option key={n} value={n}>{n}</option>
-            ))}
-          </select>
+          <VirtualizedAgentPicker
+            agentNames={agentNames}
+            selectedAgent={filters.agentName}
+            onSelect={(agentName) => onChange({ ...filters, agentName })}
+          />
         </FilterSection>
       )}
 
@@ -288,6 +287,93 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
           <option value="5000">5,000 nodes</option>
         </select>
       </FilterSection>
+    </div>
+  );
+}
+
+function VirtualizedAgentPicker({
+  agentNames,
+  selectedAgent,
+  onSelect,
+}: {
+  agentNames: string[];
+  selectedAgent: string | null;
+  onSelect: (agentName: string | null) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [scrollTop, setScrollTop] = useState(0);
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredAgents = useMemo(
+    () =>
+      normalizedQuery
+        ? agentNames.filter((agentName) => agentName.toLowerCase().includes(normalizedQuery))
+        : agentNames,
+    [agentNames, normalizedQuery],
+  );
+  const listHeight = AGENT_VISIBLE_ROWS * AGENT_OPTION_HEIGHT;
+  const visibleCount = AGENT_VISIBLE_ROWS + AGENT_OVERSCAN_ROWS * 2;
+  const startIndex = Math.max(0, Math.floor(scrollTop / AGENT_OPTION_HEIGHT) - AGENT_OVERSCAN_ROWS);
+  const visibleAgents = filteredAgents.slice(startIndex, startIndex + visibleCount);
+  const topPadding = startIndex * AGENT_OPTION_HEIGHT;
+  const bottomPadding = Math.max(0, (filteredAgents.length - startIndex - visibleAgents.length) * AGENT_OPTION_HEIGHT);
+
+  return (
+    <div className="space-y-2">
+      <input
+        type="search"
+        value={query}
+        onChange={(event) => {
+          setQuery(event.target.value);
+          setScrollTop(0);
+        }}
+        placeholder={`Filter ${agentNames.length.toLocaleString()} agents`}
+        aria-label="Filter graph agents"
+        className="w-full rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-300 placeholder:text-zinc-600 focus:border-emerald-600 focus:outline-none"
+      />
+      <button
+        type="button"
+        onClick={() => onSelect(null)}
+        className={`flex h-8 w-full items-center rounded px-2 text-left text-[11px] transition ${
+          selectedAgent === null
+            ? "border border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
+            : "border border-zinc-800 bg-zinc-900/70 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+        }`}
+      >
+        All agents
+      </button>
+      <div
+        className="overflow-y-auto rounded border border-zinc-800 bg-zinc-950/70"
+        style={{ height: listHeight }}
+        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+        role="listbox"
+        aria-label="Graph agent selector"
+      >
+        <div style={{ paddingTop: topPadding, paddingBottom: bottomPadding }}>
+          {visibleAgents.map((agentName) => (
+            <button
+              key={agentName}
+              type="button"
+              role="option"
+              aria-selected={selectedAgent === agentName}
+              onClick={() => onSelect(agentName)}
+              className={`block h-8 w-full truncate px-2 text-left font-mono text-[11px] transition ${
+                selectedAgent === agentName
+                  ? "bg-emerald-500/15 text-emerald-200"
+                  : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+              }`}
+              title={agentName}
+            >
+              {agentName}
+            </button>
+          ))}
+          {visibleAgents.length === 0 && (
+            <div className="px-2 py-3 text-[11px] text-zinc-500">No agents match this filter.</div>
+          )}
+        </div>
+      </div>
+      <p className="text-[10px] text-zinc-600">
+        Showing {visibleAgents.length.toLocaleString()} of {filteredAgents.length.toLocaleString()} matches.
+      </p>
     </div>
   );
 }

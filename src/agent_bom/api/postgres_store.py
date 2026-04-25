@@ -31,6 +31,7 @@ from agent_bom.api.postgres_common import (
 from agent_bom.api.postgres_graph import PostgresGraphStore, PostgresScanCache
 from agent_bom.api.postgres_policy import PostgresPolicyStore, PostgresScheduleStore, PostgresSourceStore  # noqa: F401
 from agent_bom.api.postgres_tenant_quota import PostgresTenantQuotaStore  # noqa: F401
+from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
 _JOB_TTL_SECONDS = 3600
 
@@ -47,6 +48,7 @@ class PostgresJobStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
+            ensure_postgres_schema_version(conn, "scan_jobs")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS scan_jobs (
                     job_id TEXT PRIMARY KEY,

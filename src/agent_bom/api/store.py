@@ -12,6 +12,8 @@ import threading
 from datetime import datetime, timezone
 from typing import Protocol
 
+from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+
 from .server import JobStatus, ScanJob
 
 _JOB_TTL_SECONDS = 3600  # 1 hour
@@ -123,6 +125,7 @@ class SQLiteJobStore:
         return self._local.conn
 
     def _init_db(self) -> None:
+        ensure_sqlite_schema_version(self._conn, "scan_jobs")
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS jobs (
                 job_id TEXT PRIMARY KEY,

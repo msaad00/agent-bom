@@ -182,8 +182,8 @@ class TestClickHouseClient:
 
         with patch("agent_bom.http_client.sync_request_with_retry", return_value=_mock_response("")) as mock_req:
             c.ensure_tables()
-            # 1 CREATE DATABASE + N CREATE TABLE + M ALTER forward-compat migrations
-            expected = 1 + len(_TABLE_DDL) + len(_TABLE_MIGRATIONS)
+            # 1 CREATE DATABASE + N CREATE TABLE + M ALTER migrations + schema-version marker
+            expected = 1 + len(_TABLE_DDL) + len(_TABLE_MIGRATIONS) + 1
             assert mock_req.call_count == expected
 
 

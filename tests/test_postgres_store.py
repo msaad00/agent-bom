@@ -71,6 +71,8 @@ class MockConnection:
                     table = "trend_history"
                 elif "scan_schedules" in sql:
                     table = "scan_schedules"
+                elif "control_plane_schema_versions" in sql:
+                    table = "control_plane_schema_versions"
                 elif "osv_cache" in sql:
                     table = "osv_cache"
                 if table not in self._store:
@@ -138,9 +140,23 @@ class MockConnection:
                         prefix = str(params[0]).rstrip("%")
                         rows = [r for r in rows if str(r[4]).startswith(prefix)]
                 cursor.rows = [(r[0], r[1], r[2], r[3], r[4], r[6], r[7], r[8]) for r in rows]
+            elif "distinct on (team_id)" in sql_lower and "from audit_log" in sql_lower:
+                rows = list(self._store.get("audit_log", {}).values())
+                latest: dict[str, tuple] = {}
+                for row in rows:
+                    latest[str(row[5])] = row
+                cursor.rows = [(tenant_id, row[8]) for tenant_id, row in latest.items()]
             elif "from trend_history" in sql_lower:
                 rows = list(self._store.get("trend_history", {}).values())
                 cursor.rows = [(r[0], r[2], r[3], r[4], r[5], r[6], r[7], r[8]) for r in rows]
+            elif "from scan_schedules" in sql_lower:
+                rows = list(self._store.get("scan_schedules", {}).values())
+                if params:
+                    if "schedule_id = %s" in sql_lower:
+                        rows = [r for r in rows if r[0] == params[0]]
+                    elif "tenant_id = %s" in sql_lower:
+                        rows = [r for r in rows if r[3] == params[0]]
+                cursor.rows = [(r[-1],) for r in rows]
             elif "from scan_jobs" in sql_lower and "job_id, team_id, status, created_at, completed_at, triggered_by" in sql_lower:
                 rows = list(self._store.get("scan_jobs", {}).values())
                 cursor.rows = [(r[0], r[1], r[2], r[3], r[4], (r[5] if len(r) > 6 else None)) for r in rows]

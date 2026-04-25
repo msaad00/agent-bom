@@ -6,6 +6,7 @@ import json
 
 from agent_bom.api.postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.scim_store import SCIMGroup, SCIMUser
+from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.platform_invariants import normalize_tenant_id, now_utc_iso
 
 
@@ -18,6 +19,7 @@ class PostgresSCIMStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
+            ensure_postgres_schema_version(conn, "identity_scim")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS scim_users (
                     tenant_id TEXT NOT NULL,

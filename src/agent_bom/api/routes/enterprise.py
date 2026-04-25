@@ -484,6 +484,7 @@ async def auth_policy(request: Request) -> dict:
     from agent_bom.api.saml import describe_saml_posture
     from agent_bom.api.scim import describe_scim_posture
     from agent_bom.api.secret_lifecycle import describe_secret_lifecycle_posture
+    from agent_bom.api.storage_schema import describe_control_plane_storage_schema
     from agent_bom.api.tenant_quota import default_tenant_quotas, get_tenant_quota_runtime
 
     api_policy = get_api_key_policy()
@@ -525,6 +526,7 @@ async def auth_policy(request: Request) -> dict:
         "secret_lifecycle": describe_secret_lifecycle_posture(),
         "tenant_quotas": defaults,
         "tenant_quota_runtime": get_tenant_quota_runtime(tenant_id),
+        "storage_schema": describe_control_plane_storage_schema(),
         "identity_provisioning": {
             "oidc": describe_oidc_posture(),
             "saml": describe_saml_posture(),

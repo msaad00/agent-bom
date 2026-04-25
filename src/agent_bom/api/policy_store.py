@@ -13,6 +13,8 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
+from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+
 # ── Models ────────────────────────────────────────────────────────────────────
 
 
@@ -181,6 +183,7 @@ class SQLitePolicyStore:
 
     def _init_db(self) -> None:
         c = self._conn
+        ensure_sqlite_schema_version(c, "gateway_policies")
         c.execute(
             """CREATE TABLE IF NOT EXISTS gateway_policies (
                 policy_id TEXT PRIMARY KEY,

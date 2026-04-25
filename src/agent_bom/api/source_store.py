@@ -7,6 +7,7 @@ import threading
 from typing import Protocol
 
 from agent_bom.api.models import SourceRecord
+from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 
 
 class SourceStore(Protocol):
@@ -59,6 +60,7 @@ class SQLiteSourceStore:
         return self._local.conn
 
     def _init_db(self) -> None:
+        ensure_sqlite_schema_version(self._conn, "sources")
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS sources (
                 source_id TEXT PRIMARY KEY,

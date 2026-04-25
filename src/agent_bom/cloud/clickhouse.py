@@ -119,6 +119,7 @@ class ClickHouseClient:
                 # error on repeat runs; log and continue so ensure_tables
                 # stays safe to call on every process start.
                 logger.debug("ClickHouse migration skipped (%s): %s", exc, migration.split("\n", 1)[0])
+        self.execute("INSERT INTO control_plane_schema_versions (component, version) VALUES ('analytics', 1)")
         logger.info("ClickHouse analytics tables ensured in database '%s'", self.database)
 
 
@@ -127,6 +128,14 @@ class ClickHouseClient:
 # ------------------------------------------------------------------
 
 _TABLE_DDL: list[str] = [
+    # 0. Control-plane schema inventory for release/upgrade readiness checks.
+    """\
+CREATE TABLE IF NOT EXISTS control_plane_schema_versions (
+    component String,
+    version UInt16,
+    updated_at DateTime DEFAULT now()
+) ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY component""",
     # 1. Vulnerability scan results (append-only)
     """\
 CREATE TABLE IF NOT EXISTS vulnerability_scans (

@@ -9,6 +9,7 @@ Covers:
 from __future__ import annotations
 
 import importlib
+import sqlite3
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -22,6 +23,12 @@ from agent_bom.api import server as _server_mod
 from agent_bom.api import stores as _stores
 from agent_bom.api.middleware import APIKeyMiddleware, get_rate_limit_key_status, get_rate_limit_runtime_status
 from agent_bom.api.server import app
+from agent_bom.api.storage_schema import (
+    CONTROL_PLANE_SCHEMA_TABLE,
+    CONTROL_PLANE_SCHEMA_VERSION,
+    describe_control_plane_storage_schema,
+    ensure_sqlite_schema_version,
+)
 from agent_bom.api.stores import set_tenant_quota_store
 from agent_bom.api.tenant_quota_store import InMemoryTenantQuotaStore
 from tests.auth_helpers import PROXY_SECRET, proxy_headers
@@ -209,6 +216,12 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["status"] in {"ok", "near_limit", "at_limit", "unlimited"}
     assert body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]["utilization_pct"] is not None
     assert "recommended_action" in body["tenant_quota_runtime"]["usage"]["active_scan_jobs"]
+    assert body["storage_schema"]["schema_version"] == CONTROL_PLANE_SCHEMA_VERSION
+    assert body["storage_schema"]["schema_table"] == CONTROL_PLANE_SCHEMA_TABLE
+    assert body["storage_schema"]["component_count"] >= 10
+    assert {"scan_jobs", "audit_log", "graph", "identity_scim", "analytics"} <= {
+        component["component"] for component in body["storage_schema"]["components"]
+    }
     assert body["identity_provisioning"]["oidc"]["mode"] == "disabled"
     assert body["identity_provisioning"]["saml"]["configured"] is False
     assert body["identity_provisioning"]["scim"]["status"] == "disabled"
@@ -512,6 +525,23 @@ def test_auth_policy_requires_admin_role_in_api_middleware() -> None:
     assert middleware._required_scope("GET", "/v1/tenant/tenant-a/data") == "privacy.data:read"
     assert middleware._required_scope("DELETE", "/v1/tenant/tenant-a/data") == "privacy.data:delete"
     assert middleware._required_role("GET", "/v1/auth/debug") == "viewer"
+
+
+def test_storage_schema_manifest_has_unique_components() -> None:
+    manifest = describe_control_plane_storage_schema()
+    components = manifest["components"]
+    names = [component["component"] for component in components]
+    assert len(names) == len(set(names))
+    assert manifest["schema_table"] == "control_plane_schema_versions"
+    assert all(component["version"] == CONTROL_PLANE_SCHEMA_VERSION for component in components)
+
+
+def test_sqlite_schema_version_helper_is_idempotent() -> None:
+    conn = sqlite3.connect(":memory:")
+    ensure_sqlite_schema_version(conn, "scan_jobs")
+    ensure_sqlite_schema_version(conn, "scan_jobs")
+    rows = conn.execute(f"SELECT component, version FROM {CONTROL_PLANE_SCHEMA_TABLE}").fetchall()
+    assert rows == [("scan_jobs", CONTROL_PLANE_SCHEMA_VERSION)]
 
 
 def test_metrics_requires_authenticated_access(monkeypatch: pytest.MonkeyPatch) -> None:

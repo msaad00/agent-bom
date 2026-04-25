@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
+from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+
 
 @dataclass
 class IdempotencyRecord:
@@ -74,6 +76,7 @@ class SQLiteIdempotencyStore:
         return self._local.conn
 
     def _init_db(self) -> None:
+        ensure_sqlite_schema_version(self._conn, "idempotency")
         self._conn.execute(
             """
             CREATE TABLE IF NOT EXISTS idempotency_keys (

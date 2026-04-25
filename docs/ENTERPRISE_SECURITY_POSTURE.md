@@ -140,6 +140,17 @@ and restore-drill cadence.
 
 See `site-docs/deployment/backup-restore.md` for the operator runbook.
 
+## Storage Schema And Upgrade Readiness
+
+The control plane exposes a non-secret storage schema manifest in
+`GET /v1/auth/policy` under `storage_schema`. SQLite and Postgres control-plane
+stores record component versions in `control_plane_schema_versions`; graph
+storage keeps its legacy `graph_schema_version` marker and is also listed in
+the manifest; ClickHouse analytics creates the same schema-version table for
+analytics readiness checks. Operators should capture this surface before and
+after rolling upgrades so schema drift is visible alongside release, Helm, and
+container version checks.
+
 ## Procurement Package
 
 A procurement packet should include:

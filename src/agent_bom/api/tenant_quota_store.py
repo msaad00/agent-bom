@@ -8,6 +8,8 @@ import threading
 from collections.abc import Mapping
 from typing import Protocol
 
+from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+
 
 class TenantQuotaStore(Protocol):
     """Protocol for tenant quota override persistence."""
@@ -50,6 +52,7 @@ class SQLiteTenantQuotaStore:
         return self._local.conn
 
     def _init_db(self) -> None:
+        ensure_sqlite_schema_version(self._conn, "tenant_quotas")
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS tenant_quota_overrides (
                 tenant_id TEXT PRIMARY KEY,

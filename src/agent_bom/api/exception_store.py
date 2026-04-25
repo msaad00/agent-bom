@@ -20,6 +20,8 @@ from enum import Enum
 from typing import Protocol
 from uuid import uuid4
 
+from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+
 logger = logging.getLogger(__name__)
 
 
@@ -156,6 +158,7 @@ class SQLiteExceptionStore:
         return self._local.conn
 
     def _init_db(self) -> None:
+        ensure_sqlite_schema_version(self._conn, "exceptions")
         self._conn.execute("""CREATE TABLE IF NOT EXISTS exceptions (
             exception_id TEXT PRIMARY KEY,
             vuln_id TEXT NOT NULL,

@@ -10,6 +10,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, Field, field_validator
 
+from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.platform_invariants import normalize_tenant_id, now_utc_iso
 
 
@@ -137,6 +138,7 @@ class SQLiteSCIMStore:
         return self._local.conn
 
     def _init_db(self) -> None:
+        ensure_sqlite_schema_version(self._conn, "identity_scim")
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS scim_users (
                 tenant_id TEXT NOT NULL,

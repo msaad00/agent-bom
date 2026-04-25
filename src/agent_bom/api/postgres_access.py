@@ -6,6 +6,7 @@ import json
 
 from agent_bom.api.auth import ApiKey, Role, verify_api_key
 from agent_bom.api.exception_store import ExceptionStatus, VulnException
+from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
 from .postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection, bypass_tenant_rls
 
@@ -19,6 +20,7 @@ class PostgresKeyStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
+            ensure_postgres_schema_version(conn, "api_keys")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS api_keys (
                     key_id TEXT PRIMARY KEY,
@@ -225,6 +227,7 @@ class PostgresExceptionStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
+            ensure_postgres_schema_version(conn, "exceptions")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS exceptions (
                     exception_id TEXT PRIMARY KEY,

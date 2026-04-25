@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from datetime import datetime, timezone
 
+from agent_bom.api.storage_schema import ensure_postgres_schema_version
+
 from .postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
 
 
@@ -17,6 +19,7 @@ class PostgresPolicyStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
+            ensure_postgres_schema_version(conn, "gateway_policies")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS gateway_policies (
                     policy_id TEXT PRIMARY KEY,
@@ -189,6 +192,7 @@ class PostgresScheduleStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
+            ensure_postgres_schema_version(conn, "schedules")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS scan_schedules (
                     schedule_id TEXT PRIMARY KEY,
@@ -290,6 +294,7 @@ class PostgresSourceStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
+            ensure_postgres_schema_version(conn, "sources")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS control_plane_sources (
                     source_id TEXT PRIMARY KEY,

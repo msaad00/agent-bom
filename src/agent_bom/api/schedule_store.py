@@ -11,6 +11,8 @@ from typing import Protocol
 
 from pydantic import BaseModel
 
+from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+
 
 class ScanSchedule(BaseModel):
     """Recurring scan schedule."""
@@ -92,6 +94,7 @@ class SQLiteScheduleStore:
         return self._local.conn
 
     def _init_db(self) -> None:
+        ensure_sqlite_schema_version(self._conn, "schedules")
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS schedules (
                 schedule_id TEXT PRIMARY KEY,

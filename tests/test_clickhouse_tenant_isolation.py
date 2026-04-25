@@ -275,12 +275,13 @@ class TestMigrationCoverage:
 
         client.execute = _fake_execute  # type: ignore[assignment]
         client.ensure_tables()
-        # Must run: CREATE DATABASE + every CREATE TABLE DDL + every migration
-        expected_calls = 1 + len(_TABLE_DDL) + len(_TABLE_MIGRATIONS)
+        # Must run: CREATE DATABASE + every CREATE TABLE DDL + every migration + schema-version marker
+        expected_calls = 1 + len(_TABLE_DDL) + len(_TABLE_MIGRATIONS) + 1
         assert len(executed) == expected_calls, (
             f"ensure_tables should execute CREATE DATABASE + {len(_TABLE_DDL)} tables + "
-            f"{len(_TABLE_MIGRATIONS)} migrations = {expected_calls} statements, "
+            f"{len(_TABLE_MIGRATIONS)} migrations + schema marker = {expected_calls} statements, "
             f"got {len(executed)}"
         )
         migrations_run = [stmt for stmt in executed if stmt.startswith("ALTER TABLE ")]
         assert set(migrations_run) == set(_TABLE_MIGRATIONS)
+        assert executed[-1] == "INSERT INTO control_plane_schema_versions (component, version) VALUES ('analytics', 1)"

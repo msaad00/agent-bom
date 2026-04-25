@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agent_bom.api.graph_store import _escape_like_query, _node_search_text, decode_graph_cursor, encode_graph_cursor
+from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
 from .postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
 
@@ -21,6 +22,7 @@ class PostgresGraphStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
+            ensure_postgres_schema_version(conn, "graph")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS graph_nodes (

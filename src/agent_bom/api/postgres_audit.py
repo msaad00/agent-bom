@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 from agent_bom.api.audit_log import AuditEntry
+from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.baseline import TrendPoint
 
 from .postgres_common import _current_tenant, _ensure_tenant_rls, _get_pool, _tenant_connection
@@ -21,6 +22,7 @@ class PostgresAuditLog:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
+            ensure_postgres_schema_version(conn, "audit_log")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS audit_log (
                     entry_id TEXT PRIMARY KEY,
@@ -175,6 +177,7 @@ class PostgresTrendStore:
 
     def _init_tables(self) -> None:
         with self._pool.connection() as conn:
+            ensure_postgres_schema_version(conn, "trend_history")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS trend_history (
                     id BIGSERIAL PRIMARY KEY,

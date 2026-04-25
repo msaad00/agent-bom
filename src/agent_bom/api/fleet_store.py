@@ -14,6 +14,7 @@ from typing import Protocol
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.platform_invariants import normalize_tenant_id, normalize_timestamp, now_utc_iso
 
 # ─── Models ──────────────────────────────────────────────────────────────────
@@ -250,6 +251,7 @@ class SQLiteFleetStore:
         return self._local.conn
 
     def _init_db(self) -> None:
+        ensure_sqlite_schema_version(self._conn, "fleet")
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS fleet_agents (
                 agent_id TEXT PRIMARY KEY,

@@ -2,9 +2,14 @@
 
 import Link from "next/link";
 import { ExternalLink, Route, SearchX } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getOsvVulnerabilityUrl } from "@/lib/vulnerabilities";
 import type { LineageNodeData } from "./lineage-nodes";
+
+const FINDINGS_VIRTUALIZE_THRESHOLD = 80;
+const FINDING_ROW_HEIGHT = 260;
+const FINDING_OVERSCAN = 4;
 
 export function GraphControlGroup({
   label,
@@ -62,8 +67,10 @@ export function GraphFindingsFallback({
   nodes: Array<{ id: string; data: LineageNodeData }>;
   onSelect: (id: string, data: LineageNodeData) => void;
 }) {
+  const shouldVirtualize = nodes.length > FINDINGS_VIRTUALIZE_THRESHOLD;
+
   return (
-    <div className="h-full overflow-y-auto">
+    <div className="flex h-full flex-col overflow-hidden">
       <div className="border-b border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -80,76 +87,154 @@ export function GraphFindingsFallback({
         </div>
       </div>
 
-      <div className="grid gap-3 p-4 lg:grid-cols-2">
-        {nodes.map(({ id, data }) => {
-          const severity = data.severity?.toUpperCase() ?? "UNKNOWN";
-          const cvss = typeof data.cvssScore === "number" ? data.cvssScore.toFixed(1) : "N/A";
-          const epss = typeof data.epssScore === "number" ? `${(data.epssScore * 100).toFixed(1)}%` : "N/A";
-          const osvUrl = getOsvVulnerabilityUrl(data.label);
-          const tone =
-            data.severity === "critical"
-              ? "border-red-800 bg-red-950/20"
-              : data.severity === "high"
-                ? "border-orange-800 bg-orange-950/20"
-                : "border-[color:var(--border-subtle)] bg-[color:var(--surface)]";
+      {shouldVirtualize ? (
+        <VirtualizedFindingList nodes={nodes} onSelect={onSelect} />
+      ) : (
+        <div className="grid flex-1 gap-3 overflow-y-auto p-4 lg:grid-cols-2">
+          {nodes.map(({ id, data }) => (
+            <FindingCard key={id} id={id} data={data} onSelect={onSelect} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
-          return (
-            <div key={id} className={`rounded-2xl border p-4 ${tone}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-0.5 text-[10px] font-medium tracking-[0.16em] text-[color:var(--text-secondary)]">
-                      {severity}
-                    </span>
-                    {data.isKev && (
-                      <span className="rounded-lg border border-red-800 bg-red-950/70 px-2 py-0.5 text-[10px] font-medium tracking-[0.16em] text-red-300">
-                        KEV
-                      </span>
-                    )}
-                  </div>
-                  <h4 className="mt-2 font-mono text-sm font-semibold text-[color:var(--foreground)]">{data.label}</h4>
-                  {data.description && (
-                    <p className="mt-2 text-sm leading-6 text-[color:var(--text-secondary)]">{data.description}</p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onSelect(id, data)}
-                  className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
-                >
-                  Open evidence
-                </button>
-              </div>
+function VirtualizedFindingList({
+  nodes,
+  onSelect,
+}: {
+  nodes: Array<{ id: string; data: LineageNodeData }>;
+  onSelect: (id: string, data: LineageNodeData) => void;
+}) {
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(720);
 
-              <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                <Stat label="CVSS" value={cvss} />
-                <Stat label="EPSS" value={epss} />
-                <Stat label="Risk" value={typeof data.riskScore === "number" ? data.riskScore.toFixed(1) : "N/A"} />
-              </div>
+  useEffect(() => {
+    const element = scrollerRef.current;
+    if (!element) return;
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Link
-                  href={`/findings?cve=${encodeURIComponent(data.label)}`}
-                  className="inline-flex items-center gap-1 rounded-lg border border-emerald-800 bg-emerald-950/40 px-3 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-950/70"
-                >
-                  <Route className="h-3 w-3" />
-                  Open in findings
-                </Link>
-                {osvUrl && (
-                  <a
-                    href={osvUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs font-medium text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
-                  >
-                    View on OSV
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                )}
-              </div>
+    const measure = () => setViewportHeight(element.clientHeight || 720);
+    measure();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  const { beforeHeight, visibleNodes, totalHeight } = useMemo(() => {
+    const start = Math.max(0, Math.floor(scrollTop / FINDING_ROW_HEIGHT) - FINDING_OVERSCAN);
+    const visibleCount = Math.ceil(viewportHeight / FINDING_ROW_HEIGHT) + FINDING_OVERSCAN * 2;
+    const end = Math.min(nodes.length, start + visibleCount);
+    return {
+      beforeHeight: start * FINDING_ROW_HEIGHT,
+      visibleNodes: nodes.slice(start, end),
+      totalHeight: nodes.length * FINDING_ROW_HEIGHT,
+    };
+  }, [nodes, scrollTop, viewportHeight]);
+
+  return (
+    <div
+      ref={scrollerRef}
+      className="flex-1 overflow-y-auto p-4"
+      onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+      data-testid="virtualized-graph-findings"
+    >
+      <div style={{ height: totalHeight, position: "relative" }}>
+        <div
+          className="grid gap-3"
+          style={{ position: "absolute", left: 0, right: 0, top: beforeHeight }}
+        >
+          {visibleNodes.map(({ id, data }) => (
+            <div key={id} style={{ minHeight: FINDING_ROW_HEIGHT - 12 }}>
+              <FindingCard id={id} data={data} onSelect={onSelect} />
             </div>
-          );
-        })}
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FindingCard({
+  id,
+  data,
+  onSelect,
+}: {
+  id: string;
+  data: LineageNodeData;
+  onSelect: (id: string, data: LineageNodeData) => void;
+}) {
+  const severity = data.severity?.toUpperCase() ?? "UNKNOWN";
+  const cvss = typeof data.cvssScore === "number" ? data.cvssScore.toFixed(1) : "N/A";
+  const epss = typeof data.epssScore === "number" ? `${(data.epssScore * 100).toFixed(1)}%` : "N/A";
+  const osvUrl = getOsvVulnerabilityUrl(data.label);
+  const tone =
+    data.severity === "critical"
+      ? "border-red-800 bg-red-950/20"
+      : data.severity === "high"
+        ? "border-orange-800 bg-orange-950/20"
+        : "border-[color:var(--border-subtle)] bg-[color:var(--surface)]";
+
+  return (
+    <div className={`rounded-2xl border p-4 ${tone}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-lg border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2 py-0.5 text-[10px] font-medium tracking-[0.16em] text-[color:var(--text-secondary)]">
+              {severity}
+            </span>
+            {data.isKev && (
+              <span className="rounded-lg border border-red-800 bg-red-950/70 px-2 py-0.5 text-[10px] font-medium tracking-[0.16em] text-red-300">
+                KEV
+              </span>
+            )}
+          </div>
+          <h4 className="mt-2 font-mono text-sm font-semibold text-[color:var(--foreground)]">{data.label}</h4>
+          {data.description && (
+            <p className="mt-2 line-clamp-3 text-sm leading-6 text-[color:var(--text-secondary)]">{data.description}</p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => onSelect(id, data)}
+          className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-xs font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
+        >
+          Open evidence
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+        <Stat label="CVSS" value={cvss} />
+        <Stat label="EPSS" value={epss} />
+        <Stat label="Risk" value={typeof data.riskScore === "number" ? data.riskScore.toFixed(1) : "N/A"} />
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Link
+          href={`/findings?cve=${encodeURIComponent(data.label)}`}
+          className="inline-flex items-center gap-1 rounded-lg border border-emerald-800 bg-emerald-950/40 px-3 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-950/70"
+        >
+          <Route className="h-3 w-3" />
+          Open in findings
+        </Link>
+        {osvUrl && (
+          <a
+            href={osvUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 rounded-lg border border-[color:var(--border-subtle)] px-3 py-1.5 text-xs font-medium text-[color:var(--text-secondary)] transition-colors hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+          >
+            View on OSV
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
       </div>
     </div>
   );

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Literal
 
 SandboxRuntime = Literal["auto", "docker", "podman"]
+SandboxEgressPolicy = Literal["deny", "allow_all"]
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,12 @@ class SandboxConfig:
     image: str | None = None
     mounts: tuple[SandboxMount, ...] = field(default_factory=tuple)
     network: str = "none"
+    egress_policy: SandboxEgressPolicy = "deny"
+    cpus: str | None = None
+    memory: str | None = None
+    pids_limit: int | None = None
+    tmpfs_size: str | None = None
+    timeout_seconds: int | None = None
     read_only_rootfs: bool = True
     drop_capabilities: bool = True
     no_new_privileges: bool = True
@@ -44,7 +51,13 @@ class SandboxConfig:
             "enabled": self.enabled,
             "runtime": self.runtime,
             "image": self.image,
-            "network": self.network,
+            "network": _effective_network(self),
+            "egress_policy": self.egress_policy,
+            "cpus": self.cpus,
+            "memory": self.memory,
+            "pids_limit": self.pids_limit,
+            "tmpfs_size": self.tmpfs_size,
+            "timeout_seconds": self.timeout_seconds,
             "read_only_rootfs": self.read_only_rootfs,
             "drop_capabilities": self.drop_capabilities,
             "no_new_privileges": self.no_new_privileges,
@@ -79,6 +92,12 @@ def sandbox_config_from_env(
     image: str | None = None,
     mounts: tuple[str, ...] = (),
     user: str | None = None,
+    egress_policy: str | None = None,
+    cpus: str | None = None,
+    memory: str | None = None,
+    pids_limit: int | None = None,
+    tmpfs_size: str | None = None,
+    timeout_seconds: int | None = None,
 ) -> SandboxConfig:
     """Build sandbox config from CLI values and AGENT_BOM_MCP_SANDBOX_* env vars."""
     if enabled is None:
@@ -89,16 +108,38 @@ def sandbox_config_from_env(
     requested_runtime = (runtime or os.environ.get("AGENT_BOM_MCP_SANDBOX_RUNTIME") or "auto").strip().lower()
     if requested_runtime not in {"auto", "docker", "podman"}:
         raise ValueError("sandbox runtime must be auto, docker, or podman")
+    requested_egress = (egress_policy or os.environ.get("AGENT_BOM_MCP_SANDBOX_EGRESS") or "deny").strip().lower().replace("-", "_")
+    if requested_egress not in {"deny", "allow_all"}:
+        raise ValueError("sandbox egress policy must be deny or allow-all")
     requested_image = image or os.environ.get("AGENT_BOM_MCP_SANDBOX_IMAGE")
     env_mounts = tuple(item.strip() for item in os.environ.get("AGENT_BOM_MCP_SANDBOX_MOUNTS", "").split(",") if item.strip())
     parsed_mounts = tuple(parse_sandbox_mount(item) for item in (*mounts, *env_mounts))
     requested_user = user or os.environ.get("AGENT_BOM_MCP_SANDBOX_USER")
+    requested_cpus = cpus or os.environ.get("AGENT_BOM_MCP_SANDBOX_CPUS")
+    requested_memory = memory or os.environ.get("AGENT_BOM_MCP_SANDBOX_MEMORY")
+    requested_tmpfs_size = tmpfs_size or os.environ.get("AGENT_BOM_MCP_SANDBOX_TMPFS_SIZE")
+    requested_pids_limit = (
+        _validate_positive_int("sandbox pids limit", pids_limit)
+        if pids_limit is not None
+        else _optional_positive_int("AGENT_BOM_MCP_SANDBOX_PIDS_LIMIT")
+    )
+    requested_timeout = (
+        _validate_positive_int("sandbox timeout seconds", timeout_seconds)
+        if timeout_seconds is not None
+        else _optional_positive_int("AGENT_BOM_MCP_SANDBOX_TIMEOUT_SECONDS")
+    )
     return SandboxConfig(
         enabled=enabled,
         runtime=requested_runtime,  # type: ignore[arg-type]
         image=requested_image,
         mounts=parsed_mounts,
         user=requested_user,
+        egress_policy=requested_egress,  # type: ignore[arg-type]
+        cpus=requested_cpus,
+        memory=requested_memory,
+        pids_limit=requested_pids_limit,
+        tmpfs_size=requested_tmpfs_size,
+        timeout_seconds=requested_timeout,
     )
 
 
@@ -148,8 +189,15 @@ def _sandbox_docker_args(config: SandboxConfig) -> list[str]:
         args.extend(["--security-opt", "no-new-privileges"])
     if config.drop_capabilities:
         args.extend(["--cap-drop", "ALL"])
-    if config.network:
-        args.extend(["--network", config.network])
+    args.extend(["--network", _effective_network(config)])
+    if config.cpus:
+        args.extend(["--cpus", config.cpus])
+    if config.memory:
+        args.extend(["--memory", config.memory])
+    if config.pids_limit is not None:
+        args.extend(["--pids-limit", str(config.pids_limit)])
+    if config.tmpfs_size:
+        args.extend(["--tmpfs", f"/tmp:size={config.tmpfs_size},mode=1777"])  # nosec B108 - container-internal tmpfs mount
     if config.user:
         args.extend(["--user", config.user])
     for mount in config.mounts:
@@ -189,6 +237,10 @@ def _strip_conflicting_run_options(args: list[str]) -> list[str]:
         "--cap-drop",
         "--user",
         "--mount",
+        "--tmpfs",
+        "--cpus",
+        "--memory",
+        "--pids-limit",
         "-v",
         "--volume",
     }
@@ -206,3 +258,26 @@ def _strip_conflicting_run_options(args: list[str]) -> list[str]:
             continue
         stripped.append(item)
     return stripped
+
+
+def _effective_network(config: SandboxConfig) -> str:
+    if config.network != "none":
+        return config.network
+    return "none" if config.egress_policy == "deny" else "bridge"
+
+
+def _optional_positive_int(env_name: str) -> int | None:
+    value = os.environ.get(env_name)
+    if not value:
+        return None
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ValueError(f"{env_name} must be a positive integer") from exc
+    return _validate_positive_int(env_name, parsed)
+
+
+def _validate_positive_int(label: str, value: int) -> int:
+    if value <= 0:
+        raise ValueError(f"{label} must be a positive integer")
+    return value

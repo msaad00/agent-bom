@@ -1232,6 +1232,29 @@ async def run_proxy(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
+    sandbox_timeout_task = None
+    if sandbox_config and sandbox_config.enabled and sandbox_config.timeout_seconds:
+
+        async def _sandbox_timeout_watchdog() -> None:
+            await asyncio.sleep(sandbox_config.timeout_seconds or 0)
+            if process.returncode is None:
+                logger.error("MCP sandbox timeout reached after %s seconds; terminating server", sandbox_config.timeout_seconds)
+                if log_file:
+                    write_audit_record(
+                        log_file,
+                        {
+                            "ts": datetime.now(timezone.utc).isoformat(),
+                            "type": "mcp_sandbox_timeout",
+                            "timeout_seconds": sandbox_config.timeout_seconds,
+                            "execution_posture": {
+                                "mode": "container_isolated",
+                                "sandbox_evidence": sandbox_evidence,
+                            },
+                        },
+                    )
+                process.terminate()
+
+        sandbox_timeout_task = asyncio.create_task(_sandbox_timeout_watchdog())
 
     async def relay_client_to_server():
         """Read from our stdin, forward to server stdin."""
@@ -1698,6 +1721,8 @@ async def run_proxy(
             audit_task.cancel()
         if refresh_task:
             refresh_task.cancel()
+        if sandbox_timeout_task:
+            sandbox_timeout_task.cancel()
         if control_plane_url:
             await _flush_audit_buffer(summary=summary)
         if log_file:

@@ -100,6 +100,18 @@ def test_proxy_cmd_passes_sandbox_config():
                 "docker",
                 "--sandbox-image",
                 "ghcr.io/acme/mcp-sandbox:1",
+                "--sandbox-cpus",
+                "0.5",
+                "--sandbox-memory",
+                "256m",
+                "--sandbox-pids-limit",
+                "64",
+                "--sandbox-tmpfs-size",
+                "32m",
+                "--sandbox-timeout-seconds",
+                "300",
+                "--sandbox-egress",
+                "allow-all",
                 "--",
                 "npx",
                 "@mcp/server",
@@ -110,6 +122,12 @@ def test_proxy_cmd_passes_sandbox_config():
     assert config.enabled is True
     assert config.runtime == "docker"
     assert config.image == "ghcr.io/acme/mcp-sandbox:1"
+    assert config.cpus == "0.5"
+    assert config.memory == "256m"
+    assert config.pids_limit == 64
+    assert config.tmpfs_size == "32m"
+    assert config.timeout_seconds == 300
+    assert config.egress_policy == "allow_all"
 
 
 # ---------------------------------------------------------------------------

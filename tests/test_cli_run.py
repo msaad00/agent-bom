@@ -114,6 +114,7 @@ def test_run_help():
     assert "--audit-log" in result.output
     assert "--rate-limit" in result.output
     assert "--isolate" in result.output
+    assert "--sandbox-memory" in result.output
 
 
 def test_run_still_works_as_hidden_command():

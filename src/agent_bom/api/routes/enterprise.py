@@ -47,6 +47,7 @@ from agent_bom.api.models import (
     CreateKeyRequest,
     ExceptionRequest,
     FalsePositiveRequest,
+    FindingFeedbackRequest,
     JiraTicketRequest,
     RotateKeyRequest,
     SAMLLoginRequest,
@@ -76,6 +77,8 @@ _AUTH_SESSION_ATTEMPTS: dict[str, list[float]] = {}
 _AUTH_SESSION_LOCK = threading.Lock()
 _SAML_RELAY_STATES: dict[str, float] = {}
 _SAML_RELAY_LOCK = threading.Lock()
+_FEEDBACK_PREFIX = "[finding_feedback:"
+_LEGACY_FALSE_POSITIVE_PREFIX = "[false_positive]"
 
 
 def _client_fingerprint(request: Request) -> str:
@@ -139,6 +142,45 @@ def _consume_saml_relay_state(relay_state: str | None) -> None:
         expires_at = _SAML_RELAY_STATES.pop(digest, None)
     if expires_at is None or expires_at < now:
         raise HTTPException(status_code=401, detail="Invalid or expired SAML relay_state")
+
+
+def _request_actor(request: Request) -> str:
+    return str(getattr(request.state, "api_key_name", None) or getattr(request.state, "auth_method", None) or "system")
+
+
+def _feedback_reason(state: str, reason: str) -> str:
+    clean_state = state.strip().lower().replace("-", "_")
+    clean_reason = reason.strip()
+    return f"{_FEEDBACK_PREFIX}{clean_state}] {clean_reason}".strip()
+
+
+def _parse_feedback_reason(reason: str) -> tuple[str, str] | None:
+    if reason.startswith(_FEEDBACK_PREFIX):
+        close = reason.find("]")
+        if close > len(_FEEDBACK_PREFIX):
+            state = reason[len(_FEEDBACK_PREFIX) : close].strip().lower()
+            return state, reason[close + 1 :].strip()
+    if reason.startswith(_LEGACY_FALSE_POSITIVE_PREFIX):
+        return "false_positive", reason.removeprefix(_LEGACY_FALSE_POSITIVE_PREFIX).strip()
+    return None
+
+
+def _feedback_response(exc: Any) -> dict[str, Any]:
+    parsed = _parse_feedback_reason(str(exc.reason))
+    state, reason = parsed if parsed else ("unknown", str(exc.reason))
+    return {
+        "id": exc.exception_id,
+        "vulnerability_id": exc.vuln_id,
+        "package": exc.package_name,
+        "server_name": exc.server_name,
+        "state": state,
+        "reason": reason,
+        "marked_by": exc.requested_by,
+        "status": "suppressed" if state in {"false_positive", "accepted_risk", "not_applicable"} else state,
+        "created_at": exc.created_at,
+        "expires_at": exc.expires_at,
+        "tenant_id": exc.tenant_id,
+    }
 
 
 def _auth_session_state(request: Request) -> dict:
@@ -1189,36 +1231,74 @@ async def create_jira_ticket_route(
 @router.post("/v1/findings/false-positive", tags=["enterprise"], status_code=201)
 async def mark_false_positive(request: Request, req: FalsePositiveRequest) -> dict:
     """Mark a finding as false positive."""
+    feedback = await create_finding_feedback(
+        request,
+        FindingFeedbackRequest(
+            vulnerability_id=req.vulnerability_id,
+            package=req.package,
+            state="false_positive",
+            reason=req.reason,
+            server_name="",
+            expires_at="",
+        ),
+    )
+    return {
+        "id": feedback["id"],
+        "vulnerability_id": feedback["vulnerability_id"],
+        "package": feedback["package"],
+        "reason": feedback["reason"],
+        "marked_by": feedback["marked_by"],
+        "status": "false_positive",
+        "created_at": feedback["created_at"],
+    }
+
+
+@router.post("/v1/findings/feedback", tags=["enterprise"], status_code=201)
+async def create_finding_feedback(request: Request, req: FindingFeedbackRequest) -> dict:
+    """Record tenant-scoped finding feedback or suppression state."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.exception_store import ExceptionStatus, VulnException
 
     tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = _request_actor(request)
     exc = VulnException(
         vuln_id=req.vulnerability_id,
         package_name=req.package,
-        reason=f"[false_positive] {req.reason}",
-        requested_by=req.marked_by,
+        server_name=req.server_name,
+        reason=_feedback_reason(req.state, req.reason),
+        requested_by=actor,
         status=ExceptionStatus.ACTIVE,
+        expires_at=req.expires_at,
         tenant_id=tenant_id,
     )
     _get_exception_store().put(exc)
     log_action(
-        "findings.false_positive_marked",
-        actor=req.marked_by,
-        resource=f"fp/{exc.exception_id}",
+        "findings.feedback_recorded",
+        actor=actor,
+        resource=f"finding-feedback/{exc.exception_id}",
         tenant_id=tenant_id,
         vuln_id=req.vulnerability_id,
         package=req.package,
+        state=req.state,
+        expires_at=req.expires_at,
     )
-    return {
-        "id": exc.exception_id,
-        "vulnerability_id": req.vulnerability_id,
-        "package": req.package,
-        "reason": req.reason,
-        "marked_by": req.marked_by,
-        "status": "false_positive",
-        "created_at": exc.created_at,
-    }
+    return _feedback_response(exc)
+
+
+@router.get("/v1/findings/feedback", tags=["enterprise"])
+async def list_finding_feedback(request: Request, state: str | None = None) -> dict:
+    """List tenant-scoped finding feedback entries."""
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    entries = []
+    for exc in _get_exception_store().list_all(tenant_id=tenant_id):
+        parsed = _parse_feedback_reason(exc.reason)
+        if parsed is None:
+            continue
+        entry_state, _ = parsed
+        if state and entry_state != state:
+            continue
+        entries.append(_feedback_response(exc))
+    return {"feedback": entries, "total": len(entries)}
 
 
 @router.get("/v1/findings/false-positives", tags=["enterprise"])
@@ -1226,14 +1306,14 @@ async def list_false_positives(request: Request) -> dict:
     """List all false positive entries."""
     tenant_id = getattr(request.state, "tenant_id", "default")
     all_exceptions = _get_exception_store().list_all(tenant_id=tenant_id)
-    fps = [e for e in all_exceptions if e.reason.startswith("[false_positive]")]
+    fps = [e for e in all_exceptions if (_parse_feedback_reason(e.reason) or ("", ""))[0] == "false_positive"]
     return {
         "false_positives": [
             {
                 "id": e.exception_id,
                 "vulnerability_id": e.vuln_id,
                 "package": e.package_name,
-                "reason": e.reason.removeprefix("[false_positive] "),
+                "reason": (_parse_feedback_reason(e.reason) or ("false_positive", e.reason))[1],
                 "marked_by": e.requested_by,
                 "status": "false_positive",
                 "created_at": e.created_at,
@@ -1250,12 +1330,29 @@ async def remove_false_positive(request: Request, fp_id: str) -> None:
     from agent_bom.api.audit_log import log_action
 
     tenant_id = getattr(request.state, "tenant_id", "default")
-    actor = getattr(request.state, "api_key_name", "") or "system"
+    actor = _request_actor(request)
     store = _get_exception_store()
     exc = store.get(fp_id, tenant_id=tenant_id)
-    if exc is None or not exc.reason.startswith("[false_positive]"):
+    if exc is None or (_parse_feedback_reason(exc.reason) or ("", ""))[0] != "false_positive":
         raise HTTPException(status_code=404, detail=f"False positive {fp_id} not found")
     ok = store.delete(fp_id, tenant_id=tenant_id)
     if not ok:
         raise HTTPException(status_code=404, detail=f"False positive {fp_id} not found")
     log_action("findings.false_positive_removed", actor=actor, resource=f"fp/{fp_id}", tenant_id=tenant_id)
+
+
+@router.delete("/v1/findings/feedback/{feedback_id}", tags=["enterprise"], status_code=204)
+async def remove_finding_feedback(request: Request, feedback_id: str) -> None:
+    """Remove tenant-scoped finding feedback without deleting audit history."""
+    from agent_bom.api.audit_log import log_action
+
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    actor = _request_actor(request)
+    store = _get_exception_store()
+    exc = store.get(feedback_id, tenant_id=tenant_id)
+    if exc is None or _parse_feedback_reason(exc.reason) is None:
+        raise HTTPException(status_code=404, detail=f"Finding feedback {feedback_id} not found")
+    ok = store.delete(feedback_id, tenant_id=tenant_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"Finding feedback {feedback_id} not found")
+    log_action("findings.feedback_removed", actor=actor, resource=f"finding-feedback/{feedback_id}", tenant_id=tenant_id)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -480,3 +480,17 @@ class FalsePositiveRequest(BaseModel):
     package: str
     reason: str = ""
     marked_by: str = ""
+
+
+FindingFeedbackState = Literal["false_positive", "accepted_risk", "not_applicable", "fixed_verified"]
+
+
+class FindingFeedbackRequest(BaseModel):
+    """Request body for POST /v1/findings/feedback."""
+
+    vulnerability_id: str = Field(..., min_length=1, max_length=128)
+    package: str = Field("*", min_length=1, max_length=256)
+    state: FindingFeedbackState = "false_positive"
+    reason: str = Field("", max_length=2000)
+    server_name: str = Field("", max_length=256)
+    expires_at: str = Field("", max_length=64)

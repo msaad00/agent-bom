@@ -67,11 +67,11 @@ class TestRBAC:
         assert resolve_role(api_key="key-xyz").value == "admin"
         configure_api_keys({})  # cleanup
 
-    def test_resolve_role_from_header(self):
+    def test_resolve_role_ignores_unauthenticated_header(self):
         from agent_bom.rbac import resolve_role
 
         assert resolve_role(role_header="viewer").value == "viewer"
-        assert resolve_role(role_header="ANALYST").value == "analyst"
+        assert resolve_role(role_header="ANALYST").value == "viewer"
 
     def test_resolve_role_default(self):
         from agent_bom.rbac import resolve_role

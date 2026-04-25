@@ -183,7 +183,7 @@ Horizontal scale via Helm HPA on both control plane and gateway. ClickHouse is t
 - **API keys** with enforced lifetime policy (`AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS`, `AGENT_BOM_API_KEY_MAX_TTL_SECONDS`) and zero-downtime rotation (`POST /v1/auth/keys/{key_id}/rotate`) — [`api/auth.py`](../src/agent_bom/api/auth.py), [`api/middleware.py`](../src/agent_bom/api/middleware.py).
 - **OIDC** — any IdP (Okta, Auth0, Azure AD, Google). Config in [`api/oidc.py`](../src/agent_bom/api/oidc.py).
 - **SAML** — SP metadata at [`/v1/auth/saml/metadata`](../src/agent_bom/api/saml.py). Install `pip install 'agent-bom[saml]'`.
-- **Trusted proxy headers** — RBAC via `X-Agent-Bom-Role` + `X-Agent-Bom-Tenant-ID` when an authed reverse proxy terminates client identity. [`rbac.py require_authenticated_permission`](../src/agent_bom/rbac.py).
+- **Trusted proxy headers** — RBAC via `X-Agent-Bom-Role` + `X-Agent-Bom-Tenant-ID` only when an authed reverse proxy also injects `X-Agent-Bom-Proxy-Secret` matching `AGENT_BOM_TRUST_PROXY_AUTH_SECRET`. Direct client-supplied role/tenant headers are ignored. [`rbac.py require_authenticated_permission`](../src/agent_bom/rbac.py).
 - **Gateway upstream auth** — `none`, `bearer` (env), `oauth2_client_credentials` with token cache + early refresh — [`gateway_upstreams.py UpstreamConfig.resolve_auth_headers`](../src/agent_bom/gateway_upstreams.py). Snowflake MCPs use the OAuth2 path.
 
 ### 2.11 Secrets never touch agent-bom's disk

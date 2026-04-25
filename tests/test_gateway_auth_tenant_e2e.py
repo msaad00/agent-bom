@@ -43,6 +43,22 @@ from agent_bom.api.stores import set_job_store
 from agent_bom.gateway_server import GatewaySettings, create_gateway_app
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 
+PROXY_SECRET = "test-proxy-secret"
+
+
+def setup_module() -> None:
+    import os
+
+    os.environ["AGENT_BOM_TRUST_PROXY_AUTH"] = "1"
+    os.environ["AGENT_BOM_TRUST_PROXY_AUTH_SECRET"] = PROXY_SECRET
+
+
+def teardown_module() -> None:
+    import os
+
+    os.environ.pop("AGENT_BOM_TRUST_PROXY_AUTH", None)
+    os.environ.pop("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", None)
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -96,7 +112,13 @@ def pilot_fleet():
 def _cp_client(tenant: str) -> TestClient:
     """TestClient for the agent-bom control-plane API authed as `tenant`."""
     c = TestClient(app)
-    c.headers.update({"X-Agent-Bom-Role": "admin", "X-Agent-Bom-Tenant-ID": tenant})
+    c.headers.update(
+        {
+            "X-Agent-Bom-Role": "admin",
+            "X-Agent-Bom-Tenant-ID": tenant,
+            "X-Agent-Bom-Proxy-Secret": PROXY_SECRET,
+        }
+    )
     return c
 
 

@@ -12,7 +12,31 @@ from agent_bom.api.policy_store import (
 )
 from agent_bom.api.server import app, set_policy_store
 
-ADMIN_HEADERS = {"X-Agent-Bom-Role": "admin"}
+PROXY_SECRET = "test-proxy-secret"
+ADMIN_HEADERS = {
+    "X-Agent-Bom-Role": "admin",
+    "X-Agent-Bom-Tenant-ID": "default",
+    "X-Agent-Bom-Proxy-Secret": PROXY_SECRET,
+}
+VIEWER_HEADERS = {
+    "X-Agent-Bom-Role": "viewer",
+    "X-Agent-Bom-Tenant-ID": "default",
+    "X-Agent-Bom-Proxy-Secret": PROXY_SECRET,
+}
+
+
+def setup_module() -> None:
+    import os
+
+    os.environ["AGENT_BOM_TRUST_PROXY_AUTH"] = "1"
+    os.environ["AGENT_BOM_TRUST_PROXY_AUTH_SECRET"] = PROXY_SECRET
+
+
+def teardown_module() -> None:
+    import os
+
+    os.environ.pop("AGENT_BOM_TRUST_PROXY_AUTH", None)
+    os.environ.pop("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", None)
 
 
 def _now() -> str:
@@ -24,7 +48,9 @@ def _now() -> str:
 def _fresh_client() -> tuple[TestClient, InMemoryPolicyStore]:
     store = InMemoryPolicyStore()
     set_policy_store(store)
-    return TestClient(app), store
+    client = TestClient(app)
+    client.headers.update(ADMIN_HEADERS)
+    return client, store
 
 
 def _make_policy(
@@ -77,7 +103,7 @@ def test_list_policies_emits_etag_and_supports_not_modified():
     resp = client.get("/v1/gateway/policies?enabled=true")
     assert resp.status_code == 200
     etag = resp.headers["etag"]
-    cached = client.get("/v1/gateway/policies?enabled=true", headers={"If-None-Match": etag})
+    cached = client.get("/v1/gateway/policies?enabled=true", headers={**ADMIN_HEADERS, "If-None-Match": etag})
     assert cached.status_code == 304
     assert cached.headers["etag"] == etag
 
@@ -202,9 +228,9 @@ def test_write_routes_require_policy_write_permission():
         "mode": "enforce",
         "rules": [{"id": "r1", "action": "block", "block_tools": ["exec"]}],
     }
-    assert client.post("/v1/gateway/policies", json=payload).status_code == 403
-    assert client.put("/v1/gateway/policies/p-1", json={"name": "renamed"}).status_code == 403
-    assert client.delete("/v1/gateway/policies/p-1").status_code == 403
+    assert client.post("/v1/gateway/policies", json=payload, headers=VIEWER_HEADERS).status_code == 403
+    assert client.put("/v1/gateway/policies/p-1", json={"name": "renamed"}, headers=VIEWER_HEADERS).status_code == 403
+    assert client.delete("/v1/gateway/policies/p-1", headers=VIEWER_HEADERS).status_code == 403
 
 
 def test_list_hides_other_tenants():

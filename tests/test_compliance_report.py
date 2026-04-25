@@ -40,6 +40,15 @@ from agent_bom.api.routes import compliance as compliance_routes
 from agent_bom.api.server import app
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import _get_store, set_analytics_store, set_job_store
+from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
+
+
+def setup_module() -> None:
+    enable_trusted_proxy_env()
+
+
+def teardown_module() -> None:
+    disable_trusted_proxy_env()
 
 
 def _now_iso() -> str:
@@ -322,10 +331,7 @@ def test_compliance_report_route_exports_real_evidence_end_to_end() -> None:
         client = TestClient(app)
         resp = client.get(
             "/v1/compliance/owasp-llm/report",
-            headers={
-                "X-Agent-Bom-Role": "viewer",
-                "X-Agent-Bom-Tenant-ID": "tenant-alpha",
-            },
+            headers=proxy_headers(tenant="tenant-alpha"),
         )
         assert resp.status_code == 200
 

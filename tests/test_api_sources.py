@@ -10,22 +10,27 @@ from agent_bom.api.server import app, configure_api
 from agent_bom.api.source_store import InMemorySourceStore
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.connectors.base import ConnectorHealthState, ConnectorStatus
+from tests.auth_helpers import PROXY_SECRET
 
 ADMIN_HEADERS = {
     "X-Agent-Bom-Role": "admin",
     "X-Agent-Bom-Tenant-ID": "tenant-alpha",
+    "X-Agent-Bom-Proxy-Secret": PROXY_SECRET,
 }
 ANALYST_HEADERS = {
     "X-Agent-Bom-Role": "analyst",
     "X-Agent-Bom-Tenant-ID": "tenant-alpha",
+    "X-Agent-Bom-Proxy-Secret": PROXY_SECRET,
 }
 VIEWER_HEADERS = {
     "X-Agent-Bom-Role": "viewer",
     "X-Agent-Bom-Tenant-ID": "tenant-alpha",
+    "X-Agent-Bom-Proxy-Secret": PROXY_SECRET,
 }
 OTHER_TENANT_HEADERS = {
     "X-Agent-Bom-Role": "viewer",
     "X-Agent-Bom-Tenant-ID": "tenant-beta",
+    "X-Agent-Bom-Proxy-Secret": PROXY_SECRET,
 }
 
 
@@ -35,6 +40,7 @@ def source_client(monkeypatch: pytest.MonkeyPatch):
     old_job_store = _stores._store
 
     monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", PROXY_SECRET)
     configure_api(api_key=None)
     _stores.set_source_store(InMemorySourceStore())
     _stores.set_job_store(InMemoryJobStore())

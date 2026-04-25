@@ -91,6 +91,7 @@ def evaluate_gateway_policies(
         ``(allowed, reason, policy_id)`` — if blocked, ``reason``
         explains why and ``policy_id`` identifies the blocking policy.
     """
+    first_audit_match: tuple[str, str] | None = None
     for policy in policies:
         if not policy.enabled:
             continue
@@ -102,6 +103,10 @@ def evaluate_gateway_policies(
             if policy.mode.value == "enforce":
                 return False, reason, policy.policy_id
             # audit mode — log but allow
-            return True, f"[audit] {reason}", policy.policy_id
+            if first_audit_match is None:
+                first_audit_match = (f"[audit] {reason}", policy.policy_id)
 
+    if first_audit_match is not None:
+        reason, policy_id = first_audit_match
+        return True, reason, policy_id
     return True, "", None

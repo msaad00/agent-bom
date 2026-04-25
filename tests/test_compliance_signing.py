@@ -30,6 +30,15 @@ from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.server import app
 from agent_bom.api.store import InMemoryJobStore
 from agent_bom.api.stores import set_job_store
+from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
+
+
+def setup_module() -> None:
+    enable_trusted_proxy_env()
+
+
+def teardown_module() -> None:
+    disable_trusted_proxy_env()
 
 
 def _generate_ed25519_pem() -> tuple[str, Ed25519PublicKey]:
@@ -127,7 +136,7 @@ def test_bundle_roundtrip_verifies_with_verification_key_endpoint(monkeypatch: p
         # Pilot-team flow: fetch public key once, pin it, use it to verify bundles.
         key_resp = client.get(
             "/v1/compliance/verification-key",
-            headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Tenant-ID": "tenant-alpha"},
+            headers=proxy_headers(tenant="tenant-alpha"),
         )
         assert key_resp.status_code == 200
         key_body = key_resp.json()
@@ -140,7 +149,7 @@ def test_bundle_roundtrip_verifies_with_verification_key_endpoint(monkeypatch: p
         # Now pull a bundle and verify it with the pinned public key.
         resp = client.get(
             "/v1/compliance/owasp-llm/report",
-            headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Tenant-ID": "tenant-alpha"},
+            headers=proxy_headers(tenant="tenant-alpha"),
         )
         assert resp.status_code == 200
         assert resp.headers["X-Agent-Bom-Compliance-Signature-Algorithm"] == "Ed25519"

@@ -140,6 +140,25 @@ def test_multiple_policies_first_blocks():
     assert pid == "p-2"
 
 
+def test_enforce_policy_takes_precedence_over_prior_audit_match():
+    audit = _policy(
+        policy_id="audit-rm",
+        mode=PolicyMode.AUDIT,
+        rules=[GatewayRule(id="audit", action="block", block_tools=["rm"])],
+    )
+    enforce = _policy(
+        policy_id="enforce-rm",
+        mode=PolicyMode.ENFORCE,
+        rules=[GatewayRule(id="enforce", action="block", block_tools=["rm"])],
+    )
+
+    allowed, reason, pid = evaluate_gateway_policies([audit, enforce], "rm", {})
+
+    assert allowed is False
+    assert "rm" in reason
+    assert pid == "enforce-rm"
+
+
 def test_tool_name_exact_match():
     p = _policy(rules=[GatewayRule(id="r1", action="block", tool_name="write_file")])
     allowed, _, _ = evaluate_gateway_policies([p], "write_file", {})

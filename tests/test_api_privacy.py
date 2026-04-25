@@ -27,6 +27,15 @@ from agent_bom.api.stores import (
     set_tenant_quota_store,
 )
 from agent_bom.api.tenant_quota_store import InMemoryTenantQuotaStore
+from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
+
+
+def setup_module() -> None:
+    enable_trusted_proxy_env()
+
+
+def teardown_module() -> None:
+    disable_trusted_proxy_env()
 
 
 class _GraphStore:
@@ -137,13 +146,13 @@ def test_tenant_data_http_endpoint_requires_authenticated_admin(tenant_stores) -
 
     viewer = client.get(
         "/v1/tenant/tenant-a/data",
-        headers={"X-Agent-Bom-Role": "viewer", "X-Agent-Bom-Tenant-ID": "tenant-a"},
+        headers=proxy_headers(role="viewer", tenant="tenant-a"),
     )
     assert viewer.status_code == 403
 
     admin = client.get(
         "/v1/tenant/tenant-a/data",
-        headers={"X-Agent-Bom-Role": "admin", "X-Agent-Bom-Tenant-ID": "tenant-a"},
+        headers=proxy_headers(role="admin", tenant="tenant-a"),
     )
     assert admin.status_code == 200
     assert admin.json()["counts"]["jobs"] == 1

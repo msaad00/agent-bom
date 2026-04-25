@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "scan_id": "scan-demo-001",
+  "tenant_id": "tenant-demo",
+  "nodes": [
+    {
+      "id": "agent:demo-agent",
+      "entity_type": "agent",
+      "label": "demo-agent",
+      "risk_score": 0
+    }
+  ],
+  "edges": [],
+  "attack_paths": []
+}

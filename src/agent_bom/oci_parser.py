@@ -53,6 +53,7 @@ _logger = logging.getLogger(__name__)
 _MAX_JSON_MEMBER_BYTES = 100 * 1024 * 1024
 _MAX_LAYER_UNCOMPRESSED_BYTES = 5 * 1024 * 1024 * 1024
 _MAX_JAR_UNCOMPRESSED_BYTES = 512 * 1024 * 1024
+_MAX_DECOMPRESSION_RATIO = 100
 
 
 def _env_int(name: str, default: int) -> int:
@@ -75,6 +76,16 @@ def _max_layer_uncompressed_bytes() -> int:
 
 def _max_jar_uncompressed_bytes() -> int:
     return _env_int("AGENT_BOM_OCI_MAX_JAR_UNCOMPRESSED_BYTES", _MAX_JAR_UNCOMPRESSED_BYTES)
+
+
+def _max_decompression_ratio() -> int:
+    return _env_int("AGENT_BOM_OCI_MAX_DECOMPRESSION_RATIO", _MAX_DECOMPRESSION_RATIO)
+
+
+def _decompression_ratio_exceeded(uncompressed_bytes: int, compressed_bytes: int) -> bool:
+    if compressed_bytes <= 0 or uncompressed_bytes <= 0:
+        return False
+    return uncompressed_bytes > compressed_bytes * _max_decompression_ratio()
 
 
 # ── Tar member safety ────────────────────────────────────────────────────────
@@ -389,6 +400,13 @@ def _zip_uncompressed_size(zf: zipfile.ZipFile) -> int:
         total += max(0, int(info.file_size))
         if total > _max_jar_uncompressed_bytes():
             break
+    return total
+
+
+def _zip_compressed_size(zf: zipfile.ZipFile) -> int:
+    total = 0
+    for info in zf.infolist():
+        total += max(0, int(info.compress_size))
     return total
 
 
@@ -822,8 +840,12 @@ def _extract_packages_from_layer(
                 continue
             jar_bytes = f.read()
             with zipfile.ZipFile(io.BytesIO(jar_bytes)) as zf:
-                if _zip_uncompressed_size(zf) > _max_jar_uncompressed_bytes():
+                jar_uncompressed_bytes = _zip_uncompressed_size(zf)
+                if jar_uncompressed_bytes > _max_jar_uncompressed_bytes():
                     _logger.debug("Skipping oversized JAR payload: %s", member_name)
+                    continue
+                if _decompression_ratio_exceeded(jar_uncompressed_bytes, _zip_compressed_size(zf)):
+                    _logger.debug("Skipping high-ratio compressed JAR payload: %s", member_name)
                     continue
                 jar_names = zf.namelist()
                 # Prefer META-INF/maven/*/pom.properties (groupId/artifactId/version)
@@ -1137,6 +1159,9 @@ def _parse_layers_from_tarball(
                 if uncompressed_bytes > _max_layer_uncompressed_bytes():
                     warnings.append(f"Layer {layer_path} exceeds uncompressed extraction limit — skipped")
                     continue
+                if _decompression_ratio_exceeded(uncompressed_bytes, member.size):
+                    warnings.append(f"Layer {layer_path} exceeds decompression ratio limit — skipped")
+                    continue
                 layer_distro_name, layer_distro_version = _read_os_release_from_layer(layer_tf, all_deleted)
                 if layer_distro_name:
                     detected_distro_name = layer_distro_name
@@ -1346,6 +1371,10 @@ def parse_oci_layout_dir(path: Path) -> OCIParseResult:
                 uncompressed_bytes = _tar_uncompressed_regular_size(layer_tf)
                 if uncompressed_bytes > _max_layer_uncompressed_bytes():
                     warnings.append(f"Layer {layer_hash[:12]} exceeds uncompressed extraction limit — skipped")
+                    continue
+                compressed_bytes = blob_path.stat().st_size
+                if _decompression_ratio_exceeded(uncompressed_bytes, compressed_bytes):
+                    warnings.append(f"Layer {layer_hash[:12]} exceeds decompression ratio limit — skipped")
                     continue
                 whiteouts = _extract_packages_from_layer(layer_tf, packages_by_key, packages, all_deleted, layer)
                 all_deleted.update(whiteouts)

@@ -20,6 +20,9 @@ from agent_bom.oci_parser import (
     _RPMTAG_RELEASE,
     _RPMTAG_VERSION,
     OCIParseError,
+    _decompression_ratio_exceeded,
+    _zip_compressed_size,
+    _zip_uncompressed_size,
     parse_oci_layout_dir,
     parse_oci_tarball,
     scan_oci,
@@ -336,6 +339,22 @@ def test_docker_save_skips_layer_over_uncompressed_limit(monkeypatch):
 
     assert result.packages == []
     assert any("uncompressed extraction limit" in warning for warning in result.warnings)
+
+
+def test_decompression_ratio_guard_is_configurable(monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_OCI_MAX_DECOMPRESSION_RATIO", "10")
+
+    assert _decompression_ratio_exceeded(101, 10) is True
+    assert _decompression_ratio_exceeded(100, 10) is False
+
+
+def test_zip_size_helpers_measure_compressed_and_uncompressed_bytes():
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("payload.txt", b"x" * 4096)
+    with zipfile.ZipFile(io.BytesIO(buf.getvalue())) as zf:
+        assert _zip_uncompressed_size(zf) == 4096
+        assert _zip_compressed_size(zf) < 4096
 
 
 def test_docker_save_empty_layers():

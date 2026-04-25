@@ -1296,6 +1296,9 @@ def discover_all(
             )
         agents = merge_discoveries(agents, dyn_result.agents)
 
+    from agent_bom.discovery.identity import deduplicate_discovered_agents
+
+    agents = deduplicate_discovered_agents(agents)
     configured = [a for a in agents if a.status == AgentStatus.CONFIGURED]
     if not configured and not installed_agents:
         console.print("  [yellow]No MCP configurations found.[/yellow]")

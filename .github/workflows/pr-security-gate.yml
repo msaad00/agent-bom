@@ -1,6 +1,6 @@
 name: PR Security Gate
 
-# Hard gate on PRs: pip-audit must pass (HIGH+ severity fails the build)
+# Hard gate on PRs: pip-audit must pass using machine-readable JSON output
 # and agent-bom self-scans its own installed deps. This complements the
 # existing cve-freshness.yml scheduled job by catching regressions on PRs,
 # not just twice a week.
@@ -35,29 +35,55 @@ jobs:
           python-version: "3.11"
 
       - name: Install runtime deps (not dev) — scan the shipping dep set
-        run: uv sync --extra api --extra postgres --extra mcp-server --extra oidc
+        run: uv sync --frozen --extra api --extra postgres --extra mcp-server --extra oidc
 
-      - name: Run pip-audit with strict severity gate
+      - name: Run pip-audit with JSON gate
         run: |
-          # Fail on HIGH or CRITICAL findings. Medium + Low become advisory
-          # so we're not blocked by transitive noise, but HIGH+ is a gate.
+          set +e
           uv run --with pip-audit pip-audit --ignore-vuln CVE-2026-3219 \
             -s osv \
-            --format columns \
-            | tee audit.txt
+            --format json \
+            --output audit.json
+          set -e
 
-          # Extract highest severity — fail if HIGH or CRITICAL is present.
-          if grep -qiE '\b(HIGH|CRITICAL)\b' audit.txt; then
-            echo "::error::pip-audit found HIGH or CRITICAL vulnerabilities — see the log above"
-            exit 1
-          fi
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("audit.json")
+          if not path.is_file():
+              raise SystemExit("pip-audit did not produce audit.json")
+          data = json.loads(path.read_text(encoding="utf-8"))
+          fixable = []
+          severe = []
+          for dependency in data.get("dependencies", []):
+              dep_name = dependency.get("name", "<unknown>")
+              dep_version = dependency.get("version", "<unknown>")
+              for vuln in dependency.get("vulns", []):
+                  vuln_id = vuln.get("id", "<unknown>")
+                  severity = str(vuln.get("severity") or vuln.get("severity_level") or "").upper()
+                  fix_versions = vuln.get("fix_versions") or []
+                  if severity in {"HIGH", "CRITICAL"}:
+                      severe.append(f"{dep_name} {dep_version} {vuln_id} severity={severity}")
+                  if fix_versions:
+                      fixable.append(f"{dep_name} {dep_version} {vuln_id} fixes={','.join(fix_versions)}")
+          if severe:
+              print("::error::pip-audit found HIGH/CRITICAL vulnerabilities:")
+              print("\n".join(severe[:20]))
+              raise SystemExit(1)
+          if fixable:
+              print("::error::pip-audit found vulnerabilities with available fixes:")
+              print("\n".join(fixable[:20]))
+              raise SystemExit(1)
+          print("pip-audit JSON gate passed: no HIGH/CRITICAL or fixable findings")
+          PY
 
       - name: Upload pip-audit report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: pip-audit-report
-          path: audit.txt
+          path: audit.json
 
   self-scan-pr:
     name: agent-bom self-scan on PR
@@ -73,7 +99,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install agent-bom + dev extras
-        run: uv sync --extra dev
+        run: uv sync --frozen --extra dev
 
       - name: Self-scan fixture SBOM for regressions
         id: self_scan

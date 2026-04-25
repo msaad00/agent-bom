@@ -38,6 +38,22 @@ jobs:
           print(f"Version aligned: {pkg}")
           PY
 
+      - name: Verify CHANGELOG contains release entry
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          tag = "${{ steps.meta.outputs.version }}"
+          changelog = Path("CHANGELOG.md")
+          if not changelog.is_file():
+              raise SystemExit("CHANGELOG.md not found")
+          text = changelog.read_text(encoding="utf-8")
+          if not re.search(rf"^## \[{re.escape(tag)}\](?:\s|$)", text, re.M):
+              raise SystemExit(f"CHANGELOG.md is missing release entry: ## [{tag}]")
+          print(f"CHANGELOG entry present: {tag}")
+          PY
+
   docs-site:
     name: Rebuild and deploy docs
     needs: version-guard
@@ -491,7 +507,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install agent-bom (from source)
-        run: uv sync --extra dev
+        run: uv sync --frozen --extra dev
 
       - name: Verify release consistency map
         run: python scripts/check_release_consistency.py
@@ -548,7 +564,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --frozen --extra dev
 
       - name: Generate CycloneDX SBOM (cyclonedx-py — standard)
         run: uv run --with cyclonedx-bom==7.2.2 cyclonedx-py environment -o agent-bom-sbom.cdx.json

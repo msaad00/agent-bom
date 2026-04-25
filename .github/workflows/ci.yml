@@ -76,7 +76,7 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --frozen --extra dev
 
       - name: Bandit (Static Security Analysis)
         run: uv run bandit -r src/ --severity-level medium
@@ -142,7 +142,8 @@ jobs:
           scan-type: fs
           scan-ref: .
           format: table
-          severity: HIGH,CRITICAL
+          severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
+          ignore-unfixed: true
           exit-code: '1'
           trivyignores: .trivyignore
 
@@ -187,7 +188,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --frozen --extra dev
 
       - name: Ruff
         run: uv run ruff check src/
@@ -333,7 +334,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --frozen --extra dev
 
       - name: Generate endpoint bundle
         env:
@@ -401,7 +402,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv sync --extra dev --extra api --extra mcp-server
+        run: uv sync --frozen --extra dev --extra api --extra mcp-server
 
       - name: Run tests
         run: |
@@ -437,7 +438,7 @@ jobs:
 
       - name: Install project dependencies
         run: |
-          uv sync --extra dev --extra api --extra mcp-server
+          uv sync --frozen --extra dev --extra api --extra mcp-server
 
       - name: Run tests (musl)
         run: |
@@ -489,7 +490,7 @@ jobs:
         run: python scripts/check_product_surface_contract.py
 
       - name: Install dependencies for CLI smoke checks
-        run: uv sync --extra dev --extra api --extra mcp-server
+        run: uv sync --frozen --extra dev --extra api --extra mcp-server
 
       - name: Validate canonical README commands parse
         run: |
@@ -631,7 +632,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install agent-bom from source
-        run: uv sync --extra dev
+        run: uv sync --frozen --extra dev
 
       - name: Generate real SBOM from installed packages (pip-audit CycloneDX)
         run: |

@@ -14,6 +14,7 @@ from typing import Optional
 
 import yaml  # type: ignore[import-untyped]
 from rich.console import Console
+from rich.markup import escape
 
 # Re-export parser functions for backward compatibility
 from agent_bom.discovery.config_parsers import (  # noqa: F401
@@ -29,9 +30,13 @@ from agent_bom.discovery.config_parsers import (  # noqa: F401
     parse_snowflake_connections,
 )
 from agent_bom.models import Agent, AgentStatus, AgentType, MCPServer, TransportType
-from agent_bom.security import sanitize_env_vars
+from agent_bom.security import sanitize_env_vars, sanitize_log_label
 
 console = Console(stderr=True)
+
+
+def _display_label(value: object, max_len: int = 500) -> str:
+    return escape(sanitize_log_label(value, max_len=max_len))
 
 
 def _read_text_no_symlink(path: Path, *, encoding: str = "utf-8") -> str:
@@ -410,7 +415,11 @@ def discover_global_configs(agent_types: Optional[list[AgentType]] = None) -> li
                 # Skip symlinks whose target differs from the link path's parent tree
                 raw_path = Path(os.path.expanduser(path_str)) if "*" not in path_str else rp
                 if raw_path.is_symlink() and not rp.is_relative_to(raw_path.parent):
-                    logger.warning("Skipping symlink pointing outside parent: %s -> %s", raw_path, rp)
+                    logger.warning(
+                        "Skipping symlink pointing outside parent: %s -> %s",
+                        sanitize_log_label(raw_path),
+                        sanitize_log_label(rp),
+                    )
                     continue
                 safe_paths.append(rp)
 
@@ -456,9 +465,12 @@ def discover_global_configs(agent_types: Optional[list[AgentType]] = None) -> li
                             mcp_servers=servers,
                         )
                         agents.append(agent)
-                        console.print(f"  [green]✓[/green] Found {agent_type.value} with {len(servers)} MCP server(s): {config_path}")
+                        console.print(
+                            f"  [green]✓[/green] Found {_display_label(agent_type.value)} "
+                            f"with {len(servers)} MCP server(s): {_display_label(config_path)}"
+                        )
                 except (json.JSONDecodeError, KeyError, TypeError, Exception) as e:
-                    console.print(f"  [yellow]⚠[/yellow] Error parsing {config_path}: {e}")
+                    console.print(f"  [yellow]⚠[/yellow] Error parsing {_display_label(config_path)}: {_display_label(e)}")
 
     return agents
 
@@ -489,9 +501,11 @@ def discover_project_configs(project_dir: Optional[str] = None) -> list[Agent]:
                         mcp_servers=servers,
                     )
                     agents.append(agent)
-                    console.print(f"  [green]✓[/green] Found project config with {len(servers)} MCP server(s): {config_path}")
+                    console.print(
+                        f"  [green]✓[/green] Found project config with {len(servers)} MCP server(s): {_display_label(config_path)}"
+                    )
             except (json.JSONDecodeError, KeyError, TypeError, Exception) as e:
-                console.print(f"  [yellow]⚠[/yellow] Error parsing {config_path}: {e}")
+                console.print(f"  [yellow]⚠[/yellow] Error parsing {_display_label(config_path)}: {_display_label(e)}")
 
     return agents
 
@@ -1124,7 +1138,7 @@ def discover_filesystem_mcps(root: Path) -> list[Agent]:
                 try:
                     resolved = config_path.resolve()
                     if not resolved.is_relative_to(root):
-                        logger.warning("Skipping path outside root: %s", config_path)
+                        logger.warning("Skipping path outside root: %s", sanitize_log_label(config_path))
                         continue
                 except (OSError, ValueError):
                     continue
@@ -1151,12 +1165,12 @@ def discover_filesystem_mcps(root: Path) -> list[Agent]:
                         agents.append(agent)
                         logger.info(
                             "Discovered %s with %d server(s) in filesystem: %s",
-                            agent_type.value,
+                            sanitize_log_label(agent_type.value),
                             len(servers),
-                            config_path,
+                            sanitize_log_label(config_path),
                         )
                 except Exception:
-                    logger.debug("Failed to parse %s", config_path, exc_info=True)
+                    logger.debug("Failed to parse %s", sanitize_log_label(config_path), exc_info=True)
 
     return agents
 
@@ -1199,7 +1213,8 @@ def discover_all(
     compose_agent = discover_compose_mcp_servers(project_dir)
     if compose_agent:
         console.print(
-            f"  [green]✓[/green] Found {len(compose_agent.mcp_servers)} MCP server(s) in Docker Compose: {compose_agent.config_path}"
+            f"  [green]✓[/green] Found {len(compose_agent.mcp_servers)} MCP server(s) "
+            f"in Docker Compose: {_display_label(compose_agent.config_path)}"
         )
         agents.append(compose_agent)
 
@@ -1258,7 +1273,7 @@ def discover_all(
         discovered_types = {a.agent_type for a in agents}
         installed_agents = detect_installed_agents(discovered_types)
         for ia in installed_agents:
-            console.print(f"  [dim]  {ia.name}: installed but not configured[/dim]")
+            console.print(f"  [dim]  {_display_label(ia.name)}: installed but not configured[/dim]")
         agents.extend(installed_agents)
 
     # Dynamic content-based discovery layer (opt-in)

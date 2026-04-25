@@ -17,16 +17,22 @@ from typing import Optional
 import toml  # type: ignore[import-untyped]
 import yaml  # type: ignore[import-untyped]
 from rich.console import Console
+from rich.markup import escape
 
 from agent_bom.models import MCPServer, TransportType
 from agent_bom.security import (
     SecurityError,
     sanitize_env_vars,
+    sanitize_log_label,
     validate_mcp_server_config,
 )
 
 console = Console(stderr=True)
 logger = logging.getLogger(__name__)
+
+
+def _display_label(value: object, max_len: int = 500) -> str:
+    return escape(sanitize_log_label(value, max_len=max_len))
 
 
 def _string_field(value: object) -> str:
@@ -91,9 +97,9 @@ def parse_mcp_config(config_data: dict, config_path: str) -> list[MCPServer]:
         try:
             validate_mcp_server_config(server_def)
         except SecurityError as e:
-            warning_msg = f"Blocked insecure server '{name}': {e}"
+            warning_msg = f"Blocked insecure server '{sanitize_log_label(name)}': {sanitize_log_label(e)}"
             logger.warning(warning_msg)
-            console.print(f"[yellow]⚠️  {warning_msg}[/yellow]")
+            console.print(f"[yellow]⚠️  {_display_label(warning_msg)}[/yellow]")
             # Include blocked server in report for visibility — no silent skips
             blocked_server = MCPServer(
                 name=name,

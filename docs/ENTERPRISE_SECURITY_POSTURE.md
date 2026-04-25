@@ -140,6 +140,19 @@ Incident response ownership remains with the self-hosting organization. The
 published security policy defines maintainer disclosure SLAs for product
 vulnerabilities; customer deployment incidents follow customer process.
 
+## Security Header Posture
+
+Control-plane responses emit HSTS, CSP, frame, content-type, referrer, and
+permissions-policy headers. HSTS defaults to
+`max-age=31536000; includeSubDomains`; preload enrollment is intentionally
+operator opt-in through `AGENT_BOM_HSTS_PRELOAD=1` because browser preload is a
+domain-level commitment. Operators can also set
+`AGENT_BOM_HSTS_MAX_AGE_SECONDS` when a shorter staged rollout is required.
+
+`GET /v1/auth/policy` exposes the non-secret effective header posture under
+`security_headers` so change windows can record whether preload is enabled and
+which CSP mode is active.
+
 ## Availability, Backup, And Restore
 
 The Helm chart includes an optional Postgres backup CronJob that writes custom

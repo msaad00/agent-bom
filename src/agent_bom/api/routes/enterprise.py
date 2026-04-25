@@ -476,6 +476,7 @@ async def auth_policy(request: Request) -> dict:
     from agent_bom.api.auth import get_api_key_policy
     from agent_bom.api.compliance_signing import describe_signing_posture
     from agent_bom.api.middleware import (
+        describe_security_header_posture,
         get_auth_runtime_status,
         get_rate_limit_key_status,
         get_rate_limit_runtime_status,
@@ -520,6 +521,7 @@ async def auth_policy(request: Request) -> dict:
             ),
         },
         "rate_limit_runtime": rl_runtime,
+        "security_headers": describe_security_header_posture(),
         "secret_integrity": {
             "audit_hmac": describe_audit_hmac_status(),
             "compliance_signing": describe_signing_posture(),

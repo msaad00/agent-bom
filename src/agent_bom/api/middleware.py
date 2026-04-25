@@ -76,6 +76,52 @@ def _content_security_policy(path: str, content_type: str) -> str:
     return _API_CSP
 
 
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _hsts_max_age_seconds() -> int:
+    raw = (os.environ.get("AGENT_BOM_HSTS_MAX_AGE_SECONDS") or "31536000").strip()
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 31_536_000
+
+
+def hsts_header_value() -> str:
+    """Return the configured Strict-Transport-Security header value.
+
+    ``preload`` is intentionally opt-in because browser preload enrollment is
+    sticky and must be a deliberate operator decision for the deployment domain.
+    """
+
+    value = f"max-age={_hsts_max_age_seconds()}; includeSubDomains"
+    if _env_flag("AGENT_BOM_HSTS_PRELOAD"):
+        value += "; preload"
+    return value
+
+
+def describe_security_header_posture() -> dict[str, object]:
+    """Return non-secret security-header posture for operator policy surfaces."""
+
+    return {
+        "hsts": {
+            "header": hsts_header_value(),
+            "max_age_seconds": _hsts_max_age_seconds(),
+            "include_subdomains": True,
+            "preload": _env_flag("AGENT_BOM_HSTS_PRELOAD"),
+            "preload_env": "AGENT_BOM_HSTS_PRELOAD",
+            "max_age_env": "AGENT_BOM_HSTS_MAX_AGE_SECONDS",
+            "preload_guidance": ("Only enable preload after confirming HTTPS is permanent for the domain and every subdomain."),
+        },
+        "csp": {
+            "api": _API_CSP,
+            "dashboard_allows_inline_bootstrap": "'unsafe-inline'" in _DASHBOARD_CSP,
+            "dashboard_inline_bootstrap_reason": "Next static export requires inline bootstrap until the nonce/hash migration lands.",
+        },
+    }
+
+
 def configure_auth_runtime(
     *,
     api_key_configured: bool,
@@ -310,7 +356,7 @@ class TrustHeadersMiddleware(BaseHTTPMiddleware):
             request.url.path,
             response.headers.get("content-type", ""),
         )
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Strict-Transport-Security"] = hsts_header_value()
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         response.headers["X-API-Version"] = "v1"
@@ -800,10 +846,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         response.headers["X-RateLimit-Remaining"] = str(remaining)
         response.headers["X-RateLimit-Reset"] = str(reset_at)
         return response
-
-
-def _env_flag(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _configured_api_replicas() -> int:

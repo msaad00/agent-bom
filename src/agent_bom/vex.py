@@ -230,7 +230,13 @@ _VEX_SUPPRESSED_STATUSES = frozenset({VexStatus.NOT_AFFECTED.value, VexStatus.FI
 
 def is_vex_suppressed(vuln) -> bool:
     """Return True if a vulnerability is suppressed by VEX (not_affected or fixed)."""
-    return vuln.vex_status in _VEX_SUPPRESSED_STATUSES
+    return str(getattr(vuln, "vex_status", "") or "").lower() in _VEX_SUPPRESSED_STATUSES
+
+
+def active_blast_radii(blast_radii):
+    """Return blast-radius findings that are still active after VEX suppression."""
+
+    return [br for br in blast_radii if not is_vex_suppressed(br.vulnerability)]
 
 
 def apply_vex(report: "AIBOMReport", vex: VexDocument) -> int:
@@ -247,22 +253,37 @@ def apply_vex(report: "AIBOMReport", vex: VexDocument) -> int:
     for stmt in vex.statements:
         vex_map[stmt.vulnerability_id] = stmt
 
+    def _match_statement(vuln) -> VexStatement | None:
+        matched = vex_map.get(vuln.id)
+        if matched:
+            return matched
+        for alias in vuln.aliases or []:
+            matched = vex_map.get(alias)
+            if matched:
+                return matched
+        return None
+
+    def _apply_statement(vuln, stmt: VexStatement) -> None:
+        vuln.vex_status = stmt.status.value
+        vuln.vex_justification = stmt.justification.value if stmt.justification else None
+
     count = 0
     for agent in report.agents:
         for server in agent.mcp_servers:
             for pkg in server.packages:
                 for vuln in pkg.vulnerabilities:
-                    matched_stmt: VexStatement | None = vex_map.get(vuln.id)
-                    if not matched_stmt:
-                        # Check aliases
-                        for alias in vuln.aliases or []:
-                            matched_stmt = vex_map.get(alias)
-                            if matched_stmt:
-                                break
+                    matched_stmt = _match_statement(vuln)
                     if matched_stmt:
-                        vuln.vex_status = matched_stmt.status.value
-                        vuln.vex_justification = matched_stmt.justification.value if matched_stmt.justification else None
+                        _apply_statement(vuln, matched_stmt)
                         count += 1
+
+    for br in report.blast_radii:
+        matched_stmt = _match_statement(br.vulnerability)
+        if matched_stmt:
+            _apply_statement(br.vulnerability, matched_stmt)
+        if is_vex_suppressed(br.vulnerability):
+            br.risk_score = 0.0
+            br.transitive_risk_score = 0.0
 
     return count
 

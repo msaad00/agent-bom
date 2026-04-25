@@ -85,9 +85,11 @@ def print_compact_summary(report: AIBOMReport) -> None:
 
     from agent_bom.output import _sev_badge, console
     from agent_bom.posture import compute_posture_scorecard
+    from agent_bom.vex import active_blast_radii
 
     sev_counts: Counter[str] = Counter()
-    for br in report.blast_radii:
+    active_findings = active_blast_radii(report.blast_radii)
+    for br in active_findings:
         sev_counts[br.vulnerability.severity.value.upper()] += 1
 
     scorecard = compute_posture_scorecard(report)
@@ -247,17 +249,21 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
     scan types without agent context (image, check, iac, CI/CD).
     """
     from agent_bom.output import _sev_badge, console
+    from agent_bom.vex import active_blast_radii
 
     if not report.blast_radii:
         return
 
     # Filter: show actionable findings by default, count the rest
-    priority = [br for br in report.blast_radii if br.is_actionable]
-    rest_count = len(report.blast_radii) - len(priority)
+    active_findings = active_blast_radii(report.blast_radii)
+    if not active_findings:
+        return
+    priority = [br for br in active_findings if br.is_actionable]
+    rest_count = len(active_findings) - len(priority)
     if fixable_only:
         priority = [br for br in priority if br.vulnerability.fixed_version]
     if not priority:
-        display_list = [br for br in report.blast_radii if br.vulnerability.fixed_version] if fixable_only else report.blast_radii
+        display_list = [br for br in active_findings if br.vulnerability.fixed_version] if fixable_only else active_findings
     else:
         display_list = priority
     shown = display_list[:limit]

@@ -710,6 +710,13 @@ class BlastRadius:
         environment variables.  See :mod:`agent_bom.config` for defaults and
         documentation.
         """
+        from agent_bom.vex import is_vex_suppressed
+
+        if is_vex_suppressed(self.vulnerability):
+            self.risk_score = 0.0
+            self.transitive_risk_score = 0.0
+            return self.risk_score
+
         from agent_bom.config import (
             EPSS_CRITICAL_THRESHOLD,
             RISK_AGENT_CAP,
@@ -801,6 +808,10 @@ class BlastRadius:
         LOW/MEDIUM transitive deps with no blast radius context are noise.
         Users can still see them with --verbose.
         """
+        from agent_bom.vex import is_vex_suppressed
+
+        if is_vex_suppressed(self.vulnerability):
+            return False
         if self.vulnerability.is_kev:
             return True  # KEV = always actionable
         if self.vulnerability.severity in (Severity.CRITICAL, Severity.HIGH):
@@ -919,7 +930,9 @@ class AIBOMReport:
 
     @property
     def critical_vulns(self) -> list[BlastRadius]:
-        return [br for br in self.blast_radii if br.vulnerability.severity == Severity.CRITICAL]
+        from agent_bom.vex import active_blast_radii
+
+        return [br for br in active_blast_radii(self.blast_radii) if br.vulnerability.severity == Severity.CRITICAL]
 
     def to_findings(self) -> "list[Finding]":
         """Return the unified findings list, auto-populating from blast_radii if empty.

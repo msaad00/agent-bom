@@ -587,10 +587,13 @@ def evaluate_policy(policy: dict, blast_radii: list, *, dry_run: bool = False) -
       dry_run     – whether dry-run mode was active
     """
     violations = []
+    from agent_bom.vex import active_blast_radii
+
+    active_findings = active_blast_radii(blast_radii)
 
     for rule in policy.get("rules", []):
         action = rule.get("action", "fail")
-        for br in blast_radii:
+        for br in active_findings:
             if _rule_matches(rule, br):
                 violations.append(
                     {

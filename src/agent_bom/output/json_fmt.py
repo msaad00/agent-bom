@@ -565,6 +565,8 @@ def to_json(report: AIBOMReport) -> dict:
                                 "is_direct": pkg.is_direct,
                                 "parent_package": pkg.parent_package,
                                 "dependency_depth": pkg.dependency_depth,
+                                "dependency_scope": pkg.dependency_scope,
+                                "reachability_evidence": pkg.reachability_evidence,
                                 "resolved_from_registry": pkg.resolved_from_registry,
                                 "version_source": pkg.version_source,
                                 "registry_version": pkg.registry_version,

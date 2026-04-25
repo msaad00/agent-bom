@@ -472,12 +472,35 @@ def test_json_output_includes_canonical_publish_dates(sample_report):
     assert data["blast_radius"][0]["modified_at"] == "2026-03-23T09:00:00Z"
 
 
+def test_json_output_includes_dependency_reachability_evidence(sample_report):
+    package = sample_report.agents[0].mcp_servers[0].packages[0]
+    package.dependency_scope = "peer"
+    package.reachability_evidence = "declaration_only"
+
+    data = to_json(sample_report)
+    package_json = data["agents"][0]["mcp_servers"][0]["packages"][0]
+    assert package_json["dependency_scope"] == "peer"
+    assert package_json["reachability_evidence"] == "declaration_only"
+
+
 def test_cyclonedx_output_structure(sample_report):
     data = to_cyclonedx(sample_report)
     assert data["bomFormat"] == "CycloneDX"
     assert data["specVersion"] == "1.6"
     assert len(data["components"]) > 0
     assert "vulnerabilities" in data
+
+
+def test_cyclonedx_output_includes_dependency_reachability_evidence(sample_report):
+    package = sample_report.agents[0].mcp_servers[0].packages[0]
+    package.dependency_scope = "optional"
+    package.reachability_evidence = "declaration_only"
+
+    data = to_cyclonedx(sample_report)
+    package_component = next(component for component in data["components"] if component.get("type") == "library")
+    props = {prop["name"]: prop["value"] for prop in package_component["properties"]}
+    assert props["agent-bom:dependency-scope"] == "optional"
+    assert props["agent-bom:reachability-evidence"] == "declaration_only"
 
 
 # ─── CLI Tests ───────────────────────────────────────────────────────────────

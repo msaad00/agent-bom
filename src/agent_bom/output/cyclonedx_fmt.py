@@ -338,6 +338,8 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                     {"name": "agent-bom:ecosystem", "value": pkg.ecosystem},
                     {"name": "agent-bom:is-direct", "value": str(pkg.is_direct).lower()},
                     {"name": "agent-bom:dependency-depth", "value": str(pkg.dependency_depth)},
+                    {"name": "agent-bom:dependency-scope", "value": pkg.dependency_scope},
+                    {"name": "agent-bom:reachability-evidence", "value": pkg.reachability_evidence},
                     {"name": "agent-bom:resolved-from-registry", "value": str(pkg.resolved_from_registry).lower()},
                     {"name": "agent-bom:version-source", "value": pkg.version_source},
                 ]

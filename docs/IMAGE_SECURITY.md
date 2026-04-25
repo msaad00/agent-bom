@@ -43,6 +43,12 @@ Active image exceptions are tracked in [`security/image-exceptions.yaml`](../sec
 
 The generated image ignore file remains the scanner input today, but the YAML registry is the human-reviewed source of truth for why an exception exists.
 
+Current no-fix medium findings may remain visible in Docker Scout until the
+upstream base image publishes patched packages. They must still have structured
+exceptions with short review windows, and release operators should remove the
+matching `.trivyignore` entries as soon as a fixed base digest or safe package
+upgrade is available.
+
 ## Stable release bar
 
 The target for a "most stable" public release is:

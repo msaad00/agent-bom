@@ -967,6 +967,58 @@ def test_apply_tenant_session_sets_statement_timeout(monkeypatch):
     assert any("statement_timeout" in sql and params == ("12000",) for sql, params in conn.executed)
 
 
+def test_apply_tenant_session_binds_current_tenant_and_bypass_flag(monkeypatch):
+    """Tenant session setup should bind the request tenant and fail closed by default."""
+    from agent_bom.api import postgres_common
+
+    conn = MockConnection()
+    monkeypatch.setattr(postgres_common, "POSTGRES_STATEMENT_TIMEOUT_MS", 0, raising=False)
+
+    token = postgres_common.set_current_tenant("tenant-alpha")
+    try:
+        postgres_common._apply_tenant_session(conn)
+    finally:
+        postgres_common.reset_current_tenant(token)
+
+    assert ("SELECT set_config('app.tenant_id', %s, true)", ("tenant-alpha",)) in conn.executed
+    assert ("SELECT set_config('app.bypass_rls', %s, true)", ("0",)) in conn.executed
+
+
+def test_apply_tenant_session_sets_explicit_bypass_only_inside_context(monkeypatch):
+    """Trusted internal tasks must opt into RLS bypass for each scoped operation."""
+    from agent_bom.api import postgres_common
+
+    conn = MockConnection()
+    monkeypatch.setattr(postgres_common, "POSTGRES_STATEMENT_TIMEOUT_MS", 0, raising=False)
+
+    with postgres_common.bypass_tenant_rls():
+        postgres_common._apply_tenant_session(conn)
+
+    assert ("SELECT set_config('app.bypass_rls', %s, true)", ("1",)) in conn.executed
+
+    conn_after = MockConnection()
+    postgres_common._apply_tenant_session(conn_after)
+    assert ("SELECT set_config('app.bypass_rls', %s, true)", ("0",)) in conn_after.executed
+
+
+def test_ensure_tenant_rls_forces_policy_through_session_helpers():
+    """Tenant RLS policies should be enforced by Postgres session state, not app filters alone."""
+    from agent_bom.api import postgres_common
+
+    conn = MockConnection()
+
+    postgres_common._ensure_tenant_rls(conn, "graph_nodes", "tenant_id")
+
+    statements = "\n".join(sql for sql, _ in conn.executed)
+    assert "CREATE OR REPLACE FUNCTION public.abom_current_tenant()" in statements
+    assert "CREATE OR REPLACE FUNCTION public.abom_rls_bypass()" in statements
+    assert "ALTER TABLE graph_nodes ENABLE ROW LEVEL SECURITY" in statements
+    assert "ALTER TABLE graph_nodes FORCE ROW LEVEL SECURITY" in statements
+    assert "CREATE POLICY graph_nodes_tenant_isolation ON graph_nodes" in statements
+    assert "USING (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())" in statements
+    assert "WITH CHECK (public.abom_rls_bypass() OR tenant_id = public.abom_current_tenant())" in statements
+
+
 # ─── Server lifespan integration ─────────────────────────────────────────────
 
 

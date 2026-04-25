@@ -18,3 +18,54 @@ exceptions:
     remove_when: >-
       Remove when snowflake-connector-python supports pyopenssl>=26.0.0 and the
       lockfile can be refreshed cleanly.
+  - id: alpine-busybox-no-fix-2026-04
+    vulnerability_ids:
+      - CVE-2025-60876
+    package: busybox
+    version: 1.37.0-r30
+    images:
+      - agentbom/agent-bom
+    architectures:
+      - linux/amd64
+      - linux/arm64
+    severity: medium
+    owner: msaad00
+    status: temporary_exception
+    reason: >-
+      Docker image scanning reports Alpine busybox 1.37.0-r30 in the pinned
+      python:3.14.3-alpine3.23 base image. Docker Scout reports no fixed Alpine
+      package for this image lineage yet. Runtime uses agent-bom as a non-root
+      entrypoint and does not expose busybox wget as an application feature.
+    opened_at: 2026-04-25
+    review_after: 2026-05-02
+    expires_at: 2026-05-25
+    remove_when: >-
+      Remove when Alpine publishes a fixed busybox package for the supported
+      base image lineage or when the pinned Python Alpine base digest is
+      refreshed to a clean image.
+  - id: base-python-pip-no-fix-2026-04
+    vulnerability_ids:
+      - CVE-2026-3219
+    package: pip
+    version: 26.0.1
+    images:
+      - agentbom/agent-bom
+    architectures:
+      - linux/amd64
+      - linux/arm64
+    severity: medium
+    owner: msaad00
+    status: temporary_exception
+    reason: >-
+      Docker image scanning reports pip 26.0.1 inherited from the pinned Python
+      base image. The application runtime does not use pip to install
+      untrusted packages after image build; runtime dependency installation is
+      hash-pinned and completed during build. Docker currently reports no fixed
+      package available for the image finding.
+    opened_at: 2026-04-25
+    review_after: 2026-05-02
+    expires_at: 2026-05-25
+    remove_when: >-
+      Remove when the Python base image ships a fixed pip package, when pip can
+      be upgraded safely in the runtime image, or when pip can be removed from
+      the runtime layer without breaking supported operations.

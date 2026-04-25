@@ -17,3 +17,19 @@ CVE-2026-27459
 # Debian publishes a fixed ncurses package in the supported suite.
 CVE-2025-69720
 CVE-2025-6141
+
+# Alpine busybox inherited from python:3.14.3-alpine3.23.
+# Docker Scout surfaced CVE-2025-60876 against alpine/busybox 1.37.0-r30.
+# No fixed Alpine package is available for the pinned image lineage as of
+# 2026-04-25. Runtime uses agent-bom as a non-root entrypoint and does not
+# expose busybox wget as an application feature.
+# Structured exception: security/image-exceptions.yaml#alpine-busybox-no-fix-2026-04
+CVE-2025-60876
+
+# pip inherited from the pinned Python base image.
+# Docker Scout surfaced CVE-2026-3219 against pip 26.0.1 in the runtime image.
+# Runtime does not use pip for untrusted package installation after image build;
+# build-time dependency installation is hash-pinned. Revisit when the Python
+# base image ships a fixed pip package or pip can be removed from runtime.
+# Structured exception: security/image-exceptions.yaml#base-python-pip-no-fix-2026-04
+CVE-2026-3219

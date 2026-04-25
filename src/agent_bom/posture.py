@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING
 
 from agent_bom.compliance_utils import effective_blast_radius_tags
 from agent_bom.scorecard import summarize_scorecard_coverage
+from agent_bom.vex import active_blast_radii
 
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport
@@ -96,7 +97,9 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
     sev_counts: Counter[str] = Counter()
     fixable = 0
     total_vulns = 0
-    for br in report.blast_radii:
+    active_findings = active_blast_radii(report.blast_radii)
+
+    for br in active_findings:
         sev = br.vulnerability.severity.value.upper()
         sev_counts[sev] += 1
         total_vulns += 1
@@ -212,7 +215,7 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
     # ── 4. Compliance Coverage (15%) ──
     total_tags = 0
     tagged_findings = 0
-    for br in report.blast_radii:
+    for br in active_findings:
         tags = effective_blast_radius_tags(br)
         total_tags += 1
         has_tag = bool(
@@ -250,7 +253,7 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
 
     kev_ids: set[str] = set()
     high_epss_ids: set[str] = set()
-    for br in report.blast_radii:
+    for br in active_findings:
         vid = br.vulnerability.id
         if br.vulnerability.is_kev:
             kev_ids.add(vid)
@@ -351,8 +354,9 @@ def compute_credential_risk_ranking(report: "AIBOMReport") -> list[dict]:
     - risk tier (critical, high, medium, low)
     """
     cred_data: dict[str, dict] = {}
+    active_findings = active_blast_radii(report.blast_radii)
 
-    for br in report.blast_radii:
+    for br in active_findings:
         for cred in br.exposed_credentials:
             if cred not in cred_data:
                 cred_data[cred] = {
@@ -424,8 +428,9 @@ def compute_incident_correlation(report: "AIBOMReport") -> list[dict]:
     - recommended actions
     """
     agent_incidents: dict[str, dict] = {}
+    active_findings = active_blast_radii(report.blast_radii)
 
-    for br in report.blast_radii:
+    for br in active_findings:
         for agent in br.affected_agents:
             if agent.name not in agent_incidents:
                 agent_incidents[agent.name] = {

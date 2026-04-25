@@ -1156,6 +1156,15 @@ async def get_enrichment_posture() -> dict:
     return describe_enrichment_posture()
 
 
+@router.get("/v1/posture/backpressure", tags=["compliance"])
+async def get_backpressure_posture() -> dict:
+    """Report adaptive runtime backpressure state for expensive paths."""
+
+    from agent_bom.backpressure import describe_backpressure_posture
+
+    return describe_backpressure_posture()
+
+
 @router.get("/v1/posture/counts", tags=["compliance"])
 async def get_posture_counts(request: Request) -> dict:
     """Aggregate vulnerability counts across all completed scans.

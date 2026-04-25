@@ -176,6 +176,9 @@ def scan(
     jupyter_dirs: tuple,
     model_dirs: tuple,
     model_provenance: bool,
+    model_policy_mode: str,
+    require_model_signatures: bool,
+    block_unsafe_model_formats: bool,
     dataset_dirs: tuple,
     training_dirs: tuple,
     hf_models: tuple,
@@ -1571,11 +1574,12 @@ def scan(
             con.print(f"  [cyan]>[/cyan] Scanning for model files in {mdir}...")
             mf_results, mf_warnings = scan_model_files(mdir)
             manifest_results, manifest_warnings = scan_model_manifests(mdir)
-            if model_provenance:
+            if model_provenance or require_model_signatures:
                 for mf in mf_results:
-                    hash_result = verify_model_hash(mf["path"])
-                    mf["sha256"] = hash_result["sha256"]
-                    mf["security_flags"].extend(hash_result["security_flags"])
+                    if model_provenance:
+                        hash_result = verify_model_hash(mf["path"])
+                        mf["sha256"] = hash_result["sha256"]
+                        mf["security_flags"].extend(hash_result["security_flags"])
 
                     sig_result = check_sigstore_signature(mf["path"])
                     mf["signed"] = sig_result["signed"]
@@ -1742,7 +1746,7 @@ def scan(
             pass  # Secret scanning not available
 
     if report.model_files or report.model_provenance or report.model_hash_verification_data:
-        from agent_bom.model_files import summarize_model_supply_chain
+        from agent_bom.model_files import evaluate_model_provenance_policy, summarize_model_supply_chain
 
         report.model_supply_chain_data = summarize_model_supply_chain(
             report.model_files,
@@ -1750,6 +1754,20 @@ def scan(
             report.model_hash_verification_data,
             report.model_manifests,
         )
+        if model_policy_mode != "off" or require_model_signatures or block_unsafe_model_formats:
+            policy_result = evaluate_model_provenance_policy(
+                report.model_files,
+                mode=model_policy_mode,
+                require_signatures=require_model_signatures,
+                block_unsafe_formats=block_unsafe_model_formats,
+            )
+            report.model_supply_chain_data["policy"] = policy_result
+            for warning in policy_result.get("warnings", []):
+                con.print(f"  [yellow]⚠[/yellow] Model policy: {warning['type']} — {warning['file']}")
+            for violation in policy_result.get("violations", []):
+                con.print(f"  [red]✗[/red] Model policy: {violation['type']} — {violation['file']}")
+            if policy_result["passed"] is False:
+                ctx.policy_passed = False
 
     # Persist browser extension results to report
     if ctx._browser_ext_results is not None:

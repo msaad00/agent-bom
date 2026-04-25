@@ -3,6 +3,11 @@ FROM node:20-slim@sha256:d8a35d586fad3af7abb6fdb9ba972388395405f4d462da9e4a4ddcd
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --ignore-scripts
+# Next's webpack CSS pipeline requires lightningcss' native Linux binding.
+# Some npm versions omit optional platform bindings during lockfile-driven
+# installs, so pin the Linux binding in the image rather than relying on host
+# lockfile resolution behavior.
+RUN npm install --no-save --ignore-scripts lightningcss-linux-x64-gnu@1.32.0
 
 # ── Stage 2: Build ────────────────────────────────────────────────────────────
 FROM node:20-slim@sha256:d8a35d586fad3af7abb6fdb9ba972388395405f4d462da9e4a4ddcde67b5e0fb AS builder

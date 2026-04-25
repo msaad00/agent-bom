@@ -64,6 +64,10 @@ class TestCreateClient:
         client = create_client()
         assert isinstance(client, httpx.AsyncClient)
 
+    def test_redirects_disabled_by_default(self):
+        client = create_client()
+        assert client.follow_redirects is False
+
 
 class TestRequestWithRetry:
     def test_jittered_wait_stays_within_cap(self, monkeypatch):

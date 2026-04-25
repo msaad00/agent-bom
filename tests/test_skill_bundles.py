@@ -42,3 +42,17 @@ def test_build_skill_bundle_supports_references_outside_primary_directory(tmp_pa
 
     assert bundle.root == str(tmp_path)
     assert [entry.path for entry in bundle.files] == ["docs/skills/guide.md", "security/image-exceptions.yaml"]
+
+
+def test_build_skill_bundle_refuses_symlinked_local_references(tmp_path):
+    skill = tmp_path / "SKILL.md"
+    outside = tmp_path / "outside.txt"
+    symlink = tmp_path / "linked.txt"
+    outside.write_text("secret material\n")
+    symlink.symlink_to(outside)
+    skill.write_text("[linked](linked.txt)\n")
+
+    bundle = build_skill_bundle(skill, skill.read_text())
+
+    assert bundle.file_count == 1
+    assert [entry.path for entry in bundle.files] == ["SKILL.md"]

@@ -57,6 +57,7 @@ _AUTH_RUNTIME_STATUS: dict[str, object] = {
     "recommended_ui_mode": "no_auth",
 }
 _API_CSP = "default-src 'self'"
+_TRUSTED_PROXY_SECRET_MIN_BYTES = 32
 
 
 def _content_security_policy(path: str, content_type: str) -> str:
@@ -68,6 +69,65 @@ def _content_security_policy(path: str, content_type: str) -> str:
 
 def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _secret_min_bytes(secret: str) -> int:
+    return len(secret.encode("utf-8"))
+
+
+def _trusted_proxy_secret_is_strong(secret: str) -> bool:
+    return _secret_min_bytes(secret) >= _TRUSTED_PROXY_SECRET_MIN_BYTES
+
+
+def get_trusted_proxy_auth_status() -> dict[str, object]:
+    """Return trusted-proxy auth posture without exposing secret material."""
+    enabled = _env_flag("AGENT_BOM_TRUST_PROXY_AUTH")
+    secret = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "").strip()
+    issuer = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_ISSUER", "").strip()
+    if not enabled:
+        return {
+            "enabled": False,
+            "status": "disabled",
+            "secret_min_bytes": _TRUSTED_PROXY_SECRET_MIN_BYTES,
+            "issuer_pinned": False,
+            "message": "Trusted reverse-proxy header authentication is disabled.",
+        }
+    if not secret:
+        return {
+            "enabled": True,
+            "status": "misconfigured",
+            "secret_configured": False,
+            "secret_min_bytes": _TRUSTED_PROXY_SECRET_MIN_BYTES,
+            "issuer_pinned": bool(issuer),
+            "message": "AGENT_BOM_TRUST_PROXY_AUTH is enabled but AGENT_BOM_TRUST_PROXY_AUTH_SECRET is not set.",
+        }
+    if not _trusted_proxy_secret_is_strong(secret):
+        return {
+            "enabled": True,
+            "status": "weak_secret",
+            "secret_configured": True,
+            "secret_min_bytes": _TRUSTED_PROXY_SECRET_MIN_BYTES,
+            "issuer_pinned": bool(issuer),
+            "message": (
+                f"AGENT_BOM_TRUST_PROXY_AUTH_SECRET must contain at least {_TRUSTED_PROXY_SECRET_MIN_BYTES} bytes of secret material."
+            ),
+        }
+    return {
+        "enabled": True,
+        "status": "ok" if issuer else "issuer_unpinned",
+        "secret_configured": True,
+        "secret_min_bytes": _TRUSTED_PROXY_SECRET_MIN_BYTES,
+        "issuer_pinned": bool(issuer),
+        "issuer": issuer or None,
+        "message": (
+            "Trusted proxy auth uses strong shared-secret attestation."
+            if issuer
+            else (
+                "Trusted proxy auth uses strong shared-secret attestation; set "
+                "AGENT_BOM_TRUST_PROXY_AUTH_ISSUER to pin the upstream issuer."
+            )
+        ),
+    }
 
 
 def _hsts_max_age_seconds() -> int:
@@ -487,6 +547,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         self._api_key = api_key
         self._trusted_proxy_auth = _env_flag("AGENT_BOM_TRUST_PROXY_AUTH")
         self._trusted_proxy_secret = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "").strip()
+        self._trusted_proxy_issuer = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_ISSUER", "").strip()
         # OIDC config loaded lazily from env on first request
         self._oidc_config: OIDCConfig | None = None
         self._oidc_checked = False
@@ -508,6 +569,13 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         if request.url.path in self._EXEMPT_PATHS:
             return await call_next(request)
+
+        if os.environ.get("AGENT_BOM_POSTGRES_URL"):
+            from agent_bom.api.postgres_store import is_tenant_rls_bypassed
+
+            if is_tenant_rls_bypassed():
+                _logger.critical("Rejecting request while Postgres tenant RLS bypass context is active")
+                return JSONResponse(status_code=500, content={"detail": "Tenant isolation guard is not clean"})
 
         if self._is_scim_path(request.url.path):
             return await self._try_scim_bearer_auth(request, call_next)
@@ -701,9 +769,18 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 status_code=503,
                 content={"detail": "Trusted proxy authentication is not securely configured"},
             )
+        if not _trusted_proxy_secret_is_strong(self._trusted_proxy_secret):
+            _logger.error("AGENT_BOM_TRUST_PROXY_AUTH_SECRET is too short for trusted proxy authentication")
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Trusted proxy authentication is not securely configured"},
+            )
         presented_secret = request.headers.get("x-agent-bom-proxy-secret", "").strip()
         if not hmac.compare_digest(presented_secret, self._trusted_proxy_secret):
             return JSONResponse(status_code=401, content={"detail": "Unauthorized — invalid trusted proxy attestation"})
+        presented_issuer = request.headers.get("x-agent-bom-auth-issuer", "").strip()
+        if self._trusted_proxy_issuer and not hmac.compare_digest(presented_issuer, self._trusted_proxy_issuer):
+            return JSONResponse(status_code=401, content={"detail": "Unauthorized — invalid trusted proxy issuer"})
         if not tenant_id:
             return JSONResponse(
                 status_code=401,
@@ -734,7 +811,20 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         request.state.tenant_id = tenant_id
         request.state.auth_method = "proxy_header"
         request.state.proxy_auth_attested = True
-        request.state.auth_issuer = request.headers.get("x-agent-bom-auth-issuer") or None
+        request.state.auth_issuer = presented_issuer or None
+        try:
+            from agent_bom.api.audit_log import log_action
+
+            log_action(
+                "auth.proxy_header_authenticated",
+                actor=str(request.state.api_key_name),
+                resource=str(request.url.path),
+                tenant_id=tenant_id,
+                role=proxy_role.value,
+                issuer=presented_issuer or None,
+            )
+        except Exception:  # pragma: no cover - audit side effects must not block auth
+            _logger.exception("Failed to record trusted proxy authentication audit event")
         return await self._call_with_tenant_context(request, call_next)
 
     async def _call_with_tenant_context(self, request: StarletteRequest, call_next):
@@ -876,7 +966,7 @@ def get_rate_limit_runtime_status() -> dict[str, object]:
 
 
 def _rate_limit_fingerprint_key() -> bytes:
-    key = (os.environ.get("AGENT_BOM_RATE_LIMIT_KEY") or os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY") or "").strip()
+    key = (os.environ.get("AGENT_BOM_RATE_LIMIT_KEY") or "").strip()
     return key.encode() if key else _RATE_LIMIT_FINGERPRINT_FALLBACK
 
 
@@ -912,12 +1002,8 @@ def get_rate_limit_key_status(now: "datetime | None" = None) -> dict:
         RATE_LIMIT_KEY_ROTATION_DAYS,
     )
 
-    raw_key = (os.environ.get("AGENT_BOM_RATE_LIMIT_KEY") or os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY") or "").strip()
-    fallback_source = (
-        "AGENT_BOM_AUDIT_HMAC_KEY"
-        if not os.environ.get("AGENT_BOM_RATE_LIMIT_KEY") and os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY")
-        else None
-    )
+    raw_key = (os.environ.get("AGENT_BOM_RATE_LIMIT_KEY") or "").strip()
+    fallback_source = None
 
     if not raw_key:
         return {

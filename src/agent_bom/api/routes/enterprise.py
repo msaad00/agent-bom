@@ -522,6 +522,7 @@ async def auth_policy(request: Request) -> dict:
         get_auth_runtime_status,
         get_rate_limit_key_status,
         get_rate_limit_runtime_status,
+        get_trusted_proxy_auth_status,
     )
     from agent_bom.api.oidc import describe_oidc_posture
     from agent_bom.api.saml import describe_saml_posture
@@ -563,6 +564,7 @@ async def auth_policy(request: Request) -> dict:
             ),
         },
         "rate_limit_runtime": rl_runtime,
+        "trusted_proxy_auth": get_trusted_proxy_auth_status(),
         "security_headers": describe_security_header_posture(),
         "secret_integrity": {
             "audit_hmac": describe_audit_hmac_status(),

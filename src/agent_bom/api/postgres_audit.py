@@ -68,12 +68,9 @@ class PostgresAuditLog:
 
     def append(self, entry: AuditEntry) -> None:
         tenant_id = str((entry.details or {}).get("tenant_id") or _current_tenant.get())
-        prev_sig = self._last_sig_by_tenant.get(tenant_id)
-        if not prev_sig:
-            prev_sig = self._latest_signature_for_tenant(tenant_id)
+        prev_sig = self._latest_signature_for_tenant(tenant_id)
         entry.prev_signature = prev_sig
         entry.sign()
-        self._last_sig_by_tenant[tenant_id] = entry.hmac_signature
         with _tenant_connection(self._pool) as conn:
             conn.execute(
                 """INSERT INTO audit_log
@@ -92,6 +89,7 @@ class PostgresAuditLog:
                 ),
             )
             conn.commit()
+        self._last_sig_by_tenant[tenant_id] = entry.hmac_signature
 
     def list_entries(
         self,

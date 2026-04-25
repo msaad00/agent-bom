@@ -27,6 +27,8 @@ const originalFetch = global.fetch
 
 afterEach(() => {
   global.fetch = originalFetch
+  window.__AGENT_BOM_CONFIG__ = undefined
+  delete process.env.NEXT_PUBLIC_ALLOW_SESSION_STORAGE_API_KEY
   clearSessionApiKey()
   vi.restoreAllMocks()
 })
@@ -58,6 +60,28 @@ describe('api.listJobs', () => {
     const oldApiUrl = process.env.NEXT_PUBLIC_API_URL
     process.env.NEXT_PUBLIC_API_URL = "https://build.example"
     window.__AGENT_BOM_CONFIG__ = { apiUrl: "https://runtime.example" }
+
+    const fetchMock = mockFetch({ jobs: [], count: 0 })
+    global.fetch = fetchMock
+
+    await api.listJobs()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/v1/jobs",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    )
+
+    if (oldApiUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_URL
+    } else {
+      process.env.NEXT_PUBLIC_API_URL = oldApiUrl
+    }
+  })
+
+  it('rejects cross-origin build-time API URLs in the browser', async () => {
+    const oldApiUrl = process.env.NEXT_PUBLIC_API_URL
+    process.env.NEXT_PUBLIC_API_URL = "https://build.example"
+    window.__AGENT_BOM_CONFIG__ = undefined
 
     const fetchMock = mockFetch({ jobs: [], count: 0 })
     global.fetch = fetchMock
@@ -113,6 +137,7 @@ describe('api.listJobs', () => {
   })
 
   it('propagates a session API key and browser credentials', async () => {
+    window.__AGENT_BOM_CONFIG__ = { allowSessionStorageApiKey: true }
     setSessionApiKey("pilot-key-123")
     const fetchMock = mockFetch({ jobs: [], count: 0 })
     global.fetch = fetchMock
@@ -124,6 +149,23 @@ describe('api.listJobs', () => {
       expect.objectContaining({
         credentials: "include",
         headers: expect.objectContaining({ Authorization: "Bearer pilot-key-123" }),
+        signal: expect.any(AbortSignal),
+      }),
+    )
+  })
+
+  it('does not propagate sessionStorage API keys unless explicitly enabled', async () => {
+    setSessionApiKey("pilot-key-123")
+    const fetchMock = mockFetch({ jobs: [], count: 0 })
+    global.fetch = fetchMock
+
+    await api.listJobs()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/v1/jobs",
+      expect.objectContaining({
+        credentials: "include",
+        headers: {},
         signal: expect.any(AbortSignal),
       }),
     )
@@ -342,6 +384,7 @@ describe('api key lifecycle helpers', () => {
 
 describe('api.downloadScanGraph', () => {
   it('downloads graph export with session auth headers', async () => {
+    window.__AGENT_BOM_CONFIG__ = { allowSessionStorageApiKey: true }
     setSessionApiKey('pilot-key-123')
     const fetchMock = mockBlobFetch('{"nodes":[],"edges":[]}')
     global.fetch = fetchMock

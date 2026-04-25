@@ -2,6 +2,7 @@ declare global {
   interface Window {
     __AGENT_BOM_CONFIG__?: {
       apiUrl?: string;
+      allowSessionStorageApiKey?: boolean;
     };
   }
 }
@@ -39,10 +40,22 @@ export function getConfiguredApiUrl(): string {
     if (runtimeValue !== undefined) {
       return runtimeValue;
     }
+    const envValue = sameOriginRuntimeApiUrl(normalizeApiUrl(process.env.NEXT_PUBLIC_API_URL));
+    if (envValue !== undefined) {
+      return envValue;
+    }
+    return "";
   }
   return normalizeApiUrl(process.env.NEXT_PUBLIC_API_URL) ?? "";
 }
 
 export function getDisplayApiUrl(): string {
   return getConfiguredApiUrl() || DEFAULT_API_URL;
+}
+
+export function allowSessionStorageApiKeyFallback(): boolean {
+  if (typeof window !== "undefined" && typeof window.__AGENT_BOM_CONFIG__?.allowSessionStorageApiKey === "boolean") {
+    return window.__AGENT_BOM_CONFIG__.allowSessionStorageApiKey;
+  }
+  return process.env.NEXT_PUBLIC_ALLOW_SESSION_STORAGE_API_KEY === "1";
 }

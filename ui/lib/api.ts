@@ -1463,7 +1463,7 @@ export const api = {
 
   /** Connect to SSE stream for real-time progress */
   streamScan: (jobId: string, onMessage: (data: SSEEvent) => void, onDone: () => void) => {
-    const es = new EventSource(`${getConfiguredApiUrl()}/v1/scan/${jobId}/stream`);
+    const es = new EventSource(`${getConfiguredApiUrl()}/v1/scan/${jobId}/stream`, { withCredentials: true });
     es.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data as string);

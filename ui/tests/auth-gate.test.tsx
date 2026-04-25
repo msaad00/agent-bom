@@ -9,6 +9,7 @@ const originalFetch = global.fetch;
 
 afterEach(() => {
   global.fetch = originalFetch;
+  window.__AGENT_BOM_CONFIG__ = undefined;
   clearSessionApiKey();
   vi.restoreAllMocks();
 });
@@ -48,6 +49,7 @@ describe("AuthGate", () => {
   });
 
   it("shows the session API key fallback when the API returns 401", async () => {
+    window.__AGENT_BOM_CONFIG__ = { allowSessionStorageApiKey: true };
     setSessionApiKey("stale-key")
     global.fetch = vi.fn().mockResolvedValue({
       ok: false,

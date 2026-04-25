@@ -6,6 +6,7 @@ import { KeyRound, Loader2, Lock, ShieldCheck } from "lucide-react";
 import { useAuthState } from "@/components/auth-provider";
 import { api } from "@/lib/api";
 import { clearSessionApiKey, getSessionApiKey, setSessionApiKey } from "@/lib/auth";
+import { allowSessionStorageApiKeyFallback } from "@/lib/runtime-config";
 
 function isAuthFailure(message: string): boolean {
   const normalized = message.toLowerCase();
@@ -75,8 +76,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
                   clearSessionApiKey();
                 } catch (nextError) {
                   const message = nextError instanceof Error ? nextError.message : "Failed to create browser session";
-                  if (message.includes("404") || message.includes("405")) {
+                  if ((message.includes("404") || message.includes("405")) && allowSessionStorageApiKeyFallback()) {
                     setSessionApiKey(apiKey);
+                  } else if (message.includes("404") || message.includes("405")) {
+                    clearSessionApiKey();
+                    setFormError(
+                      "Browser session endpoint unavailable; sessionStorage API-key fallback is disabled for this deployment."
+                    );
+                    return;
                   } else {
                     clearSessionApiKey();
                     setFormError(message);
@@ -93,7 +100,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               <p className="mb-4 text-sm leading-6 text-zinc-400">
                 Creates a same-origin
                 <code className="mx-1 rounded bg-zinc-950 px-1 py-0.5 font-mono text-zinc-200">httpOnly</code>
-                cookie when the API supports it; older static pilots fall back to session-only tab storage.
+                cookie. Legacy tab storage must be explicitly enabled by the deployment.
               </p>
               <label className="mb-3 block text-xs uppercase tracking-[0.2em] text-zinc-500">API key</label>
               <input

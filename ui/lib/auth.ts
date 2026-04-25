@@ -1,3 +1,5 @@
+import { allowSessionStorageApiKeyFallback } from "@/lib/runtime-config";
+
 const SESSION_API_KEY = "agent-bom-ui-api-key";
 const CSRF_COOKIE = "agent_bom_csrf";
 
@@ -6,7 +8,7 @@ function hasWindow(): boolean {
 }
 
 export function getSessionApiKey(): string {
-  if (!hasWindow()) return "";
+  if (!hasWindow() || !allowSessionStorageApiKeyFallback()) return "";
   try {
     return window.sessionStorage.getItem(SESSION_API_KEY)?.trim() ?? "";
   } catch {
@@ -18,7 +20,7 @@ export function setSessionApiKey(rawKey: string): void {
   if (!hasWindow()) return;
   const value = rawKey.trim();
   try {
-    if (!value) {
+    if (!value || !allowSessionStorageApiKeyFallback()) {
       window.sessionStorage.removeItem(SESSION_API_KEY);
       return;
     }

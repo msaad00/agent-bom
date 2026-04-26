@@ -524,3 +524,60 @@ class TestModelProvenance:
         assert g.has_edge("container:ghcr.io/acme/support-api:1.2.3", "model:gpt-4")
         assert "toxic:rce_chain" in g.nodes
         assert g.has_edge("vuln:CVE-2024-1234", "toxic:rce_chain")
+
+
+class TestFrameworkTopology:
+    def test_framework_agents_and_static_topology_edges_enter_graph(self):
+        report = _minimal_report()
+        report["ai_inventory"] = {
+            "framework_agents": [
+                {
+                    "stable_id": "framework-agent:crew",
+                    "name": "crew",
+                    "framework": "crewai",
+                    "file_path": "crew.py",
+                    "line_number": 5,
+                    "confidence": "high",
+                    "capabilities": [],
+                    "model_refs": [],
+                    "credential_refs": [],
+                    "dynamic_edges": False,
+                    "topology_edges": [
+                        {
+                            "source_id": "framework-agent:crew",
+                            "source_name": "crew",
+                            "target_id": "framework-agent:researcher",
+                            "target_name": "Researcher",
+                            "relationship": "delegated_to",
+                            "framework": "crewai",
+                            "file_path": "crew.py",
+                            "line_number": 5,
+                            "confidence": "high",
+                            "evidence": "Crew(agents=[...])",
+                        }
+                    ],
+                },
+                {
+                    "stable_id": "framework-agent:researcher",
+                    "name": "Researcher",
+                    "framework": "crewai",
+                    "file_path": "crew.py",
+                    "line_number": 3,
+                    "confidence": "high",
+                    "capabilities": [],
+                    "model_refs": [],
+                    "credential_refs": [],
+                    "dynamic_edges": False,
+                    "topology_edges": [],
+                },
+            ]
+        }
+
+        g = build_unified_graph_from_report(report)
+
+        assert g.nodes["framework-agent:crew"].attributes["framework"] == "crewai"
+        assert g.nodes["framework-agent:researcher"].attributes["agent_type"] == "framework-agent"
+        assert g.has_edge("framework-agent:crew", "framework-agent:researcher")
+        edge = next(edge for edge in g.edges if edge.source == "framework-agent:crew" and edge.target == "framework-agent:researcher")
+        assert edge.relationship == RelationshipType.DELEGATED_TO
+        assert edge.evidence["source"] == "source-ast"

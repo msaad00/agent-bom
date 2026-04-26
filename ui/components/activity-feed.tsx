@@ -135,7 +135,7 @@ export function ActivityFeed({
         setLoading(false);
       }
     }
-    load();
+    void load();
     const interval = setInterval(load, 15000);
     return () => clearInterval(interval);
   }, [refresh]);

@@ -8,6 +8,9 @@ exit code means.
 
 ## CLI exit-code contract
 
+The contract covers ok, findings, usage, auth, and server failures explicitly so
+automation can distinguish caller mistakes from control-plane outages.
+
 | Code  | Name                | Meaning                                                                                                       | Typical sources                                                            |
 | ----- | ------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
 | `0`   | success             | Command completed; no findings or all findings under the configured severity threshold.                        | Any subcommand that finished cleanly.                                      |

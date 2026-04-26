@@ -373,8 +373,8 @@ export default function Dashboard() {
       }
     }
 
-    loadJobs();
-    loadAgents();
+    void loadJobs();
+    void loadAgents();
 
     return () => {
       cancelled = true;
@@ -415,7 +415,7 @@ export default function Dashboard() {
         setDetailLoading(false);
       }
     }
-    hydrateDetails();
+    void hydrateDetails();
   }, [jobs, apiError]);
 
   // When API is down but user imported a local report, synthesise a fake job

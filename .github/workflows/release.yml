@@ -60,6 +60,9 @@ jobs:
           print(f"CHANGELOG entry present: {tag}")
           PY
 
+      - name: Block Finder duplicate artifacts
+        run: python3 scripts/check_duplicate_artifacts.py
+
   docs-site:
     name: Rebuild and deploy docs
     needs: version-guard

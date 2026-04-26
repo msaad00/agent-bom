@@ -23,6 +23,7 @@ from agent_bom.api import server as _server_mod
 from agent_bom.api import stores as _stores
 from agent_bom.api.middleware import (
     APIKeyMiddleware,
+    describe_proxy_control_plane_mtls_posture,
     get_rate_limit_key_status,
     get_rate_limit_runtime_status,
     get_trusted_proxy_auth_status,
@@ -72,6 +73,11 @@ def _clear_rate_limit_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AGENT_BOM_REQUIRE_SCIM", raising=False)
     monkeypatch.delenv("AGENT_BOM_SECRET_PROVIDER", raising=False)
     monkeypatch.delenv("AGENT_BOM_EXTERNAL_SECRETS_ENABLED", raising=False)
+    monkeypatch.delenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_MODE", raising=False)
+    monkeypatch.delenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_PROVIDER", raising=False)
+    monkeypatch.delenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CLIENT_CA_REF", raising=False)
+    monkeypatch.delenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_EVIDENCE_REF", raising=False)
+    monkeypatch.delenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CERT_HEADER", raising=False)
 
 
 def _reload_config() -> None:
@@ -192,6 +198,9 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "shared_across_replicas" in body["rate_limit_runtime"]
     assert "configured_api_replicas" in body["rate_limit_runtime"]
     assert "fail_closed" in body["rate_limit_runtime"]
+    assert body["proxy_control_plane_mtls"]["mode"] == "disabled"
+    assert body["proxy_control_plane_mtls"]["status"] == "disabled"
+    assert body["proxy_control_plane_mtls"]["app_native_mtls"] == "not_implemented"
     assert body["security_headers"]["hsts"]["preload"] is False
     assert body["security_headers"]["hsts"]["header"] == "max-age=31536000; includeSubDomains"
     assert body["security_headers"]["csp"]["dashboard"]["mode"] in {"inline_compat", "hash_manifest"}
@@ -251,6 +260,43 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
         "google_cloud_identity",
     }
     assert "service_keys" in body["identity_provisioning"]["session_revocation"]
+
+
+def test_proxy_control_plane_mtls_posture_requires_delegated_evidence(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_MODE", "delegated")
+    posture = describe_proxy_control_plane_mtls_posture()
+
+    assert posture["mode"] == "delegated"
+    assert posture["status"] == "needs_evidence"
+    assert posture["enforced"] is True
+    assert "AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CLIENT_CA_REF" in posture["missing_evidence"]
+    assert "trusted proxy auth with issuer pinning" in posture["missing_evidence"]
+
+
+def test_proxy_control_plane_mtls_posture_reports_ok_when_delegated_and_attested(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_MODE", "delegated")
+    monkeypatch.setenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_PROVIDER", "istio")
+    monkeypatch.setenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CLIENT_CA_REF", "secret/agent-bom/proxy-client-ca")
+    monkeypatch.setenv(
+        "AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_EVIDENCE_REF",
+        "deploy/helm/agent-bom/templates/controlplane-istio-peer-authentication.yaml",
+    )
+    monkeypatch.setenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CERT_HEADER", "x-forwarded-client-cert")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH", "1")
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", PROXY_SECRET)
+    monkeypatch.setenv("AGENT_BOM_TRUST_PROXY_AUTH_ISSUER", "edge-envoy")
+
+    posture = describe_proxy_control_plane_mtls_posture()
+
+    assert posture["status"] == "ok"
+    assert posture["provider"] == "istio"
+    assert posture["client_ca_ref_configured"] is True
+    assert posture["client_cert_header_configured"] is True
+    assert posture["trusted_proxy_auth_status"] == "ok"
+    assert posture["trusted_proxy_issuer_pinned"] is True
+    assert posture["missing_evidence"] == []
 
 
 def test_auth_policy_redacts_oidc_config_errors(monkeypatch: pytest.MonkeyPatch) -> None:

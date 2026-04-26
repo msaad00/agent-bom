@@ -1,0 +1,149 @@
+{
+  "environment": {
+    "machine": "arm64",
+    "platform": "macOS-26.4.1-arm64-arm-64bit-Mach-O",
+    "processor": "arm",
+    "python": "3.13.5"
+  },
+  "fleet": [
+    {
+      "current": 965,
+      "estate_size_observations": 1000,
+      "observations_per_second": 73677.83,
+      "previous": 1000,
+      "summary": {
+        "added": 0,
+        "changed": 56,
+        "current": 965,
+        "missing": 35,
+        "previous": 1000,
+        "stale": 0,
+        "unchanged": 909
+      },
+      "wall_ms": 26.67
+    },
+    {
+      "current": 4827,
+      "estate_size_observations": 5000,
+      "observations_per_second": 70958.47,
+      "previous": 5000,
+      "summary": {
+        "added": 0,
+        "changed": 284,
+        "current": 4827,
+        "missing": 173,
+        "previous": 5000,
+        "stale": 0,
+        "unchanged": 4543
+      },
+      "wall_ms": 138.489
+    },
+    {
+      "current": 9655,
+      "estate_size_observations": 10000,
+      "observations_per_second": 64585.0,
+      "previous": 10000,
+      "summary": {
+        "added": 0,
+        "changed": 568,
+        "current": 9655,
+        "missing": 345,
+        "previous": 10000,
+        "stale": 0,
+        "unchanged": 9087
+      },
+      "wall_ms": 304.328
+    }
+  ],
+  "gaps": [
+    "Postgres persistence throughput is not measured by this local synthetic run.",
+    "HTTP API p95/p99 under k6 is not measured by this local synthetic run.",
+    "EKS multi-node HA behavior remains tracked in #1806."
+  ],
+  "generated_at": "2026-04-26T04:14:33.751023+00:00",
+  "graph": [
+    {
+      "agent_selector": {
+        "p50_ms": 0.079,
+        "p95_ms": 0.1,
+        "p99_ms": 0.118,
+        "runs": 30
+      },
+      "bounded_neighborhood": {
+        "p50_ms": 0.001,
+        "p95_ms": 0.004,
+        "p99_ms": 0.011,
+        "runs": 30
+      },
+      "build_ms": 236.1,
+      "edges": 5200,
+      "edges_per_second": 22024.54,
+      "estate_size_agents": 1000,
+      "nodes": 5201,
+      "nodes_per_second": 22028.78,
+      "rss_delta_mb": 45.016,
+      "search": {
+        "p50_ms": 0.087,
+        "p95_ms": 0.096,
+        "p99_ms": 0.102,
+        "runs": 30
+      }
+    },
+    {
+      "agent_selector": {
+        "p50_ms": 0.378,
+        "p95_ms": 0.459,
+        "p99_ms": 0.482,
+        "runs": 30
+      },
+      "bounded_neighborhood": {
+        "p50_ms": 0.001,
+        "p95_ms": 0.003,
+        "p99_ms": 0.012,
+        "runs": 30
+      },
+      "build_ms": 193.444,
+      "edges": 26000,
+      "edges_per_second": 134405.71,
+      "estate_size_agents": 5000,
+      "nodes": 26001,
+      "nodes_per_second": 134410.88,
+      "rss_delta_mb": 44.156,
+      "search": {
+        "p50_ms": 0.087,
+        "p95_ms": 0.094,
+        "p99_ms": 0.108,
+        "runs": 30
+      }
+    },
+    {
+      "agent_selector": {
+        "p50_ms": 0.765,
+        "p95_ms": 0.896,
+        "p99_ms": 0.943,
+        "runs": 30
+      },
+      "bounded_neighborhood": {
+        "p50_ms": 0.001,
+        "p95_ms": 0.003,
+        "p99_ms": 0.012,
+        "runs": 30
+      },
+      "build_ms": 446.97,
+      "edges": 52000,
+      "edges_per_second": 116338.97,
+      "estate_size_agents": 10000,
+      "nodes": 52001,
+      "nodes_per_second": 116341.21,
+      "rss_delta_mb": 60.703,
+      "search": {
+        "p50_ms": 0.086,
+        "p95_ms": 0.096,
+        "p99_ms": 0.109,
+        "runs": 30
+      }
+    }
+  ],
+  "schema_version": 1,
+  "scope": "local synthetic CPU benchmark; Postgres/EKS/load-test evidence remains tracked in #1806"
+}

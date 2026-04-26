@@ -120,6 +120,55 @@ class TestBuildUnifiedGraphFromReport:
         assert providers[0].label == "local"
         assert g.has_edge("provider:local", "agent:claude-desktop")
 
+    def test_cloud_origin_metadata_becomes_lineage_nodes(self):
+        report = _minimal_report()
+        report["agents"][0]["source"] = "gcp-cloud-run"
+        report["agents"][0]["metadata"] = {
+            "cloud_origin": {
+                "provider": "gcp",
+                "service": "cloud-run",
+                "resource_type": "service",
+                "resource_id": "projects/acme/locations/us-central1/services/support-agent",
+                "resource_name": "support-agent",
+                "location": "us-central1",
+                "scope": {"project_id": "acme"},
+            },
+            "cloud_principal": {
+                "provider": "gcp",
+                "service": "cloud-run",
+                "resource_type": "service",
+                "principal_type": "service-account",
+                "principal_id": "support-agent@acme.iam.gserviceaccount.com",
+                "source_field": "template.service_account",
+            },
+            "cloud_state": {
+                "provider": "gcp",
+                "service": "cloud-run",
+                "resource_type": "service",
+                "lifecycle_state": "ready",
+            },
+        }
+
+        g = build_unified_graph_from_report(report)
+
+        resource_id = "cloud_resource:gcp:cloud-run:service:projects/acme/locations/us-central1/services/support-agent"
+        principal_id = "service_account:gcp:support-agent@acme.iam.gserviceaccount.com"
+        resource = g.nodes.get(resource_id)
+        principal = g.nodes.get(principal_id)
+
+        assert resource is not None
+        assert resource.entity_type == EntityType.CLOUD_RESOURCE
+        assert resource.label == "support-agent"
+        assert resource.attributes["cloud_origin"]["scope"]["project_id"] == "acme"
+        assert resource.attributes["cloud_state"]["lifecycle_state"] == "ready"
+        assert resource.dimensions.cloud_provider == "gcp"
+        assert principal is not None
+        assert principal.entity_type == EntityType.SERVICE_ACCOUNT
+        assert principal.attributes["principal_type"] == "service-account"
+        assert g.has_edge("provider:gcp", resource_id)
+        assert g.has_edge(resource_id, "agent:claude-desktop")
+        assert g.has_edge(principal_id, resource_id)
+
     def test_server_nodes(self):
         g = build_unified_graph_from_report(_minimal_report())
         servers = g.nodes_by_type(EntityType.SERVER)

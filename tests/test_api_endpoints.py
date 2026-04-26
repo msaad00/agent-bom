@@ -170,15 +170,30 @@ def test_hsts_preload_is_operator_opt_in(monkeypatch):
 
 
 def test_ui_csp_headers_do_not_allow_eval():
-    """Static and hosted UI headers should not permit eval-style script execution."""
+    """Static and hosted UI headers should not permit eval-style script execution.
+
+    The CSP source was centralized to ui/lib/security-headers.mjs in #1954.
+    next.config.ts now imports from there; vercel.json is regenerated from
+    the same module by ui/scripts/sync-vercel-headers.mjs and verified by
+    the vitest sync test. The source-of-truth and the rendered output must
+    both forbid eval-style execution.
+    """
     root = Path(__file__).parent.parent
-    next_config = (root / "ui" / "next.config.ts").read_text(encoding="utf-8")
+    canonical = (root / "ui" / "lib" / "security-headers.mjs").read_text(encoding="utf-8")
     vercel_config = (root / "ui" / "vercel.json").read_text(encoding="utf-8")
 
-    assert "'unsafe-eval'" not in next_config
+    assert "'unsafe-eval'" not in canonical
     assert "'unsafe-eval'" not in vercel_config
-    assert "script-src-attr 'none'" in next_config
+    assert "script-src-attr 'none'" in canonical
     assert "script-src-attr 'none'" in vercel_config
+    # script-src must NOT carry 'unsafe-inline' anymore — closes the XSS sink
+    # that previously let any injected inline <script> run regardless of the
+    # rest of the CSP.
+    script_src_line = next(
+        (line for line in canonical.splitlines() if "script-src " in line and "src-attr" not in line),
+        "",
+    )
+    assert "'unsafe-inline'" not in script_src_line, f"script-src must not contain 'unsafe-inline': {script_src_line!r}"
 
 
 def test_root_allows_head_when_dashboard_is_bundled(tmp_path: Path, monkeypatch):

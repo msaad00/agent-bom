@@ -5,6 +5,10 @@ import "./globals.css";
 import { AuthGate } from "@/components/auth-gate";
 import { AuthProvider } from "@/components/auth-provider";
 import { Nav } from "@/components/nav";
+// Theme bootstrap script lives in lib/csp-source.ts so its sha256 stays in
+// sync with the script-src hash that lib/security-headers.ts emits in CSP.
+// Editing the script body in only one place will cause the sync test to fail.
+import { THEME_BOOTSTRAP_SCRIPT } from "@/lib/csp-source.mjs";
 
 // Local fonts — no network fetch at build time (works in air-gapped environments)
 const inter = localFont({
@@ -30,21 +34,6 @@ export const metadata: Metadata = {
   icons: { icon: "/favicon.ico" },
 };
 
-const themeBootstrap = `
-(function () {
-  try {
-    var stored = localStorage.getItem("agent-bom-theme");
-    var theme = stored === "light" || stored === "dark" ? stored : "dark";
-    var root = document.documentElement;
-    root.dataset.theme = theme;
-    root.style.colorScheme = theme;
-  } catch (error) {
-    document.documentElement.dataset.theme = "dark";
-    document.documentElement.style.colorScheme = "dark";
-  }
-})();
-`;
-
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" data-theme="dark" suppressHydrationWarning>
@@ -52,7 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${inter.variable} ${mono.variable} font-sans bg-background text-foreground min-h-screen antialiased selection:bg-emerald-500/20`}>
         <Script src="/runtime-config.js" strategy="beforeInteractive" />
         <Script id="theme-bootstrap" strategy="beforeInteractive">
-          {themeBootstrap}
+          {THEME_BOOTSTRAP_SCRIPT}
         </Script>
         <AuthProvider>
           <Nav />

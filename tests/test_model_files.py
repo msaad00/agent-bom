@@ -157,3 +157,14 @@ def test_scan_config_manifest_with_repo_id(tmp_path: Path):
     assert manifests[0]["repo_id"] == "Qwen/Qwen2.5-7B-Instruct"
     assert manifests[0]["model_type"] == "qwen2"
     assert manifests[0]["architectures"] == ["Qwen2ForCausalLM"]
+
+
+def test_scan_config_manifest_flags_explicit_floating_revision(tmp_path: Path):
+    """Explicit branch-style model revisions should be policy evidence."""
+    (tmp_path / "config.json").write_text(json.dumps({"_name_or_path": "Qwen/Qwen2.5-7B-Instruct", "revision": "main"}))
+    manifests, warnings = scan_model_manifests(tmp_path)
+
+    assert len(manifests) == 1
+    assert manifests[0]["revision"] == "main"
+    assert manifests[0]["security_flags"][0]["type"] == "FLOATING_MODEL_REFERENCE"
+    assert any("FLOATING_MODEL_REFERENCE" in warning for warning in warnings)

@@ -13,6 +13,8 @@ import os
 import tempfile
 from pathlib import Path
 
+from agent_bom.floating_refs import classify_model_revision, is_hex_digest
+
 logger = logging.getLogger(__name__)
 
 # Extension → metadata mapping
@@ -301,6 +303,16 @@ def scan_model_manifests(
             architectures = payload.get("architectures") if isinstance(payload.get("architectures"), list) else []
             metadata = payload.get("metadata")
             total_size = metadata.get("total_size") if isinstance(metadata, dict) and isinstance(metadata.get("total_size"), int) else None
+            revision = payload.get("revision")
+            if not isinstance(revision, str):
+                revision = payload.get("base_model_revision")
+            revision = revision if isinstance(revision, str) else None
+            commit_hash = payload.get("_commit_hash") or payload.get("commit_hash")
+            commit_hash = commit_hash if isinstance(commit_hash, str) and is_hex_digest(commit_hash) else None
+            reference_for_revision = base_model_id or repo_id
+            floating_ref = classify_model_revision(reference_for_revision, revision)
+            if floating_ref and not commit_hash:
+                security_flags.append(floating_ref.to_security_flag())
 
             manifest = {
                 "path": file_path,
@@ -308,6 +320,8 @@ def scan_model_manifests(
                 "manifest_type": manifest_type,
                 "repo_id": repo_id,
                 "base_model_id": base_model_id,
+                "revision": revision,
+                "commit_hash": commit_hash,
                 "model_type": model_type,
                 "architectures": architectures,
                 "shard_count": shard_count,

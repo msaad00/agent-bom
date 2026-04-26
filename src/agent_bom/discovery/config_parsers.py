@@ -550,6 +550,7 @@ def _parse_docker_mcp_catalog(
     server definitions with image refs, tool lists, secrets, and metadata.
     We only parse entries that the user has enabled in ``registry.yaml``.
     """
+    from agent_bom.floating_refs import classify_image_reference
     from agent_bom.models import MCPTool, Package
 
     try:
@@ -592,12 +593,15 @@ def _parse_docker_mcp_catalog(
             pkg_version = image_ref.split(":")[-1]
 
         pkg_name = image_ref.split("@")[0] if "@" in image_ref else image_ref
+        floating = classify_image_reference(image_ref)
         packages = [
             Package(
                 name=pkg_name,
                 version=pkg_version,
                 ecosystem="docker",
                 is_direct=True,
+                floating_reference=floating is not None,
+                floating_reference_reason=floating.reason if floating else None,
             )
         ]
 
@@ -610,6 +614,7 @@ def _parse_docker_mcp_catalog(
             tools=tools,
             packages=packages,
             config_path=str(catalog_path),
+            security_warnings=[floating.to_security_warning()] if floating else [],
         )
         servers.append(server)
 

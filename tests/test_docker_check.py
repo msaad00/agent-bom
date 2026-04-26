@@ -200,6 +200,29 @@ def test_docker_mcp_package_from_image(tmp_path):
     assert pkg.version == "abc123def456"  # First 12 chars of digest
 
 
+def test_docker_mcp_catalog_flags_floating_image(tmp_path):
+    """Docker MCP catalog image tags should carry mutable-reference evidence."""
+    from agent_bom.discovery import _parse_docker_mcp_catalog
+
+    catalog = {
+        "registry": {
+            "playwright": {
+                "image": "mcp/playwright:latest",
+                "tools": [],
+            }
+        }
+    }
+    catalog_path = tmp_path / "docker-mcp.yaml"
+    catalog_path.write_text(yaml.dump(catalog))
+
+    servers = _parse_docker_mcp_catalog({"playwright"}, catalog_path)
+    assert len(servers) == 1
+    pkg = servers[0].packages[0]
+    assert pkg.floating_reference is True
+    assert pkg.floating_reference_reason == "moving tag 'latest'"
+    assert any("FLOATING_IMAGE_REFERENCE" in warning for warning in servers[0].security_warnings)
+
+
 # ── Check @latest Resolution ─────────────────────────────────────────────────
 
 

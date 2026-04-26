@@ -342,7 +342,10 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                     {"name": "agent-bom:reachability-evidence", "value": pkg.reachability_evidence},
                     {"name": "agent-bom:resolved-from-registry", "value": str(pkg.resolved_from_registry).lower()},
                     {"name": "agent-bom:version-source", "value": pkg.version_source},
+                    {"name": "agent-bom:floating-reference", "value": str(pkg.floating_reference).lower()},
                 ]
+                if pkg.floating_reference_reason:
+                    pkg_properties.append({"name": "agent-bom:floating-reference-reason", "value": pkg.floating_reference_reason})
                 if pkg.parent_package:
                     pkg_properties.append({"name": "agent-bom:parent-package", "value": pkg.parent_package})
                 if pkg.scorecard_score is not None:

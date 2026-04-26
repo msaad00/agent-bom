@@ -540,9 +540,12 @@ jobs:
 
       - name: OSV scanner (ui lockfile) — block release on fixable CVEs
         run: |
-          curl -fsSL -o /usr/local/bin/osv-scanner \
-            https://github.com/google/osv-scanner/releases/download/v2.3.3/osv-scanner_linux_amd64
-          chmod +x /usr/local/bin/osv-scanner
+          OSV_SCANNER_VERSION="v2.3.3"
+          OSV_SCANNER_SHA256="777b4bb7ddd10bdcc8a1aa398d37d05e91e866e7586f9cff3fca2f72b8153033"
+          curl -fsSL -o /tmp/osv-scanner \
+            "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+          echo "${OSV_SCANNER_SHA256}  /tmp/osv-scanner" | sha256sum -c -
+          install -m 0755 /tmp/osv-scanner /usr/local/bin/osv-scanner
           osv-scanner scan --config osv-scanner.toml --lockfile=ui/package-lock.json 2>&1 | tee /tmp/osv-ui-release.txt || {
             FIXABLE=$(grep -E "^\|" /tmp/osv-ui-release.txt | grep -v "| -- " | grep -v "OSV URL" | grep -v "+--" | head -5)
             if [ -n "$FIXABLE" ]; then

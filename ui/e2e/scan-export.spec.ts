@@ -148,9 +148,38 @@ test("scan flow reaches result view and exports graph JSON", async ({ page }) =>
     });
   });
 
+  // Capture browser console + pageerror so a CSP violation or hydration
+  // failure surfaces with a real error in the test log instead of an
+  // opaque locator.fill timeout. This is what made the #1982 strict-CSP
+  // regression hard to diagnose downstream — the e2e timed out on `fill`
+  // without the underlying CSP block being visible to anyone.
+  const consoleErrors: string[] = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error") consoleErrors.push(msg.text());
+  });
+  page.on("pageerror", (err) => consoleErrors.push(`pageerror: ${err.message}`));
+
   await page.goto("/scan");
-  await page.getByPlaceholder("nginx:1.25 or ghcr.io/org/app:v1").fill("nginx:1.25");
-  await page.getByPlaceholder("nginx:1.25 or ghcr.io/org/app:v1").press("Enter");
+  // Wait for the page to fully load AND hydrate. Without this the e2e can
+  // race the React hydration cycle and time out on the next .fill() with
+  // no actionable error.
+  await page.waitForLoadState("networkidle");
+
+  const imageInput = page.getByPlaceholder("nginx:1.25 or ghcr.io/org/app:v1");
+  await expect(imageInput, "image input must be visible after hydration").toBeVisible({ timeout: 15_000 });
+  await expect(imageInput, "image input must be enabled after hydration").toBeEnabled({ timeout: 15_000 });
+
+  // If the page never hydrated, surface the captured browser errors before
+  // letting the implicit fill timeout swallow them.
+  if (consoleErrors.length > 0) {
+    throw new Error(
+      "Browser reported errors before scan flow could start (likely CSP block or hydration failure):\n" +
+        consoleErrors.map((e) => `  - ${e}`).join("\n"),
+    );
+  }
+
+  await imageInput.fill("nginx:1.25");
+  await imageInput.press("Enter");
   await page.getByRole("button", { name: /start scan/i }).click();
 
   await expect(page).toHaveURL(/\/scan\?id=job-e2e/);

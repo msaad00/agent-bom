@@ -6,17 +6,21 @@
 // lock-step. The vitest sync test in tests/security-headers.test.ts fails if
 // either side drifts.
 //
-// CSP design (issue #1954):
-//   - script-src is hash-pinned: 'self' plus the sha256 of every inline
-//     script the app intentionally ships. THEME_BOOTSTRAP_SCRIPT is the
-//     only inline script today; if a new one is added, register it here.
-//   - script-src does NOT carry 'unsafe-inline'. Removing it closes the
-//     XSS sink that previously allowed any injected inline <script> to run.
-//   - style-src still carries 'unsafe-inline' because Tailwind v4 + Next.js
-//     emit inline style attributes whose contents are not hash-stable per
-//     build (computed CSS variables). Tracker for migration: a follow-up
-//     to #1954; until then the CSP is markedly stricter than before but
-//     not yet pure-hash on style.
+// CSP state (issue #1954):
+//   - The CSP is now centralized so vercel.json and next.config can no
+//     longer drift, and the THEME_BOOTSTRAP_SCRIPT hash is computed and
+//     surfaced in INLINE_SCRIPT_HASHES even though the current CSP still
+//     keeps `'unsafe-inline'` on script-src.
+//   - Removing `'unsafe-inline'` from script-src cleanly requires hashing
+//     every inline script Next.js emits during static export (the
+//     streaming `__next_f.push(...)` blocks have per-build content), which
+//     is a build-time hash-collection job not yet wired. The dashboard CSP
+//     served by the Python API (src/agent_bom/api/dashboard_csp.py)
+//     already has a hash manifest mechanism and is the prior art for the
+//     follow-up. Tracker: #1954 follow-up.
+//   - style-src keeps `'unsafe-inline'` because Tailwind v4 + Next.js emit
+//     inline style attributes whose contents are not hash-stable per build
+//     (computed CSS variables).
 
 import { createHash } from "node:crypto";
 
@@ -26,13 +30,15 @@ function sha256Base64(input) {
   return createHash("sha256").update(input, "utf8").digest("base64");
 }
 
-const INLINE_SCRIPT_HASHES = [`'sha256-${sha256Base64(THEME_BOOTSTRAP_SCRIPT)}'`];
+// Inventory of intentional inline scripts the app ships. Their sha256 hashes
+// are computed and exported so the follow-up that removes 'unsafe-inline'
+// only needs to flip the CSP construction below.
+export const INLINE_SCRIPT_HASHES = [`'sha256-${sha256Base64(THEME_BOOTSTRAP_SCRIPT)}'`];
 
 export function cspHeaderValue() {
-  const scriptSrc = ["'self'", ...INLINE_SCRIPT_HASHES].join(" ");
   return [
     "default-src 'self'",
-    `script-src ${scriptSrc}`,
+    "script-src 'self' 'unsafe-inline'",
     "script-src-attr 'none'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",

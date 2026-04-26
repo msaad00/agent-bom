@@ -1,0 +1,139 @@
+name: Main UI Smoke
+
+# Runs on every push to main and rebuilds the standalone UI container, boots
+# it, and curls the dashboard root. The goal is to catch a "main is now
+# broken" symptom (CSP regression, hydration failure, missing standalone
+# output) within minutes — before the next downstream PR opens and gets
+# blocked by an unrelated upstream regression.
+#
+# Pairs with the path-based UI Validate skip in ci.yml: PR-time UI Validate
+# only runs on UI-touching PRs, so this post-merge smoke is the wide net
+# that catches anything that snuck through.
+#
+# Tracking: #1962 follow-up to keep the compose/UI cascade from recurring.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ui/**"
+      - "src/agent_bom/api/**"
+      - "contracts/**"
+      - "src/agent_bom/models.py"
+      - ".github/workflows/main-ui-smoke.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: main-ui-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Build + boot + curl dashboard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '22'
+
+      - name: Install UI deps
+        run: |
+          cd ui
+          npm ci
+
+      - name: Build standalone bundle
+        run: |
+          cd ui
+          npm run build
+          test -d .next/standalone || {
+            echo "::error::Standalone bundle missing — main is broken (build succeeded but did not emit .next/standalone)"
+            exit 1
+          }
+
+      - name: Boot standalone server
+        id: boot
+        run: |
+          set -euo pipefail
+          cp -r ui/.next/standalone/* /tmp/standalone/ 2>/dev/null || mkdir -p /tmp/standalone && cp -r ui/.next/standalone/* /tmp/standalone/
+          cp -r ui/public /tmp/standalone/public
+          cp -r ui/.next/static /tmp/standalone/.next/static
+          cd /tmp/standalone
+          PORT=3000 HOSTNAME=127.0.0.1 node server.js > /tmp/ui.log 2>&1 &
+          echo "pid=$!" >> "$GITHUB_OUTPUT"
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null http://127.0.0.1:3000/; then
+              echo "ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::UI never became reachable on http://127.0.0.1:3000/ within 30s"
+          tail -100 /tmp/ui.log || true
+          exit 1
+
+      - name: Smoke-check dashboard root
+        run: |
+          set -euo pipefail
+          body=$(curl -sf http://127.0.0.1:3000/)
+          # Two contracts the dashboard's root HTML must satisfy:
+          # 1. The HTML is non-trivial (Next emits the streaming RSC payload).
+          # 2. The CSP header allows the page to actually hydrate. If it
+          #    starts dropping inline-script blocks the dashboard renders
+          #    blank — exactly the #1982 symptom this smoke is meant to
+          #    catch within minutes of a bad merge.
+          test ${#body} -gt 500 || {
+            echo "::error::Dashboard root response is too small (${#body} bytes); main is broken"
+            echo "$body"
+            exit 1
+          }
+          headers=$(curl -sI http://127.0.0.1:3000/ | tr -d '\r')
+          echo "$headers"
+          echo "$headers" | grep -qi '^content-security-policy:' || {
+            echo "::error::No Content-Security-Policy header on dashboard root"
+            exit 1
+          }
+          # Catch the specific regression PR #1982 introduced: dropping
+          # 'unsafe-inline' from script-src without a build-time hash
+          # collector breaks Next.js streaming inline hydration scripts.
+          # Until the hash collector lands, a missing 'unsafe-inline' in
+          # script-src is the broken-main signal.
+          csp=$(echo "$headers" | grep -i '^content-security-policy:' | head -1)
+          if echo "$csp" | grep -Eq "script-src[^;]*'unsafe-inline'"; then
+            echo "script-src carries 'unsafe-inline' as expected (transitional state)"
+          else
+            echo "::error::script-src does NOT carry 'unsafe-inline' but no per-build hash collector is in place yet — dashboard will fail to hydrate. See #1954 follow-up."
+            exit 1
+          fi
+
+      - name: Teardown
+        if: always() && steps.boot.outputs.pid != ''
+        run: kill ${{ steps.boot.outputs.pid }} || true
+
+      - name: Open or close auto-managed UI smoke alert
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OUTCOME: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          TITLE="ui-smoke: dashboard standalone container is broken on main"
+          gh label create main-ui-smoke --color D73A4A --description "Automated post-merge UI smoke alert" >/dev/null 2>&1 || true
+          EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
+          if [ "$OUTCOME" != "success" ]; then
+            BODY="Post-merge UI smoke (\`.github/workflows/main-ui-smoke.yml\`) failed on commit ${{ github.sha }}.\n\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\n\nLikely root causes:\n- A UI/CSP/build regression merged to main\n- Standalone bundle layout changed without updating this workflow\n\nFix on main, then this alert will auto-close on the next clean run."
+            if [ -n "$EXISTING" ]; then
+              gh issue comment "$EXISTING" --body "Re-fired on commit ${{ github.sha }}. Run ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}."
+            else
+              gh issue create --title "$TITLE" --label "main-ui-smoke,automated" --body "$(printf '%b' "$BODY")"
+            fi
+          elif [ -n "$EXISTING" ]; then
+            gh issue close "$EXISTING" --comment "UI smoke is green again on commit ${{ github.sha }}; closing the auto-managed alert."
+          fi

@@ -764,6 +764,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         if api_key and not static_api_key_allowed():
             raise RuntimeError(static_api_key_rejection_message())
+        self._validate_exempt_paths_against_role_rules()
         self._api_key = api_key
         self._trusted_proxy_auth = _env_flag("AGENT_BOM_TRUST_PROXY_AUTH")
         self._trusted_proxy_secret = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "").strip()
@@ -771,6 +772,17 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         # OIDC config loaded lazily from env on first request
         self._oidc_config: OIDCConfig | None = None
         self._oidc_checked = False
+
+    @classmethod
+    def _validate_exempt_paths_against_role_rules(cls) -> None:
+        # An exact-path entry in _EXEMPT_PATHS bypasses the entire dispatch chain.
+        # An exact-path entry in _ROLE_RULES (no trailing slash, no broader prefix)
+        # would silently grant unauthenticated access. Fail at startup if both lists
+        # ever name the same exact path.
+        role_paths = {path for _method, path, _role in cls._ROLE_RULES if not path.endswith("/")}
+        overlap = sorted(cls._EXEMPT_PATHS & role_paths)
+        if overlap:
+            raise RuntimeError("APIKeyMiddleware exempt-paths overlap with role-rule paths: " + ", ".join(overlap))
 
     def _required_role(self, method: str, path: str) -> str:
         """Determine the minimum role required for a request."""

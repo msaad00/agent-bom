@@ -244,6 +244,9 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["security_headers"]["hsts"]["header"] == "max-age=31536000; includeSubDomains"
     assert body["security_headers"]["csp"]["dashboard"]["mode"] in {"inline_compat", "hash_manifest"}
     assert "allows_inline_script" in body["security_headers"]["csp"]["dashboard"]
+    assert isinstance(body["backpressure"]["enabled"], bool)
+    assert body["backpressure"]["status"] in {"ready", "active"}
+    assert isinstance(body["backpressure"]["paths"], list)
     assert body["secret_integrity"]["audit_hmac"]["status"] in {"configured", "ephemeral"}
     assert body["secret_integrity"]["audit_hmac"]["rotation_tracking_supported"] is True
     assert body["secret_integrity"]["audit_hmac"]["rotation_status"] in {
@@ -714,6 +717,15 @@ def test_rate_limit_runtime_reports_single_replica_process_local_backend(monkeyp
             "Multi-replica deployments must configure AGENT_BOM_POSTGRES_URL."
         ),
     }
+
+
+def test_apikey_middleware_rejects_exempt_paths_overlapping_role_rules(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Defence-in-depth guard: an exact path appearing in both _EXEMPT_PATHS and
+    # _ROLE_RULES would silently grant unauthenticated access to a role-gated
+    # endpoint. The middleware must refuse to start in that state.
+    monkeypatch.setattr(APIKeyMiddleware, "_EXEMPT_PATHS", APIKeyMiddleware._EXEMPT_PATHS | {"/v1/auth/policy"})
+    with pytest.raises(RuntimeError, match="exempt-paths overlap"):
+        APIKeyMiddleware(app, api_key="static-secret")
 
 
 def test_auth_policy_requires_admin_role_in_api_middleware() -> None:

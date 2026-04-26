@@ -140,6 +140,7 @@ Every scan emits `package.is_malicious` + `package.malicious_reason` on the `Pac
 - **Permission profile:** [`models.py:PermissionProfile`](../src/agent_bom/models.py) classifies capabilities (`network_access`, `filesystem_write`, `shell_access`, `runs_as_root`) and scores as `critical / high / medium / low`. `critical` ≈ root + shell + network.
 - **Tool drift:** [`ToolDriftDetector`](../src/agent_bom/runtime/detectors.py) — alerts when a server advertises a tool it didn't declare in `tools/list`. Catches post-install tool injection.
 - **Trust assessment:** [`parsers/trust_assessment.py`](../src/agent_bom/parsers/trust_assessment.py) + [`parsers/skill_audit.py`](../src/agent_bom/parsers/skill_audit.py) — static analysis of MCP skill manifests.
+- **Sandbox image pinning:** the MCP runtime sandbox in [`proxy_sandbox.py`](../src/agent_bom/proxy_sandbox.py) enforces digest-pinned images when `AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY=enforce`. Production deployments should set `enforce`; tag-only references then fail closed at sandbox start. The default `warn` mode emits sandbox evidence but still permits tag-only images — useful for development, unsafe for multi-tenant control planes.
 
 ### 2.5 Prompt injection / vector-DB poisoning
 

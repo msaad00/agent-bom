@@ -31,6 +31,7 @@ jobs:
       action: ${{ steps.classify.outputs.action }}
       alpine: ${{ steps.classify.outputs.alpine }}
       postgres: ${{ steps.classify.outputs.postgres }}
+      ui: ${{ steps.classify.outputs.ui }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
@@ -45,6 +46,13 @@ jobs:
           action=false
           alpine=false
           postgres=false
+          # UI Validate boots a real Next.js standalone container and runs a
+          # Playwright e2e suite — slow, occasionally cold-runner flaky, and
+          # meaningful only when a PR actually changes UI code or its
+          # immediate API contracts. PRs that touch only deploy/, helm,
+          # docs, or compose used to block on a downstream UI/main
+          # regression they had nothing to do with. Opt in via path filter.
+          ui=false
           if printf '%s\n' "$changed" | grep -Eq '^(action\.yml|\.github/actions/|tests/fixtures/test-(sbom|policy)\.json$)'; then
             action=true
           fi
@@ -54,15 +62,20 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/postgres_|src/agent_bom/api/storage_schema\.py|tests/test_postgres_|\.github/workflows/ci\.yml$)'; then
             postgres=true
           fi
+          if printf '%s\n' "$changed" | grep -Eq '^(ui/|action\.yml|contracts/|src/agent_bom/api/(routes/|models\.py|server\.py)|src/agent_bom/models\.py|\.github/workflows/ci\.yml$)'; then
+            ui=true
+          fi
           echo "action=${action}" >> "$GITHUB_OUTPUT"
           echo "alpine=${alpine}" >> "$GITHUB_OUTPUT"
           echo "postgres=${postgres}" >> "$GITHUB_OUTPUT"
+          echo "ui=${ui}" >> "$GITHUB_OUTPUT"
           {
             echo "### PR path classification"
             echo ""
             echo "- GitHub Action dogfood required: \`${action}\`"
             echo "- Alpine/musl compatibility required: \`${alpine}\`"
             echo "- Real Postgres integration required: \`${postgres}\`"
+            echo "- UI Validate (lint + test + build + e2e) required: \`${ui}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # 1. Security Scanning
@@ -233,6 +246,11 @@ jobs:
     name: UI Validate
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    needs: changes
+    # Skip on PRs that touch no UI / API-contract / workflow paths so a
+    # compose-only or docs-only PR can never be blocked by a downstream UI
+    # regression in main. Push events to main always run the full suite.
+    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.ui == 'true')
     permissions:
       contents: read
     steps:

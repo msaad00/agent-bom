@@ -1,3 +1,8 @@
+# For the canonical AGENT_BOM_* env-var reference (auto-generated from
+# src/agent_bom/config.py), see docs/operations/ENV_VARS.md. CI fails if a
+# new AGENT_BOM_* env var is referenced in src/ without being declared in
+# config.py or added to scripts/env_var_allowlist.txt with a one-line reason.
+
 image:
   repository: agentbom/agent-bom
   tag: "0.81.3"

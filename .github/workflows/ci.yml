@@ -212,6 +212,15 @@ jobs:
       - name: MyPy
         run: uv run mypy src/ --ignore-missing-imports --disable-error-code import-untyped
 
+      - name: Env-var reference is current (config.py + allowlist gate)
+        # Generator: scripts/generate_env_var_reference.py
+        # Doc: docs/operations/ENV_VARS.md
+        # Allowlist: scripts/env_var_allowlist.txt
+        # Fails if docs/operations/ENV_VARS.md is stale, OR if a new
+        # AGENT_BOM_* env var appears under src/agent_bom/ that is neither
+        # declared in config.py nor explicitly allowlisted.
+        run: uv run python scripts/generate_env_var_reference.py --check
+
   ui:
     name: UI Validate
     runs-on: ubuntu-latest

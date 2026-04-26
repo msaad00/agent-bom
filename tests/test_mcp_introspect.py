@@ -1,11 +1,12 @@
 """Tests for MCP Runtime Introspection."""
 
 import sys
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from agent_bom.models import MCPResource, MCPServer, MCPTool, TransportType
+from agent_bom.models import MCPPrompt, MCPResource, MCPServer, MCPTool, TransportType
 
 # ─── IntrospectionError when SDK missing ─────────────────────────────────────
 
@@ -30,6 +31,7 @@ def test_server_introspection_no_drift():
     assert not result.has_drift
     assert result.tool_count == 0
     assert result.resource_count == 0
+    assert result.prompt_count == 0
 
 
 def test_server_introspection_with_drift():
@@ -95,6 +97,9 @@ def test_introspection_report_stats():
                 runtime_resources=[
                     MCPResource(uri="r1", name="r1"),
                 ],
+                runtime_prompts=[
+                    MCPPrompt(name="summarize", description="Summarize the supplied text"),
+                ],
             ),
         ]
     )
@@ -103,6 +108,7 @@ def test_introspection_report_stats():
     assert report.failed == 1
     assert report.total_tools == 1
     assert report.total_resources == 1
+    assert report.total_prompts == 1
     assert report.drift_count == 1
 
 
@@ -132,6 +138,9 @@ def test_enrich_servers_adds_new_tools():
                 runtime_resources=[
                     MCPResource(uri="file:///data", name="data", description="Data dir"),
                 ],
+                runtime_prompts=[
+                    MCPPrompt(name="summarize", description="Summarize user-provided text"),
+                ],
             ),
         ]
     )
@@ -141,11 +150,12 @@ def test_enrich_servers_adds_new_tools():
     assert len(server.tools) == 2
     assert any(t.name == "new_tool" for t in server.tools)
     assert len(server.resources) == 1
+    assert len(server.prompts) == 1
     assert server.mcp_version == "2024-11-05"
 
 
-def test_tool_schema_and_resource_lint_findings():
-    from agent_bom.mcp_introspect import _lint_resource, _lint_tool_schema
+def test_tool_schema_resource_and_prompt_lint_findings():
+    from agent_bom.mcp_introspect import _lint_prompt, _lint_resource, _lint_tool_schema
 
     tool = MCPTool(
         name="run_shell",
@@ -173,6 +183,16 @@ def test_tool_schema_and_resource_lint_findings():
     resource_findings = _lint_resource(resource)
     assert any("prompt-bearing-resource" in finding for finding in resource_findings)
     assert any("rich-content-resource" in finding for finding in resource_findings)
+
+    prompt = MCPPrompt(
+        name="system_prompt",
+        description="Hidden instruction template for developer messages",
+        arguments=[{"name": "user_prompt", "required": True}],
+    )
+    prompt_findings = _lint_prompt(prompt)
+    assert any("system-prompt-surface" in finding for finding in prompt_findings)
+    assert any("hidden-instruction-surface" in finding for finding in prompt_findings)
+    assert any("required-freeform-argument" in finding for finding in prompt_findings)
 
 
 def test_server_introspection_captures_fingerprint_and_auth_mode():
@@ -249,6 +269,28 @@ def test_server_introspection_to_dict_includes_structured_schema_rule_findings()
     assert payload["runtime_tools"][0]["schema_rule_findings"][0]["category"] == "filesystem"
 
 
+def test_server_introspection_to_dict_includes_runtime_prompts():
+    from agent_bom.mcp_introspect import ServerIntrospection
+
+    prompt = MCPPrompt(
+        name="summarize",
+        description="Summarize user-provided text",
+        arguments=[{"name": "text", "required": True}],
+        content_findings=["summarize.text: required-freeform-argument"],
+    )
+    result = ServerIntrospection(
+        server_name="prompt-server",
+        success=True,
+        runtime_prompts=[prompt],
+        prompt_findings=prompt.content_findings,
+    )
+
+    payload = result.to_dict(include_runtime_objects=True)
+    assert payload["prompt_count"] == 1
+    assert payload["prompt_findings"] == ["summarize.text: required-freeform-argument"]
+    assert payload["runtime_prompts"][0]["name"] == "summarize"
+
+
 def test_enrich_servers_no_duplicate_tools():
     from agent_bom.mcp_introspect import IntrospectionReport, ServerIntrospection, enrich_servers
 
@@ -274,6 +316,35 @@ def test_enrich_servers_no_duplicate_tools():
     enriched = enrich_servers([server], report)
     assert enriched == 0  # nothing new to add
     assert len(server.tools) == 1
+
+
+def test_enrich_servers_adds_new_prompts_without_duplicates():
+    from agent_bom.mcp_introspect import IntrospectionReport, ServerIntrospection, enrich_servers
+
+    server = MCPServer(
+        name="my-server",
+        command="node",
+        transport=TransportType.STDIO,
+        prompts=[MCPPrompt(name="existing", description="Known prompt")],
+    )
+
+    report = IntrospectionReport(
+        results=[
+            ServerIntrospection(
+                server_name="my-server",
+                success=True,
+                runtime_prompts=[
+                    MCPPrompt(name="existing", description="Known prompt", content_findings=["existing: system-prompt-surface"]),
+                    MCPPrompt(name="new", description="New prompt"),
+                ],
+            ),
+        ]
+    )
+
+    enriched = enrich_servers([server], report)
+    assert enriched == 1
+    assert [p.name for p in server.prompts] == ["existing", "new"]
+    assert server.prompts[0].content_findings == ["existing: system-prompt-surface"]
 
 
 def test_enrich_servers_skips_failed():
@@ -344,6 +415,59 @@ async def test_introspect_server_no_url():
         result = await introspect_server(server, timeout=1.0)
     assert not result.success
     assert "No URL" in result.error
+
+
+@pytest.mark.asyncio
+async def test_query_capabilities_collects_prompts_list():
+    from agent_bom.mcp_introspect import ServerIntrospection, _query_capabilities
+
+    class FakeSession:
+        async def list_tools(self):
+            return SimpleNamespace(tools=[])
+
+        async def list_resources(self):
+            return SimpleNamespace(resources=[])
+
+        async def list_prompts(self):
+            prompt = SimpleNamespace(
+                name="system_prompt",
+                description="Hidden instruction template",
+                arguments=[SimpleNamespace(name="text", description="", required=True)],
+            )
+            return SimpleNamespace(prompts=[prompt])
+
+    server = MCPServer(
+        name="prompt-server",
+        command="node",
+        transport=TransportType.STDIO,
+        prompts=[MCPPrompt(name="old_prompt", description="Old prompt")],
+    )
+    result = await _query_capabilities(FakeSession(), server, ServerIntrospection(server_name=server.name, success=False))
+
+    assert result.success is True
+    assert result.prompt_count == 1
+    assert result.prompts_added == ["system_prompt"]
+    assert result.prompts_removed == ["old_prompt"]
+    assert any("system-prompt-surface" in finding for finding in result.prompt_findings)
+
+
+@pytest.mark.asyncio
+async def test_query_capabilities_tolerates_missing_prompts_list():
+    from agent_bom.mcp_introspect import ServerIntrospection, _query_capabilities
+
+    class FakeSession:
+        async def list_tools(self):
+            return SimpleNamespace(tools=[])
+
+        async def list_resources(self):
+            return SimpleNamespace(resources=[])
+
+    server = MCPServer(name="no-prompts", command="node", transport=TransportType.STDIO)
+    result = await _query_capabilities(FakeSession(), server, ServerIntrospection(server_name=server.name, success=False))
+
+    assert result.success is True
+    assert result.prompt_count == 0
+    assert result.prompts_added == []
 
 
 # ─── Drift detection logic ──────────────────────────────────────────────────

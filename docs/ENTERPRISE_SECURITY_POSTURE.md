@@ -139,6 +139,9 @@ Relevant security signals:
 Incident response ownership remains with the self-hosting organization. The
 published security policy defines maintainer disclosure SLAs for product
 vulnerabilities; customer deployment incidents follow customer process.
+`docs/ENTERPRISE_SUPPORT_MODEL.md` defines the supported-version window, patch
+cadence, escalation paths, and the boundary between product vulnerabilities and
+customer-operated incidents.
 
 ## Security Header Posture
 
@@ -192,6 +195,7 @@ A procurement packet should include:
 - `docs/THREAT_MODEL.md`
 - `docs/SUPPLY_CHAIN.md`
 - `docs/RELEASE_VERIFICATION.md`
+- `docs/ENTERPRISE_SUPPORT_MODEL.md`
 - `docs/PENTEST_READINESS.md`
 - `site-docs/deployment/customer-data-and-support-boundary.md`
 - customer-owned DPA, subprocessors, support-access policy, and retention

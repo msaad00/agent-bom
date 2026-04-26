@@ -538,6 +538,7 @@ async def auth_policy(request: Request) -> dict:
     from agent_bom.api.secret_lifecycle import describe_secret_lifecycle_posture
     from agent_bom.api.storage_schema import describe_control_plane_storage_schema
     from agent_bom.api.tenant_quota import default_tenant_quotas, get_tenant_quota_runtime
+    from agent_bom.backpressure import describe_backpressure_posture
 
     api_policy = get_api_key_policy()
     rl_status = get_rate_limit_key_status()
@@ -575,6 +576,7 @@ async def auth_policy(request: Request) -> dict:
         "trusted_proxy_auth": get_trusted_proxy_auth_status(),
         "proxy_control_plane_mtls": describe_proxy_control_plane_mtls_posture(),
         "security_headers": describe_security_header_posture(),
+        "backpressure": describe_backpressure_posture(),
         "secret_integrity": {
             "audit_hmac": describe_audit_hmac_status(),
             "compliance_signing": describe_signing_posture(),

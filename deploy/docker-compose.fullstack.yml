@@ -1,4 +1,10 @@
+# ── Profile: DEV ─────────────────────────────────────────────────────────────
 # agent-bom full-stack compose — API + Dashboard UI + PostgreSQL
+#
+# Intended for local developer iteration on the API + UI together. For a
+# production-shaped deployment, see docker-compose.platform.yml (Docker
+# secrets, internal-only Postgres, separated frontend/backend networks).
+# For a single-workstation pilot, see docker-compose.pilot.yml.
 #
 # Usage (local dev):
 #   cp .env.example .env   # fill in POSTGRES_PASSWORD at minimum
@@ -76,6 +82,12 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   # ── PostgreSQL (dev / self-hosted) ─────────────────────────────────────────
   # For production: replace with Supabase, Railway, or any managed Postgres.

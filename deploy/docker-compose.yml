@@ -1,6 +1,11 @@
 version: '3.8'
 
+# ── Profile: DEV ─────────────────────────────────────────────────────────────
 # Development compose — scanner + Redis + PostgreSQL
+# Useful for one-shot scans against a local Postgres + Redis. For an
+# interactive API+UI dev stack, use docker-compose.fullstack.yml. For a
+# production-shaped deployment, use docker-compose.platform.yml.
+#
 # Usage:
 #   cp .env.example .env   # set POSTGRES_PASSWORD (required)
 #   docker compose up
@@ -61,6 +66,12 @@ services:
     command: redis-server --appendonly yes
     networks:
       - backend
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
   # PostgreSQL for persistent storage
   postgres:

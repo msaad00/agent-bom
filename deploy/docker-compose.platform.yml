@@ -1,5 +1,6 @@
 version: "3.8"
 
+# ── Profile: PRODUCTION-SHAPED ──────────────────────────────────────────────
 # Production-like platform deployment: self-hosted `agent-bom` control plane
 # with PostgreSQL, using one product split across two images:
 #   - API/runtime image
@@ -17,9 +18,19 @@ version: "3.8"
 #   - API bridges backend + frontend networks
 #   - UI on frontend only — cannot reach Postgres directly
 #   - App connects as agent_bom_app (DML only, no DDL) when POSTGRES_APP_PASSWORD is set
+#   - Postgres credentials sourced from Docker secrets (file-mounted at
+#     /run/secrets/...), not raw env. Operators provide:
+#         deploy/secrets/postgres_password
+#         deploy/secrets/postgres_app_password   (optional, for DML-only role)
+#     A starter pair lives at deploy/secrets/.gitkeep with file-permission
+#     guidance. The api service still consumes POSTGRES_APP_PASSWORD via
+#     env to construct AGENT_BOM_POSTGRES_URL (URL-form requirement);
+#     wrapper-based file-only injection is tracked as a #1962 follow-up.
 #
 # Usage:
-#   cp .env.example .env   # set POSTGRES_PASSWORD + POSTGRES_APP_PASSWORD
+#   cp .env.example .env                     # set POSTGRES_APP_PASSWORD only
+#   echo -n "$POSTGRES_PASSWORD" > deploy/secrets/postgres_password
+#   chmod 0400 deploy/secrets/postgres_password
 #   docker compose -f deploy/docker-compose.platform.yml up --build
 
 services:
@@ -29,9 +40,14 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-agent_bom}
       POSTGRES_USER: ${POSTGRES_USER:-agent_bom}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      # The postgres image natively reads POSTGRES_PASSWORD_FILE from a
+      # mounted secret, keeping the password off the docker inspect surface
+      # and out of `docker compose config` output.
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-}
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    secrets:
+      - postgres_password
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./supabase/postgres/init-wrapper.sh:/docker-entrypoint-initdb.d/00-init-wrapper.sh:ro
@@ -102,10 +118,22 @@ services:
     # UI on frontend only — cannot reach Postgres directly
     networks:
       - frontend
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
     restart: unless-stopped
 
 volumes:
   postgres-data:
+
+secrets:
+  # Mount-provisioned credentials. Populate the files before `docker compose up`.
+  # See the header comment for permissions guidance (chmod 0400).
+  postgres_password:
+    file: ./secrets/postgres_password
 
 networks:
   backend:

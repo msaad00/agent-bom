@@ -6,6 +6,10 @@
 
 Report privately via [GitHub Security Advisories](https://github.com/msaad00/agent-bom/security/advisories/new).
 
+For procurement-facing support boundaries, patch cadence, escalation paths, and
+release-note security language, see
+[docs/ENTERPRISE_SUPPORT_MODEL.md](docs/ENTERPRISE_SUPPORT_MODEL.md).
+
 **Response SLA:**
 - Acknowledgement within **48 hours**
 - Triage and severity assessment within **5 business days**
@@ -18,6 +22,10 @@ Report privately via [GitHub Security Advisories](https://github.com/msaad00/age
 |---------|-----------|
 | Latest  | ✓ Yes     |
 | < Latest | ✗ No — upgrade to the latest release |
+
+The open-source project supports the latest released tag. Older release lines
+are not maintained as long-term support branches unless a separate commercial
+or customer-specific agreement exists.
 
 ## Security Design
 

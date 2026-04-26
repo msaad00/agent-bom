@@ -134,7 +134,7 @@ export default function InsightsPage() {
         setLatestJob(latest.result ? latest : null);
 
         setTrendLoading(true);
-        Promise.all(doneJobs.slice(0, 10).map((job) => api.getScan(job.job_id).catch(() => null)))
+        void Promise.all(doneJobs.slice(0, 10).map((job) => api.getScan(job.job_id).catch(() => null)))
           .then((fullJobs) => {
             setTrendJobs(fullJobs.filter((job): job is ScanJob => Boolean(job?.result)));
           })

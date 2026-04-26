@@ -139,7 +139,7 @@ function SecurityGraphPageContent() {
       }
     }
 
-    load();
+    void load();
     return () => {
       cancelled = true;
     };
@@ -175,7 +175,7 @@ function SecurityGraphPageContent() {
       }
     }
 
-    loadGraph();
+    void loadGraph();
     return () => {
       cancelled = true;
     };

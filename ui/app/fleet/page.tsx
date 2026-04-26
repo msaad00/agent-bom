@@ -121,7 +121,7 @@ export default function FleetPage() {
       limit: FLEET_PAGE_SIZE,
       offset: fleetOffset,
     };
-    Promise.allSettled([api.listFleet(filters), api.getFleetStats()])
+    void Promise.allSettled([api.listFleet(filters), api.getFleetStats()])
       .then(([fleetResult, statsResult]) => {
         if (fleetResult.status === "fulfilled") {
           setAgents(fleetResult.value.agents);
@@ -155,7 +155,7 @@ export default function FleetPage() {
   }, [fleetOffset, search, stateFilter]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   useEffect(() => {
@@ -166,7 +166,7 @@ export default function FleetPage() {
     setSyncing(true);
     try {
       await api.syncFleet();
-      load();
+      void load();
     } finally {
       setSyncing(false);
     }
@@ -175,7 +175,7 @@ export default function FleetPage() {
   const handleStateChange = async (agentId: string, newState: FleetLifecycleState) => {
     if (!confirm(`Change this agent state to ${newState}?`)) return;
     await api.updateFleetState(agentId, newState);
-    load();
+    void load();
   };
 
   const toggleExpand = (id: string) => {
@@ -256,6 +256,8 @@ export default function FleetPage() {
             <label className="flex items-center gap-2 cursor-pointer">
               <span className="text-xs text-zinc-500">Auto-quarantine</span>
               <button
+                type="button"
+                aria-label={autoQuarantine ? "Disable auto-quarantine" : "Enable auto-quarantine"}
                 onClick={() => {
                   if (!autoQuarantine && !confirm('This will quarantine agents below the trust threshold. Continue?')) return;
                   setAutoQuarantine((v) => !v);
@@ -494,7 +496,7 @@ export default function FleetPage() {
                             key={t}
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleStateChange(agent.agent_id, t);
+                              void handleStateChange(agent.agent_id, t);
                             }}
                             className={`text-[10px] px-2 py-0.5 rounded border transition-colors hover:opacity-80 ${STATE_COLORS[t]}`}
                           >

@@ -377,7 +377,7 @@ function CompliancePageContent() {
   }, [queryParam]);
 
   useEffect(() => {
-    Promise.allSettled([api.getCompliance(), api.getFrameworkCatalogs()])
+    void Promise.allSettled([api.getCompliance(), api.getFrameworkCatalogs()])
       .then(([complianceResult, catalogResult]) => {
         if (complianceResult.status === "fulfilled") {
           setData(complianceResult.value);

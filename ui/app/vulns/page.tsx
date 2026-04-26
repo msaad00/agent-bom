@@ -270,7 +270,7 @@ function VulnsPage() {
         setLoading(false);
       }
     }
-    loadSummaries();
+    void loadSummaries();
   }, []);
 
   useEffect(() => {
@@ -299,7 +299,7 @@ function VulnsPage() {
       }
     }
 
-    loadDetails();
+    void loadDetails();
   }, [jobs, scope, loading, collectVulns]);
 
   function handleSort(field: SortKey) {

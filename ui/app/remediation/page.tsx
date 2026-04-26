@@ -536,7 +536,7 @@ function RemediationPage() {
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
   function handleSort(field: SortKey) {

@@ -21,7 +21,7 @@ export default function HelpPage() {
   useEffect(() => {
     let mounted = true;
     setLoading(true);
-    Promise.allSettled([api.version(), api.getAuthDebug()])
+    void Promise.allSettled([api.version(), api.getAuthDebug()])
       .then(([versionResult, authResult]) => {
         if (!mounted) return;
         if (versionResult.status === "fulfilled") setVersion(versionResult.value);

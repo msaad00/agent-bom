@@ -91,7 +91,7 @@ export default function GatewayPage() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      load();
+      void load();
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
@@ -122,18 +122,18 @@ export default function GatewayPage() {
     setNewMode("audit");
     setNewBlockTools("");
     setNewDescription("");
-    load();
+    void load();
   };
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this policy? This cannot be undone.')) return;
     await api.deleteGatewayPolicy(id);
-    load();
+    void load();
   };
 
   const handleToggleEnabled = async (policy: GatewayPolicy) => {
     await api.updateGatewayPolicy(policy.policy_id, { enabled: !policy.enabled } as Partial<GatewayPolicy>);
-    load();
+    void load();
   };
 
   const handleEvaluate = async () => {
@@ -370,13 +370,13 @@ export default function GatewayPage() {
                       {/* Actions */}
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleToggleEnabled(policy); }}
+                          onClick={(e) => { e.stopPropagation(); void handleToggleEnabled(policy); }}
                           className="text-[10px] px-2 py-0.5 rounded border transition-colors hover:opacity-80 bg-zinc-800 text-zinc-300 border-zinc-700"
                         >
                           {policy.enabled ? "Disable" : "Enable"}
                         </button>
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleDelete(policy.policy_id); }}
+                          onClick={(e) => { e.stopPropagation(); void handleDelete(policy.policy_id); }}
                           className="text-[10px] px-2 py-0.5 rounded border transition-colors hover:opacity-80 bg-red-950 text-red-300 border-red-800 flex items-center gap-1"
                         >
                           <Trash2 className="w-3 h-3" />

@@ -33,9 +33,10 @@ Usage::
 from __future__ import annotations
 
 import ast
+import hashlib
 import re
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
@@ -112,6 +113,7 @@ class _PythonAgentDef(NamedTuple):
     model: str
     env_refs: list[str]  # credential env var names referenced (never values)
     file: str
+    system_prompts: tuple[dict[str, Any], ...] = ()
 
 
 # ─── Requirement file parsers ─────────────────────────────────────────────────
@@ -500,6 +502,48 @@ def _scan_python_files(project: Path) -> list[_PythonAgentDef]:
     return all_defs
 
 
+def _prompt_inventory_by_file(project: Path) -> dict[str, list[dict[str, Any]]]:
+    """Return bounded prompt inventory keyed by relative path and basename."""
+    try:
+        from agent_bom.ast_analyzer import analyze_project
+    except Exception:
+        return {}
+
+    try:
+        ast_result = analyze_project(project)
+    except Exception:
+        return {}
+
+    by_file: dict[str, list[dict[str, Any]]] = {}
+    for prompt in ast_result.prompts:
+        text = str(prompt.text or "")
+        item = {
+            "variable": prompt.variable_name,
+            "file": prompt.file_path,
+            "line": prompt.line_number,
+            "framework": prompt.framework,
+            "type": prompt.prompt_type,
+            "risk_flags": list(prompt.risk_flags),
+            "text_preview": text[:240],
+            "text_sha256": hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest(),
+        }
+        for key in {prompt.file_path, Path(prompt.file_path).name}:
+            by_file.setdefault(key, []).append(item)
+    return by_file
+
+
+def _attach_system_prompts(agent_defs: list[_PythonAgentDef], project: Path) -> list[_PythonAgentDef]:
+    """Attach AST-extracted prompt inventory to discovered Python agents."""
+    prompts_by_file = _prompt_inventory_by_file(project)
+    if not prompts_by_file:
+        return agent_defs
+    enriched: list[_PythonAgentDef] = []
+    for agent_def in agent_defs:
+        prompts = tuple(prompts_by_file.get(agent_def.file, []))
+        enriched.append(agent_def._replace(system_prompts=prompts))
+    return enriched
+
+
 # ─── Public API ───────────────────────────────────────────────────────────────
 
 
@@ -555,6 +599,8 @@ def scan_python_agents(project_path: str) -> tuple[list[Agent], list[str]]:
 
     # 3. Scan Python files for agent definitions
     agent_defs = _scan_python_files(project)
+    if agent_defs:
+        agent_defs = _attach_system_prompts(agent_defs, project)
 
     # If no agent definitions found but frameworks detected in requirements,
     # create one synthetic entry per framework so CVE scanning still runs
@@ -631,6 +677,13 @@ def scan_python_agents(project_path: str) -> tuple[list[Agent], list[str]]:
             config_path=str(project),
             mcp_servers=[server],
             source="python-agents",
+            metadata={
+                "system_prompts": d.system_prompts,
+                "system_prompt_count": len(d.system_prompts),
+                "system_prompt_risk_flags": sorted({flag for prompt in d.system_prompts for flag in prompt.get("risk_flags", [])}),
+            }
+            if d.system_prompts
+            else {},
         )
         agents.append(agent)
 

@@ -86,3 +86,61 @@ def test_postgres_audit_log_real_roundtrip_and_schema_marker():
 
     assert row is not None
     assert row[0] == CONTROL_PLANE_SCHEMA_VERSION
+
+
+def test_postgres_scan_jobs_rls_blocks_cross_tenant_raw_select():
+    # #1815 red-team contract: a session bound to tenant B must see zero rows
+    # from a scan_jobs INSERT made under tenant A, even when the SQL has no
+    # tenant predicate. This proves the FORCE ROW LEVEL SECURITY policy on
+    # scan_jobs is what enforces isolation, not just application-side WHERE
+    # clauses. If RLS regresses, this test fails before any service code does.
+    from agent_bom.api import postgres_common
+    from agent_bom.api.postgres_common import (
+        _apply_tenant_session,
+        reset_current_tenant,
+        set_current_tenant,
+    )
+    from agent_bom.api.postgres_store import PostgresJobStore
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
+
+    store = PostgresJobStore()
+    suffix = uuid4().hex
+    job_id = f"rls-redteam-{suffix}"
+    tenant_a = f"tenant-a-{suffix}"
+    tenant_b = f"tenant-b-{suffix}"
+
+    job = ScanJob(
+        job_id=job_id,
+        tenant_id=tenant_a,
+        triggered_by="ci-rls-redteam",
+        status=JobStatus.PENDING,
+        created_at="2026-04-26T00:00:00Z",
+        request=ScanRequest(format="json"),
+    )
+
+    token_a = set_current_tenant(tenant_a)
+    try:
+        store.put(job)
+    finally:
+        reset_current_tenant(token_a)
+
+    # Open a fresh session bound to tenant B and run a tenant-blind SELECT.
+    # The tenant_id predicate is intentionally omitted so anything the test
+    # sees is leakage past the RLS policy, not a passing application filter.
+    pool = postgres_common._get_pool()
+    token_b = set_current_tenant(tenant_b)
+    try:
+        with pool.connection() as conn:
+            _apply_tenant_session(conn)
+            cross_tenant_rows = conn.execute(
+                "SELECT job_id FROM scan_jobs WHERE job_id = %s",
+                (job_id,),
+            ).fetchall()
+    finally:
+        reset_current_tenant(token_b)
+
+    assert cross_tenant_rows == [], (
+        "scan_jobs RLS leaked tenant A data into a session bound to tenant B; "
+        "verify that ALTER TABLE scan_jobs FORCE ROW LEVEL SECURITY is in place "
+        "and that the tenant_isolation policy gates SELECT and ALL."
+    )

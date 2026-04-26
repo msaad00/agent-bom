@@ -268,6 +268,7 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
     servers: dict[str, dict] = {}
     tools: dict[str, dict] = {}
     resources: dict[str, dict] = {}
+    prompts: dict[str, dict] = {}
     packages: dict[str, dict] = {}
     relationships: list[dict] = []
 
@@ -298,6 +299,7 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
                     "url": server.url,
                     "tool_ids": [],
                     "resource_ids": [],
+                    "prompt_ids": [],
                     "package_ids": [],
                 }
             relationships.append({"from": agent.stable_id, "to": server.stable_id, "type": "uses"})
@@ -334,6 +336,21 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
                     servers[server.stable_id]["resource_ids"].append(resource.stable_id)
                 relationships.append({"from": server.stable_id, "to": resource.stable_id, "type": "exposes_resource"})
 
+            for prompt in server.prompts:
+                if prompt.stable_id not in prompts:
+                    prompts[prompt.stable_id] = {
+                        "id": prompt.stable_id,
+                        "name": prompt.name,
+                        "fingerprint": prompt.fingerprint,
+                        "description": prompt.description,
+                        "arguments": prompt.arguments,
+                        "content_findings": prompt.content_findings,
+                        "risk_score": prompt.risk_score,
+                    }
+                if prompt.stable_id not in servers[server.stable_id]["prompt_ids"]:
+                    servers[server.stable_id]["prompt_ids"].append(prompt.stable_id)
+                relationships.append({"from": server.stable_id, "to": prompt.stable_id, "type": "exposes_prompt"})
+
             for pkg in server.packages:
                 if pkg.stable_id not in packages:
                     packages[pkg.stable_id] = {
@@ -361,6 +378,7 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
             "servers": len(servers),
             "tools": len(tools),
             "resources": len(resources),
+            "prompts": len(prompts),
             "packages": len(packages),
             "relationships": len(relationships),
         },
@@ -368,6 +386,7 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
         "servers": sorted(servers.values(), key=lambda x: x["id"]),
         "tools": sorted(tools.values(), key=lambda x: x["id"]),
         "resources": sorted(resources.values(), key=lambda x: x["id"]),
+        "prompts": sorted(prompts.values(), key=lambda x: x["id"]),
         "packages": sorted(packages.values(), key=lambda x: x["id"]),
         "relationships": relationships,
     }
@@ -410,10 +429,14 @@ def _build_mcp_runtime_diff(report: AIBOMReport) -> dict | None:
                     "observed_tool_count": intro.get("tool_count", len(server.tools)),
                     "configured_resource_count": intro.get("configured_resource_count", len(server.resources)),
                     "observed_resource_count": intro.get("resource_count", len(server.resources)),
+                    "configured_prompt_count": intro.get("configured_prompt_count", len(server.prompts)),
+                    "observed_prompt_count": intro.get("prompt_count", len(server.prompts)),
                     "tools_added": intro.get("tools_added", []),
                     "tools_removed": intro.get("tools_removed", []),
                     "resources_added": intro.get("resources_added", []),
                     "resources_removed": intro.get("resources_removed", []),
+                    "prompts_added": intro.get("prompts_added", []),
+                    "prompts_removed": intro.get("prompts_removed", []),
                     "capability_risk_score": intro.get("capability_risk_score", 0.0),
                     "capability_risk_level": intro.get("capability_risk_level", "low"),
                     "capability_counts": intro.get("capability_counts", {}),
@@ -433,12 +456,17 @@ def _build_mcp_runtime_diff(report: AIBOMReport) -> dict | None:
                         "resource_findings",
                         sorted({finding for resource in server.resources for finding in resource.content_findings}),
                     ),
+                    "prompt_findings": intro.get(
+                        "prompt_findings",
+                        sorted({finding for prompt in server.prompts for finding in prompt.content_findings}),
+                    ),
                     "max_tool_risk_score": max(
                         [item.get("risk_score", 0) for item in intro.get("tool_risk_profiles", [])]
                         or [tool.risk_score for tool in server.tools]
                         or [0]
                     ),
                     "max_resource_risk_score": max((resource.risk_score for resource in server.resources), default=0),
+                    "max_prompt_risk_score": max((prompt.risk_score for prompt in server.prompts), default=0),
                     "runtime_used_tools": used_tools,
                     "observed_not_used_tools": sorted(observed_tools - set(used_tools)),
                     "configured_vs_observed_changed": bool(
@@ -548,6 +576,18 @@ def to_json(report: AIBOMReport) -> dict:
                                 "risk_score": r.risk_score,
                             }
                             for r in server.resources
+                        ],
+                        "prompts": [
+                            {
+                                "name": p.name,
+                                "stable_id": p.stable_id,
+                                "fingerprint": p.fingerprint,
+                                "description": p.description,
+                                "arguments": p.arguments,
+                                "content_findings": p.content_findings,
+                                "risk_score": p.risk_score,
+                            }
+                            for p in server.prompts
                         ],
                         "packages": [
                             {

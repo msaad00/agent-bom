@@ -486,6 +486,7 @@ def introspect_cmd(server_command, server_url, timeout, introspect_all, baseline
                 entry["server"] = entry.pop("server_name")
                 entry["tools"] = [t["name"] for t in entry.get("runtime_tools", [])]
                 entry["resources"] = [res["name"] for res in entry.get("runtime_resources", [])]
+                entry["prompts"] = [prompt["name"] for prompt in entry.get("runtime_prompts", [])]
             else:
                 risk_level = getattr(r, "capability_risk_level", "low")
                 if not isinstance(risk_level, str):
@@ -497,6 +498,7 @@ def introspect_cmd(server_command, server_url, timeout, introspect_all, baseline
                     risk_score = 0.0
                 runtime_tools = getattr(r, "runtime_tools", [])
                 runtime_resources = getattr(r, "runtime_resources", [])
+                runtime_prompts = getattr(r, "runtime_prompts", [])
                 server_name = getattr(r, "server_name", "server")
                 if not isinstance(server_name, str):
                     server_name = "server"
@@ -518,8 +520,10 @@ def introspect_cmd(server_command, server_url, timeout, introspect_all, baseline
                     "dangerous_combinations": [],
                     "runtime_tools": [],
                     "runtime_resources": [],
+                    "runtime_prompts": [],
                     "tools": [getattr(t, "name", str(t)) for t in runtime_tools],
                     "resources": [getattr(res, "name", str(res)) for res in runtime_resources],
+                    "prompts": [getattr(prompt, "name", str(prompt)) for prompt in runtime_prompts],
                 }
             if baseline:
                 expected = baseline.get(r.server_name, [])
@@ -582,6 +586,10 @@ def introspect_cmd(server_command, server_url, timeout, introspect_all, baseline
 
         if r.runtime_resources:
             con.print(f"  Resources: {', '.join(res.name for res in r.runtime_resources)}")
+
+        runtime_prompts = getattr(r, "runtime_prompts", [])
+        if runtime_prompts:
+            con.print(f"  Prompts: {', '.join(prompt.name for prompt in runtime_prompts)}")
 
         if baseline:
             expected_tools = baseline.get(r.server_name, [])

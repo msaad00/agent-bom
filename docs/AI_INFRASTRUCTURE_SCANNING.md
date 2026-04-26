@@ -54,6 +54,17 @@ A vulnerability in `nvidia-cudnn-cu12` or `hip-python` doesn't just affect one m
 | `ray` | Distributed computing |
 | `clearml` | ML pipeline management |
 
+### AI observability and evaluation tracing
+
+| Package | Description |
+|---------|-------------|
+| `langsmith` | LangSmith tracing and evaluation telemetry |
+| `langfuse` | Langfuse traces, sessions, scores, and prompt telemetry |
+| `braintrust` | Braintrust evaluation and experiment telemetry |
+| `arize`, `arize-phoenix` | Arize/Phoenix observability and OpenInference traces |
+| `trubrics` | Trubrics feedback and evaluation telemetry |
+| `@helicone/helicone` | Helicone request and LLM observability instrumentation |
+
 ## Scanning GPU container images
 
 ### NVIDIA CUDA images

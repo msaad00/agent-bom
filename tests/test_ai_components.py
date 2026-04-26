@@ -112,12 +112,18 @@ class TestPatternCoverage:
         assert "chromadb" in names
         assert "mlflow" in names
         assert "vllm" in names
+        assert "langsmith" in names
+        assert "langfuse" in names
+        assert "phoenix" in names
+        assert "braintrust" in names
 
     def test_js_has_patterns(self):
         names = {p.name for p in SDK_PATTERNS_BY_LANGUAGE["javascript"]}
         assert "openai" in names
         assert "anthropic" in names
         assert "langchain" in names
+        assert "langfuse" in names
+        assert "helicone" in names
 
     def test_all_sdk_patterns_combined(self):
         assert len(ALL_SDK_PATTERNS) >= 50  # 40+ Python + JS + Java + Go + Rust + Ruby
@@ -177,6 +183,25 @@ class TestScanner:
         assert "openai" in names
         assert "langchain" in names
         assert "chromadb" in names
+
+    def test_scan_ai_observability_imports(self, tmp_path: Path):
+        (tmp_path / "observability.py").write_text(
+            "from langsmith import Client\n"
+            "from langfuse import Langfuse\n"
+            "import phoenix as px\n"
+            "import braintrust\n"
+            "from arize import Client as ArizeClient\n"
+        )
+        (tmp_path / "observability.ts").write_text(
+            'import { Langfuse } from "langfuse";\nimport { HeliconeManualLogger } from "@helicone/helicone";\n'
+        )
+
+        report = scan_source(str(tmp_path))
+        observability = [c for c in report.components if c.component_type == AIComponentType.OBSERVABILITY]
+        names = {c.name for c in observability}
+
+        assert {"langsmith", "langfuse", "phoenix", "braintrust", "arize", "helicone"}.issubset(names)
+        assert {c.ecosystem for c in observability} == {"pypi", "npm"}
 
     def test_scan_js_imports(self, tmp_project: Path):
         report = scan_source(str(tmp_project))

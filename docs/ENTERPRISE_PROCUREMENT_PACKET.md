@@ -24,7 +24,7 @@ controls are complete.
 | Security testing | CodeQL, gitleaks, dependency review, pip audit, fuzzing, SSRF/authz/tenant tests | `docs/PENTEST_READINESS.md`, `.github/workflows/codeql.yml`, `.github/workflows/pr-security-gate.yml` |
 | Operations | Helm profiles, backup/restore, airgap bundle, runtime operations | `site-docs/deployment/control-plane-helm.md`, `site-docs/deployment/backup-restore.md`, `site-docs/deployment/airgapped-image-bundle.md` |
 | Scale | fleet/graph pagination and benchmark targets documented; larger enterprise evidence still expanding | `docs/PERFORMANCE_BENCHMARKS.md`, `site-docs/deployment/performance-and-sizing.md` |
-| Support and disclosure | product vulnerability disclosure documented; customer incident process remains customer-owned | `SECURITY.md`, `docs/ENTERPRISE_SECURITY_POSTURE.md` |
+| Support and disclosure | product vulnerability disclosure, patch cadence, support boundaries, and customer incident ownership documented | `SECURITY.md`, `docs/ENTERPRISE_SUPPORT_MODEL.md`, `docs/ENTERPRISE_SECURITY_POSTURE.md` |
 
 ## Customer-Owned Evidence
 
@@ -39,6 +39,8 @@ artifacts alongside the product evidence above:
 - SIEM routing, alert ownership, incident response, and escalation contacts
 - data retention schedule, DPA, subprocessor review, and support-access policy
 - release approval record for the exact tag deployed
+- internal escalation contacts for platform, security, IdP, cloud, and database
+  owners
 
 ## Evidence Collection Checklist
 
@@ -56,6 +58,9 @@ artifacts alongside the product evidence above:
    customer's latest production restore exercise.
 7. Attach customer-owned IdP, KMS, network, retention, and incident-response
    evidence.
+8. Attach the self-hosted support boundary and escalation record from
+   `docs/ENTERPRISE_SUPPORT_MODEL.md`, plus any customer-owned support contract
+   or internal incident workflow.
 
 ## Current Gaps Before Fortune-500 Procurement Claims
 
@@ -63,8 +68,9 @@ These tracks are intentionally explicit so the release does not overclaim:
 
 - deeper SOC 2 / ISO / CIS / NIST mapping from each control to exact tests,
   logs, and exported evidence
-- procurement-ready legal templates such as customer-owned DPA, subprocessors,
-  and support-access language
+- procurement-ready legal templates such as customer-owned DPA and
+  subprocessors; support boundaries are documented, but paid support terms
+  remain separate from the OSS project
 - real Vault/KMS/Secrets Manager rotation adapters beyond posture and operator
   planning
 - published IdP compatibility evidence for Okta, Microsoft Entra, and Google

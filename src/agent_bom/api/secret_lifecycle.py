@@ -22,6 +22,20 @@ def _env_int(name: str) -> int | None:
     return parsed if parsed >= 0 else None
 
 
+def _configured_api_replicas() -> int:
+    raw = os.environ.get("AGENT_BOM_CONTROL_PLANE_REPLICAS", "").strip()
+    if not raw:
+        return 1
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 1
+
+
+def _browser_signing_key_required() -> bool:
+    return _configured_api_replicas() > 1 or _env_enabled("AGENT_BOM_REQUIRE_BROWSER_SESSION_SIGNING_KEY")
+
+
 def _rotation_posture(
     *,
     configured: bool,
@@ -150,24 +164,13 @@ def _env_secret_posture(
 
 def _browser_session_signing_posture() -> dict[str, Any]:
     dedicated = os.environ.get("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "").strip()
-    audit = os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY", "").strip()
-    static_api = os.environ.get("AGENT_BOM_API_KEY", "").strip()
+    required = _browser_signing_key_required()
 
     if dedicated:
         source = "AGENT_BOM_BROWSER_SESSION_SIGNING_KEY"
-        inherited_from = None
-        configured = True
-    elif audit:
-        source = "AGENT_BOM_AUDIT_HMAC_KEY"
-        inherited_from = "audit_hmac"
-        configured = True
-    elif static_api:
-        source = "AGENT_BOM_API_KEY"
-        inherited_from = "static_api_key"
         configured = True
     else:
         source = None
-        inherited_from = None
         configured = False
 
     rotation = _rotation_posture(
@@ -176,19 +179,24 @@ def _browser_session_signing_posture() -> dict[str, Any]:
         last_rotated_env="AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_LAST_ROTATED",
         rotation_days_env="AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_ROTATION_DAYS",
         max_age_days_env="AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_MAX_AGE_DAYS",
-        not_configured_status="ephemeral",
+        not_configured_status="missing_required" if required else "ephemeral",
         not_configured_message=(
-            "Browser sessions use a process-ephemeral signing key. Sessions are invalidated on restart and rotation age is not stable."
+            "Browser sessions require AGENT_BOM_BROWSER_SESSION_SIGNING_KEY because the control plane is clustered."
+            if required
+            else (
+                "Browser sessions use a process-ephemeral signing key. Sessions are invalidated on restart and rotation age is not stable."
+            )
         ),
     )
     return {
         "name": "browser_session_signing",
-        "status": "configured" if configured else "ephemeral",
+        "status": "configured" if configured else ("missing_required" if required else "ephemeral"),
         "configured": configured,
-        "required": False,
+        "required": required,
         "source": source,
         "dedicated_key_configured": bool(dedicated),
-        "inherited_from": inherited_from,
+        "inherited_from": None,
+        "configured_api_replicas": _configured_api_replicas(),
         **rotation,
     }
 

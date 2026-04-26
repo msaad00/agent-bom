@@ -65,6 +65,7 @@ def _clear_rate_limit_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_LAST_ROTATED", raising=False)
     monkeypatch.delenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_ROTATION_DAYS", raising=False)
     monkeypatch.delenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY_MAX_AGE_DAYS", raising=False)
+    monkeypatch.delenv("AGENT_BOM_REQUIRE_BROWSER_SESSION_SIGNING_KEY", raising=False)
     monkeypatch.delenv("AGENT_BOM_SCIM_BEARER_TOKEN", raising=False)
     monkeypatch.delenv("AGENT_BOM_SCIM_BEARER_TOKEN_ID", raising=False)
     monkeypatch.delenv("AGENT_BOM_SCIM_BEARER_TOKEN_LAST_ROTATED", raising=False)
@@ -224,7 +225,11 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
         "max_age_exceeded",
     }
     assert body["secret_lifecycle"]["status"] in {"ok", "attention_required", "blocked"}
-    assert body["secret_lifecycle"]["secrets"]["browser_session_signing"]["status"] in {"configured", "ephemeral"}
+    assert body["secret_lifecycle"]["secrets"]["browser_session_signing"]["status"] in {
+        "configured",
+        "ephemeral",
+        "missing_required",
+    }
     assert body["secret_lifecycle"]["secrets"]["scim_bearer"]["status"] in {"configured", "not_configured", "missing_required"}
     assert body["secret_lifecycle"]["external_secret_provider"]["status"] in {"configured", "not_declared"}
     assert body["tenant_quotas"]["active_scan_jobs"] >= 1
@@ -400,6 +405,25 @@ def test_auth_policy_reports_secret_lifecycle_posture(monkeypatch: pytest.Monkey
 
     endpoint = client.get("/v1/auth/secrets/lifecycle").json()
     assert endpoint["secrets"]["scim_bearer"]["rotation_status"] == "max_age_exceeded"
+
+
+def test_auth_policy_requires_browser_session_signing_key_for_clustered_control_plane(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "2")
+
+    from agent_bom.api.secret_lifecycle import describe_secret_lifecycle_posture
+
+    lifecycle = describe_secret_lifecycle_posture()
+    signing = lifecycle["secrets"]["browser_session_signing"]
+
+    assert signing["status"] == "missing_required"
+    assert signing["required"] is True
+    assert signing["configured"] is False
+    assert signing["configured_api_replicas"] == 2
+    assert signing["rotation_status"] == "missing_required"
+    assert "AGENT_BOM_BROWSER_SESSION_SIGNING_KEY" in signing["rotation_message"]
 
 
 def test_auth_secret_rotation_plan_is_non_secret_and_actionable(monkeypatch: pytest.MonkeyPatch) -> None:

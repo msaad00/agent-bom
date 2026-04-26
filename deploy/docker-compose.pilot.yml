@@ -1,4 +1,5 @@
-# agent-bom packaged pilot
+# ── Profile: PILOT ───────────────────────────────────────────────────────────
+# agent-bom packaged pilot — single-workstation evaluation only.
 # One product, two deployable images:
 #   - agentbom/agent-bom     = API, scanner, jobs, gateway, proxy runtimes
 #   - agentbom/agent-bom-ui  = browser dashboard
@@ -7,6 +8,9 @@
 #   - binds to 127.0.0.1 only
 #   - uses SQLite persistence in a named Docker volume
 #   - allows no-auth browser access for fast evaluation on one workstation
+#
+# For a multi-developer dev stack, see docker-compose.fullstack.yml.
+# For a production-shaped deployment, see docker-compose.platform.yml.
 #
 # Usage:
 #   docker compose -f docker-compose.pilot.yml up -d
@@ -31,7 +35,10 @@ services:
     volumes:
       - agent-bom-pilot-data:/var/lib/agent-bom
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8422/healthz')\""]
+      # /health is the documented public readiness endpoint; /healthz is an
+      # alias kept for legacy callers. Keep parity with the rest of the
+      # compose set.
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8422/health')\""]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -48,6 +55,12 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
 volumes:
   agent-bom-pilot-data:

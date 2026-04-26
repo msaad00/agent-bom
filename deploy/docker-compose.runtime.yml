@@ -1,8 +1,12 @@
+# ── Profile: PILOT (sidecar example) ─────────────────────────────────────────
 # agent-bom runtime sidecar — example deployment
 #
 # Demonstrates agent-bom proxy running as a sidecar alongside an MCP server.
 # The proxy intercepts all JSON-RPC traffic for audit logging and policy
-# enforcement.
+# enforcement. This file ships as an example of the wrapper pattern; for
+# production rollout, derive your own compose with hardened images and
+# secrets-mounted credentials (see docker-compose.platform.yml for the
+# Postgres+secrets layout).
 #
 # Quick start:
 #   docker compose -f deploy/docker-compose.runtime.yml up
@@ -57,6 +61,13 @@ services:
     ports:
       - "8422:8422"
     restart: unless-stopped
+    healthcheck:
+      # Proxy serves the standard /health endpoint on its API port.
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8422/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 volumes:
   workspace:

@@ -454,10 +454,16 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     env:
-      AGENT_BOM_POSTGRES_URL: postgresql://postgres:testpass@127.0.0.1:5432/agentbom_test
+      # Connect as a non-superuser application role so Row Level Security is
+      # actually enforced on the test connection. Postgres superusers bypass
+      # RLS implicitly even when FORCE ROW LEVEL SECURITY is set on the
+      # table, which would silently mask any RLS regression and is not how
+      # production runs. The role is created in the setup step below.
+      AGENT_BOM_POSTGRES_URL: postgresql://agent_bom_app:apppass@127.0.0.1:5432/agentbom_test
       AGENT_BOM_POSTGRES_POOL_MIN_SIZE: "1"
       AGENT_BOM_POSTGRES_POOL_MAX_SIZE: "4"
       AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS: "5"
+      PGPASSWORD: testpass
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -467,6 +473,29 @@ jobs:
 
       - name: Install Postgres test dependencies
         run: uv sync --frozen --extra dev --extra api --extra postgres
+
+      - name: Provision non-superuser application role
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client
+          # The role is intentionally NOSUPERUSER NOBYPASSRLS so RLS policies
+          # actually apply to it. Granting CREATE on the public schema lets the
+          # storage layer's _ensure_tenant_rls() create and own its tables, so
+          # ALTER TABLE ... FORCE ROW LEVEL SECURITY succeeds.
+          psql -h 127.0.0.1 -U postgres -d agentbom_test <<'SQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'agent_bom_app') THEN
+              CREATE ROLE agent_bom_app LOGIN PASSWORD 'apppass' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+            END IF;
+          END
+          $$;
+          GRANT CONNECT ON DATABASE agentbom_test TO agent_bom_app;
+          GRANT USAGE, CREATE ON SCHEMA public TO agent_bom_app;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO agent_bom_app;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO agent_bom_app;
+          SQL
 
       - name: Run real Postgres storage contract
         run: uv run pytest tests/test_postgres_integration.py -q --tb=short

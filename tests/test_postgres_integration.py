@@ -88,12 +88,63 @@ def test_postgres_audit_log_real_roundtrip_and_schema_marker():
     assert row[0] == CONTROL_PLANE_SCHEMA_VERSION
 
 
+def test_postgres_scan_jobs_rls_schema_is_locked_down():
+    # Schema-level guard for #1815: assert the structural RLS guarantees on
+    # scan_jobs so a future migration cannot quietly relax them. This catches
+    # regressions whether or not the test connection is a superuser, because
+    # it inspects pg_class and pg_policies directly.
+    from agent_bom.api.postgres_common import _get_pool
+    from agent_bom.api.postgres_store import PostgresJobStore
+
+    PostgresJobStore()  # triggers _ensure_tenant_rls on scan_jobs
+
+    pool = _get_pool()
+    with pool.connection() as conn:
+        rls_state = conn.execute(
+            """
+            SELECT relrowsecurity, relforcerowsecurity
+            FROM pg_class
+            WHERE relname = 'scan_jobs' AND relnamespace = 'public'::regnamespace
+            """
+        ).fetchone()
+
+        policy_rows = conn.execute(
+            """
+            SELECT policyname, cmd, qual, with_check
+            FROM pg_policies
+            WHERE schemaname = 'public' AND tablename = 'scan_jobs'
+            """
+        ).fetchall()
+
+    assert rls_state is not None, "scan_jobs table is missing — RLS check cannot run"
+    assert rls_state == (True, True), (
+        "scan_jobs must have ENABLE ROW LEVEL SECURITY and FORCE ROW LEVEL SECURITY both "
+        f"set; got (rowsecurity, forcerowsecurity) = {rls_state}"
+    )
+
+    isolation = [row for row in policy_rows if row[0] == "scan_jobs_tenant_isolation"]
+    assert isolation, (
+        f"scan_jobs is missing the scan_jobs_tenant_isolation RLS policy; present policies: {sorted(name for name, *_ in policy_rows)}"
+    )
+    _, cmd, qual, with_check = isolation[0]
+    assert cmd in {"ALL", "*"}, f"scan_jobs_tenant_isolation must gate ALL commands; got cmd={cmd!r}"
+    assert "abom_current_tenant" in (qual or ""), (
+        f"scan_jobs_tenant_isolation USING clause must reference public.abom_current_tenant(); got qual={qual!r}"
+    )
+    assert "abom_current_tenant" in (with_check or ""), (
+        f"scan_jobs_tenant_isolation WITH CHECK clause must reference public.abom_current_tenant(); got with_check={with_check!r}"
+    )
+
+
 def test_postgres_scan_jobs_rls_blocks_cross_tenant_raw_select():
-    # #1815 red-team contract: a session bound to tenant B must see zero rows
-    # from a scan_jobs INSERT made under tenant A, even when the SQL has no
-    # tenant predicate. This proves the FORCE ROW LEVEL SECURITY policy on
-    # scan_jobs is what enforces isolation, not just application-side WHERE
-    # clauses. If RLS regresses, this test fails before any service code does.
+    # Runtime red-team for #1815: insert under tenant A, then run a
+    # tenant-blind raw SELECT under a session bound to tenant B. RLS must
+    # return zero rows. This only exercises RLS when the test connection is
+    # a non-superuser (Postgres superusers BYPASSRLS implicitly even when
+    # FORCE ROW LEVEL SECURITY is set on the table); CI provisions a
+    # dedicated NOSUPERUSER NOBYPASSRLS application role for that reason.
+    # The test skips itself if the role check shows superuser/bypass — in
+    # that case the schema-level test above is the only relevant signal.
     from agent_bom.api import postgres_common
     from agent_bom.api.postgres_common import (
         _apply_tenant_session,
@@ -102,6 +153,14 @@ def test_postgres_scan_jobs_rls_blocks_cross_tenant_raw_select():
     )
     from agent_bom.api.postgres_store import PostgresJobStore
     from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
+
+    pool = postgres_common._get_pool()
+    with pool.connection() as conn:
+        role_state = conn.execute("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user").fetchone()
+    if role_state is None or role_state[0] or role_state[1]:
+        pytest.skip(
+            f"Runtime RLS check requires a non-superuser, non-bypassrls role. current_user has (rolsuper, rolbypassrls)={role_state}."
+        )
 
     store = PostgresJobStore()
     suffix = uuid4().hex
@@ -124,10 +183,6 @@ def test_postgres_scan_jobs_rls_blocks_cross_tenant_raw_select():
     finally:
         reset_current_tenant(token_a)
 
-    # Open a fresh session bound to tenant B and run a tenant-blind SELECT.
-    # The tenant_id predicate is intentionally omitted so anything the test
-    # sees is leakage past the RLS policy, not a passing application filter.
-    pool = postgres_common._get_pool()
     token_b = set_current_tenant(tenant_b)
     try:
         with pool.connection() as conn:
@@ -142,5 +197,5 @@ def test_postgres_scan_jobs_rls_blocks_cross_tenant_raw_select():
     assert cross_tenant_rows == [], (
         "scan_jobs RLS leaked tenant A data into a session bound to tenant B; "
         "verify that ALTER TABLE scan_jobs FORCE ROW LEVEL SECURITY is in place "
-        "and that the tenant_isolation policy gates SELECT and ALL."
+        "and that the scan_jobs_tenant_isolation policy gates ALL commands."
     )

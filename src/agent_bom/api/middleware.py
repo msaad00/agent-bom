@@ -130,6 +130,77 @@ def get_trusted_proxy_auth_status() -> dict[str, object]:
     }
 
 
+_PROXY_CONTROL_PLANE_MTLS_MODES = {"disabled", "delegated"}
+
+
+def describe_proxy_control_plane_mtls_posture() -> dict[str, object]:
+    """Return non-secret proxy-to-control-plane mTLS posture.
+
+    agent-bom does not terminate app-native mTLS inside FastAPI. Production
+    deployments should enforce client certificate verification in the
+    ingress, reverse proxy, or service mesh, then keep trusted-proxy header
+    attestation enabled so direct client-supplied identity headers are ignored.
+    """
+
+    raw_mode = os.environ.get("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_MODE", "disabled").strip().lower() or "disabled"
+    provider = os.environ.get("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_PROVIDER", "").strip()
+    client_ca_ref = os.environ.get("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CLIENT_CA_REF", "").strip()
+    evidence_ref = os.environ.get("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_EVIDENCE_REF", "").strip()
+    cert_header = os.environ.get("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CERT_HEADER", "").strip()
+    trusted_proxy = get_trusted_proxy_auth_status()
+
+    base: dict[str, object] = {
+        "mode": raw_mode,
+        "supported_modes": sorted(_PROXY_CONTROL_PLANE_MTLS_MODES),
+        "mode_env": "AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_MODE",
+        "provider": provider or None,
+        "client_ca_ref_configured": bool(client_ca_ref),
+        "client_cert_header_configured": bool(cert_header),
+        "evidence_ref": evidence_ref or None,
+        "trusted_proxy_auth_status": trusted_proxy.get("status"),
+        "trusted_proxy_issuer_pinned": bool(trusted_proxy.get("issuer_pinned")),
+        "app_native_mtls": "not_implemented",
+    }
+    if raw_mode not in _PROXY_CONTROL_PLANE_MTLS_MODES:
+        return {
+            **base,
+            "status": "misconfigured",
+            "enforced": False,
+            "message": (
+                "Unsupported AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_MODE. Use disabled or delegated; "
+                "terminate and verify mTLS in ingress, Envoy, or a service mesh."
+            ),
+        }
+    if raw_mode == "disabled":
+        return {
+            **base,
+            "status": "disabled",
+            "enforced": False,
+            "message": "Proxy-to-control-plane mTLS posture is disabled or not declared.",
+        }
+
+    trusted_ok = trusted_proxy.get("status") == "ok"
+    status = "ok" if client_ca_ref and evidence_ref and trusted_ok else "needs_evidence"
+    missing = []
+    if not client_ca_ref:
+        missing.append("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CLIENT_CA_REF")
+    if not evidence_ref:
+        missing.append("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_EVIDENCE_REF")
+    if not trusted_ok:
+        missing.append("trusted proxy auth with issuer pinning")
+    return {
+        **base,
+        "status": status,
+        "enforced": True,
+        "missing_evidence": missing,
+        "message": (
+            "Delegated mTLS is declared and backed by client-CA evidence plus trusted-proxy issuer pinning."
+            if status == "ok"
+            else "Delegated mTLS is declared, but operator evidence is incomplete."
+        ),
+    }
+
+
 def _hsts_max_age_seconds() -> int:
     raw = (os.environ.get("AGENT_BOM_HSTS_MAX_AGE_SECONDS") or "31536000").strip()
     try:

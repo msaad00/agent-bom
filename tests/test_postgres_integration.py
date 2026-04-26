@@ -31,6 +31,7 @@ def reset_postgres_pool():
 
 
 def test_postgres_job_store_real_roundtrip_and_tenant_filter():
+    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
     from agent_bom.api.postgres_store import PostgresJobStore
     from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
 
@@ -46,20 +47,33 @@ def test_postgres_job_store_real_roundtrip_and_tenant_filter():
         request=ScanRequest(format="json"),
     )
 
-    store.put(job)
+    # Production middleware sets _current_tenant before any store call so the
+    # WITH CHECK clause on scan_jobs_tenant_isolation can match the inserted
+    # team_id. The non-superuser CI role enforces this; the test must too.
+    token = set_current_tenant(job.tenant_id)
+    try:
+        store.put(job)
+        same_tenant = store.get(job_id, tenant_id=job.tenant_id)
+        results = list(store.list_all(tenant_id=job.tenant_id))
+    finally:
+        reset_current_tenant(token)
 
-    same_tenant = store.get(job_id, tenant_id=job.tenant_id)
-    other_tenant = store.get(job_id, tenant_id=f"other-{suffix}")
+    other_token = set_current_tenant(f"other-{suffix}")
+    try:
+        other_tenant = store.get(job_id, tenant_id=f"other-{suffix}")
+    finally:
+        reset_current_tenant(other_token)
 
     assert same_tenant is not None
     assert same_tenant.job_id == job_id
     assert same_tenant.triggered_by == "ci-postgres-contract"
     assert other_tenant is None
-    assert any(item.job_id == job_id for item in store.list_all(tenant_id=job.tenant_id))
+    assert any(item.job_id == job_id for item in results)
 
 
 def test_postgres_audit_log_real_roundtrip_and_schema_marker():
     from agent_bom.api.audit_log import AuditEntry
+    from agent_bom.api.postgres_common import reset_current_tenant, set_current_tenant
     from agent_bom.api.postgres_store import PostgresAuditLog, _get_pool
     from agent_bom.api.storage_schema import CONTROL_PLANE_SCHEMA_VERSION
 
@@ -73,9 +87,13 @@ def test_postgres_audit_log_real_roundtrip_and_schema_marker():
         details={"tenant_id": tenant_id, "packages": 3},
     )
 
-    store.append(entry)
+    token = set_current_tenant(tenant_id)
+    try:
+        store.append(entry)
+        entries = store.list_entries(action="scan", tenant_id=tenant_id, limit=5)
+    finally:
+        reset_current_tenant(token)
 
-    entries = store.list_entries(action="scan", tenant_id=tenant_id, limit=5)
     assert any(item.entry_id == entry.entry_id and item.verify() for item in entries)
 
     with _get_pool().connection() as conn:

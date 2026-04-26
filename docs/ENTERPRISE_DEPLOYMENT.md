@@ -205,6 +205,46 @@ Production deployments must keep cryptographic keys separated by purpose:
 
 Do not reuse the API key or audit HMAC key as a rate-limit, browser-session, or proxy-attestation secret. Set `AGENT_BOM_TRUST_PROXY_AUTH_ISSUER` when the upstream proxy can inject a stable issuer identifier; the API will then reject trusted-proxy requests from any other issuer.
 
+### Proxy-to-control-plane mTLS posture
+
+`agent-bom` does not terminate app-native mTLS inside the FastAPI control
+plane. In production, terminate TLS and verify proxy or gateway client
+certificates at the ingress, Envoy sidecar, or service mesh boundary, then keep
+trusted-proxy header attestation enabled so direct client-supplied identity
+headers remain ignored.
+
+Declare the operator posture with:
+
+```bash
+AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_MODE=delegated
+AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_PROVIDER=istio
+AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CLIENT_CA_REF=secret/agent-bom/proxy-client-ca
+AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_EVIDENCE_REF=deploy/helm/agent-bom/templates/controlplane-istio-peer-authentication.yaml
+AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CERT_HEADER=x-forwarded-client-cert
+AGENT_BOM_TRUST_PROXY_AUTH=1
+AGENT_BOM_TRUST_PROXY_AUTH_SECRET=<32+ byte shared attestation secret>
+AGENT_BOM_TRUST_PROXY_AUTH_ISSUER=edge-envoy
+```
+
+`GET /v1/auth/policy` exposes `proxy_control_plane_mtls` with one of three
+honest states:
+
+- `disabled` — no mTLS posture has been declared.
+- `needs_evidence` — delegated mTLS is declared, but client-CA evidence,
+  evidence reference, or trusted-proxy issuer pinning is incomplete.
+- `ok` — delegated mTLS is declared, client-CA evidence is referenced, and
+  trusted-proxy auth is issuer-pinned.
+
+For NGINX, set `ssl_verify_client on;`, trust the proxy client CA with
+`ssl_client_certificate`, and forward only sanitized identity headers from the
+verified location block. For Envoy, use `DownstreamTlsContext` with
+`require_client_certificate: true` and forward `x-forwarded-client-cert` only
+after SAN/URI validation. For Istio, use `PeerAuthentication` `STRICT` plus an
+`AuthorizationPolicy` that limits caller identities to the proxy/gateway service
+accounts. In all three patterns, `AGENT_BOM_TRUST_PROXY_AUTH_SECRET` and
+`AGENT_BOM_TRUST_PROXY_AUTH_ISSUER` remain the application-level guard against
+spoofed `X-Agent-Bom-*` headers.
+
 API-local filesystem scan endpoints are meant for workstation pilots. In EKS
 and other shared control planes, keep `AGENT_BOM_API_LOCAL_PATH_SCANS=disabled`
 and collect filesystem evidence through endpoint agents or mounted tenant

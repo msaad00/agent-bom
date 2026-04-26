@@ -69,9 +69,9 @@ Before a third-party assessment, prepare:
 ## Current Non-Claims and Residual Risks
 
 - No public third-party pentest report is published yet.
-- Native control-plane mTLS fallback is tracked separately; current production
-  guidance expects ingress, sidecar, or service-mesh mTLS plus trusted-proxy
-  header attestation.
+- Delegated ingress, sidecar, or service-mesh mTLS remains the recommended
+  production pattern. App-native uvicorn mTLS is available for non-mesh
+  deployments and is reported through `/v1/auth/policy`.
 - Real Postgres integration testing is limited to named workflow drills and
   contract coverage; a broader always-on testcontainers suite is a separate
   hardening item.

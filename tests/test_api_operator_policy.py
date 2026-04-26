@@ -23,6 +23,7 @@ from agent_bom.api import server as _server_mod
 from agent_bom.api import stores as _stores
 from agent_bom.api.middleware import (
     APIKeyMiddleware,
+    describe_control_plane_direct_listener_posture,
     describe_proxy_control_plane_mtls_posture,
     get_rate_limit_key_status,
     get_rate_limit_runtime_status,
@@ -79,6 +80,16 @@ def _clear_rate_limit_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CLIENT_CA_REF", raising=False)
     monkeypatch.delenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_EVIDENCE_REF", raising=False)
     monkeypatch.delenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_CERT_HEADER", raising=False)
+    monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH", raising=False)
+    monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", raising=False)
+    monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH_ISSUER", raising=False)
+    monkeypatch.delenv("AGENT_BOM_TLS_CERT_FILE", raising=False)
+    monkeypatch.delenv("AGENT_BOM_TLS_KEY_FILE", raising=False)
+    monkeypatch.delenv("AGENT_BOM_TLS_CLIENT_CA_FILE", raising=False)
+    monkeypatch.delenv("AGENT_BOM_TLS_REQUIRE_CLIENT_CERT", raising=False)
+    monkeypatch.delenv("AGENT_BOM_ENV", raising=False)
+    monkeypatch.delenv("AGENT_BOM_DEPLOYMENT_ENV", raising=False)
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
 
 
 def _reload_config() -> None:
@@ -200,8 +211,10 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "configured_api_replicas" in body["rate_limit_runtime"]
     assert "fail_closed" in body["rate_limit_runtime"]
     assert body["proxy_control_plane_mtls"]["mode"] == "disabled"
+    assert body["proxy_control_plane_mtls"]["mtls_mode"] == "none"
     assert body["proxy_control_plane_mtls"]["status"] == "disabled"
-    assert body["proxy_control_plane_mtls"]["app_native_mtls"] == "not_implemented"
+    assert body["proxy_control_plane_mtls"]["app_native_mtls"]["complete"] is False
+    assert body["proxy_control_plane_mtls"]["direct_listener"]["status"] == "ok"
     assert body["security_headers"]["hsts"]["preload"] is False
     assert body["security_headers"]["hsts"]["header"] == "max-age=31536000; includeSubDomains"
     assert body["security_headers"]["csp"]["dashboard"]["mode"] in {"inline_compat", "hash_manifest"}
@@ -302,6 +315,53 @@ def test_proxy_control_plane_mtls_posture_reports_ok_when_delegated_and_attested
     assert posture["trusted_proxy_auth_status"] == "ok"
     assert posture["trusted_proxy_issuer_pinned"] is True
     assert posture["missing_evidence"] == []
+    assert posture["mtls_mode"] == "delegated"
+    assert posture["trusted_proxy_attestation"] == "enabled"
+    assert posture["direct_listener"]["status"] == "ok"
+
+
+def test_proxy_control_plane_mtls_posture_reports_app_native_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_MODE", "app_native")
+    monkeypatch.setenv("AGENT_BOM_TLS_CERT_FILE", "/etc/agent-bom/tls/tls.crt")
+    monkeypatch.setenv("AGENT_BOM_TLS_KEY_FILE", "/etc/agent-bom/tls/tls.key")
+    monkeypatch.setenv("AGENT_BOM_TLS_CLIENT_CA_FILE", "/etc/agent-bom/tls/client-ca.crt")
+    monkeypatch.setenv("AGENT_BOM_TLS_REQUIRE_CLIENT_CERT", "1")
+
+    posture = describe_proxy_control_plane_mtls_posture(listener_host="0.0.0.0")
+
+    assert posture["mode"] == "app_native"
+    assert posture["mtls_mode"] == "app_native"
+    assert posture["status"] == "ok"
+    assert posture["enforced"] is True
+    assert posture["app_native_mtls"]["complete"] is True
+    assert posture["app_native_mtls"]["require_client_cert"] is True
+    assert posture["direct_listener"]["status"] == "ok"
+
+
+def test_proxy_control_plane_mtls_posture_requires_complete_app_native_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_MODE", "app_native")
+    monkeypatch.setenv("AGENT_BOM_TLS_CERT_FILE", "/etc/agent-bom/tls/tls.crt")
+    monkeypatch.setenv("AGENT_BOM_TLS_KEY_FILE", "/etc/agent-bom/tls/tls.key")
+
+    posture = describe_proxy_control_plane_mtls_posture(listener_host="0.0.0.0")
+
+    assert posture["status"] == "needs_evidence"
+    assert posture["enforced"] is False
+    assert "AGENT_BOM_TLS_CLIENT_CA_FILE" in posture["missing_evidence"]
+    assert "AGENT_BOM_TLS_REQUIRE_CLIENT_CERT" in posture["missing_evidence"]
+
+
+def test_direct_listener_posture_flags_unsafe_production_non_loopback(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_ENV", "production")
+
+    posture = describe_control_plane_direct_listener_posture(listener_host="0.0.0.0", mtls_ok=False, trusted_proxy_ok=False)
+
+    assert posture["status"] == "unsafe"
+    assert posture["loopback"] is False
+    assert posture["production_or_clustered"] is True
 
 
 def test_auth_policy_redacts_oidc_config_errors(monkeypatch: pytest.MonkeyPatch) -> None:

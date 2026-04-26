@@ -325,5 +325,6 @@ change in the same PR.
 - Architecture deep-dive: [site-docs/architecture/how-agent-bom-works.md](../site-docs/architecture/how-agent-bom-works.md)
 - Canonical vs OCSF: [site-docs/architecture/canonical-vs-ocsf.md](../site-docs/architecture/canonical-vs-ocsf.md)
 - Data ingestion modes: [site-docs/architecture/data-ingestion-and-security.md](../site-docs/architecture/data-ingestion-and-security.md)
+- Governance and retention evidence: [docs/DATA_GOVERNANCE_RETENTION.md](DATA_GOVERNANCE_RETENTION.md)
 - Capture protocol for screenshots: [docs/CAPTURE.md](CAPTURE.md)
 - Visual language for diagrams: [docs/VISUAL_LANGUAGE.md](VISUAL_LANGUAGE.md)

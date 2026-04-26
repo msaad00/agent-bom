@@ -4,6 +4,9 @@ This page describes which operator-facing control-plane flows are covered by
 cross-component contract tests today, and which areas are still mostly
 unit-tested.
 
+For the security-gate, artifact, and pentest-preparation evidence index, see
+[`docs/SECURITY_TESTING_EVIDENCE.md`](SECURITY_TESTING_EVIDENCE.md).
+
 It exists to keep the testing story honest. `agent-bom` has deep unit coverage,
 but not every enterprise flow is exercised end-to-end through the same test
 shape.

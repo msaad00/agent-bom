@@ -1,0 +1,49 @@
+{{- if .Values.tests.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "{{ include "agent-bom.name" . }}-test-connection"
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: helm-test
+  annotations:
+    "helm.sh/hook": test
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    {{- toYaml .Values.podSecurityContext | nindent 4 }}
+  containers:
+    - name: test-connection
+      image: "{{ .Values.tests.image.repository }}:{{ .Values.tests.image.tag }}"
+      imagePullPolicy: {{ .Values.tests.image.pullPolicy }}
+      securityContext:
+        {{- toYaml .Values.securityContext | nindent 8 }}
+      resources:
+        {{- toYaml .Values.tests.resources | nindent 8 }}
+      command:
+        - python
+        - -c
+        - |
+          from __future__ import annotations
+
+          import sys
+          import urllib.request
+
+          checks = [
+              "http://{{ include "agent-bom.name" . }}-api:{{ .Values.controlPlane.api.port }}/health",
+              "http://{{ include "agent-bom.name" . }}-api:{{ .Values.controlPlane.api.port }}/readyz",
+          ]
+          {{- if and .Values.tests.includeUi .Values.controlPlane.ui.enabled .Values.controlPlane.ui.service.enabled }}
+          checks.append("http://{{ include "agent-bom.name" . }}-ui:{{ .Values.controlPlane.ui.port }}/")
+          {{- end }}
+
+          for url in checks:
+              with urllib.request.urlopen(url, timeout=5) as response:
+                  if response.status >= 400:
+                      raise SystemExit(f"{url} returned HTTP {response.status}")
+                  print(f"ok {url} {response.status}")
+          sys.exit(0)
+{{- end }}

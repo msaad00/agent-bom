@@ -46,6 +46,11 @@ def helm_validation_profiles(repo_root: Path) -> list[HelmValidationProfile]:
             values_files=(examples / "eks-production-values.yaml",),
         ),
         HelmValidationProfile(
+            name="eks-vanilla",
+            description="Production EKS profile using ALB, IRSA, Kubernetes Secrets, and RDS/Postgres.",
+            values_files=(examples / "eks-vanilla-values.yaml",),
+        ),
+        HelmValidationProfile(
             name="mesh-hardening",
             description="Istio and Kyverno hardening overlay for operator-managed clusters.",
             values_files=(examples / "eks-istio-kyverno-values.yaml",),

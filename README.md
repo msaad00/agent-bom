@@ -244,7 +244,8 @@ Backend defaults:
 | Need | Start here |
 |---|---|
 | fastest local pilot | [Deployment Overview](site-docs/deployment/overview.md) |
-| self-host in your AWS / EKS | [Deploy In Your Own AWS / EKS Infrastructure](site-docs/deployment/own-infra-eks.md) |
+| self-host in vanilla AWS / EKS | [Vanilla EKS Quickstart](site-docs/deployment/eks-vanilla-quickstart.md) |
+| self-host with mesh / ESO / cert-manager | [Deploy In Your Own AWS / EKS Infrastructure](site-docs/deployment/own-infra-eks.md) |
 | endpoint inventory and laptop rollout | [Endpoint Fleet](site-docs/deployment/endpoint-fleet.md) |
 | proxy and gateway runtime operations | [Runtime Operations](site-docs/deployment/runtime-operations.md) |
 | trust model, auth, tenant isolation | [ENTERPRISE_SECURITY_PLAYBOOK.md](docs/ENTERPRISE_SECURITY_PLAYBOOK.md) |

@@ -275,6 +275,7 @@ def test_helm_examples_readme_is_shipped():
     body = readme.read_text()
     assert "focused-pilot" in body
     assert "sqlite-pilot" in body
+    assert "eks-vanilla" in body
     assert "gateway-runtime" in body
     assert "install_helm_profile.py" in body
 
@@ -593,6 +594,48 @@ def test_production_values_enable_operator_defaults():
     assert production["topologySpread"]["enabled"] is True
     assert production["networkPolicy"]["restrictIngress"] is True
     assert "cert-manager.io/cluster-issuer" in production["controlPlane"]["ingress"]["annotations"]
+
+
+def test_eks_vanilla_values_enable_ha_without_mesh_or_external_secret_dependencies():
+    """Vanilla EKS profile should be production-shaped without mesh/ESO/cert-manager."""
+    values = yaml.safe_load((HELM_DIR / "examples" / "eks-vanilla-values.yaml").read_text())
+    control_plane = values["controlPlane"]
+    api = control_plane["api"]
+    ui = control_plane["ui"]
+
+    assert control_plane["enabled"] is True
+    assert control_plane["serviceMesh"]["enabled"] is False
+    assert control_plane["externalSecrets"]["enabled"] is False
+    assert api["replicas"] == 2
+    assert ui["replicas"] == 2
+    assert api["autoscaling"]["enabled"] is True
+    assert ui["autoscaling"]["enabled"] is True
+    assert api["envFrom"] == [
+        {"secretRef": {"name": "agent-bom-control-plane-db"}},
+        {"secretRef": {"name": "agent-bom-control-plane-auth"}},
+    ]
+    env = {entry["name"]: entry["value"] for entry in api["env"]}
+    assert env["AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT"] == "1"
+    assert env["AGENT_BOM_REQUIRE_SHARED_SCIM_STORE"] == "1"
+    assert env["AGENT_BOM_SECRET_PROVIDER"] == "kubernetes_secret"
+    assert env["AGENT_BOM_REQUIRE_AUDIT_HMAC"] == "1"
+    assert control_plane["ingress"]["className"] == "alb"
+    annotations = control_plane["ingress"]["annotations"]
+    assert annotations["alb.ingress.kubernetes.io/target-type"] == "ip"
+    assert "alb.ingress.kubernetes.io/certificate-arn" in annotations
+    assert values["networkPolicy"]["enabled"] is True
+    assert values["networkPolicy"]["restrictIngress"] is False
+    assert values["topologySpread"]["enabled"] is True
+    assert values["pdb"]["enabled"] is True
+
+
+def test_helm_test_connection_template_checks_api_health_and_readyz():
+    """Helm test should probe the API's real health endpoints."""
+    template = (HELM_DIR / "templates" / "tests" / "test-connection.yaml").read_text()
+    assert '"helm.sh/hook": test' in template
+    assert "/health" in template
+    assert "/readyz" in template
+    assert "/healthz" not in template
 
 
 def test_external_secret_template_supports_top_level_secret_store_defaults():

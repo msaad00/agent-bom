@@ -95,7 +95,8 @@ Use these pages in this order:
 | If you need... | Read this first | Then use... |
 |---|---|---|
 | the fastest pilot | this page | `deploy/docker-compose.pilot.yml` |
-| the paved production rollout | this page | [Deploy In Your Own AWS / EKS Infrastructure](own-infra-eks.md) |
+| vanilla EKS production | this page | [Vanilla EKS Quickstart](eks-vanilla-quickstart.md) |
+| mesh / ESO / cert-manager production | this page | [Deploy In Your Own AWS / EKS Infrastructure](own-infra-eks.md) |
 | a focused endpoint + MCP pilot | this page | [Enterprise MCP / Endpoint Pilot](enterprise-pilot.md) |
 | raw Helm, Docker, Terraform, or Kubernetes details | this page | the matching reference page only after you know you are leaving the paved path |
 

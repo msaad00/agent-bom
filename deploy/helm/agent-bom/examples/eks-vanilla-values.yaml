@@ -1,0 +1,146 @@
+# Vanilla EKS production profile.
+#
+# Use this when the cluster does not run Istio, External Secrets Operator, or
+# cert-manager. It is still a production-shaped profile: HA API/UI replicas,
+# HPA, RDS/Postgres via Kubernetes Secret, ALB ingress, IRSA, and persistent
+# browser/audit/trusted-proxy secrets. For laptop-speed demos, use
+# eks-control-plane-sqlite-pilot-values.yaml instead.
+
+controlPlane:
+  enabled: true
+  serviceMesh:
+    enabled: false
+  externalSecrets:
+    enabled: false
+  observability:
+    grafanaDashboard:
+      enabled: true
+    prometheusRule:
+      enabled: true
+  podAntiAffinity:
+    enabled: true
+  priorityClass:
+    create: true
+    name: agent-bom-control-plane
+  api:
+    replicas: 2
+    env:
+      - name: AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT
+        value: "1"
+      - name: AGENT_BOM_REQUIRE_SHARED_SCIM_STORE
+        value: "1"
+      - name: AGENT_BOM_SECRET_PROVIDER
+        value: "kubernetes_secret"
+      - name: AGENT_BOM_REQUIRE_AUDIT_HMAC
+        value: "1"
+      - name: AGENT_BOM_POSTGRES_POOL_MIN_SIZE
+        value: "5"
+      - name: AGENT_BOM_POSTGRES_POOL_MAX_SIZE
+        value: "20"
+      - name: AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS
+        value: "5"
+      - name: AGENT_BOM_POSTGRES_STATEMENT_TIMEOUT_MS
+        value: "15000"
+      - name: AGENT_BOM_API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT
+        value: "25"
+      - name: AGENT_BOM_API_MAX_RETAINED_JOBS_PER_TENANT
+        value: "1000"
+      - name: AGENT_BOM_API_MAX_FLEET_AGENTS_PER_TENANT
+        value: "5000"
+      - name: AGENT_BOM_API_MAX_SCHEDULES_PER_TENANT
+        value: "250"
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      targetCPUUtilizationPercentage: 70
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+    envFrom:
+      - secretRef:
+          name: agent-bom-control-plane-db
+      - secretRef:
+          name: agent-bom-control-plane-auth
+  ui:
+    replicas: 2
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 70
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+    env:
+      - name: NEXT_PUBLIC_API_URL
+        value: ""
+  ingress:
+    enabled: true
+    className: alb
+    annotations:
+      alb.ingress.kubernetes.io/scheme: internal
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+      alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:REPLACE_ME_REGION:REPLACE_ME_ACCOUNT_ID:certificate/REPLACE_ME_CERTIFICATE_ID
+      alb.ingress.kubernetes.io/ssl-redirect: "443"
+      # Optional:
+      # alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:REPLACE_ME_REGION:REPLACE_ME_ACCOUNT_ID:regional/webacl/REPLACE_ME_NAME/REPLACE_ME_ID
+    hosts:
+      - host: agent-bom.internal.example.com
+    tls: []
+  backup:
+    enabled: true
+    schedule: "0 3 * * *"
+    serviceAccount:
+      annotations:
+        eks.amazonaws.com/role-arn: arn:aws:iam::REPLACE_ME_ACCOUNT_ID:role/REPLACE_ME_AGENT_BOM_BACKUP_ROLE
+    destination:
+      bucket: agent-bom-prod-backups
+      prefix: agent-bom/postgres
+      bucketRegion: REPLACE_ME_BUCKET_REGION
+      encryption:
+        enabled: true
+        mode: aws:kms
+        kmsKeyId: alias/agent-bom-backups
+    envFrom:
+      - secretRef:
+          name: agent-bom-control-plane-db
+
+scanner:
+  enabled: true
+  allNamespaces: true
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::REPLACE_ME_ACCOUNT_ID:role/REPLACE_ME_AGENT_BOM_DISCOVERY_ROLE
+  extraArgs:
+    - --k8s-mcp
+    - --k8s-all-namespaces
+    - --introspect
+    - --enforce
+    - --preset
+    - enterprise
+
+serviceAccount:
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::REPLACE_ME_ACCOUNT_ID:role/REPLACE_ME_AGENT_BOM_DISCOVERY_ROLE
+
+monitor:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+
+topologySpread:
+  enabled: true
+
+networkPolicy:
+  enabled: true
+  # ALB target-type ip traffic reaches pod IPs directly; Kubernetes
+  # NetworkPolicy cannot select the ALB as a pod. Keep egress policy enabled,
+  # then enable restricted ingress only when your CNI supports ALB source CIDR
+  # controls or you provide explicit ingress rules for your environment.
+  restrictIngress: false
+
+pdb:
+  enabled: true
+  minAvailable: 1

@@ -17,6 +17,7 @@ def test_helm_validation_profiles_reference_existing_chart_assets():
         "sqlite-pilot",
         "focused-pilot",
         "production",
+        "eks-vanilla",
         "mesh-hardening",
         "snowflake-backend",
         "gateway-runtime",

@@ -62,6 +62,7 @@ _AGENT_CALLS = {
     "ConversableAgent",
     "AgentExecutor",
     "Crew",
+    "GroupChat",
     "StateGraph",
     "create_react_agent",
     "create_openai_functions_agent",
@@ -91,6 +92,36 @@ class FrameworkCapability:
 
 
 @dataclass(frozen=True)
+class FrameworkTopologyEdge:
+    """A static relationship observed between framework-native agents."""
+
+    source_id: str
+    source_name: str
+    target_id: str
+    target_name: str
+    relationship: str
+    file_path: str
+    line_number: int
+    framework: str
+    evidence: str
+    confidence: str = "medium"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_id": self.source_id,
+            "source_name": self.source_name,
+            "target_id": self.target_id,
+            "target_name": self.target_name,
+            "relationship": self.relationship,
+            "file_path": self.file_path,
+            "line_number": self.line_number,
+            "framework": self.framework,
+            "evidence": self.evidence,
+            "confidence": self.confidence,
+        }
+
+
+@dataclass(frozen=True)
 class FrameworkAgent:
     """A non-MCP framework agent with relationship evidence."""
 
@@ -101,6 +132,7 @@ class FrameworkAgent:
     capabilities: list[FrameworkCapability] = field(default_factory=list)
     model_refs: list[str] = field(default_factory=list)
     credential_refs: list[str] = field(default_factory=list)
+    topology_edges: list[FrameworkTopologyEdge] = field(default_factory=list)
     dynamic_edges: bool = False
     confidence: str = "medium"
 
@@ -120,6 +152,7 @@ class FrameworkAgent:
             "capabilities": [capability.to_dict() for capability in self.capabilities],
             "model_refs": list(self.model_refs),
             "credential_refs": list(self.credential_refs),
+            "topology_edges": [edge.to_dict() for edge in self.topology_edges],
             "dynamic_edges": self.dynamic_edges,
             "provenance": {
                 "source": "source-ast",
@@ -175,33 +208,109 @@ def _scan_python_file(filepath: Path, root: Path) -> list[FrameworkAgent]:
     credential_refs = _extract_credential_refs(tree)
     known_tools = _collect_tools(tree)
     framework_agents: list[FrameworkAgent] = []
+    agent_by_binding: dict[str, FrameworkAgent] = {}
+    agent_by_line: dict[int, FrameworkAgent] = {}
+    langgraph_nodes: dict[str, dict[str, FrameworkAgent]] = {}
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
+            continue
+        binding = _first_target_name(node.targets)
+        if not binding:
+            continue
+        agent = _agent_from_call(node.value, imports, rel_path, credential_refs, known_tools, fallback_name=binding)
+        if not agent:
+            continue
+        framework_agents.append(agent)
+        agent_by_binding[binding] = agent
+        agent_by_line[getattr(node.value, "lineno", 1)] = agent
+
+    graph_bindings = {binding for binding, agent in agent_by_binding.items() if agent.framework == "langgraph"}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr != "add_node":
+            continue
+        graph_name = _call_name(func.value)
+        if graph_name not in graph_bindings or not node.args:
+            continue
+        node_name = _string_literal(node.args[0])
+        if not node_name:
+            continue
+        graph_nodes = langgraph_nodes.setdefault(graph_name, {})
+        if node_name in graph_nodes:
+            continue
+        graph_agent = FrameworkAgent(
+            framework="langgraph",
+            name=node_name,
+            file_path=rel_path,
+            line_number=getattr(node, "lineno", 1),
+            credential_refs=credential_refs,
+            dynamic_edges=False,
+            confidence="medium",
+        )
+        graph_nodes[node_name] = graph_agent
+        framework_agents.append(graph_agent)
 
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        call_name = _call_name(node.func)
-        short_name = call_name.split(".")[-1]
-        framework = _framework_for_call(imports, call_name, short_name)
-        if framework is None:
+        if getattr(node, "lineno", 1) in agent_by_line:
             continue
-        capabilities = _dedupe_capabilities(_extract_capabilities(node, known_tools))
-        model_refs = _dedupe_strings(_extract_model_refs(node))
-        dynamic_edges = _has_dynamic_edges(node)
-        framework_agents.append(
+        agent = _agent_from_call(node, imports, rel_path, credential_refs, known_tools)
+        if agent:
+            framework_agents.append(agent)
+
+    topology_edges = _collect_topology_edges(tree, rel_path, agent_by_binding, agent_by_line, langgraph_nodes)
+    if topology_edges:
+        by_source: dict[str, list[FrameworkTopologyEdge]] = {}
+        for edge in topology_edges:
+            by_source.setdefault(edge.source_id, []).append(edge)
+        framework_agents = [
             FrameworkAgent(
-                framework=framework,
-                name=_agent_name(node, rel_path, framework),
-                file_path=rel_path,
-                line_number=getattr(node, "lineno", 1),
-                capabilities=capabilities,
-                model_refs=model_refs,
-                credential_refs=credential_refs,
-                dynamic_edges=dynamic_edges,
-                confidence="high" if short_name in _AGENT_CALLS or "assistants.create" in call_name else "medium",
+                framework=agent.framework,
+                name=agent.name,
+                file_path=agent.file_path,
+                line_number=agent.line_number,
+                capabilities=agent.capabilities,
+                model_refs=agent.model_refs,
+                credential_refs=agent.credential_refs,
+                topology_edges=by_source.get(agent.stable_id, []),
+                dynamic_edges=agent.dynamic_edges,
+                confidence=agent.confidence,
             )
-        )
+            for agent in framework_agents
+        ]
 
     return framework_agents
+
+
+def _agent_from_call(
+    node: ast.Call,
+    imports: set[str],
+    rel_path: str,
+    credential_refs: list[str],
+    known_tools: dict[str, FrameworkCapability],
+    *,
+    fallback_name: str = "",
+) -> FrameworkAgent | None:
+    call_name = _call_name(node.func)
+    short_name = call_name.split(".")[-1]
+    framework = _framework_for_call(imports, call_name, short_name)
+    if framework is None:
+        return None
+    return FrameworkAgent(
+        framework=framework,
+        name=_agent_name(node, rel_path, framework, fallback_name=fallback_name),
+        file_path=rel_path,
+        line_number=getattr(node, "lineno", 1),
+        capabilities=_dedupe_capabilities(_extract_capabilities(node, known_tools)),
+        model_refs=_dedupe_strings(_extract_model_refs(node)),
+        credential_refs=credential_refs,
+        dynamic_edges=_has_dynamic_edges(node),
+        confidence="high" if short_name in _AGENT_CALLS or "assistants.create" in call_name else "medium",
+    )
 
 
 def _detect_frameworks(tree: ast.Module) -> set[str]:
@@ -226,6 +335,8 @@ def _framework_for_call(imports: set[str], call_name: str, short_name: str) -> s
     if short_name == "StateGraph" and "langgraph" in imports:
         return "langgraph"
     if short_name in {"AssistantAgent", "UserProxyAgent", "ConversableAgent"} and "autogen" in imports:
+        return "autogen"
+    if short_name == "GroupChat" and "autogen" in imports:
         return "autogen"
     if short_name in {"Crew", "Agent"} and "crewai" in imports:
         return "crewai"
@@ -334,16 +445,129 @@ def _extract_credential_refs(tree: ast.Module) -> list[str]:
     return _dedupe_strings(refs)
 
 
-def _agent_name(node: ast.Call, rel_path: str, framework: str) -> str:
+def _agent_name(node: ast.Call, rel_path: str, framework: str, *, fallback_name: str = "") -> str:
     for keyword in ("name", "role"):
         value = _string_keyword(node, keyword)
         if value:
             return value
+    if fallback_name:
+        return fallback_name
     if node.args:
         value = _string_literal(node.args[0])
         if value:
             return value
     return f"{Path(rel_path).stem}:{framework}:{getattr(node, 'lineno', 1)}"
+
+
+def _collect_topology_edges(
+    tree: ast.Module,
+    rel_path: str,
+    agent_by_binding: dict[str, FrameworkAgent],
+    agent_by_line: dict[int, FrameworkAgent],
+    langgraph_nodes: dict[str, dict[str, FrameworkAgent]],
+) -> list[FrameworkTopologyEdge]:
+    edges: list[FrameworkTopologyEdge] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        call_name = _call_name(node.func)
+        short_name = call_name.split(".")[-1]
+        if short_name in {"Crew", "GroupChat"}:
+            source = agent_by_line.get(getattr(node, "lineno", 1))
+            members = _agents_from_expr(_keyword_value(node, "agents"), agent_by_binding)
+            if source:
+                for member in members:
+                    edges.append(
+                        _topology_edge(
+                            source,
+                            member,
+                            "delegated_to",
+                            rel_path,
+                            getattr(node, "lineno", 1),
+                            f"{short_name}(agents=[...])",
+                            "high",
+                        )
+                    )
+            for left, right in _member_pairs(members):
+                edges.append(
+                    _topology_edge(
+                        left,
+                        right,
+                        "shares_server",
+                        rel_path,
+                        getattr(node, "lineno", 1),
+                        f"shared {short_name} membership",
+                        "medium",
+                    )
+                )
+        elif isinstance(node.func, ast.Attribute) and node.func.attr == "add_edge" and len(node.args) >= 2:
+            graph_name = _call_name(node.func.value)
+            graph_nodes = langgraph_nodes.get(graph_name, {})
+            source_name = _string_literal(node.args[0])
+            target_name = _string_literal(node.args[1])
+            source = graph_nodes.get(source_name)
+            target = graph_nodes.get(target_name)
+            if source and target:
+                edges.append(
+                    _topology_edge(
+                        source,
+                        target,
+                        "delegated_to",
+                        rel_path,
+                        getattr(node, "lineno", 1),
+                        "StateGraph.add_edge",
+                        "high",
+                    )
+                )
+    return edges
+
+
+def _topology_edge(
+    source: FrameworkAgent,
+    target: FrameworkAgent,
+    relationship: str,
+    file_path: str,
+    line_number: int,
+    evidence: str,
+    confidence: str,
+) -> FrameworkTopologyEdge:
+    return FrameworkTopologyEdge(
+        source_id=source.stable_id,
+        source_name=source.name,
+        target_id=target.stable_id,
+        target_name=target.name,
+        relationship=relationship,
+        file_path=file_path,
+        line_number=line_number,
+        framework=source.framework,
+        evidence=evidence,
+        confidence=confidence,
+    )
+
+
+def _agents_from_expr(node: ast.AST | None, agent_by_binding: dict[str, FrameworkAgent]) -> list[FrameworkAgent]:
+    if not isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        return []
+    agents: list[FrameworkAgent] = []
+    for item in node.elts:
+        if isinstance(item, ast.Name) and item.id in agent_by_binding:
+            agents.append(agent_by_binding[item.id])
+    return agents
+
+
+def _member_pairs(agents: list[FrameworkAgent]) -> list[tuple[FrameworkAgent, FrameworkAgent]]:
+    pairs: list[tuple[FrameworkAgent, FrameworkAgent]] = []
+    for index, left in enumerate(agents):
+        for right in agents[index + 1 :]:
+            pairs.append((left, right))
+    return pairs
+
+
+def _first_target_name(targets: list[ast.expr]) -> str:
+    for target in targets:
+        if isinstance(target, ast.Name):
+            return target.id
+    return ""
 
 
 def _has_dynamic_edges(node: ast.Call) -> bool:

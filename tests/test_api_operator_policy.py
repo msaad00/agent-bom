@@ -455,6 +455,8 @@ def test_auth_policy_reports_secret_lifecycle_posture(monkeypatch: pytest.Monkey
     assert lifecycle["status"] == "blocked"
     assert lifecycle["external_secret_provider"]["status"] == "configured"
     assert lifecycle["external_secret_provider"]["provider"] == "aws_secrets_manager"
+    assert lifecycle["external_secret_provider"]["rotation_adapter"]["name"] == "aws_secrets_manager"
+    assert "aws_secrets_manager" in {adapter["name"] for adapter in lifecycle["external_secret_provider"]["supported_rotation_adapters"]}
     assert lifecycle["secrets"]["browser_session_signing"]["status"] == "configured"
     assert lifecycle["secrets"]["browser_session_signing"]["rotation_status"] == "ok"
     assert lifecycle["secrets"]["browser_session_signing"]["age_days"] == 12
@@ -505,17 +507,55 @@ def test_auth_secret_rotation_plan_is_non_secret_and_actionable(monkeypatch: pyt
     assert plan["status"] == "action_required"
     assert plan["secret_values_included"] is False
     assert plan["provider"] == "aws_secrets_manager"
+    assert plan["rotation_adapter"]["name"] == "aws_secrets_manager"
     assert plan["action_count"] >= 1
     assert "super-secret-token" not in str(plan)
     scim_action = next(action for action in plan["actions"] if action["name"] == "scim_bearer")
     assert scim_action["status"] == "max_age_exceeded"
     assert scim_action["source_env"] == "AGENT_BOM_SCIM_BEARER_TOKEN"
     assert scim_action["last_rotated_env"] == "AGENT_BOM_SCIM_BEARER_TOKEN_LAST_ROTATED"
+    assert scim_action["provider_rotation"]["adapter"] == "aws_secrets_manager"
     assert scim_action["provider_rotation"]["tool"] == "aws-secrets-manager"
+    assert scim_action["provider_rotation"]["custody"] == "customer_aws_account"
+    assert scim_action["provider_rotation"]["secret_values_included"] is False
     assert "aws secretsmanager put-secret-value" in scim_action["provider_rotation"]["command"]
+    assert scim_action["provider_rotation"]["evidence"]
     assert scim_action["rollout"]["required"] is True
     assert "kubectl rollout restart deployment/agent-bom-api -n agent-bom" in scim_action["rollout"]["commands"]
     assert scim_action["record_timestamp"]["value_format"].startswith("ISO-8601")
+    assert "AGENT_BOM_SCIM_BEARER_TOKEN_LAST_ROTATED" in scim_action["record_timestamp"]["adapter_command"]
+
+
+def test_auth_secret_rotation_plan_supports_vault_adapter(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "browser-secret")
+    monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "2")
+    monkeypatch.setenv("AGENT_BOM_SECRET_PROVIDER", "hashicorp_vault")
+
+    client = TestClient(app)
+    plan = client.get("/v1/auth/secrets/rotation-plan").json()
+
+    assert "browser-secret" not in str(plan)
+    assert plan["rotation_adapter"]["name"] == "hashicorp_vault"
+    browser_action = next(action for action in plan["actions"] if action["name"] == "browser_session_signing")
+    assert browser_action["provider_rotation"]["adapter"] == "hashicorp_vault"
+    assert browser_action["provider_rotation"]["tool"] == "vault"
+    assert "vault kv put" in browser_action["provider_rotation"]["command"]
+
+
+def test_auth_secret_rotation_plan_supports_kubernetes_secret_adapter(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_rate_limit_env(monkeypatch)
+    monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "2")
+    monkeypatch.setenv("AGENT_BOM_SECRET_PROVIDER", "kubernetes_secret")
+
+    client = TestClient(app)
+    plan = client.get("/v1/auth/secrets/rotation-plan").json()
+
+    assert plan["rotation_adapter"]["name"] == "kubernetes_secret"
+    browser_action = next(action for action in plan["actions"] if action["name"] == "browser_session_signing")
+    assert browser_action["provider_rotation"]["tool"] == "kubectl"
+    assert "--from-env-file=<rotated-env-file>" in browser_action["provider_rotation"]["command"]
+    assert browser_action["provider_rotation"]["secret_values_included"] is False
 
 
 def test_auth_quota_update_persists_tenant_override(monkeypatch: pytest.MonkeyPatch) -> None:

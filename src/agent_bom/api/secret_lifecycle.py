@@ -6,6 +6,11 @@ import os
 from datetime import datetime, timezone
 from typing import Any
 
+from agent_bom.api.secret_rotation_adapters import (
+    resolve_secret_rotation_adapter,
+    supported_secret_rotation_adapters,
+)
+
 
 def _env_enabled(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
@@ -207,10 +212,14 @@ def _external_secret_provider_posture() -> dict[str, Any]:
     vault_addr = os.environ.get("VAULT_ADDR", "").strip()
     aws_region = os.environ.get("AWS_REGION", "").strip() or os.environ.get("AWS_DEFAULT_REGION", "").strip()
     configured = bool(provider or external_secrets or vault_addr or aws_region)
+    resolved_provider = provider or ("hashicorp_vault" if vault_addr else "aws_environment" if aws_region else None)
+    adapter = resolve_secret_rotation_adapter(resolved_provider)
     return {
         "status": "configured" if configured else "not_declared",
         "configured": configured,
-        "provider": provider or ("hashicorp_vault" if vault_addr else "aws_environment" if aws_region else None),
+        "provider": resolved_provider,
+        "rotation_adapter": adapter.describe(),
+        "supported_rotation_adapters": supported_secret_rotation_adapters(),
         "external_secrets_enabled": external_secrets,
         "vault_addr_configured": bool(vault_addr),
         "aws_region_configured": bool(aws_region),
@@ -222,29 +231,6 @@ def _external_secret_provider_posture() -> dict[str, Any]:
                 "AGENT_BOM_SECRET_PROVIDER or use External Secrets/CSI."
             )
         ),
-    }
-
-
-def _provider_command(provider: str | None, secret_name: str, source_env: str | None) -> dict[str, str]:
-    label = source_env or secret_name
-    if provider == "aws_secrets_manager":
-        return {
-            "tool": "aws-secrets-manager",
-            "command": f"aws secretsmanager put-secret-value --secret-id <secret-id-for-{label}> --secret-string file://<new-secret-file>",
-        }
-    if provider == "hashicorp_vault":
-        return {
-            "tool": "vault",
-            "command": f"vault kv put <mount/path/agent-bom> {label}=@<new-secret-file>",
-        }
-    if provider in {"external_secrets", "csi"}:
-        return {
-            "tool": provider,
-            "command": "rotate the upstream provider value, then let External Secrets/CSI refresh the mounted Kubernetes Secret",
-        }
-    return {
-        "tool": "operator-secret-manager",
-        "command": f"update {label} in the customer secret manager; do not put raw secret values in Git or Helm values",
     }
 
 
@@ -267,6 +253,7 @@ def _rotation_action(name: str, posture: dict[str, Any], provider: str | None) -
     last_rotated_env = f"{source_env}_LAST_ROTATED" if source_env else f"AGENT_BOM_{name.upper()}_LAST_ROTATED"
     status = str(posture.get("rotation_status") or posture.get("status") or "unknown")
     needs_rotation = status in {"missing_required", "max_age_exceeded", "rotation_due", "unknown_age", "ephemeral"}
+    adapter = resolve_secret_rotation_adapter(provider)
     return {
         "name": name,
         "status": status,
@@ -278,7 +265,7 @@ def _rotation_action(name: str, posture: dict[str, Any], provider: str | None) -
         "rotation_days": posture.get("rotation_days"),
         "max_age_days": posture.get("max_age_days"),
         "provider": provider or "operator_secret_manager",
-        "provider_rotation": _provider_command(provider, name, source_env),
+        "provider_rotation": adapter.rotation_step(secret_name=name, source_env=source_env, last_rotated_env=last_rotated_env),
         "rollout": {
             "required": needs_rotation,
             "commands": [
@@ -293,6 +280,7 @@ def _rotation_action(name: str, posture: dict[str, Any], provider: str | None) -
         "record_timestamp": {
             "env": last_rotated_env,
             "value_format": "ISO-8601 UTC timestamp, for example 2026-04-24T00:00:00+00:00",
+            "adapter_command": adapter.timestamp_command(last_rotated_env=last_rotated_env),
         },
         "notes": posture.get("rotation_message") or posture.get("message") or "",
     }
@@ -314,6 +302,8 @@ def build_secret_rotation_plan(posture: dict[str, Any] | None = None) -> dict[st
         "generated_from": "/v1/auth/secrets/lifecycle",
         "secret_values_included": False,
         "provider": provider_name or "operator_secret_manager",
+        "rotation_adapter": resolve_secret_rotation_adapter(provider_name).describe(),
+        "supported_rotation_adapters": supported_secret_rotation_adapters(),
         "external_secret_provider_configured": bool(provider_info.get("configured")) if isinstance(provider_info, dict) else False,
         "action_count": len(active_actions),
         "actions": active_actions,

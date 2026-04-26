@@ -121,6 +121,22 @@ generic secret-manager command templates; and lists rollout, verification, and
 timestamp-recording steps. The response is designed for change tickets and does
 not automate custody-sensitive secret generation.
 
+The rotation-plan response now exposes an explicit `rotation_adapter` object
+for the configured `AGENT_BOM_SECRET_PROVIDER`. Supported adapters are:
+
+| Provider value | Custody boundary | Rotation model |
+| --- | --- | --- |
+| `aws_secrets_manager` | Customer AWS account | `put-secret-value`, rollout restart, lifecycle verification |
+| `hashicorp_vault` | Customer Vault cluster | `vault kv put`, rollout restart, lifecycle verification |
+| `external_secrets` / `csi` | Customer upstream provider | Rotate upstream, wait for Kubernetes Secret sync, rollout restart |
+| `kubernetes_secret` | Customer Kubernetes Secret | Apply a rotated env-file secret manifest, rollout restart |
+| `operator_secret_manager` | Customer secret manager | Generic operator-owned change ticket and rollout |
+
+Every adapter response sets `secret_values_included=false`, names the expected
+secret-manager audit evidence, and includes a timestamp-recording command for
+the matching `*_LAST_ROTATED` metadata. `agent-bom` never fetches or returns the
+secret material.
+
 `agent-bom` does not replace the customer's KMS, Vault, IdP, or privileged
 access management system. The product exposes posture and supports rotation
 paths; the operator owns secret authority, approval workflow, and key custody.

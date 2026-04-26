@@ -78,6 +78,14 @@ jobs:
       - name: Block Finder duplicate artifacts
         run: python scripts/check_duplicate_artifacts.py
 
+      - name: Docker base-image policy
+        # Source: scripts/check_docker_base_policy.py
+        # Closes #1961: every Dockerfile FROM line must match the per-file
+        # policy table (expected base + tag) and must be digest-pinned. A
+        # short transition window is allowed via a `# pending-digest`
+        # marker for at most one dependabot cycle (~24h).
+        run: python scripts/check_docker_base_policy.py
+
       - uses: ./.github/actions/setup-python
         with:
           python-version: '3.11'

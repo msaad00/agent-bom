@@ -1,5 +1,13 @@
+# Base image policy: node 22 LTS (matches ui/package.json engines: ">=22 <23").
+# Digest is pinned by dependabot's daily docker job; the
+# scripts/check_docker_base_policy.py CI gate accepts the
+# `# pending-digest` marker for at most one day after a major bump
+# so a Dockerfile change can land while dependabot catches up.
+# Tracking: #1961.
+
 # ── Stage 1: Install dependencies ─────────────────────────────────────────────
-FROM node:25-slim@sha256:e49fd70491eb042270f974167c874d6245287263ffc16422fcf93b3c150409d8 AS deps
+# pending-digest
+FROM node:22-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --ignore-scripts
@@ -10,7 +18,8 @@ RUN npm ci --ignore-scripts
 RUN npm install --no-save --ignore-scripts lightningcss-linux-x64-gnu@1.32.0
 
 # ── Stage 2: Build ────────────────────────────────────────────────────────────
-FROM node:25-slim@sha256:e49fd70491eb042270f974167c874d6245287263ffc16422fcf93b3c150409d8 AS builder
+# pending-digest
+FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -22,7 +31,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ── Stage 3: Run ──────────────────────────────────────────────────────────────
-FROM node:25-slim@sha256:e49fd70491eb042270f974167c874d6245287263ffc16422fcf93b3c150409d8 AS runner
+# pending-digest
+FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

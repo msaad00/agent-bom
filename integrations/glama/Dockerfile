@@ -7,7 +7,12 @@
 # Provide this Dockerfile via Glama Admin > Server Settings > Build.
 
 ## ── Builder stage ────────────────────────────────────────────────────────────
-# python:3.12.13-slim — pinned to same digest as main Dockerfile for Scorecard
+# Base image: python:3.12.13-slim (Debian-based). The main Dockerfile uses
+# python:3.14.3-alpine3.23 (musl) instead — Glama's Dockerfile deliberately
+# diverges from that because it `pip install`s wheels (cryptography, lxml,
+# etc.) that lack musl-built artefacts, which would force a long compile
+# step or wheel-incompatibility errors on Alpine. Both bases are
+# independently digest-pinned and bumped by dependabot. Tracking: #1961.
 FROM python:3.12.13-slim@sha256:7026274c107626d7e940e0e5d6730481a4600ae95d5ca7eb532dd4180313fea9 AS builder
 
 WORKDIR /app

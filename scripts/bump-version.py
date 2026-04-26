@@ -38,9 +38,13 @@ VERSION_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("deploy/docker-compose.fullstack.yml", re.compile(r"(agentbom/agent-bom(?:-ui)?:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     ("deploy/docker-compose.platform.yml", re.compile(r"(agentbom/agent-bom(?:-ui)?:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     ("deploy/k8s/daemonset.yaml", re.compile(r"(agentbom/agent-bom:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
-    # Helm chart
+    # Helm chart — both chart `version:` and `appVersion:` track the platform release
+    ("deploy/helm/agent-bom/Chart.yaml", re.compile(r"^(version:\s*)\S+", re.M), r"\g<1>{v}"),
     ("deploy/helm/agent-bom/Chart.yaml", re.compile(r'^(appVersion:\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
     ("deploy/helm/agent-bom/values.yaml", re.compile(r'^(\s*tag:\s*")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
+    # Frontend package — UI version tracks the platform release so the docker image and
+    # the Next.js build manifest agree on what version is shipping
+    ("ui/package.json", re.compile(r'^(\s*"version":\s*")[^"]+(",?)', re.M), r"\g<1>{v}\g<2>"),
 ]
 
 OPENCLAW_SKILL_PATTERNS: list[tuple[str, re.Pattern, str]] = [

@@ -24,6 +24,10 @@ const eslintConfig = defineConfig([
       ...nextPlugin.configs["core-web-vitals"].rules,
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "warn",
+      // Lock-in: the codebase is currently free of `any` casts across the UI
+      // tree. Promote from the default `warn` to `error` so a regression is
+      // caught at PR time rather than discovered after merge.
+      "@typescript-eslint/no-explicit-any": "error",
     },
   },
 ]);

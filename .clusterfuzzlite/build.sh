@@ -1,4 +1,5 @@
-#!/bin/bash -eu
+#!/bin/bash
+set -euo pipefail
 # ClusterFuzzLite build script for agent-bom.
 #
 # Installs atheris and agent-bom, then copies fuzz targets to $OUT.

@@ -60,6 +60,41 @@ jobs:
           print(f"CHANGELOG entry present: {tag}")
           PY
 
+      - name: Verify auxiliary versions track the release tag
+        run: |
+          python3 - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          tag = "${{ steps.meta.outputs.version }}"
+          errors: list[str] = []
+
+          # Helm chart `version:` (chart SemVer) and `appVersion:` both track the platform tag.
+          chart_text = Path("deploy/helm/agent-bom/Chart.yaml").read_text(encoding="utf-8")
+          chart_version = re.search(r"^version:\s*(\S+)", chart_text, re.M)
+          chart_app_version = re.search(r'^appVersion:\s*"([^"]+)"', chart_text, re.M)
+          if not chart_version:
+              errors.append("Chart.yaml: version: not found")
+          elif chart_version.group(1) != tag:
+              errors.append(f"Chart.yaml version {chart_version.group(1)} does not match tag {tag}")
+          if not chart_app_version:
+              errors.append("Chart.yaml: appVersion: not found")
+          elif chart_app_version.group(1) != tag:
+              errors.append(f"Chart.yaml appVersion {chart_app_version.group(1)} does not match tag {tag}")
+
+          # ui/package.json `version` tracks the platform tag so the published image and
+          # the bundle manifest agree on what version is shipping.
+          ui_pkg = json.loads(Path("ui/package.json").read_text(encoding="utf-8"))
+          ui_version = ui_pkg.get("version")
+          if ui_version != tag:
+              errors.append(f"ui/package.json version {ui_version!r} does not match tag {tag}")
+
+          if errors:
+              raise SystemExit("\n".join(errors))
+          print(f"Auxiliary versions aligned with {tag}: chart, appVersion, ui/package.json")
+          PY
+
       - name: Block Finder duplicate artifacts
         run: python3 scripts/check_duplicate_artifacts.py
 

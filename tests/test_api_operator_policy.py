@@ -29,6 +29,7 @@ from agent_bom.api.middleware import (
     get_rate_limit_runtime_status,
     get_trusted_proxy_auth_status,
 )
+from agent_bom.api.scim import describe_scim_posture
 from agent_bom.api.server import app
 from agent_bom.api.storage_schema import (
     CONTROL_PLANE_SCHEMA_TABLE,
@@ -651,10 +652,7 @@ def test_auth_policy_flags_clustered_scim_without_postgres(monkeypatch: pytest.M
     monkeypatch.setenv("AGENT_BOM_SCIM_BEARER_TOKEN", "super-secret")
     monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "3")
 
-    client = TestClient(app)
-    body = client.get("/v1/auth/policy").json()
-
-    scim = body["identity_provisioning"]["scim"]
+    scim = describe_scim_posture()
     assert scim["configured"] is True
     assert scim["status"] == "misconfigured"
     assert scim["configured_api_replicas"] == 3

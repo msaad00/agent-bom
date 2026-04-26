@@ -250,6 +250,7 @@ Backend defaults:
 | trust model, auth, tenant isolation | [ENTERPRISE_SECURITY_PLAYBOOK.md](docs/ENTERPRISE_SECURITY_PLAYBOOK.md) |
 | procurement security posture | [ENTERPRISE_SECURITY_POSTURE.md](docs/ENTERPRISE_SECURITY_POSTURE.md) |
 | procurement evidence packet | [ENTERPRISE_PROCUREMENT_PACKET.md](docs/ENTERPRISE_PROCUREMENT_PACKET.md) |
+| support, patch, and disclosure model | [ENTERPRISE_SUPPORT_MODEL.md](docs/ENTERPRISE_SUPPORT_MODEL.md) |
 | SOC 2 / ISO / CIS control mapping | [CONTROL_MAPPING.md](docs/CONTROL_MAPPING.md) |
 
 <details>

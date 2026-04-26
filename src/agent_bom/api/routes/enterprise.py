@@ -254,18 +254,21 @@ def _set_browser_session_cookie(
     key_id: str | None = None,
     scopes: list[str] | None = None,
 ) -> None:
-    from agent_bom.api.browser_session import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME, create_browser_session_token
+    from agent_bom.api.browser_session import CSRF_COOKIE_NAME, SESSION_COOKIE_NAME, BrowserSessionError, create_browser_session_token
 
     max_age = _session_cookie_max_age()
-    token, csrf = create_browser_session_token(
-        subject=subject,
-        role=role,
-        tenant_id=tenant_id,
-        auth_method=auth_method,
-        key_id=key_id,
-        scopes=scopes,
-        max_age_seconds=max_age,
-    )
+    try:
+        token, csrf = create_browser_session_token(
+            subject=subject,
+            role=role,
+            tenant_id=tenant_id,
+            auth_method=auth_method,
+            key_id=key_id,
+            scopes=scopes,
+            max_age_seconds=max_age,
+        )
+    except BrowserSessionError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     secure = _session_cookie_secure(request)
     response.set_cookie(
         SESSION_COOKIE_NAME,
@@ -329,6 +332,10 @@ async def create_browser_session(request: Request, response: Response, body: Bro
 
     static_key = os.environ.get("AGENT_BOM_API_KEY", "")
     if static_key and secrets.compare_digest(raw_key, static_key):
+        from agent_bom.api.middleware import static_api_key_allowed, static_api_key_rejection_message
+
+        if not static_api_key_allowed():
+            raise HTTPException(status_code=503, detail=static_api_key_rejection_message())
         _set_browser_session_cookie(
             response,
             request,

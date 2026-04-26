@@ -71,6 +71,23 @@ def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def clustered_control_plane_required() -> bool:
+    """Return true when process-local control-plane state is unsafe."""
+    return _env_flag("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT") or _configured_api_replicas() > 1
+
+
+def static_api_key_allowed() -> bool:
+    """Static API keys are a single-tenant pilot shortcut, not clustered auth."""
+    return not clustered_control_plane_required()
+
+
+def static_api_key_rejection_message() -> str:
+    return (
+        "AGENT_BOM_API_KEY static-key auth is disabled for clustered control planes. "
+        "Use tenant-scoped API keys, OIDC, SAML, or trusted proxy auth instead."
+    )
+
+
 def _secret_min_bytes(secret: str) -> int:
     return len(secret.encode("utf-8"))
 
@@ -544,6 +561,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app: ASGIApp, api_key: str) -> None:
         super().__init__(app)
+        if api_key and not static_api_key_allowed():
+            raise RuntimeError(static_api_key_rejection_message())
         self._api_key = api_key
         self._trusted_proxy_auth = _env_flag("AGENT_BOM_TRUST_PROXY_AUTH")
         self._trusted_proxy_secret = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH_SECRET", "").strip()
@@ -938,7 +957,7 @@ def _configured_api_replicas() -> int:
 
 
 def _shared_rate_limit_required() -> bool:
-    return _env_flag("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT") or _configured_api_replicas() > 1
+    return clustered_control_plane_required()
 
 
 def get_rate_limit_runtime_status() -> dict[str, object]:

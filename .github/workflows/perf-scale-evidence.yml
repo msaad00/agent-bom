@@ -1,0 +1,85 @@
+name: Perf Scale Evidence
+
+# Regenerates the lightweight in-process scale evidence on a weekly cadence
+# so docs/perf/results/ stays current as the graph builder evolves. The
+# 1k-estate run takes <1 minute on github-hosted runners and is the floor
+# evidence referenced from docs/perf/ingest-throughput.md and
+# docs/ENTERPRISE_DEPLOYMENT.md. Postgres-backed persistence numbers are
+# still tracked in #1806.
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"  # Mondays 04:00 UTC
+  workflow_dispatch:
+    inputs:
+      open_pr:
+        description: "Open a PR if the regenerated JSON differs from the checked-in baseline"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-scale-evidence
+  cancel-in-progress: false
+
+jobs:
+  regenerate-scale-evidence:
+    name: Regenerate scale evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: "3.11"
+
+      - name: Install agent-bom (from source)
+        run: uv sync --extra dev
+
+      - name: Regenerate in-process scale evidence
+        id: regen
+        run: |
+          set -euo pipefail
+          OUTPUT="docs/perf/results/scale-evidence-local-$(date -u +%Y-%m-%d).json"
+          uv run python scripts/run_scale_evidence.py --output "$OUTPUT"
+          echo "output=$OUTPUT" >> "$GITHUB_OUTPUT"
+          ls -la "$OUTPUT"
+
+      - name: Validate evidence against schema
+        run: uv run python scripts/check_scale_evidence.py
+
+      - name: Upload result artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scale-evidence-${{ github.run_id }}
+          path: ${{ steps.regen.outputs.output }}
+          retention-days: 90
+
+      - name: Open PR if regenerated evidence differs (manual trigger only)
+        if: github.event_name == 'workflow_dispatch' && inputs.open_pr == true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- docs/perf/results/; then
+            echo "No diff in docs/perf/results/; nothing to PR."
+            exit 0
+          fi
+          BRANCH="auto/perf-scale-evidence-$(date -u +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add docs/perf/results/
+          git commit -m "perf: refresh scheduled scale evidence ($(date -u +%Y-%m-%d))"
+          git push --set-upstream origin "$BRANCH"
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "perf: refresh scheduled scale evidence" \
+            --body "Automated refresh of \`docs/perf/results/\` from the weekly scale-evidence run. See #1806."

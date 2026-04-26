@@ -194,6 +194,39 @@ For PostgreSQL-backed deployments, `agent-bom` now also pushes the authenticated
 
 For horizontally scaled control-plane APIs, shared rate limiting is mandatory. `agent-bom` now fails closed when `AGENT_BOM_CONTROL_PLANE_REPLICAS > 1` (or `AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT=1`) and no PostgreSQL-backed limiter is configured via `AGENT_BOM_POSTGRES_URL`.
 
+#### Postgres sizing for typical estates
+
+The numbers below are derived from the synthetic graph cardinalities published
+in [`docs/perf/ingest-throughput.md`](perf/ingest-throughput.md). They are
+floor estimates for the `graph_nodes` and `graph_edges` tables in
+`src/agent_bom/api/postgres_store.py` only — multiply by retention factor and
+add the audit log (`audit_events`, append-only) when sizing total disk.
+
+| Estate size | Nodes | Edges | Graph rows | RDS storage floor (graph) | Recommended `db.t4g.medium`+ profile |
+|---|---:|---:|---:|---|---|
+| 1k agents  |  5,201 |  5,200 |  10,401 |  ~24 MiB | 2 vCPU / 4 GiB / 20 GiB gp3 |
+| 5k agents  | 26,001 | 26,000 |  52,001 | ~120 MiB | 2 vCPU / 4 GiB / 50 GiB gp3 |
+| 10k agents | 52,001 | 52,000 | 104,001 | ~240 MiB | 4 vCPU / 8 GiB / 100 GiB gp3 |
+
+Verify the actual disk used by the graph tables in your deployment with:
+
+```sql
+SELECT relname,
+       pg_size_pretty(pg_total_relation_size(C.oid)) AS total_size,
+       pg_size_pretty(pg_relation_size(C.oid))       AS table_size,
+       pg_size_pretty(pg_indexes_size(C.oid))        AS index_size
+FROM   pg_class C
+LEFT   JOIN pg_namespace N ON (N.oid = C.relnamespace)
+WHERE  relkind = 'r' AND nspname = 'public'
+   AND relname IN ('graph_nodes', 'graph_edges', 'audit_events',
+                   'scan_jobs', 'compliance_evidence')
+ORDER  BY pg_total_relation_size(C.oid) DESC;
+```
+
+Persistence throughput against these row counts is tracked in #1806; the
+weekly `perf-scale-evidence.yml` workflow regenerates the in-process scale
+floor on the lightweight 1k-estate set.
+
 For horizontally scaled SCIM, shared identity storage is also mandatory. Set `AGENT_BOM_POSTGRES_URL` for EKS or any multi-replica control plane, and keep `AGENT_BOM_REQUIRE_SHARED_SCIM_STORE=1` enabled in production values. SQLite is acceptable only for a single-node pilot.
 
 Production deployments must keep cryptographic keys separated by purpose:

@@ -6,13 +6,17 @@ while moving the discovery + scan pipeline out of the monolith.
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from typing import Optional
 
 from agent_bom.config import MCP_MAX_FILE_SIZE as _MAX_FILE_SIZE
-from agent_bom.security import sanitize_error
+from agent_bom.mcp_errors import (
+    CODE_VALIDATION_INVALID_IMAGE_REF,
+    CODE_VALIDATION_INVALID_PATH,
+    mcp_error_json,
+)
+from agent_bom.security import sanitize_error  # noqa: F401 — kept for downstream importers
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +43,13 @@ async def run_scan_pipeline(
         try:
             config_path = str(safe_path(config_path))
         except ValueError as exc:
-            return json.dumps({"error": sanitize_error(exc)})
+            return mcp_error_json(CODE_VALIDATION_INVALID_PATH, exc, details={"argument": "config_path"})
 
     if sbom_path:
         try:
             sbom_path = str(safe_path(sbom_path))
         except ValueError as exc:
-            return json.dumps({"error": sanitize_error(exc)})
+            return mcp_error_json(CODE_VALIDATION_INVALID_PATH, exc, details={"argument": "sbom_path"})
 
     if image:
         try:
@@ -53,7 +57,7 @@ async def run_scan_pipeline(
 
             validate_image_ref(image)
         except Exception as exc:
-            return json.dumps({"error": sanitize_error(exc)})
+            return mcp_error_json(CODE_VALIDATION_INVALID_IMAGE_REF, exc, details={"argument": "image"})
 
     agents = discover_all(project_dir=config_path)
     if agents:

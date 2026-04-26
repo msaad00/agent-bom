@@ -50,7 +50,9 @@ def test_registry_lookup_not_found():
         _get_registry_data=lambda: {"servers": {}},
     )
     data = json.loads(result)
-    assert data["found"] is False
+    # Stable envelope from #1960.
+    assert data["error"]["code"] == "AGENTBOM_MCP_NOT_FOUND_RESOURCE"
+    assert data["error"]["category"] == "not_found"
 
 
 def test_registry_lookup_found_by_name():
@@ -197,7 +199,10 @@ async def test_blast_radius_cve_not_found():
         _truncate_response=_trunc,
     )
     data = json.loads(result)
-    assert data["found"] is False
+    # Stable envelope from #1960.
+    assert data["error"]["code"] == "AGENTBOM_MCP_NOT_FOUND_RESOURCE"
+    assert data["error"]["category"] == "not_found"
+    assert data["error"]["details"]["cve_id"] == "CVE-2024-9999"
 
 
 @pytest.mark.asyncio

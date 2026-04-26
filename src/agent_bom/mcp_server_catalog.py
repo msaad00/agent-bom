@@ -58,8 +58,10 @@ def attach_resources_and_prompts(
             }
             return json.dumps(wrapped, indent=2, ensure_ascii=False)
         except Exception as exc:
+            from agent_bom.mcp_errors import CODE_UPSTREAM_UNAVAILABLE, mcp_error_json
+
             logger.exception("Registry read failed")
-            return json.dumps({"error": f"Failed to read registry: {sanitize_error_fn(exc)}"})
+            return mcp_error_json(CODE_UPSTREAM_UNAVAILABLE, exc, details={"upstream": "mcp_registry"})
 
     @mcp.resource("policy://template")
     def policy_template_resource() -> str:

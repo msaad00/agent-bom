@@ -105,12 +105,14 @@ def test_registry_lookup_known_server():
 
 
 def test_registry_lookup_unknown():
-    """Lookup of nonexistent server returns not-found."""
+    """Lookup of nonexistent server returns the stable not-found envelope (#1960)."""
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
     result = _call_tool(server, "registry_lookup", {"server_name": "nonexistent-server-xyz"})
-    assert result["found"] is False
+    assert result["error"]["code"] == "AGENTBOM_MCP_NOT_FOUND_RESOURCE"
+    assert result["error"]["category"] == "not_found"
+    assert result["error"]["details"]["query"] == "nonexistent-server-xyz"
 
 
 def test_registry_lookup_by_package():
@@ -260,13 +262,15 @@ def test_scan_no_agents(mock_pipeline):
 
 @patch("agent_bom.mcp_server._run_scan_pipeline")
 def test_blast_radius_not_found(mock_pipeline):
-    """Unknown CVE should return found=False."""
+    """Unknown CVE returns the stable not-found envelope (#1960)."""
     mock_pipeline.return_value = ([], [], [], [])
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
     result = _call_tool(server, "blast_radius", {"cve_id": "CVE-9999-00000"})
-    assert result["found"] is False
+    assert result["error"]["code"] == "AGENTBOM_MCP_NOT_FOUND_RESOURCE"
+    assert result["error"]["category"] == "not_found"
+    assert result["error"]["details"]["cve_id"] == "CVE-9999-00000"
 
 
 @pytest.mark.parametrize(
@@ -308,12 +312,17 @@ def test_ingest_external_scan_sanitizes_errors(mock_detect):
     server = create_mcp_server()
     result = _call_tool(server, "ingest_external_scan", {"scan_json": "{}"})
 
-    assert "error" in result
-    assert "https://example.com" not in result["error"]
-    assert "/Users/mohamedsaad/secret.txt" not in result["error"]
-    assert "<url>" in result["error"]
-    assert "<path>" in result["error"]
-    assert len(result["error"]) <= 200
+    # Stable envelope from #1960 — error is now a dict, not a string. The
+    # message field still flows through sanitize_error so paths and URLs
+    # stay redacted before reaching the wire.
+    assert result["error"]["code"] == "AGENTBOM_MCP_INTERNAL_UNEXPECTED"
+    assert result["error"]["category"] == "internal"
+    message = result["error"]["message"]
+    assert "https://example.com" not in message
+    assert "/Users/mohamedsaad/secret.txt" not in message
+    assert "<url>" in message
+    assert "<path>" in message
+    assert len(message) <= 200
 
 
 # ---------------------------------------------------------------------------

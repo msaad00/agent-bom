@@ -6,7 +6,8 @@ from typing import Annotated, Any, Awaitable, Callable
 
 from pydantic import Field
 
-from agent_bom.security import sanitize_error
+from agent_bom.mcp_errors import CODE_INTERNAL_UNEXPECTED, mcp_error_json
+from agent_bom.security import sanitize_error  # noqa: F401 — kept for downstream importers
 
 
 def register_specialized_ai_tools(
@@ -256,6 +257,6 @@ def register_specialized_ai_tools(
                     }
                 )
             except Exception as exc:  # noqa: BLE001
-                return truncate_response(_json.dumps({"error": sanitize_error(exc)}))
+                return truncate_response(mcp_error_json(CODE_INTERNAL_UNEXPECTED, exc))
 
         return await execute_tool_async("ingest_external_scan", _impl)

@@ -5,7 +5,15 @@ from __future__ import annotations
 import json
 import logging
 
-from agent_bom.security import sanitize_error
+from agent_bom.mcp_errors import (
+    CODE_INTERNAL_UNEXPECTED,
+    CODE_NOT_FOUND_RESOURCE,
+    CODE_UPSTREAM_UNAVAILABLE,
+    CODE_VALIDATION_INVALID_ARGUMENT,
+    CODE_VALIDATION_INVALID_ECOSYSTEM,
+    CODE_VALIDATION_MISSING_REQUIRED,
+    mcp_error_json,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +27,17 @@ def registry_lookup_impl(
     """Implementation of the registry_lookup tool."""
     search_term = (server_name or package_name or "").strip()
     if not search_term:
-        return json.dumps({"error": "Provide server_name or package_name"})
+        return mcp_error_json(
+            CODE_VALIDATION_MISSING_REQUIRED,
+            "Provide server_name or package_name.",
+            details={"required_one_of": ["server_name", "package_name"]},
+        )
 
     try:
         data = _get_registry_data()
     except Exception as exc:
         logger.exception("Registry read failed")
-        return json.dumps({"error": f"Failed to read registry: {sanitize_error(exc)}"})
+        return mcp_error_json(CODE_UPSTREAM_UNAVAILABLE, exc, details={"upstream": "mcp_registry"})
 
     servers = data.get("servers", {})
     search_lower = search_term.lower()
@@ -53,7 +65,11 @@ def registry_lookup_impl(
                 indent=2,
             )
 
-    return json.dumps({"found": False, "error": "No matching server found in registry", "query": search_term})
+    return mcp_error_json(
+        CODE_NOT_FOUND_RESOURCE,
+        "No matching server found in registry.",
+        details={"query": search_term, "scope": "mcp_registry"},
+    )
 
 
 async def marketplace_check_impl(
@@ -68,13 +84,17 @@ async def marketplace_check_impl(
     try:
         name = package.strip()
         if not name or len(name) > 200:
-            return json.dumps({"error": "Invalid package name"})
+            return mcp_error_json(
+                CODE_VALIDATION_INVALID_ARGUMENT,
+                "Invalid package name. Must be 1-200 characters.",
+                details={"argument": "package"},
+            )
 
         try:
             eco = _validate_ecosystem(ecosystem)
         except ValueError as exc:
             logger.exception("MCP tool error")
-            return json.dumps({"error": sanitize_error(exc)})
+            return mcp_error_json(CODE_VALIDATION_INVALID_ECOSYSTEM, exc, details={"argument": "ecosystem"})
 
         # Fetch package metadata from registry
         from agent_bom.http_client import create_client
@@ -166,7 +186,7 @@ async def marketplace_check_impl(
         )
     except Exception as exc:
         logger.exception("MCP tool error")
-        return json.dumps({"error": sanitize_error(exc)})
+        return mcp_error_json(CODE_INTERNAL_UNEXPECTED, exc)
 
 
 async def fleet_scan_impl(
@@ -186,13 +206,21 @@ async def fleet_scan_impl(
                 names.append(name)
 
         if not names:
-            return json.dumps({"error": "No server names provided"})
+            return mcp_error_json(
+                CODE_VALIDATION_MISSING_REQUIRED,
+                "No server names provided.",
+                details={"argument": "servers"},
+            )
 
         if len(names) > 1000:
-            return json.dumps({"error": f"Too many servers ({len(names)}). Maximum is 1,000 per request."})
+            return mcp_error_json(
+                CODE_VALIDATION_INVALID_ARGUMENT,
+                f"Too many servers ({len(names)}). Maximum is 1,000 per request.",
+                details={"argument": "servers", "count": len(names), "max": 1000},
+            )
 
         result = _fleet_scan(names)
         return _truncate_response(result.to_json())
     except Exception as exc:
         logger.exception("MCP tool error")
-        return json.dumps({"error": sanitize_error(exc)})
+        return mcp_error_json(CODE_INTERNAL_UNEXPECTED, exc)

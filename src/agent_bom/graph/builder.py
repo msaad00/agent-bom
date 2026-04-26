@@ -75,6 +75,9 @@ def build_unified_graph_from_report(
         agent_type = agent_dict.get("type", agent_dict.get("agent_type", ""))
         provider_name = str(agent_dict.get("source") or "local").strip() or "local"
         provider_id = f"provider:{provider_name}"
+        agent_metadata = agent_dict.get("metadata", {})
+        if not isinstance(agent_metadata, dict):
+            agent_metadata = {}
 
         graph.add_node(
             UnifiedNode(
@@ -98,6 +101,10 @@ def build_unified_graph_from_report(
                     "config_path": agent_dict.get("config_path", ""),
                     "source": provider_name,
                     "server_count": len(agent_dict.get("mcp_servers", [])),
+                    "cloud_origin": agent_metadata.get("cloud_origin"),
+                    "cloud_state": agent_metadata.get("cloud_state"),
+                    "cloud_scope": agent_metadata.get("cloud_scope"),
+                    "cloud_principal": agent_metadata.get("cloud_principal"),
                 },
                 dimensions=NodeDimensions(agent_type=agent_type),
                 data_sources=[data_source_tag],
@@ -113,6 +120,13 @@ def build_unified_graph_from_report(
                 target=agent_id,
                 relationship=RelationshipType.HOSTS,
             )
+        )
+        _add_agent_cloud_lineage(
+            graph,
+            agent_id=agent_id,
+            agent_dict=agent_dict,
+            agent_metadata=agent_metadata,
+            data_source=data_source_tag,
         )
 
         for srv_dict in agent_dict.get("mcp_servers", []):
@@ -906,6 +920,126 @@ def _collect_compliance_tags(br_dict: dict[str, Any]) -> list[str]:
     ):
         tags.extend(br_dict.get(key, []))
     return sorted(set(tags))
+
+
+def _add_agent_cloud_lineage(
+    graph: UnifiedGraph,
+    *,
+    agent_id: str,
+    agent_dict: dict[str, Any],
+    agent_metadata: dict[str, Any],
+    data_source: str,
+) -> None:
+    """Promote normalized cloud-origin metadata into explicit lineage nodes.
+
+    Cloud providers already normalize runtime identity into ``agent.metadata``.
+    The graph should carry that as inventory too, otherwise cloud-discovered
+    agents remain disconnected from provider/runtime assets.
+    """
+    origin = agent_metadata.get("cloud_origin")
+    if not isinstance(origin, dict):
+        return
+
+    provider = _clean_graph_part(origin.get("provider")) or _clean_graph_part(agent_dict.get("source")) or "cloud"
+    service = _clean_graph_part(origin.get("service")) or "unknown-service"
+    resource_type = _clean_graph_part(origin.get("resource_type")) or "resource"
+    resource_id = _clean_graph_part(origin.get("resource_id")) or _clean_graph_part(origin.get("resource_name"))
+    if not resource_id:
+        return
+
+    resource_name = _clean_graph_part(origin.get("resource_name")) or resource_id
+    location = _clean_graph_part(origin.get("location"))
+    cloud_provider_id = f"provider:{provider}"
+    resource_node_id = f"cloud_resource:{provider}:{service}:{resource_type}:{resource_id}"
+    data_sources = sorted({data_source, str(agent_dict.get("source") or "").strip(), f"cloud:{provider}"} - {""})
+
+    graph.add_node(
+        UnifiedNode(
+            id=cloud_provider_id,
+            entity_type=EntityType.PROVIDER,
+            label=provider,
+            attributes={"provider": provider, "source": "cloud_origin"},
+            data_sources=data_sources,
+        )
+    )
+    graph.add_node(
+        UnifiedNode(
+            id=resource_node_id,
+            entity_type=EntityType.CLOUD_RESOURCE,
+            label=resource_name,
+            attributes={
+                "resource_id": resource_id,
+                "resource_name": resource_name,
+                "resource_type": resource_type,
+                "cloud_provider": provider,
+                "cloud_service": service,
+                "location": location,
+                "scope": origin.get("scope", {}),
+                "cloud_origin": origin,
+                "cloud_state": agent_metadata.get("cloud_state"),
+                "cloud_scope": agent_metadata.get("cloud_scope"),
+                "cloud_timestamps": agent_metadata.get("cloud_timestamps"),
+            },
+            data_sources=data_sources,
+            dimensions=NodeDimensions(cloud_provider=provider, surface=service),
+        )
+    )
+    graph.add_edge(
+        UnifiedEdge(
+            source=cloud_provider_id,
+            target=resource_node_id,
+            relationship=RelationshipType.HOSTS,
+            evidence={"source": "cloud_origin", "provider": provider, "service": service},
+        )
+    )
+    graph.add_edge(
+        UnifiedEdge(
+            source=resource_node_id,
+            target=agent_id,
+            relationship=RelationshipType.HOSTS,
+            evidence={"source": "cloud_origin", "resource_id": resource_id},
+        )
+    )
+
+    principal = agent_metadata.get("cloud_principal")
+    if not isinstance(principal, dict):
+        return
+    principal_id = _clean_graph_part(principal.get("principal_id")) or _clean_graph_part(principal.get("principal_name"))
+    if not principal_id:
+        return
+    principal_name = _clean_graph_part(principal.get("principal_name")) or principal_id
+    principal_node_id = f"service_account:{provider}:{principal_id}"
+    graph.add_node(
+        UnifiedNode(
+            id=principal_node_id,
+            entity_type=EntityType.SERVICE_ACCOUNT,
+            label=principal_name,
+            attributes={
+                "principal_id": principal_id,
+                "principal_name": principal_name,
+                "principal_type": principal.get("principal_type", ""),
+                "tenant_id": principal.get("tenant_id", ""),
+                "source_field": principal.get("source_field", ""),
+                "cloud_provider": provider,
+                "cloud_service": service,
+                "cloud_principal": principal,
+            },
+            data_sources=data_sources,
+            dimensions=NodeDimensions(cloud_provider=provider, surface="identity"),
+        )
+    )
+    graph.add_edge(
+        UnifiedEdge(
+            source=principal_node_id,
+            target=resource_node_id,
+            relationship=RelationshipType.MANAGES,
+            evidence={"source": "cloud_principal", "principal_type": principal.get("principal_type", "")},
+        )
+    )
+
+
+def _clean_graph_part(value: Any) -> str:
+    return str(value or "").strip()
 
 
 def _flatten_compliance_tags(raw: Any) -> list[str]:

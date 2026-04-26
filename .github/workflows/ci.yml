@@ -260,6 +260,15 @@ jobs:
           cd ui
           npm run lint
 
+      - name: UI security headers in sync (next.config + vercel.json)
+        # Source: ui/lib/security-headers.mjs
+        # Sync script: ui/scripts/sync-vercel-headers.mjs
+        # Fails if ui/vercel.json drifts from the canonical security-headers
+        # module — closes #1954 against silent CSP regressions.
+        run: |
+          cd ui
+          npm run headers:check
+
       - name: UI tests
         run: |
           cd ui

@@ -174,6 +174,51 @@ def test_gpu_infra_to_agents_k8s_nodes():
     assert "12 GPUs" in agents[0].mcp_servers[0].name
 
 
+def test_gpu_infra_to_agents_attaches_cloud_origin_for_containers():
+    # The unified-graph builder reads agent.metadata["cloud_origin"] to
+    # promote GPU containers into cloud_resource lineage nodes via the
+    # existing cloud-origin promoter. Without this envelope the GPU vendor
+    # and runtime stay invisible in the graph.
+    containers = [
+        GpuContainer(
+            container_id="ctr-abc",
+            name="training-worker",
+            image="nvcr.io/nvidia/pytorch:23.10-py3",
+            status="running",
+            is_nvidia_base=True,
+            cuda_version="12.2",
+            cudnn_version="8.9",
+            gpu_requested=True,
+            gpu_vendor="nvidia",
+        ),
+    ]
+    report = GpuInfraReport(gpu_containers=containers, dcgm_endpoints=[], gpu_nodes=[], warnings=[])
+    agents = gpu_infra_to_agents(report)
+    origin = agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "gpu"
+    assert origin["service"] == "container_runtime"
+    assert origin["resource_type"] == "nvidia"
+    assert origin["resource_id"] == "ctr-abc"
+    assert origin["scope"]["cuda_version"] == "12.2"
+    assert origin["scope"]["gpu_requested"] is True
+
+
+def test_gpu_infra_to_agents_attaches_cloud_origin_for_k8s_cluster():
+    nodes = [
+        GpuNode(name="node-1", gpu_vendor="nvidia", gpu_capacity=4, gpu_allocatable=4, gpu_allocated=0, cuda_driver_version="525"),
+        GpuNode(name="node-2", gpu_vendor="nvidia", gpu_capacity=8, gpu_allocatable=6, gpu_allocated=2, cuda_driver_version="525"),
+    ]
+    report = GpuInfraReport(gpu_containers=[], dcgm_endpoints=[], gpu_nodes=nodes, warnings=[])
+    agents = gpu_infra_to_agents(report)
+    origin = agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "gpu"
+    assert origin["service"] == "kubernetes"
+    assert origin["resource_id"] == "k8s-gpu-cluster"
+    assert origin["scope"]["node_count"] == 2
+    assert origin["scope"]["gpu_capacity_total"] == 12
+    assert origin["scope"]["vendors"] == ["nvidia"]
+
+
 def test_gpu_infra_to_agents_no_cuda_version():
     """Container without CUDA version produces agent with no packages."""
     containers = [

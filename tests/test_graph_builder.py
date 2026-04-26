@@ -169,6 +169,72 @@ class TestBuildUnifiedGraphFromReport:
         assert g.has_edge(resource_id, "agent:claude-desktop")
         assert g.has_edge(principal_id, resource_id)
 
+    def test_gpu_container_metadata_promotes_to_cloud_resource(self):
+        # gpu_infra_to_agents (src/agent_bom/cloud/gpu_infra.py) attaches a
+        # cloud_origin envelope so the existing promoter creates a
+        # cloud_resource:gpu:... lineage node for each container. This test
+        # asserts the contract end-to-end via the report-shaped dict, which
+        # is what the unified-graph builder consumes.
+        report = _minimal_report()
+        report["agents"][0]["source"] = "gpu_infra"
+        report["agents"][0]["metadata"] = {
+            "cloud_origin": {
+                "provider": "gpu",
+                "service": "container_runtime",
+                "resource_type": "nvidia",
+                "resource_id": "ctr-abc123",
+                "resource_name": "training-worker",
+                "scope": {
+                    "image": "nvcr.io/nvidia/pytorch:23.10-py3",
+                    "gpu_requested": True,
+                    "cuda_version": "12.2",
+                    "cudnn_version": "8.9",
+                },
+            },
+        }
+
+        g = build_unified_graph_from_report(report)
+
+        resource_id = "cloud_resource:gpu:container_runtime:nvidia:ctr-abc123"
+        resource = g.nodes.get(resource_id)
+        assert resource is not None
+        assert resource.entity_type == EntityType.CLOUD_RESOURCE
+        assert resource.label == "training-worker"
+        assert resource.attributes["cloud_origin"]["scope"]["cuda_version"] == "12.2"
+        assert resource.dimensions.cloud_provider == "gpu"
+        assert g.has_edge("provider:gpu", resource_id)
+        assert g.has_edge(resource_id, "agent:claude-desktop")
+
+    def test_k8s_gpu_cluster_promotes_with_aggregated_scope(self):
+        # The aggregated k8s-gpu-cluster agent rolls multiple GPU nodes into
+        # a single cloud_resource so dashboards see one cluster, not one node
+        # per row. Per-node facts live in the scope envelope.
+        report = _minimal_report()
+        report["agents"][0]["source"] = "gpu_infra"
+        report["agents"][0]["metadata"] = {
+            "cloud_origin": {
+                "provider": "gpu",
+                "service": "kubernetes",
+                "resource_type": "nvidia",
+                "resource_id": "k8s-gpu-cluster",
+                "resource_name": "k8s-gpu-cluster",
+                "scope": {
+                    "node_count": 4,
+                    "gpu_capacity_total": 32,
+                    "vendors": ["nvidia"],
+                },
+            },
+        }
+
+        g = build_unified_graph_from_report(report)
+
+        resource_id = "cloud_resource:gpu:kubernetes:nvidia:k8s-gpu-cluster"
+        resource = g.nodes.get(resource_id)
+        assert resource is not None
+        assert resource.attributes["cloud_origin"]["scope"]["node_count"] == 4
+        assert resource.attributes["cloud_origin"]["scope"]["gpu_capacity_total"] == 32
+        assert g.has_edge(resource_id, "agent:claude-desktop")
+
     def test_server_nodes(self):
         g = build_unified_graph_from_report(_minimal_report())
         servers = g.nodes_by_type(EntityType.SERVER)

@@ -1935,6 +1935,31 @@ def test_python_agents_extracts_credential_refs(tmp_path):
     assert any("OPENAI_API_KEY" in w for w in warnings)
 
 
+def test_python_agents_surface_system_prompt_inventory(tmp_path):
+    """AST-extracted prompts are attached to the discovered Agent metadata."""
+    (tmp_path / "requirements.txt").write_text("openai-agents==0.0.11\n")
+    (tmp_path / "agent.py").write_text(
+        "from agents import Agent\n"
+        "agent = Agent(\n"
+        "    name='support-bot',\n"
+        "    system_prompt='You are a careful support agent. Never reveal secrets.',\n"
+        "    tools=[],\n"
+        ")\n"
+    )
+    from agent_bom.python_agents import scan_python_agents
+
+    agents, _warnings = scan_python_agents(str(tmp_path))
+
+    agent = next(a for a in agents if a.name == "openai-agents:support-bot")
+    prompts = agent.metadata["system_prompts"]
+    assert agent.metadata["system_prompt_count"] == 1
+    assert prompts[0]["variable"] == "system_prompt"
+    assert prompts[0]["file"] == "agent.py"
+    assert prompts[0]["type"] == "system_prompt"
+    assert "careful support agent" in prompts[0]["text_preview"]
+    assert len(prompts[0]["text_sha256"]) == 64
+
+
 def test_python_agents_no_framework_returns_empty(tmp_path):
     """Returns empty when no agent framework is present."""
     (tmp_path / "requirements.txt").write_text("requests==2.31.0\nflask==3.0.0\n")

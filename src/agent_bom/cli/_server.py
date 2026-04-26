@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import ipaddress
 import os
+import ssl
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import click
 
@@ -41,6 +42,42 @@ def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_i
         "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON, "
         "or pass --allow-insecure-no-auth to override."
     )
+
+
+def _uvicorn_tls_kwargs() -> dict[str, Any]:
+    """Return uvicorn TLS kwargs from app-native control-plane TLS env vars."""
+    cert_file = os.environ.get("AGENT_BOM_TLS_CERT_FILE", "").strip()
+    key_file = os.environ.get("AGENT_BOM_TLS_KEY_FILE", "").strip()
+    client_ca_file = os.environ.get("AGENT_BOM_TLS_CLIENT_CA_FILE", "").strip()
+    require_client_cert = os.environ.get("AGENT_BOM_TLS_REQUIRE_CLIENT_CERT", "").strip().lower() in {"1", "true", "yes", "on"}
+
+    if require_client_cert and not client_ca_file:
+        raise click.ClickException("AGENT_BOM_TLS_REQUIRE_CLIENT_CERT requires AGENT_BOM_TLS_CLIENT_CA_FILE.")
+    if client_ca_file and not require_client_cert:
+        raise click.ClickException("AGENT_BOM_TLS_CLIENT_CA_FILE requires AGENT_BOM_TLS_REQUIRE_CLIENT_CERT=1.")
+    if bool(cert_file) != bool(key_file):
+        raise click.ClickException("AGENT_BOM_TLS_CERT_FILE and AGENT_BOM_TLS_KEY_FILE must be configured together.")
+    if not cert_file:
+        return {}
+
+    kwargs: dict[str, Any] = {
+        "ssl_certfile": cert_file,
+        "ssl_keyfile": key_file,
+    }
+    if require_client_cert:
+        kwargs["ssl_ca_certs"] = client_ca_file
+        kwargs["ssl_cert_reqs"] = ssl.CERT_REQUIRED
+    return kwargs
+
+
+def _enforce_control_plane_listener_posture(host: str) -> None:
+    """Fail closed when production/clustered direct listener posture is unsafe."""
+    from agent_bom.api.middleware import require_safe_control_plane_listener
+
+    try:
+        require_safe_control_plane_listener(listener_host=host)
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 def _enforce_remote_mcp_auth_defaults(host: str, bearer_token: str | None, allow_insecure_no_auth: bool) -> None:
@@ -275,6 +312,8 @@ def serve_cmd(
     )
 
     _enforce_auth_defaults("serve", host, api_key, allow_insecure_no_auth)
+    _enforce_control_plane_listener_posture(host)
+    tls_kwargs = _uvicorn_tls_kwargs()
 
     from agent_bom.api.server import configure_api
 
@@ -292,6 +331,7 @@ def serve_cmd(
             f"http://{host}:{port}" if (_ui_dist / "index.html").exists() else "Not bundled (run: make build-ui)",
         ),
         ("Auth", _auth_summary(host=host, api_key=api_key, allow_insecure_no_auth=allow_insecure_no_auth, oidc_enabled=_oidc_enabled())),
+        ("TLS", "app-native mTLS" if tls_kwargs.get("ssl_ca_certs") else ("server TLS" if tls_kwargs else "delegated/none")),
         ("Storage", _storage_summary(persist=persist)),
         *_analytics_summary_rows(
             resolved_backend=resolved_backend,
@@ -312,6 +352,7 @@ def serve_cmd(
         reload=reload,
         timeout_keep_alive=5,
         limit_concurrency=500,
+        **tls_kwargs,
     )
 
 
@@ -474,6 +515,8 @@ def api_cmd(
     from agent_bom.api.server import configure_api, set_job_store
 
     _enforce_auth_defaults("api", host, api_key, allow_insecure_no_auth)
+    _enforce_control_plane_listener_posture(host)
+    tls_kwargs = _uvicorn_tls_kwargs()
 
     origins = cors_origins.split(",") if cors_origins else None
     configure_api(
@@ -499,6 +542,7 @@ def api_cmd(
         ("Bind", f"http://{host}:{port}"),
         ("Docs", f"http://{host}:{port}/docs"),
         ("Auth", _auth_summary(host=host, api_key=api_key, allow_insecure_no_auth=allow_insecure_no_auth, oidc_enabled=_oidc_enabled())),
+        ("TLS", "app-native mTLS" if tls_kwargs.get("ssl_ca_certs") else ("server TLS" if tls_kwargs else "delegated/none")),
         ("Storage", _storage_summary(persist=persist)),
         *_analytics_summary_rows(
             resolved_backend=resolved_backend,
@@ -524,6 +568,7 @@ def api_cmd(
         # Hard cap on concurrent in-flight requests; prevents thread/FD exhaustion
         # under a slow-connection flood. 500 ≫ any realistic single-server load.
         limit_concurrency=500,
+        **tls_kwargs,
     )
 
 

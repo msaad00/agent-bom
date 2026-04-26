@@ -207,11 +207,11 @@ Do not reuse the API key or audit HMAC key as a rate-limit, browser-session, or 
 
 ### Proxy-to-control-plane mTLS posture
 
-`agent-bom` does not terminate app-native mTLS inside the FastAPI control
-plane. In production, terminate TLS and verify proxy or gateway client
-certificates at the ingress, Envoy sidecar, or service mesh boundary, then keep
-trusted-proxy header attestation enabled so direct client-supplied identity
-headers remain ignored.
+The recommended production pattern is delegated mTLS: terminate TLS and verify
+proxy or gateway client certificates at the ingress, Envoy sidecar, or service
+mesh boundary, then keep trusted-proxy header attestation enabled so direct
+client-supplied identity headers remain ignored. This keeps certificate
+lifecycle, rotation, and policy in the mesh or ingress layer.
 
 Declare the operator posture with:
 
@@ -244,6 +244,29 @@ after SAN/URI validation. For Istio, use `PeerAuthentication` `STRICT` plus an
 accounts. In all three patterns, `AGENT_BOM_TRUST_PROXY_AUTH_SECRET` and
 `AGENT_BOM_TRUST_PROXY_AUTH_ISSUER` remain the application-level guard against
 spoofed `X-Agent-Bom-*` headers.
+
+For non-mesh deployments such as a single VM, air-gapped host, or bare Docker
+deployment, `agent-bom` also supports an app-native mTLS fallback through
+uvicorn TLS settings:
+
+```bash
+AGENT_BOM_PROXY_CONTROL_PLANE_MTLS_MODE=app_native
+AGENT_BOM_TLS_CERT_FILE=/etc/agent-bom/tls/tls.crt
+AGENT_BOM_TLS_KEY_FILE=/etc/agent-bom/tls/tls.key
+AGENT_BOM_TLS_CLIENT_CA_FILE=/etc/agent-bom/tls/client-ca.crt
+AGENT_BOM_TLS_REQUIRE_CLIENT_CERT=1
+```
+
+`agent-bom serve` and `agent-bom api` pass these files to uvicorn and require
+client certificates when `AGENT_BOM_TLS_REQUIRE_CLIENT_CERT=1` is set.
+`GET /v1/auth/policy` reports this as
+`proxy_control_plane_mtls.mtls_mode=app_native`.
+
+Direct-hop rule: if the FastAPI listener is behind ingress or a sidecar, bind
+it to `127.0.0.1`, a Unix socket, or a Kubernetes NetworkPolicy path that only
+allows the sidecar or ingress to reach the pod. In production or clustered
+control planes, `agent-bom` fails closed when a non-loopback listener is exposed
+without either trusted-proxy attestation or app-native mTLS.
 
 API-local filesystem scan endpoints are meant for workstation pilots. In EKS
 and other shared control planes, keep `AGENT_BOM_API_LOCAL_PATH_SCANS=disabled`

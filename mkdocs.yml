@@ -137,8 +137,11 @@ nav:
       - MCP Tools: reference/mcp-tools.md
       - CLI Commands: reference/cli.md
       - CLI Debug Guide: reference/cli-debug.md
+      - CLI Exit Codes and HTTP Status Mapping: reference/exit-codes.md
       - Remediate Output Contract: reference/remediate-output.md
       - Configuration: reference/configuration.md
+  - Integrations:
+      - Smithery: integrations/smithery.md
   - API Reference:
       - Models: api/models.md
       - Output: api/output.md

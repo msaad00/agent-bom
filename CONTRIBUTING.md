@@ -156,6 +156,7 @@ pytest tests/test_core.py -v        # specific file
 - **Types:** Type hints on all new public functions. `mypy` is run in CI.
 - **No `print()`** — use `console.print()` (Rich) in CLI code, `logging` in library code.
 - **No stubs or vaporware** — only document and claim features that are implemented and tested.
+- **Shell scripts:** every script must enable strict mode at the top. Bash scripts (`#!/usr/bin/env bash` or `#!/bin/bash`) must use `set -euo pipefail`. POSIX `sh` scripts (`#!/bin/sh`) must use `set -eu` — `pipefail` is a non-POSIX extension and is intentionally omitted on `sh` shebangs to keep endpoint installers (Jamf, Kandji, Alpine `ash`) portable.
 
 Pre-commit hooks enforce ruff on every commit. Install once with `pre-commit install`.
 

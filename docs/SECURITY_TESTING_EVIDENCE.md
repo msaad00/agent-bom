@@ -23,6 +23,17 @@ already completed. External validation remains tracked separately in
 | Fuzzing | `.github/workflows/cflite-pr.yml` | ClusterFuzzLite PR fuzzing for parser/ingest crash coverage |
 | Release provenance | `.github/workflows/release.yml` | Sigstore, SLSA, SBOM, and release self-scan artifacts |
 | Backup / restore drill | `.github/workflows/backup-restore.yml` | Postgres restore and tenant-aware integrity checks |
+| Post-merge UI smoke | `.github/workflows/main-ui-smoke.yml` | Builds standalone Next bundle on every push to main, boots it, curls `/`, asserts the dashboard CSP still permits hydration; auto-opens an issue if main is broken so the regression is visible within minutes instead of when the next downstream PR opens. |
+
+**Branch protection note for required checks.** The `UI Validate` and
+`Postgres Integration Contract` jobs in `.github/workflows/ci.yml` use a
+path classifier (`needs: changes`) and skip on PRs that touch no relevant
+paths. Branch protection on `main` should mark both as **conditional /
+non-required** so that a SKIPPED check does not block merge for an
+unrelated PR (compose-only, helm-only, docs-only). The wide net for
+"main is actually broken" is the post-merge `Main UI Smoke` workflow
+above, which fires on every push to `main` regardless of which paths the
+merging PR touched.
 
 Recommended release-review commands:
 

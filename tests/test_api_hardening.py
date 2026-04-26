@@ -16,6 +16,7 @@ from agent_bom.api.browser_session import (
     CSRF_COOKIE_NAME,
     CSRF_HEADER_NAME,
     SESSION_COOKIE_NAME,
+    BrowserSessionError,
     create_browser_session_token,
     revoke_browser_session_token,
 )
@@ -87,6 +88,39 @@ def test_browser_session_cookies_use_strict_samesite(monkeypatch):
     assert all("SameSite=strict" in value for value in set_cookie_values)
     assert any("HttpOnly" in value and SESSION_COOKIE_NAME in value for value in set_cookie_values)
     assert any(CSRF_COOKIE_NAME in value for value in set_cookie_values)
+
+
+def test_browser_session_requires_persistent_key_when_clustered(monkeypatch):
+    monkeypatch.delenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", raising=False)
+    monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "2")
+
+    with pytest.raises(BrowserSessionError, match="BROWSER_SESSION_SIGNING_KEY is required"):
+        create_browser_session_token(
+            subject="dashboard-user",
+            role="admin",
+            tenant_id="tenant-alpha",
+            auth_method="browser_session",
+            max_age_seconds=300,
+        )
+
+
+@pytest.mark.asyncio
+async def test_static_browser_session_exchange_fails_closed_when_clustered(monkeypatch):
+    from fastapi import HTTPException
+
+    from agent_bom.api.routes import enterprise
+
+    enterprise._AUTH_SESSION_ATTEMPTS.clear()
+    monkeypatch.setenv("AGENT_BOM_API_KEY", "valid-key")
+    monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "stable-browser-session-key")
+    monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "2")
+    request = SimpleNamespace(headers={}, client=SimpleNamespace(host="203.0.113.20"))
+
+    with pytest.raises(HTTPException) as error:
+        await enterprise.create_browser_session(request, Response(), enterprise.BrowserSessionRequest(api_key="valid-key"))
+
+    assert error.value.status_code == 503
+    assert "static-key auth is disabled" in error.value.detail
 
 
 def test_trust_headers_present():
@@ -221,6 +255,24 @@ def test_api_key_middleware_accepts_signed_browser_session(monkeypatch):
         "tenant": "tenant-alpha",
         "method": "browser_session_static_api_key",
     }
+
+
+def test_static_api_key_middleware_fails_closed_when_clustered(monkeypatch):
+    """The static key shortcut must not pin all tenants to default in clustered mode."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "2")
+    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app.add_middleware(APIKeyMiddleware, api_key="static-key")
+    client = TestClient(test_app)
+
+    with pytest.raises(RuntimeError, match="static-key auth is disabled"):
+        client.get("/v1/test", headers={"Authorization": "Bearer static-key"})
 
 
 def test_api_key_middleware_rejects_browser_session_without_csrf(monkeypatch):

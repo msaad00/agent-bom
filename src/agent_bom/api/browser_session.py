@@ -31,6 +31,26 @@ class BrowserSessionError(Exception):
     """Raised when a browser session token is absent, invalid, or expired."""
 
 
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _configured_api_replicas() -> int:
+    raw = os.environ.get("AGENT_BOM_CONTROL_PLANE_REPLICAS", "").strip()
+    if not raw:
+        return 1
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        _logger.warning("Invalid AGENT_BOM_CONTROL_PLANE_REPLICAS=%r; defaulting to 1", raw)
+        return 1
+
+
+def persistent_browser_session_signing_required() -> bool:
+    """Clustered control planes need a stable key shared by every replica."""
+    return _configured_api_replicas() > 1 or _env_flag("AGENT_BOM_REQUIRE_BROWSER_SESSION_SIGNING_KEY")
+
+
 def _b64encode(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
 
@@ -50,6 +70,8 @@ def _signing_key() -> bytes:
             600_000,
             dklen=32,
         )
+    if persistent_browser_session_signing_required():
+        raise BrowserSessionError("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY is required for clustered browser-session auth")
     _logger.warning(
         "AGENT_BOM_BROWSER_SESSION_SIGNING_KEY is not set; browser sessions use an ephemeral signing key "
         "and will be invalid after process restart"

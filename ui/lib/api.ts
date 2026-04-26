@@ -1261,6 +1261,15 @@ export interface EnrichmentPostureResponse {
 }
 
 // ─── Fetch helpers ────────────────────────────────────────────────────────────
+//
+// Closes #1956. All five wrappers below funnel through ApiError-typed throws
+// (lib/api-errors.ts) and the GET wrapper is memoized + dedup'd via
+// lib/api-cache.ts. Mutations (post/postVoid/put/del) invalidate cache
+// prefixes so a write to /v1/scan/{id} flushes /v1/scan and any nested
+// children without each call site having to remember.
+
+import { ApiNetworkError, classifyApiResponse } from "./api-errors";
+import { cachedGet, invalidate as _invalidate, type CacheOptions } from "./api-cache";
 
 const FETCH_TIMEOUT_MS = 30_000;
 
@@ -1268,83 +1277,136 @@ function withTimeout(): AbortSignal {
   return AbortSignal.timeout(FETCH_TIMEOUT_MS);
 }
 
-async function errorMessage(res: Response): Promise<string> {
+async function _parseBody(res: Response): Promise<unknown> {
+  // Only called on the error path; caller never reads the body again, so we
+  // can consume the stream directly. Avoid `.clone()` because test mocks
+  // and partial Response shims may not implement it.
   try {
-    const data = (await res.json()) as { detail?: unknown; message?: unknown; error?: unknown };
-    const detail = data.detail ?? data.message ?? data.error;
-    if (typeof detail === "string" && detail.trim()) {
-      return detail;
-    }
+    return await res.json();
   } catch {
-    // Fall back to status text when the body is empty or not JSON.
+    try {
+      return await res.text();
+    } catch {
+      return undefined;
+    }
   }
-  return `${res.status} ${res.statusText}`;
 }
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${getConfiguredApiUrl()}${path}`, {
-    credentials: "include",
-    headers: getSessionAuthHeaders(),
-    signal: withTimeout(),
-  });
-  if (!res.ok) throw new Error(await errorMessage(res));
-  return res.json() as Promise<T>;
+async function _doFetch(path: string, init: RequestInit, method: string): Promise<Response> {
+  const url = `${getConfiguredApiUrl()}${path}`;
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    throw new ApiNetworkError(`Network request failed: ${message}`, { url, method, cause });
+  }
+  if (!res.ok) {
+    const body = await _parseBody(res);
+    throw classifyApiResponse(res, body, method);
+  }
+  return res;
+}
+
+/** Cache-prefix invalidation rules for write paths. */
+function _invalidationsFor(path: string): string[] {
+  // Any write to /v1/<resource>[/<id>][/...] flushes /v1/<resource> entirely.
+  // Coarse on purpose: getting a stale /v1/scan list right after the user
+  // submits a scan is the failure mode this is here to prevent.
+  const match = /^\/v1\/[^/?]+/.exec(path);
+  return match ? [match[0]] : [];
+}
+
+function _runInvalidations(path: string): void {
+  for (const prefix of _invalidationsFor(path)) {
+    _invalidate(prefix);
+  }
+}
+
+async function get<T>(path: string, cacheOptions: CacheOptions = {}): Promise<T> {
+  const key = `GET ${path}`;
+  return cachedGet<T>(
+    key,
+    async () => {
+      const res = await _doFetch(path, {
+        credentials: "include",
+        headers: getSessionAuthHeaders(),
+        signal: withTimeout(),
+      }, "GET");
+      return res.json() as Promise<T>;
+    },
+    cacheOptions,
+  );
 }
 
 async function post<T>(path: string, body: unknown, headers: Record<string, string> = {}): Promise<T> {
-  const res = await fetch(`${getConfiguredApiUrl()}${path}`, {
+  const res = await _doFetch(path, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json", ...getSessionAuthHeaders(), ...headers },
     body: JSON.stringify(body),
     signal: withTimeout(),
-  });
-  if (!res.ok) throw new Error(await errorMessage(res));
+  }, "POST");
+  _runInvalidations(path);
   return res.json() as Promise<T>;
 }
 
 async function postVoid(path: string, body: unknown, headers: Record<string, string> = {}): Promise<void> {
-  const res = await fetch(`${getConfiguredApiUrl()}${path}`, {
+  await _doFetch(path, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json", ...getSessionAuthHeaders(), ...headers },
     body: JSON.stringify(body),
     signal: withTimeout(),
-  });
-  if (!res.ok) throw new Error(await errorMessage(res));
+  }, "POST");
+  _runInvalidations(path);
 }
 
 async function put<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${getConfiguredApiUrl()}${path}`, {
+  const res = await _doFetch(path, {
     method: "PUT",
     credentials: "include",
     headers: { "Content-Type": "application/json", ...getSessionAuthHeaders() },
     body: JSON.stringify(body),
     signal: withTimeout(),
-  });
-  if (!res.ok) throw new Error(await errorMessage(res));
+  }, "PUT");
+  _runInvalidations(path);
   return res.json() as Promise<T>;
 }
 
 async function del(path: string): Promise<void> {
-  const res = await fetch(`${getConfiguredApiUrl()}${path}`, {
+  await _doFetch(path, {
     method: "DELETE",
     credentials: "include",
     headers: getSessionAuthHeaders(),
     signal: withTimeout(),
-  });
-  if (!res.ok) throw new Error(await errorMessage(res));
+  }, "DELETE");
+  _runInvalidations(path);
 }
 
 async function getBlob(path: string): Promise<Blob> {
-  const res = await fetch(`${getConfiguredApiUrl()}${path}`, {
+  const res = await _doFetch(path, {
     credentials: "include",
     headers: getSessionAuthHeaders(),
     signal: withTimeout(),
-  });
-  if (!res.ok) throw new Error(await errorMessage(res));
+  }, "GET");
   return res.blob();
 }
+
+// Re-export the typed errors so call sites can `import { ApiAuthError } from "@/lib/api"`
+// without learning a new module path.
+export {
+  ApiError,
+  ApiAuthError,
+  ApiForbiddenError,
+  ApiNotFoundError,
+  ApiConflictError,
+  ApiRateLimitError,
+  ApiServerError,
+  ApiValidationError,
+  ApiNetworkError,
+} from "./api-errors";
+export { invalidate as invalidateApiCache, clearCache as _clearApiCacheForTests } from "./api-cache";
 
 // ─── API functions ────────────────────────────────────────────────────────────
 

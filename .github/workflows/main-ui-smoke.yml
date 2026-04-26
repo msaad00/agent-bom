@@ -62,21 +62,28 @@ jobs:
         id: boot
         run: |
           set -euo pipefail
-          cp -r ui/.next/standalone/* /tmp/standalone/ 2>/dev/null || mkdir -p /tmp/standalone && cp -r ui/.next/standalone/* /tmp/standalone/
-          cp -r ui/public /tmp/standalone/public
-          cp -r ui/.next/static /tmp/standalone/.next/static
+          # Assemble the runnable standalone tree explicitly. The previous
+          # `cp -r A || mkdir && cp -r A` chain misbehaved under set -e because
+          # the missing parent /tmp/standalone/.next caused the second cp to
+          # fail before the boot loop ever ran.
+          rm -rf /tmp/standalone
+          mkdir -p /tmp/standalone/.next
+          cp -a ui/.next/standalone/. /tmp/standalone/
+          cp -a ui/public /tmp/standalone/public
+          cp -a ui/.next/static /tmp/standalone/.next/static
           cd /tmp/standalone
           PORT=3000 HOSTNAME=127.0.0.1 node server.js > /tmp/ui.log 2>&1 &
           echo "pid=$!" >> "$GITHUB_OUTPUT"
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             if curl -sf -o /dev/null http://127.0.0.1:3000/; then
               echo "ready after ${i}s"
               exit 0
             fi
             sleep 1
           done
-          echo "::error::UI never became reachable on http://127.0.0.1:3000/ within 30s"
-          tail -100 /tmp/ui.log || true
+          echo "::error::UI never became reachable on http://127.0.0.1:3000/ within 60s"
+          echo "── ui.log ──"
+          tail -200 /tmp/ui.log || true
           exit 1
 
       - name: Smoke-check dashboard root

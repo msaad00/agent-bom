@@ -22,7 +22,7 @@ controls are complete.
 | Tenant isolation | tenant propagation, scoped stores, audit export, and cross-tenant tests | `docs/DATA_MODEL.md`, `tests/test_cross_tenant_leakage.py` |
 | Supply chain | lockfiles, dependency review, self-scan, SBOM, Sigstore, SLSA provenance | `docs/SUPPLY_CHAIN.md`, `docs/RELEASE_VERIFICATION.md`, `.github/workflows/release.yml` |
 | Security testing | CodeQL, gitleaks, dependency review, pip audit, fuzzing, SSRF/authz/tenant tests | `docs/PENTEST_READINESS.md`, `.github/workflows/codeql.yml`, `.github/workflows/pr-security-gate.yml` |
-| Operations | Helm profiles, backup/restore, airgap bundle, runtime operations | `site-docs/deployment/control-plane-helm.md`, `site-docs/deployment/backup-restore.md`, `site-docs/deployment/airgapped-image-bundle.md` |
+| Operations | Helm profiles, backup/restore, airgap bundle, runtime operations, upgrade/rollback evidence, and procurement questionnaire answers | `docs/ENTERPRISE_OPERATIONS_EVIDENCE.md`, `site-docs/deployment/control-plane-helm.md`, `site-docs/deployment/backup-restore.md`, `site-docs/deployment/airgapped-image-bundle.md` |
 | Scale | fleet/graph pagination and benchmark targets documented; larger enterprise evidence still expanding | `docs/PERFORMANCE_BENCHMARKS.md`, `site-docs/deployment/performance-and-sizing.md` |
 | Support and disclosure | product vulnerability disclosure, patch cadence, support boundaries, and customer incident ownership documented | `SECURITY.md`, `docs/ENTERPRISE_SUPPORT_MODEL.md`, `docs/ENTERPRISE_SECURITY_POSTURE.md` |
 
@@ -78,6 +78,11 @@ These tracks are intentionally explicit so the release does not overclaim:
 - larger fleet/graph benchmark evidence for 1k, 5k, and 10k agent estates
 - complete hosted-service controls for any future external multi-tenant SaaS
   deployment
+
+The operational evidence matrix, customer-owned key-custody boundaries,
+backup/restore proof, air-gap import record, upgrade/rollback checklist, and
+procurement questionnaire answers live in
+[`docs/ENTERPRISE_OPERATIONS_EVIDENCE.md`](ENTERPRISE_OPERATIONS_EVIDENCE.md).
 
 ## Procurement Positioning
 

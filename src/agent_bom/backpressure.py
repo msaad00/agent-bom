@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import random
 import time
 from collections import deque
 from contextlib import asynccontextmanager
@@ -75,7 +76,9 @@ class BackpressureController:
 
     def retry_after_seconds(self, now: float | None = None) -> int:
         now = time.monotonic() if now is None else now
-        return max(1, int(self.open_until_monotonic - now + 0.999))
+        base = max(1.0, self.open_until_monotonic - now)
+        jitter = random.uniform(0.0, base * 0.3)
+        return max(1, int(base + jitter + 0.999))
 
     @property
     def p95_ms(self) -> float:

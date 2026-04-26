@@ -466,7 +466,7 @@ def scan_remote_vm(hostname, username, key_path):
 agent-bom agents --remote ssh://user@vm.example.com --key ~/.ssh/id_rsa
 ```
 
-#### 2. Agent-Based Scanning (Similar to Wiz/Prisma Cloud)
+#### 2. Agent-Based Cloud Scanning
 
 ```
 ┌──────────────────────────────────────────┐

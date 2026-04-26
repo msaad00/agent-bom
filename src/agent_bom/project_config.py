@@ -4,7 +4,7 @@ Loads ``.agent-bom.yaml`` (or ``.agent-bom.yml`` / ``agent-bom.yaml``) from
 the current working directory or any ancestor directory, providing per-project
 defaults for CLI flags.
 
-Inspired by ``.grype.yaml`` and ``.trivyignore`` — lets teams commit security
+Inspired by common scanner configuration files — lets teams commit security
 configuration alongside their code without adding CLI flags everywhere.
 
 Supported keys

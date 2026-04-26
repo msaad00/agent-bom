@@ -46,7 +46,7 @@ agent-bom is a **read-only scanner**. It does not modify agent configurations, e
 
 ### Known limitations
 - **Credential redaction is heuristic** — non-standard or obfuscated key names may not be flagged
-- **Grype/Syft dependency** — container image scanning relies on external binaries; their CVEs apply to those tools
+- **External scanner dependency** — container image scanning can rely on external binaries; their CVEs apply to those tools
 - **Network dependency** — OSV/NVD/EPSS enrichment requires outbound HTTPS; air-gapped environments see reduced coverage
 - **MCP server execution** — agent-bom does NOT execute MCP servers it discovers; it only reads their configs
 - **Runtime proxy enforcement** — the proxy intercepts MCP traffic using a trust-on-first-use model; pre-existing compromised servers must be identified via scanning before proxy deployment
@@ -63,7 +63,7 @@ agent-bom is a **read-only scanner**. It does not modify agent configurations, e
 
 - **Static analysis**: ruff + mypy on every PR (required CI checks)
 - **Dependency scanning**: Dependabot weekly (Python + npm)
-- **Container image scanning**: Trivy in CI pipeline
+- **Container image scanning**: pinned scanner action in CI pipeline
 - **Pre-commit hooks**: ruff, ruff-format, detect-private-key, check-yaml, end-of-file-fixer
 - **Third-party penetration testing**: not completed yet; required before `v1.0` runtime-enforcement GA. Scope and exit criteria are documented in [docs/PENTEST_READINESS.md](docs/PENTEST_READINESS.md)
 

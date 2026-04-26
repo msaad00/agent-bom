@@ -46,7 +46,7 @@ The generated image ignore file remains the scanner input today, but the YAML re
 Current no-fix medium findings may remain visible in Docker Scout until the
 upstream base image publishes patched packages. They must still have structured
 exceptions with short review windows, and release operators should remove the
-matching `.trivyignore` entries as soon as a fixed base digest or safe package
+matching generated ignore entries as soon as a fixed base digest or safe package
 upgrade is available.
 
 ## Stable release bar

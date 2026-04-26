@@ -1,7 +1,7 @@
 name: Container Re-Scan
 
 # Daily rescan of published multi-arch images for new fixable CVEs.
-# Trivy scans both linux/amd64 and linux/arm64 variants.
+# Container scanner checks both linux/amd64 and linux/arm64 variants.
 # SARIF uploaded to GitHub Security tab. Never blocks main.
 
 on:
@@ -39,8 +39,8 @@ jobs:
       - name: Pull ${{ matrix.platform }} image
         run: docker pull --platform ${{ matrix.platform }} agentbom/agent-bom:latest
 
-      - name: Trivy scan — table (fixable MEDIUM+/UNKNOWN)
-        id: trivy-table
+      - name: Container image scan table (fixable MEDIUM+/UNKNOWN)
+        id: image_scan_table
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           image-ref: agentbom/agent-bom:latest
@@ -48,27 +48,27 @@ jobs:
           severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
           ignore-unfixed: true
           exit-code: "1"
-          trivyignores: .trivyignore
+          trivyignores: .image-scan-ignore
         continue-on-error: true
 
-      - name: Trivy scan — SARIF
-        id: trivy_sarif
+      - name: Container image scan SARIF
+        id: image_scan_sarif
         continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           image-ref: agentbom/agent-bom:latest
           format: sarif
-          output: trivy-${{ matrix.sarif_category }}.sarif
+          output: image-scan-${{ matrix.sarif_category }}.sarif
           severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
           ignore-unfixed: true
           exit-code: "0"
-          trivyignores: .trivyignore
+          trivyignores: .image-scan-ignore
 
       - name: Detect SARIF output
         id: sarif
         if: always()
         run: |
-          SARIF_FILE="trivy-${{ matrix.sarif_category }}.sarif"
+          SARIF_FILE="image-scan-${{ matrix.sarif_category }}.sarif"
           if [ -f "$SARIF_FILE" ]; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
             echo "path=$SARIF_FILE" >> "$GITHUB_OUTPUT"
@@ -86,12 +86,12 @@ jobs:
       - name: Warn when SARIF was not generated
         if: always() && steps.sarif.outputs.exists != 'true'
         run: |
-          echo "::warning::Trivy SARIF was not generated for ${{ matrix.platform }}. Check the preceding Trivy step for workflow/config errors."
+          echo "::warning::Container scan SARIF was not generated for ${{ matrix.platform }}. Check the preceding scanner step for workflow/config errors."
 
       - name: Flag actionable CVEs found
-        if: steps.trivy-table.outcome == 'failure'
+        if: steps.image_scan_table.outcome == 'failure'
         run: |
-          echo "::warning::Trivy found fixable MEDIUM+/UNKNOWN CVEs in agentbom/agent-bom:latest (${{ matrix.platform }}). Check SARIF in Security tab."
+          echo "::warning::Container scan found fixable MEDIUM+/UNKNOWN CVEs in agentbom/agent-bom:latest (${{ matrix.platform }}). Check SARIF in Security tab."
 
       - name: Open or close base image vulnerability issue
         if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
@@ -105,7 +105,7 @@ jobs:
           gh label create automated --color 5319E7 --description "Opened or updated automatically by CI" >/dev/null 2>&1 || true
           EXISTING=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number // empty')
 
-          if [ "${{ steps.trivy-table.outcome }}" = "failure" ]; then
+          if [ "${{ steps.image_scan_table.outcome }}" = "failure" ]; then
             BODY=$(cat <<EOF
           ## Automated Base Image Vulnerability Alert
 
@@ -114,7 +114,7 @@ jobs:
           - Platform: \`${{ matrix.platform }}\`
           - SARIF category: \`${{ matrix.sarif_category }}\`
           - Source workflow: \`.github/workflows/container-rescan.yml\`
-          - Policy: Trivy scans with \`severity=MEDIUM,HIGH,CRITICAL,UNKNOWN\` and \`ignore-unfixed=true\`
+          - Policy: container scans run with \`severity=MEDIUM,HIGH,CRITICAL,UNKNOWN\` and \`ignore-unfixed=true\`
 
           Review the GitHub Security tab and the workflow logs for the current image findings.
           EOF

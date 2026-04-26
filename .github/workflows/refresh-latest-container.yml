@@ -77,7 +77,7 @@ jobs:
       - name: Smoke test refresh candidate
         run: docker run --rm agent-bom:latest-refresh-test --version
 
-      - name: Trivy refresh gate
+      - name: Image vulnerability refresh gate
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           image-ref: agent-bom:latest-refresh-test
@@ -85,7 +85,7 @@ jobs:
           severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
           ignore-unfixed: true
           exit-code: "1"
-          trivyignores: .trivyignore
+          trivyignores: .image-scan-ignore
 
       - name: Build and push refreshed latest
         id: build-push

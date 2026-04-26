@@ -1093,10 +1093,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if tenant_id and tenant_id != "default" and auth_method in _TENANT_SCOPED_AUTH_METHODS:
             return tenant_id
         if raw_key:
-            try:
-                resolved = get_key_store().verify(raw_key)
-            except Exception:
-                resolved = None
+            resolved = get_key_store().verify(raw_key)
             if resolved and resolved.tenant_id:
                 return resolved.tenant_id
         return None

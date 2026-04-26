@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib
 import sqlite3
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -21,8 +22,10 @@ from agent_bom.api import audit_log as audit_log_module
 from agent_bom.api import compliance_signing as compliance_signing_module
 from agent_bom.api import server as _server_mod
 from agent_bom.api import stores as _stores
+from agent_bom.api.auth import KeyStore, set_key_store
 from agent_bom.api.middleware import (
     APIKeyMiddleware,
+    RateLimitMiddleware,
     describe_control_plane_direct_listener_posture,
     describe_proxy_control_plane_mtls_posture,
     get_rate_limit_key_status,
@@ -172,6 +175,27 @@ def test_status_invalid_timestamp_reports_unknown_age(monkeypatch: pytest.Monkey
     _reload_config()
     status = get_rate_limit_key_status()
     assert status["status"] == "unknown_age"
+
+
+def test_rate_limit_tenant_resolution_propagates_key_store_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    _clear_rate_limit_env(monkeypatch)
+
+    class BrokenStore:
+        def verify(self, raw_key: str):
+            raise RuntimeError("key store unavailable")
+
+    request = SimpleNamespace(
+        state=SimpleNamespace(tenant_id="", auth_method="api_key"),
+        headers={},
+    )
+    middleware = RateLimitMiddleware(lambda scope, receive, send: None)
+
+    set_key_store(BrokenStore())
+    try:
+        with pytest.raises(RuntimeError, match="key store unavailable"):
+            middleware._resolve_tenant_scope(request, "agentbom_test")
+    finally:
+        set_key_store(KeyStore())
 
 
 def test_trusted_proxy_status_requires_strong_secret(monkeypatch: pytest.MonkeyPatch) -> None:

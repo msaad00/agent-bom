@@ -18,10 +18,17 @@ Usage::
 
 from __future__ import annotations
 
+import importlib
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _import_google_cloud_module(module: str) -> Any:
+    """Import optional Google Cloud SDK modules without requiring mypy stubs."""
+    return importlib.import_module(f"google.cloud.{module}")
 
 
 @dataclass
@@ -168,7 +175,7 @@ def _pull_gcr(image_ref: str, project: str | None = None) -> CloudSBOMResult:
     result = CloudSBOMResult(provider="gcr", image_ref=image_ref)
 
     try:
-        from google.cloud import containeranalysis_v1
+        containeranalysis_v1 = _import_google_cloud_module("containeranalysis_v1")
     except ImportError:
         result.warnings.append("google-cloud-containeranalysis not installed. Install with: pip install 'agent-bom[cloud]'")
         return result

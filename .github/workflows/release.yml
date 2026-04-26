@@ -538,7 +538,7 @@ jobs:
       - name: Smoke test release image
         run: docker run --rm agent-bom:release-test --version
 
-      - name: Trivy image scan gate
+      - name: Image vulnerability scan gate
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           image-ref: agent-bom:release-test
@@ -546,7 +546,7 @@ jobs:
           severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
           ignore-unfixed: true
           exit-code: "1"
-          trivyignores: .trivyignore
+          trivyignores: .image-scan-ignore
 
   self-scan-gate:
     name: Self-scan release gate

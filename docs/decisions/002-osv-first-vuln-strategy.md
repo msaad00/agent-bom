@@ -6,8 +6,8 @@
 ## Context
 
 Vulnerability scanning requires a reliable, comprehensive, and freely accessible
-data source. Options include maintaining a proprietary database (like Trivy's
-trivy-db or Grype's grype-db), using the NVD directly, or using aggregator APIs.
+data source. Options include maintaining a proprietary vulnerability database,
+using the NVD directly, or using aggregator APIs.
 
 We need to balance scan accuracy, offline capability, speed, and maintenance
 burden for an open-source project with no dedicated data engineering team.
@@ -27,7 +27,7 @@ sources layered on top:
 
 **Alternatives considered:**
 
-1. *Own vuln DB (like Trivy)* — Best for offline/speed, but requires continuous
+1. *Own vuln DB* — Best for offline/speed, but requires continuous
    data pipeline maintenance, storage, and distribution infrastructure. Planned
    for future (see gap analysis) but not justified at current scale.
 2. *NVD-only* — Comprehensive but slow (rate-limited API), requires CPE

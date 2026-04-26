@@ -19,7 +19,7 @@ and other infrastructure. Two approaches for interacting with these systems:
 Use **subprocess + JSON output** (`docker inspect --format json`, `kubectl get -o json`)
 for all infrastructure discovery. No vendor SDK dependencies.
 
-This follows the same pattern used by Grype/Syft (subprocess to container runtimes)
+This follows the same pattern used by external container scanners (subprocess to container runtimes)
 and is consistent across all discovery modules:
 
 - `gpu_infra.py` — `docker ps`, `docker inspect`, `kubectl get nodes`

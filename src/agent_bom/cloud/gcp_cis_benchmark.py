@@ -33,6 +33,7 @@ Install: ``pip install 'agent-bom[gcp]'``
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 from dataclasses import dataclass, field
@@ -42,6 +43,11 @@ from .aws_cis_benchmark import CheckStatus, CISCheckResult
 from .base import CloudDiscoveryError
 
 logger = logging.getLogger(__name__)
+
+
+def _import_google_cloud_module(module: str) -> Any:
+    """Import optional Google Cloud SDK modules without requiring mypy stubs."""
+    return importlib.import_module(f"google.cloud.{module}")
 
 
 # ---------------------------------------------------------------------------
@@ -811,7 +817,7 @@ def _check_2_2(project_id: str) -> CISCheckResult:
         cis_section=_LOGGING_SECTION,
     )
     try:
-        from google.cloud import logging_v2
+        logging_v2 = _import_google_cloud_module("logging_v2")
 
         client = logging_v2.ConfigServiceV2Client()
         parent = f"projects/{project_id}"
@@ -849,7 +855,7 @@ def _check_2_3(project_id: str) -> CISCheckResult:
         cis_section=_LOGGING_SECTION,
     )
     try:
-        from google.cloud import logging_v2
+        logging_v2 = _import_google_cloud_module("logging_v2")
 
         client = logging_v2.MetricsServiceV2Client()
         parent = f"projects/{project_id}"
@@ -884,7 +890,7 @@ def _check_2_4(project_id: str) -> CISCheckResult:
         cis_section=_LOGGING_SECTION,
     )
     try:
-        from google.cloud import logging_v2
+        logging_v2 = _import_google_cloud_module("logging_v2")
 
         client = logging_v2.MetricsServiceV2Client()
         parent = f"projects/{project_id}"
@@ -919,7 +925,7 @@ def _check_2_5(project_id: str) -> CISCheckResult:
         cis_section=_LOGGING_SECTION,
     )
     try:
-        from google.cloud import logging_v2
+        logging_v2 = _import_google_cloud_module("logging_v2")
 
         client = logging_v2.MetricsServiceV2Client()
         parent = f"projects/{project_id}"
@@ -954,7 +960,7 @@ def _check_2_6(project_id: str) -> CISCheckResult:
         cis_section=_LOGGING_SECTION,
     )
     try:
-        from google.cloud import logging_v2
+        logging_v2 = _import_google_cloud_module("logging_v2")
 
         client = logging_v2.MetricsServiceV2Client()
         parent = f"projects/{project_id}"
@@ -989,7 +995,7 @@ def _check_2_7(project_id: str) -> CISCheckResult:
         cis_section=_LOGGING_SECTION,
     )
     try:
-        from google.cloud import logging_v2
+        logging_v2 = _import_google_cloud_module("logging_v2")
 
         client = logging_v2.MetricsServiceV2Client()
         parent = f"projects/{project_id}"
@@ -1024,7 +1030,7 @@ def _check_2_8(project_id: str) -> CISCheckResult:
         cis_section=_LOGGING_SECTION,
     )
     try:
-        from google.cloud import logging_v2
+        logging_v2 = _import_google_cloud_module("logging_v2")
 
         client = logging_v2.MetricsServiceV2Client()
         parent = f"projects/{project_id}"
@@ -1059,7 +1065,7 @@ def _check_2_9(project_id: str) -> CISCheckResult:
         cis_section=_LOGGING_SECTION,
     )
     try:
-        from google.cloud import logging_v2
+        logging_v2 = _import_google_cloud_module("logging_v2")
 
         client = logging_v2.MetricsServiceV2Client()
         parent = f"projects/{project_id}"
@@ -1094,7 +1100,7 @@ def _check_2_10(project_id: str) -> CISCheckResult:
         cis_section=_LOGGING_SECTION,
     )
     try:
-        from google.cloud import logging_v2
+        logging_v2 = _import_google_cloud_module("logging_v2")
 
         client = logging_v2.MetricsServiceV2Client()
         parent = f"projects/{project_id}"
@@ -1129,7 +1135,7 @@ def _check_2_11(project_id: str) -> CISCheckResult:
         cis_section=_LOGGING_SECTION,
     )
     try:
-        from google.cloud import logging_v2
+        logging_v2 = _import_google_cloud_module("logging_v2")
 
         client = logging_v2.MetricsServiceV2Client()
         parent = f"projects/{project_id}"
@@ -1212,7 +1218,7 @@ def _check_3_1(project_id: str) -> CISCheckResult:
         cis_section=_NETWORK_SECTION,
     )
     try:
-        from google.cloud import compute_v1
+        compute_v1 = _import_google_cloud_module("compute_v1")
 
         client = compute_v1.NetworksClient()
         networks = list(client.list(project=project_id))
@@ -1245,7 +1251,7 @@ def _check_3_2(project_id: str) -> CISCheckResult:
         cis_section=_NETWORK_SECTION,
     )
     try:
-        from google.cloud import compute_v1
+        compute_v1 = _import_google_cloud_module("compute_v1")
 
         client = compute_v1.NetworksClient()
         networks = list(client.list(project=project_id))
@@ -1410,7 +1416,7 @@ def _check_3_8(project_id: str) -> CISCheckResult:
         cis_section=_NETWORK_SECTION,
     )
     try:
-        from google.cloud import compute_v1
+        compute_v1 = _import_google_cloud_module("compute_v1")
 
         client = compute_v1.FirewallsClient()
         rules = list(client.list(project=project_id))
@@ -1456,7 +1462,7 @@ def _check_3_10(project_id: str) -> CISCheckResult:
         cis_section=_NETWORK_SECTION,
     )
     try:
-        from google.cloud import compute_v1
+        compute_v1 = _import_google_cloud_module("compute_v1")
 
         client = compute_v1.SubnetworksClient()
         agg = client.aggregated_list(project=project_id)
@@ -1496,7 +1502,7 @@ def _check_3_9(project_id: str) -> CISCheckResult:
         cis_section=_NETWORK_SECTION,
     )
     try:
-        from google.cloud import compute_v1
+        compute_v1 = _import_google_cloud_module("compute_v1")
 
         client = compute_v1.SubnetworksClient()
         agg = client.aggregated_list(project=project_id)
@@ -1537,7 +1543,7 @@ def _check_3_6(project_id: str) -> CISCheckResult:
         cis_section=_NETWORK_SECTION,
     )
     try:
-        from google.cloud import compute_v1
+        compute_v1 = _import_google_cloud_module("compute_v1")
 
         client = compute_v1.FirewallsClient()
         rules = list(client.list(project=project_id))
@@ -1584,7 +1590,7 @@ def _check_3_7(project_id: str) -> CISCheckResult:
         cis_section=_NETWORK_SECTION,
     )
     try:
-        from google.cloud import compute_v1
+        compute_v1 = _import_google_cloud_module("compute_v1")
 
         client = compute_v1.FirewallsClient()
         rules = list(client.list(project=project_id))
@@ -1638,7 +1644,7 @@ def _check_4_1(project_id: str) -> CISCheckResult:
         cis_section=_COMPUTE_SECTION,
     )
     try:
-        from google.cloud import compute_v1
+        compute_v1 = _import_google_cloud_module("compute_v1")
 
         client = compute_v1.InstancesClient()
         agg = client.aggregated_list(project=project_id)
@@ -1681,7 +1687,7 @@ def _check_4_2(project_id: str) -> CISCheckResult:
         cis_section=_COMPUTE_SECTION,
     )
     try:
-        from google.cloud import compute_v1
+        compute_v1 = _import_google_cloud_module("compute_v1")
 
         client = compute_v1.InstancesClient()
         agg = client.aggregated_list(project=project_id)
@@ -1730,7 +1736,7 @@ def _check_4_3(project_id: str) -> CISCheckResult:
         cis_section=_COMPUTE_SECTION,
     )
     try:
-        from google.cloud import compute_v1
+        compute_v1 = _import_google_cloud_module("compute_v1")
 
         client = compute_v1.InstancesClient()
         agg = client.aggregated_list(project=project_id)
@@ -1779,7 +1785,7 @@ def _check_4_4(project_id: str) -> CISCheckResult:
         cis_section=_COMPUTE_SECTION,
     )
     try:
-        from google.cloud import compute_v1
+        compute_v1 = _import_google_cloud_module("compute_v1")
 
         client = compute_v1.ProjectsClient()
         project = client.get(project=project_id)
@@ -1820,7 +1826,7 @@ def _check_4_5(project_id: str) -> CISCheckResult:
         cis_section=_COMPUTE_SECTION,
     )
     try:
-        from google.cloud import compute_v1
+        compute_v1 = _import_google_cloud_module("compute_v1")
 
         client = compute_v1.InstancesClient()
         agg = client.aggregated_list(project=project_id)
@@ -1866,7 +1872,7 @@ def _check_4_6(project_id: str) -> CISCheckResult:
         cis_section=_COMPUTE_SECTION,
     )
     try:
-        from google.cloud import compute_v1
+        compute_v1 = _import_google_cloud_module("compute_v1")
 
         client = compute_v1.InstancesClient()
         agg = client.aggregated_list(project=project_id)
@@ -1906,7 +1912,7 @@ def _check_4_7(project_id: str) -> CISCheckResult:
         cis_section=_COMPUTE_SECTION,
     )
     try:
-        from google.cloud import compute_v1
+        compute_v1 = _import_google_cloud_module("compute_v1")
 
         client = compute_v1.DisksClient()
         agg = client.aggregated_list(project=project_id)
@@ -1947,7 +1953,7 @@ def _check_4_8(project_id: str) -> CISCheckResult:
         cis_section=_COMPUTE_SECTION,
     )
     try:
-        from google.cloud import compute_v1
+        compute_v1 = _import_google_cloud_module("compute_v1")
 
         client = compute_v1.InstancesClient()
         agg = client.aggregated_list(project=project_id)
@@ -1993,7 +1999,7 @@ def _check_4_9(project_id: str) -> CISCheckResult:
         cis_section=_COMPUTE_SECTION,
     )
     try:
-        from google.cloud import compute_v1
+        compute_v1 = _import_google_cloud_module("compute_v1")
 
         client = compute_v1.InstancesClient()
         agg = client.aggregated_list(project=project_id)
@@ -2041,7 +2047,7 @@ def _check_4_11(project_id: str) -> CISCheckResult:
         cis_section=_COMPUTE_SECTION,
     )
     try:
-        from google.cloud import compute_v1
+        compute_v1 = _import_google_cloud_module("compute_v1")
 
         client = compute_v1.InstancesClient()
         agg = client.aggregated_list(project=project_id)
@@ -2087,7 +2093,7 @@ def _check_5_1(project_id: str) -> CISCheckResult:
         cis_section=_STORAGE_SECTION,
     )
     try:
-        from google.cloud import storage
+        storage = _import_google_cloud_module("storage")
 
         client = storage.Client(project=project_id)
         public_buckets: list[str] = []
@@ -2131,7 +2137,7 @@ def _check_5_2(project_id: str) -> CISCheckResult:
         cis_section=_STORAGE_SECTION,
     )
     try:
-        from google.cloud import storage
+        storage = _import_google_cloud_module("storage")
 
         client = storage.Client(project=project_id)
         failing: list[str] = []

@@ -19,7 +19,7 @@ already completed. External validation remains tracked separately in
 | pip-audit PR gate | `.github/workflows/pr-security-gate.yml` | JSON-gated `pip-audit` report artifact |
 | agent-bom self-scan PR gate | `.github/workflows/pr-security-gate.yml` | SARIF upload plus JSON scan summary |
 | OSV lockfile scans | `.github/workflows/ci.yml`, `.github/workflows/release.yml`, `osv-scanner.toml` | SHA-verified OSV scanner binary and lockfile scan logs |
-| Container image scan | `.github/workflows/ci.yml`, `.github/workflows/container-rescan.yml`, `.trivyignore` | Trivy table and SARIF artifacts |
+| Container image scan | `.github/workflows/ci.yml`, `.github/workflows/container-rescan.yml`, `.image-scan-ignore` | Container scanner table and SARIF artifacts |
 | Fuzzing | `.github/workflows/cflite-pr.yml` | ClusterFuzzLite PR fuzzing for parser/ingest crash coverage |
 | Release provenance | `.github/workflows/release.yml` | Sigstore, SLSA, SBOM, and release self-scan artifacts |
 | Backup / restore drill | `.github/workflows/backup-restore.yml` | Postgres restore and tenant-aware integrity checks |
@@ -44,7 +44,7 @@ uv run pytest tests/test_proxy_sandbox.py tests/test_proxy_scanner.py tests/test
 | Runtime proxy detection | prompt/tool-call detectors, Unicode-normalized payload handling, audit records | `tests/test_proxy_scanner.py`, `tests/test_runtime_detectors.py`, `tests/test_proxy_audit.py` |
 | MCP sandbox | isolated Docker/Podman runtime, sensitive mount rejection, caps, egress posture, digest-aware images | `tests/test_proxy_sandbox.py`, `src/agent_bom/proxy_sandbox.py` |
 | SSRF and private egress | URL validation, redirect checks, private IP denial, allowlist behavior | `tests/test_security.py`, `tests/test_gateway_upstreams.py` |
-| Container and external scanner ingest | Syft/Grype/Trivy normalization, decompression and argv guards | `tests/test_external_scanners.py`, `tests/test_image_scanner.py`, `tests/test_container_limits.py` |
+| Container and external scanner ingest | External scanner normalization, decompression, and argv guards | `tests/test_external_scanners.py`, `tests/test_image_scanner.py`, `tests/test_container_limits.py` |
 | Compliance evidence | tenant-filtered bundles, nonces, signatures, audit export links | `tests/test_compliance_report.py`, `docs/COMPLIANCE_SIGNING.md` |
 | Supply-chain policy | dependency freshness, transitive pins, action SHA pins, self-scan | `docs/SUPPLY_CHAIN.md`, `.github/workflows/pr-security-gate.yml`, `.github/workflows/release.yml` |
 
@@ -54,7 +54,7 @@ Before a third-party assessment, prepare:
 
 1. The target commit SHA and release tag.
 2. The completed PR check page for that SHA.
-3. CodeQL, gitleaks, dependency-review, pip-audit, OSV, Trivy, and self-scan
+3. CodeQL, gitleaks, dependency-review, pip-audit, OSV, container scanning, and self-scan
    artifacts for the release candidate.
 4. The control-plane auth mode enabled for the test environment: API key,
    OIDC/SAML, trusted proxy, or browser session.
@@ -86,7 +86,7 @@ Before a third-party assessment, prepare:
 For each release candidate, attach:
 
 1. `gh pr checks` output for the release PR or final merge commit.
-2. Links to CodeQL, gitleaks, dependency-review, pip-audit, OSV, Trivy,
+2. Links to CodeQL, gitleaks, dependency-review, pip-audit, OSV, container scanning,
    ClusterFuzzLite, and agent-bom self-scan runs.
 3. The release SBOM and provenance artifacts.
 4. Tenant-isolation and auth regression test output.

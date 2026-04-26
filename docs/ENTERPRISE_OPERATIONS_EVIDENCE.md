@@ -130,7 +130,7 @@ Before posting a release or sending a procurement packet, attach:
 
 1. Exact release tag, commit SHA, image digests, and Helm chart version.
 2. Release verification output for signatures, provenance, SBOMs, and checksums.
-3. CI summary for CodeQL, gitleaks, dependency review, pip-audit, OSV, Trivy,
+3. CI summary for CodeQL, gitleaks, dependency review, pip-audit, OSV, container scanning,
    self-scan, tests, and UI validation.
 4. Backup/restore workflow run and latest customer restore drill.
 5. Air-gap bundle output if disconnected import is in scope.

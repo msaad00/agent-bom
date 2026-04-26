@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 
 from agent_bom.backpressure import (
+    BackpressureController,
     BackpressureRejectedError,
     adaptive_backpressure,
     describe_backpressure_posture,
@@ -32,6 +33,20 @@ def _reset_backpressure(monkeypatch):
     yield
     reset_backpressure_for_tests()
     reset_scan_warnings()
+
+
+def test_retry_after_seconds_adds_bounded_jitter(monkeypatch) -> None:
+    controller = BackpressureController(
+        path="graph",
+        max_concurrency=1,
+        p99_threshold_ms=1,
+        cooldown_seconds=30,
+        min_samples=1,
+    )
+    controller.open_until_monotonic = 110.0
+    monkeypatch.setattr("agent_bom.backpressure.random.uniform", lambda low, high: high)
+
+    assert controller.retry_after_seconds(now=100.0) == 13
 
 
 @pytest.mark.asyncio

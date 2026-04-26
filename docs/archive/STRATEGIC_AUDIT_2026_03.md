@@ -33,17 +33,17 @@
 
 | Tool | Focus | Overlap with agent-bom |
 |------|-------|------------------------|
-| **Grype/Syft** (Anchore) | Container/package CVE scanning | CVE scanning only — agent-bom uses these as optional engines |
-| **Trivy** (Aqua) | Container/IaC scanning | CVE + IaC, no AI agent awareness |
-| **Snyk CLI** | Dependency/container scanning | CVE scanning, no MCP/agent awareness |
-| **Wiz** | Cloud security posture | Cloud scanning, no MCP/agent focus |
+| **External package scanner** | Container/package CVE scanning | CVE scanning only — agent-bom can use these as optional engines |
+| **External image scanner** | Container/IaC scanning | CVE + IaC, no AI agent awareness |
+| **External dependency scanner** | Dependency/container scanning | CVE scanning, no MCP/agent awareness |
+| **Cloud posture platform** | Cloud security posture | Cloud scanning, no MCP/agent focus |
 
 ### Key Insight
 
 **No single competitor covers what agent-bom covers.** The market is fragmented:
-- Snyk agent-scan: skill/MCP *behavioral* scanning (prompt injection, poisoning) — no CVEs
-- Grype/Trivy/Snyk CLI: CVE scanning — no AI agent awareness
-- Wiz/Prisma: cloud posture — no MCP, no agent runtime
+- Agent security scanners: skill/MCP *behavioral* scanning (prompt injection, poisoning) — no CVEs
+- External CVE scanner CLIs: CVE scanning — no AI agent awareness
+- Cloud posture platforms: cloud posture — no MCP, no agent runtime
 
 **agent-bom is the only tool that combines:** CVE scanning + AI agent discovery + MCP tool security + blast radius + runtime proxy + compliance mapping + cloud scanning + enrichment pipeline + SBOM + VEX + policy engine. This is the core differentiator.
 
@@ -56,9 +56,9 @@
 | Dimension | Details |
 |-----------|---------|
 | **Package ecosystems** | npm, pip/PyPI, Go (go.mod), Maven (pom.xml), Ruby (Gemfile.lock), .NET (*.csproj/*.deps.json), RPM (sqlite), Rust (Cargo.lock) |
-| **Container scanning** | OCI layer parsing (native, no Docker/Grype required), Grype/Syft as optional engines for `--image` |
+| **Container scanning** | OCI layer parsing (native, no Docker or external scanner required), external scanners as optional engines for `--image` |
 | **Native OCI parsers** | Java JARs, Go binaries, Ruby gems, .NET assemblies, RPM sqlite — full ecosystem coverage without external tools |
-| **Filesystem scanning** | `--filesystem` flag, dpkg/rpm/pip native parsers with Syft fallback |
+| **Filesystem scanning** | `--filesystem` flag, dpkg/rpm/pip native parsers with optional external scanner fallback |
 | **SBOM ingestion** | CycloneDX 1.x, SPDX 2.x/3.0 JSON |
 | **SBOM generation** | CycloneDX output |
 | **VEX** | OpenVEX load/generate/apply/export, CLI flags |
@@ -217,14 +217,14 @@ Claude Desktop, Claude Code, Cursor, Windsurf, Cline, Continue, Zed, VS Code Cop
 9. **SKILL.md behavioral analysis**: 17 risk patterns + typosquat + Sigstore provenance
 10. **OTel provenance**: Parse agent traces, flag deprecated models, cross-reference with CVEs
 11. **Context graph**: BFS lateral movement analysis from any agent
-12. **Native OCI parsing**: Scan container images without Docker/Grype/Syft installed
+12. **Native OCI parsing**: Scan container images without Docker or external scanners installed
 13. **Policy-as-code**: 17 conditions + expression engine with AND/OR/NOT — custom enforcement
 14. **SIEM push**: Splunk/Datadog/Elasticsearch in OCSF format
 15. **VEX**: Full OpenVEX lifecycle (load/generate/apply/export) — no competitor in this space has VEX
 
 ### Competitive Matrix
 
-| Capability | agent-bom | Snyk agent-scan | Cisco skill-scanner | mcp-scan | Grype | Trivy |
+| Capability | agent-bom | Agent scanner | Skill scanner | MCP scanner | Package scanner | Image scanner |
 |------------|-----------|-----------------|---------------------|----------|-------|-------|
 | CVE scanning | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
 | MCP tool security | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ |

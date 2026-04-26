@@ -151,7 +151,7 @@ jobs:
             echo "::warning::osv-scanner found only unfixable TypeScript SDK lockfile CVEs (no upstream fix) — passing"
           }
 
-      - name: Trivy filesystem scan
+      - name: Filesystem vulnerability scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           scan-type: fs
@@ -160,7 +160,7 @@ jobs:
           severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
           ignore-unfixed: true
           exit-code: '1'
-          trivyignores: .trivyignore
+          trivyignores: .image-scan-ignore
 
       - name: Validate npm lockfiles
         run: python scripts/check_npm_lockfile.py ui/package-lock.json sdks/typescript/package-lock.json
@@ -630,7 +630,7 @@ jobs:
       - name: Smoke test
         run: docker run --rm agent-bom:test --version
 
-      - name: Trivy image scan
+      - name: Image vulnerability scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
         with:
           image-ref: agent-bom:test
@@ -638,7 +638,7 @@ jobs:
           severity: MEDIUM,HIGH,CRITICAL,UNKNOWN
           ignore-unfixed: true
           exit-code: '1'
-          trivyignores: .trivyignore
+          trivyignores: .image-scan-ignore
 
       - name: agent-bom native image tar scan gate
         run: |

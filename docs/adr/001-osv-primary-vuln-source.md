@@ -40,4 +40,4 @@ supplemental enrichment sources.
 
 - OSV coverage for some ecosystems (C/C++, system packages) is thinner than NVD
 - NVD enrichment adds latency (mitigated by 90-day disk cache)
-- No single source has complete coverage — users may see different results vs Grype/Snyk
+- No single source has complete coverage — users may see different results from other vulnerability scanners

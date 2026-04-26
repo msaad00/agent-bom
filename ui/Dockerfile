@@ -1,4 +1,4 @@
-# Base image policy: node 22 LTS (matches ui/package.json engines: ">=22 <23").
+# Base image policy: node 22 LTS (sits inside ui/package.json engines: ">=20 <23").
 # Digest is pinned by dependabot's daily docker job; the
 # scripts/check_docker_base_policy.py CI gate accepts the
 # `# pending-digest` marker for at most one day after a major bump

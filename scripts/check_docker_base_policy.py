@@ -61,7 +61,7 @@ POLICY: dict[str, BasePolicy] = {
     "ui/Dockerfile": BasePolicy(
         image="node",
         expected_tags=("22-bookworm-slim", "22-slim"),
-        rationale="Node 22 LTS aligns with ui/package.json engines: '>=22 <23'.",
+        rationale="Node 22 LTS sits inside ui/package.json engines: '>=20 <23' and is Next 16's recommended production node.",
     ),
     "integrations/glama/Dockerfile": BasePolicy(
         image="python",

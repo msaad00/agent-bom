@@ -16,6 +16,7 @@
     {
       "name": "demo-agent",
       "stable_id": "agent:demo-agent",
+      "agent_type": "custom",
       "type": "custom",
       "status": "configured",
       "mcp_servers": []

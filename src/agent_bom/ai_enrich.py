@@ -53,6 +53,11 @@ _cache: dict[str, str] = {}
 _cache_lock = threading.RLock()
 
 
+def _response_text(value: object) -> str:
+    """Return stripped provider text only when the provider returned a string."""
+    return value.strip() if isinstance(value, str) else ""
+
+
 def _ai_cache_get(key: str) -> str | None:
     """Read a cached AI response with synchronization."""
     with _cache_lock:
@@ -202,7 +207,9 @@ async def _call_ollama_direct(prompt: str, model: str, max_tokens: int = 500) ->
             )
             if resp.status_code == 200:
                 data = resp.json()
-                text = data.get("message", {}).get("content", "").strip()
+                message = data.get("message", {})
+                content = message.get("content") if isinstance(message, dict) else None
+                text = _response_text(content)
                 if text:
                     _ai_cache_put(key, text)
                     return text
@@ -232,7 +239,9 @@ async def _call_llm_via_litellm(prompt: str, model: str, max_tokens: int = 500) 
             max_tokens=max_tokens,
             temperature=0.3,
         )
-        text = response.choices[0].message.content.strip()
+        text = _response_text(response.choices[0].message.content)
+        if not text:
+            return None
         _ai_cache_put(key, text)
         return text
     except ImportError:
@@ -272,7 +281,7 @@ async def _call_huggingface(
             max_tokens=max_tokens,
             temperature=0.3,
         )
-        text = response.choices[0].message.content.strip()
+        text = _response_text(response.choices[0].message.content)
         if text:
             _ai_cache_put(key, text)
             return text

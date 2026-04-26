@@ -278,6 +278,7 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
             {
                 "id": agent.stable_id,
                 "name": agent.name,
+                "agent_type": agent.agent_type.value,
                 "type": agent.agent_type.value,
                 "status": agent.status.value,
                 "config_path": agent.config_path,
@@ -527,6 +528,7 @@ def to_json(report: AIBOMReport) -> dict:
             {
                 "name": agent.name,
                 "stable_id": agent.stable_id,
+                "agent_type": agent.agent_type.value,
                 "type": agent.agent_type.value,
                 "config_path": agent.config_path,
                 "source": agent.source,

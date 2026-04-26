@@ -27,11 +27,24 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "stable_id", "type", "status", "mcp_servers"],
+        "required": ["name", "stable_id", "status", "mcp_servers"],
+        "anyOf": [
+          { "required": ["agent_type"] },
+          { "required": ["type"] }
+        ],
         "properties": {
           "name": { "type": "string", "minLength": 1 },
           "stable_id": { "type": "string", "minLength": 1 },
-          "type": { "type": "string", "minLength": 1 },
+          "agent_type": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Canonical agent type field used by the Python model and UI clients."
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Backward-compatible alias for agent_type retained for v1 scan-report consumers."
+          },
           "status": { "type": "string", "minLength": 1 },
           "mcp_servers": { "type": "array" }
         },

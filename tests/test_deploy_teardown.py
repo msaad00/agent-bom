@@ -81,7 +81,8 @@ def test_cli_teardown_runs_expected_commands(tmp_path: Path, monkeypatch):
 
     commands: list[tuple[str, ...]] = []
 
-    def fake_run(cmd: tuple[str, ...] | list[str], check: bool = True):
+    def fake_run(cmd: tuple[str, ...] | list[str], check: bool = True, timeout: int | None = None):
+        assert timeout is not None
         commands.append(tuple(cmd))
         return subprocess.CompletedProcess(cmd, 0)
 

@@ -104,6 +104,15 @@ def test_ai_cache_put_bounded():
         ai_enrich._cache.clear()
 
 
+def test_ai_response_text_ignores_missing_provider_content():
+    """AI providers may return None content for filtered or empty completions."""
+    from agent_bom import ai_enrich
+
+    assert ai_enrich._response_text(None) == ""
+    assert ai_enrich._response_text({"content": "not-a-string"}) == ""
+    assert ai_enrich._response_text("  actionable summary  ") == "actionable summary"
+
+
 # ── Proxy metrics bounds ─────────────────────────────────────────────────────
 
 

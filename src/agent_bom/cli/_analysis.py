@@ -381,7 +381,8 @@ def dashboard_cmd(report: Optional[str], port: int):
         cmd += ["--", "--report", report]
 
     try:
-        subprocess.run(cmd, check=True)
+        # Foreground server command: intentionally runs until the operator stops it.
+        subprocess.run(cmd, check=True, timeout=None)
     except KeyboardInterrupt:
         pass
     except subprocess.CalledProcessError as exc:

@@ -24,6 +24,7 @@ class CommandStep:
     label: str
     command: tuple[str, ...]
     required: bool = True
+    timeout_seconds: int = 600
 
 
 @dataclass(frozen=True)
@@ -97,12 +98,14 @@ def build_reference_teardown_plan(
                 f"--timeout={max(1, wait_timeout_seconds)}s",
             ),
             required=False,
+            timeout_seconds=max(1, wait_timeout_seconds) + 30,
         )
         if delete_namespace:
             namespace_delete_step = CommandStep(
                 label="Delete the dedicated namespace after Helm resources are gone",
                 command=("kubectl", "delete", "namespace", namespace, "--ignore-not-found=true"),
                 required=False,
+                timeout_seconds=600,
             )
 
     if not skip_terraform_destroy:
@@ -111,6 +114,7 @@ def build_reference_teardown_plan(
             label="Destroy the product-owned AWS baseline",
             command=(terraform_exec, f"-chdir={terraform_root}", "destroy", "-auto-approve"),
             required=True,
+            timeout_seconds=3600,
         )
 
     if delete_local_state:
@@ -118,6 +122,7 @@ def build_reference_teardown_plan(
             label="Delete the local generated state and summaries",
             command=("rm", "-rf", str(state_root)),
             required=False,
+            timeout_seconds=300,
         )
 
     return TeardownPlan(
@@ -202,7 +207,7 @@ def _run_step(step: CommandStep, *, dry_run: bool) -> None:
     if dry_run:
         sys.stdout.write(f"+ {shlex.join(step.command)}\n")
         return
-    subprocess.run(step.command, check=step.required)
+    subprocess.run(step.command, check=step.required, timeout=step.timeout_seconds)
 
 
 def execute_teardown_plan(plan: TeardownPlan, *, dry_run: bool = False) -> str:

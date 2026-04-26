@@ -582,6 +582,7 @@ def run_local_discovery(
             "unique_sdks": sorted(ai_report.unique_sdks),
             "unique_models": sorted(ai_report.unique_models),
             "files_scanned": ai_report.files_scanned,
+            "framework_agents": list(ai_report.framework_agents),
             "components": [
                 {
                     "type": c.component_type.value,

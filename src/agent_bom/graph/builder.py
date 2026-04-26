@@ -643,6 +643,11 @@ def build_unified_graph_from_report(
                     )
                 )
 
+    # ── Framework-native static topology (CrewAI / LangGraph / AutoGen) ──
+    ai_inventory = report_json.get("ai_inventory", {})
+    if isinstance(ai_inventory, dict):
+        _add_framework_topology(graph, ai_inventory.get("framework_agents", []), data_source_tag)
+
     # ── Runtime session graph (dynamic edges) ──────────────────────
     runtime_graph = report_json.get("runtime_session_graph")
     if runtime_graph:
@@ -1036,6 +1041,88 @@ def _add_agent_cloud_lineage(
             evidence={"source": "cloud_principal", "principal_type": principal.get("principal_type", "")},
         )
     )
+
+
+def _add_framework_topology(graph: UnifiedGraph, framework_agents: Any, data_source: str) -> None:
+    """Add static framework-native agent nodes and topology edges."""
+    if not isinstance(framework_agents, list):
+        return
+    known_agent_ids: set[str] = set()
+    for item in framework_agents:
+        if not isinstance(item, dict):
+            continue
+        agent_id = str(item.get("stable_id") or "").strip()
+        if not agent_id:
+            continue
+        known_agent_ids.add(agent_id)
+        graph.add_node(
+            UnifiedNode(
+                id=agent_id,
+                entity_type=EntityType.AGENT,
+                label=str(item.get("name") or agent_id),
+                attributes={
+                    "agent_type": "framework-agent",
+                    "framework": item.get("framework", ""),
+                    "file_path": item.get("file_path", ""),
+                    "line_number": item.get("line_number", 0),
+                    "confidence": item.get("confidence", ""),
+                    "model_refs": item.get("model_refs", []),
+                    "credential_refs": item.get("credential_refs", []),
+                    "capabilities": item.get("capabilities", []),
+                    "dynamic_edges": item.get("dynamic_edges", False),
+                },
+                dimensions=NodeDimensions(agent_type="framework-agent", surface=str(item.get("framework", ""))),
+                data_sources=[data_source, "source-ast"],
+            )
+        )
+
+    for item in framework_agents:
+        if not isinstance(item, dict):
+            continue
+        for edge in item.get("topology_edges", []):
+            if not isinstance(edge, dict):
+                continue
+            source_id = str(edge.get("source_id") or "").strip()
+            target_id = str(edge.get("target_id") or "").strip()
+            if not source_id or not target_id:
+                continue
+            for node_id, node_name in ((source_id, edge.get("source_name")), (target_id, edge.get("target_name"))):
+                if node_id in known_agent_ids or graph.has_node(node_id):
+                    continue
+                graph.add_node(
+                    UnifiedNode(
+                        id=node_id,
+                        entity_type=EntityType.AGENT,
+                        label=str(node_name or node_id),
+                        attributes={
+                            "agent_type": "framework-agent",
+                            "framework": edge.get("framework", ""),
+                            "synthetic_from_topology_edge": True,
+                        },
+                        dimensions=NodeDimensions(agent_type="framework-agent", surface=str(edge.get("framework", ""))),
+                        data_sources=[data_source, "source-ast"],
+                    )
+                )
+                known_agent_ids.add(node_id)
+            try:
+                relationship = RelationshipType(str(edge.get("relationship") or "delegated_to"))
+            except ValueError:
+                continue
+            graph.add_edge(
+                UnifiedEdge(
+                    source=source_id,
+                    target=target_id,
+                    relationship=relationship,
+                    evidence={
+                        "source": "source-ast",
+                        "framework": edge.get("framework", ""),
+                        "file_path": edge.get("file_path", ""),
+                        "line_number": edge.get("line_number", 0),
+                        "confidence": edge.get("confidence", ""),
+                        "evidence": edge.get("evidence", ""),
+                    },
+                )
+            )
 
 
 def _clean_graph_part(value: Any) -> str:

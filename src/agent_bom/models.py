@@ -316,6 +316,8 @@ class Package:
     resolved_from_registry: bool = False  # True if resolved dynamically vs from lock file
     registry_version: Optional[str] = None  # Latest version from registry (for drift comparison)
     version_source: str = "detected"  # "detected" | "manifest" | "registry_fallback"
+    floating_reference: bool = False  # True when the package/source ref is mutable (latest/main/no digest)
+    floating_reference_reason: Optional[str] = None  # Why the ref is mutable
     is_malicious: bool = False  # True if flagged as known malicious (MAL- prefix in OSV)
     malicious_reason: Optional[str] = None  # Why this package is flagged (e.g. "MAL-2024-1234")
     license: Optional[str] = None  # SPDX license identifier (e.g. "MIT", "Apache-2.0")

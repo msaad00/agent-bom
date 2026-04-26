@@ -29,6 +29,7 @@ from agent_bom.discovery.config_parsers import (  # noqa: F401
     parse_mcp_config,
     parse_snowflake_connections,
 )
+from agent_bom.floating_refs import classify_image_reference
 from agent_bom.models import Agent, AgentStatus, AgentType, MCPServer, TransportType
 from agent_bom.security import sanitize_env_vars, sanitize_log_label
 
@@ -666,6 +667,8 @@ def discover_compose_mcp_servers(project_dir: Optional[str] = None) -> Optional[
                 version=pkg_version,
                 ecosystem="docker",
                 is_direct=True,
+                floating_reference=(floating := classify_image_reference(image)) is not None,
+                floating_reference_reason=floating.reason if floating else None,
             )
         ]
 
@@ -677,6 +680,7 @@ def discover_compose_mcp_servers(project_dir: Optional[str] = None) -> Optional[
             transport=TransportType.STDIO,
             packages=packages,
             config_path=str(compose_path),
+            security_warnings=[floating.to_security_warning()] if floating else [],
         )
         mcp_servers.append(server)
 
@@ -910,6 +914,8 @@ def discover_container_labels() -> Optional[Agent]:
                 version=image_name.split(":")[-1] if ":" in image_name else "latest",
                 ecosystem="docker",
                 is_direct=True,
+                floating_reference=(floating := classify_image_reference(image_name)) is not None,
+                floating_reference_reason=floating.reason if floating else None,
             )
         ]
 
@@ -922,6 +928,7 @@ def discover_container_labels() -> Optional[Agent]:
             url=url,
             packages=packages,
             config_path=f"docker://{cid[:12]}",
+            security_warnings=[floating.to_security_warning()] if floating else [],
         )
         mcp_servers.append(server)
 

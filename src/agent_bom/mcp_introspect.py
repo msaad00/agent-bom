@@ -1,7 +1,7 @@
 """MCP Runtime Introspection — connect to live MCP servers for tool/resource discovery.
 
 Read-only introspection: connects to running MCP servers via the MCP protocol,
-calls ``tools/list`` and ``resources/list`` to discover actual runtime capabilities,
+calls ``tools/list``, ``resources/list``, and ``prompts/list`` to discover actual runtime capabilities,
 and compares them against config-declared data to detect drift.
 
 Requires ``mcp`` SDK.  Install with::
@@ -9,7 +9,7 @@ Requires ``mcp`` SDK.  Install with::
     pip install mcp
 
 Security guarantees:
-- **Read-only**: Only calls ``initialize``, ``tools/list``, ``resources/list``.
+- **Read-only**: Only calls ``initialize``, ``tools/list``, ``resources/list``, and ``prompts/list``.
   Never calls ``tools/call``.
 - **Timeout-guarded**: Every connection attempt has a configurable timeout.
 - **Clean shutdown**: All server subprocesses are terminated on exit.
@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from agent_bom.mcp_tool_rules import evaluate_tool
-from agent_bom.models import MCPResource, MCPServer, MCPTool, TransportType
+from agent_bom.models import MCPPrompt, MCPResource, MCPServer, MCPTool, TransportType
 
 logger = logging.getLogger(__name__)
 
@@ -52,12 +52,15 @@ class ServerIntrospection:
     runtime_fingerprint: Optional[str] = None
     configured_tool_count: int = 0
     configured_resource_count: int = 0
+    configured_prompt_count: int = 0
     runtime_tools: list[MCPTool] = field(default_factory=list)
     runtime_resources: list[MCPResource] = field(default_factory=list)
+    runtime_prompts: list[MCPPrompt] = field(default_factory=list)
     error: Optional[str] = None
     tool_schema_findings: list[str] = field(default_factory=list)
     tool_schema_rule_findings: list[dict] = field(default_factory=list)
     resource_findings: list[str] = field(default_factory=list)
+    prompt_findings: list[str] = field(default_factory=list)
     capability_risk_score: float = 0.0
     capability_risk_level: str = "low"
     capability_counts: dict[str, int] = field(default_factory=dict)
@@ -71,10 +74,19 @@ class ServerIntrospection:
     tools_removed: list[str] = field(default_factory=list)
     resources_added: list[str] = field(default_factory=list)
     resources_removed: list[str] = field(default_factory=list)
+    prompts_added: list[str] = field(default_factory=list)
+    prompts_removed: list[str] = field(default_factory=list)
 
     @property
     def has_drift(self) -> bool:
-        return bool(self.tools_added or self.tools_removed or self.resources_added or self.resources_removed)
+        return bool(
+            self.tools_added
+            or self.tools_removed
+            or self.resources_added
+            or self.resources_removed
+            or self.prompts_added
+            or self.prompts_removed
+        )
 
     @property
     def tool_count(self) -> int:
@@ -83,6 +95,10 @@ class ServerIntrospection:
     @property
     def resource_count(self) -> int:
         return len(self.runtime_resources)
+
+    @property
+    def prompt_count(self) -> int:
+        return len(self.runtime_prompts)
 
     def to_dict(self, *, include_runtime_objects: bool = False) -> dict:
         payload = {
@@ -94,15 +110,20 @@ class ServerIntrospection:
             "runtime_fingerprint": self.runtime_fingerprint,
             "configured_tool_count": self.configured_tool_count,
             "configured_resource_count": self.configured_resource_count,
+            "configured_prompt_count": self.configured_prompt_count,
             "tool_count": self.tool_count,
             "resource_count": self.resource_count,
+            "prompt_count": self.prompt_count,
             "tools_added": self.tools_added,
             "tools_removed": self.tools_removed,
             "resources_added": self.resources_added,
             "resources_removed": self.resources_removed,
+            "prompts_added": self.prompts_added,
+            "prompts_removed": self.prompts_removed,
             "tool_schema_findings": self.tool_schema_findings,
             "tool_schema_rule_findings": self.tool_schema_rule_findings,
             "resource_findings": self.resource_findings,
+            "prompt_findings": self.prompt_findings,
             "has_drift": self.has_drift,
             "capability_risk_score": self.capability_risk_score,
             "capability_risk_level": self.capability_risk_level,
@@ -135,6 +156,16 @@ class ServerIntrospection:
                 }
                 for r in self.runtime_resources
             ]
+            payload["runtime_prompts"] = [
+                {
+                    "name": p.name,
+                    "description": p.description,
+                    "arguments": p.arguments,
+                    "content_findings": p.content_findings,
+                    "risk_score": p.risk_score,
+                }
+                for p in self.runtime_prompts
+            ]
         return payload
 
 
@@ -166,6 +197,10 @@ class IntrospectionReport:
         return sum(r.resource_count for r in self.results if r.success)
 
     @property
+    def total_prompts(self) -> int:
+        return sum(r.prompt_count for r in self.results if r.success)
+
+    @property
     def drift_count(self) -> int:
         return sum(1 for r in self.results if r.has_drift)
 
@@ -178,7 +213,12 @@ def _check_mcp_sdk() -> None:
         raise IntrospectionError("mcp SDK is required for runtime introspection. Install with: pip install mcp")
 
 
-def _runtime_server_fingerprint(server: MCPServer, tools: list[MCPTool], resources: list[MCPResource]) -> str:
+def _runtime_server_fingerprint(
+    server: MCPServer,
+    tools: list[MCPTool],
+    resources: list[MCPResource],
+    prompts: list[MCPPrompt],
+) -> str:
     """Build a deterministic fingerprint from observed runtime capabilities."""
     runtime_server = MCPServer(
         name=server.name,
@@ -189,6 +229,7 @@ def _runtime_server_fingerprint(server: MCPServer, tools: list[MCPTool], resourc
         url=server.url,
         tools=tools,
         resources=resources,
+        prompts=prompts,
         registry_id=server.registry_id,
     )
     return runtime_server.fingerprint
@@ -246,6 +287,30 @@ def _lint_resource(resource: MCPResource) -> list[str]:
     return sorted(set(findings))
 
 
+def _lint_prompt(prompt: MCPPrompt) -> list[str]:
+    """Return heuristic risk findings for a prompt descriptor."""
+    findings: list[str] = []
+    name = prompt.name or ""
+    desc = prompt.description or ""
+
+    if not desc.strip():
+        findings.append(f"{prompt.name}: weak-or-missing-description")
+    if _PROMPT_HINT_RE.search(name) or _PROMPT_HINT_RE.search(desc):
+        findings.append(f"{prompt.name}: system-prompt-surface")
+    if any(token in desc.lower() for token in ("ignore previous", "developer message", "system message", "hidden instruction")):
+        findings.append(f"{prompt.name}: hidden-instruction-surface")
+
+    for arg in prompt.arguments:
+        arg_name = str(arg.get("name", "")).strip() or "argument"
+        arg_desc = str(arg.get("description", "")).strip()
+        if bool(arg.get("required")) and not arg_desc:
+            findings.append(f"{prompt.name}.{arg_name}: required-freeform-argument")
+        if _PROMPT_HINT_RE.search(arg_name) or _PROMPT_HINT_RE.search(arg_desc):
+            findings.append(f"{prompt.name}.{arg_name}: prompt-bearing-argument")
+
+    return sorted(set(findings))
+
+
 def _apply_runtime_risk(server: MCPServer, result: ServerIntrospection) -> None:
     """Compute capability-aware tool/server risk from live introspection data."""
     from agent_bom.risk_analyzer import score_server_risk, score_tool_risk
@@ -283,6 +348,7 @@ async def introspect_server(
         configured_fingerprint=server.fingerprint,
         configured_tool_count=len(server.tools),
         configured_resource_count=len(server.resources),
+        configured_prompt_count=len(server.prompts),
     )
 
     if server.transport == TransportType.STDIO:
@@ -369,7 +435,7 @@ async def _query_capabilities(
     server: MCPServer,
     result: ServerIntrospection,
 ) -> ServerIntrospection:
-    """Query tools/list and resources/list from an active MCP session."""
+    """Query tools/list, resources/list, and prompts/list from an active MCP session."""
 
     # ── Tools ──────────────────────────────────────────────────────────
     tools_ok = False
@@ -405,6 +471,35 @@ async def _query_capabilities(
     except Exception as exc:
         logger.warning("resources/list failed for %s: %s", server.name, exc)
 
+    # ── Prompts ────────────────────────────────────────────────────────
+    prompts_ok = False
+    list_prompts = getattr(session, "list_prompts", None)
+    if list_prompts is None:
+        logger.debug("prompts/list unsupported for %s", server.name)
+    else:
+        try:
+            prompts_result = await list_prompts()
+            for prompt in prompts_result.prompts:
+                args: list[dict[str, object]] = []
+                for arg in getattr(prompt, "arguments", []) or []:
+                    args.append(
+                        {
+                            "name": getattr(arg, "name", "") or "",
+                            "description": getattr(arg, "description", "") or "",
+                            "required": bool(getattr(arg, "required", False)),
+                        }
+                    )
+                runtime_prompt = MCPPrompt(
+                    name=getattr(prompt, "name", "") or "",
+                    description=getattr(prompt, "description", "") or "",
+                    arguments=args,
+                )
+                runtime_prompt.content_findings = _lint_prompt(runtime_prompt)
+                result.runtime_prompts.append(runtime_prompt)
+            prompts_ok = True
+        except Exception as exc:
+            logger.warning("prompts/list failed for %s: %s", server.name, exc)
+
     result.success = True
 
     # ── Drift detection ────────────────────────────────────────────────
@@ -424,10 +519,18 @@ async def _query_capabilities(
         result.resources_added = sorted(runtime_resource_uris - config_resource_uris)
         result.resources_removed = sorted(config_resource_uris - runtime_resource_uris)
 
+    if prompts_ok:
+        config_prompt_names = {p.name for p in server.prompts}
+        runtime_prompt_names = {p.name for p in result.runtime_prompts}
+
+        result.prompts_added = sorted(runtime_prompt_names - config_prompt_names)
+        result.prompts_removed = sorted(config_prompt_names - runtime_prompt_names)
+
     result.tool_schema_findings = sorted({finding for tool in result.runtime_tools for finding in tool.schema_findings})
     result.tool_schema_rule_findings = [finding for tool in result.runtime_tools for finding in tool.schema_rule_findings]
     result.resource_findings = sorted({finding for resource in result.runtime_resources for finding in resource.content_findings})
-    result.runtime_fingerprint = _runtime_server_fingerprint(server, result.runtime_tools, result.runtime_resources)
+    result.prompt_findings = sorted({finding for prompt in result.runtime_prompts for finding in prompt.content_findings})
+    result.runtime_fingerprint = _runtime_server_fingerprint(server, result.runtime_tools, result.runtime_resources, result.runtime_prompts)
     _apply_runtime_risk(server, result)
 
     return result
@@ -598,6 +701,7 @@ def enrich_servers(
         server.mcp_version = result.protocol_version or server.mcp_version
         existing_tools = {t.name for t in server.tools}
         existing_resources = {r.uri for r in server.resources}
+        existing_prompts = {p.name for p in server.prompts}
         added_any = False
 
         for tool in result.runtime_tools:
@@ -624,6 +728,19 @@ def enrich_servers(
                     merged = sorted(set(existing_resource.content_findings) | set(resource.content_findings))
                     if merged != existing_resource.content_findings:
                         existing_resource.content_findings = merged
+                        added_any = True
+
+        for prompt in result.runtime_prompts:
+            if prompt.name not in existing_prompts:
+                server.prompts.append(prompt)
+                existing_prompts.add(prompt.name)
+                added_any = True
+            else:
+                existing_prompt = next((p for p in server.prompts if p.name == prompt.name), None)
+                if existing_prompt and prompt.content_findings:
+                    merged = sorted(set(existing_prompt.content_findings) | set(prompt.content_findings))
+                    if merged != existing_prompt.content_findings:
+                        existing_prompt.content_findings = merged
                         added_any = True
 
         if added_any:

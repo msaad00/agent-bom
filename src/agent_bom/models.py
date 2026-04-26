@@ -481,6 +481,43 @@ class MCPResource:
 
 
 @dataclass
+class MCPPrompt:
+    """A prompt template exposed by an MCP server."""
+
+    name: str
+    description: str = ""
+    arguments: list[dict[str, object]] = field(default_factory=list)
+    content_findings: list[str] = field(default_factory=list)
+
+    @property
+    def stable_id(self) -> str:
+        """Deterministic ID for this MCP prompt descriptor."""
+        import uuid as _uuid
+
+        _ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
+        args = json.dumps(self.arguments, sort_keys=True, separators=(",", ":"))
+        fingerprint = f"mcp_prompt:{self.name.lower().strip()}:{args}"
+        return str(_uuid.uuid5(_ns, fingerprint))
+
+    @property
+    def fingerprint(self) -> str:
+        return self.stable_id
+
+    @property
+    def risk_score(self) -> int:
+        """Heuristic risk score for prompt metadata findings."""
+        score = 0
+        for finding in self.content_findings:
+            if "system-prompt-surface" in finding or "hidden-instruction-surface" in finding:
+                score += 3
+            elif "required-freeform-argument" in finding:
+                score += 2
+            else:
+                score += 1
+        return min(score, 10)
+
+
+@dataclass
 class PermissionProfile:
     """Privilege and permission profile for an MCP server or container."""
 
@@ -522,6 +559,7 @@ class MCPServer:
     url: Optional[str] = None  # For SSE/HTTP transports
     tools: list[MCPTool] = field(default_factory=list)
     resources: list[MCPResource] = field(default_factory=list)
+    prompts: list[MCPPrompt] = field(default_factory=list)
     packages: list[Package] = field(default_factory=list)
     config_path: Optional[str] = None  # Where this server was discovered
     working_dir: Optional[str] = None  # Server's working directory
@@ -568,6 +606,7 @@ class MCPServer:
         _ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
         tool_ids = sorted(t.stable_id for t in self.tools)
         resource_ids = sorted(r.stable_id for r in self.resources)
+        prompt_ids = sorted(p.stable_id for p in self.prompts)
         env_keys = sorted(self.credential_names)
         raw = json.dumps(
             {
@@ -581,6 +620,7 @@ class MCPServer:
                 "credential_refs": env_keys,
                 "tool_ids": tool_ids,
                 "resource_ids": resource_ids,
+                "prompt_ids": prompt_ids,
             },
             sort_keys=True,
             separators=(",", ":"),

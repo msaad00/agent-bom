@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Verify the scale-evidence documentation scaffold is release-ready.
 
-This intentionally checks structure, not performance values. The first PR for
-#1806 should make the evidence lanes hard to forget without pretending the
-numbers have already been measured.
+This checks structure and verifies measured pages point at checked-in raw
+artifacts without pretending local synthetic results cover the broader
+enterprise/EKS evidence tracked in #1806.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ REQUIRED_FILES = (
 
 REQUIRED_MARKERS = (
     "Evidence status:",
-    "Owner issue: #1806",
+    "Owner issue:",
     "## Claim",
     "## Scope",
     "## Environment",
@@ -42,6 +42,15 @@ def _check_file(path: Path) -> list[str]:
             errors.append(f"{path.relative_to(ROOT)} missing marker: {marker}")
     if "TBD" not in text and "Evidence status: measured" not in text:
         errors.append(f"{path.relative_to(ROOT)} must either keep TBD placeholders or declare measured evidence")
+    if "Evidence status: measured" in text:
+        marker = "Raw result artifact: `"
+        if marker not in text:
+            errors.append(f"{path.relative_to(ROOT)} missing measured raw result artifact")
+        else:
+            artifact = text.split(marker, 1)[1].split("`", 1)[0]
+            artifact_path = ROOT / artifact
+            if not artifact_path.exists():
+                errors.append(f"{path.relative_to(ROOT)} references missing raw result artifact: {artifact}")
     return errors
 
 

@@ -15,8 +15,20 @@ Current evidence pages:
 - [`fleet-reconciliation.md`](fleet-reconciliation.md) — fleet and Kubernetes
   reconciliation latency.
 
+Current raw result artifact:
+
+- [`results/scale-evidence-local-2026-04-26.json`](results/scale-evidence-local-2026-04-26.json)
+  — local synthetic graph build/query and Kubernetes reconciliation CPU-path
+  run on macOS arm64 with Python 3.13.5.
+
 Run the structure check before publishing release numbers:
 
 ```bash
 python scripts/check_scale_evidence.py
+```
+
+Regenerate the local synthetic result set:
+
+```bash
+uv run python scripts/run_scale_evidence.py
 ```

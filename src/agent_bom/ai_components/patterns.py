@@ -248,6 +248,13 @@ PYTHON_SDK_PATTERNS: list[SDKPattern] = [
     SDKPattern(re.compile(_py_import("wandb")), "wandb", AIComponentType.MLOPS, "wandb", "pypi", "python"),
     SDKPattern(re.compile(_py_import("neptune")), "neptune", AIComponentType.MLOPS, "neptune", "pypi", "python"),
     SDKPattern(re.compile(_py_import("clearml")), "clearml", AIComponentType.MLOPS, "clearml", "pypi", "python"),
+    # AI observability / eval tracing
+    SDKPattern(re.compile(_py_import("langsmith")), "langsmith", AIComponentType.OBSERVABILITY, "langsmith", "pypi", "python"),
+    SDKPattern(re.compile(_py_import("langfuse")), "langfuse", AIComponentType.OBSERVABILITY, "langfuse", "pypi", "python"),
+    SDKPattern(re.compile(_py_import("arize")), "arize", AIComponentType.OBSERVABILITY, "arize", "pypi", "python"),
+    SDKPattern(re.compile(_py_import("phoenix")), "phoenix", AIComponentType.OBSERVABILITY, "arize-phoenix", "pypi", "python"),
+    SDKPattern(re.compile(_py_import("braintrust")), "braintrust", AIComponentType.OBSERVABILITY, "braintrust", "pypi", "python"),
+    SDKPattern(re.compile(_py_import("trubrics")), "trubrics", AIComponentType.OBSERVABILITY, "trubrics", "pypi", "python"),
     # Inference servers
     SDKPattern(re.compile(_py_import("vllm")), "vllm", AIComponentType.INFERENCE_SERVER, "vllm", "pypi", "python"),
 ]
@@ -361,6 +368,18 @@ JS_SDK_PATTERNS: list[SDKPattern] = [
         "npm",
         "javascript",
     ),
+    # AI observability / eval tracing
+    SDKPattern(re.compile(_js_import("langsmith")), "langsmith", AIComponentType.OBSERVABILITY, "langsmith", "npm", "javascript"),
+    SDKPattern(re.compile(_js_import("langfuse")), "langfuse", AIComponentType.OBSERVABILITY, "langfuse", "npm", "javascript"),
+    SDKPattern(
+        re.compile(_js_import("@helicone/helicone")),
+        "helicone",
+        AIComponentType.OBSERVABILITY,
+        "@helicone/helicone",
+        "npm",
+        "javascript",
+    ),
+    SDKPattern(re.compile(_js_import("braintrust")), "braintrust", AIComponentType.OBSERVABILITY, "braintrust", "npm", "javascript"),
 ]
 
 # ── Java SDK patterns ────────────────────────────────────────────────────────

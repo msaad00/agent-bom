@@ -11,6 +11,7 @@ For the comprehensive guide, see [AI_INFRASTRUCTURE_SCANNING.md](https://github.
 | **Container Images** | Native OCI package discovery across OS and language packages |
 | **Kubernetes** | Namespace enumeration, pod MCP detection |
 | **Cloud** | AWS, Snowflake, Azure ML, GCP Vertex AI, Databricks, HuggingFace, Ollama |
+| **AI observability** | LangSmith, Langfuse, Braintrust, Arize/Phoenix, Trubrics, Helicone SDK inventory |
 | **Code** | SAST via Semgrep with CWE mapping |
 
 ## Cloud providers

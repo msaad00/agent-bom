@@ -166,7 +166,12 @@ function FrameworkBar({
 function ControlCard({ control, catalog }: { control: ComplianceControl; catalog?: Record<string, string> }) {
   const [expanded, setExpanded] = useState(false);
   const name = catalog?.[control.code] ?? control.name;
-  const sev = control.severity_breakdown;
+  const sev = {
+    critical: control.severity_breakdown.critical ?? 0,
+    high: control.severity_breakdown.high ?? 0,
+    medium: control.severity_breakdown.medium ?? 0,
+    low: control.severity_breakdown.low ?? 0,
+  };
   const hasSev = sev.critical > 0 || sev.high > 0 || sev.medium > 0 || sev.low > 0;
 
   return (

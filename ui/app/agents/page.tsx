@@ -319,6 +319,7 @@ function AgentsList() {
         >
         {configuredVirtualItems.map((virtualRow) => {
           const agent = filteredConfigured[virtualRow.index];
+          if (!agent) return null;
           const isExpanded = expandedAgent === agent.name;
           return (
           <div
@@ -472,6 +473,7 @@ function AgentsList() {
             >
             {installedVirtualItems.map((virtualRow) => {
               const agent = installedOnly[virtualRow.index];
+              if (!agent) return null;
               return (
                 <div
                   key={`${agent.name}-${virtualRow.index}`}
@@ -580,7 +582,12 @@ function AgentDetail({ agentName }: { agentName: string }) {
   }
 
   const { agent, summary, blast_radius, credentials, fleet } = data;
-  const sev = summary.severity_breakdown;
+  const sev = {
+    critical: summary.severity_breakdown.critical ?? 0,
+    high: summary.severity_breakdown.high ?? 0,
+    medium: summary.severity_breakdown.medium ?? 0,
+    low: summary.severity_breakdown.low ?? 0,
+  };
 
   const toggleServer = (name: string) => {
     setExpandedServers((prev) => {

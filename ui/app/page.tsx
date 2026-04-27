@@ -619,9 +619,9 @@ export default function Dashboard() {
                   { type: "cve", label: b.vulnerability_id, severity: b.severity?.toLowerCase() },
                 ];
                 if (b.package) nodes.push({ type: "package", label: b.package });
-                if (b.affected_servers && b.affected_servers.length > 0) nodes.push({ type: "server", label: b.affected_servers[0] });
-                if (b.affected_agents.length > 0) nodes.push({ type: "agent", label: b.affected_agents[0] });
-                if (b.exposed_credentials.length > 0) nodes.push({ type: "credential", label: b.exposed_credentials[0] });
+                if (b.affected_servers && b.affected_servers.length > 0) nodes.push({ type: "server", label: b.affected_servers[0]! });
+                if (b.affected_agents.length > 0) nodes.push({ type: "agent", label: b.affected_agents[0]! });
+                if (b.exposed_credentials.length > 0) nodes.push({ type: "credential", label: b.exposed_credentials[0]! });
                 return (
                   <AttackPathCard
                     key={b.vulnerability_id}

@@ -286,7 +286,7 @@ function VulnsPage() {
       setError("");
       try {
         if (scope === "latest") {
-          const latestJob = await api.getScan(jobs[0].job_id);
+          const latestJob = await api.getScan(jobs[0]!.job_id);
           setVulns(collectVulns([latestJob]));
         } else {
           const fullJobs = await Promise.all(jobs.map((job) => api.getScan(job.job_id).catch(() => null)));

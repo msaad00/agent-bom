@@ -131,7 +131,7 @@ describe('api.listJobs', () => {
     global.fetch = mockFetch(payload)
     const result = await api.listJobs()
     expect(result.jobs).toHaveLength(1)
-    expect(result.jobs[0].job_id).toBe('abc123')
+    expect(result.jobs[0]!.job_id).toBe('abc123')
     expect(result.count).toBe(1)
   })
 
@@ -294,8 +294,8 @@ describe('api.getScan', () => {
     expect(result.result?.scorecard_summary?.transient_failed_packages).toBe(1)
     expect(result.result?.scorecard_summary?.failed_reasons?.scorecard_access_denied).toBe(1)
     expect(result.result?.scan_performance?.osv_cache_hits).toBe(6)
-    expect(result.result?.posture_scorecard?.dimensions.supply_chain_quality.weighted_score).toBe(12)
-    expect(result.result?.remediation_plan?.[0].reason).toContain('prerelease')
+    expect(result.result?.posture_scorecard?.dimensions.supply_chain_quality?.weighted_score).toBe(12)
+    expect(result.result?.remediation_plan?.[0]?.reason).toContain('prerelease')
   })
 
   it('throws on error', async () => {
@@ -331,7 +331,7 @@ describe('api key lifecycle helpers', () => {
     const result = await api.listKeys()
 
     expect(result.keys).toHaveLength(1)
-    expect(result.keys[0].name).toBe('ci-service')
+    expect(result.keys[0]!.name).toBe('ci-service')
     expect(fetchMock).toHaveBeenCalledWith(
       "/v1/auth/keys",
       expect.objectContaining({
@@ -416,7 +416,7 @@ describe('api.getPosture', () => {
     expect(result.grade).toBe('B')
     expect(result.score).toBe(72)
     expect(result.dimensions).toHaveProperty('vuln')
-    expect(result.dimensions.vuln.score).toBe(65)
+    expect(result.dimensions.vuln?.score).toBe(65)
   })
 
   it('throws on error', async () => {
@@ -448,7 +448,7 @@ describe('api.getComplianceNarrative', () => {
     const result = await api.getComplianceNarrative()
     expect(result.executive_summary).toBe('Overall posture is good.')
     expect(result.framework_narratives).toHaveLength(1)
-    expect(result.framework_narratives[0].framework).toBe('OWASP LLM Top 10')
+    expect(result.framework_narratives[0]!.framework).toBe('OWASP LLM Top 10')
     expect(result.generated_at).toBe('2024-01-01T00:00:00Z')
   })
 
@@ -470,7 +470,7 @@ describe('api.createJiraTicket', () => {
     }
     const result = await api.createJiraTicket(body)
     expect(global.fetch).toHaveBeenCalledOnce()
-    const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
     expect(url).toContain('/v1/findings/jira')
     expect(opts.method).toBe('POST')
     expect(opts.headers).toMatchObject({
@@ -515,7 +515,7 @@ describe('api.markFalsePositive', () => {
     }
     const result = await api.markFalsePositive(body)
     expect(global.fetch).toHaveBeenCalledOnce()
-    const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]
+    const [url, opts] = (global.fetch as ReturnType<typeof vi.fn>).mock.calls[0]!
     expect(url).toContain('/v1/findings/false-positive')
     expect(opts.method).toBe('POST')
     const sent = JSON.parse(opts.body as string)

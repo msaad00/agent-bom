@@ -58,8 +58,8 @@ describe("attack path helpers", () => {
       },
     ];
 
-    const firstKey = attackPathKey(paths[0]);
-    const secondKey = attackPathKey(paths[1]);
+    const firstKey = attackPathKey(paths[0]!);
+    const secondKey = attackPathKey(paths[1]!);
 
     expect(moveAttackPathSelection(paths, firstKey, 1)).toBe(secondKey);
     expect(moveAttackPathSelection(paths, secondKey, 1)).toBe(firstKey);

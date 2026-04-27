@@ -65,6 +65,9 @@ export enum RelationshipType {
   INVOKED = "invoked",
   ACCESSED = "accessed",
   DELEGATED_TO = "delegated_to",
+  // Cross-environment correlation (#1892)
+  CORRELATES_WITH = "correlates_with",
+  POSSIBLY_CORRELATES_WITH = "possibly_correlates_with",
 }
 
 export enum NodeStatus {
@@ -334,6 +337,8 @@ export const RELATIONSHIP_COLOR_MAP: Record<string, string> = {
   [RelationshipType.INVOKED]: "#10b981",
   [RelationshipType.ACCESSED]: "#3b82f6",
   [RelationshipType.DELEGATED_TO]: "#a855f7",
+  [RelationshipType.CORRELATES_WITH]: "#0ea5e9",
+  [RelationshipType.POSSIBLY_CORRELATES_WITH]: "#7dd3fc",
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

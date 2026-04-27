@@ -382,6 +382,8 @@ def _discover_openai_deployments(
                 continue
             rg_name = rg_parts[1].split("/")[0]
 
+            account_location = str(getattr(account, "location", "") or "").strip().lower()
+
             # List deployments for this OpenAI account
             try:
                 for deployment in client.deployments.list(rg_name, account_name):
@@ -394,6 +396,7 @@ def _discover_openai_deployments(
                     sku_name = getattr(sku, "name", "") if sku else ""
 
                     label = f"{model_name}@{model_version}" if model_version else model_name
+                    deployment_resource_id = deployment.id or f"azure://openai/{account_name}/{deploy_name}"
                     server = MCPServer(
                         name=f"openai-deployment:{deploy_name}",
                         command=f"azure://openai/{account_name}/{deploy_name}",
@@ -403,10 +406,31 @@ def _discover_openai_deployments(
                     agent = Agent(
                         name=f"azure-openai:{account_name}/{deploy_name}",
                         agent_type=AgentType.CUSTOM,
-                        config_path=deployment.id or f"azure://openai/{account_name}/{deploy_name}",
+                        config_path=deployment_resource_id,
                         source="azure-openai",
+                        version=label,
                         mcp_servers=[server],
-                        metadata={"model": label, "sku": sku_name},
+                        metadata={
+                            "model": label,
+                            "sku": sku_name,
+                            "cloud_origin": build_cloud_origin(
+                                provider="azure",
+                                service="openai",
+                                resource_type="deployment",
+                                resource_id=deployment_resource_id,
+                                resource_name=deploy_name,
+                                location=account_location,
+                                subscription_id=subscription_id,
+                                raw_identity={
+                                    "subscription_id": subscription_id,
+                                    "resource_group": rg_name,
+                                    "account_name": account_name,
+                                    "deployment_name": deploy_name,
+                                    "model_name": model_name,
+                                    "model_version": model_version,
+                                },
+                            ),
+                        },
                     )
                     agents.append(agent)
             except Exception as exc:

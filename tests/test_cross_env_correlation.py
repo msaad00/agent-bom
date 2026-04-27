@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from agent_bom.cross_env_correlation import (
     CorrelationConfidence,
+    correlate_azure_openai,
     correlate_bedrock,
     correlate_cross_environment,
 )
@@ -217,3 +218,201 @@ def test_metadata_aws_block_supplies_signals_when_env_is_absent() -> None:
 
     assert len(matches) == 1
     assert matches[0].confidence is CorrelationConfidence.HIGH
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phase 2 — Azure OpenAI / Functions
+# ──────────────────────────────────────────────────────────────────────────
+
+_AZURE_SUB = "11111111-2222-3333-4444-555555555555"
+_AZURE_ACCOUNT = "myco-prod-openai"
+_AZURE_DEPLOYMENT = "gpt-4o-prod"
+_AZURE_RESOURCE_ID = (
+    f"/subscriptions/{_AZURE_SUB}"
+    f"/resourceGroups/rg-prod"
+    f"/providers/Microsoft.CognitiveServices/accounts/{_AZURE_ACCOUNT}"
+    f"/deployments/{_AZURE_DEPLOYMENT}"
+)
+
+
+def _local_azure_agent(
+    *,
+    name: str = "cursor-dev",
+    subscription_id: str | None = _AZURE_SUB,
+    endpoint_url: str | None = f"https://{_AZURE_ACCOUNT}.openai.azure.com/",
+    deployment: str | None = _AZURE_DEPLOYMENT,
+    api_type: str | None = "azure",
+    extra_env: dict[str, str] | None = None,
+) -> dict:
+    env: dict[str, str] = {}
+    if subscription_id is not None:
+        env["AZURE_SUBSCRIPTION_ID"] = subscription_id
+    if endpoint_url is not None:
+        env["AZURE_OPENAI_ENDPOINT"] = endpoint_url
+    if deployment is not None:
+        env["AZURE_OPENAI_DEPLOYMENT"] = deployment
+    if api_type is not None:
+        env["OPENAI_API_TYPE"] = api_type
+    if extra_env:
+        env.update(extra_env)
+    return {
+        "name": name,
+        "agent_type": "cursor",
+        "config_path": "/home/dev/.cursor/mcp.json",
+        "version": "0.42.0",
+        "metadata": {},
+        "mcp_servers": [{"name": "openai-mcp", "env": env}],
+    }
+
+
+def _cloud_azure_openai_deployment(
+    *,
+    name: str = f"azure-openai:{_AZURE_ACCOUNT}/{_AZURE_DEPLOYMENT}",
+    resource_id: str = _AZURE_RESOURCE_ID,
+    subscription_id: str = _AZURE_SUB,
+    account_name: str = _AZURE_ACCOUNT,
+    deployment_name: str = _AZURE_DEPLOYMENT,
+    location: str = "eastus",
+    model: str = "gpt-4o@2024-08-06",
+) -> dict:
+    return {
+        "name": name,
+        "agent_type": "custom",
+        "config_path": resource_id,
+        "source": "azure-openai",
+        "version": model,
+        "metadata": {
+            "model": model,
+            "cloud_origin": {
+                "provider": "azure",
+                "service": "openai",
+                "resource_type": "deployment",
+                "resource_id": resource_id,
+                "resource_name": deployment_name,
+                "location": location,
+                "scope": {"subscription_id": subscription_id},
+                "raw_identity": {
+                    "subscription_id": subscription_id,
+                    "resource_group": "rg-prod",
+                    "account_name": account_name,
+                    "deployment_name": deployment_name,
+                    "model_name": "gpt-4o",
+                    "model_version": "2024-08-06",
+                },
+            },
+        },
+        "mcp_servers": [],
+    }
+
+
+def test_azure_full_triplet_match_is_high_confidence() -> None:
+    matches = correlate_azure_openai([_local_azure_agent(), _cloud_azure_openai_deployment()])
+
+    assert len(matches) == 1
+    match = matches[0]
+    assert match.confidence is CorrelationConfidence.HIGH
+    assert set(match.matched_signals) == {"subscription_id", "account_name", "deployment_name"}
+    assert match.cloud_provider == "azure"
+    assert match.cloud_service == "openai"
+    assert match.cloud_account_id == _AZURE_SUB
+    assert match.cloud_region == "eastus"
+    assert match.cloud_model_id == _AZURE_DEPLOYMENT
+    assert "Strong triplet" in match.rationale
+
+
+def test_azure_only_deployment_matches_is_low_confidence() -> None:
+    # Different subscription, different account, same deployment name —
+    # the cross-tenant collision case. Must stay low-confidence.
+    local = _local_azure_agent(
+        subscription_id="99999999-8888-7777-6666-555555555555",
+        endpoint_url="https://other-account.openai.azure.com/",
+    )
+
+    matches = correlate_azure_openai([local, _cloud_azure_openai_deployment()])
+
+    assert len(matches) == 1
+    assert matches[0].confidence is CorrelationConfidence.LOW
+    assert matches[0].matched_signals == ("deployment_name",)
+
+
+def test_azure_subscription_and_account_without_deployment_is_low_confidence() -> None:
+    local = _local_azure_agent(deployment=None)
+
+    matches = correlate_azure_openai([local, _cloud_azure_openai_deployment()])
+
+    assert len(matches) == 1
+    assert matches[0].confidence is CorrelationConfidence.LOW
+    assert set(matches[0].matched_signals) == {"subscription_id", "account_name"}
+
+
+def test_azure_api_type_non_azure_disqualifies_the_agent() -> None:
+    # Local agent has all the right Azure env values BUT also says
+    # OPENAI_API_TYPE=open_ai — they're talking to public OpenAI, not
+    # Azure. We must drop them rather than emit a cross-tenant edge.
+    local = _local_azure_agent(api_type="open_ai")
+
+    matches = correlate_azure_openai([local, _cloud_azure_openai_deployment()])
+
+    assert matches == []
+
+
+def test_azure_subscription_id_must_be_uuid_shaped() -> None:
+    # A non-UUID subscription value (e.g. someone shoved an account name
+    # in there) must not count as a subscription match.
+    local = _local_azure_agent(subscription_id="not-a-uuid")
+
+    matches = correlate_azure_openai([local, _cloud_azure_openai_deployment()])
+
+    assert len(matches) == 1
+    assert matches[0].confidence is CorrelationConfidence.LOW
+    assert "subscription_id" not in matches[0].matched_signals
+
+
+def test_azure_endpoint_url_supplies_account_name() -> None:
+    # Local has only the endpoint URL (no explicit account env var) —
+    # the matcher must parse the account name out of the hostname so
+    # the account signal still counts.
+    local = _local_azure_agent(subscription_id=None, deployment=None)
+
+    matches = correlate_azure_openai([local, _cloud_azure_openai_deployment()])
+
+    assert len(matches) == 1
+    assert matches[0].matched_signals == ("account_name",)
+
+
+def test_azure_metadata_block_supplies_signals_when_env_is_absent() -> None:
+    # IaC-style metadata path: no MCP env at all, but `metadata.azure`
+    # carries explicit subscription / account / deployment.
+    local = {
+        "name": "ci-pipeline",
+        "agent_type": "custom",
+        "config_path": "/repo/.github/workflows/deploy.yml",
+        "version": "",
+        "metadata": {
+            "azure": {
+                "subscription_id": _AZURE_SUB,
+                "openai_account_name": _AZURE_ACCOUNT,
+                "openai_deployment_name": _AZURE_DEPLOYMENT,
+            }
+        },
+        "mcp_servers": [],
+    }
+
+    matches = correlate_azure_openai([local, _cloud_azure_openai_deployment()])
+
+    assert len(matches) == 1
+    assert matches[0].confidence is CorrelationConfidence.HIGH
+
+
+def test_orchestrator_runs_bedrock_and_azure_matchers_independently() -> None:
+    # Same scan contains an AWS Bedrock match AND an unrelated Azure
+    # match. Both should appear in the result.
+    bedrock_local = _local_agent(name="dev-bedrock")
+    bedrock_cloud = _cloud_bedrock_agent()
+    azure_local = _local_azure_agent(name="dev-azure")
+    azure_cloud = _cloud_azure_openai_deployment()
+
+    result = correlate_cross_environment([bedrock_local, bedrock_cloud, azure_local, azure_cloud])
+
+    assert {match.cloud_provider for match in result.matches} == {"aws", "azure"}
+    assert all(match.confidence is CorrelationConfidence.HIGH for match in result.matches)

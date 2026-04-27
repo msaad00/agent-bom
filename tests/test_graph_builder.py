@@ -793,3 +793,35 @@ class TestCrossEnvironmentCorrelation:
             edge for edge in g.edges if edge.relationship in (RelationshipType.CORRELATES_WITH, RelationshipType.POSSIBLY_CORRELATES_WITH)
         ]
         assert cross_edges == []
+
+    def test_correlates_with_edge_is_bidirectional_so_reverse_lookup_finds_it(self):
+        # Cross-env correlation reads the same in both directions ("local
+        # X corresponds to cloud Y"). The edge must therefore be
+        # traversable both ways. Without `direction="bidirectional"`,
+        # `g.adjacency[cloud_id]` does not contain the local agent and
+        # the reverse lookup "for this cloud agent, which local talks to
+        # it?" silently returns nothing. Locks the directionality fix in
+        # place so a future caller can't regress it.
+        report = self._report_with_local_and_bedrock(
+            local_account="111122223333",
+            local_region="us-east-1",
+            local_model="anthropic.claude-3-5-sonnet-20241022-v2:0",
+        )
+
+        g = build_unified_graph_from_report(report)
+
+        edge = next(
+            (edge for edge in g.edges if edge.relationship == RelationshipType.CORRELATES_WITH),
+            None,
+        )
+        assert edge is not None
+        assert edge.is_bidirectional, "cross-env correlates_with edge must be bidirectional"
+        # Forward adjacency from the cloud agent must include the local
+        # agent as a neighbour. Without `direction='bidirectional'` the
+        # edge is only stored under the local agent's adjacency, and the
+        # reverse-direction lookup ("for this cloud agent, which local
+        # talks to it?") silently returns nothing.
+        cloud_neighbor_targets = {nbr.target for nbr in g.adjacency.get("agent:bedrock:prod-agent", [])}
+        assert "agent:cursor-dev" in cloud_neighbor_targets, (
+            "reverse lookup from cloud agent failed — bidirectional flag isn't being honored"
+        )

@@ -1107,6 +1107,16 @@ def _add_cross_env_correlation(
                 source=local_id,
                 target=cloud_id,
                 relationship=relationship,
+                # Cross-env correlation is semantically symmetric ("local
+                # agent X corresponds to cloud agent Y" reads the same in
+                # either direction), so the edge must be traversable both
+                # ways. Without `bidirectional`, a query "for this cloud
+                # Bedrock/Azure/Vertex agent, which local agent talks to
+                # it?" misses the edge on the forward adjacency index and
+                # only finds it via reverse_adjacency — silently
+                # inconsistent with how the graph treats peer relations
+                # like SHARES_SERVER and SHARES_CRED.
+                direction="bidirectional",
                 evidence={
                     "data_source": data_source,
                     "confidence": match.confidence.value,

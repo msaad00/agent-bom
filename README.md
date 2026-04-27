@@ -303,6 +303,24 @@ With scans and fleet sync alone, teams can already see:
 
 ---
 
+## Hermetic Python scanner
+
+agent-bom is a **single-language stack** from CLI through API through MCP server through scanner. The scanner — every ecosystem parser, every CVE matcher, every blast-radius and reachability walker — is pure Python. No Rust toolchain, no Go binaries, no CGo bindings, no platform-specific wheels for the scanner path. `pip install agent-bom` and you have a working scanner.
+
+What this gets you:
+
+- **One language to audit.** Security teams reviewing the scanner code don't context-switch between Python, Rust, and Go.
+- **Reproducible findings.** Identical output across macOS, Linux glibc, Linux musl, and Alpine — no native parser version drift.
+- **Disk-image scans without `syft`.** Native Debian (`dpkg`) and RPM (`rpm` / SQLite RPM DB) parsers ship in-process; the [`syft`](https://github.com/anchore/syft) Go binary is opt-in only as a tar-archive fallback (`src/agent_bom/filesystem.py`).
+
+What it costs (honest tradeoffs):
+
+- Slower than Rust/Go scanners on huge fanouts. Mitigated by the adaptive backpressure + scanner concurrency knobs (`AGENT_BOM_BACKPRESSURE_*`, `AGENT_BOM_SCANNER_MAX_CONCURRENT`); still real at the high end.
+- Higher per-package memory than tightly-packed Go structs.
+- For VM disk-image scanning at scale, `syft` is the practical fallback — opt in by installing the `syft` binary on `PATH`.
+
+The dashboard UI under `ui/` is TypeScript / Next.js / React 19 — that's the only non-Python surface, and it's strictly the operator-facing dashboard, not the scanner.
+
 ## Trust & transparency
 
 agent-bom is a **read-only scanner**. It never writes configs, never executes MCP servers, never stores credential values. No telemetry. No analytics. Releases are [Sigstore-signed](docs/PERMISSIONS.md) with SLSA provenance and self-published SBOMs.

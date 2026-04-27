@@ -524,26 +524,44 @@ function VulnsPage() {
           {/* Grouped view */}
           {grouped ? (
             <div className="space-y-6">
-              {grouped?.map(([groupLabel, groupVulns]) => (
-                <div key={groupLabel}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="text-sm font-semibold text-zinc-300">{groupLabel}</h3>
-                    <span className="text-xs font-mono text-zinc-600 bg-zinc-800 rounded px-1.5 py-0.5">
-                      {groupVulns.length}
-                    </span>
+              {grouped?.map(([groupLabel, groupVulns]) => {
+                // Per-group windowing for the grouped view (#1955 vulns
+                // half). The flat path was already paginated via
+                // `paged`; the grouped path used to render every vuln in
+                // every group flat, which collapsed UX on group-by-package
+                // for tenants with hundreds of CVEs per package. Cap each
+                // group at PAGE_SIZE and surface a remaining-count line
+                // so users know they're seeing a slice.
+                const visibleGroupVulns = groupVulns.slice(0, PAGE_SIZE);
+                const groupOverflow = groupVulns.length - visibleGroupVulns.length;
+                return (
+                  <div key={groupLabel}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <h3 className="text-sm font-semibold text-zinc-300">{groupLabel}</h3>
+                      <span className="text-xs font-mono text-zinc-600 bg-zinc-800 rounded px-1.5 py-0.5">
+                        {groupVulns.length}
+                      </span>
+                    </div>
+                    <VulnTable
+                      vulns={visibleGroupVulns}
+                      sortKey={sortKey}
+                      sortDir={sortDir}
+                      handleSort={handleSort}
+                      suppressed={suppressed}
+                      onMarkFP={handleMarkFP}
+                      expandedId={expandedId}
+                      onToggleExpanded={setExpandedId}
+                    />
+                    {groupOverflow > 0 && (
+                      <p className="mt-2 text-xs text-zinc-600">
+                        Showing first {PAGE_SIZE} of {groupVulns.length} —
+                        narrow with the search box or switch to the flat
+                        view (Group: none) for full pagination.
+                      </p>
+                    )}
                   </div>
-                  <VulnTable
-                    vulns={groupVulns}
-                    sortKey={sortKey}
-                    sortDir={sortDir}
-                    handleSort={handleSort}
-                    suppressed={suppressed}
-                    onMarkFP={handleMarkFP}
-                    expandedId={expandedId}
-                    onToggleExpanded={setExpandedId}
-                  />
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <VulnTable

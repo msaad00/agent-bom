@@ -4,6 +4,18 @@ Five products, one package. System overview, scan pipeline, blast radius, compli
 
 ---
 
+## 0. Hermetic single-language stack
+
+agent-bom is pure Python (3.11+) end to end — CLI, FastAPI surface, MCP server, parsers, OSV/NVD/EPSS/KEV/GHSA enrichment, blast-radius scoring, IaC engine, and CIS benchmarks all live in the same interpreter. There is no Rust/Go/CGo extension on the scan path. Disk-image scans use native `dpkg` / RPM parsers (`src/agent_bom/filesystem.py`); the `syft` Go binary is opt-in only as a tar-archive fallback for VM-style images.
+
+Operational consequences:
+
+- One language, one dep tree, one pip-audit/SBOM surface to audit and reproduce.
+- Wheels build cleanly on `linux/amd64` and `linux/arm64` — no per-arch native toolchain.
+- Slower than Rust/Go scanners on huge fanouts; per-package memory is higher. For VM disk-image scanning at scale, install `syft` alongside agent-bom and let the fallback path take over.
+
+---
+
 ## 1. System Overview — 5 Products
 
 ```

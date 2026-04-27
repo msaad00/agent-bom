@@ -214,11 +214,14 @@ show_error_codes = true
 [[tool.mypy.overrides]]
 module = [
     "agent_bom.api.compliance_signing",
+    "agent_bom.api.dashboard_csp",
     "agent_bom.api.metrics",
     "agent_bom.api.scim",
     "agent_bom.api.storage_schema",
     "agent_bom.api.tenant_quota_store",
     "agent_bom.api.tracing",
+    "agent_bom.backpressure",
+    "agent_bom.proxy_sandbox",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

@@ -11,6 +11,7 @@ permissions: {}  # all permissions denied by default; jobs declare only what the
 jobs:
   publish-stdio:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -76,6 +77,7 @@ jobs:
 
   publish-sse:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write

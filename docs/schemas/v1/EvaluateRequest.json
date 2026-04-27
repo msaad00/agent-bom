@@ -1,0 +1,23 @@
+{
+  "properties": {
+    "agent_name": {
+      "default": "",
+      "title": "Agent Name",
+      "type": "string"
+    },
+    "arguments": {
+      "additionalProperties": true,
+      "title": "Arguments",
+      "type": "object"
+    },
+    "tool_name": {
+      "title": "Tool Name",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tool_name"
+  ],
+  "title": "EvaluateRequest",
+  "type": "object"
+}

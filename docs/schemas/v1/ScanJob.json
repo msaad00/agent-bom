@@ -1,0 +1,287 @@
+{
+  "$defs": {
+    "JobStatus": {
+      "enum": [
+        "pending",
+        "running",
+        "done",
+        "failed",
+        "cancelled"
+      ],
+      "title": "JobStatus",
+      "type": "string"
+    },
+    "ScanRequest": {
+      "description": "Options accepted by POST /v1/scan \u2014 mirrors agent-bom scan CLI flags.",
+      "properties": {
+        "agent_projects": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Agent Projects",
+          "type": "array"
+        },
+        "connectors": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Connectors",
+          "type": "array"
+        },
+        "dynamic_discovery": {
+          "default": false,
+          "title": "Dynamic Discovery",
+          "type": "boolean"
+        },
+        "dynamic_max_depth": {
+          "default": 4,
+          "title": "Dynamic Max Depth",
+          "type": "integer"
+        },
+        "enrich": {
+          "default": false,
+          "title": "Enrich",
+          "type": "boolean"
+        },
+        "exclude_agents": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclude Agents",
+          "type": "array"
+        },
+        "exclude_servers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Exclude Servers",
+          "type": "array"
+        },
+        "filesystem_paths": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Filesystem Paths",
+          "type": "array"
+        },
+        "format": {
+          "default": "json",
+          "title": "Format",
+          "type": "string"
+        },
+        "gha_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Gha Path"
+        },
+        "images": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Images",
+          "type": "array"
+        },
+        "inventory": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Inventory"
+        },
+        "jupyter_dirs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Jupyter Dirs",
+          "type": "array"
+        },
+        "k8s": {
+          "default": false,
+          "title": "K8S",
+          "type": "boolean"
+        },
+        "k8s_namespace": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "K8S Namespace"
+        },
+        "min_severity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Min Severity"
+        },
+        "sbom": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sbom"
+        },
+        "scope_agents": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Scope Agents",
+          "type": "array"
+        },
+        "scope_servers": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Scope Servers",
+          "type": "array"
+        },
+        "tf_dirs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Tf Dirs",
+          "type": "array"
+        }
+      },
+      "title": "ScanRequest",
+      "type": "object"
+    }
+  },
+  "description": "Represents a running or completed scan job.",
+  "properties": {
+    "completed_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Completed At"
+    },
+    "created_at": {
+      "title": "Created At",
+      "type": "string"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "job_id": {
+      "title": "Job Id",
+      "type": "string"
+    },
+    "progress": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Progress",
+      "type": "array"
+    },
+    "request": {
+      "$ref": "#/$defs/ScanRequest"
+    },
+    "result": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Result"
+    },
+    "source_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Id"
+    },
+    "started_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Started At"
+    },
+    "status": {
+      "$ref": "#/$defs/JobStatus",
+      "default": "pending"
+    },
+    "tenant_id": {
+      "default": "default",
+      "title": "Tenant Id",
+      "type": "string"
+    },
+    "triggered_by": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Triggered By"
+    }
+  },
+  "required": [
+    "job_id",
+    "created_at",
+    "request"
+  ],
+  "title": "ScanJob",
+  "type": "object"
+}

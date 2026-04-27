@@ -26,6 +26,7 @@ jobs:
     name: Code scanning config placeholders
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       security-events: write
     steps:
@@ -72,6 +73,7 @@ jobs:
   pip-audit-pr:
     name: pip-audit on PR
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:
@@ -135,6 +137,7 @@ jobs:
   self-scan-pr:
     name: agent-bom self-scan on PR
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       security-events: write   # upload SARIF

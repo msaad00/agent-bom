@@ -1,0 +1,28 @@
+{
+  "properties": {
+    "fail": {
+      "default": 0,
+      "title": "Fail",
+      "type": "integer"
+    },
+    "pass": {
+      "title": "Pass",
+      "type": "integer"
+    },
+    "score": {
+      "default": 100.0,
+      "title": "Score",
+      "type": "number"
+    },
+    "warning": {
+      "default": 0,
+      "title": "Warning",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "pass"
+  ],
+  "title": "ComplianceReportSummary",
+  "type": "object"
+}

@@ -23,6 +23,7 @@ jobs:
   cleanup:
     name: Clean up old Docker Hub tags
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Delete old tags
         env:

@@ -1,0 +1,21 @@
+{
+  "properties": {
+    "checked": {
+      "default": 0,
+      "title": "Checked",
+      "type": "integer"
+    },
+    "tampered": {
+      "default": 0,
+      "title": "Tampered",
+      "type": "integer"
+    },
+    "verified": {
+      "default": 0,
+      "title": "Verified",
+      "type": "integer"
+    }
+  },
+  "title": "ComplianceAuditIntegrity",
+  "type": "object"
+}

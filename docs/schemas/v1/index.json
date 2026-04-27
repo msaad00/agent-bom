@@ -1,0 +1,202 @@
+{
+  "generator": "scripts/generate_v1_schemas.py",
+  "models": [
+    {
+      "doc": "",
+      "name": "AnalyticsHealth",
+      "schema": "AnalyticsHealth.json"
+    },
+    {
+      "doc": "Request body for POST /v1/scan/browser-extensions.",
+      "name": "BrowserExtensionsRequest",
+      "schema": "BrowserExtensionsRequest.json"
+    },
+    {
+      "doc": "",
+      "name": "ComplianceAuditIntegrity",
+      "schema": "ComplianceAuditIntegrity.json"
+    },
+    {
+      "doc": "",
+      "name": "ComplianceEvidenceItem",
+      "schema": "ComplianceEvidenceItem.json"
+    },
+    {
+      "doc": "",
+      "name": "ComplianceReportBundle",
+      "schema": "ComplianceReportBundle.json"
+    },
+    {
+      "doc": "",
+      "name": "ComplianceReportControl",
+      "schema": "ComplianceReportControl.json"
+    },
+    {
+      "doc": "",
+      "name": "ComplianceReportScope",
+      "schema": "ComplianceReportScope.json"
+    },
+    {
+      "doc": "",
+      "name": "ComplianceReportSummary",
+      "schema": "ComplianceReportSummary.json"
+    },
+    {
+      "doc": "",
+      "name": "ComplianceThreatModel",
+      "schema": "ComplianceThreatModel.json"
+    },
+    {
+      "doc": "",
+      "name": "CreateKeyRequest",
+      "schema": "CreateKeyRequest.json"
+    },
+    {
+      "doc": "Request body for POST /v1/scan/dataset-cards.",
+      "name": "DatasetCardsRequest",
+      "schema": "DatasetCardsRequest.json"
+    },
+    {
+      "doc": "",
+      "name": "EvaluateRequest",
+      "schema": "EvaluateRequest.json"
+    },
+    {
+      "doc": "",
+      "name": "ExceptionRequest",
+      "schema": "ExceptionRequest.json"
+    },
+    {
+      "doc": "Request body for POST /v1/findings/false-positive.",
+      "name": "FalsePositiveRequest",
+      "schema": "FalsePositiveRequest.json"
+    },
+    {
+      "doc": "Request body for POST /v1/findings/feedback.",
+      "name": "FindingFeedbackRequest",
+      "schema": "FindingFeedbackRequest.json"
+    },
+    {
+      "doc": "",
+      "name": "FleetAgentUpdate",
+      "schema": "FleetAgentUpdate.json"
+    },
+    {
+      "doc": "",
+      "name": "HealthResponse",
+      "schema": "HealthResponse.json"
+    },
+    {
+      "doc": "Request body for POST /v1/findings/jira.",
+      "name": "JiraTicketRequest",
+      "schema": "JiraTicketRequest.json"
+    },
+    {
+      "doc": "Request body for POST /v1/scan/model-files.",
+      "name": "ModelFilesRequest",
+      "schema": "ModelFilesRequest.json"
+    },
+    {
+      "doc": "Request body for POST /v1/scan/model-provenance.",
+      "name": "ModelProvenanceRequest",
+      "schema": "ModelProvenanceRequest.json"
+    },
+    {
+      "doc": "",
+      "name": "PolicyCreate",
+      "schema": "PolicyCreate.json"
+    },
+    {
+      "doc": "",
+      "name": "PolicyUpdate",
+      "schema": "PolicyUpdate.json"
+    },
+    {
+      "doc": "Request body for POST /v1/scan/prompt-scan.",
+      "name": "PromptScanRequest",
+      "schema": "PromptScanRequest.json"
+    },
+    {
+      "doc": "",
+      "name": "ProxyAuditIngestRequest",
+      "schema": "ProxyAuditIngestRequest.json"
+    },
+    {
+      "doc": "",
+      "name": "PushPayload",
+      "schema": "PushPayload.json"
+    },
+    {
+      "doc": "",
+      "name": "RotateKeyRequest",
+      "schema": "RotateKeyRequest.json"
+    },
+    {
+      "doc": "",
+      "name": "SAMLLoginRequest",
+      "schema": "SAMLLoginRequest.json"
+    },
+    {
+      "doc": "Represents a running or completed scan job.",
+      "name": "ScanJob",
+      "schema": "ScanJob.json"
+    },
+    {
+      "doc": "Options accepted by POST /v1/scan \u2014 mirrors agent-bom scan CLI flags.",
+      "name": "ScanRequest",
+      "schema": "ScanRequest.json"
+    },
+    {
+      "doc": "",
+      "name": "ScheduleCreate",
+      "schema": "ScheduleCreate.json"
+    },
+    {
+      "doc": "",
+      "name": "SourceCreate",
+      "schema": "SourceCreate.json"
+    },
+    {
+      "doc": "",
+      "name": "SourceRecord",
+      "schema": "SourceRecord.json"
+    },
+    {
+      "doc": "",
+      "name": "SourceUpdate",
+      "schema": "SourceUpdate.json"
+    },
+    {
+      "doc": "",
+      "name": "StateUpdate",
+      "schema": "StateUpdate.json"
+    },
+    {
+      "doc": "",
+      "name": "StorageHealth",
+      "schema": "StorageHealth.json"
+    },
+    {
+      "doc": "",
+      "name": "TenantQuotaUpdateRequest",
+      "schema": "TenantQuotaUpdateRequest.json"
+    },
+    {
+      "doc": "",
+      "name": "TracingHealth",
+      "schema": "TracingHealth.json"
+    },
+    {
+      "doc": "Request body for POST /v1/scan/training-pipelines.",
+      "name": "TrainingPipelinesRequest",
+      "schema": "TrainingPipelinesRequest.json"
+    },
+    {
+      "doc": "",
+      "name": "VersionInfo",
+      "schema": "VersionInfo.json"
+    }
+  ],
+  "source_module": "agent_bom.api.models",
+  "version": "v1"
+}

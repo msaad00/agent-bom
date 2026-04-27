@@ -16,6 +16,7 @@ jobs:
   dependency-submission:
     name: Submit dependency snapshots
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:

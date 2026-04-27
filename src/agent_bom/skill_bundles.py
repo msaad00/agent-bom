@@ -60,10 +60,31 @@ class SkillBundle:
 
 
 def _sha256_file(path: Path) -> str:
+    """Hash a file by ID, refusing symlinks at open time.
+
+    `_resolve_local_refs` already filters out paths whose components
+    include a symlink, but that check happens before the hash read —
+    leaving a TOCTOU window where the path could be swapped to point
+    elsewhere. Open with ``O_NOFOLLOW`` so the kernel itself rejects
+    a symlink at the leaf, closing the gap (audit-4 P2). On Windows
+    `os.O_NOFOLLOW` is unavailable; the fallback path uses the
+    previous open() since `_ref_path_uses_symlink` is the next-best
+    guard available there.
+    """
     h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(65536), b""):
-            h.update(chunk)
+    nofollow_flag = getattr(os, "O_NOFOLLOW", None)
+    if nofollow_flag is not None:
+        # `os.open` raises OSError(ELOOP / ENOTDIR) when the leaf is a
+        # symlink. After it succeeds, the file object returned by
+        # os.fdopen owns the fd and will close it via the with-block.
+        fd = os.open(str(path), os.O_RDONLY | nofollow_flag)
+        with os.fdopen(fd, "rb") as fh:
+            for chunk in iter(lambda: fh.read(65536), b""):
+                h.update(chunk)
+    else:
+        with path.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(65536), b""):
+                h.update(chunk)
     return h.hexdigest()
 
 

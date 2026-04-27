@@ -351,7 +351,7 @@ async def _lifespan(app_instance: FastAPI):
     from agent_bom.api.pipeline import _now
     from agent_bom.api.pipeline import _run_scan_sync as _run_scan  # local alias avoids F811 with re-export
     from agent_bom.api.scheduler import scheduler_loop
-    from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota
+    from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
 
     def _schedule_scan(scan_config: dict) -> str:
         """Trigger a scan from a schedule."""
@@ -359,8 +359,6 @@ async def _lifespan(app_instance: FastAPI):
             getattr(scan_config, "tenant_id", None) if hasattr(scan_config, "tenant_id") else scan_config.get("tenant_id", "default")
         )
         tenant_id = str(tenant_id or "default")
-        enforce_active_scan_quota(tenant_id)
-        enforce_retained_jobs_quota(tenant_id)
         job = ScanJob(
             job_id=str(uuid.uuid4()),
             tenant_id=tenant_id,
@@ -368,8 +366,15 @@ async def _lifespan(app_instance: FastAPI):
             created_at=_now(),
             request=ScanRequest(**scan_config) if isinstance(scan_config, dict) else scan_config,
         )
-        _get_store().put(job)
-        _jobs_put(job.job_id, job)
+        # Per-tenant quota lock makes (check + insert) atomic. See
+        # tenant_quota.tenant_quota_guard for rationale (audit-4 P1).
+        with tenant_quota_guard(
+            tenant_id,
+            lambda: enforce_active_scan_quota(tenant_id),
+            lambda: enforce_retained_jobs_quota(tenant_id),
+        ):
+            _get_store().put(job)
+            _jobs_put(job.job_id, job)
         loop = asyncio.get_running_loop()
         loop.run_in_executor(get_executor(), _run_scan, job)
         return job.job_id

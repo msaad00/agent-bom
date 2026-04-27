@@ -12,6 +12,7 @@ jobs:
   check-pins:
     name: Check GitHub Action SHA freshness
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:

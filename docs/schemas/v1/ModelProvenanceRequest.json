@@ -1,0 +1,21 @@
+{
+  "description": "Request body for POST /v1/scan/model-provenance.",
+  "properties": {
+    "hf_models": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Hf Models",
+      "type": "array"
+    },
+    "ollama_models": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Ollama Models",
+      "type": "array"
+    }
+  },
+  "title": "ModelProvenanceRequest",
+  "type": "object"
+}

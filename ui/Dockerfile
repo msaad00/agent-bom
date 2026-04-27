@@ -7,7 +7,7 @@
 
 # ── Stage 1: Install dependencies ─────────────────────────────────────────────
 # pending-digest
-FROM node:22-bookworm-slim AS deps
+FROM node:25-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --ignore-scripts
@@ -19,7 +19,7 @@ RUN npm install --no-save --ignore-scripts lightningcss-linux-x64-gnu@1.32.0
 
 # ── Stage 2: Build ────────────────────────────────────────────────────────────
 # pending-digest
-FROM node:22-bookworm-slim AS builder
+FROM node:25-bookworm-slim AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -32,7 +32,7 @@ RUN npm run build
 
 # ── Stage 3: Run ──────────────────────────────────────────────────────────────
 # pending-digest
-FROM node:22-bookworm-slim AS runner
+FROM node:25-bookworm-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

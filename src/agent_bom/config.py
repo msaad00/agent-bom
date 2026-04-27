@@ -205,6 +205,11 @@ API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT = _int("AGENT_BOM_API_MAX_ACTIVE_SCAN_JOBS_P
 API_MAX_RETAINED_JOBS_PER_TENANT = _int("AGENT_BOM_API_MAX_RETAINED_JOBS_PER_TENANT", 500)
 API_MAX_FLEET_AGENTS_PER_TENANT = _int("AGENT_BOM_API_MAX_FLEET_AGENTS_PER_TENANT", 1_000)
 API_MAX_SCHEDULES_PER_TENANT = _int("AGENT_BOM_API_MAX_SCHEDULES_PER_TENANT", 100)
+# Slowloris throughput floor (audit-5 PR-C): minimum sustained body
+# bytes/second once a request body crosses the warmup threshold inside
+# MaxBodySizeMiddleware. 0 disables the floor entirely (escape hatch
+# for legitimate slow clients in restricted networks).
+API_BODY_MIN_BPS = _int("AGENT_BOM_BODY_MIN_BPS", 256)
 
 
 # ── PostgreSQL Control Plane Tuning ──────────────────────────────────────

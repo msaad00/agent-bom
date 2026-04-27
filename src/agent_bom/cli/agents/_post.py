@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from agent_bom.cli._common import SEVERITY_ORDER
@@ -88,10 +87,12 @@ def run_integrations(
             _ch_store = ClickHouseAnalyticsStore(url=clickhouse_url)
             _scan_id = str(_uuid_ch.uuid4())
             # CLI runs against a shared ClickHouse are tagged with the
-            # operator's tenant so reads stay segregated. Operators set
-            # AGENT_BOM_TENANT_ID when the local scan belongs to a
-            # specific tenant context.
-            _ch_tenant_id = (os.environ.get("AGENT_BOM_TENANT_ID") or "default").strip() or "default"
+            # operator's tenant so reads stay segregated. Resolution path
+            # lives in agent_bom.cli._tenant — the only sanctioned reader
+            # of AGENT_BOM_TENANT_ID from CLI code (#1964).
+            from agent_bom.cli._tenant import resolve_cli_tenant_id
+
+            _ch_tenant_id = resolve_cli_tenant_id()
             if ctx.report:
                 analytics = build_scan_analytics_payload(ctx.report, scan_id=_scan_id, source="cli")
                 for agent_name, findings in analytics.agent_findings.items():

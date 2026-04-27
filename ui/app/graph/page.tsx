@@ -1,6 +1,8 @@
-import GraphPageClient from "./graph-page-client";
+import dynamic from "next/dynamic";
 
-export const dynamic = "force-dynamic";
+const GraphPageClient = dynamic(() => import("./graph-page-client"), {
+  ssr: false,
+});
 
 export default function GraphPage() {
   return <GraphPageClient />;

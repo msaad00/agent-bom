@@ -573,6 +573,58 @@ class ClickHouseAnalyticsStore:
         )
         return self._client.query_json(query)
 
+    def aggregate_cis_benchmark_checks(
+        self,
+        *,
+        days: int = 30,
+        cloud: str | None = None,
+        section: str | None = None,
+        status: str | None = None,
+        severity: str | None = None,
+        bucket: str = "day",
+        tenant_id: str | None = None,
+    ) -> list[dict]:
+        """Time-bucketed CIS finding counts (#1832).
+
+        Mirrors :meth:`PostgresJobStore.aggregate_cis_benchmark_checks` so
+        the API trend endpoint can fall back to ClickHouse when the
+        primary scan store is in-memory or otherwise lacks the columnar
+        index. Bucket is whitelisted (``hour``/``day``/``week``) and
+        every filter value flows through the existing ``_escape`` helper.
+        """
+        bucket_unit = {"hour": "toStartOfHour", "day": "toStartOfDay", "week": "toStartOfWeek"}.get(str(bucket).lower(), "toStartOfDay")
+        clauses: list[str] = [f"measured_at >= now() - INTERVAL {max(1, min(int(days), 366))} DAY"]
+        if tenant_id is not None:
+            clauses.append(f"tenant_id = '{_escape(tenant_id)}'")
+        if cloud:
+            clauses.append(f"cloud = '{_escape(cloud)}'")
+        if section:
+            clauses.append(f"cis_section = '{_escape(section)}'")
+        if status:
+            clauses.append(f"status = '{_escape(status)}'")
+        if severity:
+            clauses.append(f"severity = '{_escape(severity)}'")
+        where = " AND ".join(clauses)
+        query = (
+            f"SELECT {bucket_unit}(measured_at) AS bucket, cloud, cis_section, status, severity, "
+            "count() AS count "  # nosec B608
+            f"FROM cis_benchmark_checks WHERE {where} "
+            "GROUP BY bucket, cloud, cis_section, status, severity "
+            "ORDER BY bucket DESC, cloud, cis_section, status, severity"
+        )
+        rows = self._client.query_json(query)
+        return [
+            {
+                "bucket": str(row.get("bucket", "")),
+                "cloud": row.get("cloud", ""),
+                "cis_section": row.get("cis_section", ""),
+                "status": row.get("status", ""),
+                "severity": row.get("severity", ""),
+                "count": int(row.get("count", 0)),
+            }
+            for row in rows
+        ]
+
     def record_scan_metadata(self, metadata: dict, *, tenant_id: str = "default") -> None:
         self._client.insert_json(
             "scan_metadata",
@@ -704,6 +756,29 @@ class BufferedAnalyticsStore:
             priority=priority,
             limit=limit,
             offset=offset,
+            tenant_id=tenant_id,
+        )
+
+    def aggregate_cis_benchmark_checks(
+        self,
+        *,
+        days: int = 30,
+        cloud: str | None = None,
+        section: str | None = None,
+        status: str | None = None,
+        severity: str | None = None,
+        bucket: str = "day",
+        tenant_id: str | None = None,
+    ) -> list[dict]:
+        """Proxy to the underlying store after flushing the write queue (#1832)."""
+        self._flush_pending()
+        return self._store.aggregate_cis_benchmark_checks(
+            days=days,
+            cloud=cloud,
+            section=section,
+            status=status,
+            severity=severity,
+            bucket=bucket,
             tenant_id=tenant_id,
         )
 

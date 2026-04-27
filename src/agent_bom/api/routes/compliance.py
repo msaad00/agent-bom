@@ -15,6 +15,7 @@ Endpoints:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -37,6 +38,7 @@ def _dep(permission: str) -> Any:
 
 
 router = APIRouter(dependencies=[_dep("read")])
+_logger = logging.getLogger(__name__)
 
 _CLUSTER_SCAN_SOURCES = {"gpu_infra", "k8s"}
 _CI_CD_SCAN_SOURCES = {"github_actions"}
@@ -466,6 +468,159 @@ def _coerce_cis_row(row: dict[str, Any]) -> dict[str, Any]:
         except json.JSONDecodeError:
             coerced["remediation"] = {}
     return coerced
+
+
+# ─── CIS Benchmark Trend / Drilldown (#1832) ──────────────────────────────
+
+
+@router.get("/v1/cis/trends", tags=["compliance"])
+async def cis_benchmark_trends(
+    request: Request,
+    days: int = 30,
+    bucket: str = "day",
+    cloud: str | None = None,
+    section: str | None = None,
+    status: str | None = None,
+    severity: str | None = None,
+) -> dict:
+    """Time-bucketed CIS finding counts for trend / drilldown surfaces.
+
+    Resolves to the columnar store (Postgres ``cis_benchmark_checks`` →
+    ClickHouse) when available; otherwise reconstructs the aggregation
+    in-memory from the tenant's recent scan results so single-node and
+    SQLite-only deployments still return data.
+
+    Query parameters:
+    - ``days`` (1–366, default 30): rolling window size.
+    - ``bucket`` (``hour`` | ``day`` | ``week``, default ``day``): bucket
+      width. Anything else falls back to ``day``.
+    - ``cloud`` / ``section`` / ``status`` / ``severity``: optional
+      single-value filters narrowing the slice before aggregation.
+    """
+    tenant_id = _tenant_id(request)
+    bucket_unit = bucket if bucket in {"hour", "day", "week"} else "day"
+    days_clamped = max(1, min(int(days), 366))
+
+    job_store = _get_store()
+    aggregate_fn = getattr(job_store, "aggregate_cis_benchmark_checks", None)
+    if callable(aggregate_fn):
+        try:
+            buckets = aggregate_fn(
+                tenant_id,
+                days=days_clamped,
+                cloud=cloud,
+                section=section,
+                status=status,
+                severity=severity,
+                bucket=bucket_unit,
+            )
+            if buckets:
+                return {
+                    "buckets": buckets,
+                    "count": len(buckets),
+                    "source": "columnar",
+                    "bucket": bucket_unit,
+                    "days": days_clamped,
+                }
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("Postgres CIS aggregation failed; trying analytics store: %s", exc)
+
+    analytics_store = _get_analytics_store()
+    analytics_aggregate = getattr(analytics_store, "aggregate_cis_benchmark_checks", None)
+    if callable(analytics_aggregate):
+        try:
+            buckets = analytics_aggregate(
+                days=days_clamped,
+                cloud=cloud,
+                section=section,
+                status=status,
+                severity=severity,
+                bucket=bucket_unit,
+                tenant_id=tenant_id,
+            )
+            if buckets:
+                return {
+                    "buckets": buckets,
+                    "count": len(buckets),
+                    "source": "analytics",
+                    "bucket": bucket_unit,
+                    "days": days_clamped,
+                }
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("ClickHouse CIS aggregation failed: %s", exc)
+
+    # In-memory fallback: aggregate the tenant's recent scan results
+    # locally so even single-node and SQLite-only deployments answer.
+    from agent_bom.analytics_contract import build_cis_benchmark_check_rows
+
+    cutoff_isoformat = (datetime.now(timezone.utc) - timedelta(days=days_clamped)).isoformat()
+    counts: dict[tuple[str, str, str, str, str], int] = {}
+    for job in _tenant_jobs(request):
+        if job.status != JobStatus.DONE or not isinstance(getattr(job, "result", None), dict):
+            continue
+        measured_at = getattr(job, "completed_at", None) or getattr(job, "created_at", None)
+        if measured_at and str(measured_at) < cutoff_isoformat:
+            continue
+        rows = build_cis_benchmark_check_rows(
+            job.result,
+            str(job.result.get("scan_id") or job.job_id),
+            measured_at=measured_at,
+        )
+        for row in rows:
+            if cloud and row.get("cloud", "").lower() != cloud.lower():
+                continue
+            if section and row.get("cis_section", "") != section:
+                continue
+            if status and row.get("status", "").lower() != status.lower():
+                continue
+            if severity and row.get("severity", "").lower() != severity.lower():
+                continue
+            bucket_key = _bucket_for(str(row.get("measured_at") or ""), bucket_unit)
+            key = (
+                bucket_key,
+                row.get("cloud", ""),
+                row.get("cis_section", ""),
+                row.get("status", ""),
+                row.get("severity", ""),
+            )
+            counts[key] = counts.get(key, 0) + 1
+
+    buckets_payload = [
+        {
+            "bucket": bucket_value,
+            "cloud": cloud_value,
+            "cis_section": section_value,
+            "status": status_value,
+            "severity": severity_value,
+            "count": count,
+        }
+        for (bucket_value, cloud_value, section_value, status_value, severity_value), count in sorted(counts.items(), reverse=True)
+    ]
+    return {
+        "buckets": buckets_payload,
+        "count": len(buckets_payload),
+        "source": "scan_jobs",
+        "bucket": bucket_unit,
+        "days": days_clamped,
+    }
+
+
+def _bucket_for(measured_at_iso: str, unit: str) -> str:
+    """Truncate ``measured_at_iso`` to the given bucket granularity for the in-memory fallback."""
+    if not measured_at_iso:
+        return ""
+    try:
+        moment = datetime.fromisoformat(measured_at_iso.replace("Z", "+00:00"))
+    except ValueError:
+        return measured_at_iso
+    if unit == "hour":
+        moment = moment.replace(minute=0, second=0, microsecond=0)
+    elif unit == "week":
+        moment = moment - timedelta(days=moment.weekday())
+        moment = moment.replace(hour=0, minute=0, second=0, microsecond=0)
+    else:
+        moment = moment.replace(hour=0, minute=0, second=0, microsecond=0)
+    return moment.isoformat()
 
 
 # ─── Compliance Narrative ─────────────────────────────────────────────────

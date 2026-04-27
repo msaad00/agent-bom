@@ -9,7 +9,45 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Work targeting the next release.
+### Added
+- **Cloud origin lineage in the unified graph** — agents discovered with cloud metadata now promote `cloud_principal`, `cloud_resource`, and direct principal→agent edges so single-hop reachability queries no longer have to traverse the intermediate cloud_resource node.
+- **GPU and k8s GPU promotion** — GPU containers and Kubernetes GPU clusters now flow into the unified graph alongside the rest of the inventory.
+- **Static multi-agent topology edges** — framework-level agent topology is now materialized as graph edges so reviewers can see which agents delegate to which.
+- **System prompt and MCP prompt inventory** — system prompts and MCP server prompts are now captured as policy evidence and surfaced through the standard inventory paths.
+- **AI observability SDK inventory** — observability SDKs are detected and recorded as managed inventory.
+- **MCP stable error envelope** — MCP responses now carry stable `code` / `category` / `details` / `schema_version` fields and a published API parity matrix so SDK consumers can branch on machine-readable errors.
+- **Vanilla EKS production preset** — `deploy/helm/agent-bom/examples/eks-vanilla-values.yaml` ships a production-shaped preset for self-hosted EKS rollouts.
+- **Customer secret rotation adapter evidence** — secret rotation adapters now emit deterministic evidence so operators can prove a managed key was rotated by their KMS, not the platform.
+- **Native control-plane mTLS fallback** — the API can terminate mTLS itself when no mesh or front proxy is available, with a posture surface on `/v1/auth/policy`.
+- **Frontend API error taxonomy + GET caching/dedup** — the dashboard API client now exposes a typed error taxonomy and dedupes/caches GET requests with prefix-scoped invalidation.
+
+### Changed
+- **Centralised tenant resolution for CLI and MCP** — CLI and MCP entry points now resolve tenant id through one shared helper instead of per-surface ad-hoc logic.
+- **Backpressure posture surfaced on `/v1/auth/policy`** — the operator policy endpoint now reports adaptive backpressure state (paths, p99, retry-after) alongside the auth and rate-limit posture.
+- **CSP source-of-truth centralised** — `ui/next.config.ts` and `ui/vercel.json` now share one CSP definition; `script-src 'unsafe-inline'` is temporarily restored pending the hash-pinning collector.
+- **Docker compose deployment** — platform compose files now use Docker secrets for Postgres credentials and align healthchecks across services.
+- **Docker base alignment** — runtime images now use LTS base versions and the build pipeline gates on the Glama and image-policy checks.
+- **Floating reference policy** — references to mutable upstream tags are now disallowed in build inputs by automated policy.
+- **Postgres sizing guidance + weekly scale-evidence regen** — `docs/perf/` documents `pg_size_pretty` sizing for 1k/5k/10k estates and a scheduled CI run keeps `docs/perf/results/` fresh.
+- **Generated `AGENT_BOM_*` env reference** — the env-var reference is now generated from `config.py` and CI fails if the doc drifts from the source.
+
+### Fixed
+- **Release and post-merge job timeouts** — every release-pipeline and post-merge-self-scan job now has an explicit `timeout-minutes`; runaway jobs no longer hold scarce runners.
+- **Container rescan checkout pinned to v6** — the daily image rescan now uses a v6-pinned `actions/checkout` SHA aligned with the rest of the pipeline.
+- **main-ui-smoke boot script** — the standalone container boot script now assembles the `.next/static` tree explicitly (`rm`/`mkdir`/`cp -a`) so a missing source dir no longer aborts the smoke under `set -e`.
+- **Frontend contract hygiene** — closed frontend contract gaps surfaced by the post-v0.81.3 audit.
+- **Audit contract runtime gaps** — closed runtime gaps in audit-log integrity, signing, and lifecycle posture surfaced by the post-v0.81.3 audit.
+- **Adaptive backpressure retry-after jitter** — retry-after now uses multiplicative jitter so colocated callers don't all retry on the same boundary at base ≈ 1s.
+
+### Security
+- **Auth middleware hardening** — header normalisation, exempt-path startup assertions, and tightened trust-proxy posture across the auth middleware stack.
+- **MCP sandbox `image_pin_policy` posture surfaced** — `/v1/auth/policy` now reports the deployment-wide default and recommends `enforce` for production.
+- **Cross-parser dedup proofs + Postgres RLS red-team test for `scan_jobs`** — added structural and runtime guards proving a session bound to tenant B cannot read tenant A `scan_jobs` rows under a non-superuser role.
+- **Dependabot UI lockfile workflow no longer trusts the PR `scripts.lock:normalize` entry** — replaces the `npm run lock:normalize` step with an inline `npm install --package-lock-only --ignore-scripts` so a Dependabot branch can't redefine the script under a privileged `pull_request_target` token.
+
+### Internal
+- **Tracked Finder duplicate artifacts blocked** — CI now refuses to merge tracked macOS Finder duplicate files (e.g. `… 2.md`).
+- **Real Postgres integration contract** — `tests/test_postgres_integration.py` now exercises real Postgres for job, audit, and RLS contracts.
 
 ---
 

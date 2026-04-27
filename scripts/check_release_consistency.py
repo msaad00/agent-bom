@@ -168,6 +168,19 @@ def main() -> int:
         if versions and versions != {version}:
             _fail(f"{path.relative_to(ROOT)} contains stale managed image version(s): {sorted(versions)} != {version}")
 
+    helm_chart = ROOT / "deploy" / "helm" / "agent-bom" / "Chart.yaml"
+    helm_text = helm_chart.read_text()
+    chart_version = re.search(r"^version:\s*(\S+)\s*$", helm_text, re.M)
+    chart_app_version = re.search(r'^appVersion:\s*"([^"]+)"\s*$', helm_text, re.M)
+    if chart_version is None or chart_app_version is None:
+        _fail('deploy/helm/agent-bom/Chart.yaml must declare both `version:` and `appVersion: "..."`')
+    elif chart_version.group(1) != version or chart_app_version.group(1) != version:
+        _fail(
+            "deploy/helm/agent-bom/Chart.yaml is out of sync with pyproject.toml: "
+            f"chart.version={chart_version.group(1)}, chart.appVersion={chart_app_version.group(1)}, expected {version}. "
+            "Run scripts/bump-version.py to refresh both fields together."
+        )
+
     print("README/PyPI/docs release consistency checks passed")
     return 0
 

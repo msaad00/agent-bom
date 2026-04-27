@@ -11,6 +11,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.82.2] – 2026-04-27
+
+### Fixed
+- **UI image multi-arch publish** — `ui/Dockerfile` hard-pinned `lightningcss-linux-x64-gnu@1.32.0`, which broke the arm64 leg of the v0.82.1 release pipeline's `Publish UI image` job (`docker buildx --platform linux/amd64,linux/arm64`) with `EBADPLATFORM`. The fix consumes the `TARGETARCH` build arg buildx already injects and installs the matching prebuilt only (`lightningcss-linux-arm64-gnu` for arm64, `lightningcss-linux-x64-gnu` for amd64). v0.82.1 published the Python package, main API/CLI image, Helm chart, Sigstore signature, SLSA provenance, and CycloneDX SBOM successfully; only the standalone dashboard UI image at `agentbom/agent-bom-ui:0.82.x` was missing. v0.82.2 republishes that image for both architectures (#2025).
+
+---
+
 ## [0.82.1] – 2026-04-27
 
 ### Fixed

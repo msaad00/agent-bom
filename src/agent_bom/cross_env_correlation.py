@@ -576,6 +576,237 @@ def correlate_azure_openai(agents: Iterable[AgentLike]) -> list[CorrelationMatch
 
 
 # ---------------------------------------------------------------------------
+# GCP Vertex AI identity extractors + matcher (#1892 Phase 3)
+# ---------------------------------------------------------------------------
+
+# Authoritative Vertex endpoint resource path:
+#   projects/{project_id}/locations/{region}/endpoints/{endpoint_id}
+_VERTEX_RESOURCE_RE = re.compile(
+    r"^projects/(?P<project>[a-z0-9-]+)/locations/(?P<location>[a-z0-9-]+)/endpoints/(?P<endpoint>[a-z0-9_-]+)",
+    re.IGNORECASE,
+)
+# Vertex regional API hostname: `{region}-aiplatform.googleapis.com` —
+# present in regional client URLs but not parseable into a project/endpoint
+# on its own. We parse it for region only.
+_VERTEX_HOSTNAME_RE = re.compile(r"https?://([a-z0-9-]+)-aiplatform\.googleapis\.com", re.IGNORECASE)
+
+_GCP_PROJECT_ENV_KEYS = (
+    "GOOGLE_CLOUD_PROJECT",
+    "GCP_PROJECT",
+    "GCP_PROJECT_ID",
+    "GOOGLE_PROJECT_ID",
+)
+_GCP_LOCATION_ENV_KEYS = (
+    "GOOGLE_CLOUD_REGION",
+    "GOOGLE_CLOUD_LOCATION",
+    "VERTEX_AI_LOCATION",
+    "VERTEX_LOCATION",
+)
+_VERTEX_ENDPOINT_ENV_KEYS = (
+    "VERTEX_AI_ENDPOINT_ID",
+    "VERTEX_ENDPOINT_ID",
+    "VERTEX_AI_ENDPOINT",
+)
+# `aiplatform.init(project=..., location=...)` is invoked from code, but
+# operators commonly set these env knobs ahead of the SDK call so the
+# extractor uses env as the cheap, accurate signal.
+
+
+@dataclass(frozen=True)
+class _LocalGcpVertexEvidence:
+    agent_name: str
+    agent_type: str
+    project_ids: frozenset[str]
+    locations: frozenset[str]
+    endpoint_ids: frozenset[str]
+
+
+@dataclass(frozen=True)
+class _CloudGcpVertexEndpoint:
+    agent_name: str
+    resource_name: str
+    project_id: str | None
+    location: str | None
+    endpoint_id: str | None
+
+
+def _parse_vertex_resource(resource_name: str) -> tuple[str | None, str | None, str | None]:
+    match = _VERTEX_RESOURCE_RE.search(resource_name)
+    if not match:
+        return None, None, None
+    return (
+        match.group("project").lower(),
+        match.group("location").lower(),
+        match.group("endpoint").lower(),
+    )
+
+
+def _looks_like_gcp_project_id(value: str) -> bool:
+    # GCP project IDs are lowercase, 6–30 chars, alphanumeric + hyphens,
+    # must start with a letter, may not end with a hyphen. The cheap gate
+    # is enough — we just need to refuse arbitrary strings like "test" or
+    # email addresses being treated as a project match.
+    if not (6 <= len(value) <= 30):
+        return False
+    if not value[0].isalpha():
+        return False
+    if value.endswith("-"):
+        return False
+    return all(ch.isalnum() or ch == "-" for ch in value)
+
+
+def _extract_local_gcp_vertex_evidence(view: _AgentView) -> _LocalGcpVertexEvidence | None:
+    if _is_cloud_discovered(view):
+        return None
+
+    projects: set[str] = set()
+    locations: set[str] = set()
+    endpoints: set[str] = set()
+
+    for env in view.mcp_server_envs:
+        for key, value in env.items():
+            if not isinstance(value, str) or not value:
+                continue
+            stripped = value.strip()
+            if key in _GCP_PROJECT_ENV_KEYS and _looks_like_gcp_project_id(stripped.lower()):
+                projects.add(stripped.lower())
+            elif key in _GCP_LOCATION_ENV_KEYS:
+                locations.add(stripped.lower())
+            elif key in _VERTEX_ENDPOINT_ENV_KEYS:
+                # Accept either a bare numeric/named endpoint id OR a full
+                # resource path; if it's a path, parse all three at once.
+                project_from_path, location_from_path, endpoint_from_path = _parse_vertex_resource(stripped)
+                if endpoint_from_path:
+                    endpoints.add(endpoint_from_path)
+                    if project_from_path:
+                        projects.add(project_from_path)
+                    if location_from_path:
+                        locations.add(location_from_path)
+                else:
+                    endpoints.add(stripped.lower())
+
+    raw_explicit = view.metadata.get("gcp")
+    explicit_gcp: Mapping[str, Any] = raw_explicit if isinstance(raw_explicit, Mapping) else {}
+    explicit_project = str(explicit_gcp.get("project_id", "")).strip().lower()
+    if _looks_like_gcp_project_id(explicit_project):
+        projects.add(explicit_project)
+    explicit_location = str(explicit_gcp.get("location", "")).strip().lower()
+    if explicit_location:
+        locations.add(explicit_location)
+    explicit_endpoint = str(explicit_gcp.get("vertex_endpoint_id", "")).strip().lower()
+    if explicit_endpoint:
+        endpoints.add(explicit_endpoint)
+
+    if not (projects or locations or endpoints):
+        return None
+
+    return _LocalGcpVertexEvidence(
+        agent_name=view.name,
+        agent_type=view.agent_type,
+        project_ids=frozenset(projects),
+        locations=frozenset(locations),
+        endpoint_ids=frozenset(endpoints),
+    )
+
+
+def _extract_cloud_gcp_vertex_endpoint(view: _AgentView) -> _CloudGcpVertexEndpoint | None:
+    cloud_origin_raw = view.metadata.get("cloud_origin")
+    cloud_origin: Mapping[str, Any] = cloud_origin_raw if isinstance(cloud_origin_raw, Mapping) else {}
+    if not cloud_origin or cloud_origin.get("provider") != "gcp" or cloud_origin.get("service") != "vertex-ai":
+        return None
+
+    resource_name = str(cloud_origin.get("resource_id") or view.config_path or "")
+    arn_project, arn_location, arn_endpoint = _parse_vertex_resource(resource_name)
+
+    scope_raw = cloud_origin.get("scope")
+    scope: Mapping[str, Any] = scope_raw if isinstance(scope_raw, Mapping) else {}
+    scope_project = str(scope.get("project_id") or "").strip().lower()
+    project_id = scope_project or arn_project
+
+    location = str(cloud_origin.get("location") or "").strip().lower() or arn_location
+    endpoint_id = arn_endpoint
+
+    return _CloudGcpVertexEndpoint(
+        agent_name=view.name,
+        resource_name=resource_name,
+        project_id=project_id or None,
+        location=location or None,
+        endpoint_id=endpoint_id or None,
+    )
+
+
+def _match_gcp_vertex(
+    local: _LocalGcpVertexEvidence,
+    cloud: _CloudGcpVertexEndpoint,
+) -> CorrelationMatch | None:
+    matched: list[str] = []
+
+    if cloud.project_id and cloud.project_id in local.project_ids:
+        matched.append("project_id")
+    if cloud.location and cloud.location in local.locations:
+        matched.append("location")
+    if cloud.endpoint_id and cloud.endpoint_id in local.endpoint_ids:
+        matched.append("endpoint_id")
+
+    if not matched:
+        return None
+
+    confidence = CorrelationConfidence.HIGH if len(matched) >= _HIGH_CONFIDENCE_REQUIRED_SIGNALS else CorrelationConfidence.LOW
+
+    rationale_parts: list[str] = []
+    if "project_id" in matched:
+        rationale_parts.append(f"project {cloud.project_id}")
+    if "location" in matched:
+        rationale_parts.append(f"location {cloud.location}")
+    if "endpoint_id" in matched:
+        rationale_parts.append(f"endpoint {cloud.endpoint_id}")
+
+    rationale = (
+        "Strong triplet (project + location + endpoint) matched."
+        if confidence is CorrelationConfidence.HIGH
+        else "Partial match — kept as low-confidence candidate. Matched: " + ", ".join(rationale_parts) + "."
+    )
+
+    return CorrelationMatch(
+        local_agent_name=local.agent_name,
+        local_agent_type=local.agent_type,
+        cloud_agent_name=cloud.agent_name,
+        cloud_provider="gcp",
+        cloud_service="vertex-ai",
+        cloud_account_id=cloud.project_id,
+        cloud_region=cloud.location,
+        cloud_model_id=cloud.endpoint_id,
+        confidence=confidence,
+        matched_signals=tuple(matched),
+        rationale=rationale,
+    )
+
+
+def correlate_gcp_vertex(agents: Iterable[AgentLike]) -> list[CorrelationMatch]:
+    """Match local agents to cloud-discovered GCP Vertex AI endpoints."""
+    local_evidence: list[_LocalGcpVertexEvidence] = []
+    cloud_endpoints: list[_CloudGcpVertexEndpoint] = []
+
+    for agent in agents:
+        view = _normalize(agent)
+        cloud = _extract_cloud_gcp_vertex_endpoint(view)
+        if cloud is not None:
+            cloud_endpoints.append(cloud)
+            continue
+        local = _extract_local_gcp_vertex_evidence(view)
+        if local is not None:
+            local_evidence.append(local)
+
+    matches: list[CorrelationMatch] = []
+    for local in local_evidence:
+        for cloud in cloud_endpoints:
+            match = _match_gcp_vertex(local, cloud)
+            if match is not None:
+                matches.append(match)
+    return matches
+
+
+# ---------------------------------------------------------------------------
 # Top-level orchestrator. Phase 2 (Azure) and Phase 3 (GCP) plug in here.
 # ---------------------------------------------------------------------------
 
@@ -596,6 +827,7 @@ def correlate_cross_environment(agents: Iterable[AgentLike]) -> CrossEnvironment
     matches: list[CorrelationMatch] = []
     matches.extend(correlate_bedrock(materialized))
     matches.extend(correlate_azure_openai(materialized))
+    matches.extend(correlate_gcp_vertex(materialized))
     return CrossEnvironmentResult(matches=tuple(matches))
 
 

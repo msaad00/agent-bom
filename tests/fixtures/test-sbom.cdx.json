@@ -31,8 +31,8 @@
     {
       "type": "library",
       "name": "requests",
-      "version": "2.32.4",
-      "purl": "pkg:pypi/requests@2.32.4"
+      "version": "2.33.1",
+      "purl": "pkg:pypi/requests@2.33.1"
     }
   ]
 }

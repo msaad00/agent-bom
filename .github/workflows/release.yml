@@ -102,6 +102,7 @@ jobs:
   docs-site:
     name: Rebuild and deploy docs
     needs: version-guard
+    timeout-minutes: 20
     permissions:
       contents: read
       pages: write

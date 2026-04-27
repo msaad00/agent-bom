@@ -825,3 +825,45 @@ class TestCrossEnvironmentCorrelation:
         assert "agent:cursor-dev" in cloud_neighbor_targets, (
             "reverse lookup from cloud agent failed — bidirectional flag isn't being honored"
         )
+
+
+class TestEdgeEvidenceMerge:
+    """Audit-5: re-adding the same (source, target, relationship) edge
+    must merge the new evidence keys into the kept edge instead of
+    silently dropping them. The graph builder hits this whenever the
+    package-path edge is added before the blast-radius edge for the
+    same package; without the merge, cvss / epss / kev / attack-tag
+    evidence on the second-arriving edge was lost."""
+
+    def test_second_add_merges_evidence_keys(self):
+        from agent_bom.graph.container import UnifiedGraph
+        from agent_bom.graph.edge import UnifiedEdge
+        from agent_bom.graph.types import RelationshipType
+
+        g = UnifiedGraph(scan_id="merge", tenant_id="t1")
+        g.add_edge(
+            UnifiedEdge(
+                source="server:s",
+                target="pkg:p",
+                relationship=RelationshipType.DEPENDS_ON,
+                evidence={"data_source": "package-path", "is_direct": True},
+            )
+        )
+        g.add_edge(
+            UnifiedEdge(
+                source="server:s",
+                target="pkg:p",
+                relationship=RelationshipType.DEPENDS_ON,
+                evidence={"cvss": 7.5, "epss": 0.42, "kev": True, "is_direct": False},
+            )
+        )
+
+        kept = next(e for e in g.edges if e.source == "server:s" and e.target == "pkg:p")
+        # Second-add evidence keys land on the kept edge.
+        assert kept.evidence.get("cvss") == 7.5
+        assert kept.evidence.get("epss") == 0.42
+        assert kept.evidence.get("kev") is True
+        # Original keys preserved (not overwritten by truthy defaults).
+        assert kept.evidence.get("data_source") == "package-path"
+        # Conflict on existing key: kept side wins (no overwrite).
+        assert kept.evidence.get("is_direct") is True

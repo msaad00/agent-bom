@@ -7,6 +7,7 @@ used for current-state views, traversal, attack paths, and temporal diffs.
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from pathlib import PurePath
 from typing import Any
@@ -29,6 +30,7 @@ except ImportError:  # pragma: no cover
 
 
 _GRAPH_TRACER = get_tracer("agent_bom.graph")
+_logger = logging.getLogger(__name__)
 
 
 def build_unified_graph_from_report(
@@ -819,14 +821,30 @@ def _resolve_affected_server_ids(
         named_ids: set[str] = set()
         for server_name in server_names:
             named_ids.update(server_name_to_agent_servers.get(server_name, {}).values())
-        candidate_ids = (candidate_ids & named_ids) if candidate_ids else named_ids
+        narrowed = (candidate_ids & named_ids) if candidate_ids else named_ids
+        if candidate_ids and named_ids and not narrowed:
+            _logger.debug(
+                "blast-radius narrow-by-server collapsed to empty: pkg=%s servers=%s candidates=%s",
+                pkg_name,
+                sorted(server_names),
+                sorted(candidate_ids),
+            )
+        candidate_ids = narrowed
 
     agent_names = {str(agent).strip() for agent in br_dict.get("affected_agents", []) if str(agent).strip()}
     if agent_names:
         agent_ids: set[str] = set()
         for agent_name in agent_names:
             agent_ids.update(agent_to_server_ids.get(agent_name, set()))
-        candidate_ids = (candidate_ids & agent_ids) if candidate_ids else agent_ids
+        narrowed = (candidate_ids & agent_ids) if candidate_ids else agent_ids
+        if candidate_ids and agent_ids and not narrowed:
+            _logger.debug(
+                "blast-radius narrow-by-agent collapsed to empty: pkg=%s agents=%s candidates=%s",
+                pkg_name,
+                sorted(agent_names),
+                sorted(candidate_ids),
+            )
+        candidate_ids = narrowed
 
     return sorted(candidate_ids)
 

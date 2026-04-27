@@ -16,6 +16,12 @@ from agent_bom.graph.container import (
     LegendEntry,
     UnifiedGraph,
 )
+from agent_bom.graph.dependency_reach import (
+    PackageReachability,
+    ReachabilityReport,
+    VulnerabilityReachability,
+    compute_dependency_reach,
+)
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode, stable_node_id
 from agent_bom.graph.ocsf import ENTITY_OCSF_MAP, FINDING_ENTITY_TYPES, ocsf_type_uid
@@ -78,6 +84,11 @@ __all__ = [
     "compute_delta_alerts",
     "dispatch_delta_alerts",
     "format_alerts_for_siem",
+    # Dependency reachability (#1896)
+    "PackageReachability",
+    "VulnerabilityReachability",
+    "ReachabilityReport",
+    "compute_dependency_reach",
     # Util
     "_now_iso",
 ]

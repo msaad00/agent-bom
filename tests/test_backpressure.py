@@ -46,7 +46,28 @@ def test_retry_after_seconds_adds_bounded_jitter(monkeypatch) -> None:
     controller.open_until_monotonic = 110.0
     monkeypatch.setattr("agent_bom.backpressure.random.uniform", lambda low, high: high)
 
-    assert controller.retry_after_seconds(now=100.0) == 13
+    # base = 10s, jitter_factor = 1.35 (mocked to high) → ceil(13.5) = 14.
+    assert controller.retry_after_seconds(now=100.0) == 14
+
+
+def test_retry_after_seconds_produces_distinct_values_at_base_one_second() -> None:
+    # Regression: the original additive jitter (`int(base + uniform(0, base*0.3) + 0.999)`)
+    # collapsed to a single value (2) for the most common case where base ≈ 1s
+    # because the controller clamps base to max(1.0, ...). Multiplicative jitter
+    # over [0.85, 1.35] must yield at least two distinct ceil values per call set.
+    controller = BackpressureController(
+        path="graph",
+        max_concurrency=1,
+        p99_threshold_ms=1,
+        cooldown_seconds=1,
+        min_samples=1,
+    )
+    controller.open_until_monotonic = 100.0
+    samples = {controller.retry_after_seconds(now=99.5) for _ in range(64)}
+
+    assert len(samples) >= 2, f"jitter collapsed to single value: {samples}"
+    assert min(samples) >= 1
+    assert max(samples) <= 3
 
 
 @pytest.mark.asyncio

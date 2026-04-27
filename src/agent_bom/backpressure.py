@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import random
 import time
@@ -75,10 +76,18 @@ class BackpressureController:
                 self.last_trigger_reason = "p99_latency_threshold"
 
     def retry_after_seconds(self, now: float | None = None) -> int:
+        # Multiplicative jitter in [-15%, +35%]. The previous additive form
+        # `int(base + uniform(0, base*0.3) + 0.999)` collapsed to a single
+        # value (typically 2) when base ≈ 1s — which is the most common
+        # path because base is clamped to max(1.0, ...) — re-creating the
+        # thundering-herd this jitter exists to prevent. Using a
+        # multiplicative range that straddles the base makes math.ceil
+        # return at least two distinct values for any base ≥ 1, while
+        # still rounding up so retry-after never tells a client "0".
         now = time.monotonic() if now is None else now
         base = max(1.0, self.open_until_monotonic - now)
-        jitter = random.uniform(0.0, base * 0.3)
-        return max(1, int(base + jitter + 0.999))
+        jitter_factor = random.uniform(0.85, 1.35)
+        return max(1, math.ceil(base * jitter_factor))
 
     @property
     def p95_ms(self) -> float:

@@ -106,7 +106,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: http://localhost:8422
-    image: agentbom/agent-bom-ui:0.81.3
+    image: agentbom/agent-bom-ui:0.82.0
     container_name: agent-bom-ui
     ports:
       - "3000:3000"

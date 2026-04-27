@@ -24,8 +24,11 @@ Usage:
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,6 +36,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 FROM_RE = re.compile(r"^\s*FROM\s+(?P<image>\S+)(?:\s+AS\s+\S+)?\s*$", re.IGNORECASE)
 DIGEST_RE = re.compile(r"@sha256:[a-f0-9]{64}$")
+
+# A `# pending-digest` marker is a transitional escape hatch: dependabot's
+# daily docker job is supposed to replace it within 24h. Anything older
+# than this window is the marker overstaying its purpose, which is what
+# the audit-3 finding flagged. Override via `PENDING_DIGEST_MAX_AGE_SECONDS`
+# for one-off bootstraps where dependabot needs a longer cycle.
+_PENDING_DIGEST_DEFAULT_MAX_AGE_SECONDS = 24 * 60 * 60
 
 
 @dataclass(frozen=True)
@@ -108,16 +118,57 @@ def _split_image(image: str) -> tuple[str, str | None, str | None]:
     return image, None, digest
 
 
-def _has_pending_digest_marker(lines: list[str], from_line_idx: int) -> bool:
-    # Marker lives on the immediately preceding non-blank line as a comment.
+def _find_pending_digest_marker_line(lines: list[str], from_line_idx: int) -> int | None:
+    """Return the 1-based line number of the marker, or None if absent.
+
+    Marker lives on the immediately preceding non-blank line as a comment.
+    """
     for i in range(from_line_idx - 1, -1, -1):
         stripped = lines[i].strip()
         if not stripped:
             continue
         if stripped.startswith("#") and "pending-digest" in stripped:
-            return True
-        return False
-    return False
+            return i + 1
+        return None
+    return None
+
+
+def _pending_digest_max_age_seconds() -> int:
+    raw = (os.environ.get("PENDING_DIGEST_MAX_AGE_SECONDS") or "").strip()
+    if not raw:
+        return _PENDING_DIGEST_DEFAULT_MAX_AGE_SECONDS
+    try:
+        value = int(raw)
+    except ValueError:
+        return _PENDING_DIGEST_DEFAULT_MAX_AGE_SECONDS
+    return max(value, 0)
+
+
+def _git_blame_commit_timestamp(path: Path, line_number: int) -> int | None:
+    """Return the commit Unix timestamp for a given line, or None on failure.
+
+    Uses `git blame --porcelain` so the timestamp comes from the commit that
+    last touched the line, not the file. Skips silently when git is not
+    available or the file is not tracked — the policy gate degrades to its
+    pre-ageing behaviour rather than blocking unrelated work.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "blame", "--porcelain", "-L", f"{line_number},{line_number}", "--", str(path)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return None
+    for entry in result.stdout.splitlines():
+        if entry.startswith("committer-time "):
+            try:
+                return int(entry.split(" ", 1)[1].strip())
+            except (IndexError, ValueError):
+                return None
+    return None
 
 
 def _policy_key(path: Path) -> str | None:
@@ -177,13 +228,28 @@ def main() -> int:
                     f"Rationale: {policy.rationale}"
                 )
             if digest is None:
-                if not _has_pending_digest_marker(lines, idx):
+                marker_line = _find_pending_digest_marker_line(lines, idx)
+                if marker_line is None:
                     problems.append(
                         f"{rel}:{idx + 1}: FROM line is not digest-pinned (@sha256:...) and no "
                         "`# pending-digest` marker on the preceding line. Either pin the digest "
                         "or add the marker (transitional only — dependabot's daily docker job "
                         "fills it in within 24h)."
                     )
+                    continue
+                marker_ts = _git_blame_commit_timestamp(path, marker_line)
+                max_age = _pending_digest_max_age_seconds()
+                if marker_ts is not None and max_age > 0:
+                    age = int(time.time()) - marker_ts
+                    if age > max_age:
+                        age_hours = age // 3600
+                        max_hours = max_age // 3600
+                        problems.append(
+                            f"{rel}:{marker_line}: `# pending-digest` marker is {age_hours}h old "
+                            f"(policy max {max_hours}h). Dependabot should have replaced it by now — "
+                            "either pin the digest manually, retrigger dependabot's docker job, or "
+                            "rebump the marker line if the bump was deliberately delayed."
+                        )
 
     missing = sorted(set(POLICY) - seen_keys)
     if missing:

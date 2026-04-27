@@ -948,8 +948,18 @@ def _add_agent_cloud_lineage(
     if not isinstance(origin, dict):
         return
 
-    provider = _clean_graph_part(origin.get("provider")) or _clean_graph_part(agent_dict.get("source")) or "cloud"
-    service = _clean_graph_part(origin.get("service")) or "unknown-service"
+    # Cloud sources are conventionally named `<provider>-<service>` (e.g.
+    # "aws-bedrock", "azure-openai", "gcp-vertex-ai") so we can recover the
+    # service name from the agent's `source` field when `cloud_origin` lacks
+    # it. This mirrors the secondary fallback chain that `provider` already
+    # uses and avoids the literal "unknown-service" placeholder leaking into
+    # the graph just because one cloud discoverer forgot to populate the
+    # service slot.
+    raw_source = str(agent_dict.get("source") or "").strip()
+    source_service_fallback = raw_source.split("-", 1)[1] if "-" in raw_source else ""
+
+    provider = _clean_graph_part(origin.get("provider")) or _clean_graph_part(raw_source) or "cloud"
+    service = _clean_graph_part(origin.get("service")) or _clean_graph_part(source_service_fallback) or "unknown-service"
     resource_type = _clean_graph_part(origin.get("resource_type")) or "resource"
     resource_id = _clean_graph_part(origin.get("resource_id")) or _clean_graph_part(origin.get("resource_name"))
     if not resource_id:

@@ -665,8 +665,13 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
     )
 
     # Ordered route rules so narrower enterprise paths win over broad prefixes.
+    # Narrower posture sub-paths come before the `/v1/posture` viewer rule for
+    # readability — they would inherit `viewer` via the broad prefix anyway,
+    # but listing them explicitly makes the role intent of each subroute easy
+    # to grep and audit.
     _ROLE_RULES: tuple[tuple[str, str, str], ...] = (
         ("GET", "/v1/compliance", "viewer"),
+        ("GET", "/v1/posture/backpressure", "viewer"),
         ("GET", "/v1/posture", "viewer"),
         ("GET", "/v1/auth/debug", "viewer"),
         ("GET", "/v1/auth/me", "viewer"),

@@ -356,6 +356,226 @@ def correlate_bedrock(agents: Iterable[AgentLike]) -> list[CorrelationMatch]:
 
 
 # ---------------------------------------------------------------------------
+# Azure OpenAI identity extractors + matcher (#1892 Phase 2)
+# ---------------------------------------------------------------------------
+
+# Authoritative Azure resource ID for an OpenAI deployment:
+#   /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.CognitiveServices/accounts/{account}/deployments/{deployment}
+_AZURE_RESOURCE_RE = re.compile(
+    r"^/subscriptions/(?P<sub>[0-9a-f-]{36})/resourceGroups/(?P<rg>[^/]+)/providers/Microsoft\.CognitiveServices/accounts/(?P<account>[^/]+)/deployments/(?P<deployment>[^/]+)",
+    re.IGNORECASE,
+)
+# Local Azure OpenAI endpoint hostname: `https://{account-name}.openai.azure.com/...`.
+_AZURE_OPENAI_ENDPOINT_RE = re.compile(r"https?://([a-z0-9-]+)\.openai\.azure\.com", re.IGNORECASE)
+
+_AZURE_SUBSCRIPTION_ENV_KEYS = ("AZURE_SUBSCRIPTION_ID", "ARM_SUBSCRIPTION_ID")
+_AZURE_OPENAI_ENDPOINT_ENV_KEYS = ("AZURE_OPENAI_ENDPOINT", "OPENAI_API_BASE", "OPENAI_BASE_URL")
+_AZURE_OPENAI_DEPLOYMENT_ENV_KEYS = (
+    "AZURE_OPENAI_DEPLOYMENT",
+    "AZURE_OPENAI_DEPLOYMENT_NAME",
+    "OPENAI_DEPLOYMENT_ID",
+)
+# `OPENAI_API_TYPE=azure` is the marker that distinguishes Azure-flavored
+# OpenAI usage from public api.openai.com — we don't act on it alone, but
+# a non-azure value disqualifies the agent from Azure correlation.
+_AZURE_OPENAI_API_TYPE_KEYS = ("OPENAI_API_TYPE",)
+
+
+@dataclass(frozen=True)
+class _LocalAzureOpenAIEvidence:
+    agent_name: str
+    agent_type: str
+    subscription_ids: frozenset[str]
+    account_names: frozenset[str]
+    deployment_names: frozenset[str]
+
+
+@dataclass(frozen=True)
+class _CloudAzureOpenAIDeployment:
+    agent_name: str
+    resource_id: str
+    subscription_id: str | None
+    account_name: str | None
+    deployment_name: str | None
+    location: str | None
+
+
+def _parse_azure_resource_id(resource_id: str) -> tuple[str | None, str | None, str | None]:
+    match = _AZURE_RESOURCE_RE.search(resource_id)
+    if not match:
+        return None, None, None
+    return (
+        match.group("sub").lower(),
+        match.group("account").lower(),
+        match.group("deployment").lower(),
+    )
+
+
+def _is_azure_uuid(value: str) -> bool:
+    if len(value) != 36 or value.count("-") != 4:
+        return False
+    return all(ch in "0123456789abcdef-" for ch in value.lower())
+
+
+def _extract_local_azure_openai_evidence(view: _AgentView) -> _LocalAzureOpenAIEvidence | None:
+    if _is_cloud_discovered(view):
+        return None
+
+    api_type_disqualifies = False
+    subscriptions: set[str] = set()
+    accounts: set[str] = set()
+    deployments: set[str] = set()
+
+    for env in view.mcp_server_envs:
+        for key, value in env.items():
+            if not isinstance(value, str) or not value:
+                continue
+            stripped = value.strip()
+            if key in _AZURE_OPENAI_API_TYPE_KEYS:
+                if stripped.lower() != "azure":
+                    api_type_disqualifies = True
+            elif key in _AZURE_SUBSCRIPTION_ENV_KEYS and _is_azure_uuid(stripped):
+                subscriptions.add(stripped.lower())
+            elif key in _AZURE_OPENAI_ENDPOINT_ENV_KEYS:
+                endpoint_match = _AZURE_OPENAI_ENDPOINT_RE.search(stripped)
+                if endpoint_match:
+                    accounts.add(endpoint_match.group(1).lower())
+            elif key in _AZURE_OPENAI_DEPLOYMENT_ENV_KEYS:
+                deployments.add(stripped.lower())
+
+    raw_explicit = view.metadata.get("azure")
+    explicit_azure: Mapping[str, Any] = raw_explicit if isinstance(raw_explicit, Mapping) else {}
+    explicit_sub = str(explicit_azure.get("subscription_id", "")).strip()
+    if _is_azure_uuid(explicit_sub):
+        subscriptions.add(explicit_sub.lower())
+    explicit_account = str(explicit_azure.get("openai_account_name", "")).strip()
+    if explicit_account:
+        accounts.add(explicit_account.lower())
+    explicit_deployment = str(explicit_azure.get("openai_deployment_name", "")).strip()
+    if explicit_deployment:
+        deployments.add(explicit_deployment.lower())
+
+    # Explicit `OPENAI_API_TYPE` set to anything other than `azure` is a
+    # firm signal the agent talks to public OpenAI, not Azure — drop the
+    # whole agent rather than emit cross-tenant noise.
+    if api_type_disqualifies:
+        return None
+    if not (subscriptions or accounts or deployments):
+        return None
+
+    return _LocalAzureOpenAIEvidence(
+        agent_name=view.name,
+        agent_type=view.agent_type,
+        subscription_ids=frozenset(subscriptions),
+        account_names=frozenset(accounts),
+        deployment_names=frozenset(deployments),
+    )
+
+
+def _extract_cloud_azure_openai_deployment(view: _AgentView) -> _CloudAzureOpenAIDeployment | None:
+    cloud_origin_raw = view.metadata.get("cloud_origin")
+    cloud_origin: Mapping[str, Any] = cloud_origin_raw if isinstance(cloud_origin_raw, Mapping) else {}
+    if not cloud_origin or cloud_origin.get("provider") != "azure" or cloud_origin.get("service") != "openai":
+        return None
+
+    resource_id = str(cloud_origin.get("resource_id") or view.config_path or "")
+    arn_sub, arn_account, arn_deployment = _parse_azure_resource_id(resource_id)
+
+    scope_raw = cloud_origin.get("scope")
+    scope: Mapping[str, Any] = scope_raw if isinstance(scope_raw, Mapping) else {}
+    scope_sub = str(scope.get("subscription_id") or "").strip().lower()
+    subscription_id = scope_sub or arn_sub
+
+    raw_identity_raw = cloud_origin.get("raw_identity")
+    raw_identity: Mapping[str, Any] = raw_identity_raw if isinstance(raw_identity_raw, Mapping) else {}
+    account_name = str(raw_identity.get("account_name") or arn_account or "").strip().lower() or None
+    deployment_name = (
+        str(raw_identity.get("deployment_name") or arn_deployment or cloud_origin.get("resource_name") or "").strip().lower() or None
+    )
+    location = str(cloud_origin.get("location") or "").strip().lower() or None
+
+    return _CloudAzureOpenAIDeployment(
+        agent_name=view.name,
+        resource_id=resource_id,
+        subscription_id=subscription_id,
+        account_name=account_name,
+        deployment_name=deployment_name,
+        location=location,
+    )
+
+
+def _match_azure_openai(
+    local: _LocalAzureOpenAIEvidence,
+    cloud: _CloudAzureOpenAIDeployment,
+) -> CorrelationMatch | None:
+    matched: list[str] = []
+
+    if cloud.subscription_id and cloud.subscription_id in local.subscription_ids:
+        matched.append("subscription_id")
+    if cloud.account_name and cloud.account_name in local.account_names:
+        matched.append("account_name")
+    if cloud.deployment_name and cloud.deployment_name in local.deployment_names:
+        matched.append("deployment_name")
+
+    if not matched:
+        return None
+
+    confidence = CorrelationConfidence.HIGH if len(matched) >= _HIGH_CONFIDENCE_REQUIRED_SIGNALS else CorrelationConfidence.LOW
+
+    rationale_parts: list[str] = []
+    if "subscription_id" in matched:
+        rationale_parts.append(f"subscription {cloud.subscription_id}")
+    if "account_name" in matched:
+        rationale_parts.append(f"account {cloud.account_name}")
+    if "deployment_name" in matched:
+        rationale_parts.append(f"deployment {cloud.deployment_name}")
+
+    rationale = (
+        "Strong triplet (subscription + account + deployment) matched."
+        if confidence is CorrelationConfidence.HIGH
+        else "Partial match — kept as low-confidence candidate. Matched: " + ", ".join(rationale_parts) + "."
+    )
+
+    return CorrelationMatch(
+        local_agent_name=local.agent_name,
+        local_agent_type=local.agent_type,
+        cloud_agent_name=cloud.agent_name,
+        cloud_provider="azure",
+        cloud_service="openai",
+        cloud_account_id=cloud.subscription_id,
+        cloud_region=cloud.location,
+        cloud_model_id=cloud.deployment_name,
+        confidence=confidence,
+        matched_signals=tuple(matched),
+        rationale=rationale,
+    )
+
+
+def correlate_azure_openai(agents: Iterable[AgentLike]) -> list[CorrelationMatch]:
+    """Match local agents to cloud-discovered Azure OpenAI deployments."""
+    local_evidence: list[_LocalAzureOpenAIEvidence] = []
+    cloud_deployments: list[_CloudAzureOpenAIDeployment] = []
+
+    for agent in agents:
+        view = _normalize(agent)
+        cloud = _extract_cloud_azure_openai_deployment(view)
+        if cloud is not None:
+            cloud_deployments.append(cloud)
+            continue
+        local = _extract_local_azure_openai_evidence(view)
+        if local is not None:
+            local_evidence.append(local)
+
+    matches: list[CorrelationMatch] = []
+    for local in local_evidence:
+        for cloud in cloud_deployments:
+            match = _match_azure_openai(local, cloud)
+            if match is not None:
+                matches.append(match)
+    return matches
+
+
+# ---------------------------------------------------------------------------
 # Top-level orchestrator. Phase 2 (Azure) and Phase 3 (GCP) plug in here.
 # ---------------------------------------------------------------------------
 
@@ -375,6 +595,7 @@ def correlate_cross_environment(agents: Iterable[AgentLike]) -> CrossEnvironment
     materialized = list(agents)
     matches: list[CorrelationMatch] = []
     matches.extend(correlate_bedrock(materialized))
+    matches.extend(correlate_azure_openai(materialized))
     return CrossEnvironmentResult(matches=tuple(matches))
 
 

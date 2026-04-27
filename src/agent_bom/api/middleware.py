@@ -1318,21 +1318,50 @@ def get_rate_limit_key_status(now: "datetime | None" = None) -> dict:
 
 
 class MaxBodySizeMiddleware(BaseHTTPMiddleware):
-    """Reject oversized bodies and enforce a per-request read timeout (slowloris mitigation).
+    """Reject oversized bodies and enforce read deadline + throughput floor (slowloris mitigation).
 
-    Two-layer protection:
+    Three-layer protection:
     1. Content-Length fast-path: reject before reading if header exceeds limit.
     2. Streaming body drain with asyncio timeout: covers chunked/streaming uploads
        that omit Content-Length — a common slowloris vector.
+    3. Throughput floor (audit-5 PR-C): even within the 30s deadline an attacker
+       can keep a connection alive indefinitely by trickling just enough bytes
+       per second to avoid the timeout. Once the body reaches a small warmup
+       threshold, the middleware tracks bytes/second over a rolling window and
+       aborts the request when sustained throughput drops below the floor.
+       Tunable via env so legitimate slow clients in restricted environments
+       can keep working.
     """
 
-    # 30s to fully receive a request body; covers slow legitimate clients
-    # while cutting off slowloris attacks that trickle bytes indefinitely.
     _BODY_TIMEOUT_SECONDS = 30
+    """Hard read deadline; covers slow legitimate clients but bounds slowloris attacks."""
+
+    _THROUGHPUT_WINDOW_SECONDS = 5.0
+    """Rolling window for the throughput floor."""
+
+    _THROUGHPUT_WARMUP_BYTES = 4096
+    """Don't enforce the floor until the body crosses this many bytes —
+    protects tiny POSTs from being penalised by the connect/TLS handshake delay."""
+
+    _DEFAULT_THROUGHPUT_FLOOR_BPS = 256
+    """Bytes/second floor over the rolling window once warmup is past."""
 
     def __init__(self, app: ASGIApp, max_bytes: int = 10 * 1024 * 1024):
         super().__init__(app)
         self._max_bytes = max_bytes
+
+    @classmethod
+    def _throughput_floor_bps(cls) -> int:
+        """Read the throughput floor from env so operators can tune it."""
+        raw = (os.environ.get("AGENT_BOM_BODY_MIN_BPS") or "").strip()
+        if not raw:
+            return cls._DEFAULT_THROUGHPUT_FLOOR_BPS
+        try:
+            value = int(raw)
+        except ValueError:
+            return cls._DEFAULT_THROUGHPUT_FLOOR_BPS
+        # 0 disables the floor entirely (debug/load-test escape hatch).
+        return max(0, value)
 
     async def dispatch(self, request: StarletteRequest, call_next):
         content_length = request.headers.get("content-length")
@@ -1348,9 +1377,14 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
                 )
         elif request.method in ("POST", "PUT", "PATCH"):
             # No Content-Length — drain and check streaming body under timeout
+            min_bps = self._throughput_floor_bps()
+            window = self._THROUGHPUT_WINDOW_SECONDS
+            warmup = self._THROUGHPUT_WARMUP_BYTES
+            chunk_history: list[tuple[float, int]] = []
             try:
                 chunks: list[bytes] = []
                 total = 0
+                start_monotonic = time.monotonic()
                 async with asyncio.timeout(self._BODY_TIMEOUT_SECONDS):
                     async for chunk in request.stream():
                         total += len(chunk)
@@ -1360,6 +1394,30 @@ class MaxBodySizeMiddleware(BaseHTTPMiddleware):
                                 content={"detail": f"Request body too large (max {self._max_bytes // (1024 * 1024)}MB)"},
                             )
                         chunks.append(chunk)
+                        # Throughput floor check — only meaningful past warmup
+                        # AND after the window has elapsed, otherwise a
+                        # legitimate slow-start request looks like a slowloris.
+                        now_monotonic = time.monotonic()
+                        chunk_history.append((now_monotonic, len(chunk)))
+                        if min_bps > 0 and total >= warmup and (now_monotonic - start_monotonic) >= window:
+                            cutoff = now_monotonic - window
+                            while chunk_history and chunk_history[0][0] < cutoff:
+                                chunk_history.pop(0)
+                            window_bytes = sum(size for _ts, size in chunk_history)
+                            elapsed = now_monotonic - chunk_history[0][0] if chunk_history else 0.0
+                            if elapsed > 0:
+                                bps = window_bytes / elapsed
+                                if bps < min_bps:
+                                    return JSONResponse(
+                                        status_code=408,
+                                        content={
+                                            "detail": (
+                                                "Request body throughput below "
+                                                f"floor ({int(bps)} B/s < {min_bps} B/s) — "
+                                                "set AGENT_BOM_BODY_MIN_BPS to tune for legitimate slow clients."
+                                            )
+                                        },
+                                    )
             except TimeoutError:
                 return JSONResponse(status_code=408, content={"detail": "Request body read timed out"})
 

@@ -2,7 +2,7 @@
   "document_type": "AI-BOM",
   "spec_version": "1.0",
   "scan_id": "scan-demo-001",
-  "ai_bom_version": "0.81.3",
+  "ai_bom_version": "0.82.0",
   "generated_at": "2026-04-25T00:00:00Z",
   "scan_sources": ["demo"],
   "summary": {

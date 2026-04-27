@@ -17,7 +17,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import uuid4
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
@@ -75,7 +75,7 @@ class VulnException:
         srv_match = self.server_name == "*" or self.server_name == server_name or not self.server_name
         return vuln_match and pkg_match and srv_match
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "exception_id": self.exception_id,
             "vuln_id": self.vuln_id,
@@ -152,10 +152,12 @@ class SQLiteExceptionStore:
 
     @property
     def _conn(self) -> sqlite3.Connection:
-        if not hasattr(self._local, "conn") or self._local.conn is None:
-            self._local.conn = sqlite3.connect(self._db_path, check_same_thread=False)
-            self._local.conn.execute("PRAGMA journal_mode=WAL")
-        return self._local.conn
+        conn: sqlite3.Connection | None = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self._db_path, check_same_thread=False)
+            conn.execute("PRAGMA journal_mode=WAL")
+            self._local.conn = conn
+        return conn
 
     def _init_db(self) -> None:
         ensure_sqlite_schema_version(self._conn, "exceptions")
@@ -247,8 +249,8 @@ class SQLiteExceptionStore:
         return cursor.rowcount > 0
 
     def list_all(self, status: str | None = None, tenant_id: str = "default") -> list[VulnException]:
-        clauses = ["tenant_id = ?"]
-        params: list = [tenant_id]
+        clauses: list[str] = ["tenant_id = ?"]
+        params: list[Any] = [tenant_id]
         if status:
             clauses.append("status = ?")
             params.append(status)

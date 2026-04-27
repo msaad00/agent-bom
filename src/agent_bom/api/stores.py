@@ -162,7 +162,7 @@ def set_policy_store(store: Any) -> None:
 _analytics_store: Any = None
 
 
-def _get_analytics_store():
+def _get_analytics_store() -> Any:
     """Get the active analytics store, defaulting to NullAnalyticsStore."""
     global _analytics_store
     if _analytics_store is None:

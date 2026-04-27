@@ -25,8 +25,19 @@ WORKFLOWS_DIR = ROOT / ".github" / "workflows"
 
 
 def _is_reusable_caller(job: dict[str, Any]) -> bool:
-    """A job that uses a reusable workflow has its timeout in the callee."""
-    return isinstance(job.get("uses"), str)
+    """Reusable-workflow callers still need their own ``timeout-minutes``.
+
+    The original revision returned True so the gate skipped any ``uses:``
+    job, on the (incorrect) theory that timeouts in the called workflow
+    would bound the caller. They don't — GitHub treats the caller's
+    ``timeout-minutes`` as the enforced limit for the entire reusable
+    workflow call, defaulting to **360 minutes** (six hours) when omitted.
+    The exclusion was the audit-4 bundle's miss on
+    ``release.yml docs-site``; this returns False now so every job is
+    checked regardless of whether it uses a reusable workflow.
+    """
+    del job
+    return False
 
 
 def _collect_problems() -> list[str]:

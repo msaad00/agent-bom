@@ -32,7 +32,8 @@ class SCIMUser(BaseModel):
     @field_validator("tenant_id")
     @classmethod
     def _tenant(cls, value: str) -> str:
-        return normalize_tenant_id(value)
+        normalized: str = normalize_tenant_id(value)
+        return normalized
 
 
 class SCIMGroup(BaseModel):
@@ -50,7 +51,8 @@ class SCIMGroup(BaseModel):
     @field_validator("tenant_id")
     @classmethod
     def _tenant(cls, value: str) -> str:
-        return normalize_tenant_id(value)
+        normalized: str = normalize_tenant_id(value)
+        return normalized
 
 
 class SCIMStore(Protocol):
@@ -98,7 +100,8 @@ class InMemorySCIMStore:
                 return None
             user.active = False
             user.updated_at = now_utc_iso()
-            return user.model_copy(deep=True)
+            copy: SCIMUser = user.model_copy(deep=True)
+            return copy
 
     def put_group(self, group: SCIMGroup) -> SCIMGroup:
         group.updated_at = now_utc_iso()
@@ -135,7 +138,8 @@ class SQLiteSCIMStore:
         if not hasattr(self._local, "conn") or self._local.conn is None:
             self._local.conn = sqlite3.connect(self._db_path, check_same_thread=False)
             self._local.conn.execute("PRAGMA journal_mode=WAL")
-        return self._local.conn
+        conn: sqlite3.Connection = self._local.conn
+        return conn
 
     def _init_db(self) -> None:
         ensure_sqlite_schema_version(self._conn, "identity_scim")

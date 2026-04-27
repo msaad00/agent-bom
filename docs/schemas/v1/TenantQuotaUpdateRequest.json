@@ -1,0 +1,58 @@
+{
+  "properties": {
+    "active_scan_jobs": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Active Scan Jobs"
+    },
+    "fleet_agents": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fleet Agents"
+    },
+    "retained_scan_jobs": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Retained Scan Jobs"
+    },
+    "schedules": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Schedules"
+    }
+  },
+  "title": "TenantQuotaUpdateRequest",
+  "type": "object"
+}

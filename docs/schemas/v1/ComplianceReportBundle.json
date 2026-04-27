@@ -1,0 +1,328 @@
+{
+  "$defs": {
+    "ComplianceAuditIntegrity": {
+      "properties": {
+        "checked": {
+          "default": 0,
+          "title": "Checked",
+          "type": "integer"
+        },
+        "tampered": {
+          "default": 0,
+          "title": "Tampered",
+          "type": "integer"
+        },
+        "verified": {
+          "default": 0,
+          "title": "Verified",
+          "type": "integer"
+        }
+      },
+      "title": "ComplianceAuditIntegrity",
+      "type": "object"
+    },
+    "ComplianceEvidenceItem": {
+      "properties": {
+        "agents_at_risk": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Agents At Risk",
+          "type": "array"
+        },
+        "control_tag": {
+          "title": "Control Tag",
+          "type": "string"
+        },
+        "finding_id": {
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "fixed_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fixed Version"
+        },
+        "package": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Package"
+        },
+        "scan_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scan Id"
+        },
+        "severity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Severity"
+        },
+        "vulnerability_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vulnerability Id"
+        }
+      },
+      "required": [
+        "finding_id",
+        "control_tag"
+      ],
+      "title": "ComplianceEvidenceItem",
+      "type": "object"
+    },
+    "ComplianceReportControl": {
+      "properties": {
+        "control_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Control Id"
+        },
+        "control_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Control Name"
+        },
+        "evidence": {
+          "items": {
+            "$ref": "#/$defs/ComplianceEvidenceItem"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "finding_count": {
+          "default": 0,
+          "title": "Finding Count",
+          "type": "integer"
+        },
+        "status": {
+          "default": "unknown",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "title": "ComplianceReportControl",
+      "type": "object"
+    },
+    "ComplianceReportScope": {
+      "properties": {
+        "audit_event_count": {
+          "default": 0,
+          "title": "Audit Event Count",
+          "type": "integer"
+        },
+        "control_count": {
+          "default": 0,
+          "title": "Control Count",
+          "type": "integer"
+        },
+        "finding_count": {
+          "default": 0,
+          "title": "Finding Count",
+          "type": "integer"
+        },
+        "since": {
+          "title": "Since",
+          "type": "string"
+        },
+        "until": {
+          "title": "Until",
+          "type": "string"
+        }
+      },
+      "required": [
+        "since",
+        "until"
+      ],
+      "title": "ComplianceReportScope",
+      "type": "object"
+    },
+    "ComplianceReportSummary": {
+      "properties": {
+        "fail": {
+          "default": 0,
+          "title": "Fail",
+          "type": "integer"
+        },
+        "pass": {
+          "title": "Pass",
+          "type": "integer"
+        },
+        "score": {
+          "default": 100.0,
+          "title": "Score",
+          "type": "number"
+        },
+        "warning": {
+          "default": 0,
+          "title": "Warning",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "pass"
+      ],
+      "title": "ComplianceReportSummary",
+      "type": "object"
+    },
+    "ComplianceThreatModel": {
+      "properties": {
+        "confidentiality": {
+          "title": "Confidentiality",
+          "type": "string"
+        },
+        "integrity": {
+          "title": "Integrity",
+          "type": "string"
+        },
+        "non_repudiation": {
+          "title": "Non Repudiation",
+          "type": "string"
+        },
+        "replay": {
+          "title": "Replay",
+          "type": "string"
+        }
+      },
+      "required": [
+        "integrity",
+        "confidentiality",
+        "replay",
+        "non_repudiation"
+      ],
+      "title": "ComplianceThreatModel",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "audit_events": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Audit Events",
+      "type": "array"
+    },
+    "audit_log_integrity": {
+      "$ref": "#/$defs/ComplianceAuditIntegrity"
+    },
+    "controls": {
+      "items": {
+        "$ref": "#/$defs/ComplianceReportControl"
+      },
+      "title": "Controls",
+      "type": "array"
+    },
+    "expires_at": {
+      "title": "Expires At",
+      "type": "string"
+    },
+    "framework": {
+      "title": "Framework",
+      "type": "string"
+    },
+    "framework_key": {
+      "title": "Framework Key",
+      "type": "string"
+    },
+    "framework_label": {
+      "title": "Framework Label",
+      "type": "string"
+    },
+    "generated_at": {
+      "title": "Generated At",
+      "type": "string"
+    },
+    "nonce": {
+      "title": "Nonce",
+      "type": "string"
+    },
+    "schema_version": {
+      "default": "v1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "scope": {
+      "$ref": "#/$defs/ComplianceReportScope"
+    },
+    "signature_algorithm": {
+      "title": "Signature Algorithm",
+      "type": "string"
+    },
+    "summary": {
+      "$ref": "#/$defs/ComplianceReportSummary"
+    },
+    "tenant_id": {
+      "title": "Tenant Id",
+      "type": "string"
+    },
+    "threat_model": {
+      "$ref": "#/$defs/ComplianceThreatModel"
+    }
+  },
+  "required": [
+    "framework",
+    "framework_key",
+    "framework_label",
+    "tenant_id",
+    "generated_at",
+    "expires_at",
+    "nonce",
+    "scope",
+    "summary",
+    "audit_log_integrity",
+    "signature_algorithm",
+    "threat_model"
+  ],
+  "title": "ComplianceReportBundle",
+  "type": "object"
+}

@@ -1,0 +1,29 @@
+{
+  "description": "Request body for POST /v1/findings/false-positive.",
+  "properties": {
+    "marked_by": {
+      "default": "",
+      "title": "Marked By",
+      "type": "string"
+    },
+    "package": {
+      "title": "Package",
+      "type": "string"
+    },
+    "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+    },
+    "vulnerability_id": {
+      "title": "Vulnerability Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "vulnerability_id",
+    "package"
+  ],
+  "title": "FalsePositiveRequest",
+  "type": "object"
+}

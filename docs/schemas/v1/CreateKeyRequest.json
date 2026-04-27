@@ -1,0 +1,37 @@
+{
+  "properties": {
+    "expires_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expires At"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "role": {
+      "default": "viewer",
+      "title": "Role",
+      "type": "string"
+    },
+    "scopes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Scopes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "title": "CreateKeyRequest",
+  "type": "object"
+}

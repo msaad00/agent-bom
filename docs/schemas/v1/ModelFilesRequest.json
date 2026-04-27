@@ -1,0 +1,22 @@
+{
+  "description": "Request body for POST /v1/scan/model-files.",
+  "properties": {
+    "directories": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Directories",
+      "type": "array"
+    },
+    "verify_hashes": {
+      "default": false,
+      "title": "Verify Hashes",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "directories"
+  ],
+  "title": "ModelFilesRequest",
+  "type": "object"
+}

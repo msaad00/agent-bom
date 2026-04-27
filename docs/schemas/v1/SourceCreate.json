@@ -1,0 +1,93 @@
+{
+  "$defs": {
+    "SourceKind": {
+      "enum": [
+        "scan.repo",
+        "scan.image",
+        "scan.iac",
+        "scan.cloud",
+        "scan.mcp_config",
+        "connector.cloud_read_only",
+        "connector.registry",
+        "connector.warehouse",
+        "ingest.fleet_sync",
+        "ingest.trace_push",
+        "ingest.result_push",
+        "ingest.artifact_import",
+        "runtime.proxy",
+        "runtime.gateway"
+      ],
+      "title": "SourceKind",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "config": {
+      "additionalProperties": true,
+      "title": "Config",
+      "type": "object"
+    },
+    "connector_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Connector Name"
+    },
+    "credential_mode": {
+      "default": "none",
+      "title": "Credential Mode",
+      "type": "string"
+    },
+    "credential_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Credential Ref"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "display_name": {
+      "title": "Display Name",
+      "type": "string"
+    },
+    "enabled": {
+      "default": true,
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "kind": {
+      "$ref": "#/$defs/SourceKind"
+    },
+    "owner": {
+      "default": "",
+      "title": "Owner",
+      "type": "string"
+    },
+    "tenant_id": {
+      "default": "default",
+      "title": "Tenant Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "display_name",
+    "kind"
+  ],
+  "title": "SourceCreate",
+  "type": "object"
+}

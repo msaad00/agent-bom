@@ -1,0 +1,42 @@
+{
+  "properties": {
+    "alerts": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Alerts",
+      "type": "array"
+    },
+    "idempotency_key": {
+      "default": "",
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "session_id": {
+      "default": "",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "source_id": {
+      "default": "",
+      "title": "Source Id",
+      "type": "string"
+    },
+    "summary": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Summary"
+    }
+  },
+  "title": "ProxyAuditIngestRequest",
+  "type": "object"
+}

@@ -1,0 +1,17 @@
+{
+  "description": "Request body for POST /v1/scan/dataset-cards.",
+  "properties": {
+    "directories": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Directories",
+      "type": "array"
+    }
+  },
+  "required": [
+    "directories"
+  ],
+  "title": "DatasetCardsRequest",
+  "type": "object"
+}

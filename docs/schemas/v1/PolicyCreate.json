@@ -1,0 +1,57 @@
+{
+  "properties": {
+    "bound_agent_types": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Bound Agent Types",
+      "type": "array"
+    },
+    "bound_agents": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Bound Agents",
+      "type": "array"
+    },
+    "bound_environments": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Bound Environments",
+      "type": "array"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "enabled": {
+      "default": true,
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "mode": {
+      "default": "audit",
+      "title": "Mode",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "rules": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Rules",
+      "type": "array"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "title": "PolicyCreate",
+  "type": "object"
+}

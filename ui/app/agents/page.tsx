@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -151,6 +152,29 @@ function AgentsList() {
     !search || a.name.toLowerCase().includes(search.toLowerCase())
   );
 
+  // Row virtualization for the configured-agents list. Enterprise estates
+  // can carry thousands of configured agents; rendering every card flat
+  // produced ~30s page loads and dropped scroll FPS. The virtualizer
+  // mounts only the visible (+ a small overscan) rows and measures each
+  // one so expanded cards still grow naturally. Tracks #1955.
+  const configuredScrollRef = useRef<HTMLDivElement | null>(null);
+  const configuredVirtualizer = useVirtualizer({
+    count: filteredConfigured.length,
+    getScrollElement: () => configuredScrollRef.current,
+    estimateSize: () => 80,
+    overscan: 8,
+    measureElement: (el) => el?.getBoundingClientRect().height ?? 80,
+  });
+  const configuredVirtualItems = configuredVirtualizer.getVirtualItems();
+  const installedScrollRef = useRef<HTMLDivElement | null>(null);
+  const installedVirtualizer = useVirtualizer({
+    count: installedOnly.length,
+    getScrollElement: () => installedScrollRef.current,
+    estimateSize: () => 96,
+    overscan: 8,
+  });
+  const installedVirtualItems = installedVirtualizer.getVirtualItems();
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -284,12 +308,33 @@ function AgentsList() {
           </div>
         ))}
 
-      {/* Configured agents */}
-        <div className="space-y-4">
-        {filteredConfigured?.map((agent) => {
+      {/* Configured agents — row-virtualized for large estates */}
+      <div
+        ref={configuredScrollRef}
+        data-testid="agents-configured-virtualized"
+        className="max-h-[80vh] overflow-y-auto"
+      >
+        <div
+          style={{ height: `${configuredVirtualizer.getTotalSize()}px`, width: "100%", position: "relative" }}
+        >
+        {configuredVirtualItems.map((virtualRow) => {
+          const agent = filteredConfigured[virtualRow.index];
           const isExpanded = expandedAgent === agent.name;
           return (
-          <div key={agent.name} className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <div
+            key={agent.name}
+            data-index={virtualRow.index}
+            ref={configuredVirtualizer.measureElement}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              transform: `translateY(${virtualRow.start}px)`,
+              paddingBottom: "16px",
+            }}
+            className="bg-zinc-900 border border-zinc-800 rounded-xl p-5"
+          >
             <button
               type="button"
               onClick={() => toggleCollapse(agent.name)}
@@ -402,44 +447,71 @@ function AgentsList() {
             ) : null}
           </div>
         )})}
-        {!loading && filteredConfigured.length === 0 && configured.length > 0 && (
-          <div className="rounded-xl border border-dashed border-zinc-800 py-12 text-center">
-            <p className="text-sm text-zinc-500">No configured agents match the current search.</p>
-          </div>
-        )}
+        </div>
       </div>
+      {!loading && filteredConfigured.length === 0 && configured.length > 0 && (
+        <div className="rounded-xl border border-dashed border-zinc-800 py-12 text-center">
+          <p className="text-sm text-zinc-500">No configured agents match the current search.</p>
+        </div>
+      )}
 
-      {/* Installed but not configured */}
+      {/* Installed but not configured — virtualized for parity with the configured list */}
       {installedOnly.length > 0 && (
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
             <AlertCircle className="w-3.5 h-3.5 text-yellow-500" />
             Installed but not configured
           </h2>
-          {installedOnly?.map((agent, i) => (
-            <div key={i} className="bg-zinc-900/50 border border-dashed border-zinc-800 rounded-xl p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-semibold text-zinc-300">{agent.name}</h3>
-                    <span className="text-[10px] font-mono bg-yellow-950 border border-yellow-800 text-yellow-400 rounded px-1.5 py-0.5">
-                      not configured
-                    </span>
+          <div
+            ref={installedScrollRef}
+            data-testid="agents-installed-virtualized"
+            className="max-h-[40vh] overflow-y-auto"
+          >
+            <div
+              style={{ height: `${installedVirtualizer.getTotalSize()}px`, width: "100%", position: "relative" }}
+            >
+            {installedVirtualItems.map((virtualRow) => {
+              const agent = installedOnly[virtualRow.index];
+              return (
+                <div
+                  key={`${agent.name}-${virtualRow.index}`}
+                  data-index={virtualRow.index}
+                  ref={installedVirtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    transform: `translateY(${virtualRow.start}px)`,
+                    paddingBottom: "12px",
+                  }}
+                  className="bg-zinc-900/50 border border-dashed border-zinc-800 rounded-xl p-4"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-semibold text-zinc-300">{agent.name}</h3>
+                        <span className="text-[10px] font-mono bg-yellow-950 border border-yellow-800 text-yellow-400 rounded px-1.5 py-0.5">
+                          not configured
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs font-mono text-zinc-500">{agent.agent_type}</span>
+                        {agent.config_path && (
+                          <span className="text-xs text-zinc-600 font-mono">{agent.config_path}</span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-xs text-zinc-600">0 servers</span>
                   </div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-xs font-mono text-zinc-500">{agent.agent_type}</span>
-                    {agent.config_path && (
-                      <span className="text-xs text-zinc-600 font-mono">{agent.config_path}</span>
-                    )}
-                  </div>
+                  <p className="text-xs text-zinc-600 mt-2">
+                    Binary detected on PATH. Run setup to configure MCP servers.
+                  </p>
                 </div>
-                <span className="text-xs text-zinc-600">0 servers</span>
-              </div>
-              <p className="text-xs text-zinc-600 mt-2">
-                Binary detected on PATH. Run setup to configure MCP servers.
-              </p>
+              );
+            })}
             </div>
-          ))}
+          </div>
         </div>
       )}
     </div>

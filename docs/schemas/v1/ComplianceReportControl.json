@@ -1,0 +1,134 @@
+{
+  "$defs": {
+    "ComplianceEvidenceItem": {
+      "properties": {
+        "agents_at_risk": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Agents At Risk",
+          "type": "array"
+        },
+        "control_tag": {
+          "title": "Control Tag",
+          "type": "string"
+        },
+        "finding_id": {
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "fixed_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fixed Version"
+        },
+        "package": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Package"
+        },
+        "scan_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scan Id"
+        },
+        "severity": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Severity"
+        },
+        "vulnerability_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vulnerability Id"
+        }
+      },
+      "required": [
+        "finding_id",
+        "control_tag"
+      ],
+      "title": "ComplianceEvidenceItem",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "control_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Control Id"
+    },
+    "control_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Control Name"
+    },
+    "evidence": {
+      "items": {
+        "$ref": "#/$defs/ComplianceEvidenceItem"
+      },
+      "title": "Evidence",
+      "type": "array"
+    },
+    "finding_count": {
+      "default": 0,
+      "title": "Finding Count",
+      "type": "integer"
+    },
+    "status": {
+      "default": "unknown",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "title": "ComplianceReportControl",
+  "type": "object"
+}

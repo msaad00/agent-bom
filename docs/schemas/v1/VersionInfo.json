@@ -1,0 +1,23 @@
+{
+  "properties": {
+    "api_version": {
+      "default": "v1",
+      "title": "Api Version",
+      "type": "string"
+    },
+    "python_package": {
+      "default": "agent-bom",
+      "title": "Python Package",
+      "type": "string"
+    },
+    "version": {
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "version"
+  ],
+  "title": "VersionInfo",
+  "type": "object"
+}

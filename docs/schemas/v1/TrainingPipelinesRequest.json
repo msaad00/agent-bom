@@ -1,0 +1,17 @@
+{
+  "description": "Request body for POST /v1/scan/training-pipelines.",
+  "properties": {
+    "directories": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Directories",
+      "type": "array"
+    }
+  },
+  "required": [
+    "directories"
+  ],
+  "title": "TrainingPipelinesRequest",
+  "type": "object"
+}

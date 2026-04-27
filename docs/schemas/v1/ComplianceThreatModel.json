@@ -1,0 +1,28 @@
+{
+  "properties": {
+    "confidentiality": {
+      "title": "Confidentiality",
+      "type": "string"
+    },
+    "integrity": {
+      "title": "Integrity",
+      "type": "string"
+    },
+    "non_repudiation": {
+      "title": "Non Repudiation",
+      "type": "string"
+    },
+    "replay": {
+      "title": "Replay",
+      "type": "string"
+    }
+  },
+  "required": [
+    "integrity",
+    "confidentiality",
+    "replay",
+    "non_repudiation"
+  ],
+  "title": "ComplianceThreatModel",
+  "type": "object"
+}

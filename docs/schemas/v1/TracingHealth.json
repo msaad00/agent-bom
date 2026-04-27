@@ -1,0 +1,36 @@
+{
+  "properties": {
+    "otlp_endpoint_configured": {
+      "default": false,
+      "title": "Otlp Endpoint Configured",
+      "type": "boolean"
+    },
+    "otlp_export": {
+      "default": "disabled",
+      "title": "Otlp Export",
+      "type": "string"
+    },
+    "otlp_headers_configured": {
+      "default": false,
+      "title": "Otlp Headers Configured",
+      "type": "boolean"
+    },
+    "w3c_baggage": {
+      "default": true,
+      "title": "W3C Baggage",
+      "type": "boolean"
+    },
+    "w3c_trace_context": {
+      "default": true,
+      "title": "W3C Trace Context",
+      "type": "boolean"
+    },
+    "w3c_tracestate": {
+      "default": true,
+      "title": "W3C Tracestate",
+      "type": "boolean"
+    }
+  },
+  "title": "TracingHealth",
+  "type": "object"
+}

@@ -1,0 +1,33 @@
+{
+  "properties": {
+    "cron_expression": {
+      "title": "Cron Expression",
+      "type": "string"
+    },
+    "enabled": {
+      "default": true,
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "scan_config": {
+      "additionalProperties": true,
+      "title": "Scan Config",
+      "type": "object"
+    },
+    "tenant_id": {
+      "default": "default",
+      "title": "Tenant Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "cron_expression"
+  ],
+  "title": "ScheduleCreate",
+  "type": "object"
+}

@@ -1,0 +1,30 @@
+{
+  "description": "Request body for POST /v1/findings/jira.",
+  "properties": {
+    "email": {
+      "title": "Email",
+      "type": "string"
+    },
+    "finding": {
+      "additionalProperties": true,
+      "title": "Finding",
+      "type": "object"
+    },
+    "jira_url": {
+      "title": "Jira Url",
+      "type": "string"
+    },
+    "project_key": {
+      "title": "Project Key",
+      "type": "string"
+    }
+  },
+  "required": [
+    "jira_url",
+    "email",
+    "project_key",
+    "finding"
+  ],
+  "title": "JiraTicketRequest",
+  "type": "object"
+}

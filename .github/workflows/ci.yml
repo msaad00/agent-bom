@@ -624,6 +624,13 @@ jobs:
       - name: Verify product surface contract
         run: python scripts/check_product_surface_contract.py
 
+      - name: Verify v1 schemas match Pydantic models
+        # Drift gate for #1963: any change to agent_bom.api.models must be
+        # accompanied by a refreshed docs/schemas/v1/ so SDK consumers are
+        # never reading a stale contract. Regenerate locally with
+        # `python scripts/generate_v1_schemas.py` to refresh.
+        run: PYTHONPATH=src python scripts/generate_v1_schemas.py --check
+
       - name: Install dependencies for CLI smoke checks
         run: uv sync --frozen --extra dev --extra api --extra mcp-server
 

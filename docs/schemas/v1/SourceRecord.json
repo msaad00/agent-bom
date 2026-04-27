@@ -1,0 +1,194 @@
+{
+  "$defs": {
+    "SourceKind": {
+      "enum": [
+        "scan.repo",
+        "scan.image",
+        "scan.iac",
+        "scan.cloud",
+        "scan.mcp_config",
+        "connector.cloud_read_only",
+        "connector.registry",
+        "connector.warehouse",
+        "ingest.fleet_sync",
+        "ingest.trace_push",
+        "ingest.result_push",
+        "ingest.artifact_import",
+        "runtime.proxy",
+        "runtime.gateway"
+      ],
+      "title": "SourceKind",
+      "type": "string"
+    },
+    "SourceStatus": {
+      "enum": [
+        "configured",
+        "healthy",
+        "degraded",
+        "disabled"
+      ],
+      "title": "SourceStatus",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "config": {
+      "additionalProperties": true,
+      "title": "Config",
+      "type": "object"
+    },
+    "connector_name": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Connector Name"
+    },
+    "created_at": {
+      "default": "",
+      "title": "Created At",
+      "type": "string"
+    },
+    "credential_mode": {
+      "default": "none",
+      "title": "Credential Mode",
+      "type": "string"
+    },
+    "credential_ref": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Credential Ref"
+    },
+    "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+    },
+    "display_name": {
+      "title": "Display Name",
+      "type": "string"
+    },
+    "enabled": {
+      "default": true,
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "kind": {
+      "$ref": "#/$defs/SourceKind"
+    },
+    "last_job_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Job Id"
+    },
+    "last_run_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Run At"
+    },
+    "last_run_status": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Run Status"
+    },
+    "last_test_message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Test Message"
+    },
+    "last_test_status": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Test Status"
+    },
+    "last_tested_at": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Last Tested At"
+    },
+    "owner": {
+      "default": "",
+      "title": "Owner",
+      "type": "string"
+    },
+    "source_id": {
+      "title": "Source Id",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/SourceStatus",
+      "default": "configured"
+    },
+    "tenant_id": {
+      "default": "default",
+      "title": "Tenant Id",
+      "type": "string"
+    },
+    "updated_at": {
+      "default": "",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source_id",
+    "display_name",
+    "kind"
+  ],
+  "title": "SourceRecord",
+  "type": "object"
+}

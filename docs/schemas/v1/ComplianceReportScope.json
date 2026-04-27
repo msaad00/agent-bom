@@ -1,0 +1,33 @@
+{
+  "properties": {
+    "audit_event_count": {
+      "default": 0,
+      "title": "Audit Event Count",
+      "type": "integer"
+    },
+    "control_count": {
+      "default": 0,
+      "title": "Control Count",
+      "type": "integer"
+    },
+    "finding_count": {
+      "default": 0,
+      "title": "Finding Count",
+      "type": "integer"
+    },
+    "since": {
+      "title": "Since",
+      "type": "string"
+    },
+    "until": {
+      "title": "Until",
+      "type": "string"
+    }
+  },
+  "required": [
+    "since",
+    "until"
+  ],
+  "title": "ComplianceReportScope",
+  "type": "object"
+}

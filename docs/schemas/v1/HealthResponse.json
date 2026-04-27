@@ -1,0 +1,179 @@
+{
+  "$defs": {
+    "AnalyticsHealth": {
+      "properties": {
+        "backend": {
+          "default": "disabled",
+          "title": "Backend",
+          "type": "string"
+        },
+        "buffered": {
+          "default": false,
+          "title": "Buffered",
+          "type": "boolean"
+        },
+        "clickhouse_url_configured": {
+          "default": false,
+          "title": "Clickhouse Url Configured",
+          "type": "boolean"
+        },
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "flush_interval_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Flush Interval Seconds"
+        },
+        "max_batch": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Batch"
+        }
+      },
+      "title": "AnalyticsHealth",
+      "type": "object"
+    },
+    "StorageHealth": {
+      "properties": {
+        "audit_log": {
+          "default": "inmemory",
+          "title": "Audit Log",
+          "type": "string"
+        },
+        "control_plane_backend": {
+          "default": "inmemory",
+          "title": "Control Plane Backend",
+          "type": "string"
+        },
+        "exception_store": {
+          "default": "inmemory",
+          "title": "Exception Store",
+          "type": "string"
+        },
+        "fleet_store": {
+          "default": "inmemory",
+          "title": "Fleet Store",
+          "type": "string"
+        },
+        "graph_store": {
+          "default": "inmemory",
+          "title": "Graph Store",
+          "type": "string"
+        },
+        "job_store": {
+          "default": "inmemory",
+          "title": "Job Store",
+          "type": "string"
+        },
+        "key_store": {
+          "default": "inmemory",
+          "title": "Key Store",
+          "type": "string"
+        },
+        "policy_store": {
+          "default": "inmemory",
+          "title": "Policy Store",
+          "type": "string"
+        },
+        "schedule_store": {
+          "default": "inmemory",
+          "title": "Schedule Store",
+          "type": "string"
+        },
+        "source_store": {
+          "default": "inmemory",
+          "title": "Source Store",
+          "type": "string"
+        },
+        "trend_store": {
+          "default": "inmemory",
+          "title": "Trend Store",
+          "type": "string"
+        }
+      },
+      "title": "StorageHealth",
+      "type": "object"
+    },
+    "TracingHealth": {
+      "properties": {
+        "otlp_endpoint_configured": {
+          "default": false,
+          "title": "Otlp Endpoint Configured",
+          "type": "boolean"
+        },
+        "otlp_export": {
+          "default": "disabled",
+          "title": "Otlp Export",
+          "type": "string"
+        },
+        "otlp_headers_configured": {
+          "default": false,
+          "title": "Otlp Headers Configured",
+          "type": "boolean"
+        },
+        "w3c_baggage": {
+          "default": true,
+          "title": "W3C Baggage",
+          "type": "boolean"
+        },
+        "w3c_trace_context": {
+          "default": true,
+          "title": "W3C Trace Context",
+          "type": "boolean"
+        },
+        "w3c_tracestate": {
+          "default": true,
+          "title": "W3C Tracestate",
+          "type": "boolean"
+        }
+      },
+      "title": "TracingHealth",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "analytics": {
+      "$ref": "#/$defs/AnalyticsHealth"
+    },
+    "status": {
+      "default": "ok",
+      "title": "Status",
+      "type": "string"
+    },
+    "storage": {
+      "$ref": "#/$defs/StorageHealth"
+    },
+    "tracing": {
+      "$ref": "#/$defs/TracingHealth"
+    },
+    "version": {
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "version",
+    "tracing",
+    "analytics",
+    "storage"
+  ],
+  "title": "HealthResponse",
+  "type": "object"
+}

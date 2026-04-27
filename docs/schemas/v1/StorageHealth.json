@@ -1,0 +1,61 @@
+{
+  "properties": {
+    "audit_log": {
+      "default": "inmemory",
+      "title": "Audit Log",
+      "type": "string"
+    },
+    "control_plane_backend": {
+      "default": "inmemory",
+      "title": "Control Plane Backend",
+      "type": "string"
+    },
+    "exception_store": {
+      "default": "inmemory",
+      "title": "Exception Store",
+      "type": "string"
+    },
+    "fleet_store": {
+      "default": "inmemory",
+      "title": "Fleet Store",
+      "type": "string"
+    },
+    "graph_store": {
+      "default": "inmemory",
+      "title": "Graph Store",
+      "type": "string"
+    },
+    "job_store": {
+      "default": "inmemory",
+      "title": "Job Store",
+      "type": "string"
+    },
+    "key_store": {
+      "default": "inmemory",
+      "title": "Key Store",
+      "type": "string"
+    },
+    "policy_store": {
+      "default": "inmemory",
+      "title": "Policy Store",
+      "type": "string"
+    },
+    "schedule_store": {
+      "default": "inmemory",
+      "title": "Schedule Store",
+      "type": "string"
+    },
+    "source_store": {
+      "default": "inmemory",
+      "title": "Source Store",
+      "type": "string"
+    },
+    "trend_store": {
+      "default": "inmemory",
+      "title": "Trend Store",
+      "type": "string"
+    }
+  },
+  "title": "StorageHealth",
+  "type": "object"
+}

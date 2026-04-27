@@ -1,0 +1,48 @@
+{
+  "additionalProperties": true,
+  "properties": {
+    "agents": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Agents",
+      "type": "array"
+    },
+    "blast_radii": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Blast Radii",
+      "type": "array"
+    },
+    "idempotency_key": {
+      "default": "",
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "source_id": {
+      "default": "",
+      "title": "Source Id",
+      "type": "string"
+    },
+    "warnings": {
+      "items": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "string"
+          }
+        ]
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "title": "PushPayload",
+  "type": "object"
+}

@@ -1,0 +1,25 @@
+{
+  "properties": {
+    "relay_state": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Relay State"
+    },
+    "saml_response": {
+      "title": "Saml Response",
+      "type": "string"
+    }
+  },
+  "required": [
+    "saml_response"
+  ],
+  "title": "SAMLLoginRequest",
+  "type": "object"
+}

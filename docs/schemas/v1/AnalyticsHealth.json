@@ -1,0 +1,50 @@
+{
+  "properties": {
+    "backend": {
+      "default": "disabled",
+      "title": "Backend",
+      "type": "string"
+    },
+    "buffered": {
+      "default": false,
+      "title": "Buffered",
+      "type": "boolean"
+    },
+    "clickhouse_url_configured": {
+      "default": false,
+      "title": "Clickhouse Url Configured",
+      "type": "boolean"
+    },
+    "enabled": {
+      "default": false,
+      "title": "Enabled",
+      "type": "boolean"
+    },
+    "flush_interval_seconds": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Flush Interval Seconds"
+    },
+    "max_batch": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Max Batch"
+    }
+  },
+  "title": "AnalyticsHealth",
+  "type": "object"
+}

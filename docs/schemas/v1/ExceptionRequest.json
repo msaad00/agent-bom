@@ -1,0 +1,43 @@
+{
+  "properties": {
+    "expires_at": {
+      "default": "",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "package_name": {
+      "title": "Package Name",
+      "type": "string"
+    },
+    "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+    },
+    "requested_by": {
+      "default": "",
+      "title": "Requested By",
+      "type": "string"
+    },
+    "server_name": {
+      "default": "",
+      "title": "Server Name",
+      "type": "string"
+    },
+    "tenant_id": {
+      "default": "default",
+      "title": "Tenant Id",
+      "type": "string"
+    },
+    "vuln_id": {
+      "title": "Vuln Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "vuln_id",
+    "package_name"
+  ],
+  "title": "ExceptionRequest",
+  "type": "object"
+}

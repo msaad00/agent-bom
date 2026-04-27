@@ -1,0 +1,21 @@
+{
+  "description": "Request body for POST /v1/scan/prompt-scan.",
+  "properties": {
+    "directories": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Directories",
+      "type": "array"
+    },
+    "files": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Files",
+      "type": "array"
+    }
+  },
+  "title": "PromptScanRequest",
+  "type": "object"
+}

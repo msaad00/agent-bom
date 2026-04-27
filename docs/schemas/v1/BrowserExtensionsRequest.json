@@ -1,0 +1,12 @@
+{
+  "description": "Request body for POST /v1/scan/browser-extensions.",
+  "properties": {
+    "include_low_risk": {
+      "default": false,
+      "title": "Include Low Risk",
+      "type": "boolean"
+    }
+  },
+  "title": "BrowserExtensionsRequest",
+  "type": "object"
+}

@@ -1,0 +1,52 @@
+{
+  "description": "Request body for POST /v1/findings/feedback.",
+  "properties": {
+    "expires_at": {
+      "default": "",
+      "maxLength": 64,
+      "title": "Expires At",
+      "type": "string"
+    },
+    "package": {
+      "default": "*",
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Package",
+      "type": "string"
+    },
+    "reason": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Reason",
+      "type": "string"
+    },
+    "server_name": {
+      "default": "",
+      "maxLength": 256,
+      "title": "Server Name",
+      "type": "string"
+    },
+    "state": {
+      "default": "false_positive",
+      "enum": [
+        "false_positive",
+        "accepted_risk",
+        "not_applicable",
+        "fixed_verified"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "vulnerability_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Vulnerability Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "vulnerability_id"
+  ],
+  "title": "FindingFeedbackRequest",
+  "type": "object"
+}

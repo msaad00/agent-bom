@@ -646,7 +646,14 @@ def build_unified_graph_from_report(
     # ── Framework-native static topology (CrewAI / LangGraph / AutoGen) ──
     ai_inventory = report_json.get("ai_inventory", {})
     if isinstance(ai_inventory, dict):
-        _add_framework_topology(graph, ai_inventory.get("framework_agents", []), data_source_tag)
+        framework_agents_data = ai_inventory.get("framework_agents", [])
+        _add_framework_topology(graph, framework_agents_data, data_source_tag)
+        # Cross-environment correlation (#1892 Phase 1: AWS Bedrock).
+        # Local framework agents that match a discovered cloud Bedrock
+        # resource get a `correlates_with` edge with confidence + signals
+        # attached. Only operates within the current scan / tenant scope —
+        # the agents_data list is already tenant-bounded by the caller.
+        _add_cross_env_correlation(graph, framework_agents_data, agents_data)
 
     # ── Runtime session graph (dynamic edges) ──────────────────────
     runtime_graph = report_json.get("runtime_session_graph")
@@ -1123,6 +1130,40 @@ def _add_framework_topology(graph: UnifiedGraph, framework_agents: Any, data_sou
                     },
                 )
             )
+
+
+def _add_cross_env_correlation(
+    graph: UnifiedGraph,
+    framework_agents: Any,
+    cloud_agents: Any,
+) -> None:
+    """Add cross-environment ``correlates_with`` edges between local
+    framework agents and the cloud_resource lineage nodes promoted from
+    cloud-discovered agents (#1892 Phase 1: AWS Bedrock).
+
+    Both endpoints must already exist in the graph, otherwise the edge is
+    silently dropped — that's the cross-tenant safety: the graph builder
+    only added nodes for entities in the current scan/tenant scope, so an
+    edge whose endpoint is missing would necessarily span scopes.
+    """
+    from agent_bom.cross_env_correlation import correlate_bedrock
+
+    if not isinstance(framework_agents, list) or not isinstance(cloud_agents, list):
+        return
+    links = correlate_bedrock(framework_agents, cloud_agents)
+    for link in links:
+        if not graph.has_node(link.local_agent_id):
+            continue
+        if not graph.has_node(link.cloud_resource_id):
+            continue
+        graph.add_edge(
+            UnifiedEdge(
+                source=link.local_agent_id,
+                target=link.cloud_resource_id,
+                relationship=RelationshipType.CORRELATES_WITH,
+                evidence=link.to_evidence(),
+            )
+        )
 
 
 def _clean_graph_part(value: Any) -> str:

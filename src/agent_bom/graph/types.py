@@ -72,6 +72,13 @@ class RelationshipType(str, Enum):
     ACCESSED = "accessed"  # tool → resource (runtime)
     DELEGATED_TO = "delegated_to"  # agent → agent (runtime)
 
+    # ── Cross-environment correlation (#1892) ──
+    # local framework/project agent → cloud_resource (e.g., AWS Bedrock).
+    # Edge attributes carry the matching signals and a confidence level
+    # (exact / inferred / low) so dashboards can distinguish certain
+    # matches from heuristic ones without merging the nodes.
+    CORRELATES_WITH = "correlates_with"
+
 
 class NodeStatus(str, Enum):
     """Lifecycle status of a graph node."""

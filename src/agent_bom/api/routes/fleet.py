@@ -19,7 +19,7 @@ from fastapi import APIRouter, HTTPException, Request
 from agent_bom.api.mcp_observation_store import MCPObservation, merge_observations
 from agent_bom.api.models import FleetAgentUpdate, PushPayload, StateUpdate
 from agent_bom.api.stores import _get_fleet_store, _get_idempotency_store, _get_mcp_observation_store
-from agent_bom.api.tenant_quota import enforce_fleet_agents_quota
+from agent_bom.api.tenant_quota import enforce_fleet_agents_quota, tenant_quota_guard
 
 router = APIRouter()
 
@@ -272,115 +272,128 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
         payload_agents = body.agents
         existing_by_name = {agent.name: agent for agent in store.list_by_tenant(tenant_id)}
         new_names = {str(agent.get("name", "unknown-agent")) for agent in payload_agents} - set(existing_by_name)
-        enforce_fleet_agents_quota(tenant_id, attempted=len(new_names))
-        for payload_agent in payload_agents:
-            name = payload_agent.get("name", "unknown-agent")
-            existing = existing_by_name.get(name)
-            server_count, pkg_count, cred_count, vuln_count = _payload_counts(payload_agent)
-            score = float(payload_agent.get("trust_score", 0.0) or 0.0)
-            factors = dict(payload_agent.get("trust_factors", {}) or {})
-            payload_source_id = str(payload_agent.get("source_id") or source_id or "")
-            payload_enrollment_name = str(payload_agent.get("enrollment_name") or "")
-            payload_mdm_provider = str(payload_agent.get("mdm_provider") or "")
-            payload_owner = payload_agent.get("owner")
-            payload_environment = payload_agent.get("environment")
-            payload_tags = _payload_tags(payload_agent)
-            if existing:
-                existing.server_count = server_count
-                existing.package_count = pkg_count
-                existing.credential_count = cred_count
-                existing.vuln_count = vuln_count
-                existing.trust_score = score
-                existing.trust_factors = factors
-                existing.last_discovery = now
-                existing.updated_at = now
-                existing.config_path = ""
-                existing.agent_type = str(payload_agent.get("agent_type", existing.agent_type))
-                existing.source_id = payload_source_id or existing.source_id
-                existing.enrollment_name = payload_enrollment_name or existing.enrollment_name
-                existing.mdm_provider = payload_mdm_provider or existing.mdm_provider
-                if payload_owner is not None:
-                    existing.owner = str(payload_owner or "")
-                if payload_environment is not None:
-                    existing.environment = str(payload_environment or "")
-                if payload_tags:
-                    existing.tags = payload_tags
-                store.put(existing)
-                updated_count += 1
-            else:
-                fleet_agent = FleetAgent(
-                    agent_id=str(uuid.uuid4()),
-                    name=name,
-                    agent_type=str(payload_agent.get("agent_type", "unknown")),
-                    config_path="",
-                    source_id=payload_source_id,
-                    enrollment_name=payload_enrollment_name,
-                    mdm_provider=payload_mdm_provider,
-                    lifecycle_state=FleetLifecycleState.DISCOVERED,
-                    owner=str(payload_owner or "") or None,
-                    environment=str(payload_environment or "") or None,
-                    tags=payload_tags,
-                    trust_score=score,
-                    trust_factors=factors,
-                    server_count=server_count,
-                    package_count=pkg_count,
-                    credential_count=cred_count,
-                    vuln_count=vuln_count,
-                    tenant_id=tenant_id,
-                    last_discovery=now,
-                    created_at=now,
-                    updated_at=now,
-                )
-                store.put(fleet_agent)
-                new_count += 1
-            _persist_payload_observations(tenant_id, payload_agent, last_discovery=now, last_synced=now)
+
+        # Hold the per-tenant quota guard across the (check + insert
+        # loop) pair so concurrent fleet-sync POSTs serialise per
+        # tenant — without this, two replicas can both pass the
+        # enforce_fleet_agents_quota check and overshoot the quota by
+        # `num_replicas` (audit-5 P1 fleet race fix).
+        with tenant_quota_guard(
+            tenant_id,
+            lambda: enforce_fleet_agents_quota(tenant_id, attempted=len(new_names)),
+        ):
+            for payload_agent in payload_agents:
+                name = payload_agent.get("name", "unknown-agent")
+                existing = existing_by_name.get(name)
+                server_count, pkg_count, cred_count, vuln_count = _payload_counts(payload_agent)
+                score = float(payload_agent.get("trust_score", 0.0) or 0.0)
+                factors = dict(payload_agent.get("trust_factors", {}) or {})
+                payload_source_id = str(payload_agent.get("source_id") or source_id or "")
+                payload_enrollment_name = str(payload_agent.get("enrollment_name") or "")
+                payload_mdm_provider = str(payload_agent.get("mdm_provider") or "")
+                payload_owner = payload_agent.get("owner")
+                payload_environment = payload_agent.get("environment")
+                payload_tags = _payload_tags(payload_agent)
+                if existing:
+                    existing.server_count = server_count
+                    existing.package_count = pkg_count
+                    existing.credential_count = cred_count
+                    existing.vuln_count = vuln_count
+                    existing.trust_score = score
+                    existing.trust_factors = factors
+                    existing.last_discovery = now
+                    existing.updated_at = now
+                    existing.config_path = ""
+                    existing.agent_type = str(payload_agent.get("agent_type", existing.agent_type))
+                    existing.source_id = payload_source_id or existing.source_id
+                    existing.enrollment_name = payload_enrollment_name or existing.enrollment_name
+                    existing.mdm_provider = payload_mdm_provider or existing.mdm_provider
+                    if payload_owner is not None:
+                        existing.owner = str(payload_owner or "")
+                    if payload_environment is not None:
+                        existing.environment = str(payload_environment or "")
+                    if payload_tags:
+                        existing.tags = payload_tags
+                    store.put(existing)
+                    updated_count += 1
+                else:
+                    fleet_agent = FleetAgent(
+                        agent_id=str(uuid.uuid4()),
+                        name=name,
+                        agent_type=str(payload_agent.get("agent_type", "unknown")),
+                        config_path="",
+                        source_id=payload_source_id,
+                        enrollment_name=payload_enrollment_name,
+                        mdm_provider=payload_mdm_provider,
+                        lifecycle_state=FleetLifecycleState.DISCOVERED,
+                        owner=str(payload_owner or "") or None,
+                        environment=str(payload_environment or "") or None,
+                        tags=payload_tags,
+                        trust_score=score,
+                        trust_factors=factors,
+                        server_count=server_count,
+                        package_count=pkg_count,
+                        credential_count=cred_count,
+                        vuln_count=vuln_count,
+                        tenant_id=tenant_id,
+                        last_discovery=now,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    store.put(fleet_agent)
+                    new_count += 1
+                _persist_payload_observations(tenant_id, payload_agent, last_discovery=now, last_synced=now)
     else:
         discovered = discover_all()
         existing_by_name = {agent.name: agent for agent in store.list_by_tenant(tenant_id)}
         discovered_names = {agent.name for agent in discovered}
         new_names = discovered_names - set(existing_by_name)
-        enforce_fleet_agents_quota(tenant_id, attempted=len(new_names))
-        for discovered_agent in discovered:
-            existing = existing_by_name.get(discovered_agent.name)
-            server_count, pkg_count, cred_count, vuln_count = _server_counts(discovered_agent)
-            score, factors = compute_trust_score(discovered_agent)
+        # Same per-tenant quota guard as the payload-agents branch.
+        with tenant_quota_guard(
+            tenant_id,
+            lambda: enforce_fleet_agents_quota(tenant_id, attempted=len(new_names)),
+        ):
+            for discovered_agent in discovered:
+                existing = existing_by_name.get(discovered_agent.name)
+                server_count, pkg_count, cred_count, vuln_count = _server_counts(discovered_agent)
+                score, factors = compute_trust_score(discovered_agent)
 
-            if existing:
-                existing.server_count = server_count
-                existing.package_count = pkg_count
-                existing.credential_count = cred_count
-                existing.vuln_count = vuln_count
-                existing.trust_score = score
-                existing.trust_factors = factors
-                existing.last_discovery = now
-                existing.updated_at = now
-                existing.config_path = discovered_agent.config_path or ""
-                store.put(existing)
-                updated_count += 1
-            else:
-                fleet_agent = FleetAgent(
-                    agent_id=str(uuid.uuid4()),
-                    name=discovered_agent.name,
-                    agent_type=(
-                        discovered_agent.agent_type.value
-                        if hasattr(discovered_agent.agent_type, "value")
-                        else str(discovered_agent.agent_type)
-                    ),
-                    config_path=discovered_agent.config_path or "",
-                    lifecycle_state=FleetLifecycleState.DISCOVERED,
-                    trust_score=score,
-                    trust_factors=factors,
-                    server_count=server_count,
-                    package_count=pkg_count,
-                    credential_count=cred_count,
-                    vuln_count=vuln_count,
-                    tenant_id=tenant_id,
-                    last_discovery=now,
-                    created_at=now,
-                    updated_at=now,
-                )
-                store.put(fleet_agent)
-                new_count += 1
+                if existing:
+                    existing.server_count = server_count
+                    existing.package_count = pkg_count
+                    existing.credential_count = cred_count
+                    existing.vuln_count = vuln_count
+                    existing.trust_score = score
+                    existing.trust_factors = factors
+                    existing.last_discovery = now
+                    existing.updated_at = now
+                    existing.config_path = discovered_agent.config_path or ""
+                    store.put(existing)
+                    updated_count += 1
+                else:
+                    fleet_agent = FleetAgent(
+                        agent_id=str(uuid.uuid4()),
+                        name=discovered_agent.name,
+                        agent_type=(
+                            discovered_agent.agent_type.value
+                            if hasattr(discovered_agent.agent_type, "value")
+                            else str(discovered_agent.agent_type)
+                        ),
+                        config_path=discovered_agent.config_path or "",
+                        lifecycle_state=FleetLifecycleState.DISCOVERED,
+                        trust_score=score,
+                        trust_factors=factors,
+                        server_count=server_count,
+                        package_count=pkg_count,
+                        credential_count=cred_count,
+                        vuln_count=vuln_count,
+                        tenant_id=tenant_id,
+                        last_discovery=now,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    store.put(fleet_agent)
+                    new_count += 1
 
     response = {
         "synced": new_count + updated_count,

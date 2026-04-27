@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
+import logging
+import os
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import HTTPException
 
@@ -18,6 +22,8 @@ from agent_bom.config import (
     API_MAX_RETAINED_JOBS_PER_TENANT,
     API_MAX_SCHEDULES_PER_TENANT,
 )
+
+_logger = logging.getLogger(__name__)
 
 # ── Per-tenant atomicity for quota enforcement ───────────────────────────────
 # Audit-4 P1: each `enforce_*_quota` function reads the current count and
@@ -39,13 +45,96 @@ def _tenant_quota_lock(tenant_id: str) -> threading.Lock:
         return _TENANT_QUOTA_LOCKS.setdefault(tenant_id, threading.Lock())
 
 
+def _tenant_advisory_lock_key(tenant_id: str) -> int:
+    """Stable signed-64-bit key for ``pg_advisory_lock``.
+
+    Postgres advisory lock keys are bigint (-2^63 .. 2^63 - 1). Hash the
+    tenant id with sha256 and fold the leading 8 bytes into a signed
+    int. Collisions across tenants would mean false serialisation
+    between two unrelated tenants — at sha256 strength that is
+    effectively impossible.
+    """
+    digest = hashlib.sha256(tenant_id.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big", signed=True)
+
+
+@contextlib.contextmanager
+def _maybe_postgres_advisory_lock(tenant_id: str) -> Iterator[None]:
+    """Hold a Postgres advisory lock keyed on the tenant id when available.
+
+    Cluster-safe extension of the per-process ``threading.Lock`` — under
+    multiple replicas the in-process lock only serialises within one
+    worker, leaving ``num_replicas`` concurrent (check + insert) windows
+    open. ``pg_advisory_lock`` is session-scoped (not transaction-scoped)
+    so we hold the same connection from acquire to release. The acquire
+    is blocking so concurrent replicas queue rather than spin or fail.
+
+    Falls back to a no-op when Postgres is not configured or the
+    psycopg pool can't be reached, so single-replica deployments and
+    SQLite-only paths keep working unchanged. The fallback is logged
+    once per process so an operator can spot accidental cluster mode
+    without storage-layer support.
+    """
+    if not os.environ.get("AGENT_BOM_POSTGRES_URL"):
+        yield
+        return
+    try:
+        from agent_bom.api.postgres_common import _get_pool
+    except ImportError:
+        yield
+        return
+
+    key = _tenant_advisory_lock_key(tenant_id)
+    pool = None
+    conn: Any = None
+    try:
+        pool = _get_pool()
+        conn = pool.getconn(timeout=5.0)
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning(
+            "tenant_quota_guard could not acquire Postgres advisory lock for tenant=%s: %s. Falling back to per-process serialisation.",
+            tenant_id,
+            exc,
+        )
+        if conn is not None and pool is not None:
+            try:
+                pool.putconn(conn)
+            except Exception:  # noqa: BLE001
+                pass
+        yield
+        return
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT pg_advisory_lock(%s)", (key,))
+        yield
+    finally:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_advisory_unlock(%s)", (key,))
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("pg_advisory_unlock failed for tenant=%s: %s", tenant_id, exc)
+        try:
+            pool.putconn(conn)
+        except Exception:  # noqa: BLE001
+            pass
+
+
 @contextmanager
 def tenant_quota_guard(tenant_id: str, *checks: Callable[[], None]) -> Iterator[None]:
     """Run quota checks atomically with whatever the caller does next.
 
-    Use this around (check + insert) pairs in route handlers so concurrent
-    requests serialise per tenant and the second caller sees the first
-    caller's row in its check.
+    Two layers of serialisation per tenant:
+
+    1. ``threading.Lock`` — single-process atomicity. Required because
+       Postgres advisory locks are session-scoped, not request-scoped,
+       and two greenlets in the same worker could otherwise race
+       between lock release and the storage commit.
+    2. ``pg_advisory_lock`` (when AGENT_BOM_POSTGRES_URL is set) —
+       cross-replica atomicity. Without it, N replicas can each pass
+       the check concurrently and overshoot the quota by N.
+
+    Use this around (check + insert) pairs in route handlers so the
+    second caller sees the first caller's row in its check::
 
         with tenant_quota_guard(
             tenant_id,
@@ -55,7 +144,7 @@ def tenant_quota_guard(tenant_id: str, *checks: Callable[[], None]) -> Iterator[
             store.put(job)
     """
     lock = _tenant_quota_lock(tenant_id)
-    with lock:
+    with lock, _maybe_postgres_advisory_lock(tenant_id):
         for check in checks:
             check()
         yield

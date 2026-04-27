@@ -9,7 +9,7 @@ from __future__ import annotations
 import sqlite3
 import threading
 from enum import Enum
-from typing import Protocol
+from typing import Any, Protocol
 
 from pydantic import BaseModel
 
@@ -62,7 +62,7 @@ class PolicyAuditEntry(BaseModel):
     rule_id: str
     agent_name: str
     tool_name: str
-    arguments_preview: dict = {}
+    arguments_preview: dict[str, Any] = {}
     action_taken: str  # "blocked" | "alerted" | "allowed"
     reason: str
     timestamp: str = ""
@@ -176,10 +176,12 @@ class SQLitePolicyStore:
 
     @property
     def _conn(self) -> sqlite3.Connection:
-        if not hasattr(self._local, "conn") or self._local.conn is None:
-            self._local.conn = sqlite3.connect(self._db_path, check_same_thread=False)
-            self._local.conn.execute("PRAGMA journal_mode=WAL")
-        return self._local.conn
+        conn: sqlite3.Connection | None = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self._db_path, check_same_thread=False)
+            conn.execute("PRAGMA journal_mode=WAL")
+            self._local.conn = conn
+        return conn
 
     def _init_db(self) -> None:
         c = self._conn
@@ -248,7 +250,8 @@ class SQLitePolicyStore:
         row = self._conn.execute(sql, params).fetchone()
         if row is None:
             return None
-        return GatewayPolicy.model_validate_json(row[0])
+        policy: GatewayPolicy = GatewayPolicy.model_validate_json(row[0])
+        return policy
 
     def delete_policy(self, policy_id: str, tenant_id: str | None = None) -> bool:
         sql = "DELETE FROM gateway_policies WHERE policy_id = ?"

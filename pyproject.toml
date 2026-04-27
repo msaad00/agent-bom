@@ -213,9 +213,13 @@ show_error_codes = true
 # New modules land here first; expand the glob as older modules are retyped.
 [[tool.mypy.overrides]]
 module = [
+    "agent_bom.api.audit_log",
     "agent_bom.api.compliance_signing",
     "agent_bom.api.dashboard_csp",
+    "agent_bom.api.exception_store",
+    "agent_bom.api.mcp_observation_store",
     "agent_bom.api.metrics",
+    "agent_bom.api.policy_store",
     "agent_bom.api.scim",
     "agent_bom.api.storage_schema",
     "agent_bom.api.tenant_quota_store",

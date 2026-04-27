@@ -33,10 +33,17 @@ jobs:
           node-version: '22'
 
       - name: Normalize UI lockfile
+        # We invoke `npm install --package-lock-only --ignore-scripts` directly
+        # instead of `npm run lock:normalize`. This is a `pull_request_target`
+        # workflow with a privileged GITHUB_TOKEN; running an npm script
+        # defined in the PR-supplied `ui/package.json` would let a Dependabot
+        # branch redefine `scripts.lock:normalize` and execute arbitrary code
+        # with that token. The inline form keeps the resolver behavior
+        # identical (lockfile-only resolve, no install scripts) without
+        # trusting the PR's `scripts` block.
         run: |
           cd ui
-          npm ci --ignore-scripts
-          npm run lock:normalize
+          npm install --package-lock-only --ignore-scripts
 
       - name: Commit normalized lockfile
         run: |

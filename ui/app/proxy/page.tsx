@@ -73,16 +73,30 @@ export default function ProxyDashboard() {
   const [severityFilter, setSeverityFilter] = useState<string>("");
   const wsRef = useRef<WebSocket | null>(null);
 
-  // Fetch initial data
+  // Fetch initial data. Status and alerts are independent — render whichever
+  // resolves successfully so a transient alerts failure doesn't blank the
+  // status header (and vice-versa). Surface the first failure as a banner.
   const load = () => {
     setLoading(true);
     setError(null);
-    Promise.all([api.getProxyStatus(), api.getProxyAlerts({ limit: 200 })])
-      .then(([s, a]) => {
-        setStatus(s);
-        setAlerts(a.alerts);
+    // `Promise.allSettled` never rejects, so a .catch handler would be dead
+    // code. The leading `void` tells eslint that intent and silences the
+    // no-floating-promises rule without adding a no-op catch.
+    void Promise.allSettled([api.getProxyStatus(), api.getProxyAlerts({ limit: 200 })])
+      .then(([statusResult, alertsResult]) => {
+        const failures: string[] = [];
+        if (statusResult.status === "fulfilled") {
+          setStatus(statusResult.value);
+        } else {
+          failures.push(`status: ${statusResult.reason?.message ?? "request failed"}`);
+        }
+        if (alertsResult.status === "fulfilled") {
+          setAlerts(alertsResult.value.alerts);
+        } else {
+          failures.push(`alerts: ${alertsResult.reason?.message ?? "request failed"}`);
+        }
+        setError(failures.length === 0 ? null : failures.join("; "));
       })
-      .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   };
 

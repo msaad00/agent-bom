@@ -43,12 +43,14 @@ class MCPObservation(BaseModel):
     @field_validator("tenant_id", mode="before")
     @classmethod
     def _normalize_tenant_id(cls, value: str | None) -> str:
-        return normalize_tenant_id(value)
+        result: str = normalize_tenant_id(value)
+        return result
 
     @field_validator("first_seen", "last_seen", "last_synced", "updated_at", mode="before")
     @classmethod
     def _normalize_timestamp(cls, value: str | None) -> str | None:
-        return normalize_timestamp(value)
+        result: str | None = normalize_timestamp(value)
+        return result
 
 
 def _pick_timestamp(*values: str | None, prefer: str) -> str | None:
@@ -130,10 +132,12 @@ class SQLiteMCPObservationStore:
 
     @property
     def _conn(self) -> sqlite3.Connection:
-        if not hasattr(self._local, "conn") or self._local.conn is None:
-            self._local.conn = sqlite3.connect(self._db_path, check_same_thread=False)
-            self._local.conn.execute("PRAGMA journal_mode=WAL")
-        return self._local.conn
+        conn: sqlite3.Connection | None = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self._db_path, check_same_thread=False)
+            conn.execute("PRAGMA journal_mode=WAL")
+            self._local.conn = conn
+        return conn
 
     def _init_db(self) -> None:
         ensure_sqlite_schema_version(self._conn, "mcp_observations")
@@ -173,7 +177,8 @@ class SQLiteMCPObservationStore:
         ).fetchone()
         if row is None:
             return None
-        return MCPObservation.model_validate_json(row[0])
+        obs: MCPObservation = MCPObservation.model_validate_json(row[0])
+        return obs
 
     def list_by_tenant(self, tenant_id: str) -> list[MCPObservation]:
         rows = self._conn.execute(

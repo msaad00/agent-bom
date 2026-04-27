@@ -24,7 +24,7 @@ import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import uuid4
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
@@ -172,7 +172,7 @@ class AuditEntry:
     action: str = ""  # scan, policy_eval, fleet_change, exception, alert, config
     actor: str = ""  # API key prefix, role, or "system"
     resource: str = ""  # e.g., "job/abc123", "fleet/agent-1", "exception/exc-1"
-    details: dict = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
     prev_signature: str = ""
     hmac_signature: str = ""
 
@@ -207,7 +207,7 @@ class AuditEntry:
             self.hmac_signature, self._legacy_hmac()
         )
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "entry_id": self.entry_id,
             "timestamp": self.timestamp,
@@ -380,10 +380,12 @@ class SQLiteAuditLog:
 
     @property
     def _conn(self) -> sqlite3.Connection:
-        if not hasattr(self._local, "conn") or self._local.conn is None:
-            self._local.conn = sqlite3.connect(self._db_path, check_same_thread=False)
-            self._local.conn.execute("PRAGMA journal_mode=WAL")
-        return self._local.conn
+        conn: sqlite3.Connection | None = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self._db_path, check_same_thread=False)
+            conn.execute("PRAGMA journal_mode=WAL")
+            self._local.conn = conn
+        return conn
 
     def _init_db(self) -> None:
         ensure_sqlite_schema_version(self._conn, "audit_log")
@@ -470,8 +472,8 @@ class SQLiteAuditLog:
         offset: int = 0,
         tenant_id: str | None = None,
     ) -> list[AuditEntry]:
-        clauses = []
-        params: list = []
+        clauses: list[str] = []
+        params: list[Any] = []
         if tenant_id is not None:
             clauses.append("json_extract(details, '$.tenant_id') = ?")
             params.append(tenant_id)

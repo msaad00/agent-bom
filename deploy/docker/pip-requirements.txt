@@ -1,4 +1,11 @@
-# Intentionally empty.
+# Pip itself is upgraded over the version bundled with the pinned Python base
+# image to clear pip's own published advisories. Hashes are required because
+# the runtime stage installs with `--require-hashes`.
 #
-# Runtime images use the pip bundled with the pinned Python base image instead
-# of installing pip as an application dependency.
+# When bumping: `python scripts/refresh_pip_requirements.py` if available, else
+# `curl -fsSL https://pypi.org/pypi/pip/<version>/json | jq -r '.urls[] | "sha256:" + .digests.sha256'`
+# and copy the wheel + sdist hashes below.
+
+pip==26.1 \
+    --hash=sha256:4e8486d821d814b77319acb7b9e8bf5a4ee7590a643e7cb21029f209be8573c1 \
+    --hash=sha256:81e13ebcca3ffa8cc85e4deff5c27e1ee26dea0aa7fc2f294a073ac208806ff3

@@ -197,8 +197,15 @@ def configure_otel_tracing() -> bool:
     return True
 
 
-def get_tracer(name: str):
-    """Return an OpenTelemetry tracer when OTLP tracing is enabled."""
+def get_tracer(name: str) -> Any:
+    """Return an OpenTelemetry tracer when OTLP tracing is enabled.
+
+    The return type is `Any` because the OpenTelemetry stubs are not
+    a hard dependency of agent-bom — declaring `trace.Tracer` here
+    would force every caller's mypy run to require the otel stubs.
+    `Any` lets the rest of the codebase keep its strict typing without
+    a stub dependency.
+    """
     if not configure_otel_tracing():
         return None
     try:

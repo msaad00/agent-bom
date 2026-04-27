@@ -148,10 +148,26 @@ class UnifiedGraph:
 
         Reverse adjacency is ONLY added for bidirectional edges.
         Directed edges are one-way in the adjacency map.
+
+        When the (source, target, relationship) triple already exists,
+        the new edge's ``evidence`` dict is **merged into** the kept
+        edge instead of being silently dropped. The graph builder adds
+        the same logical edge from multiple paths (package-path edge
+        first, blast-radius edge second); without the merge, the second
+        caller's evidence (cvss, epss, kev, attack tags) was lost.
         """
         rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
         key = (edge.source, edge.target, rel)
         if key in self._edge_keys:
+            if edge.evidence:
+                for stored in self.adjacency.get(edge.source, []):
+                    if stored.target == edge.target and stored.relationship == edge.relationship:
+                        for evidence_key, value in edge.evidence.items():
+                            if value in (None, "", [], {}):
+                                continue
+                            if evidence_key not in stored.evidence or stored.evidence[evidence_key] in (None, "", [], {}):
+                                stored.evidence[evidence_key] = value
+                        break
             return
         self._edge_keys.add(key)
         self.edges.append(edge)

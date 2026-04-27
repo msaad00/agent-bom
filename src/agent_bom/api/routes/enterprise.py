@@ -75,10 +75,33 @@ class AuditExportVerifyRequest(BaseModel):
 
 _AUTH_SESSION_ATTEMPTS: dict[str, list[float]] = {}
 _AUTH_SESSION_LOCK = threading.Lock()
+_AUTH_SESSION_CLUSTERED_WARNING_EMITTED = False
 _SAML_RELAY_STATES: dict[str, float] = {}
 _SAML_RELAY_LOCK = threading.Lock()
 _FEEDBACK_PREFIX = "[finding_feedback:"
 _LEGACY_FALSE_POSITIVE_PREFIX = "[false_positive]"
+
+
+def _warn_in_process_rate_limit_in_cluster() -> None:
+    """Emit a one-shot warning when the in-process auth attempt counter is used in cluster mode.
+
+    The map is per-replica, so the effective brute-force budget under N
+    replicas is ``limit * N`` — silently. The Postgres-backed counter
+    that closes this gap is tracked as audit-5 PR-B follow-up; this
+    warning makes the gap visible to operators in the meantime.
+    """
+    global _AUTH_SESSION_CLUSTERED_WARNING_EMITTED
+    if _AUTH_SESSION_CLUSTERED_WARNING_EMITTED:
+        return
+    if not os.environ.get("AGENT_BOM_POSTGRES_URL") and not os.environ.get("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT"):
+        return
+    _AUTH_SESSION_CLUSTERED_WARNING_EMITTED = True
+    _logger.warning(
+        "Auth session attempt counter is process-local; under multiple API replicas the "
+        "effective brute-force budget is %d × num_replicas. Postgres-backed counter is the "
+        "audit-5 follow-up.",
+        _auth_session_limit(),
+    )
 
 
 def _client_fingerprint(request: Request) -> str:
@@ -96,6 +119,7 @@ def _auth_session_limit() -> int:
 
 
 def _check_auth_session_rate_limit(request: Request) -> None:
+    _warn_in_process_rate_limit_in_cluster()
     now = time.monotonic()
     window_start = now - 60
     key = _client_fingerprint(request)
@@ -123,9 +147,19 @@ def _relay_state_digest(relay_state: str) -> str:
 
 
 def _new_saml_relay_state() -> tuple[str, str]:
+    # Sweep expired entries on issue too, not only on consume — otherwise
+    # an attacker who issues many relay-state nonces but never completes
+    # the SAML round trip can grow the in-memory map unbounded. The
+    # cleanup is O(n) on the active set, which is small in practice
+    # (single-tenant pilot or reverse-proxy SSO; broader deployments
+    # should pin this map in shared storage).
     relay_state = secrets.token_urlsafe(32)
-    expires_at = time.monotonic() + _saml_relay_ttl_seconds()
+    now_monotonic = time.monotonic()
+    expires_at = now_monotonic + _saml_relay_ttl_seconds()
     with _SAML_RELAY_LOCK:
+        expired = [key for key, exp in _SAML_RELAY_STATES.items() if exp < now_monotonic]
+        for key in expired:
+            _SAML_RELAY_STATES.pop(key, None)
         _SAML_RELAY_STATES[_relay_state_digest(relay_state)] = expires_at
     return relay_state, (datetime.now(timezone.utc) + timedelta(seconds=_saml_relay_ttl_seconds())).isoformat()
 

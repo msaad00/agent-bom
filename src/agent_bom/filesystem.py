@@ -119,9 +119,13 @@ def scan_filesystem(path: str, timeout: int = 600) -> tuple[list[Package], str]:
         except Exception:
             logger.debug("Native tar parsing failed, trying Syft fallback")
 
-        # Syft fallback for tar archives
-        if shutil.which("syft"):
-            return _scan_archive(validated, timeout), "syft-tar"
+        # Syft fallback for tar archives. Resolve once to an absolute path
+        # and pass it through so the subprocess does not re-resolve against
+        # PATH and pick a different binary between the check and the exec
+        # (audit-4 P2 TOCTOU).
+        syft_path = shutil.which("syft")
+        if syft_path:
+            return _scan_archive(validated, timeout, syft_executable=syft_path), "syft-tar"
         raise FilesystemScanError(
             "Could not parse tar archive natively and syft not found on PATH. "
             "Install syft from https://github.com/anchore/syft for fallback support."
@@ -146,16 +150,22 @@ def _scan_directory(dir_path: Path, timeout: int = 600) -> list[Package]:
     return _run_syft(f"dir:{dir_path}", timeout)
 
 
-def _scan_archive(tar_path: Path, timeout: int = 600) -> list[Package]:
+def _scan_archive(tar_path: Path, timeout: int = 600, *, syft_executable: str = "syft") -> list[Package]:
     """Run ``syft /path/to/archive.tar -o cyclonedx-json``."""
-    return _run_syft(str(tar_path), timeout)
+    return _run_syft(str(tar_path), timeout, syft_executable=syft_executable)
 
 
-def _run_syft(source: str, timeout: int) -> list[Package]:
-    """Execute syft and parse CycloneDX output."""
+def _run_syft(source: str, timeout: int, *, syft_executable: str = "syft") -> list[Package]:
+    """Execute syft and parse CycloneDX output.
+
+    ``syft_executable`` defaults to the bare name for backwards compatibility
+    with internal callers; production callers pass the absolute path resolved
+    via ``shutil.which("syft")`` to avoid a PATH-substitution race between
+    the resolve and the exec (audit-4 P2).
+    """
     try:
         result = subprocess.run(
-            ["syft", source, "-o", "cyclonedx-json", "--quiet"],
+            [syft_executable, source, "-o", "cyclonedx-json", "--quiet"],
             capture_output=True,
             text=True,
             timeout=timeout,

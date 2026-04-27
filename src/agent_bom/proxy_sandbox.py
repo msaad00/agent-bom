@@ -214,14 +214,24 @@ def sandbox_config_from_env(
 
 
 def resolve_container_runtime(runtime: SandboxRuntime) -> str:
-    """Resolve docker/podman, preferring Docker for operator familiarity."""
+    """Resolve docker/podman, preferring Docker for operator familiarity.
+
+    Returns the absolute path returned by ``shutil.which`` rather than the
+    bare name so subsequent ``subprocess.Popen`` calls do not re-resolve
+    against PATH (audit-4 P2). A PATH change between resolve and exec
+    would be a small TOCTOU window — operators control PATH but a
+    container-runtime substitution under a long-running API process
+    would be invisible without this.
+    """
     if runtime != "auto":
-        if not shutil.which(runtime):
+        resolved = shutil.which(runtime)
+        if not resolved:
             raise RuntimeError(f"MCP sandbox runtime '{runtime}' was requested but is not on PATH")
-        return runtime
+        return resolved
     for candidate in ("docker", "podman"):
-        if shutil.which(candidate):
-            return candidate
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
     raise RuntimeError("MCP sandbox isolation requires Docker or Podman on PATH")
 
 

@@ -24,6 +24,7 @@ jobs:
   gitleaks:
     name: Scan for committed secrets
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:

@@ -99,6 +99,17 @@ jobs:
         # marker for at most one dependabot cycle (~24h).
         run: python scripts/check_docker_base_policy.py
 
+      - name: Workflow job timeout policy
+        # Closes the audit-4 P1 finding that #1995 only swept release.yml
+        # + post-merge-self-scan + container-rescan; the rest of
+        # .github/workflows/ still had jobs that could run unbounded and
+        # hold scarce runners. Every workflow job must declare
+        # timeout-minutes; reusable-workflow callers (`uses:`) inherit
+        # the timeout from the called workflow.
+        run: |
+          python -m pip install --quiet pyyaml
+          python scripts/check_workflow_timeouts.py
+
       - uses: ./.github/actions/setup-python
         with:
           python-version: '3.11'

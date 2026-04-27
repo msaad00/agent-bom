@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from agent_bom.api.models import ScheduleCreate
 from agent_bom.api.stores import _get_schedule_store
-from agent_bom.api.tenant_quota import enforce_schedule_quota
+from agent_bom.api.tenant_quota import enforce_schedule_quota, tenant_quota_guard
 
 router = APIRouter()
 
@@ -34,7 +34,6 @@ async def create_schedule(request: Request, body: ScheduleCreate) -> dict:
     if body.tenant_id not in ("default", tenant_id):
         raise HTTPException(status_code=403, detail="Forbidden — tenant_id must match the authenticated tenant")
 
-    enforce_schedule_quota(tenant_id)
     now = datetime.now(timezone.utc)
     next_run = parse_cron_next(body.cron_expression, now)
     schedule = ScanSchedule(
@@ -48,7 +47,9 @@ async def create_schedule(request: Request, body: ScheduleCreate) -> dict:
         updated_at=now.isoformat(),
         tenant_id=tenant_id,
     )
-    _get_schedule_store().put(schedule)
+    # Per-tenant quota lock keeps (check + insert) atomic (audit-4 P1).
+    with tenant_quota_guard(tenant_id, lambda: enforce_schedule_quota(tenant_id)):
+        _get_schedule_store().put(schedule)
     log_action(
         "schedule.create",
         actor=actor,

@@ -26,6 +26,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -52,6 +53,7 @@ jobs:
     if: ${{ inputs.deploy }}
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       pages: write
       id-token: write

@@ -20,7 +20,7 @@ from fastapi import APIRouter, HTTPException, Request
 from agent_bom.api.models import JobStatus, PushPayload, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _persist_graph_snapshot
 from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_store
-from agent_bom.api.tenant_quota import enforce_retained_jobs_quota
+from agent_bom.api.tenant_quota import enforce_retained_jobs_quota, tenant_quota_guard
 from agent_bom.graph.severity import ocsf_to_severity
 from agent_bom.rbac import require_authenticated_permission
 from agent_bom.security import sanitize_error
@@ -294,7 +294,6 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
     Stores as a completed ScanJob with source metadata.
     """
     tenant_id = _tenant_id(request)
-    enforce_retained_jobs_quota(tenant_id)
     job = ScanJob(
         job_id=str(uuid.uuid4()),
         tenant_id=tenant_id,
@@ -314,7 +313,9 @@ async def receive_push(request: Request, body: PushPayload) -> dict:
     except Exception as exc:  # noqa: BLE001
         _logger.warning("Pushed-result graph persistence failed: %s", exc)
         job.progress.append(f"Graph persistence skipped: {sanitize_error(exc)}")
-    _get_store().put(job)
+    # Per-tenant quota lock keeps (check + insert) atomic (audit-4 P1).
+    with tenant_quota_guard(tenant_id, lambda: enforce_retained_jobs_quota(tenant_id)):
+        _get_store().put(job)
     return {"job_id": job.job_id, "source_id": body.source_id, "status": "stored"}
 
 

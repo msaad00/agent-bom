@@ -20,6 +20,7 @@ jobs:
   smithery:
     name: Publish to Smithery
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
@@ -148,6 +149,7 @@ jobs:
   glama:
     name: Trigger Glama Rebuild
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
@@ -173,6 +175,7 @@ jobs:
   clawhub:
     name: Publish to ClawHub
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}

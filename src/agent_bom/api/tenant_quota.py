@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Literal
 
 from fastapi import HTTPException
@@ -16,6 +18,48 @@ from agent_bom.config import (
     API_MAX_RETAINED_JOBS_PER_TENANT,
     API_MAX_SCHEDULES_PER_TENANT,
 )
+
+# ── Per-tenant atomicity for quota enforcement ───────────────────────────────
+# Audit-4 P1: each `enforce_*_quota` function reads the current count and
+# decides — but the actual insert happens later in the call site, with no
+# lock. Two concurrent requests both pass the check and both insert, so a
+# tenant exceeds its quota by `num_workers` under load.
+#
+# Fix: a per-tenant lock that callers hold across the (check + insert)
+# pair via the `tenant_quota_guard()` context manager. This eliminates
+# the race entirely on a single replica. Multi-replica clusters still
+# need a Postgres advisory lock for full safety; that ships as a
+# follow-up so the storage layer can carry the lock through.
+_TENANT_QUOTA_LOCKS: dict[str, threading.Lock] = {}
+_TENANT_QUOTA_LOCKS_LOCK = threading.Lock()
+
+
+def _tenant_quota_lock(tenant_id: str) -> threading.Lock:
+    with _TENANT_QUOTA_LOCKS_LOCK:
+        return _TENANT_QUOTA_LOCKS.setdefault(tenant_id, threading.Lock())
+
+
+@contextmanager
+def tenant_quota_guard(tenant_id: str, *checks: Callable[[], None]) -> Iterator[None]:
+    """Run quota checks atomically with whatever the caller does next.
+
+    Use this around (check + insert) pairs in route handlers so concurrent
+    requests serialise per tenant and the second caller sees the first
+    caller's row in its check.
+
+        with tenant_quota_guard(
+            tenant_id,
+            lambda: enforce_active_scan_quota(tenant_id),
+            lambda: enforce_retained_jobs_quota(tenant_id),
+        ):
+            store.put(job)
+    """
+    lock = _tenant_quota_lock(tenant_id)
+    with lock:
+        for check in checks:
+            check()
+        yield
+
 
 QuotaName = Literal["active_scan_jobs", "retained_scan_jobs", "fleet_agents", "schedules"]
 QUOTA_NAMES: tuple[QuotaName, ...] = ("active_scan_jobs", "retained_scan_jobs", "fleet_agents", "schedules")

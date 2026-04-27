@@ -53,7 +53,7 @@ from agent_bom.api.stores import (
     _jobs_pop,
     _jobs_put,
 )
-from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota
+from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -253,8 +253,6 @@ def enqueue_scan_job(
 ) -> ScanJob:
     """Persist and queue a scan job for async execution."""
     store = _get_store()
-    enforce_active_scan_quota(tenant_id)
-    enforce_retained_jobs_quota(tenant_id)
 
     job = ScanJob(
         job_id=str(uuid.uuid4()),
@@ -264,8 +262,18 @@ def enqueue_scan_job(
         created_at=_now(),
         request=request_body,
     )
-    store.put(job)
-    _jobs_put(job.job_id, job)
+
+    # Hold the per-tenant quota lock across the (check + insert) pair so two
+    # concurrent requests serialise here and the second caller's check sees
+    # the first caller's row. Without this, a tenant exceeds quota by N
+    # under load (audit-4 P1).
+    with tenant_quota_guard(
+        tenant_id,
+        lambda: enforce_active_scan_quota(tenant_id),
+        lambda: enforce_retained_jobs_quota(tenant_id),
+    ):
+        store.put(job)
+        _jobs_put(job.job_id, job)
 
     loop = asyncio.get_running_loop()
     loop.run_in_executor(get_executor(), _run_scan_sync, job)

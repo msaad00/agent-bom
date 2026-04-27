@@ -339,6 +339,14 @@ export const RELATIONSHIP_COLOR_MAP: Record<string, string> = {
   [RelationshipType.DELEGATED_TO]: "#a855f7",
   [RelationshipType.CORRELATES_WITH]: "#0ea5e9",
   [RelationshipType.POSSIBLY_CORRELATES_WITH]: "#7dd3fc",
+  // Vulnerability lifecycle relations (audit-4 P1: missing UI colors).
+  [RelationshipType.REMEDIATES]: "#22c55e",
+  [RelationshipType.TRIGGERS]: "#f97316",
+  // Ownership / governance relations.
+  [RelationshipType.MANAGES]: "#14b8a6",
+  [RelationshipType.OWNS]: "#0d9488",
+  [RelationshipType.PART_OF]: "#6b7280",
+  [RelationshipType.MEMBER_OF]: "#4b5563",
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -15,6 +15,7 @@ jobs:
   refresh-latest:
     name: Rebuild and publish latest from latest release tag
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
       id-token: write

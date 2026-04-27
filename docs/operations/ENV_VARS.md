@@ -31,6 +31,7 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_API_MAX_MEMORY_JOBS` | `int` | `200` | — |
 | `AGENT_BOM_API_MAX_RETAINED_JOBS_PER_TENANT` | `int` | `500` | — |
 | `AGENT_BOM_API_MAX_SCHEDULES_PER_TENANT` | `int` | `100` | — |
+| `AGENT_BOM_BODY_MIN_BPS` | `int` | `256` | Slowloris throughput floor (audit-5 PR-C): minimum sustained body bytes/second once a request body crosses the warmup threshold inside MaxBodySizeMiddleware. 0 disables the floor entirely (escape hatch for legitimate slow clients in restric |
 
 ## Blast Radius Risk Scoring
 | Env var | Type | Default | Description |

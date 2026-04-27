@@ -49,8 +49,9 @@ async def test_browser_session_exchange_has_targeted_rate_limit(monkeypatch):
     from fastapi import HTTPException
 
     from agent_bom.api.routes import enterprise
+    from agent_bom.api.shared_auth_state import reset_auth_state_for_tests
 
-    enterprise._AUTH_SESSION_ATTEMPTS.clear()
+    reset_auth_state_for_tests()
     monkeypatch.setenv("AGENT_BOM_AUTH_SESSION_ATTEMPTS_PER_MINUTE", "2")
     monkeypatch.setenv("AGENT_BOM_API_KEY", "valid-key")
     request = SimpleNamespace(headers={}, client=SimpleNamespace(host="203.0.113.10"))
@@ -109,8 +110,9 @@ async def test_static_browser_session_exchange_fails_closed_when_clustered(monke
     from fastapi import HTTPException
 
     from agent_bom.api.routes import enterprise
+    from agent_bom.api.shared_auth_state import reset_auth_state_for_tests
 
-    enterprise._AUTH_SESSION_ATTEMPTS.clear()
+    reset_auth_state_for_tests()
     monkeypatch.setenv("AGENT_BOM_API_KEY", "valid-key")
     monkeypatch.setenv("AGENT_BOM_BROWSER_SESSION_SIGNING_KEY", "stable-browser-session-key")
     monkeypatch.setenv("AGENT_BOM_CONTROL_PLANE_REPLICAS", "2")

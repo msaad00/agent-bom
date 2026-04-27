@@ -45,6 +45,22 @@ fi
 
 echo "PR #${PR}: head ${HEAD_SHA} has 0 '${REQUIRED_CHECK}' runs. Closing + reopening to retrigger required workflows."
 gh pr close "${PR}" --comment "auto-retrigger: required CI did not fire on head ${HEAD_SHA} (likely a GITHUB_TOKEN-authored 'Update branch' merge). Reopening to re-run checks."
-sleep 2
+
+# `gh pr close` returns before GitHub has propagated the state change to
+# the PR resource. Reopening too soon races: the reopen API call lands
+# while the PR is still considered open and silently no-ops, leaving the
+# PR closed without the `pull_request reopened` event we depend on.
+# Poll the API until the close is observable, then reopen.
+for attempt in 1 2 3 4 5 6 7 8 9 10; do
+  state="$(gh api "repos/${REPO}/pulls/${PR}" --jq .state 2>/dev/null || echo unknown)"
+  if [ "${state}" = "closed" ]; then
+    break
+  fi
+  if [ "${attempt}" -eq 10 ]; then
+    echo "warning: PR #${PR} did not register as closed within 10 polls; reopening anyway." >&2
+  fi
+  sleep 1
+done
+
 gh pr reopen "${PR}" --comment "reopened to retrigger required checks against the up-to-date head."
 echo "PR #${PR}: retrigger requested. Workflows should appear in ~10s."

@@ -1056,3 +1056,67 @@ def test_max_concurrent_jobs():
         assert "concurrent" in resp.json()["detail"].lower()
     finally:
         set_job_store(original_store)
+
+
+def test_api_key_middleware_rejects_request_when_tenant_rls_bypass_is_active(monkeypatch):
+    """Defence-in-depth guard at middleware.py:805-810.
+
+    When `AGENT_BOM_POSTGRES_URL` is set and a request enters with the RLS
+    bypass context still active (a code path that should never reach the HTTP
+    boundary because `bypass_tenant_rls()` is `with`-scoped), the middleware
+    must reject the request with 500 rather than serve tenant data with the
+    bypass flag still true. Locks the guard so a future refactor can't quietly
+    drop it.
+    """
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    monkeypatch.setenv("AGENT_BOM_POSTGRES_URL", "postgresql://stub")
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    # Stub `is_tenant_rls_bypassed` so the test does not require a live
+    # Postgres connection — the bypass flag itself is a process-local
+    # contextvar, which makes it cheap and safe to monkeypatch.
+    import agent_bom.api.middleware as middleware_module
+    import agent_bom.api.postgres_store as postgres_store_module
+
+    monkeypatch.setattr(postgres_store_module, "is_tenant_rls_bypassed", lambda: True)
+
+    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app.add_middleware(middleware_module.APIKeyMiddleware, api_key="test-key-123")
+
+    client = TestClient(test_app)
+    resp = client.get("/v1/test", headers={"Authorization": "Bearer test-key-123"})
+
+    assert resp.status_code == 500
+    assert "Tenant isolation guard" in resp.json()["detail"]
+
+
+def test_api_key_middleware_does_not_check_rls_bypass_when_postgres_disabled(monkeypatch):
+    """Reverse case: with no Postgres configured the guard short-circuits.
+
+    Without `AGENT_BOM_POSTGRES_URL` set, the request must not even import
+    the postgres_store helper — the `if os.environ.get(...)` gate keeps the
+    SQLite-only path off the postgres dependency.
+    """
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    import agent_bom.api.middleware as middleware_module
+
+    test_app = Starlette(routes=[Route("/v1/test", dummy)])
+    test_app.add_middleware(middleware_module.APIKeyMiddleware, api_key="test-key-123")
+
+    client = TestClient(test_app)
+    resp = client.get("/v1/test", headers={"Authorization": "Bearer test-key-123"})
+
+    assert resp.status_code == 200

@@ -416,3 +416,176 @@ def test_orchestrator_runs_bedrock_and_azure_matchers_independently() -> None:
 
     assert {match.cloud_provider for match in result.matches} == {"aws", "azure"}
     assert all(match.confidence is CorrelationConfidence.HIGH for match in result.matches)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Phase 3 — GCP Vertex AI / Cloud Run
+# ──────────────────────────────────────────────────────────────────────────
+
+from agent_bom.cross_env_correlation import correlate_gcp_vertex  # noqa: E402
+
+_GCP_PROJECT = "myco-prod"
+_GCP_LOCATION = "us-central1"
+_VERTEX_ENDPOINT_ID = "1234567890123456789"
+_VERTEX_RESOURCE = f"projects/{_GCP_PROJECT}/locations/{_GCP_LOCATION}/endpoints/{_VERTEX_ENDPOINT_ID}"
+
+
+def _local_gcp_agent(
+    *,
+    name: str = "cursor-dev",
+    project_id: str | None = _GCP_PROJECT,
+    location: str | None = _GCP_LOCATION,
+    endpoint: str | None = _VERTEX_ENDPOINT_ID,
+    extra_env: dict[str, str] | None = None,
+) -> dict:
+    env: dict[str, str] = {}
+    if project_id is not None:
+        env["GOOGLE_CLOUD_PROJECT"] = project_id
+    if location is not None:
+        env["VERTEX_AI_LOCATION"] = location
+    if endpoint is not None:
+        env["VERTEX_AI_ENDPOINT_ID"] = endpoint
+    if extra_env:
+        env.update(extra_env)
+    return {
+        "name": name,
+        "agent_type": "cursor",
+        "config_path": "/home/dev/.cursor/mcp.json",
+        "version": "0.42.0",
+        "metadata": {},
+        "mcp_servers": [{"name": "vertex-mcp", "env": env}],
+    }
+
+
+def _cloud_gcp_vertex_endpoint(
+    *,
+    name: str = "vertex-ai:gemini-prod-endpoint",
+    resource_name: str = _VERTEX_RESOURCE,
+    project_id: str = _GCP_PROJECT,
+    location: str = _GCP_LOCATION,
+) -> dict:
+    return {
+        "name": name,
+        "agent_type": "custom",
+        "config_path": resource_name,
+        "source": "gcp-vertex-ai",
+        "version": "",
+        "metadata": {
+            "cloud_origin": {
+                "provider": "gcp",
+                "service": "vertex-ai",
+                "resource_type": "endpoint",
+                "resource_id": resource_name,
+                "resource_name": "gemini-prod-endpoint",
+                "location": location,
+                "scope": {"project_id": project_id},
+                "raw_identity": {
+                    "resource_name": resource_name,
+                    "display_name": "gemini-prod-endpoint",
+                },
+            }
+        },
+        "mcp_servers": [],
+    }
+
+
+def test_gcp_full_triplet_match_is_high_confidence() -> None:
+    matches = correlate_gcp_vertex([_local_gcp_agent(), _cloud_gcp_vertex_endpoint()])
+
+    assert len(matches) == 1
+    match = matches[0]
+    assert match.confidence is CorrelationConfidence.HIGH
+    assert set(match.matched_signals) == {"project_id", "location", "endpoint_id"}
+    assert match.cloud_provider == "gcp"
+    assert match.cloud_service == "vertex-ai"
+    assert match.cloud_account_id == _GCP_PROJECT
+    assert match.cloud_region == _GCP_LOCATION
+    assert match.cloud_model_id == _VERTEX_ENDPOINT_ID
+    assert "Strong triplet" in match.rationale
+
+
+def test_gcp_only_endpoint_id_matches_is_low_confidence() -> None:
+    # Same Vertex endpoint ID, different project, different location —
+    # the cross-tenant collision case. Must stay low-confidence.
+    local = _local_gcp_agent(project_id="other-project", location="europe-west4")
+
+    matches = correlate_gcp_vertex([local, _cloud_gcp_vertex_endpoint()])
+
+    assert len(matches) == 1
+    assert matches[0].confidence is CorrelationConfidence.LOW
+    assert matches[0].matched_signals == ("endpoint_id",)
+
+
+def test_gcp_endpoint_resource_path_in_env_supplies_all_three_signals() -> None:
+    # Local agent puts the full resource path in the endpoint env var
+    # (common when configured from IaC output). The matcher must parse
+    # all three fields out so the strong edge fires from one env value.
+    local = _local_gcp_agent(project_id=None, location=None, endpoint=_VERTEX_RESOURCE)
+
+    matches = correlate_gcp_vertex([local, _cloud_gcp_vertex_endpoint()])
+
+    assert len(matches) == 1
+    assert matches[0].confidence is CorrelationConfidence.HIGH
+
+
+def test_gcp_project_id_format_gate_rejects_arbitrary_strings() -> None:
+    # GCP project IDs are 6-30 lowercase alnum/hyphen, must start with a
+    # letter. "test" is too short. We must reject it so it never counts.
+    local = _local_gcp_agent(project_id="test")
+
+    matches = correlate_gcp_vertex([local, _cloud_gcp_vertex_endpoint()])
+
+    assert len(matches) == 1
+    assert matches[0].confidence is CorrelationConfidence.LOW
+    assert "project_id" not in matches[0].matched_signals
+
+
+def test_gcp_metadata_block_supplies_signals_when_env_is_absent() -> None:
+    local = {
+        "name": "ci-pipeline",
+        "agent_type": "custom",
+        "config_path": "/repo/.github/workflows/deploy.yml",
+        "version": "",
+        "metadata": {
+            "gcp": {
+                "project_id": _GCP_PROJECT,
+                "location": _GCP_LOCATION,
+                "vertex_endpoint_id": _VERTEX_ENDPOINT_ID,
+            }
+        },
+        "mcp_servers": [],
+    }
+
+    matches = correlate_gcp_vertex([local, _cloud_gcp_vertex_endpoint()])
+
+    assert len(matches) == 1
+    assert matches[0].confidence is CorrelationConfidence.HIGH
+
+
+def test_gcp_sdk_presence_alone_is_not_a_match() -> None:
+    # Only `GOOGLE_APPLICATION_CREDENTIALS` set — no project, no
+    # location, no endpoint. Must not produce any edge.
+    local = _local_gcp_agent(
+        project_id=None,
+        location=None,
+        endpoint=None,
+        extra_env={"GOOGLE_APPLICATION_CREDENTIALS": "/etc/gcloud/key.json"},
+    )
+
+    matches = correlate_gcp_vertex([local, _cloud_gcp_vertex_endpoint()])
+
+    assert matches == []
+
+
+def test_orchestrator_runs_all_three_provider_matchers() -> None:
+    bedrock_local = _local_agent(name="dev-bedrock")
+    bedrock_cloud = _cloud_bedrock_agent()
+    azure_local = _local_azure_agent(name="dev-azure")
+    azure_cloud = _cloud_azure_openai_deployment()
+    gcp_local = _local_gcp_agent(name="dev-gcp")
+    gcp_cloud = _cloud_gcp_vertex_endpoint()
+
+    result = correlate_cross_environment([bedrock_local, bedrock_cloud, azure_local, azure_cloud, gcp_local, gcp_cloud])
+
+    assert {match.cloud_provider for match in result.matches} == {"aws", "azure", "gcp"}
+    assert all(match.confidence is CorrelationConfidence.HIGH for match in result.matches)

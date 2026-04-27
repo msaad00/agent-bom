@@ -168,6 +168,44 @@ class TestBuildUnifiedGraphFromReport:
         assert g.has_edge("provider:gcp", resource_id)
         assert g.has_edge(resource_id, "agent:claude-desktop")
         assert g.has_edge(principal_id, resource_id)
+        # Direct principal → agent edge (audit P0 #1): single-hop reach so
+        # "which principals can touch this agent?" doesn't have to traverse
+        # the cloud_resource intermediate.
+        assert g.has_edge(principal_id, "agent:claude-desktop")
+        principal_to_agent = next(
+            (
+                e
+                for e in g.edges
+                if e.source == principal_id and e.target == "agent:claude-desktop" and e.relationship == RelationshipType.MANAGES
+            ),
+            None,
+        )
+        assert principal_to_agent is not None
+        # The `via` evidence preserves the lineage so consumers can tell the
+        # principal-to-agent relationship is mediated by a cloud_resource
+        # rather than direct ownership.
+        assert principal_to_agent.evidence.get("via") == resource_id
+
+    def test_no_principal_agent_edge_when_principal_metadata_absent(self):
+        # If cloud_origin is present but cloud_principal is missing, only
+        # the resource-side lineage is created — no service_account node,
+        # and definitely no orphan principal → agent edge.
+        report = _minimal_report()
+        report["agents"][0]["source"] = "gcp-cloud-run"
+        report["agents"][0]["metadata"] = {
+            "cloud_origin": {
+                "provider": "gcp",
+                "service": "cloud-run",
+                "resource_type": "service",
+                "resource_id": "no-principal",
+                "resource_name": "no-principal",
+            },
+        }
+        g = build_unified_graph_from_report(report)
+        sa_nodes = [n for n in g.nodes_by_type(EntityType.SERVICE_ACCOUNT)]
+        assert sa_nodes == []
+        principal_to_agent = [e for e in g.edges if e.source.startswith("service_account:") and e.target == "agent:claude-desktop"]
+        assert principal_to_agent == []
 
     def test_gpu_container_metadata_promotes_to_cloud_resource(self):
         # gpu_infra_to_agents (src/agent_bom/cloud/gpu_infra.py) attaches a

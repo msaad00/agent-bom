@@ -253,6 +253,67 @@ class PostgresJobStore:
             for row in rows
         ]
 
+    def aggregate_cis_benchmark_checks(
+        self,
+        tenant_id: str,
+        *,
+        days: int = 30,
+        cloud: str | None = None,
+        section: str | None = None,
+        status: str | None = None,
+        severity: str | None = None,
+        bucket: str = "day",
+    ) -> list[dict]:
+        """Time-bucketed CIS finding counts for trend / drilldown surfaces (#1832).
+
+        Groups by ``(bucket, cloud, cis_section, status, severity)`` and returns
+        the count of checks in each cell over the last ``days`` days. Indexed
+        by the ``cis_benchmark_checks`` table's ``(team_id, cloud, status,
+        priority, measured_at)`` index — the bucket truncation runs over the
+        already-narrow tenant-and-time slice.
+
+        ``bucket`` is one of ``hour`` / ``day`` / ``week`` and is whitelisted
+        below; everything else falls back to ``day`` so a typo never injects
+        SQL.
+        """
+        bucket_unit = {"hour": "hour", "day": "day", "week": "week"}.get(str(bucket).lower(), "day")
+        clauses = ["team_id = %s", "measured_at >= now() - (%s * INTERVAL '1 day')"]
+        params: list[object] = [tenant_id, max(1, min(int(days), 366))]
+        if cloud:
+            clauses.append("cloud = %s")
+            params.append(cloud)
+        if section:
+            clauses.append("cis_section = %s")
+            params.append(section)
+        if status:
+            clauses.append("status = %s")
+            params.append(status)
+        if severity:
+            clauses.append("severity = %s")
+            params.append(severity)
+        # The bucket value is not user-supplied at the SQL layer (already
+        # whitelisted above) so it's safe to interpolate here. Filter
+        # values still flow through bound parameters.
+        sql = (
+            "SELECT date_trunc(%s, measured_at) AS bucket, cloud, cis_section, status, severity, COUNT(*)"
+            f" FROM cis_benchmark_checks WHERE {' AND '.join(clauses)}"  # nosec B608
+            " GROUP BY bucket, cloud, cis_section, status, severity"
+            " ORDER BY bucket DESC, cloud, cis_section, status, severity"
+        )
+        with _tenant_connection(self._pool) as conn:
+            rows = conn.execute(sql, [bucket_unit, *params]).fetchall()
+        return [
+            {
+                "bucket": row[0].isoformat() if hasattr(row[0], "isoformat") else str(row[0]),
+                "cloud": row[1],
+                "cis_section": row[2],
+                "status": row[3],
+                "severity": row[4],
+                "count": int(row[5]),
+            }
+            for row in rows
+        ]
+
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
         with _tenant_connection(self._pool) as conn:
             cursor = conn.execute(

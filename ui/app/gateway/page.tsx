@@ -406,9 +406,13 @@ export default function GatewayPage() {
               {(() => {
                 const toolCounts: Record<string, { blocked: number; alerted: number; allowed: number }> = {};
                 for (const e of audit) {
-                  if (!toolCounts[e.tool_name]) toolCounts[e.tool_name] = { blocked: 0, alerted: 0, allowed: 0 };
+                  let bucket = toolCounts[e.tool_name];
+                  if (!bucket) {
+                    bucket = { blocked: 0, alerted: 0, allowed: 0 };
+                    toolCounts[e.tool_name] = bucket;
+                  }
                   const key = e.action_taken as "blocked" | "alerted" | "allowed";
-                  if (key in toolCounts[e.tool_name]) toolCounts[e.tool_name][key]++;
+                  if (key in bucket) bucket[key]++;
                 }
                 const chartData = Object.entries(toolCounts)
                   .sort(([, a], [, b]) => (b.blocked + b.alerted) - (a.blocked + a.alerted))

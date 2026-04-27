@@ -282,17 +282,17 @@ function SecurityGraphPageContent() {
     }
     if (!focusApplied && hasFocusContext) {
       const focusedPath =
-        attackPaths.find((path) => matchesAttackPathFocus(path, graphNodeById, focus)) ?? attackPaths[0];
+        attackPaths.find((path) => matchesAttackPathFocus(path, graphNodeById, focus)) ?? attackPaths[0]!;
       setSelectedAttackPathKey(attackPathKey(focusedPath));
       setFocusApplied(true);
       return;
     }
     if (!selectedAttackPathKey) {
-      setSelectedAttackPathKey(attackPathKey(attackPaths[0]));
+      setSelectedAttackPathKey(attackPathKey(attackPaths[0]!));
       return;
     }
     if (!attackPaths.some((path) => attackPathKey(path) === selectedAttackPathKey)) {
-      setSelectedAttackPathKey(attackPathKey(attackPaths[0]));
+      setSelectedAttackPathKey(attackPathKey(attackPaths[0]!));
     }
   }, [attackPaths, focus, focusApplied, graphNodeById, hasFocusContext, selectedAttackPathKey]);
 
@@ -507,7 +507,7 @@ function SecurityGraphPageContent() {
               </div>
               <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-3 text-sm text-[color:var(--text-secondary)]">
                 <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Highest composite risk</div>
-                <div className="mt-1 font-mono text-xl text-red-300">{attackPaths[0].composite_risk.toFixed(1)}</div>
+                <div className="mt-1 font-mono text-xl text-red-300">{attackPaths[0]!.composite_risk.toFixed(1)}</div>
               </div>
             </div>
 

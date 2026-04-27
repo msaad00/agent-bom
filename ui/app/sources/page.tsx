@@ -238,7 +238,7 @@ export default function SourcesPage() {
     [connectorHealth]
   );
   const selectedKind = useMemo(
-    () => SOURCE_KIND_OPTIONS.find((option) => option.value === formState.kind) ?? SOURCE_KIND_OPTIONS[0],
+    () => SOURCE_KIND_OPTIONS.find((option) => option.value === formState.kind) ?? SOURCE_KIND_OPTIONS[0]!,
     [formState.kind]
   );
   const sourceCount = sources.length;

@@ -425,7 +425,7 @@ export function BlastRadiusRadial({ data }: { data: BlastRadius[] }) {
 
   if (top.length === 0) return null;
 
-  const maxScore = top[0].blast_score;
+  const maxScore = top[0]!.blast_score;
 
   const radialData: RadialPoint[] = top?.map((br) => {
     const sev = br.severity?.toLowerCase() ?? "low";
@@ -468,7 +468,7 @@ export function BlastRadiusRadial({ data }: { data: BlastRadius[] }) {
             <Tooltip
               content={({ active, payload }) => {
                 if (!active || !payload?.length) return null;
-                const d = payload[0].payload as RadialPoint;
+                const d = payload[0]!.payload as RadialPoint;
                 return (
                   <div
                     className="rounded-lg border px-3 py-2 text-xs shadow-xl"
@@ -591,7 +591,7 @@ function ScatterTooltipContent({
   payload?: Array<{ payload: EpssVsCvssPoint }>;
 }) {
   if (!active || !payload?.length) return null;
-  const d = payload[0].payload;
+  const d = payload[0]!.payload;
   const sevColor =
     SEVERITY_COLORS[d.severity as keyof typeof SEVERITY_COLORS] ?? "#71717a";
   return (

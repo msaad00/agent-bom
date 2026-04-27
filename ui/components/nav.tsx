@@ -61,7 +61,7 @@ function activeGroupForPath(path: string | null): string {
   const matched = NAV_GROUPS.find((group) =>
     group.links.some((link) => (link.href === "/" ? path === "/" : Boolean(path?.startsWith(link.href))))
   );
-  return matched?.label ?? NAV_GROUPS[0].label;
+  return matched?.label ?? NAV_GROUPS[0]!.label;
 }
 
 const NAV_GROUPS: NavGroup[] = [

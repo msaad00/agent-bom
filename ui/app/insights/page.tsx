@@ -130,7 +130,7 @@ export default function InsightsPage() {
           return;
         }
 
-        const latest = await api.getScan(doneJobs[0].job_id);
+        const latest = await api.getScan(doneJobs[0]!.job_id);
         setLatestJob(latest.result ? latest : null);
 
         setTrendLoading(true);

@@ -44,9 +44,9 @@ describe('GraphFindingsFallback', () => {
     const nodes = Array.from({ length: 120 }, (_, index) => finding(index))
     render(<GraphFindingsFallback nodes={nodes} onSelect={onSelect} />)
 
-    fireEvent.click(screen.getAllByRole('button', { name: /open evidence/i })[0])
+    fireEvent.click(screen.getAllByRole('button', { name: /open evidence/i })[0]!)
 
-    expect(onSelect).toHaveBeenCalledWith('CVE-2026-0000', nodes[0].data)
+    expect(onSelect).toHaveBeenCalledWith('CVE-2026-0000', nodes[0]!.data)
   })
 })
 

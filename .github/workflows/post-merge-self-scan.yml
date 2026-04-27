@@ -23,6 +23,7 @@ jobs:
   self-sast-scan:
     name: Self SAST scan
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
       security-events: write  # required: SARIF upload to GitHub Security tab
@@ -178,6 +179,7 @@ jobs:
   generate-sbom:
     name: Generate SBOM
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: read
     steps:

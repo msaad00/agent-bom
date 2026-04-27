@@ -1041,6 +1041,25 @@ def _add_agent_cloud_lineage(
             evidence={"source": "cloud_principal", "principal_type": principal.get("principal_type", "")},
         )
     )
+    # Direct principal → agent edge so single-hop "which principals can
+    # reach this agent?" queries don't have to traverse the intermediate
+    # cloud_resource node. The intermediate edges (principal → resource,
+    # resource → agent) above stay so the lineage is fully reconstructable.
+    # `via` records that the relationship is mediated by a cloud_resource
+    # so consumers can distinguish direct ownership from cloud-mediated
+    # operation when they need to.
+    graph.add_edge(
+        UnifiedEdge(
+            source=principal_node_id,
+            target=agent_id,
+            relationship=RelationshipType.MANAGES,
+            evidence={
+                "source": "cloud_principal",
+                "principal_type": principal.get("principal_type", ""),
+                "via": resource_node_id,
+            },
+        )
+    )
 
 
 def _add_framework_topology(graph: UnifiedGraph, framework_agents: Any, data_source: str) -> None:

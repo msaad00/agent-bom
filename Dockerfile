@@ -1,5 +1,5 @@
 ## ── Builder stage ────────────────────────────────────────────────────────────
-FROM python:3.14.3-alpine3.23@sha256:faee120f7885a06fcc9677922331391fa690d911c020abb9e8025ff3d908e510 AS builder
+FROM python:3.15.0a8-alpine3.23@sha256:67a4b22b18852de8a9f668937641d2926e2dc9832b4a24ed29c9f5afb125251d AS builder
 
 WORKDIR /app
 ARG HTTP_PROXY
@@ -28,7 +28,7 @@ COPY src/ ./src/
 RUN pip install --no-cache-dir --prefix=/install ".[api]"
 
 ## ── Runtime stage ────────────────────────────────────────────────────────────
-FROM python:3.14.3-alpine3.23@sha256:faee120f7885a06fcc9677922331391fa690d911c020abb9e8025ff3d908e510
+FROM python:3.15.0a8-alpine3.23@sha256:67a4b22b18852de8a9f668937641d2926e2dc9832b4a24ed29c9f5afb125251d
 
 ARG VERSION=0.82.0
 ARG HTTP_PROXY

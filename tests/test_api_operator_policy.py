@@ -247,6 +247,9 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert isinstance(body["backpressure"]["enabled"], bool)
     assert body["backpressure"]["status"] in {"ready", "active"}
     assert isinstance(body["backpressure"]["paths"], list)
+    assert body["proxy_sandbox"]["image_pin_policy_default"] in {"off", "warn", "enforce"}
+    assert body["proxy_sandbox"]["production_recommendation"] == "enforce"
+    assert body["proxy_sandbox"]["image_pin_policy_env"] == "AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY"
     assert body["secret_integrity"]["audit_hmac"]["status"] in {"configured", "ephemeral"}
     assert body["secret_integrity"]["audit_hmac"]["rotation_tracking_supported"] is True
     assert body["secret_integrity"]["audit_hmac"]["rotation_status"] in {

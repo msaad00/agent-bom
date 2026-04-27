@@ -374,3 +374,25 @@ def _validate_positive_int(label: str, value: int) -> int:
     if value <= 0:
         raise ValueError(f"{label} must be a positive integer")
     return value
+
+
+def describe_proxy_sandbox_posture() -> dict[str, object]:
+    """Return non-secret operator posture for the MCP proxy sandbox defaults.
+
+    Surfaces the process-wide default for ``image_pin_policy`` (resolved from
+    ``AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY``) so operators can verify in a
+    dashboard whether mutable image references would be rejected before a
+    proxied MCP server starts. Per-server configs may override the default.
+    """
+    raw = (os.environ.get("AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY") or "warn").strip().lower()
+    default_policy: SandboxImagePinPolicy = raw if raw in {"off", "warn", "enforce"} else "warn"  # type: ignore[assignment]
+    return {
+        "image_pin_policy_default": default_policy,
+        "image_pin_policy_env": "AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY",
+        "production_recommendation": "enforce",
+        "notes": (
+            "Default 'warn' surfaces a non-blocking warning when a sandbox image is not pinned to a digest. "
+            "Set the env to 'enforce' in production so unpinned image references are rejected at proxy start. "
+            "Per-server SandboxConfig.image_pin_policy overrides this process-wide default."
+        ),
+    }

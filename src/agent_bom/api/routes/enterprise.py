@@ -515,11 +515,14 @@ async def list_keys(request: Request) -> dict:
 
 @router.get("/v1/auth/policy", tags=["enterprise"])
 async def auth_policy(request: Request) -> dict:
-    """Report API key and rate-limit key rotation policy + status.
+    """Report control-plane operator posture for auth, rate-limit and runtime safety controls.
 
-    Operators surface this in dashboards and runbooks to confirm that
-    rotation cadence is enforced and that no fingerprint key has aged
-    past the configured maximum.
+    Intended for operator runbooks and posture dashboards. The payload is the
+    process-wide control-plane configuration (rotation policy, header gates,
+    sandbox defaults, identity provisioning posture) — it is not a tenant-scoped
+    record. The only tenant-scoped fields are ``tenant_quota_runtime`` (the
+    effective quotas for the calling tenant) and the resolved tenant id used to
+    derive them; everything else describes the deployment as a whole.
     """
     from agent_bom.api.audit_log import describe_audit_hmac_status
     from agent_bom.api.auth import get_api_key_policy
@@ -539,6 +542,7 @@ async def auth_policy(request: Request) -> dict:
     from agent_bom.api.storage_schema import describe_control_plane_storage_schema
     from agent_bom.api.tenant_quota import default_tenant_quotas, get_tenant_quota_runtime
     from agent_bom.backpressure import describe_backpressure_posture
+    from agent_bom.proxy_sandbox import describe_proxy_sandbox_posture
 
     api_policy = get_api_key_policy()
     rl_status = get_rate_limit_key_status()
@@ -577,6 +581,7 @@ async def auth_policy(request: Request) -> dict:
         "proxy_control_plane_mtls": describe_proxy_control_plane_mtls_posture(),
         "security_headers": describe_security_header_posture(),
         "backpressure": describe_backpressure_posture(),
+        "proxy_sandbox": describe_proxy_sandbox_posture(),
         "secret_integrity": {
             "audit_hmac": describe_audit_hmac_status(),
             "compliance_signing": describe_signing_posture(),

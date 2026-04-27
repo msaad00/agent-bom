@@ -14,7 +14,7 @@
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
-<p align="center"><b>Open security scanner for AI supply chain and infrastructure — agents, MCP servers, packages, containers, cloud, GPU, and runtime.</b></p>
+<p align="center"><b>Open security scanner for AI supply chain and infrastructure — agents, MCP servers, packages, containers, cloud (AWS, Azure, GCP, Snowflake, Databricks, CoreWeave, Nebius), GPU, and runtime.</b></p>
 
 <p align="center">Every CVE in your AI stack is a credential leak waiting to happen. <code>agent-bom</code> follows the chain end-to-end and tells you exactly which fix collapses it.</p>
 

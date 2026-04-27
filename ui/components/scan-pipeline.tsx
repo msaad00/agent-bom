@@ -212,7 +212,7 @@ function ScanPipelineInner({ steps, className }: ScanPipelineProps) {
     }));
 
     const rawEdges: Edge[] = PIPELINE_STEPS.slice(1).map((step, i) => {
-      const prevId = PIPELINE_STEPS[i].id;
+      const prevId = PIPELINE_STEPS[i]!.id;
       const prevStatus = steps.get(prevId)?.status;
       const curStatus = steps.get(step.id)?.status;
 

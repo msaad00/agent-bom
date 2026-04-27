@@ -55,7 +55,7 @@ describe('InsightLayerToggle', () => {
     )
     // active layer (blast) should have purple styling
     const buttons = container.querySelectorAll('button')
-    expect(buttons[0].className).toContain('purple')
+    expect(buttons[0]!.className).toContain('purple')
   })
 
   it('does not apply active styling to inactive layer buttons', () => {
@@ -64,8 +64,8 @@ describe('InsightLayerToggle', () => {
     )
     const buttons = container.querySelectorAll('button')
     // second and third buttons are inactive
-    expect(buttons[1].className).not.toContain('purple')
-    expect(buttons[2].className).not.toContain('purple')
+    expect(buttons[1]!.className).not.toContain('purple')
+    expect(buttons[2]!.className).not.toContain('purple')
   })
 
   it('highlights correct active option when second layer is active', () => {
@@ -78,9 +78,9 @@ describe('InsightLayerToggle', () => {
       <InsightLayerToggle layers={layers} onToggle={vi.fn()} />
     )
     const buttons = container.querySelectorAll('button')
-    expect(buttons[0].className).not.toContain('purple')
-    expect(buttons[1].className).toContain('purple')
-    expect(buttons[2].className).not.toContain('purple')
+    expect(buttons[0]!.className).not.toContain('purple')
+    expect(buttons[1]!.className).toContain('purple')
+    expect(buttons[2]!.className).not.toContain('purple')
   })
 
   it('renders "Insight Layers:" label', () => {

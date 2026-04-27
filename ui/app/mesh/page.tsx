@@ -199,7 +199,7 @@ export default function MeshPage() {
       .then((res) => {
         const doneJobs = res.jobs.filter((j) => j.status === "done");
         setJobs(doneJobs);
-        if (doneJobs.length > 0) setSelectedJob(doneJobs[0].job_id);
+        if (doneJobs.length > 0) setSelectedJob(doneJobs[0]!.job_id);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));

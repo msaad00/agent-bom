@@ -42,13 +42,13 @@ export function moveAttackPathSelection(
   direction: -1 | 1,
 ): string | null {
   if (attackPaths.length === 0) return null;
-  if (!currentKey) return attackPathKey(attackPaths[0]);
+  if (!currentKey) return attackPathKey(attackPaths[0]!);
 
   const currentIndex = attackPaths.findIndex((path) => attackPathKey(path) === currentKey);
-  if (currentIndex < 0) return attackPathKey(attackPaths[0]);
+  if (currentIndex < 0) return attackPathKey(attackPaths[0]!);
 
   const nextIndex = (currentIndex + direction + attackPaths.length) % attackPaths.length;
-  return attackPathKey(attackPaths[nextIndex]);
+  return attackPathKey(attackPaths[nextIndex]!);
 }
 
 export function mapAttackPathNodeType(entityType: string): AttackPathCardNode["type"] | null {

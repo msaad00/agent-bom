@@ -231,7 +231,7 @@ export default function ContextPage() {
       .then((res) => {
         const doneJobs = res.jobs.filter((j) => j.status === "done");
         setJobs(doneJobs);
-        if (doneJobs.length > 0) setSelectedJobId(doneJobs[0].job_id);
+        if (doneJobs.length > 0) setSelectedJobId(doneJobs[0]!.job_id);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -280,7 +280,7 @@ export default function ContextPage() {
         setSelectedAgent(null);
         return;
       }
-      setSelectedAgent((current) => (current && agentNames.includes(current) ? current : agentNames[0]));
+      setSelectedAgent((current) => (current && agentNames.includes(current) ? current : agentNames[0] ?? null));
     }, 0);
     return () => window.clearTimeout(timer);
   }, [agentNames]);

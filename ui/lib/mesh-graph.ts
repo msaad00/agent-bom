@@ -328,6 +328,7 @@ export function buildMeshGraph(
     const isShared = group.agents.size > 1;
     const serverId = `server:${name}`;
     const firstServer = group.servers[0];
+    if (!firstServer) continue;
 
     nodes.push({
       id: serverId,

@@ -457,7 +457,7 @@ function RegistryList() {
             <div className="flex items-center gap-3 text-[10px] text-zinc-500">
               {server.packages && server.packages.length > 0 && (
                 <span className="flex items-center gap-0.5">
-                  <Package className="w-2.5 h-2.5" /> {server.packages[0].ecosystem}
+                  <Package className="w-2.5 h-2.5" /> {server.packages[0]!.ecosystem}
                 </span>
               )}
               {server.tools && server.tools.length > 0 && (

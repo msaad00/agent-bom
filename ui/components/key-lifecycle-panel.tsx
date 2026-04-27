@@ -59,7 +59,7 @@ function stateLabel(state: ApiKeyRecord["state"]): string {
     case "rotation_overlap":
       return "Rotation overlap";
     default:
-      return state[0].toUpperCase() + state.slice(1);
+      return state.charAt(0).toUpperCase() + state.slice(1);
   }
 }
 
@@ -86,7 +86,7 @@ function formatModeLabel(value: string): string {
   return value
     .split("_")
     .filter(Boolean)
-    .map((segment) => acronyms[segment] ?? (segment[0].toUpperCase() + segment.slice(1)))
+    .map((segment) => acronyms[segment] ?? (segment.charAt(0).toUpperCase() + segment.slice(1)))
     .join(" ");
 }
 

@@ -354,7 +354,7 @@ export default function GraphPageClient() {
       .then((items) => {
         setSnapshots(items);
         if (items.length > 0) {
-          setSelectedScanId((current) => current || items[0].scan_id);
+          setSelectedScanId((current) => current || items[0]!.scan_id);
         }
       })
       .catch((e) => setError(e.message))

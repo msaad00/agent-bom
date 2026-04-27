@@ -13,9 +13,18 @@ COPY package.json package-lock.json* ./
 RUN npm ci --ignore-scripts
 # Next's webpack CSS pipeline requires lightningcss' native Linux binding.
 # Some npm versions omit optional platform bindings during lockfile-driven
-# installs, so pin the Linux binding in the image rather than relying on host
-# lockfile resolution behavior.
-RUN npm install --no-save --ignore-scripts lightningcss-linux-x64-gnu@1.32.0
+# installs, so pin the binding explicitly in the image. Buildx injects
+# TARGETARCH automatically (amd64 / arm64) when building multi-arch — pick
+# the matching prebuilt so `docker buildx --platform linux/amd64,linux/arm64`
+# does not try to install the x64 binary on an arm64 stage.
+ARG TARGETARCH
+RUN set -eux; \
+    case "${TARGETARCH:-amd64}" in \
+      amd64) pkg="lightningcss-linux-x64-gnu@1.32.0" ;; \
+      arm64) pkg="lightningcss-linux-arm64-gnu@1.32.0" ;; \
+      *) echo "unsupported TARGETARCH=${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    npm install --no-save --ignore-scripts "$pkg"
 
 # ── Stage 2: Build ────────────────────────────────────────────────────────────
 # pending-digest

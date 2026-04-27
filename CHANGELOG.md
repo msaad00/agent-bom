@@ -11,6 +11,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.82.1] – 2026-04-27
+
+### Fixed
+- **Dashboard build under `output: "export"`** — `ui/app/graph/page.tsx` was using `export const dynamic = "force-dynamic"`, which is incompatible with Next 16's static export and aborted the v0.82.0 release pipeline at the Build/dashboard step (PyPI + Docker Hub publish jobs were skipped). Replaced with `next/dynamic({ ssr: false })`, the standard pattern for client-only components (`@xyflow/react` needs DOM) inside a static export. Re-enables the release pipeline; v0.82.0 stayed a no-op tag with no published artifacts.
+
+---
+
 ## [0.82.0] – 2026-04-27
 
 ### Added
@@ -845,7 +852,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.82.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.82.1...HEAD
+[0.82.1]: https://github.com/msaad00/agent-bom/compare/v0.82.0...v0.82.1
 [0.82.0]: https://github.com/msaad00/agent-bom/compare/v0.81.3...v0.82.0
 [0.76.4]: https://github.com/msaad00/agent-bom/compare/v0.76.2...v0.76.4
 [0.76.2]: https://github.com/msaad00/agent-bom/compare/v0.76.1...v0.76.2

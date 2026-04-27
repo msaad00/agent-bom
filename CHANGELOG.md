@@ -41,9 +41,11 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **Frontend contract hygiene** — closed frontend contract gaps surfaced by the post-v0.81.3 audit.
 - **Audit contract runtime gaps** — closed runtime gaps in audit-log integrity, signing, and lifecycle posture surfaced by the post-v0.81.3 audit.
 - **Adaptive backpressure retry-after jitter** — retry-after now uses multiplicative jitter so colocated callers don't all retry on the same boundary at base ≈ 1s.
+- **`scripts/retrigger_stranded_pr.sh` race** — the close→reopen gap now polls the GitHub API until the PR's state is observably `closed` before issuing the reopen call (was a fixed `sleep 2`). Prevents the reopen from racing against propagation and silently no-opping.
 
 ### Security
 - **Auth middleware hardening** — header normalisation, exempt-path startup assertions, and tightened trust-proxy posture across the auth middleware stack.
+- **Tenant RLS bypass guard now under test** — the `APIKeyMiddleware` defence-in-depth check that rejects any request still inside an active `bypass_tenant_rls()` context is now covered by two regression tests (`tests/test_api_hardening.py`). Locks the guard so a future refactor cannot quietly drop it.
 - **MCP sandbox `image_pin_policy` posture surfaced** — `/v1/auth/policy` now reports the deployment-wide default and recommends `enforce` for production.
 - **Cross-parser dedup proofs + Postgres RLS red-team test for `scan_jobs`** — added structural and runtime guards proving a session bound to tenant B cannot read tenant A `scan_jobs` rows under a non-superuser role.
 - **Dependabot UI lockfile workflow no longer trusts the PR `scripts.lock:normalize` entry** — replaces the `npm run lock:normalize` step with an inline `npm install --package-lock-only --ignore-scripts` so a Dependabot branch can't redefine the script under a privileged `pull_request_target` token.

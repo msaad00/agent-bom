@@ -13,7 +13,6 @@ import json
 import logging
 import os
 import secrets
-import threading
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -23,8 +22,6 @@ CSRF_HEADER_NAME = "x-agent-bom-csrf"
 
 _logger = logging.getLogger(__name__)
 _EPHEMERAL_SIGNING_KEY = secrets.token_bytes(32)
-_REVOKED_SESSION_NONCES: dict[str, int] = {}
-_REVOKED_LOCK = threading.Lock()
 
 
 class BrowserSessionError(Exception):
@@ -130,12 +127,11 @@ def verify_browser_session_token(token: str) -> dict[str, Any]:
     if exp <= int(datetime.now(timezone.utc).timestamp()):
         raise BrowserSessionError("browser session is expired")
     nonce = str(payload.get("nonce") or "")
-    with _REVOKED_LOCK:
-        expires_at = _REVOKED_SESSION_NONCES.get(nonce)
-        if expires_at is not None:
-            if expires_at > int(datetime.now(timezone.utc).timestamp()):
-                raise BrowserSessionError("browser session has been revoked")
-            _REVOKED_SESSION_NONCES.pop(nonce, None)
+    if nonce:
+        from agent_bom.api.shared_auth_state import get_auth_state
+
+        if get_auth_state().is_nonce_revoked(nonce):
+            raise BrowserSessionError("browser session has been revoked")
     return payload
 
 
@@ -158,10 +154,9 @@ def revoke_browser_session_token(token: str) -> bool:
     exp = int(payload.get("exp") or 0)
     if not nonce or exp <= int(datetime.now(timezone.utc).timestamp()):
         return False
-    with _REVOKED_LOCK:
-        now = int(datetime.now(timezone.utc).timestamp())
-        expired = [key for key, expires_at in _REVOKED_SESSION_NONCES.items() if expires_at <= now]
-        for key in expired:
-            _REVOKED_SESSION_NONCES.pop(key, None)
-        _REVOKED_SESSION_NONCES[nonce] = exp
+    from agent_bom.api.shared_auth_state import get_auth_state
+
+    backend = get_auth_state()
+    backend.revoke_nonce(nonce, exp)
+    backend.cleanup_expired()
     return True

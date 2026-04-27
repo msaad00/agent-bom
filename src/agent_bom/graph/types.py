@@ -72,6 +72,14 @@ class RelationshipType(str, Enum):
     ACCESSED = "accessed"  # tool → resource (runtime)
     DELEGATED_TO = "delegated_to"  # agent → agent (runtime)
 
+    # ── Cross-environment correlation (#1892) ──
+    # CORRELATES_WITH is reserved for HIGH-confidence local↔cloud agent
+    # matches (cloud account/subscription/project + region/location + model
+    # ID all match). POSSIBLY_CORRELATES_WITH carries partial matches so
+    # they stay visible without being conflated with the strict path.
+    CORRELATES_WITH = "correlates_with"  # local agent ↔ cloud agent (high)
+    POSSIBLY_CORRELATES_WITH = "possibly_correlates_with"  # local ↔ cloud (low)
+
 
 class NodeStatus(str, Enum):
     """Lifecycle status of a graph node."""

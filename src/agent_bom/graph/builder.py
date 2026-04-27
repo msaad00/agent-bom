@@ -648,6 +648,9 @@ def build_unified_graph_from_report(
     if isinstance(ai_inventory, dict):
         _add_framework_topology(graph, ai_inventory.get("framework_agents", []), data_source_tag)
 
+    # ── Cross-environment correlation (#1892 Phase 1: AWS Bedrock) ──
+    _add_cross_env_correlation(graph, agents_data, data_source_tag)
+
     # ── Runtime session graph (dynamic edges) ──────────────────────
     runtime_graph = report_json.get("runtime_session_graph")
     if runtime_graph:
@@ -1060,6 +1063,63 @@ def _add_agent_cloud_lineage(
             },
         )
     )
+
+
+def _add_cross_env_correlation(
+    graph: UnifiedGraph,
+    agents_data: Any,
+    data_source: str,
+) -> None:
+    """Emit local↔cloud correlation edges across all configured providers.
+
+    The strict-bar matcher in :mod:`agent_bom.cross_env_correlation` decides
+    whether each candidate qualifies for ``CORRELATES_WITH`` (HIGH-confidence
+    triplet match) or only ``POSSIBLY_CORRELATES_WITH`` (single-signal). Both
+    relationships carry the matched signals and rationale so reviewers can see
+    why the platform drew the line.
+    """
+    from agent_bom.cross_env_correlation import (
+        CorrelationConfidence,
+        correlate_cross_environment,
+    )
+
+    if not isinstance(agents_data, list):
+        return
+    result = correlate_cross_environment(agents_data)
+    if not result.matches:
+        return
+
+    for match in result.matches:
+        local_id = f"agent:{match.local_agent_name}"
+        cloud_id = f"agent:{match.cloud_agent_name}"
+        # Only wire edges between agents we already added as nodes — the
+        # matcher operates over the report payload but the graph may have
+        # filtered some agents out earlier.
+        if not graph.get_node(local_id) or not graph.get_node(cloud_id):
+            continue
+        relationship = (
+            RelationshipType.CORRELATES_WITH
+            if match.confidence is CorrelationConfidence.HIGH
+            else RelationshipType.POSSIBLY_CORRELATES_WITH
+        )
+        graph.add_edge(
+            UnifiedEdge(
+                source=local_id,
+                target=cloud_id,
+                relationship=relationship,
+                evidence={
+                    "data_source": data_source,
+                    "confidence": match.confidence.value,
+                    "matched_signals": list(match.matched_signals),
+                    "cloud_provider": match.cloud_provider,
+                    "cloud_service": match.cloud_service,
+                    "cloud_account_id": match.cloud_account_id or "",
+                    "cloud_region": match.cloud_region or "",
+                    "cloud_model_id": match.cloud_model_id or "",
+                    "rationale": match.rationale,
+                },
+            )
+        )
 
 
 def _add_framework_topology(graph: UnifiedGraph, framework_agents: Any, data_source: str) -> None:

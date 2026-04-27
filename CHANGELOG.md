@@ -10,6 +10,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Cross-environment correlation framework + AWS Bedrock matcher** — local agents and cloud-discovered Bedrock runtimes are now matched on the strict triplet of cloud account ID + region + model ID. Strong matches emit `CORRELATES_WITH` graph edges; partial matches stay visible as `POSSIBLY_CORRELATES_WITH` with a `matched_signals` evidence list so reviewers can see candidates without the platform conflating them. Phase 1 of #1892; Phase 2 (Azure OpenAI / Functions, #1992) and Phase 3 (GCP Vertex / Cloud Run, #1993) plug into the same dispatch.
 - **Cloud origin lineage in the unified graph** — agents discovered with cloud metadata now promote `cloud_principal`, `cloud_resource`, and direct principal→agent edges so single-hop reachability queries no longer have to traverse the intermediate cloud_resource node.
 - **GPU and k8s GPU promotion** — GPU containers and Kubernetes GPU clusters now flow into the unified graph alongside the rest of the inventory.
 - **Static multi-agent topology edges** — framework-level agent topology is now materialized as graph edges so reviewers can see which agents delegate to which.

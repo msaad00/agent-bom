@@ -685,3 +685,111 @@ class TestFrameworkTopology:
         edge = next(edge for edge in g.edges if edge.source == "framework-agent:crew" and edge.target == "framework-agent:researcher")
         assert edge.relationship == RelationshipType.DELEGATED_TO
         assert edge.evidence["source"] == "source-ast"
+
+
+class TestCrossEnvironmentCorrelation:
+    """Cross-environment correlation lands on the unified graph as edges."""
+
+    def _report_with_local_and_bedrock(self, *, local_account: str, local_region: str, local_model: str | None) -> dict:
+        env: dict[str, str] = {"AWS_ACCOUNT_ID": local_account, "AWS_REGION": local_region}
+        if local_model is not None:
+            env["BEDROCK_MODEL_ID"] = local_model
+        return {
+            "scan_id": "test-cross-env",
+            "agents": [
+                {
+                    "name": "cursor-dev",
+                    "type": "cursor",
+                    "agent_type": "cursor",
+                    "status": "configured",
+                    "config_path": "/home/dev/.cursor/mcp.json",
+                    "version": "0.42.0",
+                    "metadata": {},
+                    "mcp_servers": [
+                        {
+                            "name": "bedrock-mcp",
+                            "command": "python",
+                            "transport": "stdio",
+                            "surface": "mcp-server",
+                            "env": env,
+                            "packages": [],
+                            "tools": [],
+                            "credential_env_vars": [],
+                        }
+                    ],
+                },
+                {
+                    "name": "bedrock:prod-agent",
+                    "type": "custom",
+                    "agent_type": "custom",
+                    "source": "aws-bedrock",
+                    "status": "configured",
+                    "config_path": "arn:aws:bedrock:us-east-1:111122223333:agent/AGENTID01",
+                    "version": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+                    "metadata": {
+                        "cloud_origin": {
+                            "provider": "aws",
+                            "service": "bedrock",
+                            "resource_type": "agent",
+                            "resource_id": "arn:aws:bedrock:us-east-1:111122223333:agent/AGENTID01",
+                            "resource_name": "prod-agent",
+                            "location": "us-east-1",
+                            "scope": {"account_id": "111122223333"},
+                        }
+                    },
+                    "mcp_servers": [],
+                },
+            ],
+        }
+
+    def test_full_triplet_emits_correlates_with_edge(self):
+        report = self._report_with_local_and_bedrock(
+            local_account="111122223333",
+            local_region="us-east-1",
+            local_model="anthropic.claude-3-5-sonnet-20241022-v2:0",
+        )
+
+        g = build_unified_graph_from_report(report)
+
+        edge = next(
+            (edge for edge in g.edges if edge.source == "agent:cursor-dev" and edge.target == "agent:bedrock:prod-agent"),
+            None,
+        )
+        assert edge is not None
+        assert edge.relationship == RelationshipType.CORRELATES_WITH
+        assert edge.evidence["confidence"] == "high"
+        assert set(edge.evidence["matched_signals"]) == {"account_id", "region", "model_id"}
+
+    def test_partial_match_emits_possibly_correlates_with_edge(self):
+        report = self._report_with_local_and_bedrock(
+            local_account="999988887777",
+            local_region="eu-west-1",
+            local_model="anthropic.claude-3-5-sonnet-20241022-v2:0",
+        )
+
+        g = build_unified_graph_from_report(report)
+
+        edge = next(
+            (edge for edge in g.edges if edge.source == "agent:cursor-dev" and edge.target == "agent:bedrock:prod-agent"),
+            None,
+        )
+        assert edge is not None
+        assert edge.relationship == RelationshipType.POSSIBLY_CORRELATES_WITH
+        assert edge.evidence["confidence"] == "low"
+        assert edge.evidence["matched_signals"] == ["model_id"]
+
+    def test_sdk_presence_alone_does_not_emit_edge(self):
+        report = self._report_with_local_and_bedrock(
+            local_account="111122223333",
+            local_region="us-east-1",
+            local_model=None,
+        )
+        # Strip account too — leave only AWS_PROFILE-style noise.
+        report["agents"][0]["mcp_servers"][0]["env"] = {"AWS_PROFILE": "dev"}
+
+        g = build_unified_graph_from_report(report)
+
+        cross_edges = [
+            edge for edge in g.edges if edge.relationship in (RelationshipType.CORRELATES_WITH, RelationshipType.POSSIBLY_CORRELATES_WITH)
+        ]
+        assert cross_edges == []

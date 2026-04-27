@@ -9,6 +9,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.82.0] – 2026-04-27
+
 ### Added
 - **Graph-walk dependency reachability engine** — new `agent_bom.graph.compute_dependency_reach` (in `src/agent_bom/graph/dependency_reach.py`) runs BFS from every agent node along `USES` / `DEPENDS_ON` / `CONTAINS` / `PROVIDES_TOOL` edges and reports per-package `min_hop_distance` + `reachable_from` plus per-vulnerability summaries. **Engine half only.** Surfacing reach in blast-radius scoring and the dashboard follows in a separate PR; this release does not change scoring behaviour. Closes the engine half of #1896 (#2009).
 - **JSON Schema (draft 2020-12) generated from API Pydantic models** — `scripts/generate_v1_schemas.py` walks every public model in `agent_bom.api.models`, emits `docs/schemas/v1/<Model>.json` per model plus an `index.json` manifest. CI gates the drift via `--check`. SDK consumers can codegen against the published surface. Closes #1963 (#2007).
@@ -53,6 +57,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **Audit contract runtime gaps** — closed runtime gaps in audit-log integrity, signing, and lifecycle posture surfaced by the post-v0.81.3 audit.
 - **Adaptive backpressure retry-after jitter** — retry-after now uses multiplicative jitter so colocated callers don't all retry on the same boundary at base ≈ 1s.
 - **`scripts/retrigger_stranded_pr.sh` race** — the close→reopen gap now polls the GitHub API until the PR's state is observably `closed` before issuing the reopen call (was a fixed `sleep 2`). Prevents the reopen from racing against propagation and silently no-opping.
+- **`release.yml` docs-site invalid `timeout-minutes` on reusable caller** — GitHub Actions rejects `timeout-minutes` on a job whose body is `uses: ./.github/workflows/...`; the field made `release.yml` fail validation on every push to main. Removed the field from the `docs-site` caller and reverted `_is_reusable_caller()` in `scripts/check_workflow_timeouts.py` so the gate skips reusable callers (with a `Why:` comment so the next contributor doesn't re-add the broken field) (#2016).
+- **`scripts/run_scale_evidence.py` ValueError on outside-ROOT `--output`** — `args.output.relative_to(ROOT)` raised when the operator passed an absolute path outside the repo. Wrapped in `try/except` with a fallback to the absolute path (#2016).
+- **Vulnerability table grouped-view windowing** — the grouped-by-package and grouped-by-source paths in `ui/app/vulns/page.tsx` now cap each group at `PAGE_SIZE` with an overflow notice, matching the flat-mode windowing already in place. Closes the vulns half of #1955 (#2015).
 
 ### Security
 - **Six missing UI relationship colors + Vitest invariant** — `RELATIONSHIP_COLOR_MAP` in `ui/lib/graph-schema.ts` was missing `REMEDIATES`, `TRIGGERS`, `MANAGES`, `OWNS`, `PART_OF`, `MEMBER_OF`. `MANAGES` was the freshest gap — the cloud_principal → agent edge added in #1996 was rendering without colour. New `ui/tests/graph-schema-color-invariant.test.ts` walks every `RelationshipType` value and fails when any is missing from the colour map (audit-4 #2008).
@@ -78,6 +85,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **README cloud CSP inventory** — README header now enumerates AWS, Azure, GCP, Snowflake, Databricks, CoreWeave, Nebius next to "cloud" (audit-3 #2005).
 - **Tenant RLS bypass guard tests** — `APIKeyMiddleware`'s defence-in-depth check that rejects requests entering with `bypass_tenant_rls()` still active is now under regression coverage in `tests/test_api_hardening.py` so a future refactor can't quietly drop the guard (audit-2 #2002).
 - **`scripts/retrigger_stranded_pr.sh` close→reopen race** — now polls the GitHub API until the PR's state is observably `closed` before issuing the reopen call (was a fixed `sleep 2`). Prevents the reopen from racing against propagation and silently no-opping (audit-2 #2002).
+- **Hermetic Python scanner surfaced in docs** — README and `docs/ARCHITECTURE.md` now name the single-language stack (CLI / FastAPI / MCP / scanners / enrichment / blast / IaC / CIS in one Python interpreter, native dpkg/RPM disk-image parsers, `syft` opt-in tar-archive fallback only) along with the honest tradeoffs (slower at huge fanouts, higher per-package memory) (#2015).
+- **mypy strict overrides expanded to nine more modules** — `agent_bom.api.compliance_signing`, `dashboard_csp`, `metrics`, `scim`, `storage_schema`, `tenant_quota_store`, `tracing`, plus `agent_bom.backpressure` and `agent_bom.proxy_sandbox` now run under `disallow_untyped_defs` / `disallow_incomplete_defs` / `warn_return_any` / `warn_unused_ignores`. Phase 3 of #1969 (#2015).
+- **`docs.yml` Python pin aligned to 3.11** — the docs-build job now uses the same Python the rest of the workflows do, removing a 3.12 outlier from the matrix.
 
 ---
 
@@ -835,7 +845,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.81.3...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.82.0...HEAD
+[0.82.0]: https://github.com/msaad00/agent-bom/compare/v0.81.3...v0.82.0
 [0.76.4]: https://github.com/msaad00/agent-bom/compare/v0.76.2...v0.76.4
 [0.76.2]: https://github.com/msaad00/agent-bom/compare/v0.76.1...v0.76.2
 [0.76.1]: https://github.com/msaad00/agent-bom/compare/v0.76.0...v0.76.1

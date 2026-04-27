@@ -135,7 +135,7 @@ agent-bom agents --nebius -f json -o nebius-ai-scan.json
 ### GitHub Actions — GPU image gate
 
 ```yaml
-- uses: msaad00/agent-bom@v0.81.3
+- uses: msaad00/agent-bom@v0.82.0
   with:
     scan-type: image
     image: nvcr.io/nvidia/cuda:12.4.1-devel-ubuntu22.04

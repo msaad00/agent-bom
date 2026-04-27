@@ -153,20 +153,11 @@ Agent-centered shared-infrastructure graph — selected agents, their shared MCP
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-pipeline-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-pipeline-light.svg" alt="agent-bom scan pipeline — discover, scan, analyze, report, enforce" width="900" />
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/scan-pipeline-light.svg" alt="agent-bom scan pipeline — discover, scan, analyze, report, enforce" width="900" style="max-width: 100%; height: auto;" />
   </picture>
 </p>
 
-Inside the engine: parsers, taint, call graph, blast-radius scoring.
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/engine-internals-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/engine-internals-light.svg" alt="agent-bom engine internals" width="900" />
-  </picture>
-</p>
-
-External calls are limited to package metadata, version lookups, and CVE enrichment.
+Inside the engine: parsers, taint, call graph, blast-radius scoring. External calls are limited to package metadata, version lookups, and CVE enrichment.
 
 </details>
 
@@ -190,11 +181,16 @@ Two diagrams explain the self-hosted shape without collapsing into one overloade
 - [Enterprise Self-Hosted Data and Runtime Flow](site-docs/deployment/overview.md#enterprise-self-hosted-data-and-runtime-flow)
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#0f172a","primaryBorderColor":"#6366f1","primaryTextColor":"#e0e7ff","lineColor":"#64748b"}}}%%
 flowchart LR
-    Scan["Scans + Fleet"] --> API["API + UI + Postgres"]
-    API --> Graph["Findings + Graph + Audit"]
-    API --> Gateway["Optional Gateway"]
-    API --> Proxy["Optional Proxy"]
+    classDef ctrl fill:#0f172a,stroke:#6366f1,color:#e0e7ff
+    classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
+    classDef edge fill:#0f172a,stroke:#38bdf8,color:#e0f2fe
+
+    Scan["Scans + Fleet"]:::data --> API["API + UI + Postgres"]:::ctrl
+    API --> Graph["Findings + Graph + Audit"]:::data
+    API --> Gateway["Optional Gateway"]:::edge
+    API --> Proxy["Optional Proxy"]:::edge
 ```
 
 Deployment truth:

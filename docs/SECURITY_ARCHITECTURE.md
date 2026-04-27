@@ -144,11 +144,13 @@ If engaging a third-party auditor, the recommended scope:
 
 agent-bom **maps findings TO compliance controls** across 14 frameworks:
 
-OWASP LLM Top 10, OWASP MCP Top 10, OWASP Agentic Top 10,
-EU AI Act, NIST AI RMF, NIST CSF, ISO 27001, SOC 2, CIS Controls,
-MITRE ATLAS, CMMC 2.0
+OWASP LLM Top 10, OWASP MCP Top 10, OWASP Agentic Top 10, OWASP AISVS v1.0,
+EU AI Act, NIST AI RMF, NIST CSF, NIST 800-53 Rev 5, FedRAMP Moderate,
+ISO 27001, SOC 2, CIS Controls v8, MITRE ATLAS, CMMC 2.0 Level 2
 
-This means every finding includes which compliance controls it violates — enabling teams to prioritize by regulatory impact.
+The bundled mappings are a curated subset of each framework focused on AI/MCP/agent risk — not a complete catalog. See [docs/ARCHITECTURE.md § Coverage per framework](./ARCHITECTURE.md#coverage-per-framework) for the honest control counts per framework.
+
+Every finding includes which compliance controls it violates — enabling teams to prioritize by regulatory impact.
 
 ## Vulnerability Disclosure
 

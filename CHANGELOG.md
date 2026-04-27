@@ -10,6 +10,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- **Graph-walk dependency reachability engine** — new `agent_bom.graph.compute_dependency_reach` (in `src/agent_bom/graph/dependency_reach.py`) runs BFS from every agent node along `USES` / `DEPENDS_ON` / `CONTAINS` / `PROVIDES_TOOL` edges and reports per-package `min_hop_distance` + `reachable_from` plus per-vulnerability summaries. **Engine half only.** Surfacing reach in blast-radius scoring and the dashboard follows in a separate PR; this release does not change scoring behaviour. Closes the engine half of #1896 (#2009).
+- **JSON Schema (draft 2020-12) generated from API Pydantic models** — `scripts/generate_v1_schemas.py` walks every public model in `agent_bom.api.models`, emits `docs/schemas/v1/<Model>.json` per model plus an `index.json` manifest. CI gates the drift via `--check`. SDK consumers can codegen against the published surface. Closes #1963 (#2007).
+- **Row-virtualized agent list pages** — `ui/app/agents/page.tsx` configured + installed agent cards now render through `@tanstack/react-virtual`'s `useVirtualizer` with `measureElement` for variable-height rows. Enterprise estates with thousands of agents no longer render every card flat. Vitest covers the windowing math. Refs #1955 — agents half closed; vulns table flat path is already paginated, grouped path windowing tracked separately (#2006).
 - **Cross-environment correlation framework + AWS Bedrock matcher** — local agents and cloud-discovered Bedrock runtimes are now matched on the strict triplet of cloud account ID + region + model ID. Strong matches emit `CORRELATES_WITH` graph edges; partial matches stay visible as `POSSIBLY_CORRELATES_WITH` with a `matched_signals` evidence list so reviewers can see candidates without the platform conflating them. Phase 1 of #1892; Phase 2 (Azure OpenAI / Functions, #1992) and Phase 3 (GCP Vertex / Cloud Run, #1993) plug into the same dispatch.
 - **Azure OpenAI cross-environment matcher** — extends the cross-environment correlation framework to Azure OpenAI deployments. Strict triplet is subscription ID + Cognitive Services account name + deployment name; explicit `OPENAI_API_TYPE=open_ai` disqualifies the agent so an Azure-shaped match never fires for public-OpenAI clients. Cloud discovery for Azure OpenAI now emits a normalized `cloud_origin` envelope so the matcher has structured identity to compare against. Phase 2 of #1892 (#1992).
 - **GCP Vertex AI cross-environment matcher** — extends the cross-environment correlation framework to GCP Vertex endpoints. Strict triplet is project ID + location + endpoint ID; the project-ID format gate rejects arbitrary strings (e.g. "test", emails) from counting as a project match. The endpoint env value is also accepted as a full Vertex resource path so a single IaC-supplied identifier surfaces all three signals. Phase 3 of #1892 (#1993).
@@ -25,6 +28,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **Frontend API error taxonomy + GET caching/dedup** — the dashboard API client now exposes a typed error taxonomy and dedupes/caches GET requests with prefix-scoped invalidation.
 
 ### Changed
+- **Tenant quota enforcement is now atomic per tenant** — new `tenant_quota_guard(tenant_id, *checks)` context manager in `agent_bom.api.tenant_quota` holds a per-tenant `threading.Lock` (single-process atomicity) **and**, when `AGENT_BOM_POSTGRES_URL` is set, a session-scoped `pg_advisory_lock` keyed on `sha256(tenant_id)` for cross-replica atomicity. Wraps the (check + insert) pair in `scan`, `schedules`, `observability/push`, `scheduler-trigger`, and `fleet-sync` route handlers so concurrent requests serialise per tenant and the second caller sees the first caller's row in its check (audit-4 #2008 + audit-5 PR-B #2011).
+- **Workflow timeout coverage** — every job in `.github/workflows/` now declares `timeout-minutes`, including reusable-workflow callers (`uses:`) which were silently inheriting the 360-minute GitHub default. New `scripts/check_workflow_timeouts.py` gates drift in CI (#2008, #2010).
+- **Dependabot UI lockfile workflow** — `npm run lock:normalize` was replaced with the inline `npm install --package-lock-only --ignore-scripts` so a Dependabot branch can't redefine the script under the privileged `pull_request_target` token.
 - **Centralised tenant resolution for CLI and MCP** — CLI and MCP entry points now resolve tenant id through one shared helper instead of per-surface ad-hoc logic.
 - **Backpressure posture surfaced on `/v1/auth/policy`** — the operator policy endpoint now reports adaptive backpressure state (paths, p99, retry-after) alongside the auth and rate-limit posture.
 - **CSP source-of-truth centralised** — `ui/next.config.ts` and `ui/vercel.json` now share one CSP definition; `script-src 'unsafe-inline'` is temporarily restored pending the hash-pinning collector.
@@ -35,6 +41,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **Generated `AGENT_BOM_*` env reference** — the env-var reference is now generated from `config.py` and CI fails if the doc drifts from the source.
 
 ### Fixed
+- **Graph `add_edge` no longer drops second-add evidence on dedup** — when the builder adds the package-path edge first and the blast-radius edge second for the same `(source, target, relationship)`, the second edge's `evidence` dict (cvss, epss, kev, attack tags) is now merged into the kept edge instead of being silently discarded. Kept side wins on key conflicts so existing order-of-arrival semantics for shared keys are preserved (audit-5 PR-A #2010).
+- **`_resolve_affected_server_ids` intersection collapse is now logged** — the narrow-by-server / narrow-by-agent intersections silently emptied when the named filter and the package-path candidates were disjoint. A debug log now surfaces report inconsistency to operator logs without changing the production narrow-by-all-filters semantics (audit-5 PR-A #2010).
+- **SAML relay-state cleanup runs on issue too** — `_new_saml_relay_state()` previously inserted into `_SAML_RELAY_STATES` but never swept expired entries, letting an attacker who issued nonces but never completed the SAML round trip grow the in-memory map unbounded. Sweep on issue too (audit-5 PR-A #2010).
+- **`release.yml` docs-site reusable caller missed timeout** — the audit-4 sweep added `timeout-minutes` to 29 jobs but skipped `docs-site` because the gate's `_is_reusable_caller()` helper returned `True` for any job with `uses:`. Reusable callers actually need their own timeout (the called workflow's per-job timeouts don't bound the caller; GitHub's default is 360 minutes). Gate fixed + `docs-site` now declares `timeout-minutes: 20` (audit-5 PR-A #2010).
 - **Release and post-merge job timeouts** — every release-pipeline and post-merge-self-scan job now has an explicit `timeout-minutes`; runaway jobs no longer hold scarce runners.
 - **Container rescan checkout pinned to v6** — the daily image rescan now uses a v6-pinned `actions/checkout` SHA aligned with the rest of the pipeline.
 - **main-ui-smoke boot script** — the standalone container boot script now assembles the `.next/static` tree explicitly (`rm`/`mkdir`/`cp -a`) so a missing source dir no longer aborts the smoke under `set -e`.
@@ -44,6 +54,10 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **`scripts/retrigger_stranded_pr.sh` race** — the close→reopen gap now polls the GitHub API until the PR's state is observably `closed` before issuing the reopen call (was a fixed `sleep 2`). Prevents the reopen from racing against propagation and silently no-opping.
 
 ### Security
+- **Six missing UI relationship colors + Vitest invariant** — `RELATIONSHIP_COLOR_MAP` in `ui/lib/graph-schema.ts` was missing `REMEDIATES`, `TRIGGERS`, `MANAGES`, `OWNS`, `PART_OF`, `MEMBER_OF`. `MANAGES` was the freshest gap — the cloud_principal → agent edge added in #1996 was rendering without colour. New `ui/tests/graph-schema-color-invariant.test.ts` walks every `RelationshipType` value and fails when any is missing from the colour map (audit-4 #2008).
+- **`shutil.which()` → absolute path TOCTOU** — `proxy_sandbox.resolve_container_runtime` and `filesystem._scan_archive` now resolve the binary via `shutil.which` once and pass the absolute path through to `subprocess`, closing the small PATH-substitution window between resolve and exec (audit-4 #2008).
+- **`O_NOFOLLOW` on skill-bundle hash read** — `skill_bundles._sha256_file` now opens with `os.O_RDONLY | os.O_NOFOLLOW` so the kernel itself rejects a symlinked leaf, closing the gap between the prior symlink check and the read (audit-4 #2008).
+- **Auth attempt counter is clustered-mode visible** — `_check_auth_session_rate_limit` emits a one-shot WARNING log on first use whenever clustered control-plane mode is detected (`AGENT_BOM_POSTGRES_URL` or `AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT`), so operators see the cross-replica multiplier on the in-process counter. The Postgres-backed counter that fully closes the gap is in flight (audit-5 PR-A #2010; PR-C `shared_auth_state` follow-up).
 - **Auth middleware hardening** — header normalisation, exempt-path startup assertions, and tightened trust-proxy posture across the auth middleware stack.
 - **Tenant RLS bypass guard now under test** — the `APIKeyMiddleware` defence-in-depth check that rejects any request still inside an active `bypass_tenant_rls()` context is now covered by two regression tests (`tests/test_api_hardening.py`). Locks the guard so a future refactor cannot quietly drop it.
 - **MCP sandbox `image_pin_policy` posture surfaced** — `/v1/auth/policy` now reports the deployment-wide default and recommends `enforce` for production.
@@ -53,6 +67,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ### Internal
 - **Tracked Finder duplicate artifacts blocked** — CI now refuses to merge tracked macOS Finder duplicate files (e.g. `… 2.md`).
 - **Real Postgres integration contract** — `tests/test_postgres_integration.py` now exercises real Postgres for job, audit, and RLS contracts.
+- **Stricter mypy on four more API modules** — `agent_bom.api.scim`, `agent_bom.api.storage_schema`, `agent_bom.api.tenant_quota_store`, `agent_bom.api.tracing` now run under the per-module strict overrides (`disallow_untyped_defs`, `disallow_incomplete_defs`, `warn_return_any`, `warn_unused_ignores`). Phase 3 of #1969 (#2003).
+- **UI `lib/api.ts` presentation helpers extracted** — `severityColor`, `severityDot`, `formatDate`, `isConfigured` moved to `ui/lib/api-format.ts` and re-exported from `lib/api.ts` so 50+ caller imports keep working unchanged. First step toward the broader decomposition tracked in #1965 (#2004).
+- **Pending-digest CI gate now ages markers out at 24h** — `scripts/check_docker_base_policy.py` reads each `# pending-digest` marker's `git blame --porcelain` committer-time and fails when older than `PENDING_DIGEST_MAX_AGE_SECONDS` (default 86400). Stops the marker from quietly outstaying its purpose if dependabot's docker job misses a bump (audit-3 #2005).
+- **`/v1/posture/backpressure` explicit `_ROLE_RULES` entry** — narrower entries listed before broad `/v1/posture` for grep/audit clarity. Behaviour unchanged (audit-3 #2005).
+- **`_clean_graph_part` fallback chain for `service`** — provider's two-source fallback chain now also applies to service (recovers `<provider>-<service>` segment from `agent_dict.source`); `resource_type` keeps the literal placeholder (audit-3 #2005).
+- **README cloud CSP inventory** — README header now enumerates AWS, Azure, GCP, Snowflake, Databricks, CoreWeave, Nebius next to "cloud" (audit-3 #2005).
+- **Tenant RLS bypass guard tests** — `APIKeyMiddleware`'s defence-in-depth check that rejects requests entering with `bypass_tenant_rls()` still active is now under regression coverage in `tests/test_api_hardening.py` so a future refactor can't quietly drop the guard (audit-2 #2002).
+- **`scripts/retrigger_stranded_pr.sh` close→reopen race** — now polls the GitHub API until the PR's state is observably `closed` before issuing the reopen call (was a fixed `sleep 2`). Prevents the reopen from racing against propagation and silently no-opping (audit-2 #2002).
 
 ---
 
@@ -810,7 +832,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.81.1...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.81.3...HEAD
 [0.76.4]: https://github.com/msaad00/agent-bom/compare/v0.76.2...v0.76.4
 [0.76.2]: https://github.com/msaad00/agent-bom/compare/v0.76.1...v0.76.2
 [0.76.1]: https://github.com/msaad00/agent-bom/compare/v0.76.0...v0.76.1

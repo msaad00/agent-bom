@@ -8,7 +8,6 @@ this namespace.
 
 from __future__ import annotations
 
-import importlib.metadata
 import json
 import sys
 from contextlib import nullcontext as _nullcontext
@@ -28,9 +27,11 @@ from agent_bom.cli._common import (
 from agent_bom.cli.agents._cloud import run_benchmarks, run_cloud_discovery
 from agent_bom.cli.agents._context import ScanContext
 from agent_bom.cli.agents._discovery import run_local_discovery
+from agent_bom.cli.agents._modes import apply_demo_mode, apply_self_scan_mode, validate_skill_mode
 from agent_bom.cli.agents._output import _format_text, render_output
 from agent_bom.cli.agents._post import compute_exit_code, run_integrations
 from agent_bom.cli.agents._preflight import emit_dry_run_plan, run_iac_only_scan
+from agent_bom.cli.agents._self_scan import _build_self_scan_inventory
 from agent_bom.cli.options import scan_options
 from agent_bom.discovery import discover_all
 from agent_bom.models import AIBOMReport
@@ -70,52 +71,6 @@ from agent_bom.parsers import extract_packages
 from agent_bom.resolver import consume_performance_stats as consume_resolution_performance
 from agent_bom.resolver import resolve_all_versions_sync
 from agent_bom.scanners import IncompleteScanError, consume_scan_performance, consume_scan_warnings, scan_agents_sync
-
-
-def _build_self_scan_inventory() -> dict[str, list[dict[str, object]]]:
-    """Build a deterministic self-scan inventory for the installed package."""
-    import importlib.metadata as _meta
-
-    pkgs: list[dict[str, str]] = []
-    seen: set[tuple[str, str, str]] = set()
-
-    dist = _meta.distribution("agent-bom")
-    for req_str in dist.requires or []:
-        name = req_str.split(";")[0].split("[")[0].strip()
-        for op in (">=", "<=", "==", "!=", "~=", ">", "<"):
-            if op in name:
-                name = name[: name.index(op)].strip()
-                break
-        if not name:
-            continue
-        try:
-            version = _meta.version(name)
-        except _meta.PackageNotFoundError:
-            continue
-        key = (name.lower(), version, "pypi")
-        if key in seen:
-            continue
-        seen.add(key)
-        pkgs.append({"name": name, "version": version, "ecosystem": "pypi"})
-
-    return {
-        "agents": [
-            {
-                "name": "agent-bom",
-                "agent_type": "custom",
-                "source": "agent-bom --self-scan",
-                "config_path": "self-scan://agent-bom",
-                "mcp_servers": [
-                    {
-                        "name": "agent-bom-mcp-server",
-                        "command": "agent-bom mcp-server",
-                        "transport": "stdio",
-                        "packages": pkgs,
-                    }
-                ],
-            }
-        ]
-    }
 
 
 @click.command()
@@ -381,51 +336,17 @@ def scan(
     # Users should use --preset ci for CI-specific defaults.
     # The ci_detect module is available for programmatic use.
 
-    # ── Self-scan mode: scan agent-bom's own installed dependencies ──
-    if self_scan:
-        import json as _json
-        import os as _os
-        import tempfile as _tempfile
-
-        try:
-            _self_inventory = _build_self_scan_inventory()
-        except importlib.metadata.PackageNotFoundError:
-            click.echo("Error: agent-bom package not found. Install it first.", err=True)
-            sys.exit(2)
-        _sf_fd, _sf_path = _tempfile.mkstemp(suffix=".json", prefix="agent-bom-self-scan-")
-        with _os.fdopen(_sf_fd, "w") as _sf:
-            _json.dump(_self_inventory, _sf)
-        inventory = _sf_path
-        enrich = True
-
-    # ── Demo mode: load a curated sample agent + MCP environment ───────────
-    if demo:
-        import json as _json
-        import os as _os
-        import tempfile as _tempfile
-
-        from agent_bom.demo import DEMO_INVENTORY
-
-        _demo_fd, _demo_path = _tempfile.mkstemp(suffix=".json", prefix="agent-bom-demo-")
-        with _os.fdopen(_demo_fd, "w") as _df:
-            _json.dump(DEMO_INVENTORY, _df)
-        inventory = _demo_path
-        enrich = True
-        compliance = True  # Show compliance frameworks in demo
-        # Skip CWD auto-detection in demo mode — only scan the curated sample
-        if not project:
-            project = _tempfile.mkdtemp(prefix="agent-bom-demo-dir-")
-        # Override config_path in demo inventory to show clean paths (no /tmp leaks)
-        for agent_data in DEMO_INVENTORY.get("agents", []):
-            agent_data.setdefault("config_path", f"~/.config/{agent_data.get('agent_type', 'agent')}/config.json")
-        # Disable IaC auto-detection — point iac_paths to empty temp dir
-        # so the `if not iac_paths` auto-detection check doesn't trigger
-        iac_paths = (project,)  # temp dir has no Dockerfiles/K8s/Terraform
-
-    # Mutual exclusivity: --no-skill and --skill-only cannot be used together
-    if no_skill and skill_only:
-        click.echo("Error: --no-skill and --skill-only are mutually exclusive.", err=True)
-        sys.exit(2)
+    # ── Self-scan/demo modes materialize synthetic inventories before discovery ──
+    inventory, enrich = apply_self_scan_mode(self_scan=self_scan, inventory=inventory, enrich=enrich)
+    project, inventory, enrich, compliance, iac_paths = apply_demo_mode(
+        demo=demo,
+        project=project,
+        inventory=inventory,
+        enrich=enrich,
+        compliance=compliance,
+        iac_paths=iac_paths,
+    )
+    validate_skill_mode(no_skill=no_skill, skill_only=skill_only)
 
     # Route console output based on flags
     is_stdout = output == "-"

@@ -581,7 +581,7 @@ def run_security_checks(
     except Exception as exc:
         raise CloudDiscoveryError(f"Could not connect to Databricks workspace: {exc}") from exc
 
-    resolved_host = host or os.environ.get("DATABRICKS_HOST", "unknown")
+    resolved_host = host if host is not None else (os.environ.get("DATABRICKS_HOST") or "unknown")
     report = DatabricksSecurityReport(workspace_host=resolved_host)
 
     for check_fn in _ALL_CHECKS:

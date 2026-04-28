@@ -75,5 +75,18 @@ spec:
             0.99,
             sum by (le) (rate(http_request_duration_seconds_bucket{job=~".*agent-bom-api.*"}[2m]))
           )
+    - type: prometheus
+      metadata:
+        serverAddress: {{ $defaults.prometheus.serverAddress | quote }}
+        metricName: agent_bom_scan_jobs_active
+        # First-class queue-depth gauge: in-flight scan jobs (queued +
+        # running) summed across replicas. Bumped at enqueue time in
+        # `agent_bom.api.routes.scan.enqueue_scan_job`, decremented in
+        # `agent_bom.api.pipeline._run_scan_sync`'s finally block. KEDA
+        # interprets this trigger as the averaged-across-replicas value;
+        # default of 8 keeps each replica's queue at ~2x worker count.
+        threshold: {{ $defaults.prometheus.scanJobsActiveThreshold | default "8" | quote }}
+        query: |
+          sum(agent_bom_scan_jobs_active)
     {{- end }}
 {{- end }}

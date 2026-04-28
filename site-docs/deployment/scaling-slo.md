@@ -45,6 +45,17 @@ the API tier exposes through Prometheus today:
    Backed by the standard Starlette instrumentation. Climbing past the
    threshold means request servicing is starting to back up.
 
+3. **In-flight scan jobs (queued + running)**
+   `sum(agent_bom_scan_jobs_active)`
+   First-class queue-depth gauge exported by every API replica. Bumped
+   in `agent_bom.api.routes.scan.enqueue_scan_job` as soon as the job is
+   durably enqueued; decremented in `agent_bom.api.pipeline._run_scan_sync`
+   when the job reaches a terminal status (DONE / FAILED / CANCELLED).
+   Floored at zero so any instrumentation gap absorbs gracefully instead
+   of producing a negative gauge. This is the most direct saturation
+   signal of the three — the rate-limit and p99 triggers are leading
+   indicators; this one is the actual queue.
+
 KEDA polls every 30s by default, so the worst-case scaling latency is one
 poll plus pod-startup. The published "< 90s" SLO is calibrated against that.
 
@@ -130,25 +141,17 @@ controlPlane:
 ## Honest gaps
 
 The chart's autoscaling primitives are real and tested. The published SLOs
-above are honest about what the **defaults are tuned to hit**. Two things
-this PR does not solve, called out so a reviewer doesn't have to derive them:
+above are honest about what the **defaults are tuned to hit**. The remaining
+gap, called out so a reviewer doesn't have to derive it:
 
-1. **No first-class `agent_bom_scan_jobs_active` gauge yet.** The rate-limit
-   counter is a leading indicator of saturation, but a true queue-depth
-   gauge would let operators write a more direct trigger
-   (`agent_bom_scan_jobs_active > N` instead of "rate-limit pressure"). That
-   gauge is a small follow-up — when it lands, the default trigger set in
-   `controlplane-api-keda-scaledobject.yaml` should add it as a third
-   trigger.
+**No published clustered Postgres scale benchmark.** Today's published
+evidence (`scripts/run_scale_evidence.py`) is in-process and tops out at
+1k–10k entities. A clustered Postgres run at 50k+ entities is the next
+piece needed before claiming "elastic at 1M edges." Until that lands, keep
+your `maxReplicas` calibrated to your Postgres connection-pool capacity
+(default chart sets pool size in
+`controlPlane.api.env.AGENT_BOM_POSTGRES_POOL_MAX`).
 
-2. **No published clustered Postgres scale benchmark.** Today's published
-   evidence (`scripts/run_scale_evidence.py`) is in-process and tops out at
-   1k–10k entities. A clustered Postgres run at 50k+ entities is the next
-   piece needed before claiming "elastic at 1M edges." Until that lands,
-   keep your `maxReplicas` calibrated to your Postgres connection-pool
-   capacity (default chart sets pool size in
-   `controlPlane.api.env.AGENT_BOM_POSTGRES_POOL_MAX`).
-
-Both gaps block the "elastic at 1M edges" claim, neither blocks pilots,
-and neither prevents the SLOs above from being met for the workload sizes
-they're written for.
+This gap blocks the "elastic at 1M edges" claim, but it does not block
+pilots and does not prevent the SLOs above from being met for the
+workload sizes they're written for.

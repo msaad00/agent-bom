@@ -178,7 +178,8 @@ agent-bom serve --port 8422 --persist jobs.db
 - `GET /v1/fleet/list` — view all discovered agents across the org
 - `GET /v1/fleet/stats` — fleet-wide trust scores and posture
 - `POST /v1/fleet/sync` — ingest endpoint scan results
-- `GET /v1/compliance` — 14-framework compliance posture
+- `GET /v1/compliance` — 14-framework compliance posture plus AISVS benchmark summary
+- `GET /v1/compliance/aisvs` — latest tenant-scoped OWASP AISVS benchmark result
 
 Fleet trust scoring is advisory and evidence-backed. The score combines registry verification, active vulnerability posture, credential hygiene, permission profile, configuration quality, discovery provenance, package provenance attestation, runtime drift evidence, and inventory freshness. API responses include factor breakdowns plus evidence references so operators can explain why an agent is trusted or risky instead of treating the score as an opaque compliance certification.
 

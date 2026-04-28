@@ -1,6 +1,6 @@
 # Compliance Frameworks
 
-agent-bom maps scan findings to 10 security and compliance frameworks.
+agent-bom maps scan findings to 14 tag-mapped security and compliance frameworks and exposes OWASP AISVS as benchmark evidence.
 
 Framework catalogs are pinned in-repo by default so scans stay deterministic,
 offline-friendly, and reproducible. Catalog refreshes can happen out of band;
@@ -20,6 +20,16 @@ the scan hot path does not fetch MITRE or other framework data at runtime.
 | SOC 2 | `soc2.py` | Trust service criteria |
 | ISO 27001 | `iso_27001.py` | Information security |
 | CIS Controls | `cis_controls.py` | Security best practices |
+| CMMC 2.0 | `cmmc.py` | Defense contractor practices |
+| NIST 800-53 | `nist_800_53.py` | Federal security controls |
+| FedRAMP Moderate | `fedramp.py` | Federal cloud baseline |
+| PCI DSS | `pci_dss.py` | Payment data controls |
+
+## Benchmark surfaces
+
+| Benchmark | Module | Focus |
+|-----------|--------|-------|
+| OWASP AISVS v1.0 | `cloud/aisvs_benchmark.py` | AI security verification checks |
 
 ## Usage
 

@@ -78,12 +78,16 @@ def test_observation_sanitizes_security_intelligence() -> None:
                 "references": ["https://example.com/advisory#fragment", "javascript:alert(1)"],
             }
         ],
+        args=["bad", "--token", "raw-secret"],
+        url="https://user:pass@example.com/sse?token=raw-secret#frag",
     )
 
     intel = observation.security_intelligence[0]
     assert "raw-secret" not in str(intel["matched_value"])
     assert "user:pass" not in str(intel["matched_value"])
     assert intel["references"] == ["https://example.com/advisory"]
+    assert observation.args == ["bad", "--token", "<redacted>"]
+    assert observation.url == "https://example.com/sse"
 
 
 def test_inmemory_store_revalidates_observation_before_write() -> None:

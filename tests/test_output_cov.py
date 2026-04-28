@@ -399,6 +399,20 @@ class TestToCyclonedx:
         # Vulnerabilities may be in a nested structure depending on CycloneDX version
         assert len(cdx["components"]) >= 1
 
+    def test_mcp_command_property_redacts_args(self):
+        token = "ghp_" + "A" * 36
+        server = _make_server()
+        server.args = ["server", "--token", token]
+        agent = _make_agent(servers=[server])
+
+        cdx = to_cyclonedx(_make_report(agents=[agent]))
+        payload = str(cdx)
+
+        assert token not in payload
+        server_component = next(component for component in cdx["components"] if component["name"] == server.name)
+        command_prop = next(prop for prop in server_component["properties"] if prop["name"] == "agent-bom:command")
+        assert command_prop["value"] == "npx server --token <redacted>"
+
 
 # ── to_spdx ──────────────────────────────────────────────────────────────────
 
@@ -408,6 +422,24 @@ class TestToSpdx:
         report = _make_report()
         spdx = to_spdx(report)
         assert spdx["spdxVersion"] == "SPDX-3.0"
+
+
+def test_json_output_redacts_server_launch_fields():
+    token = "ghp_" + "A" * 36
+    server = _make_server()
+    server.args = ["server", "--token", token]
+    server.url = f"https://user:pass@example.com/sse?token={token}"
+    server.env = {"API_KEY": token}
+    server.security_warnings = [f"token {token}"]
+    agent = _make_agent(servers=[server])
+
+    payload = to_json(_make_report(agents=[agent]))
+    server_payload = payload["agents"][0]["mcp_servers"][0]
+
+    assert token not in str(payload)
+    assert server_payload["args"] == ["server", "--token", "<redacted>"]
+    assert server_payload["url"] == "https://example.com/sse"
+    assert server_payload["security_warnings"] == ["token <redacted>"]
 
     def test_with_agents_and_vulns(self):
         pkg = _make_pkg()

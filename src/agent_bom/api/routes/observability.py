@@ -22,8 +22,16 @@ from agent_bom.api.pipeline import _persist_graph_snapshot
 from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_store
 from agent_bom.api.tenant_quota import enforce_retained_jobs_quota, tenant_quota_guard
 from agent_bom.graph.severity import ocsf_to_severity
+from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.rbac import require_authenticated_permission
-from agent_bom.security import sanitize_error
+from agent_bom.security import (
+    sanitize_command_args,
+    sanitize_env_vars,
+    sanitize_error,
+    sanitize_security_warnings,
+    sanitize_text,
+    sanitize_url,
+)
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -66,6 +74,26 @@ def _normalize_pushed_report(body: PushPayload, *, fallback_scan_id: str) -> dic
         if agent_type:
             agent["type"] = agent_type
             agent["agent_type"] = agent_type
+        sanitized_servers: list[dict] = []
+        for raw_server in agent.get("mcp_servers", []) or agent.get("servers", []) or []:
+            if not isinstance(raw_server, dict):
+                continue
+            server = dict(raw_server)
+            server["command"] = sanitize_text(server.get("command", ""), max_len=200)
+            server["args"] = sanitize_command_args(list(server.get("args", []) or []))
+            server["url"] = sanitize_url(str(server.get("url") or "")) if server.get("url") else None
+            server["env"] = sanitize_env_vars(dict(server.get("env", {}) or {}))
+            server["security_warnings"] = sanitize_security_warnings(list(server.get("security_warnings", []) or []))
+            server["security_intelligence"] = [
+                sanitize_security_intelligence_entry(item)
+                for item in (server.get("security_intelligence", []) or [])
+                if isinstance(item, dict)
+            ]
+            sanitized_servers.append(server)
+        if "mcp_servers" in agent:
+            agent["mcp_servers"] = sanitized_servers
+        elif sanitized_servers:
+            agent["servers"] = sanitized_servers
         normalized_agents.append(agent)
     report["agents"] = normalized_agents
     return report

@@ -381,6 +381,8 @@ async def test_receive_push_normalizes_report_contract_and_persists_graph(tmp_pa
                         {
                             "name": "filesystem",
                             "command": "npx",
+                            "args": ["server", "--token", "ghp_" + "A" * 36],
+                            "url": "https://user:pass@example.com/sse?token=raw-secret#frag",
                             "packages": [
                                 {
                                     "name": "pillow",
@@ -388,7 +390,7 @@ async def test_receive_push_normalizes_report_contract_and_persists_graph(tmp_pa
                                     "version": "9.0.0",
                                 }
                             ],
-                            "env": {"OPENAI_API_KEY": "redacted"},
+                            "env": {"OPENAI_API_KEY": "sk-live-secret-value"},
                         }
                     ],
                 }
@@ -417,6 +419,11 @@ async def test_receive_push_normalizes_report_contract_and_persists_graph(tmp_pa
     assert pushed_job.result["blast_radii"][0]["vulnerability_id"] == "CVE-2026-0001"
     assert pushed_job.result["agents"][0]["type"] == "claude-desktop"
     assert pushed_job.result["agents"][0]["agent_type"] == "claude-desktop"
+    pushed_server = pushed_job.result["agents"][0]["mcp_servers"][0]
+    assert pushed_server["args"] == ["server", "--token", "<redacted>"]
+    assert pushed_server["url"] == "https://example.com/sse"
+    assert pushed_server["env"]["OPENAI_API_KEY"] == "***REDACTED***"
+    assert "raw-secret" not in str(pushed_job.result)
 
     graph_store = SQLiteGraphStore(tmp_path / "graph.db")
     snapshots = graph_store.list_snapshots(tenant_id="tenant-alpha")

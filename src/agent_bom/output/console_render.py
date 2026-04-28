@@ -10,6 +10,7 @@ from rich.tree import Tree
 
 from agent_bom.models import AgentStatus, AIBOMReport, BlastRadius, Severity
 from agent_bom.output.compact import _coverage_bar, _pct
+from agent_bom.security import sanitize_command_args
 
 console = Console()
 
@@ -447,9 +448,10 @@ def print_agent_tree(report: AIBOMReport) -> None:
                 elif plevel == "medium":
                     priv_indicator = " [yellow]🛡 elevated[/yellow]"
 
+            server_args = sanitize_command_args(server.args[:2])
             server_branch = agent_tree.add(
                 f"\U0001f50c MCP Server: [bold cyan]{server.name}[/bold cyan] "
-                f"({server.command} {' '.join(server.args[:2])})"
+                f"({server.command} {' '.join(server_args)})"
                 f"{vuln_indicator}{cred_indicator}{priv_indicator}"
             )
 

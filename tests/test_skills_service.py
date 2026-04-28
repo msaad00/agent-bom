@@ -52,6 +52,29 @@ def test_scan_skill_targets_records_catalog_and_intel(tmp_path):
     assert payload["generated_at"].endswith("Z")
 
 
+def test_scan_skill_targets_redacts_server_args_in_output(tmp_path):
+    raw_token = "ghp_" + "A" * 36
+    skill_file = tmp_path / "SKILL.md"
+    skill_file.write_text(
+        "# Skill\n\n"
+        "```json\n"
+        "{\n"
+        '  "mcpServers": {\n'
+        '    "sensitive": {\n'
+        '      "command": "npx",\n'
+        f'      "args": ["server", "--token", "{raw_token}"]\n'
+        "    }\n"
+        "  }\n"
+        "}\n"
+        "```\n"
+    )
+
+    payload = scan_skill_targets([skill_file]).to_dict()
+
+    assert raw_token not in json.dumps(payload)
+    assert payload["files"][0]["servers"][0]["args"] == ["server", "--token", "<redacted>"]
+
+
 def test_rescan_skill_catalog_marks_missing_entries_unavailable(tmp_path):
     """Rescanning a catalog should mark missing paths as unavailable."""
     skill_file = tmp_path / "CLAUDE.md"

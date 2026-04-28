@@ -21,6 +21,8 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from agent_bom.security import sanitize_launch_command
+
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport, BlastRadius
 
@@ -854,8 +856,7 @@ def _inventory_cards(report: "AIBOMReport") -> str:
 
             cmd = ""
             if srv.command:
-                cmd_parts = [srv.command] + srv.args[:3]
-                cmd = _esc(" ".join(cmd_parts))
+                cmd = _esc(sanitize_launch_command(srv.command, srv.args, max_args=3))
                 if srv.args and len(srv.args) > 3:
                     cmd += f' <span style="color:#334155">&hellip;+{len(srv.args) - 3} args</span>'
 

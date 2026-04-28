@@ -12,9 +12,11 @@ from agent_bom.security import (
     _is_obfuscated_credential,
     _shannon_entropy,
     create_safe_subprocess_env,
+    sanitize_command_args,
     sanitize_env_vars,
     sanitize_error,
     sanitize_log_label,
+    sanitize_url,
     validate_arguments,
     validate_command,
     validate_environment,
@@ -186,6 +188,33 @@ def test_sanitize_env_vars_safe():
     result = sanitize_env_vars({"HOME": "/home/user", "LANG": "en_US.UTF-8"})
     assert result["HOME"] == "/home/user"
     assert result["LANG"] == "en_US.UTF-8"
+
+
+def test_sanitize_command_args_redacts_secret_values_and_urls():
+    github_token = "ghp_" + "A" * 36
+    result = sanitize_command_args(
+        [
+            "server",
+            "--api-key",
+            "sk-live-secret",
+            github_token,
+            "session=" + github_token,
+            "callback=https://user:pass@example.com/path?token=secret",
+        ]
+    )
+
+    assert result == [
+        "server",
+        "--api-key",
+        "<redacted>",
+        "<redacted>",
+        "session=<redacted>",
+        "callback=https://example.com/path",
+    ]
+
+
+def test_sanitize_url_strips_credentials_query_and_fragment():
+    assert sanitize_url("https://user:pass@example.com/path?token=secret#frag") == "https://example.com/path"
 
 
 # ---------------------------------------------------------------------------

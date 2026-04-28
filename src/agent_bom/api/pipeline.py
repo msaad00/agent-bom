@@ -22,7 +22,15 @@ from typing import Any
 from agent_bom import __version__
 from agent_bom.api.models import JobStatus, ScanJob, StepStatus
 from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_graph_store, _get_store, _job_lock
-from agent_bom.security import sanitize_error
+from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
+from agent_bom.security import (
+    sanitize_command_args,
+    sanitize_env_vars,
+    sanitize_error,
+    sanitize_security_warnings,
+    sanitize_text,
+    sanitize_url,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -326,15 +334,19 @@ def _run_scan_sync(job: ScanJob) -> None:
                     servers.append(
                         MCPServer(
                             name=s.get("name", "unknown"),
-                            command=s.get("command", ""),
-                            args=s.get("args", []),
-                            env=s.get("env", {}),
+                            command=sanitize_text(s.get("command", ""), max_len=200),
+                            args=sanitize_command_args(list(s.get("args", []) or [])),
+                            env=sanitize_env_vars(dict(s.get("env", {}) or {})),
                             transport=TransportType(s.get("transport", "stdio")),
-                            url=s.get("url"),
+                            url=sanitize_url(str(s.get("url") or "")) if s.get("url") else None,
                             config_path=s.get("config_path"),
                             security_blocked=bool(s.get("security_blocked", False)),
-                            security_warnings=list(s.get("security_warnings", []) or []),
-                            security_intelligence=list(s.get("security_intelligence", []) or []),
+                            security_warnings=sanitize_security_warnings(list(s.get("security_warnings", []) or [])),
+                            security_intelligence=[
+                                sanitize_security_intelligence_entry(item)
+                                for item in (s.get("security_intelligence", []) or [])
+                                if isinstance(item, dict)
+                            ],
                         )
                     )
                 agents.append(

@@ -1176,6 +1176,20 @@ def test_build_mcp_config_analysis_prompt():
     assert "auth_missing" in prompt
 
 
+def test_build_mcp_config_analysis_prompt_redacts_command_args():
+    """Prompt should not send raw token-bearing launch args to an LLM provider."""
+    from agent_bom.ai_enrich import _build_mcp_config_analysis_prompt
+
+    raw_token = "ghp_" + "A" * 36
+    server = MCPServer(name="sensitive", command="npx", args=["server", "--token", raw_token])
+    agent = Agent(name="agent", agent_type=AgentType.CUSTOM, config_path="/tmp/agent.json", mcp_servers=[server])
+
+    prompt = _build_mcp_config_analysis_prompt(AIBOMReport(agents=[agent]))
+
+    assert raw_token not in prompt
+    assert "--token <redacted>" in prompt
+
+
 @pytest.mark.asyncio
 async def test_analyze_mcp_config_security_with_mock():
     """Should return structured analysis when LLM returns valid JSON."""

@@ -133,6 +133,29 @@ function safeReferenceHref(reference: string): string | null {
   }
 }
 
+function safeDisplayUrl(value: string | undefined): string {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? `${url.protocol}//${url.host}${url.pathname}` : value;
+  } catch {
+    return value;
+  }
+}
+
+function safeCommandLine(command: string | undefined, args: string[] | undefined): string {
+  return [command, ...(args ?? [])]
+    .filter((part): part is string => Boolean(part))
+    .map((part) => (/(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{30,}|(?:sk|pk|rk)[-_](?:live|test|prod)[-_]\w{10,}/i.test(part) ? "<redacted>" : part))
+    .join(" ");
+}
+
+function safeDisplayText(value: string): string {
+  return value
+    .replace(/https?:\/\/[^\s"'<>]+/g, (match) => safeDisplayUrl(match))
+    .replace(/(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{30,}|(?:sk|pk|rk)[-_](?:live|test|prod)[-_]\w{10,}/gi, "<redacted>");
+}
+
 // ─── Agents List View ───────────────────────────────────────────────────────
 
 function AgentsList() {
@@ -784,7 +807,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                               Command
                             </div>
                             <div className="font-mono text-xs text-zinc-300 break-all">
-                              {[srv.command, ...(srv.args || [])].join(" ")}
+                              {safeCommandLine(srv.command, srv.args)}
                             </div>
                           </div>
                         )}
@@ -794,7 +817,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                               <Link2 className="h-3.5 w-3.5" />
                               Remote URL
                             </div>
-                            <div className="font-mono text-xs text-zinc-300 break-all">{srv.url}</div>
+                            <div className="font-mono text-xs text-zinc-300 break-all">{safeDisplayUrl(srv.url)}</div>
                           </div>
                         )}
                       </div>
@@ -864,7 +887,7 @@ function AgentDetail({ agentName }: { agentName: string }) {
                           <div className="space-y-1">
                             {srv.security_warnings?.map((warning) => (
                               <div key={warning} className="rounded border border-rose-900/60 bg-rose-950/20 px-3 py-2 text-xs text-rose-300">
-                                {warning}
+                                {safeDisplayText(warning)}
                               </div>
                             ))}
                           </div>

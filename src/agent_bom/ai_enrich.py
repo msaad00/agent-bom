@@ -36,6 +36,7 @@ from rich.console import Console
 
 from agent_bom.config import AI_CACHE_MAX_ENTRIES as _MAX_AI_CACHE
 from agent_bom.config import OLLAMA_BASE_URL
+from agent_bom.security import sanitize_command_args
 
 if TYPE_CHECKING:
     from pydantic import BaseModel
@@ -927,9 +928,10 @@ def _build_mcp_config_analysis_prompt(report: "AIBOMReport") -> str:
         for server in agent.mcp_servers[:10]:
             creds = server.credential_names
             tools = [t.name for t in server.tools[:10]]
+            server_args = sanitize_command_args(server.args[:5])
             server_configs.append(
                 f"- Server: {server.name}\n"
-                f"  Command: {server.command} {' '.join(server.args[:5])}\n"
+                f"  Command: {server.command} {' '.join(server_args)}\n"
                 f"  Transport: {server.transport.value}\n"
                 f"  Tools: {', '.join(tools) or 'unknown'}\n"
                 f"  Credentials: {', '.join(creds) or 'none'}\n"

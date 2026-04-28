@@ -11,6 +11,7 @@ import re
 from collections import Counter
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 logger = logging.getLogger(__name__)
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -294,6 +295,90 @@ def sanitize_env_vars(env: dict[str, Any]) -> dict[str, str]:
     return sanitized
 
 
+def sanitize_url(value: str | None) -> str | None:
+    """Strip credentials, query strings, and fragments from display/export URLs."""
+    if value is None:
+        return None
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return "<redacted-url>"
+    if not parsed.scheme or not parsed.netloc:
+        return value
+    host = parsed.hostname or parsed.netloc.rsplit("@", 1)[-1]
+    if parsed.port:
+        host = f"{host}:{parsed.port}"
+    return urlunsplit((parsed.scheme, host, parsed.path, "", ""))
+
+
+def sanitize_text(value: object, max_len: int = 1000) -> str:
+    """Redact credential-shaped substrings and credential-bearing URLs in text."""
+    text = sanitize_log_label(value, max_len=max_len)
+    text = re.sub(r"https?://[^\s\"'<>]+", lambda match: str(sanitize_url(match.group(0)) or ""), text)
+    for pattern in _VALUE_CREDENTIAL_PATTERNS:
+        text = pattern.sub("<redacted>", text)
+    return text[:max_len]
+
+
+def _looks_sensitive_value(value: str) -> bool:
+    return sanitize_env_vars({"ARG": value}).get("ARG") == "***REDACTED***"
+
+
+def sanitize_command_args(args: list[Any] | tuple[Any, ...]) -> list[str]:
+    """Redact secret-bearing command arguments while preserving launch shape."""
+    sanitized: list[str] = []
+    redact_next = False
+    for raw_arg in args:
+        arg = str(raw_arg)
+        if redact_next:
+            sanitized.append("<redacted>")
+            redact_next = False
+            continue
+
+        if "=" in arg:
+            key, _sep, raw_value = arg.partition("=")
+            if any(re.search(pattern, key.lower()) for pattern in SENSITIVE_PATTERNS):
+                sanitized.append(f"{key}=<redacted>")
+                continue
+            if "://" in raw_value:
+                sanitized.append(f"{key}={sanitize_url(raw_value)}")
+                continue
+            if _looks_sensitive_value(raw_value):
+                sanitized.append(f"{key}=<redacted>")
+                continue
+
+        if "://" in arg:
+            sanitized.append(str(sanitize_url(arg) or ""))
+            continue
+
+        if _looks_sensitive_value(arg):
+            sanitized.append("<redacted>")
+            continue
+
+        if arg.startswith("-") and any(re.search(pattern, arg.lower()) for pattern in SENSITIVE_PATTERNS):
+            sanitized.append(arg)
+            redact_next = True
+            continue
+
+        sanitized.append(arg)
+    return sanitized
+
+
+def sanitize_launch_command(command: object, args: list[Any] | tuple[Any, ...] | None = None, *, max_args: int | None = None) -> str:
+    """Return a safe command label for display/export surfaces."""
+    safe_command = sanitize_text(command, max_len=200)
+    raw_args = list(args or [])
+    if max_args is not None:
+        raw_args = raw_args[:max_args]
+    safe_args = sanitize_command_args(raw_args)
+    return " ".join([part for part in [safe_command, *safe_args] if part]).strip()
+
+
+def sanitize_security_warnings(values: list[Any] | tuple[Any, ...]) -> list[str]:
+    """Redact warning text before persistence or UI/API export."""
+    return [sanitize_text(value) for value in values if str(value or "").strip()]
+
+
 def validate_file_size(path: Path, max_size_bytes: int = 10 * 1024 * 1024) -> None:
     """
     Validate that a file is not too large (DoS prevention).
@@ -520,7 +605,7 @@ def validate_mcp_server_config(server_config: dict) -> None:
         raise SecurityError("Server env must be a dictionary")
     validate_environment(env)
 
-    logger.info(f"MCP server config validated: {command or server_config.get('url', 'unknown')}")
+    logger.info("MCP server config validated: %s", sanitize_text(command or server_config.get("url", "unknown")))
 
 
 # Docker/OCI image reference pattern — must start with alphanum, no shell metacharacters
@@ -570,6 +655,11 @@ __all__ = [
     "validate_environment",
     "validate_path",
     "sanitize_env_vars",
+    "sanitize_command_args",
+    "sanitize_launch_command",
+    "sanitize_security_warnings",
+    "sanitize_text",
+    "sanitize_url",
     "validate_file_size",
     "validate_json_file",
     "validate_url",

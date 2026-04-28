@@ -19,7 +19,14 @@ from agent_bom.api.mcp_observation_store import MCPObservation, merge_observatio
 from agent_bom.api.models import JobStatus
 from agent_bom.api.stores import _get_fleet_store, _get_mcp_observation_store, _get_store
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
-from agent_bom.security import sanitize_error
+from agent_bom.security import (
+    sanitize_command_args,
+    sanitize_env_vars,
+    sanitize_error,
+    sanitize_security_warnings,
+    sanitize_text,
+    sanitize_url,
+)
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -179,12 +186,14 @@ def _serialize_agent(
 
         server_payload["auth_mode"] = auth_mode
         server_payload["has_credentials"] = has_credentials
+        server_payload["command"] = sanitize_text(getattr(server, "command", ""), max_len=200)
+        server_payload["env"] = sanitize_env_vars(dict(getattr(server, "env", {}) or {}))
         server_payload["credential_env_vars"] = credential_names
         server_payload["security_blocked"] = bool(getattr(server, "security_blocked", False))
-        server_payload.setdefault("args", list(getattr(server, "args", []) or []))
-        server_payload.setdefault("url", server_url)
+        server_payload["args"] = sanitize_command_args(list(getattr(server, "args", []) or []))
+        server_payload["url"] = sanitize_url(server_url)
         server_payload.setdefault("config_path", getattr(server, "config_path", None))
-        server_payload["security_warnings"] = list(getattr(server, "security_warnings", []) or [])
+        server_payload["security_warnings"] = sanitize_security_warnings(list(getattr(server, "security_warnings", []) or []))
         server_payload["security_intelligence"] = _merge_security_intelligence(list(getattr(server, "security_intelligence", []) or []))
         observation_id, legacy_observation_id = _observation_ids(agent, server)
         stored_observation = (observation_index or {}).get(observation_id)
@@ -195,7 +204,7 @@ def _serialize_agent(
             {"present": False, "scan_sources": [], "first_seen": None, "last_seen": None},
         )
         gateway_state = (gateway_index or {}).get(
-            (server.name, server_url or ""),
+            (server.name, sanitize_url(server_url) or ""),
             {"gateway_registered": False, "source_agents": []},
         )
         observed_via = ["local_discovery"]
@@ -212,7 +221,7 @@ def _serialize_agent(
             server_payload["security_blocked"] = bool(server_payload["security_blocked"]) or stored_observation.security_blocked
             server_payload["security_warnings"] = _merge_strings(
                 list(server_payload.get("security_warnings", []) or []),
-                stored_observation.security_warnings,
+                sanitize_security_warnings(stored_observation.security_warnings),
             )
             server_payload["security_intelligence"] = _merge_security_intelligence(
                 list(server_payload.get("security_intelligence", []) or []),
@@ -311,14 +320,14 @@ def _persist_agent_observations(
             server_name=server.name,
             agent_name=agent.name,
             transport=getattr(getattr(server, "transport", ""), "value", getattr(server, "transport", "")) or "",
-            url=server_url,
+            url=sanitize_url(server_url),
             auth_mode=auth_mode,
-            command=getattr(server, "command", "") or "",
-            args=list(getattr(server, "args", []) or []),
+            command=sanitize_text(getattr(server, "command", ""), max_len=200),
+            args=sanitize_command_args(list(getattr(server, "args", []) or [])),
             config_path=getattr(server, "config_path", None),
             credential_env_vars=credential_names,
             security_blocked=bool(getattr(server, "security_blocked", False)),
-            security_warnings=list(getattr(server, "security_warnings", []) or []),
+            security_warnings=sanitize_security_warnings(list(getattr(server, "security_warnings", []) or [])),
             security_intelligence=list(getattr(server, "security_intelligence", []) or []),
             observed_via=observed_via,
             observed_scopes=observed_scopes,

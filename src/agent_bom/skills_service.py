@@ -14,6 +14,7 @@ from agent_bom.integrity import verify_instruction_file
 from agent_bom.parsers.skill_audit import SkillAuditResult, audit_skill_result
 from agent_bom.parsers.skills import SkillScanResult, discover_skill_files, parse_skill_file
 from agent_bom.parsers.trust_assessment import TrustAssessmentResult, assess_trust
+from agent_bom.security import sanitize_command_args
 from agent_bom.skill_bundles import SkillBundle, build_skill_bundle
 from agent_bom.skill_intel import ThreatIntelResult, ThreatIntelStatus, lookup_bundle_threat_intel
 from agent_bom.skills_catalog import catalog_scan_timestamp, load_skills_catalog, save_skills_catalog
@@ -62,7 +63,7 @@ class SkillFileReport:
                 {
                     "name": server.name,
                     "command": server.command,
-                    "args": list(server.args),
+                    "args": sanitize_command_args(server.args),
                     "transport": server.transport.value,
                 }
                 for server in self.scan.servers

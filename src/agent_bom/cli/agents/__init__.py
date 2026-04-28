@@ -728,7 +728,10 @@ def scan(
             for server in agent.mcp_servers:
                 if server.security_blocked:
                     if not quiet:
-                        con.print(f"    [yellow]⚠ {server.name}: blocked — {', '.join(server.security_warnings)}[/yellow]")
+                        from agent_bom.security import sanitize_security_warnings
+
+                        warnings = ", ".join(sanitize_security_warnings(server.security_warnings))
+                        con.print(f"    [yellow]⚠ {server.name}: blocked — {warnings}[/yellow]")
                     continue
                 pre_populated = list(server.packages)
                 if self_scan and pre_populated:

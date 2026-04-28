@@ -18,7 +18,9 @@ from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
 from agent_bom.graph.severity import SEVERITY_RISK_SCORE
 from agent_bom.graph.types import EntityType, RelationshipType
+from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.package_utils import canonical_package_key, normalize_package_name
+from agent_bom.security import sanitize_security_warnings, sanitize_text, sanitize_url
 
 try:
     from agent_bom.constants import is_credential_key as _is_credential_key
@@ -142,14 +144,19 @@ def build_unified_graph_from_report(
                     entity_type=EntityType.SERVER,
                     label=srv_name,
                     attributes={
-                        "command": srv_dict.get("command", ""),
+                        "command": sanitize_text(srv_dict.get("command", "")),
                         "transport": srv_dict.get("transport", ""),
-                        "url": srv_dict.get("url", ""),
+                        "url": sanitize_url(str(srv_dict.get("url") or "")) or "",
                         "auth_mode": srv_dict.get("auth_mode", ""),
                         "mcp_version": srv_dict.get("mcp_version", ""),
                         "has_credentials": srv_dict.get("has_credentials", False),
                         "security_blocked": srv_dict.get("security_blocked", False),
-                        "security_intelligence": srv_dict.get("security_intelligence", []),
+                        "security_warnings": sanitize_security_warnings(list(srv_dict.get("security_warnings", []) or [])),
+                        "security_intelligence": [
+                            sanitize_security_intelligence_entry(item)
+                            for item in (srv_dict.get("security_intelligence", []) or [])
+                            if isinstance(item, dict)
+                        ],
                         "security_intelligence_count": len(srv_dict.get("security_intelligence", []) or []),
                         "agent": agent_name,
                         "stable_id": srv_dict.get("stable_id", ""),

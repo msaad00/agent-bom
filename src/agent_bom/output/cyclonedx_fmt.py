@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from agent_bom import __version__
 from agent_bom.models import AIBOMReport
+from agent_bom.security import sanitize_launch_command
 
 
 def _sanitize_bom_ref(raw: str) -> str:
@@ -298,7 +299,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
 
             server_props = [
                 {"name": "agent-bom:type", "value": "mcp-server"},
-                {"name": "agent-bom:command", "value": server.command},
+                {"name": "agent-bom:command", "value": sanitize_launch_command(server.command, server.args)},
                 {"name": "agent-bom:transport", "value": server.transport.value},
             ]
             if server.has_credentials:

@@ -17,13 +17,13 @@ from urllib.parse import urlsplit, urlunsplit
 
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
 from agent_bom.models import Agent, MCPServer
+from agent_bom.security import sanitize_command_args
 
 logger = logging.getLogger(__name__)
 
 _CONFIDENCE_LEVELS = {"confirmed_malicious", "suspicious", "heuristic"}
 _RECOMMENDATIONS = {"block", "warn", "review"}
 _SOURCE_TYPES = {"security_advisory", "vendor_statement", "community_report", "package_registry", "heuristic"}
-_SENSITIVE_ARG_RE = re.compile(r"(token|secret|password|credential|api[-_]?key|access[-_]?key|auth)", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -138,38 +138,7 @@ def _safe_references(values: tuple[str, ...] | list[object]) -> list[str]:
 
 def _safe_match_value(value: str) -> str:
     """Return evidence-safe match text without raw secret-bearing values."""
-    parts = str(value or "").split()
-    if not parts:
-        return ""
-
-    redacted: list[str] = []
-    redact_next = False
-    for part in parts:
-        if redact_next:
-            redacted.append("<redacted>")
-            redact_next = False
-            continue
-
-        if "=" in part:
-            key, _sep, raw_value = part.partition("=")
-            if _SENSITIVE_ARG_RE.search(key):
-                redacted.append(f"{key}=<redacted>")
-                continue
-            if "://" in raw_value:
-                redacted.append(f"{key}={_safe_url(raw_value)}")
-                continue
-
-        if "://" in part:
-            redacted.append(_safe_url(part))
-            continue
-
-        if part.startswith("-") and _SENSITIVE_ARG_RE.search(part):
-            redacted.append(part)
-            redact_next = True
-            continue
-
-        redacted.append(part)
-
+    redacted = sanitize_command_args(str(value or "").split())
     safe = " ".join(redacted)
     return safe if len(safe) <= 180 else f"{safe[:177]}..."
 

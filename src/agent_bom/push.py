@@ -18,6 +18,8 @@ import uuid
 
 import httpx
 
+from agent_bom.security import sanitize_command_args, sanitize_env_vars, sanitize_security_warnings, sanitize_text, sanitize_url
+
 logger = logging.getLogger(__name__)
 
 
@@ -87,9 +89,20 @@ def _looks_like_secret(key: str) -> bool:
 
 def _redact_nested_secrets(value):
     if isinstance(value, dict):
-        redacted = {}
+        redacted: dict[object, object] = {}
         for key, child in value.items():
-            if _looks_like_secret(str(key)) and isinstance(child, (str, int, float, bool)):
+            key_text = str(key)
+            if key_text == "args" and isinstance(child, list):
+                redacted[key] = sanitize_command_args(child)
+            elif key_text == "command" and isinstance(child, str):
+                redacted[key] = sanitize_text(child, max_len=200)
+            elif key_text == "url" and isinstance(child, str):
+                redacted[key] = sanitize_url(child)
+            elif key_text == "env" and isinstance(child, dict):
+                redacted[key] = sanitize_env_vars(child)
+            elif key_text == "security_warnings" and isinstance(child, list):
+                redacted[key] = sanitize_security_warnings(child)
+            elif _looks_like_secret(key_text) and isinstance(child, (str, int, float, bool)):
                 redacted[key] = "***REDACTED***"
             else:
                 redacted[key] = _redact_nested_secrets(child)

@@ -26,6 +26,14 @@ def test_scan_secrets_detects_real_findings_and_skips_test_fixtures(tmp_path: Pa
     assert ("app.py", "OpenAI API Key", "critical") in findings
     assert all(not finding.file_path.startswith("tests/") for finding in result.findings)
     assert result.files_scanned == 2
+    assert all("supersecret123" not in finding.matched_preview for finding in result.findings)
+    assert all("alice@example.com" not in finding.matched_preview for finding in result.findings)
+    assert all("sk-proj" not in finding.matched_preview for finding in result.findings)
+    assert {finding.matched_preview for finding in result.findings} == {
+        "[CREDENTIAL_REDACTED]",
+        "[SECRET_REDACTED]",
+        "[PII_REDACTED]",
+    }
 
 
 def test_scan_secrets_warns_on_non_directory(tmp_path: Path):

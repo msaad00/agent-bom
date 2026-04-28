@@ -250,6 +250,25 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["proxy_sandbox"]["image_pin_policy_default"] in {"off", "warn", "enforce"}
     assert body["proxy_sandbox"]["production_recommendation"] == "enforce"
     assert body["proxy_sandbox"]["image_pin_policy_env"] == "AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY"
+    assert body["data_access_boundaries"]["default_posture"]["self_hosted_first"] is True
+    assert body["data_access_boundaries"]["default_posture"]["hidden_telemetry"] is False
+    assert body["data_access_boundaries"]["credential_evidence"]["stores_matched_value"] is False
+    assert body["data_access_boundaries"]["credential_evidence"]["stores_matched_prefix"] is False
+    assert body["data_access_boundaries"]["credential_evidence"]["validates_live_secret"] is False
+    assert "device_id" in body["data_access_boundaries"]["redacted_evidence_context"]["allowed_context"]
+    assert "matched_secret_value" in body["data_access_boundaries"]["redacted_evidence_context"]["never_show"]
+    assert body["data_access_boundaries"]["network_boundaries"]["telemetry"] == "none"
+    assert body["data_access_boundaries"]["storage_boundaries"]["secret_values"] == "never_stored"
+    assert body["data_access_boundaries"]["auth_boundaries"]["scim"]["tenant_source"] == "AGENT_BOM_SCIM_TENANT_ID"
+    assert body["data_access_boundaries"]["extension_boundaries"]["connectors"]["default_posture"] == "agentless_read_only"
+    assert (
+        body["data_access_boundaries"]["extension_boundaries"]["plugins_and_skills"]["default_posture"]
+        == "disabled_until_scoped_by_operator"
+    )
+    assert {"local_discovery", "project_scan", "cloud_inventory", "endpoint_fleet", "api_ui_control_plane", "proxy_gateway"} <= {
+        mode["mode"] for mode in body["data_access_boundaries"]["modes"]
+    }
+    assert body["data_access_boundaries"]["operator_controls"]["disable_vulnerability_network"] == "--offline"
     assert body["secret_integrity"]["audit_hmac"]["status"] in {"configured", "ephemeral"}
     assert body["secret_integrity"]["audit_hmac"]["rotation_tracking_supported"] is True
     assert body["secret_integrity"]["audit_hmac"]["rotation_status"] in {

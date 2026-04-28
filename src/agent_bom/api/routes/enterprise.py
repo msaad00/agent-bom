@@ -555,6 +555,7 @@ async def auth_policy(request: Request) -> dict:
     from agent_bom.api.storage_schema import describe_control_plane_storage_schema
     from agent_bom.api.tenant_quota import default_tenant_quotas, get_tenant_quota_runtime
     from agent_bom.backpressure import describe_backpressure_posture
+    from agent_bom.data_boundaries import describe_data_access_boundaries
     from agent_bom.proxy_sandbox import describe_proxy_sandbox_posture
 
     api_policy = get_api_key_policy()
@@ -595,6 +596,7 @@ async def auth_policy(request: Request) -> dict:
         "security_headers": describe_security_header_posture(),
         "backpressure": describe_backpressure_posture(),
         "proxy_sandbox": describe_proxy_sandbox_posture(),
+        "data_access_boundaries": describe_data_access_boundaries(),
         "auth_state_backend": auth_state_posture(),
         "secret_integrity": {
             "audit_hmac": describe_audit_hmac_status(),

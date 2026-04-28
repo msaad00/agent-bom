@@ -138,7 +138,7 @@ class SecretFinding:
     line_number: int
     secret_type: str  # "AWS Access Key", "Email Address", etc.
     severity: str  # "critical", "high", "medium"
-    matched_preview: str  # First 8 chars + "..." (never the full secret)
+    matched_preview: str  # redacted evidence label; never includes matched bytes
     category: str  # "credential", "pii", "secret"
 
     def to_dict(self) -> dict:
@@ -227,15 +227,13 @@ def _scan_file(file_path: Path, rel_path: str) -> list[SecretFinding]:
         # Credential patterns (CRITICAL)
         for name, pattern in CREDENTIAL_PATTERNS:
             if pattern.search(line):
-                match = pattern.search(line)
-                preview = match.group(0)[:8] + "..." if match else "..."
                 findings.append(
                     SecretFinding(
                         file_path=rel_path,
                         line_number=line_num,
                         secret_type=name,
                         severity="critical",
-                        matched_preview=preview,
+                        matched_preview="[CREDENTIAL_REDACTED]",
                         category="credential",
                     )
                 )
@@ -250,7 +248,7 @@ def _scan_file(file_path: Path, rel_path: str) -> list[SecretFinding]:
                         line_number=line_num,
                         secret_type=name,
                         severity="high",
-                        matched_preview="***",
+                        matched_preview="[SECRET_REDACTED]",
                         category="secret",
                     )
                 )
@@ -266,7 +264,7 @@ def _scan_file(file_path: Path, rel_path: str) -> list[SecretFinding]:
                             line_number=line_num,
                             secret_type=name,
                             severity="medium",
-                            matched_preview="[PII]",
+                            matched_preview="[PII_REDACTED]",
                             category="pii",
                         )
                     )

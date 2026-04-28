@@ -132,6 +132,10 @@ function formatStatusLabel(value: string): string {
   return value.replaceAll("_", " ");
 }
 
+function formatBoundaryList(values: string[]): string {
+  return values.map(formatStatusLabel).join(" · ");
+}
+
 function formatCadence(rotationDays: number | null, maxAgeDays: number | null): string | null {
   const parts = [];
   if (rotationDays != null) parts.push(`rotate ${rotationDays}d`);
@@ -692,6 +696,83 @@ export function KeyLifecyclePanel({
               </form>
             </section>
           </div>
+
+          <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Data access boundaries</p>
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+              <BoundaryCard
+                title="Default posture"
+                body={`Hidden telemetry ${String(policy.data_access_boundaries.default_posture.hidden_telemetry)}; hosted control plane required ${String(
+                  policy.data_access_boundaries.default_posture.mandatory_hosted_control_plane
+                )}.`}
+                detail={`${policy.data_access_boundaries.default_posture.default_network_mode.replaceAll("_", " ")} · support ${policy.data_access_boundaries.default_posture.support_access_default.replaceAll("_", " ")}`}
+                accent="teal"
+              />
+              <BoundaryCard
+                title="Credential evidence"
+                body={`Secret scan evidence is ${policy.data_access_boundaries.credential_evidence.project_secret_scan.replaceAll("_", " ")}; config environment variables are ${policy.data_access_boundaries.credential_evidence.config_env_vars.replaceAll("_", " ")}.`}
+                detail={`value stored ${String(policy.data_access_boundaries.credential_evidence.stores_matched_value)} · prefix stored ${String(
+                  policy.data_access_boundaries.credential_evidence.stores_matched_prefix
+                )} · live validation ${String(policy.data_access_boundaries.credential_evidence.validates_live_secret)}`}
+                accent="teal"
+              />
+              <BoundaryCard
+                title="Evidence context"
+                body={`Allowed context: ${formatBoundaryList(policy.data_access_boundaries.redacted_evidence_context.allowed_context)}.`}
+                detail={`Never show: ${formatBoundaryList(policy.data_access_boundaries.redacted_evidence_context.never_show)}`}
+                accent="teal"
+              />
+              <BoundaryCard
+                title="Network and exports"
+                body={`Telemetry is ${policy.data_access_boundaries.network_boundaries.telemetry}; outbound exports are ${policy.data_access_boundaries.network_boundaries.outbound_exports.replaceAll("_", " ")}.`}
+                detail={`controls ${policy.data_access_boundaries.network_boundaries.disable_controls.join(", ")}`}
+                accent="teal"
+              />
+              <BoundaryCard
+                title="Storage"
+                body={`Control-plane records are ${policy.data_access_boundaries.storage_boundaries.control_plane_default.replaceAll("_", " ")}; raw artifact exports are ${policy.data_access_boundaries.storage_boundaries.raw_artifact_exports.replaceAll("_", " ")}.`}
+                detail={`secrets ${policy.data_access_boundaries.storage_boundaries.secret_values.replaceAll("_", " ")} · previews ${policy.data_access_boundaries.storage_boundaries.secret_previews.replaceAll("_", " ")}`}
+                accent="teal"
+              />
+              <BoundaryCard
+                title="Auth and tenancy"
+                body={`Authorization is bound by ${formatBoundaryList(policy.data_access_boundaries.auth_boundaries.authorization)}.`}
+                detail={`SCIM tenant ${policy.data_access_boundaries.auth_boundaries.scim.tenant_source} · payload tenant ignored ${String(
+                  policy.data_access_boundaries.auth_boundaries.scim.payload_tenant_attributes_ignored
+                )}`}
+                accent="teal"
+              />
+              <BoundaryCard
+                title="Operator controls"
+                body={`${policy.data_access_boundaries.operator_controls.scope_preview}; scope with ${policy.data_access_boundaries.operator_controls.project_scope} or ${policy.data_access_boundaries.operator_controls.config_scope}.`}
+                detail={`${policy.data_access_boundaries.operator_controls.disable_vulnerability_network} · ${policy.data_access_boundaries.operator_controls.disable_scan_network_and_vuln_lookup}`}
+                accent="teal"
+              />
+              <BoundaryCard
+                title="Connectors and plugins"
+                body={`Connectors default to ${policy.data_access_boundaries.extension_boundaries.connectors.default_posture.replaceAll("_", " ")}; plugins and skills are ${policy.data_access_boundaries.extension_boundaries.plugins_and_skills.default_posture.replaceAll("_", " ")}.`}
+                detail={`connector scope ${policy.data_access_boundaries.extension_boundaries.connectors.credential_scope.replaceAll("_", " ")} · ${policy.data_access_boundaries.extension_boundaries.roles.principle.replaceAll("_", " ")}`}
+                accent="teal"
+              />
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {policy.data_access_boundaries.modes.map((mode) => (
+                <div key={mode.mode} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                  <p className="text-sm font-semibold text-zinc-100">{formatStatusLabel(mode.mode)}</p>
+                  <p className="mt-1 text-xs leading-5 text-zinc-400">Reads: {formatBoundaryList(mode.reads)}</p>
+                  {mode.does_not_read?.length ? (
+                    <p className="mt-1 text-xs leading-5 text-zinc-500">Does not read: {formatBoundaryList(mode.does_not_read)}</p>
+                  ) : null}
+                  {mode.does_not_do?.length ? (
+                    <p className="mt-1 text-xs leading-5 text-zinc-500">Does not do: {formatBoundaryList(mode.does_not_do)}</p>
+                  ) : null}
+                  {mode.does_not_store?.length ? (
+                    <p className="mt-1 text-xs leading-5 text-zinc-500">Does not store: {formatBoundaryList(mode.does_not_store)}</p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          </section>
 
           <section className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Secret and integrity posture</p>

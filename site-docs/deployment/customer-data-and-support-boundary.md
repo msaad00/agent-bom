@@ -46,6 +46,26 @@ plane and storage tier unless the operator explicitly exports them elsewhere:
 - tenant-scoped auth and audit history
 - generated reports and compliance exports
 
+## Credential and PII evidence boundaries
+
+`agent-bom` distinguishes between finding a risk and collecting the sensitive
+value that caused it.
+
+For MCP and agent configuration inventory, the scanner records credential-like
+environment variable names such as `OPENAI_API_KEY` or `DATABASE_URL`. It does
+not read the environment variable value.
+
+For an explicit project secret scan, the scanner reads files inside the chosen
+scope so it can classify likely hardcoded credentials or PII. Findings do not
+store the matched value or a prefix of the matched value. They keep only the
+relative file path, line number, finding type, severity, and a redacted evidence
+label such as `[CREDENTIAL_REDACTED]`.
+
+`agent-bom` does not use discovered credentials to call providers, validate
+whether a token is live, or enrich findings. Any live-secret validation should
+be a separate operator-approved workflow with its own network, audit, and
+retention boundary.
+
 That is true whether the customer keeps the data in:
 
 - Postgres
@@ -129,6 +149,13 @@ The safe support model is:
 Today the product already supports a redaction-friendly support bundle flow in
 the UI help surface. That gives operators a copyable bundle for debugging and
 bug reports without sending hidden telemetry automatically.
+
+Operators can also inspect the code-generated trust contract through
+`agent-bom trust --format json` and `GET /v1/auth/policy`. Both surfaces expose
+the same credential, network, storage, auth, SCIM tenant, and export
+boundaries. The same contract covers connector, plugin, skill, and role
+boundaries: agentless read-only connectors by default, operator-scoped
+plugin/skill execution, and least-privilege RBAC for every control-plane action.
 
 If a customer needs deeper support later, the recommended model is:
 

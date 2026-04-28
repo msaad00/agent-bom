@@ -25,6 +25,9 @@ agent-bom has three distinct security postures:
 
 Across all modes, agent-bom never stores credential values — only their names appear in output as `***REDACTED***`.
 
+For the product-wide local, endpoint, cloud, API/UI, and proxy data boundary,
+see [Data Access Boundaries and Operator Control](deployment/data-access-boundaries.md).
+
 ## Release trust and dependency controls
 
 For dependency controls, extras audit coverage, parser fuzzing, and release

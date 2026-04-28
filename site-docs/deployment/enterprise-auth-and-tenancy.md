@@ -218,6 +218,11 @@ deactivation updates provisioned lifecycle state; runtime OIDC, SAML,
 reverse-proxy, browser-session, and API-key access is revoked by the upstream
 auth provider or the API key lifecycle endpoints.
 
+The data-boundary contract exposes this as
+`payload_tenant_attributes_ignored=true`, with tenant source
+`AGENT_BOM_SCIM_TENANT_ID`. The repository also keeps the longer operator note
+at `docs/SCIM_SECURITY_MODEL.md`.
+
 ## Operator debugging
 
 Use:

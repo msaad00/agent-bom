@@ -12,31 +12,45 @@ permissions: {}
 jobs:
   normalize-ui-lockfile:
     if: >-
-      github.actor == 'dependabot[bot]' ||
-      github.actor == 'app/dependabot' ||
-      github.event.pull_request.user.login == 'dependabot[bot]' ||
-      github.event.pull_request.user.login == 'app/dependabot'
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (
+        github.actor == 'dependabot[bot]' ||
+        github.actor == 'app/dependabot' ||
+        github.event.pull_request.user.login == 'dependabot[bot]' ||
+        github.event.pull_request.user.login == 'app/dependabot'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       contents: write
       pull-requests: write
     steps:
-      - name: Check out Dependabot branch
+      - name: Check out trusted base branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
-          # Pin to the immutable head SHA captured at workflow trigger time so
-          # the actor cannot mutate the branch between job dispatch and
-          # checkout. Scorecard's Dangerous-Workflow check flags `head.ref`
-          # in `pull_request_target` because the ref is mutable.
-          ref: ${{ github.event.pull_request.head.sha }}
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # `pull_request_target` runs with a privileged token, so never check
+          # out the PR head. The default checkout for this event is trusted
+          # base code; we copy only the manifest files needed for lockfile
+          # resolution in a later step.
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: '24'
+
+      - name: Copy Dependabot UI manifests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          for path in ui/package.json ui/package-lock.json; do
+            gh api "repos/${HEAD_REPO}/contents/${path}?ref=${HEAD_SHA}" \
+              --jq '.content' | base64 --decode > "${path}"
+          done
 
       - name: Normalize UI lockfile
         # We invoke `npm install --package-lock-only --ignore-scripts` directly
@@ -54,18 +68,28 @@ jobs:
       - name: Commit normalized lockfile
         # HEAD_REF goes through the env (not direct `${{ }}` expansion in the
         # shell body) so a maliciously named branch can't inject shell
-        # metacharacters. We checked out by SHA, so we are in detached HEAD
-        # and must push back to the PR's branch by full refspec.
+        # metacharacters. Checkout credentials are disabled above, so this step
+        # pushes back to the same-repo Dependabot branch with an explicit token
+        # URL and full refspec.
         env:
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           if git diff --quiet -- ui/package-lock.json; then
             echo "No normalized lockfile changes to commit."
             exit 0
           fi
 
+          case "${HEAD_REF}" in
+            *$'\n'*|*$'\r'*|*..*|/*)
+              echo "Refusing unsafe branch ref."
+              exit 1
+              ;;
+          esac
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add ui/package-lock.json
           git commit -m "chore(ui): normalize package-lock under pinned npm"
-          git push origin "HEAD:refs/heads/${HEAD_REF}"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git" "HEAD:refs/heads/${HEAD_REF}"

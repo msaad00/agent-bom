@@ -50,6 +50,42 @@ def test_merge_rejects_tenant_mismatch() -> None:
         merge_observations(existing, incoming)
 
 
+def test_merge_preserves_blocked_state_and_structured_intelligence() -> None:
+    existing = _make_observation(
+        security_blocked=False,
+        security_intelligence=[{"entry_id": "intel-a", "matched_value": "mcp-a", "default_recommendation": "review"}],
+    )
+    incoming = _make_observation(
+        security_blocked=True,
+        security_intelligence=[
+            {"entry_id": "intel-a", "matched_value": "mcp-a", "default_recommendation": "review"},
+            {"entry_id": "intel-b", "matched_value": "mcp-b", "default_recommendation": "block"},
+        ],
+    )
+
+    merged = merge_observations(existing, incoming)
+
+    assert merged.security_blocked is True
+    assert [item["entry_id"] for item in merged.security_intelligence] == ["intel-a", "intel-b"]
+
+
+def test_observation_sanitizes_security_intelligence() -> None:
+    observation = _make_observation(
+        security_intelligence=[
+            {
+                "entry_id": "intel-a",
+                "matched_value": "npx bad --token raw-secret callback=https://user:pass@example.com/path?token=secret",
+                "references": ["https://example.com/advisory#fragment", "javascript:alert(1)"],
+            }
+        ],
+    )
+
+    intel = observation.security_intelligence[0]
+    assert "raw-secret" not in str(intel["matched_value"])
+    assert "user:pass" not in str(intel["matched_value"])
+    assert intel["references"] == ["https://example.com/advisory"]
+
+
 def test_inmemory_store_revalidates_observation_before_write() -> None:
     store = InMemoryMCPObservationStore()
     observation = _make_observation()

@@ -429,7 +429,13 @@ async def get_graph_export(request: Request, job_id: str, format: str = "json") 
         for srv in agent.get("mcp_servers", []):
             srv_name = srv.get("name", "unknown")
             s_id = f"server:{agent_name}/{srv_name}"
-            graph.add_node(s_id, srv_name, "server_cred" if srv.get("has_credentials") else "server")
+            if srv.get("security_blocked"):
+                srv_kind = "server_blocked"
+            elif srv.get("security_intelligence"):
+                srv_kind = "server_intel"
+            else:
+                srv_kind = "server_cred" if srv.get("has_credentials") else "server"
+            graph.add_node(s_id, srv_name, srv_kind)
             graph.add_edge(a_id, s_id, "uses")
             for pkg in srv.get("packages", []):
                 p_name = pkg.get("name", "?")

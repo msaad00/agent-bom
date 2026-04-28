@@ -338,7 +338,7 @@ def policy_options(fn):
         [
             click.option(
                 "--fail-on-severity",
-                type=click.Choice(["critical", "high", "medium", "low"]),
+                type=click.Choice(["critical", "high", "medium", "low"], case_sensitive=False),
                 help="Exit 1 if vulnerabilities of this severity or higher are found",
             ),
             click.option(

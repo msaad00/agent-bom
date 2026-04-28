@@ -111,6 +111,7 @@ def describe_data_access_boundaries() -> dict[str, object]:
         },
         "posture_vocabulary": {
             "capability_flags": ["rotation_tracking_supported"],
+            "capability_statuses": {"rotation_tracking_status": ["supported", "unsupported"]},
             "enforcement_flags": ["runtime_auth_enforced", "mtls_enforced"],
             "intentional_boundary_flags": ["payload_tenant_attributes_ignored"],
         },

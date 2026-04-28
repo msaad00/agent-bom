@@ -274,7 +274,8 @@ def compute_exit_code(
         ]
 
     if fail_on_severity and _active_blast_radii:
-        threshold = SEVERITY_ORDER.get(fail_on_severity, 0)
+        fail_threshold = str(fail_on_severity).lower()
+        threshold = SEVERITY_ORDER.get(fail_threshold, 0)
         for br in _active_blast_radii:
             sev = br.vulnerability.severity.value.lower()
             if SEVERITY_ORDER.get(sev, 0) >= threshold:
@@ -285,7 +286,8 @@ def compute_exit_code(
 
     # IaC findings also respect --fail-on-severity
     if fail_on_severity and exit_code == 0 and report and report.iac_findings_data:
-        threshold = SEVERITY_ORDER.get(fail_on_severity, 0)
+        fail_threshold = str(fail_on_severity).lower()
+        threshold = SEVERITY_ORDER.get(fail_threshold, 0)
         for f in report.iac_findings_data.get("findings", []):
             sev = (f.get("severity") or "medium").lower()
             if SEVERITY_ORDER.get(sev, 0) >= threshold:
@@ -294,6 +296,26 @@ def compute_exit_code(
                         f"\n  [red]Exiting with code 1: IaC {sev} misconfiguration"
                         f" ({f.get('rule_id', '?')} in {f.get('file_path', '?')})[/red]"
                     )
+                exit_code = 1
+                break
+
+    # Unified non-CVE findings (for example MCP_BLOCKLIST) also respect
+    # --fail-on-severity. CVEs are handled above through blast_radii so VEX and
+    # delta filtering keep their existing semantics.
+    unified_findings = []
+    if report:
+        from agent_bom.finding import FindingType
+
+        unified_findings = [finding for finding in report.to_findings() if finding.finding_type != FindingType.CVE]
+
+    if fail_on_severity and exit_code == 0 and unified_findings:
+        fail_threshold = str(fail_on_severity).lower()
+        threshold = SEVERITY_ORDER.get(fail_threshold, 0)
+        for finding in unified_findings:
+            sev = str(finding.severity or "low").lower()
+            if SEVERITY_ORDER.get(sev, 0) >= threshold:
+                if not quiet:
+                    con.print(f"\n  [red]Exiting with code 1: found {sev} finding ({finding.finding_type.value})[/red]")
                 exit_code = 1
                 break
 
@@ -310,6 +332,16 @@ def compute_exit_code(
                     f"{warn_on_severity.upper()} severity (--warn-on threshold). "
                     f"Upgrade to --fail-on-severity to enforce."
                 )
+
+    if warn_on_severity and unified_findings and exit_code == 0:
+        warn_threshold = SEVERITY_ORDER.get(warn_on_severity.lower(), 0)
+        warn_matches = [finding for finding in unified_findings if SEVERITY_ORDER.get(str(finding.severity).lower(), 0) >= warn_threshold]
+        if warn_matches and not quiet:
+            con.print(
+                f"\n  [yellow]⚠[/yellow]  {len(warn_matches)} non-CVE finding(s) at or above "
+                f"{str(warn_on_severity).upper()} severity (--warn-on threshold). "
+                f"Upgrade to --fail-on-severity to enforce."
+            )
 
     if fail_on_kev and _active_blast_radii:
         kev_findings = [br for br in _active_blast_radii if br.vulnerability.is_kev]

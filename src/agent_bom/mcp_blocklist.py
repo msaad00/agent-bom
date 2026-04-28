@@ -13,11 +13,17 @@ import re
 from dataclasses import dataclass
 from importlib import resources
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
 from agent_bom.models import Agent, MCPServer
 
 logger = logging.getLogger(__name__)
+
+_CONFIDENCE_LEVELS = {"confirmed_malicious", "suspicious", "heuristic"}
+_RECOMMENDATIONS = {"block", "warn", "review"}
+_SOURCE_TYPES = {"security_advisory", "vendor_statement", "community_report", "package_registry", "heuristic"}
+_SENSITIVE_ARG_RE = re.compile(r"(token|secret|password|credential|api[-_]?key|access[-_]?key|auth)", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -32,6 +38,38 @@ class MCPBlocklistMatch:
     matched_value: str
     source: str
     references: tuple[str, ...] = ()
+    confidence: str = "heuristic"
+    default_recommendation: str = "review"
+    source_type: str = "heuristic"
+    ecosystem: str = ""
+    package: str = ""
+    affected_versions: str = ""
+    first_seen: str = ""
+    last_verified: str = ""
+    remediation_actions: tuple[str, ...] = ()
+
+    def to_intelligence(self) -> dict[str, object]:
+        """Serialize the match as the stable MCP intelligence contract."""
+        return sanitize_security_intelligence_entry(
+            {
+                "entry_id": self.entry_id,
+                "title": self.title,
+                "severity": self.severity,
+                "confidence": self.confidence,
+                "default_recommendation": self.default_recommendation,
+                "source_type": self.source_type,
+                "source": self.source,
+                "match_type": self.match_type,
+                "matched_value": self.matched_value,
+                "ecosystem": self.ecosystem,
+                "package": self.package,
+                "affected_versions": self.affected_versions,
+                "first_seen": self.first_seen,
+                "last_verified": self.last_verified,
+                "references": list(self.references),
+                "remediation_actions": list(self.remediation_actions),
+            }
+        )
 
 
 def load_mcp_blocklist() -> dict[str, Any]:
@@ -51,6 +89,139 @@ def load_mcp_blocklist() -> dict[str, Any]:
 
 def _norm(value: object) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
+
+def _entry_str(entry: dict[str, Any], key: str, default: str = "") -> str:
+    value = entry.get(key, default)
+    return str(value or default)
+
+
+def _entry_choice(entry: dict[str, Any], key: str, allowed: set[str], default: str) -> str:
+    value = _entry_str(entry, key, default).lower()
+    return value if value in allowed else default
+
+
+def _entry_strings(entry: dict[str, Any], key: str) -> tuple[str, ...]:
+    values = entry.get(key, [])
+    if not isinstance(values, list):
+        return ()
+    return tuple(str(value) for value in values if isinstance(value, str) and value.strip())
+
+
+def _safe_url(value: str) -> str:
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return value
+    if not parsed.scheme or not parsed.netloc:
+        return value
+    host = parsed.hostname or parsed.netloc.rsplit("@", 1)[-1]
+    if parsed.port:
+        host = f"{host}:{parsed.port}"
+    return urlunsplit((parsed.scheme, host, parsed.path, "", ""))
+
+
+def _safe_references(values: tuple[str, ...] | list[object]) -> list[str]:
+    references: list[str] = []
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        try:
+            parsed = urlsplit(value)
+        except ValueError:
+            continue
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            continue
+        references.append(urlunsplit((parsed.scheme, parsed.netloc, parsed.path, parsed.query, "")))
+    return references
+
+
+def _safe_match_value(value: str) -> str:
+    """Return evidence-safe match text without raw secret-bearing values."""
+    parts = str(value or "").split()
+    if not parts:
+        return ""
+
+    redacted: list[str] = []
+    redact_next = False
+    for part in parts:
+        if redact_next:
+            redacted.append("<redacted>")
+            redact_next = False
+            continue
+
+        if "=" in part:
+            key, _sep, raw_value = part.partition("=")
+            if _SENSITIVE_ARG_RE.search(key):
+                redacted.append(f"{key}=<redacted>")
+                continue
+            if "://" in raw_value:
+                redacted.append(f"{key}={_safe_url(raw_value)}")
+                continue
+
+        if "://" in part:
+            redacted.append(_safe_url(part))
+            continue
+
+        if part.startswith("-") and _SENSITIVE_ARG_RE.search(part):
+            redacted.append(part)
+            redact_next = True
+            continue
+
+        redacted.append(part)
+
+    safe = " ".join(redacted)
+    return safe if len(safe) <= 180 else f"{safe[:177]}..."
+
+
+def sanitize_security_intelligence_entry(entry: dict[str, object]) -> dict[str, object]:
+    """Sanitize externally surfaced MCP intelligence evidence."""
+    sanitized = dict(entry)
+    if "matched_value" in sanitized:
+        sanitized["matched_value"] = _safe_match_value(str(sanitized.get("matched_value") or ""))
+    references = sanitized.get("references")
+    if isinstance(references, list):
+        sanitized["references"] = _safe_references(references)
+    elif isinstance(references, tuple):
+        sanitized["references"] = _safe_references(list(references))
+    else:
+        sanitized["references"] = []
+    return sanitized
+
+
+def _match_from_entry(
+    entry: dict[str, Any],
+    *,
+    entry_id: str,
+    title: str,
+    description: str,
+    source: str,
+    references: tuple[str, ...],
+    match_type: str,
+    severity: str,
+    matched_value: str,
+) -> MCPBlocklistMatch:
+    normalized_severity = severity if severity in {"critical", "high", "medium", "low"} else "high"
+    default_recommendation = "block" if normalized_severity == "critical" else "review"
+    return MCPBlocklistMatch(
+        entry_id=entry_id,
+        title=title,
+        description=description,
+        match_type=match_type,
+        severity=normalized_severity,
+        matched_value=matched_value,
+        source=source,
+        references=tuple(_safe_references(references)),
+        confidence=_entry_choice(entry, "confidence", _CONFIDENCE_LEVELS, "heuristic"),
+        default_recommendation=_entry_choice(entry, "default_recommendation", _RECOMMENDATIONS, default_recommendation),
+        source_type=_entry_choice(entry, "source_type", _SOURCE_TYPES, "heuristic"),
+        ecosystem=_entry_str(entry, "ecosystem"),
+        package=_entry_str(entry, "package"),
+        affected_versions=_entry_str(entry, "affected_versions"),
+        first_seen=_entry_str(entry, "first_seen"),
+        last_verified=_entry_str(entry, "last_verified"),
+        remediation_actions=_entry_strings(entry, "remediation_actions"),
+    )
 
 
 def _server_match_values(server: MCPServer) -> list[str]:
@@ -97,6 +268,7 @@ def match_mcp_server(server: MCPServer, blocklist: dict[str, Any] | None = None)
         description = str(entry.get("description") or "")
         source = str(entry.get("source") or "agent-bom-curated")
         references = tuple(str(ref) for ref in entry.get("references", []) if isinstance(ref, str))
+        entry_severity = str(entry.get("severity") or "high").lower()
 
         exact_values: list[object] = []
         for field_name in ("names", "exact", "registry_ids", "packages"):
@@ -113,13 +285,14 @@ def match_mcp_server(server: MCPServer, blocklist: dict[str, Any] | None = None)
                     continue
                 seen.add(key)
                 matches.append(
-                    MCPBlocklistMatch(
+                    _match_from_entry(
+                        entry,
                         entry_id=entry_id,
                         title=title,
                         description=description,
                         match_type="exact",
                         severity="critical",
-                        matched_value=normalized_values[expected],
+                        matched_value=_safe_match_value(normalized_values[expected]),
                         source=source,
                         references=references,
                     )
@@ -143,15 +316,15 @@ def match_mcp_server(server: MCPServer, blocklist: dict[str, Any] | None = None)
                 if key in seen:
                     continue
                 seen.add(key)
-                severity = str(entry.get("severity") or "high").lower()
                 matches.append(
-                    MCPBlocklistMatch(
+                    _match_from_entry(
+                        entry,
                         entry_id=entry_id,
                         title=title,
                         description=description,
                         match_type="pattern",
-                        severity=severity if severity in {"critical", "high", "medium", "low"} else "high",
-                        matched_value=value,
+                        severity=entry_severity,
+                        matched_value=_safe_match_value(value),
                         source=source,
                         references=references,
                     )
@@ -165,7 +338,14 @@ def _stamp_server_match(server: MCPServer, match: MCPBlocklistMatch) -> bool:
     warning = f"MCP_BLOCKLIST[{match.severity}/{match.match_type}]: {match.entry_id} matched {match.matched_value!r}"
     if warning not in server.security_warnings:
         server.security_warnings.append(warning)
-    if match.severity == "critical":
+    intelligence = match.to_intelligence()
+    existing_keys = {
+        (str(item.get("entry_id")), str(item.get("matched_value"))) for item in server.security_intelligence if isinstance(item, dict)
+    }
+    intel_key = (match.entry_id, match.matched_value)
+    if intel_key not in existing_keys:
+        server.security_intelligence.append(intelligence)
+    if match.default_recommendation == "block":
         server.security_blocked = True
         return True
     return False
@@ -221,6 +401,15 @@ def blocklist_findings_for_agents(agents: list[Agent], blocklist: dict[str, Any]
                             "match_type": match.match_type,
                             "matched_value": match.matched_value,
                             "blocklist_source": match.source,
+                            "confidence": match.confidence,
+                            "default_recommendation": match.default_recommendation,
+                            "source_type": match.source_type,
+                            "ecosystem": match.ecosystem,
+                            "package": match.package,
+                            "affected_versions": match.affected_versions,
+                            "first_seen": match.first_seen,
+                            "last_verified": match.last_verified,
+                            "remediation_actions": list(match.remediation_actions),
                             "references": list(match.references),
                         },
                         risk_score=10.0 if match.severity == "critical" else 8.0,

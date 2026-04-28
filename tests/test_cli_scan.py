@@ -176,6 +176,17 @@ def test_scan_unknown_output_extension_fails(tmp_path):
     assert "Cannot infer output format" in result.output
 
 
+def test_scan_bad_inventory_json_exits_two(tmp_path):
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text("{bad json", encoding="utf-8")
+
+    result = _run(["scan", "--inventory", str(inventory), "--no-scan"])
+
+    assert result.exit_code == 2
+    assert "Invalid value for --inventory" in result.output
+    assert "Expecting property name" in result.output
+
+
 def test_scan_preset_ci_flag():
     """--preset ci should be accepted without error."""
     with patch("agent_bom.cli.agents.discover_all", return_value=[]):
@@ -328,6 +339,24 @@ def test_scan_incomplete_offline_scan_exits_two(monkeypatch):
 
     assert result.exit_code == 2
     assert "populated local vulnerability DB" in result.output
+
+
+def test_offline_scan_summary_marks_partial_unpinned_coverage(monkeypatch):
+    from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
+
+    pkg = Package(name="unpinned", version="unknown", ecosystem="pypi")
+    server = MCPServer(name="test-server", command="npx", transport=TransportType.STDIO, packages=[pkg])
+    agent = Agent(name="test-agent", agent_type=AgentType.CUSTOM, config_path="/tmp/test", mcp_servers=[server])
+
+    monkeypatch.setattr("agent_bom.cli.agents.discover_all", lambda *args, **kwargs: [agent])
+    monkeypatch.setattr("agent_bom.cli.agents.scan_agents_sync", lambda *args, **kwargs: [])
+    monkeypatch.setattr("agent_bom.cli.agents.extract_packages", lambda *args, **kwargs: [pkg])
+
+    result = _run(["scan", "--offline"])
+
+    assert result.exit_code == 0
+    assert "Offline scan complete: no known vulnerabilities found in local data" in result.output
+    assert "coverage is partial" in result.output
 
 
 # ---------------------------------------------------------------------------

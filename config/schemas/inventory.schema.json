@@ -139,9 +139,57 @@
         "config_path": {
           "type": "string",
           "description": "Where this server's config lives. Can be a file path, Snowflake object path, AWS ARN, etc. Used in SARIF output to point findings to the right location."
+        },
+
+        "security_blocked": {
+          "type": "boolean",
+          "description": "True when local discovery or MCP intelligence policy marked this server as blocked."
+        },
+
+        "security_warnings": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Human-readable security warnings attached during discovery or policy evaluation."
+        },
+
+        "security_intelligence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/SecurityIntelligenceEntry" },
+          "description": "Structured MCP intelligence matches that explain block/review/warn decisions."
         }
       },
       "additionalProperties": false
+    },
+
+    "SecurityIntelligenceEntry": {
+      "title": "Security Intelligence Entry",
+      "type": "object",
+      "required": ["entry_id", "title", "confidence", "default_recommendation"],
+      "properties": {
+        "entry_id": { "type": "string" },
+        "title": { "type": "string" },
+        "severity": { "type": "string" },
+        "confidence": { "type": "string" },
+        "default_recommendation": { "type": "string" },
+        "source_type": { "type": "string" },
+        "source": { "type": "string" },
+        "match_type": { "type": "string" },
+        "matched_value": { "type": "string" },
+        "ecosystem": { "type": "string" },
+        "package": { "type": "string" },
+        "affected_versions": { "type": "string" },
+        "first_seen": { "type": "string" },
+        "last_verified": { "type": "string" },
+        "references": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "remediation_actions": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
     },
 
     "Agent": {

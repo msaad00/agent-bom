@@ -112,6 +112,7 @@ def _describe_rotation_posture() -> dict[str, object]:
     if not raw_last_rotated:
         return {
             "rotation_tracking_supported": True,
+            "rotation_tracking_status": "supported",
             "rotation_status": "unknown_age",
             "rotation_method": "env_swap_and_restart",
             "rotation_days": rotation_days,
@@ -129,6 +130,7 @@ def _describe_rotation_posture() -> dict[str, object]:
     except ValueError:
         return {
             "rotation_tracking_supported": True,
+            "rotation_tracking_status": "supported",
             "rotation_status": "unknown_age",
             "rotation_method": "env_swap_and_restart",
             "rotation_days": rotation_days,
@@ -163,6 +165,7 @@ def _describe_rotation_posture() -> dict[str, object]:
 
     return {
         "rotation_tracking_supported": True,
+        "rotation_tracking_status": "supported",
         "rotation_status": status,
         "rotation_method": "env_swap_and_restart",
         "rotation_days": rotation_days,
@@ -286,6 +289,7 @@ def describe_signing_posture() -> dict[str, object]:
             "For auditor-distributable verification, switch to Ed25519."
         ),
         "rotation_tracking_supported": bool(audit_hmac["rotation_tracking_supported"]),
+        "rotation_tracking_status": audit_hmac.get("rotation_tracking_status", "supported"),
         "rotation_status": audit_hmac["rotation_status"],
         "rotation_method": audit_hmac["rotation_method"],
         "rotation_days": audit_hmac["rotation_days"],

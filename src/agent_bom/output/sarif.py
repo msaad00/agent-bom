@@ -6,6 +6,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from agent_bom.finding import FindingType
 from agent_bom.models import AIBOMReport, Severity
 
 _SARIF_SEVERITY_MAP = {
@@ -184,30 +185,83 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
         result["properties"] = result_properties
         results.append(result)
 
+    # Unified non-CVE findings, including MCP intelligence/blocklist matches.
+    finding_sev_map = {"critical": "error", "high": "error", "medium": "warning", "low": "note", "info": "none"}
+    finding_sev_score = {"critical": "9.0", "high": "7.0", "medium": "4.0", "low": "1.0", "info": "0.0"}
+    for finding in report.to_findings():
+        if finding.finding_type == FindingType.CVE:
+            continue
+        sev = str(finding.severity or "medium").lower()
+        rule_id = f"finding/{finding.finding_type.value}"
+        level = finding_sev_map.get(sev, "warning")
+        if rule_id not in seen_rule_ids:
+            seen_rule_ids.add(rule_id)
+            rules.append(
+                {
+                    "id": rule_id,
+                    "shortDescription": {"text": finding.finding_type.value.replace("_", " ").title()},
+                    "fullDescription": {"text": finding.description or finding.title or finding.finding_type.value},
+                    "defaultConfiguration": {"level": level},
+                    "properties": {
+                        "security-severity": finding_sev_score.get(sev, "4.0"),
+                        "source": finding.source.value,
+                        "finding_type": finding.finding_type.value,
+                    },
+                }
+            )
+
+        file_path = _to_relative_path(finding.asset.location or "agent-bom-report.json")
+        fp_input = f"{finding.id}:{file_path}:{finding.asset.stable_id}"
+        fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()
+        results.append(
+            {
+                "ruleId": rule_id,
+                "level": level,
+                "kind": "fail" if level in {"error", "warning"} else "informational",
+                "message": {"text": finding.title or finding.description or finding.finding_type.value},
+                "fingerprints": {"agent-bom/v1": fingerprint},
+                "locations": [
+                    {
+                        "physicalLocation": {
+                            "artifactLocation": {"uri": file_path, "uriBaseId": "%SRCROOT%"},
+                            "region": {"startLine": 1, "startColumn": 1},
+                        },
+                    }
+                ],
+                "properties": {
+                    "risk_score": finding.risk_score,
+                    "asset_type": finding.asset.asset_type,
+                    "asset_name": finding.asset.name,
+                    "evidence": finding.evidence,
+                    "remediation_guidance": finding.remediation_guidance,
+                },
+            }
+        )
+
     # IaC misconfiguration findings (Dockerfile, K8s, Terraform, CloudFormation)
     iac_data = getattr(report, "iac_findings_data", None)
     if iac_data:
         iac_sev_map = {"critical": "error", "high": "error", "medium": "warning", "low": "note", "info": "none"}
         iac_sev_score = {"critical": "9.0", "high": "7.0", "medium": "4.0", "low": "1.0", "info": "0.0"}
-        for finding in iac_data.get("findings", []):
-            sev = finding.get("severity", "medium").lower()
-            rule_id = f"iac/{finding.get('rule_id', 'unknown')}"
+        for iac_finding in iac_data.get("findings", []):
+            sev = iac_finding.get("severity", "medium").lower()
+            rule_id = f"iac/{iac_finding.get('rule_id', 'unknown')}"
             level = iac_sev_map.get(sev, "warning")
-            file_path = finding.get("file_path", "unknown") or "unknown"
-            line_num = finding.get("line_number") or 1
+            file_path = _to_relative_path(iac_finding.get("file_path", "unknown") or "unknown")
+            line_num = iac_finding.get("line_number") or 1
 
             if rule_id not in seen_rule_ids:
                 seen_rule_ids.add(rule_id)
                 rules.append(
                     {
                         "id": rule_id,
-                        "shortDescription": {"text": finding.get("title", rule_id)},
-                        "fullDescription": {"text": finding.get("message", finding.get("title", ""))},
+                        "shortDescription": {"text": iac_finding.get("title", rule_id)},
+                        "fullDescription": {"text": iac_finding.get("message", iac_finding.get("title", ""))},
                         "defaultConfiguration": {"level": level},
                         "properties": {
                             "security-severity": iac_sev_score.get(sev, "4.0"),
-                            "category": finding.get("category", "iac"),
-                            "compliance": finding.get("compliance", []),
+                            "category": iac_finding.get("category", "iac"),
+                            "compliance": iac_finding.get("compliance", []),
                         },
                     }
                 )
@@ -219,7 +273,7 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                     "ruleId": rule_id,
                     "level": level,
                     "kind": "fail",
-                    "message": {"text": finding.get("message", finding.get("title", "IaC misconfiguration"))},
+                    "message": {"text": iac_finding.get("message", iac_finding.get("title", "IaC misconfiguration"))},
                     "fingerprints": {"agent-bom/v1": fingerprint},
                     "locations": [
                         {
@@ -260,7 +314,8 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                     }
                 )
 
-            fp_input = f"{rule_id}:{comp.get('file', '')}:{comp.get('line', 1)}"
+            file_path = _to_relative_path(comp.get("file", "unknown") or "unknown")
+            fp_input = f"{rule_id}:{file_path}:{comp.get('line', 1)}"
             fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()
             desc = comp.get("description", "") or f"{comp_type.replace('_', ' ')}: {name}"
             results.append(
@@ -273,7 +328,7 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                     "locations": [
                         {
                             "physicalLocation": {
-                                "artifactLocation": {"uri": comp.get("file", "unknown"), "uriBaseId": "%SRCROOT%"},
+                                "artifactLocation": {"uri": file_path, "uriBaseId": "%SRCROOT%"},
                                 "region": {"startLine": comp.get("line", 1), "startColumn": 1},
                             },
                         }

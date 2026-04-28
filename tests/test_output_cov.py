@@ -1133,3 +1133,60 @@ def test_to_sarif_with_findings():
     assert "runs" in result
     run = result["runs"][0]
     assert len(run.get("results", [])) >= 1
+
+
+def test_to_sarif_emits_unified_non_cve_findings():
+    from agent_bom.finding import Asset, Finding, FindingSource, FindingType
+
+    finding = Finding(
+        finding_type=FindingType.MCP_BLOCKLIST,
+        source=FindingSource.MCP_SCAN,
+        asset=Asset(name="bad-server", asset_type="mcp_server", location="/tmp/mcp.json"),
+        severity="high",
+        title="Blocked MCP server",
+    )
+    report = _make_report()
+    report.findings = [finding]
+
+    result = to_sarif(report)
+    run = result["runs"][0]
+    rule_ids = {item["ruleId"] for item in run["results"]}
+    uris = [item["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] for item in run["results"]]
+
+    assert "finding/MCP_BLOCKLIST" in rule_ids
+    assert "mcp.json" in uris
+
+
+def test_to_sarif_normalizes_iac_and_ai_inventory_paths():
+    report = _make_report()
+    report.iac_findings_data = {
+        "findings": [
+            {
+                "rule_id": "TEST001",
+                "severity": "high",
+                "file_path": "/tmp/absolute.tf",
+                "line_number": 7,
+                "title": "Absolute IaC path",
+                "message": "test",
+            }
+        ]
+    }
+    report.ai_inventory_data = {
+        "components": [
+            {
+                "type": "api_usage",
+                "severity": "high",
+                "name": "openai",
+                "file": "/tmp/absolute.py",
+                "line": 3,
+                "description": "test",
+            }
+        ]
+    }
+
+    result = to_sarif(report)
+    uris = [item["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] for item in result["runs"][0]["results"]]
+
+    assert "absolute.tf" in uris
+    assert "absolute.py" in uris
+    assert all(not uri.startswith("/") for uri in uris)

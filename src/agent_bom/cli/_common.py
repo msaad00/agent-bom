@@ -110,6 +110,9 @@ def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list
                 config_path=agent_data.get("config_path"),
                 working_dir=server_data.get("working_dir"),
                 mcp_version=server_data.get("mcp_version"),
+                security_blocked=bool(server_data.get("security_blocked", False)),
+                security_warnings=list(server_data.get("security_warnings", []) or []),
+                security_intelligence=list(server_data.get("security_intelligence", []) or []),
                 tools=tools,
                 packages=packages,
             )

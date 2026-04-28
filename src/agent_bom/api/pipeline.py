@@ -313,7 +313,7 @@ def _run_scan_sync(job: ScanJob) -> None:
             pipeline.update_step("discovery", f"Loading inventory: {req.inventory}")
             import json as _json
 
-            from agent_bom.models import Agent, AgentType, MCPServer
+            from agent_bom.models import Agent, AgentType, MCPServer, TransportType
 
             try:
                 with open(req.inventory) as _f:
@@ -329,6 +329,12 @@ def _run_scan_sync(job: ScanJob) -> None:
                             command=s.get("command", ""),
                             args=s.get("args", []),
                             env=s.get("env", {}),
+                            transport=TransportType(s.get("transport", "stdio")),
+                            url=s.get("url"),
+                            config_path=s.get("config_path"),
+                            security_blocked=bool(s.get("security_blocked", False)),
+                            security_warnings=list(s.get("security_warnings", []) or []),
+                            security_intelligence=list(s.get("security_intelligence", []) or []),
                         )
                     )
                 agents.append(

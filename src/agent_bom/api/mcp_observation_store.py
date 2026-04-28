@@ -9,6 +9,7 @@ from typing import Protocol
 from pydantic import BaseModel, Field, field_validator
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.platform_invariants import normalize_tenant_id, normalize_timestamp, now_utc_iso
 
 
@@ -26,7 +27,9 @@ class MCPObservation(BaseModel):
     args: list[str] = Field(default_factory=list)
     config_path: str | None = None
     credential_env_vars: list[str] = Field(default_factory=list)
+    security_blocked: bool = False
     security_warnings: list[str] = Field(default_factory=list)
+    security_intelligence: list[dict[str, object]] = Field(default_factory=list)
     observed_via: list[str] = Field(default_factory=list)
     observed_scopes: list[str] = Field(default_factory=list)
     scan_sources: list[str] = Field(default_factory=list)
@@ -52,12 +55,34 @@ class MCPObservation(BaseModel):
         result: str | None = normalize_timestamp(value)
         return result
 
+    @field_validator("security_intelligence", mode="before")
+    @classmethod
+    def _sanitize_security_intelligence(cls, value: object) -> list[dict[str, object]]:
+        if not isinstance(value, list):
+            return []
+        return [sanitize_security_intelligence_entry(item) for item in value if isinstance(item, dict)]
+
 
 def _pick_timestamp(*values: str | None, prefer: str) -> str | None:
     candidates = [value for value in values if value]
     if not candidates:
         return None
     return min(candidates) if prefer == "min" else max(candidates)
+
+
+def _merge_intelligence(existing: list[dict[str, object]], incoming: list[dict[str, object]]) -> list[dict[str, object]]:
+    merged: list[dict[str, object]] = []
+    seen: set[tuple[str, str]] = set()
+    for item in [*existing, *incoming]:
+        if not isinstance(item, dict):
+            continue
+        safe_item = sanitize_security_intelligence_entry(item)
+        key = (str(safe_item.get("entry_id") or ""), str(safe_item.get("matched_value") or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        merged.append(safe_item)
+    return merged
 
 
 def merge_observations(existing: MCPObservation | None, incoming: MCPObservation) -> MCPObservation:
@@ -79,7 +104,9 @@ def merge_observations(existing: MCPObservation | None, incoming: MCPObservation
         args=incoming.args or existing.args,
         config_path=incoming.config_path or existing.config_path,
         credential_env_vars=sorted(set(existing.credential_env_vars) | set(incoming.credential_env_vars)),
+        security_blocked=existing.security_blocked or incoming.security_blocked,
         security_warnings=sorted(set(existing.security_warnings) | set(incoming.security_warnings)),
+        security_intelligence=_merge_intelligence(existing.security_intelligence, incoming.security_intelligence),
         observed_via=sorted(set(existing.observed_via) | set(incoming.observed_via)),
         observed_scopes=sorted(set(existing.observed_scopes) | set(incoming.observed_scopes)),
         scan_sources=sorted(set(existing.scan_sources) | set(incoming.scan_sources)),

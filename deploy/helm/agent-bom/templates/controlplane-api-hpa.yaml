@@ -1,4 +1,9 @@
-{{- if and .Values.controlPlane.enabled .Values.controlPlane.api.enabled .Values.controlPlane.api.autoscaling.enabled }}
+{{- /*
+The static CPU/memory HPA is suppressed when KEDA-driven autoscaling is
+enabled — KEDA generates its own HPA under the hood, and stacking two
+HPAs against the same Deployment fights itself.
+*/ -}}
+{{- if and .Values.controlPlane.enabled .Values.controlPlane.api.enabled .Values.controlPlane.api.autoscaling.enabled (not .Values.controlPlane.api.autoscaling.keda.enabled) }}
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:

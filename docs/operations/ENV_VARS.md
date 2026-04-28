@@ -47,6 +47,7 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_RISK_CRED_WEIGHT` | `float` | `0.3` | — |
 | `AGENT_BOM_RISK_EPSS_BOOST` | `float` | `0.5` | — |
 | `AGENT_BOM_RISK_KEV_BOOST` | `float` | `1.0` | — |
+| `AGENT_BOM_RISK_REACHABLE_BOOST` | `float` | `0.5` | Graph-walk reachability adjustment — applied only when `agent_bom.graph.dependency_reach.compute_dependency_reach` has stamped the BlastRadius with a definitive answer (None leaves scoring unchanged). reachable    → +0.5  (an agent's USES/D |
 | `AGENT_BOM_RISK_SCORECARD_B1` | `float` | `0.75` | — |
 | `AGENT_BOM_RISK_SCORECARD_B2` | `float` | `0.5` | — |
 | `AGENT_BOM_RISK_SCORECARD_B3` | `float` | `0.25` | — |
@@ -55,6 +56,7 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_RISK_SCORECARD_T3` | `float` | `7.0` | — |
 | `AGENT_BOM_RISK_TOOL_CAP` | `float` | `1.0` | — |
 | `AGENT_BOM_RISK_TOOL_WEIGHT` | `float` | `0.1` | — |
+| `AGENT_BOM_RISK_UNREACHABLE_PENALTY` | `float` | `0.5` | — |
 
 ## EPSS Thresholds
 | Env var | Type | Default | Description |

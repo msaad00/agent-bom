@@ -1,0 +1,102 @@
+name: Auto-Retrigger Stranded PRs
+
+# Permanent fix for the recurring "PR frozen after Update branch" pattern.
+#
+# When auto-merge or the "Update branch" button advances a PR's head SHA,
+# the resulting commit is authored by GITHUB_TOKEN. GitHub Actions
+# intentionally does NOT trigger pull_request workflows from
+# GITHUB_TOKEN-authored events (anti-loop guard), so the PR ends up with
+# zero check-runs on the current head and stays mergeable_state=blocked
+# forever. Background: docs/operations/CI_RUNBOOK.md.
+#
+# This workflow polls every 5 minutes (or on demand), finds PRs whose
+# current head SHA has no check-runs, and runs scripts/retrigger_stranded_pr.sh
+# (close + reopen) which fires the pull_request workflows from scratch.
+#
+# Triggered from a workflow (not GITHUB_TOKEN's push), the close/reopen
+# events are properly recorded and our pull_request hooks fire on the
+# new head SHA — exactly the result a manual retrigger gives.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"   # every 5 minutes
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: auto-retrigger-stranded
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: Scan and retrigger
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Find and retrigger stranded PRs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REQUIRED_CHECK: "Lint and Type Check"
+          # Skip PRs younger than this — give pull_request workflows a
+          # chance to start before we declare them stranded. The retrigger
+          # script also no-ops when the required check is already present,
+          # but skipping young PRs keeps the workflow log readable.
+          MIN_AGE_MINUTES: "10"
+        run: |
+          set -euo pipefail
+          echo "Listing open PRs…"
+          mapfile -t PRS < <(
+            gh pr list \
+              --state open \
+              --limit 50 \
+              --json number,headRefOid,updatedAt,isDraft \
+              --jq '.[] | select(.isDraft == false) | "\(.number) \(.headRefOid) \(.updatedAt)"'
+          )
+
+          NOW_EPOCH="$(date -u +%s)"
+          STRANDED=0
+          RETRIGGERED=0
+
+          for line in "${PRS[@]}"; do
+            read -r PR SHA UPDATED <<< "$line"
+            UPDATED_EPOCH="$(date -u -d "$UPDATED" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$UPDATED" +%s)"
+            AGE_SECONDS=$(( NOW_EPOCH - UPDATED_EPOCH ))
+            if [ "$AGE_SECONDS" -lt $(( 60 * MIN_AGE_MINUTES )) ]; then
+              echo "PR #${PR}: too young (${AGE_SECONDS}s old), skipping."
+              continue
+            fi
+
+            HITS="$(
+              gh api "repos/${{ github.repository }}/commits/${SHA}/check-runs" \
+                --jq "[.check_runs[] | select(.name == \"${REQUIRED_CHECK}\")] | length"
+            )"
+
+            if [ "$HITS" -gt 0 ]; then
+              echo "PR #${PR}: ${HITS} '${REQUIRED_CHECK}' run(s) on head ${SHA:0:8} — healthy."
+              continue
+            fi
+
+            STRANDED=$(( STRANDED + 1 ))
+            echo "PR #${PR}: 0 '${REQUIRED_CHECK}' runs on head ${SHA:0:8} — stranded."
+
+            if [ -x scripts/retrigger_stranded_pr.sh ]; then
+              if scripts/retrigger_stranded_pr.sh "$PR"; then
+                RETRIGGERED=$(( RETRIGGERED + 1 ))
+              else
+                echo "PR #${PR}: retrigger script failed (continuing with next PR)."
+              fi
+            else
+              echo "scripts/retrigger_stranded_pr.sh not executable on this checkout; skipping."
+            fi
+          done
+
+          echo
+          echo "Summary: ${STRANDED} stranded PR(s), ${RETRIGGERED} retriggered."

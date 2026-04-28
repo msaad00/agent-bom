@@ -44,9 +44,27 @@ The script:
 The script no-ops when the required check is already present, so it is safe to
 run on any PR.
 
-### Permanent fix options (settings change required)
+### Permanent fix: scheduled auto-retrigger (recommended, already on)
 
-Pick one — none of these can be enabled from a workflow file alone.
+`.github/workflows/auto-retrigger-stranded.yml` runs `scripts/retrigger_stranded_pr.sh`
+against every open PR whose current head SHA has zero `Lint and Type Check`
+runs. Cron is `*/5 * * * *`, plus `workflow_dispatch` for on-demand. Once
+this workflow is on the default branch, stranded PRs unstrand themselves
+within five minutes — no operator action required.
+
+Operator-side troubleshooting if a strand persists past ~10 minutes:
+
+- Did the workflow itself run? `gh run list --workflow=auto-retrigger-stranded.yml --limit 5`
+- Was the PR younger than `MIN_AGE_MINUTES` (10 min)? It's intentionally
+  skipped to give the initial `pull_request` workflow a chance to start.
+- Did `gh api commits/{sha}/check-runs` return zero, or is there a
+  different check name now? Update `REQUIRED_CHECK` in the workflow if
+  the canonical check is renamed.
+
+### Permanent fix alternatives (settings change required)
+
+The auto-retrigger workflow above is the cheapest path. The following
+alternatives still apply if you prefer settings-level fixes; pick one.
 
 | Option | Where | Tradeoff |
 |---|---|---|
@@ -68,23 +86,20 @@ on:
 so once branch protection is flipped, the queue runs the same checks that
 gate PRs today — no workflow edits required.
 
-#### How to flip it
+#### How to flip it (UI-only as of 2026-04)
 
-The merge queue cannot be enabled via the legacy `branches/{branch}/protection`
-REST endpoint. Use the **repository rulesets** API (or the Settings UI). The
-helper script wraps the API call:
+REST attempts return HTTP 422 "Invalid rule 'merge_queue'" on this repo's
+auth path. The Settings UI is the only supported toggle today.
 
-```sh
-# preview the payload (no changes made)
-scripts/enable_merge_queue.sh --dry-run
+1. https://github.com/msaad00/agent-bom/settings/branches
+2. Edit the rule for `main`
+3. Check ✅ **Require merge queue**
+4. Set merge method to **Squash** and pin the same required status checks
+   used today (Lint and Type Check, Test (Python 3.11/3.13/3.14), Build
+   Package, Security Scan, CodeQL)
+5. Save
 
-# enable on main (requires admin token; one-time)
-GH_TOKEN=<admin-pat> scripts/enable_merge_queue.sh
-```
-
-If you prefer the UI: **Settings → Branches → main → Edit rule →** check
-"Require merge queue", set the same status-check list as today, save. Confirm
-with `gh api repos/<owner>/<repo>/branches/main/protection --jq .required_status_checks`.
+Verify with `scripts/enable_merge_queue.sh --check`.
 
 After enabling, "Update branch" disappears from the PR view; the
 `Merge when ready` button puts the PR into the queue, which rebases + tests

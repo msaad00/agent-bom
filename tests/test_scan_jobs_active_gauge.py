@@ -18,6 +18,13 @@ from __future__ import annotations
 import pytest
 
 from agent_bom.api import metrics
+from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
+from agent_bom.api.scan_job_reconciliation import (
+    fail_orphaned_active_scan_jobs,
+    fail_stale_active_scan_jobs,
+    reconcile_scan_jobs_active,
+)
+from agent_bom.api.store import InMemoryJobStore
 
 
 @pytest.fixture(autouse=True)
@@ -69,4 +76,60 @@ def test_reset_for_tests_clears_gauge() -> None:
     assert metrics.scan_jobs_active() == 2
 
     metrics.reset_for_tests()
+    assert metrics.scan_jobs_active() == 0
+
+
+def _job(job_id: str, status: JobStatus, created_at: str = "2026-04-28T00:00:00+00:00") -> ScanJob:
+    return ScanJob(job_id=job_id, status=status, created_at=created_at, request=ScanRequest())
+
+
+def test_reconcile_sets_gauge_from_durable_active_jobs() -> None:
+    store = InMemoryJobStore()
+    store.put(_job("pending", JobStatus.PENDING))
+    store.put(_job("running", JobStatus.RUNNING))
+    store.put(_job("done", JobStatus.DONE))
+
+    metrics.record_scan_enqueued()
+    metrics.record_scan_enqueued()
+    metrics.record_scan_enqueued()
+    metrics.record_scan_enqueued()
+    assert metrics.scan_jobs_active() == 4
+
+    assert reconcile_scan_jobs_active(store) == 2
+    assert metrics.scan_jobs_active() == 2
+
+
+def test_fail_stale_active_jobs_then_reconcile_clears_leaked_gauge() -> None:
+    store = InMemoryJobStore()
+    store.put(_job("old-pending", JobStatus.PENDING, "2026-04-28T00:00:00+00:00"))
+    store.put(_job("old-running", JobStatus.RUNNING, "2026-04-28T00:00:00+00:00"))
+    store.put(_job("fresh-running", JobStatus.RUNNING, "2026-04-28T00:29:40+00:00"))
+
+    from datetime import datetime, timezone
+
+    failed = fail_stale_active_scan_jobs(
+        store,
+        timeout_seconds=1800,
+        now=datetime(2026, 4, 28, 0, 30, 1, tzinfo=timezone.utc),
+    )
+
+    assert failed == 2
+    assert store.get("old-pending").status == JobStatus.FAILED
+    assert store.get("old-running").status == JobStatus.FAILED
+    assert store.get("fresh-running").status == JobStatus.RUNNING
+    assert reconcile_scan_jobs_active(store) == 1
+    assert metrics.scan_jobs_active() == 1
+
+
+def test_startup_orphan_cleanup_fails_active_jobs() -> None:
+    store = InMemoryJobStore()
+    store.put(_job("orphan-pending", JobStatus.PENDING))
+    store.put(_job("orphan-running", JobStatus.RUNNING))
+    store.put(_job("done", JobStatus.DONE))
+
+    assert fail_orphaned_active_scan_jobs(store) == 2
+    assert store.get("orphan-pending").status == JobStatus.FAILED
+    assert store.get("orphan-running").status == JobStatus.FAILED
+    assert store.get("done").status == JobStatus.DONE
+    assert reconcile_scan_jobs_active(store) == 0
     assert metrics.scan_jobs_active() == 0

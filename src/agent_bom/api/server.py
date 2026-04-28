@@ -344,6 +344,15 @@ async def _lifespan(app_instance: FastAPI):
         _logger.debug("rate_limit_key_rotation status check skipped", exc_info=True)
 
     global _cleanup_task
+    from agent_bom.api.scan_job_reconciliation import fail_orphaned_active_scan_jobs, reconcile_scan_jobs_active
+
+    try:
+        store = _get_store()
+        fail_orphaned_active_scan_jobs(store)
+        reconcile_scan_jobs_active(store)
+    except Exception:  # noqa: BLE001
+        _logger.debug("scan job metric startup reconciliation skipped", exc_info=True)
+
     _cleanup_task = asyncio.create_task(_cleanup_loop())
 
     # Start scheduler background loop
@@ -373,8 +382,15 @@ async def _lifespan(app_instance: FastAPI):
             lambda: enforce_active_scan_quota(tenant_id),
             lambda: enforce_retained_jobs_quota(tenant_id),
         ):
-            _get_store().put(job)
+            store = _get_store()
+            store.put(job)
             _jobs_put(job.job_id, job)
+            try:
+                from agent_bom.api.scan_job_reconciliation import reconcile_scan_jobs_active
+
+                reconcile_scan_jobs_active(store)
+            except Exception:  # noqa: BLE001
+                pass
         loop = asyncio.get_running_loop()
         loop.run_in_executor(get_executor(), _run_scan, job)
         return job.job_id
@@ -602,10 +618,13 @@ async def _cleanup_loop():
     """Background task that removes expired jobs and unsticks RUNNING jobs."""
     while True:
         await asyncio.sleep(300)
-        _get_store().cleanup_expired(_JOB_TTL_SECONDS)
+        store = _get_store()
+        store.cleanup_expired(_JOB_TTL_SECONDS)
         # Unstick jobs that have been RUNNING for too long
         try:
             from datetime import datetime, timezone
+
+            from agent_bom.api.scan_job_reconciliation import fail_stale_active_scan_jobs, reconcile_scan_jobs_active
 
             now = datetime.now(timezone.utc)
             with _jobs_lock:
@@ -617,8 +636,11 @@ async def _cleanup_loop():
                                 job.status = JobStatus.FAILED
                                 job.error = "Timed out (stuck in RUNNING state)"
                                 job.completed_at = now.isoformat()
+                                store.put(job)
                         except (ValueError, TypeError):
                             pass
+            fail_stale_active_scan_jobs(store, timeout_seconds=_STUCK_JOB_TIMEOUT, now=now)
+            reconcile_scan_jobs_active(store)
         except Exception:  # noqa: BLE001
             pass
 

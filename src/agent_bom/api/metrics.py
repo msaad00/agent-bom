@@ -57,6 +57,10 @@ class _Gauge:
         with self._lock:
             return self._value
 
+    def set(self, value: int) -> None:
+        with self._lock:
+            self._value = max(0, value)
+
     def reset(self) -> None:
         with self._lock:
             self._value = 0
@@ -117,6 +121,11 @@ def record_scan_finished() -> None:
 def scan_jobs_active() -> int:
     """Return the current in-flight scan-jobs gauge value (test helper)."""
     return _scan_jobs_active.value()
+
+
+def reconcile_scan_jobs_active(active_count: int) -> None:
+    """Set the in-flight scan-jobs gauge from durable job-store state."""
+    _scan_jobs_active.set(active_count)
 
 
 def record_gateway_relay(upstream: str, outcome: str) -> None:

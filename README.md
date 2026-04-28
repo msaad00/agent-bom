@@ -359,11 +359,17 @@ docker run --rm agentbom/agent-bom agents    # Docker
 
 For published containers, the packaging model is:
 
-- one product, two deployable images
+- one product, two deployable images — the second is **optional**
 - `agentbom/agent-bom` = the main runtime image for CLI, API, jobs, gateway,
-  proxy-related entrypoints, and MCP server mode
-- `agentbom/agent-bom-ui` = the browser dashboard image for the same
-  self-hosted control plane
+  proxy-related entrypoints, and MCP server mode. The Next.js dashboard is
+  bundled inside the wheel and served from the same process, so single-host
+  pilots only need this image.
+- `agentbom/agent-bom-ui` = the same Next.js dashboard packaged as its own
+  Node container, for Kubernetes deployments that scale / restrict / ingress
+  the UI tier independently of the API tier.
+
+See [docs/ENTERPRISE_DEPLOYMENT.md § Container images — do I need both?](docs/ENTERPRISE_DEPLOYMENT.md#container-images--do-i-need-both)
+for the full split-vs-single-image guidance.
 
 | Mode | Best for |
 |------|----------|

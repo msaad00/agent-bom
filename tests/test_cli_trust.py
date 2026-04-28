@@ -18,6 +18,8 @@ def test_trust_command_outputs_json_contract() -> None:
     assert body["default_posture"]["mandatory_hosted_control_plane"] is False
     assert body["credential_evidence"]["stores_matched_value"] is False
     assert body["credential_evidence"]["stores_matched_prefix"] is False
+    assert "attack_path" in body["redacted_evidence_context"]["allowed_context"]
+    assert "raw_response_body" in body["redacted_evidence_context"]["never_show"]
     assert body["network_boundaries"]["telemetry"] == "none"
     assert body["storage_boundaries"]["secret_values"] == "never_stored"
     assert body["auth_boundaries"]["scim"]["payload_tenant_attributes_ignored"] is True

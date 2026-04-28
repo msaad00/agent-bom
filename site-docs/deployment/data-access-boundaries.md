@@ -75,6 +75,14 @@ proxy/gateway is in scope. Runtime detection can redact secrets or PII before
 logging when those controls are enabled. Operators should treat proxy mode as a
 deliberate enforcement surface, not as passive local discovery.
 
+The UI and reports should show the security story around a sensitive finding,
+not the sensitive value itself. Allowed context includes the tenant, user or
+subject identifier, device identifier, agent or MCP server name, resource,
+finding type, severity, relative path, line number, and attack path. Reports
+must not show the matched secret value, a secret prefix, environment variable
+value, personal file contents, raw prompt payload, raw request body, or raw
+response body.
+
 ## Operator controls
 
 Operators can narrow or disable major data paths:

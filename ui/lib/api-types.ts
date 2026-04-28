@@ -647,6 +647,11 @@ export interface DataAccessBoundaries {
     stores_matched_prefix: boolean;
     validates_live_secret: boolean;
   };
+  redacted_evidence_context: {
+    allowed_context: string[];
+    never_show: string[];
+    display_model: string;
+  };
 }
 
 export interface AuthPolicyResponse {

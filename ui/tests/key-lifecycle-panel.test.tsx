@@ -211,6 +211,11 @@ const policy: AuthPolicyResponse = {
       stores_matched_prefix: false,
       validates_live_secret: false,
     },
+    redacted_evidence_context: {
+      allowed_context: ["tenant_id", "subject_id", "device_id", "attack_path", "finding_type", "severity"],
+      never_show: ["matched_secret_value", "matched_secret_prefix", "raw_request_body", "raw_response_body"],
+      display_model: "show_actor_asset_finding_and_attack_path_with_redacted_sensitive_value",
+    },
   },
   identity_provisioning: {
     oidc: {
@@ -325,6 +330,9 @@ describe("KeyLifecyclePanel", () => {
     expect(screen.getByText("Network and exports")).toBeInTheDocument();
     expect(screen.getByText(/Telemetry is none/)).toBeInTheDocument();
     expect(screen.getByText(/value stored false/)).toBeInTheDocument();
+    expect(screen.getByText("Evidence context")).toBeInTheDocument();
+    expect(screen.getByText(/Allowed context: tenant id/)).toBeInTheDocument();
+    expect(screen.getByText(/Never show: matched secret value/)).toBeInTheDocument();
     expect(screen.getByText(/SCIM tenant AGENT_BOM_SCIM_TENANT_ID/)).toBeInTheDocument();
     expect(screen.getByText("local discovery")).toBeInTheDocument();
     expect(screen.getByText(/Does not store: matched secret value/)).toBeInTheDocument();

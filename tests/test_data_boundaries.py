@@ -17,6 +17,13 @@ def test_data_access_boundary_contract_pins_operator_controls() -> None:
         "stores_matched_prefix": False,
         "validates_live_secret": False,
     }
+    assert "device_id" in contract["redacted_evidence_context"]["allowed_context"]
+    assert "attack_path" in contract["redacted_evidence_context"]["allowed_context"]
+    assert "matched_secret_value" in contract["redacted_evidence_context"]["never_show"]
+    assert "raw_request_body" in contract["redacted_evidence_context"]["never_show"]
+    assert (
+        contract["redacted_evidence_context"]["display_model"] == "show_actor_asset_finding_and_attack_path_with_redacted_sensitive_value"
+    )
     assert contract["network_boundaries"]["telemetry"] == "none"
     assert contract["network_boundaries"]["outbound_exports"] == "opt_in_only"
     assert "--offline" in contract["network_boundaries"]["disable_controls"]

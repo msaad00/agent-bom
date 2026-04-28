@@ -717,6 +717,12 @@ export function KeyLifecyclePanel({
                 accent="teal"
               />
               <BoundaryCard
+                title="Evidence context"
+                body={`Allowed context: ${formatBoundaryList(policy.data_access_boundaries.redacted_evidence_context.allowed_context)}.`}
+                detail={`Never show: ${formatBoundaryList(policy.data_access_boundaries.redacted_evidence_context.never_show)}`}
+                accent="teal"
+              />
+              <BoundaryCard
                 title="Network and exports"
                 body={`Telemetry is ${policy.data_access_boundaries.network_boundaries.telemetry}; outbound exports are ${policy.data_access_boundaries.network_boundaries.outbound_exports.replaceAll("_", " ")}.`}
                 detail={`controls ${policy.data_access_boundaries.network_boundaries.disable_controls.join(", ")}`}

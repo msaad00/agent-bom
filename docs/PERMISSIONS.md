@@ -163,6 +163,7 @@ findings retain only:
 - line number
 - finding type and severity
 - redacted evidence label such as `[CREDENTIAL_REDACTED]`
+- relevant actor, tenant, device, agent, resource, and attack-path metadata
 
 agent-bom does not validate leaked credentials, call provider APIs with them,
 or transmit the matched value. Validation of whether a secret is live belongs

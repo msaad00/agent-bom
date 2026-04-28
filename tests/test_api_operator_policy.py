@@ -255,6 +255,8 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["data_access_boundaries"]["credential_evidence"]["stores_matched_value"] is False
     assert body["data_access_boundaries"]["credential_evidence"]["stores_matched_prefix"] is False
     assert body["data_access_boundaries"]["credential_evidence"]["validates_live_secret"] is False
+    assert "device_id" in body["data_access_boundaries"]["redacted_evidence_context"]["allowed_context"]
+    assert "matched_secret_value" in body["data_access_boundaries"]["redacted_evidence_context"]["never_show"]
     assert body["data_access_boundaries"]["network_boundaries"]["telemetry"] == "none"
     assert body["data_access_boundaries"]["storage_boundaries"]["secret_values"] == "never_stored"
     assert body["data_access_boundaries"]["auth_boundaries"]["scim"]["tenant_source"] == "AGENT_BOM_SCIM_TENANT_ID"

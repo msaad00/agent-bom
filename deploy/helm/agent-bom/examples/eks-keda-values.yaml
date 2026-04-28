@@ -50,6 +50,11 @@ controlPlane:
           # p99 latency threshold (seconds). Set 0.5s below the published
           # SLO target so we scale BEFORE breaching the SLO, not after.
           p99ThresholdSeconds: "1.5"
+          # Active scan jobs (queued + running) per replica. With 4 worker
+          # threads per pod (default executor), 8 keeps each replica's
+          # queue at ~2x worker count — predictable latency without
+          # over-provisioning.
+          scanJobsActiveThreshold: "8"
         fallback:
           failureThreshold: 3
           replicas: 3

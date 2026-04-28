@@ -34,12 +34,41 @@ class _LabelledCounter:
             return dict(self._values)
 
 
+class _Gauge:
+    """Thread-safe non-negative gauge. Floors at 0 to absorb any
+    inc/dec mismatch from instrumentation gaps rather than emit a
+    negative value Prometheus would reject."""
+
+    __slots__ = ("_lock", "_value")
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._value: int = 0
+
+    def inc(self, amount: int = 1) -> None:
+        with self._lock:
+            self._value += amount
+
+    def dec(self, amount: int = 1) -> None:
+        with self._lock:
+            self._value = max(0, self._value - amount)
+
+    def value(self) -> int:
+        with self._lock:
+            return self._value
+
+    def reset(self) -> None:
+        with self._lock:
+            self._value = 0
+
+
 _auth_failures = _LabelledCounter()  # labelled by reason (missing_key, invalid_key, ...)
 _rate_limit_hits = _LabelledCounter()  # labelled by bucket name (global, tenant, ...)
 _compliance_exports = _LabelledCounter()  # labelled by algorithm (Ed25519, HMAC-SHA256)
 _compliance_export_bytes = _LabelledCounter()  # labelled by framework key
 _scan_completions = _LabelledCounter()  # labelled by status (done, failed, cancelled)
 _gateway_relays = _LabelledCounter()  # labelled by "<upstream>|<outcome>"
+_scan_jobs_active = _Gauge()  # in-flight scans (queued + running)
 
 
 def record_auth_failure(reason: str) -> None:
@@ -61,6 +90,33 @@ def record_compliance_export(algorithm: str, framework_key: str, byte_count: int
 def record_scan_completion(status: str) -> None:
     """Record a scan outcome (done, failed, cancelled)."""
     _scan_completions.inc(status)
+
+
+def record_scan_enqueued() -> None:
+    """Increment the in-flight scan-jobs gauge (queued + running).
+
+    Pair with ``record_scan_finished()`` at every terminal transition so
+    the gauge reflects work the control plane is currently committed to,
+    not just CPU-bound execution. KEDA reads this as the leading
+    saturation signal for the API tier — see
+    ``site-docs/deployment/scaling-slo.md``.
+    """
+    _scan_jobs_active.inc()
+
+
+def record_scan_finished() -> None:
+    """Decrement the in-flight scan-jobs gauge.
+
+    Floored at zero — instrumentation gaps decrement past zero would be
+    rejected by Prometheus, so we absorb them rather than crash the
+    metrics endpoint.
+    """
+    _scan_jobs_active.dec()
+
+
+def scan_jobs_active() -> int:
+    """Return the current in-flight scan-jobs gauge value (test helper)."""
+    return _scan_jobs_active.value()
 
 
 def record_gateway_relay(upstream: str, outcome: str) -> None:
@@ -118,6 +174,11 @@ def render_prometheus_lines() -> list[str]:
     for status, count in sorted(scans.items()):
         lines.append(f'agent_bom_scan_completions_total{{status="{status}"}} {count}')
 
+    active = _scan_jobs_active.value()
+    lines.append("# HELP agent_bom_scan_jobs_active In-flight scans currently queued or running")
+    lines.append("# TYPE agent_bom_scan_jobs_active gauge")
+    lines.append(f"agent_bom_scan_jobs_active {active}")
+
     relays = _gateway_relays.snapshot()
     lines.append("# HELP agent_bom_gateway_relays_total Multi-MCP gateway relay events by upstream and outcome")
     lines.append("# TYPE agent_bom_gateway_relays_total counter")
@@ -142,3 +203,4 @@ def reset_for_tests() -> None:
     ):
         with counter._lock:  # noqa: SLF001
             counter._values.clear()  # noqa: SLF001
+    _scan_jobs_active.reset()

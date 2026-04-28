@@ -330,8 +330,9 @@ controlPlane:
         # (SQS, Kafka, AWS CloudWatch, queue-depth, etc.).
         prometheus:
           serverAddress: ""  # e.g. http://prometheus.monitoring.svc:9090
-          rateLimitThreshold: "0.5"   # rejections/sec averaged across replicas
-          p99ThresholdSeconds: "1.5"  # API p99 latency in seconds
+          rateLimitThreshold: "0.5"           # rejections/sec averaged across replicas
+          p99ThresholdSeconds: "1.5"          # API p99 latency in seconds
+          scanJobsActiveThreshold: "8"        # in-flight scans averaged across replicas
         triggers: []  # set non-empty to fully replace the default Prometheus pair
         fallback:
           failureThreshold: 3

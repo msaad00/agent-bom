@@ -690,14 +690,16 @@ def _run_scan_sync(job: ScanJob) -> None:
             job.completed_at = _now()
             terminal_status = job.status
         # Persist final state
-        _get_store().put(job)
+        store = _get_store()
+        store.put(job)
         # Update operator-visible scan metrics. The active gauge feeds
         # the KEDA scaler in deploy/helm/agent-bom; the completion
         # counter feeds dashboards + alerting on failure rate.
         try:
             from agent_bom.api import metrics as _api_metrics
+            from agent_bom.api.scan_job_reconciliation import reconcile_scan_jobs_active
 
-            _api_metrics.record_scan_finished()
+            reconcile_scan_jobs_active(store)
             _api_metrics.record_scan_completion(str(terminal_status))
         except Exception:  # noqa: BLE001
             # Metrics must never break the scan path. Swallow all errors.

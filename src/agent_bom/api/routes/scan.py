@@ -46,6 +46,7 @@ from agent_bom.api.models import (
     TrainingPipelinesRequest,
 )
 from agent_bom.api.pipeline import _now, _run_scan_sync, get_executor
+from agent_bom.api.scan_job_reconciliation import reconcile_scan_jobs_active
 from agent_bom.api.stores import (
     _get_store,
     _job_lock,
@@ -274,14 +275,10 @@ def enqueue_scan_job(
     ):
         store.put(job)
         _jobs_put(job.job_id, job)
-        # Bump the in-flight gauge as soon as the job is durably enqueued —
-        # KEDA reads this as the leading saturation signal, so we want it
-        # to fire even while jobs are sitting in the executor queue. The
-        # decrement happens in pipeline._run_scan_sync's finally block.
+        # Recompute after durable enqueue so the gauge survives missed
+        # increments and reflects queued + running work from the store.
         try:
-            from agent_bom.api import metrics as _api_metrics
-
-            _api_metrics.record_scan_enqueued()
+            reconcile_scan_jobs_active(store)
         except Exception:  # noqa: BLE001
             pass
 

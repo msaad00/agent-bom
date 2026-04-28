@@ -87,6 +87,13 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # The Docker base-image policy gate uses `git blame --porcelain` to
+          # read the commit timestamp of `# pending-digest` markers and reject
+          # them past 24h. A shallow checkout (the default fetch-depth=1) makes
+          # git blame return nothing, which previously let stale markers pass
+          # silently. Fetch full history so the gate enforces its SLA.
+          fetch-depth: 0
 
       - name: Block Finder duplicate artifacts
         run: python scripts/check_duplicate_artifacts.py

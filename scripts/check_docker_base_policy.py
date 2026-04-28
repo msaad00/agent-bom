@@ -145,13 +145,7 @@ def _pending_digest_max_age_seconds() -> int:
 
 
 def _git_blame_commit_timestamp(path: Path, line_number: int) -> int | None:
-    """Return the commit Unix timestamp for a given line, or None on failure.
-
-    Uses `git blame --porcelain` so the timestamp comes from the commit that
-    last touched the line, not the file. Skips silently when git is not
-    available or the file is not tracked — the policy gate degrades to its
-    pre-ageing behaviour rather than blocking unrelated work.
-    """
+    """Return the commit Unix timestamp for a given line, or None on failure."""
     try:
         result = subprocess.run(
             ["git", "blame", "--porcelain", "-L", f"{line_number},{line_number}", "--", str(path)],
@@ -169,6 +163,27 @@ def _git_blame_commit_timestamp(path: Path, line_number: int) -> int | None:
             except (IndexError, ValueError):
                 return None
     return None
+
+
+def _is_git_tracked_in_repo(path: Path) -> bool:
+    """Whether ``path`` lives inside an active git repo and is tracked.
+
+    Used to distinguish "shallow checkout in CI dropped the commit history"
+    (gate must fail closed) from "synthetic test fixture or non-git checkout"
+    (gate should pass through to the legacy 24h grace semantics — the
+    policy was always advisory in non-git contexts).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "log", "-1", "--format=%H", "--", str(path)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+    return bool(result.stdout.strip())
 
 
 def _policy_key(path: Path) -> str | None:
@@ -239,7 +254,27 @@ def main() -> int:
                     continue
                 marker_ts = _git_blame_commit_timestamp(path, marker_line)
                 max_age = _pending_digest_max_age_seconds()
-                if marker_ts is not None and max_age > 0:
+                if max_age > 0 and marker_ts is None and _is_git_tracked_in_repo(path):
+                    # Fail-closed only when the file IS git-tracked but
+                    # blame still returns no timestamp. That distinguishes
+                    # the bad case (shallow checkout in CI dropped the
+                    # commit history → previously skipped the age check
+                    # silently → stale markers passed CI) from the benign
+                    # cases (synthetic test fixture, uncommitted working-
+                    # tree change, non-git checkout). For the bad case
+                    # the operator-side fix is `fetch-depth: 0` on the
+                    # checkout step that runs this script (see
+                    # `.github/workflows/ci.yml` "Lint and Type Check"),
+                    # but the script must not depend on that to enforce
+                    # the SLA.
+                    problems.append(
+                        f"{rel}:{marker_line}: `# pending-digest` marker timestamp could not be "
+                        "derived (file is git-tracked but blame returned nothing — likely a "
+                        "shallow checkout). Re-run with "
+                        "`actions/checkout@... with: { fetch-depth: 0 }` so the gate can verify "
+                        "the marker is within its 24h SLA, or pin the digest manually."
+                    )
+                elif marker_ts is not None and max_age > 0:
                     age = int(time.time()) - marker_ts
                     if age > max_age:
                         age_hours = age // 3600

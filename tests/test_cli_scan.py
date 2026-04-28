@@ -330,6 +330,59 @@ def test_scan_incomplete_offline_scan_exits_two(monkeypatch):
     assert "populated local vulnerability DB" in result.output
 
 
+def test_scan_expands_local_docker_mcp_image():
+    from agent_bom.cli.agents import _expand_docker_mcp_packages
+    from agent_bom.models import MCPServer, Package, TransportType
+
+    server = MCPServer(name="docker-mcp", command="docker", args=["run", "--rm", "mcp/playwright:1.2.3"], transport=TransportType.STDIO)
+    docker_stub = Package(name="mcp/playwright", version="1.2.3", ecosystem="docker")
+    image_pkg = Package(name="express", version="4.18.2", ecosystem="npm")
+
+    def scan_image(image_ref, **kwargs):
+        assert image_ref == "mcp/playwright:1.2.3"
+        return [image_pkg], "native"
+
+    packages, failures = _expand_docker_mcp_packages(
+        server=server,
+        discovered=[docker_stub],
+        docker_image_cache={},
+        scan_image_fn=scan_image,
+        registry_user=None,
+        registry_pass=None,
+        image_platform=None,
+    )
+
+    assert packages == [image_pkg]
+    assert failures == []
+
+
+def test_scan_fails_when_local_docker_mcp_image_cannot_expand():
+    from agent_bom.cli.agents import _expand_docker_mcp_packages
+    from agent_bom.image import ImageScanError
+    from agent_bom.models import MCPServer, Package, TransportType
+
+    server = MCPServer(name="docker-mcp", command="docker", args=["run", "--rm", "mcp/playwright:1.2.3"], transport=TransportType.STDIO)
+    docker_stub = Package(name="mcp/playwright", version="1.2.3", ecosystem="docker")
+
+    def fail_image_scan(*args, **kwargs):
+        raise ImageScanError("docker not available")
+
+    packages, failures = _expand_docker_mcp_packages(
+        server=server,
+        discovered=[docker_stub],
+        docker_image_cache={},
+        scan_image_fn=fail_image_scan,
+        registry_user=None,
+        registry_pass=None,
+        image_platform=None,
+    )
+
+    assert packages == []
+    assert failures
+    assert "docker not available" in failures[0]
+    assert server.security_warnings == failures
+
+
 # ---------------------------------------------------------------------------
 # db CLI group — #529 and #631 coverage
 # ---------------------------------------------------------------------------

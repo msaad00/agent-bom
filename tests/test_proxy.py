@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import time
@@ -35,10 +36,35 @@ from agent_bom.proxy import (
     log_tool_call,
     parse_jsonrpc,
 )
+from agent_bom.proxy_audit import _AUDIT_CHAIN_STATE, write_audit_record
 
 
 def test_proxy_message_size_budget_is_two_mib_or_less():
     assert proxy_mod._MAX_MESSAGE_BYTES <= 2 * 1024 * 1024
+
+
+def test_audit_chain_uses_path_key_across_reopened_handles(tmp_path):
+    _AUDIT_CHAIN_STATE.clear()
+    audit_path = tmp_path / "audit.jsonl"
+
+    with audit_path.open("a", encoding="utf-8") as first:
+        first_record = write_audit_record(first, {"type": "first"})
+    with audit_path.open("a", encoding="utf-8") as second:
+        second_record = write_audit_record(second, {"type": "second"})
+
+    assert second_record["prev_hash"] == first_record["record_hash"]
+    assert len(_AUDIT_CHAIN_STATE) == 1
+
+
+@pytest.mark.asyncio
+async def test_read_bounded_line_discards_oversized_line_and_resyncs():
+    reader = asyncio.StreamReader(limit=32)
+    reader.feed_data(b"a" * 20 + b"\n")
+    reader.feed_data(b'{"jsonrpc":"2.0"}\n')
+    reader.feed_eof()
+
+    assert await proxy_mod._read_bounded_line(reader, max_bytes=8) is None
+    assert await proxy_mod._read_bounded_line(reader, max_bytes=128) == b'{"jsonrpc":"2.0"}\n'
 
 
 @pytest.fixture(autouse=True)

@@ -9,6 +9,7 @@ import re
 import subprocess
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 from rich.console import Console
 
@@ -101,6 +102,124 @@ def _extract_version_from_args(args: list[str]) -> str | None:
     return None
 
 
+def _registry_pattern_matches(pattern: object, candidate: object) -> bool:
+    pat = str(pattern or "").strip().lower()
+    value = str(candidate or "").strip().lower()
+    if not pat or not value:
+        return False
+    if pat == value:
+        return True
+    return re.search(rf"(^|[\s/@:_-]){re.escape(pat)}($|[\s/@:_-])", value) is not None
+
+
+def _registry_purl(ecosystem: str, package_name: str, version: str) -> str:
+    if ecosystem.lower() == "npm":
+        return _npm_purl(package_name, version)
+    return f"pkg:{ecosystem}/{package_name}@{version}"
+
+
+_CONTAINER_COMMANDS = {"docker", "podman"}
+_CONTAINER_RUN_VALUE_FLAGS = {
+    "-a",
+    "--add-host",
+    "--attach",
+    "--cap-add",
+    "--cap-drop",
+    "--cidfile",
+    "--cpus",
+    "--dns",
+    "--entrypoint",
+    "-e",
+    "--env",
+    "--env-file",
+    "--expose",
+    "-h",
+    "--hostname",
+    "--ip",
+    "--label",
+    "--label-file",
+    "-m",
+    "--memory",
+    "--mount",
+    "--name",
+    "--network",
+    "--platform",
+    "-p",
+    "--publish",
+    "--security-opt",
+    "--user",
+    "-u",
+    "-v",
+    "--volume",
+    "-w",
+    "--workdir",
+}
+
+
+def _split_container_image_ref(image_ref: str) -> tuple[str, str]:
+    image = image_ref.strip()
+    if "@sha256:" in image:
+        name, digest = image.split("@", 1)
+        return name, digest
+    last_segment = image.rsplit("/", 1)[-1]
+    if ":" in last_segment:
+        name, version = image.rsplit(":", 1)
+        return name, version
+    return image, "latest"
+
+
+def _docker_purl(name: str, version: str) -> str:
+    return f"pkg:docker/{quote(name, safe='/')}@{quote(version, safe='')}"
+
+
+def _docker_run_image_arg(args: list[str]) -> str | None:
+    index = 0
+    if index < len(args) and args[index] == "container":
+        index += 1
+    if index >= len(args) or args[index] != "run":
+        return None
+    index += 1
+
+    while index < len(args):
+        arg = args[index]
+        if arg == "--":
+            return args[index + 1] if index + 1 < len(args) else None
+        if not arg.startswith("-"):
+            return arg
+        if "=" in arg:
+            index += 1
+            continue
+        if arg in _CONTAINER_RUN_VALUE_FLAGS:
+            index += 2
+            continue
+        index += 1
+    return None
+
+
+def detect_docker_image_package(server: MCPServer) -> list[Package]:
+    """Extract the image reference from docker/podman MCP server commands."""
+    surface = getattr(getattr(server, "surface", ""), "value", getattr(server, "surface", ""))
+    if surface == "container-image":
+        return []
+    command = Path(server.command or "").name
+    if command not in _CONTAINER_COMMANDS:
+        return []
+    image_ref = _docker_run_image_arg(server.args)
+    if not image_ref:
+        return []
+    name, version = _split_container_image_ref(image_ref)
+    return [
+        Package(
+            name=name,
+            version=version,
+            ecosystem="docker",
+            purl=_docker_purl(name, version),
+            is_direct=True,
+            version_source="detected",
+        )
+    ]
+
+
 def lookup_mcp_registry(server: MCPServer) -> list[Package]:
     """Look up an MCP server's packages using the bundled registry.
 
@@ -123,7 +242,7 @@ def lookup_mcp_registry(server: MCPServer) -> list[Package]:
         patterns = entry.get("command_patterns", [pkg_name])
         for candidate in candidates:
             for pattern in patterns:
-                if pattern in candidate or candidate in pkg_name:
+                if _registry_pattern_matches(pattern, candidate) or _registry_pattern_matches(pkg_name, candidate):
                     ecosystem = entry.get("ecosystem", "npm")
                     registry_version = entry.get("latest_version", "latest")
                     risk_level = entry.get("risk_level")
@@ -158,7 +277,7 @@ def lookup_mcp_registry(server: MCPServer) -> list[Package]:
                             name=entry["package"],
                             version=version,
                             ecosystem=ecosystem,
-                            purl=f"pkg:{ecosystem}/{entry['package']}@{version}",
+                            purl=_registry_purl(ecosystem, entry["package"], version),
                             is_direct=True,
                             resolved_from_registry=True,
                             registry_version=registry_version,
@@ -180,7 +299,7 @@ def get_registry_entry(server: MCPServer) -> dict | None:
         patterns = entry.get("command_patterns", [pkg_name])
         for candidate in candidates:
             for pattern in patterns:
-                if pattern in candidate or candidate in pkg_name:
+                if _registry_pattern_matches(pattern, candidate) or _registry_pattern_matches(pkg_name, candidate):
                     return entry
     return None
 
@@ -242,11 +361,13 @@ def extract_packages(
     """
     packages = []
 
-    # Try npx/uvx command extraction first
+    # Try direct command extraction first
     npx_packages = detect_npx_package(server)
     uvx_packages = detect_uvx_package(server)
+    docker_packages = detect_docker_image_package(server)
     packages.extend(npx_packages)
     packages.extend(uvx_packages)
+    packages.extend(docker_packages)
 
     # Try to find local directory and parse manifests
     server_dir = find_server_directory(server)

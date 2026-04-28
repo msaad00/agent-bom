@@ -74,6 +74,53 @@ from agent_bom.resolver import resolve_all_versions_sync
 from agent_bom.scanners import IncompleteScanError, consume_scan_performance, consume_scan_warnings, scan_agents_sync
 
 
+def _docker_image_ref(pkg: Any) -> str:
+    version = str(getattr(pkg, "version", "") or "")
+    name = str(getattr(pkg, "name", "") or "")
+    if version.startswith("sha256:"):
+        return f"{name}@{version}"
+    return f"{name}:{version}" if version else name
+
+
+def _expand_docker_mcp_packages(
+    *,
+    server: Any,
+    discovered: list[Any],
+    docker_image_cache: dict[str, list[Any]],
+    scan_image_fn: Any,
+    registry_user: str | None,
+    registry_pass: str | None,
+    image_platform: str | None,
+) -> tuple[list[Any], list[str]]:
+    """Replace Docker MCP image stubs with native image package inventory."""
+    docker_refs = [_docker_image_ref(pkg) for pkg in discovered if str(getattr(pkg, "ecosystem", "")).lower() == "docker"]
+    if not docker_refs:
+        return discovered, []
+
+    expanded: list[Any] = []
+    failures: list[str] = []
+    for image_ref in dict.fromkeys(docker_refs):
+        try:
+            if image_ref not in docker_image_cache:
+                image_packages, _strategy = scan_image_fn(
+                    image_ref,
+                    registry_user=registry_user,
+                    registry_pass=registry_pass,
+                    platform=image_platform,
+                )
+                docker_image_cache[image_ref] = image_packages
+            expanded.extend(docker_image_cache[image_ref])
+        except Exception as exc:
+            from agent_bom.security import sanitize_error
+
+            message = f"{server.name}: Docker MCP image {image_ref} could not be expanded: {sanitize_error(exc)}"
+            failures.append(message)
+            if message not in server.security_warnings:
+                server.security_warnings.append(message)
+
+    return [pkg for pkg in discovered if str(getattr(pkg, "ecosystem", "")).lower() != "docker"] + expanded, failures
+
+
 @click.command()
 @scan_options
 def scan(
@@ -714,6 +761,9 @@ def scan(
         con.print()
         if transitive:
             con.print(f"  [cyan]Transitive resolution enabled (max depth: {max_depth})[/cyan]\n")
+        docker_image_cache: dict[str, list[Any]] = {}
+        docker_image_failures: list[str] = []
+
         for agent in agents:
             for server in agent.mcp_servers:
                 if server.security_blocked:
@@ -734,6 +784,20 @@ def scan(
                 discovered = extract_packages(
                     server, resolve_transitive=transitive, max_depth=max_depth, smithery_token=_smithery_tok, mcp_registry=mcp_registry_flag
                 )
+                from agent_bom.image import scan_image
+
+                discovered, expansion_failures = _expand_docker_mcp_packages(
+                    server=server,
+                    discovered=discovered,
+                    docker_image_cache=docker_image_cache,
+                    scan_image_fn=scan_image,
+                    registry_user=registry_user,
+                    registry_pass=registry_pass,
+                    image_platform=image_platform,
+                )
+                for failure in expansion_failures:
+                    if failure not in docker_image_failures:
+                        docker_image_failures.append(failure)
 
                 discovered_names = {(p.name, p.ecosystem) for p in discovered}
                 merged = discovered + [p for p in pre_populated if (p.name, p.ecosystem) not in discovered_names]
@@ -758,6 +822,11 @@ def scan(
                     eco_counts[p.ecosystem] = eco_counts.get(p.ecosystem, 0) + 1
         eco_str = ", ".join(f"{c} {e}" for e, c in sorted(eco_counts.items(), key=lambda x: -x[1]))
         con.print(f"\n  [bold]{total_packages}[/bold] packages ({eco_str})" if eco_str else f"\n  [bold]{total_packages}[/bold] packages")
+        if docker_image_failures:
+            for failure in docker_image_failures:
+                con.print(f"  [yellow]⚠[/yellow] {failure}")
+            con.print("  [red]Docker MCP image expansion failed; refusing to report a clean result from image stubs only.[/red]")
+            sys.exit(2)
 
         # Step 2a: deps.dev transitive resolution + license enrichment (--deps-dev)
         if deps_dev:

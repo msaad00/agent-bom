@@ -753,6 +753,15 @@ class BlastRadius:
     transitive_credentials: list[str] = field(default_factory=list)  # Credentials exposed transitively
     transitive_risk_score: float = 0.0  # Risk score weighted by hop distance
 
+    # Graph-walk reachability (populated by agent_bom.graph.dependency_reach
+    # via apply_dependency_reachability_to_blast_radii after the unified
+    # graph is built). ``None`` means the engine did not run for this scan;
+    # ``False`` means the package sits in the closure but no agent traversal
+    # along USES / DEPENDS_ON / CONTAINS / PROVIDES_TOOL reaches it.
+    graph_reachable: Optional[bool] = None
+    graph_min_hop_distance: Optional[int] = None
+    graph_reachable_from_agents: list[str] = field(default_factory=list)
+
     def calculate_risk_score(self) -> float:
         """Calculate contextual risk score based on blast radius.
 
@@ -826,9 +835,28 @@ class BlastRadius:
             elif self.package.scorecard_score < RISK_SCORECARD_TIER3_THRESHOLD:
                 scorecard_boost = RISK_SCORECARD_TIER3_BOOST
 
-        self.risk_score = min(
-            base + agent_factor + cred_factor + tool_factor + ai_boost + kev_boost + epss_boost + scorecard_boost,
-            10.0,
+        # Graph-walk reachability adjustment. When the engine has run AND
+        # produced a definitive answer, apply a small contextual nudge so
+        # operators triaging by score see reachable findings rise above
+        # otherwise-equivalent unreachable ones. ``None`` (engine did not
+        # run) leaves scoring unchanged so non-graph callsites stay stable.
+        from agent_bom.config import (
+            RISK_REACHABLE_BOOST,
+            RISK_UNREACHABLE_PENALTY,
+        )
+
+        reach_adjustment = 0.0
+        if self.graph_reachable is True:
+            reach_adjustment = RISK_REACHABLE_BOOST
+        elif self.graph_reachable is False:
+            reach_adjustment = -RISK_UNREACHABLE_PENALTY
+
+        self.risk_score = max(
+            0.0,
+            min(
+                base + agent_factor + cred_factor + tool_factor + ai_boost + kev_boost + epss_boost + scorecard_boost + reach_adjustment,
+                10.0,
+            ),
         )
         return self.risk_score
 

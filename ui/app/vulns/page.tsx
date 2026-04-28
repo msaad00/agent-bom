@@ -28,6 +28,41 @@ interface EnrichedVuln extends Vulnerability {
   impact_category?: string | undefined;
   risk_score?: number | undefined;
   remediation_items: RemediationSummary[];
+  /** Graph-walk reachability surfaced from the unified-graph dependency
+   *  reach engine. Mirrors `BlastRadius.graph_reachable` on the API. */
+  graph_reachable?: boolean | null | undefined;
+  graph_min_hop_distance?: number | null | undefined;
+}
+
+function ReachabilityBadge({
+  reachable,
+  hops,
+}: {
+  reachable: boolean | null | undefined;
+  hops: number | null | undefined;
+}) {
+  if (reachable === true) {
+    const hopLabel = typeof hops === "number" && hops > 0 ? ` · ${hops} hop${hops === 1 ? "" : "s"}` : "";
+    return (
+      <span
+        title="An agent's USES/DEPENDS_ON closure reaches this package"
+        className="text-xs font-mono bg-amber-950 border border-amber-800 text-amber-300 rounded px-1.5 py-0.5"
+      >
+        Reachable{hopLabel}
+      </span>
+    );
+  }
+  if (reachable === false) {
+    return (
+      <span
+        title="Package is in inventory but no agent traversal reaches it"
+        className="text-xs font-mono bg-zinc-900 border border-zinc-700 text-zinc-500 rounded px-1.5 py-0.5"
+      >
+        Unreachable
+      </span>
+    );
+  }
+  return null;
 }
 
 interface RemediationSummary {
@@ -198,6 +233,16 @@ function VulnsPage() {
                 existing.cvss_score = existing.cvss_score ?? blast?.cvss_score ?? vuln.cvss_score;
                 existing.epss_score = existing.epss_score ?? blast?.epss_score ?? vuln.epss_score;
                 existing.fixed_version = existing.fixed_version ?? blast?.fixed_version ?? vuln.fixed_version;
+                // Graph-walk reachability: prefer "reachable=true" + smallest
+                // hop count when multiple blast rows touch the same vuln.
+                if (blast?.graph_reachable === true) existing.graph_reachable = true;
+                else if (existing.graph_reachable !== true && blast?.graph_reachable === false) existing.graph_reachable = false;
+                if (typeof blast?.graph_min_hop_distance === "number") {
+                  existing.graph_min_hop_distance =
+                    typeof existing.graph_min_hop_distance === "number"
+                      ? Math.min(existing.graph_min_hop_distance, blast.graph_min_hop_distance)
+                      : blast.graph_min_hop_distance;
+                }
                 existing.summary = existing.summary ?? blast?.attack_vector_summary ?? vuln.summary ?? vuln.description;
                 existing.attack_vector_summary = existing.attack_vector_summary ?? blast?.attack_vector_summary;
                 existing.impact_category = existing.impact_category ?? blast?.impact_category;
@@ -233,6 +278,8 @@ function VulnsPage() {
                   impact_category: blast?.impact_category,
                   risk_score: blast?.risk_score ?? blast?.blast_score,
                   remediation_items: remediationItems,
+                  graph_reachable: blast?.graph_reachable ?? null,
+                  graph_min_hop_distance: blast?.graph_min_hop_distance ?? null,
                 });
               }
             }
@@ -692,6 +739,10 @@ function VulnTable({
                             <ExternalLink className="h-3 w-3" />
                           </a>
                           {(v.is_kev ?? v.cisa_kev) && <CisaKevBadge />}
+                          <ReachabilityBadge
+                            reachable={v.graph_reachable}
+                            hops={v.graph_min_hop_distance}
+                          />
                         </div>
                         {(v.summary ?? v.description) && (
                           <p className="text-xs text-zinc-600 mt-0.5 ml-3.5 line-clamp-1 max-w-xs">

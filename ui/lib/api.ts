@@ -339,6 +339,18 @@ export interface BlastRadius {
   all_server_credentials?: string[] | undefined;
   /** Human-readable attack vector description */
   attack_vector_summary?: string | undefined;
+  /** Graph-walk reachability (populated by the unified-graph dependency
+   *  reach engine). `true` when an agent's USES/DEPENDS_ON closure
+   *  reaches the vulnerable package; `false` when the package is in
+   *  inventory but no agent traversal reaches it; `undefined` when the
+   *  engine did not run for this scan. */
+  graph_reachable?: boolean | null | undefined;
+  /** Smallest hop count from any reaching agent. `null` / `undefined`
+   *  when graph_reachable is not `true`. */
+  graph_min_hop_distance?: number | null | undefined;
+  /** Agent node ids whose dependency closure reaches the vulnerable
+   *  package (e.g. ["agent:cursor", "agent:claude-desktop"]). */
+  graph_reachable_from_agents?: string[] | undefined;
 }
 
 // ─── Attack Flow Types ───────────────────────────────────────────────────────

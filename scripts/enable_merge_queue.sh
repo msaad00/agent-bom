@@ -1,109 +1,67 @@
 #!/usr/bin/env bash
-# Enable GitHub merge queue on `main` so PRs stop getting stranded by
-# GITHUB_TOKEN-authored "Update branch" pushes.
+# Print the supported path for enabling GitHub merge queue on `main`.
 #
-# Background: the legacy branches/{branch}/protection REST endpoint does not
-# expose merge_queue config. Merge queue is configured via the repository
-# rulesets API (or the Settings UI). This script writes a ruleset whose
-# required_status_checks match the current branch-protection rule.
+# Why this is no longer a one-shot script
+# ───────────────────────────────────────
+# As of 2026-04, GitHub returns HTTP 422 "Invalid rule 'merge_queue'" when
+# a `merge_queue` rule is POSTed to repos/{owner}/{repo}/rulesets, even on
+# personal repos with `repo`-scoped tokens. The legacy
+# branches/{branch}/protection endpoint never exposed merge_queue at all.
+# The Settings UI is the only supported toggle.
+#
+# For the recurring stranded-CI pain that motivated wanting merge queue,
+# `.github/workflows/auto-retrigger-stranded.yml` is the practical fix:
+# it polls open PRs every 5 minutes and runs scripts/retrigger_stranded_pr.sh
+# against any whose current head SHA has zero check-runs. That neutralises
+# the GITHUB_TOKEN-authored-merge anti-loop guard without needing
+# repo-settings changes.
 #
 # Usage:
-#   scripts/enable_merge_queue.sh --dry-run   # preview the payload
-#   GH_TOKEN=<admin-pat> scripts/enable_merge_queue.sh
+#   scripts/enable_merge_queue.sh         # print steps
+#   scripts/enable_merge_queue.sh --check # print current ruleset/protection state
 #
-# Requires: gh CLI authenticated against the repo with admin scope (the
-# default user token from `gh auth login` lacks `administration:write` on
-# org repos; use a fine-grained PAT if needed).
 
 set -euo pipefail
-
-DRY_RUN="false"
-if [ "${1:-}" = "--dry-run" ]; then
-  DRY_RUN="true"
-fi
 
 REPO="${GH_REPO:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}"
 BRANCH="main"
 
-# These are the canonical required checks today. Keep this list in sync with
-# the branch-protection rule until both move to the same source of truth
-# (the ruleset itself once merge queue is on).
-REQUIRED_CHECKS=(
-  "Lint and Type Check"
-  "Test (Python 3.11)"
-  "Test (Python 3.13)"
-  "Test (Python 3.14)"
-  "Build Package"
-  "Security Scan"
-  "CodeQL"
-)
-
-# Build the JSON checks array.
-CHECKS_JSON="$(printf '%s\n' "${REQUIRED_CHECKS[@]}" | jq -R . | jq -s 'map({context: ., integration_id: null})')"
-
-PAYLOAD="$(jq -n \
-  --arg name "merge-queue-${BRANCH}" \
-  --arg ref "refs/heads/${BRANCH}" \
-  --argjson checks "${CHECKS_JSON}" \
-  '{
-    name: $name,
-    target: "branch",
-    enforcement: "active",
-    conditions: { ref_name: { include: [$ref], exclude: [] } },
-    rules: [
-      { type: "deletion" },
-      { type: "non_fast_forward" },
-      { type: "required_signatures" },
-      { type: "pull_request",
-        parameters: {
-          required_approving_review_count: 1,
-          dismiss_stale_reviews_on_push: false,
-          require_code_owner_review: false,
-          require_last_push_approval: false,
-          required_review_thread_resolution: false
-        }
-      },
-      { type: "required_status_checks",
-        parameters: {
-          strict_required_status_checks_policy: false,
-          required_status_checks: $checks
-        }
-      },
-      { type: "merge_queue",
-        parameters: {
-          check_response_timeout_minutes: 60,
-          grouping_strategy: "ALLGREEN",
-          max_entries_to_build: 5,
-          max_entries_to_merge: 5,
-          merge_method: "SQUASH",
-          min_entries_to_merge: 1,
-          min_entries_to_merge_wait_minutes: 5
-        }
-      }
-    ]
-  }')"
-
-if [ "${DRY_RUN}" = "true" ]; then
-  printf "Would POST the following ruleset to repos/%s/rulesets:\n\n%s\n" \
-    "${REPO}" "${PAYLOAD}"
+if [ "${1:-}" = "--check" ]; then
+  echo "Repo: ${REPO}@${BRANCH}"
+  echo
+  echo "Active rulesets touching '${BRANCH}':"
+  gh api "repos/${REPO}/rules/branches/${BRANCH}" \
+    --jq '[.[] | .type] // [] | unique' 2>/dev/null || echo "  (none / 404)"
+  echo
+  echo "Branch-protection rule fields:"
+  gh api "repos/${REPO}/branches/${BRANCH}/protection" \
+    --jq 'keys' 2>/dev/null || echo "  (no legacy branch-protection rule)"
+  echo
+  echo "Auto-retrigger workflow status:"
+  gh workflow view auto-retrigger-stranded.yml --json state 2>/dev/null \
+    --jq '"  state=\(.state)"' || echo "  (workflow not present on default branch yet)"
   exit 0
 fi
 
-if [ -z "${GH_TOKEN:-}" ]; then
-  echo "GH_TOKEN is required (admin-scope PAT). Run with --dry-run to preview." >&2
-  exit 64
-fi
+cat <<EOF
+Merge queue cannot currently be enabled via REST on this repo's auth path.
 
-echo "Creating merge-queue ruleset on ${REPO}@${BRANCH}…"
-echo "${PAYLOAD}" | gh api \
-  --method POST \
-  -H "Accept: application/vnd.github+json" \
-  "repos/${REPO}/rulesets" \
-  --input -
+Supported steps (one-time):
 
-echo
-echo "Done. Verify in Settings → Rules → Rulesets, or with:"
-echo "  gh api repos/${REPO}/rulesets --jq '.[] | select(.name == \"merge-queue-${BRANCH}\")'"
-echo
-echo "Note: if a legacy branch-protection rule on '${BRANCH}' is still active,"
-echo "either delete it (Settings → Branches) or trust the ruleset to take over."
+  1. https://github.com/${REPO}/settings/branches
+  2. Edit the rule for '${BRANCH}' (or add one if absent)
+  3. Check  ✅  Require merge queue
+  4. Set the merge method to Squash and the same required status checks
+     used today (Lint and Type Check, Test (Python 3.11/3.13/3.14),
+     Build Package, Security Scan, CodeQL)
+  5. Save
+
+Verify with:
+
+  scripts/enable_merge_queue.sh --check
+
+Until the toggle is on, the practical fix for stranded PRs is the
+scheduled workflow at .github/workflows/auto-retrigger-stranded.yml,
+which auto-runs scripts/retrigger_stranded_pr.sh every 5 minutes. No
+operator action needed once it's on the default branch.
+EOF

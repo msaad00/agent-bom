@@ -1,0 +1,74 @@
+# EKS preset — KEDA-driven autoscaling on the control-plane API tier.
+#
+# Use this preset when:
+#   * Scanner traffic is bursty (queue-depth / job-completion-rate spikes)
+#     and CPU/memory HPA lags the saturation signal.
+#   * You already run KEDA cluster-side (operator + CRDs installed).
+#   * Prometheus is reachable from the agent-bom namespace.
+#
+# Pair with eks-production-values.yaml for the full Postgres-backed control
+# plane, mTLS, ExternalSecrets, etc. — `helm install -f eks-production-values.yaml -f eks-keda-values.yaml`.
+#
+# What this preset does
+# ─────────────────────
+#   * Replaces the default CPU-only HPA on `agent-bom-api` with a KEDA
+#     ScaledObject driven by two Prometheus queries:
+#       - rate-limit pressure (saturation precursor)
+#       - API p99 latency (request-servicing health)
+#   * Floors at 3 replicas so a single-AZ blip cannot drop us under quorum.
+#   * Caps at 12 replicas to keep Postgres connection-pool usage bounded.
+#   * 30s poll, 5min cooldown — fast enough for scan-burst patterns,
+#     slow enough to avoid HPA flapping.
+#   * Fallback to 3 replicas when Prometheus is unreachable for >3 polls,
+#     so a monitoring outage doesn't drop the API tier to minReplicas.
+#
+# Prereqs
+# ───────
+#   helm install keda kedacore/keda --namespace keda --create-namespace
+#   # Confirm CRDs:
+#   kubectl get crd scaledobjects.keda.sh
+#   # Confirm Prometheus is reachable from the agent-bom namespace:
+#   kubectl run -it --rm tmp-curl --image=curlimages/curl --restart=Never -- \
+#     curl -sf http://prometheus.monitoring.svc:9090/-/ready
+
+controlPlane:
+  api:
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 12
+      keda:
+        enabled: true
+        pollingIntervalSeconds: 30
+        cooldownSeconds: 300
+        prometheus:
+          serverAddress: http://prometheus.monitoring.svc:9090
+          # Backpressure: rate-limit hits crossing 0.5/sec averaged across
+          # replicas means the limiter is actively rejecting — a genuine
+          # saturation signal. CPU lags this by 30-60s on bursty traffic.
+          rateLimitThreshold: "0.5"
+          # p99 latency threshold (seconds). Set 0.5s below the published
+          # SLO target so we scale BEFORE breaching the SLO, not after.
+          p99ThresholdSeconds: "1.5"
+        fallback:
+          failureThreshold: 3
+          replicas: 3
+        advanced:
+          horizontalPodAutoscalerConfig:
+            behavior:
+              scaleDown:
+                stabilizationWindowSeconds: 300
+                policies:
+                  - type: Percent
+                    value: 25
+                    periodSeconds: 60
+              scaleUp:
+                stabilizationWindowSeconds: 30
+                policies:
+                  - type: Percent
+                    value: 100
+                    periodSeconds: 30
+                  - type: Pods
+                    value: 4
+                    periodSeconds: 30
+                selectPolicy: Max

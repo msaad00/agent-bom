@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import sqlite3
 import threading
-from typing import Protocol
+from typing import Any, Protocol
 
 from pydantic import BaseModel
 
@@ -20,7 +20,7 @@ class ScanSchedule(BaseModel):
     schedule_id: str
     name: str
     cron_expression: str
-    scan_config: dict
+    scan_config: dict[str, Any]
     enabled: bool = True
     last_run: str | None = None
     next_run: str | None = None
@@ -91,7 +91,8 @@ class SQLiteScheduleStore:
         if not hasattr(self._local, "conn") or self._local.conn is None:
             self._local.conn = sqlite3.connect(self._db_path, check_same_thread=False)
             self._local.conn.execute("PRAGMA journal_mode=WAL")
-        return self._local.conn
+        conn: sqlite3.Connection = self._local.conn
+        return conn
 
     def _init_db(self) -> None:
         ensure_sqlite_schema_version(self._conn, "schedules")
@@ -129,7 +130,8 @@ class SQLiteScheduleStore:
             ).fetchone()
         if row is None:
             return None
-        return ScanSchedule.model_validate_json(row[0])
+        schedule: ScanSchedule = ScanSchedule.model_validate_json(row[0])
+        return schedule
 
     def delete(self, schedule_id: str, tenant_id: str | None = None) -> bool:
         if tenant_id is None:

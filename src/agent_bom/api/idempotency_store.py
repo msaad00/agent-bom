@@ -7,7 +7,7 @@ import sqlite3
 import threading
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Protocol
+from typing import Any, Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 
@@ -23,8 +23,8 @@ class IdempotencyRecord:
 
 
 class IdempotencyStore(Protocol):
-    def get(self, endpoint: str, tenant_id: str, source_id: str, idempotency_key: str) -> dict | None: ...
-    def put(self, endpoint: str, tenant_id: str, source_id: str, idempotency_key: str, response: dict) -> None: ...
+    def get(self, endpoint: str, tenant_id: str, source_id: str, idempotency_key: str) -> dict[str, Any] | None: ...
+    def put(self, endpoint: str, tenant_id: str, source_id: str, idempotency_key: str, response: dict[str, Any]) -> None: ...
 
 
 def _utcnow() -> str:
@@ -43,13 +43,13 @@ class InMemoryIdempotencyStore:
         for key in stale:
             self._records.pop(key, None)
 
-    def get(self, endpoint: str, tenant_id: str, source_id: str, idempotency_key: str) -> dict | None:
+    def get(self, endpoint: str, tenant_id: str, source_id: str, idempotency_key: str) -> dict[str, Any] | None:
         with self._lock:
             self._prune()
             record = self._records.get((endpoint, tenant_id, source_id, idempotency_key))
             return json.loads(record.response_json) if record else None
 
-    def put(self, endpoint: str, tenant_id: str, source_id: str, idempotency_key: str, response: dict) -> None:
+    def put(self, endpoint: str, tenant_id: str, source_id: str, idempotency_key: str, response: dict[str, Any]) -> None:
         with self._lock:
             self._prune()
             self._records[(endpoint, tenant_id, source_id, idempotency_key)] = IdempotencyRecord(
@@ -73,7 +73,8 @@ class SQLiteIdempotencyStore:
         if not hasattr(self._local, "conn") or self._local.conn is None:
             self._local.conn = sqlite3.connect(self._db_path, check_same_thread=False)
             self._local.conn.execute("PRAGMA journal_mode=WAL")
-        return self._local.conn
+        conn: sqlite3.Connection = self._local.conn
+        return conn
 
     def _init_db(self) -> None:
         ensure_sqlite_schema_version(self._conn, "idempotency")
@@ -93,7 +94,7 @@ class SQLiteIdempotencyStore:
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_idempotency_created_at ON idempotency_keys(created_at)")
         self._conn.commit()
 
-    def get(self, endpoint: str, tenant_id: str, source_id: str, idempotency_key: str) -> dict | None:
+    def get(self, endpoint: str, tenant_id: str, source_id: str, idempotency_key: str) -> dict[str, Any] | None:
         row = self._conn.execute(
             """SELECT response_json FROM idempotency_keys
                WHERE endpoint = ? AND tenant_id = ? AND source_id = ? AND idempotency_key = ?""",
@@ -101,7 +102,7 @@ class SQLiteIdempotencyStore:
         ).fetchone()
         return json.loads(row[0]) if row else None
 
-    def put(self, endpoint: str, tenant_id: str, source_id: str, idempotency_key: str, response: dict) -> None:
+    def put(self, endpoint: str, tenant_id: str, source_id: str, idempotency_key: str, response: dict[str, Any]) -> None:
         self._conn.execute(
             """INSERT OR REPLACE INTO idempotency_keys
                (endpoint, tenant_id, source_id, idempotency_key, response_json, created_at)

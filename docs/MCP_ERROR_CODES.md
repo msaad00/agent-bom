@@ -98,7 +98,7 @@ matrix records what each surface exposes and why.
 | Run a scan | `POST /v1/scan` | `scan` | Same scan pipeline. |
 | Look up CVE blast radius | `GET /v1/findings/{cve}` | `blast_radius` | MCP returns the same shape. |
 | Query the MCP server registry | `GET /v1/registry/servers` | `registry_lookup`, `marketplace_check`, `fleet_scan` | Registry is read-only on both. |
-| Compliance posture | `GET /v1/compliance/{framework}` | `compliance` | 14 frameworks, both surfaces. |
+| Compliance posture | `GET /v1/compliance/{framework}` | `compliance` | 14 frameworks (curated subsets — see [ARCHITECTURE.md § Coverage per framework](./ARCHITECTURE.md#coverage-per-framework)), both surfaces. |
 | SBOM generation | `POST /v1/sbom` | `generate_sbom` | CycloneDX + SPDX on both. |
 | Policy evaluation | `POST /v1/gateway/evaluate` | `policy_check` | Same `check_policy` evaluator. |
 

@@ -10,7 +10,7 @@ import os
 import sqlite3
 import threading
 from enum import Enum
-from typing import Protocol
+from typing import Any, Protocol
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -43,7 +43,7 @@ class FleetAgent(BaseModel):
     environment: str | None = None
     tags: list[str] = Field(default_factory=list)
     trust_score: float = 0.0
-    trust_factors: dict = Field(default_factory=dict)
+    trust_factors: dict[str, Any] = Field(default_factory=dict)
     server_count: int = 0
     package_count: int = 0
     credential_count: int = 0
@@ -58,12 +58,14 @@ class FleetAgent(BaseModel):
     @field_validator("tenant_id", mode="before")
     @classmethod
     def _normalize_tenant_id(cls, value: str | None) -> str:
-        return normalize_tenant_id(value)
+        normalized: str = normalize_tenant_id(value)
+        return normalized
 
     @field_validator("last_discovery", "last_scan", "created_at", "updated_at", mode="before")
     @classmethod
     def _normalize_timestamps(cls, value: str | None) -> str | None:
-        return normalize_timestamp(value)
+        normalized: str | None = normalize_timestamp(value)
+        return normalized
 
     @model_validator(mode="after")
     def _apply_defaults(self) -> FleetAgent:
@@ -85,7 +87,7 @@ class FleetStore(Protocol):
     def get_by_name(self, name: str) -> FleetAgent | None: ...
     def delete(self, agent_id: str, tenant_id: str | None = None) -> bool: ...
     def list_all(self) -> list[FleetAgent]: ...
-    def list_summary(self) -> list[dict]: ...
+    def list_summary(self) -> list[dict[str, Any]]: ...
     def list_by_tenant(self, tenant_id: str) -> list[FleetAgent]: ...
     def query_by_tenant(
         self,
@@ -99,7 +101,7 @@ class FleetStore(Protocol):
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[FleetAgent], int]: ...
-    def list_tenants(self) -> list[dict]: ...
+    def list_tenants(self) -> list[dict[str, Any]]: ...
     def update_state(self, agent_id: str, state: FleetLifecycleState) -> bool: ...
     def batch_put(self, agents: list[FleetAgent]) -> int: ...
 
@@ -150,7 +152,7 @@ class InMemoryFleetStore:
         with self._lock:
             return list(self._agents.values())
 
-    def list_summary(self) -> list[dict]:
+    def list_summary(self) -> list[dict[str, Any]]:
         with self._lock:
             return [
                 {
@@ -202,7 +204,7 @@ class InMemoryFleetStore:
         total = len(agents)
         return agents[offset : offset + limit], total
 
-    def list_tenants(self) -> list[dict]:
+    def list_tenants(self) -> list[dict[str, Any]]:
         with self._lock:
             counts: dict[str, int] = {}
             for a in self._agents.values():
@@ -248,7 +250,8 @@ class SQLiteFleetStore:
         if not hasattr(self._local, "conn") or self._local.conn is None:
             self._local.conn = sqlite3.connect(self._db_path, check_same_thread=False)
             self._local.conn.execute("PRAGMA journal_mode=WAL")
-        return self._local.conn
+        conn: sqlite3.Connection = self._local.conn
+        return conn
 
     def _init_db(self) -> None:
         ensure_sqlite_schema_version(self._conn, "fleet")
@@ -294,13 +297,15 @@ class SQLiteFleetStore:
             ).fetchone()
         if row is None:
             return None
-        return FleetAgent.model_validate_json(row[0])
+        agent: FleetAgent = FleetAgent.model_validate_json(row[0])
+        return agent
 
     def get_by_name(self, name: str) -> FleetAgent | None:
         row = self._conn.execute("SELECT data FROM fleet_agents WHERE name = ?", (name,)).fetchone()
         if row is None:
             return None
-        return FleetAgent.model_validate_json(row[0])
+        agent: FleetAgent = FleetAgent.model_validate_json(row[0])
+        return agent
 
     def delete(self, agent_id: str, tenant_id: str | None = None) -> bool:
         if tenant_id is None:
@@ -317,7 +322,7 @@ class SQLiteFleetStore:
         rows = self._conn.execute("SELECT data FROM fleet_agents ORDER BY name").fetchall()
         return [FleetAgent.model_validate_json(r[0]) for r in rows]
 
-    def list_summary(self) -> list[dict]:
+    def list_summary(self) -> list[dict[str, Any]]:
         rows = self._conn.execute(
             "SELECT agent_id, name, lifecycle_state, trust_score, updated_at FROM fleet_agents ORDER BY name"
         ).fetchall()
@@ -374,7 +379,7 @@ class SQLiteFleetStore:
         total = len(agents)
         return agents[offset : offset + limit], total
 
-    def list_tenants(self) -> list[dict]:
+    def list_tenants(self) -> list[dict[str, Any]]:
         rows = self._conn.execute(
             """SELECT COALESCE(json_extract(data, '$.tenant_id'), 'default') as tid,
                       COUNT(*) as cnt

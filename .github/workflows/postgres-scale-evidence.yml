@@ -102,7 +102,7 @@ jobs:
           jq '{generated_at, environment, sizes_per_replica, results: [.results[] | {size_per_replica, replicas, ops_per_second, wall_ms}]}' "${EVIDENCE_PATH}"
 
       - name: Upload evidence
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
         with:
           name: postgres-scale-evidence
           path: ${{ env.EVIDENCE_PATH }}

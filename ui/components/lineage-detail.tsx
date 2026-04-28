@@ -405,9 +405,9 @@ function GenericAssetSection({
   version,
   attributes,
 }: {
-  description?: string;
-  version?: string;
-  attributes?: Record<string, unknown>;
+  description?: string | undefined;
+  version?: string | undefined;
+  attributes?: Record<string, unknown> | undefined;
 }) {
   return (
     <div className="space-y-3">
@@ -428,8 +428,8 @@ function TagList({
 }: {
   label: string;
   tags: string[];
-  tone?: "zinc" | "blue";
-  linkBuilder?: (tag: string) => string;
+  tone?: "zinc" | "blue" | undefined;
+  linkBuilder?: (tag: string) => string | undefined;
 }) {
   const toneClass =
     tone === "blue"
@@ -443,7 +443,7 @@ function TagList({
           linkBuilder ? (
             <Link
               key={tag}
-              href={linkBuilder(tag)}
+              href={linkBuilder(tag) ?? "#"}
               className={`text-[10px] px-1.5 py-0.5 rounded border transition-colors hover:brightness-110 ${toneClass}`}
             >
               {tag}
@@ -481,7 +481,7 @@ function Row({
 }: {
   label: string;
   value: string | number;
-  className?: string;
+  className?: string | undefined;
 }) {
   return (
     <div className="flex items-center justify-between gap-4 text-xs">

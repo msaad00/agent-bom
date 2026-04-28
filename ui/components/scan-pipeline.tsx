@@ -41,11 +41,11 @@ interface PipelineNodeData {
   description: string;
   stepId: string;
   status: StepStatus;
-  message?: string;
-  stats?: Record<string, number>;
-  startedAt?: string;
-  completedAt?: string;
-  progressPct?: number;
+  message?: string | undefined;
+  stats?: Record<string, number> | undefined;
+  startedAt?: string | undefined;
+  completedAt?: string | undefined;
+  progressPct?: number | undefined;
 }
 
 const STEP_ICONS: Record<string, React.ElementType> = {
@@ -189,7 +189,7 @@ const nodeTypes = { pipelineStep: PipelineNode };
 
 interface ScanPipelineProps {
   steps: Map<string, StepEvent>;
-  className?: string;
+  className?: string | undefined;
 }
 
 function ScanPipelineInner({ steps, className }: ScanPipelineProps) {

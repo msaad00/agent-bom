@@ -183,7 +183,7 @@ export function KeyLifecyclePanel({
   policy: AuthPolicyResponse | null;
   keys: ApiKeyRecord[];
   onRefresh: () => Promise<void> | void;
-  roleLabel?: string | null;
+  roleLabel?: string | null | undefined;
 }) {
   const [busyKeyId, setBusyKeyId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<"create" | "rotate" | "revoke" | "quota" | null>(null);
@@ -914,8 +914,8 @@ function BoundaryCard({
 }: {
   title: string;
   body: string;
-  detail?: string;
-  accent?: "amber" | "teal";
+  detail?: string | undefined;
+  accent?: "amber" | "teal" | undefined;
 }) {
   const tone =
     accent === "teal"

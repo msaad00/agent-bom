@@ -1,8 +1,8 @@
 declare global {
   interface Window {
     __AGENT_BOM_CONFIG__?: {
-      apiUrl?: string;
-    };
+      apiUrl?: string | undefined;
+    } | undefined;
   }
 }
 

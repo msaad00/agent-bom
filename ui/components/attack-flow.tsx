@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ReactFlow, Background, Controls, MiniMap, Handle, Position,
   useReactFlow, ReactFlowProvider,
+  type Edge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
@@ -263,7 +264,7 @@ function AttackFlowContent({ id, job, flowData, filters, onFiltersChange }: { id
   const blastRadius = job.result?.blast_radius ?? [];
 
   const nodes = flowData.nodes?.map((n) => ({ ...n, type: "attackFlowNode" as const, data: n.data as unknown as Record<string, unknown> }));
-  const edges = flowData.edges;
+  const edges = flowData.edges as unknown as Edge[];
 
   return (
     <div className="h-[calc(100vh-3.5rem)] flex flex-col">

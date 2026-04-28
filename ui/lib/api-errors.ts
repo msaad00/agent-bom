@@ -27,10 +27,10 @@ export interface ApiErrorContext {
   statusText: string;
   url: string;
   method: string;
-  body?: unknown;
-  details?: Record<string, unknown>;
-  requestId?: string;
-  traceId?: string;
+  body?: unknown | undefined;
+  details?: Record<string, unknown> | undefined;
+  requestId?: string | undefined;
+  traceId?: string | undefined;
 }
 
 export class ApiError extends Error {
@@ -38,10 +38,10 @@ export class ApiError extends Error {
   readonly statusText: string;
   readonly url: string;
   readonly method: string;
-  readonly body?: unknown;
-  readonly details?: Record<string, unknown>;
-  readonly requestId?: string;
-  readonly traceId?: string;
+  readonly body?: unknown | undefined;
+  readonly details?: Record<string, unknown> | undefined;
+  readonly requestId?: string | undefined;
+  readonly traceId?: string | undefined;
 
   constructor(message: string, ctx: ApiErrorContext) {
     super(message);
@@ -93,7 +93,7 @@ export class ApiConflictError extends ApiError {
 }
 
 export class ApiRateLimitError extends ApiError {
-  readonly retryAfterSeconds?: number;
+  readonly retryAfterSeconds?: number | undefined;
 
   constructor(message: string, ctx: ApiErrorContext, retryAfterSeconds?: number) {
     super(message, ctx);

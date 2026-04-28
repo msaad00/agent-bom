@@ -59,6 +59,13 @@ from .base import CloudDiscoveryError
 logger = logging.getLogger(__name__)
 
 
+def _env_or_value(value: str | None, env_var: str, default: str = "") -> str:
+    """Resolve an optional CLI value against an environment fallback."""
+    if value is not None:
+        return value
+    return os.environ.get(env_var) or default
+
+
 def _resolve_snowflake_auth(
     conn_kwargs: dict[str, Any],
     authenticator: str | None,
@@ -155,8 +162,8 @@ def _get_connection(
             "snowflake-connector-python is required for Snowflake access. Install with: pip install 'agent-bom[snowflake]'"
         ) from exc
 
-    resolved_account = account or os.environ.get("SNOWFLAKE_ACCOUNT", "")
-    resolved_user = user or os.environ.get("SNOWFLAKE_USER", "")
+    resolved_account = _env_or_value(account, "SNOWFLAKE_ACCOUNT")
+    resolved_user = _env_or_value(user, "SNOWFLAKE_USER")
     if not resolved_account:
         raise CloudDiscoveryError("SNOWFLAKE_ACCOUNT not set.")
 
@@ -201,8 +208,8 @@ def discover(
     agents: list[Agent] = []
     warnings: list[str] = []
 
-    resolved_account = account or os.environ.get("SNOWFLAKE_ACCOUNT", "")
-    resolved_user = user or os.environ.get("SNOWFLAKE_USER", "")
+    resolved_account = _env_or_value(account, "SNOWFLAKE_ACCOUNT")
+    resolved_user = _env_or_value(user, "SNOWFLAKE_USER")
 
     if not resolved_account:
         warnings.append("SNOWFLAKE_ACCOUNT not set. Provide --snowflake-account or set the SNOWFLAKE_ACCOUNT env var.")
@@ -946,8 +953,8 @@ def discover_governance(
     Raises:
         CloudDiscoveryError: if snowflake-connector-python is not installed.
     """
-    resolved_account = account or os.environ.get("SNOWFLAKE_ACCOUNT", "")
-    resolved_user = user or os.environ.get("SNOWFLAKE_USER", "")
+    resolved_account = _env_or_value(account, "SNOWFLAKE_ACCOUNT")
+    resolved_user = _env_or_value(user, "SNOWFLAKE_USER")
     report = GovernanceReport(account=resolved_account)
     days = _coerce_snowflake_days(days)
 
@@ -1622,8 +1629,8 @@ def discover_activity(
     Returns:
         ActivityTimeline with query history and observability events.
     """
-    resolved_account = account or os.environ.get("SNOWFLAKE_ACCOUNT", "")
-    resolved_user = user or os.environ.get("SNOWFLAKE_USER", "")
+    resolved_account = _env_or_value(account, "SNOWFLAKE_ACCOUNT")
+    resolved_user = _env_or_value(user, "SNOWFLAKE_USER")
     timeline = ActivityTimeline(account=resolved_account)
     days = _coerce_snowflake_days(days, max_days=365)
 

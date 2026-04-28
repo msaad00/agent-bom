@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from agent_bom.api.audit_log import log_action
-from agent_bom.api.scim import extract_scim_roles, scim_base_path, scim_role_attribute
+from agent_bom.api.scim import extract_scim_roles, scim_base_path, scim_enabled_from_env, scim_role_attribute
 from agent_bom.api.scim_store import SCIMGroup, SCIMUser
 from agent_bom.api.stores import _get_scim_store
 from agent_bom.platform_invariants import now_utc_iso
@@ -140,7 +140,7 @@ def _user_to_scim(user: SCIMUser, request: Request) -> dict[str, Any]:
             "tenantIdSource": "AGENT_BOM_SCIM_TENANT_ID",
             "roles": user.roles,
             "memberships": memberships,
-            "runtimeAuthEnforced": False,
+            "runtimeAuthEnforced": scim_enabled_from_env(),
         },
         "meta": {
             "resourceType": "User",

@@ -31,6 +31,7 @@ from agent_bom.api.tracing import configure_otel_tracing, make_request_trace
 if TYPE_CHECKING:
     from datetime import datetime
 
+    from agent_bom.api.auth import Role
     from agent_bom.api.oidc import OIDCConfig
 
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -803,6 +804,38 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 return scope
         return None
 
+    @staticmethod
+    def _role_allows(actual: Role, required: Role) -> bool:
+        from agent_bom.api.auth import _ROLE_HIERARCHY
+
+        return _ROLE_HIERARCHY.get(actual, 0) >= _ROLE_HIERARCHY.get(required, 0)
+
+    @staticmethod
+    def _record_scim_role_state(request: StarletteRequest, *, user_id: str | None, user_name: str | None) -> None:
+        request.state.auth_role_source = "scim"
+        request.state.scim_user_id = user_id
+        request.state.scim_user_name = user_name
+
+    def _resolve_runtime_role(
+        self,
+        request: StarletteRequest,
+        *,
+        tenant_id: str,
+        upstream_role: Role | None,
+        subjects: tuple[object, ...],
+    ) -> tuple[Role | None, JSONResponse | None]:
+        from agent_bom.api.auth import resolve_scim_user_role
+
+        resolution = resolve_scim_user_role(tenant_id, *subjects)
+        if not resolution.matched:
+            return upstream_role, None
+        if not resolution.active:
+            return None, JSONResponse(status_code=401, content={"detail": "Unauthorized — SCIM user is inactive"})
+        if resolution.role is None:
+            return None, JSONResponse(status_code=403, content={"detail": "Forbidden — SCIM user has no runtime role"})
+        self._record_scim_role_state(request, user_id=resolution.user_id, user_name=resolution.user_name)
+        return resolution.role, None
+
     async def dispatch(self, request: StarletteRequest, call_next):
         if request.url.path in self._EXEMPT_PATHS:
             return await call_next(request)
@@ -862,12 +895,24 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             try:
                 _claims, oidc_role = oidc_cfg.verify(raw_key)
                 required = self._required_role(request.method, request.url.path)
-                from agent_bom.api.auth import _ROLE_HIERARCHY, Role
+                from agent_bom.api.auth import Role
 
-                if _ROLE_HIERARCHY.get(Role(oidc_role), 0) >= _ROLE_HIERARCHY.get(Role(required), 0):
-                    request.state.api_key_name = _claims.get("email") or _claims.get("sub", "oidc-user")
-                    request.state.api_key_role = oidc_role
-                    request.state.tenant_id = oidc_cfg.resolve_tenant(_claims)
+                tenant_id = oidc_cfg.resolve_tenant(_claims)
+                subject = _claims.get("email") or _claims.get("preferred_username") or _claims.get("sub", "oidc-user")
+                upstream_role = Role(oidc_role)
+                effective_role, scim_error = self._resolve_runtime_role(
+                    request,
+                    tenant_id=tenant_id,
+                    upstream_role=upstream_role,
+                    subjects=(subject, _claims.get("email"), _claims.get("preferred_username"), _claims.get("upn"), _claims.get("sub")),
+                )
+                if scim_error is not None:
+                    return scim_error
+                required_role = Role(required)
+                if effective_role is not None and self._role_allows(effective_role, required_role):
+                    request.state.api_key_name = subject
+                    request.state.api_key_role = effective_role.value
+                    request.state.tenant_id = tenant_id
                     request.state.auth_method = "oidc"
                     # Short issuer suffix helps operators recognize which IdP
                     # resolved the token without leaking the full URL to all
@@ -875,9 +920,10 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                     issuer = str(_claims.get("iss") or "")
                     request.state.auth_issuer = issuer.rsplit("/", 1)[-1][:64] if issuer else None
                     return await self._call_with_tenant_context(request, call_next)
+                actual_role = effective_role.value if effective_role else oidc_role
                 return JSONResponse(
                     status_code=403,
-                    content={"detail": f"Forbidden — requires {required} role, OIDC token has {oidc_role}"},
+                    content={"detail": f"Forbidden — requires {required} role, OIDC session has {actual_role}"},
                 )
             except OIDCError as exc:
                 record_oidc_decode_failure()
@@ -893,10 +939,21 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             if api_key:
                 required = self._required_role(request.method, request.url.path)
                 required_role = Role(required)
-                if not api_key.has_role(required_role):
+                effective_role = api_key.role
+                if api_key.name.startswith("saml:"):
+                    effective_role, scim_error = self._resolve_runtime_role(
+                        request,
+                        tenant_id=api_key.tenant_id,
+                        upstream_role=api_key.role,
+                        subjects=(api_key.name.removeprefix("saml:"), api_key.name),
+                    )
+                    if scim_error is not None:
+                        return scim_error
+                    effective_role = effective_role or api_key.role
+                if not self._role_allows(effective_role, required_role):
                     return JSONResponse(
                         status_code=403,
-                        content={"detail": f"Forbidden — requires {required} role, you have {api_key.role.value}"},
+                        content={"detail": f"Forbidden — requires {required} role, you have {effective_role.value}"},
                     )
                 required_scope = self._required_scope(request.method, request.url.path)
                 if not api_key.has_scope(required_scope):
@@ -905,7 +962,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                         content={"detail": f"Forbidden — requires scope {required_scope}"},
                     )
                 request.state.api_key_name = api_key.name
-                request.state.api_key_role = api_key.role.value
+                request.state.api_key_role = effective_role.value
                 request.state.tenant_id = api_key.tenant_id
                 request.state.api_key_id = api_key.key_id
                 request.state.api_key_scopes = list(api_key.scopes)
@@ -952,7 +1009,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         return await self._call_with_tenant_context(request, call_next)
 
     async def _try_browser_session_auth(self, request: StarletteRequest, call_next, token: str):
-        from agent_bom.api.auth import _ROLE_HIERARCHY, Role, get_key_store
+        from agent_bom.api.auth import Role, get_key_store
 
         try:
             payload = verify_browser_session_token(token)
@@ -960,11 +1017,26 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         except (BrowserSessionError, ValueError):
             return JSONResponse(status_code=401, content={"detail": "Unauthorized — invalid browser session"})
 
+        subject = str(payload.get("sub") or "browser-session")
+        tenant_id = str(payload.get("tenant_id") or "default")
+        auth_method = str(payload.get("auth_method") or "browser_session")
+        effective_role = session_role
+        if auth_method in {"oidc", "saml"} or subject.startswith("saml:"):
+            resolved_role, scim_error = self._resolve_runtime_role(
+                request,
+                tenant_id=tenant_id,
+                upstream_role=session_role,
+                subjects=(subject.removeprefix("saml:"), subject),
+            )
+            if scim_error is not None:
+                return scim_error
+            effective_role = resolved_role or session_role
+
         required = Role(self._required_role(request.method, request.url.path))
-        if _ROLE_HIERARCHY.get(session_role, 0) < _ROLE_HIERARCHY.get(required, 0):
+        if not self._role_allows(effective_role, required):
             return JSONResponse(
                 status_code=403,
-                content={"detail": f"Forbidden — requires {required.value} role, browser session has {session_role.value}"},
+                content={"detail": f"Forbidden — requires {required.value} role, browser session has {effective_role.value}"},
             )
 
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
@@ -975,7 +1047,6 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
         store = get_key_store()
         key_id = str(payload.get("key_id") or "")
-        tenant_id = str(payload.get("tenant_id") or "default")
         if key_id:
             stored = store.get(key_id)
             if stored is None or stored.tenant_id != tenant_id or not stored.is_usable():
@@ -984,12 +1055,12 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             if not stored.has_scope(required_scope):
                 return JSONResponse(status_code=403, content={"detail": f"Forbidden — requires scope {required_scope}"})
 
-        request.state.api_key_name = str(payload.get("sub") or "browser-session")
-        request.state.api_key_role = session_role.value
+        request.state.api_key_name = subject
+        request.state.api_key_role = effective_role.value
         request.state.tenant_id = tenant_id
         request.state.api_key_id = key_id or None
         request.state.api_key_scopes = list(payload.get("scopes") or [])
-        request.state.auth_method = str(payload.get("auth_method") or "browser_session")
+        request.state.auth_method = auth_method
         return await self._call_with_tenant_context(request, call_next)
 
     async def _try_proxy_header_auth(self, request: StarletteRequest, call_next):
@@ -998,7 +1069,13 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
         role_header = request.headers.get("x-agent-bom-role", "").strip().lower()
         tenant_id = request.headers.get("x-agent-bom-tenant-id", "").strip()
-        if not role_header:
+        subject = (
+            request.headers.get("x-agent-bom-subject")
+            or request.headers.get("x-forwarded-email")
+            or request.headers.get("x-auth-request-email")
+            or ""
+        )
+        if not role_header and not subject:
             return None
         if not self._trusted_proxy_secret:
             _logger.error("AGENT_BOM_TRUST_PROXY_AUTH is enabled without AGENT_BOM_TRUST_PROXY_AUTH_SECRET")
@@ -1024,27 +1101,35 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Authentication required — trusted proxy requests must include X-Agent-Bom-Tenant-ID"},
             )
 
-        from agent_bom.api.auth import _ROLE_HIERARCHY, Role
+        from agent_bom.api.auth import Role
 
-        try:
-            proxy_role = Role(role_header)
-        except ValueError:
-            return JSONResponse(status_code=403, content={"detail": f"Invalid proxy role '{role_header}'"})
+        proxy_role: Role | None = None
+        if role_header:
+            try:
+                proxy_role = Role(role_header)
+            except ValueError:
+                return JSONResponse(status_code=403, content={"detail": f"Invalid proxy role '{role_header}'"})
+
+        effective_role, scim_error = self._resolve_runtime_role(
+            request,
+            tenant_id=tenant_id,
+            upstream_role=proxy_role,
+            subjects=(subject,),
+        )
+        if scim_error is not None:
+            return scim_error
+        if effective_role is None:
+            return JSONResponse(status_code=403, content={"detail": "Forbidden — trusted proxy role required"})
 
         required = Role(self._required_role(request.method, request.url.path))
-        if _ROLE_HIERARCHY.get(proxy_role, 0) < _ROLE_HIERARCHY.get(required, 0):
+        if not self._role_allows(effective_role, required):
             return JSONResponse(
                 status_code=403,
-                content={"detail": f"Forbidden — requires {required.value} role, proxy session has {proxy_role.value}"},
+                content={"detail": f"Forbidden — requires {required.value} role, proxy session has {effective_role.value}"},
             )
 
-        request.state.api_key_name = (
-            request.headers.get("x-agent-bom-subject")
-            or request.headers.get("x-forwarded-email")
-            or request.headers.get("x-auth-request-email")
-            or "proxy-header"
-        )
-        request.state.api_key_role = proxy_role.value
+        request.state.api_key_name = subject or "proxy-header"
+        request.state.api_key_role = effective_role.value
         request.state.tenant_id = tenant_id
         request.state.auth_method = "proxy_header"
         request.state.proxy_auth_attested = True
@@ -1057,7 +1142,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 actor=str(request.state.api_key_name),
                 resource=str(request.url.path),
                 tenant_id=tenant_id,
-                role=proxy_role.value,
+                role=effective_role.value,
                 issuer=presented_issuer or None,
             )
         except Exception:  # pragma: no cover - audit side effects must not block auth

@@ -173,11 +173,12 @@ def describe_scim_posture() -> dict[str, object]:
             "payload_tenant_attributes_ignored": True,
         },
         "provisioning_authority": "scim_lifecycle_store",
-        "auth_authority": "api_key_oidc_saml_or_trusted_proxy",
-        "runtime_auth_enforced": False,
+        "auth_authority": "api_key_oidc_saml_trusted_proxy_with_scim_role_overlay",
+        "runtime_auth_enforced": configured,
         "deprovisioning_boundary": (
-            "SCIM deactivate/delete updates provisioned lifecycle state and audit evidence. Runtime OIDC, SAML, "
-            "reverse-proxy, and API-key sessions are revoked by their own upstream auth path."
+            "SCIM deactivate/delete updates provisioned lifecycle state and constrains runtime OIDC, SAML, "
+            "browser, and trusted reverse-proxy roles when the authenticated subject matches a tenant-local SCIM user. "
+            "Long-lived service API keys remain governed by API-key lifecycle controls."
         ),
         "groups_required": groups_required,
         "verified_idp_templates": [

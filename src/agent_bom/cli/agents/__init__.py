@@ -74,6 +74,13 @@ from agent_bom.resolver import resolve_all_versions_sync
 from agent_bom.scanners import IncompleteScanError, consume_scan_performance, consume_scan_warnings, scan_agents_sync
 
 
+def _reset_offline_mode() -> None:
+    """Restore process-global network mode after an offline CLI invocation."""
+    from agent_bom.scanners import set_offline_mode
+
+    set_offline_mode(False)
+
+
 @click.command()
 @scan_options
 def scan(
@@ -368,6 +375,9 @@ def scan(
         from agent_bom.scanners import set_offline_mode
 
         set_offline_mode(True)  # Block ALL network calls (scanner + transport layer)
+        click_ctx = click.get_current_context(silent=True)
+        if click_ctx is not None:
+            click_ctx.call_on_close(_reset_offline_mode)
         auto_update_db = False
         enrich = False
         scorecard_flag = False

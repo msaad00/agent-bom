@@ -233,6 +233,7 @@ export interface MCPServer {
   auth_mode?: string | undefined;
   config_path?: string | undefined;
   security_warnings?: string[] | undefined;
+  security_intelligence?: SecurityIntelligenceEntry[] | undefined;
   packages: Package[];
   tools?: Tool[] | undefined;
   env?: Record<string, string> | undefined;
@@ -241,6 +242,25 @@ export interface MCPServer {
   credential_env_vars?: string[] | undefined;
   security_blocked?: boolean | undefined;
   provenance?: MCPProvenance | undefined;
+}
+
+export interface SecurityIntelligenceEntry {
+  entry_id: string;
+  title: string;
+  severity?: string | undefined;
+  confidence: string;
+  default_recommendation: string;
+  source_type?: string | undefined;
+  source?: string | undefined;
+  match_type?: string | undefined;
+  matched_value?: string | undefined;
+  ecosystem?: string | undefined;
+  package?: string | undefined;
+  affected_versions?: string | undefined;
+  first_seen?: string | undefined;
+  references?: string[] | undefined;
+  last_verified?: string | undefined;
+  remediation_actions?: string[] | undefined;
 }
 
 export interface MCPProvenance {

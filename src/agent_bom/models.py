@@ -571,6 +571,7 @@ class MCPServer:
     permission_profile: Optional[PermissionProfile] = None
     security_blocked: bool = False  # True if server was rejected for security reasons
     security_warnings: list[str] = field(default_factory=list)  # Security issues found during discovery
+    security_intelligence: list[dict[str, object]] = field(default_factory=list)
     surface: ServerSurface = ServerSurface.MCP
     discovery_sources: list[str] = field(default_factory=list)
 

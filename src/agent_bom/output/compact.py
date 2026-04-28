@@ -83,6 +83,7 @@ def print_compact_summary(report: AIBOMReport) -> None:
     """Compact summary — posture + key metrics in ~8 lines."""
     from collections import Counter
 
+    from agent_bom.finding import FindingType
     from agent_bom.output import _sev_badge, console
     from agent_bom.posture import compute_posture_scorecard
     from agent_bom.vex import active_blast_radii
@@ -91,6 +92,9 @@ def print_compact_summary(report: AIBOMReport) -> None:
     active_findings = active_blast_radii(report.blast_radii)
     for br in active_findings:
         sev_counts[br.vulnerability.severity.value.upper()] += 1
+    policy_findings = [finding for finding in report.to_findings() if finding.finding_type != FindingType.CVE]
+    for finding in policy_findings:
+        sev_counts[str(finding.severity).upper()] += 1
 
     scorecard = compute_posture_scorecard(report)
     preferred_driver_order = [
@@ -116,7 +120,7 @@ def print_compact_summary(report: AIBOMReport) -> None:
             if len(weak_dimensions) >= 2:
                 break
 
-    if report.total_vulnerabilities == 0:
+    if report.total_vulnerabilities == 0 and not policy_findings:
         posture = "[bold white on green] CLEAN [/bold white on green]"
         border_style = "green"
     else:
@@ -162,7 +166,8 @@ def print_compact_summary(report: AIBOMReport) -> None:
         f"  Agents  [bold]{report.total_agents}[/bold]    "
         f"Servers  [bold]{report.total_servers}[/bold]    "
         f"Packages  [bold]{report.total_packages}[/bold][dim]{pkg_detail}[/dim]    "
-        f"Vulns  [bold]{report.total_vulnerabilities}[/bold]",
+        f"Vulns  [bold]{report.total_vulnerabilities}[/bold]    "
+        f"Findings  [bold]{len(policy_findings)}[/bold]",
     ]
     if weak_dimensions:
         driver_parts = [f"[yellow]{dim.name}[/yellow]: {_compact_detail(dim.details, limit=54)}" for dim in weak_dimensions]

@@ -91,6 +91,16 @@ def _merge_server(target: MCPServer, incoming: MCPServer) -> None:
     target.env = {**incoming.env, **target.env}
     target.security_blocked = target.security_blocked or incoming.security_blocked
     target.security_warnings = _merge_strings(target.security_warnings, incoming.security_warnings)
+    existing_intel = {
+        (str(item.get("entry_id")), str(item.get("matched_value"))) for item in target.security_intelligence if isinstance(item, dict)
+    }
+    for item in incoming.security_intelligence:
+        if not isinstance(item, dict):
+            continue
+        key = (str(item.get("entry_id")), str(item.get("matched_value")))
+        if key not in existing_intel:
+            target.security_intelligence.append(item)
+            existing_intel.add(key)
     target.discovery_sources = _merge_strings(_source_list(target), _source_list(incoming))
     if not target.working_dir:
         target.working_dir = incoming.working_dir

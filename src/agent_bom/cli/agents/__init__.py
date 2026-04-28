@@ -121,6 +121,13 @@ def _expand_docker_mcp_packages(
     return [pkg for pkg in discovered if str(getattr(pkg, "ecosystem", "")).lower() != "docker"] + expanded, failures
 
 
+def _reset_offline_mode() -> None:
+    """Restore process-global network mode after an offline CLI invocation."""
+    from agent_bom.scanners import set_offline_mode
+
+    set_offline_mode(False)
+
+
 @click.command()
 @scan_options
 def scan(
@@ -415,6 +422,9 @@ def scan(
         from agent_bom.scanners import set_offline_mode
 
         set_offline_mode(True)  # Block ALL network calls (scanner + transport layer)
+        click_ctx = click.get_current_context(silent=True)
+        if click_ctx is not None:
+            click_ctx.call_on_close(_reset_offline_mode)
         auto_update_db = False
         enrich = False
         scorecard_flag = False
@@ -1105,6 +1115,15 @@ def scan(
                 con.print(f"  [yellow]⚠[/yellow] Scan completed with {len(scan_warnings)} warning(s); results may be incomplete.")
             if blast_radii:
                 con.print(f"  [red]⚠[/red] Scan complete — [bold]{len(blast_radii)}[/bold] finding(s)")
+            elif offline:
+                if unresolved:
+                    con.print(
+                        "  [yellow]⚠[/yellow] Offline scan complete: no known vulnerabilities found "
+                        "in local data, but coverage is partial for "
+                        f"{len(unresolved)} package(s) without pinned versions"
+                    )
+                else:
+                    con.print("  [green]✓[/green] Offline scan complete: no known vulnerabilities found in local data")
             else:
                 con.print("  [green]✓[/green] No known vulnerabilities found")
             if enrich and not quiet:
@@ -2040,7 +2059,7 @@ def scan(
                 con.print(
                     f"\n  [green]→[/green] {_fixable} fixable — [bold]-f html[/bold] for full report · [bold]--verbose[/bold] for details"
                 )
-        elif not no_scan and total_packages > 0:
+        elif not no_scan and total_packages > 0 and not [f for f in report.to_findings() if f.finding_type.value != "CVE"]:
             con.print("\n  [green]→[/green] no vulnerabilities found — supply chain looks clean")
 
     # Step 8: Enterprise integrations + SIEM + policy (post-scan)

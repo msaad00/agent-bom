@@ -107,6 +107,17 @@ def _mock_observation_store() -> InMemoryMCPObservationStore:
             command="npx",
             args=["-y", "test-server"],
             credential_env_vars=["API_KEY"],
+            security_blocked=True,
+            security_intelligence=[
+                {
+                    "entry_id": "intel-a",
+                    "title": "Persisted intelligence",
+                    "confidence": "confirmed_malicious",
+                    "default_recommendation": "block",
+                    "matched_value": "npx bad --token raw-secret",
+                    "references": ["https://example.com/advisory", "javascript:alert(1)"],
+                }
+            ],
             observed_via=["fleet_sync", "scan_result"],
             observed_scopes=["endpoint", "scan"],
             scan_sources=["fleet_sync"],
@@ -273,6 +284,10 @@ def test_agent_detail_exposes_server_provenance(_fleet, _mock):
         resp = client.get("/v1/agents/test-agent")
         assert resp.status_code == 200
         server = resp.json()["agent"]["mcp_servers"][0]
+        assert server["security_blocked"] is True
+        assert server["security_intelligence"][0]["entry_id"] == "intel-a"
+        assert "raw-secret" not in server["security_intelligence"][0]["matched_value"]
+        assert server["security_intelligence"][0]["references"] == ["https://example.com/advisory"]
         provenance = server["provenance"]
         assert provenance["configured_locally"] is False
         assert provenance["fleet_present"] is True

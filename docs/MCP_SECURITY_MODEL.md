@@ -67,12 +67,14 @@ CVE-2025-XXXX (CRITICAL)
 
 **What agent-bom does:** scans every package in every discovered server against OSV, NVD, EPSS, CISA KEV, and GHSA. Maps CVE → package → server → agent → credentials → tools (blast radius).
 
-agent-bom also ships a bundled curated MCP blocklist at `src/agent_bom/data/mcp-blocklist.json`.
+agent-bom also ships bundled MCP intelligence at `src/agent_bom/data/mcp-blocklist.json`
+with a machine-readable contract in `src/agent_bom/data/mcp-intelligence.schema.json`.
 During agent scans, discovered MCP server names, registry IDs, package names, and launch commands
 are checked offline against that file:
 
-- Exact blocklist matches produce a `critical` `MCP_BLOCKLIST` finding and mark the server as security-blocked in the report.
-- Pattern matches produce a `high` `MCP_BLOCKLIST` finding by default and add a server security warning.
+- Each entry carries confidence, default recommendation, source type, references, last verification date, affected package/version data, and remediation actions.
+- Confirmed malicious entries with `default_recommendation=block` produce a `critical` `MCP_BLOCKLIST` finding, add structured `security_intelligence`, and mark the server as security-blocked in the report.
+- Pattern matches that are heuristic or suspicious add structured `security_intelligence` and a server security warning, but default to review unless the entry explicitly recommends block.
 - Critical matches found from the initial server identity are marked before dependency extraction, so CLI/API scans skip deeper package extraction for that server.
 - The blocklist is local package data in this phase. Scans do not query a real-time threat-feed API, and agent-bom does not ship a hidden remote kill switch.
 - Endpoint and gateway enforcement stays operator-controlled: teams can use these `security_blocked` signals in fleet policy, MDM rollout, gateway policy, or CI gates, while scan-only runs report the finding without deleting local files or stopping third-party processes.

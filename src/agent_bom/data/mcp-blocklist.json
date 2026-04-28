@@ -1,12 +1,44 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "updated": "2026-04-28",
-  "description": "Curated MCP server blocklist and suspicious-name patterns. Exact entries require confirmation; pattern entries include heuristic names and boundary-aware package identity matches.",
+  "description": "Curated MCP intelligence entries and suspicious-name patterns. Confirmed malicious entries carry references and default enforcement recommendations; heuristic entries remain review-oriented.",
+  "policy_contract": {
+    "confidence_levels": [
+      "confirmed_malicious",
+      "suspicious",
+      "heuristic"
+    ],
+    "default_recommendations": [
+      "block",
+      "warn",
+      "review"
+    ],
+    "source_types": [
+      "security_advisory",
+      "vendor_statement",
+      "community_report",
+      "package_registry",
+      "heuristic"
+    ]
+  },
   "entries": [
     {
       "id": "malicious-npm-postmark-mcp",
       "title": "Malicious Postmark MCP npm package",
       "description": "The postmark-mcp npm package impersonated Postmark's MCP server and exfiltrated outgoing email via hidden BCC behavior. Remove discovered installations and rotate exposed credentials.",
+      "ecosystem": "npm",
+      "package": "postmark-mcp",
+      "affected_versions": ">=1.0.16",
+      "confidence": "confirmed_malicious",
+      "default_recommendation": "block",
+      "source_type": "security_advisory",
+      "first_seen": "2025-09-26",
+      "last_verified": "2026-04-28",
+      "remediation_actions": [
+        "remove_server",
+        "rotate_exposed_credentials",
+        "audit_outbound_email_paths"
+      ],
       "match_type": "pattern",
       "patterns": [
         "(^|\\s)postmark-mcp(@[^\\s]+)?(\\s|$)",
@@ -23,6 +55,19 @@
       "id": "malicious-npm-lanyer640-mcp-runcommand-server",
       "title": "Malicious MCP run command npm package",
       "description": "The @lanyer640/mcp-runcommand-server npm package was reported as malicious and associated with reverse-shell or malicious-domain behavior. Treat hosts that installed or ran it as potentially compromised.",
+      "ecosystem": "npm",
+      "package": "@lanyer640/mcp-runcommand-server",
+      "affected_versions": "*",
+      "confidence": "confirmed_malicious",
+      "default_recommendation": "block",
+      "source_type": "security_advisory",
+      "first_seen": "2025-10-01",
+      "last_verified": "2026-04-28",
+      "remediation_actions": [
+        "remove_server",
+        "rotate_exposed_credentials",
+        "audit_host_for_reverse_shell_activity"
+      ],
       "match_type": "pattern",
       "patterns": [
         "(^|\\s)@lanyer640/mcp-runcommand-server(@[^\\s]+)?(\\s|$)",
@@ -39,6 +84,19 @@
       "id": "malicious-npm-mcp-server-todo",
       "title": "Malicious MCP todo npm package",
       "description": "The mcp-server-todo npm package is cataloged as a malicious MCP package with all public versions affected. Avoid installation and remove discovered copies.",
+      "ecosystem": "npm",
+      "package": "mcp-server-todo",
+      "affected_versions": "*",
+      "confidence": "confirmed_malicious",
+      "default_recommendation": "block",
+      "source_type": "security_advisory",
+      "first_seen": "2026-04-01",
+      "last_verified": "2026-04-28",
+      "remediation_actions": [
+        "remove_server",
+        "rotate_exposed_credentials",
+        "audit_host"
+      ],
       "match_type": "pattern",
       "patterns": [
         "(^|\\s)mcp-server-todo(@[^\\s]+)?(\\s|$)",
@@ -54,6 +112,18 @@
       "id": "malicious-npm-ids-enterprise-mcp-server-0-0-2",
       "title": "Compromised IDS Enterprise MCP npm package version",
       "description": "ids-enterprise-mcp-server version 0.0.2 was reported as containing Shai-Hulud 2.0 malware that harvests credentials and attempts to infect GitHub and npm repositories.",
+      "ecosystem": "npm",
+      "package": "ids-enterprise-mcp-server",
+      "affected_versions": "0.0.2",
+      "confidence": "confirmed_malicious",
+      "default_recommendation": "block",
+      "source_type": "security_advisory",
+      "last_verified": "2026-04-28",
+      "remediation_actions": [
+        "remove_server",
+        "rotate_exposed_credentials",
+        "audit_git_and_npm_tokens"
+      ],
       "match_type": "pattern",
       "patterns": [
         "(^|\\s)ids-enterprise-mcp-server@0\\.0\\.2(\\s|$)",
@@ -69,6 +139,14 @@
       "id": "suspicious-credential-exfiltration-name",
       "title": "Suspicious credential exfiltration server name",
       "description": "Server name, registry id, package name, or command contains terms commonly used by credential theft or exfiltration tooling.",
+      "confidence": "heuristic",
+      "default_recommendation": "review",
+      "source_type": "heuristic",
+      "last_verified": "2026-04-28",
+      "remediation_actions": [
+        "review_server_source",
+        "verify_requested_permissions"
+      ],
       "match_type": "pattern",
       "patterns": [
         "(^|[-_./@])credential[-_]?stealer($|[-_./])",

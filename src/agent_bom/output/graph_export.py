@@ -118,7 +118,12 @@ def load_graph_from_scan(scan_path: Union[str, Path]) -> DepGraph:
         for server in agent.get("mcp_servers", []):
             srv_name = server.get("name", "unknown-server")
             has_creds = server.get("has_credentials", False)
-            srv_kind = "server_cred" if has_creds else "server"
+            if server.get("security_blocked"):
+                srv_kind = "server_blocked"
+            elif server.get("security_intelligence"):
+                srv_kind = "server_intel"
+            else:
+                srv_kind = "server_cred" if has_creds else "server"
 
             srv_id = f"server:{agent_name}/{srv_name}"
             graph.add_node(srv_id, srv_name, srv_kind)

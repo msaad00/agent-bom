@@ -1,6 +1,10 @@
+import json
+from pathlib import Path
+
 from agent_bom.mcp_blocklist import blocklist_findings_for_agents, flag_blocklisted_mcp_servers, load_mcp_blocklist, match_mcp_server
 from agent_bom.models import Agent, AgentType, AIBOMReport, MCPServer, Package
 from agent_bom.output import to_json
+from agent_bom.output.sarif import to_sarif
 
 
 def _agent_with_server(server: MCPServer) -> Agent:
@@ -19,7 +23,12 @@ def test_exact_blocklist_match_is_critical_and_blocks_server() -> None:
                 "id": "confirmed-bad-server",
                 "title": "Confirmed malicious MCP server",
                 "description": "Confirmed malicious behavior.",
+                "confidence": "confirmed_malicious",
+                "default_recommendation": "block",
+                "source_type": "security_advisory",
+                "last_verified": "2026-04-28",
                 "names": ["evil-mcp"],
+                "references": ["https://example.com/advisory"],
             }
         ]
     }
@@ -32,8 +41,12 @@ def test_exact_blocklist_match_is_critical_and_blocks_server() -> None:
     assert findings[0].severity == "critical"
     assert findings[0].finding_type.value == "MCP_BLOCKLIST"
     assert findings[0].evidence["match_type"] == "exact"
+    assert findings[0].evidence["confidence"] == "confirmed_malicious"
+    assert findings[0].evidence["default_recommendation"] == "block"
     assert server.security_blocked is True
     assert any("MCP_BLOCKLIST[critical/exact]" in warning for warning in server.security_warnings)
+    assert server.security_intelligence[0]["entry_id"] == "confirmed-bad-server"
+    assert server.security_intelligence[0]["references"] == ["https://example.com/advisory"]
 
 
 def test_pattern_blocklist_match_is_high_warning() -> None:
@@ -99,6 +112,67 @@ def test_json_output_includes_mcp_blocklist_findings() -> None:
     assert payload["findings"][0]["severity"] == "critical"
     assert payload["findings"][0]["evidence"]["entry_id"] == "confirmed-bad-server"
     assert payload["agents"][0]["mcp_servers"][0]["security_blocked"] is True
+    assert payload["agents"][0]["mcp_servers"][0]["security_intelligence"][0]["entry_id"] == "confirmed-bad-server"
+
+
+def test_match_values_are_redacted_before_output() -> None:
+    server = MCPServer(
+        name="runner",
+        command="npx",
+        args=["credential-stealer", "--api-key", "sk-live-secret", "url=https://user:pass@example.com/path?token=secret"],
+    )
+    blocklist = {
+        "entries": [
+            {
+                "id": "suspicious-name",
+                "title": "Suspicious server",
+                "description": "Suspicious command.",
+                "patterns": ["credential-stealer"],
+                "severity": "high",
+                "confidence": "heuristic",
+                "default_recommendation": "review",
+                "source_type": "heuristic",
+                "last_verified": "2026-04-28",
+                "references": [],
+            }
+        ]
+    }
+
+    match = match_mcp_server(server, blocklist)[0]
+
+    assert "sk-live-secret" not in match.matched_value
+    assert "user:pass" not in match.matched_value
+    assert "token=secret" not in match.matched_value
+    assert "--api-key <redacted>" in match.matched_value
+
+
+def test_sarif_output_includes_mcp_blocklist_findings() -> None:
+    server = MCPServer(name="evil-mcp", command="npx", args=["evil-mcp"], config_path="mcp.json")
+    agent = _agent_with_server(server)
+    findings = blocklist_findings_for_agents(
+        [agent],
+        {
+            "entries": [
+                {
+                    "id": "confirmed-bad-server",
+                    "title": "Confirmed malicious MCP server",
+                    "description": "Confirmed malicious behavior.",
+                    "names": ["evil-mcp"],
+                    "severity": "critical",
+                    "confidence": "confirmed_malicious",
+                    "default_recommendation": "block",
+                    "source_type": "security_advisory",
+                    "last_verified": "2026-04-28",
+                    "references": ["https://example.com/advisory"],
+                }
+            ]
+        },
+    )
+
+    sarif = to_sarif(AIBOMReport(agents=[agent], findings=findings))
+
+    assert sarif["runs"][0]["results"]
+    assert sarif["runs"][0]["results"][0]["ruleId"] == "finding/MCP_BLOCKLIST"
 
 
 def test_flag_blocklisted_servers_blocks_before_report_building() -> None:
@@ -152,3 +226,33 @@ def test_bundled_blocklist_keeps_version_specific_mcp_package_pinned() -> None:
         for match in match_mcp_server(unpinned, blocklist)
         if match.entry_id == "malicious-npm-ids-enterprise-mcp-server-0-0-2"
     ]
+
+
+def test_bundled_mcp_intelligence_entries_have_policy_contract() -> None:
+    root = Path(__file__).resolve().parents[1]
+    data = json.loads((root / "src/agent_bom/data/mcp-blocklist.json").read_text())
+
+    assert data["schema_version"] == 2
+    assert data["policy_contract"]["confidence_levels"] == ["confirmed_malicious", "suspicious", "heuristic"]
+
+    required = {
+        "id",
+        "title",
+        "description",
+        "confidence",
+        "default_recommendation",
+        "source_type",
+        "severity",
+        "match_type",
+        "last_verified",
+        "references",
+    }
+    confirmed = [entry for entry in data["entries"] if entry["confidence"] == "confirmed_malicious"]
+    assert confirmed
+    for entry in data["entries"]:
+        assert required <= set(entry)
+        assert entry["default_recommendation"] in {"block", "warn", "review"}
+        assert entry["confidence"] in data["policy_contract"]["confidence_levels"]
+        if entry["default_recommendation"] == "block":
+            assert entry["references"], entry["id"]
+            assert entry.get("package"), entry["id"]

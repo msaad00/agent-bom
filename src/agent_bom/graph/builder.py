@@ -149,6 +149,8 @@ def build_unified_graph_from_report(
                         "mcp_version": srv_dict.get("mcp_version", ""),
                         "has_credentials": srv_dict.get("has_credentials", False),
                         "security_blocked": srv_dict.get("security_blocked", False),
+                        "security_intelligence": srv_dict.get("security_intelligence", []),
+                        "security_intelligence_count": len(srv_dict.get("security_intelligence", []) or []),
                         "agent": agent_name,
                         "stable_id": srv_dict.get("stable_id", ""),
                         "fingerprint": srv_dict.get("fingerprint", ""),

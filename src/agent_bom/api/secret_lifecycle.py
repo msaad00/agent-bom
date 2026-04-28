@@ -58,6 +58,7 @@ def _rotation_posture(
     if not configured:
         return {
             "rotation_tracking_supported": True,
+            "rotation_tracking_status": "supported",
             "rotation_status": not_configured_status,
             "rotation_method": "secret_manager_swap_and_rollout_restart",
             "rotation_days": rotation_days,
@@ -70,6 +71,7 @@ def _rotation_posture(
     if not raw_last_rotated:
         return {
             "rotation_tracking_supported": True,
+            "rotation_tracking_status": "supported",
             "rotation_status": "unknown_age",
             "rotation_method": "secret_manager_swap_and_rollout_restart",
             "rotation_days": rotation_days,
@@ -87,6 +89,7 @@ def _rotation_posture(
     except ValueError:
         return {
             "rotation_tracking_supported": True,
+            "rotation_tracking_status": "supported",
             "rotation_status": "unknown_age",
             "rotation_method": "secret_manager_swap_and_rollout_restart",
             "rotation_days": rotation_days,
@@ -118,6 +121,7 @@ def _rotation_posture(
 
     return {
         "rotation_tracking_supported": True,
+        "rotation_tracking_status": "supported",
         "rotation_status": status,
         "rotation_method": "secret_manager_swap_and_rollout_restart",
         "rotation_days": rotation_days,

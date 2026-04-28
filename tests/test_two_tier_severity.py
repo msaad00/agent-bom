@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from io import StringIO
 from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
+from rich.console import Console
 
 from agent_bom.cli import main
 
@@ -130,6 +132,46 @@ def test_fail_on_severity_exits_one():
     runner = CliRunner()
     br = _make_blast_radius("critical", "CVE-2025-CRIT")
     result = _run_scan_with_findings(runner, [br], extra_args=["--fail-on-severity", "critical"])
+    assert result.exit_code == 1
+
+
+def test_fail_on_severity_exits_one_for_unified_non_cve_finding():
+    """--fail-on-severity should include unified findings such as MCP_BLOCKLIST."""
+    from agent_bom.cli.agents._context import ScanContext
+    from agent_bom.cli.agents._post import compute_exit_code
+    from agent_bom.finding import Asset, Finding, FindingSource, FindingType
+    from agent_bom.models import AIBOMReport
+
+    finding = Finding(
+        finding_type=FindingType.MCP_BLOCKLIST,
+        source=FindingSource.MCP_SCAN,
+        asset=Asset(name="bad-mcp", asset_type="mcp_server", location="mcp.json"),
+        severity="high",
+        title="Blocked MCP",
+    )
+    report = AIBOMReport(findings=[finding])
+    ctx = ScanContext(con=Console(file=StringIO(), force_terminal=False), report=report)
+
+    assert (
+        compute_exit_code(
+            ctx,
+            fail_on_severity="high",
+            warn_on_severity=None,
+            fail_on_kev=False,
+            fail_if_ai_risk=False,
+            push_url=None,
+            push_api_key=None,
+            quiet=True,
+        )
+        == 1
+    )
+
+
+def test_fail_on_severity_accepts_uppercase_choice():
+    """--fail-on-severity should normalize case like --warn-on."""
+    runner = CliRunner()
+    br = _make_blast_radius("high", "CVE-2025-HIGH")
+    result = _run_scan_with_findings(runner, [br], extra_args=["--fail-on-severity", "HIGH"])
     assert result.exit_code == 1
 
 

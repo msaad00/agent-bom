@@ -231,6 +231,7 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["ui"]["browser_session"] == "signed_http_only_cookie"
     assert body["ui"]["session_storage_fallback"] == "disabled"
     assert body["audit_hmac"]["rotation_tracking_supported"] is True
+    assert body["audit_hmac"]["rotation_tracking_status"] == "supported"
     assert body["rate_limit_runtime"]["backend"] in {"inmemory_single_process", "postgres_shared"}
     assert "shared_across_replicas" in body["rate_limit_runtime"]
     assert "configured_api_replicas" in body["rate_limit_runtime"]
@@ -271,6 +272,7 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["data_access_boundaries"]["operator_controls"]["disable_vulnerability_network"] == "--offline"
     assert body["secret_integrity"]["audit_hmac"]["status"] in {"configured", "ephemeral"}
     assert body["secret_integrity"]["audit_hmac"]["rotation_tracking_supported"] is True
+    assert body["secret_integrity"]["audit_hmac"]["rotation_tracking_status"] == "supported"
     assert body["secret_integrity"]["audit_hmac"]["rotation_status"] in {
         "ok",
         "unknown_age",
@@ -280,6 +282,11 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     }
     assert body["secret_integrity"]["compliance_signing"]["algorithm"] in {"HMAC-SHA256", "Ed25519"}
     assert body["secret_integrity"]["compliance_signing"]["rotation_tracking_supported"] is True
+    assert body["secret_integrity"]["compliance_signing"]["rotation_tracking_status"] == "supported"
+    assert body["data_access_boundaries"]["posture_vocabulary"]["capability_statuses"]["rotation_tracking_status"] == [
+        "supported",
+        "unsupported",
+    ]
     assert body["secret_integrity"]["compliance_signing"]["rotation_status"] in {
         "ok",
         "unknown_age",
@@ -465,6 +472,7 @@ def test_auth_policy_reports_secret_integrity_posture(monkeypatch: pytest.Monkey
     assert audit_hmac["source"] == "AGENT_BOM_AUDIT_HMAC_KEY"
     assert audit_hmac["persists_across_restart"] is True
     assert audit_hmac["rotation_tracking_supported"] is True
+    assert audit_hmac["rotation_tracking_status"] == "supported"
     assert audit_hmac["rotation_status"] == "ok"
     assert audit_hmac["rotation_method"] == "env_swap_and_restart"
     assert audit_hmac["rotation_days"] == 30
@@ -477,6 +485,7 @@ def test_auth_policy_reports_secret_integrity_posture(monkeypatch: pytest.Monkey
     assert signing["mode"] == "asymmetric_public_key"
     assert signing["public_key_endpoint"] == "/v1/compliance/verification-key"
     assert signing["rotation_tracking_supported"] is True
+    assert signing["rotation_tracking_status"] == "supported"
     assert signing["rotation_status"] == "rotation_due"
     assert signing["rotation_method"] == "env_swap_and_restart"
     assert signing["rotation_days"] == 30

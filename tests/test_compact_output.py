@@ -5,6 +5,7 @@ from io import StringIO
 
 from rich.console import Console
 
+from agent_bom.finding import Asset, Finding, FindingSource, FindingType
 from agent_bom.models import (
     Agent,
     AgentStatus,
@@ -123,6 +124,24 @@ def test_compact_summary_with_vulns():
     assert "POSTURE GRADE" in output
     assert "CRIT" in output  # Badge shows " CRIT " not "CRITICAL"
     assert "Vulns" in output
+
+
+def test_compact_summary_includes_non_cve_findings():
+    """Policy and blocklist findings should not render as CLEAN."""
+    finding = Finding(
+        finding_type=FindingType.MCP_BLOCKLIST,
+        source=FindingSource.MCP_SCAN,
+        asset=Asset(name="bad-server", asset_type="mcp_server"),
+        severity="high",
+        title="Blocked MCP server",
+    )
+    report = AIBOMReport(findings=[finding])
+
+    output = _capture(print_compact_summary, report)
+
+    assert "CLEAN" not in output
+    assert "HIGH" in output
+    assert "Findings" in output
 
 
 def test_compact_summary_credentials():

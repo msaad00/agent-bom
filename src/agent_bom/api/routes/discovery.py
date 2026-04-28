@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, Request
 from agent_bom.api.mcp_observation_store import MCPObservation, merge_observations
 from agent_bom.api.models import JobStatus
 from agent_bom.api.stores import _get_fleet_store, _get_mcp_observation_store, _get_store
+from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.security import sanitize_error
 
 router = APIRouter()
@@ -26,6 +27,33 @@ _logger = logging.getLogger(__name__)
 
 def _tenant_id(request: Request) -> str:
     return getattr(request.state, "tenant_id", "default")
+
+
+def _merge_strings(*values: list[str]) -> list[str]:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for group in values:
+        for value in group:
+            if value not in seen:
+                seen.add(value)
+                merged.append(value)
+    return merged
+
+
+def _merge_security_intelligence(*values: list[dict[str, object]]) -> list[dict[str, object]]:
+    merged: list[dict[str, object]] = []
+    seen: set[tuple[str, str]] = set()
+    for group in values:
+        for item in group:
+            if not isinstance(item, dict):
+                continue
+            safe_item = sanitize_security_intelligence_entry(item)
+            key = (str(safe_item.get("entry_id") or ""), str(safe_item.get("matched_value") or ""))
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(safe_item)
+    return merged
 
 
 def _completed_jobs(tenant_id: str) -> list[Any]:
@@ -152,10 +180,12 @@ def _serialize_agent(
         server_payload["auth_mode"] = auth_mode
         server_payload["has_credentials"] = has_credentials
         server_payload["credential_env_vars"] = credential_names
+        server_payload["security_blocked"] = bool(getattr(server, "security_blocked", False))
         server_payload.setdefault("args", list(getattr(server, "args", []) or []))
         server_payload.setdefault("url", server_url)
         server_payload.setdefault("config_path", getattr(server, "config_path", None))
-        server_payload.setdefault("security_warnings", list(getattr(server, "security_warnings", []) or []))
+        server_payload["security_warnings"] = list(getattr(server, "security_warnings", []) or [])
+        server_payload["security_intelligence"] = _merge_security_intelligence(list(getattr(server, "security_intelligence", []) or []))
         observation_id, legacy_observation_id = _observation_ids(agent, server)
         stored_observation = (observation_index or {}).get(observation_id)
         if stored_observation is None and legacy_observation_id:
@@ -179,6 +209,15 @@ def _serialize_agent(
             observed_via.append("gateway_discovery")
             observed_scopes.append("gateway")
         if stored_observation is not None:
+            server_payload["security_blocked"] = bool(server_payload["security_blocked"]) or stored_observation.security_blocked
+            server_payload["security_warnings"] = _merge_strings(
+                list(server_payload.get("security_warnings", []) or []),
+                stored_observation.security_warnings,
+            )
+            server_payload["security_intelligence"] = _merge_security_intelligence(
+                list(server_payload.get("security_intelligence", []) or []),
+                stored_observation.security_intelligence,
+            )
             observed_via = sorted(set(stored_observation.observed_via) | set(observed_via))
             observed_scopes = sorted(set(stored_observation.observed_scopes) | set(observed_scopes))
             scan_sources = sorted(set(stored_observation.scan_sources) | set(scan_history["scan_sources"]))
@@ -278,7 +317,9 @@ def _persist_agent_observations(
             args=list(getattr(server, "args", []) or []),
             config_path=getattr(server, "config_path", None),
             credential_env_vars=credential_names,
+            security_blocked=bool(getattr(server, "security_blocked", False)),
             security_warnings=list(getattr(server, "security_warnings", []) or []),
+            security_intelligence=list(getattr(server, "security_intelligence", []) or []),
             observed_via=observed_via,
             observed_scopes=observed_scopes,
             scan_sources=scan_history["scan_sources"],

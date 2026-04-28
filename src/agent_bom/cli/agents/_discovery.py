@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import platform
 import sys
 from pathlib import Path
 from typing import Any
+
+import click
 
 from agent_bom.cli._common import _build_agents_from_inventory
 from agent_bom.cli.agents._context import ScanContext
@@ -114,7 +117,10 @@ def run_local_discovery(
             label = inventory
         from agent_bom.inventory import load_inventory
 
-        inventory_data = load_inventory(inventory)
+        try:
+            inventory_data = load_inventory(inventory)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            raise click.BadParameter(str(exc), param_hint="--inventory") from exc
         ctx.agents = _build_agents_from_inventory(inventory_data, inventory)
         con.print(f"\n  [green]✓[/green] {len(ctx.agents)} agent(s) from {label}")
     elif config_dir:

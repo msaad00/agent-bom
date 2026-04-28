@@ -1,0 +1,79 @@
+{{- /*
+KEDA-driven autoscaling for the control-plane API.
+
+When ``controlPlane.api.autoscaling.keda.enabled`` is true, KEDA's
+ScaledObject takes over from the static-CPU HPA. KEDA generates its own
+HPA under the hood, so the existing ``controlplane-api-hpa.yaml`` is
+suppressed elsewhere when this is on (see _helpers.tpl).
+
+The default trigger set targets two scanner-workload signals:
+
+* Saturation pressure — `agent_bom_rate_limit_hits_total` rate.
+  Rate-limit rejections fire before queue overflow, so they're a leading
+  indicator of overload that CPU/memory miss for bursty job traffic.
+
+* Request latency — `histogram_quantile(0.99, http_request_duration_seconds_bucket)`
+  exported by the API. p99 climbing past the threshold means request
+  servicing is starting to back up even when CPU still looks fine.
+
+Operators can swap or extend triggers via
+``controlPlane.api.autoscaling.keda.triggers`` without forking the chart.
+
+Background metric for a future "scan_jobs_active" gauge (issue tracked
+in the SLO doc) plugs in cleanly as a third Prometheus trigger.
+*/ -}}
+{{- if and .Values.controlPlane.enabled .Values.controlPlane.api.enabled .Values.controlPlane.api.autoscaling.enabled .Values.controlPlane.api.autoscaling.keda.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "agent-bom.name" . }}-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "agent-bom.name" . }}-api
+  minReplicaCount: {{ .Values.controlPlane.api.autoscaling.minReplicas }}
+  maxReplicaCount: {{ .Values.controlPlane.api.autoscaling.maxReplicas }}
+  pollingInterval: {{ .Values.controlPlane.api.autoscaling.keda.pollingIntervalSeconds | default 30 }}
+  cooldownPeriod: {{ .Values.controlPlane.api.autoscaling.keda.cooldownSeconds | default 300 }}
+  fallback:
+    failureThreshold: {{ .Values.controlPlane.api.autoscaling.keda.fallback.failureThreshold | default 3 }}
+    replicas: {{ .Values.controlPlane.api.autoscaling.keda.fallback.replicas | default .Values.controlPlane.api.autoscaling.minReplicas }}
+  {{- with .Values.controlPlane.api.autoscaling.keda.advanced }}
+  advanced:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  triggers:
+    {{- $defaults := .Values.controlPlane.api.autoscaling.keda }}
+    {{- if $defaults.triggers }}
+    {{- toYaml $defaults.triggers | nindent 4 }}
+    {{- else }}
+    - type: prometheus
+      metadata:
+        serverAddress: {{ required "keda.prometheus.serverAddress is required when keda.enabled is true and triggers is empty" $defaults.prometheus.serverAddress | quote }}
+        # Saturation: rate-limit rejections per second across global+tenant buckets.
+        # Threshold is "rejections/sec averaged across replicas" — exceeding it
+        # for the polling window scales out.
+        metricName: agent_bom_rate_limit_pressure
+        threshold: {{ $defaults.prometheus.rateLimitThreshold | default "0.5" | quote }}
+        query: |
+          sum(rate(agent_bom_rate_limit_hits_total{bucket=~"global|tenant"}[1m]))
+    - type: prometheus
+      metadata:
+        serverAddress: {{ $defaults.prometheus.serverAddress | quote }}
+        metricName: agent_bom_api_p99_seconds
+        # p99 latency of the API surface in seconds. Tune the threshold to
+        # the SLO target you publish; default is 1.5s, matching the
+        # documented "p99 < 2s under K agents" SLO with a 0.5s headroom.
+        threshold: {{ $defaults.prometheus.p99ThresholdSeconds | default "1.5" | quote }}
+        query: |
+          histogram_quantile(
+            0.99,
+            sum by (le) (rate(http_request_duration_seconds_bucket{job=~".*agent-bom-api.*"}[2m]))
+          )
+    {{- end }}
+{{- end }}

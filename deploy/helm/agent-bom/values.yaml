@@ -314,6 +314,29 @@ controlPlane:
       targetCPUUtilizationPercentage: 70
       targetMemoryUtilizationPercentage: null
       behavior: {}
+      # KEDA-driven autoscaling. When enabled, the static CPU/memory HPA is
+      # suppressed and a ScaledObject is rendered instead. KEDA generates
+      # its own internal HPA. Requires the KEDA operator installed cluster-side
+      # (https://keda.sh). See examples/eks-keda-values.yaml for a full
+      # production preset and site-docs/deployment/scaling-slo.md for the
+      # published per-tier SLO this scaler implements.
+      keda:
+        enabled: false
+        pollingIntervalSeconds: 30
+        cooldownSeconds: 300
+        # Default trigger set targets bursty scanner workloads using
+        # backpressure + p99 latency signals exported by the API. Override
+        # `triggers:` with a full KEDA triggers list to plug in custom scalers
+        # (SQS, Kafka, AWS CloudWatch, queue-depth, etc.).
+        prometheus:
+          serverAddress: ""  # e.g. http://prometheus.monitoring.svc:9090
+          rateLimitThreshold: "0.5"   # rejections/sec averaged across replicas
+          p99ThresholdSeconds: "1.5"  # API p99 latency in seconds
+        triggers: []  # set non-empty to fully replace the default Prometheus pair
+        fallback:
+          failureThreshold: 3
+          replicas: 2  # falls back here if Prometheus is unreachable
+        advanced: {}   # passes through to ScaledObject.spec.advanced
     port: 8422
     args:
       - api

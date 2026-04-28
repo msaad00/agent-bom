@@ -55,7 +55,43 @@ Pick one — none of these can be enabled from a workflow file alone.
 | **Use a GitHub App / PAT for auto-merge** | Replace the bot identity for `Update branch` pushes | Pushes from a non-`GITHUB_TOKEN` identity do fire workflows. Requires creating + scoping a dedicated app or token. |
 
 The merge queue is the recommended option for this repo because the workflow
-is already wired for `merge_group`.
+is already wired for `merge_group`. The three required-status-check workflows
+(`ci.yml`, `codeql.yml`, `pr-security-gate.yml`) all declare:
+
+```yaml
+on:
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+```
+
+so once branch protection is flipped, the queue runs the same checks that
+gate PRs today — no workflow edits required.
+
+#### How to flip it
+
+The merge queue cannot be enabled via the legacy `branches/{branch}/protection`
+REST endpoint. Use the **repository rulesets** API (or the Settings UI). The
+helper script wraps the API call:
+
+```sh
+# preview the payload (no changes made)
+scripts/enable_merge_queue.sh --dry-run
+
+# enable on main (requires admin token; one-time)
+GH_TOKEN=<admin-pat> scripts/enable_merge_queue.sh
+```
+
+If you prefer the UI: **Settings → Branches → main → Edit rule →** check
+"Require merge queue", set the same status-check list as today, save. Confirm
+with `gh api repos/<owner>/<repo>/branches/main/protection --jq .required_status_checks`.
+
+After enabling, "Update branch" disappears from the PR view; the
+`Merge when ready` button puts the PR into the queue, which rebases + tests
+the merge candidate against current `main` and only fast-forwards once green.
+Stranded-CI from `GITHUB_TOKEN` pushes is no longer reachable: the queue
+authors its merge commits with a non-`GITHUB_TOKEN` identity, so workflows
+fire normally.
 
 ---
 

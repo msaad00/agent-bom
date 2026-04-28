@@ -254,9 +254,7 @@ async def get_compliance(request: Request) -> dict:
 
     Returns per-control pass/warning/fail status and an overall compliance score.
     """
-    from agent_bom.atlas import ATLAS_TECHNIQUES
-    from agent_bom.nist_ai_rmf import NIST_AI_RMF
-    from agent_bom.owasp import OWASP_LLM_TOP10
+    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
 
     tenant_jobs = _tenant_jobs(request)
 
@@ -332,32 +330,9 @@ async def get_compliance(request: Request) -> dict:
             )
         return controls
 
-    from agent_bom.cis_controls import CIS_CONTROLS
-    from agent_bom.cmmc import CMMC_PRACTICES
-    from agent_bom.eu_ai_act import EU_AI_ACT
-    from agent_bom.fedramp import FEDRAMP_MODERATE
-    from agent_bom.iso_27001 import ISO_27001
-    from agent_bom.nist_800_53 import NIST_800_53
-    from agent_bom.nist_csf import NIST_CSF
-    from agent_bom.owasp_agentic import OWASP_AGENTIC_TOP10
-    from agent_bom.owasp_mcp import OWASP_MCP_TOP10
-    from agent_bom.pci_dss import PCI_DSS_REQUIREMENTS
-    from agent_bom.soc2 import SOC2_TSC
-
-    owasp = _build_controls(OWASP_LLM_TOP10, "owasp_tags", "code")
-    owasp_mcp = _build_controls(OWASP_MCP_TOP10, "owasp_mcp_tags", "code")
-    atlas = _build_controls(ATLAS_TECHNIQUES, "atlas_tags", "code")
-    nist = _build_controls(NIST_AI_RMF, "nist_ai_rmf_tags", "code")
-    owasp_agentic = _build_controls(OWASP_AGENTIC_TOP10, "owasp_agentic_tags", "code")
-    eu_ai_act = _build_controls(EU_AI_ACT, "eu_ai_act_tags", "code")
-    nist_csf = _build_controls(NIST_CSF, "nist_csf_tags", "code")
-    iso27001 = _build_controls(ISO_27001, "iso_27001_tags", "code")
-    soc2 = _build_controls(SOC2_TSC, "soc2_tags", "code")
-    cis = _build_controls(CIS_CONTROLS, "cis_tags", "code")
-    cmmc = _build_controls(CMMC_PRACTICES, "cmmc_tags", "code")
-    nist_800_53 = _build_controls(NIST_800_53, "nist_800_53_tags", "code")
-    fedramp = _build_controls({c: c for c in FEDRAMP_MODERATE}, "fedramp_tags", "code")
-    pci_dss = _build_controls(PCI_DSS_REQUIREMENTS, "pci_dss_tags", "code")
+    framework_controls = {
+        metadata.output_key: _build_controls(dict(metadata.catalog), metadata.tag_field, "code") for metadata in TAG_MAPPED_FRAMEWORKS
+    }
 
     def _count_statuses(controls: list[dict]) -> tuple[int, int, int]:
         p = sum(1 for c in controls if c["status"] == "pass")
@@ -365,22 +340,7 @@ async def get_compliance(request: Request) -> dict:
         f = sum(1 for c in controls if c["status"] == "fail")
         return p, w, f
 
-    all_frameworks = [
-        owasp,
-        owasp_mcp,
-        atlas,
-        nist,
-        owasp_agentic,
-        eu_ai_act,
-        nist_csf,
-        iso27001,
-        soc2,
-        cis,
-        cmmc,
-        nist_800_53,
-        fedramp,
-        pci_dss,
-    ]
+    all_frameworks = list(framework_controls.values())
     total_controls = sum(len(fw) for fw in all_frameworks)
     total_pass = sum(_count_statuses(fw)[0] for fw in all_frameworks)
     any_fail = any(_count_statuses(fw)[2] > 0 for fw in all_frameworks)
@@ -394,24 +354,24 @@ async def get_compliance(request: Request) -> dict:
     else:
         overall_status = "pass"
 
-    op, ow, of_ = _count_statuses(owasp)
-    mp, mw, mf = _count_statuses(owasp_mcp)
-    ap, aw, af = _count_statuses(atlas)
-    np_, nw, nf = _count_statuses(nist)
-    oap, oaw, oaf = _count_statuses(owasp_agentic)
-    eup, euw, euf = _count_statuses(eu_ai_act)
-    ncp, ncw, ncf = _count_statuses(nist_csf)
-    ip, iw, if2 = _count_statuses(iso27001)
-    sp, sw, sf = _count_statuses(soc2)
-    cp, cw, cf = _count_statuses(cis)
-    cmp, cmw, cmf = _count_statuses(cmmc)
-    n8p, n8w, n8f = _count_statuses(nist_800_53)
-    frp, frw, frf = _count_statuses(fedramp)
-    pp, pw, pf = _count_statuses(pci_dss)
     aisvs = _latest_aisvs_benchmark_from_jobs(tenant_jobs)
     aisvs_summary = aisvs["summary"]
+    summary: dict[str, int | float] = {}
+    for metadata in TAG_MAPPED_FRAMEWORKS:
+        passed, warned, failed = _count_statuses(framework_controls[metadata.output_key])
+        summary[f"{metadata.summary_prefix}_pass"] = passed
+        summary[f"{metadata.summary_prefix}_warn"] = warned
+        summary[f"{metadata.summary_prefix}_fail"] = failed
+    summary.update(
+        {
+            "aisvs_pass": aisvs_summary["pass"],
+            "aisvs_fail": aisvs_summary["fail"],
+            "aisvs_error": aisvs_summary["error"],
+            "aisvs_not_applicable": aisvs_summary["not_applicable"],
+        }
+    )
 
-    return {
+    response: dict[str, Any] = {
         "overall_score": overall_score,
         "overall_status": overall_status,
         "scan_count": scan_count,
@@ -419,70 +379,12 @@ async def get_compliance(request: Request) -> dict:
         "has_mcp_context": has_mcp_context,
         "has_agent_context": has_agent_context,
         "scan_sources": sorted(all_scan_sources),
-        "owasp_llm_top10": owasp,
-        "owasp_mcp_top10": owasp_mcp,
-        "mitre_atlas": atlas,
-        "nist_ai_rmf": nist,
-        "owasp_agentic_top10": owasp_agentic,
-        "eu_ai_act": eu_ai_act,
-        "nist_csf": nist_csf,
-        "iso_27001": iso27001,
-        "soc2": soc2,
-        "cis_controls": cis,
-        "cmmc": cmmc,
-        "nist_800_53": nist_800_53,
-        "fedramp": fedramp,
-        "pci_dss": pci_dss,
         "aisvs_benchmark": aisvs,
-        "summary": {
-            "owasp_pass": op,
-            "owasp_warn": ow,
-            "owasp_fail": of_,
-            "owasp_mcp_pass": mp,
-            "owasp_mcp_warn": mw,
-            "owasp_mcp_fail": mf,
-            "atlas_pass": ap,
-            "atlas_warn": aw,
-            "atlas_fail": af,
-            "nist_pass": np_,
-            "nist_warn": nw,
-            "nist_fail": nf,
-            "owasp_agentic_pass": oap,
-            "owasp_agentic_warn": oaw,
-            "owasp_agentic_fail": oaf,
-            "eu_ai_act_pass": eup,
-            "eu_ai_act_warn": euw,
-            "eu_ai_act_fail": euf,
-            "nist_csf_pass": ncp,
-            "nist_csf_warn": ncw,
-            "nist_csf_fail": ncf,
-            "iso_27001_pass": ip,
-            "iso_27001_warn": iw,
-            "iso_27001_fail": if2,
-            "soc2_pass": sp,
-            "soc2_warn": sw,
-            "soc2_fail": sf,
-            "cis_pass": cp,
-            "cis_warn": cw,
-            "cis_fail": cf,
-            "cmmc_pass": cmp,
-            "cmmc_warn": cmw,
-            "cmmc_fail": cmf,
-            "nist_800_53_pass": n8p,
-            "nist_800_53_warn": n8w,
-            "nist_800_53_fail": n8f,
-            "fedramp_pass": frp,
-            "fedramp_warn": frw,
-            "fedramp_fail": frf,
-            "pci_dss_pass": pp,
-            "pci_dss_warn": pw,
-            "pci_dss_fail": pf,
-            "aisvs_pass": aisvs_summary["pass"],
-            "aisvs_fail": aisvs_summary["fail"],
-            "aisvs_error": aisvs_summary["error"],
-            "aisvs_not_applicable": aisvs_summary["not_applicable"],
-        },
+        "summary": summary,
     }
+    for metadata in TAG_MAPPED_FRAMEWORKS:
+        response[metadata.output_key] = framework_controls[metadata.output_key]
+    return response
 
 
 @router.get("/v1/cis/checks", tags=["compliance"])
@@ -986,22 +888,9 @@ async def get_compliance_by_framework(request: Request, framework: str) -> dict:
 
     full = await get_compliance(request)
 
-    framework_map = {
-        "owasp-llm": "owasp_llm_top10",
-        "owasp-mcp": "owasp_mcp_top10",
-        "atlas": "mitre_atlas",
-        "nist": "nist_ai_rmf",
-        "owasp-agentic": "owasp_agentic_top10",
-        "eu-ai-act": "eu_ai_act",
-        "nist-csf": "nist_csf",
-        "iso-27001": "iso_27001",
-        "soc2": "soc2",
-        "cis": "cis_controls",
-        "cmmc": "cmmc",
-        "nist-800-53": "nist_800_53",
-        "fedramp": "fedramp",
-        "pci-dss": "pci_dss",
-    }
+    from agent_bom.compliance_coverage import framework_output_key_by_slug
+
+    framework_map = framework_output_key_by_slug()
 
     key = framework_map.get(framework.lower())
     if not key:
@@ -1168,22 +1057,9 @@ async def export_compliance_report(
         raise HTTPException(status_code=400, detail="since must be earlier than until")
 
     full = await get_compliance(request)
-    framework_map = {
-        "owasp-llm": ("owasp_llm_top10", "OWASP LLM Top 10"),
-        "owasp-mcp": ("owasp_mcp_top10", "OWASP MCP Top 10"),
-        "atlas": ("mitre_atlas", "MITRE ATLAS"),
-        "nist": ("nist_ai_rmf", "NIST AI RMF"),
-        "owasp-agentic": ("owasp_agentic_top10", "OWASP Agentic Top 10"),
-        "eu-ai-act": ("eu_ai_act", "EU AI Act"),
-        "nist-csf": ("nist_csf", "NIST CSF"),
-        "iso-27001": ("iso_27001", "ISO 27001"),
-        "soc2": ("soc2", "SOC 2"),
-        "cis": ("cis_controls", "CIS Controls"),
-        "cmmc": ("cmmc", "CMMC"),
-        "nist-800-53": ("nist_800_53", "NIST 800-53"),
-        "fedramp": ("fedramp", "FedRAMP"),
-        "pci-dss": ("pci_dss", "PCI DSS"),
-    }
+    from agent_bom.compliance_coverage import framework_report_labels_by_slug
+
+    framework_map = framework_report_labels_by_slug()
     key_label = framework_map.get(framework.lower())
     if not key_label:
         raise HTTPException(

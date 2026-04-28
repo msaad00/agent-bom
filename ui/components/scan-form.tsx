@@ -343,9 +343,9 @@ function SurfaceCard({
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   description: string;
-  href?: string;
-  action?: string;
-  badge?: string;
+  href?: string | undefined;
+  action?: string | undefined;
+  badge?: string | undefined;
 }) {
   const content = (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 transition-colors hover:border-zinc-700 hover:bg-zinc-900/80">

@@ -52,7 +52,7 @@ function DetailSection({ title, icon: Icon, children, accent }: {
   title: string;
   icon: React.ElementType;
   children: React.ReactNode;
-  accent?: string;
+  accent?: string | undefined;
 }) {
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">

@@ -19,7 +19,7 @@ interface JobSummary {
   job_id: string;
   status: JobStatus;
   created_at: string;
-  completed_at?: string;
+  completed_at?: string | undefined;
 }
 
 function StatusIcon({ status }: { status: JobStatus }) {

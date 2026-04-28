@@ -12,18 +12,18 @@ import { getConfiguredApiUrl } from "./runtime-config";
 export type JobStatus = "pending" | "running" | "done" | "failed" | "cancelled";
 
 export interface ScanRequest {
-  inventory?: string;
-  images?: string[];
-  k8s?: boolean;
-  k8s_namespace?: string;
-  tf_dirs?: string[];
-  gha_path?: string;
-  agent_projects?: string[];
-  sbom?: string;
-  enrich?: boolean;
-  format?: string;
-  dynamic_discovery?: boolean;
-  dynamic_max_depth?: number;
+  inventory?: string | undefined;
+  images?: string[] | undefined;
+  k8s?: boolean | undefined;
+  k8s_namespace?: string | undefined;
+  tf_dirs?: string[] | undefined;
+  gha_path?: string | undefined;
+  agent_projects?: string[] | undefined;
+  sbom?: string | undefined;
+  enrich?: boolean | undefined;
+  format?: string | undefined;
+  dynamic_discovery?: boolean | undefined;
+  dynamic_max_depth?: number | undefined;
 }
 
 // ── Scan Pipeline Step Types ────────────────────────────────────────────────
@@ -35,11 +35,11 @@ export interface StepEvent {
   step_id: string;
   status: StepStatus;
   message: string;
-  started_at?: string;
-  completed_at?: string;
-  stats?: Record<string, number>;
-  sub_step?: string;
-  progress_pct?: number;
+  started_at?: string | undefined;
+  completed_at?: string | undefined;
+  stats?: Record<string, number> | undefined;
+  sub_step?: string | undefined;
+  progress_pct?: number | undefined;
 }
 
 export interface ProgressEvent {
@@ -68,32 +68,32 @@ export interface ScanJob {
   job_id: string;
   status: JobStatus;
   created_at: string;
-  tenant_id?: string;
-  source_id?: string;
-  triggered_by?: string;
-  started_at?: string;
-  completed_at?: string;
+  tenant_id?: string | undefined;
+  source_id?: string | undefined;
+  triggered_by?: string | undefined;
+  started_at?: string | undefined;
+  completed_at?: string | undefined;
   request: ScanRequest;
   progress: string[];
-  result?: ScanResult;
-  error?: string;
+  result?: ScanResult | undefined;
+  error?: string | undefined;
 }
 
 export interface ScanResult {
   agents: Agent[];
   blast_radius: BlastRadius[];
-  remediation_plan?: RemediationItem[];
-  scorecard_summary?: ScorecardSummary;
-  scan_performance?: Record<string, number>;
-  posture_scorecard?: PostureScorecard;
-  summary?: Summary;
-  warnings?: string[];
-  scan_timestamp?: string;
-  tool_version?: string;
+  remediation_plan?: RemediationItem[] | undefined;
+  scorecard_summary?: ScorecardSummary | undefined;
+  scan_performance?: Record<string, number> | undefined;
+  posture_scorecard?: PostureScorecard | undefined;
+  summary?: Summary | undefined;
+  warnings?: string[] | undefined;
+  scan_timestamp?: string | undefined;
+  tool_version?: string | undefined;
   /** Context metadata — auto-detected from scan sources */
-  has_mcp_context?: boolean;
-  has_agent_context?: boolean;
-  scan_sources?: string[];
+  has_mcp_context?: boolean | undefined;
+  has_agent_context?: boolean | undefined;
+  scan_sources?: string[] | undefined;
 }
 
 export interface GraphPagination {
@@ -101,8 +101,8 @@ export interface GraphPagination {
   offset: number;
   limit: number;
   has_more: boolean;
-  cursor?: string;
-  next_cursor?: string;
+  cursor?: string | undefined;
+  next_cursor?: string | undefined;
 }
 
 export interface GraphSnapshot {
@@ -179,20 +179,20 @@ export interface PostureCountsResponse {
   total: number;
   kev: number;
   compound_issues: number;
-  deployment_mode?: DeploymentMode;
-  has_mcp_context?: boolean;
-  has_agent_context?: boolean;
-  has_local_scan?: boolean;
-  has_fleet_ingest?: boolean;
-  has_cluster_scan?: boolean;
-  has_ci_cd_scan?: boolean;
-  has_mesh?: boolean;
-  has_gateway?: boolean;
-  has_proxy?: boolean;
-  has_traces?: boolean;
-  has_registry?: boolean;
-  scan_sources?: string[];
-  scan_count?: number;
+  deployment_mode?: DeploymentMode | undefined;
+  has_mcp_context?: boolean | undefined;
+  has_agent_context?: boolean | undefined;
+  has_local_scan?: boolean | undefined;
+  has_fleet_ingest?: boolean | undefined;
+  has_cluster_scan?: boolean | undefined;
+  has_ci_cd_scan?: boolean | undefined;
+  has_mesh?: boolean | undefined;
+  has_gateway?: boolean | undefined;
+  has_proxy?: boolean | undefined;
+  has_traces?: boolean | undefined;
+  has_registry?: boolean | undefined;
+  scan_sources?: string[] | undefined;
+  scan_count?: number | undefined;
 }
 
 export interface RemediationItem {
@@ -204,11 +204,11 @@ export interface RemediationItem {
   is_kev: boolean;
   /** Normalized 0-10 remediation risk derived from grouped blast-radius risk. */
   impact_score: number;
-  priority?: number;
-  action?: string;
-  reason?: string | null;
-  command?: string | null;
-  verify_command?: string | null;
+  priority?: number | undefined;
+  action?: string | undefined;
+  reason?: string | null | undefined;
+  command?: string | null | undefined;
+  verify_command?: string | null | undefined;
   vulnerabilities: string[];
   affected_agents: string[];
   agents_pct: number;
@@ -218,15 +218,15 @@ export interface RemediationItem {
   tools_pct: number;
   owasp_tags: string[];
   atlas_tags: string[];
-  nist_ai_rmf_tags?: string[];
-  owasp_mcp_tags?: string[];
-  owasp_agentic_tags?: string[];
-  eu_ai_act_tags?: string[];
-  nist_csf_tags?: string[];
-  iso_27001_tags?: string[];
-  soc2_tags?: string[];
-  cis_tags?: string[];
-  references?: string[];
+  nist_ai_rmf_tags?: string[] | undefined;
+  owasp_mcp_tags?: string[] | undefined;
+  owasp_agentic_tags?: string[] | undefined;
+  eu_ai_act_tags?: string[] | undefined;
+  nist_csf_tags?: string[] | undefined;
+  iso_27001_tags?: string[] | undefined;
+  soc2_tags?: string[] | undefined;
+  cis_tags?: string[] | undefined;
+  references?: string[] | undefined;
   risk_narrative: string;
 }
 
@@ -235,30 +235,30 @@ export type AgentStatus = "configured" | "installed-not-configured";
 export interface Agent {
   name: string;
   agent_type: string;
-  config_path?: string;
-  source?: string;
-  status?: AgentStatus;
+  config_path?: string | undefined;
+  source?: string | undefined;
+  status?: AgentStatus | undefined;
   mcp_servers: MCPServer[];
-  automation_settings?: string[];
+  automation_settings?: string[] | undefined;
 }
 
 export interface MCPServer {
   name: string;
-  command?: string;
-  args?: string[];
-  transport?: string;
-  url?: string;
-  auth_mode?: string;
-  config_path?: string;
-  security_warnings?: string[];
+  command?: string | undefined;
+  args?: string[] | undefined;
+  transport?: string | undefined;
+  url?: string | undefined;
+  auth_mode?: string | undefined;
+  config_path?: string | undefined;
+  security_warnings?: string[] | undefined;
   packages: Package[];
-  tools?: Tool[];
-  env?: Record<string, string>;
-  vulnerabilities?: Vulnerability[];
-  has_credentials?: boolean;
-  credential_env_vars?: string[];
-  security_blocked?: boolean;
-  provenance?: MCPProvenance;
+  tools?: Tool[] | undefined;
+  env?: Record<string, string> | undefined;
+  vulnerabilities?: Vulnerability[] | undefined;
+  has_credentials?: boolean | undefined;
+  credential_env_vars?: string[] | undefined;
+  security_blocked?: boolean | undefined;
+  provenance?: MCPProvenance | undefined;
 }
 
 export interface MCPProvenance {
@@ -270,75 +270,75 @@ export interface MCPProvenance {
   fleet_present: boolean;
   gateway_registered: boolean;
   runtime_observed: boolean;
-  first_seen?: string | null;
-  last_seen?: string | null;
-  last_synced?: string | null;
+  first_seen?: string | null | undefined;
+  last_seen?: string | null | undefined;
+  last_synced?: string | null | undefined;
 }
 
 export interface Package {
   name: string;
   version: string;
   ecosystem: string;
-  purl?: string;
-  vulnerabilities?: Vulnerability[];
+  purl?: string | undefined;
+  vulnerabilities?: Vulnerability[] | undefined;
 }
 
 export interface Vulnerability {
   id: string;
   severity: "critical" | "high" | "medium" | "low" | "none";
   /** API v2 field — same as description */
-  summary?: string;
-  description?: string;
-  references?: string[];
-  advisory_sources?: string[];
-  aliases?: string[];
-  cvss_score?: number;
-  epss_score?: number;
+  summary?: string | undefined;
+  description?: string | undefined;
+  references?: string[] | undefined;
+  advisory_sources?: string[] | undefined;
+  aliases?: string[] | undefined;
+  cvss_score?: number | undefined;
+  epss_score?: number | undefined;
   /** API v2 field — same as cisa_kev */
-  is_kev?: boolean;
-  cisa_kev?: boolean;
-  fixed_version?: string;
+  is_kev?: boolean | undefined;
+  cisa_kev?: boolean | undefined;
+  fixed_version?: string | undefined;
   /** API v2 field — same as published */
-  published_at?: string;
-  modified_at?: string;
-  nvd_published?: string;
-  published?: string;
+  published_at?: string | undefined;
+  modified_at?: string | undefined;
+  nvd_published?: string | undefined;
+  published?: string | undefined;
   /** Phase 2 fields */
-  severity_source?: string;
-  confidence?: number;
+  severity_source?: string | undefined;
+  confidence?: number | undefined;
 }
 
 export interface BlastRadius {
   vulnerability_id: string;
   severity: string;
-  package?: string;
-  ecosystem?: string;
+  package?: string | undefined;
+  ecosystem?: string | undefined;
   affected_agents: string[];
-  affected_servers?: string[];
+  affected_servers?: string[] | undefined;
   exposed_credentials: string[];
   /** API v2 field — same as reachable_tools */
-  exposed_tools?: string[];
+  exposed_tools?: string[] | undefined;
   reachable_tools: string[];
   /** API v2 field — same as blast_score (0-100) */
-  risk_score?: number;
+  risk_score?: number | undefined;
   blast_score: number;
-  cvss_score?: number;
-  epss_score?: number;
-  is_kev?: boolean;
-  cisa_kev?: boolean;
-  fixed_version?: string;
-  owasp_tags?: string[];
-  atlas_tags?: string[];
-  nist_ai_rmf_tags?: string[];
-  owasp_mcp_tags?: string[];
-  owasp_agentic_tags?: string[];
-  eu_ai_act_tags?: string[];
+  cvss_score?: number | undefined;
+  epss_score?: number | undefined;
+  is_kev?: boolean | undefined;
+  cisa_kev?: boolean | undefined;
+  fixed_version?: string | undefined;
+  owasp_tags?: string[] | undefined;
+  atlas_tags?: string[] | undefined;
+  nist_ai_rmf_tags?: string[] | undefined;
+  owasp_mcp_tags?: string[] | undefined;
+  owasp_agentic_tags?: string[] | undefined;
+  eu_ai_act_tags?: string[] | undefined;
   /** CWE-derived impact category: code-execution, credential-access, etc. */
-  impact_category?: string;
+  impact_category?: string | undefined;
   /** Full credential set before CWE filtering (for reference) */
-  all_server_credentials?: string[];
+  all_server_credentials?: string[] | undefined;
   /** Human-readable attack vector description */
-  attack_vector_summary?: string;
+  attack_vector_summary?: string | undefined;
 }
 
 // ─── Attack Flow Types ───────────────────────────────────────────────────────
@@ -347,23 +347,23 @@ export interface AttackFlowNodeData {
   [key: string]: unknown;
   nodeType: "cve" | "package" | "server" | "agent" | "credential" | "tool";
   label: string;
-  severity?: string;
-  cvss_score?: number;
-  epss_score?: number;
-  is_kev?: boolean;
-  risk_score?: number;
-  fixed_version?: string;
-  owasp_tags?: string[];
-  atlas_tags?: string[];
-  nist_ai_rmf_tags?: string[];
-  owasp_mcp_tags?: string[];
-  owasp_agentic_tags?: string[];
-  eu_ai_act_tags?: string[];
-  version?: string;
-  ecosystem?: string;
-  agent_type?: string;
-  status?: string;
-  description?: string;
+  severity?: string | undefined;
+  cvss_score?: number | undefined;
+  epss_score?: number | undefined;
+  is_kev?: boolean | undefined;
+  risk_score?: number | undefined;
+  fixed_version?: string | undefined;
+  owasp_tags?: string[] | undefined;
+  atlas_tags?: string[] | undefined;
+  nist_ai_rmf_tags?: string[] | undefined;
+  owasp_mcp_tags?: string[] | undefined;
+  owasp_agentic_tags?: string[] | undefined;
+  eu_ai_act_tags?: string[] | undefined;
+  version?: string | undefined;
+  ecosystem?: string | undefined;
+  agent_type?: string | undefined;
+  status?: string | undefined;
+  description?: string | undefined;
 }
 
 export interface AttackFlowNode {
@@ -378,8 +378,8 @@ export interface AttackFlowEdge {
   source: string;
   target: string;
   type: string;
-  animated?: boolean;
-  style?: { stroke: string };
+  animated?: boolean | undefined;
+  style?: { stroke: string } | undefined;
 }
 
 export interface AttackFlowStats {
@@ -430,7 +430,7 @@ export interface ContextGraphResponse {
     agents: string[];
     risk_score: number;
     description: string;
-    owasp_agentic_tag?: string;
+    owasp_agentic_tag?: string | undefined;
   }>;
   stats: {
     total_nodes: number;
@@ -447,7 +447,7 @@ export interface ContextGraphResponse {
 
 export interface Tool {
   name: string;
-  description?: string;
+  description?: string | undefined;
 }
 
 export interface Summary {
@@ -469,9 +469,9 @@ export interface ScorecardSummary {
   enriched_packages: number;
   unresolved_packages: number;
   failed_packages: number;
-  transient_failed_packages?: number;
-  persistent_failed_packages?: number;
-  failed_reasons?: Record<string, number>;
+  transient_failed_packages?: number | undefined;
+  persistent_failed_packages?: number | undefined;
+  failed_reasons?: Record<string, number> | undefined;
 }
 
 export interface PostureDimension {
@@ -574,17 +574,17 @@ export interface AuthPolicyResponse {
     status: string;
     last_rotated: string | null;
     age_days: number | null;
-    rotation_days?: number | null;
-    max_age_days?: number | null;
-    message?: string;
-    fallback_source?: string | null;
+    rotation_days?: number | null | undefined;
+    max_age_days?: number | null | undefined;
+    message?: string | undefined;
+    fallback_source?: string | null | undefined;
     [key: string]: unknown;
   };
   audit_hmac: {
     status: string;
     configured: boolean;
-    key_id_configured?: boolean;
-    rotation_tracking_supported?: boolean;
+    key_id_configured?: boolean | undefined;
+    rotation_tracking_supported?: boolean | undefined;
     [key: string]: unknown;
   };
   ui: {
@@ -750,8 +750,8 @@ export interface ListKeysResponse {
 export interface CreateApiKeyRequest {
   name: string;
   role: string;
-  expires_at?: string | null;
-  scopes?: string[];
+  expires_at?: string | null | undefined;
+  scopes?: string[] | undefined;
 }
 
 export interface CreateApiKeyResponse extends ApiKeyRecord {
@@ -760,9 +760,9 @@ export interface CreateApiKeyResponse extends ApiKeyRecord {
 }
 
 export interface RotateApiKeyRequest {
-  name?: string | null;
-  expires_at?: string | null;
-  overlap_seconds?: number | null;
+  name?: string | null | undefined;
+  expires_at?: string | null | undefined;
+  overlap_seconds?: number | null | undefined;
 }
 
 export interface RotateApiKeyResponse extends ApiKeyRecord {
@@ -774,10 +774,10 @@ export interface RotateApiKeyResponse extends ApiKeyRecord {
 }
 
 export interface TenantQuotaUpdateRequest {
-  active_scan_jobs?: number | null;
-  retained_scan_jobs?: number | null;
-  fleet_agents?: number | null;
-  schedules?: number | null;
+  active_scan_jobs?: number | null | undefined;
+  retained_scan_jobs?: number | null | undefined;
+  fleet_agents?: number | null | undefined;
+  schedules?: number | null | undefined;
 }
 
 export interface ConnectorsResponse {
@@ -840,26 +840,26 @@ export interface SourcesResponse {
 export interface SourceCreateRequest {
   display_name: string;
   kind: SourceKind;
-  description?: string;
-  owner?: string;
-  connector_name?: string | null;
-  credential_mode?: string;
-  credential_ref?: string | null;
-  enabled?: boolean;
-  config?: Record<string, unknown>;
-  tenant_id?: string;
+  description?: string | undefined;
+  owner?: string | undefined;
+  connector_name?: string | null | undefined;
+  credential_mode?: string | undefined;
+  credential_ref?: string | null | undefined;
+  enabled?: boolean | undefined;
+  config?: Record<string, unknown> | undefined;
+  tenant_id?: string | undefined;
 }
 
 export interface SourceUpdateRequest {
-  display_name?: string;
-  description?: string;
-  owner?: string;
-  connector_name?: string | null;
-  credential_mode?: string;
-  credential_ref?: string | null;
-  enabled?: boolean;
-  status?: SourceStatus;
-  config?: Record<string, unknown>;
+  display_name?: string | undefined;
+  description?: string | undefined;
+  owner?: string | undefined;
+  connector_name?: string | null | undefined;
+  credential_mode?: string | undefined;
+  credential_ref?: string | null | undefined;
+  enabled?: boolean | undefined;
+  status?: SourceStatus | undefined;
+  config?: Record<string, unknown> | undefined;
 }
 
 export interface SourceCheckResponse {
@@ -884,21 +884,21 @@ export interface SourceJobsResponse {
 export interface JobsResponse {
   jobs: JobListItem[];
   count: number;
-  total?: number;
-  limit?: number;
-  offset?: number;
+  total?: number | undefined;
+  limit?: number | undefined;
+  offset?: number | undefined;
 }
 
 export interface JobListItem {
   job_id: string;
   status: JobStatus;
   created_at: string;
-  completed_at?: string;
-  request?: ScanRequest;
-  summary?: Summary;
-  scan_timestamp?: string;
-  pushed?: boolean;
-  error?: string;
+  completed_at?: string | undefined;
+  request?: ScanRequest | undefined;
+  summary?: Summary | undefined;
+  scan_timestamp?: string | undefined;
+  pushed?: boolean | undefined;
+  error?: string | undefined;
 }
 
 export interface AgentsResponse {
@@ -916,16 +916,16 @@ export interface RegistryServer {
   risk_level: "low" | "medium" | "high";
   packages: Array<{ name: string; ecosystem: string }>;
   source_url: string;
-  description?: string;
+  description?: string | undefined;
   sigstore_bundle: string | null;
-  tools?: string[];
-  credential_env_vars?: string[];
-  category?: string;
-  license?: string;
-  latest_version?: string;
-  known_cves?: string[];
-  command_patterns?: string[];
-  risk_justification?: string;
+  tools?: string[] | undefined;
+  credential_env_vars?: string[] | undefined;
+  category?: string | undefined;
+  license?: string | undefined;
+  latest_version?: string | undefined;
+  known_cves?: string[] | undefined;
+  command_patterns?: string[] | undefined;
+  risk_justification?: string | undefined;
 }
 
 export interface RegistryResponse {
@@ -989,9 +989,9 @@ export interface ComplianceResponse {
   overall_status: "pass" | "warning" | "fail";
   scan_count: number;
   latest_scan: string | null;
-  has_mcp_context?: boolean;
-  has_agent_context?: boolean;
-  scan_sources?: string[];
+  has_mcp_context?: boolean | undefined;
+  has_agent_context?: boolean | undefined;
+  scan_sources?: string[] | undefined;
   owasp_llm_top10: ComplianceControl[];
   owasp_mcp_top10: ComplianceControl[];
   mitre_atlas: ComplianceControl[];
@@ -1036,7 +1036,7 @@ export interface FrameworkCatalogMetadata {
   sources: Record<string, unknown>;
   technique_count: number;
   cwe_mapping_count: number;
-  path?: string;
+  path?: string | undefined;
 }
 
 export interface FrameworkCatalogsResponse {
@@ -1059,7 +1059,7 @@ export interface AgentDetailResponse {
   };
   blast_radius: BlastRadius[];
   credentials: string[];
-  fleet?: FleetAgent | null;
+  fleet?: FleetAgent | null | undefined;
 }
 
 export interface AgentLifecycleResponse {
@@ -1134,9 +1134,9 @@ export interface ScanSchedule {
 export interface ScheduleCreateRequest {
   name: string;
   cron_expression: string;
-  scan_config?: Record<string, unknown>;
-  enabled?: boolean;
-  tenant_id?: string;
+  scan_config?: Record<string, unknown> | undefined;
+  enabled?: boolean | undefined;
+  tenant_id?: string | undefined;
 }
 
 // ─── Gateway types ───────────────────────────────────────────────────────────
@@ -1422,7 +1422,7 @@ export const api = {
   resetTenantQuota: () => del("/v1/auth/quota"),
   createAuthSession: (apiKey: string) => postVoid("/v1/auth/session", { api_key: apiKey }),
   deleteAuthSession: () => del("/v1/auth/session"),
-  reportClientError: (body: { message: string; digest?: string; path?: string; component?: string }) =>
+  reportClientError: (body: { message: string; digest?: string | undefined; path?: string | undefined; component?: string | undefined }) =>
     post<{ ok: boolean }>("/v1/ui/errors", body),
   listKeys: () => get<ListKeysResponse>("/v1/auth/keys"),
   createKey: (body: CreateApiKeyRequest) => post<CreateApiKeyResponse>("/v1/auth/keys", body),
@@ -1501,15 +1501,15 @@ export const api = {
 
   /** Load the unified graph for a specific snapshot or the latest persisted state */
   getGraph: (filters?: {
-    scanId?: string;
-    entityTypes?: string[];
-    minSeverity?: string;
-    relationships?: string[];
-    staticOnly?: boolean;
-    dynamicOnly?: boolean;
-    maxDepth?: number;
-    offset?: number;
-    limit?: number;
+    scanId?: string | undefined;
+    entityTypes?: string[] | undefined;
+    minSeverity?: string | undefined;
+    relationships?: string[] | undefined;
+    staticOnly?: boolean | undefined;
+    dynamicOnly?: boolean | undefined;
+    maxDepth?: number | undefined;
+    offset?: number | undefined;
+    limit?: number | undefined;
   }) => {
     const params = new URLSearchParams();
     if (filters?.scanId) params.set("scan_id", filters.scanId);
@@ -1605,13 +1605,13 @@ export const api = {
 
   /** Fleet management */
   listFleet: (filters?: {
-    state?: string;
-    environment?: string;
-    min_trust?: number;
-    search?: string;
-    include_quarantined?: boolean;
-    limit?: number;
-    offset?: number;
+    state?: string | undefined;
+    environment?: string | undefined;
+    min_trust?: number | undefined;
+    search?: string | undefined;
+    include_quarantined?: boolean | undefined;
+    limit?: number | undefined;
+    offset?: number | undefined;
   }) => {
     const params = new URLSearchParams();
     if (filters?.state) params.set("state", filters.state);
@@ -1720,8 +1720,8 @@ export const api = {
   markFalsePositive: (body: {
     vulnerability_id: string;
     package: string;
-    reason?: string;
-    marked_by?: string;
+    reason?: string | undefined;
+    marked_by?: string | undefined;
   }) => post<{ id: string; vulnerability_id: string; package: string; status: string }>(
     "/v1/findings/false-positive",
     body,
@@ -1749,7 +1749,7 @@ export const api = {
   },
 
   // ── Audit Log ──
-  listAuditEntries: (filters?: { action?: string; resource?: string; since?: string; limit?: number; offset?: number }) => {
+  listAuditEntries: (filters?: { action?: string | undefined; resource?: string | undefined; since?: string | undefined; limit?: number | undefined; offset?: number | undefined }) => {
     const params = new URLSearchParams();
     if (filters?.action) params.set("action", filters.action);
     if (filters?.resource) params.set("resource", filters.resource);
@@ -2037,7 +2037,7 @@ export interface ActivityTimeline {
 export interface TraceFlaggedCall {
   tool_name: string;
   server: string;
-  package_name?: string;
+  package_name?: string | undefined;
   cve_ids: string[];
   severity: string;
   reason: string;
@@ -2047,22 +2047,22 @@ export interface TraceFlaggedCall {
 export interface TraceIngestResponse {
   traces: number;
   flagged: TraceFlaggedCall[];
-  message?: string;
+  message?: string | undefined;
 }
 
 // ─── Proxy Runtime types ─────────────────────────────────────────────────────
 
 export interface ProxyStatusResponse {
   status: string;
-  message?: string;
-  total_tool_calls?: number;
-  total_blocked?: number;
-  uptime_seconds?: number;
-  calls_by_tool?: Record<string, number>;
-  blocked_by_reason?: Record<string, number>;
+  message?: string | undefined;
+  total_tool_calls?: number | undefined;
+  total_blocked?: number | undefined;
+  uptime_seconds?: number | undefined;
+  calls_by_tool?: Record<string, number> | undefined;
+  blocked_by_reason?: Record<string, number> | undefined;
   latency?: { p50_ms?: number; p95_ms?: number; p99_ms?: number };
-  detectors_active?: string[];
-  proxy_pid?: number;
+  detectors_active?: string[] | undefined;
+  proxy_pid?: number | undefined;
 }
 
 export interface ProxyAlert {
@@ -2071,7 +2071,7 @@ export interface ProxyAlert {
   detector: string;
   tool_name: string;
   message: string;
-  details?: Record<string, unknown>;
+  details?: Record<string, unknown> | undefined;
 }
 
 export interface ProxyAlertsResponse {

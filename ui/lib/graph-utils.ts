@@ -79,10 +79,10 @@ export const EDGE_COLORS = {
 export interface LegendItem {
   label: string;
   color: string;
-  dashed?: boolean;
-  kind?: "node" | "edge";
-  lineStyle?: "solid" | "dashed";
-  shape?: "dot" | "square" | "diamond" | "pill";
+  dashed?: boolean | undefined;
+  kind?: "node" | "edge" | undefined;
+  lineStyle?: "solid" | "dashed" | undefined;
+  shape?: "dot" | "square" | "diamond" | "pill" | undefined;
 }
 
 const NODE_TYPE_LEGEND_ORDER: LineageNodeType[] = [

@@ -171,7 +171,7 @@ export function buildUnifiedFlowGraph(
       type: FLOW_NODE_TYPES[nodeType],
       position: { x: 0, y: 0 },
       data: toLineageData(node, nodeType, outgoing, incoming, nodeById),
-      className: isCriticalNode(node) ? "node-critical-pulse" : undefined,
+      ...(isCriticalNode(node) ? { className: "node-critical-pulse" } : {}),
     });
   }
 

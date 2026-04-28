@@ -49,9 +49,9 @@ function ChartTooltip({
   payload,
   label,
 }: {
-  active?: boolean;
+  active?: boolean | undefined;
   payload?: Array<{ name: string; value: number; color: string }>;
-  label?: string;
+  label?: string | undefined;
 }) {
   if (!active || !payload?.length) return null;
   return (
@@ -250,7 +250,7 @@ export function SeverityDonut({ data }: { data: SeveritySlice[] }) {
               stroke="none"
             >
               {filtered?.map((_, i) => (
-                <Cell key={i} fill={colors[i]} fillOpacity={0.85} />
+                <Cell key={i} fill={colors[i] ?? "#71717a"} fillOpacity={0.85} />
               ))}
             </Pie>
             <Tooltip content={<ChartTooltip />} />
@@ -273,9 +273,9 @@ export function SeverityDonut({ data }: { data: SeveritySlice[] }) {
 
 interface TreemapItem {
   name: string;
-  size?: number;
-  color?: string;
-  children?: TreemapItem[];
+  size?: number | undefined;
+  color?: string | undefined;
+  children?: TreemapItem[] | undefined;
   [key: string]: unknown;
 }
 
@@ -319,7 +319,7 @@ export function SupplyChainTreemap({
   onPackageClick,
 }: {
   agents: Agent[];
-  onPackageClick?: (pkgName: string) => void;
+  onPackageClick?: ((pkgName: string) => void) | undefined;
 }) {
   const treeData: TreemapItem[] = agents?.map((agent) => ({
     name: agent.name,
@@ -373,7 +373,7 @@ export function SupplyChainTreemap({
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
           <Treemap
-            data={treeData}
+            data={treeData as unknown as readonly Record<string, unknown>[]}
             dataKey="size"
             content={<TreemapCell />}
             onClick={(node: Record<string, unknown>) => {
@@ -580,15 +580,15 @@ export interface EpssVsCvssPoint {
   blast: number;
   severity: string;
   kev: boolean;
-  package?: string;
+  package?: string | undefined;
 }
 
 function ScatterTooltipContent({
   active,
   payload,
 }: {
-  active?: boolean;
-  payload?: Array<{ payload: EpssVsCvssPoint }>;
+  active?: boolean | undefined;
+  payload?: Array<{ payload: EpssVsCvssPoint }> | undefined;
 }) {
   if (!active || !payload?.length) return null;
   const d = payload[0]!.payload;

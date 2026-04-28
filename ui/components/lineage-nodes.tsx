@@ -43,55 +43,55 @@ export type LineageNodeType =
 export type LineageNodeData = {
   label: string;
   nodeType: LineageNodeType;
-  entityType?: string;
-  status?: string;
-  riskScore?: number;
-  firstSeen?: string;
-  lastSeen?: string;
-  dataSources?: string[];
-  complianceTags?: string[];
-  attributes?: Record<string, unknown>;
-  neighborCount?: number;
-  sourceCount?: number;
-  incomingEdgeCount?: number;
-  outgoingEdgeCount?: number;
-  impactCount?: number;
-  maxImpactDepth?: number;
-  impactByType?: Record<string, number>;
+  entityType?: string | undefined;
+  status?: string | undefined;
+  riskScore?: number | undefined;
+  firstSeen?: string | undefined;
+  lastSeen?: string | undefined;
+  dataSources?: string[] | undefined;
+  complianceTags?: string[] | undefined;
+  attributes?: Record<string, unknown> | undefined;
+  neighborCount?: number | undefined;
+  sourceCount?: number | undefined;
+  incomingEdgeCount?: number | undefined;
+  outgoingEdgeCount?: number | undefined;
+  impactCount?: number | undefined;
+  maxImpactDepth?: number | undefined;
+  impactByType?: Record<string, number> | undefined;
   // Agent / provider
-  agentType?: string;
-  agentStatus?: string;
-  agentCount?: number;
-  serverCount?: number;
-  packageCount?: number;
-  vulnCount?: number;
+  agentType?: string | undefined;
+  agentStatus?: string | undefined;
+  agentCount?: number | undefined;
+  serverCount?: number | undefined;
+  packageCount?: number | undefined;
+  vulnCount?: number | undefined;
   // Server / Shared Server
-  toolCount?: number;
-  credentialCount?: number;
-  command?: string;
-  sharedBy?: number;
-  sharedAgents?: string[];
+  toolCount?: number | undefined;
+  credentialCount?: number | undefined;
+  command?: string | undefined;
+  sharedBy?: number | undefined;
+  sharedAgents?: string[] | undefined;
   // Package / model / dataset
-  ecosystem?: string;
-  version?: string;
-  versionSource?: string;
-  registryVersion?: string;
+  ecosystem?: string | undefined;
+  version?: string | undefined;
+  versionSource?: string | undefined;
+  registryVersion?: string | undefined;
   // Vulnerability / misconfiguration
-  severity?: string;
-  cvssScore?: number;
-  epssScore?: number;
-  isKev?: boolean;
-  fixedVersion?: string;
-  owaspTags?: string[];
-  atlasTags?: string[];
+  severity?: string | undefined;
+  cvssScore?: number | undefined;
+  epssScore?: number | undefined;
+  isKev?: boolean | undefined;
+  fixedVersion?: string | undefined;
+  owaspTags?: string[] | undefined;
+  atlasTags?: string[] | undefined;
   // Credential
-  serverName?: string;
+  serverName?: string | undefined;
   // Tool / generic assets
-  description?: string;
+  description?: string | undefined;
   // Highlighting
-  dimmed?: boolean;
-  highlighted?: boolean;
-  isCritical?: boolean;
+  dimmed?: boolean | undefined;
+  highlighted?: boolean | undefined;
+  isCritical?: boolean | undefined;
 };
 
 type CardProps = {

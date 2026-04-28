@@ -3,14 +3,14 @@ import { EntityType, type AttackPath, type UnifiedNode } from "./graph-schema";
 export type AttackPathCardNode = {
   type: "cve" | "package" | "server" | "agent" | "credential";
   label: string;
-  severity?: string;
+  severity?: string | undefined;
 };
 
 export type AttackPathFocus = {
-  cve?: string;
-  packageName?: string;
-  agentName?: string;
-  scanId?: string;
+  cve?: string | undefined;
+  packageName?: string | undefined;
+  agentName?: string | undefined;
+  scanId?: string | undefined;
 };
 
 export type AttackPathAction = {
@@ -24,7 +24,7 @@ export type InteractionRiskLike = {
   agents: string[];
   risk_score: number;
   description: string;
-  owasp_agentic_tag?: string;
+  owasp_agentic_tag?: string | undefined;
 };
 
 export type InteractionRiskAction = {

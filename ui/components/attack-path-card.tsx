@@ -7,14 +7,14 @@ import { ArrowRight, Bot, Bug, ChevronRight, KeyRound, Package, Server } from "l
 interface AttackPathNode {
   type: "cve" | "package" | "server" | "agent" | "credential";
   label: string;
-  severity?: string;
+  severity?: string | undefined;
 }
 
 interface AttackPathCardProps {
   nodes: AttackPathNode[];
   riskScore: number;
   onClick?: () => void;
-  href?: string;
+  href?: string | undefined;
 }
 
 const NODE_META: Record<AttackPathNode["type"], { icon: LucideIcon; tint: string; ring: string }> = {

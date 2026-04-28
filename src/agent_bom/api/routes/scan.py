@@ -274,6 +274,16 @@ def enqueue_scan_job(
     ):
         store.put(job)
         _jobs_put(job.job_id, job)
+        # Bump the in-flight gauge as soon as the job is durably enqueued —
+        # KEDA reads this as the leading saturation signal, so we want it
+        # to fire even while jobs are sitting in the executor queue. The
+        # decrement happens in pipeline._run_scan_sync's finally block.
+        try:
+            from agent_bom.api import metrics as _api_metrics
+
+            _api_metrics.record_scan_enqueued()
+        except Exception:  # noqa: BLE001
+            pass
 
     loop = asyncio.get_running_loop()
     loop.run_in_executor(get_executor(), _run_scan_sync, job)

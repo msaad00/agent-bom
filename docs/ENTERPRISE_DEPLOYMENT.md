@@ -232,6 +232,15 @@ export AGENT_BOM_SCIM_TENANT_ID="tenant-alpha"
 
 SCIM lifecycle traffic is available under `/scim/v2/Users`, `/scim/v2/Groups`, `/scim/v2/ServiceProviderConfig`, `/scim/v2/Schemas`, and `/scim/v2/ResourceTypes`. These routes require `AGENT_BOM_SCIM_BEARER_TOKEN`; dashboard sessions and general API keys are not accepted. The tenant is always taken from `AGENT_BOM_SCIM_TENANT_ID`, so tenant fields in the IdP payload cannot steer writes into another tenant.
 
+Provisioned SCIM users carry Agent BOM role and membership metadata. Set
+`AGENT_BOM_SCIM_ROLE_ATTRIBUTE` when the IdP sends roles under a custom
+attribute; otherwise users default to `AGENT_BOM_SCIM_DEFAULT_ROLE` (`viewer`).
+Accepted role values are `admin`, `analyst`, and `viewer` (`contributor` is
+normalized to `analyst`). SCIM remains the lifecycle store: deleting or
+deactivating a SCIM user updates provisioned identity state and audit evidence,
+while runtime API-key, OIDC, SAML, and reverse-proxy sessions are revoked by
+their own upstream auth path.
+
 Compatibility coverage is maintained for common IdP payload shapes:
 
 - Okta user/group lifecycle payloads with `externalId`, `emails`, `groups`, and active-state patches

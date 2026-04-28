@@ -139,7 +139,17 @@ const policy: AuthPolicyResponse = {
       token_configured: true,
       external_id_attribute: "externalId",
       role_attribute: "agent_bom_role",
+      default_role: "viewer",
+      role_values: ["admin", "analyst", "viewer"],
       tenant_attribute: "tenant_id",
+      tenant_assignment: {
+        source: "AGENT_BOM_SCIM_TENANT_ID",
+        payload_tenant_attributes_ignored: true,
+      },
+      provisioning_authority: "scim_lifecycle_store",
+      auth_authority: "api_key_oidc_saml_or_trusted_proxy",
+      runtime_auth_enforced: false,
+      deprovisioning_boundary: "SCIM deactivate/delete updates provisioned lifecycle state and audit evidence.",
       groups_required: false,
       verified_idp_templates: [
         { idp: "okta", status: "contract_tested", notes: "Okta lifecycle payloads are covered." },
@@ -223,7 +233,13 @@ describe("KeyLifecyclePanel", () => {
     expect(screen.getByText("SAML assertion exchange")).toBeInTheDocument();
     expect(screen.getByText("SCIM provisioning")).toBeInTheDocument();
     expect(screen.getByText("configured · /scim/v2 · token configured")).toBeInTheDocument();
-    expect(screen.getByText("Role agent_bom_role · tenant tenant_id · external ID externalId")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Roles from agent_bom_role default to viewer; tenant assignment is bound to AGENT_BOM_SCIM_TENANT_ID. Payload tenant fields are ignored."
+      )
+    ).toBeInTheDocument();
+    expect(screen.getByText("SCIM auth boundary")).toBeInTheDocument();
+    expect(screen.getByText("scim_lifecycle_store · auth: api_key_oidc_saml_or_trusted_proxy · upstream enforced")).toBeInTheDocument();
     expect(screen.getByText("Revocation boundaries")).toBeInTheDocument();
     expect(screen.getByText("OIDC or reverse-proxy browser sessions must be terminated at the upstream identity provider or trusted proxy.")).toBeInTheDocument();
   });

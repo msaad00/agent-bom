@@ -9,7 +9,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 
 from agent_bom.api.audit_log import log_action
-from agent_bom.api.scim import scim_base_path
+from agent_bom.api.scim import extract_scim_roles, scim_base_path, scim_role_attribute
 from agent_bom.api.scim_store import SCIMGroup, SCIMUser
 from agent_bom.api.stores import _get_scim_store
 from agent_bom.platform_invariants import now_utc_iso
@@ -20,6 +20,7 @@ SCIM_LIST_SCHEMA = "urn:ietf:params:scim:api:messages:2.0:ListResponse"
 SCIM_SERVICE_PROVIDER_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"
 SCIM_SCHEMA_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:Schema"
 SCIM_RESOURCE_TYPE_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:ResourceType"
+SCIM_AGENT_BOM_USER_EXTENSION = "urn:agent-bom:params:scim:schemas:extension:identity:1.0:User"
 router = APIRouter(prefix=scim_base_path(), tags=["scim"])
 _FILTER_RE = re.compile(r'^\s*(userName|displayName|externalId|id)\s+eq\s+"([^"]{1,512})"\s*$')
 
@@ -83,6 +84,7 @@ def _user_from_payload(tenant_id: str, body: dict[str, Any], *, existing: SCIMUs
         user_name=user_name,
         display_name=display_name,
         active=bool(body.get("active", existing.active if existing else True)),
+        roles=extract_scim_roles(body, existing_roles=existing.roles if existing else None),
         emails=[entry for entry in emails if isinstance(entry, dict)],
         groups=groups or (existing.groups if existing else []),
         raw=dict(body),
@@ -114,15 +116,32 @@ def _group_from_payload(tenant_id: str, body: dict[str, Any], *, existing: SCIMG
 
 
 def _user_to_scim(user: SCIMUser, request: Request) -> dict[str, Any]:
+    memberships = [
+        {
+            "tenantId": user.tenant_id,
+            "role": role,
+            "active": user.active,
+            "source": "scim",
+        }
+        for role in user.roles
+    ]
     return {
-        "schemas": [SCIM_USER_SCHEMA],
+        "schemas": [SCIM_USER_SCHEMA, SCIM_AGENT_BOM_USER_EXTENSION],
         "id": user.user_id,
         "externalId": user.external_id,
         "userName": user.user_name,
         "displayName": user.display_name,
         "active": user.active,
+        "roles": [{"value": role, "display": role, "type": "agent_bom"} for role in user.roles],
         "emails": user.emails,
         "groups": [{"value": group_id} for group_id in user.groups],
+        SCIM_AGENT_BOM_USER_EXTENSION: {
+            "tenantId": user.tenant_id,
+            "tenantIdSource": "AGENT_BOM_SCIM_TENANT_ID",
+            "roles": user.roles,
+            "memberships": memberships,
+            "runtimeAuthEnforced": False,
+        },
         "meta": {
             "resourceType": "User",
             "created": user.created_at,
@@ -152,6 +171,7 @@ def _apply_user_patch(user: SCIMUser, body: dict[str, Any]) -> SCIMUser:
     operations = body.get("Operations", [])
     if not isinstance(operations, list):
         raise HTTPException(status_code=400, detail="Operations must be a list")
+    role_attribute = scim_role_attribute()
     for operation in operations:
         if not isinstance(operation, dict):
             continue
@@ -169,6 +189,8 @@ def _apply_user_patch(user: SCIMUser, body: dict[str, Any]) -> SCIMUser:
                 user.user_name = str(value["userName"]).strip()
             if "emails" in value and isinstance(value["emails"], list):
                 user.emails = [entry for entry in value["emails"] if isinstance(entry, dict)]
+            if "roles" in value or role_attribute in value:
+                user.roles = extract_scim_roles(value, existing_roles=user.roles)
             continue
         if path == "active":
             user.active = bool(value)
@@ -178,6 +200,8 @@ def _apply_user_patch(user: SCIMUser, body: dict[str, Any]) -> SCIMUser:
             user.user_name = str(value or "").strip()
         elif path == "emails" and isinstance(value, list):
             user.emails = [entry for entry in value if isinstance(entry, dict)]
+        elif path in {"roles", role_attribute}:
+            user.roles = extract_scim_roles({path: value}, existing_roles=user.roles)
         else:
             raise HTTPException(status_code=400, detail="Unsupported user patch path")
     if not user.user_name:
@@ -245,6 +269,7 @@ async def schemas(request: Request) -> dict[str, Any]:
                 {"name": "userName", "type": "string", "required": True, "mutability": "readWrite"},
                 {"name": "displayName", "type": "string", "required": False, "mutability": "readWrite"},
                 {"name": "active", "type": "boolean", "required": False, "mutability": "readWrite"},
+                {"name": "roles", "type": "complex", "multiValued": True, "required": False, "mutability": "readWrite"},
                 {"name": "emails", "type": "complex", "multiValued": True, "required": False, "mutability": "readWrite"},
                 {"name": "groups", "type": "complex", "multiValued": True, "required": False, "mutability": "readOnly"},
             ],
@@ -257,6 +282,19 @@ async def schemas(request: Request) -> dict[str, Any]:
             "attributes": [
                 {"name": "displayName", "type": "string", "required": True, "mutability": "readWrite"},
                 {"name": "members", "type": "complex", "multiValued": True, "required": False, "mutability": "readWrite"},
+            ],
+        },
+        {
+            "schemas": [SCIM_SCHEMA_SCHEMA],
+            "id": SCIM_AGENT_BOM_USER_EXTENSION,
+            "name": "Agent BOM Tenant Membership",
+            "description": "Agent BOM tenant-bound role and membership metadata derived from SCIM provisioning.",
+            "attributes": [
+                {"name": "tenantId", "type": "string", "required": True, "mutability": "readOnly"},
+                {"name": "tenantIdSource", "type": "string", "required": True, "mutability": "readOnly"},
+                {"name": "roles", "type": "string", "multiValued": True, "required": False, "mutability": "readWrite"},
+                {"name": "memberships", "type": "complex", "multiValued": True, "required": False, "mutability": "readOnly"},
+                {"name": "runtimeAuthEnforced", "type": "boolean", "required": True, "mutability": "readOnly"},
             ],
         },
     ]

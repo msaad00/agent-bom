@@ -767,8 +767,16 @@ export function KeyLifecyclePanel({
               />
               <BoundaryCard
                 title="Provisioning posture"
-                body={`Role ${policy.identity_provisioning.scim.role_attribute} · tenant ${policy.identity_provisioning.scim.tenant_attribute} · external ID ${policy.identity_provisioning.scim.external_id_attribute}${
+                body={`Roles from ${policy.identity_provisioning.scim.role_attribute} default to ${policy.identity_provisioning.scim.default_role}; tenant assignment is bound to ${policy.identity_provisioning.scim.tenant_assignment.source}. Payload tenant fields are ignored.`}
+                detail={`Roles: ${policy.identity_provisioning.scim.role_values.join(", ")} · external ID ${policy.identity_provisioning.scim.external_id_attribute}${
                   policy.identity_provisioning.scim.groups_required ? " · groups required" : ""
+                }`}
+              />
+              <BoundaryCard
+                title="SCIM auth boundary"
+                body={policy.identity_provisioning.scim.deprovisioning_boundary}
+                detail={`${policy.identity_provisioning.scim.provisioning_authority} · auth: ${policy.identity_provisioning.scim.auth_authority} · ${
+                  policy.identity_provisioning.scim.runtime_auth_enforced ? "runtime enforced" : "upstream enforced"
                 }`}
               />
             </div>

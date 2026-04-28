@@ -303,6 +303,9 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["identity_provisioning"]["scim"]["supported"] is True
     assert body["identity_provisioning"]["scim"]["base_path"] == "/scim/v2"
     assert body["identity_provisioning"]["scim"]["token_configured"] is False
+    assert body["identity_provisioning"]["scim"]["runtime_auth_enforced"] is False
+    assert body["identity_provisioning"]["scim"]["auth_authority"] == "api_key_oidc_saml_or_trusted_proxy"
+    assert body["identity_provisioning"]["scim"]["provisioning_authority"] == "scim_lifecycle_store"
     assert {entry["idp"] for entry in body["identity_provisioning"]["scim"]["verified_idp_templates"]} == {
         "okta",
         "microsoft_entra_id",
@@ -673,9 +676,17 @@ def test_auth_policy_reports_scim_configuration_posture(monkeypatch: pytest.Monk
     assert body["identity_provisioning"]["scim"]["lifecycle_endpoints"]["users"] == "/scim/v2/Users"
     assert body["identity_provisioning"]["scim"]["lifecycle_endpoints"]["groups"] == "/scim/v2/Groups"
     assert body["identity_provisioning"]["scim"]["role_attribute"] == "roles"
+    assert body["identity_provisioning"]["scim"]["default_role"] == "viewer"
+    assert body["identity_provisioning"]["scim"]["role_values"] == ["admin", "analyst", "viewer"]
     assert body["identity_provisioning"]["scim"]["tenant_attribute"] == "organization_id"
+    assert body["identity_provisioning"]["scim"]["tenant_assignment"] == {
+        "source": "AGENT_BOM_SCIM_TENANT_ID",
+        "payload_tenant_attributes_ignored": True,
+    }
     assert body["identity_provisioning"]["scim"]["external_id_attribute"] == "employeeNumber"
     assert body["identity_provisioning"]["scim"]["groups_required"] is True
+    assert body["identity_provisioning"]["scim"]["runtime_auth_enforced"] is False
+    assert "SCIM deactivate/delete" in body["identity_provisioning"]["scim"]["deprovisioning_boundary"]
 
 
 def test_auth_policy_flags_clustered_scim_without_postgres(monkeypatch: pytest.MonkeyPatch) -> None:

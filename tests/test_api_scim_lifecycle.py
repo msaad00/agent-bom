@@ -22,6 +22,9 @@ def _headers(token: str = "scim-secret") -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+AGENT_BOM_USER_EXTENSION = "urn:agent-bom:params:scim:schemas:extension:identity:1.0:User"
+
+
 def test_scim_requires_dedicated_bearer_token(scim_client: TestClient) -> None:
     missing = scim_client.get("/scim/v2/Users")
     assert missing.status_code == 401
@@ -44,6 +47,7 @@ def test_scim_discovery_endpoints(scim_client: TestClient) -> None:
     schema_ids = {resource["id"] for resource in schemas.json()["Resources"]}
     assert "urn:ietf:params:scim:schemas:core:2.0:User" in schema_ids
     assert "urn:ietf:params:scim:schemas:core:2.0:Group" in schema_ids
+    assert AGENT_BOM_USER_EXTENSION in schema_ids
 
     resource_types = scim_client.get("/scim/v2/ResourceTypes", headers=_headers())
     assert resource_types.status_code == 200
@@ -68,6 +72,13 @@ def test_scim_user_create_list_patch_and_deactivate(scim_client: TestClient) -> 
     user_id = user["id"]
     assert user["userName"] == "alice@example.com"
     assert user["active"] is True
+    assert user["roles"] == [{"value": "viewer", "display": "viewer", "type": "agent_bom"}]
+    assert user[AGENT_BOM_USER_EXTENSION]["tenantId"] == "tenant-alpha"
+    assert user[AGENT_BOM_USER_EXTENSION]["tenantIdSource"] == "AGENT_BOM_SCIM_TENANT_ID"
+    assert user[AGENT_BOM_USER_EXTENSION]["runtimeAuthEnforced"] is False
+    assert user[AGENT_BOM_USER_EXTENSION]["memberships"] == [
+        {"tenantId": "tenant-alpha", "role": "viewer", "active": True, "source": "scim"}
+    ]
 
     duplicate = scim_client.post(
         "/scim/v2/Users",
@@ -112,6 +123,42 @@ def test_scim_user_create_list_patch_and_deactivate(scim_client: TestClient) -> 
     fetched = scim_client.get(f"/scim/v2/Users/{user_id}", headers=_headers())
     assert fetched.status_code == 200
     assert fetched.json()["active"] is False
+    assert fetched.json()[AGENT_BOM_USER_EXTENSION]["memberships"][0]["active"] is False
+
+
+def test_scim_user_roles_are_normalized_and_tenant_bound(
+    scim_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_BOM_SCIM_ROLE_ATTRIBUTE", "agent_bom_role")
+
+    created = scim_client.post(
+        "/scim/v2/Users",
+        headers=_headers(),
+        json={
+            "userName": "admin@example.com",
+            "externalId": "emp-admin",
+            "displayName": "Admin Example",
+            "agent_bom_role": "admin",
+            "tenant_id": "payload-tenant-must-not-win",
+        },
+    )
+    assert created.status_code == 201
+    user = created.json()
+    assert user["roles"] == [{"value": "admin", "display": "admin", "type": "agent_bom"}]
+    assert user[AGENT_BOM_USER_EXTENSION]["tenantId"] == "tenant-alpha"
+    assert user[AGENT_BOM_USER_EXTENSION]["memberships"] == [
+        {"tenantId": "tenant-alpha", "role": "admin", "active": True, "source": "scim"}
+    ]
+
+    patched = scim_client.patch(
+        f"/scim/v2/Users/{user['id']}",
+        headers=_headers(),
+        json={"Operations": [{"op": "replace", "path": "agent_bom_role", "value": "contributor"}]},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["roles"] == [{"value": "analyst", "display": "analyst", "type": "agent_bom"}]
+    assert patched.json()[AGENT_BOM_USER_EXTENSION]["memberships"][0]["role"] == "analyst"
 
 
 def test_scim_group_create_patch_and_delete(scim_client: TestClient) -> None:

@@ -720,7 +720,17 @@ export interface AuthPolicyResponse {
       token_configured: boolean;
       external_id_attribute: string;
       role_attribute: string;
+      default_role: string;
+      role_values: string[];
       tenant_attribute: string;
+      tenant_assignment: {
+        source: string;
+        payload_tenant_attributes_ignored: boolean;
+      };
+      provisioning_authority: string;
+      auth_authority: string;
+      runtime_auth_enforced: boolean;
+      deprovisioning_boundary: string;
       groups_required: boolean;
       verified_idp_templates?: Array<{
         idp: string;

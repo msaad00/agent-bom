@@ -141,6 +141,18 @@ secret material.
 access management system. The product exposes posture and supports rotation
 paths; the operator owns secret authority, approval workflow, and key custody.
 
+## SCIM And Revocation Boundary
+
+SCIM is the provisioned identity lifecycle store. User and group resources
+include tenant-bound Agent BOM role metadata, but the tenant is still assigned
+server-side from `AGENT_BOM_SCIM_TENANT_ID`; tenant fields in IdP payloads are
+ignored for routing. Runtime authentication continues to come from API keys,
+OIDC, SAML, browser sessions, or trusted reverse-proxy headers. A SCIM
+deactivation records the lifecycle event and removes the provisioned active
+membership view, but live OIDC/SAML/proxy sessions must be terminated at the
+upstream IdP or proxy, and API keys must be revoked through the key lifecycle
+API.
+
 ## Logging, Monitoring, And Incident Response
 
 Relevant security signals:

@@ -209,6 +209,15 @@ Key rotation endpoints and policy introspection:
 - `POST /v1/auth/keys/{key_id}/rotate`
 - `DELETE /v1/auth/keys/{key_id}`
 
+## SCIM lifecycle boundary
+
+SCIM user and group provisioning records tenant-bound role membership metadata
+for operators and audits. The SCIM tenant is resolved only from server
+configuration (`AGENT_BOM_SCIM_TENANT_ID`), not from the IdP payload. SCIM
+deactivation updates provisioned lifecycle state; runtime OIDC, SAML,
+reverse-proxy, browser-session, and API-key access is revoked by the upstream
+auth provider or the API key lifecycle endpoints.
+
 ## Operator debugging
 
 Use:

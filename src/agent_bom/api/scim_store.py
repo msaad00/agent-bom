@@ -23,6 +23,7 @@ class SCIMUser(BaseModel):
     user_name: str
     display_name: str = ""
     active: bool = True
+    roles: list[str] = Field(default_factory=list)
     emails: list[dict[str, Any]] = Field(default_factory=list)
     groups: list[str] = Field(default_factory=list)
     raw: dict[str, Any] = Field(default_factory=dict)

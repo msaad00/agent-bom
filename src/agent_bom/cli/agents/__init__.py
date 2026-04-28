@@ -1900,6 +1900,20 @@ def scan(
 
     ctx.step_timings["scanning"] = _time.monotonic() - _step_t0
 
+    # Surface graph-walk reachability onto each blast-radius row so the
+    # CLI report carries the same `graph_reachable` / `graph_min_hop_distance`
+    # / `graph_reachable_from_agents` evidence the API path produces. Wrapped
+    # in try/except so a graph build failure never breaks `agent-bom agents`.
+    try:
+        from agent_bom.graph.blast_reach import (
+            apply_dependency_reachability_to_blast_radii,
+        )
+
+        apply_dependency_reachability_to_blast_radii(blast_radii, agents, rescore=True)
+    except Exception:  # noqa: BLE001
+        # Reachability is best-effort enrichment — don't let it fail the scan.
+        pass
+
     # Attach blast_radii and report to context for downstream phases
     ctx.blast_radii = blast_radii
     ctx.report = report

@@ -748,6 +748,13 @@ def to_json(report: AIBOMReport) -> dict:
                 "transitive_agents": getattr(br, "transitive_agents", []),
                 "transitive_credentials": getattr(br, "transitive_credentials", []),
                 "transitive_risk_score": getattr(br, "transitive_risk_score", 0.0),
+                # Graph-walk reachability stamped by
+                # `agent_bom.graph.blast_reach.apply_dependency_reachability_to_blast_radii`
+                # in both the API pipeline and the CLI scan path. ``None`` =
+                # engine did not run for this scan.
+                "graph_reachable": getattr(br, "graph_reachable", None),
+                "graph_min_hop_distance": getattr(br, "graph_min_hop_distance", None),
+                "graph_reachable_from_agents": getattr(br, "graph_reachable_from_agents", []),
             }
             for br in report.blast_radii
         ],

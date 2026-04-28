@@ -31,6 +31,7 @@ version: "3.8"
 #   cp .env.example .env                     # set POSTGRES_APP_PASSWORD only
 #   echo -n "$POSTGRES_PASSWORD" > deploy/secrets/postgres_password
 #   chmod 0400 deploy/secrets/postgres_password
+#   export AGENT_BOM_API_KEY="$(openssl rand -hex 32)"  # or set OIDC env below
 #   docker compose -f deploy/docker-compose.platform.yml up --build
 
 services:
@@ -83,6 +84,11 @@ services:
     environment:
       # Use app user (DML only) when available, fall back to admin for dev
       - AGENT_BOM_POSTGRES_URL=postgresql://${POSTGRES_APP_USER:-${POSTGRES_USER:-agent_bom}}:${POSTGRES_APP_PASSWORD:-${POSTGRES_PASSWORD:?err}}@postgres:5432/${POSTGRES_DB:-agent_bom}
+      - AGENT_BOM_API_KEY=${AGENT_BOM_API_KEY:-}
+      - AGENT_BOM_OIDC_ISSUER=${AGENT_BOM_OIDC_ISSUER:-}
+      - AGENT_BOM_OIDC_AUDIENCE=${AGENT_BOM_OIDC_AUDIENCE:-}
+      - AGENT_BOM_DISABLE_DOCS=1
+      - AGENT_BOM_API_LOCAL_PATH_SCANS=disabled
       - CORS_ORIGINS=http://localhost:3000,http://ui:3000
       - NVD_API_KEY=${NVD_API_KEY:-}
     depends_on:

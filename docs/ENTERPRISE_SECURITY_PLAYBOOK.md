@@ -109,7 +109,7 @@ Two channels — text and visual — both covered:
 - Detect + alert — called inside `run_proxy` on every response.
 - Redact in place — `Shield.redact(text)` returns a sanitized string.
 - Severity-tagged — credentials are `CRITICAL`, PII is `HIGH`.
-- Tests: [`tests/test_runtime_credential_leak.py`](../tests/test_runtime_credential_leak.py).
+- Tests: [`tests/test_runtime_detectors.py`](../tests/test_runtime_detectors.py).
 
 **Visual channel — [`VisualLeakDetector`](../src/agent_bom/runtime/visual_leak_detector.py)** (opt-in: `pip install 'agent-bom[visual]'`). MCPs wrapping browsers or screen-capture tools (Playwright-MCP, Puppeteer-MCP, Cursor/Claude screen-read) can leak creds + PII through pixels the text scanner misses.
 

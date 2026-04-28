@@ -30,7 +30,7 @@ services:
     image: agentbom/agent-bom:0.82.3
     container_name: agent-bom-api
     restart: unless-stopped
-    command: api --host 0.0.0.0 --port 8422
+    command: api --host 0.0.0.0 --port 8422 --allow-insecure-no-auth
     environment:
       AGENT_BOM_POSTGRES_URL: >-
         postgresql://${POSTGRES_USER:-agent_bom}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-agent_bom}
@@ -46,12 +46,14 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       # Optional: protect the API with a key
       AGENT_BOM_API_KEY: ${AGENT_BOM_API_KEY:-}
+      # Local dev stack only: filesystem scans should be explicit in shared API setups.
+      AGENT_BOM_API_LOCAL_PATH_SCANS: ${AGENT_BOM_API_LOCAL_PATH_SCANS:-disabled}
     ports:
-      - "${API_PORT:-8422}:8422"
+      - "127.0.0.1:${API_PORT:-8422}:8422"
     volumes:
       # Mount host MCP config dirs read-only so the API can discover local agents
-      - ~/.config:/root/.config:ro
-      - ~/.claude:/root/.claude:ro
+      - ~/.config:/home/abom/.config:ro
+      - ~/.claude:/home/abom/.claude:ro
     networks:
       - agent-bom
     depends_on:
@@ -76,7 +78,7 @@ services:
     container_name: agent-bom-ui
     restart: unless-stopped
     ports:
-      - "${UI_PORT:-3000}:3000"
+      - "127.0.0.1:${UI_PORT:-3000}:3000"
     networks:
       - agent-bom
     depends_on:
@@ -103,7 +105,7 @@ services:
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
     ports:
       # Only expose locally — remove in production
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./supabase/postgres/init-wrapper.sh:/docker-entrypoint-initdb.d/00-init-wrapper.sh:ro

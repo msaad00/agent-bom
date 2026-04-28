@@ -42,8 +42,8 @@ services:
       # Mount local config directories (read-only)
       # macOS/Linux: ~/.config, ~/.claude
       # Windows: use %APPDATA% paths or run via WSL2
-      - ~/.config:/root/.config:ro
-      - ~/.claude:/root/.claude:ro
+      - ~/.config:/home/abom/.config:ro
+      - ~/.claude:/home/abom/.claude:ro
       # Mount current directory for output
       - ./reports:/workspace/reports
       # Mount test configs

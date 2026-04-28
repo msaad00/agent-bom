@@ -39,6 +39,10 @@ controlPlane:
       # Backend selection — Snowflake stores scan jobs, fleet, policies, audit
       - name: AGENT_BOM_STORE_BACKEND
         value: "snowflake"
+      - name: AGENT_BOM_DISABLE_DOCS
+        value: "1"
+      - name: AGENT_BOM_API_LOCAL_PATH_SCANS
+        value: "disabled"
       - name: AGENT_BOM_FLEET_STORE_BACKEND
         value: "snowflake"
       - name: AGENT_BOM_POLICY_STORE_BACKEND

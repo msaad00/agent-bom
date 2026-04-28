@@ -87,7 +87,7 @@ docker build -t agent-bom:latest .
 # Scan mounted directory
 docker run --rm \
   -v $(pwd):/workspace \
-  -v ~/.config:/root/.config:ro \
+  -v ~/.config:/home/abom/.config:ro \
   agent-bom:latest scan --enrich --output /workspace/report.json
 
 # Scan with environment variables
@@ -251,7 +251,7 @@ spec:
                   key: snowflake-account
             volumeMounts:
             - name: config-volume
-              mountPath: /root/.config
+              mountPath: /home/abom/.config
               readOnly: true
             - name: output-volume
               mountPath: /output

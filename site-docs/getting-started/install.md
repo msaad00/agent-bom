@@ -25,8 +25,8 @@ docker run --rm ghcr.io/msaad00/agent-bom:latest scan
 
 # With host config access (for MCP client discovery)
 docker run --rm \
-  -v "$HOME/.config:/root/.config:ro" \
-  -v "$HOME/Library/Application Support:/root/Library/Application Support:ro" \
+  -v "$HOME/.config:/home/abom/.config:ro" \
+  -v "$HOME/Library/Application Support:/home/abom/Library/Application Support:ro" \
   ghcr.io/msaad00/agent-bom:latest scan
 ```
 

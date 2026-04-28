@@ -122,7 +122,7 @@ control-plane audit path.
 
 ```bash
 docker run -it --rm \
-  -v ~/.config:/root/.config:ro \
+  -v ~/.config:/home/abom/.config:ro \
   agentbom/agent-bom:latest mcp server
 ```
 

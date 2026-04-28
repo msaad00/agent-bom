@@ -1,6 +1,8 @@
 # Architecture Decision Records
 
-This directory contains Architecture Decision Records (ADRs) for agent-bom.
+This directory contains the original Architecture Decision Records (ADRs) for
+agent-bom. New ADRs live in [`docs/decisions`](../decisions/README.md), which
+is the canonical decision log for current work.
 
 ADRs document significant technical decisions — the context, options considered,
 and rationale for the chosen approach. They help current and future contributors
@@ -22,7 +24,7 @@ We use [MADR](https://adr.github.io/madr/) (Markdown Any Decision Records).
 
 ## Adding a new ADR
 
-1. Copy `template.md` to `NNN-short-title.md`
-2. Fill in all sections
-3. Add entry to the index table above
+1. Use `docs/decisions/_template.md`
+2. Add the new record under `docs/decisions/`
+3. Add it to the `docs/decisions/README.md` index
 4. Submit as part of your PR

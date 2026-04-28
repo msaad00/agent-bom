@@ -88,6 +88,45 @@ def test_platform_compose_uses_docker_secrets_for_postgres_password() -> None:
     )
 
 
+def test_platform_api_fails_closed_for_auth_docs_and_local_scans() -> None:
+    path = COMPOSE_DIR / "docker-compose.platform.yml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    api = (data.get("services") or {}).get("api") or {}
+    env = api.get("environment") or []
+    env_map = {item.split("=", 1)[0]: item.split("=", 1)[1] for item in env if isinstance(item, str) and "=" in item}
+
+    assert "AGENT_BOM_API_KEY" in env_map
+    assert "AGENT_BOM_OIDC_ISSUER" in env_map
+    assert "--allow-insecure-no-auth" not in api.get("command", "")
+    assert env_map.get("AGENT_BOM_DISABLE_DOCS") == "1"
+    assert env_map.get("AGENT_BOM_API_LOCAL_PATH_SCANS") == "disabled"
+
+
+def test_fullstack_is_loopback_only_and_matches_runtime_user_home() -> None:
+    path = COMPOSE_DIR / "docker-compose.fullstack.yml"
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    api = (data.get("services") or {}).get("api") or {}
+
+    assert "--allow-insecure-no-auth" in api.get("command", "")
+    assert api.get("ports") == ["127.0.0.1:${API_PORT:-8422}:8422"]
+    assert "~/.config:/home/abom/.config:ro" in (api.get("volumes") or [])
+    assert "~/.claude:/home/abom/.claude:ro" in (api.get("volumes") or [])
+
+
+def test_active_docker_docs_do_not_mount_config_under_root_home() -> None:
+    active_docs = [
+        ROOT / "docs" / "DEPLOYMENT.md",
+        ROOT / "docs" / "ENTERPRISE_DEPLOYMENT.md",
+        ROOT / "docs" / "MCP_SERVER.md",
+        ROOT / "site-docs" / "getting-started" / "install.md",
+        ROOT / "site-docs" / "deployment" / "docker.md",
+        COMPOSE_DIR / "docker-compose.yml",
+        COMPOSE_DIR / "docker-compose.fullstack.yml",
+    ]
+    offenders = [str(path.relative_to(ROOT)) for path in active_docs if "/root/.config" in path.read_text(encoding="utf-8")]
+    assert not offenders
+
+
 @pytest.mark.parametrize("path", _compose_files(), ids=lambda p: p.name)
 def test_compose_file_declares_profile_header(path: Path) -> None:
     text = path.read_text(encoding="utf-8")

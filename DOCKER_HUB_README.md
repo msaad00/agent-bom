@@ -163,6 +163,8 @@ refresh, enrichment, SIEM, OTLP, and webhooks is operator-controlled.
 - HTTPS for every external hop
 - private in-cluster traffic or service-mesh mTLS for internal hops
 - auth on every non-loopback control-plane surface
+- production profiles set `AGENT_BOM_DISABLE_DOCS=1` so `/docs`, `/redoc`, and `/openapi.json` are not exposed as unauthenticated helper routes
+- shared control-plane profiles set `AGENT_BOM_API_LOCAL_PATH_SCANS=disabled`; enable API-local filesystem scans only for an explicit single-tenant mounted workspace
 - RBAC and tenant scoping on sensitive routes
 - rate limiting, audit trails, and signed release artifacts
 - HMAC-backed tamper evidence for exported bundles

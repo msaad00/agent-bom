@@ -36,6 +36,25 @@ Kubernetes, cloud inventory, and the API/UI control plane.
 | API/UI control plane | team operations and review | tenant-scoped jobs, findings, fleet, graph, policy, audit, and auth state | bypass tenant/RBAC checks, expose one tenant to another |
 | Proxy/gateway | optional runtime enforcement | MCP requests and responses that pass through the configured proxy path | inspect unrelated app traffic, run outside explicit proxy configuration |
 
+## Connectors, plugins, and roles
+
+Connectors and extension points follow the same boundary as built-in scans:
+agentless, scoped, read-only by default, and stronger only when an operator
+chooses it.
+
+- connectors use operator-provided connector identities and should start with
+  read-only scopes
+- connectors must not write remote systems, escalate permissions, or reuse
+  discovered credentials
+- stronger connector actions require explicit connector configuration, RBAC
+  permission, and audit evidence
+- plugins and skills are scoped by operator-selected paths or registry entries
+- plugins and skills must not silently install, read unscoped files, or export
+  data without approval
+- roles stay least-privilege by default: viewer reads allowed tenant evidence,
+  analyst runs and reviews workflows, admin manages keys, policies, and tenant
+  settings
+
 ## Sensitive data handling
 
 `agent-bom` separates detection from collection.
@@ -92,6 +111,13 @@ The `/v1/auth/policy` operator posture endpoint includes a
 `data_access_boundaries` section generated from code. CI tests pin the contract
 so the implementation, API surface, and docs cannot drift silently.
 
+The same code-generated contract is available from the CLI:
+
+```bash
+agent-bom trust
+agent-bom trust --format json
+```
+
 ## Cloud least privilege
 
 Cloud and SaaS scans should use dedicated read-only identities. A deployment
@@ -128,6 +154,8 @@ claims:
 
 - review `docs/PERMISSIONS.md` for enumerated read and network behavior
 - run `agent-bom agents --dry-run` before scanning
+- run `agent-bom trust --format json` to inspect the machine-readable boundary
+  contract used by the API and UI
 - run `--offline` or `--no-scan` to prove network paths are optional
 - inspect API audit logs and tenant-scoped route tests
 - inspect generated reports for redaction markers instead of secret values

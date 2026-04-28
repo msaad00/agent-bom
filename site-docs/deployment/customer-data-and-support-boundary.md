@@ -150,6 +150,13 @@ Today the product already supports a redaction-friendly support bundle flow in
 the UI help surface. That gives operators a copyable bundle for debugging and
 bug reports without sending hidden telemetry automatically.
 
+Operators can also inspect the code-generated trust contract through
+`agent-bom trust --format json` and `GET /v1/auth/policy`. Both surfaces expose
+the same credential, network, storage, auth, SCIM tenant, and export
+boundaries. The same contract covers connector, plugin, skill, and role
+boundaries: agentless read-only connectors by default, operator-scoped
+plugin/skill execution, and least-privilege RBAC for every control-plane action.
+
 If a customer needs deeper support later, the recommended model is:
 
 - customer-generated support bundle

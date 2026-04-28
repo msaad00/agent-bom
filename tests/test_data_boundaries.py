@@ -9,6 +9,7 @@ def test_data_access_boundary_contract_pins_operator_controls() -> None:
     assert contract["default_posture"]["self_hosted_first"] is True
     assert contract["default_posture"]["mandatory_hosted_control_plane"] is False
     assert contract["default_posture"]["hidden_telemetry"] is False
+    assert contract["default_posture"]["default_network_mode"] == "operator_controlled"
     assert contract["credential_evidence"] == {
         "config_env_vars": "names_only",
         "project_secret_scan": "redacted_labels_only",
@@ -16,6 +17,18 @@ def test_data_access_boundary_contract_pins_operator_controls() -> None:
         "stores_matched_prefix": False,
         "validates_live_secret": False,
     }
+    assert contract["network_boundaries"]["telemetry"] == "none"
+    assert contract["network_boundaries"]["outbound_exports"] == "opt_in_only"
+    assert "--offline" in contract["network_boundaries"]["disable_controls"]
+    assert contract["storage_boundaries"]["secret_values"] == "never_stored"
+    assert contract["storage_boundaries"]["raw_artifact_exports"] == "operator_opt_in"
+    assert contract["auth_boundaries"]["scim"]["payload_tenant_attributes_ignored"] is True
+    assert contract["extension_boundaries"]["connectors"]["default_posture"] == "agentless_read_only"
+    assert "reuse_discovered_credentials" in contract["extension_boundaries"]["connectors"]["does_not_do"]
+    assert contract["extension_boundaries"]["plugins_and_skills"]["default_posture"] == "disabled_until_scoped_by_operator"
+    assert "--no-skill" in contract["extension_boundaries"]["plugins_and_skills"]["controls"]
+    assert contract["extension_boundaries"]["roles"]["principle"] == "least_privilege_by_default"
+    assert "payload_tenant_attributes_ignored" in contract["posture_vocabulary"]["intentional_boundary_flags"]
 
     controls = contract["operator_controls"]
     assert controls["scope_preview"] == "agent-bom agents --dry-run"

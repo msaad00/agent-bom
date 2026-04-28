@@ -102,6 +102,116 @@ const policy: AuthPolicyResponse = {
       schedules: { limit: 25, default_limit: 25, override_limit: null, current: 3, remaining: 22, enforced: true, source: "global_default", utilization_pct: 12, status: "ok", recommended_action: "Usage is within the enforced tenant quota." },
     },
   },
+  data_access_boundaries: {
+    default_posture: {
+      self_hosted_first: true,
+      mandatory_hosted_control_plane: false,
+      hidden_telemetry: false,
+      default_network_mode: "operator_controlled",
+      credential_values_stored: false,
+      credential_values_transmitted: false,
+      credential_values_validated_by_default: false,
+      support_access_default: "customer_selected",
+    },
+    modes: [
+      {
+        mode: "local_discovery",
+        reads: ["known_agent_mcp_config_paths", "env_var_names"],
+        does_not_read: ["env_var_values", "arbitrary_personal_files"],
+        operator_controls: ["--dry-run", "--offline"],
+      },
+      {
+        mode: "project_scan",
+        reads: ["operator_selected_project_scope"],
+        does_not_store: ["matched_secret_value", "matched_secret_prefix"],
+        operator_controls: ["--project", "--no-skill"],
+      },
+      {
+        mode: "cloud_inventory",
+        reads: ["metadata_available_to_operator_provided_identity"],
+        required_identity: "read_only",
+        does_not_do: ["mutate_cloud_resources", "use_discovered_credentials"],
+        operator_controls: ["provider_flags", "--dry-run"],
+      },
+    ],
+    network_boundaries: {
+      telemetry: "none",
+      vulnerability_enrichment: "operator_controlled",
+      cloud_provider_api_calls: "operator_credentials_only",
+      outbound_exports: "opt_in_only",
+      proxy_gateway_egress: "policy_controlled",
+      disable_controls: ["--offline", "--no-scan", "--sandbox-egress deny"],
+    },
+    storage_boundaries: {
+      local_default: "local_files_and_stdout_only",
+      control_plane_default: "tenant_scoped_database_records",
+      secret_values: "never_stored",
+      secret_previews: "never_stored",
+      raw_artifact_exports: "operator_opt_in",
+      support_bundle_default: "customer_selected_redacted_evidence",
+    },
+    auth_boundaries: {
+      api: ["api_key", "oidc_bearer", "saml_session_key", "trusted_reverse_proxy"],
+      authorization: ["rbac_role", "tenant_scope", "admin_required_for_key_lifecycle"],
+      scim: {
+        provisioning_authority: "scim_lifecycle_store",
+        runtime_auth_overlay: "enabled_when_configured",
+        tenant_source: "AGENT_BOM_SCIM_TENANT_ID",
+        payload_tenant_attributes_ignored: true,
+      },
+      does_not_do: ["accept_untrusted_payload_tenant", "cross_tenant_lookup_without_auth_context"],
+    },
+    deployment_boundaries: {
+      local: ["explicit_project_or_config_scope", "offline_mode_available"],
+      endpoint: ["mdm_command_scope", "fleet_summary_sync"],
+      eks: ["network_policy", "read_only_cloud_identity"],
+      gateway: ["explicit_mcp_proxy_path", "policy_reload"],
+    },
+    extension_boundaries: {
+      connectors: {
+        default_posture: "agentless_read_only",
+        credential_scope: "operator_provided_connector_identity",
+        does_not_do: ["write_remote_systems", "escalate_permissions", "reuse_discovered_credentials"],
+        stronger_actions_require: ["explicit_connector_config", "rbac_permission", "audit_event"],
+      },
+      plugins_and_skills: {
+        default_posture: "disabled_until_scoped_by_operator",
+        execution_boundary: "selected_path_or_registry_entry",
+        does_not_do: ["silent_install", "unscoped_filesystem_read", "unapproved_network_export"],
+        controls: ["--no-skill", "--skill-only", "signed_skill_verification"],
+      },
+      roles: {
+        viewer: ["read_allowed_tenant_evidence"],
+        analyst: ["run_scans", "review_findings", "operate_non_admin_workflows"],
+        admin: ["manage_keys", "manage_policy", "manage_tenant_settings"],
+        principle: "least_privilege_by_default",
+      },
+    },
+    posture_vocabulary: {
+      capability_flags: ["rotation_tracking_supported"],
+      enforcement_flags: ["runtime_auth_enforced", "mtls_enforced"],
+      intentional_boundary_flags: ["payload_tenant_attributes_ignored"],
+    },
+    operator_controls: {
+      scope_preview: "agent-bom agents --dry-run",
+      inventory_only: "--inventory <file>",
+      project_scope: "--project <dir>",
+      config_scope: "--config-dir <dir>",
+      disable_vulnerability_network: "--offline",
+      disable_scan_network_and_vuln_lookup: "--no-scan",
+      disable_skill_scan: "--no-skill",
+      isolate_skill_scan: "--skill-only",
+      api_access_control: ["api_keys", "rbac_roles", "tenant_scope", "trusted_proxy_attestation"],
+      optional_exports: ["siem", "otel", "slack"],
+    },
+    credential_evidence: {
+      config_env_vars: "names_only",
+      project_secret_scan: "redacted_labels_only",
+      stores_matched_value: false,
+      stores_matched_prefix: false,
+      validates_live_secret: false,
+    },
+  },
   identity_provisioning: {
     oidc: {
       supported: true,
@@ -210,6 +320,14 @@ describe("KeyLifecyclePanel", () => {
     expect(screen.getByText("Manage overrides at /v1/auth/quota.")).toBeInTheDocument();
     expect(screen.getAllByText("Global default").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Save overrides" })).toBeInTheDocument();
+    expect(screen.getByText("Data access boundaries")).toBeInTheDocument();
+    expect(screen.getByText("Credential evidence")).toBeInTheDocument();
+    expect(screen.getByText("Network and exports")).toBeInTheDocument();
+    expect(screen.getByText(/Telemetry is none/)).toBeInTheDocument();
+    expect(screen.getByText(/value stored false/)).toBeInTheDocument();
+    expect(screen.getByText(/SCIM tenant AGENT_BOM_SCIM_TENANT_ID/)).toBeInTheDocument();
+    expect(screen.getByText("local discovery")).toBeInTheDocument();
+    expect(screen.getByText(/Does not store: matched secret value/)).toBeInTheDocument();
     expect(screen.getByText("Secret and integrity posture")).toBeInTheDocument();
     expect(screen.getByText("Audit HMAC")).toBeInTheDocument();
     expect(screen.getByText("Compliance evidence signing")).toBeInTheDocument();

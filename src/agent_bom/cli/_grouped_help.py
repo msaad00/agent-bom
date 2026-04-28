@@ -28,7 +28,7 @@ COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
         ),
         (
             "Governance",
-            ["policy", "fleet", "serve", "api", "schedule", "remediate", "teardown"],
+            ["policy", "trust", "fleet", "serve", "api", "schedule", "remediate", "teardown"],
         ),
         (
             "Database",
@@ -46,7 +46,7 @@ CATEGORY_DESCRIPTIONS: dict[str, str] = {
     "Runtime": "Live MCP enforcement, replay, and runtime monitoring surfaces.",
     "MCP": "Discovery, inventory, introspection, and MCP server operations.",
     "Reporting": "Graph, mesh, dashboard, history, and narrative reporting workflows.",
-    "Governance": "Policy, fleet, API, scheduling, and operational control-plane commands.",
+    "Governance": "Policy, trust boundaries, fleet, API, scheduling, and operational control-plane commands.",
     "Database": "Local cache, vuln database, and framework catalog maintenance.",
     "Utilities": "Shell completions and upgrade helpers.",
     "Other": "Additional commands that do not fit a primary workflow bucket.",

@@ -551,6 +551,104 @@ export interface AuthMeResponse {
   span_id: string | null;
 }
 
+export interface DataAccessBoundaryMode {
+  mode: string;
+  reads: string[];
+  evidence?: string[] | undefined;
+  required_identity?: string | undefined;
+  controls?: string[] | undefined;
+  operator_controls?: string[] | undefined;
+  does_not_read?: string[] | undefined;
+  does_not_store?: string[] | undefined;
+  does_not_do?: string[] | undefined;
+}
+
+export interface DataAccessBoundaries {
+  default_posture: {
+    self_hosted_first: boolean;
+    mandatory_hosted_control_plane: boolean;
+    hidden_telemetry: boolean;
+    default_network_mode: string;
+    credential_values_stored: boolean;
+    credential_values_transmitted: boolean;
+    credential_values_validated_by_default: boolean;
+    support_access_default: string;
+  };
+  modes: DataAccessBoundaryMode[];
+  network_boundaries: {
+    telemetry: string;
+    vulnerability_enrichment: string;
+    cloud_provider_api_calls: string;
+    outbound_exports: string;
+    proxy_gateway_egress: string;
+    disable_controls: string[];
+  };
+  storage_boundaries: {
+    local_default: string;
+    control_plane_default: string;
+    secret_values: string;
+    secret_previews: string;
+    raw_artifact_exports: string;
+    support_bundle_default: string;
+  };
+  auth_boundaries: {
+    api: string[];
+    authorization: string[];
+    scim: {
+      provisioning_authority: string;
+      runtime_auth_overlay: string;
+      tenant_source: string;
+      payload_tenant_attributes_ignored: boolean;
+    };
+    does_not_do: string[];
+  };
+  deployment_boundaries: Record<string, string[]>;
+  extension_boundaries: {
+    connectors: {
+      default_posture: string;
+      credential_scope: string;
+      does_not_do: string[];
+      stronger_actions_require: string[];
+    };
+    plugins_and_skills: {
+      default_posture: string;
+      execution_boundary: string;
+      does_not_do: string[];
+      controls: string[];
+    };
+    roles: {
+      viewer: string[];
+      analyst: string[];
+      admin: string[];
+      principle: string;
+    };
+  };
+  posture_vocabulary: {
+    capability_flags: string[];
+    enforcement_flags: string[];
+    intentional_boundary_flags: string[];
+  };
+  operator_controls: {
+    scope_preview: string;
+    inventory_only: string;
+    project_scope: string;
+    config_scope: string;
+    disable_vulnerability_network: string;
+    disable_scan_network_and_vuln_lookup: string;
+    disable_skill_scan: string;
+    isolate_skill_scan: string;
+    api_access_control: string[];
+    optional_exports: string[];
+  };
+  credential_evidence: {
+    config_env_vars: string;
+    project_secret_scan: string;
+    stores_matched_value: boolean;
+    stores_matched_prefix: boolean;
+    validates_live_secret: boolean;
+  };
+}
+
 export interface AuthPolicyResponse {
   api_key: {
     default_ttl_seconds: number;
@@ -723,6 +821,7 @@ export interface AuthPolicyResponse {
       browser_sessions: string;
     };
   };
+  data_access_boundaries: DataAccessBoundaries;
 }
 
 export type ApiKeyLifecycleState = "active" | "rotation_overlap" | "rotated" | "revoked" | "expired";

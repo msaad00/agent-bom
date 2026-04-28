@@ -2,7 +2,7 @@
 
 This document enumerates trust boundaries, threat actors, attack surfaces,
 and mitigations for agent-bom. It satisfies the OpenSSF Best Practices Silver
-"assurance case" criterion and complements [SECURITY.md](SECURITY.md).
+"assurance case" criterion and complements [SECURITY.md](../SECURITY.md).
 
 ---
 

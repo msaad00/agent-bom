@@ -216,7 +216,7 @@ blast_radius        — blast radius for a specific CVE
 - **Does not run MCP servers.** Read-only. Never starts or restarts a server.
 - **Does not store credentials.** Only env var *names* (not values) appear in reports.
 - **Does not modify MCP configs** unless you explicitly run `agent-bom proxy-configure --apply`.
-- **Does not send telemetry.** Only package name + version leaves your machine for CVE lookups (OSV, NVD, EPSS). See [PERMISSIONS.md](../PERMISSIONS.md).
+- **Does not send telemetry.** Only package name + version leaves your machine for CVE lookups (OSV, NVD, EPSS). See [PERMISSIONS.md](PERMISSIONS.md).
 - **Does not replace IAM or network controls.** It is a detection and enforcement layer, not a perimeter.
 
 ---

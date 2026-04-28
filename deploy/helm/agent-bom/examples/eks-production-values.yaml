@@ -15,6 +15,10 @@ controlPlane:
     env:
       - name: AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT
         value: "1"
+      - name: AGENT_BOM_DISABLE_DOCS
+        value: "1"
+      - name: AGENT_BOM_API_LOCAL_PATH_SCANS
+        value: "disabled"
       - name: AGENT_BOM_POSTGRES_POOL_MIN_SIZE
         value: "5"
       - name: AGENT_BOM_POSTGRES_POOL_MAX_SIZE

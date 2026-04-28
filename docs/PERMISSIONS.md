@@ -269,4 +269,4 @@ agent-bom agents --snowflake --snowflake-authenticator oauth
 
 ## Reporting a Security Issue
 
-See [SECURITY.md](SECURITY.md) for responsible disclosure via GitHub Security Advisories.
+See [SECURITY.md](../SECURITY.md) for responsible disclosure via GitHub Security Advisories.

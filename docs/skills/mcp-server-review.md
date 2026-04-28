@@ -30,7 +30,7 @@ agent-bom api &
 curl http://127.0.0.1:8422/v1/registry/<server-name> | python3 -m json.tool
 ```
 
-Or browse the registry file: [`src/agent_bom/mcp_registry.json`](src/agent_bom/mcp_registry.json)
+Or browse the registry file: [`src/agent_bom/mcp_registry.json`](../../src/agent_bom/mcp_registry.json)
 
 The registry provides:
 - **Verified status** — has the server been independently verified?

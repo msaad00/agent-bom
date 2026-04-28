@@ -67,6 +67,14 @@ CVE-2025-XXXX (CRITICAL)
 
 **What agent-bom does:** scans every package in every discovered server against OSV, NVD, EPSS, CISA KEV, and GHSA. Maps CVE → package → server → agent → credentials → tools (blast radius).
 
+agent-bom also ships a bundled curated MCP blocklist at `src/agent_bom/data/mcp-blocklist.json`.
+During agent scans, discovered MCP server names, registry IDs, package names, and launch commands
+are checked offline against that file:
+
+- Exact blocklist matches produce a `critical` `MCP_BLOCKLIST` finding and mark the server as security-blocked in the report.
+- Pattern matches produce a `high` `MCP_BLOCKLIST` finding by default and add a server security warning.
+- The blocklist is local package data in this phase. Scans do not query a real-time threat-feed API.
+
 ### 3.2 Tool poisoning — description injection
 
 MCP tool descriptions are plain text shown to the agent. A malicious server (or a compromised legitimate server) can inject instructions into those descriptions:
@@ -218,6 +226,10 @@ blast_radius        — blast radius for a specific CVE
 - **Does not modify MCP configs** unless you explicitly run `agent-bom proxy-configure --apply`.
 - **Does not send telemetry.** Only package name + version leaves your machine for CVE lookups (OSV, NVD, EPSS). See [PERMISSIONS.md](PERMISSIONS.md).
 - **Does not replace IAM or network controls.** It is a detection and enforcement layer, not a perimeter.
+- **Does not prove malicious intent from blocklist patterns.** Pattern matches are suspicious-name heuristics and can produce false positives.
+- **Does not catch every malicious server.** Regex and exact-name matching can miss obfuscated payloads, renamed packages, and previously unknown campaigns.
+- **Does not sandbox MCP servers.** Blocklist findings are scan-time detection signals; runtime process isolation must be provided by your OS/container platform or by explicit sandbox configuration.
+- **Does not remove trust-on-first-use risk in proxy mode.** Pre-compromised servers should be scanned before being trusted by a client or wrapped by the proxy.
 
 ---
 

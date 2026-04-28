@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "updated": "2026-04-28",
+  "description": "Curated MCP server blocklist and suspicious-name patterns. Exact entries require confirmation; pattern entries are heuristic and may produce false positives.",
+  "entries": [
+    {
+      "id": "suspicious-credential-exfiltration-name",
+      "title": "Suspicious credential exfiltration server name",
+      "description": "Server name, registry id, package name, or command contains terms commonly used by credential theft or exfiltration tooling.",
+      "match_type": "pattern",
+      "patterns": [
+        "(^|[-_./@])credential[-_]?stealer($|[-_./])",
+        "(^|[-_./@])secret[-_]?exfil(trate|tration)?($|[-_./])",
+        "(^|[-_./@])token[-_]?grabber($|[-_./])"
+      ],
+      "severity": "high",
+      "source": "agent-bom-curated",
+      "references": []
+    }
+  ]
+}

@@ -46,6 +46,7 @@ class FindingType(str, Enum):
     BROWSER_EXT = "BROWSER_EXT"  # Suspicious browser extension
     LICENSE = "LICENSE"  # License compliance violation
     RATE_LIMIT = "RATE_LIMIT"  # Rate limit abuse by MCP tool
+    MCP_BLOCKLIST = "MCP_BLOCKLIST"  # Curated malicious/suspicious MCP server match
 
 
 class FindingSource(str, Enum):
@@ -185,6 +186,49 @@ class Finding:
     def effective_severity(self) -> str:
         """Return the best severity value: vendor > cvss > base severity."""
         return self.vendor_severity or self.cvss_severity or self.severity
+
+    def to_dict(self) -> dict:
+        """Return a JSON-serializable finding payload."""
+        return {
+            "id": self.id,
+            "finding_type": self.finding_type.value,
+            "source": self.source.value,
+            "asset": {
+                "name": self.asset.name,
+                "asset_type": self.asset.asset_type,
+                "identifier": self.asset.identifier,
+                "location": self.asset.location,
+                "stable_id": self.asset.stable_id,
+            },
+            "severity": self.severity,
+            "effective_severity": self.effective_severity(),
+            "vendor_severity": self.vendor_severity,
+            "cvss_severity": self.cvss_severity,
+            "title": self.title,
+            "description": self.description,
+            "cve_id": self.cve_id,
+            "cwe_ids": self.cwe_ids,
+            "cvss_score": self.cvss_score,
+            "epss_score": self.epss_score,
+            "is_kev": self.is_kev,
+            "fixed_version": self.fixed_version,
+            "remediation_guidance": self.remediation_guidance,
+            "compliance_tags": self.all_compliance_tags(),
+            "owasp_tags": self.owasp_tags,
+            "atlas_tags": self.atlas_tags,
+            "attack_tags": self.attack_tags,
+            "nist_ai_rmf_tags": self.nist_ai_rmf_tags,
+            "owasp_mcp_tags": self.owasp_mcp_tags,
+            "owasp_agentic_tags": self.owasp_agentic_tags,
+            "eu_ai_act_tags": self.eu_ai_act_tags,
+            "nist_csf_tags": self.nist_csf_tags,
+            "iso_27001_tags": self.iso_27001_tags,
+            "soc2_tags": self.soc2_tags,
+            "cis_tags": self.cis_tags,
+            "related_findings": self.related_findings,
+            "evidence": self.evidence,
+            "risk_score": self.risk_score,
+        }
 
 
 def blast_radius_to_finding(br: object) -> "Finding":

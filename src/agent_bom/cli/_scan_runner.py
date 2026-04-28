@@ -61,6 +61,7 @@ def run_default_scan(cfg: ScanConfig, con: "Console") -> ScanResult:
     from agent_bom.cli.agents._discovery import run_local_discovery
     from agent_bom.discovery import discover_all
     from agent_bom.finding import blast_radius_to_finding
+    from agent_bom.mcp_blocklist import blocklist_findings_for_agents
     from agent_bom.models import AIBOMReport
     from agent_bom.parsers import extract_packages
     from agent_bom.scanners import IncompleteScanError, scan_agents_sync
@@ -197,6 +198,7 @@ def run_default_scan(cfg: ScanConfig, con: "Console") -> ScanResult:
 
     # ── Build report ─────────────────────────────────────────────────
     findings = [blast_radius_to_finding(br) for br in blast_radii]
+    findings.extend(blocklist_findings_for_agents(agents))
     report = AIBOMReport(
         agents=agents,
         blast_radii=blast_radii,

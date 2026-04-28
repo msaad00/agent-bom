@@ -1317,8 +1317,10 @@ def scan(
         _scan_sources.append("agent_discovery")
 
     from agent_bom.finding import blast_radius_to_finding
+    from agent_bom.mcp_blocklist import blocklist_findings_for_agents
 
     _findings = [blast_radius_to_finding(br) for br in blast_radii]
+    _findings.extend(blocklist_findings_for_agents(agents))
 
     # Generate deterministic scan ID from content fingerprint (same inputs → same ID)
     import hashlib as _hashlib

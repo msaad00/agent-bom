@@ -758,6 +758,7 @@ def to_json(report: AIBOMReport) -> dict:
             }
             for br in report.blast_radii
         ],
+        "findings": [finding.to_dict() for finding in report.to_findings()],
         "threat_framework_summary": _build_framework_summary(report.blast_radii),
         "scorecard_summary": summarize_scorecard_coverage(all_packages).to_dict(),
         "remediation_plan": _build_remediation_json(report),

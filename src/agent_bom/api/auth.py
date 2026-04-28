@@ -154,6 +154,96 @@ class ApiKeyPolicy:
     max_overlap_seconds: int = 24 * 60 * 60
 
 
+@dataclass(frozen=True)
+class SCIMRoleResolution:
+    """Runtime auth role resolved from tenant-bound SCIM lifecycle state."""
+
+    matched: bool
+    active: bool
+    role: Role | None = None
+    user_id: str | None = None
+    user_name: str | None = None
+
+
+def _dedupe_subjects(subjects: tuple[object, ...]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for subject in subjects:
+        candidate = str(subject or "").strip()
+        if not candidate:
+            continue
+        key = candidate.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(candidate)
+    return deduped
+
+
+def _highest_role(values: list[str]) -> Role | None:
+    best: Role | None = None
+    for value in values:
+        try:
+            candidate = Role(str(value).strip().lower())
+        except ValueError:
+            continue
+        if best is None or _ROLE_HIERARCHY[candidate] > _ROLE_HIERARCHY[best]:
+            best = candidate
+    return best
+
+
+def resolve_scim_user_role(tenant_id: str, *subjects: object) -> SCIMRoleResolution:
+    """Resolve an active SCIM user's highest role within one tenant.
+
+    The resolver is intentionally tenant-scoped and only matches indexed SCIM
+    identity fields so runtime auth does not scan all provisioned users.
+    """
+
+    from agent_bom.api.scim import scim_enabled_from_env
+
+    if not scim_enabled_from_env():
+        return SCIMRoleResolution(matched=False, active=False)
+
+    candidates = _dedupe_subjects(subjects)
+    if not tenant_id or not candidates:
+        return SCIMRoleResolution(matched=False, active=False)
+
+    from agent_bom.api.stores import _get_scim_store
+    from agent_bom.platform_invariants import normalize_tenant_id
+
+    tenant = normalize_tenant_id(tenant_id)
+    users = []
+    seen_users: set[str] = set()
+    store = _get_scim_store()
+    for subject in candidates:
+        for attr in ("userName", "externalId", "id"):
+            for user in store.list_users(tenant, filter_attr=attr, filter_value=subject):
+                key = f"{user.tenant_id}:{user.user_id}"
+                if key not in seen_users:
+                    seen_users.add(key)
+                    users.append(user)
+
+    if not users:
+        return SCIMRoleResolution(matched=False, active=False)
+
+    active_users = [user for user in users if user.active]
+    if not active_users:
+        user = users[0]
+        return SCIMRoleResolution(matched=True, active=False, user_id=user.user_id, user_name=user.user_name)
+
+    best_user = active_users[0]
+    best_role: Role | None = None
+    for user in active_users:
+        role = _highest_role(user.roles)
+        if role is None:
+            role = Role.VIEWER
+        if best_role is None or _ROLE_HIERARCHY[role] > _ROLE_HIERARCHY[best_role]:
+            best_role = role
+            best_user = user
+
+    return SCIMRoleResolution(matched=True, active=True, role=best_role, user_id=best_user.user_id, user_name=best_user.user_name)
+
+
 def get_api_key_policy() -> ApiKeyPolicy:
     """Load API key lifetime policy from env with safe defaults."""
     default_ttl = int(os.environ.get("AGENT_BOM_API_KEY_DEFAULT_TTL_SECONDS", str(30 * 24 * 60 * 60)))

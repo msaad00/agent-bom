@@ -304,7 +304,7 @@ def test_auth_policy_surface_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     assert body["identity_provisioning"]["scim"]["base_path"] == "/scim/v2"
     assert body["identity_provisioning"]["scim"]["token_configured"] is False
     assert body["identity_provisioning"]["scim"]["runtime_auth_enforced"] is False
-    assert body["identity_provisioning"]["scim"]["auth_authority"] == "api_key_oidc_saml_or_trusted_proxy"
+    assert body["identity_provisioning"]["scim"]["auth_authority"] == "api_key_oidc_saml_trusted_proxy_with_scim_role_overlay"
     assert body["identity_provisioning"]["scim"]["provisioning_authority"] == "scim_lifecycle_store"
     assert {entry["idp"] for entry in body["identity_provisioning"]["scim"]["verified_idp_templates"]} == {
         "okta",
@@ -685,8 +685,8 @@ def test_auth_policy_reports_scim_configuration_posture(monkeypatch: pytest.Monk
     }
     assert body["identity_provisioning"]["scim"]["external_id_attribute"] == "employeeNumber"
     assert body["identity_provisioning"]["scim"]["groups_required"] is True
-    assert body["identity_provisioning"]["scim"]["runtime_auth_enforced"] is False
-    assert "SCIM deactivate/delete" in body["identity_provisioning"]["scim"]["deprovisioning_boundary"]
+    assert body["identity_provisioning"]["scim"]["runtime_auth_enforced"] is True
+    assert "trusted reverse-proxy roles" in body["identity_provisioning"]["scim"]["deprovisioning_boundary"]
 
 
 def test_auth_policy_flags_clustered_scim_without_postgres(monkeypatch: pytest.MonkeyPatch) -> None:

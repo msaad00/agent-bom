@@ -163,7 +163,7 @@ function FrameworkBar({
 
 // ─── Control Card ───────────────────────────────────────────────────────────
 
-function ControlCard({ control, catalog }: { control: ComplianceControl; catalog?: Record<string, string> }) {
+function ControlCard({ control, catalog }: { control: ComplianceControl; catalog?: Record<string, string> | undefined }) {
   const [expanded, setExpanded] = useState(false);
   const name = catalog?.[control.code] ?? control.name;
   const sev = {
@@ -290,14 +290,14 @@ function FrameworkSection({
   defaultOpen = true,
 }: {
   title: string;
-  subtitle?: string;
+  subtitle?: string | undefined;
   accentClass: string;
   controls: ComplianceControl[];
-  catalog?: Record<string, string>;
+  catalog?: Record<string, string> | undefined;
   query: string;
   statusFilter: "all" | "pass" | "warning" | "fail";
-  emptyMessage?: string;
-  defaultOpen?: boolean;
+  emptyMessage?: string | undefined;
+  defaultOpen?: boolean | undefined;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const normalizedQuery = query.trim().toLowerCase();
@@ -420,11 +420,11 @@ function CompliancePageContent() {
   const detailSections: Array<{
     id: string;
     title: string;
-    subtitle?: string;
+    subtitle?: string | undefined;
     accentClass: string;
     controls: ComplianceControl[];
     catalog?: Record<string, string>;
-    emptyMessage?: string;
+    emptyMessage?: string | undefined;
   }> = [
     {
       id: "owasp-llm",

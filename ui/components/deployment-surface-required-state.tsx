@@ -15,8 +15,8 @@ export function DeploymentSurfaceRequiredState({
 }: {
   surface: DeploymentSurface;
   counts: PostureCountsResponse | null;
-  detail?: string | null;
-  onRetry?: () => void;
+  detail?: string | null | undefined;
+  onRetry?: (() => void) | undefined;
 }) {
   const state = getDeploymentSurfaceState(surface, counts, detail);
 

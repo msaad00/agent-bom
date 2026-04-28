@@ -593,18 +593,18 @@ export default function GraphPageClient() {
 
   const displayEdges = useMemo(() => {
     if (attackPathEdgeKeys) {
-      return layoutEdges.map((edge) => {
+      return layoutEdges.map((edge): Edge => {
         const inPath = attackPathEdgeKeys.has(`${edge.source}=>${edge.target}`);
         return {
           ...edge,
-          animated: inPath || edge.animated,
+          animated: Boolean(inPath || edge.animated),
           style: {
             ...edge.style,
             opacity: inPath ? 1 : 0.08,
             strokeWidth: inPath
               ? Math.max(typeof edge.style?.strokeWidth === "number" ? edge.style.strokeWidth : 2, 3.2)
               : 1,
-            filter: inPath ? "drop-shadow(0 0 6px rgba(249,115,22,0.55))" : undefined,
+            ...(inPath ? { filter: "drop-shadow(0 0 6px rgba(249,115,22,0.55))" } : {}),
           },
         };
       });

@@ -45,8 +45,8 @@ export type SeverityFilter = "all" | "critical" | "high" | "medium" | "low";
 type VulnerabilitySeverity = Vulnerability["severity"];
 
 export interface MeshGraphScope {
-  selectedAgents?: string[];
-  vulnerableOnly?: boolean;
+  selectedAgents?: string[] | undefined;
+  vulnerableOnly?: boolean | undefined;
 }
 
 // ─── Credential detection ───────────────────────────────────────────────────

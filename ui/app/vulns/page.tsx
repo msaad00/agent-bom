@@ -24,9 +24,9 @@ interface EnrichedVuln extends Vulnerability {
   reachable_tools: string[];
   references: string[];
   advisory_sources: string[];
-  attack_vector_summary?: string;
-  impact_category?: string;
-  risk_score?: number;
+  attack_vector_summary?: string | undefined;
+  impact_category?: string | undefined;
+  risk_score?: number | undefined;
   remediation_items: RemediationSummary[];
 }
 
@@ -35,9 +35,9 @@ interface RemediationSummary {
   ecosystem: string;
   current_version: string;
   fixed_version: string | null;
-  action?: string;
-  command?: string | null;
-  verify_command?: string | null;
+  action?: string | undefined;
+  command?: string | null | undefined;
+  verify_command?: string | null | undefined;
   references: string[];
   risk_narrative: string;
 }

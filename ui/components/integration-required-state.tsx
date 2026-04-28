@@ -8,8 +8,8 @@ interface IntegrationRequiredStateProps {
   requirement: string;
   command: string;
   capabilities: string[];
-  detail?: string | null;
-  onRetry?: () => void;
+  detail?: string | null | undefined;
+  onRetry?: (() => void) | undefined;
 }
 
 export function IntegrationRequiredState({

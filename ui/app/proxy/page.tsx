@@ -393,7 +393,7 @@ export default function ProxyDashboard() {
                         {blockedPieData?.map((_, i) => (
                           <Cell
                             key={i}
-                            fill={PIE_COLORS[i % PIE_COLORS.length]}
+                            fill={PIE_COLORS[i % PIE_COLORS.length] ?? "#71717a"}
                             fillOpacity={0.85}
                           />
                         ))}

@@ -58,6 +58,10 @@ def _count_compliance_frameworks() -> int:
     return len(entries)
 
 
+def _count_compliance_surfaces() -> int:
+    return _count_compliance_frameworks() + 1
+
+
 def _count_proxy_inline_detectors() -> int:
     content = (ROOT / "src" / "agent_bom" / "proxy.py").read_text()
     detector_block = re.search(
@@ -138,10 +142,10 @@ def build_snapshot() -> dict[str, object]:
                 "notes": "Counted from SUPPORTED_PACKAGE_ECOSYSTEMS.",
             },
             {
-                "name": "Compliance frameworks",
-                "value": _count_compliance_frameworks(),
+                "name": "Compliance surfaces",
+                "value": _count_compliance_surfaces(),
                 "source": "src/agent_bom/api/routes/compliance.py",
-                "notes": "Counted from the public compliance aggregation surface.",
+                "notes": "14 tag-mapped frameworks plus the OWASP AISVS benchmark surface.",
             },
             {
                 "name": "Proxy inline detectors",

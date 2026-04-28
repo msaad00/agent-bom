@@ -1,7 +1,8 @@
 """Compliance and posture API routes.
 
 Endpoints:
-    GET  /v1/compliance                      14-framework compliance posture
+    GET  /v1/compliance                      14-framework compliance posture + AISVS benchmark
+    GET  /v1/compliance/aisvs                OWASP AISVS benchmark posture
     GET  /v1/compliance/narrative            full compliance narrative (all frameworks)
     GET  /v1/compliance/narrative/{framework} single-framework narrative
     GET  /v1/compliance/{framework}          single framework (must be after /narrative)
@@ -72,6 +73,95 @@ def _normalize_csv_filter(value: str | None) -> set[str]:
     if not value:
         return set()
     return {item.strip().lower() for item in value.split(",") if item.strip()}
+
+
+def _aisvs_summary(benchmark: dict[str, Any]) -> dict[str, int | float]:
+    checks_value = benchmark.get("checks")
+    checks: list[Any] = checks_value if isinstance(checks_value, list) else []
+    status_counts = {"pass": 0, "fail": 0, "error": 0, "not_applicable": 0}
+    for check in checks:
+        if not isinstance(check, dict):
+            continue
+        status = str(check.get("status") or "").lower()
+        if status in status_counts:
+            status_counts[status] += 1
+
+    if not checks:
+        status_counts["pass"] = int(benchmark.get("passed") or 0)
+        status_counts["fail"] = int(benchmark.get("failed") or 0)
+
+    total = int(benchmark.get("total") or len(checks) or sum(status_counts.values()))
+    score = float(benchmark.get("pass_rate") or benchmark.get("overall_score") or 0.0)
+    return {
+        "pass": status_counts["pass"],
+        "fail": status_counts["fail"],
+        "error": status_counts["error"],
+        "not_applicable": status_counts["not_applicable"],
+        "total": total,
+        "score": round(score, 1),
+    }
+
+
+def _empty_aisvs_benchmark() -> dict[str, Any]:
+    return {
+        "benchmark": "OWASP AI Security Verification Standard",
+        "benchmark_version": "1.0",
+        "passed": 0,
+        "failed": 0,
+        "total": 0,
+        "pass_rate": 0.0,
+        "checks": [],
+        "metadata": {},
+    }
+
+
+def _build_aisvs_payload(
+    benchmark: dict[str, Any] | None,
+    *,
+    scan_id: str | None = None,
+    measured_at: str | None = None,
+) -> dict[str, Any]:
+    normalized = _empty_aisvs_benchmark()
+    if isinstance(benchmark, dict):
+        normalized.update(benchmark)
+        if not isinstance(normalized.get("checks"), list):
+            normalized["checks"] = []
+        if not isinstance(normalized.get("metadata"), dict):
+            normalized["metadata"] = {}
+
+    summary = _aisvs_summary(normalized)
+    return {
+        "framework": "aisvs",
+        "framework_key": "aisvs_benchmark",
+        "framework_label": normalized.get("benchmark") or "OWASP AI Security Verification Standard",
+        "source": "scan_jobs",
+        "scan_id": scan_id,
+        "measured_at": measured_at,
+        "summary": summary,
+        "score": summary["score"],
+        "representation": "benchmark",
+        "benchmark": normalized,
+    }
+
+
+def _latest_aisvs_benchmark_from_jobs(jobs: list[Any]) -> dict[str, Any]:
+    latest: tuple[str, str, dict[str, Any]] | None = None
+    for job in jobs:
+        if job.status != JobStatus.DONE or not isinstance(getattr(job, "result", None), dict):
+            continue
+        result = cast(dict[str, Any], job.result)
+        benchmark = result.get("aisvs_benchmark") or result.get("aisvs_benchmark_data")
+        if not isinstance(benchmark, dict):
+            continue
+        measured_at = str(getattr(job, "completed_at", None) or getattr(job, "created_at", None) or "")
+        scan_id = str(result.get("scan_id") or getattr(job, "job_id", ""))
+        if latest is None or measured_at >= latest[0]:
+            latest = (measured_at, scan_id, benchmark)
+
+    if latest is None:
+        return _build_aisvs_payload(None)
+    latest_measured_at, latest_scan_id, benchmark = latest
+    return _build_aisvs_payload(benchmark, scan_id=latest_scan_id, measured_at=latest_measured_at or None)
 
 
 def _result_has_runtime_signals(result: dict[str, Any]) -> bool:
@@ -168,6 +258,8 @@ async def get_compliance(request: Request) -> dict:
     from agent_bom.nist_ai_rmf import NIST_AI_RMF
     from agent_bom.owasp import OWASP_LLM_TOP10
 
+    tenant_jobs = _tenant_jobs(request)
+
     # Collect blast_radius entries from all completed scans
     all_blast: list[dict] = []
     latest_scan: str | None = None
@@ -176,7 +268,7 @@ async def get_compliance(request: Request) -> dict:
     has_agent_context = False
     all_scan_sources: set[str] = set()
 
-    for job in _tenant_jobs(request):
+    for job in tenant_jobs:
         if job.status != JobStatus.DONE or not job.result:
             continue
         scan_count += 1
@@ -316,6 +408,8 @@ async def get_compliance(request: Request) -> dict:
     n8p, n8w, n8f = _count_statuses(nist_800_53)
     frp, frw, frf = _count_statuses(fedramp)
     pp, pw, pf = _count_statuses(pci_dss)
+    aisvs = _latest_aisvs_benchmark_from_jobs(tenant_jobs)
+    aisvs_summary = aisvs["summary"]
 
     return {
         "overall_score": overall_score,
@@ -339,6 +433,7 @@ async def get_compliance(request: Request) -> dict:
         "nist_800_53": nist_800_53,
         "fedramp": fedramp,
         "pci_dss": pci_dss,
+        "aisvs_benchmark": aisvs,
         "summary": {
             "owasp_pass": op,
             "owasp_warn": ow,
@@ -382,6 +477,10 @@ async def get_compliance(request: Request) -> dict:
             "pci_dss_pass": pp,
             "pci_dss_warn": pw,
             "pci_dss_fail": pf,
+            "aisvs_pass": aisvs_summary["pass"],
+            "aisvs_fail": aisvs_summary["fail"],
+            "aisvs_error": aisvs_summary["error"],
+            "aisvs_not_applicable": aisvs_summary["not_applicable"],
         },
     }
 
@@ -869,13 +968,22 @@ async def get_compliance_verification_key(request: Request) -> dict:
     }
 
 
+@router.get("/v1/compliance/aisvs", tags=["compliance"])
+async def get_aisvs_compliance(request: Request) -> dict:
+    """Return the latest tenant-scoped OWASP AISVS benchmark result from completed scans."""
+    return _latest_aisvs_benchmark_from_jobs(_tenant_jobs(request))
+
+
 @router.get("/v1/compliance/{framework}", tags=["compliance"])
 async def get_compliance_by_framework(request: Request, framework: str) -> dict:
     """Get compliance posture for a single framework.
 
     Supported frameworks: owasp-llm, owasp-mcp, atlas, nist, owasp-agentic, eu-ai-act,
-    nist-csf, iso-27001, soc2, cis, cmmc
+    nist-csf, iso-27001, soc2, cis, cmmc, aisvs
     """
+    if framework.lower() == "aisvs":
+        return await get_aisvs_compliance(request)
+
     full = await get_compliance(request)
 
     framework_map = {
@@ -897,9 +1005,10 @@ async def get_compliance_by_framework(request: Request, framework: str) -> dict:
 
     key = framework_map.get(framework.lower())
     if not key:
+        supported = [*framework_map.keys(), "aisvs"]
         raise HTTPException(
             status_code=400,
-            detail=f"Unknown framework '{framework}'. Supported: {', '.join(framework_map.keys())}",
+            detail=f"Unknown framework '{framework}'. Supported: {', '.join(supported)}",
         )
 
     controls = full.get(key, [])

@@ -334,7 +334,7 @@ Full trust model: [SECURITY_ARCHITECTURE.md](docs/SECURITY_ARCHITECTURE.md) · [
 
 ## Compliance
 
-Bundled mappings across 14 frameworks — OWASP LLM/MCP/Agentic Top 10s, OWASP AISVS, MITRE ATLAS, NIST AI RMF, NIST CSF, NIST 800-53, FedRAMP Moderate, EU AI Act, ISO 27001, SOC 2, CIS Controls v8, CMMC 2.0. The bundled control set per framework is a curated subset focused on AI/MCP/agent risk, not a full catalog — see [docs/ARCHITECTURE.md § Coverage per framework](docs/ARCHITECTURE.md#coverage-per-framework) for honest counts. Export tamper-evident evidence packets in one command.
+Bundled mappings across 14 tag-mapped frameworks — OWASP LLM/MCP/Agentic Top 10s, MITRE ATLAS, NIST AI RMF, NIST CSF, NIST 800-53, FedRAMP Moderate, EU AI Act, ISO 27001, SOC 2, CIS Controls v8, CMMC 2.0, and PCI DSS — plus an OWASP AISVS benchmark surface. The bundled control set per framework is a curated subset focused on AI/MCP/agent risk, not a full catalog — see [docs/ARCHITECTURE.md § Coverage per framework](docs/ARCHITECTURE.md#coverage-per-framework) for honest counts. Export tamper-evident evidence packets in one command.
 
 <p align="center">
   <picture>

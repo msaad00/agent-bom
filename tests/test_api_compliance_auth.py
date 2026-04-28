@@ -84,6 +84,23 @@ def test_compliance_export_accepts_trusted_proxy_headers() -> None:
     assert body["tenant_id"] == "tenant-alpha"
 
 
+def test_aisvs_compliance_requires_authenticated_context() -> None:
+    client = TestClient(app)
+    resp = client.get("/v1/compliance/aisvs")
+    assert resp.status_code == 401
+    assert "Unauthorized" in resp.json()["detail"]
+
+
+def test_aisvs_compliance_accepts_trusted_proxy_headers() -> None:
+    client = TestClient(app)
+    resp = client.get("/v1/compliance/aisvs", headers=_proxy_headers())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["framework"] == "aisvs"
+    assert body["framework_key"] == "aisvs_benchmark"
+    assert body["representation"] == "benchmark"
+
+
 def test_compliance_export_end_to_end_returns_real_evidence() -> None:
     """Full stack: seed a real ScanJob, hit the FastAPI route, verify evidence wires.
 

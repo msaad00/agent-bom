@@ -113,7 +113,7 @@ sequenceDiagram
 
     CLI->>BlastRadius: Vulns + topology
     BlastRadius->>BlastRadius: CVE → package → server → agent → creds → tools
-    BlastRadius->>BlastRadius: Tag 14 compliance frameworks
+    BlastRadius->>BlastRadius: Tag 14 frameworks + attach AISVS benchmark
     BlastRadius-->>CLI: Scored + tagged findings
 
     CLI->>Reporter: Full results
@@ -159,7 +159,7 @@ graph LR
 
 ## 4. Compliance Tagging
 
-Every finding is tagged against 14 frameworks, grouped into four families. The bundled mappings are a curated subset of each framework focused on AI/MCP/agent risk-relevant controls — they are not a complete catalog. See [Coverage per framework](#coverage-per-framework) below for the honest control counts.
+Every finding is tagged against 14 tag-mapped frameworks, grouped into four families. OWASP AISVS is exposed as a separate benchmark result with per-check evidence. The bundled mappings are a curated subset of each framework focused on AI/MCP/agent risk-relevant controls — they are not a complete catalog. See [Coverage per framework](#coverage-per-framework) below for the honest control counts.
 
 ```mermaid
 graph LR
@@ -200,7 +200,7 @@ graph LR
 
 ### Coverage per framework
 
-agent-bom ships a curated control set per framework, sized to the AI/MCP/agent threat surface rather than a generic compliance scanner's full catalog. Numbers below count the controls that are **bundled and actively mapped** by `compliance_utils.py` and the UI catalogs in `ui/lib/api.ts`. They are intentionally a subset; consult each framework's source standard for full coverage.
+agent-bom ships a curated control set per framework, sized to the AI/MCP/agent threat surface rather than a generic compliance scanner's full catalog. Numbers below count the controls that are **bundled and actively mapped** by `compliance_utils.py` and the UI catalogs in `ui/lib/api.ts`; AISVS is counted as a benchmark surface. They are intentionally a subset; consult each framework's source standard for full coverage.
 
 | Family | Framework | Bundled controls | Source-standard size (approx.) | What's covered |
 |---|---|---|---|---|

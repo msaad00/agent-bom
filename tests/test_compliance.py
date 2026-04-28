@@ -26,12 +26,19 @@ def _clear_jobs():
     set_job_store(InMemoryJobStore())
 
 
-def _add_done_job(blast_radius: list[dict], job_id: str = "test-job"):
+def _add_done_job(
+    blast_radius: list[dict],
+    job_id: str = "test-job",
+    *,
+    tenant_id: str = "default",
+    result_extra: dict | None = None,
+):
     """Insert a synthetic completed scan job."""
     from agent_bom.api.server import ScanJob, ScanRequest
 
     job = ScanJob(
         job_id=job_id,
+        tenant_id=tenant_id,
         created_at="2026-02-22T10:00:00Z",
         request=ScanRequest(),
     )
@@ -42,6 +49,8 @@ def _add_done_job(blast_radius: list[dict], job_id: str = "test-job"):
         "blast_radius": blast_radius,
         "threat_framework_summary": {},
     }
+    if result_extra:
+        job.result.update(result_extra)
     _get_store().put(job)
 
 
@@ -59,10 +68,129 @@ def test_compliance_no_scans():
     assert data["overall_status"] == "pass"
     assert data["scan_count"] == 0
     assert data["latest_scan"] is None
+    assert data["aisvs_benchmark"]["framework"] == "aisvs"
+    assert data["aisvs_benchmark"]["benchmark"]["checks"] == []
+    assert data["summary"]["aisvs_pass"] == 0
+    assert data["summary"]["aisvs_fail"] == 0
     # All OWASP controls should be "pass"
     for c in data["owasp_llm_top10"]:
         assert c["status"] == "pass"
         assert c["findings"] == 0
+    _clear_jobs()
+
+
+def test_compliance_includes_latest_aisvs_benchmark():
+    """Aggregate compliance includes the latest tenant-scoped AISVS benchmark payload."""
+    _clear_jobs()
+    _add_done_job(
+        [],
+        job_id="older-scan",
+        result_extra={
+            "scan_id": "older-scan",
+            "aisvs_benchmark": {
+                "benchmark": "OWASP AI Security Verification Standard",
+                "benchmark_version": "1.0",
+                "passed": 1,
+                "failed": 0,
+                "total": 1,
+                "pass_rate": 100.0,
+                "checks": [{"check_id": "AI-4.1", "status": "pass", "severity": "high"}],
+                "metadata": {},
+            },
+        },
+    )
+    _add_done_job(
+        [],
+        job_id="newer-scan",
+        result_extra={
+            "scan_id": "newer-scan",
+            "aisvs_benchmark": {
+                "benchmark": "OWASP AI Security Verification Standard",
+                "benchmark_version": "1.0",
+                "passed": 1,
+                "failed": 1,
+                "total": 3,
+                "pass_rate": 50.0,
+                "checks": [
+                    {"check_id": "AI-4.1", "status": "pass", "severity": "high"},
+                    {"check_id": "AI-6.1", "status": "fail", "severity": "critical"},
+                    {"check_id": "AI-8.1", "status": "not_applicable", "severity": "medium"},
+                ],
+                "metadata": {"runner": "test"},
+            },
+        },
+    )
+
+    client = TestClient(app)
+    data = client.get("/v1/compliance", headers=_AUTH_HEADERS).json()
+
+    aisvs = data["aisvs_benchmark"]
+    assert aisvs["framework"] == "aisvs"
+    assert aisvs["framework_key"] == "aisvs_benchmark"
+    assert aisvs["representation"] == "benchmark"
+    assert aisvs["scan_id"] == "newer-scan"
+    assert aisvs["summary"] == {
+        "pass": 1,
+        "fail": 1,
+        "error": 0,
+        "not_applicable": 1,
+        "total": 3,
+        "score": 50.0,
+    }
+    assert data["summary"]["aisvs_pass"] == 1
+    assert data["summary"]["aisvs_fail"] == 1
+    assert data["summary"]["aisvs_not_applicable"] == 1
+    assert data["overall_score"] == 100.0
+
+    _clear_jobs()
+
+
+def test_aisvs_compliance_endpoint_is_tenant_scoped():
+    """The dedicated AISVS endpoint returns only the authenticated tenant's benchmark."""
+    _clear_jobs()
+    _add_done_job(
+        [],
+        job_id="tenant-alpha-scan",
+        tenant_id="tenant-alpha",
+        result_extra={
+            "scan_id": "tenant-alpha-scan",
+            "aisvs_benchmark": {
+                "benchmark": "OWASP AI Security Verification Standard",
+                "benchmark_version": "1.0",
+                "passed": 0,
+                "failed": 1,
+                "total": 1,
+                "pass_rate": 0.0,
+                "checks": [{"check_id": "AI-6.1", "status": "fail", "severity": "critical"}],
+                "metadata": {},
+            },
+        },
+    )
+    _add_done_job(
+        [],
+        job_id="default-scan",
+        result_extra={
+            "scan_id": "default-scan",
+            "aisvs_benchmark": {
+                "benchmark": "OWASP AI Security Verification Standard",
+                "benchmark_version": "1.0",
+                "passed": 1,
+                "failed": 0,
+                "total": 1,
+                "pass_rate": 100.0,
+                "checks": [{"check_id": "AI-4.1", "status": "pass", "severity": "high"}],
+                "metadata": {},
+            },
+        },
+    )
+
+    client = TestClient(app)
+    data = client.get("/v1/compliance/aisvs", headers=proxy_headers(tenant="tenant-alpha")).json()
+
+    assert data["scan_id"] == "tenant-alpha-scan"
+    assert data["summary"]["fail"] == 1
+    assert data["benchmark"]["checks"][0]["check_id"] == "AI-6.1"
+
     _clear_jobs()
 
 

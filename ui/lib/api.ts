@@ -996,6 +996,48 @@ export interface ComplianceControl {
   affected_agents: string[];
 }
 
+export interface AISVSCheck {
+  check_id: string;
+  title?: string | undefined;
+  status: "pass" | "fail" | "error" | "not_applicable";
+  severity: string;
+  evidence?: string | undefined;
+  recommendation?: string | undefined;
+  cis_section?: string | undefined;
+  maestro_layer?: string | undefined;
+}
+
+export interface AISVSBenchmark {
+  benchmark: string;
+  benchmark_version: string;
+  passed: number;
+  failed: number;
+  total: number;
+  pass_rate: number;
+  checks: AISVSCheck[];
+  metadata: Record<string, unknown>;
+}
+
+export interface AISVSComplianceResponse {
+  framework: "aisvs";
+  framework_key: "aisvs_benchmark";
+  framework_label: string;
+  source: "scan_jobs";
+  scan_id: string | null;
+  measured_at: string | null;
+  representation: "benchmark";
+  score: number;
+  summary: {
+    pass: number;
+    fail: number;
+    error: number;
+    not_applicable: number;
+    total: number;
+    score: number;
+  };
+  benchmark: AISVSBenchmark;
+}
+
 export interface ComplianceResponse {
   overall_score: number;
   overall_status: "pass" | "warning" | "fail";
@@ -1018,6 +1060,7 @@ export interface ComplianceResponse {
   nist_800_53: ComplianceControl[];
   fedramp: ComplianceControl[];
   pci_dss: ComplianceControl[];
+  aisvs_benchmark: AISVSComplianceResponse;
   summary: {
     owasp_pass: number; owasp_warn: number; owasp_fail: number;
     owasp_mcp_pass: number; owasp_mcp_warn: number; owasp_mcp_fail: number;
@@ -1033,6 +1076,7 @@ export interface ComplianceResponse {
     nist_800_53_pass: number; nist_800_53_warn: number; nist_800_53_fail: number;
     fedramp_pass: number; fedramp_warn: number; fedramp_fail: number;
     pci_dss_pass: number; pci_dss_warn: number; pci_dss_fail: number;
+    aisvs_pass: number; aisvs_fail: number; aisvs_error: number; aisvs_not_applicable: number;
   };
 }
 
@@ -1605,10 +1649,13 @@ export const api = {
   /** Compliance posture across all completed scans */
   getCompliance: () => get<ComplianceResponse>("/v1/compliance"),
 
+  /** Latest tenant-scoped OWASP AISVS benchmark posture */
+  getAISVSCompliance: () => get<AISVSComplianceResponse>("/v1/compliance/aisvs"),
+
   /** Active framework catalog metadata surfaced by the API */
   getFrameworkCatalogs: () => get<FrameworkCatalogsResponse>("/v1/frameworks/catalogs"),
 
-  /** Auditor-ready compliance narrative for all 14 frameworks */
+  /** Auditor-ready compliance narrative for all tag-mapped frameworks */
   getComplianceNarrative: () => get<ComplianceNarrativeResponse>("/v1/compliance/narrative"),
 
   /** Single-framework compliance narrative */

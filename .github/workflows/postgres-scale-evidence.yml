@@ -1,0 +1,109 @@
+name: Postgres Scale Evidence
+
+# Runs scripts/run_postgres_scale_evidence.py against a real Postgres
+# service container and uploads the JSON evidence as an artifact.
+#
+# Why this is not a PR gate
+# ─────────────────────────
+# The benchmark needs a tuned Postgres instance to be useful, takes
+# minutes-to-hours at the larger sizes, and its primary signal (p95/p99
+# at clustered scale) is too sensitive to GitHub-runner CPU jitter to
+# block merges on. PRs run the lighter local-CPU benchmark via
+# `tests/test_scale_evidence.py`. This workflow is the source of truth
+# for "elastic at K edges" claims; reviewers consult the most recent
+# successful run before publishing those numbers.
+#
+# Dispatch
+# ────────
+# - Manual: gh workflow run postgres-scale-evidence.yml [-f sizes=...]
+# - Weekly: every Monday 03:00 UTC so we have a fresh data point.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sizes:
+        description: "Comma-separated entity sizes per replica"
+        required: false
+        default: "1000,5000,10000"
+      replicas:
+        description: "Simulated control-plane replicas (process workers)"
+        required: false
+        default: "2"
+      kinds:
+        description: "Comma-separated workloads (audit, job_put, job_get)"
+        required: false
+        default: "audit,job_put,job_get"
+  schedule:
+    - cron: "0 3 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: postgres-scale-evidence
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: Drive clustered Postgres workload
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: agent_bom
+          POSTGRES_PASSWORD: agent_bom
+          POSTGRES_DB: agent_bom
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agent_bom"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AGENT_BOM_POSTGRES_DSN: postgresql://agent_bom:agent_bom@localhost:5432/agent_bom
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Install agent-bom with postgres extra
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[postgres,api]"
+
+      - name: Smoke-test the harness
+        run: scripts/run_postgres_scale_evidence.py --dry-run --output /tmp/dry.json
+
+      - name: Run clustered Postgres scale evidence
+        run: |
+          set -euo pipefail
+          SIZES="${{ inputs.sizes || '1000,5000,10000' }}"
+          REPLICAS="${{ inputs.replicas || '2' }}"
+          KINDS="${{ inputs.kinds || 'audit,job_put,job_get' }}"
+          OUTPUT="docs/perf/results/postgres-scale-evidence-$(date -u +%Y-%m-%d).json"
+          mkdir -p docs/perf/results
+          scripts/run_postgres_scale_evidence.py \
+            --sizes "$SIZES" \
+            --replicas "$REPLICAS" \
+            --kinds "$KINDS" \
+            --output "$OUTPUT"
+          echo "EVIDENCE_PATH=$OUTPUT" >> "$GITHUB_ENV"
+
+      - name: Show summary
+        run: |
+          jq '{generated_at, environment, sizes_per_replica, results: [.results[] | {size_per_replica, replicas, ops_per_second, wall_ms}]}' "${EVIDENCE_PATH}"
+
+      - name: Upload evidence
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4
+        with:
+          name: postgres-scale-evidence
+          path: ${{ env.EVIDENCE_PATH }}
+          retention-days: 90

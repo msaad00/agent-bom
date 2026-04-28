@@ -108,6 +108,24 @@ def test_inventory_security_blocked():
         mock_extract.assert_not_called()
 
 
+def test_inventory_blocklist_match_skips_package_extraction():
+    """Known malicious MCP identities are blocked before extraction."""
+    runner = CliRunner()
+    from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+
+    mock_server = MCPServer(name="mail", command="npx", args=["-y", "postmark-mcp"], transport=TransportType.STDIO)
+    mock_agent = Agent(name="a", agent_type=AgentType.CUSTOM, config_path="/t", mcp_servers=[mock_server])
+
+    with (
+        patch("agent_bom.cli._inventory.discover_all", return_value=[mock_agent]),
+        patch("agent_bom.cli._inventory.extract_packages") as mock_extract,
+    ):
+        result = runner.invoke(inventory, [])
+        assert result.exit_code == 0
+        mock_extract.assert_not_called()
+        assert mock_server.security_blocked is True
+
+
 # ---------------------------------------------------------------------------
 # validate
 # ---------------------------------------------------------------------------

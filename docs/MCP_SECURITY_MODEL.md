@@ -73,7 +73,9 @@ are checked offline against that file:
 
 - Exact blocklist matches produce a `critical` `MCP_BLOCKLIST` finding and mark the server as security-blocked in the report.
 - Pattern matches produce a `high` `MCP_BLOCKLIST` finding by default and add a server security warning.
-- The blocklist is local package data in this phase. Scans do not query a real-time threat-feed API.
+- Critical matches found from the initial server identity are marked before dependency extraction, so CLI/API scans skip deeper package extraction for that server.
+- The blocklist is local package data in this phase. Scans do not query a real-time threat-feed API, and agent-bom does not ship a hidden remote kill switch.
+- Endpoint and gateway enforcement stays operator-controlled: teams can use these `security_blocked` signals in fleet policy, MDM rollout, gateway policy, or CI gates, while scan-only runs report the finding without deleting local files or stopping third-party processes.
 
 ### 3.2 Tool poisoning — description injection
 

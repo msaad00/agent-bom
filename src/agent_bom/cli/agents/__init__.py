@@ -28,8 +28,9 @@ from agent_bom.cli.agents._cloud import run_benchmarks, run_cloud_discovery
 from agent_bom.cli.agents._context import ScanContext
 from agent_bom.cli.agents._discovery import run_local_discovery
 from agent_bom.cli.agents._modes import apply_demo_mode, apply_self_scan_mode, validate_skill_mode
-from agent_bom.cli.agents._output import _format_text, render_output
+from agent_bom.cli.agents._output import _format_text, _print_text, render_output
 from agent_bom.cli.agents._post import compute_exit_code, run_integrations
+from agent_bom.cli.agents._posture import render_posture_summary
 from agent_bom.cli.agents._preflight import emit_dry_run_plan, run_iac_only_scan
 from agent_bom.cli.agents._self_scan import _build_self_scan_inventory
 from agent_bom.cli.options import scan_options
@@ -1866,76 +1867,7 @@ def scan(
 
     # ── Posture summary mode (--posture) ──────────────────────────────────────
     if posture:
-        _total_vulns = len(blast_radii)
-        _crit = sum(1 for br in blast_radii if br.vulnerability.severity.value == "critical")
-        _high = sum(1 for br in blast_radii if br.vulnerability.severity.value == "high")
-        _agent_names = [a.name for a in agents]
-        _agent_list_str = ", ".join(_agent_names[:3]) + (f" +{len(_agent_names) - 3}" if len(_agent_names) > 3 else "")
-        _n_agents = len(agents)
-        _n_servers = sum(len(a.mcp_servers) for a in agents)
-        _n_cred_servers = sum(
-            1
-            for a in agents
-            for s in a.mcp_servers
-            if any(
-                v
-                for k, v in (getattr(s, "env", None) or {}).items()
-                if any(kw in k.upper() for kw in ("KEY", "TOKEN", "SECRET", "PASSWORD", "CREDENTIAL"))
-            )
-        )
-        _floating = sum(1 for a in agents for s in a.mcp_servers if any("@latest" in str(arg) for arg in (getattr(s, "args", None) or [])))
-        _unverified = sum(1 for a in agents for s in a.mcp_servers if not getattr(s, "verified", False))
-        _cred_names = sorted({cred for br in blast_radii for cred in (br.exposed_credentials or [])})
-        _tool_names = sorted({tool.name for br in blast_radii for tool in (br.exposed_tools or []) if getattr(tool, "name", None)})
-        _fixable = sum(1 for br in blast_radii if getattr(br.vulnerability, "fixed_version", None))
-        # Top finding
-        _top_br = sorted(blast_radii, key=lambda br: br.risk_score or 0.0, reverse=True)
-        _top_str = ""
-        if _top_br:
-            _tb = _top_br[0]
-            _pkg_name = _tb.package.name if _tb.package else "unknown"
-            _vuln_id = _tb.vulnerability.id if _tb.vulnerability else "unknown"
-            _top_str = f"{_pkg_name}@{_tb.package.version} ({_vuln_id})" if _tb.package else _vuln_id
-            _fix = getattr(_tb.vulnerability, "fixed_version", None)
-            _action = (
-                f"Upgrade {_pkg_name} to {_fix} to clear {_total_vulns} vuln(s)"
-                if _fix and _pkg_name != "unknown"
-                else "Review findings with agent-bom agents"
-            )
-        else:
-            _action = "No vulnerabilities found — supply chain looks clean"
-
-        from rich.console import Console as _RichConsole
-        from rich.panel import Panel as _Panel
-
-        _pc = _RichConsole()
-        _lines = [
-            f"[bold]Agents:[/bold]   {_n_agents} configured ({_agent_list_str})",
-            f"[bold]Servers:[/bold]  {_n_servers} MCP servers ({_n_cred_servers} with credentials)",
-        ]
-        if _total_vulns:
-            _lines.append(f"[bold]Risk:[/bold]     {_total_vulns} vuln(s) ({_crit} critical, {_high} high)")
-            _lines.append(
-                "  [bold]Blast:[/bold]    "
-                f"{len({a.name for br in blast_radii for a in (br.affected_agents or [])})} agents · "
-                f"{len(_cred_names)} creds · {len(_tool_names)} tools reachable"
-            )
-            _lines.append(f"[bold]Fixes:[/bold]    {_fixable} finding(s) have an upgrade path")
-            if _top_str:
-                _lines.append(f"[bold]Top:[/bold]      {_top_str}")
-        else:
-            _lines.append("[bold]Risk:[/bold]     No vulnerabilities found")
-        _lines.append(f"[bold]Trust:[/bold]    {_floating} server(s) floating on @latest, {_unverified} unverified")
-        _lines.append(f"[bold]Action:[/bold]   {_action}")
-        _pc.print()
-        _pc.print(
-            _Panel.fit(
-                "\n".join(_lines),
-                title="[bold]agent-bom posture[/bold]",
-                border_style="cyan",
-                padding=(1, 2),
-            )
-        )
+        render_posture_summary(agents, blast_radii)
         return
 
     # Step 6: Save report to history + asset tracking
@@ -2079,10 +2011,3 @@ def scan(
 
     if exit_code:
         sys.exit(exit_code)
-
-
-def _print_text(report: AIBOMReport, blast_radii: list) -> None:
-    """Print plain text to stdout."""
-    import sys
-
-    sys.stdout.write(_format_text(report, blast_radii))

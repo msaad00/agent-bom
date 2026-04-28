@@ -105,6 +105,7 @@ nav:
       - Control-Plane Data Model and Store Parity: deployment/control-plane-data-model.md
       - Audit Chain vs Compliance Signing: deployment/audit-and-compliance-verification.md
       - Customer Data and Support Boundary: deployment/customer-data-and-support-boundary.md
+      - Data Access Boundaries and Operator Control: deployment/data-access-boundaries.md
       - Data Retention by Class: deployment/data-retention.md
       - Backup and Restore Runbook: deployment/backup-restore.md
       - Air-Gapped Image Bundle: deployment/airgapped-image-bundle.md

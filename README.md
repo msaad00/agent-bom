@@ -330,7 +330,7 @@ agent-bom is a **read-only scanner**. It never writes configs, never executes MC
 | `verify` | Package + version | PyPI / npm integrity endpoints | don't run `verify` |
 | Optional integrations | Finding summaries | Slack / Jira / Vanta / Drata | don't pass those flags |
 
-Full trust model: [SECURITY_ARCHITECTURE.md](docs/SECURITY_ARCHITECTURE.md) · [PERMISSIONS.md](docs/PERMISSIONS.md) · [SUPPLY_CHAIN.md](docs/SUPPLY_CHAIN.md) · [RELEASE_VERIFICATION.md](docs/RELEASE_VERIFICATION.md) · [ENTERPRISE_SECURITY_POSTURE.md](docs/ENTERPRISE_SECURITY_POSTURE.md) · [CONTROL_MAPPING.md](docs/CONTROL_MAPPING.md).
+Full trust model: [SECURITY_ARCHITECTURE.md](docs/SECURITY_ARCHITECTURE.md) · [PERMISSIONS.md](docs/PERMISSIONS.md) · [Data Access Boundaries](site-docs/deployment/data-access-boundaries.md) · [SUPPLY_CHAIN.md](docs/SUPPLY_CHAIN.md) · [RELEASE_VERIFICATION.md](docs/RELEASE_VERIFICATION.md) · [ENTERPRISE_SECURITY_POSTURE.md](docs/ENTERPRISE_SECURITY_POSTURE.md) · [CONTROL_MAPPING.md](docs/CONTROL_MAPPING.md).
 
 ## Compliance
 

@@ -154,6 +154,20 @@ Environment variables in MCP server configs are **never read for their values**.
 Only the _key names_ (e.g. `OPENAI_API_KEY`, `DATABASE_URL`) are inspected to
 determine whether credentials are present. Values are always shown as `***REDACTED***`.
 
+When you explicitly scan project files for hardcoded secrets or PII, agent-bom
+must read the files inside the requested scan scope to classify the risk. The
+report still does not store the matched value or a prefix of it. Secret-scan
+findings retain only:
+
+- relative file path
+- line number
+- finding type and severity
+- redacted evidence label such as `[CREDENTIAL_REDACTED]`
+
+agent-bom does not validate leaked credentials, call provider APIs with them,
+or transmit the matched value. Validation of whether a secret is live belongs
+in a separate, explicit, operator-approved workflow.
+
 agent-bom itself optionally uses one env var:
 - `NVD_API_KEY` — increases NVD rate limit from 5 to 50 requests per 30 seconds. This key is sent only to `services.nvd.nist.gov` and is never logged, cached, or transmitted elsewhere.
 

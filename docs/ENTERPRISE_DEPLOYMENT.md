@@ -15,6 +15,55 @@ agent-bom is built on four security principles:
 | **Zero-credential** | Never stores, logs, or transmits credential values. Only names (`ANTHROPIC_KEY`, never the key itself). |
 | **Least privilege** | Each cloud provider tells you the exact read-only IAM policy on access denied. |
 
+## Container images — do I need both?
+
+agent-bom publishes two images. They are a deployment-flexibility split, **not a hard requirement** for the dashboard to work.
+
+| Image | Base | What's inside | When to pull it |
+|---|---|---|---|
+| `agentbom/agent-bom` | Python 3.14 Alpine (~150 MB) | FastAPI/Starlette + scanner + cloud SDKs + MCP server. The pre-built Next.js dashboard is **bundled inside the wheel** as static assets. | Always. Single-host pilots and `pip install` users only need this one. |
+| `agentbom/agent-bom-ui` | Node 22 Debian slim (~250 MB) | Next.js standalone server only. No Python, no cloud SDKs, no MCP runtime. | K8s deployments that want the UI tier scaled / deployed / restricted independently of the API tier. |
+
+### Why the API image alone serves the dashboard
+
+The `agent-bom serve` process mounts `ui_dist/` as static files when present in the install (`src/agent_bom/api/server.py:685-708`). The wheel's `[tool.setuptools.package-data]` declaration (`pyproject.toml:189`) ships `ui_dist/**` so a `pip install agent-bom[api]` is sufficient. The dashboard answers at the same origin as the API — no second container, no reverse proxy, no separate ingress.
+
+```bash
+pip install 'agent-bom[api]'
+agent-bom serve --port 8422        # API at :8422, UI at the same port
+```
+
+The Docker quickstart works the same way — `docker run --rm -p 8422:8422 agentbom/agent-bom serve` is enough for a pilot. The UI image is purely additive.
+
+### Why the second image exists at all
+
+Reasons that hold up:
+
+1. **Independent scaling.** UI is light SSR + static; API does CPU-heavy scanning. Kubernetes wants different replica counts and different HPA / KEDA triggers (see [`scaling-slo.md`](../site-docs/deployment/scaling-slo.md)). Co-locating them forces every UI scale event to also start a Python interpreter.
+2. **Smaller attack surface for the UI tier.** No `boto3` / `azure-*` / `google-cloud-*` SDKs reachable from the UI container, no MCP subprocess, no cloud creds in scope. The ExternalSecrets / IRSA bindings can stay scoped to the API Deployment alone.
+3. **Independent dep churn.** UI deps (recharts, lucide-react, react-virtual) update fast and noisy; backend deps (boto3, OSV libs) update slow and quiet. Two images means UI patch releases ship without forcing a backend image rebuild.
+4. **Different runtimes.** A combined image would carry both Python 3.14 and Node 22 — roughly doubles the image footprint and the security-advisory surface.
+
+Reasons that **do not** hold up:
+
+- *"You need the UI image for the dashboard to work."* — false. Verified above.
+
+### Practical operator guidance
+
+**Default**: pull `agentbom/agent-bom` only. The dashboard ships inside the wheel and serves at the same origin as the API. This is the right answer for single-host pilots, dev, CI, air-gapped registry mirrors, and the majority of pilots under ~500 agents.
+
+**Pull both** when you specifically want one of these properties:
+
+- the UI tier scales / restarts / rolls out **separately** from the API (different HPA / KEDA / PDB)
+- the UI tier sits behind a **different ingress, gateway, or auth boundary** than the API
+- the UI tier needs a **smaller attack-surface container** with no Python, no cloud SDKs, no MCP subprocess in scope (the second image is intentionally minimal)
+- a separate UI image lets your release cadence ship UI patches without re-rolling the backend image
+
+If none of those properties matter for your deployment, the second image is just bytes you don't need to pull, scan, or sign.
+| Kubernetes with shared ingress and modest scale | either is fine; the chart defaults to both for the multi-replica case |
+
+The Helm chart (`deploy/helm/agent-bom`) deploys both by default because the production EKS preset assumes the multi-replica case. To run API-only, set `controlPlane.ui.enabled=false` and the chart skips the UI Deployment, Service, and HPA.
+
 ## Deployment Models
 
 ### 1. CI/CD Pipeline — scan on every PR

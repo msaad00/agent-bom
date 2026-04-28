@@ -50,11 +50,16 @@ Reasons that **do not** hold up:
 
 ### Practical operator guidance
 
-| Scenario | Pull |
-|---|---|
-| Single host, dev, or CI pilot (<500 agents) | `agentbom/agent-bom` only |
-| Air-gapped registry mirror with size budget | `agentbom/agent-bom` only |
-| Kubernetes, multi-replica, separate UI ingress | both |
+**Default**: pull `agentbom/agent-bom` only. The dashboard ships inside the wheel and serves at the same origin as the API. This is the right answer for single-host pilots, dev, CI, air-gapped registry mirrors, and the majority of pilots under ~500 agents.
+
+**Pull both** when you specifically want one of these properties:
+
+- the UI tier scales / restarts / rolls out **separately** from the API (different HPA / KEDA / PDB)
+- the UI tier sits behind a **different ingress, gateway, or auth boundary** than the API
+- the UI tier needs a **smaller attack-surface container** with no Python, no cloud SDKs, no MCP subprocess in scope (the second image is intentionally minimal)
+- a separate UI image lets your release cadence ship UI patches without re-rolling the backend image
+
+If none of those properties matter for your deployment, the second image is just bytes you don't need to pull, scan, or sign.
 | Kubernetes with shared ingress and modest scale | either is fine; the chart defaults to both for the multi-replica case |
 
 The Helm chart (`deploy/helm/agent-bom`) deploys both by default because the production EKS preset assumes the multi-replica case. To run API-only, set `controlPlane.ui.enabled=false` and the chart skips the UI Deployment, Service, and HPA.

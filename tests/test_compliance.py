@@ -6,6 +6,7 @@ from starlette.testclient import TestClient
 
 from agent_bom.api.server import JobStatus, _get_store, app
 from agent_bom.api.store import InMemoryJobStore
+from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
 from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 _AUTH_HEADERS = proxy_headers(tenant="default")
@@ -76,6 +77,11 @@ def test_compliance_no_scans():
     for c in data["owasp_llm_top10"]:
         assert c["status"] == "pass"
         assert c["findings"] == 0
+    for metadata in TAG_MAPPED_FRAMEWORKS:
+        assert len(data[metadata.output_key]) == metadata.control_count
+        assert data["summary"][f"{metadata.summary_prefix}_pass"] == metadata.control_count
+        assert data["summary"][f"{metadata.summary_prefix}_warn"] == 0
+        assert data["summary"][f"{metadata.summary_prefix}_fail"] == 0
     _clear_jobs()
 
 

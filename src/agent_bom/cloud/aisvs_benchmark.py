@@ -599,6 +599,8 @@ _AVAILABLE_CHECKS: dict[str, tuple[str, Any]] = {
     "AI-8.1": ("_check_ai_8_1", _check_ai_8_1),
 }
 
+AISVS_CHECK_IDS: tuple[str, ...] = tuple(_AVAILABLE_CHECKS)
+
 
 def run_benchmark(
     checks: list[str] | None = None,

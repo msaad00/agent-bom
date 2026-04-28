@@ -200,8 +200,9 @@ graph LR
 
 ### Coverage per framework
 
-agent-bom ships a curated control set per framework, sized to the AI/MCP/agent threat surface rather than a generic compliance scanner's full catalog. Numbers below count the controls that are **bundled and actively mapped** by `compliance_utils.py` and the UI catalogs in `ui/lib/api.ts`; AISVS is counted as a benchmark surface. They are intentionally a subset; consult each framework's source standard for full coverage.
+agent-bom ships a curated control set per framework, sized to the AI/MCP/agent threat surface rather than a generic compliance scanner's full catalog. Numbers below count the controls that are **bundled and actively mapped** by the canonical metadata in `src/agent_bom/compliance_coverage.py`; AISVS is counted from the benchmark check registry. They are intentionally a subset; consult each framework's source standard for full coverage.
 
+<!-- compliance-coverage:start -->
 | Family | Framework | Bundled controls | Source-standard size (approx.) | What's covered |
 |---|---|---|---|---|
 | OWASP | LLM Top 10 (2025) | 10 / 10 | 10 | Full Top-10 |
@@ -210,16 +211,18 @@ agent-bom ships a curated control set per framework, sized to the AI/MCP/agent t
 | OWASP | AISVS v1.0 | 9 checks | ~50 verification reqs | Programmatically verifiable subset (AI-4/5/6/7/8 categories) |
 | NIST / FedRAMP | AI RMF 1.0 | 14 subcategories | ~70 | Govern / Map / Measure / Manage controls relevant to AI supply chain + MCP |
 | NIST / FedRAMP | CSF 2.0 | 14 categories | ~108 | Supply-chain, identity, asset, monitoring categories |
-| NIST / FedRAMP | 800-53 Rev 5 | Derived per finding | ~1,006 | Vulnerability-driven mapping (RA-5, SI-2, etc.); not a fixed bundle |
-| NIST / FedRAMP | FedRAMP Moderate | Derived from 800-53 | ~325 | Subset of 800-53 controls in the Moderate baseline |
-| MITRE | ATLAS | 13 techniques | ~90 | LLM/AI techniques: prompt injection, jailbreak, supply-chain, exfiltration, agent tool abuse |
+| NIST / FedRAMP | 800-53 Rev 5 | 29 controls | ~1,006 | Vulnerability-driven mapping (RA-5, SI-2, etc.); not a complete catalog |
+| NIST / FedRAMP | FedRAMP Moderate | 25 controls | ~325 | Subset of 800-53 controls in the Moderate baseline |
+| MITRE | ATLAS | 65 techniques | ~90 | LLM/AI techniques: prompt injection, jailbreak, supply-chain, exfiltration, agent tool abuse |
 | Regulatory | EU AI Act | 6 articles | ~113 | Articles 5/6/9/10/15/17 (prohibited practices, high-risk classification, risk mgmt, data governance, accuracy/cybersecurity, QMS) |
 | Regulatory | ISO/IEC 27001:2022 | 9 Annex A controls | 93 | Supplier, vulnerability, cryptography, secure-dev, evidence collection |
 | Regulatory | SOC 2 TSC | 9 criteria | ~64 | Common Criteria 6.x / 7.x / 8.x / 9.x (access, monitoring, change mgmt, vendor risk) |
 | Regulatory | CIS Controls v8 | 10 safeguards | 153 | Software inventory, vulnerability mgmt, secure-dev (CIS 02 / 07 / 16) |
 | Regulatory | CMMC 2.0 Level 2 | 17 practices | 110 | RA / SI / SC / CM / AC / IA practices most relevant to vulnerable-package risk |
+| Regulatory | PCI DSS v4.0 | 12 requirements | 12 | Requirements 2/3/4/5/6/7/8/10/11/12 for vulnerable-package and evidence risk |
+<!-- compliance-coverage:end -->
 
-The bundled list is editable: see `src/agent_bom/compliance_utils.py` for the `BlastRadius` field map and `ui/lib/api.ts` for the per-control human-readable catalogs (constants `OWASP_LLM_TOP10`, `MITRE_ATLAS`, `NIST_AI_RMF`, etc.). 800-53 / FedRAMP tags are emitted per-finding from `vuln_compliance.py` rather than a static catalog because they're CVE-derived.
+The bundled list is editable: see `src/agent_bom/compliance_coverage.py` for the framework metadata and `src/agent_bom/compliance_utils.py` for the `BlastRadius` field map. The UI consumes the same API response shape, so product coverage and dashboard controls should stay aligned with these catalogs.
 
 ---
 

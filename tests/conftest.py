@@ -41,7 +41,9 @@ def _reset_registry_state() -> None:
 def _reset_api_runtime_state() -> None:
     try:
         from agent_bom.api import server as api_server
+        from agent_bom.api.stores import set_scim_store
 
+        set_scim_store(None)
         api_server.configure_api(api_key=None)
     except Exception:
         pass

@@ -75,7 +75,7 @@ def test_scim_user_create_list_patch_and_deactivate(scim_client: TestClient) -> 
     assert user["roles"] == [{"value": "viewer", "display": "viewer", "type": "agent_bom"}]
     assert user[AGENT_BOM_USER_EXTENSION]["tenantId"] == "tenant-alpha"
     assert user[AGENT_BOM_USER_EXTENSION]["tenantIdSource"] == "AGENT_BOM_SCIM_TENANT_ID"
-    assert user[AGENT_BOM_USER_EXTENSION]["runtimeAuthEnforced"] is False
+    assert user[AGENT_BOM_USER_EXTENSION]["runtimeAuthEnforced"] is True
     assert user[AGENT_BOM_USER_EXTENSION]["memberships"] == [
         {"tenantId": "tenant-alpha", "role": "viewer", "active": True, "source": "scim"}
     ]

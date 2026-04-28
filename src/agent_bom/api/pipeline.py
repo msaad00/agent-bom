@@ -518,6 +518,12 @@ def _run_scan_sync(job: ScanJob) -> None:
             job.completed_at = _now()
             return
 
+        from agent_bom.mcp_blocklist import flag_blocklisted_mcp_servers
+
+        blocked_servers = flag_blocklisted_mcp_servers(agents)
+        if blocked_servers:
+            pipeline.update_step("discovery", f"MCP blocklist flagged {blocked_servers} server(s)")
+
         # ── Extraction phase ──
         pipeline.start_step("extraction", f"Extracting packages from {len(agents)} agent(s)...")
         total_pkgs = 0

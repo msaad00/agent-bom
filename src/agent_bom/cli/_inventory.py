@@ -15,6 +15,7 @@ from rich.console import Console
 from agent_bom.cli._common import _make_console
 from agent_bom.discovery import discover_all
 from agent_bom.inventory import _inventory_schema_path, _inventory_validator
+from agent_bom.mcp_blocklist import flag_blocklisted_mcp_servers
 from agent_bom.models import AIBOMReport
 from agent_bom.output import print_agent_tree, print_summary
 from agent_bom.parsers import extract_packages
@@ -75,6 +76,8 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
         con.print("\n[bold blue]Extracting package dependencies...[/bold blue]\n")
         if transitive:
             con.print(f"  [cyan]Transitive resolution enabled (max depth: {max_depth})[/cyan]\n")
+
+    flag_blocklisted_mcp_servers(agents)
 
     for agent in agents:
         for server in agent.mcp_servers:

@@ -1,8 +1,70 @@
 {
   "schema_version": 1,
   "updated": "2026-04-28",
-  "description": "Curated MCP server blocklist and suspicious-name patterns. Exact entries require confirmation; pattern entries are heuristic and may produce false positives.",
+  "description": "Curated MCP server blocklist and suspicious-name patterns. Exact entries require confirmation; pattern entries include heuristic names and boundary-aware package identity matches.",
   "entries": [
+    {
+      "id": "malicious-npm-postmark-mcp",
+      "title": "Malicious Postmark MCP npm package",
+      "description": "The postmark-mcp npm package impersonated Postmark's MCP server and exfiltrated outgoing email via hidden BCC behavior. Remove discovered installations and rotate exposed credentials.",
+      "match_type": "pattern",
+      "patterns": [
+        "(^|\\s)postmark-mcp(@[^\\s]+)?(\\s|$)",
+        "^pkg:npm/postmark-mcp(@|$)"
+      ],
+      "severity": "critical",
+      "source": "agent-bom-curated",
+      "references": [
+        "https://security.snyk.io/vuln/SNYK-JS-POSTMARKMCP-13052679",
+        "https://postmarkapp.com/blog/information-regarding-malicious-postmark-mcp-package"
+      ]
+    },
+    {
+      "id": "malicious-npm-lanyer640-mcp-runcommand-server",
+      "title": "Malicious MCP run command npm package",
+      "description": "The @lanyer640/mcp-runcommand-server npm package was reported as malicious and associated with reverse-shell or malicious-domain behavior. Treat hosts that installed or ran it as potentially compromised.",
+      "match_type": "pattern",
+      "patterns": [
+        "(^|\\s)@lanyer640/mcp-runcommand-server(@[^\\s]+)?(\\s|$)",
+        "^pkg:npm/%40lanyer640/mcp-runcommand-server(@|$)"
+      ],
+      "severity": "critical",
+      "source": "agent-bom-curated",
+      "references": [
+        "https://osv.dev/vulnerability/MAL-2025-47838",
+        "https://checkmarx.com/zero-post/npm-malware-alert-lanyer640-mcp-runcommand-server-with-reverse-shell/"
+      ]
+    },
+    {
+      "id": "malicious-npm-mcp-server-todo",
+      "title": "Malicious MCP todo npm package",
+      "description": "The mcp-server-todo npm package is cataloged as a malicious MCP package with all public versions affected. Avoid installation and remove discovered copies.",
+      "match_type": "pattern",
+      "patterns": [
+        "(^|\\s)mcp-server-todo(@[^\\s]+)?(\\s|$)",
+        "^pkg:npm/mcp-server-todo(@|$)"
+      ],
+      "severity": "critical",
+      "source": "agent-bom-curated",
+      "references": [
+        "https://security.snyk.io/vuln/SNYK-JS-MCPSERVERTODO-15870341"
+      ]
+    },
+    {
+      "id": "malicious-npm-ids-enterprise-mcp-server-0-0-2",
+      "title": "Compromised IDS Enterprise MCP npm package version",
+      "description": "ids-enterprise-mcp-server version 0.0.2 was reported as containing Shai-Hulud 2.0 malware that harvests credentials and attempts to infect GitHub and npm repositories.",
+      "match_type": "pattern",
+      "patterns": [
+        "(^|\\s)ids-enterprise-mcp-server@0\\.0\\.2(\\s|$)",
+        "^pkg:npm/ids-enterprise-mcp-server@0\\.0\\.2$"
+      ],
+      "severity": "critical",
+      "source": "agent-bom-curated",
+      "references": [
+        "https://advisories.gitlab.com/pkg/npm/ids-enterprise-mcp-server/GMS-2025-481/"
+      ]
+    },
     {
       "id": "suspicious-credential-exfiltration-name",
       "title": "Suspicious credential exfiltration server name",

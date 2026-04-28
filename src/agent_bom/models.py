@@ -994,7 +994,7 @@ class AIBOMReport:
         """
         return any(a.agent_type != AgentType.CUSTOM for a in self.agents)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not self.tool_version:
             from agent_bom import __version__
 

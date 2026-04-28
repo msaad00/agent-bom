@@ -30,7 +30,7 @@ repos:
     rev: v1.15.0
     hooks:
       - id: mypy
-        args: [--ignore-missing-imports, --no-error-summary, --follow-imports=skip]
+        args: [--ignore-missing-imports, --no-error-summary, --disable-error-code, import-untyped]
         files: ^src/
         additional_dependencies: [types-PyYAML]
         pass_filenames: true

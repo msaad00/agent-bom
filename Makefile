@@ -30,7 +30,7 @@ test:  ## Run unit tests
 
 lint:  ## Run linters (ruff + mypy)
 	ruff check src/ tests/
-	mypy src/ --ignore-missing-imports
+	mypy src/ --ignore-missing-imports --disable-error-code import-untyped
 
 format:  ## Format code with ruff
 	ruff format src/ tests/

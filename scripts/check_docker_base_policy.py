@@ -5,7 +5,7 @@ Closes #1961 (the policy gate piece). The audit found three real drift
 problems this script prevents from recurring:
 
 1. ui/Dockerfile drifted to ``node:25-slim`` while ui/package.json's
-   ``engines.node`` insisted on ``>=20 <23``. The policy table below pins
+   ``engines.node`` insisted on a Node LTS range. The policy table below pins
    the major version that the Dockerfile is allowed to reference; if the
    two ever disagree again, this script fails.
 2. integrations/glama/Dockerfile carried a comment claiming "pinned to same
@@ -70,8 +70,8 @@ POLICY: dict[str, BasePolicy] = {
     ),
     "ui/Dockerfile": BasePolicy(
         image="node",
-        expected_tags=("22-bookworm-slim", "22-slim"),
-        rationale="Node 22 LTS sits inside ui/package.json engines: '>=20 <23' and is Next 16's recommended production node.",
+        expected_tags=("24-bookworm-slim", "24-slim"),
+        rationale="Node 24 LTS sits inside ui/package.json engines: '>=22 <25' and is the canonical UI runtime.",
     ),
     "integrations/glama/Dockerfile": BasePolicy(
         image="python",

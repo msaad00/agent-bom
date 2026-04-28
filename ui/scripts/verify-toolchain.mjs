@@ -77,7 +77,7 @@ if (nextMajor === 16 && ![9, 10].includes(eslintMajor)) {
   );
 }
 
-if (!Number.isInteger(nodeMajor) || nodeMajor < 20 || nodeMajor > 22) {
+if (!Number.isInteger(nodeMajor) || nodeMajor < 22 || nodeMajor > 24) {
   fail(`UI runtime must stay within the declared Node range ${nodeEngines}; found Node ${process.versions.node}.`);
 }
 

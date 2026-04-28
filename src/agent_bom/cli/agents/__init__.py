@@ -697,6 +697,10 @@ def scan(
     agents = ctx.agents
     ctx.step_timings["cloud"] = _time.monotonic() - _step_t0
 
+    from agent_bom.mcp_blocklist import flag_blocklisted_mcp_servers
+
+    flag_blocklisted_mcp_servers(agents)
+
     # Step 2: Extract packages
     _step_t0 = _time.monotonic()
     total_packages = 0

@@ -161,17 +161,42 @@ def match_mcp_server(server: MCPServer, blocklist: dict[str, Any] | None = None)
     return matches
 
 
+def _stamp_server_match(server: MCPServer, match: MCPBlocklistMatch) -> bool:
+    warning = f"MCP_BLOCKLIST[{match.severity}/{match.match_type}]: {match.entry_id} matched {match.matched_value!r}"
+    if warning not in server.security_warnings:
+        server.security_warnings.append(warning)
+    if match.severity == "critical":
+        server.security_blocked = True
+        return True
+    return False
+
+
+def flag_blocklisted_mcp_servers(agents: list[Agent], blocklist: dict[str, Any] | None = None) -> int:
+    """Stamp blocklist warnings on discovered MCP servers.
+
+    This is intentionally side-effect only so scan pipelines can run it before
+    package extraction and avoid deeper inspection of a server that already
+    matches a confirmed critical blocklist entry by name, command, registry id,
+    or package identity carried in the discovered config.
+    """
+    flagged = 0
+    for agent in agents:
+        for server in agent.mcp_servers:
+            server_flagged = False
+            for match in match_mcp_server(server, blocklist):
+                server_flagged = _stamp_server_match(server, match) or server_flagged
+            if server_flagged:
+                flagged += 1
+    return flagged
+
+
 def blocklist_findings_for_agents(agents: list[Agent], blocklist: dict[str, Any] | None = None) -> list[Finding]:
     """Create unified findings for MCP blocklist hits and stamp server warnings."""
     findings: list[Finding] = []
     for agent in agents:
         for server in agent.mcp_servers:
             for match in match_mcp_server(server, blocklist):
-                warning = f"MCP_BLOCKLIST[{match.severity}/{match.match_type}]: {match.entry_id} matched {match.matched_value!r}"
-                if warning not in server.security_warnings:
-                    server.security_warnings.append(warning)
-                if match.severity == "critical":
-                    server.security_blocked = True
+                _stamp_server_match(server, match)
 
                 findings.append(
                     Finding(

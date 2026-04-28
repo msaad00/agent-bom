@@ -582,6 +582,21 @@ def _run_scan_sync(job: ScanJob) -> None:
 
         # ── Analysis phase ──
         pipeline.start_step("analysis", "Computing blast radius...")
+        # Surface graph-walk reachability onto each blast-radius row before
+        # the report is built so the JSON payload (and risk_score) reflects
+        # whether each vulnerable package is actually reachable from an
+        # agent entrypoint, not just present in the dependency closure.
+        try:
+            from agent_bom.graph.blast_reach import (
+                apply_dependency_reachability_to_blast_radii,
+            )
+
+            stamped = apply_dependency_reachability_to_blast_radii(blast_radii, agents, rescore=True)
+            if stamped:
+                with lock:
+                    job.progress.append(f"Reachability: stamped {stamped} blast-radius row(s) with graph-walk evidence")
+        except Exception as reach_exc:  # noqa: BLE001
+            _logger.warning("Reachability surfacing skipped: %s", sanitize_error(reach_exc))
         pipeline.complete_step("analysis", f"Computed {len(blast_radii)} blast radius entries", {"blast_radius": len(blast_radii)})
 
         # ── Output phase ──

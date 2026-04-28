@@ -108,6 +108,16 @@ RISK_SCORECARD_TIER2_BOOST = _float("AGENT_BOM_RISK_SCORECARD_B2", 0.5)
 RISK_SCORECARD_TIER3_THRESHOLD = _float("AGENT_BOM_RISK_SCORECARD_T3", 7.0)
 RISK_SCORECARD_TIER3_BOOST = _float("AGENT_BOM_RISK_SCORECARD_B3", 0.25)
 
+# Graph-walk reachability adjustment — applied only when
+# `agent_bom.graph.dependency_reach.compute_dependency_reach` has stamped
+# the BlastRadius with a definitive answer (None leaves scoring unchanged).
+#   reachable    → +0.5  (an agent's USES/DEPENDS_ON closure includes the package)
+#   unreachable  → −0.5  (package is in inventory but no agent traversal reaches it)
+# The boost is intentionally smaller than the AI/KEV boosts (0.5 each) so
+# reachability sharpens triage order but does not eclipse a CISA KEV signal.
+RISK_REACHABLE_BOOST = _float("AGENT_BOM_RISK_REACHABLE_BOOST", 0.5)
+RISK_UNREACHABLE_PENALTY = _float("AGENT_BOM_RISK_UNREACHABLE_PENALTY", 0.5)
+
 
 # ── Server Risk Scoring ─────────────────────────────────────────────────────
 # Used by risk_analyzer.score_server_risk().

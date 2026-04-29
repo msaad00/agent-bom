@@ -2,6 +2,11 @@
 
 agent-bom includes pre-built skill workflows for common security tasks.
 
+Skills are agentic invocation layers over the same `agent-bom` CLI, API, MCP,
+normalization, scanning, graph, and export contracts. See
+[Agentic Skills Architecture](../architecture/agentic-skills-architecture.md)
+for the layered model, subagent delegation rules, and OSV/GHSA guardrails.
+
 | Skill | File | Use case |
 |-------|------|----------|
 | [AI BOM Generator](https://github.com/msaad00/agent-bom/blob/main/docs/skills/ai-bom-generator.md) | `ai-bom-generator.md` | Generate comprehensive AI supply chain BOMs |

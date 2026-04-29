@@ -9,9 +9,10 @@ name: Auto-Retrigger Stranded PRs
 # zero check-runs on the current head and stays mergeable_state=blocked
 # forever. Background: docs/operations/CI_RUNBOOK.md.
 #
-# This workflow polls every 5 minutes (or on demand), finds PRs whose
-# current head SHA has no check-runs, and runs scripts/retrigger_stranded_pr.sh
-# (close + reopen) which fires the pull_request workflows from scratch.
+# This workflow polls regularly (or on demand), finds PRs whose current head
+# SHA is missing or has a stale required check, and runs
+# scripts/retrigger_stranded_pr.sh (close + reopen) which fires the
+# pull_request workflows from scratch.
 #
 # Triggered from a workflow (not GITHUB_TOKEN's push), the close/reopen
 # events are properly recorded and our pull_request hooks fire on the
@@ -19,8 +20,20 @@ name: Auto-Retrigger Stranded PRs
 
 on:
   schedule:
-    - cron: "*/5 * * * *"   # every 5 minutes
+    # GitHub-hosted schedules are best-effort and can be delayed during busy
+    # windows. Odd-minute slots avoid the most contended top-of-hour queue.
+    - cron: "3,18,33,48 * * * *"
   workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Optional PR number to retrigger immediately"
+        required: false
+        type: string
+      min_age_minutes:
+        description: "Minimum PR age before scheduled scans retrigger"
+        required: false
+        default: "6"
+        type: string
 
 permissions:
   contents: read
@@ -45,13 +58,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REQUIRED_CHECK: "Lint and Type Check"
-          # Skip PRs younger than this — give pull_request workflows a
-          # chance to start before we declare them stranded. The retrigger
-          # script also no-ops when the required check is already present,
-          # but skipping young PRs keeps the workflow log readable.
-          MIN_AGE_MINUTES: "10"
+          MIN_AGE_MINUTES: ${{ inputs.min_age_minutes || '6' }}
+          PR_NUMBER: ${{ inputs.pr_number || '' }}
         run: |
           set -euo pipefail
+          if [ -n "${PR_NUMBER}" ]; then
+            echo "Manual retrigger requested for PR #${PR_NUMBER}."
+            scripts/retrigger_stranded_pr.sh "${PR_NUMBER}"
+            exit 0
+          fi
+
           echo "Listing open PRs…"
           mapfile -t PRS < <(
             gh pr list \
@@ -62,7 +78,7 @@ jobs:
           )
 
           NOW_EPOCH="$(date -u +%s)"
-          STRANDED=0
+          CHECKED=0
           RETRIGGERED=0
 
           for line in "${PRS[@]}"; do
@@ -74,19 +90,7 @@ jobs:
               continue
             fi
 
-            HITS="$(
-              gh api "repos/${{ github.repository }}/commits/${SHA}/check-runs" \
-                --jq "[.check_runs[] | select(.name == \"${REQUIRED_CHECK}\")] | length"
-            )"
-
-            if [ "$HITS" -gt 0 ]; then
-              echo "PR #${PR}: ${HITS} '${REQUIRED_CHECK}' run(s) on head ${SHA:0:8} — healthy."
-              continue
-            fi
-
-            STRANDED=$(( STRANDED + 1 ))
-            echo "PR #${PR}: 0 '${REQUIRED_CHECK}' runs on head ${SHA:0:8} — stranded."
-
+            CHECKED=$(( CHECKED + 1 ))
             if [ -x scripts/retrigger_stranded_pr.sh ]; then
               if scripts/retrigger_stranded_pr.sh "$PR"; then
                 RETRIGGERED=$(( RETRIGGERED + 1 ))
@@ -99,4 +103,4 @@ jobs:
           done
 
           echo
-          echo "Summary: ${STRANDED} stranded PR(s), ${RETRIGGERED} retriggered."
+          echo "Summary: ${CHECKED} eligible PR(s) checked, ${RETRIGGERED} retrigger command(s) completed."

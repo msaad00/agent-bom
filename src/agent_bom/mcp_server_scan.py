@@ -34,7 +34,7 @@ async def run_scan_pipeline(
     from agent_bom.discovery import discover_all
     from agent_bom.models import Agent, AgentType, MCPServer, TransportType
     from agent_bom.parsers import extract_packages
-    from agent_bom.scanners import scan_agents, scan_agents_with_enrichment
+    from agent_bom.scanners import ScanOptions, scan_agents, scan_agents_with_enrichment
 
     warnings: list[str] = []
     scan_sources: list[str] = []
@@ -137,7 +137,7 @@ async def run_scan_pipeline(
                 server.packages = extract_packages(server)
 
     if enrich:
-        blast_radii = await scan_agents_with_enrichment(agents)
+        blast_radii = await scan_agents_with_enrichment(agents, options=ScanOptions(offline=False))
     else:
-        blast_radii = await scan_agents(agents)
+        blast_radii = await scan_agents(agents, options=ScanOptions(offline=False))
     return agents, blast_radii, warnings, scan_sources

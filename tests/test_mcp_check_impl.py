@@ -26,7 +26,7 @@ async def test_check_impl_requires_explicit_os_package_version():
 
 @pytest.mark.asyncio
 async def test_check_impl_uses_full_scan_pipeline():
-    async def fake_scan(packages: list[Package]):
+    async def fake_scan(packages: list[Package], **_kwargs):
         packages[0].vulnerabilities.append(Vulnerability(id="CVE-2026-TEST", summary="test", severity=Severity.HIGH))
 
     with patch("agent_bom.scanners.scan_packages", side_effect=fake_scan):

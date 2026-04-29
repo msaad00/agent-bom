@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import sys
+from threading import Event
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from agent_bom.cloud.base import CloudDiscoveryError
+from agent_bom.models import Agent, AgentType
 
 
 def _mock_boto3():
@@ -17,6 +19,10 @@ def _mock_boto3():
     mock_boto3 = MagicMock()
     mock_boto3.Session.return_value = mock_session
     return mock_boto3, mock_session
+
+
+def _agent(name: str, source: str) -> Agent:
+    return Agent(name=name, agent_type=AgentType.CUSTOM, config_path=f"aws://{name}", source=source)
 
 
 # ---------------------------------------------------------------------------
@@ -306,3 +312,112 @@ def test_discover_with_region_and_profile():
 
         agents, warnings = aws.discover(region="eu-west-1", profile="prod", include_ecs=False)
         mock_boto3.Session.assert_called_with(region_name="eu-west-1", profile_name="prod")
+
+
+def test_discover_calls_all_enabled_aws_services_and_preserves_results_and_warnings():
+    """Parallel service discovery should preserve the previous aggregation contract."""
+    mock_boto3, mock_session = _mock_boto3()
+    mock_botocore = MagicMock()
+    mock_botocore.exceptions.ClientError = type("ClientError", (Exception,), {})
+    mock_botocore.exceptions.NoCredentialsError = type("NoCredentialsError", (Exception,), {})
+
+    mock_sts = MagicMock()
+    mock_sts.get_caller_identity.return_value = {"Account": "123456789012"}
+    mock_session.client.return_value = mock_sts
+
+    def lambda_discovery(_session, _region, parent_warnings, *, account_id=None):
+        parent_warnings.append("lambda-package-warning")
+        return [_agent(f"lambda:{account_id}", "aws-lambda")], ["lambda-warning"]
+
+    def sfn_discovery(_session, _region, parent_warnings, *, account_id=None):
+        parent_warnings.append("sfn-package-warning")
+        return [_agent(f"sfn:{account_id}", "aws-step-functions")], ["sfn-warning"]
+
+    with (
+        patch.dict(sys.modules, {"boto3": mock_boto3, "botocore": mock_botocore, "botocore.exceptions": mock_botocore.exceptions}),
+        patch("agent_bom.cloud.aws._discover_bedrock", return_value=([_agent("bedrock", "aws-bedrock")], ["bedrock-warning"])) as bedrock,
+        patch(
+            "agent_bom.cloud.aws._discover_ecs_images",
+            return_value=([{"image": "repo/app:1", "container_name": "app"}], ["ecs-warning"]),
+        ) as ecs,
+        patch(
+            "agent_bom.cloud.aws._discover_sagemaker",
+            return_value=([_agent("sagemaker", "aws-sagemaker")], ["sagemaker-warning"]),
+        ) as sagemaker,
+        patch("agent_bom.cloud.aws._discover_lambda_functions", side_effect=lambda_discovery) as lambda_functions,
+        patch("agent_bom.cloud.aws._discover_eks_images", return_value=([_agent("eks", "aws-eks")], ["eks-warning"])) as eks,
+        patch("agent_bom.cloud.aws._discover_step_functions", side_effect=sfn_discovery) as step_functions,
+        patch("agent_bom.cloud.aws._discover_ec2_instances", return_value=([_agent("ec2", "aws-ec2")], ["ec2-warning"])) as ec2,
+    ):
+        from agent_bom.cloud import aws
+
+        agents, warnings = aws.discover(
+            region="us-east-1",
+            include_ecs=True,
+            include_sagemaker=True,
+            include_lambda=True,
+            include_eks=True,
+            include_step_functions=True,
+            include_ec2=True,
+            ec2_tag_filter={"Agent": "true"},
+        )
+
+    bedrock.assert_called_once_with(mock_session, "us-east-1", account_id="123456789012")
+    ecs.assert_called_once_with(mock_session, "us-east-1")
+    sagemaker.assert_called_once_with(mock_session, "us-east-1", account_id="123456789012")
+    lambda_functions.assert_called_once()
+    eks.assert_called_once_with(mock_session, "us-east-1", account_id="123456789012")
+    step_functions.assert_called_once()
+    ec2.assert_called_once_with(mock_session, "us-east-1", {"Agent": "true"}, account_id="123456789012")
+
+    assert [agent.source for agent in agents] == [
+        "aws-bedrock",
+        "aws-sagemaker",
+        "aws-lambda",
+        "aws-eks",
+        "aws-step-functions",
+        "aws-ec2",
+        "aws-ecs",
+    ]
+    assert warnings == [
+        "bedrock-warning",
+        "ecs-warning",
+        "sagemaker-warning",
+        "lambda-package-warning",
+        "lambda-warning",
+        "eks-warning",
+        "sfn-package-warning",
+        "sfn-warning",
+        "ec2-warning",
+    ]
+
+
+def test_discover_submits_aws_service_discovery_before_waiting_for_ordered_results():
+    """A slow first service should not block later services from starting."""
+    mock_boto3, mock_session = _mock_boto3()
+    mock_botocore = MagicMock()
+    mock_botocore.exceptions.ClientError = type("ClientError", (Exception,), {})
+    mock_botocore.exceptions.NoCredentialsError = type("NoCredentialsError", (Exception,), {})
+    mock_session.client.return_value.get_caller_identity.return_value = {"Account": "123456789012"}
+
+    ecs_started = Event()
+
+    def bedrock_discovery(_session, _region, *, account_id=None):
+        assert ecs_started.wait(timeout=2)
+        return [_agent(f"bedrock:{account_id}", "aws-bedrock")], []
+
+    def ecs_discovery(_session, _region):
+        ecs_started.set()
+        return [], []
+
+    with (
+        patch.dict(sys.modules, {"boto3": mock_boto3, "botocore": mock_botocore, "botocore.exceptions": mock_botocore.exceptions}),
+        patch("agent_bom.cloud.aws._discover_bedrock", side_effect=bedrock_discovery),
+        patch("agent_bom.cloud.aws._discover_ecs_images", side_effect=ecs_discovery),
+    ):
+        from agent_bom.cloud import aws
+
+        agents, warnings = aws.discover(region="us-east-1", include_ecs=True)
+
+    assert warnings == []
+    assert [agent.source for agent in agents] == ["aws-bedrock"]

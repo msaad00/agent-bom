@@ -24,19 +24,27 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Union
+from typing import Any, Union
 
 # ── Internal graph representation ──────────────────────────────────────────────
 
 
 class _Node:
-    __slots__ = ("id", "label", "kind", "severity")
+    __slots__ = ("id", "label", "kind", "severity", "attributes")
 
-    def __init__(self, node_id: str, label: str, kind: str, severity: str = "") -> None:
+    def __init__(
+        self,
+        node_id: str,
+        label: str,
+        kind: str,
+        severity: str = "",
+        attributes: dict[str, Any] | None = None,
+    ) -> None:
         self.id = node_id
         self.label = label
         self.kind = kind
         self.severity = severity
+        self.attributes = attributes or {}
 
 
 class _Edge:
@@ -56,9 +64,11 @@ class DepGraph:
         self._edges: list[_Edge] = []
         self._edge_set: set[tuple[str, str]] = set()
 
-    def add_node(self, node_id: str, label: str, kind: str, severity: str = "") -> None:
+    def add_node(self, node_id: str, label: str, kind: str, severity: str = "", attributes: dict[str, Any] | None = None) -> None:
         if node_id not in self._nodes:
-            self._nodes[node_id] = _Node(node_id, label, kind, severity)
+            self._nodes[node_id] = _Node(node_id, label, kind, severity, _compact_attributes(attributes))
+        elif attributes:
+            self._nodes[node_id].attributes.update(_compact_attributes(attributes))
 
     def add_edge(self, source: str, target: str, kind: str) -> None:
         key = (source, target)
@@ -84,35 +94,41 @@ class DepGraph:
 # ── Load from scan JSON ─────────────────────────────────────────────────────────
 
 
-def load_graph_from_scan(scan_path: Union[str, Path]) -> DepGraph:
-    """Build a :class:`DepGraph` from a saved JSON scan report.
+def _compact_attributes(attributes: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(attributes, dict):
+        return {}
+    return {key: value for key, value in attributes.items() if value not in (None, "", [], {})}
 
-    Args:
-        scan_path: Path to a JSON file produced by ``agent-bom scan --format json``.
 
-    Returns:
-        Populated :class:`DepGraph` with agent, server, package, and CVE nodes.
+def _agent_node_attributes(agent: dict[str, Any]) -> dict[str, Any]:
+    raw_metadata = agent.get("metadata")
+    metadata: dict[str, Any] = raw_metadata if isinstance(raw_metadata, dict) else {}
+    return _compact_attributes(
+        {
+            "source": agent.get("source"),
+            "status": agent.get("status"),
+            "discovered_at": agent.get("discovered_at"),
+            "last_seen": agent.get("last_seen"),
+            "cloud_origin": metadata.get("cloud_origin"),
+            "cloud_scope": metadata.get("cloud_scope"),
+            "cloud_state": metadata.get("cloud_state"),
+            "cloud_principal": metadata.get("cloud_principal"),
+        }
+    )
 
-    Raises:
-        ValueError: If the file is not a valid agent-bom JSON report.
-        FileNotFoundError: If the path does not exist.
-    """
-    path = Path(scan_path)
-    data = json.loads(path.read_text())
 
-    if data.get("document_type") != "AI-BOM":
-        raise ValueError(f"{scan_path} does not appear to be an agent-bom JSON report (missing 'document_type: AI-BOM')")
-
+def build_graph_from_scan_data(data: dict[str, Any]) -> DepGraph:
+    """Build a :class:`DepGraph` from an in-memory scan JSON report."""
     graph = DepGraph()
 
     for agent in data.get("agents", []):
         agent_name = agent.get("name", "unknown-agent")
         source = agent.get("source") or "local"
         source_id = f"provider:{source}"
-        graph.add_node(source_id, source, "provider")
+        graph.add_node(source_id, source, "provider", attributes={"provider": source})
 
         agent_id = f"agent:{agent_name}"
-        graph.add_node(agent_id, agent_name, "agent")
+        graph.add_node(agent_id, agent_name, "agent", attributes=_agent_node_attributes(agent))
         graph.add_edge(source_id, agent_id, "hosts")
 
         for server in agent.get("mcp_servers", []):
@@ -153,6 +169,28 @@ def load_graph_from_scan(scan_path: Union[str, Path]) -> DepGraph:
                     graph.add_edge(pkg_id, cve_id, "affects")
 
     return graph
+
+
+def load_graph_from_scan(scan_path: Union[str, Path]) -> DepGraph:
+    """Build a :class:`DepGraph` from a saved JSON scan report.
+
+    Args:
+        scan_path: Path to a JSON file produced by ``agent-bom scan --format json``.
+
+    Returns:
+        Populated :class:`DepGraph` with agent, server, package, and CVE nodes.
+
+    Raises:
+        ValueError: If the file is not a valid agent-bom JSON report.
+        FileNotFoundError: If the path does not exist.
+    """
+    path = Path(scan_path)
+    data = json.loads(path.read_text())
+
+    if data.get("document_type") != "AI-BOM":
+        raise ValueError(f"{scan_path} does not appear to be an agent-bom JSON report (missing 'document_type: AI-BOM')")
+
+    return build_graph_from_scan_data(data)
 
 
 # ── Export formats ──────────────────────────────────────────────────────────────
@@ -299,7 +337,16 @@ def to_json(graph: DepGraph) -> dict:
         Dict with ``nodes``, ``edges``, and ``stats`` keys.
     """
     return {
-        "nodes": [{"id": n.id, "label": n.label, "kind": n.kind, "severity": n.severity} for n in graph.nodes],
+        "nodes": [
+            {
+                "id": n.id,
+                "label": n.label,
+                "kind": n.kind,
+                "severity": n.severity,
+                "attributes": n.attributes,
+            }
+            for n in graph.nodes
+        ],
         "edges": [{"source": e.source, "target": e.target, "kind": e.kind} for e in graph.edges],
         "stats": {
             "node_count": graph.node_count(),
@@ -338,6 +385,7 @@ _GRAPHML_KEYS = [
     ("has_credentials", "node", "boolean", "MCP server exposes credentials"),
     ("is_vulnerable", "node", "boolean", "Package has known vulnerabilities"),
     ("is_transitive", "node", "boolean", "Transitive (indirect) dependency"),
+    ("attributes_json", "node", "string", "Additional AIBOM node attributes as compact JSON"),
     ("relationship", "edge", "string", "AIBOM relationship type"),
 ]
 
@@ -388,6 +436,8 @@ def to_graphml(graph: DepGraph) -> str:
         lines.append(f'      <data key="has_credentials">{"true" if node.kind == "server_cred" else "false"}</data>')
         lines.append(f'      <data key="is_vulnerable">{"true" if node.kind == "pkg_vuln" else "false"}</data>')
         lines.append(f'      <data key="is_transitive">{"true" if node.kind == "pkg_transitive" else "false"}</data>')
+        if node.attributes:
+            lines.append(f'      <data key="attributes_json">{_xml_escape(json.dumps(node.attributes, sort_keys=True))}</data>')
         lines.append("    </node>")
 
     # Edges
@@ -453,6 +503,9 @@ def to_cypher(graph: DepGraph) -> str:
             props.append("is_vulnerable: true")
         if node.kind == "pkg_transitive":
             props.append("is_transitive: true")
+        if node.attributes:
+            attrs_json = _cypher_str(json.dumps(node.attributes, sort_keys=True))
+            props.append(f"attributes_json: '{attrs_json}'")
 
         props_str = ", ".join(props)
         lines.append(f"MERGE (:{label} {{{props_str}}});")

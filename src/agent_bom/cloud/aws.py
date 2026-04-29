@@ -77,10 +77,11 @@ def discover(
 
     session = boto3.Session(**session_kwargs)
     resolved_region = session.region_name or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+    account_id = _resolve_account_id(session)
 
     # ── Bedrock Agents ────────────────────────────────────────────────────
     try:
-        bedrock_agents, bedrock_warnings = _discover_bedrock(session, resolved_region)
+        bedrock_agents, bedrock_warnings = _discover_bedrock(session, resolved_region, account_id=account_id)
         agents.extend(bedrock_agents)
         warnings.extend(bedrock_warnings)
     except NoCredentialsError:
@@ -109,7 +110,7 @@ def discover(
     # ── SageMaker Endpoints ───────────────────────────────────────────────
     if include_sagemaker:
         try:
-            sm_agents, sm_warns = _discover_sagemaker(session, resolved_region)
+            sm_agents, sm_warns = _discover_sagemaker(session, resolved_region, account_id=account_id)
             agents.extend(sm_agents)
             warnings.extend(sm_warns)
         except ClientError as exc:
@@ -122,7 +123,7 @@ def discover(
     # ── Lambda Functions (direct discovery) ────────────────────────────────
     if include_lambda:
         try:
-            lambda_agents, lambda_warns = _discover_lambda_functions(session, resolved_region, warnings)
+            lambda_agents, lambda_warns = _discover_lambda_functions(session, resolved_region, warnings, account_id=account_id)
             agents.extend(lambda_agents)
             warnings.extend(lambda_warns)
         except ClientError as exc:
@@ -135,7 +136,7 @@ def discover(
     # ── EKS Clusters ───────────────────────────────────────────────────────
     if include_eks:
         try:
-            eks_agents, eks_warns = _discover_eks_images(session, resolved_region)
+            eks_agents, eks_warns = _discover_eks_images(session, resolved_region, account_id=account_id)
             agents.extend(eks_agents)
             warnings.extend(eks_warns)
         except ClientError as exc:
@@ -148,7 +149,7 @@ def discover(
     # ── Step Functions ─────────────────────────────────────────────────────
     if include_step_functions:
         try:
-            sfn_agents, sfn_warns = _discover_step_functions(session, resolved_region, warnings)
+            sfn_agents, sfn_warns = _discover_step_functions(session, resolved_region, warnings, account_id=account_id)
             agents.extend(sfn_agents)
             warnings.extend(sfn_warns)
         except ClientError as exc:
@@ -161,7 +162,12 @@ def discover(
     # ── EC2 Instances (tag-filtered) ───────────────────────────────────────
     if include_ec2:
         try:
-            ec2_agents, ec2_warns = _discover_ec2_instances(session, resolved_region, ec2_tag_filter or {})
+            ec2_agents, ec2_warns = _discover_ec2_instances(
+                session,
+                resolved_region,
+                ec2_tag_filter or {},
+                account_id=account_id,
+            )
             agents.extend(ec2_agents)
             warnings.extend(ec2_warns)
         except ClientError as exc:
@@ -216,6 +222,7 @@ def discover(
                     resource_id=f"{task_arn}/{container_name}" if task_arn else img_ref,
                     resource_name=container_name or img_ref.split("/")[-1],
                     location=resolved_region,
+                    account_id=account_id,
                     raw_identity={
                         "cluster_arn": cluster_arn,
                         "task_arn": task_arn,
@@ -230,12 +237,27 @@ def discover(
     return agents, warnings
 
 
+def _resolve_account_id(session: Any) -> str | None:
+    """Resolve the AWS account once for normalized origin scope.
+
+    STS can be unavailable or explicitly denied in least-privilege audit roles;
+    inventory discovery should continue and simply omit account scope.
+    """
+    try:
+        identity = session.client("sts").get_caller_identity()
+    except Exception as exc:
+        logger.debug("Could not resolve AWS account ID via STS: %s", exc)
+        return None
+    account_id = str(identity.get("Account", "")).strip()
+    return account_id or None
+
+
 # ---------------------------------------------------------------------------
 # Bedrock discovery
 # ---------------------------------------------------------------------------
 
 
-def _discover_bedrock(session: Any, region: str) -> tuple[list[Agent], list[str]]:
+def _discover_bedrock(session: Any, region: str, *, account_id: str | None = None) -> tuple[list[Agent], list[str]]:
     """Discover Bedrock agents and their action groups."""
     client = session.client("bedrock-agent", region_name=region)
     agents: list[Agent] = []
@@ -254,8 +276,6 @@ def _discover_bedrock(session: Any, region: str) -> tuple[list[Agent], list[str]
                 resource_type="agent",
                 raw_state=agent_status,
             )
-            if lifecycle_state is None:
-                continue
 
             try:
                 detail = client.get_agent(agentId=agent_id)["agent"]
@@ -284,22 +304,24 @@ def _discover_bedrock(session: Any, region: str) -> tuple[list[Agent], list[str]
                         resource_id=agent_arn,
                         resource_name=agent_name,
                         location=region,
+                        account_id=account_id,
                         raw_identity={
                             "agentId": agent_id,
                             "agentArn": agent_arn,
                             "agentName": agent_name,
                         },
                     ),
-                    "cloud_state": build_cloud_state(
-                        provider="aws",
-                        service="bedrock",
-                        resource_type="agent",
-                        lifecycle_state=lifecycle_state,
-                        raw_state=agent_status,
-                        state_source="agentStatus",
-                    ),
                 },
             )
+            if lifecycle_state:
+                agent.metadata["cloud_state"] = build_cloud_state(
+                    provider="aws",
+                    service="bedrock",
+                    resource_type="agent",
+                    lifecycle_state=lifecycle_state,
+                    raw_state=agent_status,
+                    state_source="agentStatus",
+                )
             agents.append(agent)
 
     return agents, warnings
@@ -581,7 +603,7 @@ def _discover_ecs_images(session: Any, region: str) -> tuple[list[dict[str, str]
 # ---------------------------------------------------------------------------
 
 
-def _discover_sagemaker(session: Any, region: str) -> tuple[list[Agent], list[str]]:
+def _discover_sagemaker(session: Any, region: str, *, account_id: str | None = None) -> tuple[list[Agent], list[str]]:
     """Discover SageMaker endpoints and their container images."""
     sm = session.client("sagemaker", region_name=region)
     agents: list[Agent] = []
@@ -647,6 +669,7 @@ def _discover_sagemaker(session: Any, region: str) -> tuple[list[Agent], list[st
                                 resource_id=ep_desc.get("EndpointArn", ep_name),
                                 resource_name=ep_name,
                                 location=region,
+                                account_id=account_id,
                                 raw_identity={"endpoint": ep_name, "model": model_name, "image": image},
                             )
                         },
@@ -701,6 +724,8 @@ def _discover_lambda_functions(
     session: Any,
     region: str,
     parent_warnings: list[str],
+    *,
+    account_id: str | None = None,
 ) -> tuple[list[Agent], list[str]]:
     """Discover standalone Lambda functions (not just Bedrock action group Lambdas).
 
@@ -748,6 +773,7 @@ def _discover_lambda_functions(
                         resource_id=func_arn,
                         resource_name=func_name,
                         location=region,
+                        account_id=account_id,
                         raw_identity={"function_name": func_name, "function_arn": func_arn, "runtime": runtime},
                     )
                 },
@@ -785,6 +811,8 @@ def _discover_lambda_functions(
 def _discover_eks_images(
     session: Any,
     region: str,
+    *,
+    account_id: str | None = None,
 ) -> tuple[list[Agent], list[str]]:
     """Discover EKS clusters and reuse k8s.discover_images() for pod scanning.
 
@@ -843,6 +871,7 @@ def _discover_eks_images(
                             resource_id=f"{cluster_name}/{pod_name}/{container_name}",
                             resource_name=pod_name,
                             location=region,
+                            account_id=account_id,
                             raw_identity={
                                 "cluster": cluster_name,
                                 "pod": pod_name,
@@ -872,6 +901,8 @@ def _discover_step_functions(
     session: Any,
     region: str,
     parent_warnings: list[str],
+    *,
+    account_id: str | None = None,
 ) -> tuple[list[Agent], list[str]]:
     """Discover Step Functions state machines and extract referenced service ARNs.
 
@@ -949,6 +980,7 @@ def _discover_step_functions(
                         resource_id=sm_arn,
                         resource_name=sm_name,
                         location=region,
+                        account_id=account_id,
                         raw_identity={"state_machine_arn": sm_arn, "name": sm_name},
                     )
                 },
@@ -1017,6 +1049,8 @@ def _discover_ec2_instances(
     session: Any,
     region: str,
     tag_filter: dict[str, str],
+    *,
+    account_id: str | None = None,
 ) -> tuple[list[Agent], list[str]]:
     """Discover EC2 instances matching tag filters.
 
@@ -1072,6 +1106,7 @@ def _discover_ec2_instances(
                                 resource_id=instance_id,
                                 resource_name=name,
                                 location=region,
+                                account_id=account_id,
                                 raw_identity={"instance_id": instance_id, "instance_type": instance_type, "ami_id": ami_id},
                             )
                         },

@@ -432,6 +432,21 @@ def _discover_openai_deployments(
                             ),
                         },
                     )
+                    cloud_scope = build_cloud_scope(
+                        provider="azure",
+                        service="openai",
+                        resource_type="deployment",
+                        scope_type="account",
+                        scope_id=account_id,
+                        scope_name=account_name,
+                        parent_scope_type="resource-group",
+                        parent_scope_id=rg_name,
+                        parent_scope_name=rg_name,
+                        location=account_location or None,
+                        source_fields=["account.id", "account.location", "deployment.id"],
+                    )
+                    if cloud_scope:
+                        agent.metadata["cloud_scope"] = cloud_scope
                     agents.append(agent)
             except Exception as exc:
                 warnings.append(f"Could not list deployments for OpenAI account {account_name}: {exc}")
@@ -595,6 +610,8 @@ def _discover_container_instances(
         for group in client.container_groups.list():
             group_name = group.name or "unknown"
             group_id = group.id or f"azure://aci/{group_name}"
+            group_location = getattr(group, "location", "") or ""
+            rg_name = _extract_azure_resource_group(group_id)
             containers = getattr(group, "containers", []) or []
 
             for container in containers:
@@ -623,11 +640,26 @@ def _discover_container_instances(
                             resource_type="container",
                             resource_id=f"{group_id}/{container_name}",
                             resource_name=container_name,
+                            location=group_location or None,
                             subscription_id=subscription_id,
                             raw_identity={"group_id": group_id, "group_name": group_name, "container": container_name, "image": image},
                         ),
                     },
                 )
+                cloud_scope = build_cloud_scope(
+                    provider="azure",
+                    service="container-instances",
+                    resource_type="container",
+                    scope_type="resource-group",
+                    scope_id=rg_name,
+                    scope_name=rg_name or None,
+                    parent_scope_type="subscription",
+                    parent_scope_id=subscription_id,
+                    location=group_location or None,
+                    source_fields=["id", "location"],
+                )
+                if cloud_scope:
+                    agent.metadata["cloud_scope"] = cloud_scope
                 agents.append(agent)
 
     except Exception as exc:
@@ -671,6 +703,7 @@ def _discover_ml_endpoints(
                 for endpoint in client.online_endpoints.list(rg_name, ws_name):
                     ep_name = endpoint.name or "unknown"
                     ep_id = endpoint.id or f"azure://ml/{ws_name}/{ep_name}"
+                    endpoint_location = getattr(endpoint, "location", "") or getattr(ws, "location", "") or ""
                     properties = getattr(endpoint, "properties", None)
                     scoring_uri = getattr(properties, "scoring_uri", "") if properties else ""
 
@@ -714,11 +747,27 @@ def _discover_ml_endpoints(
                                 resource_type="online-endpoint",
                                 resource_id=ep_id,
                                 resource_name=ep_name,
+                                location=endpoint_location or None,
                                 subscription_id=subscription_id,
                                 raw_identity={"id": ep_id, "workspace": ws_name, "name": ep_name},
                             ),
                         },
                     )
+                    cloud_scope = build_cloud_scope(
+                        provider="azure",
+                        service="machine-learning",
+                        resource_type="online-endpoint",
+                        scope_type="workspace",
+                        scope_id=ws_id or ws_name,
+                        scope_name=ws_name,
+                        parent_scope_type="resource-group",
+                        parent_scope_id=rg_name,
+                        parent_scope_name=rg_name,
+                        location=endpoint_location or None,
+                        source_fields=["workspace.id", "endpoint.id", "endpoint.location"],
+                    )
+                    if cloud_scope:
+                        agent.metadata["cloud_scope"] = cloud_scope
                     agents.append(agent)
 
             except Exception as exc:

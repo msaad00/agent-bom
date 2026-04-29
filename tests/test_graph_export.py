@@ -94,6 +94,28 @@ def _agent(name: str, servers: list | None = None, source: str = "local") -> dic
     }
 
 
+def _cloud_agent(name: str = "bedrock-agent") -> dict:
+    agent = _agent(name, [], source="aws")
+    agent.update(
+        {
+            "discovered_at": "2026-04-28T10:00:00Z",
+            "last_seen": "2026-04-28T11:00:00Z",
+            "metadata": {
+                "cloud_origin": {
+                    "provider": "aws",
+                    "service": "bedrock",
+                    "resource_type": "agent",
+                    "resource_id": "agent-123",
+                    "location": "us-east-1",
+                    "scope": {"account_id": "123456789012"},
+                },
+                "cloud_state": {"lifecycle_state": "ready", "raw_state": "PREPARED"},
+            },
+        }
+    )
+    return agent
+
+
 def _write_scan(data: dict) -> str:
     f = tempfile.NamedTemporaryFile(suffix=".json", mode="w", delete=False)
     json.dump(data, f)
@@ -319,6 +341,24 @@ def test_to_json_node_has_required_fields():
             assert "id" in node
             assert "label" in node
             assert "kind" in node
+    finally:
+        os.unlink(path)
+
+
+def test_to_json_preserves_cloud_context_attributes():
+    data = _make_scan_json([_cloud_agent()])
+    path = _write_scan(data)
+    try:
+        graph = load_graph_from_scan(path)
+        result = to_json(graph)
+        agent_node = next(node for node in result["nodes"] if node["id"] == "agent:bedrock-agent")
+        attrs = agent_node["attributes"]
+        assert attrs["cloud_origin"]["provider"] == "aws"
+        assert attrs["cloud_origin"]["service"] == "bedrock"
+        assert attrs["cloud_origin"]["scope"]["account_id"] == "123456789012"
+        assert attrs["cloud_state"]["lifecycle_state"] == "ready"
+        assert attrs["discovered_at"] == "2026-04-28T10:00:00Z"
+        assert attrs["last_seen"] == "2026-04-28T11:00:00Z"
     finally:
         os.unlink(path)
 

@@ -159,7 +159,7 @@ class ScanPipeline:
         self,
         step_id: str,
         message: str,
-        stats: dict[str, int] | None = None,
+        stats: dict[str, Any] | None = None,
         progress_pct: int | None = None,
     ) -> None:
         """Update a running step with new message/stats."""
@@ -171,7 +171,7 @@ class ScanPipeline:
             event["progress_pct"] = progress_pct
         self._emit(event)
 
-    def complete_step(self, step_id: str, message: str, stats: dict[str, int] | None = None) -> None:
+    def complete_step(self, step_id: str, message: str, stats: dict[str, Any] | None = None) -> None:
         """Mark a step as done."""
         event = self._steps[step_id]
         event["status"] = StepStatus.DONE
@@ -559,7 +559,12 @@ def _run_scan_sync(job: ScanJob) -> None:
         pipeline.complete_step("extraction", f"Extracted {total_pkgs} packages", {"packages": total_pkgs})
 
         # ── Scanning phase ──
-        pipeline.start_step("scanning", f"Scanning {total_pkgs} packages via OSV.dev...")
+        scan_message = (
+            f"Scanning {total_pkgs} packages via OSV.dev with vulnerability enrichment..."
+            if req.enrich
+            else f"Scanning {total_pkgs} packages via OSV.dev..."
+        )
+        pipeline.start_step("scanning", scan_message)
         try:
             blast_radii = scan_agents_sync(agents, enable_enrichment=req.enrich, offline=False)
         except Exception as scan_exc:  # noqa: BLE001
@@ -598,9 +603,14 @@ def _run_scan_sync(job: ScanJob) -> None:
 
         # ── Enrichment phase ──
         if req.enrich:
-            pipeline.start_step("enrichment", "Enriching with NVD CVSS, EPSS, CISA KEV...")
-            # Enrichment happens inside scan_agents_sync, so just mark done
-            pipeline.complete_step("enrichment", "Enrichment complete")
+            # Enrichment is executed inside scan_agents_sync, alongside the
+            # vulnerability query. Emit a terminal event only so SSE timing does
+            # not claim a separate enrichment phase ran after scanning.
+            pipeline.complete_step(
+                "enrichment",
+                "Enrichment completed during scanning",
+                {"executed_in_step": "scanning"},
+            )
         else:
             pipeline.skip_step("enrichment", "Enrichment not requested")
 

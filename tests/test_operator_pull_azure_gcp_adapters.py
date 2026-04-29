@@ -33,7 +33,10 @@ def test_azure_operator_pull_adapter_cli_writes_sanitized_inventory(monkeypatch,
                 "provider": "azure",
                 "service": "machine-learning",
                 "resource_type": "endpoint",
-                "resource_id": "endpoint-1",
+                "resource_id": (
+                    "/subscriptions/sub-123/resourceGroups/rg/providers/"
+                    "Microsoft.MachineLearningServices/workspaces/ws/onlineEndpoints/endpoint-1"
+                ),
                 "scope": {"subscription_id": "sub-123", "api_token": "should-not-survive"},
             }
         },
@@ -77,6 +80,8 @@ def test_azure_operator_pull_adapter_cli_writes_sanitized_inventory(monkeypatch,
     assert loaded["source"] == "azure-operator-pull"
     assert loaded["discovery_provenance"]["source_type"] == "operator_pushed_inventory"
     assert loaded["discovery_provenance"]["observed_via"] == ["operator_pushed_inventory", "azure_sdk"]
+    assert loaded["agents"][0]["metadata"]["cloud_origin"]["resource_id"].startswith("/subscriptions/sub-123/")
+    assert loaded["agents"][0]["discovery_provenance"]["resource_id"].startswith("/subscriptions/sub-123/")
     assert loaded["agents"][0]["metadata"]["cloud_origin"]["scope"]["api_token"] == "***REDACTED***"
     assert loaded["agents"][0]["metadata"]["permissions_used"]
     assert loaded["agents"][0]["mcp_servers"][0]["env"]["AZURE_OPENAI_API_KEY"] == "***REDACTED***"

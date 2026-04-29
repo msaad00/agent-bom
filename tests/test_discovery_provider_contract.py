@@ -34,14 +34,21 @@ def test_provider_contracts_describe_builtin_boundaries_without_loading_sdks() -
     assert payload["provider_count"] >= 12
     assert "aws" in providers
     assert providers["aws"]["module"] == "agent_bom.cloud.aws"
-    assert providers["aws"]["capabilities"]["scan_modes"] == ["direct_cloud_pull"]
+    assert providers["aws"]["capabilities"]["scan_modes"] == [
+        "direct_cloud_pull",
+        "operator_pushed_inventory",
+        "skill_invoked_pull",
+    ]
     assert providers["aws"]["capabilities"]["required_scopes"] == ["aws:read"]
     assert "sts:GetCallerIdentity" in providers["aws"]["capabilities"]["permissions_used"]
     assert "bedrock:ListAgents" in providers["aws"]["capabilities"]["permissions_used"]
     assert providers["aws"]["capabilities"]["network_destinations"] == ["aws"]
     assert providers["aws"]["capabilities"]["writes"] is False
     assert providers["aws"]["trust_contract"]["read_only"] is True
+    assert providers["aws"]["trust_contract"]["supports_scope_zero"] is True
     assert providers["aws"]["trust_contract"]["redaction_status"] == "central_sanitizer_applied"
+    assert providers["azure"]["trust_contract"]["supports_scope_zero"] is True
+    assert providers["gcp"]["trust_contract"]["supports_scope_zero"] is True
     assert providers["ollama"]["capabilities"]["scan_modes"] == ["runtime_probe"]
     assert providers["ollama"]["capabilities"]["network_access"] is False
 

@@ -5,7 +5,8 @@ description: >-
   environment, emit canonical agent-bom inventory JSON, and scan it without
   giving agent-bom long-lived cloud credentials. Use when a user asks to
   inventory AWS Bedrock, ECS, SageMaker, Lambda, EKS, Step Functions, EC2, or
-  agentic AWS infrastructure for agent-bom.
+  agentic AWS infrastructure as canonical inventory. Passing that inventory
+  to agent-bom is optional and operator-chosen.
 version: 0.83.0
 license: Apache-2.0
 compatibility: >-
@@ -37,7 +38,7 @@ metadata:
       - darwin
       - linux
       - windows
-    credential_handling: "Credentials stay in the operator environment. The skill invokes the AWS SDK locally and writes canonical inventory JSON with source_type=skill_invoked_pull. agent-bom receives sanitized inventory, not raw cloud credentials."
+    credential_handling: "Credentials stay in the operator environment. The skill invokes the AWS SDK locally and writes canonical inventory JSON with source_type=skill_invoked_pull. agent-bom receives sanitized inventory only when the operator explicitly scans or pushes that inventory."
     data_flow: "Operator AWS account -> read-only AWS SDK calls -> canonical inventory JSON -> agent-bom inventory scan. No agent-bom-hosted service is required. Values matching credential patterns are redacted before persistence/export."
     file_reads: []
     file_writes:
@@ -77,7 +78,10 @@ metadata:
 # agent-bom-discover-aws
 
 Use this skill to collect AWS AI and workload inventory from the operator's
-environment and feed it to `agent-bom` as canonical inventory.
+environment as canonical inventory. The skill is discover-only by default:
+write schema-valid JSON to an operator-selected path and stop. Run
+`agent-bom` only when the operator explicitly wants findings, graph, policy,
+or exports from that inventory.
 
 ## Guardrails
 
@@ -91,10 +95,20 @@ environment and feed it to `agent-bom` as canonical inventory.
 - Treat AI-generated prose as non-authoritative; only the schema-validated
   inventory JSON is evidence.
 
+## Modes
+
+| Mode | What happens | Data boundary |
+|------|--------------|---------------|
+| `discover-only` | Emit canonical inventory JSON and stop | No agent-bom scan or API handoff |
+| `scan-local` | Run `agent-bom agents --inventory ...` on the generated file | Local handoff into the scanner |
+| `export` | Write JSON/SARIF or another operator-selected output | Local output only unless the operator routes it elsewhere |
+
+Use `discover-only` unless the operator asks for scan results or an export.
+
 ## Workflow
 
 1. Confirm the AWS account/region/profile and intended services.
-2. Generate inventory with the repository adapter:
+2. Generate inventory with the repository adapter and stop:
 
 ```bash
 python examples/operator_pull/aws_inventory_adapter.py \
@@ -105,13 +119,13 @@ python examples/operator_pull/aws_inventory_adapter.py \
   --output aws-inventory.json
 ```
 
-3. Scan the generated inventory:
+3. If the operator asks for findings, scan the generated inventory locally:
 
 ```bash
 agent-bom agents --inventory aws-inventory.json
 ```
 
-4. For CI or offline review, export JSON:
+4. If the operator asks for an export, write it to an operator-selected path:
 
 ```bash
 agent-bom agents --inventory aws-inventory.json --format json --output agent-bom-aws-findings.json
@@ -149,3 +163,8 @@ The inventory emitted by this skill uses:
 
 If schema validation fails, stop and fix the inventory instead of scanning a
 best-effort or prose summary.
+
+The skill does not push inventory to an API by default. Any push, scan, or
+managed control-plane handoff must be a separate operator-approved handoff
+command with the destination URL, auth method, and retained evidence classes
+made explicit.

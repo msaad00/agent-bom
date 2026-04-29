@@ -7,6 +7,8 @@ Published skills:
 - `agent-bom-registry`
 - `agent-bom-compliance`
 - `agent-bom-runtime`
+- `agent-bom-discover-aws`
+- `agent-bom-vulnerability-intel`
 
 These are the only skills pushed by release automation. They are:
 - focused enough for individual and team use
@@ -26,3 +28,5 @@ When updating versions for release, update only the published skill frontmatter 
 - [`registry/SKILL.md`](registry/SKILL.md)
 - [`compliance/SKILL.md`](compliance/SKILL.md)
 - [`runtime/SKILL.md`](runtime/SKILL.md)
+- [`discover-aws/SKILL.md`](discover-aws/SKILL.md)
+- [`vulnerability-intel/SKILL.md`](vulnerability-intel/SKILL.md)

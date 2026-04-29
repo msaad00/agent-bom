@@ -17,13 +17,29 @@ from urllib.parse import urlsplit, urlunsplit
 
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
 from agent_bom.models import Agent, MCPServer
-from agent_bom.security import sanitize_command_args
+from agent_bom.security import sanitize_command_args, sanitize_sensitive_payload, sanitize_text
 
 logger = logging.getLogger(__name__)
 
 _CONFIDENCE_LEVELS = {"confirmed_malicious", "suspicious", "heuristic"}
 _RECOMMENDATIONS = {"block", "warn", "review"}
 _SOURCE_TYPES = {"security_advisory", "vendor_statement", "community_report", "package_registry", "heuristic"}
+_INTELLIGENCE_STRING_FIELDS = {
+    "entry_id",
+    "title",
+    "severity",
+    "confidence",
+    "default_recommendation",
+    "source_type",
+    "source",
+    "match_type",
+    "matched_value",
+    "ecosystem",
+    "package",
+    "affected_versions",
+    "first_seen",
+    "last_verified",
+}
 
 
 @dataclass(frozen=True)
@@ -145,16 +161,36 @@ def _safe_match_value(value: str) -> str:
 
 def sanitize_security_intelligence_entry(entry: dict[str, object]) -> dict[str, object]:
     """Sanitize externally surfaced MCP intelligence evidence."""
-    sanitized = dict(entry)
-    if "matched_value" in sanitized:
-        sanitized["matched_value"] = _safe_match_value(str(sanitized.get("matched_value") or ""))
-    references = sanitized.get("references")
+    sanitized: dict[str, object] = {}
+    for field_name in _INTELLIGENCE_STRING_FIELDS:
+        if field_name not in entry:
+            continue
+        value = entry.get(field_name)
+        if field_name == "matched_value":
+            sanitized[field_name] = _safe_match_value(str(value or ""))
+        else:
+            safe_value = sanitize_sensitive_payload(value, key=field_name, max_str_len=500)
+            sanitized[field_name] = sanitize_text(safe_value, max_len=500) if safe_value is not None else ""
+
+    references = entry.get("references")
     if isinstance(references, list):
         sanitized["references"] = _safe_references(references)
     elif isinstance(references, tuple):
         sanitized["references"] = _safe_references(list(references))
     else:
         sanitized["references"] = []
+
+    actions = entry.get("remediation_actions")
+    if isinstance(actions, (list, tuple)):
+        sanitized["remediation_actions"] = [
+            sanitize_text(sanitize_sensitive_payload(action, key="remediation_action"), max_len=500)
+            for action in actions
+            if action is not None
+        ][:10]
+    elif "remediation_actions" in entry:
+        safe_action = sanitize_sensitive_payload(actions, key="remediation_action")
+        sanitized["remediation_actions"] = [sanitize_text(safe_action, max_len=500)] if safe_action else []
+
     return sanitized
 
 

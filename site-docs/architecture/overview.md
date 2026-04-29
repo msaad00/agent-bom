@@ -46,13 +46,13 @@ graph LR
 | Protection | `src/agent_bom/runtime/` | 7-detector anomaly engine |
 | Enforcement | `src/agent_bom/enforcement.py` | Tool poisoning detection |
 | Security | `src/agent_bom/security.py` | Path validation, credential redaction |
-| MCP Server | `src/agent_bom/mcp_server.py` | 32-tool FastMCP server |
+| MCP Server | `src/agent_bom/mcp_server.py` | 36-tool FastMCP server |
 | API | `src/agent_bom/api/` | REST API (FastAPI) |
-| Output | `src/agent_bom/output/` | HTML, Prometheus, Mermaid, SVG, STIX |
+| Output | `src/agent_bom/output/` | JSON, SARIF, CycloneDX, SPDX, OCSF, HTML, Prometheus, Mermaid, SVG |
 
 ## Security boundaries
 
-- All scanning is local-first — zero outbound calls except public vuln databases
+- All scanning is local-first; outbound calls are limited to explicitly enabled enrichment, cloud/read-only discovery, push/export, or operator-configured integrations
 - Config file env var values are always redacted before output
 - Path validation restricts file access to user home directory
 - No telemetry, no analytics, no tracking

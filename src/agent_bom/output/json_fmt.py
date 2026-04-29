@@ -7,6 +7,7 @@ from pathlib import Path
 
 from agent_bom.asset_provenance import agent_discovery_provenance, package_discovery_provenance, sanitize_discovery_provenance
 from agent_bom.compliance_utils import effective_blast_radius_tags
+from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
 from agent_bom.security import sanitize_command_args, sanitize_path_label, sanitize_security_warnings, sanitize_text, sanitize_url
 
@@ -565,7 +566,11 @@ def to_json(report: AIBOMReport) -> dict:
                         "credential_env_vars": server.credential_names,
                         "security_blocked": server.security_blocked,
                         "security_warnings": sanitize_security_warnings(server.security_warnings),
-                        "security_intelligence": server.security_intelligence,
+                        "security_intelligence": [
+                            sanitize_security_intelligence_entry(item)
+                            for item in (server.security_intelligence or [])
+                            if isinstance(item, dict)
+                        ],
                         "discovery_sources": server.discovery_sources,
                         "discovery_provenance": sanitize_discovery_provenance(
                             server.discovery_provenance,

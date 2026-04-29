@@ -48,10 +48,15 @@ agent-bom agents --inventory gcp-inventory.json --format json
 ## Skill-Mediated Handoff
 
 For AI-agent mediated discovery, use the bundled
-`integrations/openclaw/discover-aws/SKILL.md` workflow. It invokes the same
-adapter with `--source aws-skill-invoked --discovery-method skill_invoked_pull`
-so downstream findings preserve that the AWS API call happened inside the
-operator's agent environment, not inside agent-bom.
+`integrations/openclaw/discover-aws/SKILL.md` workflow. The skill is
+discover-only by default: it invokes the same adapter with
+`--source aws-skill-invoked --discovery-method skill_invoked_pull`, writes
+canonical inventory JSON, and stops. Scanning or pushing that inventory into an
+agent-bom workflow is a separate operator-approved handoff.
+
+That keeps the discovery primitive useful on its own. Teams can inspect the
+JSON, archive it, route it to a CMDB, or pass it to `agent-bom agents
+--inventory ...` only when they want findings, graph, policy, and exports.
 
 The adapters keep useful scan context such as package PURLs, cloud metadata,
 and declared read permissions, while recursively redacting sensitive

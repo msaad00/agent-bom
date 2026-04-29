@@ -8,6 +8,11 @@ The design goal is simple: let teams ask an AI agent to perform security work
 while keeping collection, normalization, scanning, persistence, and export
 inside the same audited `agent-bom` boundaries.
 
+Skills are standalone workflow surfaces, not hidden ingestion. A discovery
+skill may stop after producing canonical inventory JSON. Data enters an
+`agent-bom` scan, API, or control plane only when the operator explicitly
+chooses a handoff mode.
+
 ## Layer Model
 
 ```mermaid
@@ -59,6 +64,19 @@ Skills should map to product capabilities, not to one-off scripts.
 
 ## Data Flow Patterns
 
+### Skill Modes
+
+| Mode | Default? | What happens |
+|------|----------|--------------|
+| `explain-only` | Optional | Describe required permissions, network destinations, and data boundaries before doing work |
+| `discover-only` | Yes for discovery skills | Emit canonical inventory or another schema-valid artifact and stop |
+| `scan-local` | Operator-selected | Hand an artifact to the local CLI for findings, graph, policy, and exports |
+| `push-ingest` | Operator-selected | Send an authenticated, sanitized payload to a configured agent-bom API endpoint |
+| `export` | Operator-selected | Write JSON, SARIF, SBOM, or evidence to an operator-selected path |
+
+No skill should default to pushing data into a control plane or scanning broad
+local/cloud scope. The operator chooses the mode at invocation time.
+
 ### Direct Product Invocation
 
 ```mermaid
@@ -96,8 +114,9 @@ sequenceDiagram
     Skill->>Cloud: Read-only API calls using operator credentials
     Cloud-->>Skill: Asset metadata
     Skill->>Inventory: Emit schema-valid sanitized JSON
-    Skill->>AB: agent-bom agents --inventory inventory.json
-    AB-->>Agent: Findings, graph, and provenance
+    Skill-->>User: inventory.json
+    User->>AB: Optional explicit handoff
+    AB-->>Agent: Findings, graph, and provenance when requested
 ```
 
 Use this when a team wants the AI agent to collect data without giving

@@ -19,6 +19,7 @@ class ExtensionCapabilities:
 
     scan_modes: tuple[str, ...] = ("inventory",)
     required_scopes: tuple[str, ...] = ()
+    permissions_used: tuple[str, ...] = ()
     outbound_destinations: tuple[str, ...] = ()
     data_boundary: str = "agentless_read_only"
     writes: bool = False

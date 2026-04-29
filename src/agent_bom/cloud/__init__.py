@@ -40,12 +40,64 @@ _PROVIDER_REGISTRY: dict[str, CloudProviderRegistration] = {}
 _PROVIDER_REGISTRY_WARNINGS: list[str] = []
 _PROVIDER_REGISTRY_LOADED = False
 
+_PROVIDER_PERMISSIONS_USED: dict[str, tuple[str, ...]] = {
+    "aws": (
+        "sts:GetCallerIdentity",
+        "bedrock:GetAgent",
+        "bedrock:ListAgentActionGroups",
+        "bedrock:ListAgents",
+        "ec2:DescribeInstances",
+        "ecs:DescribeServices",
+        "ecs:DescribeTaskDefinition",
+        "ecs:ListClusters",
+        "ecs:ListServices",
+        "eks:DescribeCluster",
+        "eks:ListClusters",
+        "lambda:GetFunctionConfiguration",
+        "lambda:GetLayerVersion",
+        "lambda:ListFunctions",
+        "sagemaker:DescribeEndpoint",
+        "sagemaker:DescribeEndpointConfig",
+        "sagemaker:ListEndpoints",
+        "states:DescribeStateMachine",
+        "states:ListStateMachines",
+    ),
+    "azure": (
+        "Microsoft.CognitiveServices/accounts/read",
+        "Microsoft.ContainerService/managedClusters/read",
+        "Microsoft.MachineLearningServices/workspaces/onlineEndpoints/read",
+        "Microsoft.Resources/subscriptions/resourceGroups/read",
+        "Microsoft.Web/sites/read",
+    ),
+    "gcp": (
+        "aiplatform.endpoints.list",
+        "aiplatform.models.list",
+        "container.clusters.list",
+        "run.services.list",
+        "storage.buckets.list",
+    ),
+    "coreweave": ("coreweave:read",),
+    "databricks": (
+        "databricks:clusters:read",
+        "databricks:model-serving:read",
+        "databricks:workspace:read",
+    ),
+    "huggingface": ("huggingface:models:read", "huggingface:spaces:read"),
+    "mlflow": ("mlflow:experiments:read", "mlflow:models:read", "mlflow:runs:read"),
+    "nebius": ("nebius:read",),
+    "ollama": (),
+    "openai": ("openai:assistants:read", "openai:models:read", "openai:responses:read"),
+    "snowflake": ("snowflake:show:read", "snowflake:account_usage:read"),
+    "wandb": ("wandb:artifacts:read", "wandb:runs:read"),
+}
+
 
 def _provider_capabilities(name: str) -> ExtensionCapabilities:
     scan_modes = ("runtime_probe",) if name == "ollama" else ("direct_cloud_pull",)
     return ExtensionCapabilities(
         scan_modes=scan_modes,
         required_scopes=(f"{name}:read",),
+        permissions_used=_PROVIDER_PERMISSIONS_USED.get(name, (f"{name}:read",)),
         outbound_destinations=(name,),
         data_boundary="agentless_read_only",
         network_access=name != "ollama",
@@ -129,6 +181,7 @@ def _capabilities_payload(capabilities: ExtensionCapabilities) -> dict[str, Any]
     return {
         "scan_modes": list(capabilities.scan_modes),
         "required_scopes": list(capabilities.required_scopes),
+        "permissions_used": list(capabilities.permissions_used),
         "outbound_destinations": list(capabilities.outbound_destinations),
         # Alias for operator-facing API consumers. Keep the extension field name
         # above for SDK compatibility, but expose this wording in the contract.

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+import agent_bom.parsers as parsers
 from agent_bom.cli import main
 from agent_bom.discovery import parse_mcp_config
 from agent_bom.models import (
@@ -198,6 +199,34 @@ def test_uvx_package_detection():
     assert len(packages) == 1
     assert packages[0].name == "mcp-server-fetch"
     assert packages[0].ecosystem == "pypi"
+
+
+def test_docker_image_package_detection():
+    server = MCPServer(
+        name="playwright-container",
+        command="docker",
+        args=["run", "--rm", "-e", "TOKEN", "-v", "/tmp:/tmp", "mcp/playwright:1.2.3"],
+    )
+    from agent_bom.parsers import detect_docker_image_package, extract_packages
+
+    packages = detect_docker_image_package(server)
+
+    assert len(packages) == 1
+    assert packages[0].name == "mcp/playwright"
+    assert packages[0].version == "1.2.3"
+    assert packages[0].ecosystem == "docker"
+    assert packages[0].version_source == "detected"
+    assert extract_packages(server)[0].name == "mcp/playwright"
+
+
+def test_docker_image_package_detection_defaults_unpinned_tag():
+    server = MCPServer(name="playwright-container", command="podman", args=["container", "run", "--rm", "ghcr.io/acme/mcp"])
+    from agent_bom.parsers import detect_docker_image_package
+
+    packages = detect_docker_image_package(server)
+
+    assert packages[0].name == "ghcr.io/acme/mcp"
+    assert packages[0].version == "latest"
 
 
 # ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -973,6 +1002,30 @@ def test_mcp_registry_lookup_by_arg(tmp_path):
     assert packages[0].resolved_from_registry is True
     assert packages[0].version == packages[0].registry_version
     assert packages[0].version_source == "registry_fallback"
+    assert packages[0].purl.startswith("pkg:npm/%40modelcontextprotocol/server-filesystem@")
+
+
+def test_mcp_registry_lookup_does_not_reverse_substring_match(monkeypatch):
+    from agent_bom.models import MCPServer
+    from agent_bom.parsers import lookup_mcp_registry
+
+    monkeypatch.setattr(
+        parsers,
+        "_registry_cache",
+        {
+            "@scope/filesystem": {
+                "package": "@scope/filesystem",
+                "ecosystem": "npm",
+                "latest_version": "1.0.0",
+                "command_patterns": ["filesystem"],
+                "verified": True,
+            }
+        },
+    )
+
+    server = MCPServer(name="fs", command="node", args=["fs"], env={})
+
+    assert lookup_mcp_registry(server) == []
 
 
 def test_mcp_registry_lookup_unknown_server():

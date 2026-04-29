@@ -119,6 +119,67 @@ def test_unknown_ecosystem_skipped():
     assert "unknown_eco" not in _ECOSYSTEM_MAP
 
 
+def test_fetch_advisories_paginates_and_uses_github_token(monkeypatch):
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from agent_bom.scanners.ghsa_advisory import _GHSA_PER_PAGE, _fetch_advisories_for_package
+
+    first = MagicMock()
+    first.status_code = 200
+    first.headers = {}
+    first.json.return_value = [{"ghsa_id": f"GHSA-page-one-{idx:04d}"} for idx in range(_GHSA_PER_PAGE)]
+    second = MagicMock()
+    second.status_code = 200
+    second.headers = {}
+    second.json.return_value = [{"ghsa_id": "GHSA-page-two-last"}]
+    pkg = Package(name="express", version="4.17.1", ecosystem="npm")
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_test")
+
+    async def run():
+        with patch("agent_bom.scanners.ghsa_advisory.request_with_retry", new_callable=AsyncMock) as request:
+            request.side_effect = [first, second]
+            advisories = await _fetch_advisories_for_package(pkg, MagicMock(), asyncio.Semaphore(1))
+            return advisories, request
+
+    advisories, request = asyncio.run(run())
+
+    assert len(advisories) == _GHSA_PER_PAGE + 1
+    assert request.await_args_list[0].kwargs["params"]["page"] == "1"
+    assert request.await_args_list[1].kwargs["params"]["page"] == "2"
+    assert request.await_args_list[0].kwargs["headers"]["Authorization"] == "Bearer ghp_test"
+
+
+def test_fetch_advisories_retries_once_on_rate_limit():
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from agent_bom.scanners.ghsa_advisory import _fetch_advisories_for_package
+
+    limited = MagicMock()
+    limited.status_code = 429
+    limited.headers = {"Retry-After": "0.01"}
+    ok = MagicMock()
+    ok.status_code = 200
+    ok.headers = {}
+    ok.json.return_value = []
+    pkg = Package(name="express", version="4.17.1", ecosystem="npm")
+
+    async def run():
+        with (
+            patch("agent_bom.scanners.ghsa_advisory.request_with_retry", new_callable=AsyncMock) as request,
+            patch("agent_bom.scanners.ghsa_advisory.asyncio.sleep", new_callable=AsyncMock) as sleep,
+        ):
+            request.side_effect = [limited, ok]
+            await _fetch_advisories_for_package(pkg, MagicMock(), asyncio.Semaphore(1), rate_limit_backoff=0.01)
+            return request, sleep
+
+    request, sleep = asyncio.run(run())
+
+    assert request.await_count == 2
+    sleep.assert_awaited_once_with(0.01)
+
+
 def test_advisory_filtered_by_package_name():
     """Advisories for different packages are filtered out (substring match fix).
 

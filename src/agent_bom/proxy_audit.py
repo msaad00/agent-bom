@@ -9,6 +9,7 @@ import json
 import logging
 import math
 import os
+import threading
 import time
 from collections import Counter, OrderedDict, defaultdict
 from dataclasses import dataclass, field
@@ -24,7 +25,8 @@ logger = logging.getLogger(__name__)
 # Maximum audit log size before rotation (100 MB). Prevents disk exhaustion
 # on long-running proxy instances.
 _AUDIT_LOG_MAX_BYTES = 100 * 1024 * 1024
-_AUDIT_CHAIN_STATE: dict[int, str] = {}
+_AUDIT_CHAIN_STATE: dict[str, str] = {}
+_AUDIT_CHAIN_LOCK = threading.Lock()
 
 
 class RotatingAuditLog:
@@ -503,16 +505,31 @@ def _record_digest(record: dict) -> str:
     return hashlib.sha256(f"{prev_hash}|{canonical}".encode("utf-8")).hexdigest()
 
 
+def _audit_chain_key(log_file: "IO[str] | RotatingAuditLog") -> str:
+    path = getattr(log_file, "_path", None) or getattr(log_file, "name", None)
+    if path:
+        try:
+            return str(Path(str(path)).expanduser().resolve(strict=False))
+        except OSError:
+            return str(path)
+    try:
+        fileno = log_file.fileno()  # type: ignore[attr-defined, union-attr]
+    except (AttributeError, OSError):
+        return f"sink:{type(log_file).__name__}"
+    return f"fd:{fileno}"
+
+
 def write_audit_record(log_file: "IO[str] | RotatingAuditLog", record: dict) -> dict:
     """Write a chain-hashed audit record to the JSONL sink."""
-    log_id = id(log_file)
-    prev_hash = _AUDIT_CHAIN_STATE.get(log_id, "")
-    payload = dict(record)
-    payload["prev_hash"] = prev_hash
-    payload["record_hash"] = _record_digest(payload)
-    log_file.write(json.dumps(payload) + "\n")
-    _AUDIT_CHAIN_STATE[log_id] = payload["record_hash"]
-    return payload
+    log_key = _audit_chain_key(log_file)
+    with _AUDIT_CHAIN_LOCK:
+        prev_hash = _AUDIT_CHAIN_STATE.get(log_key, "")
+        payload = dict(record)
+        payload["prev_hash"] = prev_hash
+        payload["record_hash"] = _record_digest(payload)
+        log_file.write(json.dumps(payload) + "\n")
+        _AUDIT_CHAIN_STATE[log_key] = payload["record_hash"]
+        return payload
 
 
 @dataclass

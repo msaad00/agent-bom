@@ -76,6 +76,32 @@ _PROXY_TRACER = get_tracer("agent_bom.proxy")
 _PROXY_POLICY_CACHE_SIGNING_ENV_VAR = "AGENT_BOM_PROXY_POLICY_CACHE_ED25519_PRIVATE_KEY_PEM"
 
 
+async def _read_bounded_line(reader: asyncio.StreamReader, *, max_bytes: int = _MAX_MESSAGE_BYTES) -> bytes | None:
+    """Read one newline-delimited message without accepting an oversized line."""
+    try:
+        line = await reader.readuntil(b"\n")
+    except asyncio.IncompleteReadError as exc:
+        return exc.partial or b""
+    except asyncio.LimitOverrunError as exc:
+        if exc.consumed:
+            await reader.readexactly(exc.consumed)
+        try:
+            await reader.readuntil(b"\n")
+        except (asyncio.IncompleteReadError, asyncio.LimitOverrunError, ValueError):
+            pass
+        return None
+    except ValueError:
+        while True:
+            chunk = await reader.read(1)
+            if not chunk or b"\n" in chunk:
+                break
+        return None
+
+    if len(line) > max_bytes:
+        return None
+    return line
+
+
 # ─── JSON-RPC parsing ────────────────────────────────────────────────────────
 
 
@@ -1231,6 +1257,7 @@ async def run_proxy(
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        limit=_MAX_MESSAGE_BYTES + 1,
     )
     sandbox_timeout_task = None
     if sandbox_config and sandbox_config.enabled and sandbox_config.timeout_seconds:
@@ -1521,13 +1548,12 @@ async def run_proxy(
         while True:
             if not process.stdout:
                 break
-            line = await process.stdout.readline()
+            line = await _read_bounded_line(process.stdout)
+            if line is None:
+                logger.warning("Oversized message from server exceeded %d bytes; dropped", _MAX_MESSAGE_BYTES)
+                continue
             if not line:
                 break
-
-            if len(line) > _MAX_MESSAGE_BYTES:
-                logger.warning("Oversized message from server (%d bytes) — dropped", len(line))
-                continue
 
             line_str = line.decode("utf-8", errors="replace")
             msg = parse_jsonrpc(line_str)

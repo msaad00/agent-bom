@@ -11,6 +11,32 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.83.0] – 2026-04-29
+
+### Added
+- **Scope-zero discovery and pushed inventory workflows** — operator-pull adapters now let teams collect AWS, Azure, and GCP inventory inside their own boundary, emit canonical inventory JSON, and choose whether to stop at the file boundary or explicitly hand the inventory to `agent-bom agents --inventory` for findings, graph, policy, and exports.
+- **Agentic skill surfaces** — bundled AWS discovery and vulnerability-intelligence skills define standalone, guardrailed workflows for AI-agent users. Skills default to explain/discover/check modes and make any scan, push, or export handoff explicit.
+- **Discovery provider contracts** — `/v1/discovery/providers` and the extension registry contract now describe provider scan modes, permissions used, network boundaries, redaction posture, and scope-zero extension modes without loading third-party provider code by default.
+- **End-to-end discovery provenance** — inventory, packages, findings, graph exports, SARIF, UI surfaces, and pushed results now preserve discovery provenance, mapping method, confidence, lifecycle fields, cloud origin, permissions used, and reachability context through the canonical model.
+- **Extension entry-point registries** — cloud providers, connectors, and inventory parsers now have opt-in entry-point registry foundations for plugins and SDK-built integrations while preserving built-in behavior when extension loading is disabled.
+
+### Changed
+- **Cloud discovery normalization** — AWS, Azure, GCP, Databricks, Snowflake, CoreWeave, Nebius, Hugging Face, OpenAI, W&B, and MLflow assets now use service/resource-type-aware `cloud_origin` envelopes, lifecycle fields, status, canonical package PURLs, and sanitized warning boundaries.
+- **Scanner and ingestion robustness** — scanner options are isolated per scan, AWS provider discovery runs service collectors in parallel, external scanner ingestion preserves advisory metadata, and cross-environment correlation is bucketed by account/project context for fleet-scale scans.
+- **Agentic architecture documentation** — docs now explain the product/skill/MCP layering, secure handoff modes, subagent delegation boundaries, and how teams can use agent-bom locally, in CI, self-hosted, cloud-read-only, pushed inventory, or through AI-agent workflows.
+
+### Security
+- **Launch metadata redaction** — MCP launch args, URLs, runtime errors, audit details, graph metadata, SARIF locations, CycloneDX properties, AI prompts, pushed results, and UI fallbacks are sanitized before storage, export, display, or prompt construction.
+- **MCP intelligence and gates** — MCP intelligence now carries confidence, source, recommendation, references, and remediation metadata; non-CVE findings are rendered in compact output, SARIF, graph/API surfaces, and `--fail-on-severity` gates.
+- **Proxy and scanner hardening** — proxy audit hash chains use a stable path-derived lock, server-to-client JSON-RPC reads are bounded, Docker/Podman MCP image commands scan through the image inventory path or fail closed, registry fallback matching is boundary-aware, and GHSA advisory lookups paginate with rate-limit handling.
+
+### Fixed
+- **GitHub Pages deployment** — docs deploy on pushes by default again, preventing stale Pages output after successful docs builds.
+- **PR gate SARIF contract** — AppSec PR-gate SARIF output now uses real self-scan output and fails fast when focused modes cannot produce valid SARIF.
+- **Stranded PR handling** — retrigger automation and lockfile-normalization CI were hardened to reduce frozen PRs caused by GitHub's token anti-loop behavior.
+
+---
+
 ## [0.82.3] – 2026-04-28
 
 ### Added

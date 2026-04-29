@@ -1,8 +1,8 @@
 apiVersion: v2
 name: agent-bom
 description: Open security scanner and graph for AI supply chain and infrastructure — discover agents and MCP, map blast radius, and inspect runtime.
-version: 0.82.3
-appVersion: "0.82.3"
+version: 0.83.0
+appVersion: "0.83.0"
 type: application
 keywords:
   - security

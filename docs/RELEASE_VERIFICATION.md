@@ -13,7 +13,7 @@ For each tagged GitHub Release, expect:
 ## Download release assets
 
 ```bash
-TAG=v0.82.3
+TAG=v0.83.0
 VERSION="${TAG#v}"
 mkdir -p /tmp/agent-bom-release && cd /tmp/agent-bom-release
 gh release download "$TAG" --repo msaad00/agent-bom

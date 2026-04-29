@@ -6,7 +6,7 @@ description: >-
   giving agent-bom long-lived cloud credentials. Use when a user asks to
   inventory AWS Bedrock, ECS, SageMaker, Lambda, EKS, Step Functions, EC2, or
   agentic AWS infrastructure for agent-bom.
-version: 0.82.3
+version: 0.83.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+, agent-bom installed from this repository or PyPI, and

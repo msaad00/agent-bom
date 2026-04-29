@@ -23,7 +23,7 @@ jobs:
   self-sast-scan:
     name: Self SAST scan
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
       security-events: write  # required: SARIF upload to GitHub Security tab
@@ -89,10 +89,42 @@ jobs:
               fh.write(f"- Low: {low}\n")
           PY
 
-      - name: Print full dep scan summary (all severities, for logs)
+      - name: Print dep scan summary from SARIF (all severities, for logs)
         if: always()
         run: |
-          uv run agent-bom scan --self-scan --quiet 2>&1 | tail -20 || true
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("sarif/self-dep.sarif")
+          if not path.exists():
+              print("No dependency SARIF was produced.")
+              raise SystemExit(0)
+
+          data = json.loads(path.read_text())
+          findings = []
+          for run in data.get("runs", []):
+              for result in run.get("results", []):
+                  props = result.get("properties", {}) or {}
+                  findings.append(
+                      {
+                          "rule": result.get("ruleId", "unknown"),
+                          "level": result.get("level", "unknown"),
+                          "severity": props.get("security-severity", "unknown"),
+                          "message": (result.get("message") or {}).get("text", ""),
+                      }
+                  )
+
+          print(f"Dependency SARIF findings: {len(findings)}")
+          for item in findings[:20]:
+              message = item["message"].replace("\n", " ")[:160]
+              print(
+                  f"- {item['rule']} level={item['level']} "
+                  f"security-severity={item['severity']} {message}"
+              )
+          if len(findings) > 20:
+              print(f"... {len(findings) - 20} additional findings omitted from log")
+          PY
 
       - name: Run SAST scan on source code (--code)
         id: sast_scan

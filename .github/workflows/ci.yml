@@ -838,7 +838,7 @@ jobs:
     name: Dogfood GitHub Action
     if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.action == 'true')
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: read
     needs: [changes]

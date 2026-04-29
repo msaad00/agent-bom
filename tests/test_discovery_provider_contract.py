@@ -36,6 +36,8 @@ def test_provider_contracts_describe_builtin_boundaries_without_loading_sdks() -
     assert providers["aws"]["module"] == "agent_bom.cloud.aws"
     assert providers["aws"]["capabilities"]["scan_modes"] == ["direct_cloud_pull"]
     assert providers["aws"]["capabilities"]["required_scopes"] == ["aws:read"]
+    assert "sts:GetCallerIdentity" in providers["aws"]["capabilities"]["permissions_used"]
+    assert "bedrock:ListAgents" in providers["aws"]["capabilities"]["permissions_used"]
     assert providers["aws"]["capabilities"]["network_destinations"] == ["aws"]
     assert providers["aws"]["capabilities"]["writes"] is False
     assert providers["aws"]["trust_contract"]["read_only"] is True
@@ -55,6 +57,7 @@ def test_provider_contracts_preserve_scope_zero_plugin_modes() -> None:
             capabilities=ExtensionCapabilities(
                 scan_modes=("operator_pushed_inventory", "skill_invoked_pull"),
                 required_scopes=("cmdb.inventory.read",),
+                permissions_used=("cmdb.assets.read",),
                 outbound_destinations=(),
                 data_boundary="agentless_read_only",
                 network_access=False,
@@ -67,6 +70,7 @@ def test_provider_contracts_preserve_scope_zero_plugin_modes() -> None:
     providers = {provider["name"]: provider for provider in cloud_registry.provider_contracts()["providers"]}
 
     assert providers["customer-cmdb"]["capabilities"]["scan_modes"] == ["operator_pushed_inventory", "skill_invoked_pull"]
+    assert providers["customer-cmdb"]["capabilities"]["permissions_used"] == ["cmdb.assets.read"]
     assert providers["customer-cmdb"]["trust_contract"]["supports_scope_zero"] is True
     assert providers["customer-cmdb"]["trust_contract"]["data_residency"] == "operator_environment"
 
@@ -84,3 +88,4 @@ def test_discovery_provider_contract_api_response_is_operator_readable() -> None
     assert aws["capabilities"]["data_boundary"] == "agentless_read_only"
     assert aws["trust_contract"]["scope_control"] == "operator_supplied_scopes"
     assert "aws:read" in aws["capabilities"]["required_scopes"]
+    assert all(":" in permission for permission in aws["capabilities"]["permissions_used"])

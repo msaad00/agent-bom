@@ -190,7 +190,7 @@ def test_check_scoped_npm_package(mock_scan):
     """Check parses scoped npm package correctly."""
     from agent_bom.mcp_server import create_mcp_server
 
-    async def _fake_scan(pkgs):
+    async def _fake_scan(pkgs, **_kwargs):
         return None
 
     mock_scan.side_effect = _fake_scan

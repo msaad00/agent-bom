@@ -116,10 +116,18 @@ def test_json_output_includes_mcp_blocklist_findings() -> None:
 
 
 def test_match_values_are_redacted_before_output() -> None:
+    raw_token = "ghp_" + "A" * 36
     server = MCPServer(
         name="runner",
         command="npx",
-        args=["credential-stealer", "--api-key", "sk-live-secret", "url=https://user:pass@example.com/path?token=secret"],
+        args=[
+            "credential-stealer",
+            "--api-key",
+            "sk-live-secret",
+            raw_token,
+            "session=" + raw_token,
+            "url=https://user:pass@example.com/path?token=secret",
+        ],
     )
     blocklist = {
         "entries": [
@@ -139,11 +147,21 @@ def test_match_values_are_redacted_before_output() -> None:
     }
 
     match = match_mcp_server(server, blocklist)[0]
+    agent = _agent_with_server(server)
+    findings = blocklist_findings_for_agents([agent], blocklist)
+    json_payload = json.dumps(to_json(AIBOMReport(agents=[agent], findings=findings)))
+    sarif_payload = json.dumps(to_sarif(AIBOMReport(agents=[agent], findings=findings)))
 
     assert "sk-live-secret" not in match.matched_value
+    assert raw_token not in match.matched_value
     assert "user:pass" not in match.matched_value
     assert "token=secret" not in match.matched_value
     assert "--api-key <redacted>" in match.matched_value
+    for payload in (json_payload, sarif_payload):
+        assert "sk-live-secret" not in payload
+        assert raw_token not in payload
+        assert "user:pass" not in payload
+        assert "token=secret" not in payload
 
 
 def test_sarif_output_includes_mcp_blocklist_findings() -> None:

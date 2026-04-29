@@ -25,6 +25,7 @@ from typing import Optional
 
 from agent_bom.mcp_tool_rules import evaluate_tool
 from agent_bom.models import MCPPrompt, MCPResource, MCPServer, MCPTool, TransportType
+from agent_bom.security import sanitize_sensitive_payload, sanitize_text
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,15 @@ _PATH_HINT_RE = re.compile(r"(path|file|dir|cwd|workspace)", re.IGNORECASE)
 _URL_HINT_RE = re.compile(r"(url|uri|endpoint|host|domain|webhook)", re.IGNORECASE)
 _SHELL_HINT_RE = re.compile(r"(cmd|command|shell|exec|script)", re.IGNORECASE)
 _PROMPT_HINT_RE = re.compile(r"(prompt|instruction|system|markdown|html|svg)", re.IGNORECASE)
+
+
+def _safe_runtime_text(value: object, *, max_len: int = 1000) -> str:
+    """Sanitize runtime-supplied introspection text before display or export."""
+    return sanitize_text(value, max_len=max_len)
+
+
+def _safe_runtime_value(value: object, *, max_len: int = 1000) -> object:
+    return sanitize_sensitive_payload(value, max_str_len=max_len)
 
 
 class IntrospectionError(Exception):
@@ -102,10 +112,10 @@ class ServerIntrospection:
 
     def to_dict(self, *, include_runtime_objects: bool = False) -> dict:
         payload = {
-            "server_name": self.server_name,
+            "server_name": _safe_runtime_text(self.server_name, max_len=300),
             "success": self.success,
-            "protocol_version": self.protocol_version,
-            "auth_mode": self.auth_mode,
+            "protocol_version": _safe_runtime_value(self.protocol_version, max_len=100),
+            "auth_mode": _safe_runtime_value(self.auth_mode, max_len=100),
             "configured_fingerprint": self.configured_fingerprint,
             "runtime_fingerprint": self.runtime_fingerprint,
             "configured_tool_count": self.configured_tool_count,
@@ -114,54 +124,54 @@ class ServerIntrospection:
             "tool_count": self.tool_count,
             "resource_count": self.resource_count,
             "prompt_count": self.prompt_count,
-            "tools_added": self.tools_added,
-            "tools_removed": self.tools_removed,
-            "resources_added": self.resources_added,
-            "resources_removed": self.resources_removed,
-            "prompts_added": self.prompts_added,
-            "prompts_removed": self.prompts_removed,
-            "tool_schema_findings": self.tool_schema_findings,
-            "tool_schema_rule_findings": self.tool_schema_rule_findings,
-            "resource_findings": self.resource_findings,
-            "prompt_findings": self.prompt_findings,
+            "tools_added": _safe_runtime_value(self.tools_added),
+            "tools_removed": _safe_runtime_value(self.tools_removed),
+            "resources_added": _safe_runtime_value(self.resources_added),
+            "resources_removed": _safe_runtime_value(self.resources_removed),
+            "prompts_added": _safe_runtime_value(self.prompts_added),
+            "prompts_removed": _safe_runtime_value(self.prompts_removed),
+            "tool_schema_findings": _safe_runtime_value(self.tool_schema_findings),
+            "tool_schema_rule_findings": _safe_runtime_value(self.tool_schema_rule_findings),
+            "resource_findings": _safe_runtime_value(self.resource_findings),
+            "prompt_findings": _safe_runtime_value(self.prompt_findings),
             "has_drift": self.has_drift,
             "capability_risk_score": self.capability_risk_score,
             "capability_risk_level": self.capability_risk_level,
             "capability_counts": self.capability_counts,
-            "capability_tools": self.capability_tools,
-            "dangerous_combinations": self.dangerous_combinations,
-            "risk_justification": self.risk_justification,
-            "tool_risk_profiles": self.tool_risk_profiles,
-            "error": self.error,
+            "capability_tools": _safe_runtime_value(self.capability_tools),
+            "dangerous_combinations": _safe_runtime_value(self.dangerous_combinations),
+            "risk_justification": _safe_runtime_value(self.risk_justification),
+            "tool_risk_profiles": _safe_runtime_value(self.tool_risk_profiles),
+            "error": _safe_runtime_value(self.error),
         }
         if include_runtime_objects:
             payload["runtime_tools"] = [
                 {
-                    "name": t.name,
-                    "description": t.description,
-                    "schema_findings": t.schema_findings,
-                    "schema_rule_findings": t.schema_rule_findings,
+                    "name": _safe_runtime_text(t.name, max_len=300),
+                    "description": _safe_runtime_text(t.description, max_len=1000),
+                    "schema_findings": _safe_runtime_value(t.schema_findings),
+                    "schema_rule_findings": _safe_runtime_value(t.schema_rule_findings),
                     "risk_score": t.risk_score,
                 }
                 for t in self.runtime_tools
             ]
             payload["runtime_resources"] = [
                 {
-                    "uri": r.uri,
-                    "name": r.name,
-                    "description": r.description,
-                    "mime_type": r.mime_type,
-                    "content_findings": r.content_findings,
+                    "uri": _safe_runtime_text(r.uri, max_len=1000),
+                    "name": _safe_runtime_text(r.name, max_len=300),
+                    "description": _safe_runtime_text(r.description, max_len=1000),
+                    "mime_type": _safe_runtime_text(r.mime_type, max_len=200),
+                    "content_findings": _safe_runtime_value(r.content_findings),
                     "risk_score": r.risk_score,
                 }
                 for r in self.runtime_resources
             ]
             payload["runtime_prompts"] = [
                 {
-                    "name": p.name,
-                    "description": p.description,
-                    "arguments": p.arguments,
-                    "content_findings": p.content_findings,
+                    "name": _safe_runtime_text(p.name, max_len=300),
+                    "description": _safe_runtime_text(p.description, max_len=1000),
+                    "arguments": _safe_runtime_value(p.arguments),
+                    "content_findings": _safe_runtime_value(p.content_findings),
                     "risk_score": p.risk_score,
                 }
                 for p in self.runtime_prompts
@@ -395,7 +405,7 @@ async def _introspect_stdio(
     except TimeoutError:
         result.error = f"Connection timed out after {timeout}s"
     except Exception as exc:
-        result.error = str(exc)
+        result.error = _safe_runtime_text(exc)
 
     return result
 
@@ -425,7 +435,7 @@ async def _introspect_sse(
     except TimeoutError:
         result.error = f"Connection timed out after {timeout}s"
     except Exception as exc:
-        result.error = str(exc)
+        result.error = _safe_runtime_text(exc)
 
     return result
 
@@ -452,7 +462,7 @@ async def _query_capabilities(
             result.runtime_tools.append(runtime_tool)
         tools_ok = True
     except Exception as exc:
-        logger.warning("tools/list failed for %s: %s — drift detection skipped", server.name, exc)
+        logger.warning("tools/list failed for %s: %s — drift detection skipped", _safe_runtime_text(server.name), _safe_runtime_text(exc))
 
     # ── Resources ──────────────────────────────────────────────────────
     resources_ok = False
@@ -469,7 +479,7 @@ async def _query_capabilities(
             result.runtime_resources.append(runtime_resource)
         resources_ok = True
     except Exception as exc:
-        logger.warning("resources/list failed for %s: %s", server.name, exc)
+        logger.warning("resources/list failed for %s: %s", _safe_runtime_text(server.name), _safe_runtime_text(exc))
 
     # ── Prompts ────────────────────────────────────────────────────────
     prompts_ok = False
@@ -498,7 +508,7 @@ async def _query_capabilities(
                 result.runtime_prompts.append(runtime_prompt)
             prompts_ok = True
         except Exception as exc:
-            logger.warning("prompts/list failed for %s: %s", server.name, exc)
+            logger.warning("prompts/list failed for %s: %s", _safe_runtime_text(server.name), _safe_runtime_text(exc))
 
     result.success = True
 
@@ -583,7 +593,7 @@ async def introspect_servers(
                 ServerIntrospection(
                     server_name=introspectable[i].name,
                     success=False,
-                    error=str(result),
+                    error=_safe_runtime_text(result),
                 )
             )
         else:

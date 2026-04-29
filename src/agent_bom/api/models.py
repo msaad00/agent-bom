@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 # ─── Enums ─────────────────────────────────────────────────────────────────
 
@@ -110,6 +110,22 @@ class ScanJob(BaseModel):
     error: str | None = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    @field_serializer("request", return_type=ScanRequest)
+    def _serialize_request(self, value: ScanRequest) -> ScanRequest:
+        from agent_bom.security import sanitize_sensitive_payload
+
+        sanitized = sanitize_sensitive_payload(value.model_dump())
+        payload = sanitized if isinstance(sanitized, dict) else {}
+        result: ScanRequest = ScanRequest.model_validate(payload)
+        return result
+
+    @field_serializer("progress", return_type=list[str])
+    def _serialize_progress(self, value: list[str]) -> list[str]:
+        from agent_bom.security import sanitize_sensitive_payload
+
+        sanitized = sanitize_sensitive_payload(value)
+        return sanitized if isinstance(sanitized, list) else []
 
 
 # ─── Meta Models ───────────────────────────────────────────────────────────

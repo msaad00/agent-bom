@@ -184,7 +184,7 @@ def test_log_tool_call_basic():
     assert record["tenant_id"] == "default"
     assert record["event_relationships"]["source"] == "proxy_tool_call"
     assert record["event_relationships"]["targets"][0]["id"] == "read_file"
-    assert record["event_relationships"]["resources"][0]["id"] == "/tmp"
+    assert record["event_relationships"]["resources"][0]["id"] == "<path:tmp>"
 
 
 def test_log_tool_call_blocked():

@@ -22,6 +22,7 @@ from typing import Any, NamedTuple, Optional
 
 from agent_bom.models import TransportType
 from agent_bom.parsers.skills import SkillMetadata, SkillScanResult
+from agent_bom.security import sanitize_url
 
 logger = logging.getLogger(__name__)
 
@@ -1320,7 +1321,7 @@ def _check_server(
                     title=f"External URL on server '{srv.name}'",
                     detail=(
                         f"MCP server config '{srv.name}' (from JSON block in {source_file}) "
-                        f"connects to external URL '{srv.url}'. "
+                        f"connects to external URL '{sanitize_url(srv.url)}'. "
                         "Data sent to this server may leave your network."
                     ),
                     source_file=source_file,

@@ -218,15 +218,18 @@ def _visible_to_tenant(job: ScanJob, tenant_id: str) -> bool:
 
 def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
     """Build a lightweight summary payload for list surfaces."""
+    from agent_bom.security import sanitize_sensitive_payload
+
     result = job.result if isinstance(job.result, dict) else {}
     summary = result.get("summary") if isinstance(result.get("summary"), dict) else None
+    request_payload = sanitize_sensitive_payload(job.request.model_dump(exclude_defaults=True, exclude_none=True))
     return {
         "job_id": job.job_id,
         "tenant_id": job.tenant_id,
         "status": job.status,
         "created_at": job.created_at,
         "completed_at": job.completed_at,
-        "request": job.request.model_dump(exclude_defaults=True, exclude_none=True),
+        "request": request_payload if isinstance(request_payload, dict) else {},
         "summary": summary,
         "scan_timestamp": result.get("scan_timestamp"),
         "pushed": bool(result.get("pushed")),
@@ -597,15 +600,18 @@ async def stream_scan(request: Request, job_id: str):
             with lock:
                 new_lines = list(current.progress[sent:])
                 status = current.status
+            from agent_bom.security import sanitize_sensitive_payload
+
             for line in new_lines:
                 try:
                     parsed = _json.loads(line)
                     if isinstance(parsed, dict) and parsed.get("type") == "step":
+                        parsed = sanitize_sensitive_payload(parsed)
                         yield {"data": _json.dumps(parsed)}
                     else:
-                        yield {"data": _json.dumps({"type": "progress", "message": line})}
+                        yield {"data": _json.dumps({"type": "progress", "message": sanitize_sensitive_payload(line)})}
                 except (_json.JSONDecodeError, ValueError):
-                    yield {"data": _json.dumps({"type": "progress", "message": line})}
+                    yield {"data": _json.dumps({"type": "progress", "message": sanitize_sensitive_payload(line)})}
                 sent += 1
             if status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED):
                 yield {"data": _json.dumps({"type": "done", "status": status, "job_id": job_id})}

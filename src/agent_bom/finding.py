@@ -248,11 +248,13 @@ def blast_radius_to_finding(br: object) -> "Finding":
     # Asset: primary server or package
     if br.affected_servers:
         primary_server = br.affected_servers[0]
+        from agent_bom.security import sanitize_launch_command
+
         asset = Asset(
             name=primary_server.name,
             asset_type="mcp_server",
             identifier=None,
-            location=primary_server.command or None,
+            location=sanitize_launch_command(primary_server.command, primary_server.args) or None,
         )
     else:
         asset = Asset(

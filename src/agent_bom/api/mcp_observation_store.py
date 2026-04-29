@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.platform_invariants import normalize_tenant_id, normalize_timestamp, now_utc_iso
+from agent_bom.security import sanitize_command_args, sanitize_security_warnings, sanitize_text, sanitize_url
 
 
 class MCPObservation(BaseModel):
@@ -61,6 +62,30 @@ class MCPObservation(BaseModel):
         if not isinstance(value, list):
             return []
         return [sanitize_security_intelligence_entry(item) for item in value if isinstance(item, dict)]
+
+    @field_validator("args", mode="before")
+    @classmethod
+    def _sanitize_args(cls, value: object) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return sanitize_command_args(value)
+
+    @field_validator("security_warnings", mode="before")
+    @classmethod
+    def _sanitize_security_warnings(cls, value: object) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return sanitize_security_warnings(value)
+
+    @field_validator("url", mode="before")
+    @classmethod
+    def _sanitize_url(cls, value: object) -> str | None:
+        return sanitize_url(str(value)) if value else None
+
+    @field_validator("command", mode="before")
+    @classmethod
+    def _sanitize_command(cls, value: object) -> str:
+        return sanitize_text(value, max_len=200)
 
 
 def _pick_timestamp(*values: str | None, prefer: str) -> str | None:

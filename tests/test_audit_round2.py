@@ -8,6 +8,30 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+
+def test_audit_details_redact_nested_secrets_and_urls():
+    from agent_bom.api.audit_log import sanitize_audit_details
+
+    github_token = "ghp_" + "abcdefghijklmnopqrstuvwxyz" + "123456"
+    api_key = "sk-" + "live-" + "abcdefghijklmnopqrstuvwxyz"
+    details = sanitize_audit_details(
+        {
+            "url": f"https://user:pass@siem.example/ingest?token={github_token}",
+            "token": api_key,
+            "nested": {"path": "/Users/alice/prod-secrets/openai-key.env"},
+        }
+    )
+
+    encoded = str(details)
+    assert "user:pass" not in encoded
+    assert "token=" not in encoded
+    assert "sk-live" not in encoded
+    assert "/Users/alice" not in encoded
+    assert "prod-secrets" not in encoded
+    assert details["url"] == "https://siem.example/ingest"
+    assert details["token"] == "***REDACTED***"
+
+
 # ── Content-Length validation ────────────────────────────────────────────────
 
 

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from agent_bom.compliance_utils import effective_blast_radius_tags
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
+from agent_bom.security import sanitize_command_args, sanitize_path_label, sanitize_security_warnings, sanitize_text, sanitize_url
 
 
 def _severity_state(severity: Severity) -> str:
@@ -281,7 +282,7 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
                 "agent_type": agent.agent_type.value,
                 "type": agent.agent_type.value,
                 "status": agent.status.value,
-                "config_path": agent.config_path,
+                "config_path": sanitize_path_label(agent.config_path) if agent.config_path else "",
                 "server_ids": server_ids,
             }
         )
@@ -296,8 +297,8 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
                     "fingerprint": server.fingerprint,
                     "auth_mode": server.auth_mode,
                     "transport": server.transport.value,
-                    "command": server.command,
-                    "url": server.url,
+                    "command": sanitize_text(server.command),
+                    "url": sanitize_url(server.url),
                     "tool_ids": [],
                     "resource_ids": [],
                     "prompt_ids": [],
@@ -530,7 +531,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "stable_id": agent.stable_id,
                 "agent_type": agent.agent_type.value,
                 "type": agent.agent_type.value,
-                "config_path": agent.config_path,
+                "config_path": sanitize_path_label(agent.config_path) if agent.config_path else "",
                 "source": agent.source,
                 "status": agent.status.value,
                 "metadata": agent.metadata,
@@ -542,15 +543,15 @@ def to_json(report: AIBOMReport) -> dict:
                         "surface": server.surface.value,
                         "fingerprint": server.fingerprint,
                         "command": server.command,
-                        "args": server.args,
+                        "args": sanitize_command_args(server.args),
                         "transport": server.transport.value,
-                        "url": server.url,
+                        "url": sanitize_url(server.url),
                         "auth_mode": server.auth_mode,
                         "mcp_version": server.mcp_version,
                         "has_credentials": server.has_credentials,
                         "credential_env_vars": server.credential_names,
                         "security_blocked": server.security_blocked,
-                        "security_warnings": server.security_warnings,
+                        "security_warnings": sanitize_security_warnings(server.security_warnings),
                         "security_intelligence": server.security_intelligence,
                         "discovery_sources": server.discovery_sources,
                         "tools": [

@@ -28,6 +28,15 @@ export interface UnifiedGraphFlowSummary {
   runtimeEdges: number;
 }
 
+function safeGraphConnection(value: string): string {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? `${url.protocol}//${url.host}${url.pathname}` : value;
+  } catch {
+    return value.replace(/(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{30,}|(?:sk|pk|rk)[-_](?:live|test|prod)[-_]\w{10,}/gi, "<redacted>");
+  }
+}
+
 export interface UnifiedGraphFlowResult {
   nodes: Node<LineageNodeData>[];
   edges: Edge[];
@@ -316,7 +325,7 @@ function toLineageData(
       data.serverCount = countReachableTypes(node.id, outgoing, nodeById, new Set([EntityType.SERVER]), 4);
       break;
     case "server":
-      data.command = stringAttr(node, "command") || stringAttr(node, "transport") || stringAttr(node, "url");
+      data.command = safeGraphConnection(stringAttr(node, "command") || stringAttr(node, "transport") || stringAttr(node, "url"));
       data.toolCount = countOutgoing(node.id, outgoing, RelationshipType.PROVIDES_TOOL);
       data.credentialCount = countOutgoing(node.id, outgoing, RelationshipType.EXPOSES_CRED);
       data.packageCount = countOutgoing(node.id, outgoing, RelationshipType.DEPENDS_ON);

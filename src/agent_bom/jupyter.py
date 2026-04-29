@@ -178,7 +178,7 @@ def scan_jupyter_notebooks(
             # Skip common false positives
             if key_value in ("your_api_key_here", "YOUR_API_KEY", "test", "example"):
                 continue
-            warnings.append(f"Jupyter: possible hardcoded API key in {nb_path.name} (value starts with '{key_value[:8]}...')")
+            warnings.append(f"Jupyter: possible hardcoded API key in {nb_path.name} (value redacted)")
 
         # Skip notebooks with no AI-related findings
         if not seen_packages and not credential_env_vars:

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import tempfile
 from pathlib import Path
 
+from agent_bom.audit_integrity import compute_audit_record_mac
 from agent_bom.audit_replay import (
     AlertEntry,
     AuditLog,
@@ -42,8 +42,9 @@ def _chained(entries: list[dict]) -> list[dict]:
     for entry in entries:
         payload = dict(entry)
         payload["prev_hash"] = prev_hash
-        canonical = json.dumps(entry, sort_keys=True, separators=(",", ":"))
-        payload["record_hash"] = hashlib.sha256(f"{prev_hash}|{canonical}".encode("utf-8")).hexdigest()
+        payload["record_hash_algorithm"] = "aes-cmac-128"
+        digest_payload = {k: v for k, v in payload.items() if k not in {"prev_hash", "record_hash"}}
+        payload["record_hash"] = compute_audit_record_mac(digest_payload, prev_hash)
         prev_hash = payload["record_hash"]
         chained.append(payload)
     return chained

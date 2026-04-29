@@ -22,7 +22,7 @@ def _mock_agents():
         args=["-y", "test-server"],
         env={"API_KEY": "sk-test", "DEBUG": "1"},
         transport=TransportType.SSE,
-        url="https://mcp.example.internal/sse",
+        url="https://user:pass@mcp.example.internal/sse?token=raw-secret#frag",
         packages=[
             Package(name="express", version="4.18.2", ecosystem="npm"),
         ],
@@ -102,7 +102,7 @@ def _mock_observation_store() -> InMemoryMCPObservationStore:
             server_name="test-server",
             agent_name="test-agent",
             transport="sse",
-            url="https://mcp.example.internal/sse",
+            url="https://user:pass@mcp.example.internal/sse?token=raw-secret#frag",
             auth_mode="env-credentials",
             command="npx",
             args=["-y", "test-server"],
@@ -285,6 +285,11 @@ def test_agent_detail_exposes_server_provenance(_fleet, _mock):
         assert resp.status_code == 200
         server = resp.json()["agent"]["mcp_servers"][0]
         assert server["security_blocked"] is True
+        assert server["url"] == "https://mcp.example.internal/sse"
+        assert server["env"]["API_KEY"] == "***REDACTED***"
+        assert "sk-test" not in str(server)
+        assert "raw-secret" not in str(server)
+        assert "user:pass" not in str(server)
         assert server["security_intelligence"][0]["entry_id"] == "intel-a"
         assert "raw-secret" not in server["security_intelligence"][0]["matched_value"]
         assert server["security_intelligence"][0]["references"] == ["https://example.com/advisory"]

@@ -18,6 +18,8 @@ import uuid
 
 import httpx
 
+from agent_bom.security import sanitize_command_args, sanitize_env_vars, sanitize_security_warnings, sanitize_text, sanitize_url
+
 logger = logging.getLogger(__name__)
 
 
@@ -87,9 +89,20 @@ def _looks_like_secret(key: str) -> bool:
 
 def _redact_nested_secrets(value):
     if isinstance(value, dict):
-        redacted = {}
+        redacted: dict[object, object] = {}
         for key, child in value.items():
-            if _looks_like_secret(str(key)) and isinstance(child, (str, int, float, bool)):
+            key_text = str(key)
+            if key_text == "args" and isinstance(child, list):
+                redacted[key] = sanitize_command_args(child)
+            elif key_text == "command" and isinstance(child, str):
+                redacted[key] = sanitize_text(child, max_len=200)
+            elif key_text == "url" and isinstance(child, str):
+                redacted[key] = sanitize_url(child)
+            elif key_text == "env" and isinstance(child, dict):
+                redacted[key] = sanitize_env_vars(child)
+            elif key_text == "security_warnings" and isinstance(child, list):
+                redacted[key] = sanitize_security_warnings(child)
+            elif _looks_like_secret(key_text) and isinstance(child, (str, int, float, bool)):
                 redacted[key] = "***REDACTED***"
             else:
                 redacted[key] = _redact_nested_secrets(child)
@@ -153,10 +166,12 @@ async def _push_async(
             try:
                 resp = await client.post(push_url, json=sanitized, headers=headers)
             except (httpx.HTTPError, ValueError, OSError) as exc:
-                last_error = f"{type(exc).__name__}: {exc}"
+                from agent_bom.security import sanitize_error
+
+                last_error = f"{type(exc).__name__}: {sanitize_error(exc)}"
                 logger.warning(
                     "Push to %s attempt %d/%d failed with %s",
-                    push_url,
+                    sanitize_url(push_url),
                     attempt,
                     max_attempts,
                     last_error,
@@ -166,7 +181,7 @@ async def _push_async(
                 if resp.status_code < 300:
                     logger.info(
                         "Results pushed to %s (status=%d, attempt=%d)",
-                        push_url,
+                        sanitize_url(push_url),
                         resp.status_code,
                         attempt,
                     )
@@ -174,15 +189,15 @@ async def _push_async(
                 if resp.status_code not in retryable_status:
                     logger.warning(
                         "Push to %s rejected with non-retryable status %d — %s",
-                        push_url,
+                        sanitize_url(push_url),
                         resp.status_code,
-                        resp.text[:200],
+                        sanitize_text(resp.text[:200]),
                     )
                     return False
-                last_error = resp.text[:200]
+                last_error = sanitize_text(resp.text[:200])
                 logger.warning(
                     "Push to %s attempt %d/%d returned retryable status %d",
-                    push_url,
+                    sanitize_url(push_url),
                     attempt,
                     max_attempts,
                     resp.status_code,

@@ -118,6 +118,29 @@ class TestBuildUnifiedGraphFromReport:
         providers = g.nodes_by_type(EntityType.PROVIDER)
         assert len(providers) == 1
         assert providers[0].label == "local"
+
+    def test_server_launch_attributes_are_redacted(self):
+        token = "ghp_" + "A" * 36
+        report = _minimal_report()
+        server = report["agents"][0]["mcp_servers"][0]
+        server["url"] = f"https://user:pass@example.com/sse?token={token}"
+        server["command"] = f"npx {token}"
+        server["security_warnings"] = [f"token {token}"]
+        server["security_intelligence"] = [
+            {
+                "entry_id": "intel",
+                "matched_value": f"server --token {token}",
+                "references": ["javascript:alert(1)", "https://example.com/advisory#frag"],
+            }
+        ]
+
+        g = build_unified_graph_from_report(report)
+        node = next(n for n in g.nodes_by_type(EntityType.SERVER) if n.label == "mcp-fs")
+
+        assert token not in str(node.attributes)
+        assert node.attributes["url"] == "https://example.com/sse"
+        assert node.attributes["security_warnings"] == ["token <redacted>"]
+        assert node.attributes["security_intelligence"][0]["references"] == ["https://example.com/advisory"]
         assert g.has_edge("provider:local", "agent:claude-desktop")
 
     def test_cloud_origin_metadata_becomes_lineage_nodes(self):

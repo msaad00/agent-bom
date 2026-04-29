@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 from agent_bom.api.models import ProxyAuditIngestRequest
 from agent_bom.api.stores import _get_idempotency_store
+from agent_bom.security import sanitize_sensitive_payload
 
 router = APIRouter()
 
@@ -46,14 +47,16 @@ _proxy_metrics: dict | None = None
 def push_proxy_alert(alert: dict) -> None:
     """Called by the proxy to record a runtime alert (in-process path)."""
     global _proxy_alerts_total
-    _proxy_alerts.append(alert)
+    sanitized = sanitize_sensitive_payload(alert)
+    _proxy_alerts.append(sanitized if isinstance(sanitized, dict) else {})
     _proxy_alerts_total += 1
 
 
 def push_proxy_metrics(metrics: dict) -> None:
     """Called by the proxy to record latest metrics summary."""
     global _proxy_metrics
-    _proxy_metrics = metrics
+    sanitized = sanitize_sensitive_payload(metrics)
+    _proxy_metrics = sanitized if isinstance(sanitized, dict) else {}
 
 
 @router.post("/v1/proxy/audit", tags=["proxy"])
@@ -174,7 +177,9 @@ def _read_alerts_from_log(path: _Path) -> list[dict]:
                 try:
                     record = _json.loads(line)
                     if record.get("type") == "runtime_alert":
-                        alerts.append(record)
+                        sanitized = sanitize_sensitive_payload(record)
+                        if isinstance(sanitized, dict):
+                            alerts.append(sanitized)
                 except (ValueError, KeyError):
                     continue
     except OSError:

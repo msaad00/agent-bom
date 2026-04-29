@@ -12,9 +12,11 @@ from agent_bom.security import (
     _is_obfuscated_credential,
     _shannon_entropy,
     create_safe_subprocess_env,
+    sanitize_command_args,
     sanitize_env_vars,
     sanitize_error,
     sanitize_log_label,
+    sanitize_url,
     validate_arguments,
     validate_command,
     validate_environment,
@@ -188,6 +190,33 @@ def test_sanitize_env_vars_safe():
     assert result["LANG"] == "en_US.UTF-8"
 
 
+def test_sanitize_command_args_redacts_secret_values_and_urls():
+    github_token = "ghp_" + "A" * 36
+    result = sanitize_command_args(
+        [
+            "server",
+            "--api-key",
+            "sk-live-secret",
+            github_token,
+            "session=" + github_token,
+            "callback=https://user:pass@example.com/path?token=secret",
+        ]
+    )
+
+    assert result == [
+        "server",
+        "--api-key",
+        "<redacted>",
+        "<redacted>",
+        "session=<redacted>",
+        "callback=https://example.com/path",
+    ]
+
+
+def test_sanitize_url_strips_credentials_query_and_fragment():
+    assert sanitize_url("https://user:pass@example.com/path?token=secret#frag") == "https://example.com/path"
+
+
 # ---------------------------------------------------------------------------
 # validate_file_size
 # ---------------------------------------------------------------------------
@@ -341,6 +370,38 @@ def test_sanitize_error_generic():
 def test_sanitize_error_string():
     result = sanitize_error("error message")
     assert "error message" in result
+
+
+def test_sanitize_sensitive_payload_redacts_nested_runtime_values():
+    from agent_bom.security import sanitize_sensitive_payload
+
+    github_token = "ghp_" + "abcdefghijklmnopqrstuvwxyz" + "123456"
+    api_key = "sk-" + "live-" + "abcdefghijklmnopqrstuvwxyz"
+    slack_token = "xoxb-" + "1234567890-" + "abcdefghijklmnop"
+    payload = {
+        "url": f"https://alice:secret@example.com/callback?token={github_token}",
+        "body": {"api_key": api_key},
+        "path": "/Users/alice/prod-secrets/openai-key.env",
+        "items": [slack_token],
+    }
+
+    result = sanitize_sensitive_payload(payload)
+    encoded = str(result)
+    assert "alice:secret" not in encoded
+    assert "token=" not in encoded
+    assert "sk-live" not in encoded
+    assert "xoxb-" not in encoded
+    assert "/Users/alice" not in encoded
+    assert "prod-secrets" not in encoded
+    assert "<path:" in encoded
+
+
+def test_sanitize_sensitive_payload_preserves_safe_shape():
+    from agent_bom.security import sanitize_sensitive_payload
+
+    result = sanitize_sensitive_payload({"package": "express", "version": "4.18.2", "count": 2})
+
+    assert result == {"package": "express", "version": "4.18.2", "count": 2}
 
 
 # ---------------------------------------------------------------------------

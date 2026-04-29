@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, TypedDict
 
 from agent_bom.graph import SEVERITY_BADGE as _SEVERITY_BADGE
 from agent_bom.graph import SEVERITY_RANK as _SEVERITY_RANK
+from agent_bom.security import sanitize_launch_command, sanitize_path_label
 
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport, BlastRadius
@@ -166,7 +167,7 @@ def build_graph_elements(
                     "type": "agent",
                     "tip": (f"Agent: {agent.name}\nType: {agent.agent_type.value}\nSource: {source}\nServers: {len(agent.mcp_servers)}"),
                     "agentType": agent.agent_type.value,
-                    "configPath": agent.config_path or "",
+                    "configPath": sanitize_path_label(agent.config_path) if agent.config_path else "",
                     "source": source,
                     "serverCount": len(agent.mcp_servers),
                     "packageCount": agent.total_packages,
@@ -224,7 +225,7 @@ def build_graph_elements(
                         "label": server_label,
                         "type": stype,
                         "tip": f"MCP Server: {srv.name}{pkg_note}{cinfo}",
-                        "command": ((srv.command or "") + " " + " ".join((srv.args or [])[:3]))[:80].strip(),
+                        "command": sanitize_launch_command(srv.command or "", srv.args or [], max_args=3)[:80],
                         "packageCount": len(srv.packages),
                         "vulnPackageCount": vulnerable_pkg_count,
                         "vulnCount": total_pkg_vulns,

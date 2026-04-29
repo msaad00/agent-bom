@@ -97,6 +97,35 @@ class TestSanitizeResults:
         assert meta["tools"][0]["auth_token"] == "***REDACTED***"
         assert meta["tools"][0]["name"] == "search"
 
+    def test_redacts_mcp_launch_fields(self):
+        token = "ghp_" + "A" * 36
+        results = {
+            "agents": [
+                {
+                    "name": "agent-1",
+                    "mcp_servers": [
+                        {
+                            "name": "srv",
+                            "command": "npx",
+                            "args": ["server", "--token", token],
+                            "url": f"https://user:pass@example.com/sse?token={token}",
+                            "env": {"API_KEY": token, "DEBUG": "1"},
+                            "security_warnings": [f"token {token}"],
+                        }
+                    ],
+                }
+            ]
+        }
+
+        sanitized = sanitize_results(results)
+        payload = sanitized["agents"][0]["mcp_servers"][0]
+
+        assert token not in str(sanitized)
+        assert payload["args"] == ["server", "--token", "<redacted>"]
+        assert payload["url"] == "https://example.com/sse"
+        assert payload["env"] == {"API_KEY": "***REDACTED***", "DEBUG": "1"}
+        assert payload["security_warnings"] == ["token <redacted>"]
+
     def test_adds_source_id(self):
         results = {"agents": []}
         sanitized = sanitize_results(results)

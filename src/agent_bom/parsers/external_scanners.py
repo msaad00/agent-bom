@@ -54,6 +54,64 @@ def _map_severity(raw: str) -> Severity:
     return mapping.get(raw.lower(), Severity.UNKNOWN)
 
 
+def _string_list(values: Any) -> list[str]:
+    """Return non-empty string values while preserving input order."""
+    if not isinstance(values, list):
+        return []
+    return [value for value in values if isinstance(value, str) and value]
+
+
+def _cwe_ids(values: Any) -> list[str]:
+    return [value for value in _string_list(values) if value.upper().startswith("CWE-")]
+
+
+def _aliases(primary_id: str, *sources: Any) -> list[str]:
+    seen: set[str] = {primary_id}
+    aliases: list[str] = []
+    for source in sources:
+        for value in _string_list(source):
+            if value in seen:
+                continue
+            seen.add(value)
+            aliases.append(value)
+    return aliases
+
+
+def _trivy_advisory_source(vuln: dict[str, Any]) -> str | None:
+    data_source = vuln.get("DataSource") or {}
+    if isinstance(data_source, dict):
+        source_id = data_source.get("ID")
+        if isinstance(source_id, str) and source_id:
+            return source_id
+        source_name = data_source.get("Name")
+        if isinstance(source_name, str) and source_name:
+            return source_name
+    severity_source = vuln.get("SeveritySource")
+    return severity_source if isinstance(severity_source, str) and severity_source else None
+
+
+def _grype_advisory_source(vuln: dict[str, Any]) -> str | None:
+    namespace = vuln.get("namespace")
+    if isinstance(namespace, str) and namespace:
+        return namespace
+    data_source = vuln.get("dataSource")
+    return data_source if isinstance(data_source, str) and data_source else None
+
+
+def _grype_related_aliases(vuln: dict[str, Any]) -> list[str]:
+    related = vuln.get("relatedVulnerabilities") or []
+    if not isinstance(related, list):
+        return []
+    aliases: list[str] = []
+    for item in related:
+        if not isinstance(item, dict):
+            continue
+        item_id = item.get("id")
+        if isinstance(item_id, str) and item_id:
+            aliases.append(item_id)
+    return aliases
+
+
 # ── Trivy parser ─────────────────────────────────────────────────────────────
 
 
@@ -98,14 +156,22 @@ def parse_trivy_json(data: dict[str, Any]) -> list[Package]:
                     break
 
             references: list[str] = vuln.get("References") or []
+            vuln_id = vuln.get("VulnerabilityID", "")
+            advisory_source = _trivy_advisory_source(vuln)
 
             vuln_obj = Vulnerability(
-                id=vuln.get("VulnerabilityID", ""),
+                id=vuln_id,
                 summary=vuln.get("Title") or vuln.get("Description") or "",
                 severity=_map_severity(vuln.get("Severity", "")),
+                severity_source=vuln.get("SeveritySource") or None,
                 cvss_score=cvss_score,
                 fixed_version=vuln.get("FixedVersion") or None,
                 references=list(references),
+                published_at=vuln.get("PublishedDate") or None,
+                modified_at=vuln.get("LastModifiedDate") or None,
+                aliases=_aliases(vuln_id, vuln.get("VendorIDs"), vuln.get("Aliases")),
+                cwe_ids=_cwe_ids(vuln.get("CweIDs")),
+                advisory_sources=[advisory_source] if advisory_source else [],
             )
             # Avoid duplicate vuln IDs on the same package
             existing_ids = {v.id for v in pkg.vulnerabilities}
@@ -164,14 +230,23 @@ def parse_grype_json(data: dict[str, Any]) -> list[Package]:
             fixed_version = fix_versions[0] if fix_versions else None
 
         references: list[str] = vuln_data.get("urls") or []
+        vuln_id = vuln_data.get("id", "")
+        related_aliases = _grype_related_aliases(vuln_data)
+        advisory_source = _grype_advisory_source(vuln_data)
 
         vuln_obj = Vulnerability(
-            id=vuln_data.get("id", ""),
+            id=vuln_id,
             summary=vuln_data.get("description") or "",
             severity=_map_severity(vuln_data.get("severity", "")),
+            severity_source=vuln_data.get("namespace") or None,
             cvss_score=cvss_score,
             fixed_version=fixed_version,
             references=list(references),
+            published_at=vuln_data.get("publishedDate") or vuln_data.get("published") or None,
+            modified_at=vuln_data.get("modifiedDate") or vuln_data.get("modified") or None,
+            aliases=_aliases(vuln_id, vuln_data.get("aliases"), related_aliases),
+            cwe_ids=_cwe_ids(vuln_data.get("cwes")),
+            advisory_sources=[advisory_source] if advisory_source else [],
         )
         existing_ids = {v.id for v in pkg.vulnerabilities}
         if vuln_obj.id not in existing_ids:

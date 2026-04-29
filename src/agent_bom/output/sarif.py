@@ -5,9 +5,11 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from typing import Any
 
 from agent_bom.finding import FindingType
 from agent_bom.models import AIBOMReport, Severity
+from agent_bom.security import sanitize_sensitive_payload
 
 _SARIF_SEVERITY_MAP = {
     Severity.CRITICAL: "error",
@@ -55,6 +57,11 @@ def _to_relative_path(path: str) -> str:
             return p.name
 
     return path
+
+
+def _sanitize_sarif_property(value: Any) -> Any:
+    """Apply final defensive redaction before data leaves via SARIF."""
+    return sanitize_sensitive_payload(value, max_str_len=1000)
 
 
 def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
@@ -232,8 +239,8 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                     "risk_score": finding.risk_score,
                     "asset_type": finding.asset.asset_type,
                     "asset_name": finding.asset.name,
-                    "evidence": finding.evidence,
-                    "remediation_guidance": finding.remediation_guidance,
+                    "evidence": _sanitize_sarif_property(finding.evidence),
+                    "remediation_guidance": _sanitize_sarif_property(finding.remediation_guidance),
                 },
             }
         )
@@ -389,8 +396,8 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
             result_props: dict = {
                 "remediation": remediation,
                 "cis_section": check.get("cis_section") or "",
-                "evidence": check.get("evidence") or "",
-                "resource_ids": check.get("resource_ids") or [],
+                "evidence": _sanitize_sarif_property(check.get("evidence") or ""),
+                "resource_ids": _sanitize_sarif_property(check.get("resource_ids") or []),
             }
             # Surface the remediation knobs flat for consumers that
             # can't (or don't want to) read nested dicts.

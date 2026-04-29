@@ -21,6 +21,17 @@ from typing import Optional
 import click
 
 
+def _validate_json_or_console_format(command_name: str, output_format: str) -> str:
+    """Focused intelligence commands do not emit SARIF or implement vuln gates."""
+    normalized = output_format.lower()
+    if normalized not in {"console", "json"}:
+        raise click.ClickException(
+            f"{command_name} supports only format=console or format=json; "
+            "SARIF output and vulnerability gates are not supported for this focused mode."
+        )
+    return normalized
+
+
 @click.command("image")
 @click.argument("image_ref")
 @click.option("--platform", help="Target platform (e.g. linux/amd64)")
@@ -237,6 +248,8 @@ def secrets_cmd(path: str, output_format: str, output_path: Optional[str], quiet
 
     from agent_bom.secret_scanner import scan_secrets
 
+    output_format = _validate_json_or_console_format("secrets", output_format)
+
     con = Console(stderr=True, quiet=quiet)
     result = scan_secrets(path)
 
@@ -293,6 +306,8 @@ def code_cmd(path: str, output_format: str, output_path: Optional[str], quiet: b
 
     from agent_bom.ai_components import scan_source
     from agent_bom.ast_analyzer import analyze_project
+
+    output_format = _validate_json_or_console_format("code", output_format)
 
     con = Console(stderr=True, quiet=quiet)
     result = analyze_project(path)

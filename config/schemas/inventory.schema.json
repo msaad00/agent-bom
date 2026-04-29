@@ -6,6 +6,46 @@
 
   "$defs": {
 
+    "DiscoveryProvenance": {
+      "title": "Discovery Provenance",
+      "description": "Low-risk provenance for how an asset was observed. Values are sanitized before persistence/export.",
+      "type": "object",
+      "required": ["source_type"],
+      "properties": {
+        "source_type": {
+          "type": "string",
+          "enum": [
+            "direct_cloud_pull",
+            "operator_pushed_inventory",
+            "skill_invoked_pull",
+            "local_discovery",
+            "registry_fallback",
+            "sbom_ingest",
+            "external_scan",
+            "filesystem_scan",
+            "image_scan",
+            "unknown"
+          ]
+        },
+        "observed_via": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "source": { "type": "string" },
+        "collector": { "type": "string" },
+        "provider": { "type": "string" },
+        "service": { "type": "string" },
+        "resource_type": { "type": "string" },
+        "resource_id": { "type": "string" },
+        "resource_name": { "type": "string" },
+        "location": { "type": "string" },
+        "confidence": { "type": "string" },
+        "resolved_from_registry": { "type": "boolean" },
+        "version_source": { "type": "string" }
+      },
+      "additionalProperties": false
+    },
+
     "Tool": {
       "title": "MCP Tool",
       "description": "A tool exposed by an MCP server. Needed for blast radius: maps a vulnerability to the attacker capabilities it unlocks.",
@@ -69,6 +109,10 @@
             "purl": {
               "type": "string",
               "description": "Package URL (purl) for unambiguous identification. If provided, overrides name/version/ecosystem for scanning."
+            },
+            "discovery_provenance": {
+              "$ref": "#/$defs/DiscoveryProvenance",
+              "description": "How this package was observed or resolved."
             }
           },
           "additionalProperties": false
@@ -156,6 +200,11 @@
           "type": "array",
           "items": { "$ref": "#/$defs/SecurityIntelligenceEntry" },
           "description": "Structured MCP intelligence matches that explain block/review/warn decisions."
+        },
+
+        "discovery_provenance": {
+          "$ref": "#/$defs/DiscoveryProvenance",
+          "description": "How this server definition was observed."
         }
       },
       "additionalProperties": false
@@ -250,6 +299,11 @@
           "type": "array",
           "items": { "$ref": "#/$defs/MCPServer" },
           "description": "MCP servers this agent connects to. Each server's packages are scanned independently, then correlated back to this agent for blast radius."
+        },
+
+        "discovery_provenance": {
+          "$ref": "#/$defs/DiscoveryProvenance",
+          "description": "How this agent asset was observed."
         }
       },
       "additionalProperties": false
@@ -276,6 +330,11 @@
       "type": "string",
       "format": "date-time",
       "description": "ISO 8601 timestamp when this inventory was generated"
+    },
+
+    "discovery_provenance": {
+      "$ref": "#/$defs/DiscoveryProvenance",
+      "description": "Default provenance for assets in this inventory."
     },
 
     "agents": {

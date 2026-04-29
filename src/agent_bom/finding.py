@@ -334,6 +334,8 @@ def blast_radius_to_finding(br: object) -> "Finding":
     if not isinstance(br, BlastRadius):
         raise TypeError(f"Expected BlastRadius, got {type(br)}")
 
+    from agent_bom.asset_provenance import package_discovery_provenance
+
     vuln = br.vulnerability
     pkg = br.package
 
@@ -380,6 +382,9 @@ def blast_radius_to_finding(br: object) -> "Finding":
         "graph_reachable_from_agents": _sanitized_evidence_field(getattr(br, "graph_reachable_from_agents", [])),
         "layer_attribution": _sanitized_evidence_field([_package_occurrence_evidence(occ) for occ in br.layer_attribution]),
     }
+    package_provenance = package_discovery_provenance(pkg)
+    if package_provenance:
+        evidence["package_discovery_provenance"] = package_provenance
     if vuln.references:
         evidence["references"] = _sanitized_evidence_field(vuln.references[:5])
 

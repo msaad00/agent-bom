@@ -744,11 +744,24 @@ def run_local_discovery(
                 if skill_result.servers:
                     from agent_bom.models import Agent, AgentType
 
+                    skill_provenance = {
+                        "source_type": "skill_invoked_pull",
+                        "observed_via": ["skill_invoked_pull"],
+                        "source": "skill-files",
+                        "collector": "skill_scanner",
+                        "confidence": "high",
+                    }
+                    for server in skill_result.servers:
+                        for pkg in getattr(server, "packages", []) or []:
+                            if getattr(pkg, "discovery_provenance", None) is None:
+                                pkg.discovery_provenance = skill_provenance
                     skill_agent = Agent(
                         name="skill-files",
                         agent_type=AgentType.CUSTOM,
                         config_path=str(skill_file_list[0]),
                         mcp_servers=skill_result.servers,
+                        source="skill-files",
+                        discovery_provenance=skill_provenance,
                     )
                     ctx.agents.append(skill_agent)
                     con.print(f"  [green]✓[/green] Found {len(skill_result.servers)} MCP server(s) in skill files")
@@ -756,12 +769,24 @@ def run_local_discovery(
                     from agent_bom.models import Agent, AgentType
                     from agent_bom.models import MCPServer as _SkillSrv
 
+                    skill_provenance = {
+                        "source_type": "skill_invoked_pull",
+                        "observed_via": ["skill_invoked_pull"],
+                        "source": "skill-files",
+                        "collector": "skill_scanner",
+                        "confidence": "high",
+                    }
+                    for pkg in skill_result.packages:
+                        if getattr(pkg, "discovery_provenance", None) is None:
+                            pkg.discovery_provenance = skill_provenance
                     skill_server = _SkillSrv(name="skill-packages", command="(from skill files)", packages=skill_result.packages)
                     skill_pkg_agent = Agent(
                         name="skill-packages",
                         agent_type=AgentType.CUSTOM,
                         config_path=", ".join(str(p) for p in skill_file_list[:3]),
                         mcp_servers=[skill_server],
+                        source="skill-files",
+                        discovery_provenance=skill_provenance,
                     )
                     ctx.agents.append(skill_pkg_agent)
                     con.print(f"  [green]✓[/green] Found {len(skill_result.packages)} package(s) referenced in skill files")

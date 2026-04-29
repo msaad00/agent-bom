@@ -61,11 +61,29 @@ def _sync_runtime_consoles(console: Console) -> None:
 
 def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list:
     """Build Agent objects from parsed inventory dict (JSON or CSV)."""
+    from agent_bom.asset_provenance import sanitize_discovery_provenance
     from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
     agents = []
+    inventory_provenance = sanitize_discovery_provenance(
+        inventory_data.get("discovery_provenance"),
+        defaults={
+            "source_type": "operator_pushed_inventory",
+            "observed_via": ["operator_inventory"],
+            "source": inventory_data.get("source"),
+            "collector": "inventory",
+            "confidence": "high",
+        },
+    )
     for agent_data in inventory_data.get("agents", []):
         mcp_servers = []
+        agent_provenance = sanitize_discovery_provenance(
+            agent_data.get("discovery_provenance"),
+            defaults={
+                **(inventory_provenance or {}),
+                "source": agent_data.get("source", inventory_data.get("source")),
+            },
+        )
         for server_data in agent_data.get("mcp_servers", []):
             # Parse pre-populated tools (e.g. from Snowflake/cloud inventory)
             tools = []
@@ -83,13 +101,24 @@ def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list
 
             # Parse pre-known packages (e.g. from cloud asset scan)
             packages = []
+            package_provenance = sanitize_discovery_provenance(
+                server_data.get("discovery_provenance"),
+                defaults=agent_provenance,
+            )
             for pkg_data in server_data.get("packages", []):
                 if isinstance(pkg_data, str):
                     if "@" in pkg_data:
                         name, version = pkg_data.rsplit("@", 1)
                     else:
                         name, version = pkg_data, "unknown"
-                    packages.append(Package(name=name, version=version, ecosystem="unknown"))
+                    packages.append(
+                        Package(
+                            name=name,
+                            version=version,
+                            ecosystem="unknown",
+                            discovery_provenance=package_provenance,
+                        )
+                    )
                 elif isinstance(pkg_data, dict):
                     packages.append(
                         Package(
@@ -97,6 +126,10 @@ def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list
                             version=pkg_data.get("version", "unknown"),
                             ecosystem=pkg_data.get("ecosystem", "unknown"),
                             purl=pkg_data.get("purl"),
+                            discovery_provenance=sanitize_discovery_provenance(
+                                pkg_data.get("discovery_provenance"),
+                                defaults=package_provenance,
+                            ),
                         )
                     )
 
@@ -113,6 +146,7 @@ def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list
                 security_blocked=bool(server_data.get("security_blocked", False)),
                 security_warnings=list(server_data.get("security_warnings", []) or []),
                 security_intelligence=list(server_data.get("security_intelligence", []) or []),
+                discovery_provenance=package_provenance,
                 tools=tools,
                 packages=packages,
             )
@@ -127,6 +161,7 @@ def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list
             source=agent_data.get("source", inventory_data.get("source")),
             discovered_at=agent_data.get("discovered_at") or agent_data.get("first_seen") or "",
             last_seen=agent_data.get("last_seen") or agent_data.get("last_seen_at"),
+            discovery_provenance=agent_provenance,
         )
         agents.append(agent)
 

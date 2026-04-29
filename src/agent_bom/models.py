@@ -356,6 +356,7 @@ class Package:
     maintainer_count: Optional[int] = None
     source_repo: Optional[str] = None
     occurrences: list[PackageOccurrence] = field(default_factory=list)  # Layer/file provenance for concrete package observations
+    discovery_provenance: Optional[dict] = None  # Sanitized discovery provenance contract for this package asset
 
     @property
     def stable_id(self) -> str:
@@ -579,6 +580,7 @@ class MCPServer:
     security_intelligence: list[dict[str, object]] = field(default_factory=list)
     surface: ServerSurface = ServerSurface.MCP
     discovery_sources: list[str] = field(default_factory=list)
+    discovery_provenance: Optional[dict] = None  # Sanitized discovery provenance contract for this server asset
 
     @property
     def stable_id(self) -> str:
@@ -684,6 +686,7 @@ class Agent:
     parent_agent: Optional[str] = None  # Parent agent name (for spawn tree / delegation)
     metadata: dict = field(default_factory=dict)  # Extra config data (permissions, hooks, etc.)
     automation_settings: list = field(default_factory=list)  # Risky automation settings (scheduled tasks, etc.)
+    discovery_provenance: Optional[dict] = None  # Sanitized discovery provenance contract for this agent asset
 
     def __post_init__(self) -> None:
         """Backfill lifecycle fields for legacy Agent construction paths."""

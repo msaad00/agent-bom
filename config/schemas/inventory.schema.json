@@ -234,6 +234,18 @@
           "description": "Where this inventory entry came from (e.g. 'local', 'snowflake', 'aws-bedrock', 'gcp-vertex', 'openai'). Used for traceability in reports."
         },
 
+        "discovered_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this agent was first discovered in the source inventory."
+        },
+
+        "last_seen": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp when this agent was most recently observed in the source inventory."
+        },
+
         "mcp_servers": {
           "type": "array",
           "items": { "$ref": "#/$defs/MCPServer" },

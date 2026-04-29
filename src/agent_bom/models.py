@@ -25,6 +25,11 @@ from agent_bom.package_utils import (
 )
 
 
+def _utc_now_iso() -> str:
+    """Return a UTC ISO-8601 timestamp for discovery lifecycle defaults."""
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
 class Severity(str, Enum):
     CRITICAL = "critical"
     HIGH = "high"
@@ -674,9 +679,18 @@ class Agent:
     version: Optional[str] = None
     source: Optional[str] = None  # Inventory source (e.g. "snowflake", "aws", "local")
     status: AgentStatus = AgentStatus.CONFIGURED
+    discovered_at: str = field(default_factory=_utc_now_iso)
+    last_seen: Optional[str] = None
     parent_agent: Optional[str] = None  # Parent agent name (for spawn tree / delegation)
     metadata: dict = field(default_factory=dict)  # Extra config data (permissions, hooks, etc.)
     automation_settings: list = field(default_factory=list)  # Risky automation settings (scheduled tasks, etc.)
+
+    def __post_init__(self) -> None:
+        """Backfill lifecycle fields for legacy Agent construction paths."""
+        if not self.discovered_at:
+            self.discovered_at = _utc_now_iso()
+        if not self.last_seen:
+            self.last_seen = self.discovered_at
 
     @property
     def stable_id(self) -> str:

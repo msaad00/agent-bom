@@ -220,6 +220,9 @@ export interface Agent {
   config_path?: string | undefined;
   source?: string | undefined;
   status?: AgentStatus | undefined;
+  discovered_at?: string | undefined;
+  last_seen?: string | undefined;
+  metadata?: Record<string, unknown> | undefined;
   mcp_servers: MCPServer[];
   automation_settings?: string[] | undefined;
 }

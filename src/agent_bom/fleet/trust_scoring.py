@@ -186,6 +186,8 @@ def _inventory_age_hours(agent: "Agent") -> float | None:
         return float(raw_age)
     raw_seen = metadata.get("last_seen_at") if isinstance(metadata, dict) else None
     if not isinstance(raw_seen, str):
+        raw_seen = getattr(agent, "last_seen", None)
+    if not isinstance(raw_seen, str):
         return None
     try:
         seen_at = datetime.fromisoformat(raw_seen.replace("Z", "+00:00"))

@@ -46,6 +46,8 @@
             "description": "Backward-compatible alias for agent_type retained for v1 scan-report consumers."
           },
           "status": { "type": "string", "minLength": 1 },
+          "discovered_at": { "type": "string", "format": "date-time" },
+          "last_seen": { "type": "string", "format": "date-time" },
           "mcp_servers": { "type": "array" }
         },
         "additionalProperties": true

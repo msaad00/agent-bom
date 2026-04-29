@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
+import pytest
+
+from agent_bom.cloud.normalization import build_cloud_state, normalize_cloud_lifecycle_state
 from agent_bom.models import Agent, AgentStatus, AgentType
 
 # ── AgentStatus model tests ──────────────────────────────────────────────────
@@ -15,6 +20,9 @@ def test_agent_status_enum_values():
 def test_agent_default_status():
     agent = Agent(name="test", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/test")
     assert agent.status == AgentStatus.CONFIGURED
+    assert agent.discovered_at
+    assert agent.last_seen == agent.discovered_at
+    datetime.fromisoformat(agent.discovered_at.replace("Z", "+00:00"))
 
 
 def test_agent_installed_not_configured():
@@ -61,6 +69,91 @@ def test_json_includes_agent_metadata():
     assert data["agents"][0]["metadata"]["cloud_origin"]["provider"] == "gcp"
     assert data["agents"][0]["metadata"]["cloud_origin"]["scope"]["project_id"] == "test"
     assert data["agents"][0]["metadata"]["cloud_state"]["lifecycle_state"] == "ready"
+
+
+def test_local_inventory_agent_lifecycle_fields_preserved():
+    from agent_bom.cli._common import _build_agents_from_inventory
+    from agent_bom.models import AIBOMReport
+    from agent_bom.output import to_json
+
+    inventory = {
+        "source": "local",
+        "agents": [
+            {
+                "name": "claude-desktop",
+                "agent_type": "claude-desktop",
+                "config_path": "/Users/example/Library/Application Support/Claude/claude_desktop_config.json",
+                "discovered_at": "2026-04-28T10:00:00Z",
+                "last_seen": "2026-04-28T11:30:00Z",
+                "mcp_servers": [{"name": "filesystem", "command": "npx"}],
+            }
+        ],
+    }
+
+    agents = _build_agents_from_inventory(inventory, "inventory.json")
+    assert agents[0].discovered_at == "2026-04-28T10:00:00Z"
+    assert agents[0].last_seen == "2026-04-28T11:30:00Z"
+
+    data = to_json(AIBOMReport(agents=agents))
+    assert data["agents"][0]["discovered_at"] == "2026-04-28T10:00:00Z"
+    assert data["agents"][0]["last_seen"] == "2026-04-28T11:30:00Z"
+    assert data["inventory_snapshot"]["agents"][0]["discovered_at"] == "2026-04-28T10:00:00Z"
+    assert data["inventory_snapshot"]["agents"][0]["last_seen"] == "2026-04-28T11:30:00Z"
+
+
+@pytest.mark.parametrize(
+    ("provider", "service", "resource_type", "raw_state", "expected"),
+    [
+        ("databricks", "clusters", "cluster", "RUNNING", "running"),
+        ("databricks", "clusters", "cluster", "TERMINATED", "terminated"),
+        ("databricks", "model-serving", "serving-endpoint", "NOT_READY", "not-ready"),
+    ],
+)
+def test_cloud_asset_lifecycle_states_preserved_in_report(provider, service, resource_type, raw_state, expected):
+    from agent_bom.graph.builder import build_unified_graph_from_report
+    from agent_bom.models import AIBOMReport
+    from agent_bom.output import to_json
+
+    lifecycle_state = normalize_cloud_lifecycle_state(
+        provider=provider,
+        service=service,
+        resource_type=resource_type,
+        raw_state=raw_state,
+    )
+    assert lifecycle_state == expected
+
+    agent = Agent(
+        name=f"{service}:{expected}",
+        agent_type=AgentType.CUSTOM,
+        config_path=f"{provider}://{service}/{expected}",
+        source=provider,
+        discovered_at="2026-04-27T09:00:00Z",
+        last_seen="2026-04-28T09:00:00Z",
+        metadata={
+            "cloud_state": build_cloud_state(
+                provider=provider,
+                service=service,
+                resource_type=resource_type,
+                lifecycle_state=lifecycle_state,
+                raw_state=raw_state,
+                state_source="test.state",
+            )
+        },
+    )
+
+    data = to_json(AIBOMReport(agents=[agent]))
+    serialized = data["agents"][0]
+    assert serialized["discovered_at"] == "2026-04-27T09:00:00Z"
+    assert serialized["last_seen"] == "2026-04-28T09:00:00Z"
+    assert serialized["metadata"]["cloud_state"]["lifecycle_state"] == expected
+    assert serialized["metadata"]["cloud_state"]["raw_state"] == raw_state
+
+    graph = build_unified_graph_from_report(data)
+    graph_agent = graph.nodes[f"agent:{service}:{expected}"]
+    assert graph_agent.first_seen == "2026-04-27T09:00:00Z"
+    assert graph_agent.last_seen == "2026-04-28T09:00:00Z"
+    assert graph_agent.attributes["discovered_at"] == "2026-04-27T09:00:00Z"
+    assert graph_agent.attributes["last_seen"] == "2026-04-28T09:00:00Z"
 
 
 # ── Claude Code project parsing ──────────────────────────────────────────────

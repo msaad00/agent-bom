@@ -282,6 +282,8 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
                 "agent_type": agent.agent_type.value,
                 "type": agent.agent_type.value,
                 "status": agent.status.value,
+                "discovered_at": agent.discovered_at,
+                "last_seen": agent.last_seen,
                 "config_path": sanitize_path_label(agent.config_path) if agent.config_path else "",
                 "server_ids": server_ids,
             }
@@ -534,6 +536,8 @@ def to_json(report: AIBOMReport) -> dict:
                 "config_path": sanitize_path_label(agent.config_path) if agent.config_path else "",
                 "source": agent.source,
                 "status": agent.status.value,
+                "discovered_at": agent.discovered_at,
+                "last_seen": agent.last_seen,
                 "metadata": agent.metadata,
                 "automation_settings": agent.automation_settings,
                 "mcp_servers": [

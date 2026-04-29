@@ -214,6 +214,7 @@ runs:
         INPUT_SCAN_REF: ${{ inputs.scan-ref }}
         INPUT_FORMAT: ${{ inputs.format }}
         INPUT_OUTPUT: ${{ inputs.output }}
+        INPUT_UPLOAD_SARIF: ${{ inputs.upload-sarif }}
         INPUT_SEVERITY: ${{ inputs.severity-threshold }}
         INPUT_WARN_ON: ${{ inputs.warn-on-severity }}
         INPUT_POLICY: ${{ inputs.policy }}
@@ -256,6 +257,10 @@ runs:
               exit 1
               ;;
           esac
+        }
+        fail_unsupported_focused_mode() {
+          echo "::error::scan-type=$INPUT_SCAN_TYPE does not support SARIF upload or vulnerability gates. Use format=json or format=console with upload-sarif=false and no severity/policy gates, or use scan-type=scan/image/fs/iac/sbom."
+          exit 1
         }
         # Map scan-type to focused command
         #   scan  → agent-bom agents (full auto-detect, default)
@@ -338,6 +343,20 @@ runs:
           exit 1
         fi
 
+        if [ "$INPUT_SCAN_TYPE" = "secrets" ] || [ "$INPUT_SCAN_TYPE" = "code" ]; then
+          if [ -z "$INPUT_FORMAT" ] || [ "$INPUT_FORMAT" = "sarif" ]; then
+            fail_unsupported_focused_mode
+          fi
+          [ "$INPUT_UPLOAD_SARIF" = "true" ] && fail_unsupported_focused_mode
+          [ -n "$INPUT_SEVERITY" ] && fail_unsupported_focused_mode
+          [ -n "$INPUT_WARN_ON" ] && fail_unsupported_focused_mode
+          [ -n "$INPUT_POLICY" ] && fail_unsupported_focused_mode
+          [ "$INPUT_FAIL_ON_KEV" = "true" ] && fail_unsupported_focused_mode
+          [ "$INPUT_EXCLUDE_UNFIXABLE" = "true" ] && fail_unsupported_focused_mode
+          [ "$INPUT_GPU_SCAN" = "true" ] && fail_unsupported_focused_mode
+          [ "$INPUT_SKILL_ONLY" = "true" ] && fail_unsupported_focused_mode
+        fi
+
         # Output format
         if [ "$INPUT_FORMAT" = "sarif" ]; then
           ARGS+=(-f sarif -o "$RESULT_FILE")
@@ -351,101 +370,103 @@ runs:
         # Skills scans have their own narrower CLI surface and should not
         # inherit vulnerability-scan flags like --auto-update-db or --policy.
         if [ "$INPUT_SCAN_TYPE" != "skills" ]; then
-          # Severity gate
-          if [ -n "$INPUT_SEVERITY" ]; then
-            validate_severity_choice "$INPUT_SEVERITY" "severity-threshold"
-            ARGS+=(--fail-on-severity "$INPUT_SEVERITY")
-          fi
-
-          # Warn-on severity (non-blocking)
-          if [ -n "$INPUT_WARN_ON" ]; then
-            validate_severity_choice "$INPUT_WARN_ON" "warn-on-severity"
-            ARGS+=(--warn-on "$INPUT_WARN_ON")
-          fi
-
-          # Policy file
-          if [ -n "$INPUT_POLICY" ]; then
-            ARGS+=(--policy "$INPUT_POLICY")
-          fi
-
-          # Enrichment
-          if [ "$INPUT_ENRICH" = "true" ]; then
-            ARGS+=(--enrich)
-          fi
-
-          # Auto-update vulnerability database
-          if [ "$INPUT_AUTO_UPDATE_DB" = "true" ]; then
-            ARGS+=(--auto-update-db)
-          fi
-
-          # KEV gate
-          if [ "$INPUT_FAIL_ON_KEV" = "true" ]; then
-            ARGS+=(--fail-on-kev)
-          fi
-
-          # Docker image (skip if scan-type=image — already in command)
-          if [ -n "$INPUT_IMAGE" ] && [ "$INPUT_SCAN_TYPE" != "image" ]; then
-            ARGS+=(--image "$INPUT_IMAGE")
-          fi
-
-          # Config directory
-          if [ -n "$INPUT_CONFIG_DIR" ]; then
-            ARGS+=(--config-dir "$INPUT_CONFIG_DIR")
-          fi
-
-          # Existing SBOM (skip if scan-type=sbom — already in command)
-          if [ -n "$INPUT_SBOM" ] && [ "$INPUT_SCAN_TYPE" != "sbom" ]; then
-            ARGS+=(--sbom "$INPUT_SBOM")
-          fi
-
-          # Remediation plan
-          if [ -n "$INPUT_REMEDIATE" ]; then
-            ARGS+=(--remediate "$INPUT_REMEDIATE")
-          fi
-
-          # AI enrichment
-          if [ "$INPUT_AI_ENRICH" = "true" ]; then
-            ARGS+=(--ai-enrich)
-            if [ -n "$INPUT_AI_MODEL" ]; then
-              ARGS+=(--ai-model "$INPUT_AI_MODEL")
+          if [ "$INPUT_SCAN_TYPE" != "secrets" ] && [ "$INPUT_SCAN_TYPE" != "code" ]; then
+            # Severity gate
+            if [ -n "$INPUT_SEVERITY" ]; then
+              validate_severity_choice "$INPUT_SEVERITY" "severity-threshold"
+              ARGS+=(--fail-on-severity "$INPUT_SEVERITY")
             fi
-          fi
 
-          # Ignore file
-          if [ -n "$INPUT_IGNORE_FILE" ]; then
-            ARGS+=(--ignore-file "$INPUT_IGNORE_FILE")
-          fi
+            # Warn-on severity (non-blocking)
+            if [ -n "$INPUT_WARN_ON" ]; then
+              validate_severity_choice "$INPUT_WARN_ON" "warn-on-severity"
+              ARGS+=(--warn-on "$INPUT_WARN_ON")
+            fi
 
-          # IaC scanning paths (skip if scan-type=iac — already in command)
-          if [ -n "$INPUT_IAC" ] && [ "$INPUT_SCAN_TYPE" != "iac" ]; then
-            IFS=',' read -ra IAC_PATHS <<< "$INPUT_IAC"
-            for p in "${IAC_PATHS[@]}"; do
-              p="$(trim_arg "$p")"
-              if [ -n "$p" ]; then
-                ARGS+=(--iac "$p")
+            # Policy file
+            if [ -n "$INPUT_POLICY" ]; then
+              ARGS+=(--policy "$INPUT_POLICY")
+            fi
+
+            # Enrichment
+            if [ "$INPUT_ENRICH" = "true" ]; then
+              ARGS+=(--enrich)
+            fi
+
+            # Auto-update vulnerability database
+            if [ "$INPUT_AUTO_UPDATE_DB" = "true" ]; then
+              ARGS+=(--auto-update-db)
+            fi
+
+            # KEV gate
+            if [ "$INPUT_FAIL_ON_KEV" = "true" ]; then
+              ARGS+=(--fail-on-kev)
+            fi
+
+            # Docker image (skip if scan-type=image — already in command)
+            if [ -n "$INPUT_IMAGE" ] && [ "$INPUT_SCAN_TYPE" != "image" ]; then
+              ARGS+=(--image "$INPUT_IMAGE")
+            fi
+
+            # Config directory
+            if [ -n "$INPUT_CONFIG_DIR" ]; then
+              ARGS+=(--config-dir "$INPUT_CONFIG_DIR")
+            fi
+
+            # Existing SBOM (skip if scan-type=sbom — already in command)
+            if [ -n "$INPUT_SBOM" ] && [ "$INPUT_SCAN_TYPE" != "sbom" ]; then
+              ARGS+=(--sbom "$INPUT_SBOM")
+            fi
+
+            # Remediation plan
+            if [ -n "$INPUT_REMEDIATE" ]; then
+              ARGS+=(--remediate "$INPUT_REMEDIATE")
+            fi
+
+            # AI enrichment
+            if [ "$INPUT_AI_ENRICH" = "true" ]; then
+              ARGS+=(--ai-enrich)
+              if [ -n "$INPUT_AI_MODEL" ]; then
+                ARGS+=(--ai-model "$INPUT_AI_MODEL")
               fi
-            done
-          fi
+            fi
 
-          # AI inventory scanning paths
-          if [ -n "$INPUT_AI_INVENTORY" ]; then
-            IFS=',' read -ra AI_PATHS <<< "$INPUT_AI_INVENTORY"
-            for p in "${AI_PATHS[@]}"; do
-              p="$(trim_arg "$p")"
-              if [ -n "$p" ]; then
-                ARGS+=(--ai-inventory "$p")
-              fi
-            done
-          fi
+            # Ignore file
+            if [ -n "$INPUT_IGNORE_FILE" ]; then
+              ARGS+=(--ignore-file "$INPUT_IGNORE_FILE")
+            fi
 
-          # OS package scanning
-          if [ "$INPUT_OS_PACKAGES" = "true" ]; then
-            ARGS+=(--os-packages)
-          fi
+            # IaC scanning paths (skip if scan-type=iac — already in command)
+            if [ -n "$INPUT_IAC" ] && [ "$INPUT_SCAN_TYPE" != "iac" ]; then
+              IFS=',' read -ra IAC_PATHS <<< "$INPUT_IAC"
+              for p in "${IAC_PATHS[@]}"; do
+                p="$(trim_arg "$p")"
+                if [ -n "$p" ]; then
+                  ARGS+=(--iac "$p")
+                fi
+              done
+            fi
 
-          # Delta scanning baseline
-          if [ -n "$INPUT_BASELINE" ]; then
-            ARGS+=(--baseline "$INPUT_BASELINE" --delta-mode new-only)
+            # AI inventory scanning paths
+            if [ -n "$INPUT_AI_INVENTORY" ]; then
+              IFS=',' read -ra AI_PATHS <<< "$INPUT_AI_INVENTORY"
+              for p in "${AI_PATHS[@]}"; do
+                p="$(trim_arg "$p")"
+                if [ -n "$p" ]; then
+                  ARGS+=(--ai-inventory "$p")
+                fi
+              done
+            fi
+
+            # OS package scanning
+            if [ "$INPUT_OS_PACKAGES" = "true" ]; then
+              ARGS+=(--os-packages)
+            fi
+
+            # Delta scanning baseline
+            if [ -n "$INPUT_BASELINE" ]; then
+              ARGS+=(--baseline "$INPUT_BASELINE" --delta-mode new-only)
+            fi
           fi
         fi
 

@@ -270,7 +270,7 @@ def run_iac_only_scan(
     iac_ctx.report = iac_report
     iac_ctx.iac_findings_data = iac_report.iac_findings_data
 
-    if output_format == "json" or output:
+    if output_format == "json" or (output and output_format == "console"):
         out_data = json.dumps(iac_report.iac_findings_data, indent=2)
         if output and output != "-":
             Path(output).write_text(out_data)

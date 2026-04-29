@@ -190,7 +190,7 @@ async def check_impl(
     try:
         from agent_bom.models import Package as Pkg
         from agent_bom.parsers.os_parsers import enrich_os_package_context
-        from agent_bom.scanners import scan_packages
+        from agent_bom.scanners import ScanOptions, scan_packages
 
         # Parse name@version
         spec = package.strip()
@@ -238,7 +238,7 @@ async def check_impl(
                     }
                 )
 
-        await scan_packages([pkg])
+        await scan_packages([pkg], options=ScanOptions(offline=False))
 
         if not pkg.vulnerabilities and eco in {"deb", "apk", "rpm"} and not os_context_complete:
             return json.dumps(

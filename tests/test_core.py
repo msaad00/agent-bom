@@ -3262,7 +3262,7 @@ def test_scan_agents_populates_intrinsic_framework_tags_without_compliance_flag(
     from agent_bom.models import Agent, AgentType, MCPServer, Package, Severity, Vulnerability
     from agent_bom.scanners import scan_agents_sync
 
-    async def _seeded_scan(packages, resolve_transitive=False):
+    async def _seeded_scan(packages, resolve_transitive=False, **_kwargs):
         return sum(len(pkg.vulnerabilities) for pkg in packages)
 
     monkeypatch.setattr("agent_bom.scanners.scan_packages", _seeded_scan)

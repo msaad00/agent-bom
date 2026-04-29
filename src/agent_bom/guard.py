@@ -129,11 +129,11 @@ def _extract_npm_packages(args: list[str]) -> list[str]:
 
 async def _check_package(name: str, ecosystem: str) -> dict:
     """Check a single package for vulnerabilities using existing scanner."""
-    from agent_bom.scanners import scan_packages
+    from agent_bom.scanners import ScanOptions, scan_packages
 
     pkg_entry = type("Pkg", (), {"name": name, "version": "latest", "ecosystem": ecosystem, "vulnerabilities": []})()
     try:
-        await scan_packages([pkg_entry])
+        await scan_packages([pkg_entry], options=ScanOptions(offline=False))
     except Exception as e:
         logger.warning("Failed to scan %s: %s", name, e)
         return {"name": name, "ecosystem": ecosystem, "error": str(e), "vulns": [], "blocked": False}

@@ -6,6 +6,7 @@ import asyncio
 import logging
 import threading
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional, cast
 
 from rich.console import Console
@@ -74,6 +75,35 @@ _logger = logging.getLogger(__name__)
 offline_mode: bool = False
 _scan_cache_init_lock = threading.Lock()
 _SCAN_CACHE_UNAVAILABLE = object()
+
+
+@dataclass(frozen=True)
+class ScanOptions:
+    """Immutable per-scan scanner controls.
+
+    The legacy module-level setters remain for CLI compatibility, but request
+    handlers and concurrent scan callers should pass explicit options so tenant
+    policy cannot bleed through shared module state.
+    """
+
+    offline: bool = False
+    compliance_enabled: bool = False
+    resolve_transitive: bool = False
+
+
+def default_scan_options(
+    *,
+    compliance_enabled: bool = False,
+    resolve_transitive: bool = False,
+    offline: bool | None = None,
+) -> ScanOptions:
+    """Build per-scan options while preserving legacy offline defaults."""
+
+    return ScanOptions(
+        offline=offline_mode if offline is None else offline,
+        compliance_enabled=compliance_enabled,
+        resolve_transitive=resolve_transitive,
+    )
 
 
 class IncompleteScanError(RuntimeError):
@@ -658,8 +688,16 @@ def _scan_packages_local_db_batch(
     return total
 
 
-async def scan_packages(packages: list[Package], *, resolve_transitive: bool = False) -> int:
+async def scan_packages(
+    packages: list[Package],
+    *,
+    resolve_transitive: bool = False,
+    options: ScanOptions | None = None,
+) -> int:
     """Scan a list of packages for vulnerabilities. Returns count of vulns found."""
+    scan_options = options or default_scan_options(resolve_transitive=resolve_transitive)
+    scan_offline = scan_options.offline
+    scan_resolve_transitive = scan_options.resolve_transitive
     # Deduplicate packages across discovery sources before scanning.
     # Prevents redundant OSV API calls when the same package is discovered
     # from multiple sources (local, K8s, cloud).
@@ -758,7 +796,7 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
     # Only hit npm/PyPI registries for packages we couldn't resolve locally.
     # In offline mode, skip all registry calls entirely.
     still_unresolved = [p for p in packages if p.version in ("latest", "unknown", "") and p.ecosystem.lower() in ("npm", "pypi", "conda")]
-    if still_unresolved and not offline_mode:
+    if still_unresolved and not scan_offline:
         try:
             from agent_bom.resolver import resolve_all_versions
 
@@ -773,11 +811,11 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
             _logger.warning("Version resolution failed for %d package(s): %s", len(still_unresolved), exc)
             console.print(f"  [yellow]⚠[/yellow] Version resolution skipped: {exc}")
             record_scan_warning("version resolution failed for one or more packages")
-    elif still_unresolved and offline_mode:
+    elif still_unresolved and scan_offline:
         _logger.info("Offline mode: skipping registry version resolution for %d package(s)", len(still_unresolved))
 
     # ── Transitive dependency resolution (npm / PyPI / Go) ───────────────────
-    if resolve_transitive and not offline_mode:
+    if scan_resolve_transitive and not scan_offline:
         transitive_ecosystems = {"npm", "pypi", "go"}
         eligible = [p for p in packages if p.ecosystem.lower() in transitive_ecosystems]
         if eligible:
@@ -835,12 +873,12 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
 
     osv_targets = [p for p in scannable if _db_key(p) not in db_covered]
 
-    if offline_mode or (prefer_local_db and not osv_targets):
-        if offline_mode and not db_covered:
+    if scan_offline or (prefer_local_db and not osv_targets):
+        if scan_offline and not db_covered:
             raise IncompleteScanError(
                 "Offline mode requires a populated local vulnerability DB. Run `agent-bom db update` before using `--offline`."
             )
-        if osv_targets and offline_mode:
+        if osv_targets and scan_offline:
             _logger.info("Offline mode: skipping OSV API for %d package(s) not in local DB", len(osv_targets))
             skipped_names = ", ".join(f"{pkg.name}@{pkg.version}" for pkg in osv_targets[:5])
             suffix = f" (+{len(osv_targets) - 5} more)" if len(osv_targets) > 5 else ""
@@ -893,7 +931,7 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
         for p in scannable
         if p.name.lower().replace("-", "_") in _AI_FRAMEWORK_PACKAGES or p.name.lower().replace("-", "") in _AI_FRAMEWORK_PACKAGES
     ]
-    if nvidia_packages and not offline_mode:
+    if nvidia_packages and not scan_offline:
         try:
             from agent_bom.scanners.nvidia_advisory import check_nvidia_advisories
 
@@ -907,7 +945,7 @@ async def scan_packages(packages: list[Package], *, resolve_transitive: bool = F
             record_scan_warning("NVIDIA advisory enrichment skipped")
 
     # Supplemental: check GitHub Security Advisories for all packages
-    if scannable and not offline_mode:
+    if scannable and not scan_offline:
         try:
             from agent_bom.scanners.ghsa_advisory import check_github_advisories
 
@@ -956,10 +994,13 @@ async def scan_agents(
     compliance_enabled: bool = False,
     resolve_transitive: bool = False,
     show_scan_banner: bool = True,
+    options: ScanOptions | None = None,
 ) -> list[BlastRadius]:
     """Scan all agents' MCP server packages for vulnerabilities."""
-    global compliance_mode  # noqa: PLW0603
-    compliance_mode = compliance_enabled
+    scan_options = options or default_scan_options(
+        compliance_enabled=compliance_enabled,
+        resolve_transitive=resolve_transitive,
+    )
     if show_scan_banner:
         console.print("\n[bold blue]🛡️  Scanning for vulnerabilities...[/bold blue]\n")
 
@@ -993,7 +1034,7 @@ async def scan_agents(
     if show_scan_banner:
         console.print(f"  Scanning {len(unique_packages)} unique packages across {len(agents)} agent(s)...")
 
-    total_vulns = await scan_packages(unique_packages, resolve_transitive=resolve_transitive)
+    total_vulns = await scan_packages(unique_packages, options=scan_options)
 
     # Propagate vulnerabilities back to all instances
     vuln_map = {}
@@ -1135,7 +1176,7 @@ async def scan_agents(
             br.calculate_risk_score()
             # Context-aware tagging remains opt-in for explicit compliance
             # views, but effective framework tags are always materialized.
-            if compliance_enabled:
+            if scan_options.compliance_enabled:
                 br.owasp_tags = tag_blast_radius(br)
                 br.atlas_tags = tag_atlas_techniques(br)
                 br.attack_tags = tag_attack_techniques(br)
@@ -1178,13 +1219,16 @@ async def scan_agents_with_enrichment(
     enable_enrichment: bool = True,
     compliance_enabled: bool = False,
     show_scan_banner: bool = True,
+    options: ScanOptions | None = None,
 ) -> list[BlastRadius]:
     """Scan agents and enrich vulnerabilities with NVD/EPSS/KEV data."""
+    scan_options = options or default_scan_options(compliance_enabled=compliance_enabled)
     # First, do normal OSV scan
     blast_radii = await scan_agents(
         agents,
-        compliance_enabled=compliance_enabled,
+        compliance_enabled=scan_options.compliance_enabled,
         show_scan_banner=show_scan_banner,
+        options=scan_options,
     )
 
     # Then enrich with external data
@@ -1254,25 +1298,34 @@ def scan_agents_sync(
     compliance_enabled: bool = False,
     resolve_transitive: bool = False,
     show_scan_banner: bool = True,
+    offline: bool | None = None,
+    options: ScanOptions | None = None,
 ) -> list[BlastRadius]:
     """Synchronous wrapper for scan_agents."""
+    scan_options = options or default_scan_options(
+        compliance_enabled=compliance_enabled,
+        resolve_transitive=resolve_transitive,
+        offline=offline,
+    )
     if enable_enrichment:
         blast_radii = asyncio.run(
             scan_agents_with_enrichment(
                 agents,
                 nvd_api_key,
                 enable_enrichment,
-                compliance_enabled=compliance_enabled,
+                compliance_enabled=scan_options.compliance_enabled,
                 show_scan_banner=show_scan_banner,
+                options=scan_options,
             )
         )
     else:
         blast_radii = asyncio.run(
             scan_agents(
                 agents,
-                compliance_enabled=compliance_enabled,
-                resolve_transitive=resolve_transitive,
+                compliance_enabled=scan_options.compliance_enabled,
+                resolve_transitive=scan_options.resolve_transitive,
                 show_scan_banner=show_scan_banner,
+                options=scan_options,
             )
         )
     if blast_radius_depth > 1:

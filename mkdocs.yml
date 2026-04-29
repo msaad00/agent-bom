@@ -132,6 +132,7 @@ nav:
       - Hosted Product Control Plane: architecture/hosted-product-spec.md
       - AI Infrastructure Scanning: architecture/ai-infrastructure.md
       - Data Ingestion and Security: architecture/data-ingestion-and-security.md
+      - Agentic Skills Architecture: architecture/agentic-skills-architecture.md
       - Supply Chain and Trust: architecture/supply-chain-and-trust.md
       - Canonical Model vs OCSF: architecture/canonical-vs-ocsf.md
   - Reference:

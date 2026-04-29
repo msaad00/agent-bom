@@ -165,6 +165,15 @@ agent-cloud = "agent_bom.cli.cloud:cloud_main"
 agent-iac = "agent_bom.cli.iac:iac_main"
 agent-claw = "agent_bom.cli.claw:claw_main"
 
+[project.entry-points."agent_bom.cloud_providers"]
+agent_bom_builtin = "agent_bom.cloud:builtin_provider_registrations"
+
+[project.entry-points."agent_bom.connectors"]
+agent_bom_builtin = "agent_bom.connectors:builtin_connector_registrations"
+
+[project.entry-points."agent_bom.inventory_parsers"]
+agent_bom_builtin = "agent_bom.parsers:builtin_inventory_parser_registrations"
+
 [project.urls]
 Homepage = "https://github.com/msaad00/agent-bom"
 Repository = "https://github.com/msaad00/agent-bom"

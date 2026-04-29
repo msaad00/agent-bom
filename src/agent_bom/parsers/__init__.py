@@ -8,12 +8,14 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import quote
 
 from rich.console import Console
 
+from agent_bom.extensions import ExtensionCapabilities, iter_entry_point_registrations
 from agent_bom.models import MCPServer, Package
+from agent_bom.parsers.base import InventoryParserRegistration
 
 # Re-export Go/Maven/Cargo/Gradle/conda/uvx parsers for backward compatibility
 from agent_bom.parsers.compiled_parsers import (  # noqa: F401
@@ -63,6 +65,137 @@ from agent_bom.parsers.python_parsers import (  # noqa: F401
 # Re-export Ruby, PHP, and Swift parsers
 from agent_bom.parsers.ruby_parsers import parse_ruby_packages  # noqa: F401
 from agent_bom.parsers.swift_parsers import parse_swift_packages  # noqa: F401
+
+_ENTRY_POINT_GROUP = "agent_bom.inventory_parsers"
+
+
+_BUILTIN_INVENTORY_PARSERS: dict[str, tuple[str, str, tuple[str, ...]]] = {
+    "npm": ("agent_bom.parsers.node_parsers", "parse_npm_packages", ("package.json", "package-lock.json")),
+    "yarn": ("agent_bom.parsers.node_parsers", "parse_yarn_lock", ("yarn.lock",)),
+    "pnpm": ("agent_bom.parsers.node_parsers", "parse_pnpm_lock", ("pnpm-lock.yaml",)),
+    "bun": ("agent_bom.parsers.node_parsers", "parse_bun_packages", ("bun.lockb", "bun.lock")),
+    "pip": ("agent_bom.parsers.python_parsers", "parse_pip_packages", ("requirements.txt", "pyproject.toml", "poetry.lock", "uv.lock")),
+    "pip_compile": ("agent_bom.parsers.python_parsers", "parse_pip_compile_inputs", ("requirements.in",)),
+    "conda_environment": ("agent_bom.parsers.python_parsers", "parse_conda_environment", ("environment.yml", "environment.yaml")),
+    "conda": ("agent_bom.parsers.compiled_parsers", "parse_conda_packages", ("conda-meta",)),
+    "go": ("agent_bom.parsers.compiled_parsers", "parse_go_packages", ("go.mod", "go.sum")),
+    "cargo": ("agent_bom.parsers.compiled_parsers", "parse_cargo_packages", ("Cargo.toml", "Cargo.lock")),
+    "maven": ("agent_bom.parsers.compiled_parsers", "parse_maven_packages", ("pom.xml",)),
+    "gradle": ("agent_bom.parsers.compiled_parsers", "parse_gradle_packages", ("build.gradle", "build.gradle.kts")),
+    "nuget": ("agent_bom.parsers.dotnet_parsers", "parse_nuget_packages", ("*.csproj", "packages.lock.json")),
+    "ruby": ("agent_bom.parsers.ruby_parsers", "parse_ruby_packages", ("Gemfile", "Gemfile.lock")),
+    "php": ("agent_bom.parsers.php_parsers", "parse_php_packages", ("composer.json", "composer.lock")),
+    "swift": ("agent_bom.parsers.swift_parsers", "parse_swift_packages", ("Package.swift", "Package.resolved")),
+    "apk": ("agent_bom.parsers.os_parsers", "parse_apk_packages", ("lib/apk/db/installed",)),
+    "dpkg": ("agent_bom.parsers.os_parsers", "parse_dpkg_packages", ("var/lib/dpkg/status",)),
+    "rpm": ("agent_bom.parsers.os_parsers", "parse_rpm_packages", ("var/lib/rpm",)),
+}
+
+_INVENTORY_PARSER_REGISTRY: dict[str, InventoryParserRegistration] = {}
+_INVENTORY_PARSER_REGISTRY_WARNINGS: list[str] = []
+_INVENTORY_PARSER_REGISTRY_LOADED = False
+
+
+def _parser_capabilities() -> ExtensionCapabilities:
+    return ExtensionCapabilities(
+        scan_modes=("inventory",),
+        required_scopes=("local_project_read",),
+        outbound_destinations=(),
+        data_boundary="local_manifest_read_only",
+        network_access=False,
+        guarantees=("read_only", "local_files_only"),
+    )
+
+
+def _registration_for_inventory_parser(
+    name: str,
+    module: str,
+    parse_attr: str,
+    manifest_names: tuple[str, ...],
+    *,
+    source: str = "builtin",
+) -> InventoryParserRegistration:
+    return InventoryParserRegistration(
+        name=name,
+        module=module,
+        capabilities=_parser_capabilities(),
+        source=source,
+        parse_attr=parse_attr,
+        manifest_names=manifest_names,
+    )
+
+
+def builtin_inventory_parser_registrations() -> list[InventoryParserRegistration]:
+    """Return built-in package inventory parser registrations."""
+
+    return [
+        _registration_for_inventory_parser(name, module, parse_attr, manifest_names)
+        for name, (module, parse_attr, manifest_names) in _BUILTIN_INVENTORY_PARSERS.items()
+    ]
+
+
+def _coerce_inventory_parser_registration(value: Any, entry_point_name: str) -> InventoryParserRegistration:
+    if isinstance(value, InventoryParserRegistration):
+        return value
+    name = str(getattr(value, "name", entry_point_name)).strip()
+    module = str(getattr(value, "module", "")).strip()
+    if not name or not module:
+        raise ValueError("inventory parser registration must declare name and module")
+    capabilities = getattr(value, "capabilities", ExtensionCapabilities())
+    if not isinstance(capabilities, ExtensionCapabilities):
+        capabilities = ExtensionCapabilities()
+    return InventoryParserRegistration(
+        name=name,
+        module=module,
+        capabilities=capabilities,
+        source=str(getattr(value, "source", "entry_point")),
+        discover_attr=str(getattr(value, "discover_attr", "discover")),
+        parse_attr=str(getattr(value, "parse_attr", "parse")),
+        manifest_names=tuple(str(item) for item in getattr(value, "manifest_names", ())),
+    )
+
+
+def register_inventory_parser(registration: InventoryParserRegistration) -> None:
+    """Register an inventory parser with capability metadata."""
+
+    _INVENTORY_PARSER_REGISTRY[registration.name] = registration
+
+
+def _ensure_inventory_parser_registry_loaded() -> None:
+    global _INVENTORY_PARSER_REGISTRY_LOADED
+    if _INVENTORY_PARSER_REGISTRY_LOADED:
+        return
+    for registration in builtin_inventory_parser_registrations():
+        register_inventory_parser(registration)
+    for registration in iter_entry_point_registrations(
+        group=_ENTRY_POINT_GROUP,
+        coerce=_coerce_inventory_parser_registration,
+        warnings=_INVENTORY_PARSER_REGISTRY_WARNINGS,
+    ):
+        register_inventory_parser(registration)
+    _INVENTORY_PARSER_REGISTRY_LOADED = True
+
+
+def list_registered_inventory_parsers() -> list[InventoryParserRegistration]:
+    """Return registered inventory parsers with capability declarations."""
+
+    _ensure_inventory_parser_registry_loaded()
+    return [_INVENTORY_PARSER_REGISTRY[name] for name in sorted(_INVENTORY_PARSER_REGISTRY)]
+
+
+def inventory_parser_registry_warnings() -> list[str]:
+    """Return sanitized non-fatal registry loading warnings."""
+
+    _ensure_inventory_parser_registry_loaded()
+    return list(_INVENTORY_PARSER_REGISTRY_WARNINGS)
+
+
+def _reset_inventory_parser_registry_for_tests() -> None:
+    _INVENTORY_PARSER_REGISTRY.clear()
+    _INVENTORY_PARSER_REGISTRY_WARNINGS.clear()
+    global _INVENTORY_PARSER_REGISTRY_LOADED
+    _INVENTORY_PARSER_REGISTRY_LOADED = False
+
 
 # Path to bundled MCP registry (parsers/ is a subdir of agent_bom/)
 _REGISTRY_PATH = Path(__file__).parent.parent / "mcp_registry.json"

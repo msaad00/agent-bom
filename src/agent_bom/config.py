@@ -35,9 +35,24 @@ def _int(env_key: str, default: int) -> int:
         return default
 
 
+def _bool(env_key: str, default: bool) -> bool:
+    """Read a boolean from *env_key*, falling back to *default*."""
+    raw = os.environ.get(env_key)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _str(env_key: str, default: str) -> str:
     """Read a string from *env_key*, falling back to *default*."""
     return os.environ.get(env_key, default)
+
+
+# ── Extension Loading ─────────────────────────────────────────────────────
+# Disabled by default so third-party provider/connector/parser entry points
+# never execute unless an operator explicitly opts in.
+
+ENABLE_EXTENSION_ENTRYPOINTS = _bool("AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS", False)
 
 
 # ── EPSS Thresholds ─────────────────────────────────────────────────────────

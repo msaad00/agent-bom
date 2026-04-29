@@ -39,7 +39,7 @@ DOC_FILE = ROOT / "docs" / "operations" / "ENV_VARS.md"
 ALLOWLIST_FILE = ROOT / "scripts" / "env_var_allowlist.txt"
 
 # Helpers in config.py that wrap os.environ.get() with a typed default.
-_CONFIG_HELPERS = {"_float", "_int", "_str"}
+_CONFIG_HELPERS = {"_bool", "_float", "_int", "_str"}
 
 ENV_VAR_LITERAL = re.compile(r'"(AGENT_BOM_[A-Z][A-Z0-9_]*)"')
 
@@ -146,7 +146,7 @@ def _parse_config(path: Path) -> list[EnvVar]:
             if not value.args or not isinstance(value.args[0], ast.Constant) or not isinstance(value.args[0].value, str):
                 continue
             env_key = value.args[0].value
-            type_label = {"_float": "float", "_int": "int", "_str": "str"}[value.func.id]
+            type_label = {"_bool": "bool", "_float": "float", "_int": "int", "_str": "str"}[value.func.id]
             default_repr = ast.unparse(value.args[1]).strip() if len(value.args) >= 2 and value.args[1] is not None else ""
         elif isinstance(value, ast.Call) and _is_environ_get(value) and value.args and isinstance(value.args[0], ast.Constant):
             arg = value.args[0].value

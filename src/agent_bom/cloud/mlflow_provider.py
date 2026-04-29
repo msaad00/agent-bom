@@ -15,7 +15,7 @@ import os
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_package_purl
+from .normalization import build_cloud_origin, build_package_purl
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +149,16 @@ def _discover_registered_models(
                 source="mlflow-model",
                 version=f"v{model_version}" + (f" ({model_stage})" if model_stage else ""),
                 mcp_servers=[server],
+                metadata={
+                    "cloud_origin": build_cloud_origin(
+                        provider="mlflow",
+                        service="model-registry",
+                        resource_type="model",
+                        resource_id=model_name,
+                        resource_name=model_name,
+                        raw_identity={"tracking_uri": tracking_uri, "name": model_name},
+                    )
+                },
             )
             agents.append(agent)
 
@@ -221,6 +231,16 @@ def _discover_experiments(
                 source="mlflow-experiment",
                 version=exp_id,
                 mcp_servers=[server],
+                metadata={
+                    "cloud_origin": build_cloud_origin(
+                        provider="mlflow",
+                        service="tracking",
+                        resource_type="experiment",
+                        resource_id=exp_id,
+                        resource_name=exp_name,
+                        raw_identity={"tracking_uri": tracking_uri, "experiment_id": exp_id, "name": exp_name},
+                    )
+                },
             )
             agents.append(agent)
 

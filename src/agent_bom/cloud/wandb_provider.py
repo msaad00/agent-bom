@@ -15,7 +15,7 @@ import os
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_package_purl
+from .normalization import build_cloud_origin, build_package_purl
 
 logger = logging.getLogger(__name__)
 
@@ -139,6 +139,18 @@ def _run_to_agent(run, entity: str, project: str | None) -> Agent | None:
         source="wandb-run",
         version=run_id[:8],
         mcp_servers=[server],
+        metadata={
+            "cloud_origin": build_cloud_origin(
+                provider="wandb",
+                service="runs",
+                resource_type="run",
+                resource_id=str(run_id),
+                resource_name=str(run_name),
+                account_id=entity,
+                project_id=project or None,
+                raw_identity={"id": run_id, "name": run_name, "entity": entity, "project": project or ""},
+            )
+        },
     )
 
 
@@ -186,6 +198,18 @@ def _discover_artifacts(
                         source=f"wandb-{art_type}",
                         version=str(art_version),
                         mcp_servers=[server],
+                        metadata={
+                            "cloud_origin": build_cloud_origin(
+                                provider="wandb",
+                                service="artifacts",
+                                resource_type=art_type,
+                                resource_id=art_name,
+                                resource_name=art_name,
+                                account_id=entity,
+                                project_id=project,
+                                raw_identity={"name": art_name, "version": art_version, "entity": entity, "project": project},
+                            )
+                        },
                     )
                     agents.append(agent)
             except (ValueError, KeyError, AttributeError) as exc:

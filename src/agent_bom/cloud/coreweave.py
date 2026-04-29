@@ -22,7 +22,7 @@ import subprocess
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_package_purl, parse_container_image_package
+from .normalization import build_cloud_origin, build_package_purl, parse_container_image_package
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +185,15 @@ def _discover_virtual_servers(
                 "gpu_count": gpu_count,
                 "region": region,
                 "kind": "VirtualServer",
+                "cloud_origin": build_cloud_origin(
+                    provider="coreweave",
+                    service="kubernetes",
+                    resource_type="virtual-server",
+                    resource_id=f"{ns}/{name}",
+                    resource_name=name,
+                    location=region or None,
+                    raw_identity={"namespace": ns, "name": name, "kind": "VirtualServer"},
+                ),
             },
         )
         agents.append(agent)
@@ -264,6 +273,14 @@ def _discover_inference_services(
             "runtime": runtime,
             "serving_url": serving_url,
             "kind": "InferenceService",
+            "cloud_origin": build_cloud_origin(
+                provider="coreweave",
+                service="kubernetes",
+                resource_type="inference-service",
+                resource_id=f"{ns}/{name}",
+                resource_name=name,
+                raw_identity={"namespace": ns, "name": name, "kind": "InferenceService", "image": runtime_image},
+            ),
         }
         if is_nim:
             metadata["is_nim"] = True
@@ -352,6 +369,14 @@ def _discover_gpu_pods(
                 "gpu_count": gpu_count,
                 "image": image_ref,
                 "kind": "Pod",
+                "cloud_origin": build_cloud_origin(
+                    provider="coreweave",
+                    service="kubernetes",
+                    resource_type="gpu-pod",
+                    resource_id=f"{pod_ns}/{pod_name}",
+                    resource_name=pod_name,
+                    raw_identity={"namespace": pod_ns, "pod": pod_name, "image": image_ref},
+                ),
             }
             if is_nim:
                 metadata["is_nim"] = True
@@ -444,6 +469,14 @@ def _discover_infiniband_jobs(
                     "gpu_count": int(gpu_limits) if gpu_limits != "0" else 0,
                     "image": image_ref,
                     "kind": "Pod",
+                    "cloud_origin": build_cloud_origin(
+                        provider="coreweave",
+                        service="kubernetes",
+                        resource_type="training-pod",
+                        resource_id=f"{pod_ns}/{pod_name}",
+                        resource_name=pod_name,
+                        raw_identity={"namespace": pod_ns, "pod": pod_name, "image": image_ref},
+                    ),
                 },
             )
             agents.append(agent)

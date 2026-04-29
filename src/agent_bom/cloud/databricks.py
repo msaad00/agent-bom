@@ -28,7 +28,7 @@ from typing import Any, Optional
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_cloud_state, build_package_purl, normalize_cloud_lifecycle_state
+from .normalization import build_cloud_origin, build_cloud_state, build_package_purl, normalize_cloud_lifecycle_state
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +115,14 @@ def discover(
             source="databricks",
             mcp_servers=[server],
             metadata={
+                "cloud_origin": build_cloud_origin(
+                    provider="databricks",
+                    service="clusters",
+                    resource_type="cluster",
+                    resource_id=cluster_id,
+                    resource_name=cluster_name,
+                    raw_identity={"cluster_id": cluster_id, "cluster_name": cluster_name},
+                ),
                 "cloud_state": build_cloud_state(
                     provider="databricks",
                     service="clusters",
@@ -122,7 +130,7 @@ def discover(
                     lifecycle_state=lifecycle_state,
                     raw_state=state_str,
                     state_source="cluster.state",
-                )
+                ),
             },
         )
         agents.append(agent)
@@ -158,6 +166,14 @@ def discover(
                 source="databricks",
                 mcp_servers=[server],
                 metadata={
+                    "cloud_origin": build_cloud_origin(
+                        provider="databricks",
+                        service="model-serving",
+                        resource_type="serving-endpoint",
+                        resource_id=ep_name,
+                        resource_name=ep_name,
+                        raw_identity={"name": ep_name},
+                    ),
                     "cloud_state": build_cloud_state(
                         provider="databricks",
                         service="model-serving",
@@ -165,7 +181,7 @@ def discover(
                         lifecycle_state=lifecycle_state,
                         raw_state=state_str,
                         state_source="state.ready",
-                    )
+                    ),
                 },
             )
             agents.append(agent)

@@ -319,6 +319,16 @@ def _discover_cloud_functions(
                     "runtime": runtime,
                     "entry_point": entry_point,
                     "source_uri": source_uri,
+                    "cloud_origin": build_cloud_origin(
+                        provider="gcp",
+                        service="cloud-functions",
+                        resource_type="function",
+                        resource_id=fn_resource,
+                        resource_name=fn_name,
+                        location=region,
+                        project_id=project_id,
+                        raw_identity={"name": fn_resource, "display_name": fn_name, "runtime": runtime},
+                    ),
                 },
             )
             cloud_scope = build_cloud_scope(
@@ -439,6 +449,16 @@ def _discover_gke_clusters(
                     "region": cluster_location,
                     "cluster_version": cluster_version,
                     "node_pools": node_pool_info,
+                    "cloud_origin": build_cloud_origin(
+                        provider="gcp",
+                        service="gke",
+                        resource_type="cluster",
+                        resource_id=cluster_self_link or f"projects/{project_id}/locations/{cluster_location}/clusters/{cluster_name}",
+                        resource_name=cluster_name,
+                        location=cluster_location,
+                        project_id=project_id,
+                        raw_identity={"name": cluster_name, "self_link": cluster_self_link, "version": cluster_version},
+                    ),
                 },
             )
             agents.append(agent)

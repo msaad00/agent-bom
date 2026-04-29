@@ -529,7 +529,20 @@ def _discover_azure_functions(
                 config_path=app_id,
                 source="azure-functions",
                 mcp_servers=[server],
-                metadata={"runtime": runtime_stack, "location": location},
+                metadata={
+                    "runtime": runtime_stack,
+                    "location": location,
+                    "cloud_origin": build_cloud_origin(
+                        provider="azure",
+                        service="functions",
+                        resource_type="function-app",
+                        resource_id=app_id,
+                        resource_name=app_name,
+                        location=location or None,
+                        subscription_id=subscription_id,
+                        raw_identity={"id": app_id, "name": app_name, "runtime": runtime_stack},
+                    ),
+                },
             )
             cloud_scope = build_cloud_scope(
                 provider="azure",
@@ -602,7 +615,18 @@ def _discover_container_instances(
                     config_path=group_id,
                     source="azure-container-instances",
                     mcp_servers=[server],
-                    metadata={"image": image},
+                    metadata={
+                        "image": image,
+                        "cloud_origin": build_cloud_origin(
+                            provider="azure",
+                            service="container-instances",
+                            resource_type="container",
+                            resource_id=f"{group_id}/{container_name}",
+                            resource_name=container_name,
+                            subscription_id=subscription_id,
+                            raw_identity={"group_id": group_id, "group_name": group_name, "container": container_name, "image": image},
+                        ),
+                    },
                 )
                 agents.append(agent)
 
@@ -684,6 +708,15 @@ def _discover_ml_endpoints(
                         metadata={
                             "workspace": ws_name,
                             "deployments": deploy_meta,
+                            "cloud_origin": build_cloud_origin(
+                                provider="azure",
+                                service="machine-learning",
+                                resource_type="online-endpoint",
+                                resource_id=ep_id,
+                                resource_name=ep_name,
+                                subscription_id=subscription_id,
+                                raw_identity={"id": ep_id, "workspace": ws_name, "name": ep_name},
+                            ),
                         },
                     )
                     agents.append(agent)

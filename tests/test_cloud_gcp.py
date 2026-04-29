@@ -17,6 +17,7 @@ def _mock_gcp_modules():
         "google": mock,
         "google.cloud": mock,
         "google.cloud.aiplatform": mock,
+        "google.cloud.aiplatform_v1": mock,
         "google.cloud.functions_v2": mock,
         "google.cloud.container_v1": mock,
         "google.cloud.run_v2": mock,

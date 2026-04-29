@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from agent_bom.security import sanitize_error, sanitize_text
+
 _LIFECYCLE_STATE_MAPS: dict[tuple[str, str, str], dict[str, str]] = {
     ("aws", "bedrock", "agent"): {
         "PREPARED": "prepared",
@@ -86,6 +88,22 @@ def build_cloud_origin(
             key: value for key, value in raw_identity.items() if isinstance(value, (str, int, float, bool)) and value not in ("", None)
         }
     return envelope
+
+
+def sanitize_discovery_warning(value: Any, *, max_len: int = 500) -> str:
+    """Return warning text that is safe to persist or render.
+
+    Cloud and SaaS SDK exceptions often embed request URLs, local paths, or
+    credential-like fragments. Discovery warnings are user-facing diagnostics,
+    so normalize them through the same redaction path before they leave a
+    provider or connector boundary.
+    """
+    return sanitize_text(sanitize_error(str(value)), max_len=max_len)
+
+
+def sanitize_discovery_warnings(values: list[Any] | tuple[Any, ...]) -> list[str]:
+    """Sanitize a provider/connector warning list."""
+    return [sanitize_discovery_warning(value) for value in values if str(value or "").strip()]
 
 
 def build_cloud_state(

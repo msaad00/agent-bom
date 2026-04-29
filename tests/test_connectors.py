@@ -1,5 +1,7 @@
 """Tests for SaaS connector framework — Jira, ServiceNow, Slack discovery."""
 
+import sys
+import types
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -28,6 +30,29 @@ def test_list_connectors():
 def test_discover_unknown_connector():
     with pytest.raises(ValueError, match="Unknown connector"):
         discover_from_connector("nonexistent")
+
+
+def test_discover_from_connector_sanitizes_returned_warnings(monkeypatch):
+    import agent_bom.connectors as connector_registry
+
+    module_name = "agent_bom.tests.fake_connector"
+    fake_module = types.ModuleType(module_name)
+    fake_module.discover = MagicMock(
+        return_value=(
+            [],
+            ["failed https://user:tok123@example.com/hook?token=secret from /Users/alice/.config/connector.json"],
+        )
+    )
+    monkeypatch.setitem(sys.modules, module_name, fake_module)
+    monkeypatch.setitem(connector_registry._CONNECTORS, "fake", module_name)
+
+    agents, warnings = discover_from_connector("fake")
+
+    assert agents == []
+    warning = " ".join(warnings)
+    assert "tok123" not in warning
+    assert "token=secret" not in warning
+    assert "/Users/alice" not in warning
 
 
 def test_check_health_unknown_connector():

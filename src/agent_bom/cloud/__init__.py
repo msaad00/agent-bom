@@ -13,6 +13,7 @@ from typing import Any
 from agent_bom.models import Agent
 
 from .base import CloudDiscoveryError
+from .normalization import sanitize_discovery_warnings
 
 _PROVIDERS: dict[str, str] = {
     "aws": "agent_bom.cloud.aws",
@@ -46,7 +47,8 @@ def discover_from_provider(
     if provider not in _PROVIDERS:
         raise ValueError(f"Unknown cloud provider '{provider}'. Available: {', '.join(sorted(_PROVIDERS))}")
     mod = importlib.import_module(_PROVIDERS[provider])
-    return mod.discover(**kwargs)
+    agents, warnings = mod.discover(**kwargs)
+    return agents, sanitize_discovery_warnings(warnings)
 
 
 def discover_governance(

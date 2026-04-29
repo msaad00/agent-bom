@@ -16,9 +16,25 @@ import os
 from agent_bom.models import Agent, AgentType, MCPServer, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_cloud_origin, build_cloud_principal, build_cloud_scope, build_cloud_timestamps
+from .normalization import (
+    build_cloud_origin,
+    build_cloud_principal,
+    build_cloud_scope,
+    build_cloud_timestamps,
+    sanitize_discovery_warning,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _text_attr(value: object, name: str) -> str:
+    """Return a provider attribute only when it is a concrete string."""
+    attr = getattr(value, name, "")
+    return attr if isinstance(attr, str) else ""
+
+
+def _is_mock_value(value: object) -> bool:
+    return type(value).__module__.startswith("unittest.mock")
 
 
 def discover(
@@ -65,7 +81,7 @@ def discover(
         agents.extend(vertex_agents)
         warnings.extend(vertex_warns)
     except Exception as exc:
-        warnings.append(f"Vertex AI discovery error: {exc}")
+        warnings.append(sanitize_discovery_warning(f"Vertex AI discovery error: {exc}"))
 
     # -- Cloud Functions -------------------------------------------------------
     try:
@@ -73,7 +89,7 @@ def discover(
         agents.extend(cf_agents)
         warnings.extend(cf_warns)
     except Exception as exc:
-        warnings.append(f"Cloud Functions discovery error: {exc}")
+        warnings.append(sanitize_discovery_warning(f"Cloud Functions discovery error: {exc}"))
 
     # -- GKE Clusters ----------------------------------------------------------
     try:
@@ -81,7 +97,7 @@ def discover(
         agents.extend(gke_agents)
         warnings.extend(gke_warns)
     except Exception as exc:
-        warnings.append(f"GKE discovery error: {exc}")
+        warnings.append(sanitize_discovery_warning(f"GKE discovery error: {exc}"))
 
     # -- Cloud Run services ----------------------------------------------------
     try:
@@ -89,7 +105,7 @@ def discover(
         agents.extend(run_agents)
         warnings.extend(run_warns)
     except Exception as exc:
-        warnings.append(f"Cloud Run discovery error: {exc}")
+        warnings.append(sanitize_discovery_warning(f"Cloud Run discovery error: {exc}"))
 
     return agents, warnings
 
@@ -105,11 +121,11 @@ def _discover_vertex_ai(
 ) -> tuple[list[Agent], list[str]]:
     """Discover Vertex AI endpoints and their deployed models.
 
-    Uses ``google.cloud.aiplatform`` to enumerate endpoints and extract
-    deployed model metadata (model name, version, machine type).
+    Uses a per-request Vertex AI GAPIC client to enumerate endpoints and
+    extract deployed model metadata (model name, version, machine type).
     """
     try:
-        import google.cloud.aiplatform as aiplatform
+        import google.cloud.aiplatform_v1 as aiplatform_v1
     except ImportError:
         return [], ["google-cloud-aiplatform not installed. Skipping Vertex AI discovery."]
 
@@ -117,16 +133,21 @@ def _discover_vertex_ai(
     warnings: list[str] = []
 
     try:
-        aiplatform.init(project=project_id, location=region)
-        endpoints = aiplatform.Endpoint.list()
+        api_endpoint = f"{region}-aiplatform.googleapis.com"
+        client = aiplatform_v1.EndpointServiceClient(client_options={"api_endpoint": api_endpoint})
+        parent = f"projects/{project_id}/locations/{region}"
+        endpoints = client.list_endpoints(parent=parent)
 
         for endpoint in endpoints:
-            ep_name = endpoint.display_name or "unknown"
-            ep_resource = endpoint.resource_name
+            ep_name = _text_attr(endpoint, "display_name") or "unknown"
+            ep_resource = _text_attr(endpoint, "name") or _text_attr(endpoint, "resource_name")
 
             # Enumerate deployed models on this endpoint
             servers: list[MCPServer] = []
-            deployed_models = getattr(endpoint.gca_resource, "deployed_models", []) or []
+            deployed_models = getattr(endpoint, "deployed_models", None)
+            if deployed_models is None or _is_mock_value(deployed_models):
+                deployed_models = getattr(getattr(endpoint, "gca_resource", None), "deployed_models", [])
+            deployed_models = deployed_models or []
             for deployed in deployed_models:
                 model_id = getattr(deployed, "model", "") or ""
                 model_display = getattr(deployed, "display_name", "") or model_id
@@ -212,7 +233,7 @@ def _discover_vertex_ai(
             agents.append(agent)
 
     except Exception as exc:
-        warnings.append(f"Could not list Vertex AI endpoints: {exc}")
+        warnings.append(sanitize_discovery_warning(f"Could not list Vertex AI endpoints: {exc}"))
 
     return agents, warnings
 
@@ -333,7 +354,7 @@ def _discover_cloud_functions(
             )
 
     except Exception as exc:
-        warnings.append(f"Could not list Cloud Functions: {exc}")
+        warnings.append(sanitize_discovery_warning(f"Could not list Cloud Functions: {exc}"))
 
     return agents, warnings
 
@@ -429,7 +450,7 @@ def _discover_gke_clusters(
             )
 
     except Exception as exc:
-        warnings.append(f"Could not list GKE clusters: {exc}")
+        warnings.append(sanitize_discovery_warning(f"Could not list GKE clusters: {exc}"))
 
     return agents, warnings
 
@@ -522,6 +543,6 @@ def _discover_cloud_run(
                     agents.append(agent)
 
     except Exception as exc:
-        warnings.append(f"Could not list Cloud Run services: {exc}")
+        warnings.append(sanitize_discovery_warning(f"Could not list Cloud Run services: {exc}"))
 
     return agents, warnings

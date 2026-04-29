@@ -15,6 +15,8 @@ import json
 import logging
 import os
 import zipfile
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from email.parser import Parser as EmailParser
 from pathlib import Path
 from typing import Any
@@ -33,6 +35,8 @@ from .normalization import (
 )
 
 logger = logging.getLogger(__name__)
+
+_MAX_AWS_DISCOVERY_WORKERS = 4
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -79,103 +83,144 @@ def discover(
     resolved_region = session.region_name or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
     account_id = _resolve_account_id(session)
 
+    discovery_jobs: list[tuple[str, Callable[[], tuple[list[Agent], list[str], list[dict[str, str] | str]]]]] = []
+
+    def _new_discovery_session() -> Any:
+        return boto3.Session(**session_kwargs)
+
     # ── Bedrock Agents ────────────────────────────────────────────────────
-    try:
-        bedrock_agents, bedrock_warnings = _discover_bedrock(session, resolved_region, account_id=account_id)
-        agents.extend(bedrock_agents)
-        warnings.extend(bedrock_warnings)
-    except NoCredentialsError:
-        warnings.append("AWS credentials not found. Configure via env vars, ~/.aws/credentials, IAM role, or SSO.")
-        return agents, warnings
-    except ClientError as exc:
-        code = exc.response["Error"]["Code"]
-        if code in ("AccessDeniedException", "UnauthorizedAccess"):
-            warnings.append("Access denied for bedrock-agent:ListAgents. Attach the BedrockAgentReadOnly or AmazonBedrockReadOnly policy.")
-        else:
-            warnings.append(f"AWS Bedrock API error: {exc}")
+    def _bedrock_job() -> tuple[list[Agent], list[str], list[dict[str, str] | str]]:
+        bedrock_agents, bedrock_warnings = _discover_bedrock(
+            _new_discovery_session(),
+            resolved_region,
+            account_id=account_id,
+        )
+        return bedrock_agents, bedrock_warnings, []
+
+    discovery_jobs.append(("bedrock", _bedrock_job))
 
     # ── ECS Tasks ─────────────────────────────────────────────────────────
     if include_ecs:
-        try:
-            ecs_refs, ecs_warns = _discover_ecs_images(session, resolved_region)
-            ecs_image_refs.extend(ecs_refs)
-            warnings.extend(ecs_warns)
-        except ClientError as exc:
-            code = exc.response["Error"]["Code"]
-            if code in ("AccessDeniedException", "UnauthorizedAccess"):
-                warnings.append("Access denied for ECS APIs. Attach AmazonECSReadOnlyAccess policy.")
-            else:
-                warnings.append(f"AWS ECS API error: {exc}")
+
+        def _ecs_job() -> tuple[list[Agent], list[str], list[dict[str, str] | str]]:
+            ecs_refs, ecs_warns = _discover_ecs_images(_new_discovery_session(), resolved_region)
+            return [], ecs_warns, list(ecs_refs)
+
+        discovery_jobs.append(("ecs", _ecs_job))
 
     # ── SageMaker Endpoints ───────────────────────────────────────────────
     if include_sagemaker:
-        try:
-            sm_agents, sm_warns = _discover_sagemaker(session, resolved_region, account_id=account_id)
-            agents.extend(sm_agents)
-            warnings.extend(sm_warns)
-        except ClientError as exc:
-            code = exc.response["Error"]["Code"]
-            if code in ("AccessDeniedException", "UnauthorizedAccess"):
-                warnings.append("Access denied for SageMaker APIs. Attach AmazonSageMakerReadOnly policy.")
-            else:
-                warnings.append(f"AWS SageMaker API error: {exc}")
+
+        def _sagemaker_job() -> tuple[list[Agent], list[str], list[dict[str, str] | str]]:
+            sm_agents, sm_warns = _discover_sagemaker(
+                _new_discovery_session(),
+                resolved_region,
+                account_id=account_id,
+            )
+            return sm_agents, sm_warns, []
+
+        discovery_jobs.append(("sagemaker", _sagemaker_job))
 
     # ── Lambda Functions (direct discovery) ────────────────────────────────
     if include_lambda:
-        try:
-            lambda_agents, lambda_warns = _discover_lambda_functions(session, resolved_region, warnings, account_id=account_id)
-            agents.extend(lambda_agents)
-            warnings.extend(lambda_warns)
-        except ClientError as exc:
-            code = exc.response["Error"]["Code"]
-            if code in ("AccessDeniedException", "UnauthorizedAccess"):
-                warnings.append("Access denied for Lambda APIs. Attach AWSLambda_ReadOnlyAccess policy.")
-            else:
-                warnings.append(f"AWS Lambda API error: {exc}")
+
+        def _lambda_job() -> tuple[list[Agent], list[str], list[dict[str, str] | str]]:
+            lambda_parent_warnings: list[str] = []
+            lambda_agents, lambda_warns = _discover_lambda_functions(
+                _new_discovery_session(),
+                resolved_region,
+                lambda_parent_warnings,
+                account_id=account_id,
+            )
+            return lambda_agents, [*lambda_parent_warnings, *lambda_warns], []
+
+        discovery_jobs.append(("lambda", _lambda_job))
 
     # ── EKS Clusters ───────────────────────────────────────────────────────
     if include_eks:
-        try:
-            eks_agents, eks_warns = _discover_eks_images(session, resolved_region, account_id=account_id)
-            agents.extend(eks_agents)
-            warnings.extend(eks_warns)
-        except ClientError as exc:
-            code = exc.response["Error"]["Code"]
-            if code in ("AccessDeniedException", "UnauthorizedAccess"):
-                warnings.append("Access denied for EKS APIs. Attach AmazonEKSReadOnlyAccess policy.")
-            else:
-                warnings.append(f"AWS EKS API error: {exc}")
+
+        def _eks_job() -> tuple[list[Agent], list[str], list[dict[str, str] | str]]:
+            eks_agents, eks_warns = _discover_eks_images(
+                _new_discovery_session(),
+                resolved_region,
+                account_id=account_id,
+            )
+            return eks_agents, eks_warns, []
+
+        discovery_jobs.append(("eks", _eks_job))
 
     # ── Step Functions ─────────────────────────────────────────────────────
     if include_step_functions:
-        try:
-            sfn_agents, sfn_warns = _discover_step_functions(session, resolved_region, warnings, account_id=account_id)
-            agents.extend(sfn_agents)
-            warnings.extend(sfn_warns)
-        except ClientError as exc:
-            code = exc.response["Error"]["Code"]
-            if code in ("AccessDeniedException", "UnauthorizedAccess"):
-                warnings.append("Access denied for Step Functions APIs. Attach AWSStepFunctionsReadOnlyAccess policy.")
-            else:
-                warnings.append(f"AWS Step Functions API error: {exc}")
+
+        def _sfn_job() -> tuple[list[Agent], list[str], list[dict[str, str] | str]]:
+            sfn_parent_warnings: list[str] = []
+            sfn_agents, sfn_warns = _discover_step_functions(
+                _new_discovery_session(),
+                resolved_region,
+                sfn_parent_warnings,
+                account_id=account_id,
+            )
+            return sfn_agents, [*sfn_parent_warnings, *sfn_warns], []
+
+        discovery_jobs.append(("step-functions", _sfn_job))
 
     # ── EC2 Instances (tag-filtered) ───────────────────────────────────────
     if include_ec2:
-        try:
+
+        def _ec2_job() -> tuple[list[Agent], list[str], list[dict[str, str] | str]]:
             ec2_agents, ec2_warns = _discover_ec2_instances(
-                session,
+                _new_discovery_session(),
                 resolved_region,
                 ec2_tag_filter or {},
                 account_id=account_id,
             )
-            agents.extend(ec2_agents)
-            warnings.extend(ec2_warns)
-        except ClientError as exc:
-            code = exc.response["Error"]["Code"]
-            if code in ("AccessDeniedException", "UnauthorizedAccess"):
-                warnings.append("Access denied for EC2 APIs. Attach AmazonEC2ReadOnlyAccess policy.")
-            else:
-                warnings.append(f"AWS EC2 API error: {exc}")
+            return ec2_agents, ec2_warns, []
+
+        discovery_jobs.append(("ec2", _ec2_job))
+
+    access_denied_warnings = {
+        "bedrock": "Access denied for bedrock-agent:ListAgents. Attach the BedrockAgentReadOnly or AmazonBedrockReadOnly policy.",
+        "ecs": "Access denied for ECS APIs. Attach AmazonECSReadOnlyAccess policy.",
+        "sagemaker": "Access denied for SageMaker APIs. Attach AmazonSageMakerReadOnly policy.",
+        "lambda": "Access denied for Lambda APIs. Attach AWSLambda_ReadOnlyAccess policy.",
+        "eks": "Access denied for EKS APIs. Attach AmazonEKSReadOnlyAccess policy.",
+        "step-functions": "Access denied for Step Functions APIs. Attach AWSStepFunctionsReadOnlyAccess policy.",
+        "ec2": "Access denied for EC2 APIs. Attach AmazonEC2ReadOnlyAccess policy.",
+    }
+    api_error_labels = {
+        "bedrock": "AWS Bedrock API error",
+        "ecs": "AWS ECS API error",
+        "sagemaker": "AWS SageMaker API error",
+        "lambda": "AWS Lambda API error",
+        "eks": "AWS EKS API error",
+        "step-functions": "AWS Step Functions API error",
+        "ec2": "AWS EC2 API error",
+    }
+
+    if discovery_jobs:
+        with ThreadPoolExecutor(max_workers=min(_MAX_AWS_DISCOVERY_WORKERS, len(discovery_jobs))) as executor:
+            futures_by_service = {service: executor.submit(job) for service, job in discovery_jobs}
+
+            for service, _job in discovery_jobs:
+                future = futures_by_service[service]
+                try:
+                    service_agents, service_warnings, service_ecs_refs = future.result()
+                except NoCredentialsError:
+                    if service == "bedrock":
+                        warnings.append("AWS credentials not found. Configure via env vars, ~/.aws/credentials, IAM role, or SSO.")
+                        return agents, warnings
+                    raise
+                except ClientError as exc:
+                    code = exc.response["Error"]["Code"]
+                    if code in ("AccessDeniedException", "UnauthorizedAccess"):
+                        warnings.append(access_denied_warnings[service])
+                    else:
+                        warnings.append(f"{api_error_labels[service]}: {exc}")
+                    continue
+
+                agents.extend(service_agents)
+                warnings.extend(service_warnings)
+                ecs_image_refs.extend(service_ecs_refs)
 
     # ── ECS images as agents ──────────────────────────────────────────────
     for ecs_ref in ecs_image_refs:

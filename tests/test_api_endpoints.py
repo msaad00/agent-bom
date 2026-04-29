@@ -252,7 +252,8 @@ def test_create_scan_with_options():
     assert resp.status_code == 202
     body = resp.json()
     assert body["triggered_by"] == "api"
-    assert body["request"]["inventory"] == "/tmp/agents.json"
+    assert body["request"]["inventory"] == "<path:agents.json>"
+    assert "/tmp" not in body["request"]["inventory"]
     assert body["request"]["enrich"] is True
     assert body["request"]["format"] == "cyclonedx"
 

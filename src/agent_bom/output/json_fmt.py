@@ -7,7 +7,7 @@ from pathlib import Path
 
 from agent_bom.compliance_utils import effective_blast_radius_tags
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
-from agent_bom.security import sanitize_command_args, sanitize_security_warnings, sanitize_text, sanitize_url
+from agent_bom.security import sanitize_command_args, sanitize_path_label, sanitize_security_warnings, sanitize_text, sanitize_url
 
 
 def _severity_state(severity: Severity) -> str:
@@ -282,7 +282,7 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
                 "agent_type": agent.agent_type.value,
                 "type": agent.agent_type.value,
                 "status": agent.status.value,
-                "config_path": agent.config_path,
+                "config_path": sanitize_path_label(agent.config_path) if agent.config_path else "",
                 "server_ids": server_ids,
             }
         )
@@ -531,7 +531,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "stable_id": agent.stable_id,
                 "agent_type": agent.agent_type.value,
                 "type": agent.agent_type.value,
-                "config_path": agent.config_path,
+                "config_path": sanitize_path_label(agent.config_path) if agent.config_path else "",
                 "source": agent.source,
                 "status": agent.status.value,
                 "metadata": agent.metadata,

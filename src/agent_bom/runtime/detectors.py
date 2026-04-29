@@ -36,6 +36,7 @@ from agent_bom.runtime.patterns import (
 from agent_bom.runtime.patterns import (
     PII_PATTERNS as _PII_PATTERNS,
 )
+from agent_bom.security import sanitize_sensitive_payload, sanitize_text
 
 
 class AlertSeverity(str, Enum):
@@ -60,10 +61,10 @@ class Alert:
         return {
             "type": "runtime_alert",
             "ts": self.timestamp,
-            "detector": self.detector,
+            "detector": sanitize_text(self.detector, max_len=100),
             "severity": self.severity.value,
-            "message": self.message,
-            "details": self.details,
+            "message": sanitize_text(self.message, max_len=500),
+            "details": sanitize_sensitive_payload(self.details),
         }
 
 
@@ -269,7 +270,7 @@ class ArgumentAnalyzer:
                                 "tool": tool_name,
                                 "argument": arg_name,
                                 "pattern": pattern_name,
-                                "value_preview": arg_value[:100],
+                                "value_preview": sanitize_sensitive_payload(arg_value[:100], key=arg_name),
                             },
                         )
                     )

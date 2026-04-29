@@ -166,10 +166,12 @@ async def _push_async(
             try:
                 resp = await client.post(push_url, json=sanitized, headers=headers)
             except (httpx.HTTPError, ValueError, OSError) as exc:
-                last_error = f"{type(exc).__name__}: {exc}"
+                from agent_bom.security import sanitize_error
+
+                last_error = f"{type(exc).__name__}: {sanitize_error(exc)}"
                 logger.warning(
                     "Push to %s attempt %d/%d failed with %s",
-                    push_url,
+                    sanitize_url(push_url),
                     attempt,
                     max_attempts,
                     last_error,
@@ -179,7 +181,7 @@ async def _push_async(
                 if resp.status_code < 300:
                     logger.info(
                         "Results pushed to %s (status=%d, attempt=%d)",
-                        push_url,
+                        sanitize_url(push_url),
                         resp.status_code,
                         attempt,
                     )
@@ -187,15 +189,15 @@ async def _push_async(
                 if resp.status_code not in retryable_status:
                     logger.warning(
                         "Push to %s rejected with non-retryable status %d — %s",
-                        push_url,
+                        sanitize_url(push_url),
                         resp.status_code,
-                        resp.text[:200],
+                        sanitize_text(resp.text[:200]),
                     )
                     return False
-                last_error = resp.text[:200]
+                last_error = sanitize_text(resp.text[:200])
                 logger.warning(
                     "Push to %s attempt %d/%d returned retryable status %d",
-                    push_url,
+                    sanitize_url(push_url),
                     attempt,
                     max_attempts,
                     resp.status_code,

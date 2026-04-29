@@ -21,7 +21,7 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from agent_bom.security import sanitize_launch_command
+from agent_bom.security import sanitize_launch_command, sanitize_path_label
 
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport, BlastRadius
@@ -944,7 +944,7 @@ def _inventory_cards(report: "AIBOMReport") -> str:
             f"</summary>"
             f'<div class="agent-detail">'
             f'<div style="font-size:.72rem;color:#475569;margin-bottom:12px">'
-            f"{_esc(agent.agent_type.value)} &middot; {_esc(agent.config_path or '')}"
+            f"{_esc(agent.agent_type.value)} &middot; {_esc(sanitize_path_label(agent.config_path) if agent.config_path else '')}"
             f"</div>"
             f"{servers_content}"
             f"</div>"

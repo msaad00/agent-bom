@@ -37,6 +37,7 @@ from agent_bom.runtime.detectors import (
     ToolDriftDetector,
     VectorDBInjectionDetector,
 )
+from agent_bom.security import sanitize_sensitive_payload, sanitize_text
 
 logger = logging.getLogger(__name__)
 
@@ -150,11 +151,11 @@ class RuntimeSessionNode:
 
     def to_dict(self) -> dict[str, object]:
         return {
-            "id": self.id,
-            "kind": self.kind,
-            "label": self.label,
+            "id": sanitize_text(self.id, max_len=300),
+            "kind": sanitize_text(self.kind, max_len=100),
+            "label": sanitize_text(self.label, max_len=300),
             "first_seen": self.first_seen,
-            "metadata": self.metadata,
+            "metadata": sanitize_sensitive_payload(self.metadata),
         }
 
 
@@ -170,11 +171,11 @@ class RuntimeSessionEdge:
 
     def to_dict(self) -> dict[str, object]:
         return {
-            "source": self.source,
-            "target": self.target,
-            "relation": self.relation,
+            "source": sanitize_text(self.source, max_len=300),
+            "target": sanitize_text(self.target, max_len=300),
+            "relation": sanitize_text(self.relation, max_len=100),
             "timestamp": self.timestamp,
-            "metadata": self.metadata,
+            "metadata": sanitize_sensitive_payload(self.metadata),
         }
 
 
@@ -221,10 +222,10 @@ class RuntimeSessionGraph:
                 timeline.append(
                     {
                         "timestamp": node.first_seen,
-                        "kind": node.kind,
-                        "id": node.id,
-                        "label": node.label,
-                        "metadata": node.metadata,
+                        "kind": sanitize_text(node.kind, max_len=100),
+                        "id": sanitize_text(node.id, max_len=300),
+                        "label": sanitize_text(node.label, max_len=300),
+                        "metadata": sanitize_sensitive_payload(node.metadata),
                     }
                 )
         for edge in self.edges:
@@ -232,10 +233,10 @@ class RuntimeSessionGraph:
                 {
                     "timestamp": edge.timestamp,
                     "kind": "interaction",
-                    "source": edge.source,
-                    "target": edge.target,
-                    "relation": edge.relation,
-                    "metadata": edge.metadata,
+                    "source": sanitize_text(edge.source, max_len=300),
+                    "target": sanitize_text(edge.target, max_len=300),
+                    "relation": sanitize_text(edge.relation, max_len=100),
+                    "metadata": sanitize_sensitive_payload(edge.metadata),
                 }
             )
         timeline.sort(key=lambda item: str(item.get("timestamp", "")))
@@ -472,7 +473,7 @@ class ProtectionEngine:
             call_key,
             "tool_call",
             tool_name,
-            metadata={"arguments": arguments, "agent_id": agent_id or ""},
+            metadata={"arguments": sanitize_sensitive_payload(arguments), "agent_id": agent_id or ""},
         )
         self._session_graph.add_edge(agent_key, call_key, "invokes")
         self._session_graph.add_edge(call_key, tool_key, "targets")
@@ -485,7 +486,7 @@ class ProtectionEngine:
             response_key,
             "tool_response",
             tool_name,
-            metadata={"preview": response_text[:200], "length": len(response_text)},
+            metadata={"preview": sanitize_sensitive_payload(response_text[:200], key="response_preview"), "length": len(response_text)},
         )
         self._session_graph.add_edge(tool_key, response_key, "returns")
 

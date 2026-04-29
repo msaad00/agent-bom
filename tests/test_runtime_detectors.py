@@ -30,6 +30,28 @@ def test_alert_to_dict():
     assert "ts" in d
 
 
+def test_alert_to_dict_redacts_sensitive_details():
+    github_token = "ghp_" + "abcdefghijklmnopqrstuvwxyz" + "123456"
+    api_key = "sk-" + "live-" + "abcdefghijklmnopqrstuvwxyz"
+    alert = Alert(
+        detector="argument_analyzer",
+        severity=AlertSeverity.HIGH,
+        message="Dangerous argument",
+        details={
+            "url": f"https://user:pass@example.com/callback?token={github_token}",
+            "value_preview": api_key,
+            "path": "/Users/alice/prod-secrets/openai-key.env",
+        },
+    )
+
+    encoded = str(alert.to_dict())
+    assert "user:pass" not in encoded
+    assert "token=" not in encoded
+    assert "sk-live" not in encoded
+    assert "/Users/alice" not in encoded
+    assert "prod-secrets" not in encoded
+
+
 def test_alert_severity_enum():
     assert AlertSeverity.CRITICAL.value == "critical"
     assert AlertSeverity.INFO.value == "info"

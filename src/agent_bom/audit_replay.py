@@ -28,6 +28,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
+from agent_bom.audit_integrity import compute_audit_record_mac
+
 # ─── Entry dataclasses ────────────────────────────────────────────────────────
 
 
@@ -243,8 +245,7 @@ def verify_hash_chain(path: Path) -> tuple[int, int]:
         actual_prev = str(entry.get("prev_hash", ""))
         actual_hash = str(entry.get("record_hash", ""))
         payload = {k: v for k, v in entry.items() if k not in {"prev_hash", "record_hash"}}
-        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-        expected_hash = hashlib.sha256(f"{actual_prev}|{canonical}".encode("utf-8")).hexdigest()
+        expected_hash = compute_audit_record_mac(payload, actual_prev)
 
         if actual_prev == previous_hash and actual_hash and hmac.compare_digest(actual_hash, expected_hash):
             verified += 1

@@ -151,7 +151,7 @@ def test_dispatcher_dispatch_alert_object():
     assert stored["detector"] == "test"
     assert stored["severity"] == "high"
     assert stored["event_relationships"]["targets"][0]["id"] == "read_file"
-    assert stored["event_relationships"]["resources"][0]["id"] == "/tmp/example.txt"
+    assert stored["event_relationships"]["resources"][0]["id"] == "<path:example.txt>"
 
 
 def test_dispatcher_dispatch_runtime_dict_adds_relationships():
@@ -171,7 +171,7 @@ def test_dispatcher_dispatch_runtime_dict_adds_relationships():
     stored = d.list_alerts()[0]
     assert stored["event_relationships"]["actor"]["id"] == "agent-1"
     assert stored["event_relationships"]["targets"][0]["id"] == "exec"
-    assert stored["event_relationships"]["resources"][0]["id"] == "/etc/passwd"
+    assert stored["event_relationships"]["resources"][0]["id"] == "<path:passwd>"
 
 
 def test_dispatcher_add_webhook(monkeypatch):

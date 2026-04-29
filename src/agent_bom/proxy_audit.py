@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import IO, Optional
 
 from agent_bom.agent_identity import ANONYMOUS
+from agent_bom.audit_integrity import compute_audit_record_mac
 from agent_bom.event_normalization import build_proxy_event_relationships
 
 logger = logging.getLogger(__name__)
@@ -400,24 +401,26 @@ class ProxyMetricsServer:
 
 def _truncate_args(args: dict, max_value_len: int = 200) -> dict:
     """Truncate long argument values for logging; redact credential keys/values."""
-    from agent_bom.security import sanitize_env_vars
+    from agent_bom.security import sanitize_sensitive_payload
 
-    str_vals = {k: v for k, v in args.items() if isinstance(v, str)}
-    sanitized = sanitize_env_vars(str_vals)
+    sanitized = sanitize_sensitive_payload(args, max_str_len=max_value_len)
+    if not isinstance(sanitized, dict):
+        return {}
 
-    result = {}
-    for key, value in args.items():
-        if isinstance(value, str):
-            san = sanitized.get(key, value)
-            if san == "***REDACTED***":
-                result[key] = san
-            elif len(san) > max_value_len:
-                result[key] = san[:max_value_len] + "...<truncated>"
-            else:
-                result[key] = san
-        else:
-            result[key] = value
-    return result
+    def _mark_truncated(raw_value: object, clean_value: object) -> object:
+        if isinstance(raw_value, str) and isinstance(clean_value, str):
+            if len(raw_value) > max_value_len and "<redacted" not in clean_value.lower() and clean_value != "***REDACTED***":
+                suffix = "... [truncated]"
+                return clean_value[: max(0, max_value_len - len(suffix))] + suffix
+            return clean_value
+        if isinstance(raw_value, dict) and isinstance(clean_value, dict):
+            return {key: _mark_truncated(raw_value.get(key), value) for key, value in clean_value.items()}
+        if isinstance(raw_value, list) and isinstance(clean_value, list):
+            return [_mark_truncated(raw_value[index] if index < len(raw_value) else None, value) for index, value in enumerate(clean_value)]
+        return clean_value
+
+    marked = _mark_truncated(args, sanitized)
+    return marked if isinstance(marked, dict) else sanitized
 
 
 def log_tool_call(
@@ -432,13 +435,14 @@ def log_tool_call(
     tenant_id: str = "default",
 ) -> None:
     """Append a tool call record to the audit JSONL log."""
+    sanitized_arguments = _truncate_args(arguments)
     record: dict = {
         "ts": datetime.now(timezone.utc).isoformat(),
         "type": "tools/call",
         "tool": tool_name,
         "agent_id": agent_id,
         "tenant_id": tenant_id,
-        "args": _truncate_args(arguments),
+        "args": sanitized_arguments,
         "policy": policy_result,
     }
     if reason:
@@ -449,7 +453,7 @@ def log_tool_call(
         record["message_id"] = message_id
     event_relationships = build_proxy_event_relationships(
         tool_name=tool_name,
-        arguments=arguments,
+        arguments=sanitized_arguments,
         agent_id=agent_id,
         anonymous_id=ANONYMOUS,
     )
@@ -500,9 +504,15 @@ def compute_response_hmac(payload: dict, key: str) -> str:
 
 def _record_digest(record: dict) -> str:
     payload = {k: v for k, v in record.items() if k not in {"prev_hash", "record_hash"}}
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     prev_hash = str(record.get("prev_hash", ""))
-    return hashlib.sha256(f"{prev_hash}|{canonical}".encode("utf-8")).hexdigest()
+    return compute_audit_record_mac(payload, prev_hash)
+
+
+def _sanitize_audit_record(record: dict) -> dict:
+    from agent_bom.security import sanitize_sensitive_payload
+
+    sanitized = sanitize_sensitive_payload(record)
+    return sanitized if isinstance(sanitized, dict) else {}
 
 
 def _audit_chain_key(log_file: "IO[str] | RotatingAuditLog") -> str:
@@ -524,8 +534,9 @@ def write_audit_record(log_file: "IO[str] | RotatingAuditLog", record: dict) -> 
     log_key = _audit_chain_key(log_file)
     with _AUDIT_CHAIN_LOCK:
         prev_hash = _AUDIT_CHAIN_STATE.get(log_key, "")
-        payload = dict(record)
+        payload = _sanitize_audit_record(record)
         payload["prev_hash"] = prev_hash
+        payload["record_hash_algorithm"] = "aes-cmac-128"
         payload["record_hash"] = _record_digest(payload)
         log_file.write(json.dumps(payload) + "\n")
         _AUDIT_CHAIN_STATE[log_key] = payload["record_hash"]

@@ -11,6 +11,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+from agent_bom.security import sanitize_sensitive_payload, sanitize_text
+
 _RESOURCE_ARG_TYPES = {
     "path": "path",
     "url": "url",
@@ -26,7 +28,11 @@ _RUNTIME_DETAIL_TARGET_LIST_FIELDS = {
 def _scalar_attributes(attributes: Mapping[str, Any] | None) -> dict[str, Any]:
     if not attributes:
         return {}
-    return {key: value for key, value in attributes.items() if isinstance(value, (str, int, float, bool)) and value not in ("", None)}
+    return {
+        sanitize_text(key, max_len=200): sanitize_sensitive_payload(value, key=key)
+        for key, value in attributes.items()
+        if isinstance(value, (str, int, float, bool)) and value not in ("", None)
+    }
 
 
 def build_event_ref(
@@ -39,15 +45,17 @@ def build_event_ref(
     attributes: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Return a stable event relationship reference."""
-    if not ref_id:
+    safe_ref_id = sanitize_sensitive_payload(ref_id, key=source_field or ref_type)
+    safe_name = sanitize_sensitive_payload(name, key=source_field or ref_type) if name else None
+    if not safe_ref_id:
         return None
 
     ref: dict[str, Any] = {
         "type": ref_type,
-        "id": ref_id,
+        "id": str(safe_ref_id),
     }
-    if name:
-        ref["name"] = name
+    if safe_name:
+        ref["name"] = str(safe_name)
     if role:
         ref["role"] = role
     if source_field:

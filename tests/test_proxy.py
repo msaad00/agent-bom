@@ -56,6 +56,33 @@ def test_audit_chain_uses_path_key_across_reopened_handles(tmp_path):
     assert len(_AUDIT_CHAIN_STATE) == 1
 
 
+def test_write_audit_record_sanitizes_generic_records():
+    token = "ghp_" + "abcdefghijklmnopqrstuvwxyz" + "123456"
+    buf = io.StringIO()
+
+    payload = write_audit_record(
+        buf,
+        {
+            "type": "runtime_alert",
+            "details": {
+                "password": "secret-value",
+                "url": f"https://user:pass@example.com/callback?token={token}",
+                "path": "/Users/alice/private/key.txt",
+            },
+        },
+    )
+
+    encoded = json.dumps(payload)
+    assert "secret-value" not in encoded
+    assert "user:pass" not in encoded
+    assert token not in encoded
+    assert "/Users/alice" not in encoded
+    assert payload["details"]["password"] == "***REDACTED***"
+    assert payload["details"]["url"] == "https://example.com/callback"
+    assert payload["details"]["path"] == "<path:key.txt>"
+    assert payload["record_hash_algorithm"] == "aes-cmac-128"
+
+
 @pytest.mark.asyncio
 async def test_read_bounded_line_discards_oversized_line_and_resyncs():
     reader = asyncio.StreamReader(limit=32)
@@ -69,8 +96,10 @@ async def test_read_bounded_line_discards_oversized_line_and_resyncs():
 
 @pytest.fixture(autouse=True)
 def _reset_policy_cache_signer():
+    _AUDIT_CHAIN_STATE.clear()
     _reset_gateway_policy_cache_signer_for_tests()
     yield
+    _AUDIT_CHAIN_STATE.clear()
     _reset_gateway_policy_cache_signer_for_tests()
 
 
@@ -142,9 +171,10 @@ def test_log_tool_call():
     assert record["tool"] == "read_file"
     assert record["policy"] == "allowed"
     assert "ts" in record
-    assert record["args"]["path"] == "/etc/hosts"
+    assert record["args"]["path"] == "<path:hosts>"
     assert record["prev_hash"] == ""
-    assert len(record["record_hash"]) == 64
+    assert record["record_hash_algorithm"] == "aes-cmac-128"
+    assert len(record["record_hash"]) == 32
 
 
 # ── check_policy ─────────────────────────────────────────────────────────────

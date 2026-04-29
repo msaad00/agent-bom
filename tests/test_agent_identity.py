@@ -265,3 +265,31 @@ def test_log_tool_call_blocked_carries_agent_id():
     assert record["agent_id"] == "bad-bot"
     assert record["policy"] == "blocked"
     assert record["event_relationships"]["actor"]["id"] == "bad-bot"
+
+
+def test_log_tool_call_redacts_nested_arguments_and_relationships():
+    buf = io.StringIO()
+    token = "ghp_" + "abcdefghijklmnopqrstuvwxyz" + "123456"
+    api_key = "sk-" + "live-" + "abcdefghijklmnopqrstuvwxyz"
+    log_tool_call(
+        buf,
+        "fetch",
+        {
+            "url": f"https://user:pass@example.com/callback?token={token}",
+            "body": {"api_key": api_key},
+            "path": "/Users/alice/prod-secrets/openai-key.env",
+        },
+        agent_id="agent-eve",
+    )
+
+    raw = buf.getvalue()
+    record = json.loads(raw)
+    encoded = json.dumps(record)
+    assert "user:pass" not in encoded
+    assert token not in encoded
+    assert "sk-live" not in encoded
+    assert "/Users/alice" not in encoded
+    assert "prod-secrets" not in encoded
+    assert "token=" not in encoded
+    assert record["args"]["url"] == "https://example.com/callback"
+    assert record["event_relationships"]["resources"][0]["id"] == "https://example.com/callback"

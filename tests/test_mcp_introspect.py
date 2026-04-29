@@ -46,6 +46,25 @@ def test_server_introspection_with_drift():
     assert result.has_drift
 
 
+def test_server_introspection_to_dict_redacts_runtime_text():
+    from agent_bom.mcp_introspect import ServerIntrospection
+
+    github_token = "ghp_" + "abcdefghijklmnopqrstuvwxyz" + "123456"
+    api_key = "sk-" + "live-" + "abcdefghijklmnopqrstuvwxyz"
+    result = ServerIntrospection(
+        server_name=f"https://user:pass@example.com/sse?token={github_token}",
+        success=False,
+        error=f"failed with {api_key} at /Users/alice/prod-secrets/openai-key.env",
+    )
+
+    encoded = str(result.to_dict())
+    assert "user:pass" not in encoded
+    assert "token=" not in encoded
+    assert "sk-live" not in encoded
+    assert "/Users/alice" not in encoded
+    assert "prod-secrets" not in encoded
+
+
 def test_server_introspection_with_tools():
     from agent_bom.mcp_introspect import ServerIntrospection, _apply_runtime_risk
 

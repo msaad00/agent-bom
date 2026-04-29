@@ -372,6 +372,38 @@ def test_sanitize_error_string():
     assert "error message" in result
 
 
+def test_sanitize_sensitive_payload_redacts_nested_runtime_values():
+    from agent_bom.security import sanitize_sensitive_payload
+
+    github_token = "ghp_" + "abcdefghijklmnopqrstuvwxyz" + "123456"
+    api_key = "sk-" + "live-" + "abcdefghijklmnopqrstuvwxyz"
+    slack_token = "xoxb-" + "1234567890-" + "abcdefghijklmnop"
+    payload = {
+        "url": f"https://alice:secret@example.com/callback?token={github_token}",
+        "body": {"api_key": api_key},
+        "path": "/Users/alice/prod-secrets/openai-key.env",
+        "items": [slack_token],
+    }
+
+    result = sanitize_sensitive_payload(payload)
+    encoded = str(result)
+    assert "alice:secret" not in encoded
+    assert "token=" not in encoded
+    assert "sk-live" not in encoded
+    assert "xoxb-" not in encoded
+    assert "/Users/alice" not in encoded
+    assert "prod-secrets" not in encoded
+    assert "<path:" in encoded
+
+
+def test_sanitize_sensitive_payload_preserves_safe_shape():
+    from agent_bom.security import sanitize_sensitive_payload
+
+    result = sanitize_sensitive_payload({"package": "express", "version": "4.18.2", "count": 2})
+
+    assert result == {"package": "express", "version": "4.18.2", "count": 2}
+
+
 # ---------------------------------------------------------------------------
 # create_safe_subprocess_env
 # ---------------------------------------------------------------------------

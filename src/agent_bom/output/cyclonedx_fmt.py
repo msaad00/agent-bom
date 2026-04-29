@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from agent_bom import __version__
 from agent_bom.models import AIBOMReport
-from agent_bom.security import sanitize_launch_command
+from agent_bom.security import sanitize_launch_command, sanitize_path_label
 
 
 def _sanitize_bom_ref(raw: str) -> str:
@@ -287,7 +287,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 "description": f"AI Agent ({agent.agent_type.value})",
                 "properties": [
                     {"name": "agent-bom:type", "value": "ai-agent"},
-                    {"name": "agent-bom:config-path", "value": agent.config_path},
+                    {"name": "agent-bom:config-path", "value": sanitize_path_label(agent.config_path) if agent.config_path else ""},
                     {"name": "agent-bom:status", "value": agent.status.value},
                 ],
             }

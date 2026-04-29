@@ -28,6 +28,7 @@ from typing import Any, Protocol
 from uuid import uuid4
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.security import sanitize_sensitive_payload
 
 logger = logging.getLogger(__name__)
 _AUDIT_DETAIL_KEY_RE = re.compile(r"[^a-zA-Z0-9_.:-]+")
@@ -594,7 +595,8 @@ def _sanitize_detail_value(value: object, *, depth: int = 0) -> object:
     if value is None or isinstance(value, bool | int | float):
         return value
     if isinstance(value, str):
-        text = value.replace("\r", " ").replace("\n", " ").replace("\t", " ")
+        sanitized = sanitize_sensitive_payload(value, max_str_len=_MAX_AUDIT_DETAIL_STRING_LENGTH)
+        text = str(sanitized).replace("\r", " ").replace("\n", " ").replace("\t", " ")
         return text[:_MAX_AUDIT_DETAIL_STRING_LENGTH]
     if isinstance(value, dict):
         out: dict[str, object] = {}
@@ -602,15 +604,22 @@ def _sanitize_detail_value(value: object, *, depth: int = 0) -> object:
             if index >= _MAX_AUDIT_DETAIL_COLLECTION_ITEMS:
                 out["_truncated"] = True
                 break
-            out[_sanitize_detail_key(raw_key)] = _sanitize_detail_value(raw_value, depth=depth + 1)
+            clean_key = _sanitize_detail_key(raw_key)
+            out[clean_key] = _sanitize_detail_value(
+                sanitize_sensitive_payload(raw_value, key=clean_key, max_str_len=_MAX_AUDIT_DETAIL_STRING_LENGTH),
+                depth=depth + 1,
+            )
         return out
     if isinstance(value, list | tuple | set):
         items = list(value)
-        list_out = [_sanitize_detail_value(item, depth=depth + 1) for item in items[:_MAX_AUDIT_DETAIL_COLLECTION_ITEMS]]
+        list_out = [
+            _sanitize_detail_value(sanitize_sensitive_payload(item, max_str_len=_MAX_AUDIT_DETAIL_STRING_LENGTH), depth=depth + 1)
+            for item in items[:_MAX_AUDIT_DETAIL_COLLECTION_ITEMS]
+        ]
         if len(items) > _MAX_AUDIT_DETAIL_COLLECTION_ITEMS:
             list_out.append("[truncated]")
         return list_out
-    return str(value)[:_MAX_AUDIT_DETAIL_STRING_LENGTH]
+    return str(sanitize_sensitive_payload(value, max_str_len=_MAX_AUDIT_DETAIL_STRING_LENGTH))[:_MAX_AUDIT_DETAIL_STRING_LENGTH]
 
 
 def sanitize_audit_details(details: dict[str, object]) -> dict[str, object]:
@@ -620,7 +629,10 @@ def sanitize_audit_details(details: dict[str, object]) -> dict[str, object]:
         if index >= _MAX_AUDIT_DETAIL_KEYS:
             sanitized["_truncated"] = True
             break
-        sanitized[_sanitize_detail_key(raw_key)] = _sanitize_detail_value(raw_value)
+        clean_key = _sanitize_detail_key(raw_key)
+        sanitized[clean_key] = _sanitize_detail_value(
+            sanitize_sensitive_payload(raw_value, key=clean_key, max_str_len=_MAX_AUDIT_DETAIL_STRING_LENGTH)
+        )
 
     encoded = json.dumps(sanitized, sort_keys=True, default=str, ensure_ascii=False).encode("utf-8")
     if len(encoded) <= _MAX_AUDIT_DETAILS_JSON_BYTES:

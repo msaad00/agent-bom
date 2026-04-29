@@ -639,7 +639,7 @@ async def _proxy_sse_server(
         for alert in alerts:
             alert_dict = alert.to_dict()
             runtime_alerts.append(alert_dict)
-            logger.warning("Runtime alert: %s", alert.message)
+            logger.warning("Runtime alert: %s", alert_dict.get("message", "runtime alert"))
             if log_f:
                 write_audit_record(log_f, alert_dict)
                 log_f.flush()

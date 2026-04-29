@@ -379,6 +379,68 @@ def sanitize_security_warnings(values: list[Any] | tuple[Any, ...]) -> list[str]
     return [sanitize_text(value) for value in values if str(value or "").strip()]
 
 
+def _key_looks_sensitive(key: object) -> bool:
+    return any(re.search(pattern, str(key).lower()) for pattern in SENSITIVE_PATTERNS)
+
+
+def _key_looks_like_url(key: object) -> bool:
+    key_text = str(key).lower()
+    return key_text in {"url", "uri", "endpoint", "webhook"} or key_text.endswith(("_url", "_uri", "_endpoint", "_webhook"))
+
+
+def _key_looks_like_path(key: object) -> bool:
+    key_text = str(key).lower()
+    path_terms = ("path", "file", "dir", "directory", "cwd", "workspace", "config_path", "source_path")
+    return any(term in key_text for term in path_terms)
+
+
+def _looks_like_path_value(value: str) -> bool:
+    if not value or "://" in value:
+        return False
+    return value.startswith("/") or value.startswith("~/") or bool(re.match(r"^[A-Za-z]:[\\/]", value))
+
+
+def sanitize_path_label(value: object) -> str:
+    """Return a non-revealing label for local filesystem paths."""
+    text = sanitize_log_label(value, max_len=1000)
+    basename = re.split(r"[\\/]+", text.rstrip("/\\"))[-1] if text else ""
+    basename = sanitize_text(basename or "path", max_len=80)
+    if not basename or _key_looks_sensitive(basename) or _looks_sensitive_value(basename):
+        basename = "path"
+    return f"<path:{basename}>"
+
+
+def sanitize_sensitive_payload(value: object, *, key: object | None = None, max_str_len: int = 1000, depth: int = 0) -> object:
+    """Recursively redact sensitive runtime/audit payloads before persistence/export."""
+    if depth >= 8:
+        return "[truncated]"
+    if value is None or isinstance(value, bool | int | float):
+        return value
+    if isinstance(value, str):
+        if key is not None and _key_looks_sensitive(key):
+            return "***REDACTED***"
+        if key is not None and _key_looks_like_url(key):
+            return sanitize_url(value)
+        if "://" in value:
+            return sanitize_text(value, max_len=max_str_len)
+        if key is not None and _key_looks_like_path(key) and _looks_like_path_value(value):
+            return sanitize_path_label(value)
+        if _looks_like_path_value(value):
+            return sanitize_path_label(value)
+        if _looks_sensitive_value(value):
+            return "***REDACTED***"
+        return sanitize_text(value, max_len=max_str_len)
+    if isinstance(value, dict):
+        sanitized: dict[str, object] = {}
+        for raw_key, raw_value in value.items():
+            clean_key = sanitize_text(raw_key, max_len=200)
+            sanitized[clean_key] = sanitize_sensitive_payload(raw_value, key=clean_key, max_str_len=max_str_len, depth=depth + 1)
+        return sanitized
+    if isinstance(value, list | tuple | set):
+        return [sanitize_sensitive_payload(item, key=key, max_str_len=max_str_len, depth=depth + 1) for item in list(value)]
+    return sanitize_text(value, max_len=max_str_len)
+
+
 def validate_file_size(path: Path, max_size_bytes: int = 10 * 1024 * 1024) -> None:
     """
     Validate that a file is not too large (DoS prevention).
@@ -658,6 +720,8 @@ __all__ = [
     "sanitize_command_args",
     "sanitize_launch_command",
     "sanitize_security_warnings",
+    "sanitize_sensitive_payload",
+    "sanitize_path_label",
     "sanitize_text",
     "sanitize_url",
     "validate_file_size",

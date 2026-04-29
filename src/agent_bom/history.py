@@ -10,6 +10,7 @@ from typing import Optional
 from agent_bom.models import Package
 from agent_bom.package_utils import canonical_package_key
 from agent_bom.sbom import parse_sbom_document
+from agent_bom.security import sanitize_path_label
 
 HISTORY_DIR = Path.home() / ".agent-bom" / "history"
 
@@ -73,7 +74,7 @@ def _synthetic_report_from_packages(
         },
         "scan_sources": ["sbom"],
         "sbom_baseline": {
-            "source_path": str(source_path),
+            "source_path": sanitize_path_label(source_path),
             "source_name": source_name,
             "format": format_name,
             "package_count": len(package_dicts),

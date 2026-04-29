@@ -217,6 +217,36 @@ def test_proxy_audit_ingest_updates_alerts_and_status():
     proxy_mod._proxy_metrics = None
 
 
+def test_proxy_alert_api_redacts_runtime_alert_details():
+    import agent_bom.api.routes.proxy as proxy_mod
+
+    proxy_mod._proxy_alerts.clear()
+    github_token = "ghp_" + "abcdefghijklmnopqrstuvwxyz" + "123456"
+    api_key = "sk-" + "live-" + "abcdefghijklmnopqrstuvwxyz"
+    push_proxy_alert(
+        {
+            "type": "runtime_alert",
+            "detector": "argument_analyzer",
+            "severity": "high",
+            "message": "danger",
+            "details": {
+                "url": f"https://user:pass@example.com/callback?token={github_token}",
+                "value_preview": api_key,
+                "path": "/Users/alice/prod-secrets/openai-key.env",
+            },
+        }
+    )
+
+    data = TestClient(app).get("/v1/proxy/alerts").json()
+    encoded = json.dumps(data)
+    assert "user:pass" not in encoded
+    assert "token=" not in encoded
+    assert "sk-live" not in encoded
+    assert "/Users/alice" not in encoded
+    assert "prod-secrets" not in encoded
+    proxy_mod._proxy_alerts.clear()
+
+
 def test_proxy_audit_ingest_is_idempotent():
     import agent_bom.api.routes.proxy as proxy_mod
 

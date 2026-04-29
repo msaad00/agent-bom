@@ -77,6 +77,31 @@ def test_process_tool_call_clean():
     assert status["tool_calls_analyzed"] == 1
 
 
+def test_session_graph_redacts_runtime_arguments_and_responses():
+    engine = ProtectionEngine()
+    engine.start()
+    github_token = "ghp_" + "abcdefghijklmnopqrstuvwxyz" + "123456"
+    api_key = "sk-" + "live-" + "abcdefghijklmnopqrstuvwxyz"
+    _run(
+        engine.process_tool_call(
+            "fetch",
+            {
+                "url": f"https://user:pass@example.com/callback?token={github_token}",
+                "path": "/Users/alice/prod-secrets/openai-key.env",
+            },
+        )
+    )
+    _run(engine.process_tool_response("fetch", f"model returned {api_key} in text"))
+
+    encoded = str(engine.status()["session_graph"])
+    assert "user:pass" not in encoded
+    assert "token=" not in encoded
+    assert "ghp_" not in encoded
+    assert "sk-live" not in encoded
+    assert "/Users/alice" not in encoded
+    assert "prod-secrets" not in encoded
+
+
 def test_process_tool_call_dangerous_args():
     """Shell injection patterns should trigger alerts."""
     engine = ProtectionEngine()

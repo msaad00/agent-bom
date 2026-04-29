@@ -192,6 +192,7 @@ def run_default_scan(cfg: ScanConfig, con: "Console") -> ScanResult:
                 blast_radius_depth=cfg.blast_radius_depth,
                 compliance_enabled=compliance,
                 resolve_transitive=cfg.resolve_transitive,
+                offline=cfg.offline,
             )
         except IncompleteScanError as exc:
             con.print(f"  [yellow]Warning:[/yellow] {exc}")

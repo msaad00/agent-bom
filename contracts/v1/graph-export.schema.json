@@ -16,8 +16,14 @@
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "entity_type": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string", "minLength": 1 },
           "label": { "type": "string" },
-          "risk_score": { "type": "number" }
+          "risk_score": { "type": "number" },
+          "attributes": {
+            "type": "object",
+            "description": "Optional sanitized node attributes, including cloud_origin/cloud_scope/cloud_state when available.",
+            "additionalProperties": true
+          }
         },
         "additionalProperties": true
       }

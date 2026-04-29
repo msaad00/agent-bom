@@ -24,7 +24,9 @@ from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, Tran
 from .base import CloudDiscoveryError
 from .normalization import (
     build_cloud_origin,
+    build_cloud_principal,
     build_cloud_state,
+    build_cloud_timestamps,
     build_package_purl,
     normalize_cloud_lifecycle_state,
     parse_container_image_package,
@@ -65,7 +67,7 @@ def discover(
 
     agents: list[Agent] = []
     warnings: list[str] = []
-    ecs_image_refs: list[str] = []
+    ecs_image_refs: list[dict[str, str] | str] = []
 
     session_kwargs: dict[str, Any] = {}
     if region:
@@ -75,10 +77,11 @@ def discover(
 
     session = boto3.Session(**session_kwargs)
     resolved_region = session.region_name or os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+    account_id = _resolve_account_id(session)
 
     # ── Bedrock Agents ────────────────────────────────────────────────────
     try:
-        bedrock_agents, bedrock_warnings = _discover_bedrock(session, resolved_region)
+        bedrock_agents, bedrock_warnings = _discover_bedrock(session, resolved_region, account_id=account_id)
         agents.extend(bedrock_agents)
         warnings.extend(bedrock_warnings)
     except NoCredentialsError:
@@ -107,7 +110,7 @@ def discover(
     # ── SageMaker Endpoints ───────────────────────────────────────────────
     if include_sagemaker:
         try:
-            sm_agents, sm_warns = _discover_sagemaker(session, resolved_region)
+            sm_agents, sm_warns = _discover_sagemaker(session, resolved_region, account_id=account_id)
             agents.extend(sm_agents)
             warnings.extend(sm_warns)
         except ClientError as exc:
@@ -120,7 +123,7 @@ def discover(
     # ── Lambda Functions (direct discovery) ────────────────────────────────
     if include_lambda:
         try:
-            lambda_agents, lambda_warns = _discover_lambda_functions(session, resolved_region, warnings)
+            lambda_agents, lambda_warns = _discover_lambda_functions(session, resolved_region, warnings, account_id=account_id)
             agents.extend(lambda_agents)
             warnings.extend(lambda_warns)
         except ClientError as exc:
@@ -133,7 +136,7 @@ def discover(
     # ── EKS Clusters ───────────────────────────────────────────────────────
     if include_eks:
         try:
-            eks_agents, eks_warns = _discover_eks_images(session, resolved_region)
+            eks_agents, eks_warns = _discover_eks_images(session, resolved_region, account_id=account_id)
             agents.extend(eks_agents)
             warnings.extend(eks_warns)
         except ClientError as exc:
@@ -146,7 +149,7 @@ def discover(
     # ── Step Functions ─────────────────────────────────────────────────────
     if include_step_functions:
         try:
-            sfn_agents, sfn_warns = _discover_step_functions(session, resolved_region, warnings)
+            sfn_agents, sfn_warns = _discover_step_functions(session, resolved_region, warnings, account_id=account_id)
             agents.extend(sfn_agents)
             warnings.extend(sfn_warns)
         except ClientError as exc:
@@ -159,7 +162,12 @@ def discover(
     # ── EC2 Instances (tag-filtered) ───────────────────────────────────────
     if include_ec2:
         try:
-            ec2_agents, ec2_warns = _discover_ec2_instances(session, resolved_region, ec2_tag_filter or {})
+            ec2_agents, ec2_warns = _discover_ec2_instances(
+                session,
+                resolved_region,
+                ec2_tag_filter or {},
+                account_id=account_id,
+            )
             agents.extend(ec2_agents)
             warnings.extend(ec2_warns)
         except ClientError as exc:
@@ -170,11 +178,23 @@ def discover(
                 warnings.append(f"AWS EC2 API error: {exc}")
 
     # ── ECS images as agents ──────────────────────────────────────────────
-    for img_ref in ecs_image_refs:
+    for ecs_ref in ecs_image_refs:
+        if isinstance(ecs_ref, dict):
+            img_ref = ecs_ref.get("image", "")
+            cluster_arn = ecs_ref.get("cluster_arn", "")
+            task_arn = ecs_ref.get("task_arn", "")
+            container_name = ecs_ref.get("container_name", img_ref)
+        else:
+            img_ref = ecs_ref
+            cluster_arn = ""
+            task_arn = ""
+            container_name = img_ref
+        if not img_ref:
+            continue
         ecs_agent = Agent(
             name=f"ecs-image:{img_ref}",
             agent_type=AgentType.CUSTOM,
-            config_path=f"ecs://{img_ref}",
+            config_path=task_arn or f"ecs://{img_ref}",
             source="aws-ecs",
             mcp_servers=[
                 MCPServer(
@@ -199,10 +219,16 @@ def discover(
                     provider="aws",
                     service="ecs",
                     resource_type="container-image",
-                    resource_id=img_ref,
-                    resource_name=img_ref.split("/")[-1],
+                    resource_id=f"{task_arn}/{container_name}" if task_arn else img_ref,
+                    resource_name=container_name or img_ref.split("/")[-1],
                     location=resolved_region,
-                    raw_identity={"image": img_ref},
+                    account_id=account_id,
+                    raw_identity={
+                        "cluster_arn": cluster_arn,
+                        "task_arn": task_arn,
+                        "container_name": container_name,
+                        "image": img_ref,
+                    },
                 )
             },
         )
@@ -211,12 +237,27 @@ def discover(
     return agents, warnings
 
 
+def _resolve_account_id(session: Any) -> str | None:
+    """Resolve the AWS account once for normalized origin scope.
+
+    STS can be unavailable or explicitly denied in least-privilege audit roles;
+    inventory discovery should continue and simply omit account scope.
+    """
+    try:
+        identity = session.client("sts").get_caller_identity()
+    except Exception as exc:
+        logger.debug("Could not resolve AWS account ID via STS: %s", exc)
+        return None
+    account_id = str(identity.get("Account", "")).strip()
+    return account_id or None
+
+
 # ---------------------------------------------------------------------------
 # Bedrock discovery
 # ---------------------------------------------------------------------------
 
 
-def _discover_bedrock(session: Any, region: str) -> tuple[list[Agent], list[str]]:
+def _discover_bedrock(session: Any, region: str, *, account_id: str | None = None) -> tuple[list[Agent], list[str]]:
     """Discover Bedrock agents and their action groups."""
     client = session.client("bedrock-agent", region_name=region)
     agents: list[Agent] = []
@@ -235,8 +276,6 @@ def _discover_bedrock(session: Any, region: str) -> tuple[list[Agent], list[str]
                 resource_type="agent",
                 raw_state=agent_status,
             )
-            if lifecycle_state is None:
-                continue
 
             try:
                 detail = client.get_agent(agentId=agent_id)["agent"]
@@ -265,22 +304,24 @@ def _discover_bedrock(session: Any, region: str) -> tuple[list[Agent], list[str]
                         resource_id=agent_arn,
                         resource_name=agent_name,
                         location=region,
+                        account_id=account_id,
                         raw_identity={
                             "agentId": agent_id,
                             "agentArn": agent_arn,
                             "agentName": agent_name,
                         },
                     ),
-                    "cloud_state": build_cloud_state(
-                        provider="aws",
-                        service="bedrock",
-                        resource_type="agent",
-                        lifecycle_state=lifecycle_state,
-                        raw_state=agent_status,
-                        state_source="agentStatus",
-                    ),
                 },
             )
+            if lifecycle_state:
+                agent.metadata["cloud_state"] = build_cloud_state(
+                    provider="aws",
+                    service="bedrock",
+                    resource_type="agent",
+                    lifecycle_state=lifecycle_state,
+                    raw_state=agent_status,
+                    state_source="agentStatus",
+                )
             agents.append(agent)
 
     return agents, warnings
@@ -508,10 +549,10 @@ def _parse_node_packages_from_zip(zf: zipfile.ZipFile) -> list[Package]:
 # ---------------------------------------------------------------------------
 
 
-def _discover_ecs_images(session: Any, region: str) -> tuple[list[str], list[str]]:
+def _discover_ecs_images(session: Any, region: str) -> tuple[list[dict[str, str]], list[str]]:
     """Discover container image refs from running ECS tasks."""
     ecs = session.client("ecs", region_name=region)
-    image_refs: list[str] = []
+    image_refs: list[dict[str, str]] = []
     warnings: list[str] = []
     seen: set[str] = set()
 
@@ -537,11 +578,20 @@ def _discover_ecs_images(session: Any, region: str) -> tuple[list[str], list[str
                 batch = task_arns[i : i + 100]
                 tasks = ecs.describe_tasks(cluster=cluster_arn, tasks=batch).get("tasks", [])
                 for task in tasks:
+                    task_arn = task.get("taskArn", "")
                     for container in task.get("containers", []):
                         image = container.get("image", "")
+                        container_name = container.get("name", "") or image
                         if image and image not in seen:
                             seen.add(image)
-                            image_refs.append(image)
+                            image_refs.append(
+                                {
+                                    "cluster_arn": cluster_arn,
+                                    "task_arn": task_arn,
+                                    "container_name": container_name,
+                                    "image": image,
+                                }
+                            )
         except Exception as exc:
             warnings.append(f"Could not list tasks in ECS cluster {cluster_arn}: {exc}")
 
@@ -553,7 +603,7 @@ def _discover_ecs_images(session: Any, region: str) -> tuple[list[str], list[str
 # ---------------------------------------------------------------------------
 
 
-def _discover_sagemaker(session: Any, region: str) -> tuple[list[Agent], list[str]]:
+def _discover_sagemaker(session: Any, region: str, *, account_id: str | None = None) -> tuple[list[Agent], list[str]]:
     """Discover SageMaker endpoints and their container images."""
     sm = session.client("sagemaker", region_name=region)
     agents: list[Agent] = []
@@ -584,6 +634,7 @@ def _discover_sagemaker(session: Any, region: str) -> tuple[list[Agent], list[st
                 model_desc = sm.describe_model(ModelName=model_name)
                 container = model_desc.get("PrimaryContainer", {})
                 image = container.get("Image", "")
+                execution_role = model_desc.get("ExecutionRoleArn", "")
 
                 if image:
                     image_parts = parse_container_image_package(image)
@@ -610,7 +661,41 @@ def _discover_sagemaker(session: Any, region: str) -> tuple[list[Agent], list[st
                         config_path=ep_desc.get("EndpointArn", f"sagemaker://{ep_name}"),
                         source="aws-sagemaker",
                         mcp_servers=[server],
+                        metadata={
+                            "cloud_origin": build_cloud_origin(
+                                provider="aws",
+                                service="sagemaker",
+                                resource_type="endpoint",
+                                resource_id=ep_desc.get("EndpointArn", ep_name),
+                                resource_name=ep_name,
+                                location=region,
+                                account_id=account_id,
+                                raw_identity={"endpoint": ep_name, "model": model_name, "image": image},
+                            )
+                        },
                     )
+                    cloud_timestamps = build_cloud_timestamps(
+                        provider="aws",
+                        service="sagemaker",
+                        resource_type="endpoint",
+                        created_at=ep_desc.get("CreationTime"),
+                        updated_at=ep_desc.get("LastModifiedTime"),
+                        created_source="CreationTime",
+                        updated_source="LastModifiedTime",
+                    )
+                    if cloud_timestamps:
+                        agent.metadata["cloud_timestamps"] = cloud_timestamps
+                    cloud_principal = build_cloud_principal(
+                        provider="aws",
+                        service="sagemaker",
+                        resource_type="endpoint",
+                        principal_type="iam-role",
+                        principal_id=execution_role or None,
+                        source_field="Model.ExecutionRoleArn",
+                        raw_identity={"execution_role_arn": execution_role},
+                    )
+                    if cloud_principal:
+                        agent.metadata["cloud_principal"] = cloud_principal
                     agents.append(agent)
 
         except Exception as exc:
@@ -639,6 +724,8 @@ def _discover_lambda_functions(
     session: Any,
     region: str,
     parent_warnings: list[str],
+    *,
+    account_id: str | None = None,
 ) -> tuple[list[Agent], list[str]]:
     """Discover standalone Lambda functions (not just Bedrock action group Lambdas).
 
@@ -655,6 +742,7 @@ def _discover_lambda_functions(
             func_name = func.get("FunctionName", "unknown")
             func_arn = func.get("FunctionArn", "")
             runtime = func.get("Runtime", "")
+            role_arn = func.get("Role", "")
 
             if runtime not in _AI_RUNTIMES:
                 continue
@@ -677,7 +765,39 @@ def _discover_lambda_functions(
                 source="aws-lambda",
                 version=runtime,
                 mcp_servers=[server],
+                metadata={
+                    "cloud_origin": build_cloud_origin(
+                        provider="aws",
+                        service="lambda",
+                        resource_type="function",
+                        resource_id=func_arn,
+                        resource_name=func_name,
+                        location=region,
+                        account_id=account_id,
+                        raw_identity={"function_name": func_name, "function_arn": func_arn, "runtime": runtime},
+                    )
+                },
             )
+            cloud_timestamps = build_cloud_timestamps(
+                provider="aws",
+                service="lambda",
+                resource_type="function",
+                updated_at=func.get("LastModified"),
+                updated_source="LastModified",
+            )
+            if cloud_timestamps:
+                agent.metadata["cloud_timestamps"] = cloud_timestamps
+            cloud_principal = build_cloud_principal(
+                provider="aws",
+                service="lambda",
+                resource_type="function",
+                principal_type="iam-role",
+                principal_id=role_arn or None,
+                source_field="Role",
+                raw_identity={"role_arn": role_arn},
+            )
+            if cloud_principal:
+                agent.metadata["cloud_principal"] = cloud_principal
             agents.append(agent)
 
     return agents, warnings
@@ -691,6 +811,8 @@ def _discover_lambda_functions(
 def _discover_eks_images(
     session: Any,
     region: str,
+    *,
+    account_id: str | None = None,
 ) -> tuple[list[Agent], list[str]]:
     """Discover EKS clusters and reuse k8s.discover_images() for pod scanning.
 
@@ -741,6 +863,23 @@ def _discover_eks_images(
                     config_path=f"eks://{cluster_name}/{pod_name}",
                     source="aws-eks",
                     mcp_servers=[server],
+                    metadata={
+                        "cloud_origin": build_cloud_origin(
+                            provider="aws",
+                            service="eks",
+                            resource_type="pod-image",
+                            resource_id=f"{cluster_name}/{pod_name}/{container_name}",
+                            resource_name=pod_name,
+                            location=region,
+                            account_id=account_id,
+                            raw_identity={
+                                "cluster": cluster_name,
+                                "pod": pod_name,
+                                "container": container_name,
+                                "image": image_ref,
+                            },
+                        )
+                    },
                 )
                 agents.append(agent)
 
@@ -762,6 +901,8 @@ def _discover_step_functions(
     session: Any,
     region: str,
     parent_warnings: list[str],
+    *,
+    account_id: str | None = None,
 ) -> tuple[list[Agent], list[str]]:
     """Discover Step Functions state machines and extract referenced service ARNs.
 
@@ -782,6 +923,7 @@ def _discover_step_functions(
                 detail = sfn_client.describe_state_machine(stateMachineArn=sm_arn)
                 definition_str = detail.get("definition", "{}")
                 definition = json.loads(definition_str)
+                role_arn = detail.get("roleArn", "")
             except Exception as exc:
                 warnings.append(f"Could not describe Step Function {sm_name}: {exc}")
                 continue
@@ -830,7 +972,40 @@ def _discover_step_functions(
                 config_path=sm_arn,
                 source="aws-step-functions",
                 mcp_servers=servers,
+                metadata={
+                    "cloud_origin": build_cloud_origin(
+                        provider="aws",
+                        service="step-functions",
+                        resource_type="state-machine",
+                        resource_id=sm_arn,
+                        resource_name=sm_name,
+                        location=region,
+                        account_id=account_id,
+                        raw_identity={"state_machine_arn": sm_arn, "name": sm_name},
+                    )
+                },
             )
+            cloud_timestamps = build_cloud_timestamps(
+                provider="aws",
+                service="step-functions",
+                resource_type="state-machine",
+                created_at=sm.get("creationDate") or detail.get("creationDate"),
+                updated_source=None,
+                created_source="creationDate",
+            )
+            if cloud_timestamps:
+                agent.metadata["cloud_timestamps"] = cloud_timestamps
+            cloud_principal = build_cloud_principal(
+                provider="aws",
+                service="step-functions",
+                resource_type="state-machine",
+                principal_type="iam-role",
+                principal_id=role_arn or None,
+                source_field="roleArn",
+                raw_identity={"role_arn": role_arn},
+            )
+            if cloud_principal:
+                agent.metadata["cloud_principal"] = cloud_principal
             agents.append(agent)
 
     return agents, warnings
@@ -874,6 +1049,8 @@ def _discover_ec2_instances(
     session: Any,
     region: str,
     tag_filter: dict[str, str],
+    *,
+    account_id: str | None = None,
 ) -> tuple[list[Agent], list[str]]:
     """Discover EC2 instances matching tag filters.
 
@@ -903,6 +1080,7 @@ def _discover_ec2_instances(
                     instance_id = instance.get("InstanceId", "unknown")
                     instance_type = instance.get("InstanceType", "")
                     ami_id = instance.get("ImageId", "")
+                    launch_time = instance.get("LaunchTime")
 
                     tags = {t["Key"]: t["Value"] for t in instance.get("Tags", [])}
                     name = tags.get("Name", instance_id)
@@ -920,7 +1098,28 @@ def _discover_ec2_instances(
                         source="aws-ec2",
                         version=f"{instance_type} ({ami_id})",
                         mcp_servers=[server],
+                        metadata={
+                            "cloud_origin": build_cloud_origin(
+                                provider="aws",
+                                service="ec2",
+                                resource_type="instance",
+                                resource_id=instance_id,
+                                resource_name=name,
+                                location=region,
+                                account_id=account_id,
+                                raw_identity={"instance_id": instance_id, "instance_type": instance_type, "ami_id": ami_id},
+                            )
+                        },
                     )
+                    cloud_timestamps = build_cloud_timestamps(
+                        provider="aws",
+                        service="ec2",
+                        resource_type="instance",
+                        created_at=launch_time,
+                        created_source="LaunchTime",
+                    )
+                    if cloud_timestamps:
+                        agent.metadata["cloud_timestamps"] = cloud_timestamps
                     agents.append(agent)
 
     except Exception as exc:

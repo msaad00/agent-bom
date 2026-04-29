@@ -306,7 +306,12 @@ def test_aws_ecs_images_collected():
     ecs_task_pag.paginate.return_value = [{"taskArns": ["arn:aws:ecs:us-east-1:123:task/prod/abc"]}]
     mock_ecs.get_paginator.side_effect = lambda op: {"list_clusters": ecs_cluster_pag, "list_tasks": ecs_task_pag}[op]
     mock_ecs.describe_tasks.return_value = {
-        "tasks": [{"containers": [{"image": "123456.dkr.ecr.us-east-1.amazonaws.com/ml-model:latest"}]}]
+        "tasks": [
+            {
+                "taskArn": "arn:aws:ecs:us-east-1:123:task/prod/abc",
+                "containers": [{"name": "model", "image": "123456.dkr.ecr.us-east-1.amazonaws.com/ml-model:latest"}],
+            }
+        ]
     }
     mock_session.client.side_effect = lambda svc, **kw: {"bedrock-agent": mock_bedrock, "ecs": mock_ecs}[svc]
 
@@ -319,6 +324,12 @@ def test_aws_ecs_images_collected():
     ecs_agents = [a for a in agents if a.source == "aws-ecs"]
     assert len(ecs_agents) == 1
     assert "ml-model" in ecs_agents[0].name
+    origin = ecs_agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "aws"
+    assert origin["service"] == "ecs"
+    assert origin["resource_type"] == "container-image"
+    assert origin["raw_identity"]["task_arn"] == "arn:aws:ecs:us-east-1:123:task/prod/abc"
+    assert origin["raw_identity"]["container_name"] == "model"
 
 
 # ─── Databricks Provider Tests ───────────────────────────────────────────────
@@ -371,6 +382,11 @@ def test_databricks_cluster_packages():
     assert "openai" in pkg_names
     assert all(p.ecosystem == "pypi" for p in server.packages)
     assert agents[0].source == "databricks"
+    origin = agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "databricks"
+    assert origin["service"] == "clusters"
+    assert origin["resource_type"] == "cluster"
+    assert origin["resource_id"] == "cluster-123"
     state = agents[0].metadata["cloud_state"]
     assert state["provider"] == "databricks"
     assert state["service"] == "clusters"
@@ -427,6 +443,10 @@ def test_databricks_serving_endpoint_state_normalized():
     assert warnings == []
     assert len(agents) == 1
     assert agents[0].name == "databricks-serving:prod-endpoint"
+    origin = agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "databricks"
+    assert origin["service"] == "model-serving"
+    assert origin["resource_type"] == "serving-endpoint"
     state = agents[0].metadata["cloud_state"]
     assert state["provider"] == "databricks"
     assert state["service"] == "model-serving"
@@ -799,6 +819,10 @@ def test_snowflake_cortex_agents_discovered():
     assert len(agents) == 1
     assert agents[0].source == "snowflake-cortex-agent"
     assert "My AI Agent" in agents[0].name
+    origin = agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "snowflake"
+    assert origin["service"] == "cortex-agents"
+    assert origin["resource_type"] == "agent"
 
 
 def test_snowflake_mcp_servers_discovered():
@@ -825,6 +849,10 @@ def test_snowflake_mcp_servers_discovered():
     assert len(agents) == 1
     assert agents[0].source == "snowflake-mcp"
     assert "my-mcp-server" in agents[0].name
+    origin = agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "snowflake"
+    assert origin["service"] == "mcp"
+    assert origin["resource_type"] == "server"
 
 
 def test_snowflake_query_history_parsing():
@@ -975,6 +1003,10 @@ def test_aws_lambda_direct_discovery():
     assert len(lambda_agents) == 1
     assert "ai-inference" in lambda_agents[0].name
     assert lambda_agents[0].version == "python3.12"
+    origin = lambda_agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "aws"
+    assert origin["service"] == "lambda"
+    assert origin["resource_type"] == "function"
 
 
 def test_aws_step_functions_parsing():
@@ -1071,6 +1103,10 @@ def test_aws_ec2_tag_discovery():
     assert agents[0].source == "aws-ec2"
     assert "gpu-training" in agents[0].name
     assert "p4d.24xlarge" in agents[0].version
+    origin = agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "aws"
+    assert origin["service"] == "ec2"
+    assert origin["resource_type"] == "instance"
 
 
 def test_aws_eks_reuses_k8s():
@@ -1095,6 +1131,10 @@ def test_aws_eks_reuses_k8s():
     eks_agents = [a for a in agents if a.source == "aws-eks"]
     assert len(eks_agents) == 1
     assert "my-eks-cluster" in eks_agents[0].name
+    origin = eks_agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "aws"
+    assert origin["service"] == "eks"
+    assert origin["resource_type"] == "pod-image"
     mock_discover.assert_called_once_with(all_namespaces=True, context="my-eks-cluster")
 
 
@@ -1136,6 +1176,10 @@ def test_nebius_ai_studio_discovery():
     ai_agents = [a for a in agents if a.source == "nebius-ai-studio"]
     assert len(ai_agents) == 2
     assert "llama-3-70b" in ai_agents[0].name
+    origin = ai_agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "nebius"
+    assert origin["service"] == "ai-studio"
+    assert origin["resource_type"] == "model"
 
 
 def test_nebius_gpu_instance_discovery():
@@ -1180,6 +1224,10 @@ def test_nebius_gpu_instance_discovery():
     assert len(gpu_agents) == 1
     assert "training-node" in gpu_agents[0].name
     assert gpu_agents[0].metadata["ai_workload"] is True
+    origin = gpu_agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "nebius"
+    assert origin["service"] == "compute"
+    assert origin["resource_type"] == "gpu-instance"
 
 
 # ─── CLI Deep Flag Tests ────────────────────────────────────────────────────
@@ -1250,6 +1298,9 @@ def test_hf_models_discovered():
     model_agents = [a for a in agents if a.source == "huggingface-model"]
     assert len(model_agents) == 1
     assert "my-bert-model" in model_agents[0].name
+    origin = model_agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "huggingface"
+    assert origin["resource_type"] == "model"
     # Framework packages extracted
     pkgs = model_agents[0].mcp_servers[0].packages
     pkg_names = {p.name for p in pkgs}
@@ -1278,6 +1329,9 @@ def test_hf_spaces_discovered():
     space_agents = [a for a in agents if a.source == "huggingface-space"]
     assert len(space_agents) == 1
     assert "gradio-app" in space_agents[0].name
+    origin = space_agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "huggingface"
+    assert origin["resource_type"] == "space"
     pkgs = space_agents[0].mcp_servers[0].packages
     assert any(p.name == "gradio" for p in pkgs)
 
@@ -1471,6 +1525,9 @@ def test_openai_assistants_discovered():
     assert len(asst_agents) == 1
     assert "Research Assistant" in asst_agents[0].name
     assert asst_agents[0].version == "gpt-4o"
+    origin = asst_agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "openai"
+    assert origin["resource_type"] == "assistant"
 
     # Tools mapped
     tools = asst_agents[0].mcp_servers[0].tools
@@ -1512,6 +1569,9 @@ def test_openai_fine_tunes_discovered():
     assert len(ft_agents) == 1
     assert "ft:gpt-4o-mini" in ft_agents[0].name
     assert "succeeded" in ft_agents[0].version
+    origin = ft_agents[0].metadata["cloud_origin"]
+    assert origin["provider"] == "openai"
+    assert origin["resource_type"] == "job"
 
 
 # ─── Azure Provider Tests ─────────────────────────────────────────────────
@@ -1627,6 +1687,7 @@ def test_azure_container_apps_discovered():
     origin = ca_agents[0].metadata["cloud_origin"]
     assert origin["provider"] == "azure"
     assert origin["service"] == "container-apps"
+    assert origin["resource_type"] == "container-app"
     assert origin["scope"]["subscription_id"] == "sub-123"
     timestamps = ca_agents[0].metadata["cloud_timestamps"]
     assert timestamps["created_at"] == "2026-04-10T14:30:00Z"
@@ -1935,6 +1996,7 @@ def test_gcp_vertex_ai_endpoints_discovered():
     origin = vertex_agents[0].metadata["cloud_origin"]
     assert origin["provider"] == "gcp"
     assert origin["service"] == "vertex-ai"
+    assert origin["resource_type"] == "endpoint"
     assert origin["scope"]["project_id"] == "my-project"
     timestamps = vertex_agents[0].metadata["cloud_timestamps"]
     assert timestamps["created_at"] == "2026-04-05T08:00:00Z"

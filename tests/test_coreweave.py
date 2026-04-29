@@ -102,6 +102,10 @@ def test_virtualserver_discovery():
         assert agent.metadata["gpu_type"] == "NVIDIA_H100_SXM"
         assert agent.metadata["gpu_count"] == 8
         assert agent.metadata["region"] == "LAS1"
+        origin = agent.metadata["cloud_origin"]
+        assert origin["provider"] == "coreweave"
+        assert origin["service"] == "kubernetes"
+        assert origin["resource_type"] == "virtual-server"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -155,6 +159,10 @@ def test_inferenceservice_discovery():
         assert "llama-70b" in agent.name
         assert agent.metadata["runtime"] == "vllm"
         assert agent.metadata["serving_url"] == "https://llama-70b.inference.coreweave.cloud"
+        origin = agent.metadata["cloud_origin"]
+        assert origin["provider"] == "coreweave"
+        assert origin["service"] == "kubernetes"
+        assert origin["resource_type"] == "inference-service"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -266,6 +274,10 @@ def test_infiniband_training_detection():
         assert agent.metadata["infiniband"] is True
         assert agent.metadata["gpu_count"] == 8
         assert agent.source == "coreweave-training"
+        origin = agent.metadata["cloud_origin"]
+        assert origin["provider"] == "coreweave"
+        assert origin["service"] == "kubernetes"
+        assert origin["resource_type"] == "training-pod"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

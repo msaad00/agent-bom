@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from agent_bom.package_utils import normalize_package_ecosystem
-from agent_bom.security import sanitize_error, sanitize_text
+from agent_bom.security import sanitize_error, sanitize_sensitive_payload, sanitize_text
 
 _UNKNOWN_PACKAGE_VERSIONS = {"", "unknown", "detected", "0.0"}
 _CLOUD_PURL_TYPE_ALIASES = {
@@ -152,9 +152,14 @@ def build_cloud_origin(
     if scope:
         envelope["scope"] = scope
     if raw_identity:
-        envelope["raw_identity"] = {
-            key: value for key, value in raw_identity.items() if isinstance(value, (str, int, float, bool)) and value not in ("", None)
-        }
+        sanitized_identity: dict[str, Any] = {}
+        for key, value in raw_identity.items():
+            if isinstance(value, (str, int, float, bool)) and value not in ("", None):
+                sanitized_value = sanitize_sensitive_payload(value, key=key, max_str_len=200)
+                if sanitized_value not in ("", None):
+                    sanitized_identity[str(key)] = sanitized_value
+        if sanitized_identity:
+            envelope["raw_identity"] = sanitized_identity
     return envelope
 
 
@@ -298,9 +303,14 @@ def build_cloud_principal(
     if source_field:
         envelope["source_field"] = source_field
     if raw_identity:
-        envelope["raw_identity"] = {
-            key: value for key, value in raw_identity.items() if isinstance(value, (str, int, float, bool)) and value not in ("", None)
-        }
+        sanitized_identity: dict[str, Any] = {}
+        for key, value in raw_identity.items():
+            if isinstance(value, (str, int, float, bool)) and value not in ("", None):
+                sanitized_value = sanitize_sensitive_payload(value, key=key, max_str_len=200)
+                if sanitized_value not in ("", None):
+                    sanitized_identity[str(key)] = sanitized_value
+        if sanitized_identity:
+            envelope["raw_identity"] = sanitized_identity
     return envelope
 
 

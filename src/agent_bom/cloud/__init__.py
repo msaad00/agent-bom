@@ -10,7 +10,7 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
-from agent_bom.extensions import ExtensionCapabilities, iter_entry_point_registrations
+from agent_bom.extensions import ExtensionCapabilities, entrypoint_extensions_enabled, iter_entry_point_registrations
 from agent_bom.models import Agent
 
 from .base import CloudDiscoveryError, CloudProviderRegistration
@@ -42,8 +42,9 @@ _PROVIDER_REGISTRY_LOADED = False
 
 
 def _provider_capabilities(name: str) -> ExtensionCapabilities:
+    scan_modes = ("runtime_probe",) if name == "ollama" else ("direct_cloud_pull",)
     return ExtensionCapabilities(
-        scan_modes=("inventory",),
+        scan_modes=scan_modes,
         required_scopes=(f"{name}:read",),
         outbound_destinations=(name,),
         data_boundary="agentless_read_only",
@@ -124,6 +125,60 @@ def provider_registry_warnings() -> list[str]:
     return list(_PROVIDER_REGISTRY_WARNINGS)
 
 
+def _capabilities_payload(capabilities: ExtensionCapabilities) -> dict[str, Any]:
+    return {
+        "scan_modes": list(capabilities.scan_modes),
+        "required_scopes": list(capabilities.required_scopes),
+        "outbound_destinations": list(capabilities.outbound_destinations),
+        # Alias for operator-facing API consumers. Keep the extension field name
+        # above for SDK compatibility, but expose this wording in the contract.
+        "network_destinations": list(capabilities.outbound_destinations),
+        "data_boundary": capabilities.data_boundary,
+        "writes": capabilities.writes,
+        "network_access": capabilities.network_access,
+        "guarantees": list(capabilities.guarantees),
+    }
+
+
+def _trust_contract_payload(capabilities: ExtensionCapabilities) -> dict[str, Any]:
+    guarantees = set(capabilities.guarantees)
+    scan_modes = set(capabilities.scan_modes)
+    return {
+        "read_only": not capabilities.writes and "read_only" in guarantees,
+        "agentless": "agentless_read_only" in capabilities.data_boundary,
+        "entrypoints_opt_in": True,
+        "redaction_status": "central_sanitizer_applied",
+        "scope_control": "operator_supplied_scopes",
+        "data_residency": "operator_environment",
+        "supports_scope_zero": bool({"operator_pushed_inventory", "skill_invoked_pull"} & scan_modes),
+    }
+
+
+def provider_contracts() -> dict[str, Any]:
+    """Return provider capability contracts without importing provider SDK modules."""
+
+    providers: list[dict[str, Any]] = []
+    for registration in list_registered_providers():
+        capabilities = registration.capabilities
+        providers.append(
+            {
+                "name": registration.name,
+                "module": registration.module,
+                "source": registration.source,
+                "discover_attr": registration.discover_attr,
+                "capabilities": _capabilities_payload(capabilities),
+                "trust_contract": _trust_contract_payload(capabilities),
+            }
+        )
+    return {
+        "contract_version": "1",
+        "entrypoints_enabled": entrypoint_extensions_enabled(),
+        "provider_count": len(providers),
+        "providers": providers,
+        "warnings": provider_registry_warnings(),
+    }
+
+
 def _reset_provider_registry_for_tests() -> None:
     _PROVIDER_REGISTRY.clear()
     _PROVIDER_REGISTRY_WARNINGS.clear()
@@ -198,6 +253,7 @@ __all__ = [
     "discover_activity",
     "list_registered_providers",
     "provider_registry_warnings",
+    "provider_contracts",
     "register_provider",
     "builtin_provider_registrations",
 ]

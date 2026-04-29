@@ -15,6 +15,7 @@ import os
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
+from .normalization import build_package_purl
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +229,14 @@ def _extract_packages_from_metadata(
                 name = item.get("name", "")
                 version = item.get("version", "unknown")
                 if name and name not in seen:
-                    packages.append(Package(name=name, version=version, ecosystem="pypi"))
+                    packages.append(
+                        Package(
+                            name=name,
+                            version=version,
+                            ecosystem="pypi",
+                            purl=build_package_purl(ecosystem="pypi", name=name, version=version),
+                        )
+                    )
                     seen.add(name)
 
     # Check common config keys for framework hints
@@ -252,7 +260,14 @@ def _parse_requirement(req: str) -> Package | None:
             # Strip extras: package[extra]==1.0 → package
             if "[" in name:
                 name = name.split("[")[0]
-            return Package(name=name.strip(), version=version.strip(), ecosystem="pypi")
+            clean_name = name.strip()
+            clean_version = version.strip()
+            return Package(
+                name=clean_name,
+                version=clean_version,
+                ecosystem="pypi",
+                purl=build_package_purl(ecosystem="pypi", name=clean_name, version=clean_version),
+            )
 
     # No version specifier
     name = req.split("[")[0].strip() if "[" in req else req.strip()

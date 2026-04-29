@@ -29,6 +29,7 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Any
 
+from agent_bom.cloud.normalization import build_package_purl
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
@@ -617,9 +618,23 @@ def gpu_infra_to_agents(report: GpuInfraReport) -> list[Agent]:
         # Build package list from CUDA/cuDNN versions
         packages: list[Package] = []
         if c.cuda_version:
-            packages.append(Package(name="cuda-toolkit", version=c.cuda_version, ecosystem="container"))
+            packages.append(
+                Package(
+                    name="cuda-toolkit",
+                    version=c.cuda_version,
+                    ecosystem="container",
+                    purl=build_package_purl(ecosystem="container", name="cuda-toolkit", version=c.cuda_version),
+                )
+            )
         if c.cudnn_version:
-            packages.append(Package(name="cudnn", version=c.cudnn_version, ecosystem="container"))
+            packages.append(
+                Package(
+                    name="cudnn",
+                    version=c.cudnn_version,
+                    ecosystem="container",
+                    purl=build_package_purl(ecosystem="container", name="cudnn", version=c.cudnn_version),
+                )
+            )
 
         server = MCPServer(
             name=c.image,

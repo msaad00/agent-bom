@@ -17,7 +17,7 @@ from typing import Any
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_cloud_origin, build_cloud_principal, build_cloud_scope, build_cloud_timestamps
+from .normalization import build_cloud_origin, build_cloud_principal, build_cloud_scope, build_cloud_timestamps, build_package_purl
 
 logger = logging.getLogger(__name__)
 
@@ -509,6 +509,7 @@ def _discover_azure_functions(
                                 name=rt_name,
                                 version=rt_ver,
                                 ecosystem="azure-runtime",
+                                purl=build_package_purl(ecosystem="azure-runtime", name=rt_name, version=rt_ver),
                             )
                         )
                 except Exception as exc:

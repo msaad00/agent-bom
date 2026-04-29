@@ -55,6 +55,7 @@ from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, Tran
 from agent_bom.security import sanitize_error
 
 from .base import CloudDiscoveryError
+from .normalization import build_package_purl
 
 logger = logging.getLogger(__name__)
 
@@ -388,7 +389,11 @@ def _discover_snowpark_packages(
             version = str(row[1])
             if name.lower() not in seen:
                 seen.add(name.lower())
-                packages.append(Package(name=name, version=version, ecosystem="pypi"))
+                packages.append(
+                    Package(
+                        name=name, version=version, ecosystem="pypi", purl=build_package_purl(ecosystem="pypi", name=name, version=version)
+                    )
+                )
 
     except Exception as exc:
         # INFORMATION_SCHEMA.PACKAGES may not exist or may not be accessible
@@ -524,7 +529,14 @@ def _discover_snowflake_notebooks(
                             parts = pkg_spec.split("==") if "==" in pkg_spec else pkg_spec.split("=")
                             pkg_name = parts[0].strip()
                             pkg_version = parts[1].strip() if len(parts) > 1 else "unknown"
-                            packages.append(Package(name=pkg_name, version=pkg_version, ecosystem="pypi"))
+                            packages.append(
+                                Package(
+                                    name=pkg_name,
+                                    version=pkg_version,
+                                    ecosystem="pypi",
+                                    purl=build_package_purl(ecosystem="pypi", name=pkg_name, version=pkg_version),
+                                )
+                            )
                             # Flag AI/ML packages as tools for visibility
                             if pkg_name.lower().replace("-", "_") in _ai_ml_packages:
                                 tools.append(

@@ -15,6 +15,7 @@ import os
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
 from .base import CloudDiscoveryError
+from .normalization import build_package_purl
 
 logger = logging.getLogger(__name__)
 
@@ -304,7 +305,15 @@ def _parse_requirements_txt(content: str) -> list[Package]:
             if sep in line:
                 name, version = line.split(sep, 1)
                 name = name.split("[")[0].strip()
-                packages.append(Package(name=name, version=version.strip(), ecosystem="pypi"))
+                clean_version = version.strip()
+                packages.append(
+                    Package(
+                        name=name,
+                        version=clean_version,
+                        ecosystem="pypi",
+                        purl=build_package_purl(ecosystem="pypi", name=name, version=clean_version),
+                    )
+                )
                 break
         else:
             name = line.split("[")[0].strip()
@@ -333,7 +342,15 @@ def _parse_conda_yaml(content: str) -> list[Package]:
                         if sep in pip_dep:
                             name, version = pip_dep.split(sep, 1)
                             name = name.split("[")[0].strip()
-                            packages.append(Package(name=name, version=version.strip(), ecosystem="pypi"))
+                            clean_version = version.strip()
+                            packages.append(
+                                Package(
+                                    name=name,
+                                    version=clean_version,
+                                    ecosystem="pypi",
+                                    purl=build_package_purl(ecosystem="pypi", name=name, version=clean_version),
+                                )
+                            )
                             break
                     else:
                         name = pip_dep.split("[")[0].strip()

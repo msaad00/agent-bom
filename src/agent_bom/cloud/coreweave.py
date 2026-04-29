@@ -22,6 +22,7 @@ import subprocess
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
+from .normalization import build_package_purl, parse_container_image_package
 
 logger = logging.getLogger(__name__)
 
@@ -241,9 +242,16 @@ def _discover_inference_services(
 
         packages: list[Package] = []
         if runtime_image:
-            img_name = runtime_image.split("/")[-1].split(":")[0]
-            img_version = runtime_image.split(":")[-1] if ":" in runtime_image else "latest"
-            packages.append(Package(name=img_name, version=img_version, ecosystem="container-image"))
+            image_parts = parse_container_image_package(runtime_image)
+            if image_parts:
+                packages.append(
+                    Package(
+                        name=image_parts[0],
+                        version=image_parts[1],
+                        ecosystem="container-image",
+                        purl=build_package_purl(ecosystem="container-image", name=image_parts[0], version=image_parts[1]),
+                    )
+                )
 
         server = MCPServer(
             name=f"coreweave-inference:{ns}/{name}",
@@ -318,10 +326,19 @@ def _discover_gpu_pods(
             if is_nim:
                 nim_model = image_ref.removeprefix(_NIM_IMAGE_PREFIX).split(":")[0]
 
-            img_name = image_ref.split("/")[-1].split(":")[0]
-            img_version = image_ref.split(":")[-1] if ":" in image_ref else "latest"
-
-            packages = [Package(name=img_name, version=img_version, ecosystem="container-image")]
+            image_parts = parse_container_image_package(image_ref)
+            packages = (
+                [
+                    Package(
+                        name=image_parts[0],
+                        version=image_parts[1],
+                        ecosystem="container-image",
+                        purl=build_package_purl(ecosystem="container-image", name=image_parts[0], version=image_parts[1]),
+                    )
+                ]
+                if image_parts
+                else []
+            )
 
             server = MCPServer(
                 name=f"coreweave-gpu-pod:{pod_ns}/{pod_name}",
@@ -397,9 +414,16 @@ def _discover_infiniband_jobs(
 
             packages: list[Package] = []
             if image_ref:
-                img_name = image_ref.split("/")[-1].split(":")[0]
-                img_version = image_ref.split(":")[-1] if ":" in image_ref else "latest"
-                packages.append(Package(name=img_name, version=img_version, ecosystem="container-image"))
+                image_parts = parse_container_image_package(image_ref)
+                if image_parts:
+                    packages.append(
+                        Package(
+                            name=image_parts[0],
+                            version=image_parts[1],
+                            ecosystem="container-image",
+                            purl=build_package_purl(ecosystem="container-image", name=image_parts[0], version=image_parts[1]),
+                        )
+                    )
 
             server = MCPServer(
                 name=f"coreweave-training:{pod_ns}/{pod_name}",

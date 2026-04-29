@@ -19,6 +19,7 @@ import subprocess
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
 from .base import CloudDiscoveryError
+from .normalization import build_package_purl, parse_container_image_package
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +185,7 @@ def _discover_ai_studio(
                     name=model_name,
                     version=str(model_version),
                     ecosystem="nebius-ai-studio",
+                    purl=build_package_purl(ecosystem="nebius-ai-studio", name=model_name, version=str(model_version)),
                 )
             ]
 
@@ -275,6 +277,11 @@ def _discover_gpu_instances(
                         name=boot_disk.get("image_name", image_id),
                         version="detected",
                         ecosystem="nebius-compute-image",
+                        purl=build_package_purl(
+                            ecosystem="nebius-compute-image",
+                            name=boot_disk.get("image_name", image_id),
+                            version="detected",
+                        ),
                     )
                 )
 
@@ -367,13 +374,19 @@ def _discover_k8s_gpu_pods(
                         continue
                     seen_images.add(image_ref)
 
-                    packages = [
-                        Package(
-                            name=image_ref.split("/")[-1].split(":")[0],
-                            version=image_ref.split(":")[-1] if ":" in image_ref else "latest",
-                            ecosystem="container-image",
-                        )
-                    ]
+                    image_parts = parse_container_image_package(image_ref)
+                    packages = (
+                        [
+                            Package(
+                                name=image_parts[0],
+                                version=image_parts[1],
+                                ecosystem="container-image",
+                                purl=build_package_purl(ecosystem="container-image", name=image_parts[0], version=image_parts[1]),
+                            )
+                        ]
+                        if image_parts
+                        else []
+                    )
 
                     server = MCPServer(
                         name=f"nebius-k8s-gpu:{pod_ns}/{pod_name}/{container_name}",

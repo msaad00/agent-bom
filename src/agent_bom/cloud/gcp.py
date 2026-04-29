@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import os
 
-from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
 from .normalization import (
@@ -21,6 +21,8 @@ from .normalization import (
     build_cloud_principal,
     build_cloud_scope,
     build_cloud_timestamps,
+    build_package_purl,
+    parse_container_image_package,
     sanitize_discovery_warning,
 )
 
@@ -487,12 +489,23 @@ def _discover_cloud_run(
             for container in template.containers:
                 image = container.image or ""
                 if image:
+                    image_parts = parse_container_image_package(image)
                     service_account = getattr(template, "service_account", "") or ""
                     server = MCPServer(
                         name=f"cloud-run:{svc_name}",
                         command="docker",
                         args=["run", image],
                         transport=TransportType.STDIO,
+                        packages=[
+                            Package(
+                                name=image_parts[0],
+                                version=image_parts[1],
+                                ecosystem="container-image",
+                                purl=build_package_purl(ecosystem="container-image", name=image_parts[0], version=image_parts[1]),
+                            )
+                        ]
+                        if image_parts
+                        else [],
                     )
                     agent = Agent(
                         name=f"cloud-run:{svc_name}",

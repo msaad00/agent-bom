@@ -22,7 +22,13 @@ from typing import Any
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_cloud_origin, build_cloud_state, normalize_cloud_lifecycle_state
+from .normalization import (
+    build_cloud_origin,
+    build_cloud_state,
+    build_package_purl,
+    normalize_cloud_lifecycle_state,
+    parse_container_image_package,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +182,16 @@ def discover(
                     command="docker",
                     args=["run", img_ref],
                     transport=TransportType.STDIO,
+                    packages=[
+                        Package(
+                            name=parts[0],
+                            version=parts[1],
+                            ecosystem="container-image",
+                            purl=build_package_purl(ecosystem="container-image", name=parts[0], version=parts[1]),
+                        )
+                        for parts in [parse_container_image_package(img_ref)]
+                        if parts
+                    ],
                 )
             ],
             metadata={
@@ -450,6 +466,7 @@ def _parse_python_packages_from_zip(zf: zipfile.ZipFile) -> list[Package]:
                             name=pkg_name,
                             version=pkg_version,
                             ecosystem="pypi",
+                            purl=build_package_purl(ecosystem="pypi", name=pkg_name, version=pkg_version),
                         )
                     )
             except Exception:
@@ -477,6 +494,7 @@ def _parse_node_packages_from_zip(zf: zipfile.ZipFile) -> list[Package]:
                             name=pkg_name,
                             version=pkg_version,
                             ecosystem="npm",
+                            purl=build_package_purl(ecosystem="npm", name=pkg_name, version=pkg_version),
                         )
                     )
             except Exception:
@@ -568,12 +586,23 @@ def _discover_sagemaker(session: Any, region: str) -> tuple[list[Agent], list[st
                 image = container.get("Image", "")
 
                 if image:
+                    image_parts = parse_container_image_package(image)
                     server = MCPServer(
                         name=f"sagemaker-model:{model_name}",
                         command="docker",
                         args=["run", image],
                         transport=TransportType.STDIO,
                         env={"AWS_REGION": region},
+                        packages=[
+                            Package(
+                                name=image_parts[0],
+                                version=image_parts[1],
+                                ecosystem="container-image",
+                                purl=build_package_purl(ecosystem="container-image", name=image_parts[0], version=image_parts[1]),
+                            )
+                        ]
+                        if image_parts
+                        else [],
                     )
                     agent = Agent(
                         name=f"sagemaker:{ep_name}",
@@ -689,11 +718,22 @@ def _discover_eks_images(
         try:
             image_records = discover_images(all_namespaces=True, context=cluster_name)
             for image_ref, pod_name, container_name in image_records:
+                image_parts = parse_container_image_package(image_ref)
                 server = MCPServer(
                     name=image_ref,
                     command="docker",
                     args=["run", image_ref],
                     transport=TransportType.STDIO,
+                    packages=[
+                        Package(
+                            name=image_parts[0],
+                            version=image_parts[1],
+                            ecosystem="container-image",
+                            purl=build_package_purl(ecosystem="container-image", name=image_parts[0], version=image_parts[1]),
+                        )
+                    ]
+                    if image_parts
+                    else [],
                 )
                 agent = Agent(
                     name=f"eks:{cluster_name}/{pod_name}/{container_name}",

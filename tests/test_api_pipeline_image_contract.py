@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _run_scan_sync
 from agent_bom.models import BlastRadius, Package, Severity, Vulnerability
@@ -188,3 +190,42 @@ def test_api_pipeline_persists_unified_graph_snapshot(monkeypatch):
 
     assert job.status == JobStatus.DONE
     assert persisted == [("tenant-blue", "graph-123")]
+
+
+def test_api_pipeline_reports_enrichment_as_part_of_scanning(monkeypatch):
+    store = _DummyStore()
+    job = ScanJob(
+        job_id="enrich-123",
+        tenant_id="tenant-blue",
+        created_at="2026-03-25T12:00:00Z",
+        request=ScanRequest(images=["agentbom/agent-bom:latest"], enrich=True),
+    )
+
+    monkeypatch.setattr("agent_bom.api.pipeline._get_store", lambda: store)
+    monkeypatch.setattr("agent_bom.api.pipeline._sync_scan_agents_to_fleet", lambda _agents, tenant_id="default": None)
+    monkeypatch.setattr("agent_bom.api.pipeline._persist_graph_snapshot", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("agent_bom.discovery.discover_all", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        "agent_bom.image.scan_image",
+        lambda image_ref: ([Package(name="openssl", version="3.0.16", ecosystem="deb")], "native"),
+    )
+
+    def _fake_scan(agents, enable_enrichment=False, **kwargs):
+        assert enable_enrichment is True
+        assert kwargs.get("offline") is False
+        return []
+
+    monkeypatch.setattr("agent_bom.scanners.scan_agents_sync", _fake_scan)
+
+    _run_scan_sync(job)
+
+    events = [json.loads(line) for line in job.progress if line.startswith("{")]
+    enrichment_events = [event for event in events if event["step_id"] == "enrichment"]
+    scanning_events = [event for event in events if event["step_id"] == "scanning"]
+
+    assert job.status == JobStatus.DONE
+    assert not any(event["status"] == "running" for event in enrichment_events)
+    assert enrichment_events[-1]["status"] == "done"
+    assert enrichment_events[-1]["message"] == "Enrichment completed during scanning"
+    assert enrichment_events[-1]["stats"]["executed_in_step"] == "scanning"
+    assert any("with vulnerability enrichment" in event["message"] for event in scanning_events)

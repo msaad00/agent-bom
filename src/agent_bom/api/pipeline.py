@@ -22,15 +22,7 @@ from typing import Any
 from agent_bom import __version__
 from agent_bom.api.models import JobStatus, ScanJob, StepStatus
 from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_graph_store, _get_store, _job_lock
-from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
-from agent_bom.security import (
-    sanitize_command_args,
-    sanitize_env_vars,
-    sanitize_error,
-    sanitize_security_warnings,
-    sanitize_text,
-    sanitize_url,
-)
+from agent_bom.security import sanitize_error
 
 _logger = logging.getLogger(__name__)
 
@@ -319,44 +311,14 @@ def _run_scan_sync(job: ScanJob) -> None:
 
         if req.inventory:
             pipeline.update_step("discovery", f"Loading inventory: {req.inventory}")
-            import json as _json
-
-            from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+            from agent_bom.cli._common import _build_agents_from_inventory
+            from agent_bom.inventory import load_inventory
 
             try:
-                with open(req.inventory) as _f:
-                    inv_data = _json.load(_f)
-            except (_json.JSONDecodeError, OSError) as parse_err:
+                inv_data = load_inventory(req.inventory)
+            except (OSError, RuntimeError, ValueError) as parse_err:
                 raise RuntimeError(f"Failed to load inventory file: {parse_err}") from parse_err
-            for agent_data in inv_data.get("agents", []):
-                servers = []
-                for s in agent_data.get("mcp_servers", []):
-                    servers.append(
-                        MCPServer(
-                            name=s.get("name", "unknown"),
-                            command=sanitize_text(s.get("command", ""), max_len=200),
-                            args=sanitize_command_args(list(s.get("args", []) or [])),
-                            env=sanitize_env_vars(dict(s.get("env", {}) or {})),
-                            transport=TransportType(s.get("transport", "stdio")),
-                            url=sanitize_url(str(s.get("url") or "")) if s.get("url") else None,
-                            config_path=s.get("config_path"),
-                            security_blocked=bool(s.get("security_blocked", False)),
-                            security_warnings=sanitize_security_warnings(list(s.get("security_warnings", []) or [])),
-                            security_intelligence=[
-                                sanitize_security_intelligence_entry(item)
-                                for item in (s.get("security_intelligence", []) or [])
-                                if isinstance(item, dict)
-                            ],
-                        )
-                    )
-                agents.append(
-                    Agent(
-                        name=agent_data.get("name", "unknown"),
-                        agent_type=AgentType.CUSTOM,
-                        config_path=req.inventory,
-                        mcp_servers=servers,
-                    )
-                )
+            agents.extend(_build_agents_from_inventory(inv_data, req.inventory))
 
         for image_ref in req.images:
             pipeline.update_step("discovery", f"Scanning image: {image_ref}")

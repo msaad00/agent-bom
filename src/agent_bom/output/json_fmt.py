@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from agent_bom.asset_provenance import agent_discovery_provenance, package_discovery_provenance, sanitize_discovery_provenance
 from agent_bom.compliance_utils import effective_blast_radius_tags
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
 from agent_bom.security import sanitize_command_args, sanitize_path_label, sanitize_security_warnings, sanitize_text, sanitize_url
@@ -275,6 +276,7 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
 
     for agent in report.agents:
         server_ids: list[str] = []
+        agent_provenance = agent_discovery_provenance(agent)
         agents.append(
             {
                 "id": agent.stable_id,
@@ -285,6 +287,7 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
                 "discovered_at": agent.discovered_at,
                 "last_seen": agent.last_seen,
                 "config_path": sanitize_path_label(agent.config_path) if agent.config_path else "",
+                "discovery_provenance": agent_provenance,
                 "server_ids": server_ids,
             }
         )
@@ -305,6 +308,10 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
                     "resource_ids": [],
                     "prompt_ids": [],
                     "package_ids": [],
+                    "discovery_provenance": sanitize_discovery_provenance(
+                        getattr(server, "discovery_provenance", None),
+                        defaults=agent_provenance,
+                    ),
                 }
             relationships.append({"from": agent.stable_id, "to": server.stable_id, "type": "uses"})
 
@@ -368,6 +375,7 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
                         "distro_version": pkg.distro_version,
                         "floating_reference": pkg.floating_reference,
                         "floating_reference_reason": pkg.floating_reference_reason,
+                        "discovery_provenance": package_discovery_provenance(pkg, inherited=agent_provenance),
                         "occurrence_count": len(pkg.occurrences),
                         "occurrences": [_package_occurrence_to_dict(occ) for occ in pkg.occurrences],
                         "vulnerability_count": len(pkg.vulnerabilities),
@@ -538,6 +546,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "status": agent.status.value,
                 "discovered_at": agent.discovered_at,
                 "last_seen": agent.last_seen,
+                "discovery_provenance": agent_discovery_provenance(agent),
                 "metadata": agent.metadata,
                 "automation_settings": agent.automation_settings,
                 "mcp_servers": [
@@ -558,6 +567,10 @@ def to_json(report: AIBOMReport) -> dict:
                         "security_warnings": sanitize_security_warnings(server.security_warnings),
                         "security_intelligence": server.security_intelligence,
                         "discovery_sources": server.discovery_sources,
+                        "discovery_provenance": sanitize_discovery_provenance(
+                            server.discovery_provenance,
+                            defaults=agent_discovery_provenance(agent),
+                        ),
                         "tools": [
                             {
                                 "name": t.name,
@@ -619,6 +632,10 @@ def to_json(report: AIBOMReport) -> dict:
                                 "reachability_evidence": pkg.reachability_evidence,
                                 "resolved_from_registry": pkg.resolved_from_registry,
                                 "version_source": pkg.version_source,
+                                "discovery_provenance": package_discovery_provenance(
+                                    pkg,
+                                    inherited=agent_discovery_provenance(agent),
+                                ),
                                 "floating_reference": pkg.floating_reference,
                                 "floating_reference_reason": pkg.floating_reference_reason,
                                 "registry_version": pkg.registry_version,
@@ -732,6 +749,7 @@ def to_json(report: AIBOMReport) -> dict:
                 "introduced_in_layer": (
                     _package_occurrence_to_dict(br.package.primary_occurrence) if br.package.primary_occurrence else None
                 ),
+                "package_discovery_provenance": package_discovery_provenance(br.package),
                 "is_malicious": br.package.is_malicious,
                 "malicious_reason": br.package.malicious_reason,
                 "scorecard_score": br.package.scorecard_score,

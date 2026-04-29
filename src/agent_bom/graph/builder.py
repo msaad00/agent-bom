@@ -13,6 +13,7 @@ from pathlib import PurePath
 from typing import Any
 
 from agent_bom.api.tracing import get_tracer
+from agent_bom.asset_provenance import sanitize_discovery_provenance
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
@@ -82,6 +83,7 @@ def build_unified_graph_from_report(
         agent_metadata = agent_dict.get("metadata", {})
         if not isinstance(agent_metadata, dict):
             agent_metadata = {}
+        agent_discovery_provenance = sanitize_discovery_provenance(agent_dict.get("discovery_provenance"))
 
         graph.add_node(
             UnifiedNode(
@@ -109,6 +111,7 @@ def build_unified_graph_from_report(
                     "discovered_at": agent_dict.get("discovered_at"),
                     "last_seen": agent_dict.get("last_seen"),
                     "server_count": len(agent_dict.get("mcp_servers", [])),
+                    "discovery_provenance": agent_discovery_provenance,
                     "cloud_origin": agent_metadata.get("cloud_origin"),
                     "cloud_state": agent_metadata.get("cloud_state"),
                     "cloud_scope": agent_metadata.get("cloud_scope"),
@@ -189,6 +192,7 @@ def build_unified_graph_from_report(
                 ecosystem = pkg_dict.get("ecosystem", "")
                 pkg_id = _package_node_id(pkg_dict)
                 package_evidence = _package_evidence(pkg_dict, data_source_tag)
+                package_discovery_provenance = sanitize_discovery_provenance(pkg_dict.get("discovery_provenance"))
 
                 graph.add_node(
                     UnifiedNode(
@@ -206,6 +210,7 @@ def build_unified_graph_from_report(
                             "scorecard_score": pkg_dict.get("scorecard_score"),
                             "is_malicious": pkg_dict.get("is_malicious", False),
                             "stable_id": pkg_dict.get("stable_id", ""),
+                            "discovery_provenance": package_discovery_provenance,
                         },
                         dimensions=NodeDimensions(ecosystem=ecosystem),
                         data_sources=[data_source_tag],
@@ -915,6 +920,7 @@ def _package_evidence(pkg_dict: dict[str, Any], data_source_tag: str) -> dict[st
         "stable_id": pkg_dict.get("stable_id", ""),
         "source_package": pkg_dict.get("source_package", ""),
         "version_source": pkg_dict.get("version_source", ""),
+        "discovery_provenance": sanitize_discovery_provenance(pkg_dict.get("discovery_provenance")),
         "occurrence_count": pkg_dict.get("occurrence_count", len(occurrences)),
         "occurrences": normalized_occurrences,
     }

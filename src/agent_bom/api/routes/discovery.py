@@ -18,6 +18,7 @@ from fastapi import APIRouter, HTTPException, Request
 from agent_bom.api.mcp_observation_store import MCPObservation, merge_observations
 from agent_bom.api.models import JobStatus
 from agent_bom.api.stores import _get_fleet_store, _get_mcp_observation_store, _get_store
+from agent_bom.asset_provenance import agent_discovery_provenance, package_discovery_provenance
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.security import (
     sanitize_command_args,
@@ -165,6 +166,8 @@ def _serialize_agent(
     observation_index: dict[str, MCPObservation] | None = None,
 ) -> dict:
     payload = asdict(agent)
+    agent_provenance = agent_discovery_provenance(agent)
+    payload["discovery_provenance"] = agent_provenance
     payload["mcp_servers"] = []
     for server in agent.mcp_servers:
         server_payload = asdict(server)
@@ -195,6 +198,12 @@ def _serialize_agent(
         server_payload.setdefault("config_path", getattr(server, "config_path", None))
         server_payload["security_warnings"] = sanitize_security_warnings(list(getattr(server, "security_warnings", []) or []))
         server_payload["security_intelligence"] = _merge_security_intelligence(list(getattr(server, "security_intelligence", []) or []))
+        for idx, package in enumerate(getattr(server, "packages", []) or []):
+            if idx < len(server_payload.get("packages", []) or []):
+                server_payload["packages"][idx]["discovery_provenance"] = package_discovery_provenance(
+                    package,
+                    inherited=agent_provenance,
+                )
         observation_id, legacy_observation_id = _observation_ids(agent, server)
         stored_observation = (observation_index or {}).get(observation_id)
         if stored_observation is None and legacy_observation_id:
@@ -619,6 +628,7 @@ async def get_agent_lifecycle(request: Request, agent_name: str) -> dict:
                             "version": pkg.get("version", ""),
                             "ecosystem": pkg.get("ecosystem", ""),
                             "vuln_count": len(vulns),
+                            "discovery_provenance": pkg.get("discovery_provenance"),
                         },
                     }
                 )

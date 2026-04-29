@@ -65,7 +65,7 @@ TRIVY_MULTIPLE_ECOSYSTEMS = {
     ]
 }
 
-TRIVY_EMPTY = {"Results": []}
+TRIVY_EMPTY: dict[str, list[object]] = {"Results": []}
 
 # ── Grype fixtures ─────────────────────────────────────────────────────────
 
@@ -103,7 +103,7 @@ GRYPE_MULTIPLE_TYPES = {
     ]
 }
 
-GRYPE_EMPTY = {"matches": []}
+GRYPE_EMPTY: dict[str, list[object]] = {"matches": []}
 
 # ── Syft fixtures ──────────────────────────────────────────────────────────
 
@@ -195,6 +195,46 @@ def test_parse_trivy_ghsa_cvss_fallback():
     assert packages[0].vulnerabilities[0].cvss_score == 5.3
 
 
+def test_parse_trivy_preserves_advisory_metadata():
+    data = {
+        "Results": [
+            {
+                "Target": "requirements.txt",
+                "Type": "pip",
+                "Vulnerabilities": [
+                    {
+                        "VulnerabilityID": "CVE-2024-11111",
+                        "PkgName": "django",
+                        "InstalledVersion": "4.2.0",
+                        "Severity": "HIGH",
+                        "SeveritySource": "ghsa",
+                        "Title": "Django advisory",
+                        "DataSource": {
+                            "ID": "ghsa",
+                            "Name": "GitHub Security Advisory pip",
+                            "URL": "https://github.com/advisories",
+                        },
+                        "VendorIDs": ["GHSA-abcd-efgh-ijkl"],
+                        "CweIDs": ["CWE-79", "CWE-352"],
+                        "PublishedDate": "2024-01-02T03:04:05Z",
+                        "LastModifiedDate": "2024-01-03T03:04:05Z",
+                    }
+                ],
+            }
+        ]
+    }
+
+    packages = parse_trivy_json(data)
+
+    vuln = packages[0].vulnerabilities[0]
+    assert vuln.cwe_ids == ["CWE-79", "CWE-352"]
+    assert vuln.aliases == ["GHSA-abcd-efgh-ijkl"]
+    assert vuln.severity_source == "ghsa"
+    assert vuln.published_at == "2024-01-02T03:04:05Z"
+    assert vuln.modified_at == "2024-01-03T03:04:05Z"
+    assert vuln.advisory_sources == ["ghsa"]
+
+
 # ── Grype tests ────────────────────────────────────────────────────────────
 
 
@@ -249,6 +289,48 @@ def test_parse_grype_unfixed_no_fixed_version():
     }
     packages = parse_grype_json(data)
     assert packages[0].vulnerabilities[0].fixed_version is None
+
+
+def test_parse_grype_preserves_advisory_metadata():
+    data = {
+        "matches": [
+            {
+                "vulnerability": {
+                    "id": "GHSA-abcd-efgh-ijkl",
+                    "severity": "High",
+                    "namespace": "github:language:python",
+                    "dataSource": "https://github.com/advisories/GHSA-abcd-efgh-ijkl",
+                    "description": "Django advisory",
+                    "cwes": ["CWE-79", "CWE-352"],
+                    "aliases": ["PYSEC-2024-1"],
+                    "relatedVulnerabilities": [
+                        {
+                            "id": "CVE-2024-22222",
+                            "namespace": "nvd:cpe",
+                            "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2024-22222",
+                        }
+                    ],
+                    "publishedDate": "2024-02-02T00:00:00Z",
+                    "modifiedDate": "2024-02-03T00:00:00Z",
+                },
+                "artifact": {
+                    "name": "django",
+                    "version": "4.2.0",
+                    "type": "python",
+                },
+            }
+        ]
+    }
+
+    packages = parse_grype_json(data)
+
+    vuln = packages[0].vulnerabilities[0]
+    assert vuln.cwe_ids == ["CWE-79", "CWE-352"]
+    assert vuln.aliases == ["PYSEC-2024-1", "CVE-2024-22222"]
+    assert vuln.severity_source == "github:language:python"
+    assert vuln.published_at == "2024-02-02T00:00:00Z"
+    assert vuln.modified_at == "2024-02-03T00:00:00Z"
+    assert vuln.advisory_sources == ["github:language:python"]
 
 
 # ── Syft tests ─────────────────────────────────────────────────────────────

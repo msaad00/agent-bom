@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib
 from typing import Any
 
+from agent_bom.cloud.normalization import sanitize_discovery_warnings
 from agent_bom.models import Agent
 
 from .base import ConnectorError, ConnectorStatus
@@ -38,7 +39,8 @@ def discover_from_connector(
     if connector not in _CONNECTORS:
         raise ValueError(f"Unknown connector '{connector}'. Available: {', '.join(sorted(_CONNECTORS))}")
     mod = importlib.import_module(_CONNECTORS[connector])
-    return mod.discover(**kwargs)
+    agents, warnings = mod.discover(**kwargs)
+    return agents, sanitize_discovery_warnings(warnings)
 
 
 def check_connector_health(

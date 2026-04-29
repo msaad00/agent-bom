@@ -1793,6 +1793,29 @@ def test_azure_ai_foundry_fixture_normalizes_offset_timestamps():
 # ─── GCP Provider Tests ──────────────────────────────────────────────────
 
 
+def test_discover_from_provider_sanitizes_returned_warnings(monkeypatch):
+    import agent_bom.cloud as cloud_registry
+
+    module_name = "agent_bom.tests.fake_cloud_provider"
+    fake_module = types.ModuleType(module_name)
+    fake_module.discover = MagicMock(
+        return_value=(
+            [],
+            ["failed https://user:tok123@example.com/api?key=secret from /Users/alice/.config/key.json"],
+        )
+    )
+    monkeypatch.setitem(sys.modules, module_name, fake_module)
+    monkeypatch.setitem(cloud_registry._PROVIDERS, "fake", module_name)
+
+    agents, warnings = cloud_registry.discover_from_provider("fake")
+
+    assert agents == []
+    warning = " ".join(warnings)
+    assert "tok123" not in warning
+    assert "key=secret" not in warning
+    assert "/Users/alice" not in warning
+
+
 def _install_mock_gcp():
     """Install mock GCP SDK modules in sys.modules."""
     google = types.ModuleType("google")
@@ -1801,6 +1824,12 @@ def _install_mock_gcp():
     google_cloud_aiplatform.init = MagicMock()
     google_cloud_aiplatform.Endpoint = MagicMock()
     google_cloud.aiplatform = google_cloud_aiplatform
+
+    google_cloud_aiplatform_v1 = types.ModuleType("google.cloud.aiplatform_v1")
+    mock_vertex_client = MagicMock()
+    mock_vertex_client.list_endpoints.return_value = []
+    google_cloud_aiplatform_v1.EndpointServiceClient = MagicMock(return_value=mock_vertex_client)
+    google_cloud.aiplatform_v1 = google_cloud_aiplatform_v1
 
     google_cloud_run_v2 = types.ModuleType("google.cloud.run_v2")
     google_cloud_run_v2.ServicesClient = MagicMock
@@ -1822,10 +1851,17 @@ def _install_mock_gcp():
     sys.modules.setdefault("google.auth", google_auth)
     sys.modules.setdefault("google.cloud", google_cloud)
     sys.modules.setdefault("google.cloud.aiplatform", google_cloud_aiplatform)
+    sys.modules.setdefault("google.cloud.aiplatform_v1", google_cloud_aiplatform_v1)
     sys.modules.setdefault("google.cloud.run_v2", google_cloud_run_v2)
     sys.modules.setdefault("google.cloud.functions_v2", google_cloud_functions_v2)
     sys.modules.setdefault("google.cloud.container_v1", google_cloud_container_v1)
     return google
+
+
+def _patch_vertex_endpoints(endpoints):
+    mock_client = MagicMock()
+    mock_client.list_endpoints.return_value = endpoints
+    return patch("google.cloud.aiplatform_v1.EndpointServiceClient", return_value=mock_client)
 
 
 def test_gcp_missing_sdk():
@@ -1880,9 +1916,17 @@ def test_gcp_vertex_ai_endpoints_discovered():
     mock_endpoint.create_time = "2026-04-05T08:00:00Z"
     mock_endpoint.update_time = "2026-04-12T10:30:00Z"
 
-    with patch("google.cloud.aiplatform.init"), patch("google.cloud.aiplatform.Endpoint.list", return_value=[mock_endpoint]):
+    mock_client = MagicMock()
+    mock_client.list_endpoints.return_value = [mock_endpoint]
+    with (
+        patch("google.cloud.aiplatform.init") as mock_init,
+        patch("google.cloud.aiplatform_v1.EndpointServiceClient", return_value=mock_client) as mock_client_cls,
+    ):
         agents, warnings = discover(project_id="my-project", region="us-central1")
 
+    mock_init.assert_not_called()
+    mock_client_cls.assert_called_once_with(client_options={"api_endpoint": "us-central1-aiplatform.googleapis.com"})
+    mock_client.list_endpoints.assert_called_once_with(parent="projects/my-project/locations/us-central1")
     vertex_agents = [a for a in agents if a.source == "gcp-vertex-ai"]
     assert len(vertex_agents) == 1
     assert "prod-endpoint" in vertex_agents[0].name
@@ -1902,6 +1946,29 @@ def test_gcp_vertex_ai_endpoints_discovered():
     assert scope["location"] == "us-central1"
 
 
+def test_gcp_discovery_warnings_are_sanitized():
+    """Provider errors do not leak URL credentials, query strings, or local paths."""
+    _install_mock_gcp()
+    importlib.reload(importlib.import_module("agent_bom.cloud.gcp"))
+    from agent_bom.cloud.gcp import discover
+
+    raw_error = RuntimeError("failed https://user:tok123@example.com/api?key=secret from /Users/alice/.config/key.json")
+    with (
+        patch("agent_bom.cloud.gcp._discover_vertex_ai", side_effect=raw_error),
+        patch("agent_bom.cloud.gcp._discover_cloud_functions", return_value=([], [])),
+        patch("agent_bom.cloud.gcp._discover_gke_clusters", return_value=([], [])),
+        patch("agent_bom.cloud.gcp._discover_cloud_run", return_value=([], [])),
+    ):
+        agents, warnings = discover(project_id="my-project", region="us-central1")
+
+    assert agents == []
+    warning = " ".join(warnings)
+    assert "Vertex AI discovery error" in warning
+    assert "tok123" not in warning
+    assert "key=secret" not in warning
+    assert "/Users/alice" not in warning
+
+
 def test_gcp_vertex_fixture_normalizes_offset_timestamps():
     """Fixture-backed Vertex endpoint payloads normalize offset timestamps through the discovery path."""
     _install_mock_gcp()
@@ -1910,7 +1977,7 @@ def test_gcp_vertex_fixture_normalizes_offset_timestamps():
 
     mock_endpoint = _to_namespace(_load_cloud_fixture("gcp_vertex_endpoint.json"))
 
-    with patch("google.cloud.aiplatform.init"), patch("google.cloud.aiplatform.Endpoint.list", return_value=[mock_endpoint]):
+    with _patch_vertex_endpoints([mock_endpoint]):
         agents, warnings = discover(project_id="my-project", region="us-central1")
 
     vertex_agents = [a for a in agents if a.source == "gcp-vertex-ai"]
@@ -1945,8 +2012,7 @@ def test_gcp_cloud_run_services_discovered():
     mock_client.list_services.return_value = [mock_service]
 
     with (
-        patch("google.cloud.aiplatform.init"),
-        patch("google.cloud.aiplatform.Endpoint.list", return_value=[]),
+        _patch_vertex_endpoints([]),
         patch("google.cloud.run_v2.ServicesClient", return_value=mock_client),
     ):
         agents, warnings = discover(project_id="my-project", region="us-central1")
@@ -1991,8 +2057,7 @@ def test_gcp_cloud_functions_discovered_with_service_account():
     mock_fn_client.list_functions.return_value = [mock_function]
 
     with (
-        patch("google.cloud.aiplatform.init"),
-        patch("google.cloud.aiplatform.Endpoint.list", return_value=[]),
+        _patch_vertex_endpoints([]),
         patch("google.cloud.functions_v2.FunctionServiceClient", return_value=mock_fn_client),
     ):
         agents, warnings = discover(project_id="my-project", region="us-central1")
@@ -2083,8 +2148,7 @@ def test_gcp_vertex_and_cloud_run_combined():
     mock_run_client.list_services.return_value = [mock_svc]
 
     with (
-        patch("google.cloud.aiplatform.init"),
-        patch("google.cloud.aiplatform.Endpoint.list", return_value=[mock_ep]),
+        _patch_vertex_endpoints([mock_ep]),
         patch("google.cloud.run_v2.ServicesClient", return_value=mock_run_client),
     ):
         agents, warnings = discover(project_id="proj", region="us-central1")

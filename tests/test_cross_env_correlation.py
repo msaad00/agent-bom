@@ -109,6 +109,21 @@ def test_only_model_id_matches_is_low_confidence() -> None:
     assert "Partial match" in match.rationale
 
 
+def test_bedrock_scope_bucket_does_not_drop_model_only_cross_account_candidate() -> None:
+    local = _local_agent(account_id="999988887777", region="eu-west-1")
+    unrelated = _cloud_bedrock_agent(
+        name="bedrock:unrelated",
+        arn="arn:aws:bedrock:ap-southeast-2:222233334444:agent/OTHER",
+        account_id="222233334444",
+        region="ap-southeast-2",
+        model_id=_OTHER_MODEL,
+    )
+
+    matches = correlate_bedrock([local, unrelated, _cloud_bedrock_agent()])
+
+    assert [(match.cloud_agent_name, match.matched_signals) for match in matches] == [("bedrock:prod-agent", ("model_id",))]
+
+
 def test_account_and_region_without_model_is_low_confidence() -> None:
     # The local agent declares the right AWS scope but does not name the
     # specific model — still a low-confidence candidate, not a strong match.
@@ -335,6 +350,26 @@ def test_azure_only_deployment_matches_is_low_confidence() -> None:
     assert matches[0].matched_signals == ("deployment_name",)
 
 
+def test_azure_subscription_bucket_does_not_drop_deployment_only_cross_subscription_candidate() -> None:
+    local = _local_azure_agent(
+        subscription_id="99999999-8888-7777-6666-555555555555",
+        endpoint_url="https://other-account.openai.azure.com/",
+    )
+    unrelated = _cloud_azure_openai_deployment(
+        name="azure-openai:unrelated/other",
+        subscription_id="aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        account_name="unrelated-openai",
+        deployment_name="other",
+        resource_id="/subscriptions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/resourceGroups/rg/providers/Microsoft.CognitiveServices/accounts/unrelated-openai/deployments/other",
+    )
+
+    matches = correlate_azure_openai([local, unrelated, _cloud_azure_openai_deployment()])
+
+    assert [(match.cloud_agent_name, match.matched_signals) for match in matches] == [
+        (f"azure-openai:{_AZURE_ACCOUNT}/{_AZURE_DEPLOYMENT}", ("deployment_name",))
+    ]
+
+
 def test_azure_subscription_and_account_without_deployment_is_low_confidence() -> None:
     local = _local_azure_agent(deployment=None)
 
@@ -514,6 +549,22 @@ def test_gcp_only_endpoint_id_matches_is_low_confidence() -> None:
     assert len(matches) == 1
     assert matches[0].confidence is CorrelationConfidence.LOW
     assert matches[0].matched_signals == ("endpoint_id",)
+
+
+def test_gcp_project_bucket_does_not_drop_endpoint_only_cross_project_candidate() -> None:
+    local = _local_gcp_agent(project_id="other-project", location="europe-west4")
+    unrelated = _cloud_gcp_vertex_endpoint(
+        name="vertex-ai:unrelated",
+        resource_name="projects/unrelated-prod/locations/asia-east1/endpoints/987654321",
+        project_id="unrelated-prod",
+        location="asia-east1",
+    )
+
+    matches = correlate_gcp_vertex([local, unrelated, _cloud_gcp_vertex_endpoint()])
+
+    assert [(match.cloud_agent_name, match.matched_signals) for match in matches] == [
+        ("vertex-ai:gemini-prod-endpoint", ("endpoint_id",))
+    ]
 
 
 def test_gcp_endpoint_resource_path_in_env_supplies_all_three_signals() -> None:

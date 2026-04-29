@@ -29,7 +29,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Iterable, Mapping, TypeAlias, Union
+from typing import Any, Iterable, Mapping, TypeAlias, TypeVar, Union
 
 from agent_bom.models import Agent
 
@@ -40,6 +40,7 @@ from agent_bom.models import Agent
 # we normalize both shapes through `_AgentView` instead of forcing one
 # canonical type on every caller.
 AgentLike: TypeAlias = Union[Agent, Mapping[str, Any]]
+_CloudT = TypeVar("_CloudT")
 
 # ---------------------------------------------------------------------------
 # Strict-bar requirement: at least this many of the strong signals (account,
@@ -331,16 +332,43 @@ def _match_bedrock(
     )
 
 
+def _add_candidate(index: dict[str, list[_CloudT]], key: str | None, cloud: _CloudT) -> None:
+    """Add a cloud asset to a signal index when the signal is usable."""
+    if key:
+        index.setdefault(key, []).append(cloud)
+
+
+def _iter_indexed_candidates(index: dict[str, list[_CloudT]], keys: Iterable[str]) -> list[_CloudT]:
+    """Return unique cloud assets that share at least one strong signal.
+
+    The matchers still apply their strict scoring after this prefilter. This
+    only removes pairs that cannot possibly match because none of their
+    provider identity signals intersect.
+    """
+    candidates: list[_CloudT] = []
+    seen: set[int] = set()
+    for key in keys:
+        for cloud in index.get(key, []):
+            marker = id(cloud)
+            if marker in seen:
+                continue
+            seen.add(marker)
+            candidates.append(cloud)
+    return candidates
+
+
 def correlate_bedrock(agents: Iterable[AgentLike]) -> list[CorrelationMatch]:
     """Match local agents to cloud-discovered Bedrock agents."""
     local_evidence: list[_LocalAwsEvidence] = []
-    cloud_bedrock: list[_CloudBedrockAgent] = []
+    cloud_index: dict[str, list[_CloudBedrockAgent]] = {}
 
     for agent in agents:
         view = _normalize(agent)
         cloud = _extract_cloud_bedrock_agent(view)
         if cloud is not None:
-            cloud_bedrock.append(cloud)
+            _add_candidate(cloud_index, cloud.account_id, cloud)
+            _add_candidate(cloud_index, cloud.region, cloud)
+            _add_candidate(cloud_index, cloud.model_id, cloud)
             continue
         local = _extract_local_aws_evidence(view)
         if local is not None:
@@ -348,7 +376,8 @@ def correlate_bedrock(agents: Iterable[AgentLike]) -> list[CorrelationMatch]:
 
     matches: list[CorrelationMatch] = []
     for local in local_evidence:
-        for cloud in cloud_bedrock:
+        candidate_keys = (*local.account_ids, *local.regions, *local.model_ids)
+        for cloud in _iter_indexed_candidates(cloud_index, candidate_keys):
             match = _match_bedrock(local, cloud)
             if match is not None:
                 matches.append(match)
@@ -554,13 +583,15 @@ def _match_azure_openai(
 def correlate_azure_openai(agents: Iterable[AgentLike]) -> list[CorrelationMatch]:
     """Match local agents to cloud-discovered Azure OpenAI deployments."""
     local_evidence: list[_LocalAzureOpenAIEvidence] = []
-    cloud_deployments: list[_CloudAzureOpenAIDeployment] = []
+    cloud_index: dict[str, list[_CloudAzureOpenAIDeployment]] = {}
 
     for agent in agents:
         view = _normalize(agent)
         cloud = _extract_cloud_azure_openai_deployment(view)
         if cloud is not None:
-            cloud_deployments.append(cloud)
+            _add_candidate(cloud_index, cloud.subscription_id, cloud)
+            _add_candidate(cloud_index, cloud.account_name, cloud)
+            _add_candidate(cloud_index, cloud.deployment_name, cloud)
             continue
         local = _extract_local_azure_openai_evidence(view)
         if local is not None:
@@ -568,7 +599,8 @@ def correlate_azure_openai(agents: Iterable[AgentLike]) -> list[CorrelationMatch
 
     matches: list[CorrelationMatch] = []
     for local in local_evidence:
-        for cloud in cloud_deployments:
+        candidate_keys = (*local.subscription_ids, *local.account_names, *local.deployment_names)
+        for cloud in _iter_indexed_candidates(cloud_index, candidate_keys):
             match = _match_azure_openai(local, cloud)
             if match is not None:
                 matches.append(match)
@@ -785,13 +817,15 @@ def _match_gcp_vertex(
 def correlate_gcp_vertex(agents: Iterable[AgentLike]) -> list[CorrelationMatch]:
     """Match local agents to cloud-discovered GCP Vertex AI endpoints."""
     local_evidence: list[_LocalGcpVertexEvidence] = []
-    cloud_endpoints: list[_CloudGcpVertexEndpoint] = []
+    cloud_index: dict[str, list[_CloudGcpVertexEndpoint]] = {}
 
     for agent in agents:
         view = _normalize(agent)
         cloud = _extract_cloud_gcp_vertex_endpoint(view)
         if cloud is not None:
-            cloud_endpoints.append(cloud)
+            _add_candidate(cloud_index, cloud.project_id, cloud)
+            _add_candidate(cloud_index, cloud.location, cloud)
+            _add_candidate(cloud_index, cloud.endpoint_id, cloud)
             continue
         local = _extract_local_gcp_vertex_evidence(view)
         if local is not None:
@@ -799,7 +833,8 @@ def correlate_gcp_vertex(agents: Iterable[AgentLike]) -> list[CorrelationMatch]:
 
     matches: list[CorrelationMatch] = []
     for local in local_evidence:
-        for cloud in cloud_endpoints:
+        candidate_keys = (*local.project_ids, *local.locations, *local.endpoint_ids)
+        for cloud in _iter_indexed_candidates(cloud_index, candidate_keys):
             match = _match_gcp_vertex(local, cloud)
             if match is not None:
                 matches.append(match)

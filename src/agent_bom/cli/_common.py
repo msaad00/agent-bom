@@ -10,6 +10,7 @@ from pathlib import Path
 from rich.console import Console
 
 from agent_bom import __version__
+from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.security import sanitize_env_vars, sanitize_sensitive_payload
 
 logger = logging.getLogger(__name__)
@@ -145,7 +146,11 @@ def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list
                 mcp_version=server_data.get("mcp_version"),
                 security_blocked=bool(server_data.get("security_blocked", False)),
                 security_warnings=list(server_data.get("security_warnings", []) or []),
-                security_intelligence=list(server_data.get("security_intelligence", []) or []),
+                security_intelligence=[
+                    sanitize_security_intelligence_entry(item)
+                    for item in (server_data.get("security_intelligence", []) or [])
+                    if isinstance(item, dict)
+                ],
                 discovery_provenance=package_provenance,
                 tools=tools,
                 packages=packages,

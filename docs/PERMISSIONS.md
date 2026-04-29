@@ -22,10 +22,12 @@ agent-bom reads only what you explicitly ask it to scan:
 
 ---
 
-## Auto-Discovery Config Paths (exhaustive list)
+## Auto-Discovery Config Paths
 
-**Auto-discovery** reads these specific config paths only. No directory traversal,
-no glob patterns, no recursive walks. If a file does not exist, it is silently skipped.
+**Auto-discovery** reads known client and project paths for supported agent
+surfaces. Most entries are fixed file paths; some supported clients use bounded
+project or profile globs so teams can find the same configs their tools load.
+If a file does not exist, it is silently skipped.
 
 ### Global config files
 
@@ -58,9 +60,13 @@ no glob patterns, no recursive walks. If a file does not exist, it is silently s
 - `compose.yml`
 - `compose.yaml`
 
-**Total**: 27 specific file paths. No other files are ever read during auto-discovery.
+The exact path set changes as supported clients are added. Use
+`agent-bom where --json` or `agent-bom where --dry-run` to preview the paths
+that would be read on a given machine before any scan runs.
 
-Use `--dry-run` to preview exactly which paths would be read before any scan runs.
+Default discovery stays scoped to known agent, MCP, Docker Compose, JetBrains,
+and project config surfaces; arbitrary filesystem crawling is not part of
+auto-discovery.
 
 ---
 
@@ -98,11 +104,11 @@ Credential values are **never** read, stored, logged, or transmitted. Only names
 - **Never write** to any config file, lock file, or project file
 - **Never execute** MCP servers or agent processes
 - **Never store** credential values — only env var _names_ appear in reports
-- **Never transmit** your file contents, project structure, or inventory to external services
+- **Never transmit** your file contents, project structure, or inventory to external services unless you explicitly enable a push, export, or integration destination; pushed payloads are sanitized before transmission
 - **Never cache** any personal data to disk (scan history is opt-in via `--save`)
 - **Never require** authentication tokens or API keys (NVD key is optional for rate limits only)
-- **Never access** arbitrary files — only the 27 enumerated paths above
-- **Never traverse** directories or use glob patterns during auto-discovery
+- **Never access** arbitrary files outside the supported discovery surfaces you choose to scan
+- **Never perform** broad recursive filesystem crawls during auto-discovery
 - **Never run** background processes, daemons, cron jobs, or system services
 
 ---

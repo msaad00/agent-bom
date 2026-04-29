@@ -93,7 +93,13 @@ _PROVIDER_PERMISSIONS_USED: dict[str, tuple[str, ...]] = {
 
 
 def _provider_capabilities(name: str) -> ExtensionCapabilities:
-    scan_modes = ("runtime_probe",) if name == "ollama" else ("direct_cloud_pull",)
+    scan_modes: tuple[str, ...]
+    if name == "ollama":
+        scan_modes = ("runtime_probe",)
+    elif name in {"aws", "azure", "gcp"}:
+        scan_modes = ("direct_cloud_pull", "operator_pushed_inventory", "skill_invoked_pull")
+    else:
+        scan_modes = ("direct_cloud_pull",)
     return ExtensionCapabilities(
         scan_modes=scan_modes,
         required_scopes=(f"{name}:read",),

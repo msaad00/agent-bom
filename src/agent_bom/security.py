@@ -400,6 +400,29 @@ def _looks_like_path_value(value: str) -> bool:
     return value.startswith("/") or value.startswith("~/") or bool(re.match(r"^[A-Za-z]:[\\/]", value))
 
 
+_CLOUD_IDENTITY_KEYS = {
+    "account_id",
+    "arn",
+    "cloud_principal",
+    "endpoint_id",
+    "location",
+    "principal_arn",
+    "project_id",
+    "region",
+    "resource_group",
+    "resource_id",
+    "resource_name",
+    "service",
+    "subscription_id",
+    "tenant_id",
+}
+
+
+def _key_looks_like_cloud_identity(key: object) -> bool:
+    key_text = str(key or "").strip().lower().replace("-", "_")
+    return key_text in _CLOUD_IDENTITY_KEYS or key_text.endswith("_arn") or key_text.endswith("_resource_id")
+
+
 def sanitize_path_label(value: object) -> str:
     """Return a non-revealing label for local filesystem paths."""
     text = sanitize_log_label(value, max_len=1000)
@@ -421,6 +444,10 @@ def sanitize_sensitive_payload(value: object, *, key: object | None = None, max_
             return "***REDACTED***"
         if key is not None and _key_looks_like_url(key):
             return sanitize_url(value)
+        if key is not None and _key_looks_like_cloud_identity(key):
+            if _looks_sensitive_value(value):
+                return "***REDACTED***"
+            return sanitize_text(value, max_len=max_str_len)
         if "://" in value:
             return sanitize_text(value, max_len=max_str_len)
         if key is not None and _key_looks_like_path(key) and _looks_like_path_value(value):

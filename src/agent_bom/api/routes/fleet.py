@@ -20,6 +20,7 @@ from agent_bom.api.mcp_observation_store import MCPObservation, merge_observatio
 from agent_bom.api.models import FleetAgentUpdate, PushPayload, StateUpdate
 from agent_bom.api.stores import _get_fleet_store, _get_idempotency_store, _get_mcp_observation_store
 from agent_bom.api.tenant_quota import enforce_fleet_agents_quota, tenant_quota_guard
+from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.security import sanitize_command_args, sanitize_security_warnings, sanitize_text, sanitize_url
 
 router = APIRouter()
@@ -229,7 +230,11 @@ def _persist_payload_observations(tenant_id: str, agent: dict, *, last_discovery
             credential_env_vars=credential_names,
             security_blocked=bool(server.get("security_blocked", False)),
             security_warnings=sanitize_security_warnings(list(server.get("security_warnings", []) or [])),
-            security_intelligence=list(server.get("security_intelligence", []) or []),
+            security_intelligence=[
+                sanitize_security_intelligence_entry(item)
+                for item in (server.get("security_intelligence", []) or [])
+                if isinstance(item, dict)
+            ],
             observed_via=["fleet_sync"],
             observed_scopes=["endpoint"],
             scan_sources=[],

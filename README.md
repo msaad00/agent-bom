@@ -391,7 +391,12 @@ Backend choices stay explicit and optional:
 - `ClickHouse` for analytics and event-scale persistence
 - `Snowflake` for warehouse-native governance and selected backend paths
 
-Run locally, in CI, in Docker, in Kubernetes, as a self-hosted API + dashboard, or as an MCP server — no mandatory hosted control plane, no mandatory cloud vendor.
+Six ways to run agent-bom — locally, in CI, self-hosted, cloud-read-only,
+pushed inventory, or through your AI agent — chosen by your security boundary,
+not ours. agent-bom holds only the credentials your chosen mode requires and
+reaches only the systems your chosen mode permits. The discovery skills work
+standalone too: use them for inventory, and route to agent-bom only when you
+want findings, graph, policy, or exports.
 
 References: [PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) · [PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md) · [ENTERPRISE.md](docs/ENTERPRISE.md) · [How agent-bom works](site-docs/architecture/how-agent-bom-works.md).
 

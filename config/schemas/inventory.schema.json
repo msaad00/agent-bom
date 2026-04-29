@@ -238,7 +238,7 @@
           "items": { "type": "string" }
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
 
     "Agent": {

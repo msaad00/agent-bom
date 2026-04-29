@@ -337,7 +337,11 @@ def _persist_agent_observations(
             credential_env_vars=credential_names,
             security_blocked=bool(getattr(server, "security_blocked", False)),
             security_warnings=sanitize_security_warnings(list(getattr(server, "security_warnings", []) or [])),
-            security_intelligence=list(getattr(server, "security_intelligence", []) or []),
+            security_intelligence=[
+                sanitize_security_intelligence_entry(item)
+                for item in (getattr(server, "security_intelligence", []) or [])
+                if isinstance(item, dict)
+            ],
             observed_via=observed_via,
             observed_scopes=observed_scopes,
             scan_sources=scan_history["scan_sources"],

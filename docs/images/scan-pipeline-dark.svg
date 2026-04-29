@@ -13,7 +13,7 @@
   <rect width="960" height="420" rx="12" fill="#09090b"/>
 
   <text x="480" y="28" text-anchor="middle" class="title">Scan pipeline</text>
-  <text x="480" y="44" text-anchor="middle" class="subtitle">5 stages, left to right. No source code or credential values leave your machine. External calls are limited to package metadata, version lookups, and CVE enrichment.</text>
+  <text x="480" y="44" text-anchor="middle" class="subtitle">5 operator stages over 6 tracked steps: discover, extract, scan, enrich, analyze, output. Source code and credential values stay local.</text>
 
   <!-- ═══ STEP 1: DISCOVER ═══ -->
   <rect x="20" y="64" width="160" height="304" rx="10" fill="#18181b" stroke="#27272a" stroke-width="1"/>

@@ -1,7 +1,13 @@
 import json
 from pathlib import Path
 
-from agent_bom.mcp_blocklist import blocklist_findings_for_agents, flag_blocklisted_mcp_servers, load_mcp_blocklist, match_mcp_server
+from agent_bom.mcp_blocklist import (
+    blocklist_findings_for_agents,
+    flag_blocklisted_mcp_servers,
+    load_mcp_blocklist,
+    match_mcp_server,
+    sanitize_security_intelligence_entry,
+)
 from agent_bom.models import Agent, AgentType, AIBOMReport, MCPServer, Package
 from agent_bom.output import to_json
 from agent_bom.output.sarif import to_sarif
@@ -162,6 +168,31 @@ def test_match_values_are_redacted_before_output() -> None:
         assert raw_token not in payload
         assert "user:pass" not in payload
         assert "token=secret" not in payload
+
+
+def test_security_intelligence_sanitizer_drops_unknown_secret_fields() -> None:
+    raw_token = "ghp_" + "B" * 36
+
+    safe = sanitize_security_intelligence_entry(
+        {
+            "entry_id": "intel-a",
+            "title": "Suspicious MCP",
+            "matched_value": f"npx suspicious --token {raw_token}",
+            "source": "community",
+            "references": ["https://example.com/advisory#fragment", "javascript:alert(1)"],
+            "remediation_actions": [f"remove token={raw_token}", "disable the server"],
+            "debug_token": raw_token,
+            "nested": {"authorization": raw_token},
+        }
+    )
+
+    serialized = json.dumps(safe)
+    assert "debug_token" not in safe
+    assert "nested" not in safe
+    assert raw_token not in serialized
+    assert safe["matched_value"] == "npx suspicious --token <redacted>"
+    assert safe["references"] == ["https://example.com/advisory"]
+    assert safe["remediation_actions"][0] == "***REDACTED***"
 
 
 def test_sarif_output_includes_mcp_blocklist_findings() -> None:

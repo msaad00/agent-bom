@@ -24,6 +24,9 @@ def test_aws_discovery_skill_declares_guardrailed_skill_invoked_inventory_flow()
     assert "examples/operator_pull/aws_inventory_adapter.py" in content
     assert "Do not ask users to paste access keys" in content
     assert "Do not modify AWS resources" in content
+    assert "discover-only by default" in content
+    assert "The skill does not push inventory to an API by default" in content
+    assert "separate operator-approved handoff" in content
     assert "agent-bom agents --inventory aws-inventory.json" in content
 
 

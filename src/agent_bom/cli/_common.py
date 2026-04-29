@@ -10,7 +10,7 @@ from pathlib import Path
 from rich.console import Console
 
 from agent_bom import __version__
-from agent_bom.security import sanitize_env_vars
+from agent_bom.security import sanitize_env_vars, sanitize_sensitive_payload
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +118,11 @@ def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list
             )
             mcp_servers.append(server)
 
+        sanitized_metadata = {}
+        if isinstance(agent_data.get("metadata"), dict):
+            metadata_payload = sanitize_sensitive_payload(agent_data.get("metadata", {}))
+            sanitized_metadata = metadata_payload if isinstance(metadata_payload, dict) else {}
+
         agent = Agent(
             name=agent_data.get("name", "unknown"),
             agent_type=AgentType(agent_data.get("agent_type", agent_data.get("type", "custom"))),
@@ -125,6 +130,7 @@ def _build_agents_from_inventory(inventory_data: dict, source_path: str) -> list
             mcp_servers=mcp_servers,
             version=agent_data.get("version"),
             source=agent_data.get("source", inventory_data.get("source")),
+            metadata=sanitized_metadata,
             discovered_at=agent_data.get("discovered_at") or agent_data.get("first_seen") or "",
             last_seen=agent_data.get("last_seen") or agent_data.get("last_seen_at"),
         )

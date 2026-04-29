@@ -234,6 +234,12 @@
           "description": "Where this inventory entry came from (e.g. 'local', 'snowflake', 'aws-bedrock', 'gcp-vertex', 'openai'). Used for traceability in reports."
         },
 
+        "metadata": {
+          "type": "object",
+          "description": "Sanitized provider-specific metadata such as cloud_origin, cloud_state, cloud_scope, cloud_principal, and permissions_used. Credential values must be redacted before submission.",
+          "additionalProperties": true
+        },
+
         "discovered_at": {
           "type": "string",
           "format": "date-time",

@@ -1,5 +1,7 @@
 """Tests for the unified Finding model (issue #566, Phase 1)."""
 
+import json
+
 import pytest
 
 from agent_bom.finding import (
@@ -14,6 +16,7 @@ from agent_bom.models import (
     BlastRadius,
     MCPServer,
     Package,
+    PackageOccurrence,
     Severity,
     TransportType,
     Vulnerability,
@@ -296,6 +299,111 @@ def test_blast_radius_to_finding_evidence_has_package_info():
     assert finding.evidence["package_name"] == "requests"
     assert finding.evidence["package_version"] == "2.0.0"
     assert finding.evidence["exposed_credential_count"] == 1
+
+
+def test_blast_radius_to_finding_preserves_sanitized_reachability_evidence():
+    raw_github_token = "ghp_" + "abcdefghijklmnopqrstuvwxyz" + "1234567890"
+    raw_slack_token = "xoxb-" + "1234567890-" + "1234567890-" + "abcdefghijklmnopqrstuv"
+    br = _make_blast_radius()
+    br.hop_depth = 3
+    br.delegation_chain = [f"test-server -> {raw_slack_token} -> delegated-agent"]
+    br.transitive_agents = [
+        {
+            "name": "delegated-agent",
+            "hop": 2,
+            "token": raw_github_token,
+            "config_path": "/Users/alice/.config/agent-bom/private-agent.json",
+        }
+    ]
+    br.transitive_servers = [
+        {
+            "name": "delegated-server",
+            "url": "https://user:" + "password@example.com/mcp?token=raw",
+        }
+    ]
+    br.transitive_packages = [
+        {
+            "name": "transitive-lib",
+            "version": "1.0.0",
+            "download_url": "https://user:" + "password@registry.example.com/transitive-lib.tgz?token=raw",
+        }
+    ]
+    br.transitive_credentials = ["AWS_SECRET_ACCESS_KEY"]
+    br.transitive_risk_score = 4.2
+    br.graph_reachable = True
+    br.graph_min_hop_distance = 2
+    br.graph_reachable_from_agents = ["delegated-agent"]
+
+    finding = blast_radius_to_finding(br)
+
+    assert finding.evidence["hop_depth"] == 3
+    assert finding.evidence["delegation_chain"] == ["test-server -> <redacted> -> delegated-agent"]
+    assert finding.evidence["transitive_agents"][0]["name"] == "delegated-agent"
+    assert finding.evidence["transitive_agents"][0]["hop"] == 2
+    assert finding.evidence["transitive_agents"][0]["token"] == "***REDACTED***"
+    assert finding.evidence["transitive_agents"][0]["config_path"] == "<path:private-agent.json>"
+    assert finding.evidence["transitive_servers"][0]["name"] == "delegated-server"
+    assert finding.evidence["transitive_servers"][0]["url"] == "https://example.com/mcp"
+    assert finding.evidence["transitive_packages"][0]["name"] == "transitive-lib"
+    assert finding.evidence["transitive_packages"][0]["download_url"] == "https://registry.example.com/transitive-lib.tgz"
+    assert finding.evidence["transitive_credential_count"] == 1
+    assert finding.evidence["transitive_risk_score"] == 4.2
+    assert finding.evidence["graph_reachable"] is True
+    assert finding.evidence["graph_min_hop_distance"] == 2
+    assert finding.evidence["graph_reachable_from_agents"] == ["delegated-agent"]
+
+    serialized = json.dumps(finding.evidence, sort_keys=True)
+    assert raw_github_token not in serialized
+    assert raw_slack_token not in serialized
+    assert "user:password" not in serialized
+    assert "/Users/alice/.config/agent-bom/private-agent.json" not in serialized
+
+
+def test_report_to_findings_preserves_sanitized_layer_attribution_evidence():
+    raw_token = "ghp_" + "abcdefghijklmnopqrstuvwxyz" + "1234567890"
+    pkg = _make_package()
+    pkg.is_direct = False
+    pkg.parent_package = "top-level"
+    pkg.dependency_depth = 2
+    pkg.dependency_scope = "runtime"
+    pkg.reachability_evidence = "lockfile"
+    pkg.occurrences = [
+        PackageOccurrence(
+            layer_index=7,
+            layer_id="sha256:layer7",
+            layer_path="/var/lib/docker/overlay2/sensitive-layer",
+            package_path="/Users/alice/work/private/package-lock.json",
+            created_by=f"RUN npm config set //registry.npmjs.org/:_authToken={raw_token}",
+            dockerfile_instruction=f"RUN npm install --token={raw_token}",
+        )
+    ]
+    br = _make_blast_radius()
+    br.package = pkg
+    br.graph_reachable = False
+    report = AIBOMReport(agents=[], blast_radii=[br])
+
+    finding = report.to_findings()[0]
+
+    assert finding.evidence["package_is_direct"] is False
+    assert finding.evidence["package_parent"] == "top-level"
+    assert finding.evidence["package_dependency_depth"] == 2
+    assert finding.evidence["package_dependency_scope"] == "runtime"
+    assert finding.evidence["package_reachability_evidence"] == "lockfile"
+    assert finding.evidence["graph_reachable"] is False
+    assert finding.evidence["layer_attribution"] == [
+        {
+            "layer_index": 7,
+            "layer_id": "sha256:layer7",
+            "layer_path": "<path:sensitive-layer>",
+            "package_path": "<path:package-lock.json>",
+            "created_by": "RUN npm config set //registry.npmjs.org/:_authToken=<redacted>",
+            "dockerfile_instruction": "RUN npm install --token=<redacted>",
+        }
+    ]
+
+    serialized = json.dumps(finding.evidence, sort_keys=True)
+    assert raw_token not in serialized
+    assert "/Users/alice/work/private/package-lock.json" not in serialized
 
 
 # ---------------------------------------------------------------------------

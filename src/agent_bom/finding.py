@@ -6,6 +6,7 @@ Later phases will add cloud CIS, proxy alerts, SAST, and skill findings.
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
@@ -231,6 +232,97 @@ class Finding:
         }
 
 
+def _package_occurrence_evidence(occurrence: object) -> dict[str, object]:
+    """Return layer/package provenance in a stable dict shape."""
+    if hasattr(occurrence, "to_dict"):
+        raw = occurrence.to_dict()
+        if isinstance(raw, dict):
+            return raw
+    return {
+        "layer_index": getattr(occurrence, "layer_index", None),
+        "layer_id": getattr(occurrence, "layer_id", None),
+        "layer_path": getattr(occurrence, "layer_path", None),
+        "package_path": getattr(occurrence, "package_path", None),
+        "created_by": getattr(occurrence, "created_by", None),
+        "dockerfile_instruction": getattr(occurrence, "dockerfile_instruction", None),
+    }
+
+
+def _evidence_payload(value: object) -> object:
+    """Normalize common model objects before recursive evidence sanitization."""
+    if isinstance(value, dict):
+        return {str(key): _evidence_payload(child) for key, child in value.items()}
+    if isinstance(value, list | tuple | set):
+        return [_evidence_payload(item) for item in value]
+    if hasattr(value, "to_dict"):
+        raw = value.to_dict()
+        if isinstance(raw, dict):
+            return _evidence_payload(raw)
+    if hasattr(value, "name"):
+        payload: dict[str, object] = {"name": getattr(value, "name", None)}
+        for attr in ("version", "ecosystem", "hop", "id", "transport", "url", "command", "args"):
+            if hasattr(value, attr):
+                payload[attr] = getattr(value, attr)
+        return payload
+    return value
+
+
+def _evidence_key_looks_sensitive(key: object | None) -> bool:
+    if key is None:
+        return False
+    from agent_bom.security import SENSITIVE_PATTERNS
+
+    return any(re.search(pattern, str(key).lower()) for pattern in SENSITIVE_PATTERNS)
+
+
+def _evidence_key_looks_like_url(key: object | None) -> bool:
+    if key is None:
+        return False
+    key_text = str(key).lower()
+    return key_text in {"url", "uri", "endpoint", "webhook"} or key_text.endswith(("_url", "_uri", "_endpoint", "_webhook"))
+
+
+def _evidence_key_looks_like_path(key: object | None) -> bool:
+    if key is None:
+        return False
+    key_text = str(key).lower()
+    return (
+        "path" in key_text
+        or key_text in {"cwd", "workspace", "dir", "directory"}
+        or key_text.endswith(("_dir", "_directory", "_cwd", "_workspace"))
+    )
+
+
+def _sanitized_evidence_value(value: object, *, key: object | None = None, depth: int = 0) -> object:
+    from agent_bom.security import sanitize_path_label, sanitize_sensitive_payload, sanitize_text, sanitize_url
+
+    if depth >= 8:
+        return "[truncated]"
+    if value is None or isinstance(value, bool | int | float):
+        return value
+    if isinstance(value, str):
+        if _evidence_key_looks_sensitive(key):
+            return "***REDACTED***"
+        if _evidence_key_looks_like_url(key):
+            return sanitize_url(value)
+        if _evidence_key_looks_like_path(key):
+            return sanitize_path_label(value)
+        return sanitize_text(value)
+    if isinstance(value, dict):
+        sanitized: dict[str, object] = {}
+        for raw_key, raw_value in value.items():
+            clean_key = sanitize_text(raw_key, max_len=200)
+            sanitized[clean_key] = _sanitized_evidence_value(raw_value, key=clean_key, depth=depth + 1)
+        return sanitized
+    if isinstance(value, list | tuple | set):
+        return [_sanitized_evidence_value(item, key=key, depth=depth + 1) for item in list(value)]
+    return sanitize_sensitive_payload(value)
+
+
+def _sanitized_evidence_field(value: object) -> object:
+    return _sanitized_evidence_value(_evidence_payload(value))
+
+
 def blast_radius_to_finding(br: object) -> "Finding":
     """Convert a BlastRadius instance to a unified Finding.
 
@@ -268,12 +360,28 @@ def blast_radius_to_finding(br: object) -> "Finding":
         "package_name": pkg.name,
         "package_version": pkg.version,
         "ecosystem": pkg.ecosystem,
+        "package_is_direct": pkg.is_direct,
+        "package_parent": pkg.parent_package,
+        "package_dependency_depth": pkg.dependency_depth,
+        "package_dependency_scope": pkg.dependency_scope,
+        "package_reachability_evidence": pkg.reachability_evidence,
         "affected_server_count": len(br.affected_servers),
         "exposed_credential_count": len(br.exposed_credentials),
         "exposed_tool_count": len(br.exposed_tools),
+        "hop_depth": getattr(br, "hop_depth", 1),
+        "delegation_chain": _sanitized_evidence_field(getattr(br, "delegation_chain", [])),
+        "transitive_agents": _sanitized_evidence_field(getattr(br, "transitive_agents", [])),
+        "transitive_servers": _sanitized_evidence_field(getattr(br, "transitive_servers", [])),
+        "transitive_packages": _sanitized_evidence_field(getattr(br, "transitive_packages", [])),
+        "transitive_credential_count": len(getattr(br, "transitive_credentials", []) or []),
+        "transitive_risk_score": getattr(br, "transitive_risk_score", 0.0),
+        "graph_reachable": getattr(br, "graph_reachable", None),
+        "graph_min_hop_distance": getattr(br, "graph_min_hop_distance", None),
+        "graph_reachable_from_agents": _sanitized_evidence_field(getattr(br, "graph_reachable_from_agents", [])),
+        "layer_attribution": _sanitized_evidence_field([_package_occurrence_evidence(occ) for occ in br.layer_attribution]),
     }
     if vuln.references:
-        evidence["references"] = vuln.references[:5]
+        evidence["references"] = _sanitized_evidence_field(vuln.references[:5])
 
     sev = vuln.severity.value if hasattr(vuln.severity, "value") else str(vuln.severity)
 

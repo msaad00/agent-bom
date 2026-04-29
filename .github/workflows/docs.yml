@@ -50,7 +50,7 @@ jobs:
           path: site
 
   deploy:
-    if: ${{ inputs.deploy }}
+    if: ${{ github.event_name != 'workflow_call' || inputs.deploy }}
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 20

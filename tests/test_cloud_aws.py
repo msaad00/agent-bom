@@ -110,6 +110,139 @@ def test_discover_with_bedrock_agent():
         assert "bedrock:MyAgent" in agents[0].name
 
 
+def test_discover_persists_sts_account_scope_on_aws_origins():
+    """Representative AWS assets carry normalized account scope from STS."""
+    mock_boto3, mock_session = _mock_boto3()
+    mock_botocore = MagicMock()
+    mock_botocore.exceptions.ClientError = type("ClientError", (Exception,), {})
+    mock_botocore.exceptions.NoCredentialsError = type("NoCredentialsError", (Exception,), {})
+
+    mock_sts = MagicMock()
+    mock_sts.get_caller_identity.return_value = {"Account": "123456789012"}
+
+    mock_bedrock = MagicMock()
+    agents_paginator = MagicMock()
+    agents_paginator.paginate.return_value = [
+        {"agentSummaries": [{"agentId": "agent-1", "agentName": "SupportAgent", "agentStatus": "PREPARED"}]}
+    ]
+    action_groups_paginator = MagicMock()
+    action_groups_paginator.paginate.return_value = [{"actionGroupSummaries": []}]
+    mock_bedrock.get_paginator.side_effect = lambda op: {
+        "list_agents": agents_paginator,
+        "list_agent_action_groups": action_groups_paginator,
+    }[op]
+    mock_bedrock.get_agent.return_value = {
+        "agent": {
+            "agentArn": "arn:aws:bedrock:us-east-1:123456789012:agent/agent-1",
+            "foundationModel": "anthropic.claude-3-sonnet",
+        }
+    }
+
+    mock_ecs = MagicMock()
+    clusters_paginator = MagicMock()
+    clusters_paginator.paginate.return_value = [{"clusterArns": ["arn:aws:ecs:us-east-1:123456789012:cluster/prod"]}]
+    tasks_paginator = MagicMock()
+    tasks_paginator.paginate.return_value = [{"taskArns": ["arn:aws:ecs:us-east-1:123456789012:task/prod/task-1"]}]
+    mock_ecs.get_paginator.side_effect = lambda op: {"list_clusters": clusters_paginator, "list_tasks": tasks_paginator}[op]
+    mock_ecs.describe_tasks.return_value = {
+        "tasks": [
+            {
+                "taskArn": "arn:aws:ecs:us-east-1:123456789012:task/prod/task-1",
+                "containers": [{"name": "model-api", "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/model-api:2026-04"}],
+            }
+        ]
+    }
+
+    mock_session.client.side_effect = lambda service, **_kwargs: {
+        "sts": mock_sts,
+        "bedrock-agent": mock_bedrock,
+        "ecs": mock_ecs,
+    }[service]
+
+    with patch.dict(sys.modules, {"boto3": mock_boto3, "botocore": mock_botocore, "botocore.exceptions": mock_botocore.exceptions}):
+        from agent_bom.cloud import aws
+
+        agents, warnings = aws.discover(region="us-east-1", include_ecs=True)
+
+    assert not warnings
+    origins = {agent.source: agent.metadata["cloud_origin"] for agent in agents}
+    assert origins["aws-bedrock"]["scope"]["account_id"] == "123456789012"
+    assert origins["aws-bedrock"]["resource_id"] == "arn:aws:bedrock:us-east-1:123456789012:agent/agent-1"
+    assert origins["aws-ecs"]["scope"]["account_id"] == "123456789012"
+    assert origins["aws-ecs"]["raw_identity"]["cluster_arn"] == "arn:aws:ecs:us-east-1:123456789012:cluster/prod"
+
+
+def test_discover_continues_when_sts_account_resolution_is_denied():
+    """Denied STS permissions omit account scope without blocking discovery."""
+    mock_boto3, mock_session = _mock_boto3()
+    mock_botocore = MagicMock()
+    mock_botocore.exceptions.ClientError = type("ClientError", (Exception,), {})
+    mock_botocore.exceptions.NoCredentialsError = type("NoCredentialsError", (Exception,), {})
+
+    mock_sts = MagicMock()
+    mock_sts.get_caller_identity.side_effect = RuntimeError("AccessDenied")
+
+    mock_bedrock = MagicMock()
+    agents_paginator = MagicMock()
+    agents_paginator.paginate.return_value = [
+        {"agentSummaries": [{"agentId": "agent-1", "agentName": "SupportAgent", "agentStatus": "PREPARED"}]}
+    ]
+    action_groups_paginator = MagicMock()
+    action_groups_paginator.paginate.return_value = [{"actionGroupSummaries": []}]
+    mock_bedrock.get_paginator.side_effect = lambda op: {
+        "list_agents": agents_paginator,
+        "list_agent_action_groups": action_groups_paginator,
+    }[op]
+    mock_bedrock.get_agent.return_value = {
+        "agent": {
+            "agentArn": "arn:aws:bedrock:us-east-1:123456789012:agent/agent-1",
+            "foundationModel": "anthropic.claude-3-sonnet",
+        }
+    }
+    mock_session.client.side_effect = lambda service, **_kwargs: {"sts": mock_sts, "bedrock-agent": mock_bedrock}[service]
+
+    with patch.dict(sys.modules, {"boto3": mock_boto3, "botocore": mock_botocore, "botocore.exceptions": mock_botocore.exceptions}):
+        from agent_bom.cloud import aws
+
+        agents, warnings = aws.discover(region="us-east-1", include_ecs=False)
+
+    assert warnings == []
+    assert len(agents) == 1
+    assert "scope" not in agents[0].metadata["cloud_origin"]
+
+
+def test_bedrock_unknown_lifecycle_keeps_origin_without_cloud_state():
+    """Unverified lifecycle values do not drop the resource or invent state."""
+    from agent_bom.cloud.aws import _discover_bedrock
+
+    mock_session = MagicMock()
+    mock_bedrock = MagicMock()
+    agents_paginator = MagicMock()
+    agents_paginator.paginate.return_value = [
+        {"agentSummaries": [{"agentId": "agent-1", "agentName": "SupportAgent", "agentStatus": "CREATING"}]}
+    ]
+    action_groups_paginator = MagicMock()
+    action_groups_paginator.paginate.return_value = [{"actionGroupSummaries": []}]
+    mock_bedrock.get_paginator.side_effect = lambda op: {
+        "list_agents": agents_paginator,
+        "list_agent_action_groups": action_groups_paginator,
+    }[op]
+    mock_bedrock.get_agent.return_value = {
+        "agent": {
+            "agentArn": "arn:aws:bedrock:us-east-1:123456789012:agent/agent-1",
+            "foundationModel": "anthropic.claude-3-sonnet",
+        }
+    }
+    mock_session.client.return_value = mock_bedrock
+
+    agents, warnings = _discover_bedrock(mock_session, "us-east-1", account_id="123456789012")
+
+    assert warnings == []
+    assert len(agents) == 1
+    assert agents[0].metadata["cloud_origin"]["scope"]["account_id"] == "123456789012"
+    assert "cloud_state" not in agents[0].metadata
+
+
 def test_discover_no_credentials():
     """When credentials are missing, should add warning and return."""
     mock_boto3, mock_session = _mock_boto3()

@@ -19,6 +19,7 @@ import subprocess
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
 from .base import CloudDiscoveryError
+from .normalization import build_cloud_origin, build_package_purl, parse_container_image_package
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +185,7 @@ def _discover_ai_studio(
                     name=model_name,
                     version=str(model_version),
                     ecosystem="nebius-ai-studio",
+                    purl=build_package_purl(ecosystem="nebius-ai-studio", name=model_name, version=str(model_version)),
                 )
             ]
 
@@ -203,6 +205,17 @@ def _discover_ai_studio(
                 source="nebius-ai-studio",
                 version=f"{status} (v{model_version})",
                 mcp_servers=[server],
+                metadata={
+                    "cloud_origin": build_cloud_origin(
+                        provider="nebius",
+                        service="ai-studio",
+                        resource_type="model",
+                        resource_id=model_id,
+                        resource_name=model_name,
+                        project_id=project_id,
+                        raw_identity={"id": model_id, "name": model_name, "status": status, "version": model_version},
+                    )
+                },
             )
             agents.append(agent)
 
@@ -275,6 +288,11 @@ def _discover_gpu_instances(
                         name=boot_disk.get("image_name", image_id),
                         version="detected",
                         ecosystem="nebius-compute-image",
+                        purl=build_package_purl(
+                            ecosystem="nebius-compute-image",
+                            name=boot_disk.get("image_name", image_id),
+                            version="detected",
+                        ),
                     )
                 )
 
@@ -293,7 +311,20 @@ def _discover_gpu_instances(
                 source="nebius-gpu",
                 version=status,
                 mcp_servers=[server],
-                metadata={"gpu_count": gpu_count, "gpu_type": gpu_type, "ai_workload": is_ai_workload},
+                metadata={
+                    "gpu_count": gpu_count,
+                    "gpu_type": gpu_type,
+                    "ai_workload": is_ai_workload,
+                    "cloud_origin": build_cloud_origin(
+                        provider="nebius",
+                        service="compute",
+                        resource_type="gpu-instance",
+                        resource_id=inst_id,
+                        resource_name=inst_name,
+                        project_id=project_id,
+                        raw_identity={"id": inst_id, "name": inst_name, "platform_id": platform_id, "status": status},
+                    ),
+                },
             )
             agents.append(agent)
 
@@ -367,13 +398,19 @@ def _discover_k8s_gpu_pods(
                         continue
                     seen_images.add(image_ref)
 
-                    packages = [
-                        Package(
-                            name=image_ref.split("/")[-1].split(":")[0],
-                            version=image_ref.split(":")[-1] if ":" in image_ref else "latest",
-                            ecosystem="container-image",
-                        )
-                    ]
+                    image_parts = parse_container_image_package(image_ref)
+                    packages = (
+                        [
+                            Package(
+                                name=image_parts[0],
+                                version=image_parts[1],
+                                ecosystem="container-image",
+                                purl=build_package_purl(ecosystem="container-image", name=image_parts[0], version=image_parts[1]),
+                            )
+                        ]
+                        if image_parts
+                        else []
+                    )
 
                     server = MCPServer(
                         name=f"nebius-k8s-gpu:{pod_ns}/{pod_name}/{container_name}",
@@ -390,7 +427,19 @@ def _discover_k8s_gpu_pods(
                         source="nebius-k8s-gpu",
                         version=f"gpu-request:{gpu_request or gpu_limit}",
                         mcp_servers=[server],
-                        metadata={"image": image_ref, "container": container_name},
+                        metadata={
+                            "image": image_ref,
+                            "container": container_name,
+                            "cloud_origin": build_cloud_origin(
+                                provider="nebius",
+                                service="kubernetes",
+                                resource_type="gpu-pod",
+                                resource_id=f"{pod_ns}/{pod_name}",
+                                resource_name=pod_name,
+                                project_id=project_id,
+                                raw_identity={"namespace": pod_ns, "pod": pod_name, "container": container_name, "image": image_ref},
+                            ),
+                        },
                     )
                     agents.append(agent)
 
@@ -447,6 +496,17 @@ def _discover_container_services(
                 config_path=f"nebius://{project_id}/containers/{svc_id}",
                 source="nebius-container",
                 mcp_servers=[server],
+                metadata={
+                    "cloud_origin": build_cloud_origin(
+                        provider="nebius",
+                        service="containers",
+                        resource_type="container",
+                        resource_id=svc_id,
+                        resource_name=svc_name,
+                        project_id=project_id,
+                        raw_identity={"id": svc_id, "name": svc_name, "image": image},
+                    )
+                },
             )
             agents.append(agent)
 

@@ -5,7 +5,16 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from agent_bom.security import sanitize_error, sanitize_text
+from agent_bom.package_utils import normalize_package_ecosystem
+from agent_bom.security import sanitize_error, sanitize_sensitive_payload, sanitize_text
+
+_UNKNOWN_PACKAGE_VERSIONS = {"", "unknown", "detected", "0.0"}
+_CLOUD_PURL_TYPE_ALIASES = {
+    "azure-runtime": "generic",
+    "container": "generic",
+    "container-image": "docker",
+    "nebius-ai-studio": "generic",
+}
 
 _LIFECYCLE_STATE_MAPS: dict[tuple[str, str, str], dict[str, str]] = {
     ("aws", "bedrock", "agent"): {
@@ -23,6 +32,65 @@ _LIFECYCLE_STATE_MAPS: dict[tuple[str, str, str], dict[str, str]] = {
         "NOT_READY": "not-ready",
     },
 }
+
+
+def build_package_purl(*, ecosystem: str, name: str, version: str | None) -> str | None:
+    """Return a normalized PURL for cloud-discovered packages when versioned.
+
+    Cloud APIs often expose inferred dependencies with ``unknown`` or
+    provider-specific placeholders. Those are intentionally left without a PURL
+    so downstream matching does not treat a guess as a stable package identity.
+    """
+    normalized_ecosystem = normalize_package_ecosystem(ecosystem)
+    purl_type = _CLOUD_PURL_TYPE_ALIASES.get(normalized_ecosystem, normalized_ecosystem)
+    package_name = (name or "").strip()
+    package_version = str(version or "").strip()
+    if not normalized_ecosystem or not package_name or package_version.lower() in _UNKNOWN_PACKAGE_VERSIONS:
+        return None
+
+    namespace: str | None = None
+    purl_name = package_name
+    if normalized_ecosystem == "maven":
+        if ":" in package_name:
+            namespace, purl_name = package_name.split(":", 1)
+        elif "/" in package_name:
+            namespace, purl_name = package_name.rsplit("/", 1)
+    elif normalized_ecosystem == "npm" and package_name.startswith("@") and "/" in package_name:
+        namespace, purl_name = package_name.split("/", 1)
+    elif purl_type == "docker" and "/" in package_name:
+        namespace, purl_name = package_name.rsplit("/", 1)
+
+    try:
+        from packageurl import PackageURL
+
+        return PackageURL(
+            type=purl_type,
+            namespace=namespace or None,
+            name=purl_name,
+            version=package_version,
+        ).to_string()
+    except Exception:
+        return None
+
+
+def parse_container_image_package(image_ref: str) -> tuple[str, str] | None:
+    """Return ``(repository, tag_or_digest_or_latest)`` from an image reference."""
+    image = (image_ref or "").strip()
+    if not image:
+        return None
+    if "@sha256:" in image:
+        name, digest = image.split("@", 1)
+        return (name, digest) if name and digest else None
+    leaf = image.rsplit("/", 1)[-1]
+    if not leaf:
+        return None
+    if ":" in leaf:
+        name, version = image.rsplit(":", 1)
+    else:
+        name, version = image, "latest"
+    if not name:
+        return None
+    return name, version
 
 
 def normalize_cloud_lifecycle_state(
@@ -84,9 +152,14 @@ def build_cloud_origin(
     if scope:
         envelope["scope"] = scope
     if raw_identity:
-        envelope["raw_identity"] = {
-            key: value for key, value in raw_identity.items() if isinstance(value, (str, int, float, bool)) and value not in ("", None)
-        }
+        sanitized_identity: dict[str, Any] = {}
+        for key, value in raw_identity.items():
+            if isinstance(value, (str, int, float, bool)) and value not in ("", None):
+                sanitized_value = sanitize_sensitive_payload(value, key=key, max_str_len=200)
+                if sanitized_value not in ("", None):
+                    sanitized_identity[str(key)] = sanitized_value
+        if sanitized_identity:
+            envelope["raw_identity"] = sanitized_identity
     return envelope
 
 
@@ -230,9 +303,14 @@ def build_cloud_principal(
     if source_field:
         envelope["source_field"] = source_field
     if raw_identity:
-        envelope["raw_identity"] = {
-            key: value for key, value in raw_identity.items() if isinstance(value, (str, int, float, bool)) and value not in ("", None)
-        }
+        sanitized_identity: dict[str, Any] = {}
+        for key, value in raw_identity.items():
+            if isinstance(value, (str, int, float, bool)) and value not in ("", None):
+                sanitized_value = sanitize_sensitive_payload(value, key=key, max_str_len=200)
+                if sanitized_value not in ("", None):
+                    sanitized_identity[str(key)] = sanitized_value
+        if sanitized_identity:
+            envelope["raw_identity"] = sanitized_identity
     return envelope
 
 

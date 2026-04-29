@@ -13,7 +13,7 @@ from __future__ import annotations
 import logging
 import os
 
-from agent_bom.models import Agent, AgentType, MCPServer, TransportType
+from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
 from .normalization import (
@@ -21,6 +21,8 @@ from .normalization import (
     build_cloud_principal,
     build_cloud_scope,
     build_cloud_timestamps,
+    build_package_purl,
+    parse_container_image_package,
     sanitize_discovery_warning,
 )
 
@@ -317,6 +319,16 @@ def _discover_cloud_functions(
                     "runtime": runtime,
                     "entry_point": entry_point,
                     "source_uri": source_uri,
+                    "cloud_origin": build_cloud_origin(
+                        provider="gcp",
+                        service="cloud-functions",
+                        resource_type="function",
+                        resource_id=fn_resource,
+                        resource_name=fn_name,
+                        location=region,
+                        project_id=project_id,
+                        raw_identity={"name": fn_resource, "display_name": fn_name, "runtime": runtime},
+                    ),
                 },
             )
             cloud_scope = build_cloud_scope(
@@ -437,6 +449,16 @@ def _discover_gke_clusters(
                     "region": cluster_location,
                     "cluster_version": cluster_version,
                     "node_pools": node_pool_info,
+                    "cloud_origin": build_cloud_origin(
+                        provider="gcp",
+                        service="gke",
+                        resource_type="cluster",
+                        resource_id=cluster_self_link or f"projects/{project_id}/locations/{cluster_location}/clusters/{cluster_name}",
+                        resource_name=cluster_name,
+                        location=cluster_location,
+                        project_id=project_id,
+                        raw_identity={"name": cluster_name, "self_link": cluster_self_link, "version": cluster_version},
+                    ),
                 },
             )
             agents.append(agent)
@@ -487,12 +509,23 @@ def _discover_cloud_run(
             for container in template.containers:
                 image = container.image or ""
                 if image:
+                    image_parts = parse_container_image_package(image)
                     service_account = getattr(template, "service_account", "") or ""
                     server = MCPServer(
                         name=f"cloud-run:{svc_name}",
                         command="docker",
                         args=["run", image],
                         transport=TransportType.STDIO,
+                        packages=[
+                            Package(
+                                name=image_parts[0],
+                                version=image_parts[1],
+                                ecosystem="container-image",
+                                purl=build_package_purl(ecosystem="container-image", name=image_parts[0], version=image_parts[1]),
+                            )
+                        ]
+                        if image_parts
+                        else [],
                     )
                     agent = Agent(
                         name=f"cloud-run:{svc_name}",

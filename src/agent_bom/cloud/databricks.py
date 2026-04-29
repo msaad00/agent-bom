@@ -28,7 +28,7 @@ from typing import Any, Optional
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
-from .normalization import build_cloud_state, normalize_cloud_lifecycle_state
+from .normalization import build_cloud_origin, build_cloud_state, build_package_purl, normalize_cloud_lifecycle_state
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +115,14 @@ def discover(
             source="databricks",
             mcp_servers=[server],
             metadata={
+                "cloud_origin": build_cloud_origin(
+                    provider="databricks",
+                    service="clusters",
+                    resource_type="cluster",
+                    resource_id=cluster_id,
+                    resource_name=cluster_name,
+                    raw_identity={"cluster_id": cluster_id, "cluster_name": cluster_name},
+                ),
                 "cloud_state": build_cloud_state(
                     provider="databricks",
                     service="clusters",
@@ -122,7 +130,7 @@ def discover(
                     lifecycle_state=lifecycle_state,
                     raw_state=state_str,
                     state_source="cluster.state",
-                )
+                ),
             },
         )
         agents.append(agent)
@@ -158,6 +166,14 @@ def discover(
                 source="databricks",
                 mcp_servers=[server],
                 metadata={
+                    "cloud_origin": build_cloud_origin(
+                        provider="databricks",
+                        service="model-serving",
+                        resource_type="serving-endpoint",
+                        resource_id=ep_name,
+                        resource_name=ep_name,
+                        raw_identity={"name": ep_name},
+                    ),
                     "cloud_state": build_cloud_state(
                         provider="databricks",
                         service="model-serving",
@@ -165,7 +181,7 @@ def discover(
                         lifecycle_state=lifecycle_state,
                         raw_state=state_str,
                         state_source="state.ready",
-                    )
+                    ),
                 },
             )
             agents.append(agent)
@@ -239,7 +255,7 @@ def _parse_pypi_spec(spec: str) -> Optional[Package]:
     version = match.group(2) or "unknown"
     # Clean version — take first version if comma-separated
     version = version.split(",")[0].strip()
-    return Package(name=name, version=version, ecosystem="pypi")
+    return Package(name=name, version=version, ecosystem="pypi", purl=build_package_purl(ecosystem="pypi", name=name, version=version))
 
 
 def _parse_maven_coords(coords: str) -> Optional[Package]:
@@ -250,9 +266,16 @@ def _parse_maven_coords(coords: str) -> Optional[Package]:
     if len(parts) >= 3:
         group_artifact = f"{parts[0]}:{parts[1]}"
         version = parts[2]
-        return Package(name=group_artifact, version=version, ecosystem="maven")
+        return Package(
+            name=group_artifact,
+            version=version,
+            ecosystem="maven",
+            purl=build_package_purl(ecosystem="maven", name=group_artifact, version=version),
+        )
     if len(parts) == 2:
-        return Package(name=parts[0], version=parts[1], ecosystem="maven")
+        return Package(
+            name=parts[0], version=parts[1], ecosystem="maven", purl=build_package_purl(ecosystem="maven", name=parts[0], version=parts[1])
+        )
     return None
 
 
@@ -265,5 +288,10 @@ def _parse_jar_path(path: str) -> Optional[Package]:
     # Try pattern: name-version
     match = re.match(r"^(.+?)-(\d+\..+)$", filename)
     if match:
-        return Package(name=match.group(1), version=match.group(2), ecosystem="maven")
+        return Package(
+            name=match.group(1),
+            version=match.group(2),
+            ecosystem="maven",
+            purl=build_package_purl(ecosystem="maven", name=match.group(1), version=match.group(2)),
+        )
     return Package(name=filename, version="unknown", ecosystem="maven")

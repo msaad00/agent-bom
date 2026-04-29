@@ -15,6 +15,7 @@ import os
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
 from .base import CloudDiscoveryError
+from .normalization import build_cloud_origin, build_package_purl
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +149,16 @@ def _discover_registered_models(
                 source="mlflow-model",
                 version=f"v{model_version}" + (f" ({model_stage})" if model_stage else ""),
                 mcp_servers=[server],
+                metadata={
+                    "cloud_origin": build_cloud_origin(
+                        provider="mlflow",
+                        service="model-registry",
+                        resource_type="model",
+                        resource_id=model_name,
+                        resource_name=model_name,
+                        raw_identity={"tracking_uri": tracking_uri, "name": model_name},
+                    )
+                },
             )
             agents.append(agent)
 
@@ -220,6 +231,16 @@ def _discover_experiments(
                 source="mlflow-experiment",
                 version=exp_id,
                 mcp_servers=[server],
+                metadata={
+                    "cloud_origin": build_cloud_origin(
+                        provider="mlflow",
+                        service="tracking",
+                        resource_type="experiment",
+                        resource_id=exp_id,
+                        resource_name=exp_name,
+                        raw_identity={"tracking_uri": tracking_uri, "experiment_id": exp_id, "name": exp_name},
+                    )
+                },
             )
             agents.append(agent)
 
@@ -304,7 +325,15 @@ def _parse_requirements_txt(content: str) -> list[Package]:
             if sep in line:
                 name, version = line.split(sep, 1)
                 name = name.split("[")[0].strip()
-                packages.append(Package(name=name, version=version.strip(), ecosystem="pypi"))
+                clean_version = version.strip()
+                packages.append(
+                    Package(
+                        name=name,
+                        version=clean_version,
+                        ecosystem="pypi",
+                        purl=build_package_purl(ecosystem="pypi", name=name, version=clean_version),
+                    )
+                )
                 break
         else:
             name = line.split("[")[0].strip()
@@ -333,7 +362,15 @@ def _parse_conda_yaml(content: str) -> list[Package]:
                         if sep in pip_dep:
                             name, version = pip_dep.split(sep, 1)
                             name = name.split("[")[0].strip()
-                            packages.append(Package(name=name, version=version.strip(), ecosystem="pypi"))
+                            clean_version = version.strip()
+                            packages.append(
+                                Package(
+                                    name=name,
+                                    version=clean_version,
+                                    ecosystem="pypi",
+                                    purl=build_package_purl(ecosystem="pypi", name=name, version=clean_version),
+                                )
+                            )
                             break
                     else:
                         name = pip_dep.split("[")[0].strip()

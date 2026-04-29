@@ -11,6 +11,7 @@ from agent_bom.cloud.azure import (
     _discover_azure_functions,
     _discover_container_apps,
     _discover_container_instances,
+    _discover_ml_endpoints,
     _discover_openai_deployments,
     discover,
 )
@@ -222,7 +223,12 @@ def test_container_instances_found():
 
     mock_sdk = MagicMock()
     container = SimpleNamespace(name="web", image="nginx:latest")
-    group = SimpleNamespace(name="group1", id="grp-id", containers=[container])
+    group = SimpleNamespace(
+        name="group1",
+        id="/subscriptions/sub/resourceGroups/rg-aci/providers/Microsoft.ContainerInstance/containerGroups/group1",
+        location="eastus",
+        containers=[container],
+    )
 
     mock_client = MagicMock()
     mock_client.container_groups.list.return_value = [group]
@@ -231,6 +237,13 @@ def test_container_instances_found():
     with patch.dict(sys.modules, {"azure.mgmt.containerinstance": mock_sdk}):
         agents, warnings = _discover_container_instances(MagicMock(), "sub")
         assert len(agents) == 1
+        origin = agents[0].metadata["cloud_origin"]
+        assert origin["scope"]["subscription_id"] == "sub"
+        assert origin["resource_id"].endswith("/containerGroups/group1/web")
+        scope = agents[0].metadata["cloud_scope"]
+        assert scope["scope_type"] == "resource-group"
+        assert scope["scope_id"] == "rg-aci"
+        assert scope["parent_scope"] == {"type": "subscription", "id": "sub"}
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +274,7 @@ def test_openai_found():
         name="myoai",
         kind="OpenAI",
         id="/subscriptions/sub/resourceGroups/rg1/providers/Microsoft.CognitiveServices/accounts/myoai",
+        location="eastus",
     )
     model = SimpleNamespace(name="gpt-4", version="0613")
     sku = SimpleNamespace(name="Standard")
@@ -269,7 +283,7 @@ def test_openai_found():
         name="gpt-4-deploy",
         properties=props,
         sku=sku,
-        id="deploy-id",
+        id="/subscriptions/sub/resourceGroups/rg1/providers/Microsoft.CognitiveServices/accounts/myoai/deployments/gpt-4-deploy",
     )
 
     mock_client = MagicMock()
@@ -281,3 +295,59 @@ def test_openai_found():
         agents, warnings = _discover_openai_deployments(MagicMock(), "sub")
         assert len(agents) == 1
         assert "gpt-4" in agents[0].name
+        origin = agents[0].metadata["cloud_origin"]
+        assert origin["scope"]["subscription_id"] == "sub"
+        assert origin["resource_name"] == "gpt-4-deploy"
+        scope = agents[0].metadata["cloud_scope"]
+        assert scope["scope_type"] == "account"
+        assert scope["scope_id"] == "/subscriptions/sub/resourceGroups/rg1/providers/Microsoft.CognitiveServices/accounts/myoai"
+        assert scope["scope_name"] == "myoai"
+        assert scope["parent_scope"] == {"type": "resource-group", "id": "rg1", "name": "rg1"}
+        assert scope["location"] == "eastus"
+
+
+# ---------------------------------------------------------------------------
+# _discover_ml_endpoints
+# ---------------------------------------------------------------------------
+
+
+def test_ml_endpoint_scope_persists_workspace_context():
+    import sys
+
+    mock_sdk = MagicMock()
+    workspace = SimpleNamespace(
+        name="ml-ws",
+        id="/subscriptions/sub/resourceGroups/rg-ml/providers/Microsoft.MachineLearningServices/workspaces/ml-ws",
+        location="westus2",
+    )
+    endpoint = SimpleNamespace(
+        name="prod-endpoint",
+        id="/subscriptions/sub/resourceGroups/rg-ml/providers/Microsoft.MachineLearningServices/workspaces/ml-ws/onlineEndpoints/prod-endpoint",
+        location="westus2",
+        properties=SimpleNamespace(scoring_uri="https://prod-endpoint.westus2.inference.ml.azure.com/score"),
+    )
+    deployment = SimpleNamespace(
+        name="blue",
+        properties=SimpleNamespace(model="azureml://registries/models/fraud-detector/versions/7", instance_type="Standard_DS3_v2"),
+    )
+
+    mock_client = MagicMock()
+    mock_client.workspaces.list_by_subscription.return_value = [workspace]
+    mock_client.online_endpoints.list.return_value = [endpoint]
+    mock_client.online_deployments.list.return_value = [deployment]
+    mock_sdk.MachineLearningServicesMgmtClient.return_value = mock_client
+
+    with patch.dict(sys.modules, {"azure.mgmt.machinelearningservices": mock_sdk}):
+        agents, warnings = _discover_ml_endpoints(MagicMock(), "sub")
+
+    assert warnings == []
+    assert len(agents) == 1
+    origin = agents[0].metadata["cloud_origin"]
+    assert origin["scope"]["subscription_id"] == "sub"
+    assert origin["resource_id"] == endpoint.id
+    scope = agents[0].metadata["cloud_scope"]
+    assert scope["scope_type"] == "workspace"
+    assert scope["scope_id"] == workspace.id
+    assert scope["scope_name"] == "ml-ws"
+    assert scope["parent_scope"] == {"type": "resource-group", "id": "rg-ml", "name": "rg-ml"}
+    assert scope["location"] == "westus2"

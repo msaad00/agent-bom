@@ -58,6 +58,9 @@ class TestWandbDiscover:
             agents, warnings = wandb_provider.discover(api_key="test-key", entity="testuser", project="testproj")
             assert len(agents) >= 1
             assert agents[0].name == "wandb-run:test-run"
+            origin = agents[0].metadata["cloud_origin"]
+            assert origin["provider"] == "wandb"
+            assert origin["resource_type"] == "run"
 
     def test_discover_runs_without_project(self):
         mock_wandb = MagicMock()
@@ -99,6 +102,9 @@ class TestWandbDiscover:
             agents, warnings = wandb_provider.discover(api_key="test-key", entity="testuser", project="testproj")
             art_agents = [a for a in agents if "wandb-model:" in a.name or "wandb-dataset:" in a.name]
             assert len(art_agents) >= 1
+            origin = art_agents[0].metadata["cloud_origin"]
+            assert origin["provider"] == "wandb"
+            assert origin["resource_type"] in {"model", "dataset"}
 
     def test_run_discovery_exception(self):
         mock_wandb = MagicMock()
@@ -238,6 +244,9 @@ class TestMlflowDiscover:
             agents, warnings = mlflow_provider.discover(tracking_uri="http://localhost:5000")
             model_agents = [a for a in agents if "mlflow-model:" in a.name]
             assert len(model_agents) >= 1
+            origin = model_agents[0].metadata["cloud_origin"]
+            assert origin["provider"] == "mlflow"
+            assert origin["resource_type"] == "model"
 
     def test_discover_experiments(self):
         mock_mlflow = MagicMock()
@@ -266,6 +275,9 @@ class TestMlflowDiscover:
             agents, warnings = mlflow_provider.discover(tracking_uri="http://localhost:5000")
             exp_agents = [a for a in agents if "mlflow-exp:" in a.name]
             assert len(exp_agents) >= 1
+            origin = exp_agents[0].metadata["cloud_origin"]
+            assert origin["provider"] == "mlflow"
+            assert origin["resource_type"] == "experiment"
 
     def test_model_discovery_exception(self):
         mock_mlflow = MagicMock()
@@ -395,6 +407,9 @@ class TestOpenAIDiscover:
             asst_agents = [a for a in agents if "openai-asst:" in a.name]
             assert len(asst_agents) >= 1
             assert asst_agents[0].name == "openai-asst:Test Assistant"
+            origin = asst_agents[0].metadata["cloud_origin"]
+            assert origin["provider"] == "openai"
+            assert origin["resource_type"] == "assistant"
 
     def test_discover_fine_tunes(self):
         mock_openai = MagicMock()
@@ -425,6 +440,9 @@ class TestOpenAIDiscover:
             agents, warnings = openai_provider.discover(api_key="sk-test")
             ft_agents = [a for a in agents if "openai-ft:" in a.name]
             assert len(ft_agents) >= 1
+            origin = ft_agents[0].metadata["cloud_origin"]
+            assert origin["provider"] == "openai"
+            assert origin["resource_type"] == "job"
 
     def test_assistant_discovery_exception(self):
         mock_openai = MagicMock()

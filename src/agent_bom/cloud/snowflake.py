@@ -55,6 +55,7 @@ from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, Tran
 from agent_bom.security import sanitize_error
 
 from .base import CloudDiscoveryError
+from .normalization import build_cloud_origin, build_package_purl
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +65,33 @@ def _env_or_value(value: str | None, env_var: str, default: str = "") -> str:
     if value is not None:
         return value
     return os.environ.get(env_var) or default
+
+
+def _snowflake_cloud_origin(
+    *,
+    account: str,
+    service: str,
+    resource_type: str,
+    resource_id: str,
+    resource_name: str,
+    database: str = "",
+    schema: str = "",
+) -> dict[str, Any]:
+    raw_identity = {
+        "account": account,
+        "database": database,
+        "schema": schema,
+        "name": resource_name,
+    }
+    return build_cloud_origin(
+        provider="snowflake",
+        service=service,
+        resource_type=resource_type,
+        resource_id=resource_id,
+        resource_name=resource_name,
+        account_id=account,
+        raw_identity=raw_identity,
+    )
 
 
 def _resolve_snowflake_auth(
@@ -276,6 +304,15 @@ def discover(
                     config_path=f"snowflake://{resolved_account}/custom-tools",
                     source="snowflake-tools",
                     mcp_servers=[tool_server],
+                    metadata={
+                        "cloud_origin": _snowflake_cloud_origin(
+                            account=resolved_account,
+                            service="custom-tools",
+                            resource_type="tool-collection",
+                            resource_id=f"{resolved_account}/custom-tools",
+                            resource_name="custom-tools",
+                        )
+                    },
                 )
             )
 
@@ -297,6 +334,15 @@ def discover(
                 config_path=f"snowflake://{resolved_account}",
                 source="snowflake",
                 mcp_servers=[server],
+                metadata={
+                    "cloud_origin": _snowflake_cloud_origin(
+                        account=resolved_account,
+                        service="snowpark",
+                        resource_type="package-environment",
+                        resource_id=resolved_account,
+                        resource_name=resolved_account,
+                    )
+                },
             )
             agents.append(agent)
 
@@ -358,6 +404,17 @@ def _discover_cortex_services(
                 config_path=config_path,
                 source="snowflake-cortex",
                 mcp_servers=[server],
+                metadata={
+                    "cloud_origin": _snowflake_cloud_origin(
+                        account=account,
+                        service="cortex-search",
+                        resource_type="service",
+                        resource_id=config_path,
+                        resource_name=service_name,
+                        database=svc_database,
+                        schema=svc_schema,
+                    )
+                },
             )
             agents.append(agent)
 
@@ -388,7 +445,11 @@ def _discover_snowpark_packages(
             version = str(row[1])
             if name.lower() not in seen:
                 seen.add(name.lower())
-                packages.append(Package(name=name, version=version, ecosystem="pypi"))
+                packages.append(
+                    Package(
+                        name=name, version=version, ecosystem="pypi", purl=build_package_purl(ecosystem="pypi", name=name, version=version)
+                    )
+                )
 
     except Exception as exc:
         # INFORMATION_SCHEMA.PACKAGES may not exist or may not be accessible
@@ -524,7 +585,14 @@ def _discover_snowflake_notebooks(
                             parts = pkg_spec.split("==") if "==" in pkg_spec else pkg_spec.split("=")
                             pkg_name = parts[0].strip()
                             pkg_version = parts[1].strip() if len(parts) > 1 else "unknown"
-                            packages.append(Package(name=pkg_name, version=pkg_version, ecosystem="pypi"))
+                            packages.append(
+                                Package(
+                                    name=pkg_name,
+                                    version=pkg_version,
+                                    ecosystem="pypi",
+                                    purl=build_package_purl(ecosystem="pypi", name=pkg_name, version=pkg_version),
+                                )
+                            )
                             # Flag AI/ML packages as tools for visibility
                             if pkg_name.lower().replace("-", "_") in _ai_ml_packages:
                                 tools.append(
@@ -575,6 +643,15 @@ def _discover_snowflake_notebooks(
                     "schema": nb_schema,
                     "owner": nb_owner,
                     "comment": nb_comment,
+                    "cloud_origin": _snowflake_cloud_origin(
+                        account=account,
+                        service="notebooks",
+                        resource_type="notebook",
+                        resource_id=f"{account}/{nb_db}/{nb_schema}/{nb_name}",
+                        resource_name=nb_name,
+                        database=nb_db,
+                        schema=nb_schema,
+                    ),
                 },
                 mcp_servers=[server],
             )
@@ -648,6 +725,17 @@ def _discover_cortex_agents(
                 config_path=config_path,
                 source="snowflake-cortex-agent",
                 mcp_servers=[server],
+                metadata={
+                    "cloud_origin": _snowflake_cloud_origin(
+                        account=account,
+                        service="cortex-agents",
+                        resource_type="agent",
+                        resource_id=config_path,
+                        resource_name=agent_name,
+                        database=db_name,
+                        schema=schema_name,
+                    )
+                },
             )
             agents.append(agent)
 
@@ -702,6 +790,17 @@ def _discover_mcp_servers(
                 config_path=config_path,
                 source="snowflake-mcp",
                 mcp_servers=[mcp_server],
+                metadata={
+                    "cloud_origin": _snowflake_cloud_origin(
+                        account=account,
+                        service="mcp",
+                        resource_type="server",
+                        resource_id=config_path,
+                        resource_name=server_name,
+                        database=db_name,
+                        schema=schema_name,
+                    )
+                },
             )
             agents.append(agent)
 
@@ -817,6 +916,15 @@ def _discover_from_query_history(
                 config_path=f"snowflake://{account}/query-history/{obj_name}",
                 source=source,
                 mcp_servers=[server],
+                metadata={
+                    "cloud_origin": _snowflake_cloud_origin(
+                        account=account,
+                        service="query-history",
+                        resource_type=obj_type,
+                        resource_id=f"{account}/query-history/{obj_name}",
+                        resource_name=obj_name,
+                    )
+                },
             )
             agents.append(agent)
 

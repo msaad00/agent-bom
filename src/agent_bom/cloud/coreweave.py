@@ -22,6 +22,7 @@ import subprocess
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
+from .normalization import build_cloud_origin, build_package_purl, parse_container_image_package
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +185,15 @@ def _discover_virtual_servers(
                 "gpu_count": gpu_count,
                 "region": region,
                 "kind": "VirtualServer",
+                "cloud_origin": build_cloud_origin(
+                    provider="coreweave",
+                    service="kubernetes",
+                    resource_type="virtual-server",
+                    resource_id=f"{ns}/{name}",
+                    resource_name=name,
+                    location=region or None,
+                    raw_identity={"namespace": ns, "name": name, "kind": "VirtualServer"},
+                ),
             },
         )
         agents.append(agent)
@@ -241,9 +251,16 @@ def _discover_inference_services(
 
         packages: list[Package] = []
         if runtime_image:
-            img_name = runtime_image.split("/")[-1].split(":")[0]
-            img_version = runtime_image.split(":")[-1] if ":" in runtime_image else "latest"
-            packages.append(Package(name=img_name, version=img_version, ecosystem="container-image"))
+            image_parts = parse_container_image_package(runtime_image)
+            if image_parts:
+                packages.append(
+                    Package(
+                        name=image_parts[0],
+                        version=image_parts[1],
+                        ecosystem="container-image",
+                        purl=build_package_purl(ecosystem="container-image", name=image_parts[0], version=image_parts[1]),
+                    )
+                )
 
         server = MCPServer(
             name=f"coreweave-inference:{ns}/{name}",
@@ -256,6 +273,14 @@ def _discover_inference_services(
             "runtime": runtime,
             "serving_url": serving_url,
             "kind": "InferenceService",
+            "cloud_origin": build_cloud_origin(
+                provider="coreweave",
+                service="kubernetes",
+                resource_type="inference-service",
+                resource_id=f"{ns}/{name}",
+                resource_name=name,
+                raw_identity={"namespace": ns, "name": name, "kind": "InferenceService", "image": runtime_image},
+            ),
         }
         if is_nim:
             metadata["is_nim"] = True
@@ -318,10 +343,19 @@ def _discover_gpu_pods(
             if is_nim:
                 nim_model = image_ref.removeprefix(_NIM_IMAGE_PREFIX).split(":")[0]
 
-            img_name = image_ref.split("/")[-1].split(":")[0]
-            img_version = image_ref.split(":")[-1] if ":" in image_ref else "latest"
-
-            packages = [Package(name=img_name, version=img_version, ecosystem="container-image")]
+            image_parts = parse_container_image_package(image_ref)
+            packages = (
+                [
+                    Package(
+                        name=image_parts[0],
+                        version=image_parts[1],
+                        ecosystem="container-image",
+                        purl=build_package_purl(ecosystem="container-image", name=image_parts[0], version=image_parts[1]),
+                    )
+                ]
+                if image_parts
+                else []
+            )
 
             server = MCPServer(
                 name=f"coreweave-gpu-pod:{pod_ns}/{pod_name}",
@@ -335,6 +369,14 @@ def _discover_gpu_pods(
                 "gpu_count": gpu_count,
                 "image": image_ref,
                 "kind": "Pod",
+                "cloud_origin": build_cloud_origin(
+                    provider="coreweave",
+                    service="kubernetes",
+                    resource_type="gpu-pod",
+                    resource_id=f"{pod_ns}/{pod_name}",
+                    resource_name=pod_name,
+                    raw_identity={"namespace": pod_ns, "pod": pod_name, "image": image_ref},
+                ),
             }
             if is_nim:
                 metadata["is_nim"] = True
@@ -397,9 +439,16 @@ def _discover_infiniband_jobs(
 
             packages: list[Package] = []
             if image_ref:
-                img_name = image_ref.split("/")[-1].split(":")[0]
-                img_version = image_ref.split(":")[-1] if ":" in image_ref else "latest"
-                packages.append(Package(name=img_name, version=img_version, ecosystem="container-image"))
+                image_parts = parse_container_image_package(image_ref)
+                if image_parts:
+                    packages.append(
+                        Package(
+                            name=image_parts[0],
+                            version=image_parts[1],
+                            ecosystem="container-image",
+                            purl=build_package_purl(ecosystem="container-image", name=image_parts[0], version=image_parts[1]),
+                        )
+                    )
 
             server = MCPServer(
                 name=f"coreweave-training:{pod_ns}/{pod_name}",
@@ -420,6 +469,14 @@ def _discover_infiniband_jobs(
                     "gpu_count": int(gpu_limits) if gpu_limits != "0" else 0,
                     "image": image_ref,
                     "kind": "Pod",
+                    "cloud_origin": build_cloud_origin(
+                        provider="coreweave",
+                        service="kubernetes",
+                        resource_type="training-pod",
+                        resource_id=f"{pod_ns}/{pod_name}",
+                        resource_name=pod_name,
+                        raw_identity={"namespace": pod_ns, "pod": pod_name, "image": image_ref},
+                    ),
                 },
             )
             agents.append(agent)

@@ -11,7 +11,7 @@ from agent_bom.scanners import IncompleteScanError
 
 
 def _patch_check_scan(monkeypatch, vulns):
-    async def _scan_packages(pkgs):
+    async def _scan_packages(pkgs, **_kwargs):
         for pkg in pkgs:
             pkg.vulnerabilities = list(vulns)
 
@@ -67,7 +67,7 @@ def test_check_exit_zero_reports_without_failing(monkeypatch):
 
 
 def test_check_incomplete_offline_scan_exits_two(monkeypatch):
-    async def _scan_packages(_pkgs):
+    async def _scan_packages(_pkgs, **_kwargs):
         raise IncompleteScanError("Offline mode requires a populated local vulnerability DB.")
 
     monkeypatch.setattr("agent_bom.scanners.scan_packages", _scan_packages)
@@ -99,7 +99,7 @@ def test_check_uses_version_aware_ecosystem_resolution(monkeypatch):
             return _DummyResponse(200, {"versions": {"0.0.1": {}}})
         return None
 
-    async def _scan_packages(pkgs):
+    async def _scan_packages(pkgs, **_kwargs):
         for pkg in pkgs:
             seen_ecosystems.append(pkg.ecosystem)
             pkg.vulnerabilities = []
@@ -141,7 +141,7 @@ def test_mcp_scan_delegates_to_package_check(monkeypatch):
 
 
 def test_check_quiet_suppresses_scan_chatter(monkeypatch):
-    async def _scan_packages(pkgs):
+    async def _scan_packages(pkgs, **_kwargs):
         import agent_bom.scanners as scanners
 
         scanners.console.print("scanner noise that should stay hidden")

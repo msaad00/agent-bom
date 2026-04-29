@@ -435,10 +435,10 @@ def check(
     status_context = console.status("[bold]Scanning package risk...[/bold]", spinner="dots") if not quiet else nullcontext()
 
     with status_context:
-        from agent_bom.scanners import IncompleteScanError, consume_scan_warnings, scan_packages
+        from agent_bom.scanners import IncompleteScanError, ScanOptions, consume_scan_warnings, scan_packages
 
         try:
-            asyncio.run(scan_packages(pkgs))
+            asyncio.run(scan_packages(pkgs, options=ScanOptions(offline=False)))
         except IncompleteScanError as exc:
             if structured_output:
                 _write_json_output(

@@ -561,13 +561,13 @@ def _run_scan_sync(job: ScanJob) -> None:
         # ── Scanning phase ──
         pipeline.start_step("scanning", f"Scanning {total_pkgs} packages via OSV.dev...")
         try:
-            blast_radii = scan_agents_sync(agents, enable_enrichment=req.enrich)
+            blast_radii = scan_agents_sync(agents, enable_enrichment=req.enrich, offline=False)
         except Exception as scan_exc:  # noqa: BLE001
             # Log but don't crash — return what we have with warning
             _logger.warning("Scan phase error (retrying without enrichment): %s", scan_exc)
             pipeline.update_step("scanning", f"Scan error: {sanitize_error(scan_exc)} — retrying without enrichment")
             try:
-                blast_radii = scan_agents_sync(agents, enable_enrichment=False)
+                blast_radii = scan_agents_sync(agents, enable_enrichment=False, offline=False)
             except Exception as retry_exc:  # noqa: BLE001
                 _logger.error("Scan retry also failed: %s", retry_exc)
                 blast_radii = []

@@ -1094,6 +1094,7 @@ def scan(
                             compliance_enabled=compliance,
                             resolve_transitive=transitive,
                             show_scan_banner=False,
+                            offline=offline,
                         )
                     except IncompleteScanError as exc:
                         con.print(f"  [yellow]⚠[/yellow] {exc}")
@@ -1109,6 +1110,7 @@ def scan(
                         blast_radius_depth=blast_radius_depth,
                         compliance_enabled=compliance,
                         resolve_transitive=transitive,
+                        offline=offline,
                     )
                 except IncompleteScanError as exc:
                     con.print(f"  [yellow]⚠[/yellow] {exc}")

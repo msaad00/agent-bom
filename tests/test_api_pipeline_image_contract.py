@@ -28,7 +28,7 @@ def test_api_pipeline_image_scan_uses_container_surface(monkeypatch):
         "agent_bom.image.scan_image",
         lambda image_ref: ([Package(name="openssl", version="3.0.16", ecosystem="deb")], "native"),
     )
-    monkeypatch.setattr("agent_bom.scanners.scan_agents_sync", lambda agents, enable_enrichment=False: [])
+    monkeypatch.setattr("agent_bom.scanners.scan_agents_sync", lambda agents, enable_enrichment=False, **kwargs: [])
 
     _run_scan_sync(job)
 
@@ -94,7 +94,8 @@ def test_api_pipeline_persists_clickhouse_analytics(monkeypatch):
         lambda image_ref: ([Package(name="openssl", version="3.0.16", ecosystem="deb")], "native"),
     )
 
-    def _fake_scan(agents, enable_enrichment=False):
+    def _fake_scan(agents, enable_enrichment=False, **kwargs):
+        assert kwargs.get("offline") is False
         agent = agents[0]
         server = agent.mcp_servers[0]
         pkg = server.packages[0]
@@ -181,7 +182,7 @@ def test_api_pipeline_persists_unified_graph_snapshot(monkeypatch):
         "agent_bom.image.scan_image",
         lambda image_ref: ([Package(name="openssl", version="3.0.16", ecosystem="deb")], "native"),
     )
-    monkeypatch.setattr("agent_bom.scanners.scan_agents_sync", lambda agents, enable_enrichment=False: [])
+    monkeypatch.setattr("agent_bom.scanners.scan_agents_sync", lambda agents, enable_enrichment=False, **kwargs: [])
 
     _run_scan_sync(job)
 

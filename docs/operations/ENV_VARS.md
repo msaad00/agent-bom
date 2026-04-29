@@ -71,6 +71,11 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_ENRICHMENT_MAX_CACHE` | `int` | `10000` | — |
 | `AGENT_BOM_ENRICHMENT_TTL` | `int` | `604800` | Used by enrichment.py for persistent NVD + EPSS disk cache.  7-day TTL balances freshness vs. API rate limits.  10,000 entries covers most enterprise scans without unbounded disk/memory growth. |
 
+## Extension Loading
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_ENABLE_EXTENSION_ENTRYPOINTS` | `bool` | `False` | Disabled by default so third-party provider/connector/parser entry points never execute unless an operator explicitly opts in. |
+
 ## HTTP Client
 | Env var | Type | Default | Description |
 |---|---|---|---|

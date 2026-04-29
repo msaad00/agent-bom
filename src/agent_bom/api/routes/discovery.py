@@ -394,6 +394,15 @@ async def list_agents(request: Request) -> dict:
         raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
 
 
+@router.get("/v1/discovery/providers", tags=["discovery"])
+async def list_discovery_providers() -> dict:
+    """Return registered discovery provider capability and trust contracts."""
+
+    from agent_bom.cloud import provider_contracts
+
+    return provider_contracts()
+
+
 @router.get("/v1/agents/{agent_name}", tags=["discovery"])
 async def get_agent_detail(request: Request, agent_name: str) -> dict:
     """Get detailed view of a single agent with cross-referenced scan data."""

@@ -59,6 +59,8 @@ def test_aws_operator_pull_adapter_emits_valid_sanitized_inventory(tmp_path: Pat
         [agent],
         generated_at="2026-04-29T12:00:00+00:00",
         permissions_used=["sts:GetCallerIdentity", "bedrock:ListAgents"],
+        source="aws-skill-invoked",
+        discovery_method="skill_invoked_pull",
     )
     output_path = tmp_path / "aws-inventory.json"
     output_path.write_text(json.dumps(payload), encoding="utf-8")
@@ -67,9 +69,15 @@ def test_aws_operator_pull_adapter_emits_valid_sanitized_inventory(tmp_path: Pat
     rebuilt_agents = _build_agents_from_inventory(loaded, str(output_path))
 
     assert loaded["schema_version"] == "1"
+    assert loaded["source"] == "aws-skill-invoked"
+    assert loaded["discovery_provenance"]["source_type"] == "skill_invoked_pull"
+    assert loaded["discovery_provenance"]["observed_via"] == ["skill_invoked_pull", "aws_sdk"]
     assert loaded["agents"][0]["metadata"]["cloud_origin"]["scope"]["api_token"] == "***REDACTED***"
+    assert loaded["agents"][0]["discovery_provenance"]["source_type"] == "skill_invoked_pull"
+    assert loaded["agents"][0]["discovery_provenance"]["service"] == "bedrock"
     assert loaded["agents"][0]["metadata"]["permissions_used"] == ["bedrock:ListAgents", "sts:GetCallerIdentity"]
     assert loaded["agents"][0]["mcp_servers"][0]["env"]["AWS_SESSION_TOKEN"] == "***REDACTED***"
+    assert loaded["agents"][0]["mcp_servers"][0]["packages"][0]["discovery_provenance"]["source_type"] == "skill_invoked_pull"
     assert "secret-value" not in json.dumps(loaded)
     assert rebuilt_agents[0].metadata["cloud_origin"]["provider"] == "aws"
     assert rebuilt_agents[0].metadata["permissions_used"] == ["bedrock:ListAgents", "sts:GetCallerIdentity"]
@@ -91,6 +99,41 @@ def test_aws_operator_pull_adapter_cli_writes_inventory(monkeypatch, tmp_path: P
 
     loaded = load_inventory(str(output_path))
     assert loaded["agents"][0]["name"] == "aws-empty"
+    assert loaded["discovery_provenance"]["source_type"] == "operator_pushed_inventory"
+
+
+def test_aws_operator_pull_adapter_cli_marks_skill_invoked_inventory(monkeypatch, tmp_path: Path) -> None:
+    adapter = _load_adapter()
+    monkeypatch.setattr(
+        adapter,
+        "discover",
+        lambda **_kwargs: (
+            [Agent(name="aws-skill", agent_type=AgentType.CUSTOM, config_path="aws://skill", source="aws", mcp_servers=[])],
+            [],
+        ),
+    )
+    output_path = tmp_path / "inventory.json"
+
+    assert (
+        adapter.main(
+            [
+                "--region",
+                "us-east-1",
+                "--no-include-ecs",
+                "--source",
+                "aws-skill-invoked",
+                "--discovery-method",
+                "skill_invoked_pull",
+                "--output",
+                str(output_path),
+            ]
+        )
+        == 0
+    )
+
+    loaded = load_inventory(str(output_path))
+    assert loaded["source"] == "aws-skill-invoked"
+    assert loaded["agents"][0]["discovery_provenance"]["source_type"] == "skill_invoked_pull"
 
 
 def test_aws_operator_pull_adapter_keeps_container_purl_schema_valid() -> None:

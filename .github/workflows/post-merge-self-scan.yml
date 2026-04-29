@@ -20,10 +20,10 @@ permissions:
   contents: read
 
 jobs:
-  self-sast-scan:
-    name: Self SAST scan
+  self-dep-scan:
+    name: Self dependency scan
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     permissions:
       contents: read
       security-events: write  # required: SARIF upload to GitHub Security tab
@@ -126,30 +126,12 @@ jobs:
               print(f"... {len(findings) - 20} additional findings omitted from log")
           PY
 
-      - name: Run SAST scan on source code (--code)
-        id: sast_scan
-        run: |
-          set +e
-          uv run agent-bom scan \
-            --code src/agent_bom \
-            --format sarif \
-            -o sarif/self-sast.sarif \
-            --quiet
-          echo "sast_exit=$?" >> "$GITHUB_OUTPUT"
-
       - name: Upload dep scan SARIF
         if: always() && hashFiles('sarif/self-dep.sarif') != ''
         uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
         with:
           sarif_file: sarif/self-dep.sarif
           category: agent-bom-self-dep
-
-      - name: Upload SAST SARIF
-        if: always() && hashFiles('sarif/self-sast.sarif') != ''
-        uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
-        with:
-          sarif_file: sarif/self-sast.sarif
-          category: agent-bom-self-sast
 
       - name: Fail on critical (optional, only when explicitly requested)
         if: inputs.fail_on_critical == true
@@ -207,6 +189,44 @@ jobs:
           elif [ -n "$EXISTING" ]; then
             gh issue close "$EXISTING" --comment "Daily self-scan is clean again; closing the automated dependency vulnerability alert."
           fi
+
+  self-sast-scan:
+    name: Self SAST scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      security-events: write  # required: SARIF upload to GitHub Security tab
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: "3.11"
+
+      - name: Install agent-bom (from source)
+        run: uv sync --extra dev
+
+      - name: Run SAST scan on source code (--code)
+        id: sast_scan
+        timeout-minutes: 40
+        run: |
+          set +e
+          mkdir -p sarif
+          uv run agent-bom scan \
+            --code src/agent_bom \
+            --sast-config p/python \
+            --format sarif \
+            -o sarif/self-sast.sarif \
+            --quiet
+          echo "sast_exit=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Upload SAST SARIF
+        if: always() && hashFiles('sarif/self-sast.sarif') != ''
+        uses: github/codeql-action/upload-sarif@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4
+        with:
+          sarif_file: sarif/self-sast.sarif
+          category: agent-bom-self-sast
 
   generate-sbom:
     name: Generate SBOM

@@ -139,8 +139,9 @@ def test_registry_lookup_empty_query():
 # ---------------------------------------------------------------------------
 
 
+@patch("agent_bom.scanners.ghsa_advisory.check_github_advisories")
 @patch("agent_bom.scanners.query_osv_batch")
-def test_check_clean_package(mock_osv):
+def test_check_clean_package(mock_osv, mock_ghsa):
     """Check tool returns clean status when no vulns."""
     from agent_bom.mcp_server import create_mcp_server
 
@@ -148,6 +149,7 @@ def test_check_clean_package(mock_osv):
         return {}
 
     mock_osv.side_effect = _fake_osv
+    mock_ghsa.return_value = 0
     server = create_mcp_server()
     result = _call_tool(server, "check", {"package": "safe-pkg@1.0.0", "ecosystem": "npm"})
     assert result["status"] == "clean"
@@ -156,8 +158,9 @@ def test_check_clean_package(mock_osv):
     assert result["version"] == "1.0.0"
 
 
+@patch("agent_bom.scanners.ghsa_advisory.check_github_advisories")
 @patch("agent_bom.scanners.query_osv_batch")
-def test_check_vulnerable_package(mock_osv):
+def test_check_vulnerable_package(mock_osv, mock_ghsa):
     """Check tool returns vulnerable status with details."""
     from agent_bom.mcp_server import create_mcp_server
 
@@ -174,6 +177,7 @@ def test_check_vulnerable_package(mock_osv):
         }
 
     mock_osv.side_effect = _fake_osv
+    mock_ghsa.return_value = 0
     server = create_mcp_server()
     result = _call_tool(server, "check", {"package": "bad-pkg@1.0.0", "ecosystem": "npm"})
     assert result["status"] == "vulnerable"
@@ -204,8 +208,9 @@ def test_check_scoped_npm_package(mock_scan):
     assert result["version"] == "2025.1.14"
 
 
+@patch("agent_bom.scanners.ghsa_advisory.check_github_advisories")
 @patch("agent_bom.scanners.query_osv_batch")
-def test_check_default_ecosystem(mock_osv):
+def test_check_default_ecosystem(mock_osv, mock_ghsa):
     """Check defaults to npm ecosystem."""
     from agent_bom.mcp_server import create_mcp_server
 
@@ -213,6 +218,7 @@ def test_check_default_ecosystem(mock_osv):
         return {}
 
     mock_osv.side_effect = _fake_osv
+    mock_ghsa.return_value = 0
     server = create_mcp_server()
     result = _call_tool(server, "check", {"package": "express@4.18.2"})
     assert result["ecosystem"] == "npm"

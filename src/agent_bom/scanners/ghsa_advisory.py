@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
+import time
 
 import httpx
 
@@ -20,6 +22,8 @@ from agent_bom.package_utils import normalize_package_name
 logger = logging.getLogger(__name__)
 
 _GITHUB_ADVISORY_API = "https://api.github.com/advisories"
+_GHSA_PER_PAGE = 100
+_GHSA_RATE_LIMIT_BACKOFF = 60.0
 
 # Map internal ecosystem names to GitHub Advisory API ecosystem values
 _ECOSYSTEM_MAP: dict[str, str] = {
@@ -31,6 +35,42 @@ _ECOSYSTEM_MAP: dict[str, str] = {
     "nuget": "nuget",
     "rubygems": "rubygems",
 }
+
+
+class GHSARateLimitError(RuntimeError):
+    """Raised when GitHub advisory lookups remain rate-limited after retry."""
+
+    def __init__(self, retry_after: float) -> None:
+        super().__init__("GitHub Advisory API rate limited")
+        self.retry_after = retry_after
+
+
+def _ghsa_headers() -> dict[str, str]:
+    headers = {"Accept": "application/vnd.github+json"}
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+def _rate_limit_retry_after(resp: httpx.Response, default: float = _GHSA_RATE_LIMIT_BACKOFF) -> float:
+    retry_after = resp.headers.get("Retry-After")
+    if retry_after:
+        try:
+            return min(float(retry_after), default)
+        except ValueError:
+            return default
+    reset_at = resp.headers.get("X-RateLimit-Reset")
+    if reset_at:
+        try:
+            return min(max(float(reset_at) - time.time(), 0.0), default)
+        except ValueError:
+            return default
+    return default
+
+
+def _is_rate_limited(resp: httpx.Response) -> bool:
+    return resp.status_code == 429 or (resp.status_code == 403 and resp.headers.get("X-RateLimit-Remaining") == "0")
 
 
 def _parse_ghsa_severity(advisory: dict) -> tuple[Severity, float | None]:
@@ -168,6 +208,9 @@ async def _fetch_advisories_for_package(
     pkg: Package,
     client: httpx.AsyncClient,
     semaphore: asyncio.Semaphore,
+    *,
+    max_pages: int = 10,
+    rate_limit_backoff: float = _GHSA_RATE_LIMIT_BACKOFF,
 ) -> list[dict]:
     """Fetch GitHub advisories for a single package."""
     eco = _ECOSYSTEM_MAP.get(pkg.ecosystem.lower(), "")
@@ -175,29 +218,46 @@ async def _fetch_advisories_for_package(
         return []
 
     async with semaphore:
-        await asyncio.sleep(1.0)  # Rate limit: stay under 60 req/hr
-        resp = await request_with_retry(
-            client,
-            "GET",
-            _GITHUB_ADVISORY_API,
-            params={
-                "ecosystem": eco,
-                "package": pkg.name,
-                "per_page": "30",
-            },
-            headers={"Accept": "application/vnd.github+json"},
-        )
-        if resp and resp.status_code == 200:
-            try:
-                return resp.json()
-            except (ValueError, KeyError):
-                return []
-        return []
+        advisories: list[dict] = []
+        for page in range(1, max_pages + 1):
+            for attempt in range(2):
+                resp = await request_with_retry(
+                    client,
+                    "GET",
+                    _GITHUB_ADVISORY_API,
+                    params={
+                        "ecosystem": eco,
+                        "package": pkg.name,
+                        "per_page": str(_GHSA_PER_PAGE),
+                        "page": str(page),
+                    },
+                    headers=_ghsa_headers(),
+                )
+                if resp and resp.status_code == 200:
+                    try:
+                        page_data = resp.json()
+                    except (ValueError, KeyError):
+                        return advisories
+                    if not isinstance(page_data, list):
+                        return advisories
+                    advisories.extend(item for item in page_data if isinstance(item, dict))
+                    if len(page_data) < _GHSA_PER_PAGE:
+                        return advisories
+                    break
+                if resp and _is_rate_limited(resp):
+                    wait_seconds = min(_rate_limit_retry_after(resp, rate_limit_backoff), rate_limit_backoff)
+                    if attempt == 0 and wait_seconds > 0:
+                        logger.warning("GHSA rate limit for %s; pausing %.0fs before retry", pkg.name, wait_seconds)
+                        await asyncio.sleep(wait_seconds)
+                        continue
+                    raise GHSARateLimitError(wait_seconds)
+                return advisories
+        return advisories
 
 
 async def check_github_advisories(
     packages: list[Package],
-    max_packages: int = 50,
+    max_packages: int | None = None,
 ) -> int:
     """Check packages against GitHub Security Advisories (GHSA).
 
@@ -226,8 +286,8 @@ async def check_github_advisories(
     if not queryable:
         return 0
 
-    # Cap to avoid rate limit exhaustion
-    queryable = queryable[:max_packages]
+    if max_packages is not None:
+        queryable = queryable[:max_packages]
 
     logger.info("GHSA advisory check for %d packages", len(queryable))
 
@@ -242,6 +302,7 @@ async def check_github_advisories(
     total_new = 0
     semaphore = asyncio.Semaphore(5)
     fetch_errors: list[str] = []
+    rate_limited = False
 
     try:
         async with create_client(timeout=15.0) as client:
@@ -251,6 +312,8 @@ async def check_github_advisories(
             for i, result in enumerate(results):
                 if isinstance(result, BaseException):
                     logger.debug("GHSA fetch failed for %s: %s", queryable[i].name, result)
+                    if isinstance(result, GHSARateLimitError):
+                        rate_limited = True
                     fetch_errors.append(str(result))
                     continue
                 if not result:
@@ -331,7 +394,9 @@ async def check_github_advisories(
         record_enrichment_source("ghsa", "failure", error=str(exc))
         raise
 
-    if fetch_errors:
+    if rate_limited:
+        record_enrichment_source("ghsa", "failure", error="rate_limited")
+    elif fetch_errors:
         record_enrichment_source("ghsa", "failure", error=fetch_errors[0])
     else:
         record_enrichment_source("ghsa", "success")

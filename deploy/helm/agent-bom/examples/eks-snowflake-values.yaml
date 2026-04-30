@@ -6,8 +6,8 @@
 # is explicit — see site-docs/deployment/backend-parity.md.
 #
 # Key-pair auth is required. Passwords are deprecated and emit a runtime
-# warning. Generate the private key once, store in AWS Secrets Manager (or
-# your equivalent), and mount via ExternalSecrets.
+# warning. Generate the private key once, store in Kubernetes Secrets, AWS
+# Secrets Manager + ExternalSecrets, or your equivalent.
 #
 #   openssl genrsa 2048 | openssl pkcs8 -topk8 -inform PEM -out rsa_key.p8 -nocrypt
 #   snowsql -a <account> -u <user> -q "ALTER USER <user> SET RSA_PUBLIC_KEY='...'"
@@ -108,12 +108,12 @@ controlPlane:
       - secretRef:
           name: agent-bom-control-plane-auth
 
-    volumeMounts:
+    extraVolumeMounts:
       - name: snowflake-key
         mountPath: /var/snowflake
         readOnly: true
 
-    volumes:
+    extraVolumes:
       - name: snowflake-key
         secret:
           secretName: agent-bom-snowflake
@@ -135,33 +135,46 @@ controlPlane:
   backup:
     enabled: false
 
+scanner:
   # Scanner CronJob still runs; pushes scan results via the API which writes to Snowflake.
-  scanCronJob:
-    enabled: true
-    schedule: "0 */6 * * *"
-    args:
-      - "agents"
-      - "--k8s-mcp"
-      - "--k8s-all-namespaces"
-      - "--introspect"
-      - "--push-url"
-      - "http://agent-bom-api.agent-bom.svc.cluster.local:8080/v1/fleet/sync"
+  enabled: true
+  schedule: "0 */6 * * *"
+  extraArgs:
+    - "--k8s-mcp"
+    - "--k8s-all-namespaces"
+    - "--introspect"
+    - "--push-url"
+    - "http://agent-bom-api.agent-bom.svc.cluster.local:8422/v1/fleet/sync"
 
-  networkPolicy:
-    enabled: true
-    restrictIngress: true
-    allowedNamespaces:
-      - agent-bom
-      - ingress-nginx
-    # Egress: the API needs to reach *.snowflakecomputing.com on 443
-    egress:
-      - to:
-          - ipBlock:
-              cidr: 0.0.0.0/0
-              except:
-                - 10.0.0.0/8
-                - 172.16.0.0/12
-                - 192.168.0.0/16
-        ports:
-          - protocol: TCP
-            port: 443
+networkPolicy:
+  enabled: true
+  restrictIngress: true
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: agent-bom
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: controller
+      ports:
+        - protocol: TCP
+          port: 8422
+        - protocol: TCP
+          port: 3000
+  # Egress: the API needs to reach *.snowflakecomputing.com on 443.
+  additionalEgress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443

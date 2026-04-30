@@ -96,7 +96,7 @@ def _provider_capabilities(name: str) -> ExtensionCapabilities:
     scan_modes: tuple[str, ...]
     if name == "ollama":
         scan_modes = ("runtime_probe",)
-    elif name in {"aws", "azure", "gcp"}:
+    elif name in {"aws", "azure", "gcp", "snowflake"}:
         scan_modes = ("direct_cloud_pull", "operator_pushed_inventory", "skill_invoked_pull")
     else:
         scan_modes = ("direct_cloud_pull",)

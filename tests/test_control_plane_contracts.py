@@ -17,6 +17,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api import stores as _stores
+from agent_bom.api.auth import Role
 from agent_bom.api.metrics import reset_for_tests as reset_metrics
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _persist_graph_snapshot
@@ -214,7 +215,16 @@ def test_control_plane_contract_scan_graph_policy_audit_flow(control_plane_contr
 
         def verify(self, raw_key: str):
             if raw_key == "tenant-alpha-key":
-                return type("ApiKey", (), {"tenant_id": "tenant-alpha"})()
+                return type(
+                    "ApiKey",
+                    (),
+                    {
+                        "tenant_id": "tenant-alpha",
+                        "role": Role.ANALYST,
+                        "scopes": ["gateway:relay"],
+                        "has_scope": lambda self, scope: scope in self.scopes,
+                    },
+                )()
             return None
 
     monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
@@ -243,7 +253,7 @@ def test_control_plane_contract_scan_graph_policy_audit_flow(control_plane_contr
     assert blocked.status_code == 200
     assert blocked.json()["error"]["code"] == -32001
     assert upstream_calls == []
-    assert any(event["action"] == "gateway.tool_call_blocked" for event in audit_events)
+    assert any(event["action"] == "gateway.policy_blocked" for event in audit_events)
     assert audit_events[-1]["tenant_id"] == "tenant-alpha"
 
     allowed = gw.post(

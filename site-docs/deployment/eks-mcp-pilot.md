@@ -167,19 +167,26 @@ flowchart LR
   helm --> ns[(namespace: agent-bom)]
   ns --> api[API + UI + scanner CronJob]
   api --> pg[(Postgres<br/>RDS or in-cluster)]
-  api --> es[(External Secrets<br/>AWS Secrets Manager)]
+  api --> sec[(Kubernetes Secret<br/>or ExternalSecrets)]
 ```
 
 ```bash
-# 1. Create secrets in AWS Secrets Manager (names match ExternalSecrets in the chart)
-aws secretsmanager create-secret --name agent-bom/api-key --secret-string "$(openssl rand -hex 32)"
-aws secretsmanager create-secret --name agent-bom/audit-hmac --secret-string "$(openssl rand -hex 32)"
-aws secretsmanager create-secret --name agent-bom/postgres-url --secret-string "postgres://…"
+# 1. Create the namespace and chart-facing Kubernetes Secret.
+# eks-mcp-pilot-values.yaml references this secret through controlPlane.api.envFrom.
+kubectl create namespace agent-bom --dry-run=client -o yaml | kubectl apply -f -
+
+export API_KEY="$(openssl rand -hex 32)"
+export AUDIT_HMAC_KEY="$(openssl rand -hex 32)"
+export AGENT_BOM_POSTGRES_URL="postgresql://agent_bom:REPLACE_ME@postgres.example:5432/agent_bom?sslmode=require"
 
 # 2. Generate the Ed25519 key pair for compliance evidence signing
 openssl genpkey -algorithm ed25519 -out /tmp/evidence-priv.pem
-aws secretsmanager create-secret --name agent-bom/evidence-signing \
-  --secret-string "$(cat /tmp/evidence-priv.pem)"
+kubectl -n agent-bom create secret generic agent-bom-control-plane \
+  --from-literal=AGENT_BOM_POSTGRES_URL="$AGENT_BOM_POSTGRES_URL" \
+  --from-literal=AGENT_BOM_API_KEY="$API_KEY" \
+  --from-literal=AGENT_BOM_AUDIT_HMAC_KEY="$AUDIT_HMAC_KEY" \
+  --from-literal=AGENT_BOM_REQUIRE_AUDIT_HMAC="1" \
+  --from-file=AGENT_BOM_COMPLIANCE_ED25519_PRIVATE_KEY_PEM=/tmp/evidence-priv.pem
 rm /tmp/evidence-priv.pem
 
 # 3. Helm install with the focused pilot values
@@ -188,13 +195,18 @@ helm install agent-bom deploy/helm/agent-bom \
   -f deploy/helm/agent-bom/examples/eks-mcp-pilot-values.yaml
 ```
 
+If your platform requires AWS Secrets Manager, enable
+`controlPlane.externalSecrets` and map those remote keys into the same
+`agent-bom-control-plane` Kubernetes Secret. The pilot values file does not
+enable ExternalSecrets by default.
+
 ### Stage 2 — Smoke test (2 min)
 
 Run the pilot verification script from any workstation with a
 `kubectl port-forward` open to the API service:
 
 ```bash
-kubectl -n agent-bom port-forward svc/agent-bom-api 8080:8080 &
+kubectl -n agent-bom port-forward svc/agent-bom-api 8080:8422 &
 ./scripts/pilot-verify.sh http://localhost:8080 "$API_KEY"
 ```
 
@@ -206,7 +218,7 @@ fails fast with a non-zero exit if any check breaks:
 3. `POST /v1/fleet/sync` — endpoint fleet ingest works
 4. `POST /v1/scan` — a small demo scan runs end-to-end
 5. `GET /v1/compliance/verification-key` — Ed25519 key is exposed
-6. `GET /v1/compliance/soc2/report` — bundle comes back signed + evidence non-empty
+6. `GET /v1/compliance/owasp-llm/report` — bundle comes back signed + evidence non-empty
 7. Re-verifies the bundle signature with the public key from step 5
 
 ### Stage 3a — Multi-MCP gateway (new, HTTP/SSE upstreams — 10 min)
@@ -298,14 +310,14 @@ curl -s http://localhost:8080/v1/compliance/verification-key \
   -H "X-Agent-Bom-Role: admin" -H "X-Agent-Bom-Tenant-ID: pilot-acme" \
   | jq -r .public_key_pem > pinned-pub.pem
 
-curl -sD headers.txt -o soc2.json \
-  "http://localhost:8080/v1/compliance/soc2/report" \
+curl -sD headers.txt -o owasp-llm.json \
+  "http://localhost:8080/v1/compliance/owasp-llm/report" \
   -H "X-Agent-Bom-Role: admin" -H "X-Agent-Bom-Tenant-ID: pilot-acme"
 
 python - <<'PY'
 import json
 from cryptography.hazmat.primitives import serialization
-body = json.load(open("soc2.json"))
+body = json.load(open("owasp-llm.json"))
 pub = serialization.load_pem_public_key(open("pinned-pub.pem").read().encode())
 sig = [l.split(": ",1)[1].strip() for l in open("headers.txt") if l.lower().startswith("x-agent-bom-compliance-report-signature")][0]
 pub.verify(bytes.fromhex(sig), json.dumps(body, sort_keys=True).encode())

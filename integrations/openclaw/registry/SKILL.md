@@ -27,6 +27,7 @@ metadata:
       env: []
       credentials: none
     credential_policy: "Zero credentials required. Registry data is bundled locally. No network calls needed."
+    credential_handling: "No credentials are required for bundled registry lookups. Optional enrichment tokens must stay in the operator environment and must not be printed or embedded in skill output."
     optional_env:
       - name: SNYK_TOKEN
         purpose: "Optional third-party vulnerability enrichment for code_scan (requires SNYK_TOKEN)"

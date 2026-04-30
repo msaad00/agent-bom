@@ -26,6 +26,7 @@ metadata:
       env: []
       credentials: none
     credential_policy: "Zero credentials required. Policy evaluation is local. Proxy operates on local network only. Policy files are user-provided and never transmitted."
+    credential_handling: "Policy and audit files may contain credential names but must not expose credential values. Redact token-like values before logging, displaying, or exporting runtime evidence."
     optional_env: []
     optional_bins: []
     emoji: "\U0001F6AB"

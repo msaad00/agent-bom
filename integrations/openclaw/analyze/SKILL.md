@@ -27,6 +27,7 @@ metadata:
       env: []
       credentials: none
     credential_policy: "Zero credentials required. Blast radius and context graph analysis operate on local scan data. EPSS and CVE lookups send only public CVE IDs — no internal data."
+    credential_handling: "No credentials are required or collected. Do not include raw scan artifacts, config files, or credential values in advisory lookups; only public CVE identifiers may leave the machine."
     optional_env: []
     optional_bins: []
     emoji: "\U0001F4A5"

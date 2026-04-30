@@ -26,6 +26,7 @@ metadata:
       env: []
       credentials: none
     credential_policy: "Zero credentials required. All diagnostic checks run locally against the installed environment. No data leaves the machine."
+    credential_handling: "Diagnostics may report missing credential variable names but must not read, print, or persist credential values. Redact environment-derived evidence before display."
     optional_env: []
     optional_bins: []
     emoji: "\U0001F527"

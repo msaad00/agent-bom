@@ -187,6 +187,27 @@ scan()
 verify(package="agent-bom")
 ```
 
+## Agentic Workflows
+
+Use tool chains, not isolated calls, when the user asks for a decision:
+
+| User intent | Recommended sequence | Output |
+|-------------|----------------------|--------|
+| "Is this MCP safe to install?" | `registry_lookup` -> `check` -> `blast_radius` when a package/version is known | concise allow/warn/block recommendation with evidence |
+| "Gate this PR" | `scan` with SARIF output and fail on high/critical findings | SARIF for code scanning plus non-zero gate result |
+| "Audit my fleet inventory" | validate inventory -> `scan`/`agents` with JSON output -> `context_graph` | findings plus graph-ready JSON |
+| "What changed since last run?" | current scan -> `diff` against prior JSON | new/resolved/persistent findings |
+| "What should I fix first?" | `scan` -> `blast_radius` -> `remediate` plan | prioritized plan only; no file writes |
+
+Pick output by consumer: SARIF for CI, JSON for automation/graph, HTML or
+Markdown for human review, CycloneDX/SPDX for SBOM consumers.
+
+For CLI gates, prefer:
+
+```bash
+agent-bom agents --format sarif --output agent-bom.sarif --fail-on-severity high
+```
+
 ## Guardrails
 
 - Show CVEs even when NVD analysis is pending or severity is `unknown` — a CVE ID is still a real finding.

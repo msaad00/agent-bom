@@ -52,5 +52,39 @@ def test_skill_contribution_contract_documents_guardrails() -> None:
         "Never print raw credential values",
         "Do not ship a remediation skill",
         "corresponding CLI/API behavior exists and is tested",
+        "A1 Tool Poisoning",
+        "A7 Identity Spoofing",
+    ):
+        assert phrase in content
+
+
+def test_cloud_discovery_and_inventory_ingest_skills_are_bundled() -> None:
+    """Cloud skill coverage should match the shipped operator-pull adapters."""
+    expected = {
+        "discover-aws": "aws_inventory_adapter.py",
+        "discover-azure": "azure_inventory_adapter.py",
+        "discover-gcp": "gcp_inventory_adapter.py",
+        "discover-snowflake": "snowflake_inventory_adapter.py",
+        "ingest": "inventory.schema.json",
+    }
+    for skill_name, expected_receipt in expected.items():
+        skill_path = SKILL_ROOT / skill_name / "SKILL.md"
+        assert skill_path.exists(), f"missing bundled skill: {skill_name}"
+        content = skill_path.read_text()
+        assert "source_type" in content
+        assert "discovery_provenance" in content
+        assert "permissions_used" in content
+        assert expected_receipt in content
+
+
+def test_scan_skill_documents_agentic_workflow_sequences() -> None:
+    """The scan skill should tell agents how to chain tools for CI and install-time review."""
+    content = (SKILL_ROOT / "scan" / "SKILL.md").read_text()
+    for phrase in (
+        "Agentic Workflows",
+        "registry_lookup",
+        "fail on high/critical",
+        "SARIF for CI",
+        "JSON for automation/graph",
     ):
         assert phrase in content

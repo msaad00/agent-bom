@@ -8,6 +8,10 @@ Published skills:
 - `agent-bom-compliance`
 - `agent-bom-runtime`
 - `agent-bom-discover-aws`
+- `agent-bom-discover-azure`
+- `agent-bom-discover-gcp`
+- `agent-bom-discover-snowflake`
+- `agent-bom-ingest`
 - `agent-bom-vulnerability-intel`
 
 These are the only skills pushed by release automation. They are:
@@ -29,4 +33,8 @@ When updating versions for release, update only the published skill frontmatter 
 - [`compliance/SKILL.md`](compliance/SKILL.md)
 - [`runtime/SKILL.md`](runtime/SKILL.md)
 - [`discover-aws/SKILL.md`](discover-aws/SKILL.md)
+- [`discover-azure/SKILL.md`](discover-azure/SKILL.md)
+- [`discover-gcp/SKILL.md`](discover-gcp/SKILL.md)
+- [`discover-snowflake/SKILL.md`](discover-snowflake/SKILL.md)
+- [`ingest/SKILL.md`](ingest/SKILL.md)
 - [`vulnerability-intel/SKILL.md`](vulnerability-intel/SKILL.md)

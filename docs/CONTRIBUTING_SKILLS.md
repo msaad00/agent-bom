@@ -60,6 +60,26 @@ Reviewers should reject bundled skills that:
 - emit inventory, SBOM, SARIF, or policy artifacts without schema validation
 - drop `discovery_provenance`, `permissions_used`, or redaction state
 
+## Framework dogfooding
+
+Bundled skills that cite OWASP Agentic Top 10, OWASP MCP Top 10, AISVS, or
+MAESTRO must include concrete behavior that satisfies the cited framework. Do
+not cite a framework as decoration.
+
+- A1 Tool Poisoning: validate schemas before trusting inventory or tool claims.
+- A2 Rug Pulls: pin the skill version to the package release and verify
+  package provenance before execution.
+- A3 Credential Theft: route all credential-bearing fields through the
+  redaction contract and never print raw values.
+- A4 Excessive Permissions: enumerate minimum read-only permissions and stop
+  when the operator cannot provide them.
+- A7 Identity Spoofing: preserve `discovery_provenance` and `permissions_used`
+  on pushed inventory.
+- A9 Misaligned Behaviors: write-capable skills must use
+  `autonomous_invocation: never`.
+- A10 Lifecycle Risks: update skill versions with the release and keep
+  verification commands current.
+
 ## Remediation skills
 
 Write-capable remediation skills have a higher bar than read-only discovery or

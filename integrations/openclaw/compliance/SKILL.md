@@ -30,6 +30,7 @@ metadata:
       env: []
       credentials: none
     credential_policy: "Zero credentials required for OWASP/NIST/EU AI Act compliance and SBOM generation. CIS benchmark checks (AWS, Azure, GCP, Snowflake) optionally accept cloud credentials — only used locally to call cloud APIs, never transmitted elsewhere."
+    credential_handling: "Use only operator-configured cloud SDK credentials for explicitly requested CIS checks. Do not ask users to paste secrets, and never print cloud tokens, private keys, passwords, or connection strings."
     optional_env:
       - name: AWS_PROFILE
         purpose: "AWS CIS benchmark checks — uses boto3 with your local AWS profile"

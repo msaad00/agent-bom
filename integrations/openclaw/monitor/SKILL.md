@@ -27,6 +27,7 @@ metadata:
       env: []
       credentials: none
     credential_policy: "Zero credentials required for fleet listing and trust score tracking. Fleet sync reads local scan state. Dashboard server (agent-bom serve) runs on localhost only."
+    credential_handling: "Fleet and dashboard views may display credential environment variable names for context, but credential values must remain redacted and must not be persisted or transmitted."
     optional_env: []
     optional_bins: []
     emoji: "\U0001F4CA"

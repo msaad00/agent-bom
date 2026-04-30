@@ -26,6 +26,7 @@ metadata:
       env: []
       credentials: none
     credential_policy: "Zero credentials required. Optional ClickHouse URL enables analytics storage. Never auto-discovered or inferred."
+    credential_handling: "Runtime audit data may include credential environment variable names but must not include raw values. Optional analytics credentials are operator-supplied and must not be displayed or inferred."
     optional_env: []
     optional_bins:
       - kubectl

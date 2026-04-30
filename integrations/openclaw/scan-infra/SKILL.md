@@ -27,6 +27,7 @@ metadata:
       env: []
       credentials: none
     credential_policy: "Zero credentials required for IaC and secrets scanning. Cloud checks (AWS/Azure/GCP/Snowflake) optionally accept cloud credentials — only used locally to call cloud APIs, never transmitted elsewhere."
+    credential_handling: "Use local scanner redaction before reporting secrets. Optional cloud credentials stay in the operator environment and must not be printed, persisted, or forwarded."
     optional_env:
       - name: AWS_PROFILE
         purpose: "AWS CIS benchmark checks — uses boto3 with your local AWS profile"

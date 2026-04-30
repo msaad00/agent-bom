@@ -113,6 +113,56 @@ class TestBuildUnifiedGraphFromReport:
         names = {a.label for a in agents}
         assert names == {"claude-desktop", "cursor"}
 
+    def test_fleet_source_id_disambiguates_same_named_agents(self):
+        report = {
+            "scan_id": "fleet-endpoints",
+            "agents": [
+                {
+                    "name": "claude-desktop",
+                    "type": "claude-desktop",
+                    "source_id": "device-a",
+                    "enrollment_name": "eng-laptop-a",
+                    "owner": "alice",
+                    "mcp_servers": [
+                        {
+                            "name": "team-chat-server",
+                            "transport": "stdio",
+                            "packages": [{"name": "axios", "version": "1.4.0", "ecosystem": "npm"}],
+                            "tools": [{"name": "send_message", "description": "Send a message"}],
+                            "credential_env_vars": ["SLACK_TOKEN"],
+                        }
+                    ],
+                },
+                {
+                    "name": "claude-desktop",
+                    "type": "claude-desktop",
+                    "source_id": "device-b",
+                    "enrollment_name": "eng-laptop-b",
+                    "owner": "bob",
+                    "mcp_servers": [
+                        {
+                            "name": "team-chat-server",
+                            "transport": "stdio",
+                            "packages": [{"name": "axios", "version": "1.4.0", "ecosystem": "npm"}],
+                            "tools": [{"name": "send_message", "description": "Send a message"}],
+                            "credential_env_vars": ["SLACK_TOKEN"],
+                        }
+                    ],
+                },
+            ],
+        }
+
+        g = build_unified_graph_from_report(report)
+
+        assert "agent:device-a:claude-desktop" in g.nodes
+        assert "agent:device-b:claude-desktop" in g.nodes
+        assert g.nodes["agent:device-a:claude-desktop"].attributes["source_id"] == "device-a"
+        assert g.nodes["agent:device-b:claude-desktop"].attributes["owner"] == "bob"
+        assert g.has_edge("agent:device-a:claude-desktop", "server:device-a:claude-desktop:team-chat-server")
+        assert g.has_edge("agent:device-b:claude-desktop", "server:device-b:claude-desktop:team-chat-server")
+        assert g.has_edge("server:device-a:claude-desktop:team-chat-server", "pkg:npm:axios@1.4.0")
+        assert g.has_edge("server:device-b:claude-desktop:team-chat-server", "pkg:npm:axios@1.4.0")
+
     def test_provider_nodes_and_hosts_edges(self):
         g = build_unified_graph_from_report(_minimal_report())
         providers = g.nodes_by_type(EntityType.PROVIDER)

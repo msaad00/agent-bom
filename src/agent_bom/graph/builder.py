@@ -76,7 +76,9 @@ def build_unified_graph_from_report(
     # ── Agents → Servers → Packages → Tools → Credentials ───────────
     for agent_dict in agents_data:
         agent_name = agent_dict.get("name", "unknown")
-        agent_id = f"agent:{agent_name}"
+        agent_scope = _agent_identity_scope(agent_dict)
+        agent_id = _agent_node_id(agent_name, agent_scope)
+        agent_node_key = agent_id.removeprefix("agent:")
         agent_type = agent_dict.get("type", agent_dict.get("agent_type", ""))
         provider_name = str(agent_dict.get("source") or "local").strip() or "local"
         provider_id = f"provider:{provider_name}"
@@ -108,6 +110,12 @@ def build_unified_graph_from_report(
                     "stable_id": agent_dict.get("stable_id", ""),
                     "config_path": agent_dict.get("config_path", ""),
                     "source": provider_name,
+                    "source_id": agent_scope,
+                    "enrollment_name": agent_dict.get("enrollment_name", ""),
+                    "owner": agent_dict.get("owner", ""),
+                    "environment": agent_dict.get("environment", ""),
+                    "mdm_provider": agent_dict.get("mdm_provider", ""),
+                    "tags": agent_dict.get("tags", []),
                     "discovered_at": agent_dict.get("discovered_at"),
                     "last_seen": agent_dict.get("last_seen"),
                     "server_count": len(agent_dict.get("mcp_servers", [])),
@@ -142,7 +150,7 @@ def build_unified_graph_from_report(
 
         for srv_dict in agent_dict.get("mcp_servers", []):
             srv_name = srv_dict.get("name", "unknown")
-            srv_id = f"server:{agent_name}:{srv_name}"
+            srv_id = f"server:{agent_node_key}:{srv_name}"
             surface = srv_dict.get("surface", "mcp-server")
 
             graph.add_node(
@@ -181,9 +189,12 @@ def build_unified_graph_from_report(
                     relationship=RelationshipType.USES,
                 )
             )
-            server_to_agents[srv_name].append(agent_name)
-            server_name_to_agent_servers[srv_name][agent_name] = srv_id
+            server_to_agents[srv_name].append(agent_id)
+            server_name_to_agent_servers[srv_name][agent_id] = srv_id
             agent_to_server_ids[agent_name].add(srv_id)
+            if agent_scope:
+                agent_to_server_ids[agent_scope].add(srv_id)
+                agent_to_server_ids[f"{agent_scope}:{agent_name}"].add(srv_id)
 
             # ── Packages ──
             for pkg_dict in srv_dict.get("packages", []):
@@ -289,7 +300,7 @@ def build_unified_graph_from_report(
                         weight=2.0,
                     )
                 )
-                cred_to_agents[env_key].append(agent_name)
+                cred_to_agents[env_key].append(agent_id)
 
     # ── Blast radius vulnerabilities ─────────────────────────────────
     for br_dict in blast_data:
@@ -366,8 +377,8 @@ def build_unified_graph_from_report(
                 for a2 in unique[i + 1 :]:
                     graph.add_edge(
                         UnifiedEdge(
-                            source=f"agent:{a1}",
-                            target=f"agent:{a2}",
+                            source=a1,
+                            target=a2,
                             relationship=RelationshipType.SHARES_SERVER,
                             direction="bidirectional",
                             weight=3.0,
@@ -383,8 +394,8 @@ def build_unified_graph_from_report(
                 for a2 in unique[i + 1 :]:
                     graph.add_edge(
                         UnifiedEdge(
-                            source=f"agent:{a1}",
-                            target=f"agent:{a2}",
+                            source=a1,
+                            target=a2,
                             relationship=RelationshipType.SHARES_CRED,
                             direction="bidirectional",
                             weight=4.0,
@@ -1263,6 +1274,29 @@ def _add_framework_topology(graph: UnifiedGraph, framework_agents: Any, data_sou
 
 def _clean_graph_part(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _agent_identity_scope(agent_dict: dict[str, Any]) -> str:
+    """Return the endpoint/source scope that disambiguates fleet agents."""
+    for key in ("source_id", "endpoint_id", "device_id"):
+        value = str(agent_dict.get(key) or "").strip()
+        if value:
+            return value
+    metadata = agent_dict.get("metadata")
+    if isinstance(metadata, dict):
+        for key in ("source_id", "endpoint_id", "device_id"):
+            value = str(metadata.get(key) or "").strip()
+            if value:
+                return value
+    return ""
+
+
+def _agent_node_id(agent_name: Any, source_id: str = "") -> str:
+    """Build an agent graph ID without collapsing same-name fleet endpoints."""
+    name = str(agent_name or "unknown").strip() or "unknown"
+    if source_id:
+        return f"agent:{source_id}:{name}"
+    return f"agent:{name}"
 
 
 def _flatten_compliance_tags(raw: Any) -> list[str]:

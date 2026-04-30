@@ -207,19 +207,19 @@ jobs:
       - name: Install agent-bom (from source)
         run: uv sync --extra dev
 
-      - name: Run SAST scan on source code (--code)
+      - name: Run bounded source code analysis
         id: sast_scan
-        timeout-minutes: 40
+        timeout-minutes: 15
         run: |
           set +e
           mkdir -p sarif
-          uv run agent-bom scan \
-            --code src/agent_bom \
-            --sast-config p/python \
-            --format sarif \
-            -o sarif/self-sast.sarif \
-            --quiet
-          echo "sast_exit=$?" >> "$GITHUB_OUTPUT"
+          uv run agent-bom code src/agent_bom --format json -o sarif/self-sast.json --quiet
+          scan_exit=$?
+          if [ "$scan_exit" -eq 0 ]; then
+            uv run python scripts/code_scan_json_to_sarif.py sarif/self-sast.json sarif/self-sast.sarif
+          fi
+          echo "sast_exit=$scan_exit" >> "$GITHUB_OUTPUT"
+          exit "$scan_exit"
 
       - name: Upload SAST SARIF
         if: always() && hashFiles('sarif/self-sast.sarif') != ''

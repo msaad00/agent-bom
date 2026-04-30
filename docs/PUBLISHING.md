@@ -97,7 +97,7 @@ npm install -g clawhub@latest
 clawhub login --token "$CLAWHUB_TOKEN" --no-browser
 clawhub publish integrations/openclaw/scan \
   --slug agent-bom-scan --name "agent-bom scan" \
-  --version "0.83.1"
+  --version "0.83.2"
 ```
 
 Release automation uses the same official `clawhub` CLI flow, not a custom
@@ -150,8 +150,8 @@ Images published:
 Tag push triggers the full pipeline automatically:
 
 ```bash
-git tag v0.83.1
-git push origin v0.83.1
+git tag v0.83.2
+git push origin v0.83.2
 ```
 
 This triggers:

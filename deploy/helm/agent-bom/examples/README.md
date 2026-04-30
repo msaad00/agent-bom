@@ -10,6 +10,7 @@ product split.
 |---|---|---|
 | `sqlite-pilot` | `eks-control-plane-sqlite-pilot-values.yaml` | Single-node packaged demo or short-lived pilot where Postgres is not ready yet |
 | `focused-pilot` | `eks-mcp-pilot-values.yaml` | Narrow EKS pilot with control plane, scanner, and tightened ingress |
+| `byo-postgres` | `byo-postgres-values.yaml` | Overlay for operator-owned Postgres-compatible databases, including Snowflake Postgres candidates |
 | `production` | `eks-production-values.yaml` | Postgres-backed production EKS rollout with autoscaling, backup, and ExternalSecrets |
 | `eks-vanilla` | `eks-vanilla-values.yaml` | Postgres-backed production EKS rollout with ALB, IRSA, Kubernetes Secrets, and no service mesh / ESO / cert-manager requirement |
 | `mesh-hardening` | `eks-istio-kyverno-values.yaml` | Overlay for Istio mTLS/authz and Kyverno policy-controller packaging |
@@ -64,6 +65,11 @@ python scripts/install_helm_profile.py production \
   profiles consume an operator-managed database through
   `AGENT_BOM_POSTGRES_URL`, either from External Secrets Operator
   (`production`) or a Kubernetes Secret (`eks-vanilla`).
+- Use `byo-postgres-values.yaml` as an overlay when the platform team provides
+  a Postgres-compatible database such as RDS/Aurora Postgres, Cloud SQL for
+  PostgreSQL, Azure Database for PostgreSQL, Supabase, Crunchy/EDB, or
+  Snowflake Postgres. Treat new providers as smoke-test required until API,
+  graph, fleet, policy, audit, and backup/restore posture are verified.
 - For Kubernetes Secrets without External Secrets Operator, start from
   `postgres-secret.example.yaml`, create the real secret out-of-band, and keep
   the credential out of values files and git.

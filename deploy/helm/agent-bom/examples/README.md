@@ -60,6 +60,13 @@ python scripts/install_helm_profile.py production \
 
 ## Operator guidance
 
+- The chart intentionally does not install a Postgres subchart. Production
+  profiles consume an operator-managed database through
+  `AGENT_BOM_POSTGRES_URL`, either from External Secrets Operator
+  (`production`) or a Kubernetes Secret (`eks-vanilla`).
+- For Kubernetes Secrets without External Secrets Operator, start from
+  `postgres-secret.example.yaml`, create the real secret out-of-band, and keep
+  the credential out of values files and git.
 - Start with `focused-pilot` for the narrow customer EKS story.
 - Use `sqlite-pilot` only for demos or single-node packaged pilots.
 - Move to `eks-vanilla` when you run EKS with ALB, IRSA, RDS/Postgres, and

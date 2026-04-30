@@ -39,6 +39,19 @@ def test_gateway_runtime_profile_uses_shipped_upstreams_example():
     )
 
 
+def test_postgres_secret_example_documents_byo_postgres_contract():
+    repo_root = Path(__file__).resolve().parent.parent
+    chart = repo_root / "deploy" / "helm" / "agent-bom" / "Chart.yaml"
+    postgres_secret = repo_root / "deploy" / "helm" / "agent-bom" / "examples" / "postgres-secret.example.yaml"
+    docs = repo_root / "site-docs" / "deployment" / "postgres-provisioning.md"
+
+    assert "dependencies:" not in chart.read_text()
+    assert "AGENT_BOM_POSTGRES_URL" in postgres_secret.read_text()
+    docs_body = docs.read_text()
+    assert "no Postgres subchart dependency" in docs_body
+    assert "provision Postgres/RDS with your platform tooling" in docs_body
+
+
 def test_build_helm_profile_command_uses_shipped_profile_stack():
     repo_root = Path(__file__).resolve().parent.parent
     cmd = build_helm_profile_command(repo_root, "focused-pilot")

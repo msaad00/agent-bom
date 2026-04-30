@@ -1,5 +1,11 @@
 Enterprise pilot notes:
 
+- The chart does not provision Postgres. Production profiles expect an
+  operator-managed Postgres/RDS database exposed through
+  `AGENT_BOM_POSTGRES_URL`; see
+  `deploy/helm/agent-bom/examples/postgres-secret.example.yaml` for the
+  Kubernetes Secret shape and `site-docs/deployment/postgres-provisioning.md`
+  for the ownership contract.
 - Set `AGENT_BOM_AUDIT_HMAC_KEY` in the control-plane secret.
 - Set `AGENT_BOM_REQUIRE_AUDIT_HMAC=1` to fail closed if the key is missing.
 - Use Postgres for the pilot control plane; SQLite is not the multi-replica path.

@@ -82,6 +82,28 @@ That split is deliberate:
 - destroy/cleanup ownership stays clearer
 - the product can deploy into an existing EKS platform cleanly
 
+The packaged Helm chart therefore has no Postgres subchart dependency. The
+production contract is:
+
+1. provision Postgres/RDS with your platform tooling
+2. run the packaged Postgres migrations
+3. expose the connection string to the API and backup jobs as
+   `AGENT_BOM_POSTGRES_URL`
+4. install the Helm profile
+
+For clusters without External Secrets Operator, use the shipped Secret shape as
+a starting point:
+
+```bash
+cp deploy/helm/agent-bom/examples/postgres-secret.example.yaml /tmp/agent-bom-postgres-secret.yaml
+# edit /tmp/agent-bom-postgres-secret.yaml or render it from your secret manager
+kubectl apply -f /tmp/agent-bom-postgres-secret.yaml
+```
+
+For clusters with External Secrets Operator, use the `production` profile and
+replace the `REPLACE_ME_*` remote references in
+`deploy/helm/agent-bom/examples/eks-production-values.yaml`.
+
 ## Request-to-database tenant flow
 
 For Postgres-backed deployments, a successful authenticated request does this:

@@ -14,6 +14,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from agent_bom import __version__
+from agent_bom.asset_provenance import agent_discovery_provenance, package_discovery_provenance, sanitize_discovery_provenance
 from agent_bom.models import AIBOMReport
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
 
@@ -25,6 +26,25 @@ def _sanitize_bom_ref(raw: str) -> str:
     Replace invalid characters (``@``, ``/``, spaces, etc.) with ``-``.
     """
     return re.sub(r"[^a-zA-Z0-9._-]", "-", raw)
+
+
+def _append_discovery_provenance_properties(properties: list[dict], provenance: dict | None) -> None:
+    """Append sanitized discovery provenance as CycloneDX component properties."""
+    if not provenance:
+        return
+    for key, value in sorted(provenance.items()):
+        if isinstance(value, (dict, list)):
+            prop_value = json.dumps(value, sort_keys=True, separators=(",", ":"))
+        elif isinstance(value, bool):
+            prop_value = str(value).lower()
+        else:
+            prop_value = str(value)
+        properties.append(
+            {
+                "name": f"agent-bom:discovery-provenance:{key.replace('_', '-')}",
+                "value": prop_value,
+            }
+        )
 
 
 # ── ML BOM extension builders ────────────────────────────────────────────────
@@ -277,6 +297,13 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
     for agent in report.agents:
         agent_ref = _sanitize_bom_ref(f"agent-{agent.stable_id}")
         agent_deps = []
+        agent_provenance = agent_discovery_provenance(agent)
+        agent_properties = [
+            {"name": "agent-bom:type", "value": "ai-agent"},
+            {"name": "agent-bom:config-path", "value": sanitize_path_label(agent.config_path) if agent.config_path else ""},
+            {"name": "agent-bom:status", "value": agent.status.value},
+        ]
+        _append_discovery_provenance_properties(agent_properties, agent_provenance)
 
         components.append(
             {
@@ -285,23 +312,21 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                 "name": agent.name,
                 "version": agent.version or "unknown",
                 "description": f"AI Agent ({agent.agent_type.value})",
-                "properties": [
-                    {"name": "agent-bom:type", "value": "ai-agent"},
-                    {"name": "agent-bom:config-path", "value": sanitize_path_label(agent.config_path) if agent.config_path else ""},
-                    {"name": "agent-bom:status", "value": agent.status.value},
-                ],
+                "properties": agent_properties,
             }
         )
 
         for server in agent.mcp_servers:
             server_ref = _sanitize_bom_ref(f"mcp-server-{server.stable_id}")
             server_deps = []
+            server_provenance = sanitize_discovery_provenance(getattr(server, "discovery_provenance", None), defaults=agent_provenance)
 
             server_props = [
                 {"name": "agent-bom:type", "value": "mcp-server"},
                 {"name": "agent-bom:command", "value": sanitize_launch_command(server.command, server.args)},
                 {"name": "agent-bom:transport", "value": server.transport.value},
             ]
+            _append_discovery_provenance_properties(server_props, server_provenance)
             if server.has_credentials:
                 server_props.append({"name": "agent-bom:has-credentials", "value": "true"})
             if server.tools:
@@ -334,6 +359,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
 
             for pkg in server.packages:
                 pkg_ref = _sanitize_bom_ref(f"pkg-{pkg.stable_id}")
+                package_provenance = package_discovery_provenance(pkg, inherited=server_provenance)
 
                 pkg_properties = [
                     {"name": "agent-bom:ecosystem", "value": pkg.ecosystem},
@@ -345,6 +371,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                     {"name": "agent-bom:version-source", "value": pkg.version_source},
                     {"name": "agent-bom:floating-reference", "value": str(pkg.floating_reference).lower()},
                 ]
+                _append_discovery_provenance_properties(pkg_properties, package_provenance)
                 if pkg.floating_reference_reason:
                     pkg_properties.append({"name": "agent-bom:floating-reference-reason", "value": pkg.floating_reference_reason})
                 if pkg.parent_package:

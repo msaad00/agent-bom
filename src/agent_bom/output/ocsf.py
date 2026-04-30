@@ -17,7 +17,9 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from agent_bom.asset_provenance import sanitize_discovery_provenance
 from agent_bom.graph import SEVERITY_TO_OCSF as _SEVERITY_MAP
+from agent_bom.security import sanitize_sensitive_payload
 
 # Detector → OCSF analytic type mapping
 _ANALYTIC_TYPE: dict[str, str] = {
@@ -47,6 +49,15 @@ def alert_to_ocsf(alert: dict, product_version: str = "") -> dict[str, Any]:
     severity = alert.get("severity", "info").lower()
     detector = alert.get("detector", "unknown")
     details = alert.get("details", {})
+    safe_details: dict[str, Any] = {}
+    if isinstance(details, dict):
+        sanitized = sanitize_sensitive_payload(details, max_str_len=1000)
+        if isinstance(sanitized, dict):
+            safe_details = sanitized
+    if isinstance(details, dict) and "discovery_provenance" in details:
+        safe_provenance = sanitize_discovery_provenance(details.get("discovery_provenance"))
+        if safe_provenance:
+            safe_details["discovery_provenance"] = safe_provenance
 
     return {
         # OCSF metadata
@@ -78,8 +89,8 @@ def alert_to_ocsf(alert: dict, product_version: str = "") -> dict[str, Any]:
         "resources": [
             {
                 "type": "Other",
-                "name": details.get("tool", "unknown"),
-                "data": {k: v for k, v in details.items() if k not in ("tool",) and isinstance(v, (str, int, float, bool))},
+                "name": details.get("tool", "unknown") if isinstance(details, dict) else "unknown",
+                "data": {k: v for k, v in safe_details.items() if k != "tool"},
             }
         ],
         # Product metadata

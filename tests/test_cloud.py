@@ -680,6 +680,59 @@ def test_graph_no_cve_nodes_when_disabled():
     assert len(cve_nodes) == 0
 
 
+def test_graph_blocklisted_server_is_not_rendered_clean():
+    """MCP intelligence should affect server risk state even without package CVEs."""
+    from agent_bom.output.graph import build_graph_elements
+
+    server = MCPServer(
+        name="credential-stealer",
+        command="npx",
+        args=["credential-stealer"],
+        security_blocked=True,
+        security_warnings=["MCP_BLOCKLIST[high/pattern]: credential-stealer"],
+        security_intelligence=[
+            {
+                "entry_id": "suspicious-credential-stealer",
+                "title": "Suspicious credential exfiltration MCP server",
+            }
+        ],
+    )
+    agent = Agent(name="claude", agent_type=AgentType.CUSTOM, config_path="/tmp/mcp.json", mcp_servers=[server])
+    report = AIBOMReport(agents=[agent])
+
+    elements = build_graph_elements(report, [])
+    server_node = next(e["data"] for e in elements if e.get("data", {}).get("id") == "s:claude:credential-stealer")
+    uses_edge = next(e["data"] for e in elements if e.get("data", {}).get("target") == "s:claude:credential-stealer")
+
+    assert server_node["type"] == "server_blocked"
+    assert server_node["securityBlocked"] is True
+    assert server_node["securityIntelligenceCount"] == 1
+    assert "BLOCK credential-stealer" in server_node["label"]
+    assert "Suspicious credential exfiltration MCP server" in server_node["tip"]
+    assert uses_edge["securityBlocked"] == 1
+
+
+def test_graph_non_blocking_mcp_intelligence_is_warned():
+    """Non-blocking MCP intelligence gets a warning state, not a clean state."""
+    from agent_bom.output.graph import build_graph_elements
+
+    server = MCPServer(
+        name="unknown-risk-server",
+        command="uvx",
+        security_intelligence=[{"entry_id": "intel-review", "title": "Review MCP server before use"}],
+    )
+    agent = Agent(name="cursor", agent_type=AgentType.CUSTOM, config_path="/tmp/mcp.json", mcp_servers=[server])
+    report = AIBOMReport(agents=[agent])
+
+    elements = build_graph_elements(report, [])
+    server_node = next(e["data"] for e in elements if e.get("data", {}).get("id") == "s:cursor:unknown-risk-server")
+
+    assert server_node["type"] == "server_intel"
+    assert server_node["securityBlocked"] is False
+    assert server_node["securityIntelligenceCount"] == 1
+    assert "INTEL unknown-risk-server" in server_node["label"]
+
+
 def test_graph_collapse_cves_into_package_summary():
     """Collapsed graph mode summarizes CVEs on the package node instead of emitting leaf nodes."""
     from agent_bom.output.graph import build_graph_elements

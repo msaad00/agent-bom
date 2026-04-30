@@ -21,9 +21,11 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from agent_bom.finding import FindingType
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
 
 if TYPE_CHECKING:
+    from agent_bom.finding import Finding
     from agent_bom.models import AIBOMReport, BlastRadius
 
 
@@ -148,8 +150,9 @@ def _warn_gate_banner(report: "AIBOMReport") -> str:
     )
 
 
-def _summary_cards(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> str:
+def _summary_cards(report: "AIBOMReport", blast_radii: list["BlastRadius"], policy_findings: list["Finding"]) -> str:
     crit = sum(1 for br in blast_radii if br.vulnerability.severity.value == "critical")
+    policy_crit = sum(1 for finding in policy_findings if str(finding.severity).lower() == "critical")
     total_vulns = len(blast_radii)
     cred_servers = sum(1 for a in report.agents for s in a.mcp_servers if s.has_credentials)
     kev_count = sum(1 for br in blast_radii if br.vulnerability.is_kev)
@@ -172,8 +175,17 @@ def _summary_cards(report: "AIBOMReport", blast_radii: list["BlastRadius"]) -> s
                 card("&#x1f916;", str(report.total_agents), "Agents", "#60a5fa", f"{report.total_servers} servers"),
                 card("&#x1f4e6;", str(report.total_packages), "Packages", "#38bdf8", "direct + transitive"),
                 card("&#x26a0;&#xfe0f;", str(total_vulns), "Vulnerabilities", "#f87171" if total_vulns else "#34d399", "across all agents"),
+                card(
+                    "&#x1f6e1;&#xfe0f;",
+                    str(len(policy_findings)),
+                    "Policy Findings",
+                    "#f87171" if policy_findings else "#34d399",
+                    "non-CVE controls",
+                ),
                 card("&#x1f511;", str(cred_servers), "Servers w/ Creds", "#fbbf24" if cred_servers else "#34d399", "credential exposure"),
-                card("&#x1f6a8;", str(crit), "Critical", "#ef4444" if crit else "#34d399", "needs immediate fix"),
+                card(
+                    "&#x1f6a8;", str(crit + policy_crit), "Critical", "#ef4444" if crit or policy_crit else "#34d399", "needs immediate fix"
+                ),
                 card("&#x1f9a0;", str(kev_count), "CISA KEV", "#a855f7" if kev_count else "#34d399", "actively exploited"),
             ]
         )
@@ -387,6 +399,101 @@ def _remediation_list(blast_radii: list["BlastRadius"]) -> str:
         )
         nf_html = '<div style="margin-top:20px"><div class="subsection-label">No Fix Available</div>' + nf_rows + "</div>"
     return "".join(items) + nf_html
+
+
+def _non_cve_findings(report: "AIBOMReport") -> list["Finding"]:
+    """Return unified findings not already represented in the CVE tables."""
+    return [finding for finding in report.to_findings() if finding.finding_type != FindingType.CVE]
+
+
+def _policy_findings_section(findings: list["Finding"]) -> str:
+    """Render unified non-CVE findings with asset, source, and evidence context."""
+    if not findings:
+        return ""
+
+    rows = []
+    for finding in sorted(findings, key=lambda f: _SEV_ORDER.get(str(f.severity).lower(), -1), reverse=True):
+        sev = str(finding.severity or "unknown").lower()
+        title = finding.title or finding.description or finding.finding_type.value
+        asset_label = finding.asset.name or finding.asset.identifier or "unknown asset"
+        location = (
+            f'<br><code style="color:#64748b;font-size:.72rem">{_esc(finding.asset.location)}</code>' if finding.asset.location else ""
+        )
+        description = finding.description or finding.remediation_guidance or ""
+        evidence_items = [f"{_esc(key)}={_esc(value)}" for key, value in finding.evidence.items() if value not in (None, "", [], {})][:4]
+        evidence = (
+            "<br>".join(f'<code style="color:#94a3b8;font-size:.72rem">{item}</code>' for item in evidence_items)
+            if evidence_items
+            else '<span style="color:#334155">&mdash;</span>'
+        )
+        remediation = finding.remediation_guidance or ""
+        description_html = f'<br><span style="color:#94a3b8">{_esc(description)}</span>' if description else ""
+        remediation_html = _esc(remediation) if remediation else '<span style="color:#334155">&mdash;</span>'
+        rows.append(
+            f'<tr data-severity="{sev}" data-type="{_esc(finding.finding_type.value)}" '
+            f'data-source="{_esc(finding.source.value)}" data-asset-type="{_esc(finding.asset.asset_type)}">'
+            f"<td>{_sev_badge(sev)}</td>"
+            f'<td><code style="color:#c4b5fd;font-size:.75rem">{_esc(finding.finding_type.value)}</code></td>'
+            f'<td><strong style="color:#e2e8f0">{_esc(asset_label)}</strong>'
+            f'<br><span style="color:#64748b;font-size:.72rem">{_esc(finding.asset.asset_type)}</span>{location}</td>'
+            f'<td style="font-size:.82rem;color:#cbd5e1;max-width:260px"><strong>{_esc(title)}</strong>'
+            f"{description_html}</td>"
+            f'<td><code style="color:#94a3b8;font-size:.75rem">{_esc(finding.source.value)}</code></td>'
+            f'<td style="font-size:.75rem;color:#94a3b8;max-width:220px">{evidence}</td>'
+            f'<td style="font-size:.75rem;color:#4ade80;max-width:220px">{remediation_html}</td>'
+            "</tr>"
+        )
+
+    headers = ["Severity", "Type", "Asset", "Finding", "Source", "Evidence", "Remediation"]
+    header_html = "".join(f'<th data-col="{i}">{h} <span class="sort-arrow"></span></th>' for i, h in enumerate(headers))
+    severity_filters = "".join(
+        f'<label style="display:flex;align-items:center;gap:4px;font-size:.78rem;color:{color};cursor:pointer">'
+        f'<input type="checkbox" class="policy-sev-filter" value="{sev}" checked> {label}</label>'
+        for sev, label, color in (
+            ("critical", "Critical", "#fca5a5"),
+            ("high", "High", "#fb923c"),
+            ("medium", "Medium", "#fbbf24"),
+            ("low", "Low", "#94a3b8"),
+            ("unknown", "Unknown", "#94a3b8"),
+        )
+    )
+    finding_types = sorted({finding.finding_type.value for finding in findings})
+    type_options = "".join(f'<option value="{_esc(ftype)}">{_esc(ftype)}</option>' for ftype in finding_types)
+    asset_types = sorted({finding.asset.asset_type for finding in findings if finding.asset.asset_type})
+    asset_options = "".join(f'<option value="{_esc(asset_type)}">{_esc(asset_type)}</option>' for asset_type in asset_types)
+    filter_bar = (
+        '<div class="policy-filter-bar" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;'
+        'margin-bottom:14px;padding:12px 16px;background:#0f172a;border-radius:8px;border:1px solid #1e293b">'
+        '<span style="font-size:.72rem;color:#64748b;text-transform:uppercase;letter-spacing:.06em;font-weight:700">Filter:</span>'
+        f"{severity_filters}"
+        '<span style="width:1px;height:18px;background:#334155"></span>'
+        '<select id="policyTypeFilter" style="padding:6px 10px;background:#1e293b;border:1px solid #334155;border-radius:6px;'
+        'color:#e2e8f0;font-size:.78rem;outline:none"><option value="">All types</option>'
+        f"{type_options}</select>"
+        '<select id="policyAssetFilter" style="padding:6px 10px;background:#1e293b;border:1px solid #334155;border-radius:6px;'
+        'color:#e2e8f0;font-size:.78rem;outline:none"><option value="">All assets</option>'
+        f"{asset_options}</select>"
+        '<input type="text" id="policySearch" placeholder="Search policy findings&hellip;" '
+        'style="padding:6px 10px;background:#1e293b;border:1px solid #334155;border-radius:6px;'
+        'color:#e2e8f0;font-size:.78rem;width:220px;outline:none">'
+        '<span id="policyVisibleCount" style="margin-left:auto;font-size:.72rem;color:#64748b"></span>'
+        "</div>"
+    )
+    return (
+        f'<section id="policyfindings">'
+        f'<div class="sec-title">&#x1f6e1;&#xfe0f; Policy &amp; Security Findings'
+        f'<sup style="font-size:.7rem;color:#475569;margin-left:6px">{len(findings)}</sup></div>'
+        f'<div class="panel">'
+        f'<div class="hint-box">'
+        f"Unified non-CVE findings from scanners, policy checks, runtime controls, and MCP intelligence. "
+        f"These are the same findings emitted in JSON and SARIF."
+        f"</div>"
+        f"{filter_bar}"
+        f'<div class="table-wrap"><table class="data-table sortable" id="policyFindingsTable">'
+        f"<thead><tr>{header_html}</tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table></div>"
+        f"</div></section>"
+    )
 
 
 def _skill_audit_section(report: "AIBOMReport") -> str:
@@ -1062,17 +1169,20 @@ def _compliance_section(blast_radii: list["BlastRadius"]) -> str:
 
 def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = None) -> str:
     blast_radii = blast_radii or []
+    policy_findings = _non_cve_findings(report)
     generated = report.generated_at.strftime("%Y-%m-%d %H:%M:%S UTC")
     elements_json = _cytoscape_elements(report, blast_radii)
     attack_flow_json = _attack_flow_elements(blast_radii)
     chart_data_json = _chart_data(blast_radii)
     crit = sum(1 for br in blast_radii if br.vulnerability.severity.value == "critical")
+    policy_crit = sum(1 for finding in policy_findings if str(finding.severity).lower() == "critical")
+    policy_high = sum(1 for finding in policy_findings if str(finding.severity).lower() == "high")
     total_vulns = len(blast_radii)
 
-    if crit:
+    if crit or policy_crit:
         status_color, status_label = "#dc2626", "CRITICAL FINDINGS"
-    elif total_vulns:
-        status_color, status_label = "#d97706", "VULNERABILITIES FOUND"
+    elif total_vulns or policy_high or policy_findings:
+        status_color, status_label = "#d97706", "SECURITY FINDINGS"
     else:
         status_color, status_label = "#16a34a", "CLEAN"
 
@@ -1098,6 +1208,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
             f'<div class="panel">{_remediation_list(blast_radii)}</div>'
             f"</section>"
         )
+    policy_section = _policy_findings_section(policy_findings)
 
     # Compliance section
     compliance_html = _compliance_section(blast_radii)
@@ -1309,7 +1420,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     /* PRINT */
     @media print{{
       body{{background:#fff;color:#1e293b;font-size:12px}}
-      .sidebar,.graph-controls,.graph-filter-bar,.vuln-filter-bar,.toggle-btn,.inv-search,.print-btn,.node-sidebar,.sidebar-toggle{{display:none!important}}
+      .sidebar,.graph-controls,.graph-filter-bar,.vuln-filter-bar,.policy-filter-bar,.toggle-btn,.inv-search,.print-btn,.node-sidebar,.sidebar-toggle{{display:none!important}}
       .container{{margin-left:0;max-width:100%;padding:10px}}
       footer{{margin-left:0}}
       section{{page-break-inside:avoid;margin-bottom:20px}}
@@ -1361,6 +1472,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
     <div class="sidebar-group-label">Security</div>
     {'<a href="#attackflow" class="sidebar-link"><span class="link-icon">&#x26a1;</span> Attack Flow</a>' if blast_radii else ""}
     {f'<a href="#vulns" class="sidebar-link"><span class="link-icon">&#x1f41b;</span> Vulnerabilities <span class="link-badge" style="background:#7f1d1d;color:#fca5a5">{len(blast_radii)}</span></a>' if blast_radii else ""}
+    {f'<a href="#policyfindings" class="sidebar-link"><span class="link-icon">&#x1f6e1;&#xfe0f;</span> Policy Findings <span class="link-badge" style="background:#78350f;color:#fcd34d">{len(policy_findings)}</span></a>' if policy_findings else ""}
     {'<a href="#blast" class="sidebar-link"><span class="link-icon">&#x1f4a5;</span> Blast Radius</a>' if blast_radii else ""}
     {'<a href="#remediation" class="sidebar-link"><span class="link-icon">&#x1f527;</span> Remediation</a>' if blast_radii else ""}
   </div>
@@ -1406,7 +1518,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
   <!-- Summary stat cards -->
   <section id="summary">
     <div class="sec-title">Summary</div>
-    {_summary_cards(report, blast_radii)}
+    {_summary_cards(report, blast_radii, policy_findings)}
   </section>
 
   <!-- Charts row -->
@@ -1490,6 +1602,7 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
   {_attack_flow_section(blast_radii)}
 
   <!-- Vuln / Blast / Remediation -->
+  {policy_section}
   {vuln_sections}
 
   <!-- Compliance posture -->
@@ -2273,6 +2386,44 @@ def to_html(report: "AIBOMReport", blast_radii: list["BlastRadius"] | None = Non
   if (kevToggle) kevToggle.addEventListener('change', filterVulnTable);
   var vulnSearchInput = document.getElementById('vulnSearch');
   if (vulnSearchInput) vulnSearchInput.addEventListener('input', filterVulnTable);
+
+  // Unified policy/security finding filtering
+  function filterPolicyFindingsTable() {{
+    var table = document.getElementById('policyFindingsTable');
+    if (!table) return;
+    var rows = table.querySelectorAll('tbody tr');
+    var checkedSevs = Array.from(document.querySelectorAll('.policy-sev-filter:checked')).map(function(c) {{ return c.value; }});
+    var typeFilter = (document.getElementById('policyTypeFilter') || {{}}).value || '';
+    var assetFilter = (document.getElementById('policyAssetFilter') || {{}}).value || '';
+    var q = (document.getElementById('policySearch') || {{}}).value || '';
+    q = q.toLowerCase();
+    var visible = 0;
+    rows.forEach(function(row) {{
+      var sev = row.getAttribute('data-severity') || '';
+      var type = row.getAttribute('data-type') || '';
+      var assetType = row.getAttribute('data-asset-type') || '';
+      var text = row.textContent.toLowerCase();
+      var show = true;
+      if (checkedSevs.indexOf(sev) === -1) show = false;
+      if (typeFilter && type !== typeFilter) show = false;
+      if (assetFilter && assetType !== assetFilter) show = false;
+      if (q && text.indexOf(q) === -1) show = false;
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    }});
+    var count = document.getElementById('policyVisibleCount');
+    if (count) count.textContent = visible + ' of ' + rows.length + ' shown';
+  }}
+  document.querySelectorAll('.policy-sev-filter').forEach(function(cb) {{
+    cb.addEventListener('change', filterPolicyFindingsTable);
+  }});
+  var policyTypeFilter = document.getElementById('policyTypeFilter');
+  if (policyTypeFilter) policyTypeFilter.addEventListener('change', filterPolicyFindingsTable);
+  var policyAssetFilter = document.getElementById('policyAssetFilter');
+  if (policyAssetFilter) policyAssetFilter.addEventListener('change', filterPolicyFindingsTable);
+  var policySearchInput = document.getElementById('policySearch');
+  if (policySearchInput) policySearchInput.addEventListener('input', filterPolicyFindingsTable);
+  filterPolicyFindingsTable();
 
   // Cytoscape: CVE Attack Flow graph
   var cyAtkContainer = document.getElementById('cyAttack');

@@ -232,11 +232,16 @@ agent-bom where             # show all discovery paths
 }
 ```
 
-## Sub-Skills (10)
+## Sub-Skills (15)
 
 | Sub-Skill | Purpose | Triggers |
 |-----------|---------|---------|
 | [discover](discover/SKILL.md) | Find agents, MCP servers, configurations | "find agents", "what's configured", "mcp inventory" |
+| [discover-aws](discover-aws/SKILL.md) | Scope-zero AWS operator-pull inventory | "discover AWS agents", "Bedrock inventory", "AWS MCP inventory" |
+| [discover-azure](discover-azure/SKILL.md) | Scope-zero Azure operator-pull inventory | "discover Azure AI", "Azure MCP inventory" |
+| [discover-gcp](discover-gcp/SKILL.md) | Scope-zero GCP operator-pull inventory | "discover Vertex AI", "GCP MCP inventory" |
+| [discover-snowflake](discover-snowflake/SKILL.md) | Scope-zero Snowflake/Cortex operator-pull inventory | "discover Snowflake AI", "Cortex inventory" |
+| [ingest](ingest/SKILL.md) | Validate and scan operator-pushed inventory | "ingest inventory", "scan pushed inventory" |
 | [scan](scan/SKILL.md) | CVE scanning, image scanning, SBOM, provenance | "check package", "scan image", "verify", "blast radius" |
 | [scan-infra](scan-infra/SKILL.md) | IaC, cloud config, secrets scanning | "check terraform", "scan kubernetes", "find secrets" |
 | [enforce](enforce/SKILL.md) | Runtime policy enforcement, MCP proxy | "block risky calls", "apply policy", "proxy" |

@@ -245,6 +245,10 @@ def test_publish_registries_workflow_requires_public_smithery_surface_and_curate
     assert "integrations/openclaw/registry" in workflow
     assert "integrations/openclaw/runtime" in workflow
     assert "integrations/openclaw/discover-aws" in workflow
+    assert "integrations/openclaw/discover-azure" in workflow
+    assert "integrations/openclaw/discover-gcp" in workflow
+    assert "integrations/openclaw/discover-snowflake" in workflow
+    assert "integrations/openclaw/ingest" in workflow
     assert "integrations/openclaw/vulnerability-intel" in workflow
     assert '_publish_skill "integrations/openclaw" "agent-bom"' not in workflow
 

@@ -297,4 +297,8 @@ jobs:
           _publish_skill "integrations/openclaw/registry"   "agent-bom-registry"   false "agent-bom registry"
           _publish_skill "integrations/openclaw/runtime"    "agent-bom-runtime"    false "agent-bom runtime"
           _publish_skill "integrations/openclaw/discover-aws" "agent-bom-discover-aws" false "agent-bom discover aws"
+          _publish_skill "integrations/openclaw/discover-azure" "agent-bom-discover-azure" false "agent-bom discover azure"
+          _publish_skill "integrations/openclaw/discover-gcp" "agent-bom-discover-gcp" false "agent-bom discover gcp"
+          _publish_skill "integrations/openclaw/discover-snowflake" "agent-bom-discover-snowflake" false "agent-bom discover snowflake"
+          _publish_skill "integrations/openclaw/ingest" "agent-bom-ingest" false "agent-bom ingest"
           _publish_skill "integrations/openclaw/vulnerability-intel" "agent-bom-vulnerability-intel" false "agent-bom vulnerability intel"

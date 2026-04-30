@@ -82,3 +82,21 @@ def test_scan_agents_sync_does_not_mutate_legacy_compliance_global(monkeypatch):
     scan_agents_sync([_agent("compliance")], compliance_enabled=True, show_scan_banner=False)
 
     assert scanners.compliance_mode is False
+
+
+def test_scan_agents_sync_threads_prefer_local_db_as_scan_option(monkeypatch):
+    """Fresh-local-DB preference must be carried per scan, not via module state."""
+    monkeypatch.setattr(scanners, "prefer_local_db", False)
+    seen: list[bool] = []
+
+    async def _scan_packages(_packages, *, resolve_transitive=False, options=None):
+        assert options is not None
+        seen.append(options.prefer_local_db)
+        return 0
+
+    monkeypatch.setattr(scanners, "scan_packages", _scan_packages)
+
+    scan_agents_sync([_agent("local-db")], prefer_local_db=True, show_scan_banner=False)
+
+    assert seen == [True]
+    assert scanners.prefer_local_db is False

@@ -89,12 +89,14 @@ class ScanOptions:
     offline: bool = False
     compliance_enabled: bool = False
     resolve_transitive: bool = False
+    prefer_local_db: bool = False
 
 
 def default_scan_options(
     *,
     compliance_enabled: bool = False,
     resolve_transitive: bool = False,
+    prefer_local_db: bool | None = None,
     offline: bool | None = None,
 ) -> ScanOptions:
     """Build per-scan options while preserving legacy offline defaults."""
@@ -103,6 +105,7 @@ def default_scan_options(
         offline=offline_mode if offline is None else offline,
         compliance_enabled=compliance_enabled,
         resolve_transitive=resolve_transitive,
+        prefer_local_db=prefer_local_db if prefer_local_db is not None else globals().get("prefer_local_db", False),
     )
 
 
@@ -120,12 +123,14 @@ def set_offline_mode(value: bool) -> None:
 
 
 # When True, prefer local DB results and only fall back to OSV API for
-# packages not found in the DB. Set automatically when DB is <24h old.
+# packages not found in the DB. Legacy compatibility only; concurrent callers
+# should pass ScanOptions(prefer_local_db=...) instead of mutating this.
 prefer_local_db: bool = False
 
 # CVE-level framework tags are always computed so structured outputs stay
 # truthful by default. The CLI --compliance flag still controls whether
 # context-heavy compliance views are rendered explicitly.
+# Legacy compatibility only; per-scan behavior is ScanOptions.compliance_enabled.
 compliance_mode: bool = False
 
 # Map ecosystem names to OSV ecosystem identifiers
@@ -698,6 +703,7 @@ async def scan_packages(
     scan_options = options or default_scan_options(resolve_transitive=resolve_transitive)
     scan_offline = scan_options.offline
     scan_resolve_transitive = scan_options.resolve_transitive
+    scan_prefer_local_db = scan_options.prefer_local_db
     # Deduplicate packages across discovery sources before scanning.
     # Prevents redundant OSV API calls when the same package is discovered
     # from multiple sources (local, K8s, cloud).
@@ -873,7 +879,7 @@ async def scan_packages(
 
     osv_targets = [p for p in scannable if _db_key(p) not in db_covered]
 
-    if scan_offline or (prefer_local_db and not osv_targets):
+    if scan_offline or (scan_prefer_local_db and not osv_targets):
         if scan_offline and not db_covered:
             raise IncompleteScanError(
                 "Offline mode requires a populated local vulnerability DB. Run `agent-bom db update` before using `--offline`."
@@ -888,7 +894,7 @@ async def scan_packages(
                 f"{skipped_names}{suffix}. Run `agent-bom db update` before using `--offline`."
             )
         results = {}
-    elif prefer_local_db and osv_targets:
+    elif scan_prefer_local_db and osv_targets:
         # DB is fresh — only query OSV for packages genuinely missing from DB
         _logger.debug("Local DB preferred: querying OSV for %d uncovered package(s) only", len(osv_targets))
         results = await query_osv_batch(osv_targets)
@@ -1299,12 +1305,14 @@ def scan_agents_sync(
     resolve_transitive: bool = False,
     show_scan_banner: bool = True,
     offline: bool | None = None,
+    prefer_local_db: bool | None = None,
     options: ScanOptions | None = None,
 ) -> list[BlastRadius]:
     """Synchronous wrapper for scan_agents."""
     scan_options = options or default_scan_options(
         compliance_enabled=compliance_enabled,
         resolve_transitive=resolve_transitive,
+        prefer_local_db=prefer_local_db,
         offline=offline,
     )
     if enable_enrichment:

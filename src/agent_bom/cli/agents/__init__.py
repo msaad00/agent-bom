@@ -505,6 +505,7 @@ def scan(
             con.print("[dim]Offline mode — local vulnerability DB only[/dim]")
 
     # ── Auto-offline: use local DB if synced recently (saves ~10s network) ──
+    prefer_local_db = False
     if not offline and not no_scan:
         try:
             import os
@@ -515,9 +516,7 @@ def scan(
             if DB_PATH.exists():
                 _age_days = (time.time() - os.path.getmtime(DB_PATH)) / 86400
                 if _age_days <= 1:
-                    import agent_bom.scanners as _scanners_auto
-
-                    _scanners_auto.prefer_local_db = True
+                    prefer_local_db = True
                     logger.debug("Local DB is %.1f day(s) old — preferring local DB over network", _age_days)
         except Exception:
             pass  # DB not available, will use network
@@ -1166,6 +1165,7 @@ def scan(
                             resolve_transitive=transitive,
                             show_scan_banner=False,
                             offline=offline,
+                            prefer_local_db=prefer_local_db,
                         )
                     except IncompleteScanError as exc:
                         _exit_incomplete_scan_with_partial_summary(
@@ -1201,6 +1201,7 @@ def scan(
                         compliance_enabled=compliance,
                         resolve_transitive=transitive,
                         offline=offline,
+                        prefer_local_db=prefer_local_db,
                     )
                 except IncompleteScanError as exc:
                     _exit_incomplete_scan_with_partial_summary(

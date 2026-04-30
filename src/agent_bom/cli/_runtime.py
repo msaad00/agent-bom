@@ -571,12 +571,29 @@ def proxy_bootstrap_cmd(
 @click.option("--log-json", "log_json", is_flag=True, help="Structured JSON logs")
 @click.option("--shield", is_flag=True, help="Enable deep defense mode (correlated threat scoring, escalation, kill-switch)")
 @click.option(
+    "--allow-insecure-no-auth",
+    is_flag=True,
+    help="Allow --mode http to bind non-loopback without AGENT_BOM_PROTECTION_API_KEY.",
+)
+@click.option(
     "--correlation-window",
     default=30.0,
     show_default=True,
     help="Alert correlation window in seconds (used with --shield)",
 )
-def protect_cmd(mode, port, host, detectors, alert_file, alert_webhook, log_level, log_json, shield, correlation_window):
+def protect_cmd(
+    mode,
+    port,
+    host,
+    detectors,
+    alert_file,
+    alert_webhook,
+    log_level,
+    log_json,
+    shield,
+    allow_insecure_no_auth,
+    correlation_window,
+):
     """Run the runtime protection engine as a standalone monitor.
 
     \b
@@ -619,9 +636,14 @@ def protect_cmd(mode, port, host, detectors, alert_file, alert_webhook, log_leve
         if not alert_webhook and _proj_cfg.get("alert_webhook"):
             alert_webhook = _proj_cfg["alert_webhook"]
     from agent_bom.runtime.protection import ProtectionEngine
-    from agent_bom.runtime.server import run_http_mode, run_stdin_mode
+    from agent_bom.runtime.server import enforce_runtime_http_auth_defaults, run_http_mode, run_stdin_mode
 
     setup_logging(level=log_level, json_output=log_json)
+    if mode == "http":
+        try:
+            enforce_runtime_http_auth_defaults(host, allow_insecure_no_auth=allow_insecure_no_auth)
+        except RuntimeError as exc:
+            raise click.ClickException(str(exc)) from exc
 
     # Build dispatcher with configured channels
     dispatcher = AlertDispatcher()
@@ -686,7 +708,7 @@ def protect_cmd(mode, port, host, detectors, alert_file, alert_webhook, log_leve
             loop.add_signal_handler(sig, _signal_handler)
 
         if mode == "http":
-            task = asyncio.create_task(run_http_mode(engine, host, port))
+            task = asyncio.create_task(run_http_mode(engine, host, port, allow_insecure_no_auth=allow_insecure_no_auth))
         else:
             task = asyncio.create_task(run_stdin_mode(engine))
 

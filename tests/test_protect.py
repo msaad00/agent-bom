@@ -10,7 +10,7 @@ from click.testing import CliRunner
 from agent_bom.alerts.dispatcher import AlertDispatcher
 from agent_bom.cli import main
 from agent_bom.runtime.protection import ProtectionEngine
-from agent_bom.runtime.server import _dispatch, _route_http, _runtime_metrics_text
+from agent_bom.runtime.server import _dispatch, _route_http, _runtime_metrics_text, enforce_runtime_http_auth_defaults
 
 # ─── CLI help / option tests ────────────────────────────────────────────────
 
@@ -27,6 +27,42 @@ def test_protect_help():
     assert "--alert-file" in result.output
     assert "--alert-webhook" in result.output
     assert "runtime protection" in result.output.lower()
+    assert "--allow-insecure-no-auth" in result.output
+
+
+def test_runtime_http_remote_bind_requires_auth(monkeypatch):
+    """Runtime HTTP mode should fail closed when exposed remotely without auth."""
+    monkeypatch.delenv("AGENT_BOM_PROTECTION_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="without authentication"):
+        enforce_runtime_http_auth_defaults("0.0.0.0")
+
+
+def test_runtime_http_loopback_bind_does_not_require_auth(monkeypatch):
+    """Loopback runtime HTTP mode remains convenient for local development."""
+    monkeypatch.delenv("AGENT_BOM_PROTECTION_API_KEY", raising=False)
+    enforce_runtime_http_auth_defaults("127.0.0.1")
+    enforce_runtime_http_auth_defaults("localhost")
+
+
+def test_runtime_http_remote_bind_allows_api_key(monkeypatch):
+    """Remote runtime HTTP mode is allowed when bearer auth is configured."""
+    monkeypatch.setenv("AGENT_BOM_PROTECTION_API_KEY", "secret")
+    enforce_runtime_http_auth_defaults("0.0.0.0")
+
+
+def test_runtime_http_remote_bind_allows_explicit_override(monkeypatch):
+    """Operators can still opt into unauthenticated remote binds explicitly."""
+    monkeypatch.delenv("AGENT_BOM_PROTECTION_API_KEY", raising=False)
+    enforce_runtime_http_auth_defaults("0.0.0.0", allow_insecure_no_auth=True)
+
+
+def test_runtime_protect_cli_refuses_remote_http_without_auth(monkeypatch):
+    """CLI should report a ClickException instead of starting an exposed listener."""
+    monkeypatch.delenv("AGENT_BOM_PROTECTION_API_KEY", raising=False)
+    runner = CliRunner()
+    result = runner.invoke(main, ["runtime", "protect", "--mode", "http", "--host", "0.0.0.0"])
+    assert result.exit_code != 0
+    assert "without authentication" in result.output
 
 
 # ─── _dispatch unit tests (stdin protocol) ──────────────────────────────────

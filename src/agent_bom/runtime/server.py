@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import ipaddress
 import json
 import logging
 import os
@@ -32,6 +33,33 @@ if TYPE_CHECKING:
     from agent_bom.runtime.protection import ProtectionEngine
 
 logger = logging.getLogger(__name__)
+
+
+def _is_loopback_host(host: str) -> bool:
+    """Return True when ``host`` resolves to loopback-only access."""
+    cleaned = host.strip().lower()
+    if cleaned in {"localhost", "127.0.0.1", "::1"}:
+        return True
+    try:
+        return ipaddress.ip_address(cleaned).is_loopback
+    except ValueError:
+        return False
+
+
+def enforce_runtime_http_auth_defaults(
+    host: str,
+    *,
+    api_key: str | None = None,
+    allow_insecure_no_auth: bool = False,
+) -> None:
+    """Refuse unauthenticated non-loopback runtime HTTP binds."""
+    resolved_api_key = api_key if api_key is not None else os.environ.get("AGENT_BOM_PROTECTION_API_KEY")
+    if resolved_api_key or _is_loopback_host(host) or allow_insecure_no_auth:
+        return
+    raise RuntimeError(
+        f"Refusing to expose `runtime protect --mode http` on non-loopback host {host!r} without authentication. "
+        "Set AGENT_BOM_PROTECTION_API_KEY or pass --allow-insecure-no-auth to override."
+    )
 
 
 def _runtime_metrics_text(engine: ProtectionEngine) -> str:
@@ -157,12 +185,14 @@ async def _dispatch(engine: ProtectionEngine, data: dict) -> list[dict]:
 # ─── HTTP mode ───────────────────────────────────────────────────────────────
 
 
-async def run_http_mode(engine: ProtectionEngine, host: str, port: int) -> None:
+async def run_http_mode(engine: ProtectionEngine, host: str, port: int, *, allow_insecure_no_auth: bool = False) -> None:
     """Start an asyncio HTTP server that accepts tool call JSON via POST.
 
-    Zero trust: requires ``AGENT_BOM_PROTECTION_API_KEY`` env var when set.
+    Zero trust: requires ``AGENT_BOM_PROTECTION_API_KEY`` env var for
+    non-loopback listeners unless the operator explicitly overrides.
     Requests must include ``Authorization: Bearer <key>`` header.
     """
+    enforce_runtime_http_auth_defaults(host, allow_insecure_no_auth=allow_insecure_no_auth)
     engine.start()
 
     # 10 MB — matches proxy.py MAX_MESSAGE_SIZE

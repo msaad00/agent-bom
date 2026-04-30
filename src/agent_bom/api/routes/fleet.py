@@ -278,8 +278,17 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
 
     if body and body.agents:
         payload_agents = body.agents
-        existing_by_name = {agent.name: agent for agent in store.list_by_tenant(tenant_id)}
-        new_names = {str(agent.get("name", "unknown-agent")) for agent in payload_agents} - set(existing_by_name)
+        existing_agents = store.list_by_tenant(tenant_id)
+        existing_by_identity = {(agent.source_id or source_id or "server-discovery", agent.name): agent for agent in existing_agents}
+        existing_by_legacy_name = {agent.name: agent for agent in existing_agents if not agent.source_id}
+        incoming_keys = {
+            (
+                str(agent.get("source_id") or source_id or "server-discovery"),
+                str(agent.get("name", "unknown-agent")),
+            )
+            for agent in payload_agents
+        }
+        new_identities = incoming_keys - set(existing_by_identity)
 
         # Hold the per-tenant quota guard across the (check + insert
         # loop) pair so concurrent fleet-sync POSTs serialise per
@@ -288,15 +297,16 @@ async def sync_fleet(request: Request, body: PushPayload | None = None):
         # `num_replicas` (audit-5 P1 fleet race fix).
         with tenant_quota_guard(
             tenant_id,
-            lambda: enforce_fleet_agents_quota(tenant_id, attempted=len(new_names)),
+            lambda: enforce_fleet_agents_quota(tenant_id, attempted=len(new_identities)),
         ):
             for payload_agent in payload_agents:
                 name = payload_agent.get("name", "unknown-agent")
-                existing = existing_by_name.get(name)
+                payload_source_id = str(payload_agent.get("source_id") or source_id or "server-discovery")
+                identity_key = (payload_source_id, str(name))
+                existing = existing_by_identity.get(identity_key) or existing_by_legacy_name.get(str(name))
                 server_count, pkg_count, cred_count, vuln_count = _payload_counts(payload_agent)
                 score = float(payload_agent.get("trust_score", 0.0) or 0.0)
                 factors = dict(payload_agent.get("trust_factors", {}) or {})
-                payload_source_id = str(payload_agent.get("source_id") or source_id or "")
                 payload_enrollment_name = str(payload_agent.get("enrollment_name") or "")
                 payload_mdm_provider = str(payload_agent.get("mdm_provider") or "")
                 payload_owner = payload_agent.get("owner")

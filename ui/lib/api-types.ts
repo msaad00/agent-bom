@@ -219,6 +219,12 @@ export interface Agent {
   agent_type: string;
   config_path?: string | undefined;
   source?: string | undefined;
+  source_id?: string | undefined;
+  enrollment_name?: string | undefined;
+  owner?: string | undefined;
+  environment?: string | undefined;
+  mdm_provider?: string | undefined;
+  tags?: string[] | undefined;
   status?: AgentStatus | undefined;
   discovered_at?: string | undefined;
   last_seen?: string | undefined;

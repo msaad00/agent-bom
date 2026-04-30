@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ScanResult } from "@/lib/api";
-import { buildMeshGraph } from "@/lib/mesh-graph";
+import { buildMeshGraph, getMeshAgentKey } from "@/lib/mesh-graph";
 
 const baseResult: ScanResult = {
   agents: [
@@ -104,5 +104,62 @@ describe("buildMeshGraph", () => {
     expect(nodes.some((node) => node.id === "agent:cursor")).toBe(true);
     expect(nodes.some((node) => node.id === "server:filesystem")).toBe(true);
     expect(edges.some((edge) => edge.id === "agent:cursor->server:filesystem")).toBe(true);
+  });
+
+  it("keeps same-named agents separate across fleet endpoints", () => {
+    const fleetResult: ScanResult = {
+      agents: [
+        {
+          name: "claude-desktop",
+          agent_type: "desktop",
+          source_id: "device-a",
+          enrollment_name: "alice-mac",
+          mcp_servers: [
+            {
+              name: "filesystem",
+              packages: [
+                {
+                  name: "server-filesystem",
+                  version: "1.0.0",
+                  ecosystem: "npm",
+                  vulnerabilities: [{ id: "CVE-2026-0001", severity: "critical" }],
+                },
+              ],
+              tools: [],
+            },
+          ],
+        },
+        {
+          name: "claude-desktop",
+          agent_type: "desktop",
+          source_id: "device-b",
+          enrollment_name: "bob-mac",
+          mcp_servers: [
+            {
+              name: "filesystem",
+              packages: [
+                {
+                  name: "server-filesystem",
+                  version: "1.0.0",
+                  ecosystem: "npm",
+                  vulnerabilities: [{ id: "CVE-2026-0001", severity: "critical" }],
+                },
+              ],
+              tools: [],
+            },
+          ],
+        },
+      ],
+      blast_radius: [],
+    };
+
+    const { nodes, edges } = buildMeshGraph(fleetResult, undefined, "high");
+
+    expect(getMeshAgentKey(fleetResult.agents[0]!)).toBe("claude-desktop@device-a");
+    expect(nodes.some((node) => node.id === "agent:claude-desktop@device-a")).toBe(true);
+    expect(nodes.some((node) => node.id === "agent:claude-desktop@device-b")).toBe(true);
+    expect(nodes.filter((node) => node.data.label === "claude-desktop · alice-mac")).toHaveLength(1);
+    expect(edges.some((edge) => edge.id === "agent:claude-desktop@device-a->server:filesystem")).toBe(true);
+    expect(edges.some((edge) => edge.id === "agent:claude-desktop@device-b->server:filesystem")).toBe(true);
   });
 });

@@ -321,6 +321,34 @@ def test_sync_persists_endpoint_identity_metadata():
     assert agent.mdm_provider == "jamf"
 
 
+def test_sync_keeps_same_agent_name_separate_per_endpoint():
+    client, store = _fresh_client()
+    for source_id, owner in (("device-a", "alice"), ("device-b", "bob")):
+        resp = client.post(
+            "/v1/fleet/sync",
+            json={
+                "source_id": source_id,
+                "agents": [
+                    {
+                        "name": "claude-desktop",
+                        "agent_type": "claude_desktop",
+                        "source_id": source_id,
+                        "owner": owner,
+                        "trust_score": 80,
+                        "mcp_servers": [],
+                    }
+                ],
+            },
+        )
+        assert resp.status_code == 200
+
+    agents = sorted(store.list_all(), key=lambda agent: agent.source_id)
+    assert [(agent.name, agent.source_id, agent.owner) for agent in agents] == [
+        ("claude-desktop", "device-a", "alice"),
+        ("claude-desktop", "device-b", "bob"),
+    ]
+
+
 def test_sync_endpoint_push_is_idempotent():
     client, store = _fresh_client()
     payload = {

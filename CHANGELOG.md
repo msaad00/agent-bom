@@ -11,6 +11,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.83.2] – 2026-04-30
+
+### Fixed
+- **Release gate determinism** — the tag publish workflow now uses `pip-audit` as the hard Python dependency release gate and keeps `agent-bom` self-scan SARIF as bounded evidence without opportunistic DB refresh, preventing third-party enrichment drift from cancelling a release after the build and container gates have already passed.
+
+---
+
 ## [0.83.1] – 2026-04-29
 
 ### Fixed

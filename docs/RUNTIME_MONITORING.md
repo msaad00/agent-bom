@@ -33,7 +33,7 @@ The proxy interposes on the stdio channel between an MCP client (Claude Desktop,
 Use the published main runtime image:
 
 ```bash
-docker pull agentbom/agent-bom:0.83.1
+docker pull agentbom/agent-bom:0.83.2
 ```
 
 If you need to rebuild locally from the checked-out repo, you can still use
@@ -45,7 +45,7 @@ Run as a wrapper around any MCP server:
 ```bash
 docker run --rm \
   -v $(pwd)/audit-logs:/var/log/agent-bom \
-  agentbom/agent-bom:0.83.1 \
+  agentbom/agent-bom:0.83.2 \
   --log /var/log/agent-bom/audit.jsonl \
   --block-undeclared \
   -- npx -y @modelcontextprotocol/server-filesystem /workspace
@@ -94,7 +94,7 @@ spec:
 
         # agent-bom runtime proxy sidecar
         - name: agent-bom-proxy
-          image: agentbom/agent-bom:0.83.1
+          image: agentbom/agent-bom:0.83.2
           args:
             - "--log"
             - "/var/log/agent-bom/audit.jsonl"
@@ -334,7 +334,7 @@ Use the runtime container directly from Claude Desktop:
         "run", "--rm", "-i",
         "-v", "./workspace:/workspace",
         "-v", "./audit-logs:/var/log/agent-bom",
-        "agentbom/agent-bom:0.83.1",
+        "agentbom/agent-bom:0.83.2",
         "--log", "/var/log/agent-bom/audit.jsonl",
         "--block-undeclared",
         "--",

@@ -35,6 +35,8 @@ from agent_bom.proxy import (
     is_tools_call,
     log_tool_call,
     parse_jsonrpc,
+    policy_subject_from_message,
+    sandbox_posture_warning,
 )
 from agent_bom.proxy_audit import _AUDIT_CHAIN_STATE, write_audit_record
 
@@ -142,6 +144,47 @@ def test_is_tools_call_false():
     assert is_tools_call(msg) is False
 
 
+def test_policy_subject_maps_tool_calls_to_tool_name_and_arguments():
+    msg = {
+        "jsonrpc": "2.0",
+        "method": "tools/call",
+        "id": 1,
+        "params": {"name": "read_file", "arguments": {"path": "/etc/passwd"}},
+    }
+    assert policy_subject_from_message(msg) == ("read_file", {"path": "/etc/passwd"})
+
+
+def test_policy_subject_gates_resource_prompt_sampling_and_extensions():
+    assert policy_subject_from_message({"method": "resources/read", "params": {"uri": "file:///etc/passwd"}}) == (
+        "resources/read",
+        {"uri": "file:///etc/passwd"},
+    )
+    assert policy_subject_from_message({"method": "prompts/get", "params": {"name": "prod"}}) == (
+        "prompts/get",
+        {"name": "prod"},
+    )
+    assert policy_subject_from_message({"method": "sampling/createMessage", "params": {"maxTokens": 1000}}) == (
+        "sampling/createMessage",
+        {"maxTokens": 1000},
+    )
+    assert policy_subject_from_message({"method": "mcp_extension/doSensitiveThing", "params": {"scope": "admin"}}) == (
+        "mcp_extension/doSensitiveThing",
+        {"scope": "admin"},
+    )
+
+
+def test_policy_subject_leaves_discovery_methods_ungated():
+    assert policy_subject_from_message({"method": "tools/list", "params": {}}) is None
+
+
+def test_sandbox_posture_warning_is_visible_when_disabled():
+    warning = sandbox_posture_warning({"enabled": False})
+    assert warning is not None
+    assert "sandbox isolation is disabled" in warning
+    assert "AGENT_BOM_MCP_SANDBOX=1" in warning
+    assert sandbox_posture_warning({"enabled": True}) is None
+
+
 # ── extract_tool_name ────────────────────────────────────────────────────────
 
 
@@ -203,6 +246,14 @@ def test_check_policy_blocks_tool():
     assert allowed is False
     assert "exec_cmd" in reason
     assert "block-exec" in reason
+
+
+def test_check_policy_block_tools_wildcard_blocks_gated_methods():
+    policy = {"rules": [{"id": "block-all", "action": "block", "block_tools": ["*"]}]}
+    allowed, reason = check_policy(policy, "resources/read", {"uri": "file:///etc/passwd"})
+    assert allowed is False
+    assert "resources/read" in reason
+    assert "block-all" in reason
 
 
 def test_check_policy_blocks_arg_pattern():

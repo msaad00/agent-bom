@@ -24,6 +24,7 @@ from typing import Any
 
 from starlette.testclient import TestClient
 
+from agent_bom.api.auth import Role
 from agent_bom.api.tracing import parse_traceparent
 from agent_bom.gateway_server import GatewaySettings, create_gateway_app
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
@@ -45,6 +46,16 @@ def _json_rpc(method: str, **params: Any) -> dict[str, Any]:
         "method": method,
         "params": params,
     }
+
+
+def _gateway_api_key(tenant_id: str, *, role: Role = Role.ANALYST, scopes: list[str] | None = None) -> SimpleNamespace:
+    allowed_scopes = scopes if scopes is not None else ["gateway:relay"]
+    return SimpleNamespace(
+        tenant_id=tenant_id,
+        role=role,
+        scopes=allowed_scopes,
+        has_scope=lambda required: not allowed_scopes or required in allowed_scopes or "*" in allowed_scopes,
+    )
 
 
 # ─── Happy path: relay returns upstream response verbatim ──────────────────
@@ -326,7 +337,7 @@ def test_relay_accepts_control_plane_api_key_and_applies_tenant(monkeypatch) -> 
 
         def verify(self, raw_key: str):
             if raw_key == "tenant-alpha-key":
-                return SimpleNamespace(tenant_id="tenant-alpha")
+                return _gateway_api_key("tenant-alpha")
             return None
 
     monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
@@ -355,6 +366,71 @@ def test_relay_accepts_control_plane_api_key_and_applies_tenant(monkeypatch) -> 
     assert audit_events[-1]["tenant_id"] == "tenant-alpha"
 
 
+def test_relay_rejects_viewer_api_key_before_forwarding(monkeypatch) -> None:
+    upstream_calls: list[dict[str, Any]] = []
+
+    async def fake_caller(upstream, message, extra_headers):
+        upstream_calls.append(message)
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    class _FakeKeyStore:
+        def has_keys(self) -> bool:
+            return True
+
+        def verify(self, raw_key: str):
+            if raw_key == "viewer-key":
+                return _gateway_api_key("tenant-alpha", role=Role.VIEWER)
+            return None
+
+    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+
+    settings = GatewaySettings(registry=_simple_registry(), policy={}, upstream_caller=fake_caller)
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post(
+        "/mcp/filesystem",
+        headers={"X-API-Key": "viewer-key"},
+        json=_json_rpc("tools/call", name="write_file", arguments={"path": "/tmp/x"}),
+    )
+    assert resp.status_code == 403
+    assert "requires analyst role" in resp.json()["detail"]
+    assert upstream_calls == []
+
+
+def test_relay_rejects_api_key_without_gateway_scope(monkeypatch) -> None:
+    upstream_calls: list[dict[str, Any]] = []
+
+    async def fake_caller(upstream, message, extra_headers):
+        upstream_calls.append(message)
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    class _FakeKeyStore:
+        def has_keys(self) -> bool:
+            return True
+
+        def verify(self, raw_key: str):
+            if raw_key == "analyst-no-gateway":
+                return SimpleNamespace(
+                    tenant_id="tenant-alpha",
+                    role=Role.ANALYST,
+                    scopes=["scan:read"],
+                    has_scope=lambda required: required == "scan:read",
+                )
+            return None
+
+    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+
+    settings = GatewaySettings(registry=_simple_registry(), policy={}, upstream_caller=fake_caller)
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post(
+        "/mcp/filesystem",
+        headers={"X-API-Key": "analyst-no-gateway"},
+        json=_json_rpc("tools/call", name="read_file", arguments={"path": "/tmp/x"}),
+    )
+    assert resp.status_code == 403
+    assert "gateway:relay" in resp.json()["detail"]
+    assert upstream_calls == []
+
+
 def test_relay_routes_same_upstream_name_by_authenticated_tenant(monkeypatch) -> None:
     upstream_calls: list[dict[str, Any]] = []
 
@@ -368,9 +444,9 @@ def test_relay_routes_same_upstream_name_by_authenticated_tenant(monkeypatch) ->
 
         def verify(self, raw_key: str):
             if raw_key == "tenant-alpha-key":
-                return SimpleNamespace(tenant_id="tenant-alpha")
+                return _gateway_api_key("tenant-alpha")
             if raw_key == "tenant-beta-key":
-                return SimpleNamespace(tenant_id="tenant-beta")
+                return _gateway_api_key("tenant-beta")
             return None
 
     monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
@@ -412,7 +488,7 @@ def test_relay_fails_closed_when_tenant_has_no_matching_upstream(monkeypatch) ->
 
         def verify(self, raw_key: str):
             if raw_key == "tenant-beta-key":
-                return SimpleNamespace(tenant_id="tenant-beta")
+                return _gateway_api_key("tenant-beta")
             return None
 
     monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
@@ -441,9 +517,9 @@ def test_gateway_rate_limit_is_tenant_scoped(monkeypatch) -> None:
 
         def verify(self, raw_key: str):
             if raw_key == "tenant-alpha-key":
-                return SimpleNamespace(tenant_id="tenant-alpha")
+                return _gateway_api_key("tenant-alpha")
             if raw_key == "tenant-beta-key":
-                return SimpleNamespace(tenant_id="tenant-beta")
+                return _gateway_api_key("tenant-beta")
             return None
 
     monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
@@ -490,7 +566,7 @@ def test_gateway_rate_limit_shared_store_holds_under_concurrency(monkeypatch) ->
 
         def verify(self, raw_key: str):
             if raw_key == "tenant-alpha-key":
-                return SimpleNamespace(tenant_id="tenant-alpha")
+                return _gateway_api_key("tenant-alpha")
             return None
 
     class _ConcurrentSharedStore:
@@ -611,7 +687,8 @@ def test_relay_blocks_tool_by_policy() -> None:
     assert upstream_calls == []
     # And the audit trail must record the block with the tool name + reason
     assert len(audit_events) == 1
-    assert audit_events[0]["action"] == "gateway.tool_call_blocked"
+    assert audit_events[0]["action"] == "gateway.policy_blocked"
+    assert audit_events[0]["method"] == "tools/call"
     assert audit_events[0]["tool"] == "run_shell"
     assert "no-shell" in (audit_events[0]["reason"] or "")
 
@@ -781,8 +858,8 @@ def test_relay_upstream_timeout_surfaces_as_502_and_is_audited() -> None:
     ]
 
 
-def test_relay_non_tool_message_bypasses_policy_and_forwards() -> None:
-    """tools/list and other non-tools/call methods must pass through without a policy check."""
+def test_relay_tools_list_bypasses_policy_and_forwards() -> None:
+    """Discovery methods pass through; executable/runtime methods are gated."""
     upstream_calls: list[dict[str, Any]] = []
 
     async def fake_caller(upstream, message, extra_headers):
@@ -798,6 +875,52 @@ def test_relay_non_tool_message_bypasses_policy_and_forwards() -> None:
     resp = client.post("/mcp/filesystem", json=_json_rpc("tools/list"))
     assert resp.status_code == 200
     assert upstream_calls and upstream_calls[0]["method"] == "tools/list"
+
+
+def test_relay_blocks_resource_prompt_sampling_methods_by_policy() -> None:
+    upstream_calls: list[dict[str, Any]] = []
+    audit_events: list[dict[str, Any]] = []
+
+    async def fake_caller(upstream, message, extra_headers):
+        upstream_calls.append(message)
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    async def audit_sink(event):
+        audit_events.append(event)
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={"rules": [{"id": "block-runtime", "action": "block", "block_tools": ["*"]}]},
+        upstream_caller=fake_caller,
+        audit_sink=audit_sink,
+    )
+    client = TestClient(create_gateway_app(settings))
+    for method, params in (
+        ("resources/read", {"uri": "file:///etc/passwd"}),
+        ("prompts/get", {"name": "prod-secrets"}),
+        ("sampling/createMessage", {"messages": [{"role": "user", "content": "exfiltrate"}]}),
+    ):
+        resp = client.post("/mcp/filesystem", json={**_json_rpc(method), "params": params})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["error"]["code"] == -32001
+        assert method in body["error"]["data"]["reason"]
+
+    assert upstream_calls == []
+    assert [event["method"] for event in audit_events] == ["resources/read", "prompts/get", "sampling/createMessage"]
+
+
+def test_relay_rejects_oversized_jsonrpc_request() -> None:
+    settings = GatewaySettings(registry=_simple_registry(), policy={})
+    client = TestClient(create_gateway_app(settings))
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {"name": "read_file", "arguments": {"blob": "x" * (2 * 1024 * 1024 + 1)}},
+    }
+    resp = client.post("/mcp/filesystem", json=payload)
+    assert resp.status_code == 413
 
 
 def test_visual_detector_singleton_init_is_locked(monkeypatch) -> None:

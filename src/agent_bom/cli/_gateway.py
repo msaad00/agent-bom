@@ -159,7 +159,7 @@ def serve_cmd(
         )
         sys.exit(2)
 
-    from agent_bom.gateway_server import GatewaySettings, create_gateway_app
+    from agent_bom.gateway_server import GatewaySettings, build_control_plane_audit_sink, create_gateway_app
     from agent_bom.gateway_upstreams import (
         UpstreamConfigError,
         UpstreamRegistry,
@@ -213,10 +213,12 @@ def serve_cmd(
         except RuntimeError as exc:
             raise click.ClickException(str(exc)) from exc
 
+    audit_sink = build_control_plane_audit_sink(control_plane_url, control_plane_token, source_id="gateway") if control_plane_url else None
+
     settings = GatewaySettings(
         registry=registry,
         policy=policy,
-        audit_sink=None,
+        audit_sink=audit_sink,
         bearer_token=bearer_token,
         enable_visual_leak_detection=detect_visual_leaks,
         require_visual_leak_detection_ready=detect_visual_leaks and not allow_visual_leak_best_effort,

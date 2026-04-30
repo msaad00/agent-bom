@@ -59,16 +59,34 @@ class RegistryFreshnessStatus:
     def is_fresh(self) -> bool:
         return self.status == "fresh"
 
+    @property
+    def needs_refresh(self) -> bool:
+        return self.status in {"stale", "never_synced"}
+
+    @property
+    def recommended_action(self) -> str:
+        if self.status == "fresh":
+            return "none"
+        if self.status == "airgapped":
+            return "verify bundled registry through your offline promotion process"
+        if self.status == "airgapped_stale":
+            return "refresh the bundled registry through your offline promotion process"
+        if self.status == "never_synced":
+            return "run agent-bom registry sync-all before relying on registry-derived evidence"
+        return "run agent-bom registry sync-all"
+
     def to_dict(self) -> dict:
         return {
             "status": self.status,
             "is_fresh": self.is_fresh,
+            "needs_refresh": self.needs_refresh,
             "last_synced_at": self.last_synced_at,
             "age_days": self.age_days,
             "stale_after_days": self.stale_after_days,
             "server_count": self.server_count,
             "sources": self.sources,
             "airgapped": self.airgapped,
+            "recommended_action": self.recommended_action,
             "error": self.error,
         }
 

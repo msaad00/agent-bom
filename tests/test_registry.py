@@ -276,6 +276,8 @@ def test_registry_freshness_status_stale():
 
     assert status.status == "stale"
     assert status.is_fresh is False
+    assert status.needs_refresh is True
+    assert status.recommended_action == "run agent-bom registry sync-all"
     assert status.age_days == 19
 
 
@@ -283,6 +285,7 @@ def test_registry_freshness_status_never_synced():
     status = registry_freshness_status(now=datetime(2026, 4, 25, tzinfo=timezone.utc), data={"servers": {}})
 
     assert status.status == "never_synced"
+    assert status.needs_refresh is True
     assert status.age_days is None
     assert status.error == "missing_or_invalid_last_synced_at"
 
@@ -298,6 +301,8 @@ def test_registry_freshness_status_airgapped_stale(monkeypatch):
 
     assert status.status == "airgapped_stale"
     assert status.airgapped is True
+    assert status.needs_refresh is False
+    assert "offline promotion process" in status.recommended_action
 
 
 # ── Update (mocked) ────────────────────────────────────────────────────────
@@ -436,6 +441,20 @@ def test_cli_registry_status_json():
     assert data["status"] in {"fresh", "stale", "airgapped_stale", "never_synced"}
     assert data["server_count"] >= 100
     assert "stale_after_days" in data
+    assert "needs_refresh" in data
+    assert "recommended_action" in data
+
+
+def test_cli_registry_status_fail_on_stale_exits_nonzero():
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["registry", "status", "--stale-after-days", "0", "--fail-on-stale", "-f", "json"])
+    assert result.exit_code == 1
+    data = json.loads(result.output)
+    assert data["needs_refresh"] is True
 
 
 # ── Dataclass construction ──────────────────────────────────────────────────

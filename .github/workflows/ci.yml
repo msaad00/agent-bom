@@ -580,6 +580,13 @@ jobs:
 
       - name: Install build deps (Alpine)
         run: |
+          for attempt in 1 2 3; do
+            if apk add --no-cache bash gcc musl-dev libffi-dev openssl-dev git curl; then
+              exit 0
+            fi
+            echo "apk add failed on attempt ${attempt}; retrying after transient package-index/network failure..."
+            sleep $((attempt * 5))
+          done
           apk add --no-cache bash gcc musl-dev libffi-dev openssl-dev git curl
 
       - name: Install uv
@@ -686,6 +693,21 @@ jobs:
         run: |
           uv run --with build==1.4.0 python -m build
           uvx twine==6.2.0 check dist/*
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          wheel = next(Path("dist").glob("agent_bom-*.whl"))
+          required = {
+              "agent_bom/data/inventory.schema.json",
+              "agent_bom/data/mcp-intelligence.schema.json",
+          }
+          with ZipFile(wheel) as archive:
+              names = set(archive.namelist())
+          missing = sorted(required - names)
+          if missing:
+              raise SystemExit(f"wheel is missing required package data: {', '.join(missing)}")
+          PY
 
       - name: Upload package
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

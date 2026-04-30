@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from importlib import resources
 from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
@@ -168,6 +169,13 @@ def test_inventory_schema_path_points_to_repo_schema():
     assert schema_path is not None
     assert schema_path.name == "inventory.schema.json"
     assert "config/schemas" in schema_path.as_posix()
+
+
+def test_inventory_schema_is_packaged_with_agent_bom_data():
+    schema = resources.files("agent_bom").joinpath("data", "inventory.schema.json")
+    assert schema.is_file()
+    payload = json.loads(schema.read_text(encoding="utf-8"))
+    assert payload["$id"].endswith("/schemas/inventory/v1")
 
 
 # ---------------------------------------------------------------------------

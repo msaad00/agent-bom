@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 _GITHUB_ADVISORY_API = "https://api.github.com/advisories"
 _GHSA_PER_PAGE = 100
 _GHSA_RATE_LIMIT_BACKOFF = 60.0
+_GHSA_SINGLE_PACKAGE_RATE_LIMIT_BACKOFF = 0.0
 
 # Map internal ecosystem names to GitHub Advisory API ecosystem values
 _ECOSYSTEM_MAP: dict[str, str] = {
@@ -45,9 +46,13 @@ class GHSARateLimitError(RuntimeError):
         self.retry_after = retry_after
 
 
+def _github_token() -> str:
+    return os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+
+
 def _ghsa_headers() -> dict[str, str]:
     headers = {"Accept": "application/vnd.github+json"}
-    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    token = _github_token()
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return headers
@@ -306,7 +311,10 @@ async def check_github_advisories(
 
     try:
         async with create_client(timeout=15.0) as client:
-            tasks = [_fetch_advisories_for_package(p, client, semaphore) for p in queryable]
+            rate_limit_backoff = _GHSA_RATE_LIMIT_BACKOFF
+            if len(queryable) == 1 and not _github_token():
+                rate_limit_backoff = _GHSA_SINGLE_PACKAGE_RATE_LIMIT_BACKOFF
+            tasks = [_fetch_advisories_for_package(p, client, semaphore, rate_limit_backoff=rate_limit_backoff) for p in queryable]
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             for i, result in enumerate(results):

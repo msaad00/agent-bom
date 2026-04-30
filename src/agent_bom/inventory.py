@@ -57,9 +57,10 @@ _ECOSYSTEM_ALIASES = {
 
 
 def _inventory_schema_path() -> Path | None:
-    """Return the checked-in inventory schema path."""
+    """Return the inventory schema path from source or installed package data."""
     candidate_paths = [
         Path(__file__).parent.parent.parent / "config" / "schemas" / "inventory.schema.json",
+        Path(__file__).parent / "data" / "inventory.schema.json",
         Path(__file__).parent.parent.parent / "schemas" / "inventory.schema.json",
     ]
     for candidate in candidate_paths:
@@ -72,6 +73,10 @@ def _inventory_schema_path() -> Path | None:
         package_root = Path(str(importlib.resources.files("agent_bom")))
     except Exception:
         return None
+
+    package_schema = Path(str(importlib.resources.files("agent_bom").joinpath("data", "inventory.schema.json")))
+    if package_schema.exists():
+        return package_schema
 
     fallback_paths = [
         package_root / ".." / ".." / "config" / "schemas" / "inventory.schema.json",

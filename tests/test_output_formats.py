@@ -419,6 +419,12 @@ def test_html_renders_unified_non_cve_findings_with_asset_context():
 
     assert "SECURITY FINDINGS" in html
     assert "Policy &amp; Security Findings" in html
+    assert 'id="policyFindingsTable"' in html
+    assert 'class="policy-sev-filter"' in html
+    assert 'id="policyTypeFilter"' in html
+    assert 'id="policyAssetFilter"' in html
+    assert 'id="policySearch"' in html
+    assert "filterPolicyFindingsTable" in html
     assert "MCP_BLOCKLIST" in html
     assert "CIS_FAIL" in html
     assert "credential-stealer" in html

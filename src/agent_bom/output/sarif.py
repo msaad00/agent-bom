@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from agent_bom.asset_provenance import agent_discovery_provenance, package_discovery_provenance, sanitize_discovery_provenance
 from agent_bom.finding import FindingType
 from agent_bom.models import AIBOMReport, Severity
 from agent_bom.security import sanitize_sensitive_payload
@@ -160,6 +161,23 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
             "attack_vector_summary": getattr(br, "attack_vector_summary", None),
             "reachability": br.reachability,
         }
+        package_provenance = package_discovery_provenance(br.package)
+        if package_provenance:
+            result_properties["package_discovery_provenance"] = _sanitize_sarif_property(package_provenance)
+        agent_provenance = [
+            provenance for provenance in (agent_discovery_provenance(agent) for agent in br.affected_agents[:10]) if provenance
+        ]
+        if agent_provenance:
+            result_properties["agent_discovery_provenance"] = _sanitize_sarif_property(agent_provenance)
+        server_provenance = [
+            provenance
+            for provenance in (
+                sanitize_discovery_provenance(getattr(server, "discovery_provenance", None)) for server in br.affected_servers[:10]
+            )
+            if provenance
+        ]
+        if server_provenance:
+            result_properties["server_discovery_provenance"] = _sanitize_sarif_property(server_provenance)
         if (
             br.owasp_tags
             or br.atlas_tags

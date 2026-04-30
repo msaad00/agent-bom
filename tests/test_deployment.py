@@ -286,6 +286,12 @@ def test_dockerfiles_support_proxy_and_ca_contract():
             assert token in content, f"{dockerfile.name} missing {token}"
 
 
+def test_primary_api_image_includes_snowflake_extra_for_snowflake_backend():
+    """The default API image must contain the Snowflake connector for the Snowflake Helm profile."""
+    content = (ROOT / "Dockerfile").read_text()
+    assert 'pip install --no-cache-dir --prefix=/install ".[api,snowflake]"' in content
+
+
 def test_runtime_dockerfile_builds_from_repo_source():
     """Runtime image should install agent-bom from the checked-out source tree, not PyPI."""
     content = (ROOT / "deploy" / "docker" / "Dockerfile.runtime").read_text()
@@ -314,6 +320,40 @@ def test_compose_examples_pass_through_proxy_and_ca_env():
         content = compose_file.read_text()
         for token in required_tokens:
             assert token in content, f"{compose_file.name} missing {token}"
+
+
+def test_eks_snowflake_values_use_supported_chart_keys():
+    """Snowflake EKS profile should render with keys the Helm chart actually consumes."""
+    import yaml
+
+    values = yaml.safe_load((ROOT / "deploy" / "helm" / "agent-bom" / "examples" / "eks-snowflake-values.yaml").read_text())
+    api = values["controlPlane"]["api"]
+    assert "extraVolumeMounts" in api
+    assert "extraVolumes" in api
+    assert "volumeMounts" not in api
+    assert "volumes" not in api
+    assert api["extraVolumeMounts"][0]["mountPath"] == "/var/snowflake"
+    assert api["extraVolumes"][0]["secret"]["secretName"] == "agent-bom-snowflake"
+
+    assert "scanCronJob" not in values["controlPlane"]
+    assert values["scanner"]["enabled"] is True
+    assert "--push-url" in values["scanner"]["extraArgs"]
+    assert "http://agent-bom-api.agent-bom.svc.cluster.local:8422/v1/fleet/sync" in values["scanner"]["extraArgs"]
+
+    assert "networkPolicy" not in values["controlPlane"]
+    assert values["networkPolicy"]["enabled"] is True
+    assert values["networkPolicy"]["restrictIngress"] is True
+    assert values["networkPolicy"]["additionalEgress"][0]["ports"][0]["port"] == 443
+
+
+def test_eks_pilot_doc_matches_chart_secret_and_service_port():
+    """The pilot runbook should match the values file and the actual API service port."""
+    doc = (ROOT / "site-docs" / "deployment" / "eks-mcp-pilot.md").read_text()
+    assert "kubectl -n agent-bom create secret generic agent-bom-control-plane" in doc
+    assert "controlPlane.externalSecrets" in doc
+    assert "8080:8422" in doc
+    assert "/v1/compliance/owasp-llm/report" in doc
+    assert "/v1/compliance/soc2/report" not in doc
 
 
 # ---------------------------------------------------------------------------

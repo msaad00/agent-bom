@@ -81,14 +81,14 @@ Used for unified findings outside the SCA / blast-radius path
 The unified graph projects the canonical model into a node/edge form
 used for blast-radius traversal, dashboards, and OCSF export.
 
-### Entity types (14)
+### Entity types (18)
 
 `AGENT`, `SERVER`, `PACKAGE`, `TOOL`, `MODEL`, `DATASET`, `CONTAINER`,
 `CLOUD_RESOURCE`, `VULNERABILITY`, `MISCONFIGURATION`, `CREDENTIAL`,
 `USER`, `GROUP`, `SERVICE_ACCOUNT`, `PROVIDER`, `ENVIRONMENT`, `FLEET`,
 `CLUSTER`.
 
-### Relationship types (20+)
+### Relationship types (24)
 
 | Group | Relationships | Direction |
 |---|---|---|
@@ -97,6 +97,12 @@ used for blast-radius traversal, dashboards, and OCSF export.
 | Lateral movement | `SHARES_SERVER`, `SHARES_CRED`, `LATERAL_PATH` | symmetric |
 | Ownership | `MANAGES`, `OWNS`, `PART_OF`, `MEMBER_OF` | hierarchical |
 | Runtime | `INVOKED`, `ACCESSED`, `DELEGATED_TO` | source → target, time-stamped |
+
+`EXPLOITABLE_VIA` is a capability-impact edge from a vulnerability to a
+tool when the affected package is connected to the MCP server that provides
+that tool. Because package-to-function call stacks are not always observable,
+the edge evidence records `mapping_method` and `confidence`; conservative
+server-scope mappings must not be presented as exact function-level proof.
 
 ### Canonical class → graph node mapping
 

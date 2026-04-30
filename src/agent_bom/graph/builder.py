@@ -21,6 +21,7 @@ from agent_bom.graph.severity import SEVERITY_RISK_SCORE
 from agent_bom.graph.types import EntityType, RelationshipType
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.package_utils import canonical_package_key, normalize_package_name
+from agent_bom.risk_analyzer import ToolCapability, classify_tool
 from agent_bom.security import sanitize_security_warnings, sanitize_text, sanitize_url
 
 try:
@@ -72,6 +73,9 @@ def build_unified_graph_from_report(
     server_name_to_agent_servers: dict[str, dict[str, str]] = defaultdict(dict)
     agent_to_server_ids: dict[str, set[str]] = defaultdict(set)
     agent_config_path_to_id: dict[str, str] = {}
+    server_to_tool_ids: dict[str, list[str]] = defaultdict(list)
+    package_id_to_servers: dict[str, list[str]] = defaultdict(list)
+    pending_exploitable_edges: list[tuple[str, str, str, dict[str, Any], str]] = []
 
     # ── Agents → Servers → Packages → Tools → Credentials ───────────
     for agent_dict in agents_data:
@@ -239,17 +243,29 @@ def build_unified_graph_from_report(
                         evidence=package_evidence,
                     )
                 )
+                package_id_to_servers[pkg_id].append(srv_id)
                 pkg_key = _package_graph_key(pkg_name, pkg_version, ecosystem, pkg_dict.get("purl"))
                 pkg_key_to_servers[pkg_key].append(srv_id)
 
                 # ── Package-level vulnerabilities ──
                 for vuln_dict in pkg_dict.get("vulnerabilities", []):
-                    _add_vuln_node(graph, vuln_dict, pkg_id, data_source_tag, package_evidence)
+                    vuln_node_id = _add_vuln_node(graph, vuln_dict, pkg_id, data_source_tag, package_evidence)
+                    if vuln_node_id:
+                        pending_exploitable_edges.append(
+                            (
+                                vuln_node_id,
+                                srv_id,
+                                pkg_id,
+                                package_evidence,
+                                str(vuln_dict.get("severity", "") or "").lower(),
+                            )
+                        )
 
             # ── Tools ──
             for tool_dict in srv_dict.get("tools", []):
                 tool_name = tool_dict.get("name", "unknown")
                 tool_id = f"tool:{srv_id}:{tool_name}"
+                capabilities, capability_source = _tool_capabilities(tool_dict)
                 graph.add_node(
                     UnifiedNode(
                         id=tool_id,
@@ -261,12 +277,17 @@ def build_unified_graph_from_report(
                             "fingerprint": tool_dict.get("fingerprint", ""),
                             "risk_score": tool_dict.get("risk_score", 0),
                             "schema_findings": tool_dict.get("schema_findings", []),
+                            "schema_rule_findings": tool_dict.get("schema_rule_findings", []),
+                            "declared_capabilities": tool_dict.get("declared_capabilities", []),
+                            "capabilities": capabilities,
+                            "capability_source": capability_source,
                             "server": srv_id,
                             "agent": agent_name,
                         },
                         data_sources=[data_source_tag],
                     )
                 )
+                server_to_tool_ids[srv_id].append(tool_id)
                 graph.add_edge(
                     UnifiedEdge(
                         source=srv_id,
@@ -301,6 +322,18 @@ def build_unified_graph_from_report(
                     )
                 )
                 cred_to_agents[env_key].append(agent_id)
+
+    for vuln_node_id, srv_id, pkg_id, package_evidence, severity in pending_exploitable_edges:
+        _add_exploitable_via_edges(
+            graph,
+            server_to_tool_ids=server_to_tool_ids,
+            vuln_node_id=vuln_node_id,
+            server_id=srv_id,
+            package_id=pkg_id,
+            evidence=package_evidence,
+            severity=severity,
+            data_source=data_source_tag,
+        )
 
     # ── Blast radius vulnerabilities ─────────────────────────────────
     for br_dict in blast_data:
@@ -350,7 +383,7 @@ def build_unified_graph_from_report(
 
         # Link affected servers → vulnerability using indexed lookups instead
         # of an agent×server cross-product scan.
-        for srv_id in _resolve_affected_server_ids(
+        affected_server_ids = _resolve_affected_server_ids(
             br_dict,
             pkg_name=pkg_name,
             pkg_version=pkg_version,
@@ -358,7 +391,8 @@ def build_unified_graph_from_report(
             pkg_key_to_servers=pkg_key_to_servers,
             server_name_to_agent_servers=server_name_to_agent_servers,
             agent_to_server_ids=agent_to_server_ids,
-        ):
+        )
+        for srv_id in affected_server_ids:
             graph.add_edge(
                 UnifiedEdge(
                     source=srv_id,
@@ -368,6 +402,27 @@ def build_unified_graph_from_report(
                     evidence=_blast_radius_package_evidence(br_dict, data_source_tag),
                 )
             )
+
+        for srv_id in affected_server_ids:
+            pkg_ids = _resolve_affected_package_ids(
+                br_dict,
+                server_id=srv_id,
+                pkg_name=pkg_name,
+                pkg_version=pkg_version,
+                ecosystem=ecosystem,
+                package_id_to_servers=package_id_to_servers,
+            )
+            for pkg_id in pkg_ids:
+                _add_exploitable_via_edges(
+                    graph,
+                    server_to_tool_ids=server_to_tool_ids,
+                    vuln_node_id=vuln_node_id,
+                    server_id=srv_id,
+                    package_id=pkg_id,
+                    evidence=_blast_radius_package_evidence(br_dict, data_source_tag),
+                    severity=severity,
+                    data_source=data_source_tag,
+                )
 
     # ── Shared server edges (agent ↔ agent) ──────────────────────────
     for srv_name, agent_names in server_to_agents.items():
@@ -771,17 +826,143 @@ def build_unified_graph_from_report(
     return graph
 
 
+def _tool_capabilities(tool_dict: dict[str, Any]) -> tuple[list[str], str]:
+    """Return normalized tool capability facets and their evidence source."""
+    declared_values = tool_dict.get("capabilities") or tool_dict.get("declared_capabilities") or []
+    if isinstance(declared_values, list):
+        declared = sorted(
+            {
+                capability.value
+                for raw in declared_values
+                if isinstance(raw, str) and (capability := _normalize_tool_capability(raw)) is not None
+            }
+        )
+        if declared:
+            return declared, "declared"
+
+    capabilities = {capability.value for capability in classify_tool(str(tool_dict.get("name", "")), str(tool_dict.get("description", "")))}
+    schema_findings = tool_dict.get("schema_findings", [])
+    if isinstance(schema_findings, list):
+        for finding in schema_findings:
+            low = str(finding).lower()
+            if "network-egress" in low or "url" in low:
+                capabilities.add(ToolCapability.NETWORK.value)
+            if "shell-execution" in low or "command" in low:
+                capabilities.add(ToolCapability.EXECUTE.value)
+            if "filesystem" in low or "path" in low:
+                capabilities.add(ToolCapability.READ.value)
+    return sorted(capabilities), "classified"
+
+
+def _normalize_tool_capability(value: str) -> ToolCapability | None:
+    normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "readonly": "read",
+        "read_only": "read",
+        "destructive": "delete",
+        "exec": "execute",
+        "execution": "execute",
+        "network_egress": "network",
+        "egress": "network",
+        "credential": "auth",
+        "credentials": "auth",
+        "administrative": "admin",
+    }
+    normalized = aliases.get(normalized, normalized)
+    try:
+        return ToolCapability(normalized)
+    except ValueError:
+        return None
+
+
+def _resolve_affected_package_ids(
+    br_dict: dict[str, Any],
+    *,
+    server_id: str,
+    pkg_name: str,
+    pkg_version: str,
+    ecosystem: str,
+    package_id_to_servers: dict[str, list[str]],
+) -> list[str]:
+    """Return package nodes on a specific server that can safely drive capability-impact edges."""
+    if not pkg_name:
+        return []
+    pkg_id = _package_node_id_from_parts(pkg_name, pkg_version, ecosystem, br_dict.get("package_purl") or br_dict.get("purl"))
+    if server_id not in package_id_to_servers.get(pkg_id, []):
+        return []
+    evidence = _blast_radius_package_evidence(br_dict, "")
+    if not _has_mappable_package_version(evidence):
+        return []
+    return [pkg_id]
+
+
+def _add_exploitable_via_edges(
+    graph: UnifiedGraph,
+    *,
+    server_to_tool_ids: dict[str, list[str]],
+    vuln_node_id: str,
+    server_id: str,
+    package_id: str,
+    evidence: dict[str, Any],
+    severity: str,
+    data_source: str,
+) -> None:
+    """Link a vulnerability to impacted tool capabilities with conservative evidence.
+
+    The graph usually knows that an MCP server depends on a vulnerable package
+    and exposes tools, but not the exact function-level package-to-tool call
+    stack. These edges therefore carry a conservative mapping method instead
+    of pretending to prove exact exploit reachability.
+    """
+    if not _has_mappable_package_version(evidence):
+        return
+    for tool_id in server_to_tool_ids.get(server_id, []):
+        tool = graph.get_node(tool_id)
+        if tool is None:
+            continue
+        capabilities = [str(cap) for cap in tool.attributes.get("capabilities", []) if str(cap)]
+        if not capabilities:
+            continue
+        graph.add_edge(
+            UnifiedEdge(
+                source=vuln_node_id,
+                target=tool_id,
+                relationship=RelationshipType.EXPLOITABLE_VIA,
+                weight=SEVERITY_RISK_SCORE.get(severity, 1.0),
+                evidence={
+                    "source": data_source,
+                    "server": server_id,
+                    "package_node": package_id,
+                    "package": evidence.get("package") or evidence.get("package_name", ""),
+                    "version": evidence.get("version") or evidence.get("package_version", ""),
+                    "ecosystem": evidence.get("ecosystem", ""),
+                    "purl": evidence.get("purl", ""),
+                    "mapping_method": "server_scope_conservative",
+                    "confidence": "medium",
+                    "capabilities": capabilities,
+                    "capability_source": tool.attributes.get("capability_source", ""),
+                    "discovery_provenance": evidence.get("discovery_provenance", {}),
+                },
+            )
+        )
+
+
+def _has_mappable_package_version(evidence: dict[str, Any]) -> bool:
+    version = str(evidence.get("version") or evidence.get("package_version") or "").strip().lower()
+    return bool(version and version not in {"unknown", "latest", "*", "main", "master"})
+
+
 def _add_vuln_node(
     graph: UnifiedGraph,
     vuln_dict: dict[str, Any],
     pkg_id: str,
     data_source: str,
     package_evidence: dict[str, Any] | None = None,
-) -> None:
+) -> str | None:
     """Add a vulnerability node and link it to its package."""
     vuln_id_str = vuln_dict.get("id", "")
     if not vuln_id_str:
-        return
+        return None
     severity = vuln_dict.get("severity", "").lower()
     vuln_node_id = f"vuln:{vuln_id_str}"
 
@@ -810,6 +991,7 @@ def _add_vuln_node(
             evidence=package_evidence or {"source": data_source},
         )
     )
+    return vuln_node_id
 
 
 def _normalize_server_name(raw: Any) -> str:

@@ -30,8 +30,8 @@ def _bundled_skill_paths() -> list[Path]:
     return sorted(SKILL_ROOT.glob("*/SKILL.md")) + [SKILL_ROOT / "SKILL.md"]
 
 
-def test_bundled_openclaw_skills_declare_trust_boundary_contract() -> None:
-    """Bundled skills must keep the same explicit trust-boundary surface."""
+def test_bundled_agent_bom_skills_declare_trust_boundary_contract() -> None:
+    """Bundled agent-bom skills must keep the same trust-boundary surface."""
     for skill_path in _bundled_skill_paths():
         content = skill_path.read_text()
         missing = [field for field in REQUIRED_OPENCLAW_FIELDS if field not in content]

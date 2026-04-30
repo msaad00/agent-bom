@@ -4,12 +4,16 @@ Bundled skills are part of the product trust boundary. A skill must describe
 what it can read, write, call, persist, and mutate before it can ship.
 
 Use `integrations/openclaw/discover/SKILL.md` or
-`integrations/openclaw/discover-aws/SKILL.md` as the reference shape. Do not
-copy a shorter third-party skill template for bundled agent-bom skills.
+`integrations/openclaw/discover-aws/SKILL.md` as the current reference shape.
+Those files live under the OpenClaw integration directory because OpenClaw is
+one distribution channel; the trust contract belongs to agent-bom. Do not copy
+a shorter third-party skill template for bundled agent-bom skills.
 
 ## Required frontmatter
 
-Every bundled skill must declare these fields under `metadata.openclaw`:
+Every bundled agent-bom skill must declare these fields in its distribution
+metadata. For the OpenClaw package format, that metadata currently lives under
+`metadata.openclaw`:
 
 - `requires.bins`
 - `requires.env`

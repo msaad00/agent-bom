@@ -924,6 +924,97 @@ def test_proxy_sse_server_uses_httpx(tmp_path):
     assert exit_code == 0
 
 
+def test_proxy_sse_policy_blocks_gated_resource_reads(tmp_path, monkeypatch):
+    """SSE policy enforcement covers resources/read, not only tools/call."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from agent_bom.proxy import _proxy_sse_server
+
+    policy_path = tmp_path / "policy.json"
+    policy_path.write_text(
+        json.dumps({"rules": [{"id": "no-resource-read", "action": "block", "block_tools": ["resources/read"]}]}),
+        encoding="utf-8",
+    )
+
+    tools_response = MagicMock()
+    tools_response.raise_for_status = MagicMock()
+    tools_response.json.return_value = {"jsonrpc": "2.0", "id": 1, "result": {"tools": []}}
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.post = AsyncMock(return_value=tools_response)
+
+    resource_read = {
+        "jsonrpc": "2.0",
+        "id": 7,
+        "method": "resources/read",
+        "params": {"uri": "file:///etc/passwd"},
+    }
+    monkeypatch.setattr(proxy_mod, "create_async_stdin_reader", AsyncMock(return_value=object()))
+    monkeypatch.setattr(
+        proxy_mod,
+        "read_async_stdin_line",
+        AsyncMock(side_effect=[(json.dumps(resource_read) + "\n").encode(), b""]),
+    )
+
+    stdout = type("Stdout", (), {"buffer": io.BytesIO()})()
+    monkeypatch.setattr(proxy_mod.sys, "stdout", stdout)
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        exit_code = asyncio.run(_proxy_sse_server(url="http://localhost:3000", policy_path=str(policy_path)))
+
+    assert exit_code == 0
+    assert mock_client.post.await_count == 1  # tools/list only; blocked before /message
+    written = stdout.buffer.getvalue().decode()
+    assert "no-resource-read" in written
+    assert "resources/read" in written
+
+
+def test_proxy_sse_forwards_allowed_gated_messages_to_message_endpoint(monkeypatch):
+    """Non-tool gated JSON-RPC methods keep their method and use /message."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from agent_bom.proxy import _proxy_sse_server
+
+    tools_response = MagicMock()
+    tools_response.raise_for_status = MagicMock()
+    tools_response.json.return_value = {"jsonrpc": "2.0", "id": 1, "result": {"tools": []}}
+
+    message_response = MagicMock()
+    message_response.raise_for_status = MagicMock()
+    message_response.json.return_value = {"jsonrpc": "2.0", "id": 8, "result": {"contents": []}}
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.post = AsyncMock(side_effect=[tools_response, message_response])
+
+    prompts_get = {
+        "jsonrpc": "2.0",
+        "id": 8,
+        "method": "prompts/get",
+        "params": {"name": "demo"},
+    }
+    monkeypatch.setattr(proxy_mod, "create_async_stdin_reader", AsyncMock(return_value=object()))
+    monkeypatch.setattr(
+        proxy_mod,
+        "read_async_stdin_line",
+        AsyncMock(side_effect=[(json.dumps(prompts_get) + "\n").encode(), b""]),
+    )
+
+    stdout = type("Stdout", (), {"buffer": io.BytesIO()})()
+    monkeypatch.setattr(proxy_mod.sys, "stdout", stdout)
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        exit_code = asyncio.run(_proxy_sse_server(url="http://localhost:3000/"))
+
+    assert exit_code == 0
+    assert mock_client.post.await_args_list[1].args[0] == "http://localhost:3000/message"
+    assert mock_client.post.await_args_list[1].kwargs["json"]["method"] == "prompts/get"
+    assert "contents" in stdout.buffer.getvalue().decode()
+
+
 def test_response_hmac_canonical_key_order():
     """HMAC is the same regardless of dict key insertion order."""
     msg_a = {"b": 2, "a": 1}

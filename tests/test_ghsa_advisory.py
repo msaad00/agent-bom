@@ -180,6 +180,89 @@ def test_fetch_advisories_retries_once_on_rate_limit():
     sleep.assert_awaited_once_with(0.01)
 
 
+def test_fetch_advisories_can_fail_fast_on_rate_limit():
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    import pytest
+
+    from agent_bom.scanners.ghsa_advisory import GHSARateLimitError, _fetch_advisories_for_package
+
+    limited = MagicMock()
+    limited.status_code = 429
+    limited.headers = {"Retry-After": "60"}
+    pkg = Package(name="express", version="4.17.1", ecosystem="npm")
+
+    async def run():
+        with (
+            patch("agent_bom.scanners.ghsa_advisory.request_with_retry", new_callable=AsyncMock) as request,
+            patch("agent_bom.scanners.ghsa_advisory.asyncio.sleep", new_callable=AsyncMock) as sleep,
+        ):
+            request.return_value = limited
+            with pytest.raises(GHSARateLimitError):
+                await _fetch_advisories_for_package(
+                    pkg,
+                    MagicMock(),
+                    asyncio.Semaphore(1),
+                    rate_limit_backoff=0.0,
+                )
+            return request, sleep
+
+    request, sleep = asyncio.run(run())
+
+    assert request.await_count == 1
+    sleep.assert_not_awaited()
+
+
+def test_single_package_without_github_token_uses_fail_fast_rate_limit_backoff(monkeypatch):
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from agent_bom.scanners.ghsa_advisory import _GHSA_SINGLE_PACKAGE_RATE_LIMIT_BACKOFF, check_github_advisories
+
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    pkg = Package(name="express", version="4.17.1", ecosystem="npm")
+
+    async def run():
+        with patch("agent_bom.scanners.ghsa_advisory._fetch_advisories_for_package", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = []
+            count = await check_github_advisories([pkg])
+            return count, mock_fetch
+
+    count, mock_fetch = asyncio.run(run())
+
+    assert count == 0
+    assert mock_fetch.await_count == 1
+    assert mock_fetch.await_args.kwargs["rate_limit_backoff"] == _GHSA_SINGLE_PACKAGE_RATE_LIMIT_BACKOFF
+
+
+def test_multi_package_scan_preserves_ghsa_rate_limit_backoff(monkeypatch):
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from agent_bom.scanners.ghsa_advisory import _GHSA_RATE_LIMIT_BACKOFF, check_github_advisories
+
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    packages = [
+        Package(name="express", version="4.17.1", ecosystem="npm"),
+        Package(name="lodash", version="4.17.20", ecosystem="npm"),
+    ]
+
+    async def run():
+        with patch("agent_bom.scanners.ghsa_advisory._fetch_advisories_for_package", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = []
+            count = await check_github_advisories(packages)
+            return count, mock_fetch
+
+    count, mock_fetch = asyncio.run(run())
+
+    assert count == 0
+    assert mock_fetch.await_count == 2
+    assert {call.kwargs["rate_limit_backoff"] for call in mock_fetch.await_args_list} == {_GHSA_RATE_LIMIT_BACKOFF}
+
+
 def test_advisory_filtered_by_package_name():
     """Advisories for different packages are filtered out (substring match fix).
 

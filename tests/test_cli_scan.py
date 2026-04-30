@@ -197,6 +197,18 @@ def test_scan_bad_inventory_json_exits_two(tmp_path):
     assert "Expecting property name" in result.output
 
 
+def test_scan_missing_inventory_schema_exits_two(tmp_path):
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text('{"agents": []}', encoding="utf-8")
+
+    with patch("agent_bom.inventory.load_inventory", side_effect=RuntimeError("Inventory schema file not found")):
+        result = _run(["scan", "--inventory", str(inventory), "--no-scan"])
+
+    assert result.exit_code == 2
+    assert "Invalid value for --inventory" in result.output
+    assert "Inventory schema file not found" in result.output
+
+
 def test_scan_preset_ci_flag():
     """--preset ci should be accepted without error."""
     with patch("agent_bom.cli.agents.discover_all", return_value=[]):

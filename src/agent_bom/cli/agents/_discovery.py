@@ -119,7 +119,7 @@ def run_local_discovery(
 
         try:
             inventory_data = load_inventory(inventory)
-        except (OSError, ValueError, json.JSONDecodeError) as exc:
+        except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
             raise click.BadParameter(str(exc), param_hint="--inventory") from exc
         ctx.agents = _build_agents_from_inventory(inventory_data, inventory)
         con.print(f"\n  [green]✓[/green] {len(ctx.agents)} agent(s) from {label}")

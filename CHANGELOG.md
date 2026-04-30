@@ -11,6 +11,18 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.83.3] – 2026-04-30
+
+### Fixed
+- **Wheel inventory schema packaging** — `inventory.schema.json` now ships inside the installed `agent_bom` package, so PyPI users can run `agent-bom agents --inventory ...`, operator-pull adapters, and skill-mediated inventory flows without a source checkout.
+- **Inventory error exits** — missing inventory schema errors are now surfaced as explicit `--inventory` parameter failures with exit code 2 instead of falling through generic CLI handling.
+- **Interactive GHSA checks** — unauthenticated single-package GHSA rate-limit responses now fail fast instead of pausing for the fleet-scan backoff window, while multi-package scans preserve the bounded retry behavior.
+
+### CI
+- **Wheel content guard** — PR and release package builds now fail if required JSON schema package data is missing from the wheel.
+
+---
+
 ## [0.83.2] – 2026-04-30
 
 ### Fixed

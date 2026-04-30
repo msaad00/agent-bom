@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert ``agent-bom code --format json`` output to SARIF."""
+"""Convert high-signal ``agent-bom code --format json`` output to SARIF."""
 
 from __future__ import annotations
 
@@ -25,9 +25,12 @@ _SECURITY_SEVERITY = {
     "low": "1.0",
     "info": "0.0",
 }
-_CREDENTIAL_ASSIGNMENT = re.compile(
-    r"(?i)\b(token|secret|password|passwd|api[_-]?key|access[_-]?key|session[_-]?token)\s*=\s*[^\s,;]+"
-)
+_CREDENTIAL_ASSIGNMENT = re.compile(r"(?i)\b(token|secret|password|passwd|api[_-]?key|access[_-]?key|session[_-]?token)\s*=\s*[^\s,;]+")
+_PUBLISH_SEVERITIES = {"critical", "high"}
+# GitHub Code Scanning is an alerting surface, not an inventory surface. Keep
+# deprecated-model and other hygiene signals in agent-bom reports, but only
+# publish actionable secret/code-security findings as repository alerts.
+_PUBLISH_AI_COMPONENT_TYPES = {"api_key"}
 
 
 def _agent_bom_version() -> str:
@@ -71,6 +74,22 @@ def _add_rule(rules: dict[str, dict[str, Any]], rule_id: str, title: str, severi
     }
 
 
+def _severity(value: object, *, default: str = "medium") -> str:
+    severity = _safe_text(value or default).lower()
+    return severity if severity in _LEVELS else default
+
+
+def _publish_flow_finding(finding: dict[str, Any]) -> bool:
+    return _severity(finding.get("severity")) in _PUBLISH_SEVERITIES
+
+
+def _publish_ai_component(component: dict[str, Any]) -> bool:
+    component_type = _safe_text(component.get("component_type") or component.get("kind") or "component")
+    if component_type not in _PUBLISH_AI_COMPONENT_TYPES:
+        return False
+    return _severity(component.get("severity"), default="critical") in _PUBLISH_SEVERITIES
+
+
 def _result(rule_id: str, level: str, message: str, file_path: str, line: int, fingerprint_input: str) -> dict[str, Any]:
     return {
         "ruleId": rule_id,
@@ -96,27 +115,47 @@ def convert(data: dict[str, Any]) -> dict[str, Any]:
     for finding in data.get("flow_findings") or []:
         if not isinstance(finding, dict):
             continue
+        if not _publish_flow_finding(finding):
+            continue
         category = _safe_text(finding.get("category") or "flow")
         rule_id = f"agent-bom-code-flow/{category}"
         title = _safe_text(finding.get("title") or category.replace("_", " ").title())
         detail = _safe_text(finding.get("detail") or title, max_len=1000)
         file_path = _relative_path(finding.get("file"))
         line = _line_number(finding.get("line"))
-        _add_rule(rules, rule_id, title, "medium", category)
-        results.append(_result(rule_id, "warning", detail, file_path, line, f"{rule_id}:{file_path}:{line}:{detail}"))
+        severity = _severity(finding.get("severity"))
+        level = _LEVELS.get(severity, "warning")
+        _add_rule(rules, rule_id, title, severity, category)
+        results.append(_result(rule_id, level, detail, file_path, line, f"{rule_id}:{file_path}:{line}:{detail}"))
 
     ai_components = data.get("ai_components") or {}
     if isinstance(ai_components, dict):
         candidates: list[dict[str, Any]] = []
-        for key in ("components", "deprecated_models", "api_keys", "shadow_ai"):
+        seen_components: set[str] = set()
+        for key in ("api_keys", "shadow_ai", "components", "deprecated_models"):
             values = ai_components.get(key) or []
             if isinstance(values, list):
-                candidates.extend(item for item in values if isinstance(item, dict))
+                for item in values:
+                    if not isinstance(item, dict):
+                        continue
+                    fallback_id = ":".join(
+                        (
+                            str(item.get("component_type")),
+                            str(item.get("file_path") or item.get("file")),
+                            str(item.get("line_number") or item.get("line")),
+                            str(item.get("name")),
+                        )
+                    )
+                    stable_id = _safe_text(item.get("stable_id") or fallback_id)
+                    if stable_id in seen_components:
+                        continue
+                    seen_components.add(stable_id)
+                    candidates.append(item)
         for component in candidates:
-            severity = _safe_text(component.get("severity") or "info").lower()
-            component_type = _safe_text(component.get("component_type") or component.get("kind") or "component")
-            if severity == "info" and component_type not in {"api_key", "deprecated_model"}:
+            if not _publish_ai_component(component):
                 continue
+            severity = _severity(component.get("severity"), default="critical")
+            component_type = _safe_text(component.get("component_type") or component.get("kind") or "component")
             name = "[REDACTED]" if component_type == "api_key" else _safe_text(component.get("name") or component_type, max_len=120)
             rule_id = f"agent-bom-ai-component/{component_type}"
             title = f"{component_type.replace('_', ' ').title()}: {name}"

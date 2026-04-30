@@ -39,7 +39,7 @@ vulnerable packages to the credentials and tools they can reach.
 pipx install agent-bom
 
 # Or run directly with uvx (no install needed)
-uvx agent-bom scan
+uvx agent-bom agents
 ```
 
 ## Instructions
@@ -47,7 +47,7 @@ uvx agent-bom scan
 ### Scan the current MCP setup
 
 ```bash
-agent-bom scan
+agent-bom agents
 ```
 
 Auto-discovers all configured MCP clients (Cortex Code, Claude Desktop, Cursor, etc.),
@@ -62,21 +62,21 @@ agent-bom check <package>@<version> --ecosystem <npm|pypi|go|maven|cargo|nuget|g
 ### Map blast radius of a CVE
 
 ```bash
-agent-bom scan --enrich
+agent-bom agents --enrich
 # Then review the blast radius section in the output
 ```
 
 ### Generate SBOM
 
 ```bash
-agent-bom scan -f cyclonedx -o sbom.json
-agent-bom scan -f spdx -o sbom.spdx.json
+agent-bom agents -f cyclonedx -o sbom.json
+agent-bom agents -f spdx -o sbom.spdx.json
 ```
 
 ### Scan with GPU infrastructure detection
 
 ```bash
-agent-bom scan --gpu-scan
+agent-bom agents --gpu-scan
 ```
 
 ### Run as MCP server (for other AI tools)
@@ -101,15 +101,15 @@ When a user asks to install a new MCP server or package:
 
 ### Full security audit
 When a user asks for a security review:
-1. Run `agent-bom scan --enrich`
+1. Run `agent-bom agents --enrich`
 2. Summarize findings by severity
 3. Highlight any credential exposure
 4. Show blast radius for critical/high findings
 
 ### Compliance report
 When compliance documentation is needed:
-1. Run `agent-bom scan -f cyclonedx -o sbom.json`
-2. Run `agent-bom scan --enrich` for compliance framework mapping
+1. Run `agent-bom agents -f cyclonedx -o sbom.json`
+2. Run `agent-bom agents --enrich --compliance` for compliance framework mapping
 3. Report maps to OWASP, NIST, EU AI Act, ISO 27001, SOC 2
 
 ## Best Practices
@@ -117,7 +117,7 @@ When compliance documentation is needed:
 - Always run `agent-bom check` before adding new MCP servers to your `mcp.json`
 - Use `--enrich` for full NVD/EPSS/KEV enrichment (slower but more complete)
 - Review blast radius for any CRITICAL or HIGH findings
-- Use `agent-bom scan -f sarif` for CI/CD integration with GitHub Security tab
+- Use `agent-bom agents -f sarif` for CI/CD integration with GitHub Security tab
 - No API keys required for basic scanning (NVD_API_KEY optional for higher rate limits)
 
 ## Privacy

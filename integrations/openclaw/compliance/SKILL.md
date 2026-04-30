@@ -111,8 +111,8 @@ Run AISVS v1.0 and CIS benchmark checks.
 
 ```bash
 pipx install agent-bom
-agent-bom agents -f compliance-export  # run agents scan with compliance export
-agent-bom generate-sbom                # generate CycloneDX SBOM
+agent-bom agents --compliance --compliance-export nist-ai-rmf
+agent-bom agents -f cyclonedx -o sbom.json
 ```
 
 ## When to Use

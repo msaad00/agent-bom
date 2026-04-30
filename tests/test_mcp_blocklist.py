@@ -259,6 +259,18 @@ def test_bundled_blocklist_matches_curated_malicious_mcp_packages() -> None:
         assert match.match_type == "pattern"
 
 
+def test_bundled_blocklist_matches_suspicious_exfiltration_names() -> None:
+    blocklist = load_mcp_blocklist()
+    cases = ["credential-stealer", "secret-exfiltrator", "token-grabber"]
+
+    for name in cases:
+        matches = match_mcp_server(MCPServer(name=name, command="npx", args=["-y", name]), blocklist)
+        match = next(match for match in matches if match.entry_id == "suspicious-credential-exfiltration-name")
+
+        assert match.severity == "high"
+        assert match.match_type == "pattern"
+
+
 def test_bundled_blocklist_keeps_version_specific_mcp_package_pinned() -> None:
     blocklist = load_mcp_blocklist()
 

@@ -11,6 +11,23 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.83.4] – 2026-04-30
+
+### Added
+- **Snowflake scope-zero operator-pull adapter** — Snowflake now joins AWS, Azure, and GCP as a first-class operator-pushed inventory path, letting teams collect Cortex/Snowpark/Snowflake AI inventory inside their own boundary and explicitly decide whether to hand the canonical JSON to agent-bom for findings, graph, policy, and exports.
+- **MCP registry freshness gate** — `agent-bom registry status` now reports stale/never-synced registry state with `needs_refresh` and `recommended_action`, and `--fail-on-stale` gives release, demo, and CI pipelines a hard gate for bundled MCP intelligence freshness.
+
+### Changed
+- **Pre-pilot proxy/gateway hardening** — SSE proxy policy checks now match stdio/gateway policy scope, gateway upstream handling has bounded resilience, and remote runtime HTTP mode requires explicit auth unless an operator opts into insecure local behavior.
+- **Self-hosted deployment contract** — Helm and deployment docs now state the BYO Postgres contract clearly, including the expected `AGENT_BOM_POSTGRES_URL` secret shape for production profiles.
+- **Fleet and scanner state isolation** — fleet graph nodes preserve endpoint identity for same-named agents across devices, and local database scan preference is threaded through `ScanOptions` instead of shared module state.
+
+### Fixed
+- **Discovery provenance in exports and UI** — SARIF, OCSF, CycloneDX, and dashboard trust surfaces now retain sanitized discovery provenance, permissions-used, and scan-mode context so auditor-facing outputs match JSON/API evidence.
+- **Release/readiness alignment** — README, site docs, OpenClaw skills, Glama/MCP registry manifests, Docker/Helm references, and package metadata are aligned for the v0.83.4 release surface.
+
+---
+
 ## [0.83.3] – 2026-04-30
 
 ### Fixed

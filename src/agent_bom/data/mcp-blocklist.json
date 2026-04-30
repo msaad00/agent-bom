@@ -150,7 +150,7 @@
       "match_type": "pattern",
       "patterns": [
         "(^|[-_./@])credential[-_]?stealer($|[-_./])",
-        "(^|[-_./@])secret[-_]?exfil(trate|tration)?($|[-_./])",
+        "(^|[-_./@])secret[-_]?exfil(trate|tration|trator)?($|[-_./])",
         "(^|[-_./@])token[-_]?grabber($|[-_./])"
       ],
       "severity": "high",

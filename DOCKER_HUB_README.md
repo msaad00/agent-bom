@@ -188,7 +188,7 @@ Focused graph:
 | Tag | Description |
 |-----|-------------|
 | `latest` | Most recent stable release |
-| `0.83.3` | Current stable version (pinned) |
+| `0.83.4` | Current stable version (pinned) |
 
 Published images:
 

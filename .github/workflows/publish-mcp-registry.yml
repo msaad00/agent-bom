@@ -5,6 +5,11 @@ on:
     workflows: ["Release"]
     types: [completed]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish to the official MCP Registry. Leave false to validate server.json only."
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -39,8 +44,34 @@ jobs:
             exit 1
           fi
 
+      - name: Decide publish mode
+        id: mode
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          WORKFLOW_DISPATCH_PUBLISH: ${{ inputs.publish || false }}
+          RELEASE_PUBLISH_ENABLED: ${{ vars.MCP_REGISTRY_PUBLISH_ENABLED || 'false' }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ "$WORKFLOW_DISPATCH_PUBLISH" = "true" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "Manual MCP Registry publish requested."
+          elif [ "$EVENT_NAME" = "workflow_run" ] && [ "$RELEASE_PUBLISH_ENABLED" = "true" ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "MCP Registry publish enabled by repository variable."
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "MCP Registry publish not enabled; validation-only run."
+          fi
+
+      - name: Skip publish until official MCP Registry registration is enabled
+        if: steps.mode.outputs.publish != 'true'
+        run: |
+          echo "server.json validation passed."
+          echo "Skipping official MCP Registry publish because MCP_REGISTRY_PUBLISH_ENABLED is not true and manual publish was not requested."
+          echo "After the repository is registered with the official MCP Registry, set repository variable MCP_REGISTRY_PUBLISH_ENABLED=true or run this workflow manually with publish=true."
+
       - name: Get GitHub OIDC token
         id: oidc
+        if: steps.mode.outputs.publish == 'true'
         run: |
           if [ -z "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" ] || [ -z "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
             echo "::error::OIDC token request not available. Ensure id-token: write permission is granted."
@@ -58,6 +89,7 @@ jobs:
 
       - name: Exchange OIDC token for Registry JWT
         id: auth
+        if: steps.mode.outputs.publish == 'true'
         run: |
           HTTP_STATUS=$(curl -s --connect-timeout 10 --max-time 30 \
             -o /tmp/auth-response.json -w "%{http_code}" \
@@ -80,6 +112,7 @@ jobs:
           echo "jwt=$JWT" >> "$GITHUB_OUTPUT"
 
       - name: Publish to MCP Registry
+        if: steps.mode.outputs.publish == 'true'
         run: |
           print_publish_error() {
             if jq -e . >/dev/null 2>&1 </tmp/publish-response.json; then

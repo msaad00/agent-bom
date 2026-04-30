@@ -20,6 +20,8 @@ import {
 import {
   api,
   type ConnectorHealthResponse,
+  type DiscoveryProviderContract,
+  type DiscoveryProvidersResponse,
   type ScanSchedule,
   type SourceCreateRequest,
   type SourceKind,
@@ -216,9 +218,24 @@ function toneForStatus(status: string): string {
   }
 }
 
+function formatMode(value: string): string {
+  return value.replaceAll("_", " ");
+}
+
+function summarizeProviders(contracts: DiscoveryProvidersResponse | null) {
+  const providers = contracts?.providers ?? [];
+  return {
+    total: providers.length,
+    readOnly: providers.filter((provider) => provider.trust_contract.read_only).length,
+    scopeZero: providers.filter((provider) => provider.trust_contract.supports_scope_zero).length,
+    permissionCount: providers.reduce((total, provider) => total + provider.capabilities.permissions_used.length, 0),
+  };
+}
+
 export default function SourcesPage() {
   const { session, loading: authLoading, hasCapability } = useAuthState();
   const [connectorHealth, setConnectorHealth] = useState<ConnectorHealthResponse[]>([]);
+  const [providerContracts, setProviderContracts] = useState<DiscoveryProvidersResponse | null>(null);
   const [schedules, setSchedules] = useState<ScanSchedule[]>([]);
   const [sources, setSources] = useState<SourceRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -246,6 +263,7 @@ export default function SourcesPage() {
     () => connectorHealth.filter((connector) => connector.state === "healthy").length,
     [connectorHealth]
   );
+  const providerSummary = useMemo(() => summarizeProviders(providerContracts), [providerContracts]);
   const sourceIndex = useMemo(() => new Map(sources.map((source) => [source.source_id, source])), [sources]);
   const schedulableSources = useMemo(
     () =>
@@ -284,16 +302,23 @@ export default function SourcesPage() {
     setError(null);
 
     try {
-      const [connectorsResult, schedulesResult, sourcesResult] = await Promise.allSettled([
+      const [connectorsResult, schedulesResult, sourcesResult, providerContractsResult] = await Promise.allSettled([
         api.listConnectors(),
         api.listSchedules(),
         api.listSources(),
+        api.listDiscoveryProviders(),
       ]);
 
       if (sourcesResult.status === "fulfilled") {
         setSources(sourcesResult.value.sources);
       } else {
         setSources([]);
+      }
+
+      if (providerContractsResult.status === "fulfilled") {
+        setProviderContracts(providerContractsResult.value);
+      } else {
+        setProviderContracts(null);
       }
 
       if (schedulesResult.status === "fulfilled") {
@@ -317,10 +342,10 @@ export default function SourcesPage() {
         setConnectorHealth([]);
       }
 
-      const failures = [connectorsResult, schedulesResult, sourcesResult].filter(
+      const failures = [connectorsResult, schedulesResult, sourcesResult, providerContractsResult].filter(
         (result) => result.status === "rejected"
       );
-      if (failures.length === 3) {
+      if (failures.length === 4) {
         setError("Failed to load control-plane source state.");
       }
     } finally {
@@ -558,6 +583,53 @@ export default function SourcesPage() {
           </div>
         </section>
       ) : null}
+
+      <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg shadow-black/5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <span className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2.5">
+              <ShieldCheck className="h-5 w-5 text-emerald-400" />
+            </span>
+            <div>
+              <h2 className="text-base font-semibold text-[var(--foreground)]">Discovery provider trust contracts</h2>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[var(--text-secondary)]">
+                These contracts come from the backend provider registry. They show which modes are direct pull, scope-zero push, or skill-mediated,
+                and which read permissions each provider declares before discovery data becomes canonical evidence.
+              </p>
+            </div>
+          </div>
+          {providerContracts ? (
+            <div className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">
+              v{providerContracts.contract_version} · {providerContracts.entrypoints_enabled ? "entry points on" : "entry points opt-in"}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-4">
+          <ContractStat label="Providers" value={loading ? "Loading…" : String(providerSummary.total)} />
+          <ContractStat label="Read-only" value={loading ? "Loading…" : `${providerSummary.readOnly}/${providerSummary.total}`} />
+          <ContractStat label="Scope-zero modes" value={loading ? "Loading…" : String(providerSummary.scopeZero)} />
+          <ContractStat label="Declared permissions" value={loading ? "Loading…" : String(providerSummary.permissionCount)} />
+        </div>
+
+        {providerContracts?.warnings?.length ? (
+          <div className="mt-4 rounded-xl border border-amber-900/60 bg-amber-950/20 p-3 text-xs leading-5 text-amber-200">
+            {providerContracts.warnings.slice(0, 2).join(" · ")}
+          </div>
+        ) : null}
+
+        <div className="mt-5 grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+          {!providerContracts && !loading ? (
+            <div className="rounded-2xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 text-sm text-[var(--text-secondary)]">
+              Provider contracts are unavailable from the API.
+            </div>
+          ) : (
+            (providerContracts?.providers ?? []).slice(0, 12).map((provider) => (
+              <ProviderContractCard key={provider.name} provider={provider} />
+            ))
+          )}
+        </div>
+      </section>
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <section className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg shadow-black/5">
@@ -968,6 +1040,77 @@ function MetricCard({
         </div>
       </div>
       <p className="mt-3 text-xs leading-5 text-[var(--text-secondary)]">{detail}</p>
+    </div>
+  );
+}
+
+function ContractStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
+      <p className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-tertiary)]">{label}</p>
+      <p className="mt-1 text-lg font-semibold text-[var(--foreground)]">{value}</p>
+    </div>
+  );
+}
+
+function ProviderContractCard({ provider }: { provider: DiscoveryProviderContract }) {
+  const trust = provider.trust_contract;
+  const capabilities = provider.capabilities;
+  const destinations = capabilities.network_destinations ?? capabilities.outbound_destinations;
+  const permissions = capabilities.permissions_used;
+
+  return (
+    <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-[var(--foreground)]">{provider.name}</h3>
+          <p className="mt-1 font-mono text-[11px] text-[var(--text-tertiary)]">{provider.source}</p>
+        </div>
+        <span
+          className={`rounded-full border px-2.5 py-1 text-[11px] font-medium ${
+            trust.supports_scope_zero
+              ? "border-emerald-900 bg-emerald-950/40 text-emerald-300"
+              : "border-zinc-800 bg-zinc-950/60 text-zinc-400"
+          }`}
+        >
+          {trust.supports_scope_zero ? "scope-zero" : "direct pull"}
+        </span>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {capabilities.scan_modes.map((mode) => (
+          <span key={mode} className="rounded border border-sky-900/60 bg-sky-950/30 px-2 py-0.5 text-[10px] font-mono text-sky-300">
+            {formatMode(mode)}
+          </span>
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-2 text-xs text-[var(--text-secondary)] sm:grid-cols-2">
+        <span>Read-only: {trust.read_only ? "yes" : "no"}</span>
+        <span>Agentless: {trust.agentless ? "yes" : "no"}</span>
+        <span>Redaction: {formatMode(trust.redaction_status)}</span>
+        <span>Residency: {formatMode(trust.data_residency)}</span>
+      </div>
+
+      <div className="mt-4 space-y-2 text-xs text-[var(--text-secondary)]">
+        <div>
+          <span className="text-[var(--text-tertiary)]">Permissions used: </span>
+          <span className="text-[var(--foreground)]">{permissions.length}</span>
+          {permissions.length > 0 ? (
+            <span className="ml-1 font-mono text-[11px] text-zinc-400">
+              {permissions.slice(0, 3).join(", ")}
+              {permissions.length > 3 ? ` +${permissions.length - 3}` : ""}
+            </span>
+          ) : null}
+        </div>
+        <div>
+          <span className="text-[var(--text-tertiary)]">Network: </span>
+          <span className="font-mono text-[11px] text-zinc-400">
+            {destinations.length ? destinations.slice(0, 3).join(", ") : "none"}
+            {destinations.length > 3 ? ` +${destinations.length - 3}` : ""}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }

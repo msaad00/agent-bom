@@ -229,6 +229,7 @@ export interface Agent {
   discovered_at?: string | undefined;
   last_seen?: string | undefined;
   metadata?: Record<string, unknown> | undefined;
+  discovery_provenance?: DiscoveryProvenance | undefined;
   mcp_servers: MCPServer[];
   automation_settings?: string[] | undefined;
 }
@@ -251,6 +252,25 @@ export interface MCPServer {
   credential_env_vars?: string[] | undefined;
   security_blocked?: boolean | undefined;
   provenance?: MCPProvenance | undefined;
+  discovery_provenance?: DiscoveryProvenance | undefined;
+}
+
+export interface DiscoveryProvenance {
+  source_type?: string | undefined;
+  observed_via?: string | string[] | undefined;
+  source?: string | undefined;
+  collector?: string | undefined;
+  provider?: string | undefined;
+  service?: string | undefined;
+  resource_type?: string | undefined;
+  resource_id?: string | undefined;
+  resource_name?: string | undefined;
+  location?: string | undefined;
+  mapping_method?: string | undefined;
+  version_source?: string | undefined;
+  confidence?: string | number | undefined;
+  discovered_via?: string | undefined;
+  resolved_from_registry?: boolean | undefined;
 }
 
 export interface SecurityIntelligenceEntry {
@@ -291,6 +311,7 @@ export interface Package {
   version: string;
   ecosystem: string;
   purl?: string | undefined;
+  discovery_provenance?: DiscoveryProvenance | undefined;
   vulnerabilities?: Vulnerability[] | undefined;
 }
 
@@ -968,6 +989,45 @@ export interface SourceRecord {
 export interface SourcesResponse {
   sources: SourceRecord[];
   count: number;
+}
+
+export interface DiscoveryProviderCapabilities {
+  scan_modes: string[];
+  required_scopes: string[];
+  permissions_used: string[];
+  outbound_destinations: string[];
+  network_destinations?: string[] | undefined;
+  data_boundary: string;
+  writes: boolean;
+  network_access: boolean;
+  guarantees: string[];
+}
+
+export interface DiscoveryProviderTrustContract {
+  read_only: boolean;
+  agentless: boolean;
+  entrypoints_opt_in: boolean;
+  redaction_status: string;
+  scope_control: string;
+  data_residency: string;
+  supports_scope_zero: boolean;
+}
+
+export interface DiscoveryProviderContract {
+  name: string;
+  module: string;
+  source: string;
+  discover_attr: string;
+  capabilities: DiscoveryProviderCapabilities;
+  trust_contract: DiscoveryProviderTrustContract;
+}
+
+export interface DiscoveryProvidersResponse {
+  contract_version: string;
+  entrypoints_enabled: boolean;
+  provider_count: number;
+  providers: DiscoveryProviderContract[];
+  warnings: string[];
 }
 
 export interface SourceCreateRequest {

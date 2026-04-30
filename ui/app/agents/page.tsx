@@ -9,6 +9,7 @@ import {
   Agent,
   isConfigured,
   type AgentDetailResponse,
+  type DiscoveryProvenance,
   type AgentLifecycleResponse,
   type AttackFlowNodeData,
   OWASP_LLM_TOP10,
@@ -122,6 +123,37 @@ function useAgentStats(agents: Agent[]) {
     blockedServers,
     remoteServers,
   };
+}
+
+function provenanceTags(provenance?: DiscoveryProvenance): string[] {
+  if (!provenance) return [];
+  const tags = [
+    provenance.source_type,
+    provenance.provider,
+    provenance.service,
+    provenance.observed_via,
+    provenance.version_source,
+    provenance.confidence,
+  ];
+  return tags
+    .flatMap((value) => (Array.isArray(value) ? value : value ? [value] : []))
+    .map((value) => String(value).replaceAll("_", " "))
+    .filter((value, index, all) => value && all.indexOf(value) === index)
+    .slice(0, 6);
+}
+
+function DiscoveryProvenanceTags({ provenance }: { provenance: DiscoveryProvenance | undefined }) {
+  const tags = provenanceTags(provenance);
+  if (tags.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {tags.map((tag) => (
+        <span key={tag} className="rounded border border-sky-900/60 bg-sky-950/30 px-1.5 py-0.5 text-[10px] font-mono text-sky-300">
+          {tag}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 function safeReferenceHref(reference: string): string | null {
@@ -405,6 +437,25 @@ function AgentsList() {
 
             {isExpanded ? (
               <div className="space-y-2 mt-4">
+                {agent.discovery_provenance ? (
+                  <div className="rounded-lg border border-sky-900/60 bg-sky-950/20 p-3">
+                    <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-sky-300">
+                      <Shield className="h-3.5 w-3.5" />
+                      Asset discovery provenance
+                    </div>
+                    <DiscoveryProvenanceTags provenance={agent.discovery_provenance} />
+                    <div className="mt-2 grid gap-2 text-[11px] text-zinc-400 sm:grid-cols-2">
+                      {agent.discovery_provenance.source && <span>Source: <span className="text-zinc-300">{agent.discovery_provenance.source}</span></span>}
+                      {agent.discovery_provenance.resource_name && (
+                        <span>Resource: <span className="text-zinc-300">{agent.discovery_provenance.resource_name}</span></span>
+                      )}
+                      {agent.discovery_provenance.location && <span>Location: <span className="text-zinc-300">{agent.discovery_provenance.location}</span></span>}
+                      {agent.discovery_provenance.resource_id && (
+                        <span className="min-w-0 truncate">ID: <span className="font-mono text-zinc-300">{agent.discovery_provenance.resource_id}</span></span>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
                 {agent.mcp_servers?.map((srv, j) => (
                   <div key={j} className="bg-zinc-800 border border-zinc-700 rounded-lg p-3">
                     <div className="flex items-center justify-between mb-2">
@@ -427,6 +478,8 @@ function AgentsList() {
                         )}
                       </div>
                     </div>
+
+                    <DiscoveryProvenanceTags provenance={srv.discovery_provenance} />
 
                     {srv.command && (
                       <div className="text-xs font-mono text-zinc-500 mb-2">

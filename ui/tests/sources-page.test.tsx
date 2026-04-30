@@ -9,6 +9,7 @@ const { apiMock } = vi.hoisted(() => ({
     getConnectorHealth: vi.fn(),
     listSchedules: vi.fn(),
     listSources: vi.fn(),
+    listDiscoveryProviders: vi.fn(),
     syncFleet: vi.fn(),
     createSource: vi.fn(),
     testSource: vi.fn(),
@@ -134,6 +135,66 @@ function primeApi() {
       },
     ],
   });
+  apiMock.listDiscoveryProviders.mockResolvedValue({
+    contract_version: "1",
+    entrypoints_enabled: false,
+    provider_count: 2,
+    warnings: [],
+    providers: [
+      {
+        name: "aws",
+        module: "agent_bom.cloud.aws",
+        source: "builtin",
+        discover_attr: "discover",
+        capabilities: {
+          scan_modes: ["direct_cloud_pull", "operator_pushed_inventory", "skill_invoked_pull"],
+          required_scopes: ["aws:read"],
+          permissions_used: ["sts:GetCallerIdentity", "bedrock:ListAgents", "lambda:ListFunctions"],
+          outbound_destinations: ["aws"],
+          network_destinations: ["aws"],
+          data_boundary: "agentless_read_only",
+          writes: false,
+          network_access: true,
+          guarantees: ["read_only"],
+        },
+        trust_contract: {
+          read_only: true,
+          agentless: true,
+          entrypoints_opt_in: true,
+          redaction_status: "central_sanitizer_applied",
+          scope_control: "operator_supplied_scopes",
+          data_residency: "operator_environment",
+          supports_scope_zero: true,
+        },
+      },
+      {
+        name: "snowflake",
+        module: "agent_bom.cloud.snowflake",
+        source: "builtin",
+        discover_attr: "discover",
+        capabilities: {
+          scan_modes: ["direct_cloud_pull"],
+          required_scopes: ["snowflake:read"],
+          permissions_used: ["snowflake:show:read", "snowflake:account_usage:read"],
+          outbound_destinations: ["snowflake"],
+          network_destinations: ["snowflake"],
+          data_boundary: "agentless_read_only",
+          writes: false,
+          network_access: true,
+          guarantees: ["read_only"],
+        },
+        trust_contract: {
+          read_only: true,
+          agentless: true,
+          entrypoints_opt_in: true,
+          redaction_status: "central_sanitizer_applied",
+          scope_control: "operator_supplied_scopes",
+          data_residency: "operator_environment",
+          supports_scope_zero: false,
+        },
+      },
+    ],
+  });
 }
 
 beforeEach(() => {
@@ -150,6 +211,11 @@ describe("SourcesPage", () => {
     render(<SourcesPage />);
 
     await waitFor(() => expect(screen.getByText("Nightly cloud posture")).toBeInTheDocument());
+    expect(apiMock.listDiscoveryProviders).toHaveBeenCalled();
+    expect(screen.getByText("Discovery provider trust contracts")).toBeInTheDocument();
+    expect(screen.getAllByText("aws").length).toBeGreaterThan(0);
+    expect(screen.getByText("scope-zero")).toBeInTheDocument();
+    expect(screen.getAllByText("snowflake").length).toBeGreaterThan(0);
     expect(screen.getByText("Nightly cloud posture")).toBeInTheDocument();
     expect(screen.getByText("Source: AWS production account")).toBeInTheDocument();
     expect(screen.getByText("Schedules: 1")).toBeInTheDocument();

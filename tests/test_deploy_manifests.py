@@ -274,6 +274,7 @@ def test_helm_examples_readme_is_shipped():
     assert readme.exists()
     body = readme.read_text()
     assert "focused-pilot" in body
+    assert "byo-postgres" in body
     assert "sqlite-pilot" in body
     assert "eks-vanilla" in body
     assert "gateway-runtime" in body

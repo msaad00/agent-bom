@@ -16,6 +16,7 @@ def test_helm_validation_profiles_reference_existing_chart_assets():
     assert [profile.name for profile in profiles] == [
         "sqlite-pilot",
         "focused-pilot",
+        "focused-pilot-byo-postgres",
         "production",
         "eks-vanilla",
         "mesh-hardening",
@@ -47,6 +48,11 @@ def test_postgres_secret_example_documents_byo_postgres_contract():
 
     assert "dependencies:" not in chart.read_text()
     assert "AGENT_BOM_POSTGRES_URL" in postgres_secret.read_text()
+    byo_values = repo_root / "deploy" / "helm" / "agent-bom" / "examples" / "byo-postgres-values.yaml"
+    byo_body = byo_values.read_text()
+    assert "AGENT_BOM_POSTGRES_URL" in byo_body
+    assert "Snowflake Postgres" in byo_body
+    assert "smoke-test required" in byo_body
     docs_body = docs.read_text()
     assert "no Postgres subchart dependency" in docs_body
     assert "provision Postgres/RDS with your platform tooling" in docs_body
@@ -66,6 +72,13 @@ def test_build_helm_profile_command_uses_shipped_profile_stack():
     assert "agent-bom" in cmd
     assert "--create-namespace" in cmd
     assert str(repo_root / "deploy" / "helm" / "agent-bom" / "examples" / "eks-mcp-pilot-values.yaml") in cmd
+
+
+def test_byo_postgres_profile_layers_focused_pilot_with_database_overlay():
+    repo_root = Path(__file__).resolve().parent.parent
+    cmd = build_helm_profile_command(repo_root, "focused-pilot-byo-postgres")
+    assert str(repo_root / "deploy" / "helm" / "agent-bom" / "examples" / "eks-mcp-pilot-values.yaml") in cmd
+    assert str(repo_root / "deploy" / "helm" / "agent-bom" / "examples" / "byo-postgres-values.yaml") in cmd
 
 
 def test_install_helm_profile_script_prints_packaged_command():

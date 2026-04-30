@@ -1,0 +1,54 @@
+# BYO Postgres overlay for operator-owned control-plane databases.
+#
+# Use this with a base profile such as `focused-pilot`, `eks-vanilla`, or
+# `production` when the database is provisioned outside the chart. The database
+# can be RDS/Aurora Postgres, Cloud SQL for PostgreSQL, Azure Database for
+# PostgreSQL, Supabase, Crunchy/EDB, Snowflake Postgres, or another
+# PostgreSQL-compatible service that exposes a standard connection string to the
+# agent-bom API pods.
+#
+# Required Kubernetes Secret shape:
+#
+#   apiVersion: v1
+#   kind: Secret
+#   metadata:
+#     name: agent-bom-control-plane-db
+#     namespace: agent-bom
+#   type: Opaque
+#   stringData:
+#     AGENT_BOM_POSTGRES_URL: postgresql://agent_bom:REDACTED@postgres.example:5432/agent_bom?sslmode=require
+#
+# Snowflake Postgres note:
+#   Treat Snowflake Postgres as a BYO Postgres candidate when it is reachable
+#   from the cluster and the connection string works with the standard Postgres
+#   driver. Keep it in "candidate / smoke-test required" status until migrations,
+#   API startup, graph writes, fleet sync, policy, audit, and backup/restore
+#   posture have been validated in the target account and region.
+
+controlPlane:
+  enabled: true
+  api:
+    env:
+      - name: AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT
+        value: "1"
+      - name: AGENT_BOM_REQUIRE_SHARED_SCIM_STORE
+        value: "1"
+      - name: AGENT_BOM_REQUIRE_AUDIT_HMAC
+        value: "1"
+      - name: AGENT_BOM_POSTGRES_POOL_MIN_SIZE
+        value: "5"
+      - name: AGENT_BOM_POSTGRES_POOL_MAX_SIZE
+        value: "20"
+      - name: AGENT_BOM_POSTGRES_CONNECT_TIMEOUT_SECONDS
+        value: "5"
+      - name: AGENT_BOM_POSTGRES_STATEMENT_TIMEOUT_MS
+        value: "15000"
+    envFrom:
+      - secretRef:
+          name: agent-bom-control-plane-db
+
+  # Managed Postgres services usually own PITR/backups. Keep the packaged
+  # pg_dump CronJob disabled unless your database team explicitly wants
+  # agent-bom to produce an additional logical backup artifact.
+  backup:
+    enabled: false

@@ -41,6 +41,14 @@ def helm_validation_profiles(repo_root: Path) -> list[HelmValidationProfile]:
             values_files=(examples / "eks-mcp-pilot-values.yaml",),
         ),
         HelmValidationProfile(
+            name="focused-pilot-byo-postgres",
+            description="Focused EKS pilot plus operator-owned Postgres-compatible control-plane database.",
+            values_files=(
+                examples / "eks-mcp-pilot-values.yaml",
+                examples / "byo-postgres-values.yaml",
+            ),
+        ),
+        HelmValidationProfile(
             name="production",
             description="Postgres-backed production EKS defaults with autoscaling and backups.",
             values_files=(examples / "eks-production-values.yaml",),

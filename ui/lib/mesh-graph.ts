@@ -27,6 +27,7 @@ export interface MeshStatsData {
 export interface ServerGroup {
   name: string;
   agents: Set<string>;
+  agentLabels: Map<string, string>;
   servers: MCPServer[];
   totalTools: number;
   totalCreds: number;
@@ -52,6 +53,30 @@ export interface MeshGraphScope {
 // ─── Credential detection ───────────────────────────────────────────────────
 
 const CRED_RE = /key|token|secret|password|credential|auth/i;
+
+function agentSourceId(agent: Agent): string {
+  const direct = typeof agent.source_id === "string" ? agent.source_id.trim() : "";
+  if (direct) return direct;
+  const metadataSource = agent.metadata?.source_id;
+  return typeof metadataSource === "string" ? metadataSource.trim() : "";
+}
+
+export function getMeshAgentKey(agent: Agent): string {
+  const sourceId = agentSourceId(agent);
+  return sourceId ? `${agent.name}@${sourceId}` : agent.name;
+}
+
+export function getMeshAgentLabel(agent: Agent): string {
+  const sourceId = agentSourceId(agent);
+  const enrollment = typeof agent.enrollment_name === "string" ? agent.enrollment_name.trim() : "";
+  const suffix = enrollment || sourceId;
+  return suffix ? `${agent.name} · ${suffix}` : agent.name;
+}
+
+function meshAgentNodeId(agentOrKey: Agent | string): string {
+  const key = typeof agentOrKey === "string" ? agentOrKey : getMeshAgentKey(agentOrKey);
+  return `agent:${key}`;
+}
 
 function getCredKeys(server: MCPServer): string[] {
   return server.env ? Object.keys(server.env).filter((k) => CRED_RE.test(k)) : [];
@@ -92,9 +117,10 @@ function normalizeAgents(agents: Agent[]): Agent[] {
   const merged = new Map<string, Agent>();
 
   for (const agent of agents) {
-    const existing = merged.get(agent.name);
+    const key = getMeshAgentKey(agent);
+    const existing = merged.get(key);
     if (!existing) {
-      merged.set(agent.name, {
+      merged.set(key, {
         ...agent,
         mcp_servers: [...agent.mcp_servers],
       });
@@ -111,7 +137,7 @@ function normalizeAgents(agents: Agent[]): Agent[] {
       serverMap.set(key, current ? mergeServers(current, server) : server);
     }
 
-    merged.set(agent.name, {
+    merged.set(key, {
       ...existing,
       agent_type: existing.agent_type || agent.agent_type,
       status: existing.status || agent.status,
@@ -128,12 +154,15 @@ export function detectSharedServers(agents: Agent[]): Map<string, ServerGroup> {
   const groups = new Map<string, ServerGroup>();
 
   for (const agent of agents) {
+    const agentKey = getMeshAgentKey(agent);
+    const agentLabel = getMeshAgentLabel(agent);
     for (const server of agent.mcp_servers) {
       const key = server.name;
       const existing = groups.get(key);
       const creds = getCredKeys(server);
       if (existing) {
-        existing.agents.add(agent.name);
+        existing.agents.add(agentKey);
+        existing.agentLabels.set(agentKey, agentLabel);
         existing.servers.push(server);
         existing.totalTools += server.tools?.length ?? 0;
         existing.totalCreds += creds.length;
@@ -142,7 +171,8 @@ export function detectSharedServers(agents: Agent[]): Map<string, ServerGroup> {
       } else {
         groups.set(key, {
           name: server.name,
-          agents: new Set([agent.name]),
+          agents: new Set([agentKey]),
+          agentLabels: new Map([[agentKey, agentLabel]]),
           servers: [server],
           totalTools: server.tools?.length ?? 0,
           totalCreds: creds.length,
@@ -220,7 +250,7 @@ export function buildMeshGraph(
   const vulnerableOnly = scope?.vulnerableOnly ?? false;
   const scopedAgents =
     selectedAgents.length > 0
-      ? result.agents.filter((agent) => selectedAgents.includes(agent.name))
+      ? result.agents.filter((agent) => selectedAgents.includes(getMeshAgentKey(agent)) || selectedAgents.includes(agent.name))
       : result.agents;
   const normalizedAgents = normalizeAgents(scopedAgents);
   const blastByVulnId = new Map(result.blast_radius?.map((item) => [item.vulnerability_id, item]) ?? []);
@@ -268,7 +298,7 @@ export function buildMeshGraph(
     for (const server of agent.mcp_servers) {
       for (const tool of server.tools ?? []) {
         const existing = toolAgentMap.get(tool.name) ?? new Set<string>();
-        existing.add(agent.name);
+        existing.add(getMeshAgentKey(agent));
         toolAgentMap.set(tool.name, existing);
       }
     }
@@ -286,7 +316,8 @@ export function buildMeshGraph(
 
   // ── Agent nodes ──
   for (const agent of activeAgents) {
-    const agentId = `agent:${agent.name}`;
+    const agentKey = getMeshAgentKey(agent);
+    const agentId = meshAgentNodeId(agentKey);
     const visibleServers = vulnerableOnly ? agent.mcp_servers.filter(hasVisiblePackage) : agent.mcp_servers;
     const visiblePackageCount = visibleServers.reduce((sum, server) => {
       return sum + server.packages.filter((pkg) => {
@@ -312,13 +343,21 @@ export function buildMeshGraph(
       type: "agentNode",
       position: { x: 0, y: 0 },
       data: {
-        label: agent.name,
+        label: getMeshAgentLabel(agent),
         nodeType: "agent",
         agentType: agent.agent_type,
         agentStatus: agent.status,
         serverCount: visibleServers.length,
         packageCount: visiblePackageCount,
         vulnCount: totalVulns,
+        attributes: {
+          source_id: agentSourceId(agent),
+          enrollment_name: agent.enrollment_name,
+          owner: agent.owner,
+          environment: agent.environment,
+          mdm_provider: agent.mdm_provider,
+          tags: agent.tags,
+        },
       } satisfies LineageNodeData,
     });
   }
@@ -342,18 +381,18 @@ export function buildMeshGraph(
         credentialCount: group.totalCreds,
         packageCount: group.totalPackages,
         sharedBy: group.agents.size,
-        sharedAgents: [...group.agents],
+        sharedAgents: [...group.agents].map((agentKey) => group.agentLabels.get(agentKey) ?? agentKey),
       } satisfies LineageNodeData,
     });
 
     // Agent → Server edges
-    for (const agentName of group.agents) {
-      const edgeId = `agent:${agentName}->server:${name}`;
+    for (const agentKey of group.agents) {
+      const edgeId = `${meshAgentNodeId(agentKey)}->server:${name}`;
       if (!seen.has(edgeId)) {
         seen.add(edgeId);
         edges.push({
           id: edgeId,
-          source: `agent:${agentName}`,
+          source: meshAgentNodeId(agentKey),
           target: serverId,
           type: "smoothstep",
           data: { relationship: "uses" },

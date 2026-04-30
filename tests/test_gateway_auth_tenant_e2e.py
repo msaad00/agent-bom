@@ -15,7 +15,7 @@ The scenario a pilot team actually walks through:
    ``jira`` on top of what discovery returned.
 5. A client calls ``POST /mcp/jira`` on the gateway with a policy-blocked
    tool name. The gateway blocks BEFORE the upstream is touched, records
-   a ``gateway.tool_call_blocked`` audit event via the sink, bumps the
+   a ``gateway.policy_blocked`` audit event via the sink, bumps the
    ``agent_bom_gateway_relays_total{outcome="blocked"}`` metric, and
    returns the JSON-RPC error envelope.
 6. A second call with an allowed tool makes it through to the (fake)
@@ -35,6 +35,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from agent_bom.api import stores as _stores
+from agent_bom.api.auth import Role
 from agent_bom.api.metrics import reset_for_tests as reset_metrics
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.server import app
@@ -181,7 +182,16 @@ def test_full_pilot_flow_auth_tenant_discovery_relay_policy_audit_metrics(pilot_
 
             def verify(self, raw_key: str):
                 if raw_key == "tenant-alpha-gateway-key":
-                    return type("ApiKey", (), {"tenant_id": "tenant-alpha"})()
+                    return type(
+                        "ApiKey",
+                        (),
+                        {
+                            "tenant_id": "tenant-alpha",
+                            "role": Role.ANALYST,
+                            "scopes": ["gateway:relay"],
+                            "has_scope": lambda self, scope: scope in self.scopes,
+                        },
+                    )()
                 return None
 
         monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
@@ -210,7 +220,7 @@ def test_full_pilot_flow_auth_tenant_discovery_relay_policy_audit_metrics(pilot_
         assert err["code"] == -32001
         assert "Blocked" in err["message"]
         assert upstream_calls == [], "blocked call reached upstream"
-        blocked_events = [e for e in audit if e["action"] == "gateway.tool_call_blocked"]
+        blocked_events = [e for e in audit if e["action"] == "gateway.policy_blocked"]
         assert len(blocked_events) == 1
         assert blocked_events[0]["upstream"] == "jira"
         assert blocked_events[0]["tool"] == "run_shell"

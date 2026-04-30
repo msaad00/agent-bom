@@ -127,6 +127,30 @@ def is_tools_call(msg: dict) -> bool:
     return msg.get("method") == "tools/call"
 
 
+_POLICY_GATED_METHODS = {
+    "prompts/get",
+    "resources/read",
+    "sampling/createMessage",
+}
+
+
+def policy_subject_from_message(msg: dict) -> tuple[str, dict] | None:
+    """Return the policy subject and arguments for gated JSON-RPC methods."""
+    if is_tools_call(msg):
+        return extract_tool_name(msg) or "unknown", extract_tool_arguments(msg)
+
+    method = msg.get("method")
+    if not isinstance(method, str):
+        return None
+    if method not in _POLICY_GATED_METHODS and not method.startswith("mcp_extension/"):
+        return None
+
+    params = msg.get("params", {})
+    if isinstance(params, dict):
+        return method, params
+    return method, {"params": params}
+
+
 def is_tools_list_response(msg: dict, request_id: Optional[int | str] = None) -> bool:
     """Check if a JSON-RPC message is a tools/list response."""
     if "result" not in msg:
@@ -166,6 +190,17 @@ def make_error_response(request_id: int | str | None, code: int, message: str) -
             "message": message,
         },
     }
+
+
+def sandbox_posture_warning(sandbox_evidence: Mapping[str, object]) -> str | None:
+    """Return an operator-visible warning when proxy isolation is not active."""
+    if sandbox_evidence.get("enabled"):
+        return None
+    return (
+        "agent-bom proxy warning: sandbox isolation is disabled; the MCP server "
+        "runs as the current host user. Set AGENT_BOM_MCP_SANDBOX=1 or pass "
+        "--sandbox to run the server in a restricted container."
+    )
 
 
 # ─── Proxy core ──────────────────────────────────────────────────────────────
@@ -1233,6 +1268,10 @@ async def run_proxy(
     elif sandbox_config:
         sandbox_evidence = sandbox_config.evidence()
 
+    if warning := sandbox_posture_warning(sandbox_evidence):
+        sys.stderr.write(warning + "\n")
+        logger.warning(warning)
+
     # Validate the effective server command before spawning
     validate_command(server_cmd[0])
     if len(server_cmd) > 1:
@@ -1311,10 +1350,10 @@ async def run_proxy(
                 if msg.get("method") == "tools/list" and "id" in msg:
                     tools_list_request_ids.add(msg["id"])
 
-                # Intercept tools/call requests
-                if is_tools_call(msg):
-                    tool_name = extract_tool_name(msg) or "unknown"
-                    arguments = extract_tool_arguments(msg)
+                # Intercept policy-gated JSON-RPC requests.
+                policy_subject = policy_subject_from_message(msg)
+                if policy_subject:
+                    tool_name, arguments = policy_subject
                     msg_id = msg.get("id")
 
                     # Payload integrity: hash the full message

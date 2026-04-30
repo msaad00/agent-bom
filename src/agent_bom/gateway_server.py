@@ -10,8 +10,8 @@ Design doc: docs/design/MULTI_MCP_GATEWAY.md.
 MVP scope:
   * Request/response relay over HTTP (POST). Streamable-HTTP transport
     with bidirectional streaming is a v2 addition — the MVP handles
-    the dominant case (``tools/call``, ``tools/list``) where the client
-    expects one response per request.
+    the dominant request/response case where the client expects one
+    response per request.
   * Policy evaluation via ``agent_bom.proxy.check_policy`` (reused —
     no new policy engine).
   * Audit events emitted via a caller-supplied sink; in-cluster deploys
@@ -33,6 +33,7 @@ import logging
 import os
 import threading
 import time
+import uuid
 from contextlib import asynccontextmanager, nullcontext
 from dataclasses import dataclass
 from pathlib import Path
@@ -41,16 +42,18 @@ from typing import Any, Awaitable, Callable
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
-from agent_bom.api.auth import get_key_store
+from agent_bom.api.auth import Role, get_key_store
 from agent_bom.api.metrics import record_gateway_relay, record_rate_limit_hit
 from agent_bom.api.middleware import InMemoryRateLimitStore, PostgresRateLimitStore
 from agent_bom.api.tracing import get_tracer, inject_trace_headers, make_request_trace
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
-from agent_bom.proxy import check_policy, is_tools_call, parse_jsonrpc
+from agent_bom.proxy import check_policy, is_tools_call, parse_jsonrpc, policy_subject_from_message
 from agent_bom.proxy_policy import summarize_policy_bundle
 
 logger = logging.getLogger(__name__)
 _GATEWAY_TRACER = get_tracer("agent_bom.gateway")
+_MAX_GATEWAY_MESSAGE_BYTES = 2 * 1024 * 1024
+_GATEWAY_RELAY_SCOPE = "gateway:relay"
 
 AuditSink = Callable[[dict[str, Any]], Awaitable[None]]
 UpstreamCaller = Callable[[UpstreamConfig, dict[str, Any], dict[str, str]], Awaitable[dict[str, Any]]]
@@ -194,6 +197,24 @@ def _gateway_requires_auth(settings: GatewaySettings) -> bool:
         return False
 
 
+def _role_allows_gateway_relay(role: object) -> bool:
+    try:
+        normalized = role if isinstance(role, Role) else Role(str(role).lower())
+    except ValueError:
+        return False
+    return normalized in {Role.ADMIN, Role.ANALYST}
+
+
+def _api_key_allows_gateway_relay(api_key: Any) -> tuple[bool, str]:
+    if not _role_allows_gateway_relay(getattr(api_key, "role", None)):
+        role_value = getattr(getattr(api_key, "role", None), "value", getattr(api_key, "role", "unknown"))
+        return False, f"gateway relay requires analyst role or higher; key has {role_value}"
+    has_scope = getattr(api_key, "has_scope", None)
+    if callable(has_scope) and not has_scope(_GATEWAY_RELAY_SCOPE):
+        return False, f"gateway relay requires {_GATEWAY_RELAY_SCOPE} scope"
+    return True, ""
+
+
 def _authenticate_gateway_request(request: Request, settings: GatewaySettings) -> tuple[str, str]:
     raw_token = _extract_request_token(request)
     if settings.bearer_token:
@@ -207,6 +228,9 @@ def _authenticate_gateway_request(request: Request, settings: GatewaySettings) -
             api_key = store.verify(raw_token) if raw_token else None
             if api_key is None:
                 raise HTTPException(status_code=401, detail="gateway authentication required")
+            allowed, reason = _api_key_allows_gateway_relay(api_key)
+            if not allowed:
+                raise HTTPException(status_code=403, detail=reason)
             return api_key.tenant_id or "default", "api_key"
     except HTTPException:
         raise
@@ -262,11 +286,46 @@ async def _default_upstream_caller(
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(upstream.url, json=message, headers=headers)
         response.raise_for_status()
+        if len(response.content) > _MAX_GATEWAY_MESSAGE_BYTES:
+            raise ValueError(f"upstream response exceeded {_MAX_GATEWAY_MESSAGE_BYTES} bytes")
         if response.headers.get("content-type", "").startswith("application/json"):
             return response.json()
         # Some upstreams return text/event-stream; MVP treats non-JSON as an opaque
         # body wrapped in a success envelope so policy + audit still fire.
         return {"jsonrpc": "2.0", "id": message.get("id"), "result": {"raw": response.text}}
+
+
+def build_control_plane_audit_sink(
+    base_url: str,
+    token: str | None,
+    *,
+    source_id: str = "gateway",
+    session_id: str | None = None,
+) -> AuditSink:
+    """Build an audit sink that forwards gateway runtime events to the API."""
+    audit_url = base_url.rstrip("/") + "/v1/proxy/audit"
+    active_session_id = session_id or str(uuid.uuid4())
+
+    async def _sink(event: dict[str, Any]) -> None:
+        import httpx
+
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        payload = {
+            "source_id": source_id,
+            "session_id": active_session_id,
+            "idempotency_key": event.get("event_id") or str(uuid.uuid4()),
+            "alerts": [event],
+        }
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=10.0, write=10.0, pool=5.0)) as client:
+                response = await client.post(audit_url, json=payload, headers=headers)
+                response.raise_for_status()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Gateway audit push failed: %s", _sanitize_for_log(exc))
+
+    return _sink
 
 
 def create_gateway_app(settings: GatewaySettings) -> FastAPI:
@@ -399,8 +458,20 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         if upstream is None:
             raise HTTPException(status_code=404, detail=f"unknown upstream {server_name!r}")
 
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > _MAX_GATEWAY_MESSAGE_BYTES:
+                    raise HTTPException(status_code=413, detail="gateway request exceeds maximum JSON-RPC message size")
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="invalid Content-Length header") from exc
+
+        raw_body = await request.body()
+        if len(raw_body) > _MAX_GATEWAY_MESSAGE_BYTES:
+            raise HTTPException(status_code=413, detail="gateway request exceeds maximum JSON-RPC message size")
+
         try:
-            body = await request.json()
+            body = json.loads(raw_body)
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(status_code=400, detail=f"body is not valid JSON: {exc}") from exc
 
@@ -448,19 +519,19 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     },
                 )
 
-        if is_tools_call(message):
-            params = message.get("params", {}) or {}
-            tool_name = params.get("name", "")
-            arguments = params.get("arguments", {}) or {}
+        policy_subject = policy_subject_from_message(message)
+        if policy_subject:
+            tool_name, arguments = policy_subject
             async with policy_lock:
                 current_policy = dict(policy_state["policy"])
             allowed, reason = check_policy(current_policy, tool_name, arguments)
             if not allowed:
                 record_gateway_relay(upstream.name, "blocked")
                 audit_event: dict[str, Any] = {
-                    "action": "gateway.tool_call_blocked",
+                    "action": "gateway.policy_blocked",
                     "upstream": upstream.name,
                     "tenant_id": tenant_id,
+                    "method": message.get("method"),
                     "tool": tool_name,
                     "reason": reason,
                 }
@@ -610,6 +681,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
 # Re-export the parser for easier test authoring / CLI glue.
 __all__ = [
     "GatewaySettings",
+    "build_control_plane_audit_sink",
     "create_gateway_app",
     "parse_jsonrpc",
 ]

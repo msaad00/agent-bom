@@ -19,6 +19,8 @@ import { MeshStats } from "@/components/mesh-stats";
 import {
   buildMeshGraph,
   getConnectedIds,
+  getMeshAgentKey,
+  getMeshAgentLabel,
   searchNodes,
   type NodeTypeFilter,
   type SeverityFilter,
@@ -50,7 +52,7 @@ function MeshToolbar({
   setSearchQuery,
   vulnerableOnly,
   setVulnerableOnly,
-  agentNames,
+  agentOptions,
   selectedAgents,
   toggleAgent,
 }: {
@@ -62,7 +64,7 @@ function MeshToolbar({
   setSearchQuery: (q: string) => void;
   vulnerableOnly: boolean;
   setVulnerableOnly: (next: boolean) => void;
-  agentNames: string[];
+  agentOptions: { key: string; label: string }[];
   selectedAgents: string[];
   toggleAgent: (name: string) => void;
 }) {
@@ -137,24 +139,24 @@ function MeshToolbar({
         )}
       </div>
 
-      {agentNames.length > 0 && (
+      {agentOptions.length > 0 && (
         <>
           <div className="w-px h-4 bg-zinc-700" />
           <div className="flex items-center gap-1.5 overflow-x-auto max-w-[28rem] pb-1">
-            {agentNames.map((name) => {
-              const active = selectedAgents.includes(name);
+            {agentOptions.map(({ key, label }) => {
+              const active = selectedAgents.includes(key);
               return (
                 <button
-                  key={name}
+                  key={key}
                   type="button"
-                  onClick={() => toggleAgent(name)}
+                  onClick={() => toggleAgent(key)}
                   className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
                     active
                       ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-200"
                       : "border-zinc-700 bg-zinc-900/70 text-zinc-500 hover:border-zinc-500 hover:text-zinc-300"
                   }`}
                 >
-                  {name}
+                  {label}
                 </button>
               );
             })}
@@ -239,15 +241,16 @@ export default function MeshPage() {
 
   const activeResult = useMemo(() => activeJob?.result ?? null, [activeJob]);
 
-  const agentNames = useMemo(
-    () =>
-      activeResult
-        ? Array.from(new Set(activeResult.agents.map((agent) => agent.name))).sort((left, right) =>
-            left.localeCompare(right),
-          )
-        : [],
-    [activeResult],
-  );
+  const agentOptions = useMemo(() => {
+    if (!activeResult) return [];
+    const options = new Map<string, string>();
+    for (const agent of activeResult.agents) {
+      options.set(getMeshAgentKey(agent), getMeshAgentLabel(agent));
+    }
+    return [...options.entries()]
+      .map(([key, label]) => ({ key, label }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [activeResult]);
 
   const rankedAgentNames = useMemo(() => {
     if (!activeResult) return [];
@@ -258,13 +261,14 @@ export default function MeshPage() {
           return packageTotal + (pkg.vulnerabilities?.length ?? 0);
         }, 0);
       }, 0);
-      scoreByAgent.set(agent.name, score);
+      scoreByAgent.set(getMeshAgentKey(agent), score);
     }
-    return [...agentNames].sort((left, right) => {
+    const labelByKey = new Map(agentOptions.map((option) => [option.key, option.label]));
+    return agentOptions.map((option) => option.key).sort((left, right) => {
       const scoreDiff = (scoreByAgent.get(right) ?? 0) - (scoreByAgent.get(left) ?? 0);
-      return scoreDiff !== 0 ? scoreDiff : left.localeCompare(right);
+      return scoreDiff !== 0 ? scoreDiff : (labelByKey.get(left) ?? left).localeCompare(labelByKey.get(right) ?? right);
     });
-  }, [activeResult, agentNames]);
+  }, [activeResult, agentOptions]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -468,7 +472,7 @@ export default function MeshPage() {
         setSearchQuery={setSearchQuery}
         vulnerableOnly={vulnerableOnly}
         setVulnerableOnly={setVulnerableOnly}
-        agentNames={agentNames}
+        agentOptions={agentOptions}
         selectedAgents={selectedAgents}
         toggleAgent={toggleAgent}
       />

@@ -178,6 +178,11 @@ Use two diagrams, not one overloaded graph:
 - **Enterprise Self-Hosted Data and Runtime Flow** answers how data moves and
   where policy, auth, RBAC, tenant scope, and audit are enforced.
 
+In the diagrams below, every box prefixed with `agent-bom` is code from this
+project running in the customer's environment. The browser, IdP, cloud APIs,
+remote MCPs, and storage systems are customer-owned dependencies or optional
+destinations; they are not an agent-bom hosted control plane.
+
 ### Enterprise Self-Hosted Topology
 
 ```mermaid
@@ -185,13 +190,16 @@ flowchart LR
     classDef edge fill:#111827,stroke:#38bdf8,color:#e0f2fe
     classDef ctrl fill:#0f172a,stroke:#6366f1,color:#e0e7ff
     classDef run fill:#0f172a,stroke:#10b981,color:#d1fae5
+    classDef scan fill:#111827,stroke:#a78bfa,color:#ede9fe
     classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
     classDef ext fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
 
-    Browser["Browser"]:::ext
+    Browser["Operator browser"]:::ext
     IdP["Corporate IdP"]:::ext
-    Fleet["Fleet collectors"]:::ext
-    Remote["Remote MCPs"]:::ext
+    Endpoints["Endpoints / laptops<br/>agent-bom CLI or collector"]:::ext
+    Pipelines["CI / operator-pull adapters<br/>signed inventory"]:::ext
+    Cloud["Cloud APIs<br/>read-only scopes"]:::ext
+    Remote["Remote MCP servers"]:::ext
 
     subgraph Customer["Customer VPC / EKS / self-hosted cluster"]
       direction LR
@@ -203,15 +211,15 @@ flowchart LR
 
       subgraph Control["Control plane"]
         direction TB
-        UI["Web UI"]:::ctrl
-        API["API"]:::ctrl
-        Jobs["Scan workers"]:::ctrl
+        UI["agent-bom UI<br/>dashboard"]:::ctrl
+        API["agent-bom API<br/>auth · RBAC · tenant scope"]:::ctrl
+        Jobs["agent-bom scan workers<br/>inventory · CVE · graph"]:::scan
       end
 
       subgraph Runtime["Data plane"]
         direction TB
-        Proxy["Local proxies"]:::run
-        Gateway["Gateway"]:::run
+        Proxy["agent-bom proxy<br/>local / sidecar MCP enforcement"]:::run
+        Gateway["agent-bom gateway<br/>shared remote MCP relay"]:::run
       end
 
       subgraph Stores["Customer-managed stores"]
@@ -228,10 +236,14 @@ flowchart LR
     Ingress --> UI
     Ingress --> API
     UI --> API
-    Jobs --> API
-    Fleet -->|inventory sync| API
-    Proxy -->|policy / audit| API
-    Gateway -->|policy / audit| API
+    Jobs -->|scan results| API
+    Endpoints -->|fleet sync<br/>/v1/fleet/sync| API
+    Pipelines -->|pushed inventory<br/>/v1/discovery/inventory| API
+    Jobs -->|read-only discovery| Cloud
+    Proxy -->|policy pull| API
+    Proxy -->|runtime audit events| API
+    Gateway -->|policy pull / evaluate| API
+    Gateway -->|gateway audit events| API
     Gateway -->|remote MCP traffic| Remote
     Secrets --> API
     Secrets --> Gateway
@@ -243,12 +255,16 @@ flowchart LR
 ```
 
 Truth block:
+- `agent-bom` is the UI, API, scan workers, proxy, gateway, and optional endpoint
+  CLI/collector. It is not a hidden SaaS dependency in this topology.
 - Users enter through ingress; the API remains the single control-plane authority
   for auth, RBAC, tenant scope, graph, audit, and policy.
-- Fleet sync, scan workers, and runtime surfaces all report back to the same API,
-  so inventory and enforcement stay aligned.
-- Gateway fronts shared remote MCP traffic; optional analytics and archive stores
-  stay visually secondary to Postgres, which remains the required system of record.
+- Fleet sync, pushed inventory, scan workers, and runtime surfaces report back to
+  the same API, so inventory and enforcement stay aligned.
+- Gateway fronts shared remote MCP traffic. Local proxies stay near selected
+  endpoint or workload MCP traffic.
+- Optional analytics and archive stores stay visually secondary to Postgres,
+  which remains the required system of record.
 
 ### Enterprise Self-Hosted Data and Runtime Flow
 
@@ -259,20 +275,33 @@ flowchart TD
     classDef run fill:#0f172a,stroke:#10b981,color:#d1fae5
     classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
 
-    Scan["Scans<br/>CLI / API / CI / UI-triggered jobs"]:::src
-    Fleet["Fleet sync<br/>endpoint pushes"]:::src
-    Proxy["Proxy runtime<br/>local / sidecar MCP traffic"]:::run
-    Gateway["Gateway runtime<br/>shared remote MCP traffic"]:::run
+    Direct["Direct scan<br/>agent-bom CLI / worker"]:::src
+    Pushed["Pushed inventory<br/>operator adapter / CI / skill"]:::src
+    Fleet["Fleet sync<br/>endpoint CLI or collector"]:::src
+    ProxyTraffic["Selected local MCP traffic"]:::src
+    RemoteTraffic["Shared remote MCP traffic"]:::src
 
-    API["API / control plane<br/>auth · RBAC · tenant scope · audit"]:::proc
-    Graph["Graph / findings / policy / remediation"]:::proc
+    Proxy["agent-bom proxy<br/>inline local enforcement"]:::run
+    Gateway["agent-bom gateway<br/>shared remote enforcement"]:::run
+
+    API["agent-bom API / control plane<br/>auth · RBAC · tenant scope"]:::proc
+    Policy["Policy service<br/>author · sign · distribute"]:::proc
+    Audit["Audit service<br/>append · redact · export"]:::proc
+    Graph["Canonical evidence<br/>inventory · findings · graph · remediation"]:::proc
     Store[("Postgres")]:::data
     Exports["OTEL / SIEM / Snowflake / ClickHouse / S3"]:::data
 
-    Scan -->|normalized findings + inventory| API
+    Direct -->|normalized inventory + findings| API
+    Pushed -->|schema-validated inventory| API
     Fleet -->|tenant-scoped inventory| API
-    Proxy -->|audit + policy evaluation| API
-    Gateway -->|audit + policy evaluation| API
+    ProxyTraffic --> Proxy
+    RemoteTraffic --> Gateway
+    Proxy -->|policy pull / decision evidence| Policy
+    Gateway -->|policy pull / decision evidence| Policy
+    Proxy -->|runtime audit events| Audit
+    Gateway -->|gateway audit events| Audit
+    Policy --> API
+    Audit --> API
     API --> Graph
     Graph --> Store
     API -->|optional export / analytics| Exports
@@ -281,8 +310,10 @@ flowchart TD
 Truth block:
 - Auth, RBAC, tenant resolution, and audit happen in the control plane, not in
   the browser.
-- Scans and fleet establish inventory first; proxy and gateway add runtime
-  enforcement and runtime evidence where deployed.
+- Scans, pushed inventory, and fleet establish inventory first; proxy and
+  gateway add runtime enforcement and runtime evidence only where deployed.
+- Policy and audit are separate responsibilities: policy decides and distributes;
+  audit records what happened after redaction.
 
 ## Best Self-Hosted Path
 

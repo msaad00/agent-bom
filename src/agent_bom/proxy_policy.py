@@ -247,7 +247,7 @@ def check_policy(policy: dict, tool_name: str, arguments: dict) -> tuple[bool, s
             continue
 
         blocked = rule.get("block_tools", [])
-        if blocked and tool_name in blocked:
+        if blocked and ("*" in blocked or tool_name in blocked):
             return False, f"Tool '{tool_name}' is blocked by rule '{rule.get('id', '?')}'"
 
         denied_classes = {str(item).lower() for item in rule.get("deny_tool_classes", [])}

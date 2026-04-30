@@ -367,6 +367,15 @@ class TestBuildUnifiedGraphFromReport:
         assert "read_file" in names
         assert "write_file" in names
 
+    def test_tool_nodes_include_capability_facets(self):
+        g = build_unified_graph_from_report(_minimal_report())
+        read_tool = g.nodes["tool:server:claude-desktop:mcp-fs:read_file"]
+        write_tool = g.nodes["tool:server:claude-desktop:mcp-fs:write_file"]
+
+        assert "read" in read_tool.attributes["capabilities"]
+        assert "write" in write_tool.attributes["capabilities"]
+        assert read_tool.attributes["capability_source"] == "classified"
+
     def test_credential_nodes(self):
         g = build_unified_graph_from_report(_minimal_report())
         creds = g.nodes_by_type(EntityType.CREDENTIAL)
@@ -388,6 +397,45 @@ class TestBuildUnifiedGraphFromReport:
         pkg_id = "pkg:npm:express@4.18.0"
         vuln_id = "vuln:CVE-2024-1234"
         assert g.has_edge(pkg_id, vuln_id)
+
+    def test_vulnerability_to_tool_exploitable_via_edges(self):
+        g = build_unified_graph_from_report(_minimal_report())
+        vuln_id = "vuln:CVE-2024-1234"
+        read_tool_id = "tool:server:claude-desktop:mcp-fs:read_file"
+        write_tool_id = "tool:server:claude-desktop:mcp-fs:write_file"
+
+        assert g.has_edge(vuln_id, read_tool_id)
+        assert g.has_edge(vuln_id, write_tool_id)
+        edge = next(
+            edge
+            for edge in g.edges
+            if edge.source == vuln_id and edge.target == write_tool_id and edge.relationship == RelationshipType.EXPLOITABLE_VIA
+        )
+        assert edge.evidence["mapping_method"] == "server_scope_conservative"
+        assert edge.evidence["confidence"] == "medium"
+        assert edge.evidence["package_node"] == "pkg:npm:express@4.18.0"
+        assert "write" in edge.evidence["capabilities"]
+
+    def test_exploitable_via_does_not_cross_same_named_servers(self):
+        report = _minimal_report()
+        report["agents"][1]["mcp_servers"][0]["tools"] = [{"name": "delete_repo", "description": "Delete a repository"}]
+
+        g = build_unified_graph_from_report(report)
+
+        assert g.has_edge("vuln:CVE-2024-1234", "tool:server:claude-desktop:mcp-fs:read_file")
+        assert not g.has_edge("vuln:CVE-2024-1234", "tool:server:cursor:mcp-fs:delete_repo")
+
+    def test_unknown_package_version_does_not_emit_exploitable_via(self):
+        report = _minimal_report()
+        package = report["agents"][0]["mcp_servers"][0]["packages"][0]
+        package["version"] = "unknown"
+        report["blast_radius"][0]["package_version"] = "unknown"
+
+        g = build_unified_graph_from_report(report)
+
+        assert g.has_edge("pkg:npm:express@unknown", "vuln:CVE-2024-1234")
+        exploit_edges = [edge for edge in g.edges if edge.relationship == RelationshipType.EXPLOITABLE_VIA]
+        assert exploit_edges == []
 
     def test_server_to_package_edge(self):
         g = build_unified_graph_from_report(_minimal_report())

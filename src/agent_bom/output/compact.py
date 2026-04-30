@@ -97,6 +97,10 @@ def print_compact_summary(report: AIBOMReport) -> None:
         sev_counts[str(finding.severity).upper()] += 1
 
     scorecard = compute_posture_scorecard(report)
+    high_risk_policy_count = sev_counts.get("CRITICAL", 0) + sev_counts.get("HIGH", 0)
+    scorecard_summary = scorecard.summary
+    if high_risk_policy_count and not active_findings:
+        scorecard_summary = f"{high_risk_policy_count} high-risk policy/security finding(s) present"
     preferred_driver_order = [
         "credential_hygiene",
         "vulnerability_posture",
@@ -160,7 +164,7 @@ def print_compact_summary(report: AIBOMReport) -> None:
 
     lines = [
         f"  [bold]POSTURE GRADE:[/bold]  {_posture_grade_badge(scorecard.grade)} "
-        f"[bold]{scorecard.score:.1f}/100[/bold]  [dim]{scorecard.summary}[/dim]",
+        f"[bold]{scorecard.score:.1f}/100[/bold]  [dim]{scorecard_summary}[/dim]",
         f"  [bold]SECURITY POSTURE:[/bold]  {posture}",
         "",
         f"  Agents  [bold]{report.total_agents}[/bold]    "

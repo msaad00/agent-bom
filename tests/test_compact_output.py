@@ -142,6 +142,8 @@ def test_compact_summary_includes_non_cve_findings():
     assert "CLEAN" not in output
     assert "HIGH" in output
     assert "Findings" in output
+    assert "high-risk policy/security finding" in output
+    assert "Strong security posture" not in output
 
 
 def test_compact_summary_credentials():

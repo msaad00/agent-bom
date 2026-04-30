@@ -16,12 +16,12 @@ MVP scope:
     no new policy engine).
   * Audit events emitted via a caller-supplied sink; in-cluster deploys
     point it at ``/v1/proxy/audit``.
-  * Per-upstream static header / bearer auth injection from
+  * Pooled upstream HTTP relay with per-upstream circuit breakers.
+  * Per-upstream static header / bearer / OAuth2 auth injection from
     ``UpstreamRegistry``.
 
 Non-goals for MVP (see design doc):
   * stdio upstreams (per-MCP ``agent-bom proxy`` wrapper still handles these)
-  * OAuth2 client-credentials token refresh
   * SSE long-poll / Streamable HTTP streaming
 """
 
@@ -100,6 +100,112 @@ class GatewaySettings:
     require_shared_rate_limit: bool = False
     policy_path: Path | None = None
     policy_reload_interval_seconds: int = 0
+    upstream_failure_threshold: int = 3
+    upstream_circuit_cooldown_seconds: float = 30.0
+    upstream_http_timeout_seconds: float = 30.0
+    upstream_http_max_connections: int = 100
+    upstream_http_max_keepalive_connections: int = 20
+
+
+class GatewayCircuitOpenError(RuntimeError):
+    """Raised when an upstream circuit is open and calls should fail fast."""
+
+    def __init__(self, upstream_name: str, retry_after_seconds: float) -> None:
+        self.upstream_name = upstream_name
+        self.retry_after_seconds = max(1.0, retry_after_seconds)
+        super().__init__(f"upstream {upstream_name!r} circuit open; retry after {int(self.retry_after_seconds)}s")
+
+
+@dataclass
+class _CircuitState:
+    failures: int = 0
+    opened_until: float = 0.0
+
+
+class GatewayCircuitBreaker:
+    """Small per-upstream circuit breaker for gateway relay calls."""
+
+    def __init__(self, *, failure_threshold: int, cooldown_seconds: float) -> None:
+        self.failure_threshold = max(1, failure_threshold)
+        self.cooldown_seconds = max(1.0, cooldown_seconds)
+        self._states: dict[str, _CircuitState] = {}
+        self._lock = asyncio.Lock()
+
+    async def before_call(self, key: str, upstream_name: str) -> None:
+        now = time.monotonic()
+        async with self._lock:
+            state = self._states.get(key)
+            if state is None or state.opened_until <= 0:
+                return
+            if state.opened_until > now:
+                raise GatewayCircuitOpenError(upstream_name, state.opened_until - now)
+            # Half-open: allow one trial request and reset on success/failure path.
+            state.opened_until = 0.0
+
+    async def record_success(self, key: str) -> None:
+        async with self._lock:
+            self._states.pop(key, None)
+
+    async def record_failure(self, key: str) -> None:
+        now = time.monotonic()
+        async with self._lock:
+            state = self._states.setdefault(key, _CircuitState())
+            state.failures += 1
+            if state.failures >= self.failure_threshold:
+                state.opened_until = now + self.cooldown_seconds
+
+
+class GatewayUpstreamRelay:
+    """Lifecycle-managed upstream relay with connection pooling and breakers."""
+
+    def __init__(self, settings: GatewaySettings) -> None:
+        self._timeout_seconds = max(1.0, settings.upstream_http_timeout_seconds)
+        self._max_connections = max(1, settings.upstream_http_max_connections)
+        self._max_keepalive_connections = max(1, settings.upstream_http_max_keepalive_connections)
+        self._client: Any | None = None
+        self._client_lock = asyncio.Lock()
+        self._breaker = GatewayCircuitBreaker(
+            failure_threshold=settings.upstream_failure_threshold,
+            cooldown_seconds=settings.upstream_circuit_cooldown_seconds,
+        )
+
+    async def aclose(self) -> None:
+        async with self._client_lock:
+            if self._client is not None:
+                await self._client.aclose()
+                self._client = None
+
+    async def _client_for_call(self) -> Any:
+        if self._client is not None:
+            return self._client
+        async with self._client_lock:
+            if self._client is None:
+                import httpx
+
+                self._client = httpx.AsyncClient(
+                    timeout=httpx.Timeout(self._timeout_seconds),
+                    limits=httpx.Limits(
+                        max_connections=self._max_connections,
+                        max_keepalive_connections=self._max_keepalive_connections,
+                    ),
+                )
+            return self._client
+
+    async def __call__(
+        self,
+        upstream: UpstreamConfig,
+        message: dict[str, Any],
+        extra_headers: dict[str, str],
+    ) -> dict[str, Any]:
+        circuit_key = _upstream_circuit_key(upstream)
+        await self._breaker.before_call(circuit_key, upstream.name)
+        try:
+            response = await _post_upstream_jsonrpc(upstream, message, extra_headers, client=await self._client_for_call())
+        except Exception:
+            await self._breaker.record_failure(circuit_key)
+            raise
+        await self._breaker.record_success(circuit_key)
+        return response
 
 
 def _load_policy_file(policy_path: Path) -> dict[str, Any]:
@@ -281,18 +387,32 @@ async def _default_upstream_caller(
     """
     import httpx
 
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        return await _post_upstream_jsonrpc(upstream, message, extra_headers, client=client)
+
+
+def _upstream_circuit_key(upstream: UpstreamConfig) -> str:
+    return f"{upstream.tenant_id or 'global'}:{upstream.name}:{upstream.url}"
+
+
+async def _post_upstream_jsonrpc(
+    upstream: UpstreamConfig,
+    message: dict[str, Any],
+    extra_headers: dict[str, str],
+    *,
+    client: Any,
+) -> dict[str, Any]:
     auth_headers = await upstream.resolve_auth_headers()
     headers = {"Content-Type": "application/json", **auth_headers, **extra_headers}
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(upstream.url, json=message, headers=headers)
-        response.raise_for_status()
-        if len(response.content) > _MAX_GATEWAY_MESSAGE_BYTES:
-            raise ValueError(f"upstream response exceeded {_MAX_GATEWAY_MESSAGE_BYTES} bytes")
-        if response.headers.get("content-type", "").startswith("application/json"):
-            return response.json()
-        # Some upstreams return text/event-stream; MVP treats non-JSON as an opaque
-        # body wrapped in a success envelope so policy + audit still fire.
-        return {"jsonrpc": "2.0", "id": message.get("id"), "result": {"raw": response.text}}
+    response = await client.post(upstream.url, json=message, headers=headers)
+    response.raise_for_status()
+    if len(response.content) > _MAX_GATEWAY_MESSAGE_BYTES:
+        raise ValueError(f"upstream response exceeded {_MAX_GATEWAY_MESSAGE_BYTES} bytes")
+    if response.headers.get("content-type", "").startswith("application/json"):
+        return response.json()
+    # Some upstreams return text/event-stream; MVP treats non-JSON as an opaque
+    # body wrapped in a success envelope so policy + audit still fire.
+    return {"jsonrpc": "2.0", "id": message.get("id"), "result": {"raw": response.text}}
 
 
 def build_control_plane_audit_sink(
@@ -339,7 +459,9 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
 
         require_visual_leak_runtime()
 
-    upstream_caller = settings.upstream_caller or _default_upstream_caller
+    managed_upstream_relay = GatewayUpstreamRelay(settings) if settings.upstream_caller is None else None
+    upstream_caller = settings.upstream_caller or managed_upstream_relay
+    assert upstream_caller is not None
     rate_limit_store = _build_gateway_rate_limit_store(settings)
     policy_state: dict[str, Any] = {
         "policy": dict(settings.policy),
@@ -393,6 +515,8 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     reload_task = asyncio.create_task(_policy_reload_loop())
             yield
         finally:
+            if managed_upstream_relay is not None:
+                await managed_upstream_relay.aclose()
             if reload_task is not None:
                 reload_task.cancel()
                 try:
@@ -420,6 +544,14 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             "status": "ok",
             "upstreams": settings.registry.names(),
             "auth": {"incoming_token_required": _gateway_requires_auth(settings)},
+            "upstream_runtime": {
+                "pooled_http_client": managed_upstream_relay is not None,
+                "circuit_breaker_enabled": managed_upstream_relay is not None,
+                "failure_threshold": settings.upstream_failure_threshold,
+                "cooldown_seconds": settings.upstream_circuit_cooldown_seconds,
+                "max_connections": settings.upstream_http_max_connections,
+                "max_keepalive_connections": settings.upstream_http_max_keepalive_connections,
+            },
             "rate_limit_runtime": _gateway_rate_limit_runtime_status(settings),
             "policy_runtime": policy_runtime,
         }
@@ -583,6 +715,25 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                     if trace_meta["baggage"]:
                         span.set_attribute("agent_bom.gateway.baggage_present", True)
                 upstream_response = await upstream_caller(upstream, forwarded_message, extra_headers)
+        except GatewayCircuitOpenError as exc:
+            logger.warning("gateway upstream circuit open for %s", upstream.name)
+            record_gateway_relay(upstream.name, "circuit_open")
+            retry_after_header = str(int(exc.retry_after_seconds))
+            if settings.audit_sink is not None:
+                await settings.audit_sink(
+                    {
+                        "action": "gateway.upstream_circuit_open",
+                        "upstream": upstream.name,
+                        "tenant_id": tenant_id,
+                        "reason": "circuit_open",
+                        "retry_after_seconds": int(exc.retry_after_seconds),
+                    }
+                )
+            raise HTTPException(
+                status_code=503,
+                detail="upstream circuit open",
+                headers={"Retry-After": retry_after_header},
+            ) from exc
         except asyncio.TimeoutError as exc:
             logger.warning("gateway upstream call timed out for %s", upstream.name)
             record_gateway_relay(upstream.name, "upstream_timeout")

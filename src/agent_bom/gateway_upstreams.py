@@ -13,6 +13,7 @@ ConfigMap or Secret. Reload = redeploy.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import threading
@@ -38,6 +39,8 @@ SUPPORTED_AUTH_MODES: tuple[str, ...] = ("none", "bearer", "oauth2_client_creden
 # IdP with the same credentials share a token.
 _oauth_cache_lock = threading.Lock()
 _oauth_cache: dict[tuple[str, str, tuple[str, ...]], tuple[str, float]] = {}
+_oauth_singleflight_lock = threading.Lock()
+_oauth_singleflight_locks: dict[tuple[str, str, tuple[str, ...]], asyncio.Lock] = {}
 
 
 def _cached_oauth_token(key: tuple[str, str, tuple[str, ...]]) -> str | None:
@@ -56,10 +59,21 @@ def _store_oauth_token(key: tuple[str, str, tuple[str, ...]], token: str, expire
         _oauth_cache[key] = (token, time.time() + max(30, expires_in))
 
 
+def _oauth_singleflight_for(key: tuple[str, str, tuple[str, ...]]) -> asyncio.Lock:
+    with _oauth_singleflight_lock:
+        lock = _oauth_singleflight_locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            _oauth_singleflight_locks[key] = lock
+        return lock
+
+
 def reset_oauth_cache_for_tests() -> None:
     """Drop the process-wide OAuth2 token cache — test-only entry point."""
     with _oauth_cache_lock:
         _oauth_cache.clear()
+    with _oauth_singleflight_lock:
+        _oauth_singleflight_locks.clear()
 
 
 @dataclass(frozen=True)
@@ -143,6 +157,19 @@ class UpstreamConfig:
         if cached is not None:
             return cached
 
+        async with _oauth_singleflight_for(cache_key):
+            cached = _cached_oauth_token(cache_key)
+            if cached is not None:
+                return cached
+            return await self._fetch_and_store_oauth2_token(cache_key, self.oauth_token_url, client_id, client_secret)
+
+    async def _fetch_and_store_oauth2_token(
+        self,
+        cache_key: tuple[str, str, tuple[str, ...]],
+        token_url: str,
+        client_id: str,
+        client_secret: str,
+    ) -> str:
         import httpx
 
         form: dict[str, str] = {
@@ -155,7 +182,7 @@ class UpstreamConfig:
 
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.post(
-                self.oauth_token_url,
+                token_url,
                 data=form,
                 headers={"Accept": "application/json"},
             )

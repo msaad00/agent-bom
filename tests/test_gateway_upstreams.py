@@ -332,6 +332,69 @@ def test_oauth2_fetches_token_and_caches(tmp_path: Path, monkeypatch: pytest.Mon
     assert fetch_count["n"] == 1, "token must be cached across resolve calls within expiry"
 
 
+def test_oauth2_concurrent_cache_miss_uses_singleflight(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Concurrent first callers should share one IdP token request."""
+    import asyncio
+
+    import httpx
+
+    from agent_bom.gateway_upstreams import reset_oauth_cache_for_tests
+
+    reset_oauth_cache_for_tests()
+
+    fetch_count = {"n": 0}
+
+    class _FakeResponse:
+        def raise_for_status(self) -> None:
+            pass
+
+        def json(self) -> dict:
+            return {"access_token": "oauth-tok-singleflight", "expires_in": 3600, "token_type": "Bearer"}
+
+    class _FakeAsyncClient:
+        def __init__(self, *_, **__):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return None
+
+        async def post(self, *_args, **_kwargs):
+            fetch_count["n"] += 1
+            await asyncio.sleep(0.01)
+            return _FakeResponse()
+
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeAsyncClient)
+    monkeypatch.setenv("SF_CLIENT_ID", "cid")
+    monkeypatch.setenv("SF_CLIENT_SECRET", "csec")
+
+    path = _write_yaml(
+        tmp_path,
+        """
+        upstreams:
+          - name: jira-snowflake
+            url: https://snowflake.example.com/mcp/jira
+            auth: oauth2_client_credentials
+            oauth_token_url: https://snowflake.example.com/oauth/token
+            oauth_client_id_env: SF_CLIENT_ID
+            oauth_client_secret_env: SF_CLIENT_SECRET
+            scopes: ["jira.read", "jira.write"]
+        """,
+    )
+    registry = UpstreamRegistry.from_yaml(path)
+    upstream = registry.get("jira-snowflake")
+    assert upstream is not None
+
+    async def _resolve_many() -> list[dict[str, str]]:
+        return await asyncio.gather(*(upstream.resolve_auth_headers() for _ in range(8)))
+
+    headers = asyncio.run(_resolve_many())
+    assert {h["Authorization"] for h in headers} == {"Bearer oauth-tok-singleflight"}
+    assert fetch_count["n"] == 1
+
+
 def test_oauth2_missing_env_vars_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     import asyncio
 

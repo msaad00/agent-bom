@@ -97,9 +97,11 @@ def build_graph_elements(
     Node types:
       - ``provider``    — cloud source grouping (AWS, Azure, Databricks, local, etc.)
       - ``agent``       — AI agent
-      - ``server_vuln`` — MCP server with vulnerable packages
-      - ``server_cred`` — MCP server with exposed credentials
-      - ``server_clean``— MCP server, no issues
+      - ``server_vuln``    — MCP server with vulnerable packages
+      - ``server_blocked`` — MCP server blocked by MCP intelligence
+      - ``server_intel``   — MCP server with non-blocking MCP intelligence findings
+      - ``server_cred``    — MCP server with exposed credentials
+      - ``server_clean``   — MCP server, no issues
       - ``pkg_vuln``    — vulnerable package summary
       - ``cve``         — individual CVE/advisory
 
@@ -192,7 +194,18 @@ def build_graph_elements(
             vuln_count = sum(1 for p in srv.packages if (p.name, p.ecosystem) in vuln_pkg_keys)
             has_vuln = vuln_count > 0
             has_cred = srv.has_credentials
-            stype = "server_vuln" if has_vuln else ("server_cred" if has_cred else "server_clean")
+            has_blocking_intel = bool(getattr(srv, "security_blocked", False))
+            has_security_intel = bool(getattr(srv, "security_intelligence", []))
+            if has_blocking_intel:
+                stype = "server_blocked"
+            elif has_vuln:
+                stype = "server_vuln"
+            elif has_security_intel:
+                stype = "server_intel"
+            elif has_cred:
+                stype = "server_cred"
+            else:
+                stype = "server_clean"
 
             vulnerable_pkg_count = sum(1 for p in srv.packages if (p.name, p.ecosystem) in vuln_pkg_keys)
             total_pkg_vulns = 0
@@ -213,10 +226,22 @@ def build_graph_elements(
             if total_pkg_vulns:
                 pkg_badge += f" • {total_pkg_vulns} CVEs"
             server_label = f"{srv.name}\n{pkg_badge}"
-            if has_cred:
+            if has_blocking_intel:
+                server_label = "BLOCK " + server_label
+            elif has_security_intel:
+                server_label = "INTEL " + server_label
+            elif has_cred:
                 server_label = "KEY " + server_label
             elif has_vuln:
                 server_label = "RISK " + server_label
+            intelligence = list(getattr(srv, "security_intelligence", []) or [])
+            intelligence_titles = [
+                str(item.get("title") or item.get("entry_id") or "")
+                for item in intelligence
+                if isinstance(item, dict) and (item.get("title") or item.get("entry_id"))
+            ][:5]
+            intel_note = f"\nMCP intelligence: {', '.join(intelligence_titles)}" if intelligence_titles else ""
+            security_warnings = list(getattr(srv, "security_warnings", []) or [])
 
             elements.append(
                 {
@@ -224,12 +249,16 @@ def build_graph_elements(
                         "id": sid,
                         "label": server_label,
                         "type": stype,
-                        "tip": f"MCP Server: {srv.name}{pkg_note}{cinfo}",
+                        "tip": f"MCP Server: {srv.name}{pkg_note}{cinfo}{intel_note}",
                         "command": sanitize_launch_command(srv.command or "", srv.args or [], max_args=3)[:80],
                         "packageCount": len(srv.packages),
                         "vulnPackageCount": vulnerable_pkg_count,
                         "vulnCount": total_pkg_vulns,
                         "criticalCount": critical_pkg_vulns,
+                        "securityBlocked": has_blocking_intel,
+                        "securityIntelligenceCount": len(intelligence),
+                        "securityIntelligence": json.dumps(intelligence_titles),
+                        "securityWarnings": json.dumps(security_warnings[:5]),
                         "hasCredentials": has_cred,
                         "credentials": json.dumps(srv.credential_names) if srv.credential_names else "[]",
                         "toolNames": json.dumps([t.name for t in srv.tools[:10]]) if srv.tools else "[]",
@@ -244,6 +273,8 @@ def build_graph_elements(
                         "target": sid,
                         "type": "uses",
                         "credentialEdge": 1 if has_cred else 0,
+                        "securityBlocked": 1 if has_blocking_intel else 0,
+                        "securityIntelligence": 1 if has_security_intel else 0,
                     }
                 }
             )
@@ -760,6 +791,14 @@ const cy=cytoscape({{
       'background-color':'#21262d','border-color':'#6e7681','border-width':3,
       'width':'mapData(packageCount, 1, 12, 190, 250)','height':56,'opacity':0.78
     }}}},
+    {{selector:'node[type="server_blocked"]',style:{{
+      'background-color':'#4a0612','border-color':'#ff3b30','border-width':4,
+      'width':'mapData(securityIntelligenceCount, 1, 10, 210, 300)','height':60
+    }}}},
+    {{selector:'node[type="server_intel"]',style:{{
+      'background-color':'#3f2a0b','border-color':'#f59e0b','border-width':3,
+      'width':'mapData(securityIntelligenceCount, 1, 10, 200, 280)','height':58
+    }}}},
     {{selector:'node[type="server_vuln"]',style:{{
       'background-color':'#451f24','border-color':'#ff5d5d','border-width':3,
       'width':'mapData(vulnCount, 1, 40, 200, 300)','height':56
@@ -786,6 +825,8 @@ const cy=cytoscape({{
       'target-arrow-shape':'triangle','curve-style':'bezier','arrow-scale':0.8,'opacity':0.7}}}},
     {{selector:'edge[type="hosts"]',style:{{'line-color':'#4a9eff','target-arrow-color':'#4a9eff','width':2}}}},
     {{selector:'edge[type="uses"]',style:{{'line-color':'#2ea043','target-arrow-color':'#2ea043','width':2}}}},
+    {{selector:'edge[type="uses"][securityBlocked = 1]',style:{{'line-color':'#ff3b30','target-arrow-color':'#ff3b30','width':3.5}}}},
+    {{selector:'edge[type="uses"][securityIntelligence = 1]',style:{{'line-color':'#f59e0b','target-arrow-color':'#f59e0b','width':3}}}},
     {{selector:'edge[type="uses"][credentialEdge = 1]',style:{{'line-color':'#f2b84b','target-arrow-color':'#f2b84b','width':3}}}},
     {{selector:'edge[type="depends_on"]',style:{{'line-color':'#8b949e','target-arrow-color':'#8b949e','width':1.5}}}},
     {{selector:'edge[type="depends_on"][maxSeverity = "critical"]',style:{{

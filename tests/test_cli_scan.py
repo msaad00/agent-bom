@@ -128,6 +128,16 @@ def test_scan_format_console_no_output_file():
     assert result.exit_code == 0
 
 
+def test_scan_format_console_with_output_gives_actionable_error(tmp_path):
+    """--format console is terminal-only; file output should suggest useful formats."""
+    out = tmp_path / "abom-out.console"
+    with patch("agent_bom.cli.agents.discover_all", return_value=[]):
+        result = _run(["scan", "--format", "console", "--output", str(out), "--no-scan"])
+    assert result.exit_code == 2
+    assert "console renders to the terminal only" in result.output
+    assert "--format plain" in result.output
+
+
 def test_scan_quiet_flag():
     with patch("agent_bom.cli.agents.discover_all", return_value=[]):
         result = _run(["scan", "--quiet", "--no-scan"])
@@ -339,6 +349,8 @@ def test_scan_incomplete_offline_scan_exits_two(monkeypatch):
 
     assert result.exit_code == 2
     assert "populated local vulnerability DB" in result.output
+    assert "SECURITY POSTURE" in result.output
+    assert "Agents" in result.output
 
 
 def test_scan_expands_local_docker_mcp_image():

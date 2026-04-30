@@ -731,6 +731,12 @@ def sanitize_error(exc: Exception | str, generic: bool = False) -> str:
     msg = str(exc)
     # Strip URLs first (before path regex matches the path portion)
     msg = re.sub(r"https?://[^\s\"']+", "<url>", msg)
+    # Strip inline credential assignments commonly included in SDK error strings.
+    msg = re.sub(
+        r"(?i)\b(token|secret|password|passwd|api[_-]?key|access[_-]?key|session[_-]?token)\s*=\s*[^\s,;]+",
+        lambda match: f"{match.group(1)}=<redacted>",
+        msg,
+    )
     # Strip absolute file paths
     msg = re.sub(r"(/[^\s:\"']+)+", "<path>", msg)
     return msg[:200] if len(msg) > 200 else msg

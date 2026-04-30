@@ -15,20 +15,31 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from agent_bom.asset_provenance import sanitize_discovery_provenance
-from agent_bom.cloud import provider_contracts
-from agent_bom.cloud.aws import discover
-from agent_bom.inventory import _validate_inventory_payload
-from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
-from agent_bom.models import Agent, MCPServer, MCPTool, Package
-from agent_bom.security import (
-    sanitize_command_args,
-    sanitize_env_vars,
-    sanitize_security_warnings,
-    sanitize_sensitive_payload,
-    sanitize_text,
-    sanitize_url,
-)
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from adapter_bootstrap import add_repo_src_to_path, exit_for_missing_agent_bom  # noqa: E402
+
+add_repo_src_to_path(__file__)
+
+try:
+    from agent_bom.asset_provenance import sanitize_discovery_provenance
+    from agent_bom.cloud import provider_contracts
+    from agent_bom.cloud.aws import discover
+    from agent_bom.inventory import _validate_inventory_payload
+    from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
+    from agent_bom.models import Agent, MCPServer, MCPTool, Package
+    from agent_bom.security import (
+        sanitize_command_args,
+        sanitize_env_vars,
+        sanitize_error,
+        sanitize_security_warnings,
+        sanitize_sensitive_payload,
+        sanitize_text,
+        sanitize_url,
+    )
+except ModuleNotFoundError as exc:
+    exit_for_missing_agent_bom(exc)
 
 _SCHEMA_AGENT_TYPES = frozenset({"claude-desktop", "claude-code", "cursor", "windsurf", "cline", "custom"})
 _SCHEMA_TRANSPORTS = frozenset({"stdio", "sse", "streamable-http"})
@@ -187,7 +198,7 @@ def _tool_to_inventory(tool: MCPTool) -> dict[str, Any]:
 
 
 def _package_to_inventory(package: Package, *, inherited_provenance: dict[str, Any] | None = None) -> dict[str, Any]:
-    payload = {
+    payload: dict[str, Any] = {
         "name": sanitize_text(package.name, max_len=300),
         "version": sanitize_text(package.version or "unknown", max_len=120) or "unknown",
     }
@@ -262,18 +273,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    agents, warnings = discover(
-        region=args.region,
-        profile=args.profile,
-        include_ecs=args.include_ecs,
-        include_sagemaker=args.include_sagemaker,
-        include_lambda=args.include_lambda,
-        include_eks=args.include_eks,
-        include_step_functions=args.include_step_functions,
-        include_ec2=args.include_ec2,
-        ec2_tag_filter=_parse_key_value(args.ec2_tag),
-        tag_filter=_parse_key_value(args.tag),
-    )
+    try:
+        agents, warnings = discover(
+            region=args.region,
+            profile=args.profile,
+            include_ecs=args.include_ecs,
+            include_sagemaker=args.include_sagemaker,
+            include_lambda=args.include_lambda,
+            include_eks=args.include_eks,
+            include_step_functions=args.include_step_functions,
+            include_ec2=args.include_ec2,
+            ec2_tag_filter=_parse_key_value(args.ec2_tag),
+            tag_filter=_parse_key_value(args.tag),
+        )
+    except Exception as exc:  # noqa: BLE001
+        safe_error = sanitize_error(exc) or exc.__class__.__name__
+        sys.stderr.write(f"error: AWS discovery failed: {safe_error}\n")
+        return 2
     for warning in sanitize_security_warnings(warnings):
         sys.stderr.write(f"warning: {warning}\n")
 

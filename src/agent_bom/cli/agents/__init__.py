@@ -121,11 +121,75 @@ def _expand_docker_mcp_packages(
     return [pkg for pkg in discovered if str(getattr(pkg, "ecosystem", "")).lower() != "docker"] + expanded, failures
 
 
+def _exit_incomplete_scan_with_partial_summary(
+    ctx: ScanContext,
+    *,
+    agents: list[Any],
+    exc: IncompleteScanError,
+    output: Any,
+    output_format: str,
+    no_tree: bool,
+    quiet: bool,
+    no_color: bool,
+    open_report: bool,
+    compliance_export: Any,
+    mermaid_mode: str,
+    push_gateway: Any,
+    otel_endpoint: Any,
+    baseline: Any,
+    delta_mode: bool,
+    verbose: bool,
+    exclude_unfixable: bool,
+    fixable_only: bool,
+    posture: bool,
+) -> None:
+    """Render discovered inventory before exiting an incomplete scan."""
+    from agent_bom.mcp_blocklist import blocklist_findings_for_agents
+
+    ctx.blast_radii = []
+    ctx.report = AIBOMReport(
+        agents=agents,
+        blast_radii=[],
+        findings=blocklist_findings_for_agents(agents),
+        scan_sources=["agent_discovery"],
+    )
+    ctx.con.print(f"  [yellow]⚠[/yellow] {exc}")
+    if output_format == "console" and not output and not quiet:
+        render_output(
+            ctx,
+            output=output,
+            output_format=output_format,
+            no_tree=no_tree,
+            quiet=quiet,
+            no_color=no_color,
+            open_report=open_report,
+            compliance_export=compliance_export,
+            mermaid_mode=mermaid_mode,
+            push_gateway=push_gateway,
+            otel_endpoint=otel_endpoint,
+            baseline=baseline,
+            delta_mode=delta_mode,
+            verbose=verbose,
+            exclude_unfixable=exclude_unfixable,
+            fixable_only=fixable_only,
+        )
+        if posture:
+            render_posture_summary(agents, [])
+    raise SystemExit(2)
+
+
 def _reset_offline_mode() -> None:
     """Restore process-global network mode after an offline CLI invocation."""
     from agent_bom.scanners import set_offline_mode
 
     set_offline_mode(False)
+
+
+def _output_format_was_explicit() -> bool:
+    ctx = click.get_current_context(silent=True)
+    if ctx is None:
+        return False
+    return ctx.get_parameter_source("output_format") is click.core.ParameterSource.COMMANDLINE
 
 
 @click.command()
@@ -408,6 +472,13 @@ def scan(
     con = _make_console(quiet=quiet or is_stdout, output_format=output_format, no_color=no_color)
     runtime_console = Console(stderr=True, quiet=quiet or is_stdout, no_color=no_color)
     _sync_runtime_consoles(runtime_console)
+
+    if output and output != "-" and output_format == "console" and _output_format_was_explicit():
+        click.echo(
+            "Error: --format console renders to the terminal only; use --format plain, markdown, or json with --output.",
+            err=True,
+        )
+        raise SystemExit(2)
 
     # Also set the output module's console so print_summary etc. route correctly
     import agent_bom.output as _out
@@ -1097,8 +1168,27 @@ def scan(
                             offline=offline,
                         )
                     except IncompleteScanError as exc:
-                        con.print(f"  [yellow]⚠[/yellow] {exc}")
-                        sys.exit(2)
+                        _exit_incomplete_scan_with_partial_summary(
+                            ctx,
+                            agents=agents,
+                            exc=exc,
+                            output=output,
+                            output_format=output_format,
+                            no_tree=no_tree,
+                            quiet=quiet,
+                            no_color=no_color,
+                            open_report=open_report,
+                            compliance_export=compliance_export,
+                            mermaid_mode=mermaid_mode,
+                            push_gateway=push_gateway,
+                            otel_endpoint=otel_endpoint,
+                            baseline=baseline,
+                            delta_mode=delta_mode,
+                            verbose=verbose,
+                            exclude_unfixable=exclude_unfixable,
+                            fixable_only=fixable_only,
+                            posture=posture,
+                        )
                     progress.update(scan_task, completed=3, phase="building blast radius analysis")
                     progress.update(scan_task, completed=4, phase="done")
             else:
@@ -1113,8 +1203,27 @@ def scan(
                         offline=offline,
                     )
                 except IncompleteScanError as exc:
-                    con.print(f"  [yellow]⚠[/yellow] {exc}")
-                    sys.exit(2)
+                    _exit_incomplete_scan_with_partial_summary(
+                        ctx,
+                        agents=agents,
+                        exc=exc,
+                        output=output,
+                        output_format=output_format,
+                        no_tree=no_tree,
+                        quiet=quiet,
+                        no_color=no_color,
+                        open_report=open_report,
+                        compliance_export=compliance_export,
+                        mermaid_mode=mermaid_mode,
+                        push_gateway=push_gateway,
+                        otel_endpoint=otel_endpoint,
+                        baseline=baseline,
+                        delta_mode=delta_mode,
+                        verbose=verbose,
+                        exclude_unfixable=exclude_unfixable,
+                        fixable_only=fixable_only,
+                        posture=posture,
+                    )
             scan_warnings = consume_scan_warnings()
             if scan_warnings:
                 con.print(f"  [yellow]⚠[/yellow] Scan completed with {len(scan_warnings)} warning(s); results may be incomplete.")

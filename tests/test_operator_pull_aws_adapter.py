@@ -102,6 +102,23 @@ def test_aws_operator_pull_adapter_cli_writes_inventory(monkeypatch, tmp_path: P
     assert loaded["discovery_provenance"]["source_type"] == "operator_pushed_inventory"
 
 
+def test_aws_operator_pull_adapter_cli_returns_nonzero_without_traceback(monkeypatch, tmp_path: Path, capsys) -> None:
+    adapter = _load_adapter()
+
+    def _fail_discover(**_kwargs):
+        raise RuntimeError("credential token=secret failed")
+
+    monkeypatch.setattr(adapter, "discover", _fail_discover)
+
+    rc = adapter.main(["--region", "us-east-1", "--no-include-ecs", "--output", str(tmp_path / "inventory.json")])
+
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "error: AWS discovery failed:" in captured.err
+    assert "Traceback" not in captured.err
+    assert "secret" not in captured.err
+
+
 def test_aws_operator_pull_adapter_cli_marks_skill_invoked_inventory(monkeypatch, tmp_path: Path) -> None:
     adapter = _load_adapter()
     monkeypatch.setattr(

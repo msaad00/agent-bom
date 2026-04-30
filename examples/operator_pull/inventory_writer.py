@@ -170,7 +170,7 @@ def _tool_to_inventory(tool: MCPTool) -> dict[str, Any]:
 
 
 def _package_to_inventory(package: Package, *, inherited_provenance: dict[str, Any] | None = None) -> dict[str, Any]:
-    payload = {
+    payload: dict[str, Any] = {
         "name": sanitize_text(package.name, max_len=300),
         "version": sanitize_text(package.version or "unknown", max_len=120) or "unknown",
     }

@@ -11,10 +11,17 @@ from pathlib import Path
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from adapter_bootstrap import add_repo_src_to_path, exit_for_missing_agent_bom  # noqa: E402
+
+add_repo_src_to_path(__file__)
+
 from inventory_writer import DISCOVERY_METHODS, build_inventory_payload  # noqa: E402
 
-from agent_bom.cloud.azure import discover  # noqa: E402
-from agent_bom.security import sanitize_security_warnings  # noqa: E402
+try:
+    from agent_bom.cloud.azure import discover  # noqa: E402
+    from agent_bom.security import sanitize_error, sanitize_security_warnings  # noqa: E402
+except ModuleNotFoundError as exc:
+    exit_for_missing_agent_bom(exc)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -35,10 +42,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    agents, warnings = discover(
-        subscription_id=args.subscription_id,
-        resource_group=args.resource_group,
-    )
+    try:
+        agents, warnings = discover(
+            subscription_id=args.subscription_id,
+            resource_group=args.resource_group,
+        )
+    except Exception as exc:  # noqa: BLE001
+        safe_error = sanitize_error(exc) or exc.__class__.__name__
+        sys.stderr.write(f"error: Azure discovery failed: {safe_error}\n")
+        return 2
     for warning in sanitize_security_warnings(warnings):
         sys.stderr.write(f"warning: {warning}\n")
 

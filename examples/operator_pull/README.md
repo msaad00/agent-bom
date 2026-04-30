@@ -45,6 +45,20 @@ python examples/operator_pull/gcp_inventory_adapter.py \
 agent-bom agents --inventory gcp-inventory.json --format json
 ```
 
+## Snowflake
+
+```bash
+python examples/operator_pull/snowflake_inventory_adapter.py \
+  --account my-org-my-account \
+  --authenticator externalbrowser \
+  --database AI_PLATFORM \
+  --schema PUBLIC \
+  --output snowflake-inventory.json
+
+unset SNOWFLAKE_PASSWORD SNOWFLAKE_TOKEN SNOWFLAKE_PRIVATE_KEY_PATH
+agent-bom agents --inventory snowflake-inventory.json --format json
+```
+
 ## Skill-Mediated Handoff
 
 For AI-agent mediated discovery, use the bundled

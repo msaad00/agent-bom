@@ -10,6 +10,7 @@ from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 ROOT = Path(__file__).resolve().parents[1]
 AZURE_ADAPTER_PATH = ROOT / "examples" / "operator_pull" / "azure_inventory_adapter.py"
 GCP_ADAPTER_PATH = ROOT / "examples" / "operator_pull" / "gcp_inventory_adapter.py"
+SNOWFLAKE_ADAPTER_PATH = ROOT / "examples" / "operator_pull" / "snowflake_inventory_adapter.py"
 WRITER_PATH = ROOT / "examples" / "operator_pull" / "inventory_writer.py"
 
 
@@ -139,6 +140,76 @@ def test_gcp_operator_pull_adapter_cli_marks_skill_invoked_inventory(monkeypatch
     assert "hidden-token" not in serialized
 
 
+def test_snowflake_operator_pull_adapter_cli_writes_scope_zero_inventory(monkeypatch, tmp_path: Path) -> None:
+    adapter = _load_module(SNOWFLAKE_ADAPTER_PATH, "snowflake_inventory_adapter")
+    agent = Agent(
+        name="cortex:analyst",
+        agent_type=AgentType.CUSTOM,
+        config_path="snowflake://org-acct/AI_PLATFORM/PUBLIC/analyst",
+        source="snowflake-cortex",
+        metadata={
+            "cloud_origin": {
+                "provider": "snowflake",
+                "service": "cortex-agent",
+                "resource_type": "agent",
+                "resource_id": "snowflake://org-acct/AI_PLATFORM/PUBLIC/analyst",
+                "resource_name": "analyst",
+                "raw_identity": {
+                    "account": "org-acct",
+                    "database": "AI_PLATFORM",
+                    "schema": "PUBLIC",
+                    "session_token": "raw-token",
+                },
+            }
+        },
+        mcp_servers=[
+            MCPServer(
+                name="snowflake-mcp:analytics",
+                url="https://org-acct.snowflakecomputing.com/api/v2/mcp/analytics?token=raw-token",
+                transport=TransportType.STREAMABLE_HTTP,
+                packages=[
+                    Package(
+                        name="snowflake-snowpark-python",
+                        version="1.26.0",
+                        ecosystem="pypi",
+                        purl="pkg:pypi/snowflake-snowpark-python@1.26.0",
+                    )
+                ],
+            )
+        ],
+    )
+    monkeypatch.setattr(adapter, "discover", lambda **_kwargs: ([agent], ["warning has token=secret"]))
+    output_path = tmp_path / "snowflake-inventory.json"
+
+    assert (
+        adapter.main(
+            [
+                "--account",
+                "org-acct",
+                "--authenticator",
+                "externalbrowser",
+                "--database",
+                "AI_PLATFORM",
+                "--schema",
+                "PUBLIC",
+                "--output",
+                str(output_path),
+            ]
+        )
+        == 0
+    )
+
+    loaded = load_inventory(str(output_path))
+    serialized = json.dumps(loaded)
+    assert loaded["source"] == "snowflake-operator-pull"
+    assert loaded["discovery_provenance"]["source_type"] == "operator_pushed_inventory"
+    assert loaded["discovery_provenance"]["observed_via"] == ["operator_pushed_inventory", "snowflake_sdk"]
+    assert loaded["agents"][0]["metadata"]["permissions_used"]
+    assert loaded["agents"][0]["discovery_provenance"]["provider"] == "snowflake"
+    assert loaded["agents"][0]["mcp_servers"][0]["url"] == "https://org-acct.snowflakecomputing.com/api/v2/mcp/analytics"
+    assert "raw-token" not in serialized
+
+
 def test_operator_pull_inventory_writer_keeps_container_purl_schema_valid() -> None:
     writer = _load_module(WRITER_PATH, "inventory_writer")
     package = Package(
@@ -162,7 +233,9 @@ def test_provider_permissions_used_reads_azure_and_gcp_contracts() -> None:
 
     azure_permissions = writer.provider_permissions_used("azure")
     gcp_permissions = writer.provider_permissions_used("gcp")
+    snowflake_permissions = writer.provider_permissions_used("snowflake")
 
     assert azure_permissions
     assert gcp_permissions
-    assert all(":" in permission or "." in permission for permission in azure_permissions + gcp_permissions)
+    assert snowflake_permissions
+    assert all(":" in permission or "." in permission for permission in azure_permissions + gcp_permissions + snowflake_permissions)

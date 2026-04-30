@@ -148,6 +148,41 @@ def test_server_card_has_all_tools():
     assert "model_file_scan" in tool_names
 
 
+def test_server_card_tools_expose_capability_classes():
+    """Server card should classify tool capabilities for agents and marketplaces."""
+    from agent_bom.mcp_server import build_server_card
+
+    card = build_server_card()
+    for tool in card["tools"]:
+        classes = tool.get("capability_classes")
+        assert isinstance(classes, list), tool["name"]
+        assert classes, tool["name"]
+        assert "READ" in classes, tool["name"]
+        assert tool["annotations"]["readOnlyHint"] is True
+
+
+def test_server_card_exposes_resources_and_workflow_prompts():
+    """Server card should advertise the live resource and prompt catalog."""
+    from agent_bom.mcp_server import build_server_card
+
+    card = build_server_card()
+    resource_uris = {resource["uri"] for resource in card["resources"]}
+    assert "registry://servers" in resource_uris
+    assert "policy://template" in resource_uris
+    assert "metrics://tools" in resource_uris
+    assert "schema://inventory-v1" in resource_uris
+    assert "bestpractices://mcp-hardening" in resource_uris
+    assert "compliance://framework-controls" in resource_uris
+
+    prompt_names = {prompt["name"] for prompt in card["prompts"]}
+    assert "quick-audit" in prompt_names
+    assert "pre-install-check" in prompt_names
+    assert "compliance-report" in prompt_names
+    assert "fleet-audit" in prompt_names
+    assert "incident-triage" in prompt_names
+    assert "remediation-plan" in prompt_names
+
+
 def test_server_card_tool_count_matches_decorators():
     """_SERVER_CARD_TOOLS must list every @mcp.tool across MCP tool surfaces."""
     import inspect

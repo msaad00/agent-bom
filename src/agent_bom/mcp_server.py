@@ -41,10 +41,13 @@ Tools (36):
     license_compliance_scan — Evaluate package licenses against SPDX compliance policy
     ingest_external_scan   — Ingest Trivy, Grype, or Syft JSON output with blast radius analysis
 
-Resources (3):
+Resources (6):
     registry://servers  — Browse 427+ server security metadata registry
     policy://template   — Default security policy template
     metrics://tools     — MCP tool execution metrics and limits
+    schema://inventory-v1 — Canonical pushed-inventory schema contract
+    bestpractices://mcp-hardening — MCP deployment hardening checklist
+    compliance://framework-controls — Framework coverage and evidence mapping
 
 Security: Read-only. Never executes MCP servers or reads credential values.
 """

@@ -829,6 +829,33 @@ def test_resource_tool_metrics():
     assert "metrics://tools" in uris
 
 
+def test_resources_include_trust_and_hardening_contracts():
+    """MCP resources should expose schema, hardening, and compliance guidance."""
+    from agent_bom.mcp_server import create_mcp_server
+
+    server = create_mcp_server()
+    resources = _run(server.list_resources())
+    uris = {str(r.uri) for r in resources}
+    assert "schema://inventory-v1" in uris
+    assert "bestpractices://mcp-hardening" in uris
+    assert "compliance://framework-controls" in uris
+
+
+def test_prompts_include_agentic_workflow_recipes():
+    """MCP prompts should expose multi-step recipes, not only raw tools."""
+    from agent_bom.mcp_server import create_mcp_server
+
+    server = create_mcp_server()
+    prompts = _run(server.list_prompts())
+    names = {prompt.name for prompt in prompts}
+    assert "quick-audit" in names
+    assert "pre-install-check" in names
+    assert "compliance-report" in names
+    assert "fleet-audit" in names
+    assert "incident-triage" in names
+    assert "remediation-plan" in names
+
+
 # ── Robustness tests ────────────────────────────────────────────────────
 
 

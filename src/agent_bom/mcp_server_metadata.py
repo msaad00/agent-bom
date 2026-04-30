@@ -161,10 +161,64 @@ _SERVER_CARD_TOOLS = [
     },
 ]
 
+_TOOL_CAPABILITY_CLASSES = {
+    "scan": ["READ", "NETWORK", "LOCAL_FILE_READ"],
+    "check": ["READ", "NETWORK"],
+    "blast_radius": ["READ", "ANALYZE"],
+    "policy_check": ["READ", "POLICY"],
+    "registry_lookup": ["READ", "REGISTRY"],
+    "generate_sbom": ["READ", "EXPORT"],
+    "compliance": ["READ", "COMPLIANCE"],
+    "remediate": ["READ", "PLAN"],
+    "skill_scan": ["READ", "LOCAL_FILE_READ"],
+    "skill_verify": ["READ", "LOCAL_FILE_READ", "PROVENANCE"],
+    "skill_trust": ["READ", "LOCAL_FILE_READ"],
+    "verify": ["READ", "NETWORK", "PROVENANCE"],
+    "where": ["READ", "LOCAL_FILE_READ"],
+    "tool_risk_assessment": ["READ", "ANALYZE"],
+    "inventory": ["READ", "LOCAL_FILE_READ"],
+    "diff": ["READ", "LOCAL_FILE_READ", "ANALYZE"],
+    "marketplace_check": ["READ", "REGISTRY"],
+    "code_scan": ["READ", "LOCAL_FILE_READ", "SAST"],
+    "context_graph": ["READ", "GRAPH", "ANALYZE"],
+    "graph_export": ["READ", "GRAPH", "EXPORT"],
+    "analytics_query": ["READ", "ANALYTICS"],
+    "cis_benchmark": ["READ", "NETWORK", "CLOUD"],
+    "fleet_scan": ["READ", "REGISTRY", "ANALYZE"],
+    "runtime_correlate": ["READ", "LOCAL_FILE_READ", "RUNTIME"],
+    "vector_db_scan": ["READ", "NETWORK", "RUNTIME"],
+    "aisvs_benchmark": ["READ", "COMPLIANCE"],
+    "gpu_infra_scan": ["READ", "NETWORK", "INFRA"],
+    "dataset_card_scan": ["READ", "LOCAL_FILE_READ", "COMPLIANCE"],
+    "training_pipeline_scan": ["READ", "LOCAL_FILE_READ", "LINEAGE"],
+    "browser_extension_scan": ["READ", "LOCAL_FILE_READ"],
+    "model_provenance_scan": ["READ", "NETWORK", "PROVENANCE"],
+    "prompt_scan": ["READ", "LOCAL_FILE_READ", "SAST"],
+    "model_file_scan": ["READ", "LOCAL_FILE_READ"],
+    "ai_inventory_scan": ["READ", "LOCAL_FILE_READ"],
+    "license_compliance_scan": ["READ", "LOCAL_FILE_READ", "COMPLIANCE"],
+    "ingest_external_scan": ["READ", "LOCAL_FILE_READ", "INGEST"],
+}
+
+for _tool in _SERVER_CARD_TOOLS:
+    _tool["capability_classes"] = _TOOL_CAPABILITY_CLASSES.get(str(_tool["name"]), ["READ"])
+
 _SERVER_CARD_PROMPTS = [
     {"name": "quick-audit", "description": "Run a complete security audit of your AI agent setup"},
     {"name": "pre-install-check", "description": "Check an MCP server package for vulnerabilities before installing"},
     {"name": "compliance-report", "description": "Generate OWASP LLM + OWASP MCP + ATLAS + NIST compliance posture for your AI stack"},
+    {"name": "fleet-audit", "description": "Audit an endpoint or cloud inventory file and return graph-ready findings"},
+    {"name": "incident-triage", "description": "Prioritize a CVE or suspicious MCP finding using blast radius and runtime evidence"},
+    {"name": "remediation-plan", "description": "Draft a human-reviewed remediation plan without modifying files"},
+]
+
+_SERVER_CARD_RESOURCES = [
+    {"uri": "registry://servers", "description": "MCP server security metadata registry"},
+    {"uri": "policy://template", "description": "Default security policy-as-code template"},
+    {"uri": "metrics://tools", "description": "Bounded MCP tool execution metrics"},
+    {"uri": "schema://inventory-v1", "description": "Canonical pushed-inventory schema contract"},
+    {"uri": "bestpractices://mcp-hardening", "description": "MCP deployment hardening checklist"},
+    {"uri": "compliance://framework-controls", "description": "Framework coverage and evidence mapping"},
 ]
 
 
@@ -178,6 +232,7 @@ def build_server_card() -> dict[str, Any]:
         "repository": "https://github.com/msaad00/agent-bom",
         "transport": ["stdio", "sse", "streamable-http"],
         "tools": _SERVER_CARD_TOOLS,
+        "resources": _SERVER_CARD_RESOURCES,
         "prompts": _SERVER_CARD_PROMPTS,
         "capabilities": {
             "frameworks": ["OWASP LLM Top 10", "OWASP MCP Top 10", "MITRE ATLAS", "NIST AI RMF"],

@@ -38,6 +38,7 @@ from agent_bom.output import (
     to_sarif,
     to_spdx,
 )
+from agent_bom.output.ocsf import alert_to_ocsf
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -377,6 +378,30 @@ class TestToSarif:
         sarif = to_sarif(report)
         assert len(sarif["runs"][0]["results"]) >= 1
 
+    def test_cve_result_preserves_sanitized_discovery_provenance(self):
+        pkg = _make_pkg()
+        pkg.discovery_provenance = {
+            "source_type": "operator_pushed_inventory",
+            "source": "pipeline:token=secret",
+            "collector": "cmdb-export",
+            "version_source": "manifest",
+        }
+        agent = _make_agent()
+        agent.discovery_provenance = {
+            "source_type": "operator_pushed_inventory",
+            "collector": "cmdb-export",
+        }
+        br = _make_blast_radius(pkg=pkg, agents=[agent])
+        report = _make_report(agents=[agent], blast_radii=[br])
+
+        sarif = to_sarif(report)
+        props = sarif["runs"][0]["results"][0]["properties"]
+
+        assert props["package_discovery_provenance"]["source_type"] == "operator_pushed_inventory"
+        assert props["package_discovery_provenance"]["source"] == "<redacted>"
+        assert props["package_discovery_provenance"]["version_source"] == "manifest"
+        assert props["agent_discovery_provenance"][0]["collector"] == "cmdb-export"
+
 
 # ── to_cyclonedx ─────────────────────────────────────────────────────────────
 
@@ -412,6 +437,34 @@ class TestToCyclonedx:
         server_component = next(component for component in cdx["components"] if component["name"] == server.name)
         command_prop = next(prop for prop in server_component["properties"] if prop["name"] == "agent-bom:command")
         assert command_prop["value"] == "npx server --token <redacted>"
+
+    def test_cyclonedx_components_preserve_discovery_provenance_properties(self):
+        pkg = _make_pkg()
+        pkg.discovery_provenance = {
+            "source_type": "skill_invoked_pull",
+            "observed_via": ["skill_invoked_pull", "aws_sdk"],
+            "collector": "agent-bom-discover-aws",
+            "version_source": "detected",
+        }
+        server = _make_server(packages=[pkg])
+        server.discovery_provenance = {
+            "source_type": "skill_invoked_pull",
+            "provider": "aws",
+            "service": "bedrock",
+        }
+        agent = _make_agent(servers=[server])
+        agent.discovery_provenance = {
+            "source_type": "skill_invoked_pull",
+            "collector": "agent-bom-discover-aws",
+        }
+
+        cdx = to_cyclonedx(_make_report(agents=[agent]))
+        pkg_component = next(component for component in cdx["components"] if component["name"] == pkg.name)
+        props = {prop["name"]: prop["value"] for prop in pkg_component["properties"]}
+
+        assert props["agent-bom:discovery-provenance:source-type"] == "skill_invoked_pull"
+        assert props["agent-bom:discovery-provenance:collector"] == "agent-bom-discover-aws"
+        assert props["agent-bom:discovery-provenance:observed-via"] == '["skill_invoked_pull","aws_sdk"]'
 
 
 # ── to_spdx ──────────────────────────────────────────────────────────────────
@@ -1187,6 +1240,27 @@ def test_to_sarif_emits_unified_non_cve_findings():
 
     assert "finding/MCP_BLOCKLIST" in rule_ids
     assert "mcp.json" in uris
+
+
+def test_output_ocsf_preserves_nested_sanitized_details():
+    event = alert_to_ocsf(
+        {
+            "severity": "high",
+            "detector": "argument_analyzer",
+            "message": "suspicious resource read",
+            "details": {
+                "tool": "resources/read",
+                "discovery_provenance": {
+                    "source_type": "operator_pushed_inventory",
+                    "source": "pipeline:token=secret",
+                },
+            },
+        }
+    )
+
+    data = event["resources"][0]["data"]
+    assert data["discovery_provenance"]["source_type"] == "operator_pushed_inventory"
+    assert "secret" not in str(data)
 
 
 def test_to_sarif_normalizes_iac_and_ai_inventory_paths():

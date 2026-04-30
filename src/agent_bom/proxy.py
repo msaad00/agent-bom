@@ -728,7 +728,8 @@ async def _proxy_sse_server(
                 line_str = line.decode("utf-8", errors="replace")
                 msg = parse_jsonrpc(line_str)
 
-                if not msg or not is_tools_call(msg):
+                policy_subject = policy_subject_from_message(msg) if msg else None
+                if not msg or not policy_subject:
                     # Non-tool-call messages (initialize, notifications, etc.) — pass through
                     try:
                         fwd = await client.post(
@@ -743,9 +744,9 @@ async def _proxy_sse_server(
                         logger.debug("SSE proxy: pass-through failed: %s", exc)
                     continue
 
-                tool_name = extract_tool_name(msg) or "unknown"
+                tool_name, arguments = policy_subject
+                is_tool_call = is_tools_call(msg)
                 request_trace_meta = _extract_jsonrpc_trace_meta(msg)
-                arguments = extract_tool_arguments(msg)
                 msg_id = msg.get("id")
                 p_hash = compute_payload_hash(msg)
                 agent_id, identity_block_reason = check_identity(msg, policy)
@@ -787,7 +788,7 @@ async def _proxy_sse_server(
                     sys.stdout.buffer.flush()
                     continue
 
-                if block_undeclared and declared_tools and tool_name not in declared_tools:
+                if is_tool_call and block_undeclared and declared_tools and tool_name not in declared_tools:
                     reason = f"Tool '{tool_name}' not in declared tools/list"
                     if log_file:
                         log_tool_call(
@@ -881,13 +882,18 @@ async def _proxy_sse_server(
                         tenant_id=control_plane_tenant_id,
                     )  # type: ignore[arg-type]
 
-                # Forward tool call to remote SSE/HTTP server
+                # Forward the gated JSON-RPC request to the remote SSE/HTTP
+                # server. Tool calls use the compatibility /tools/call path;
+                # resources/prompts/sampling/extension methods retain their
+                # original method and go through the generic /message path.
                 call_counter += 1
                 try:
-                    span_cm = _PROXY_TRACER.start_as_current_span("proxy.sse_tools_call") if _PROXY_TRACER else nullcontext()
+                    span_name = "proxy.sse_tools_call" if is_tool_call else "proxy.sse_gated_message"
+                    span_cm = _PROXY_TRACER.start_as_current_span(span_name) if _PROXY_TRACER else nullcontext()
                     with span_cm as span:
                         if span is not None:
-                            span.set_attribute("agent_bom.proxy.tool_name", tool_name)
+                            span.set_attribute("agent_bom.proxy.subject", tool_name)
+                            span.set_attribute("agent_bom.proxy.method", msg.get("method", "unknown"))
                             span.set_attribute("agent_bom.proxy.call_counter", call_counter)
                         forwarded_message = _inject_jsonrpc_trace_meta(
                             msg,
@@ -895,8 +901,9 @@ async def _proxy_sse_server(
                             tracestate=request_trace_meta.get("tracestate"),
                             baggage=request_trace_meta.get("baggage"),
                         )
+                        forward_path = "/tools/call" if is_tool_call else "/message"
                         resp = await client.post(
-                            url.rstrip("/") + "/tools/call",
+                            url.rstrip("/") + forward_path,
                             json=forwarded_message,
                             timeout=30,
                             headers=_proxy_request_headers(

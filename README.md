@@ -432,7 +432,7 @@ Container image gate, IaC gate, air-gapped CI, MCP scan, and the SARIF / SBOM ex
 }
 ```
 
-Also on [Glama](https://glama.ai/mcp/servers/@msaad00/agent-bom), [Smithery](integrations/smithery.yaml), [MCP Registry](integrations/mcp-registry/server.json), and [OpenClaw](integrations/openclaw/README.md).
+Marketplace and agentic surfaces: [Glama](https://glama.ai/mcp/servers/@msaad00/agent-bom), [OpenClaw skills](integrations/openclaw/README.md), the [Smithery manifest](integrations/smithery.yaml), and the [MCP Registry manifest](integrations/mcp-registry/server.json).
 
 <details>
 <summary><b>Install extras + output formats</b></summary>

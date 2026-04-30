@@ -20,7 +20,7 @@ For each vulnerability found, agent-bom traces:
 
 ```bash
 # CLI
-agent-bom scan   # blast radius is included in scan output
+agent-bom agents   # blast radius is included in scan output
 
 # MCP tool
 blast_radius(cve_id="CVE-2024-21538")

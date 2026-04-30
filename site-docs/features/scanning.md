@@ -52,7 +52,7 @@ Config files are parsed for server definitions. Environment variable **values** 
 ## Container image scanning
 
 ```bash
-agent-bom scan --image python:3.12-slim
+agent-bom image python:3.12-slim
 ```
 
 Uses agent-bom's native image scanning pipeline to enumerate OS and language packages within container images.

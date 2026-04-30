@@ -42,7 +42,7 @@ pip install -e ".[dev]"
 
 ```bash
 agent-bom --version
-agent-bom scan --help
+agent-bom agents --help
 ```
 
 ## Requirements

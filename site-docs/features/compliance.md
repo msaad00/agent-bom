@@ -35,23 +35,20 @@ the scan hot path does not fetch MITRE or other framework data at runtime.
 
 ```bash
 # Single framework
-agent-bom scan --compliance owasp-llm
+agent-bom agents --compliance
 
-# Multiple frameworks
-agent-bom scan --compliance owasp-llm,eu-ai-act
-
-# All frameworks
-agent-bom scan --compliance all
+# Compliance evidence export
+agent-bom agents --compliance --compliance-export nist-ai-rmf
 ```
 
 ## CIS Benchmarks (cloud)
 
 ```bash
 # AWS CIS Foundations v3.0
-agent-bom cis-benchmark --provider aws
+agent-bom cloud aws --cis
 
 # Snowflake CIS v1.0
-agent-bom cis-benchmark --provider snowflake
+agent-bom agents --snowflake --snowflake-cis-benchmark
 ```
 
 Requires cloud credentials (AWS_PROFILE or SNOWFLAKE_ACCOUNT/USER/PASSWORD).

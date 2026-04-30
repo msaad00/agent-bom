@@ -131,7 +131,7 @@ flowchart LR
     SA2["Subagent: advisory analysis"]
     SA3["Subagent: PR/SARIF gate"]
     Contract["Signed or schema-validated artifact"]
-    AB["agent-bom scan"]
+    AB["agent-bom agents / sbom / image"]
 
     Lead --> SA1
     Lead --> SA2

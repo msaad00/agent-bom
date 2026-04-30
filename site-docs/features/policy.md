@@ -36,7 +36,7 @@ Declarative policy-as-code for security gates and enforcement.
 
 ```bash
 # CLI — evaluate scan results against policy
-agent-bom scan --policy policy.json
+agent-bom agents --policy policy.json
 
 # MCP tool
 policy_check(policy_file="policy.json")

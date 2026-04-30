@@ -65,7 +65,8 @@ visualizes agent context graphs.
 ```bash
 pipx install agent-bom
 agent-bom agents --verbose   # blast radius detail for each agent
-agent-bom graph              # generate context graph
+agent-bom agents -f json -o scan.json
+agent-bom graph scan.json    # export graph from a saved JSON report
 ```
 
 ## When to Use
@@ -85,7 +86,8 @@ agent-bom graph              # generate context graph
 agent-bom agents --verbose
 
 # Generate context graph
-agent-bom graph
+agent-bom agents -f json -o scan.json
+agent-bom graph scan.json
 ```
 
 ## Tools

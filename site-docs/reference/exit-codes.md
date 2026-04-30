@@ -19,7 +19,7 @@ automation can distinguish caller mistakes from control-plane outages.
 | `3`   | (reserved)          | Reserved for "policy gate failed" — declared so future policy commands have a stable code to use.              | Not yet emitted.                                                           |
 | `4`   | (reserved)          | Reserved for "auth required" / "auth invalid" on commands that talk to an authenticated control plane.        | Not yet emitted.                                                           |
 | `5`   | (reserved)          | Reserved for "remote control-plane error" (5xx response from the API).                                         | Not yet emitted.                                                           |
-| `130` | interrupted         | Process received `SIGINT` (`Ctrl-C`) — POSIX convention, kept for shell idiom compatibility.                  | Long-running `agent-bom proxy` / `agent-bom serve` / `agent-bom scan`.      |
+| `130` | interrupted         | Process received `SIGINT` (`Ctrl-C`) — POSIX convention, kept for shell idiom compatibility.                  | Long-running `agent-bom proxy` / `agent-bom serve` / `agent-bom agents`.    |
 | `*`   | subprocess passthrough | When agent-bom shells out (e.g. native scanner binaries), the child's non-zero exit code is propagated.    | `agent-bom shield`, `agent-bom run` proxy invocations.                     |
 
 The unreserved codes (`0`, `1`, `2`, `130`) are stable today. Codes `3`, `4`, `5` are
@@ -69,7 +69,7 @@ care about families, not individual semantics.
 Until reserved codes (`3`/`4`/`5`) are emitted, the safe shell idiom is:
 
 ```bash
-agent-bom scan ./project --output sarif > out.sarif
+agent-bom agents -p ./project --format sarif > out.sarif
 rc=$?
 case "$rc" in
   0)   echo "ok" ;;

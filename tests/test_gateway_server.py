@@ -26,7 +26,7 @@ from starlette.testclient import TestClient
 
 from agent_bom.api.auth import Role
 from agent_bom.api.tracing import parse_traceparent
-from agent_bom.gateway_server import GatewaySettings, create_gateway_app
+from agent_bom.gateway_server import GatewaySettings, GatewayUpstreamRelay, create_gateway_app
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 
 
@@ -70,6 +70,14 @@ def test_healthz_lists_configured_upstreams() -> None:
         "status": "ok",
         "upstreams": ["filesystem", "jira"],
         "auth": {"incoming_token_required": False},
+        "upstream_runtime": {
+            "pooled_http_client": True,
+            "circuit_breaker_enabled": True,
+            "failure_threshold": 3,
+            "cooldown_seconds": 30.0,
+            "max_connections": 100,
+            "max_keepalive_connections": 20,
+        },
         "rate_limit_runtime": {
             "enabled": False,
             "limit_per_tenant_per_minute": 0,
@@ -854,6 +862,86 @@ def test_relay_upstream_timeout_surfaces_as_502_and_is_audited() -> None:
             "tenant_id": "default",
             "error": "timeout",
             "reason": "timeout",
+        }
+    ]
+
+
+def test_managed_upstream_relay_opens_circuit_after_repeated_failures() -> None:
+    class _FailingResponse:
+        content = b'{"error":"boom"}'
+        headers = {"content-type": "application/json"}
+
+        def raise_for_status(self) -> None:
+            raise RuntimeError("upstream down")
+
+    class _FakeClient:
+        def __init__(self) -> None:
+            self.posts = 0
+
+        async def post(self, *_args, **_kwargs):
+            self.posts += 1
+            return _FailingResponse()
+
+        async def aclose(self) -> None:
+            pass
+
+    async def _exercise() -> int:
+        relay = GatewayUpstreamRelay(
+            GatewaySettings(
+                registry=_simple_registry(),
+                policy={},
+                upstream_failure_threshold=2,
+                upstream_circuit_cooldown_seconds=30,
+            )
+        )
+        fake_client = _FakeClient()
+        relay._client = fake_client
+        upstream = UpstreamConfig(name="filesystem", url="http://fs.local:8100")
+        message = _json_rpc("tools/call", name="read_file", arguments={"path": "/tmp/a"})
+
+        for _ in range(2):
+            try:
+                await relay(upstream, message, {})
+            except RuntimeError:
+                pass
+        try:
+            await relay(upstream, message, {})
+        except Exception as exc:  # noqa: BLE001
+            assert "circuit open" in str(exc)
+        return fake_client.posts
+
+    assert asyncio.run(_exercise()) == 2
+
+
+def test_relay_returns_503_when_managed_circuit_is_open() -> None:
+    async def circuit_open_caller(upstream, message, extra_headers):
+        from agent_bom.gateway_server import GatewayCircuitOpenError
+
+        raise GatewayCircuitOpenError(upstream.name, 12)
+
+    audit_events: list[dict[str, Any]] = []
+
+    async def audit_sink(event):
+        audit_events.append(event)
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        upstream_caller=circuit_open_caller,
+        audit_sink=audit_sink,
+    )
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post("/mcp/filesystem", json=_json_rpc("tools/call", name="read_file", arguments={"path": "/tmp/x"}))
+    assert resp.status_code == 503
+    assert resp.headers["retry-after"] == "12"
+    assert resp.json()["detail"] == "upstream circuit open"
+    assert audit_events == [
+        {
+            "action": "gateway.upstream_circuit_open",
+            "upstream": "filesystem",
+            "tenant_id": "default",
+            "reason": "circuit_open",
+            "retry_after_seconds": 12,
         }
     ]
 

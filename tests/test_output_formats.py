@@ -7,6 +7,7 @@ import io
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
+from agent_bom.finding import Asset, Finding, FindingSource, FindingType
 from agent_bom.models import (
     Agent,
     AgentStatus,
@@ -20,6 +21,7 @@ from agent_bom.models import (
     Vulnerability,
 )
 from agent_bom.output import to_csv, to_json, to_junit, to_markdown
+from agent_bom.output.html import to_html
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -130,6 +132,39 @@ def _report_with_vulns() -> tuple[AIBOMReport, list[BlastRadius]]:
     ]
     report = _make_report(agents=[agent], blast_radii=brs)
     return report, brs
+
+
+def _report_with_policy_finding() -> AIBOMReport:
+    """Report with a unified non-CVE finding and no vulnerable packages."""
+    report = _make_report(agents=[_make_agent(servers=[_make_server()])])
+    report.findings = [
+        Finding(
+            finding_type=FindingType.MCP_BLOCKLIST,
+            source=FindingSource.MCP_SCAN,
+            asset=Asset(name="credential-stealer", asset_type="mcp_server", location="/tmp/mcp.json"),
+            severity="high",
+            title="Suspicious credential exfiltration MCP server",
+            description="Matched the MCP intelligence blocklist.",
+            remediation_guidance="Remove this server or replace it with a trusted MCP server.",
+            evidence={"match_type": "pattern", "confidence": "suspicious"},
+        ),
+        Finding(
+            finding_type=FindingType.CIS_FAIL,
+            source=FindingSource.CLOUD_CIS,
+            asset=Asset(
+                name="snowflake-cortex-service",
+                asset_type="cloud_resource",
+                identifier="snowflake://acct/cortex/svc",
+                location="snowflake:us-west-2",
+            ),
+            severity="medium",
+            title="Cloud AI service missing hardened policy",
+            description="Snowflake Cortex service policy needs review.",
+            remediation_guidance="Review provider contract and tighten the service policy.",
+            evidence={"scan_mode": "operator_pushed_inventory", "permissions_used": "read-only"},
+        ),
+    ]
+    return report
 
 
 # ── JUnit XML ────────────────────────────────────────────────────────────────
@@ -364,3 +399,38 @@ class TestMarkdown:
         report = _make_report()
         md = to_markdown(report)
         assert "0.70.6" in md
+
+    def test_unified_non_cve_findings_are_rendered(self):
+        report = _report_with_policy_finding()
+        md = to_markdown(report)
+
+        assert "## Policy & Security Findings" in md
+        assert "MCP_BLOCKLIST" in md
+        assert "CIS_FAIL" in md
+        assert "credential-stealer" in md
+        assert "snowflake-cortex-service" in md
+        assert "Suspicious credential exfiltration MCP server" in md
+        assert "No vulnerabilities found" not in md
+
+
+def test_html_renders_unified_non_cve_findings_with_asset_context():
+    report = _report_with_policy_finding()
+    html = to_html(report, [])
+
+    assert "SECURITY FINDINGS" in html
+    assert "Policy &amp; Security Findings" in html
+    assert 'id="policyFindingsTable"' in html
+    assert 'class="policy-sev-filter"' in html
+    assert 'id="policyTypeFilter"' in html
+    assert 'id="policyAssetFilter"' in html
+    assert 'id="policySearch"' in html
+    assert "filterPolicyFindingsTable" in html
+    assert "MCP_BLOCKLIST" in html
+    assert "CIS_FAIL" in html
+    assert "credential-stealer" in html
+    assert "snowflake-cortex-service" in html
+    assert "cloud_resource" in html
+    assert "operator_pushed_inventory" in html
+    assert "/tmp/mcp.json" in html
+    assert "Matched the MCP intelligence blocklist." in html
+    assert "Unified non-CVE findings" in html

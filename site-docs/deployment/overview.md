@@ -506,6 +506,7 @@ YAML.
 - [When To Use Proxy vs Gateway vs Fleet](proxy-vs-gateway-vs-fleet.md)
 - [Focused EKS MCP Pilot](eks-mcp-pilot.md)
 - [Packaged API + UI Control Plane](control-plane-helm.md)
+- [Snowflake POV Deployment Runbook](snowflake-pov.md)
 - [Performance, Sizing, and Benchmarks](performance-and-sizing.md)
 - [Visual Leak Detection](visual-leak-detection.md)
 - [Worker and Scheduler Concurrency](worker-and-scheduler-concurrency.md)

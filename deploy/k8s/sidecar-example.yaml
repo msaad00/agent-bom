@@ -40,7 +40,7 @@ spec:
 
         # agent-bom proxy sidecar
         - name: agent-bom-proxy
-          image: agentbom/agent-bom:0.83.0
+          image: agentbom/agent-bom:0.83.1
           args:
             - "--log"
             - "/var/log/agent-bom/audit.jsonl"

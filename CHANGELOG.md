@@ -11,6 +11,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.83.1] – 2026-04-29
+
+### Fixed
+- **Release workflow stability** — reusable docs deployment now honors `deploy: false` when invoked by the release workflow, preventing a tag release from trying to deploy GitHub Pages as part of package publishing.
+- **Post-merge SAST time budget** — post-merge source analysis now uses the bounded `agent-bom code` analyzer and converts its JSON to SARIF, preserving Security tab upload coverage without running the broad scan pipeline.
+
+---
+
 ## [0.83.0] – 2026-04-29
 
 ### Added

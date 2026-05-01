@@ -85,6 +85,20 @@ def test_no_scan_skips_db_refresh():
         assert result.exit_code == 0
 
 
+def test_dry_run_skips_db_refresh():
+    """--dry-run must show the access plan without refreshing the vuln DB."""
+    with (
+        patch("agent_bom.db.schema.db_freshness_days") as mock_fresh,
+        patch("agent_bom.db.sync.sync_db") as mock_sync,
+        patch("agent_bom.cli.agents.discover_all", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=[]),
+    ):
+        result = _invoke("--dry-run", "--db-source", "osv")
+        mock_fresh.assert_not_called()
+        mock_sync.assert_not_called()
+        assert result.exit_code == 0
+
+
 def test_auto_update_db_handles_sync_failure():
     """When sync_db() raises, the scan should continue without crashing."""
     with (

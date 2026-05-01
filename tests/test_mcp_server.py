@@ -26,6 +26,8 @@ def _run(coro):
 
 def _call_tool(server, name, args=None):
     """Call a tool and extract the text result."""
+    if name == "scan" and (args is None or "auto_update_db" not in args):
+        raise AssertionError("MCP scan unit tests must set auto_update_db explicitly to avoid live DB refresh")
     content_blocks, _meta = _run(server.call_tool(name, args or {}))
     return json.loads(content_blocks[0].text)
 
@@ -245,7 +247,7 @@ def test_scan_returns_json(mock_pipeline):
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
-    result = _call_tool(server, "scan", {})
+    result = _call_tool(server, "scan", {"auto_update_db": False})
     assert "agents" in result
     assert result["summary"]["total_agents"] >= 1
 
@@ -257,7 +259,7 @@ def test_scan_no_agents(mock_pipeline):
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
-    result = _call_tool(server, "scan", {})
+    result = _call_tool(server, "scan", {"auto_update_db": False})
     assert result["status"] == "no_agents_found"
 
 
@@ -593,7 +595,7 @@ def test_scan_with_transitive(mock_pipeline):
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
-    _call_tool(server, "scan", {"transitive": True})
+    _call_tool(server, "scan", {"transitive": True, "auto_update_db": False})
     _args, kwargs = mock_pipeline.call_args
     assert kwargs.get("transitive") is True or (len(_args) > 4 and _args[4] is True)
 
@@ -613,7 +615,7 @@ def test_scan_with_fail_severity_pass(mock_pipeline):
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
-    result = _call_tool(server, "scan", {"fail_severity": "critical"})
+    result = _call_tool(server, "scan", {"fail_severity": "critical", "auto_update_db": False})
     assert result["gate_status"] == "pass"
     assert result["gate_severity"] == "critical"
 
@@ -650,7 +652,7 @@ def test_scan_with_fail_severity_fail(mock_pipeline):
     from agent_bom.mcp_server import create_mcp_server
 
     server = create_mcp_server()
-    result = _call_tool(server, "scan", {"fail_severity": "high"})
+    result = _call_tool(server, "scan", {"fail_severity": "high", "auto_update_db": False})
     assert result["gate_status"] == "fail"
 
 
@@ -670,9 +672,47 @@ def test_scan_with_policy(mock_pipeline):
 
     server = create_mcp_server()
     policy = {"rules": [{"id": "no-crit", "severity_gte": "critical", "action": "fail"}]}
-    result = _call_tool(server, "scan", {"policy": policy})
+    result = _call_tool(server, "scan", {"policy": policy, "auto_update_db": False})
     assert "policy_results" in result
     assert result["policy_results"]["passed"] is True
+
+
+@patch("agent_bom.mcp_server._run_scan_pipeline")
+def test_scan_with_policy_fail_action_surfaces_failure(mock_pipeline):
+    """Scan with inline policy should report fail-action matches to MCP callers."""
+    from agent_bom.models import (
+        Agent,
+        AgentType,
+        BlastRadius,
+        MCPServer,
+        Package,
+        Severity,
+        TransportType,
+        Vulnerability,
+    )
+
+    mock_agent = Agent(
+        name="test-agent",
+        agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/test",
+        mcp_servers=[MCPServer(name="s", command="npx", args=[], env={}, transport=TransportType.STDIO, packages=[])],
+    )
+    br = BlastRadius(
+        vulnerability=Vulnerability(id="CVE-2026-0001", severity=Severity.HIGH, summary="bad"),
+        package=Package(name="axios", version="1.4.0", ecosystem="npm"),
+        affected_servers=[mock_agent.mcp_servers[0]],
+        affected_agents=[mock_agent],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    mock_pipeline.return_value = ([mock_agent], [br], [], ["agent_discovery"])
+    from agent_bom.mcp_server import create_mcp_server
+
+    server = create_mcp_server()
+    policy = {"rules": [{"id": "fail-high", "severity_gte": "high", "action": "fail"}]}
+    result = _call_tool(server, "scan", {"policy": policy, "auto_update_db": False})
+    assert result["policy_results"]["passed"] is False
+    assert result["policy_results"]["failures"][0]["rule_id"] == "fail-high"
 
 
 # ---------------------------------------------------------------------------
@@ -929,7 +969,7 @@ def test_scan_with_invalid_severity_gate():
         mock_pipeline.return_value = ([mock_agent], [], [], ["agent_discovery"])
 
         with pytest.raises(ToolError, match="Invalid severity"):
-            _call_tool(server, "scan", {"fail_severity": "invalid_sev"})
+            _call_tool(server, "scan", {"fail_severity": "invalid_sev", "auto_update_db": False})
 
 
 def test_scan_surfaces_warnings():
@@ -947,7 +987,7 @@ def test_scan_surfaces_warnings():
         )
         mock_pipeline.return_value = ([mock_agent], [], ["Image scan failed for bad:image: not found"], ["agent_discovery"])
 
-        result = _call_tool(server, "scan", {})
+        result = _call_tool(server, "scan", {"auto_update_db": False})
         assert "warnings" in result
         assert len(result["warnings"]) == 1
         assert "Image scan failed" in result["warnings"][0]
@@ -961,7 +1001,7 @@ def test_scan_no_agents_with_warnings():
     with patch("agent_bom.mcp_server._run_scan_pipeline") as mock_pipeline:
         mock_pipeline.return_value = ([], [], ["SBOM file too large"], [])
 
-        result = _call_tool(server, "scan", {})
+        result = _call_tool(server, "scan", {"auto_update_db": False})
         assert result["status"] == "no_agents_found"
         assert "warnings" in result
         assert "SBOM file too large" in result["warnings"][0]

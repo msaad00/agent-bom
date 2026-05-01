@@ -69,7 +69,7 @@ def _run_scan_with_findings(
         mcp_servers=[server],
     )
 
-    args = ["scan"] + (extra_args or [])
+    args = ["scan", "--no-auto-update-db"] + (extra_args or [])
 
     with (
         patch("agent_bom.cli.agents.discover_all", return_value=[mock_agent]),
@@ -235,6 +235,7 @@ async def test_scan_impl_warn_severity_warn_status():
 
     raw = await scan_impl(
         warn_severity="medium",
+        auto_update_db=False,
         _run_scan_pipeline=_mock_pipeline,
         _truncate_response=lambda x: x,
     )
@@ -266,6 +267,7 @@ async def test_scan_impl_warn_severity_pass_status():
 
     raw = await scan_impl(
         warn_severity="high",
+        auto_update_db=False,
         _run_scan_pipeline=_mock_pipeline,
         _truncate_response=lambda x: x,
     )

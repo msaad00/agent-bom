@@ -102,21 +102,35 @@ def _render_provenance_check(provenance: dict | None) -> dict[str, str]:
     """Normalize provenance verification into a stable CLI-facing status."""
     if provenance and provenance.get("has_provenance"):
         att_count = provenance.get("attestation_count", 0)
+        files = provenance.get("files") or []
+        if files:
+            file_count = len(files) if isinstance(files, list) else 0
+            detail = f"Release provenance present for all {file_count} file(s) ({att_count} attestation(s))"
+        else:
+            detail = f"Provenance attestation found ({att_count} attestation(s))"
         return {
             "status": "pass",
-            "detail": f"Attestation found ({att_count} attestation(s))",
+            "detail": detail,
         }
 
     status = str((provenance or {}).get("status") or "")
     if status == "not_published":
         return {
             "status": "missing",
-            "detail": "No provenance attestation published",
+            "detail": "No registry provenance attestation found for this release",
         }
     if status == "not_provenance":
         return {
             "status": "missing",
             "detail": "Attestations found, but none were SLSA/provenance attestations",
+        }
+    if status == "partial":
+        att_count = (provenance or {}).get("attestation_count", 0)
+        missing = (provenance or {}).get("missing_files") or []
+        suffix = f"; missing: {', '.join(missing[:3])}" if missing else ""
+        return {
+            "status": "fail",
+            "detail": f"Only partial release provenance found ({att_count} attestation(s)){suffix}",
         }
     if status == "unavailable":
         return {
@@ -777,6 +791,8 @@ def verify(
 
     # Provenance check
     checks["provenance"] = _render_provenance_check(provenance)
+    if checks["provenance"]["status"] != "pass":
+        exit_code = 1
 
     # Metadata consistency (self-verify with pypi_meta only)
     if pypi_meta and record_result:
@@ -853,7 +869,7 @@ def verify(
         console.print(f"  License: {pypi_meta.get('license', 'N/A')}")
 
     if exit_code == 0:
-        console.print(f"\n  [bold green]VERIFIED[/bold green] — {name}@{version} integrity confirmed\n")
+        console.print(f"\n  [bold green]VERIFIED[/bold green] — {name}@{version} integrity and provenance confirmed\n")
     else:
         console.print("\n  [bold red]UNVERIFIED[/bold red] — one or more checks failed\n")
 

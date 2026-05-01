@@ -310,6 +310,19 @@ def test_mcp_server_cmd_stdio():
         mock_server.run.assert_called_once_with(transport="stdio")
 
 
+def test_top_level_mcp_server_alias_for_registry_compatibility():
+    """Registry launchers may still call the historical top-level command."""
+    from agent_bom.cli import main
+
+    runner = CliRunner()
+    mock_server = MagicMock()
+    with patch("agent_bom.mcp_server.create_mcp_server", return_value=mock_server):
+        result = runner.invoke(main, ["mcp-server"], catch_exceptions=False)
+
+    assert result.exit_code == 0
+    mock_server.run.assert_called_once_with(transport="stdio")
+
+
 def test_mcp_server_cmd_sse():
     """Test mcp-server command in SSE mode."""
     runner = CliRunner()

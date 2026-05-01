@@ -237,6 +237,51 @@ async def test_check_pypi_provenance_unavailable():
     assert result == {"has_provenance": False, "status": "unavailable"}
 
 
+@pytest.mark.asyncio
+async def test_check_pypi_provenance_uses_file_scoped_integrity_api():
+    from agent_bom.integrity import check_pypi_provenance
+
+    metadata_response = MagicMock()
+    metadata_response.status_code = 200
+    metadata_response.json.return_value = {
+        "urls": [
+            {"filename": "agent_bom-0.84.5-py3-none-any.whl"},
+            {"filename": "agent_bom-0.84.5.tar.gz"},
+        ]
+    }
+    wheel_response = MagicMock()
+    wheel_response.status_code = 200
+    wheel_response.json.return_value = {"attestation_bundles": [{"attestations": [{}]}]}
+    sdist_response = MagicMock()
+    sdist_response.status_code = 200
+    sdist_response.json.return_value = {"attestation_bundles": [{"attestations": [{}]}]}
+
+    mock_client = AsyncMock()
+
+    with patch(
+        "agent_bom.integrity.request_with_retry",
+        side_effect=[metadata_response, wheel_response, sdist_response],
+    ) as request:
+        result = await check_pypi_provenance("agent-bom", "0.84.5", mock_client)
+
+    assert result == {
+        "has_provenance": True,
+        "status": "verified",
+        "attestation_count": 2,
+        "files": ["agent_bom-0.84.5-py3-none-any.whl", "agent_bom-0.84.5.tar.gz"],
+        "attestations_by_file": {
+            "agent_bom-0.84.5-py3-none-any.whl": 1,
+            "agent_bom-0.84.5.tar.gz": 1,
+        },
+    }
+    requested_urls = [call.args[2] for call in request.call_args_list]
+    assert requested_urls == [
+        "https://pypi.org/pypi/agent-bom/0.84.5/json",
+        "https://pypi.org/integrity/agent-bom/0.84.5/agent_bom-0.84.5-py3-none-any.whl/provenance",
+        "https://pypi.org/integrity/agent-bom/0.84.5/agent_bom-0.84.5.tar.gz/provenance",
+    ]
+
+
 # ─── CLI verify command ──────────────────────────────────────────────────────
 
 
@@ -320,6 +365,13 @@ def test_verify_self_no_args():
     assert result.exit_code == 0 or "VERIFIED" in result.output
 
 
+def test_verify_success_wording_mentions_provenance():
+    record, integrity, provenance, pypi_meta = _mock_verify_all_pass()
+    result = _run_verify_with_mocks(["verify", "requests@2.33.0", "-e", "pypi"], record, integrity, provenance, pypi_meta)
+    assert result.exit_code == 0
+    assert "integrity and provenance confirmed" in result.output
+
+
 def test_verify_agent_bom_shortcut_uses_self_verify():
     record, integrity, provenance, pypi_meta = _mock_verify_all_pass()
     result = _run_verify_with_mocks(["verify", "agent-bom"], record, integrity, provenance, pypi_meta)
@@ -392,7 +444,10 @@ def test_verify_provenance_missing_is_not_unknown():
     result = _run_verify_with_mocks(["verify", "--json"], record, integrity, missing_provenance, pypi_meta)
 
     data = json.loads(result.output)
+    assert result.exit_code == 1
+    assert data["verdict"] == "unverified"
     assert data["checks"]["provenance"]["status"] == "missing"
+    assert data["checks"]["provenance"]["detail"] == "No registry provenance attestation found for this release"
 
 
 def test_verify_provenance_unavailable_is_not_unknown():
@@ -402,7 +457,42 @@ def test_verify_provenance_unavailable_is_not_unknown():
     result = _run_verify_with_mocks(["verify", "--json"], record, integrity, unavailable_provenance, pypi_meta)
 
     data = json.loads(result.output)
+    assert result.exit_code == 1
+    assert data["verdict"] == "unverified"
     assert data["checks"]["provenance"]["status"] == "unavailable"
+
+
+def test_verify_partial_provenance_fails_verdict():
+    record, integrity, _provenance, pypi_meta = _mock_verify_all_pass()
+    partial_provenance = {
+        "has_provenance": False,
+        "status": "partial",
+        "attestation_count": 1,
+        "missing_files": ["agent_bom-0.84.5.tar.gz"],
+    }
+
+    result = _run_verify_with_mocks(["verify", "--json"], record, integrity, partial_provenance, pypi_meta)
+
+    data = json.loads(result.output)
+    assert result.exit_code == 1
+    assert data["verdict"] == "unverified"
+    assert data["checks"]["provenance"]["status"] == "fail"
+
+
+def test_verify_provenance_pass_mentions_all_files():
+    record, integrity, _provenance, pypi_meta = _mock_verify_all_pass()
+    provenance = {
+        "has_provenance": True,
+        "status": "verified",
+        "attestation_count": 2,
+        "files": ["pkg-1.0.0-py3-none-any.whl", "pkg-1.0.0.tar.gz"],
+    }
+
+    result = _run_verify_with_mocks(["verify", "--json"], record, integrity, provenance, pypi_meta)
+
+    data = json.loads(result.output)
+    assert data["checks"]["provenance"]["status"] == "pass"
+    assert data["checks"]["provenance"]["detail"] == "Release provenance present for all 2 file(s) (2 attestation(s))"
 
 
 def test_verify_record_tampered_fails():

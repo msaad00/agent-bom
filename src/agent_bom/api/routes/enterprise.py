@@ -37,9 +37,9 @@ import secrets
 import threading
 import time
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Header, HTTPException, Query, Request, Response
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
@@ -1097,7 +1097,11 @@ async def delete_exception(request: Request, exception_id: str) -> None:
 
 
 @router.post("/v1/baseline/compare", tags=["enterprise"])
-async def compare_baseline(request: Request, previous_job_id: str = "", current_job_id: str = "") -> dict:
+async def compare_baseline(
+    request: Request,
+    previous_job_id: Annotated[str, Query(min_length=1)],
+    current_job_id: Annotated[str, Query(min_length=1)],
+) -> dict:
     """Compare two scan results to show new, resolved, and persistent vulnerabilities."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.baseline import compare_reports
@@ -1105,18 +1109,15 @@ async def compare_baseline(request: Request, previous_job_id: str = "", current_
     store = _get_store()
     tenant_id = getattr(request.state, "tenant_id", "default")
     actor = getattr(request.state, "api_key_name", "") or "system"
-    prev_job = store.get(previous_job_id, tenant_id=tenant_id) if previous_job_id else None
-    curr_job = store.get(current_job_id, tenant_id=tenant_id) if current_job_id else None
-    if previous_job_id and prev_job is None:
+    prev_job = store.get(previous_job_id, tenant_id=tenant_id)
+    curr_job = store.get(current_job_id, tenant_id=tenant_id)
+    if prev_job is None:
         raise HTTPException(status_code=404, detail="Previous job not found")
-    if current_job_id and curr_job is None:
+    if curr_job is None:
         raise HTTPException(status_code=404, detail="Current job not found")
 
-    prev_report = prev_job.result if prev_job and prev_job.result else {}
-    curr_report = curr_job.result if curr_job and curr_job.result else {}
-
-    if not prev_report and not curr_report:
-        raise HTTPException(status_code=404, detail="At least one valid job_id required")
+    prev_report = prev_job.result or {}
+    curr_report = curr_job.result or {}
 
     diff = compare_reports(prev_report, curr_report)
     log_action(

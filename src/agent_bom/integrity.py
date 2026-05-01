@@ -200,38 +200,82 @@ async def check_pypi_provenance(
     Returns:
         Dict with provenance info or None if not available
     """
-    # PyPI attestation endpoint (PEP 740)
-    response = await request_with_retry(
+    metadata_response = await request_with_retry(
         client,
         "GET",
-        f"https://pypi.org/integrity/{package_name}/{version}/",
+        f"https://pypi.org/pypi/{package_name}/{version}/json",
     )
 
-    if response is None:
+    if metadata_response is None:
         return {"has_provenance": False, "status": "unavailable"}
 
-    if response.status_code == 404:
+    if metadata_response.status_code == 404:
         return {"has_provenance": False, "status": "not_published", "attestation_count": 0}
 
-    if response.status_code == 200:
+    if metadata_response.status_code != 200:
+        return {"has_provenance": False, "status": "unavailable", "http_status": metadata_response.status_code}
+
+    try:
+        release_data = metadata_response.json()
+        filenames = [str(item.get("filename", "")).strip() for item in release_data.get("urls", [])]
+        filenames = [name for name in filenames if name]
+    except (ValueError, TypeError):
+        logger.warning("PyPI provenance metadata parse failed for %s@%s", package_name, version)
+        return {"has_provenance": False, "status": "unavailable"}
+
+    if not filenames:
+        return {"has_provenance": False, "status": "not_published", "attestation_count": 0}
+
+    attestations_by_file: dict[str, int] = {}
+    missing_files: list[str] = []
+    unavailable_status: int | None = None
+    for filename in filenames:
+        response = await request_with_retry(
+            client,
+            "GET",
+            f"https://pypi.org/integrity/{package_name}/{version}/{filename}/provenance",
+            headers={"Accept": "application/vnd.pypi.integrity.v1+json"},
+        )
+        if response is None:
+            return {"has_provenance": False, "status": "unavailable"}
+        if response.status_code == 404:
+            missing_files.append(filename)
+            continue
+        if response.status_code != 200:
+            unavailable_status = response.status_code
+            missing_files.append(filename)
+            continue
         try:
             data = response.json()
-            if data.get("attestations"):
-                return {
-                    "has_provenance": True,
-                    "status": "verified",
-                    "attestation_count": len(data["attestations"]),
-                }
-            return {
-                "has_provenance": False,
-                "status": "not_published",
-                "attestation_count": 0,
-            }
-        except (ValueError, KeyError):
+            bundles = data.get("attestation_bundles", [])
+            attestation_count = sum(len(bundle.get("attestations", [])) for bundle in bundles if isinstance(bundle, dict))
+            if attestation_count:
+                attestations_by_file[filename] = attestation_count
+            else:
+                missing_files.append(filename)
+        except (ValueError, TypeError):
             logger.warning("PyPI provenance parse failed for %s@%s", package_name, version)
             return {"has_provenance": False, "status": "unavailable"}
 
-    return {"has_provenance": False, "status": "unavailable", "http_status": response.status_code}
+    if attestations_by_file and not missing_files and len(attestations_by_file) == len(filenames):
+        return {
+            "has_provenance": True,
+            "status": "verified",
+            "attestation_count": sum(attestations_by_file.values()),
+            "files": sorted(attestations_by_file),
+            "attestations_by_file": attestations_by_file,
+        }
+
+    result = {"has_provenance": False, "status": "not_published", "attestation_count": 0}
+    if attestations_by_file:
+        result["status"] = "partial"
+        result["attestation_count"] = sum(attestations_by_file.values())
+        result["files"] = sorted(attestations_by_file)
+    if missing_files:
+        result["missing_files"] = missing_files
+    if unavailable_status is not None:
+        result["http_status"] = unavailable_status
+    return result
 
 
 async def check_package_provenance(

@@ -117,6 +117,20 @@ def test_discover_skills_directory(tmp_path):
     assert any(p.name == "my-skill.md" for p in found)
 
 
+def test_discover_nested_skill_md_and_cursor_mdc(tmp_path):
+    """Discovers common nested skill layouts and Cursor .mdc rule files."""
+    nested_skill = tmp_path / "skills" / "review" / "SKILL.md"
+    cursor_rule = tmp_path / ".cursor" / "rules" / "secure-coding.mdc"
+    nested_skill.parent.mkdir(parents=True)
+    cursor_rule.parent.mkdir(parents=True)
+    nested_skill.write_text("# Review skill")
+    cursor_rule.write_text("# Cursor rule")
+
+    found = discover_skill_files(tmp_path)
+    assert nested_skill in found
+    assert cursor_rule in found
+
+
 def test_discover_cursorrules(tmp_path):
     """Discovers .cursorrules file."""
     (tmp_path / ".cursorrules").write_text("# Cursor rules")

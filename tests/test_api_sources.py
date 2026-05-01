@@ -149,6 +149,34 @@ def test_connector_source_test_updates_health(source_client: TestClient, monkeyp
     assert fetched_body["status"] == "healthy"
 
 
+def test_viewer_cannot_test_or_run_sources(source_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    def _must_not_check_connector_health(connector_name: str):
+        raise AssertionError("viewer must not reach connector health checks")
+
+    def _must_not_enqueue_scan_job(**kwargs):
+        raise AssertionError("viewer must not enqueue source scans")
+
+    monkeypatch.setattr("agent_bom.connectors.check_connector_health", _must_not_check_connector_health)
+    monkeypatch.setattr("agent_bom.api.routes.sources.enqueue_scan_job", _must_not_enqueue_scan_job)
+
+    created = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Repo scan source",
+            "kind": "scan.repo",
+            "config": {"scan_request": {"inventory": "agents.json", "format": "json"}},
+        },
+    )
+    source_id = created.json()["source_id"]
+
+    test_resp = source_client.post(f"/v1/sources/{source_id}/test", headers=VIEWER_HEADERS)
+    run_resp = source_client.post(f"/v1/sources/{source_id}/run", headers=VIEWER_HEADERS)
+
+    assert test_resp.status_code == 403
+    assert run_resp.status_code == 403
+
+
 def test_running_source_queues_source_linked_job(source_client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     from agent_bom.api.models import ScanJob
     from agent_bom.api.stores import _get_store, _jobs_put

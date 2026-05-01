@@ -93,124 +93,136 @@ def run_default_scan(cfg: ScanConfig, con: "Console") -> ScanResult:
             con.print("\n[bold yellow]Demo mode[/bold yellow] — curated agent + MCP sample with known-vulnerable packages.\n")
 
     # ── Offline mode ─────────────────────────────────────────────────
+    previous_offline_mode: bool | None = None
     if cfg.offline:
+        import agent_bom.scanners as _scanners
         from agent_bom.scanners import set_offline_mode
 
+        previous_offline_mode = _scanners.offline_mode
         set_offline_mode(True)
         enrich = False
         if not cfg.quiet:
             con.print("[dim]Offline mode — local vulnerability DB only[/dim]")
 
-    # ── Discovery ────────────────────────────────────────────────────
-    ctx = ScanContext(con=con)
+    def _restore_offline_mode() -> None:
+        if previous_offline_mode is not None:
+            from agent_bom.scanners import set_offline_mode
 
-    run_local_discovery(
-        ctx,
-        project=project,
-        config_dir=None,
-        inventory=inventory,
-        skill_only=False,
-        dynamic_discovery=False,
-        dynamic_max_depth=3,
-        include_processes=False,
-        include_containers=False,
-        introspect=False,
-        introspect_timeout=10.0,
-        enforce=False,
-        health_check=False,
-        hc_timeout=5.0,
-        k8s_mcp=False,
-        k8s_namespace="default",
-        k8s_all_namespaces=False,
-        k8s_mcp_context=None,
-        no_skill=True,
-        skill_paths=(),
-        skill_only_mode=False,
-        ai_enrich=False,
-        ai_model="",
-        sbom_file=None,
-        sbom_name=None,
-        external_scan_path=None,
-        k8s=False,
-        namespace="default",
-        all_namespaces=False,
-        k8s_context=None,
-        registry_user=None,
-        registry_pass=None,
-        image_platform=None,
-        images=(),
-        image_tars=(),
-        filesystem_paths=(),
-        code_paths=(),
-        sast_config="auto",
-        ai_inventory_paths=(),
-        tf_dirs=(),
-        gha_path=None,
-        agent_projects=(),
-        scan_prompts=False,
-        browser_extensions=False,
-        jupyter_dirs=(),
-        verbose=False,
-        quiet=cfg.quiet,
-        smithery_token=None,
-        smithery_flag=False,
-        mcp_registry_flag=False,
-        os_packages=False,
-        iac_paths=iac_paths,
-        _image_only=False,
-        _any_cloud=False,
-        _discover_all=discover_all,
-    )
+            set_offline_mode(previous_offline_mode)
 
-    agents = ctx.agents
-    flag_blocklisted_mcp_servers(agents)
+    try:
+        # ── Discovery ────────────────────────────────────────────────────
+        ctx = ScanContext(con=con)
 
-    # ── Package extraction ───────────────────────────────────────────
-    total_packages = 0
-    for agent in agents:
-        for server in agent.mcp_servers:
-            if server.security_blocked:
-                continue
-            discovered = extract_packages(
-                server,
-                resolve_transitive=cfg.resolve_transitive,
-                max_depth=cfg.max_depth,
-            )
-            discovered_names = {(p.name, p.ecosystem) for p in discovered}
-            pre_populated = list(server.packages)
-            merged = discovered + [p for p in pre_populated if (p.name, p.ecosystem) not in discovered_names]
-            server.packages = merged
-            total_packages += len(server.packages)
+        run_local_discovery(
+            ctx,
+            project=project,
+            config_dir=None,
+            inventory=inventory,
+            skill_only=False,
+            dynamic_discovery=False,
+            dynamic_max_depth=3,
+            include_processes=False,
+            include_containers=False,
+            introspect=False,
+            introspect_timeout=10.0,
+            enforce=False,
+            health_check=False,
+            hc_timeout=5.0,
+            k8s_mcp=False,
+            k8s_namespace="default",
+            k8s_all_namespaces=False,
+            k8s_mcp_context=None,
+            no_skill=True,
+            skill_paths=(),
+            skill_only_mode=False,
+            ai_enrich=False,
+            ai_model="",
+            sbom_file=None,
+            sbom_name=None,
+            external_scan_path=None,
+            k8s=False,
+            namespace="default",
+            all_namespaces=False,
+            k8s_context=None,
+            registry_user=None,
+            registry_pass=None,
+            image_platform=None,
+            images=(),
+            image_tars=(),
+            filesystem_paths=(),
+            code_paths=(),
+            sast_config="auto",
+            ai_inventory_paths=(),
+            tf_dirs=(),
+            gha_path=None,
+            agent_projects=(),
+            scan_prompts=False,
+            browser_extensions=False,
+            jupyter_dirs=(),
+            verbose=False,
+            quiet=cfg.quiet,
+            smithery_token=None,
+            smithery_flag=False,
+            mcp_registry_flag=False,
+            os_packages=False,
+            iac_paths=iac_paths,
+            _image_only=False,
+            _any_cloud=False,
+            _discover_all=discover_all,
+        )
 
-    # ── Vulnerability scan ───────────────────────────────────────────
-    blast_radii: list[BlastRadius] = []
-    if total_packages > 0:
-        try:
-            blast_radii = scan_agents_sync(
-                agents,
-                enable_enrichment=enrich,
-                blast_radius_depth=cfg.blast_radius_depth,
-                compliance_enabled=compliance,
-                resolve_transitive=cfg.resolve_transitive,
-                offline=cfg.offline,
-            )
-        except IncompleteScanError as exc:
-            con.print(f"  [yellow]Warning:[/yellow] {exc}")
-            raise SystemExit(1)
+        agents = ctx.agents
+        flag_blocklisted_mcp_servers(agents)
 
-    # ── Build report ─────────────────────────────────────────────────
-    findings = [blast_radius_to_finding(br) for br in blast_radii]
-    findings.extend(blocklist_findings_for_agents(agents))
-    report = AIBOMReport(
-        agents=agents,
-        blast_radii=blast_radii,
-        findings=findings,
-        scan_sources=["agent_discovery"],
-    )
+        # ── Package extraction ───────────────────────────────────────────
+        total_packages = 0
+        for agent in agents:
+            for server in agent.mcp_servers:
+                if server.security_blocked:
+                    continue
+                discovered = extract_packages(
+                    server,
+                    resolve_transitive=cfg.resolve_transitive,
+                    max_depth=cfg.max_depth,
+                )
+                discovered_names = {(p.name, p.ecosystem) for p in discovered}
+                pre_populated = list(server.packages)
+                merged = discovered + [p for p in pre_populated if (p.name, p.ecosystem) not in discovered_names]
+                server.packages = merged
+                total_packages += len(server.packages)
 
-    return ScanResult(
-        agents=agents,
-        blast_radii=blast_radii,
-        report=report,
-        total_packages=total_packages,
-    )
+        # ── Vulnerability scan ───────────────────────────────────────────
+        blast_radii: list[BlastRadius] = []
+        if total_packages > 0:
+            try:
+                blast_radii = scan_agents_sync(
+                    agents,
+                    enable_enrichment=enrich,
+                    blast_radius_depth=cfg.blast_radius_depth,
+                    compliance_enabled=compliance,
+                    resolve_transitive=cfg.resolve_transitive,
+                    offline=cfg.offline,
+                )
+            except IncompleteScanError as exc:
+                con.print(f"  [yellow]Warning:[/yellow] {exc}")
+                raise SystemExit(1) from exc
+
+        # ── Build report ─────────────────────────────────────────────────
+        findings = [blast_radius_to_finding(br) for br in blast_radii]
+        findings.extend(blocklist_findings_for_agents(agents))
+        report = AIBOMReport(
+            agents=agents,
+            blast_radii=blast_radii,
+            findings=findings,
+            scan_sources=["agent_discovery"],
+        )
+
+        return ScanResult(
+            agents=agents,
+            blast_radii=blast_radii,
+            report=report,
+            total_packages=total_packages,
+        )
+    finally:
+        _restore_offline_mode()

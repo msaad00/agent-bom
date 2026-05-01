@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
+from agent_bom.cli import main
 from agent_bom.cli._policy import apply_command, policy_template
 
 # ---------------------------------------------------------------------------
@@ -31,6 +32,20 @@ def test_policy_template_custom_path(tmp_path):
     result = runner.invoke(policy_template, ["-o", str(out)])
     assert result.exit_code == 0
     assert out.exists()
+
+
+def test_policy_templates_aliases(tmp_path):
+    runner = CliRunner()
+    top_level = tmp_path / "top.json"
+    grouped = tmp_path / "grouped.json"
+
+    result = runner.invoke(main, ["policy-templates", "-o", str(top_level)])
+    assert result.exit_code == 0
+    assert top_level.exists()
+
+    result = runner.invoke(main, ["policy", "templates", "-o", str(grouped)])
+    assert result.exit_code == 0
+    assert grouped.exists()
 
 
 # ---------------------------------------------------------------------------

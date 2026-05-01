@@ -420,6 +420,60 @@ async def list_discovery_providers() -> dict:
     return provider_contracts()
 
 
+@router.get("/v1/agents/mesh", tags=["discovery"])
+async def get_agent_mesh(request: Request) -> dict:
+    """Get a ReactFlow-compatible mesh topology of all discovered agents.
+
+    Shows agents, their MCP servers, tools, and vulnerability overlay
+    as an interactive graph.
+    """
+    try:
+        from agent_bom.discovery import discover_all
+        from agent_bom.output.agent_mesh import build_agent_mesh
+        from agent_bom.parsers import extract_packages
+
+        agents = discover_all()
+        for agent in agents:
+            for server in agent.mcp_servers:
+                if not server.packages:
+                    server.packages = extract_packages(server)
+
+        tenant_id = _tenant_id(request)
+        scan_history_index = _build_scan_history_index(tenant_id)
+        gateway_index = _build_gateway_index(tenant_id)
+        fleet_index = {item.name: item.model_dump() for item in _get_fleet_store().list_by_tenant(tenant_id)}
+        for agent in agents:
+            _persist_agent_observations(
+                tenant_id,
+                agent,
+                fleet_agent=fleet_index.get(agent.name),
+                scan_history_index=scan_history_index,
+                gateway_index=gateway_index,
+            )
+        observation_index = _observation_index(tenant_id)
+        agents_data = [
+            _serialize_agent(
+                a,
+                fleet_agent=fleet_index.get(a.name),
+                scan_history_index=scan_history_index,
+                gateway_index=gateway_index,
+                observation_index=observation_index,
+            )
+            for a in agents
+        ]
+
+        # Gather blast radius from completed scans for vuln overlay.
+        all_blast: list[dict] = []
+        for job in _get_store().list_all(tenant_id=_tenant_id(request)):
+            if job.status == JobStatus.DONE and job.result:
+                all_blast.extend(job.result.get("blast_radius", []))
+
+        return build_agent_mesh(agents_data, all_blast)
+    except Exception as exc:  # noqa: BLE001
+        _logger.exception("Request failed")
+        raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc
+
+
 @router.get("/v1/agents/{agent_name}", tags=["discovery"])
 async def get_agent_detail(request: Request, agent_name: str) -> dict:
     """Get detailed view of a single agent with cross-referenced scan data."""
@@ -689,57 +743,3 @@ async def get_agent_lifecycle(request: Request, agent_name: str) -> dict:
         y_offset = max(y_offset + 180, py_)
 
     return {"nodes": nodes, "edges": edges, "stats": detail["summary"]}
-
-
-@router.get("/v1/agents/mesh", tags=["discovery"])
-async def get_agent_mesh(request: Request) -> dict:
-    """Get a ReactFlow-compatible mesh topology of all discovered agents.
-
-    Shows agents, their MCP servers, tools, and vulnerability overlay
-    as an interactive graph.
-    """
-    try:
-        from agent_bom.discovery import discover_all
-        from agent_bom.output.agent_mesh import build_agent_mesh
-        from agent_bom.parsers import extract_packages
-
-        agents = discover_all()
-        for agent in agents:
-            for server in agent.mcp_servers:
-                if not server.packages:
-                    server.packages = extract_packages(server)
-
-        tenant_id = _tenant_id(request)
-        scan_history_index = _build_scan_history_index(tenant_id)
-        gateway_index = _build_gateway_index(tenant_id)
-        fleet_index = {item.name: item.model_dump() for item in _get_fleet_store().list_by_tenant(tenant_id)}
-        for agent in agents:
-            _persist_agent_observations(
-                tenant_id,
-                agent,
-                fleet_agent=fleet_index.get(agent.name),
-                scan_history_index=scan_history_index,
-                gateway_index=gateway_index,
-            )
-        observation_index = _observation_index(tenant_id)
-        agents_data = [
-            _serialize_agent(
-                a,
-                fleet_agent=fleet_index.get(a.name),
-                scan_history_index=scan_history_index,
-                gateway_index=gateway_index,
-                observation_index=observation_index,
-            )
-            for a in agents
-        ]
-
-        # Gather blast radius from completed scans for vuln overlay
-        all_blast: list[dict] = []
-        for job in _get_store().list_all(tenant_id=_tenant_id(request)):
-            if job.status == JobStatus.DONE and job.result:
-                all_blast.extend(job.result.get("blast_radius", []))
-
-        return build_agent_mesh(agents_data, all_blast)
-    except Exception as exc:  # noqa: BLE001
-        _logger.exception("Request failed")
-        raise HTTPException(status_code=500, detail=sanitize_error(exc)) from exc

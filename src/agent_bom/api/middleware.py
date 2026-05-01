@@ -665,6 +665,69 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         }
     )
 
+    @staticmethod
+    def _is_dashboard_public_request(path: str, method: str) -> bool:
+        if method not in {"GET", "HEAD"}:
+            return False
+        if path.startswith(("/v1/", "/metrics")):
+            return False
+        if path.startswith(("/scim/", "/docs", "/redoc", "/openapi.json")):
+            return False
+        if path.startswith("/_next/"):
+            return True
+        if path in {"/favicon.ico", "/robots.txt", "/manifest.json", "/apple-touch-icon.png"}:
+            return True
+        dashboard_routes = {
+            "",
+            "activity",
+            "agents",
+            "audit",
+            "compliance",
+            "context",
+            "findings",
+            "fleet",
+            "gateway",
+            "governance",
+            "graph",
+            "help",
+            "index",
+            "insights",
+            "jobs",
+            "mesh",
+            "proxy",
+            "registry",
+            "remediation",
+            "scan",
+            "security-graph",
+            "sources",
+            "traces",
+            "vulns",
+        }
+        normalized = path.strip("/")
+        first_segment = normalized.split("/", 1)[0] if normalized else ""
+        public_suffixes = (
+            ".html",
+            ".css",
+            ".js",
+            ".mjs",
+            ".map",
+            ".woff",
+            ".woff2",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".webp",
+            ".svg",
+            ".ico",
+            ".txt",
+        )
+        if path.lower().endswith(public_suffixes):
+            return first_segment in dashboard_routes or ("/" not in normalized and normalized.rsplit(".", 1)[0] in dashboard_routes)
+        # Client-side dashboard routes are served by the SPA fallback. Keep
+        # this whitelist tight so arbitrary application routes cannot bypass
+        # OIDC/API-key/SCIM authentication just because they are GET requests.
+        return first_segment in dashboard_routes
+
     # Ordered route rules so narrower enterprise paths win over broad prefixes.
     # Narrower posture sub-paths come before the `/v1/posture` viewer rule for
     # readability — they would inherit `viewer` via the broad prefix anyway,
@@ -838,6 +901,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: StarletteRequest, call_next):
         if request.url.path in self._EXEMPT_PATHS:
+            return await call_next(request)
+        if self._is_dashboard_public_request(request.url.path, request.method):
             return await call_next(request)
 
         if os.environ.get("AGENT_BOM_POSTGRES_URL"):
@@ -1215,7 +1280,20 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             scope = f"ip:{client_ip}"
         return f"{scope}:{bucket_type}"
 
+    @staticmethod
+    def _is_dashboard_static_asset(path: str, method: str) -> bool:
+        if method not in {"GET", "HEAD"}:
+            return False
+        if path.startswith("/_next/"):
+            return True
+        if path in {"/favicon.ico", "/robots.txt", "/manifest.json", "/apple-touch-icon.png"}:
+            return True
+        return False
+
     async def dispatch(self, request: StarletteRequest, call_next):
+        if self._is_dashboard_static_asset(request.url.path, request.method):
+            return await call_next(request)
+
         now = time.time()
 
         is_scan = request.url.path.startswith("/v1/scan") and request.method == "POST"

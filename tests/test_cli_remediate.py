@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import io
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
 from click.testing import CliRunner
+from rich.console import Console
 
 from agent_bom.cli._remediate import remediate_cmd
 
@@ -99,6 +102,25 @@ def test_remediate_demo_offline_runs():
     with _patch_scan():
         result = runner.invoke(remediate_cmd, ["--demo", "--offline"])
     assert result.exit_code == 0, result.output
+
+
+def test_default_scan_restores_offline_mode_on_discovery_error(monkeypatch):
+    """Helper scans must not leak process-global offline mode after failures."""
+    import agent_bom.scanners as scanners
+    from agent_bom.cli._scan_runner import ScanConfig, run_default_scan
+
+    def _fail_discovery(*args, **kwargs):  # noqa: ARG001
+        raise RuntimeError("discovery failed")
+
+    scanners.set_offline_mode(False)
+    monkeypatch.setattr("agent_bom.cli.agents._discovery.run_local_discovery", _fail_discovery)
+
+    try:
+        with pytest.raises(RuntimeError, match="discovery failed"):
+            run_default_scan(ScanConfig(offline=True), Console(file=io.StringIO()))
+        assert scanners.offline_mode is False
+    finally:
+        scanners.set_offline_mode(False)
 
 
 def test_remediate_json_contains_plan_key():

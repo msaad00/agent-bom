@@ -483,6 +483,9 @@ def scan(
             err=True,
         )
         raise SystemExit(2)
+    if not output and output_format == "pdf" and _output_format_was_explicit():
+        click.echo("Error: --format pdf requires --output/-o (PDF is a binary file output).", err=True)
+        raise SystemExit(2)
 
     # Also set the output module's console so print_summary etc. route correctly
     import agent_bom.output as _out
@@ -540,7 +543,7 @@ def scan(
 
     # ── Auto-offline: use local DB if synced recently (saves ~10s network) ──
     prefer_local_db = False
-    if not offline and not no_scan:
+    if not offline and not no_scan and not dry_run:
         try:
             import os
             import time
@@ -555,8 +558,8 @@ def scan(
         except Exception:
             pass  # DB not available, will use network
 
-    # ── Auto-refresh stale DB if enabled (skip entirely when --no-scan) ───────
-    if auto_update_db and not no_scan:
+    # ── Auto-refresh stale DB if enabled (skip side-effect-light modes) ───────
+    if auto_update_db and not no_scan and not dry_run:
         from agent_bom.db.schema import db_freshness_days
         from agent_bom.db.sync import sync_db
 
@@ -1472,6 +1475,8 @@ def scan(
         _scan_sources.append("github_actions")
     if browser_extensions:
         _scan_sources.append("browser_extensions")
+    if scan_prompts:
+        _scan_sources.append("prompt_scan")
     if jupyter_dirs:
         _scan_sources.append("jupyter")
     if gpu_scan_flag:

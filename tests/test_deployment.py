@@ -306,6 +306,18 @@ def test_release_registry_gate_is_deterministic_without_live_sync():
     assert "agent-bom registry sync-all" not in workflow
 
 
+def test_release_verifies_pypi_provenance_for_each_published_file():
+    """The release workflow should fail if any uploaded PyPI file lacks provenance."""
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    assert "Verify PyPI provenance attestations" in workflow
+    assert "https://pypi.org/integrity/{project}/{version}/{encoded_filename}/provenance" in workflow
+    assert 'headers = {"Accept": "application/vnd.pypi.integrity.v1+json"}' in workflow
+    assert 'Path("dist").iterdir()' in workflow
+    assert 'path.suffix in {".whl", ".gz"}' in workflow
+    assert "attestation_bundles" in workflow
+    assert "Missing PyPI provenance attestations" in workflow
+
+
 def test_publish_registries_workflow_requires_public_smithery_surface_and_curated_clawhub_set():
     """Registry publishing should fail fast on auth-gated Smithery URLs and avoid omnibus ClawHub skills."""
     workflow = (ROOT / ".github" / "workflows" / "publish-registries.yml").read_text()

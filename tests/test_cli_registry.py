@@ -74,6 +74,28 @@ def test_registry_list_with_filters():
         assert result.exit_code == 0
 
 
+def test_registry_list_table_does_not_truncate_long_package_names():
+    runner = CliRunner()
+    long_name = "@modelcontextprotocol/server-with-a-very-long-but-important-name"
+    with patch(
+        "agent_bom.registry.list_registry",
+        return_value=[
+            {
+                "package": long_name,
+                "latest_version": "2026.5.1",
+                "ecosystem": "npm",
+                "category": "filesystem-and-repository",
+                "risk_level": "medium",
+                "verified": True,
+            }
+        ],
+    ):
+        result = runner.invoke(registry, ["list"])
+        assert result.exit_code == 0
+        assert long_name in result.output
+        assert "…" not in result.output
+
+
 # ---------------------------------------------------------------------------
 # registry search
 # ---------------------------------------------------------------------------

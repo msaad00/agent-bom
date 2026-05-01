@@ -193,7 +193,7 @@ def _looks_like_instruction_surface(path: Path, *, allow_docs_skills: bool = Fal
     if name == "copilot-instructions.md" and any(parent.name == ".github" for parent in path.parents):
         return True
 
-    if path.suffix.lower() != ".md":
+    if path.suffix.lower() not in {".md", ".mdc"}:
         return False
 
     if any(parent.name == "skills" for parent in path.parents):

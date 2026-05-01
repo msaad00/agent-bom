@@ -13,6 +13,8 @@ Endpoints:
     DELETE /v1/scan/{job_id}           cancel / discard a job
     GET  /v1/scan/{job_id}/stream      SSE — real-time scan progress
     GET  /v1/jobs                      list all scan jobs
+    GET  /v1/findings                  list findings from completed scans
+    GET  /v1/inventory                 list inventory from completed scans
     POST /v1/scan/dataset-cards        scan dataset cards & DVC files
     POST /v1/scan/training-pipelines   scan ML training pipeline artifacts
     POST /v1/scan/browser-extensions   scan browser extensions
@@ -215,6 +217,167 @@ def _triggered_by(request: Request) -> str:
 
 def _visible_to_tenant(job: ScanJob, tenant_id: str) -> bool:
     return getattr(job, "tenant_id", "default") == tenant_id
+
+
+def _completed_jobs_for_tenant(tenant_id: str) -> list[ScanJob]:
+    return [job for job in _get_store().list_all(tenant_id=tenant_id) if job.status == JobStatus.DONE and job.result]
+
+
+def _scan_source_labels(job: ScanJob) -> list[str]:
+    labels: list[str] = []
+    req = job.request
+    labels.extend(req.images)
+    if req.inventory:
+        labels.append("inventory")
+    if req.k8s:
+        labels.append("kubernetes")
+    if req.sbom:
+        labels.append("sbom-import")
+    labels.extend(req.connectors)
+    labels.extend(req.filesystem_paths)
+    labels.extend(req.agent_projects)
+    return labels or ["local-agents"]
+
+
+def _finding_key(finding: dict[str, Any]) -> str:
+    vuln_id = finding.get("vulnerability_id") or finding.get("cve_id") or finding.get("id") or finding.get("title") or ""
+    raw_asset = finding.get("asset")
+    asset = raw_asset if isinstance(raw_asset, dict) else {}
+    package = finding.get("package") or finding.get("package_name") or asset.get("name", "")
+    return f"{vuln_id}:{package}"
+
+
+def _finding_from_blast_radius(item: dict[str, Any], job: ScanJob) -> dict[str, Any]:
+    vulnerability_id = item.get("vulnerability_id") or item.get("id") or ""
+    package = item.get("package") or item.get("package_name") or ""
+    return {
+        "id": item.get("finding_id") or f"{vulnerability_id}:{package}",
+        "vulnerability_id": vulnerability_id,
+        "package": package,
+        "severity": (item.get("severity") or "unknown").lower(),
+        "source": "blast_radius",
+        "scan_id": job.job_id,
+        "scan_sources": _scan_source_labels(job),
+        "affected_agents": item.get("affected_agents", []),
+        "affected_servers": item.get("affected_servers", []),
+        "risk_score": item.get("risk_score", item.get("blast_score", 0)),
+        "fixed_version": item.get("fixed_version"),
+        "is_kev": bool(item.get("is_kev") or item.get("cisa_kev")),
+    }
+
+
+def _iter_package_findings(job: ScanJob) -> list[dict[str, Any]]:
+    result = job.result or {}
+    findings: list[dict[str, Any]] = []
+    scan_sources = _scan_source_labels(job)
+    for agent in result.get("agents", []) or []:
+        if not isinstance(agent, dict):
+            continue
+        agent_name = str(agent.get("name") or "")
+        for server in agent.get("mcp_servers", []) or []:
+            if not isinstance(server, dict):
+                continue
+            server_name = str(server.get("name") or "")
+            for package in server.get("packages", []) or []:
+                if not isinstance(package, dict):
+                    continue
+                package_name = str(package.get("name") or "")
+                for vuln in package.get("vulnerabilities", []) or []:
+                    if not isinstance(vuln, dict):
+                        continue
+                    vuln_id = str(vuln.get("id") or vuln.get("vulnerability_id") or "")
+                    findings.append(
+                        {
+                            "id": vuln_id,
+                            "vulnerability_id": vuln_id,
+                            "package": package_name,
+                            "package_version": package.get("version"),
+                            "ecosystem": package.get("ecosystem"),
+                            "severity": str(vuln.get("severity") or "unknown").lower(),
+                            "summary": vuln.get("summary") or vuln.get("description"),
+                            "source": "package_vulnerability",
+                            "scan_id": job.job_id,
+                            "scan_sources": scan_sources,
+                            "affected_agents": [agent_name] if agent_name else [],
+                            "affected_servers": [server_name] if server_name else [],
+                            "cvss_score": vuln.get("cvss_score"),
+                            "epss_score": vuln.get("epss_score"),
+                            "fixed_version": vuln.get("fixed_version"),
+                            "is_kev": bool(vuln.get("is_kev")),
+                            "references": vuln.get("references", []),
+                        }
+                    )
+    return findings
+
+
+def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
+    result = job.result or {}
+    findings: list[dict[str, Any]] = []
+    seen: set[str] = set()
+
+    for item in result.get("findings", []) or []:
+        if not isinstance(item, dict):
+            continue
+        row = dict(item)
+        row.setdefault("scan_id", job.job_id)
+        row.setdefault("scan_sources", _scan_source_labels(job))
+        key = _finding_key(row)
+        if key in seen:
+            continue
+        seen.add(key)
+        findings.append(row)
+
+    for item in result.get("blast_radius", []) or result.get("blast_radii", []) or []:
+        if not isinstance(item, dict):
+            continue
+        row = _finding_from_blast_radius(item, job)
+        key = _finding_key(row)
+        if key in seen:
+            continue
+        seen.add(key)
+        findings.append(row)
+
+    for row in _iter_package_findings(job):
+        key = _finding_key(row)
+        if key in seen:
+            continue
+        seen.add(key)
+        findings.append(row)
+
+    return findings
+
+
+def _inventory_packages_from_agents(agents: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    packages: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str, str, str]] = set()
+    for agent in agents:
+        agent_name = str(agent.get("name") or "")
+        for server in agent.get("mcp_servers", []) or []:
+            if not isinstance(server, dict):
+                continue
+            server_name = str(server.get("name") or "")
+            for package in server.get("packages", []) or []:
+                if not isinstance(package, dict):
+                    continue
+                row = {
+                    "name": package.get("name", ""),
+                    "version": package.get("version", ""),
+                    "ecosystem": package.get("ecosystem", ""),
+                    "agent": agent_name,
+                    "server": server_name,
+                }
+                key = (
+                    str(row["name"]),
+                    str(row["version"]),
+                    str(row["ecosystem"]),
+                    str(row["agent"]),
+                    str(row["server"]),
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+                packages.append(row)
+    return packages
 
 
 def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
@@ -640,6 +803,71 @@ async def list_jobs(
         "total": total,
         "limit": limit,
         "offset": offset,
+    }
+
+
+@router.get("/v1/findings", tags=["scan"])
+async def list_findings(
+    request: Request,
+    severity: str | None = None,
+    limit: int = 500,
+    offset: int = 0,
+) -> dict:
+    """List vulnerability findings aggregated from completed scan results."""
+    tenant_id = _tenant_id(request)
+    findings: list[dict[str, Any]] = []
+    for job in _completed_jobs_for_tenant(tenant_id):
+        findings.extend(_iter_scan_findings(job))
+
+    if severity:
+        normalized = severity.lower()
+        findings = [item for item in findings if str(item.get("severity", "")).lower() == normalized]
+
+    limit = max(1, min(limit, 1000))
+    offset = max(0, offset)
+    total = len(findings)
+    page = findings[offset : offset + limit]
+    return {
+        "findings": page,
+        "count": len(page),
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "warnings": [],
+    }
+
+
+@router.get("/v1/inventory", tags=["scan"])
+async def list_inventory(
+    request: Request,
+    limit: int = 500,
+    offset: int = 0,
+) -> dict:
+    """List agent and package inventory aggregated from completed scan results."""
+    tenant_id = _tenant_id(request)
+    agents: list[dict[str, Any]] = []
+    jobs: list[dict[str, str]] = []
+    for job in _completed_jobs_for_tenant(tenant_id):
+        result = job.result or {}
+        job_agents = [item for item in result.get("agents", []) or [] if isinstance(item, dict)]
+        if not job_agents:
+            continue
+        agents.extend(job_agents)
+        jobs.append({"job_id": job.job_id, "created_at": job.created_at, "completed_at": job.completed_at or ""})
+
+    packages = _inventory_packages_from_agents(agents)
+    limit = max(1, min(limit, 1000))
+    offset = max(0, offset)
+    total = len(agents)
+    page = agents[offset : offset + limit]
+    return {
+        "agents": page,
+        "count": len(page),
+        "total": total,
+        "packages": packages,
+        "package_count": len(packages),
+        "jobs": jobs,
+        "warnings": [],
     }
 
 

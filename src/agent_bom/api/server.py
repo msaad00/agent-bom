@@ -13,7 +13,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import uuid
+from pathlib import Path
 from typing import Any, cast
 
 from agent_bom import __version__
@@ -63,6 +65,10 @@ from agent_bom.api.tracing import configure_otel_tracing, get_tracing_health
 from agent_bom.config import API_JOB_TTL_SECONDS as _JOB_TTL_SECONDS
 
 _logger = logging.getLogger(__name__)
+_DASHBOARD_CSP_META_RE = re.compile(
+    r"<meta\s+[^>]*(?:http-equiv|httpEquiv)=[\"']Content-Security-Policy[\"'][^>]*>",
+    re.IGNORECASE,
+)
 
 # ─── Dependency check ─────────────────────────────────────────────────────────
 
@@ -536,13 +542,14 @@ def configure_api(
             "Set AGENT_BOM_API_KEY environment variable for production deployments."
         )
 
-    # Refresh runtime-configurable middleware
+    # Refresh runtime-configurable middleware. _replace_middleware inserts at
+    # the front; this call order keeps body-size outermost, auth before rate
+    # limiting, and rate limiting able to read tenant/auth state.
+    _replace_middleware(RateLimitMiddleware, scan_rpm=rate_limit_rpm, read_rpm=rate_limit_rpm * 5)
     if auth_required:
         _replace_middleware(APIKeyMiddleware, api_key=api_key)
     else:
         app.user_middleware = [m for m in app.user_middleware if m.cls is not APIKeyMiddleware]
-
-    _replace_middleware(RateLimitMiddleware, scan_rpm=rate_limit_rpm, read_rpm=rate_limit_rpm * 5)
     _replace_middleware(MaxBodySizeMiddleware)
     if app.middleware_stack is not None:
         app.middleware_stack = app.build_middleware_stack()
@@ -658,13 +665,21 @@ def _dashboard_index_file() -> str | None:
     return None
 
 
+def _dashboard_html_response(path: str):
+    from fastapi.responses import HTMLResponse
+
+    try:
+        html = Path(path).read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        html = Path(path).read_text(encoding="utf-8", errors="replace")
+    return HTMLResponse(_DASHBOARD_CSP_META_RE.sub("", html))
+
+
 @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
 async def root():
     dashboard_index = _dashboard_index_file()
     if dashboard_index:
-        from fastapi.responses import FileResponse
-
-        return FileResponse(dashboard_index)
+        return _dashboard_html_response(dashboard_index)
     return RedirectResponse(url="/docs")
 
 
@@ -739,9 +754,11 @@ def _mount_dashboard(application: FastAPI) -> None:
         # never used in any filesystem operation (no path-injection risk).
         resolved = _static_file_map.get(path)
         if resolved:
+            if path.lower().endswith(".html"):
+                return _dashboard_html_response(resolved)
             return FileResponse(resolved)
         # SPA fallback — serve index.html for client-side routing
-        return FileResponse(_index_html)
+        return _dashboard_html_response(_index_html)
 
 
 _mount_dashboard(app)

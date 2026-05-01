@@ -531,6 +531,15 @@ async def test_compare_baseline_is_tenant_scoped(isolated_job_store):
         request=ScanRequest(),
         result={"blast_radius": [{"vulnerability_id": "CVE-alpha", "package": "alpha@1.0.0", "severity": "high"}]},
     )
+    alpha_current_job = ScanJob(
+        job_id="job-alpha-current",
+        tenant_id="tenant-alpha",
+        status=JobStatus.DONE,
+        created_at="2026-04-21T00:00:00Z",
+        completed_at="2026-04-21T00:01:00Z",
+        request=ScanRequest(),
+        result={"blast_radius": []},
+    )
     beta_job = ScanJob(
         job_id="job-beta",
         tenant_id="tenant-beta",
@@ -541,14 +550,23 @@ async def test_compare_baseline_is_tenant_scoped(isolated_job_store):
         result={"blast_radius": [{"vulnerability_id": "CVE-beta", "package": "beta@1.0.0", "severity": "critical"}]},
     )
     isolated_job_store.put(alpha_job)
+    isolated_job_store.put(alpha_current_job)
     isolated_job_store.put(beta_job)
 
-    diff = await enterprise.compare_baseline(_request("tenant-alpha"), previous_job_id="job-alpha")
+    diff = await enterprise.compare_baseline(
+        _request("tenant-alpha"),
+        previous_job_id="job-alpha",
+        current_job_id="job-alpha-current",
+    )
     assert diff["persistent_count"] == 0
     assert diff["resolved_count"] == 1
 
     with pytest.raises(HTTPException) as error:
-        await enterprise.compare_baseline(_request("tenant-alpha"), previous_job_id="job-beta")
+        await enterprise.compare_baseline(
+            _request("tenant-alpha"),
+            previous_job_id="job-beta",
+            current_job_id="job-alpha-current",
+        )
 
     assert error.value.status_code == 404
 

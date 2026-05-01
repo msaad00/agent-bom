@@ -114,12 +114,18 @@ from agent_bom.cli._history import compliance_narrative_cmd, diff_cmd, history_c
 # history, diff, rescan moved to `report` group (Batch 3)
 from agent_bom.cli._policy import apply_command, policy_template  # noqa: E402
 
+_policy_templates_hidden = _copy.copy(policy_template)
+_policy_templates_hidden.hidden = True
+_policy_templates_hidden.name = "policy-templates"
+main.commands["policy-templates"] = _policy_templates_hidden
+
 # ---------------------------------------------------------------------------
 # Policy command group — `agent-bom policy [template|apply]`
 # ---------------------------------------------------------------------------
 from agent_bom.cli._policy_group import policy_group  # noqa: E402
 
 policy_group.add_command(policy_template, "template")
+policy_group.add_command(policy_template, "templates")
 policy_group.add_command(apply_command, "apply")
 policy_group.add_command(guard_cmd, "check")  # guard → policy check
 main.add_command(policy_group)
@@ -224,6 +230,11 @@ mcp_group.add_command(mcp_server_cmd, "server")
 mcp_group.add_command(where, "where")
 mcp_group.add_command(validate, "validate")
 main.add_command(mcp_group)
+
+_mcp_server_hidden = _copy.copy(mcp_server_cmd)
+_mcp_server_hidden.hidden = True
+_mcp_server_hidden.name = "mcp-server"
+main.commands["mcp-server"] = _mcp_server_hidden
 
 # ---------------------------------------------------------------------------
 # Focused scan commands — `agent-bom image`, `agent-bom fs`, etc.

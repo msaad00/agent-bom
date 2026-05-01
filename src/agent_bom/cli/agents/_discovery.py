@@ -938,28 +938,28 @@ def run_local_discovery(
 
         search_dir = Path(project) if project else Path.cwd()
         prompt_result = scan_prompt_files(root=search_dir)
+        ctx.prompt_scan_data = {
+            "files_scanned": prompt_result.files_scanned,
+            "prompt_files": prompt_result.prompt_files,
+            "findings": [
+                {
+                    "severity": f.severity,
+                    "category": f.category,
+                    "title": f.title,
+                    "detail": f.detail,
+                    "source_file": f.source_file,
+                    "line_number": f.line_number,
+                    "matched_text": f.matched_text,
+                    "recommendation": f.recommendation,
+                }
+                for f in prompt_result.findings
+            ],
+            "passed": prompt_result.passed,
+        }
         if prompt_result.files_scanned > 0:
             con.print(f"\n[bold blue]Scanned {prompt_result.files_scanned} prompt template file(s)...[/bold blue]\n")
             for pf in prompt_result.prompt_files:
                 con.print(f"  [dim]•[/dim] {Path(pf).name}")
-            ctx.prompt_scan_data = {
-                "files_scanned": prompt_result.files_scanned,
-                "prompt_files": prompt_result.prompt_files,
-                "findings": [
-                    {
-                        "severity": f.severity,
-                        "category": f.category,
-                        "title": f.title,
-                        "detail": f.detail,
-                        "source_file": f.source_file,
-                        "line_number": f.line_number,
-                        "matched_text": f.matched_text,
-                        "recommendation": f.recommendation,
-                    }
-                    for f in prompt_result.findings
-                ],
-                "passed": prompt_result.passed,
-            }
             if prompt_result.findings:
                 from rich.panel import Panel
                 from rich.table import Table as RichTable
@@ -1001,6 +1001,8 @@ def run_local_discovery(
                 con.print(Panel(prompt_table, subtitle=stats_line, border_style="magenta"))
             else:
                 con.print("  [green]✓[/green] No security issues found in prompt templates")
+        else:
+            con.print(f"\n[dim]Prompt template scan: no supported prompt files found in {search_dir}[/dim]")
 
     # Step 1g3c: Browser extension scanning (--browser-extensions)
     if browser_extensions:

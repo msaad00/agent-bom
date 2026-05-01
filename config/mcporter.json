@@ -2,7 +2,7 @@
   "mcpServers": {
     "agent-bom": {
       "command": "agent-bom",
-      "args": ["mcp-server"]
+      "args": ["mcp", "server"]
     }
   },
   "imports": []

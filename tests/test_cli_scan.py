@@ -32,6 +32,14 @@ def _minimal_report_json(n_vulns: int = 0) -> dict:
 
 
 def _run(args: list, catch_exceptions: bool = False, **kwargs):
+    if (
+        args[:1] == ["scan"]
+        and "--help" not in args
+        and "--no-scan" not in args
+        and "--dry-run" not in args
+        and "--no-auto-update-db" not in args
+    ):
+        raise AssertionError("scan CLI tests must opt out of auto DB refresh unless they are testing that behavior")
     runner = CliRunner()
     return runner.invoke(main, args, catch_exceptions=catch_exceptions, **kwargs)
 
@@ -106,7 +114,7 @@ def test_scan_no_scan_flag():
 def test_scan_empty_state_shows_real_client_paths(monkeypatch):
     monkeypatch.setattr("agent_bom.cli.agents.discover_all", lambda *args, **kwargs: [])
 
-    result = _run(["scan"])
+    result = _run(["scan", "--no-auto-update-db"])
 
     assert result.exit_code == 0
     assert "Common MCP config locations checked on this machine" in result.output
@@ -223,6 +231,15 @@ def test_scan_bad_policy_json_exits_one_with_message(tmp_path):
     assert result.exit_code == 1
     assert "Policy error" in result.output
     assert "Invalid JSON in policy file" in result.output
+
+
+def test_focused_secrets_and_skills_scan_expose_logging_flags():
+    for args in (["secrets", "--help"], ["skills", "scan", "--help"]):
+        result = _run(args)
+        assert result.exit_code == 0
+        assert "--no-color" in result.output
+        assert "--log-json" in result.output
+        assert "--log-file" in result.output
 
 
 def test_scan_bad_baseline_json_exits_before_rendering(tmp_path):
@@ -408,7 +425,7 @@ def test_scan_sarif_auto_enables_enrich(monkeypatch):
     monkeypatch.setattr("agent_bom.cli.agents.discover_all", lambda *args, **kwargs: [])
     monkeypatch.setattr("agent_bom.cli.agents.scan_agents_sync", _scan_agents_sync)
 
-    result = _run(["scan", "--format", "sarif", "--demo"])
+    result = _run(["scan", "--format", "sarif", "--demo", "--no-auto-update-db"])
 
     assert result.exit_code == 0
     assert captured["enable_enrichment"] is True
@@ -452,6 +469,13 @@ def test_scan_format_pdf_rejects_stdout():
     assert "requires --output/-o" in result.output
 
 
+def test_scan_format_pdf_requires_output_file():
+    """--format pdf should not silently write a default file when no output path is given."""
+    result = _run(["scan", "--demo", "--format", "pdf", "--no-scan"])
+    assert result.exit_code == 2
+    assert "requires --output/-o" in result.output
+
+
 def test_scan_save_flag(tmp_path):
     """--save should persist the report to history."""
     with patch("agent_bom.cli.agents.discover_all", return_value=[]):
@@ -467,7 +491,7 @@ def test_scan_incomplete_offline_scan_exits_two(monkeypatch):
 
     monkeypatch.setattr("agent_bom.cli.agents.scan_agents_sync", _scan_agents_sync)
 
-    result = _run(["scan", "--demo"])
+    result = _run(["scan", "--demo", "--no-auto-update-db"])
 
     assert result.exit_code == 2
     assert "populated local vulnerability DB" in result.output
@@ -541,7 +565,7 @@ def test_offline_scan_summary_marks_partial_unpinned_coverage(monkeypatch):
     monkeypatch.setattr("agent_bom.cli.agents.scan_agents_sync", lambda *args, **kwargs: [])
     monkeypatch.setattr("agent_bom.cli.agents.extract_packages", lambda *args, **kwargs: [pkg])
 
-    result = _run(["scan", "--offline"])
+    result = _run(["scan", "--offline", "--no-auto-update-db"])
 
     assert result.exit_code == 0
     assert "Offline scan complete: no known vulnerabilities found in local data" in result.output
@@ -560,7 +584,7 @@ def test_scan_offline_mode_does_not_leak_after_cli_invocation(monkeypatch):
     monkeypatch.setattr("agent_bom.cli.agents.scan_agents_sync", lambda *args, **kwargs: [])
     monkeypatch.setattr("agent_bom.cli.agents.extract_packages", lambda *args, **kwargs: [pkg])
 
-    result = _run(["scan", "--offline"])
+    result = _run(["scan", "--offline", "--no-auto-update-db"])
 
     assert result.exit_code == 0
 

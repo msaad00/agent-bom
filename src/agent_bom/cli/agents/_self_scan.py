@@ -39,7 +39,7 @@ def _build_self_scan_inventory() -> dict[str, list[dict[str, object]]]:
                 "mcp_servers": [
                     {
                         "name": "agent-bom-mcp-server",
-                        "command": "agent-bom mcp-server",
+                        "command": "agent-bom mcp server",
                         "transport": "stdio",
                         "packages": pkgs,
                     }

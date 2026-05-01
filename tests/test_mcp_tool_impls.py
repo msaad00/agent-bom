@@ -1152,6 +1152,32 @@ async def test_policy_check_impl_success():
 
 
 @pytest.mark.asyncio
+async def test_policy_check_impl_surfaces_fail_action_matches():
+    from agent_bom.mcp_tools.compliance import policy_check_impl
+    from agent_bom.models import BlastRadius, Package, Severity, Vulnerability
+
+    br = BlastRadius(
+        vulnerability=Vulnerability(id="CVE-2026-0001", severity=Severity.HIGH, summary="bad"),
+        package=Package(name="axios", version="1.4.0", ecosystem="npm"),
+        affected_servers=[],
+        affected_agents=[],
+        exposed_credentials=[],
+        exposed_tools=[],
+    )
+    policy = {"rules": [{"id": "fail-high", "severity_gte": "high", "action": "fail"}]}
+
+    result = await policy_check_impl(
+        policy_json=json.dumps(policy),
+        _run_scan_pipeline=AsyncMock(return_value=([], [br], [], [])),
+        _truncate_response=_trunc,
+    )
+
+    data = json.loads(result)
+    assert data["passed"] is False
+    assert data["failures"][0]["rule_id"] == "fail-high"
+
+
+@pytest.mark.asyncio
 async def test_cis_benchmark_snowflake_success():
     from agent_bom.mcp_tools.compliance import cis_benchmark_impl
 

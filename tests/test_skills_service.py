@@ -143,6 +143,17 @@ def test_scan_skill_targets_preserves_discovery_order(tmp_path):
     assert [Path(item.path).name for item in report.files] == ["CLAUDE.md", "SKILL.md"]
 
 
+def test_scan_skill_targets_recognizes_cursor_mdc_rules(tmp_path):
+    rule = tmp_path / ".cursor" / "rules" / "agent-policy.mdc"
+    rule.parent.mkdir(parents=True)
+    rule.write_text("# Agent policy\n\nUse OPENAI_API_KEY.\n")
+
+    report = scan_skill_targets([tmp_path])
+
+    assert len(report.files) == 1
+    assert report.files[0].path.name == "agent-policy.mdc"
+
+
 def test_scan_skill_targets_works_inside_existing_event_loop(tmp_path):
     """Sync API should remain callable from contexts that already own an event loop."""
     skill_file = tmp_path / "CLAUDE.md"

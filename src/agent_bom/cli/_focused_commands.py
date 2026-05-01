@@ -32,6 +32,15 @@ def _validate_json_or_console_format(command_name: str, output_format: str) -> s
     return normalized
 
 
+_FOCUSED_GATE_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+
+def _has_finding_at_or_above(findings, threshold: str = "high") -> bool:
+    """Return True when focused findings should fail CI by default."""
+    threshold_rank = _FOCUSED_GATE_ORDER.get(threshold.lower(), 1)
+    return any(_FOCUSED_GATE_ORDER.get(str(getattr(finding, "severity", "low")).lower(), 99) <= threshold_rank for finding in findings)
+
+
 @click.command("image")
 @click.argument("image_ref")
 @click.option("--platform", help="Target platform (e.g. linux/amd64)")
@@ -158,6 +167,10 @@ def iac_cmd(
     """
     from agent_bom.cli.agents import scan
 
+    effective_fail_on_severity = fail_on_severity
+    if effective_fail_on_severity is None and output_format.lower() in {"console", "json"}:
+        effective_fail_on_severity = "high"
+
     ctx = click.get_current_context()
     ctx.invoke(
         scan,
@@ -166,7 +179,7 @@ def iac_cmd(
         _iac_only=True,  # Internal: triggers IaC fast path (skip all discovery)
         output_format=output_format,
         output=output_path,
-        fail_on_severity=fail_on_severity,
+        fail_on_severity=effective_fail_on_severity,
         quiet=quiet,
         fixable_only=fixable_only,
         k8s_live=k8s_live,
@@ -275,6 +288,8 @@ def secrets_cmd(
             con.print(f"[green]Secrets report written[/green] → {output_path}")
         else:
             click.echo(output)
+        if _has_finding_at_or_above(result.findings):
+            raise click.exceptions.Exit(1)
         return
 
     # Console output
@@ -288,6 +303,8 @@ def secrets_cmd(
         con.print(f"  [{sev_color}]{f.severity.upper()}[/{sev_color}]  {f.file_path}:{f.line_number}  {f.secret_type}")
 
     con.print(f"\n[bold]{result.total} findings[/bold] ({result.critical_count} critical)")
+    if _has_finding_at_or_above(result.findings):
+        raise click.exceptions.Exit(1)
 
 
 # ── Source code analysis ─────────────────────────────────────────────────────

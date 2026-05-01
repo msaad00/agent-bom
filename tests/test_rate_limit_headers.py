@@ -13,7 +13,14 @@ def _make_app(scan_rpm: int = 10, read_rpm: int = 20):
     async def dummy(request):
         return StarletteJSONResponse({"ok": True})
 
-    app = Starlette(routes=[Route("/v1/data", dummy), Route("/health", dummy)])
+    app = Starlette(
+        routes=[
+            Route("/v1/data", dummy),
+            Route("/health", dummy),
+            Route("/_next/static/app.js", dummy),
+            Route("/missing.js", dummy),
+        ]
+    )
     app.add_middleware(RateLimitMiddleware, scan_rpm=scan_rpm, read_rpm=read_rpm)
     return app
 
@@ -204,3 +211,29 @@ def test_rate_limit_headers_present_on_429():
     assert limited.headers["x-ratelimit-remaining"] == "0"
     assert "x-ratelimit-reset" in limited.headers
     assert "retry-after" in limited.headers
+
+
+def test_dashboard_static_assets_do_not_consume_read_rate_limit():
+    client = TestClient(_make_app(read_rpm=1))
+
+    first = client.get("/_next/static/app.js")
+    second = client.get("/_next/static/app.js")
+    api_read = client.get("/v1/data")
+    limited_api_read = client.get("/v1/data")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert "x-ratelimit-limit" not in first.headers
+    assert api_read.status_code == 200
+    assert limited_api_read.status_code == 429
+
+
+def test_non_dashboard_suffix_paths_still_consume_read_rate_limit():
+    client = TestClient(_make_app(read_rpm=1))
+
+    first = client.get("/missing.js")
+    second = client.get("/missing.js")
+
+    assert first.status_code == 200
+    assert first.headers["x-ratelimit-limit"] == "1"
+    assert second.status_code == 429

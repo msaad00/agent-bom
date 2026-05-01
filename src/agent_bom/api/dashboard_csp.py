@@ -37,16 +37,21 @@ def _load_manifest() -> dict[str, list[str]]:
     }
 
 
+def _csp_hash_source(value: str) -> str:
+    normalized = value.strip().strip("'\"")
+    return f"'{normalized}'"
+
+
 def dashboard_csp_header() -> str:
     """Return the dashboard CSP header for the active packaged UI assets."""
 
     manifest = _load_manifest()
     script_hashes = manifest["script_hashes"]
     style_hashes = manifest["style_hashes"]
-    script_src = " ".join(["'self'", *script_hashes]) if script_hashes else "'self' 'unsafe-inline'"
+    script_src = " ".join(["'self'", *(_csp_hash_source(value) for value in script_hashes)]) if script_hashes else "'self' 'unsafe-inline'"
     # Next/font and Tailwind still emit inline style attributes in some builds.
     # Keep style inline compatibility until the dashboard removes those attrs.
-    style_src_values = ["'self'", "'unsafe-inline'", *style_hashes]
+    style_src_values = ["'self'", "'unsafe-inline'", *(_csp_hash_source(value) for value in style_hashes)]
     style_src = " ".join(dict.fromkeys(style_src_values))
     return (
         "default-src 'self'; "

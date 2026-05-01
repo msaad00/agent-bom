@@ -123,14 +123,14 @@ def registry_list(category, risk_level, ecosystem, fmt):
     from rich.console import Console
     from rich.table import Table
 
-    con = Console()
-    table = Table(title=f"MCP Server Registry ({len(entries)} servers)")
-    table.add_column("Name", style="cyan", no_wrap=True)
-    table.add_column("Version", style="green")
-    table.add_column("Ecosystem")
-    table.add_column("Category")
-    table.add_column("Risk", style="bold")
-    table.add_column("Verified")
+    con = Console(width=160)
+    table = Table(title=f"MCP Server Registry ({len(entries)} servers)", expand=False)
+    table.add_column("Name", style="cyan", overflow="fold")
+    table.add_column("Version", style="green", no_wrap=True)
+    table.add_column("Ecosystem", no_wrap=True)
+    table.add_column("Category", overflow="fold")
+    table.add_column("Risk", style="bold", no_wrap=True)
+    table.add_column("Verified", no_wrap=True)
 
     risk_colors = {"high": "red", "medium": "yellow", "low": "green"}
     for entry in entries:

@@ -95,6 +95,7 @@ class AuditLog:
     hmac_entries: list[ResponseHMACEntry] = field(default_factory=list)
     summary: Optional[SummaryEntry] = None
     unknown: list[dict] = field(default_factory=list)
+    malformed_lines: int = 0
 
 
 # ─── Parser ───────────────────────────────────────────────────────────────────
@@ -110,6 +111,10 @@ def parse_audit_log(path: Path) -> AuditLog:
         try:
             entry = json.loads(raw_line)
         except json.JSONDecodeError:
+            log.malformed_lines += 1
+            continue
+        if not isinstance(entry, dict):
+            log.malformed_lines += 1
             continue
 
         entry_type = entry.get("type", "")
@@ -169,9 +174,9 @@ def parse_audit_log(path: Path) -> AuditLog:
             log.alerts.append(
                 AlertEntry(
                     ts=entry.get("ts", ""),
-                    detector=entry.get("detector", entry.get("type", "unknown")),
-                    severity=entry.get("severity", "medium"),
-                    message=entry.get("message", entry.get("detail", "")),
+                    detector=str(entry.get("detector") or entry.get("type") or "unknown"),
+                    severity=str(entry.get("severity") or "medium"),
+                    message=str(entry.get("message") or entry.get("detail") or ""),
                     tool=entry.get("tool", ""),
                     raw=entry,
                 )
@@ -291,6 +296,7 @@ def display_rich(
 
     console = Console()
     exit_code = 0
+    type_filter_normalized = entry_type_alias(type_filter) if type_filter else None
 
     # ── Summary panel ──────────────────────────────────────────────────────
     s = log.summary
@@ -341,6 +347,8 @@ def display_rich(
     # ── Tool call table ─────────────────────────────────────────────────────
     if not alerts_only:
         calls = log.tool_calls
+        if type_filter_normalized and type_filter_normalized != "tools/call":
+            calls = []
         if tool_filter:
             calls = [c for c in calls if tool_filter.lower() in c.tool.lower()]
         if blocked_only:
@@ -373,6 +381,8 @@ def display_rich(
 
     # ── Alerts table ───────────────────────────────────────────────────────
     alerts = log.alerts
+    if type_filter_normalized and type_filter_normalized not in {"runtime_alert", "alert"}:
+        alerts = []
     if tool_filter:
         alerts = [a for a in alerts if tool_filter.lower() in a.tool.lower()]
 
@@ -396,18 +406,24 @@ def display_rich(
         console.print(atbl)
 
     # ── Relay errors ───────────────────────────────────────────────────────
-    if log.relay_errors:
+    relay_errors = log.relay_errors
+    if type_filter_normalized and type_filter_normalized != "relay_error":
+        relay_errors = []
+    if relay_errors:
         etbl = Table(title="[bold red]Relay Errors[/bold red]", box=box.SIMPLE_HEAVY)
         etbl.add_column("Time", style="dim")
         etbl.add_column("Error Type")
         etbl.add_column("Error")
-        for e in log.relay_errors:
+        for e in relay_errors:
             etbl.add_row(e.ts[:19].replace("T", " "), e.error_type, e.error[:120])
         console.print(etbl)
         exit_code = 1
 
     # ── HMAC entries ───────────────────────────────────────────────────────
-    if log.hmac_entries and not alerts_only:
+    hmac_entries = log.hmac_entries
+    if type_filter_normalized and type_filter_normalized != "response_hmac":
+        hmac_entries = []
+    if hmac_entries and not alerts_only:
         console.print(f"[dim]Response HMACs recorded: {len(log.hmac_entries)} (use --verify-hmac with --sign-key to verify)[/dim]")
 
     if verify_hmac_key:
@@ -426,6 +442,11 @@ def display_rich(
         elif verified_chain:
             console.print(f"[green]Audit chain verification passed for {verified_chain} entries[/green]")
 
+    if log.malformed_lines or log.unknown:
+        console.print(
+            f"[yellow]Audit parser skipped {log.malformed_lines} malformed line(s) and {len(log.unknown)} unsupported record(s).[/yellow]"
+        )
+
     # ── Nothing to show ────────────────────────────────────────────────────
     total_entries = len(log.tool_calls) + len(log.alerts) + len(log.relay_errors) + len(log.hmac_entries)
     if total_entries == 0 and not log.summary:
@@ -434,15 +455,35 @@ def display_rich(
     return exit_code
 
 
+def entry_type_alias(entry_type: str) -> str:
+    """Normalize audit replay type filters to the accepted JSONL record names."""
+    normalized = entry_type.strip().lower().replace("-", "_")
+    aliases = {
+        "tool_call": "tools/call",
+        "tools_call": "tools/call",
+        "tools/call": "tools/call",
+        "relay_error": "relay_error",
+        "response_hmac": "response_hmac",
+        "proxy_summary": "proxy_summary",
+        "alert": "runtime_alert",
+        "runtime_alert": "runtime_alert",
+    }
+    return aliases.get(normalized, normalized)
+
+
 def display_json(log: AuditLog, *, chain_verification: tuple[int, int] | None = None) -> int:
     """Output structured JSON summary (for CI/scripting)."""
     s = log.summary
     out = {
+        "schema": "agent-bom proxy audit JSONL",
+        "accepted_types": ["tools/call", "relay_error", "response_hmac", "proxy_summary", "runtime_alert"],
         "tool_calls": len(log.tool_calls),
         "blocked": sum(1 for c in log.tool_calls if c.policy == "blocked"),
         "alerts": len(log.alerts),
         "relay_errors": len(log.relay_errors),
         "hmac_entries": len(log.hmac_entries),
+        "unknown_records": len(log.unknown),
+        "malformed_lines": log.malformed_lines,
         "summary": {
             "uptime_seconds": s.uptime_seconds,
             "total_tool_calls": s.total_tool_calls,

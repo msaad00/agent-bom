@@ -30,6 +30,7 @@ SKILL_FILE_NAMES: list[str] = [
     ".claude/CLAUDE.md",
     ".cursorrules",
     ".cursor/rules",
+    "SKILL.md",
     "skill.md",
     "skills",
     ".github/copilot-instructions.md",
@@ -388,6 +389,15 @@ def _is_credential_name(name: str) -> bool:
 # ─── Discovery ───────────────────────────────────────────────────────────────
 
 
+def _is_supported_skill_file(path: Path) -> bool:
+    name = path.name
+    if name in {"CLAUDE.md", "AGENTS.md", "SKILL.md", "skill.md", ".cursorrules", ".windsurfrules", "copilot-instructions.md"}:
+        return True
+    if path.suffix.lower() in {".md", ".mdc"}:
+        return True
+    return False
+
+
 def discover_skill_files(project_dir: Path) -> list[Path]:
     """Auto-discover common skill/instruction files in a project directory.
 
@@ -400,10 +410,9 @@ def discover_skill_files(project_dir: Path) -> list[Path]:
         if candidate.is_file():
             found.append(candidate)
         elif candidate.is_dir():
-            # Scan .md files inside the directory
-            for md_file in sorted(candidate.glob("*.md")):
-                if md_file.is_file():
-                    found.append(md_file)
+            for skill_file in sorted(candidate.rglob("*")):
+                if skill_file.is_file() and _is_supported_skill_file(skill_file):
+                    found.append(skill_file)
 
     return found
 

@@ -208,6 +208,7 @@ def test_parse_ignores_invalid_json_lines():
     log = parse_audit_log(Path(tmp.name))
     assert len(log.tool_calls) == 1
     assert log.summary is not None
+    assert log.malformed_lines == 1
 
 
 # ── display_json ─────────────────────────────────────────────────────────────
@@ -301,6 +302,24 @@ def test_replay_json_output_structure(capsys):
     assert "relay_errors" in data
     assert "summary" in data
     assert "alert_details" in data
+    assert data["schema"] == "agent-bom proxy audit JSONL"
+    assert "tools/call" in data["accepted_types"]
+    assert data["unknown_records"] == 0
+    assert data["malformed_lines"] == 0
+
+
+def test_replay_json_reports_unknown_and_malformed_records(capsys):
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False)
+    tmp.write(json.dumps({"type": "custom_event", "value": 1}) + "\n")
+    tmp.write("not-json\n")
+    tmp.close()
+
+    code = replay(tmp.name, as_json=True)
+    data = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert data["unknown_records"] == 1
+    assert data["malformed_lines"] == 1
 
 
 def test_replay_json_includes_chain_verification_when_requested(capsys):
@@ -539,6 +558,31 @@ def test_display_rich_with_tool_filter():
     )
     code = display_rich(log, tool_filter="read")
     assert code == 0
+
+
+def test_display_rich_type_filter_hides_other_entry_types(capsys):
+    log = AuditLog(
+        tool_calls=[
+            ToolCallEntry(
+                ts="",
+                tool="read_file",
+                policy="allowed",
+                reason="",
+                agent_id="",
+                args={},
+                payload_sha256="",
+                message_id=None,
+            )
+        ],
+        relay_errors=[RelayErrorEntry(ts="", error="timeout", error_type="TimeoutError")],
+    )
+
+    code = display_rich(log, type_filter="tools/call")
+    output = capsys.readouterr().out
+
+    assert code == 0
+    assert "read_file" in output
+    assert "Relay Errors" not in output
 
 
 def test_display_rich_relay_errors():

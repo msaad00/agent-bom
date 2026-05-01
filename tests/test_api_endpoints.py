@@ -136,6 +136,25 @@ def test_root_uses_dashboard_friendly_csp_when_bundled(tmp_path: Path, monkeypat
     assert "frame-ancestors 'none'" in csp
 
 
+def test_root_strips_packaged_dashboard_csp_meta(tmp_path: Path, monkeypatch):
+    """The API owns dashboard CSP; stale exported meta tags should not reach browsers."""
+    index_file = tmp_path / "index.html"
+    index_file.write_text(
+        '<html><head><meta http-equiv="Content-Security-Policy" content="script-src sha256-bad"></head>'
+        "<body>agent-bom dashboard</body></html>",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("agent_bom.api.server._dashboard_index_file", lambda: str(index_file))
+
+    client, _ = _fresh_client()
+    resp = client.get("/", follow_redirects=False)
+
+    assert resp.status_code == 200
+    assert "content-security-policy" in resp.headers
+    assert "http-equiv" not in resp.text
+    assert "sha256-bad" not in resp.text
+
+
 def test_root_uses_hash_manifest_csp_when_bundled(tmp_path: Path, monkeypatch):
     """Packaged dashboard HTML should remove script unsafe-inline when release hashes exist."""
     index_file = tmp_path / "index.html"
@@ -154,9 +173,40 @@ def test_root_uses_hash_manifest_csp_when_bundled(tmp_path: Path, monkeypatch):
     assert resp.status_code == 200
     csp = resp.headers.get("content-security-policy", "")
     script_directive = csp.split("script-src ", 1)[1].split(";", 1)[0]
-    assert script_directive == "'self' sha256-abc123"
+    assert script_directive == "'self' 'sha256-abc123'"
     assert "'unsafe-inline'" not in script_directive
-    assert "style-src 'self' 'unsafe-inline' sha256-style123" in csp
+    assert "style-src 'self' 'unsafe-inline' 'sha256-style123'" in csp
+
+
+def test_direct_dashboard_html_static_file_strips_csp_meta(tmp_path: Path, monkeypatch):
+    """Direct static-export HTML files should use the same CSP stripping as SPA fallback."""
+    package_root = tmp_path / "agent_bom"
+    api_dir = package_root / "api"
+    api_dir.mkdir(parents=True)
+    server_file = api_dir / "server.py"
+    server_file.write_text("", encoding="utf-8")
+    ui_dist = package_root / "ui_dist"
+    nested = ui_dist / "agents"
+    nested.mkdir(parents=True)
+    (ui_dist / "index.html").write_text("<html><body>root</body></html>", encoding="utf-8")
+    (nested / "index.html").write_text(
+        '<html><head><meta http-equiv="Content-Security-Policy" content="script-src sha256-bad"></head><body>agents</body></html>',
+        encoding="utf-8",
+    )
+    from fastapi import FastAPI
+
+    import agent_bom.api.server as server_module
+    from agent_bom.api.server import _mount_dashboard
+
+    monkeypatch.setattr(server_module, "__file__", str(server_file))
+    test_app = FastAPI()
+    _mount_dashboard(test_app)
+    client = TestClient(test_app, raise_server_exceptions=False)
+    resp = client.get("/agents/index.html")
+
+    assert resp.status_code == 200
+    assert "http-equiv" not in resp.text
+    assert "sha256-bad" not in resp.text
 
 
 def test_hsts_preload_is_operator_opt_in(monkeypatch):
@@ -542,3 +592,69 @@ def test_openapi_schema_available():
         "schema"
     ]
     assert compliance_report["$ref"].endswith("/ComplianceReportBundle")
+
+
+def test_openapi_runtime_routes_do_not_404(monkeypatch):
+    """Routes advertised for core UI/API surfaces should resolve at runtime."""
+    client, store = _fresh_client()
+    previous = ScanJob(
+        job_id="job-prev",
+        status=JobStatus.DONE,
+        created_at="2026-04-20T00:00:00Z",
+        completed_at="2026-04-20T00:01:00Z",
+        request=ScanRequest(),
+        result={
+            "agents": [
+                {
+                    "name": "claude-desktop",
+                    "agent_type": "claude-desktop",
+                    "mcp_servers": [
+                        {
+                            "name": "filesystem",
+                            "packages": [
+                                {
+                                    "name": "requests",
+                                    "version": "2.31.0",
+                                    "ecosystem": "pypi",
+                                    "vulnerabilities": [{"id": "CVE-2026-0001", "severity": "high"}],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+            "blast_radius": [{"vulnerability_id": "CVE-2026-0001", "package": "requests@2.31.0", "severity": "high"}],
+        },
+    )
+    current = ScanJob(
+        job_id="job-current",
+        status=JobStatus.DONE,
+        created_at="2026-04-21T00:00:00Z",
+        completed_at="2026-04-21T00:01:00Z",
+        request=ScanRequest(),
+        result={"agents": previous.result["agents"], "blast_radius": []},
+    )
+    store.put(previous)
+    store.put(current)
+    monkeypatch.setattr("agent_bom.discovery.discover_all", lambda: [])
+
+    schema = client.get("/openapi.json").json()
+    expected_paths = {"/v1/agents/mesh", "/v1/findings", "/v1/inventory", "/v1/baseline/compare"}
+    assert expected_paths <= set(schema["paths"])
+
+    checks = [
+        ("GET", "/v1/agents/mesh"),
+        ("GET", "/v1/findings"),
+        ("GET", "/v1/inventory"),
+        ("POST", "/v1/baseline/compare?previous_job_id=job-prev&current_job_id=job-current"),
+    ]
+    for method, path in checks:
+        response = client.request(method, path)
+        assert response.status_code != 404, (method, path, response.text)
+
+
+def test_baseline_compare_requires_job_ids_without_404():
+    """A bare compare request should fail validation, not look like a missing route."""
+    client, _ = _fresh_client()
+    resp = client.post("/v1/baseline/compare")
+    assert resp.status_code == 422

@@ -179,23 +179,59 @@ def test_check_npm_provenance_none():
 
 
 def test_check_pypi_provenance_success():
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {
-        "attestations": [
+    metadata_resp = MagicMock()
+    metadata_resp.status_code = 200
+    metadata_resp.json.return_value = {
+        "urls": [
             {
-                "provenance": {"predicate_type": "https://slsa.dev/provenance/v1"},
-                "verification_status": "verified",
+                "filename": "requests-2.31.0-py3-none-any.whl",
             }
         ]
     }
+    provenance_resp = MagicMock()
+    provenance_resp.status_code = 200
+    provenance_resp.json.return_value = {"attestation_bundles": [{"attestations": [{"envelope": {}, "verification_material": {}}]}]}
 
-    with patch("agent_bom.integrity.request_with_retry", new_callable=AsyncMock, return_value=mock_resp):
+    with patch("agent_bom.integrity.request_with_retry", new_callable=AsyncMock, side_effect=[metadata_resp, provenance_resp]) as req:
         result = asyncio.run(check_pypi_provenance("requests", "2.31.0", AsyncMock()))
         assert result is not None
+        assert result["has_provenance"] is True
+        assert result["attestation_count"] == 1
+        assert result["files"] == ["requests-2.31.0-py3-none-any.whl"]
+        assert req.await_args_list[1].kwargs["headers"]["Accept"] == "application/vnd.pypi.integrity.v1+json"
 
 
 def test_check_pypi_provenance_no_attestations():
-    with patch("agent_bom.integrity.request_with_retry", new_callable=AsyncMock, return_value=None):
+    metadata_resp = MagicMock()
+    metadata_resp.status_code = 200
+    metadata_resp.json.return_value = {"urls": [{"filename": "pkg-1.0.0.tar.gz"}]}
+    provenance_resp = MagicMock()
+    provenance_resp.status_code = 404
+
+    with patch("agent_bom.integrity.request_with_retry", new_callable=AsyncMock, side_effect=[metadata_resp, provenance_resp]):
         result = asyncio.run(check_pypi_provenance("pkg", "1.0.0", AsyncMock()))
-        assert result == {"has_provenance": False, "status": "unavailable"}
+        assert result == {
+            "has_provenance": False,
+            "status": "not_published",
+            "attestation_count": 0,
+            "missing_files": ["pkg-1.0.0.tar.gz"],
+        }
+
+
+def test_check_pypi_provenance_partial_release_is_not_verified():
+    metadata_resp = MagicMock()
+    metadata_resp.status_code = 200
+    metadata_resp.json.return_value = {"urls": [{"filename": "pkg-1.0.0-py3-none-any.whl"}, {"filename": "pkg-1.0.0.tar.gz"}]}
+    wheel_resp = MagicMock()
+    wheel_resp.status_code = 200
+    wheel_resp.json.return_value = {"attestation_bundles": [{"attestations": [{}]}]}
+    sdist_resp = MagicMock()
+    sdist_resp.status_code = 404
+
+    with patch("agent_bom.integrity.request_with_retry", new_callable=AsyncMock, side_effect=[metadata_resp, wheel_resp, sdist_resp]):
+        result = asyncio.run(check_pypi_provenance("pkg", "1.0.0", AsyncMock()))
+
+    assert result["has_provenance"] is False
+    assert result["status"] == "partial"
+    assert result["attestation_count"] == 1
+    assert result["missing_files"] == ["pkg-1.0.0.tar.gz"]

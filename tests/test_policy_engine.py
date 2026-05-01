@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import io
 import json
 from unittest.mock import MagicMock
 
 import pytest
+from rich.console import Console
 
 from agent_bom.policy import (
     _rule_matches,
@@ -383,6 +385,65 @@ def test_evaluate_policy_warnings_and_passed():
     assert result["warnings"][0]["rule_id"] == "warn-medium"
     assert result["warnings"][0]["severity"] == "high"
     assert result["warnings"][0]["package"] == "example-pkg@1.0.0"
+
+
+def test_policy_fail_action_sets_scan_exit_code(tmp_path):
+    """A matching action=fail policy must make the scan gate fail."""
+    from agent_bom.cli.agents._context import ScanContext
+    from agent_bom.cli.agents._post import compute_exit_code, run_integrations
+
+    policy = tmp_path / "policy.json"
+    policy.write_text(
+        json.dumps({"rules": [{"id": "fail-high", "severity_gte": "HIGH", "action": "fail"}]}),
+        encoding="utf-8",
+    )
+    br = _make_blast_radius(severity="high")
+    ctx = ScanContext(
+        con=Console(file=io.StringIO(), force_terminal=False),
+        blast_radii=[br],
+        report=None,
+    )
+
+    run_integrations(
+        ctx,
+        quiet=True,
+        jira_url=None,
+        jira_user=None,
+        jira_token=None,
+        jira_project=None,
+        slack_webhook=None,
+        jira_discover=False,
+        servicenow_flag=False,
+        servicenow_instance=None,
+        servicenow_user=None,
+        servicenow_password=None,
+        slack_discover=False,
+        slack_bot_token=None,
+        vanta_token=None,
+        drata_token=None,
+        siem_type=None,
+        siem_url=None,
+        siem_token=None,
+        siem_index=None,
+        siem_format="json",
+        clickhouse_url=None,
+        policy=str(policy),
+    )
+
+    assert ctx.policy_passed is False
+    assert (
+        compute_exit_code(
+            ctx,
+            fail_on_severity=None,
+            warn_on_severity=None,
+            fail_on_kev=False,
+            fail_if_ai_risk=False,
+            push_url=None,
+            push_api_key=None,
+            quiet=True,
+        )
+        == 1
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -165,6 +165,34 @@ def test_api_key_middleware_blocks_without_key():
     assert resp.status_code == 401
 
 
+def test_api_key_middleware_exempts_packaged_dashboard_assets():
+    """Dashboard shell assets must load before browser auth/bootstrap completes."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    test_app = Starlette(
+        routes=[
+            Route("/_next/static/app.js", dummy),
+            Route("/agents/index.html", dummy),
+            Route("/vulns.html", dummy),
+            Route("/admin.js", dummy),
+            Route("/v1/test.js", dummy),
+        ]
+    )
+    test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
+
+    client = TestClient(test_app)
+    assert client.get("/_next/static/app.js").status_code == 200
+    assert client.get("/agents/index.html").status_code == 200
+    assert client.get("/vulns.html").status_code == 200
+    assert client.get("/admin.js").status_code == 401
+    assert client.get("/v1/test.js").status_code == 401
+
+
 def test_api_key_middleware_bearer():
     """Bearer token should authenticate successfully."""
     from starlette.applications import Starlette
@@ -180,6 +208,22 @@ def test_api_key_middleware_bearer():
     client = TestClient(test_app)
     resp = client.get("/v1/test", headers={"Authorization": "Bearer test-key-123"})
     assert resp.status_code == 200
+
+
+def test_configure_api_orders_auth_before_rate_limit_for_tenant_scoping(monkeypatch):
+    """Auth must populate tenant state before rate limiting resolves buckets."""
+    from agent_bom.api.server import app, configure_api
+
+    original = list(app.user_middleware)
+    try:
+        monkeypatch.delenv("AGENT_BOM_OIDC_ISSUER", raising=False)
+        configure_api(api_key="test-key-123", rate_limit_rpm=10)
+        order = [middleware.cls for middleware in app.user_middleware]
+        assert order.index(MaxBodySizeMiddleware) < order.index(APIKeyMiddleware) < order.index(RateLimitMiddleware)
+    finally:
+        app.user_middleware = original
+        if app.middleware_stack is not None:
+            app.middleware_stack = app.build_middleware_stack()
 
 
 def test_api_key_middleware_x_api_key():

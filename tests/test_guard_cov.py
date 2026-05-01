@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import logging
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from agent_bom.guard import (
+    _check_package,
     _find_real_tool,
     guard_install,
     run_guarded_install,
@@ -28,7 +29,7 @@ class TestGuardInstall:
 
     @pytest.mark.asyncio
     async def test_pip_with_clean_packages(self):
-        async def mock_check(name, eco):
+        async def mock_check(name, eco, **_kwargs):
             return {"name": name, "ecosystem": eco, "vulns": [], "blocked": False}
 
         with patch("agent_bom.guard._check_package", side_effect=mock_check):
@@ -39,7 +40,7 @@ class TestGuardInstall:
 
     @pytest.mark.asyncio
     async def test_npm_with_blocked_packages(self):
-        async def mock_check(name, eco):
+        async def mock_check(name, eco, **_kwargs):
             return {
                 "name": name,
                 "ecosystem": eco,
@@ -55,7 +56,7 @@ class TestGuardInstall:
 
     @pytest.mark.asyncio
     async def test_allow_risky_overrides_block(self):
-        async def mock_check(name, eco):
+        async def mock_check(name, eco, **_kwargs):
             return {"name": name, "ecosystem": eco, "vulns": [{"id": "CVE-2024-001"}], "blocked": True, "vuln_count": 1}
 
         with patch("agent_bom.guard._check_package", side_effect=mock_check):
@@ -64,13 +65,108 @@ class TestGuardInstall:
             assert result.install_allowed is True
 
     @pytest.mark.asyncio
+    async def test_allow_risky_does_not_override_scan_failure(self):
+        async def mock_check(name, eco, **_kwargs):
+            return {
+                "name": name,
+                "ecosystem": eco,
+                "error": "lookup_names",
+                "vulns": [],
+                "blocked": True,
+                "scan_failed": True,
+                "vuln_count": 0,
+            }
+
+        with patch("agent_bom.guard._check_package", side_effect=mock_check):
+            result = await guard_install("pip", ["install", "badpkg"], allow_risky=True)
+
+        assert result.packages_blocked == 1
+        assert result.install_allowed is False
+
+    @pytest.mark.asyncio
     async def test_npx_tool(self):
-        async def mock_check(name, eco):
+        async def mock_check(name, eco, **_kwargs):
             return {"name": name, "ecosystem": eco, "vulns": [], "blocked": False}
 
         with patch("agent_bom.guard._check_package", side_effect=mock_check):
             result = await guard_install("npx", ["install", "express"])
             assert result.packages_checked == 1
+
+    @pytest.mark.asyncio
+    async def test_pip_scanner_error_fails_closed(self):
+        async def mock_check(name, eco, **_kwargs):
+            return {
+                "name": name,
+                "ecosystem": eco,
+                "error": "Package object missing lookup_names",
+                "vulns": [],
+                "blocked": True,
+                "scan_failed": True,
+                "vuln_count": 0,
+            }
+
+        with patch("agent_bom.guard._check_package", side_effect=mock_check):
+            result = await guard_install("pip", ["install", "requests"])
+
+        assert result.packages_checked == 1
+        assert result.packages_blocked == 1
+        assert result.packages_clean == 0
+        assert result.clean == []
+        assert result.blocked[0]["scan_failed"] is True
+        assert result.install_allowed is False
+
+    @pytest.mark.asyncio
+    async def test_npm_scanner_error_fails_closed(self):
+        async def mock_check(name, eco, **_kwargs):
+            return {
+                "name": name,
+                "ecosystem": eco,
+                "error": "Package object missing license",
+                "vulns": [],
+                "blocked": True,
+                "scan_failed": True,
+                "vuln_count": 0,
+            }
+
+        with patch("agent_bom.guard._check_package", side_effect=mock_check):
+            result = await guard_install("npm", ["install", "express"])
+
+        assert result.packages_checked == 1
+        assert result.packages_blocked == 1
+        assert result.packages_clean == 0
+        assert result.clean == []
+        assert result.blocked[0]["scan_failed"] is True
+        assert result.install_allowed is False
+
+
+class TestCheckPackage:
+    @pytest.mark.asyncio
+    async def test_constructs_scanner_package_model(self):
+        captured = {}
+
+        async def mock_scan(packages, **_kwargs):
+            captured["package"] = packages[0]
+            return 0
+
+        with patch("agent_bom.scanners.scan_packages", new=AsyncMock(side_effect=mock_scan)):
+            result = await _check_package("requests", "pypi")
+
+        pkg = captured["package"]
+        assert pkg.name == "requests"
+        assert pkg.version == "latest"
+        assert pkg.ecosystem == "pypi"
+        assert pkg.lookup_names == ["requests"]
+        assert hasattr(pkg, "license")
+        assert result["blocked"] is False
+
+    @pytest.mark.asyncio
+    async def test_scan_exception_blocks_package(self):
+        with patch("agent_bom.scanners.scan_packages", new=AsyncMock(side_effect=AttributeError("lookup_names"))):
+            result = await _check_package("express", "npm")
+
+        assert result["blocked"] is True
+        assert result["scan_failed"] is True
+        assert result["error"] == "lookup_names"
 
 
 class TestFindRealTool:

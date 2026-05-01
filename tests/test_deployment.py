@@ -366,7 +366,7 @@ def test_primary_api_image_includes_snowflake_extra_for_snowflake_backend():
 def test_runtime_dockerfile_builds_from_repo_source():
     """Runtime image should install agent-bom from the checked-out source tree, not PyPI."""
     content = (ROOT / "deploy" / "docker" / "Dockerfile.runtime").read_text()
-    assert "COPY pyproject.toml README.md LICENSE ./" in content
+    assert "COPY pyproject.toml README.md PYPI_README.md LICENSE ./" in content
     assert "COPY src/ ./src/" in content
     assert 'pip install --no-cache-dir --prefix=/install ".[runtime]"' in content
     assert "agent-bom==${VERSION}" not in content

@@ -14,12 +14,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 ## [0.84.1] – 2026-05-01
 
 ### Fixed
+- **Gateway auth and GHSA rate-limit hardening** — gateway API-key verification now fails closed on key-store errors, and unauthenticated GHSA enrichment is capped with upfront warnings so CLI/API/dashboard scans do not pause for long GitHub advisory backoff storms.
+- **Extension registry safety** — the extension entry-point registry is documented and explicit, keeping plugin-style imports opt-in instead of silently importing installed package code during security scans.
+- **CLI documentation and exit-code alignment** — grouped CLI docs now match the 30+ command surface, usage errors consistently return exit code 2, and release checks guard future CLI reference drift.
 - **Graph export parity** — CLI Cytoscape, Graph HTML, Mermaid, GraphML, Cypher, and API graph paths now surface conservative credential → tool `reaches_tool` evidence consistently.
 - **Dashboard scan polling** — the scan detail UI now polls a lightweight status endpoint during async scans and fetches the full result only once at completion, avoiding repeated multi-MB `/v1/scan/{id}` payloads.
 - **CLI error contracts** — listener ports now reject privileged or invalid values before socket bind, and malformed inventory, VEX, policy, and ignore files fail loudly with actionable parser messages instead of raw tracebacks or silent skips.
 - **Pre-release output polish** — clean scans now describe config-posture gaps without contradicting `SECURITY POSTURE: CLEAN`, project-scoped agents render with human-readable labels, and CSV inventory ingestion logs skipped empty package rows.
 - **Delta gate artifact consistency** — delta-mode filtering now happens before report rendering so JSON/SARIF artifacts and CI exit gates reflect the same new-only finding set.
 - **UI E2E production parity** — Playwright now runs against a staged standalone bundle that mirrors the container runtime, preventing hydration checks from passing only in dev mode.
+- **Release registry freshness** — the bundled MCP registry is refreshed for the patch release, release gates now enforce freshness before tagging, and registry descriptions are capped at 100 characters across sync paths to protect catalog/UI consumers.
 
 ---
 
@@ -978,7 +982,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.84.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.84.1...HEAD
+[0.84.1]: https://github.com/msaad00/agent-bom/compare/v0.84.0...v0.84.1
 [0.84.0]: https://github.com/msaad00/agent-bom/compare/v0.83.4...v0.84.0
 [0.83.4]: https://github.com/msaad00/agent-bom/compare/v0.83.3...v0.83.4
 [0.83.3]: https://github.com/msaad00/agent-bom/compare/v0.83.2...v0.83.3

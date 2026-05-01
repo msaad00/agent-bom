@@ -18,7 +18,7 @@ overrides = [{ name = "python-dotenv", specifier = ">=1.2.2" }]
 
 [[package]]
 name = "agent-bom"
-version = "0.84.0"
+version = "0.84.1"
 source = { editable = "." }
 dependencies = [
     { name = "click" },

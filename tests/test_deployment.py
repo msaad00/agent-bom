@@ -183,6 +183,26 @@ def test_server_card_exposes_resources_and_workflow_prompts():
     assert "remediation-plan" in prompt_names
 
 
+def test_mcp_docs_match_resource_and_prompt_catalog():
+    """Human MCP docs should stay aligned with the server-card catalog."""
+    from agent_bom.mcp_server import build_server_card
+
+    docs = "\n".join(
+        [
+            (ROOT / "docs" / "MCP_SERVER.md").read_text(),
+            (ROOT / "site-docs" / "getting-started" / "mcp-server.md").read_text(),
+            (ROOT / "site-docs" / "reference" / "mcp-tools.md").read_text(),
+        ]
+    )
+    card = build_server_card()
+    assert "35 security tools" not in docs
+    assert "36" in docs
+    for resource in card["resources"]:
+        assert resource["uri"] in docs
+    for prompt in card["prompts"]:
+        assert prompt["name"] in docs
+
+
 def test_server_card_tool_count_matches_decorators():
     """_SERVER_CARD_TOOLS must list every @mcp.tool across MCP tool surfaces."""
     import inspect
@@ -404,7 +424,7 @@ def test_mcp_server_help_shows_skill_tools():
 
     runner = CliRunner()
     result = runner.invoke(main, ["mcp", "server", "--help"])
-    assert "35 security tools" in result.output
+    assert "36 security tools" in result.output
     assert "skill_scan" in result.output
     assert "skill_verify" in result.output
     assert "compliance" in result.output

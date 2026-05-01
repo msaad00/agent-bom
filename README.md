@@ -419,7 +419,7 @@ Container image gate, IaC gate, air-gapped CI, MCP scan, and the SARIF / SBOM ex
 
 ## MCP server
 
-36 security tools available inside any MCP-compatible AI assistant:
+36 read-only security tools, 6 resources, and 6 workflow prompts available inside any MCP-compatible AI assistant:
 
 ```json
 {

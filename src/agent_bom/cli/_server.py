@@ -612,7 +612,7 @@ def mcp_server_cmd(
     Requires:  pip install 'agent-bom[mcp-server]'
 
     \b
-    Exposes 35 security tools via MCP protocol:
+    Exposes 36 security tools via MCP protocol:
       scan                   Full scan — CVEs, config security, blast radius, compliance
       check                  Check a specific package for CVEs before installing
       blast_radius           Look up blast radius for a specific CVE
@@ -626,11 +626,13 @@ def mcp_server_cmd(
       skill_trust            Trust assessment for SKILL.md files
       verify                 Package integrity + SLSA provenance verification
       where                  Show all MCP discovery paths + existence status
+      tool_risk_assessment   Score live MCP tool capabilities and server risk
       inventory              List agents/servers without CVE scanning
       diff                   Compare scan against baseline for new/resolved vulns
       marketplace_check      Pre-install marketplace trust check
       code_scan              SAST scanning via Semgrep with CWE mapping
       context_graph          Agent context graph with lateral movement analysis
+      graph_export           Export dependency graph as GraphML, Cypher, DOT, or Mermaid
       analytics_query        Query vulnerability trends from ClickHouse
       cis_benchmark          Run CIS benchmark checks (AWS/Snowflake)
       fleet_scan             Batch registry lookup for fleet inventories

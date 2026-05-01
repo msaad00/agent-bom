@@ -290,6 +290,14 @@ def test_deployment_freshness_workflow_uses_bearer_token_and_parses_tool_count()
     assert "--resolve-only" in workflow
 
 
+def test_docs_workflow_never_deploys_pages_from_release_tags():
+    """Release tags may build docs, but Pages deploy is protected to main only."""
+    workflow = (ROOT / ".github" / "workflows" / "docs.yml").read_text()
+    assert "github.ref == 'refs/heads/main'" in workflow
+    assert "inputs.deploy == true" in workflow
+    assert "actions/deploy-pages" in workflow
+
+
 def test_publish_registries_workflow_requires_public_smithery_surface_and_curated_clawhub_set():
     """Registry publishing should fail fast on auth-gated Smithery URLs and avoid omnibus ClawHub skills."""
     workflow = (ROOT / ".github" / "workflows" / "publish-registries.yml").read_text()

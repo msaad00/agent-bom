@@ -27,7 +27,7 @@ agent-bom remediate -p . --format json --server-group --output plan.json
 
 ```json
 {
-  "version": "0.84.2",
+  "version": "0.84.3",
   "generated_at": "2026-04-21T12:00:00+00:00",
   "remediation_plan": [],
   "summary": {

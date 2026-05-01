@@ -11,6 +11,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.84.3] – 2026-05-01
+
+### Fixed
+- **Release docs deployment guard** — GitHub Pages deployment now only runs from `refs/heads/main`, so tag-triggered release builds can verify docs without entering the protected Pages environment.
+- **Patch release alignment** — bumped release surfaces from the cancelled `v0.84.2` tag to `v0.84.3` after the tag workflow was cancelled before package publication.
+
+---
+
 ## [0.84.2] – 2026-05-01
 
 ### Fixed
@@ -991,7 +999,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.84.2...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.84.3...HEAD
+[0.84.3]: https://github.com/msaad00/agent-bom/compare/v0.84.2...v0.84.3
 [0.84.2]: https://github.com/msaad00/agent-bom/compare/v0.84.1...v0.84.2
 [0.84.1]: https://github.com/msaad00/agent-bom/compare/v0.84.0...v0.84.1
 [0.84.0]: https://github.com/msaad00/agent-bom/compare/v0.83.4...v0.84.0

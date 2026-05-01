@@ -6,6 +6,45 @@
 
   "$defs": {
 
+    "VersionProvenance": {
+      "title": "Package Version Provenance",
+      "description": "Evidence for how a package version was resolved.",
+      "type": "object",
+      "properties": {
+        "declared_name": { "type": "string" },
+        "declared_version": { "type": "string" },
+        "resolved_version": { "type": "string" },
+        "version_source": {
+          "type": "string",
+          "enum": ["runtime_process", "image_sbom", "installed_package", "tool_cache", "lockfile", "command_pin", "registry_latest", "unknown"]
+        },
+        "confidence": {
+          "type": "string",
+          "enum": ["exact", "high", "medium", "low", "unknown"]
+        },
+        "observed_at": { "type": "string" },
+        "version_resolved_at": { "type": "string" },
+        "resolved_from_registry": { "type": "boolean" },
+        "floating_reference": { "type": "boolean" },
+        "floating_reference_reason": { "type": "string" },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "version_conflicts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+
     "DiscoveryProvenance": {
       "title": "Discovery Provenance",
       "description": "Low-risk provenance for how an asset was observed. Values are sanitized before persistence/export.",
@@ -41,7 +80,8 @@
         "location": { "type": "string" },
         "confidence": { "type": "string" },
         "resolved_from_registry": { "type": "boolean" },
-        "version_source": { "type": "string" }
+        "version_source": { "type": "string" },
+        "version_provenance": { "$ref": "#/$defs/VersionProvenance" }
       },
       "additionalProperties": false
     },

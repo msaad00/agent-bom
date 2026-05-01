@@ -15,6 +15,8 @@ from __future__ import annotations
 import html
 from typing import TYPE_CHECKING
 
+from agent_bom.asset_provenance import package_version_provenance
+
 if TYPE_CHECKING:
     from agent_bom.models import AIBOMReport, BlastRadius
 
@@ -145,6 +147,7 @@ def to_svg(
                         "label": f"{pkg.name}@{pkg.version}",
                         "type": "pkg_vuln" if is_vuln else "pkg_clean",
                         "ecosystem": pkg.ecosystem,
+                        "version_provenance": package_version_provenance(pkg),
                     }
                 )
                 server_to_packages.append((sid, pid))
@@ -272,10 +275,16 @@ def to_svg(
             colors = _COLORS.get(ctype, _COLORS.get(color_key, ("#333", "#f5f5f5", "#999")))
             text_color, bg_color, border_color = colors
             label = html.escape(item["label"][:28])
+            version_attrs = ""
+            version_provenance = item.get("version_provenance")
+            if isinstance(version_provenance, dict):
+                source = html.escape(str(version_provenance.get("version_source", "unknown")), quote=True)
+                confidence = html.escape(str(version_provenance.get("confidence", "unknown")), quote=True)
+                version_attrs = f' data-version-source="{source}" data-version-confidence="{confidence}"'
 
             parts.append(
                 f'<rect x="{col_x}" y="{y}" width="{_NODE_W}" height="{_NODE_H}" '
-                f'rx="{_NODE_RX}" fill="{bg_color}" stroke="{border_color}" stroke-width="1.5"/>'
+                f'rx="{_NODE_RX}" fill="{bg_color}" stroke="{border_color}" stroke-width="1.5"{version_attrs}/>'
             )
             parts.append(
                 f'<text x="{col_x + _NODE_W / 2}" y="{y + _NODE_H / 2 + 4}" '

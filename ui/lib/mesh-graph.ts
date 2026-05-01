@@ -4,7 +4,7 @@
  */
 
 import { type Node, type Edge, MarkerType } from "@xyflow/react";
-import type { ScanResult, MCPServer, Agent, Vulnerability } from "@/lib/api";
+import type { ScanResult, MCPServer, Agent, Vulnerability, Package as AIBOMPackage } from "@/lib/api";
 import type { LineageNodeData } from "@/components/lineage-nodes";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -54,6 +54,18 @@ export interface MeshGraphScope {
 
 const CRED_RE = /key|token|secret|password|credential|auth/i;
 
+function packageVersionSource(pkg: AIBOMPackage): string | undefined {
+  return pkg.version_provenance?.version_source || pkg.discovery_provenance?.version_provenance?.version_source || pkg.version_source;
+}
+
+function packageVersionConfidence(pkg: AIBOMPackage): string | undefined {
+  return (
+    pkg.version_provenance?.confidence ||
+    pkg.discovery_provenance?.version_provenance?.confidence ||
+    pkg.version_confidence
+  );
+}
+
 function agentSourceId(agent: Agent): string {
   const direct = typeof agent.source_id === "string" ? agent.source_id.trim() : "";
   if (direct) return direct;
@@ -92,7 +104,14 @@ function mergeServers(existing: MCPServer, incoming: MCPServer): MCPServer {
       for (const vuln of pkg.vulnerabilities ?? []) {
         vulnerabilities.set(vuln.id, vuln);
       }
-      packages.set(key, { ...current, vulnerabilities: [...vulnerabilities.values()] });
+      packages.set(key, {
+        ...current,
+        version_source: current.version_source || pkg.version_source,
+        version_confidence: current.version_confidence || pkg.version_confidence,
+        version_provenance: current.version_provenance || pkg.version_provenance,
+        discovery_provenance: current.discovery_provenance || pkg.discovery_provenance,
+        vulnerabilities: [...vulnerabilities.values()],
+      });
     } else {
       packages.set(key, pkg);
     }
@@ -539,6 +558,8 @@ export function buildMeshGraph(
             nodeType: "package",
             ecosystem: pkg.ecosystem,
             version: pkg.version,
+            versionSource: packageVersionSource(pkg),
+            versionConfidence: packageVersionConfidence(pkg),
             vulnCount,
           } satisfies LineageNodeData,
         });

@@ -340,6 +340,8 @@ function toLineageData(
     case "package":
       data.ecosystem = stringAttr(node, "ecosystem");
       data.version = stringAttr(node, "version");
+      data.versionSource = versionProvenanceString(node, "version_source") || stringAttr(node, "version_source");
+      data.versionConfidence = versionProvenanceString(node, "confidence");
       data.vulnCount = countOutgoing(node.id, outgoing, RelationshipType.VULNERABLE_TO);
       break;
     case "vulnerability":
@@ -616,6 +618,13 @@ function mapNodeType(node: UnifiedNode): LineageNodeType | null {
 function stringAttr(node: UnifiedNode, key: string): string {
   const value = node.attributes?.[key];
   return typeof value === "string" ? value : "";
+}
+
+function versionProvenanceString(node: UnifiedNode, key: string): string {
+  const value = node.attributes?.version_provenance;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "";
+  const nested = (value as Record<string, unknown>)[key];
+  return typeof nested === "string" ? nested : "";
 }
 
 function numberAttr(node: UnifiedNode, key: string): number | undefined {

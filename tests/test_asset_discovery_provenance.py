@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _run_scan_sync
 from agent_bom.api.routes.discovery import _serialize_agent
-from agent_bom.asset_provenance import sanitize_discovery_provenance
+from agent_bom.asset_provenance import package_version_provenance, sanitize_discovery_provenance
 from agent_bom.finding import blast_radius_to_finding
 from agent_bom.graph import EntityType
 from agent_bom.graph.builder import build_unified_graph_from_report
@@ -102,6 +102,12 @@ def test_json_surfaces_infer_and_preserve_asset_discovery_provenance() -> None:
     assert registry_provenance["source_type"] == "registry_fallback"
     assert registry_provenance["resolved_from_registry"] is True
     assert registry_provenance["version_source"] == "registry_fallback"
+    assert registry_provenance["version_provenance"]["version_source"] == "registry_latest"
+    assert registry_provenance["version_provenance"]["confidence"] == "low"
+
+    registry_version_provenance = agents["bedrock-agent"]["mcp_servers"][0]["packages"][0]["version_provenance"]
+    assert registry_version_provenance["version_source"] == "registry_latest"
+    assert registry_version_provenance["legacy_version_source"] == "registry_fallback"
 
     skill_provenance = agents["skill-files"]["mcp_servers"][0]["packages"][0]["discovery_provenance"]
     assert skill_provenance["source_type"] == "skill_invoked_pull"
@@ -109,6 +115,7 @@ def test_json_surfaces_infer_and_preserve_asset_discovery_provenance() -> None:
 
     snapshot_pkg = next(pkg for pkg in payload["inventory_snapshot"]["packages"] if pkg["name"] == "mcp-server")
     assert snapshot_pkg["discovery_provenance"]["source_type"] == "registry_fallback"
+    assert snapshot_pkg["version_provenance"]["version_source"] == "registry_latest"
 
 
 def test_api_graph_and_finding_surfaces_preserve_sanitized_provenance() -> None:
@@ -142,11 +149,42 @@ def test_api_graph_and_finding_surfaces_preserve_sanitized_provenance() -> None:
     graph = build_unified_graph_from_report(report_payload)
     package_node = graph.nodes_by_type(EntityType.PACKAGE)[0]
     assert package_node.attributes["discovery_provenance"]["source"] == "<redacted>"
+    assert package_node.attributes["version_provenance"]["version_source"] == "unknown"
     depends_edge = graph.edges_to(package_node.id)[0]
     assert depends_edge.evidence["discovery_provenance"]["source_type"] == "operator_pushed_inventory"
+    assert depends_edge.evidence["version_provenance"]["confidence"] == "unknown"
 
     finding = blast_radius_to_finding(_blast_radius(vuln, pkg, server, agent))
     assert finding.evidence["package_discovery_provenance"]["source"] == "<redacted>"
+    assert finding.evidence["package_version_provenance"]["version_source"] == "unknown"
+
+
+def test_package_version_provenance_canonicalizes_sources_and_conflicts() -> None:
+    pkg = Package(
+        name="@modelcontextprotocol/server-github",
+        version="1.2.4",
+        ecosystem="npm",
+        version_source="registry_fallback",
+        resolved_from_registry=True,
+        declared_version="latest",
+        version_conflicts=[
+            {"source": "command_pin", "version": "1.2.3"},
+            {"source": "node_modules", "version": "1.2.4"},
+        ],
+        version_evidence=[{"type": "registry", "url": "https://registry.npmjs.org/pkg/latest"}],
+    )
+
+    provenance = package_version_provenance(pkg)
+
+    assert provenance["declared_version"] == "latest"
+    assert provenance["resolved_version"] == "1.2.4"
+    assert provenance["version_source"] == "registry_latest"
+    assert provenance["confidence"] == "low"
+    assert provenance["legacy_version_source"] == "registry_fallback"
+    assert provenance["version_conflicts"] == [
+        {"source": "command_pin", "version": "1.2.3"},
+        {"source": "installed_package", "version": "1.2.4"},
+    ]
 
 
 def test_inventory_schema_accepts_discovery_provenance(tmp_path) -> None:
@@ -187,6 +225,11 @@ def test_inventory_schema_accepts_discovery_provenance(tmp_path) -> None:
                                             "source_type": "operator_pushed_inventory",
                                             "observed_via": ["operator_inventory"],
                                             "version_source": "manifest",
+                                            "version_provenance": {
+                                                "resolved_version": "0.104.0",
+                                                "version_source": "lockfile",
+                                                "confidence": "exact",
+                                            },
                                         },
                                     }
                                 ],
@@ -204,6 +247,7 @@ def test_inventory_schema_accepts_discovery_provenance(tmp_path) -> None:
     assert payload["discovery_provenance"]["collector"] == "cmdb-export"
     pkg = payload["agents"][0]["mcp_servers"][0]["packages"][0]
     assert pkg["discovery_provenance"]["version_source"] == "manifest"
+    assert pkg["discovery_provenance"]["version_provenance"]["version_source"] == "lockfile"
 
 
 def test_api_pipeline_inventory_preserves_packages_and_provenance(monkeypatch, tmp_path) -> None:

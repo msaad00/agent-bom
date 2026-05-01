@@ -24,6 +24,7 @@ Each ADR follows this structure:
 | 004 | [Proxy-Based Runtime Enforcement](004-proxy-runtime-enforcement.md) | Accepted | 2026-03-11 |
 | 005 | [Re-Export Pattern for Backward Compatibility](005-re-export-pattern.md) | Accepted | 2026-03-11 |
 | 006 | [Unified Graph Write Batching](006-unified-graph-write-batching.md) | Accepted | 2026-04-25 |
+| 007 | [MCP Package Version Provenance](007-mcp-package-version-provenance.md) | Accepted | 2026-05-01 |
 
 ## Adding a New ADR
 

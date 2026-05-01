@@ -79,6 +79,22 @@ def test_attack_flow_node_types():
     assert "agent" in node_types
 
 
+def test_attack_flow_package_nodes_preserve_version_provenance():
+    blast_radius = _make_blast_radius()
+    blast_radius[0]["package_version_provenance"] = {
+        "version_source": "lockfile",
+        "confidence": "exact",
+        "resolved_version": "4.18.2",
+    }
+
+    result = build_attack_flow(blast_radius, _make_agents())
+    package = next(node for node in result["nodes"] if node["data"]["nodeType"] == "package" and node["data"]["label"] == "express")
+
+    assert package["data"]["version_source"] == "lockfile"
+    assert package["data"]["version_confidence"] == "exact"
+    assert package["data"]["version_provenance"]["resolved_version"] == "4.18.2"
+
+
 def test_attack_flow_stats():
     """Stats reflect the input data."""
     result = build_attack_flow(_make_blast_radius(), _make_agents())

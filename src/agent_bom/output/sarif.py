@@ -7,7 +7,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-from agent_bom.asset_provenance import agent_discovery_provenance, package_discovery_provenance, sanitize_discovery_provenance
+from agent_bom.asset_provenance import (
+    agent_discovery_provenance,
+    package_discovery_provenance,
+    package_version_provenance,
+    sanitize_discovery_provenance,
+)
 from agent_bom.finding import FindingType
 from agent_bom.models import AIBOMReport, Severity
 from agent_bom.security import sanitize_sensitive_payload
@@ -164,6 +169,7 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
         package_provenance = package_discovery_provenance(br.package)
         if package_provenance:
             result_properties["package_discovery_provenance"] = _sanitize_sarif_property(package_provenance)
+        result_properties["package_version_provenance"] = _sanitize_sarif_property(package_version_provenance(br.package))
         agent_provenance = [
             provenance for provenance in (agent_discovery_provenance(agent) for agent in br.affected_agents[:10]) if provenance
         ]

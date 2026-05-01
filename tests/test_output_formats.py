@@ -460,3 +460,21 @@ def test_cytoscape_graph_includes_credential_to_tool_reachability_evidence():
     assert reaches_edges
     assert reaches_edges[0]["mapping_method"] == "server_scope_conservative"
     assert reaches_edges[0]["confidence"] == "medium"
+
+
+def test_cytoscape_package_nodes_include_version_provenance():
+    from agent_bom.output.graph import build_graph_elements
+
+    pkg = _make_pkg("axios", "1.4.0", "npm")
+    pkg.version_source = "lockfile"
+    server = _make_server("github", packages=[pkg])
+    agent = _make_agent(servers=[server])
+    report = _make_report(agents=[agent])
+    blast_radius = _make_blast_radius(pkg=pkg, agents=[agent])
+
+    elements = build_graph_elements(report, [blast_radius])
+    package = next(element["data"] for element in elements if element.get("data", {}).get("type") == "pkg_vuln")
+
+    assert package["versionSource"] == "lockfile"
+    assert package["versionConfidence"] == "exact"
+    assert '"version_source": "lockfile"' in package["versionProvenance"]

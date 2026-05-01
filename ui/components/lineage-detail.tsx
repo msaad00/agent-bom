@@ -223,6 +223,8 @@ export function LineageDetailPanel({
           <div className="space-y-3">
             {data.ecosystem && <Row label="Ecosystem" value={data.ecosystem} />}
             {data.version && <Row label="Version" value={data.version} />}
+            {data.versionSource && <Row label="Version source" value={data.versionSource} />}
+            {data.versionConfidence && <Row label="Version confidence" value={data.versionConfidence} />}
             {(data.vulnCount ?? 0) > 0 ? (
               <Row label="Findings" value={data.vulnCount ?? 0} className="text-red-400" />
             ) : (

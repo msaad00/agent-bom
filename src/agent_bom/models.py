@@ -321,6 +321,12 @@ class Package:
     resolved_from_registry: bool = False  # True if resolved dynamically vs from lock file
     registry_version: Optional[str] = None  # Latest version from registry (for drift comparison)
     version_source: str = "detected"  # "detected" | "manifest" | "registry_fallback"
+    declared_version: Optional[str] = None  # Version/ref declared by command or manifest (may be latest/floating)
+    resolved_version: Optional[str] = None  # Exact version selected after resolution, when known
+    version_confidence: Optional[str] = None  # ADR-007 confidence enum for the resolved version
+    version_resolved_at: Optional[str] = None  # Timestamp when version was resolved
+    version_evidence: list[dict] = field(default_factory=list)  # Structured evidence for version source
+    version_conflicts: list[dict] = field(default_factory=list)  # Conflicting source/version observations
     floating_reference: bool = False  # True when the package/source ref is mutable (latest/main/no digest)
     floating_reference_reason: Optional[str] = None  # Why the ref is mutable
     is_malicious: bool = False  # True if flagged as known malicious (MAL- prefix in OSV)

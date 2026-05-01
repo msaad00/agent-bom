@@ -54,6 +54,9 @@ def skills_group(ctx: click.Context) -> None:
     help="Path to the local skills catalog (defaults to ~/.agent-bom/skills/catalog.json)",
 )
 @click.option("--verbose", "-v", is_flag=True, help="Show all findings instead of only the default top findings summary")
+@click.option("--no-color", is_flag=True, help="Disable colored output")
+@click.option("--log-json", "log_json", is_flag=True, help="Emit structured JSON logs to stderr")
+@click.option("--log-file", "log_file", type=click.Path(path_type=Path), default=None, help="Write JSON logs to file")
 @click.option("--quiet", "-q", is_flag=True, help="Suppress headings, summaries, and recommendations in console output")
 def skills_scan_cmd(
     paths: tuple[Path, ...],
@@ -63,6 +66,9 @@ def skills_scan_cmd(
     intel_source: str | None,
     catalog_path: Path | None,
     verbose: bool,
+    no_color: bool,
+    log_json: bool,
+    log_file: Path | None,
     quiet: bool,
 ) -> None:
     """Scan skill and instruction files for trust, risk, and provenance.
@@ -73,6 +79,9 @@ def skills_scan_cmd(
       agent-bom skills scan CLAUDE.md .cursor/rules
       agent-bom skills scan . --fail-on-verdict suspicious -f json
     """
+    from agent_bom.logging_config import setup_logging
+
+    setup_logging(level="ERROR" if quiet else "INFO", json_output=log_json, log_file=str(log_file) if log_file else None)
     report = scan_skill_targets(paths, intel_source=intel_source, catalog_path=catalog_path)
     payload = report.to_dict()
 
@@ -83,7 +92,7 @@ def skills_scan_cmd(
         else:
             click.echo(rendered)
     else:
-        console = Console()
+        console = Console(no_color=no_color)
         summary = payload["summary"]
 
         if not report.files:

@@ -228,8 +228,19 @@ def sbom_cmd(
 @click.argument("path", type=click.Path(exists=True))
 @click.option("-f", "--format", "output_format", default="console", help="Output format (console or json)")
 @click.option("-o", "--output", "output_path", help="Output file path")
+@click.option("--no-color", is_flag=True, help="Disable colored output")
+@click.option("--log-json", "log_json", is_flag=True, help="Emit structured JSON logs to stderr")
+@click.option("--log-file", "log_file", type=click.Path(), default=None, help="Write JSON logs to file")
 @click.option("--quiet", "-q", is_flag=True)
-def secrets_cmd(path: str, output_format: str, output_path: Optional[str], quiet: bool) -> None:
+def secrets_cmd(
+    path: str,
+    output_format: str,
+    output_path: Optional[str],
+    no_color: bool,
+    log_json: bool,
+    log_file: Optional[str],
+    quiet: bool,
+) -> None:
     """Scan a directory for hardcoded secrets and PII.
 
     Uses 34 credential patterns + 11 PII patterns + 4 file-specific
@@ -246,11 +257,13 @@ def secrets_cmd(path: str, output_format: str, output_path: Optional[str], quiet
 
     from rich.console import Console
 
+    from agent_bom.logging_config import setup_logging
     from agent_bom.secret_scanner import scan_secrets
 
     output_format = _validate_json_or_console_format("secrets", output_format)
+    setup_logging(level="ERROR" if quiet else "INFO", json_output=log_json, log_file=log_file)
 
-    con = Console(stderr=True, quiet=quiet)
+    con = Console(stderr=True, quiet=quiet, no_color=no_color)
     result = scan_secrets(path)
 
     if output_format == "json":

@@ -18,7 +18,7 @@ from fastapi import APIRouter, HTTPException, Request
 from agent_bom.api.mcp_observation_store import MCPObservation, merge_observations
 from agent_bom.api.models import JobStatus
 from agent_bom.api.stores import _get_fleet_store, _get_mcp_observation_store, _get_store
-from agent_bom.asset_provenance import agent_discovery_provenance, package_discovery_provenance
+from agent_bom.asset_provenance import agent_discovery_provenance, package_discovery_provenance, package_version_provenance
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.security import (
     sanitize_command_args,
@@ -200,6 +200,10 @@ def _serialize_agent(
         server_payload["security_intelligence"] = _merge_security_intelligence(list(getattr(server, "security_intelligence", []) or []))
         for idx, package in enumerate(getattr(server, "packages", []) or []):
             if idx < len(server_payload.get("packages", []) or []):
+                server_payload["packages"][idx]["version_provenance"] = package_version_provenance(
+                    package,
+                    inherited=agent_provenance,
+                )
                 server_payload["packages"][idx]["discovery_provenance"] = package_discovery_provenance(
                     package,
                     inherited=agent_provenance,
@@ -632,6 +636,7 @@ async def get_agent_lifecycle(request: Request, agent_name: str) -> dict:
                             "version": pkg.get("version", ""),
                             "ecosystem": pkg.get("ecosystem", ""),
                             "vuln_count": len(vulns),
+                            "version_provenance": pkg.get("version_provenance"),
                             "discovery_provenance": pkg.get("discovery_provenance"),
                         },
                     }

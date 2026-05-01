@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, TypedDict
 
+from agent_bom.asset_provenance import package_version_provenance
 from agent_bom.graph import SEVERITY_BADGE as _SEVERITY_BADGE
 from agent_bom.graph import SEVERITY_RANK as _SEVERITY_RANK
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
@@ -386,6 +387,7 @@ def build_graph_elements(
                 summary_label = f"{pkg.name}\n{pkg.version}"
                 if collapse_cves and vc:
                     summary_label = f"{pkg.name}@{pkg.version}\n{vuln_summary['summaryText']} • {vc} CVEs"
+                version_provenance = package_version_provenance(pkg)
                 elements.append(
                     {
                         "data": {
@@ -401,6 +403,9 @@ def build_graph_elements(
                             ),
                             "ecosystem": pkg.ecosystem,
                             "version": pkg.version,
+                            "versionSource": version_provenance.get("version_source", "unknown"),
+                            "versionConfidence": version_provenance.get("confidence", "unknown"),
+                            "versionProvenance": json.dumps(version_provenance),
                             "vulnIds": json.dumps(vuln_ids),
                             "vulnCount": vc,
                             "maxSeverity": max_severity,
@@ -422,6 +427,7 @@ def build_graph_elements(
                             "source": sid,
                             "target": pid,
                             "type": "depends_on",
+                            "versionProvenance": json.dumps(version_provenance),
                             "maxSeverity": max_severity,
                             "vulnCount": vc,
                         }

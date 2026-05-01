@@ -187,6 +187,27 @@ def test_npx_package_detection():
     assert packages[0].ecosystem == "npm"
 
 
+def test_npx_package_detection_uses_local_npx_cache(monkeypatch, tmp_path):
+    pkg_json = tmp_path / "_npx" / "abc123" / "node_modules" / "@modelcontextprotocol" / "server-filesystem" / "package.json"
+    pkg_json.parent.mkdir(parents=True)
+    pkg_json.write_text(json.dumps({"name": "@modelcontextprotocol/server-filesystem", "version": "1.2.3"}), encoding="utf-8")
+    monkeypatch.setenv("npm_config_cache", str(tmp_path))
+    server = MCPServer(
+        name="filesystem",
+        command="npx",
+        args=["@modelcontextprotocol/server-filesystem", "/tmp"],
+    )
+    from agent_bom.parsers import detect_npx_package
+
+    package = detect_npx_package(server)[0]
+
+    assert package.version == "1.2.3"
+    assert package.declared_version == "latest"
+    assert package.version_source == "tool_cache"
+    assert package.version_confidence == "high"
+    assert package.version_evidence[0]["path"] == str(pkg_json)
+
+
 def test_uvx_package_detection():
     server = MCPServer(
         name="mcp-server-fetch",
@@ -199,6 +220,27 @@ def test_uvx_package_detection():
     assert len(packages) == 1
     assert packages[0].name == "mcp-server-fetch"
     assert packages[0].ecosystem == "pypi"
+
+
+def test_uvx_package_detection_uses_local_uv_cache(monkeypatch, tmp_path):
+    metadata = tmp_path / "archive-v0" / "abc123" / "mcp_server_fetch-4.5.6.dist-info" / "METADATA"
+    metadata.parent.mkdir(parents=True)
+    metadata.write_text("Name: mcp-server-fetch\nVersion: 4.5.6\n", encoding="utf-8")
+    monkeypatch.setenv("UV_CACHE_DIR", str(tmp_path))
+    server = MCPServer(
+        name="mcp-server-fetch",
+        command="uvx",
+        args=["mcp-server-fetch"],
+    )
+    from agent_bom.parsers import detect_uvx_package
+
+    package = detect_uvx_package(server)[0]
+
+    assert package.version == "4.5.6"
+    assert package.declared_version == "latest"
+    assert package.version_source == "tool_cache"
+    assert package.version_confidence == "high"
+    assert package.version_evidence[0]["path"] == str(metadata)
 
 
 def test_docker_image_package_detection():

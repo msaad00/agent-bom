@@ -5,7 +5,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agent_bom.asset_provenance import agent_discovery_provenance, package_discovery_provenance, sanitize_discovery_provenance
+from agent_bom.asset_provenance import (
+    agent_discovery_provenance,
+    package_discovery_provenance,
+    package_version_provenance,
+    sanitize_discovery_provenance,
+)
 from agent_bom.compliance_utils import effective_blast_radius_tags
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
@@ -376,6 +381,7 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
                         "distro_version": pkg.distro_version,
                         "floating_reference": pkg.floating_reference,
                         "floating_reference_reason": pkg.floating_reference_reason,
+                        "version_provenance": package_version_provenance(pkg, inherited=agent_provenance),
                         "discovery_provenance": package_discovery_provenance(pkg, inherited=agent_provenance),
                         "occurrence_count": len(pkg.occurrences),
                         "occurrences": [_package_occurrence_to_dict(occ) for occ in pkg.occurrences],
@@ -637,6 +643,16 @@ def to_json(report: AIBOMReport) -> dict:
                                 "reachability_evidence": pkg.reachability_evidence,
                                 "resolved_from_registry": pkg.resolved_from_registry,
                                 "version_source": pkg.version_source,
+                                "declared_version": pkg.declared_version,
+                                "resolved_version": pkg.resolved_version,
+                                "version_confidence": pkg.version_confidence,
+                                "version_resolved_at": pkg.version_resolved_at,
+                                "version_evidence": pkg.version_evidence or None,
+                                "version_conflicts": pkg.version_conflicts or None,
+                                "version_provenance": package_version_provenance(
+                                    pkg,
+                                    inherited=agent_discovery_provenance(agent),
+                                ),
                                 "discovery_provenance": package_discovery_provenance(
                                     pkg,
                                     inherited=agent_discovery_provenance(agent),
@@ -755,6 +771,7 @@ def to_json(report: AIBOMReport) -> dict:
                     _package_occurrence_to_dict(br.package.primary_occurrence) if br.package.primary_occurrence else None
                 ),
                 "package_discovery_provenance": package_discovery_provenance(br.package),
+                "package_version_provenance": package_version_provenance(br.package),
                 "is_malicious": br.package.is_malicious,
                 "malicious_reason": br.package.malicious_reason,
                 "scorecard_score": br.package.scorecard_score,

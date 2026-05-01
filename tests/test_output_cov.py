@@ -411,6 +411,8 @@ class TestToSarif:
         assert props["package_discovery_provenance"]["source_type"] == "operator_pushed_inventory"
         assert props["package_discovery_provenance"]["source"] == "<redacted>"
         assert props["package_discovery_provenance"]["version_source"] == "manifest"
+        assert props["package_version_provenance"]["version_source"] == "command_pin"
+        assert props["package_version_provenance"]["confidence"] == "exact"
         assert props["agent_discovery_provenance"][0]["collector"] == "cmdb-export"
 
 
@@ -476,6 +478,8 @@ class TestToCyclonedx:
         assert props["agent-bom:discovery-provenance:source-type"] == "skill_invoked_pull"
         assert props["agent-bom:discovery-provenance:collector"] == "agent-bom-discover-aws"
         assert props["agent-bom:discovery-provenance:observed-via"] == '["skill_invoked_pull","aws_sdk"]'
+        assert props["agent-bom:version-provenance-source"] == "unknown"
+        assert props["agent-bom:version-provenance-confidence"] == "unknown"
 
 
 # ── to_spdx ──────────────────────────────────────────────────────────────────
@@ -486,6 +490,21 @@ class TestToSpdx:
         report = _make_report()
         spdx = to_spdx(report)
         assert spdx["spdxVersion"] == "SPDX-3.0"
+
+
+def test_spdx_package_preserves_version_provenance_annotations():
+    pkg = _make_pkg()
+    pkg.version_source = "lockfile"
+    server = _make_server(packages=[pkg])
+    agent = _make_agent(servers=[server])
+    report = _make_report(agents=[agent])
+
+    spdx = to_spdx(report)
+    pkg_element = next(element for element in spdx["elements"] if element.get("name") == pkg.name)
+    statements = {annotation["statement"] for annotation in pkg_element["annotation"]}
+
+    assert "agent-bom:version-provenance-source=lockfile" in statements
+    assert "agent-bom:version-provenance-confidence=exact" in statements
 
 
 def test_json_output_redacts_server_launch_fields():

@@ -75,6 +75,7 @@ export type LineageNodeData = {
   ecosystem?: string | undefined;
   version?: string | undefined;
   versionSource?: string | undefined;
+  versionConfidence?: string | undefined;
   registryVersion?: string | undefined;
   // Vulnerability / misconfiguration
   severity?: string | undefined;
@@ -386,6 +387,9 @@ function ServerNode({ data }: { data: LineageNodeData }) {
 
 function PackageNode({ data }: { data: LineageNodeData }) {
   const hasVulns = (data.vulnCount ?? 0) > 0;
+  const provenance = data.versionSource
+    ? `${data.versionSource}${data.versionConfidence ? ` · ${data.versionConfidence}` : ""}`
+    : "";
   return (
     <NodeCard
       data={data}
@@ -394,7 +398,11 @@ function PackageNode({ data }: { data: LineageNodeData }) {
       ringClass="ring-zinc-400"
       icon={Package}
       iconClass="text-zinc-400"
-      subtitle={data.version ? `${data.version}${data.ecosystem ? ` · ${data.ecosystem}` : ""}` : data.ecosystem}
+      subtitle={
+        data.version
+          ? `${data.version}${data.ecosystem ? ` · ${data.ecosystem}` : ""}${provenance ? ` · ${provenance}` : ""}`
+          : data.ecosystem
+      }
       footer={
         hasVulns ? (
           <div className="mt-1 text-[10px] text-red-400">

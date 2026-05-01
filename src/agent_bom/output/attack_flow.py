@@ -342,6 +342,8 @@ def build_attack_flow(
         if pkg_id not in seen_nodes:
             seen_nodes.add(pkg_id)
             unique_packages.add(pkg_str)
+            raw_version_provenance = br.get("package_version_provenance")
+            version_provenance: dict = raw_version_provenance if isinstance(raw_version_provenance, dict) else {}
             nodes.append(
                 {
                     "id": pkg_id,
@@ -352,6 +354,9 @@ def build_attack_flow(
                         "label": pkg_name,
                         "version": pkg_version,
                         "ecosystem": ecosystem,
+                        "version_provenance": version_provenance,
+                        "version_source": version_provenance.get("version_source"),
+                        "version_confidence": version_provenance.get("confidence"),
                     },
                 }
             )

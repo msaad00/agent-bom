@@ -268,9 +268,25 @@ export interface DiscoveryProvenance {
   location?: string | undefined;
   mapping_method?: string | undefined;
   version_source?: string | undefined;
+  version_provenance?: VersionProvenance | undefined;
   confidence?: string | number | undefined;
   discovered_via?: string | undefined;
   resolved_from_registry?: boolean | undefined;
+}
+
+export interface VersionProvenance {
+  declared_name?: string | undefined;
+  declared_version?: string | undefined;
+  resolved_version?: string | undefined;
+  version_source?: string | undefined;
+  confidence?: string | undefined;
+  observed_at?: string | undefined;
+  version_resolved_at?: string | undefined;
+  resolved_from_registry?: boolean | undefined;
+  floating_reference?: boolean | undefined;
+  floating_reference_reason?: string | undefined;
+  evidence?: Record<string, unknown>[] | undefined;
+  version_conflicts?: Record<string, unknown>[] | undefined;
 }
 
 export interface SecurityIntelligenceEntry {
@@ -311,6 +327,9 @@ export interface Package {
   version: string;
   ecosystem: string;
   purl?: string | undefined;
+  version_source?: string | undefined;
+  version_confidence?: string | undefined;
+  version_provenance?: VersionProvenance | undefined;
   discovery_provenance?: DiscoveryProvenance | undefined;
   vulnerabilities?: Vulnerability[] | undefined;
 }

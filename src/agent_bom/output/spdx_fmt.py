@@ -7,6 +7,7 @@ from datetime import timezone
 from pathlib import Path
 from typing import Any
 
+from agent_bom.asset_provenance import package_version_provenance
 from agent_bom.models import AIBOMReport
 
 
@@ -127,6 +128,21 @@ def to_spdx(report: AIBOMReport) -> dict:
                         "versionInfo": pkg.version,
                         "primaryPurpose": "LIBRARY",
                     }
+                    version_provenance = package_version_provenance(pkg)
+                    pkg_element["annotation"] = [
+                        {
+                            "type": "Annotation",
+                            "annotationType": "OTHER",
+                            "subject": pkg_id,
+                            "statement": f"agent-bom:version-provenance-source={version_provenance.get('version_source', 'unknown')}",
+                        },
+                        {
+                            "type": "Annotation",
+                            "annotationType": "OTHER",
+                            "subject": pkg_id,
+                            "statement": f"agent-bom:version-provenance-confidence={version_provenance.get('confidence', 'unknown')}",
+                        },
+                    ]
                     if pkg.purl:
                         pkg_element["externalIdentifier"] = [{"type": "PackageURL", "identifier": pkg.purl}]
                     if pkg.license_expression or pkg.license:

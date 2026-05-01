@@ -13,7 +13,7 @@ from pathlib import PurePath
 from typing import Any
 
 from agent_bom.api.tracing import get_tracer
-from agent_bom.asset_provenance import sanitize_discovery_provenance
+from agent_bom.asset_provenance import package_version_provenance, sanitize_discovery_provenance
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
@@ -208,6 +208,7 @@ def build_unified_graph_from_report(
                 pkg_id = _package_node_id(pkg_dict)
                 package_evidence = _package_evidence(pkg_dict, data_source_tag)
                 package_discovery_provenance = sanitize_discovery_provenance(pkg_dict.get("discovery_provenance"))
+                package_version_provenance = _package_version_provenance_from_dict(pkg_dict)
 
                 graph.add_node(
                     UnifiedNode(
@@ -226,6 +227,7 @@ def build_unified_graph_from_report(
                             "is_malicious": pkg_dict.get("is_malicious", False),
                             "stable_id": pkg_dict.get("stable_id", ""),
                             "discovery_provenance": package_discovery_provenance,
+                            "version_provenance": package_version_provenance,
                         },
                         dimensions=NodeDimensions(ecosystem=ecosystem),
                         data_sources=[data_source_tag],
@@ -1131,6 +1133,7 @@ def _package_evidence(pkg_dict: dict[str, Any], data_source_tag: str) -> dict[st
         "source_package": pkg_dict.get("source_package", ""),
         "version_source": pkg_dict.get("version_source", ""),
         "discovery_provenance": sanitize_discovery_provenance(pkg_dict.get("discovery_provenance")),
+        "version_provenance": _package_version_provenance_from_dict(pkg_dict),
         "occurrence_count": pkg_dict.get("occurrence_count", len(occurrences)),
         "occurrences": normalized_occurrences,
     }
@@ -1142,6 +1145,37 @@ def _package_evidence(pkg_dict: dict[str, Any], data_source_tag: str) -> dict[st
             if introduced.get(key) not in (None, "")
         }
     return {key: value for key, value in evidence.items() if value not in (None, "", [])}
+
+
+def _package_version_provenance_from_dict(pkg_dict: dict[str, Any]) -> dict[str, Any]:
+    explicit = pkg_dict.get("version_provenance")
+    if isinstance(explicit, dict):
+        return package_version_provenance(
+            {
+                "name": pkg_dict.get("name"),
+                "version": pkg_dict.get("version"),
+                "version_source": pkg_dict.get("version_source"),
+                "resolved_from_registry": pkg_dict.get("resolved_from_registry", False),
+                "discovery_provenance": {"version_provenance": explicit},
+            }
+        )
+    return package_version_provenance(
+        {
+            "name": pkg_dict.get("name"),
+            "version": pkg_dict.get("version"),
+            "version_source": pkg_dict.get("version_source"),
+            "resolved_from_registry": pkg_dict.get("resolved_from_registry", False),
+            "declared_version": pkg_dict.get("declared_version"),
+            "resolved_version": pkg_dict.get("resolved_version"),
+            "version_confidence": pkg_dict.get("version_confidence"),
+            "version_resolved_at": pkg_dict.get("version_resolved_at"),
+            "version_evidence": pkg_dict.get("version_evidence") or pkg_dict.get("occurrences") or [],
+            "version_conflicts": pkg_dict.get("version_conflicts") or [],
+            "floating_reference": pkg_dict.get("floating_reference", False),
+            "floating_reference_reason": pkg_dict.get("floating_reference_reason"),
+            "registry_version": pkg_dict.get("registry_version"),
+        }
+    )
 
 
 def _blast_radius_package_evidence(br_dict: dict[str, Any], data_source_tag: str) -> dict[str, Any]:

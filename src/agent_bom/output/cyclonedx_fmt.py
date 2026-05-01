@@ -14,7 +14,12 @@ from pathlib import Path
 from uuid import uuid4
 
 from agent_bom import __version__
-from agent_bom.asset_provenance import agent_discovery_provenance, package_discovery_provenance, sanitize_discovery_provenance
+from agent_bom.asset_provenance import (
+    agent_discovery_provenance,
+    package_discovery_provenance,
+    package_version_provenance,
+    sanitize_discovery_provenance,
+)
 from agent_bom.models import AIBOMReport
 from agent_bom.security import sanitize_launch_command, sanitize_path_label
 
@@ -360,6 +365,7 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
             for pkg in server.packages:
                 pkg_ref = _sanitize_bom_ref(f"pkg-{pkg.stable_id}")
                 package_provenance = package_discovery_provenance(pkg, inherited=server_provenance)
+                version_provenance = package_version_provenance(pkg, inherited=server_provenance)
 
                 pkg_properties = [
                     {"name": "agent-bom:ecosystem", "value": pkg.ecosystem},
@@ -369,6 +375,8 @@ def to_cyclonedx(report: AIBOMReport) -> dict:
                     {"name": "agent-bom:reachability-evidence", "value": pkg.reachability_evidence},
                     {"name": "agent-bom:resolved-from-registry", "value": str(pkg.resolved_from_registry).lower()},
                     {"name": "agent-bom:version-source", "value": pkg.version_source},
+                    {"name": "agent-bom:version-provenance-source", "value": version_provenance.get("version_source", "unknown")},
+                    {"name": "agent-bom:version-provenance-confidence", "value": version_provenance.get("confidence", "unknown")},
                     {"name": "agent-bom:floating-reference", "value": str(pkg.floating_reference).lower()},
                 ]
                 _append_discovery_provenance_properties(pkg_properties, package_provenance)

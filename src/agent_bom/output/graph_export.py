@@ -141,6 +141,32 @@ def _agent_node_attributes(agent: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def _package_node_attributes(pkg: dict[str, Any]) -> dict[str, Any]:
+    raw_version_provenance = pkg.get("version_provenance")
+    version_provenance: dict[str, Any]
+    if isinstance(raw_version_provenance, dict):
+        version_provenance = raw_version_provenance
+    else:
+        discovery = pkg.get("discovery_provenance")
+        if isinstance(discovery, dict) and isinstance(discovery.get("version_provenance"), dict):
+            version_provenance = discovery["version_provenance"]
+        else:
+            version_provenance = {}
+    version_source = version_provenance.get("version_source") or pkg.get("version_source")
+    version_confidence = version_provenance.get("confidence") or pkg.get("version_confidence")
+    return _compact_attributes(
+        {
+            "name": pkg.get("name"),
+            "version": pkg.get("version"),
+            "ecosystem": pkg.get("ecosystem"),
+            "purl": pkg.get("purl"),
+            "version_source": version_source,
+            "version_confidence": version_confidence,
+            "version_provenance": version_provenance,
+        }
+    )
+
+
 def build_graph_from_scan_data(data: dict[str, Any]) -> DepGraph:
     """Build a :class:`DepGraph` from an in-memory scan JSON report."""
     graph = DepGraph()
@@ -208,8 +234,14 @@ def build_graph_from_scan_data(data: dict[str, Any]) -> DepGraph:
                 pkg_label = f"{pkg_name}@{pkg_ver}" if pkg_ver else pkg_name
                 if dep_depth and dep_depth > 0:
                     pkg_label += f" (depth {dep_depth})"
-                graph.add_node(pkg_id, pkg_label, pkg_kind)
-                graph.add_edge(srv_id, pkg_id, "depends_on")
+                pkg_attributes = _package_node_attributes(pkg)
+                graph.add_node(pkg_id, pkg_label, pkg_kind, attributes=pkg_attributes)
+                graph.add_edge(
+                    srv_id,
+                    pkg_id,
+                    "depends_on",
+                    evidence={"version_provenance": pkg_attributes.get("version_provenance")},
+                )
 
                 for vuln in vulns:
                     vuln_id_str = vuln.get("id", "UNKNOWN")

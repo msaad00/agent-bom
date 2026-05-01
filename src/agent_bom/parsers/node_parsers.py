@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
@@ -28,6 +30,31 @@ def _npm_purl(name: str, version: str) -> str:
         scope, _, pkg_name = name[1:].partition("/")
         return f"pkg:npm/{quote('@' + scope, safe='')}/{pkg_name}@{version}"
     return f"pkg:npm/{name}@{version}"
+
+
+def _resolve_npx_cached_version(name: str) -> tuple[str, Path] | None:
+    """Return an exact package version from npm's local npx cache, if present."""
+    cache_root = Path(os.environ.get("npm_config_cache") or Path.home() / ".npm")
+    npx_root = cache_root / "_npx"
+    if not npx_root.exists():
+        return None
+
+    matches: list[tuple[float, str, Path]] = []
+    for node_modules in list(npx_root.glob("*/node_modules"))[:200]:
+        pkg_json = node_modules.joinpath(*name.split("/"), "package.json")
+        if not pkg_json.exists():
+            continue
+        try:
+            data = read_json_limited(pkg_json)
+            version = str(data.get("version") or "").strip()
+            if version:
+                matches.append((pkg_json.stat().st_mtime, version, pkg_json))
+        except Exception as exc:
+            logger.debug("Failed to inspect npx cache package metadata at %s: %s", pkg_json, exc)
+    if not matches:
+        return None
+    _, version, path = max(matches, key=lambda item: item[0])
+    return version, path
 
 
 def parse_npm_packages(directory: Path) -> list[Package]:
@@ -334,16 +361,40 @@ def detect_npx_package(server: MCPServer) -> list[Package]:
         match = re.match(r"^(@?[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)?)(?:@(.+))?$", arg)
         if match:
             name = match.group(1)
-            version = match.group(2) or "latest"
-            packages.append(
-                Package(
-                    name=name,
-                    version=version,
-                    ecosystem="npm",
-                    purl=_npm_purl(name, version),
-                    is_direct=True,
-                )
+            pinned_version = match.group(2)
+            declared_version = pinned_version or "latest"
+            is_floating = declared_version in {"latest", "*"}
+            cached = _resolve_npx_cached_version(name) if is_floating else None
+            version = cached[0] if cached else declared_version
+            pkg = Package(
+                name=name,
+                version=version,
+                ecosystem="npm",
+                purl=_npm_purl(name, version),
+                is_direct=True,
             )
+            pkg.declared_version = declared_version
+            if not is_floating:
+                pkg.resolved_version = version
+                pkg.version_source = "command_pin"
+                pkg.version_confidence = "exact"
+                pkg.version_evidence = [{"type": "command_pin", "source_file": server.config_path or "", "parser": "npx"}]
+            elif cached:
+                _, evidence_path = cached
+                pkg.resolved_version = version
+                pkg.version_source = "tool_cache"
+                pkg.version_confidence = "high"
+                pkg.version_resolved_at = datetime.now(timezone.utc).isoformat()
+                pkg.version_evidence = [{"type": "tool_cache", "path": str(evidence_path), "parser": "npx"}]
+                pkg.floating_reference = True
+                pkg.floating_reference_reason = "npx command omitted an explicit package version"
+            else:
+                pkg.resolved_from_registry = True
+                pkg.version_source = "registry_fallback"
+                pkg.registry_version = declared_version
+                pkg.floating_reference = True
+                pkg.floating_reference_reason = "npx command omitted an explicit package version"
+            packages.append(pkg)
             break  # First non-flag arg is the package
 
     return packages

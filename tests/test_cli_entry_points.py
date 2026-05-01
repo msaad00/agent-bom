@@ -71,6 +71,22 @@ class TestAgentBom:
         r = CliRunner().invoke(main, ["mcp", "--help"])
         assert r.exit_code == 0
 
+    def test_secrets_help_has_common_output_flags(self):
+        from agent_bom.cli import main
+
+        r = CliRunner().invoke(main, ["secrets", "--help"])
+        assert r.exit_code == 0
+        for flag in ("--no-color", "--log-json", "--log-file"):
+            assert flag in r.output
+
+    def test_skills_scan_help_has_common_output_flags(self):
+        from agent_bom.cli import main
+
+        r = CliRunner().invoke(main, ["skills", "scan", "--help"])
+        assert r.exit_code == 0
+        for flag in ("--no-color", "--log-json", "--log-file"):
+            assert flag in r.output
+
 
 # ── agent-shield ─────────────────────────────────────────────────────────────
 

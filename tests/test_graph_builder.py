@@ -509,8 +509,13 @@ class TestBuildUnifiedGraphFromReport:
         edge = next(e for e in g.edges if e.source == "server:claude-desktop:mcp-fs" and e.target == "pkg:npm:express@4.18.0")
         assert edge.evidence["source"] == "mcp-scan"
         assert edge.evidence["purl"] == "pkg:npm/express@4.18.0"
+        assert edge.evidence["version_provenance"]["resolved_version"] == "4.18.0"
+        assert edge.evidence["version_provenance"]["version_source"] == "unknown"
         assert edge.evidence["occurrences"][0]["package_path"] == "app/package-lock.json"
         assert edge.evidence["occurrences"][0]["line"] == 42
+
+        node = g.nodes["pkg:npm:express@4.18.0"]
+        assert node.attributes["version_provenance"]["resolved_version"] == "4.18.0"
 
     def test_package_node_id_uses_canonical_identity(self):
         report = _minimal_report()

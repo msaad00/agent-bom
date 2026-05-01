@@ -198,6 +198,13 @@ function stringAttribute(attributes: Record<string, unknown> | undefined, key: s
   return typeof value === "string" ? value : undefined;
 }
 
+function versionProvenanceAttribute(attributes: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = attributes?.version_provenance;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const nested = (value as Record<string, unknown>)[key];
+  return typeof nested === "string" ? nested : undefined;
+}
+
 function buildFallbackNodeData(node: UnifiedNode): LineageNodeData {
   const attributes = { ...(node.attributes ?? {}), node_id: node.id };
   return {
@@ -219,6 +226,8 @@ function buildFallbackNodeData(node: UnifiedNode): LineageNodeData {
       stringAttribute(attributes, "source"),
     version: stringAttribute(attributes, "version") || stringAttribute(attributes, "hash"),
     ecosystem: stringAttribute(attributes, "ecosystem"),
+    versionSource: versionProvenanceAttribute(attributes, "version_source") || stringAttribute(attributes, "version_source"),
+    versionConfidence: versionProvenanceAttribute(attributes, "confidence") || stringAttribute(attributes, "version_confidence"),
     command:
       stringAttribute(attributes, "command") ||
       stringAttribute(attributes, "transport") ||
@@ -260,6 +269,14 @@ function mergeNodeDetail(base: LineageNodeData, detail: GraphNodeDetailResponse)
       stringAttribute(mergedAttributes, "source"),
     version: base.version || stringAttribute(mergedAttributes, "version") || stringAttribute(mergedAttributes, "hash"),
     ecosystem: base.ecosystem || stringAttribute(mergedAttributes, "ecosystem"),
+    versionSource:
+      base.versionSource ||
+      versionProvenanceAttribute(mergedAttributes, "version_source") ||
+      stringAttribute(mergedAttributes, "version_source"),
+    versionConfidence:
+      base.versionConfidence ||
+      versionProvenanceAttribute(mergedAttributes, "confidence") ||
+      stringAttribute(mergedAttributes, "version_confidence"),
     command:
       base.command ||
       stringAttribute(mergedAttributes, "command") ||

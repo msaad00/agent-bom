@@ -158,6 +158,28 @@ def test_loads_agent_server_package_nodes():
         os.unlink(path)
 
 
+def test_package_nodes_preserve_version_provenance():
+    pkg = _pkg("requests", "2.31.0", "pypi")
+    pkg["version_provenance"] = {
+        "version_source": "lockfile",
+        "confidence": "exact",
+        "resolved_version": "2.31.0",
+    }
+    data = _make_scan_json([_agent("myagent", [_server("myserver", [pkg])])])
+    path = _write_scan(data)
+    try:
+        graph = load_graph_from_scan(path)
+        payload = to_json(graph)
+        pkg_node = next(node for node in payload["nodes"] if node["kind"] == "pkg")
+        edge = next(edge for edge in payload["edges"] if edge["kind"] == "depends_on")
+
+        assert pkg_node["attributes"]["version_source"] == "lockfile"
+        assert pkg_node["attributes"]["version_confidence"] == "exact"
+        assert edge["evidence"]["version_provenance"]["resolved_version"] == "2.31.0"
+    finally:
+        os.unlink(path)
+
+
 def test_credential_to_tool_reaches_edges_export_with_evidence():
     server = _server(
         "github",

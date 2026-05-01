@@ -160,6 +160,13 @@ def test_parse_trivy_fixed_version():
     assert packages[0].vulnerabilities[0].fixed_version == "2.31.0"
 
 
+def test_parse_trivy_confidence_uses_preserved_fields():
+    packages = parse_trivy_json(TRIVY_BASIC)
+    vuln = packages[0].vulnerabilities[0]
+
+    assert vuln.confidence == pytest.approx(0.35)
+
+
 def test_parse_trivy_empty_results():
     packages = parse_trivy_json(TRIVY_EMPTY)
     assert packages == []
@@ -233,6 +240,7 @@ def test_parse_trivy_preserves_advisory_metadata():
     assert vuln.published_at == "2024-01-02T03:04:05Z"
     assert vuln.modified_at == "2024-01-03T03:04:05Z"
     assert vuln.advisory_sources == ["ghsa"]
+    assert vuln.confidence == pytest.approx(0.30)
 
 
 # ── Grype tests ────────────────────────────────────────────────────────────
@@ -271,6 +279,13 @@ def test_parse_grype_empty_matches():
 def test_parse_grype_cvss_score():
     packages = parse_grype_json(GRYPE_BASIC)
     assert packages[0].vulnerabilities[0].cvss_score == 8.1
+
+
+def test_parse_grype_confidence_uses_preserved_fields():
+    packages = parse_grype_json(GRYPE_BASIC)
+    vuln = packages[0].vulnerabilities[0]
+
+    assert vuln.confidence == pytest.approx(0.35)
 
 
 def test_parse_grype_unfixed_no_fixed_version():
@@ -331,6 +346,7 @@ def test_parse_grype_preserves_advisory_metadata():
     assert vuln.published_at == "2024-02-02T00:00:00Z"
     assert vuln.modified_at == "2024-02-03T00:00:00Z"
     assert vuln.advisory_sources == ["github:language:python"]
+    assert vuln.confidence == pytest.approx(0.30)
 
 
 # ── Syft tests ─────────────────────────────────────────────────────────────

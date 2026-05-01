@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from agent_bom.models import Package, Severity, Vulnerability
+from agent_bom.models import Package, Severity, Vulnerability, compute_confidence
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +173,7 @@ def parse_trivy_json(data: dict[str, Any]) -> list[Package]:
                 cwe_ids=_cwe_ids(vuln.get("CweIDs")),
                 advisory_sources=[advisory_source] if advisory_source else [],
             )
+            vuln_obj.confidence = compute_confidence(vuln_obj)
             # Avoid duplicate vuln IDs on the same package
             existing_ids = {v.id for v in pkg.vulnerabilities}
             if vuln_obj.id not in existing_ids:
@@ -248,6 +249,7 @@ def parse_grype_json(data: dict[str, Any]) -> list[Package]:
             cwe_ids=_cwe_ids(vuln_data.get("cwes")),
             advisory_sources=[advisory_source] if advisory_source else [],
         )
+        vuln_obj.confidence = compute_confidence(vuln_obj)
         existing_ids = {v.id for v in pkg.vulnerabilities}
         if vuln_obj.id not in existing_ids:
             pkg.vulnerabilities.append(vuln_obj)

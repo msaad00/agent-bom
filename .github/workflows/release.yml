@@ -828,7 +828,9 @@ jobs:
 
   github-release:
     name: Create GitHub Release
-    needs: [pypi-publish, docker-publish, docker-publish-ui, published-image-self-scan, sign, provenance, sbom, helm-publish]
+    # Keep the post-publish image self-scan running, but do not let a slow
+    # registry scan delay minting the GitHub Release after artifacts are out.
+    needs: [pypi-publish, docker-publish, docker-publish-ui, sign, provenance, sbom, helm-publish]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

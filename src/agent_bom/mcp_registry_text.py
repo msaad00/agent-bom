@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 MCP_REGISTRY_DESCRIPTION_MAX_CHARS = 100
 
 
@@ -16,3 +18,8 @@ def normalize_registry_description(value: object, *, max_chars: int = MCP_REGIST
     if len(text) <= max_chars:
         return text
     return text[: max_chars - 1].rstrip() + "…"
+
+
+def dumps_registry_json(value: object) -> str:
+    """Serialize bundled registry JSON with stable Unicode-preserving output."""
+    return json.dumps(value, indent=2, ensure_ascii=False) + "\n"

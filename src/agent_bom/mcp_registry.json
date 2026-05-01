@@ -2,7 +2,7 @@
   "_comment": "agent-bom MCP Server Registry — security metadata database for known MCP servers",
   "_schema_version": "2.0",
   "_updated": "2026-05-01",
-  "_total_servers": 657,
+  "_total_servers": 658,
   "_differentiator": "Security metadata database — not just a catalog. Each entry has risk_level (category-derived), tools, credential_env_vars (heuristic-inferred) for blast radius pre-computation.",
   "_source": "https://github.com/msaad00/agent-bom/blob/main/data/mcp-registry.yaml",
   "_sources": [
@@ -12736,6 +12736,19 @@
       "source": "glama",
       "glama_id": "u9ncaux4l6",
       "glama_url": "https://glama.ai/mcp/servers/u9ncaux4l6",
+      "auto_enriched": true
+    },
+    "kushalsai-01/mcp-server-codebase-analyser": {
+      "ecosystem": "npm",
+      "package": "kushalsai-01/mcp-server-codebase-analyser",
+      "description": "Analyzes TypeScript codebases for health issues, fetches system incidents, and generates remediatio…",
+      "risk_level": "medium",
+      "tools": [],
+      "repository": "https://github.com/kushalsai-01/mcp-server-codebase-analyser",
+      "license": "MIT License",
+      "source": "glama",
+      "glama_id": "ir7wgxu3aa",
+      "glama_url": "https://glama.ai/mcp/servers/ir7wgxu3aa",
       "auto_enriched": true
     }
   },

@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from agent_bom.mcp_registry_text import dumps_registry_json
 from agent_bom.models import Package
 
 logger = logging.getLogger(__name__)
@@ -416,7 +417,7 @@ async def update_registry_versions(
         from datetime import datetime, timezone
 
         data["_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        _REGISTRY_PATH.write_text(json.dumps(data, indent=2) + "\n")
+        _REGISTRY_PATH.write_text(dumps_registry_json(data), encoding="utf-8")
 
     return result
 
@@ -628,7 +629,7 @@ def enrich_registry_entries(dry_run: bool = False) -> EnrichResult:
         from datetime import datetime, timezone
 
         data["_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        _REGISTRY_PATH.write_text(json.dumps(data, indent=2) + "\n")
+        _REGISTRY_PATH.write_text(dumps_registry_json(data), encoding="utf-8")
 
     return result
 
@@ -836,7 +837,7 @@ async def enrich_registry_with_cves(
 
         data["_cve_enriched"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         data["_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        _REGISTRY_PATH.write_text(json.dumps(data, indent=2) + "\n")
+        _REGISTRY_PATH.write_text(dumps_registry_json(data), encoding="utf-8")
 
     return result
 

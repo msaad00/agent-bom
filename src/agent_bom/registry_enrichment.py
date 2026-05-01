@@ -25,7 +25,7 @@ from typing import Any
 
 import httpx
 
-from agent_bom.mcp_registry_text import normalize_registry_description
+from agent_bom.mcp_registry_text import dumps_registry_json, normalize_registry_description
 
 _logger = logging.getLogger(__name__)
 
@@ -302,10 +302,7 @@ def enrich_registry(
     registry["_enrichment_sources"] = ["smithery", "docker_hub", "github"]
 
     # Write back
-    _REGISTRY_PATH.write_text(
-        json.dumps(registry, indent=2, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    _REGISTRY_PATH.write_text(dumps_registry_json(registry), encoding="utf-8")
 
     stats["total"] = len(servers)
     stats["new"] = len(servers) - existing_count

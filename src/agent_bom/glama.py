@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from agent_bom.http_client import create_client, request_with_retry
-from agent_bom.mcp_registry_text import normalize_registry_description
+from agent_bom.mcp_registry_text import dumps_registry_json, normalize_registry_description
 from agent_bom.models import Package
 
 logger = logging.getLogger(__name__)
@@ -291,7 +291,7 @@ async def sync_from_glama(
         local_data["servers"] = local_servers
         local_data["_updated"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         local_data["_total_servers"] = len(local_servers)
-        _REGISTRY_PATH.write_text(json.dumps(local_data, indent=2) + "\n")
+        _REGISTRY_PATH.write_text(dumps_registry_json(local_data), encoding="utf-8")
         logger.info("Added %d Glama servers to registry", result.added)
 
     return result

@@ -107,11 +107,20 @@ SAST scanning via Semgrep with CWE-based compliance mapping.
 ### where
 Show all MCP client config discovery paths and what was found.
 
+### tool_risk_assessment
+Use live MCP introspection to classify tool capabilities and risky combinations.
+
 ### inventory
 List all discovered agents, servers, and packages.
 
 ### context_graph
 Agent context graph with BFS lateral movement analysis.
+
+### graph_export
+Export dependency graph data for graph-native tooling.
+```
+graph_export(format="graphml")
+```
 
 ### analytics_query
 Query vulnerability trends and posture history from ClickHouse.
@@ -185,10 +194,22 @@ Scan model files (ONNX, pickle, SafeTensors, etc.) for embedded threats, unsafe 
 model_file_scan(path="/path/to/model.onnx")
 ```
 
+### ai_inventory_scan
+Scan source code for AI SDK imports, model references, shadow AI, and deprecated models.
+```
+ai_inventory_scan(path=".")
+```
+
 ### license_compliance_scan
 SPDX license compliance and compatibility checks — full SPDX catalog support, network-copyleft detection, license conflict identification.
 ```
 license_compliance_scan()
+```
+
+### ingest_external_scan
+Import Trivy, Grype, or Syft JSON and return packages with blast-radius analysis.
+```
+ingest_external_scan(path="trivy.json")
 ```
 
 ## Resources
@@ -197,3 +218,18 @@ license_compliance_scan()
 |-----|-------------|
 | `registry://servers` | Browse the full MCP server security metadata registry |
 | `policy://template` | Default security policy template |
+| `metrics://tools` | Bounded MCP tool execution metrics |
+| `schema://inventory-v1` | Canonical pushed-inventory schema contract |
+| `bestpractices://mcp-hardening` | MCP deployment hardening checklist |
+| `compliance://framework-controls` | Framework coverage and evidence mapping |
+
+## Prompts
+
+| Prompt | Description |
+|--------|-------------|
+| `quick-audit` | Run a complete security audit of local AI agent and MCP setup |
+| `pre-install-check` | Check an MCP server package before installing |
+| `compliance-report` | Generate OWASP, ATLAS, and NIST compliance posture |
+| `fleet-audit` | Audit an endpoint or cloud inventory file and return graph-ready findings |
+| `incident-triage` | Prioritize a CVE or suspicious MCP finding using blast radius and runtime evidence |
+| `remediation-plan` | Draft a human-reviewed remediation plan without modifying files |

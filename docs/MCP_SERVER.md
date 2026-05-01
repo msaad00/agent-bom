@@ -195,15 +195,22 @@ agent-bom proxy-bootstrap \
 
 ## Resources
 
-The server exposes two MCP resources:
+The server exposes six MCP resources:
 
 - `registry://servers` — Browse the full 427+ server security metadata registry
 - `policy://template` — Default security policy template
+- `metrics://tools` — Bounded MCP tool execution metrics
+- `schema://inventory-v1` — Canonical pushed-inventory schema contract
+- `bestpractices://mcp-hardening` — MCP deployment hardening checklist
+- `compliance://framework-controls` — Framework coverage and evidence mapping
 
 ## Prompts
 
 Built-in prompts for common workflows:
 
-- `security-scan` — Full agent + MCP server vulnerability scan
+- `quick-audit` — Full agent + MCP server vulnerability scan
 - `pre-install-check` — Check a package before installing
-- `compliance-posture` — Multi-framework compliance assessment
+- `compliance-report` — Multi-framework compliance assessment
+- `fleet-audit` — Inventory and fleet scan playbook
+- `incident-triage` — Finding triage with blast radius and runtime context
+- `remediation-plan` — Human-reviewed remediation plan without file writes

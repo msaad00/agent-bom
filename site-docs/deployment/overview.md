@@ -40,112 +40,45 @@ helm upgrade --install agent-bom deploy/helm/agent-bom \
   -f deploy/helm/agent-bom/examples/eks-production-values.yaml
 ```
 
-`agent-bom` is intentionally packaged as interoperable surfaces, not a forced
-monolith:
+## Read This Way
 
-- **scan** for discovery, inventory, CVE analysis, IaC, image, and cloud checks
-- **fleet** for persisted endpoint and collector inventory
-- **proxy / runtime** for inline MCP inspection and enforcement
-- **gateway** for central runtime policy distribution and evaluation
-- **API + UI** for operator review, audit, graph, remediation, and control-plane workflows
-- **MCP server mode** when you want `agent-bom` itself exposed as tools
+Do not read every deployment page. Pick one path, then open reference pages only
+when your platform team needs that specific detail.
 
-The published container split follows the same model:
-
-- `agentbom/agent-bom` is the main runtime image for CLI, API, jobs, gateway,
-  proxy-related entrypoints, and MCP server mode
-- `agentbom/agent-bom-ui` is only the standalone browser UI image used when the
-  control plane runs the UI separately from the API
-
-## Adoption path
-
-The intended product path is:
-
-1. deploy the control plane
-2. turn on scans and fleet sync
-3. get MCP inventory, granted surface area, and findings
-4. add proxy or gateway only where runtime enforcement is worth the extra operational surface
-
-That is not a downgrade of runtime. It is a cleaner adoption model:
-
-- **inventory and discovery** should already be useful on day 1
-- **proxy and gateway** deepen that into live runtime control on day 2
-
-## Official deployment entrypoints
-
-Use these first:
-
-| Goal | Recommended entrypoint | Why |
+| You are trying to... | Start with | Stop there unless... |
 |---|---|---|
-| One-machine pilot | `deploy/docker-compose.pilot.yml` | fastest path to API + UI with the shipped images |
-| Full self-hosted deployment in your own AWS / EKS | `scripts/deploy/install-eks-reference.sh` | creates or targets EKS, wires the AWS baseline, installs Helm, and prints verify/next-step commands |
+| run a local pilot | [Docker](docker.md) | you need EKS, SSO, or fleet sync |
+| deploy in vanilla EKS | [Vanilla EKS Quickstart](eks-vanilla-quickstart.md) | you need service mesh, ESO, or cert-manager |
+| deploy in hardened AWS / EKS | [Your Own AWS / EKS](own-infra-eks.md) | you need a lower-level Helm or Terraform reference |
+| run a Snowflake POV | [Snowflake POV](snowflake-pov.md) | you need backend-parity details |
+| choose proxy vs gateway vs fleet | [Proxy vs Gateway vs Fleet](proxy-vs-gateway-vs-fleet.md) | you need runtime operations or gateway discovery |
 
-Everything else is either advanced or specialized:
+Everything else in the deployment section is reference material.
 
-| Entry point | Use when |
+## Product Surfaces
+
+| Surface | Deploy when | What it gives you |
+|---|---|---|
+| **Scan** | day 1 | discovery, package/image/IaC/cloud checks, findings, blast radius |
+| **Fleet** | day 1 for teams | endpoint and collector inventory without inline traffic control |
+| **API + UI** | self-hosted pilots and production | auth, RBAC, tenant scope, graph, remediation, audit, policy |
+| **Proxy** | selected local or sidecar MCPs | inline local MCP inspection, policy decisions, signed audit events |
+| **Gateway** | shared remote MCP traffic | central remote MCP relay, policy distribution, audit events |
+| **MCP server mode** | agent-invoked scanning | exposes `agent-bom` as read-only MCP tools, resources, and prompts |
+
+Default rollout: deploy API + UI with Postgres, add scans and fleet sync, then
+add proxy or gateway only where runtime enforcement is worth the extra operating
+surface.
+
+## Deployment Defaults
+
+| Decision | Default |
 |---|---|
-| `helm upgrade --install ... -f deploy/helm/agent-bom/examples/eks-production-values.yaml` | you already manage your own Helm layering and do not want the reference installer |
-| `deploy/docker-compose.fullstack.yml` | you want a fuller local compose example on one machine, not the recommended production path |
-| `deploy/docker-compose.platform.yml` / `deploy/docker-compose.runtime.yml` | you are developing or demonstrating one part of the product surface, not doing the standard install |
-
-## Supported path map
-
-Use these pages in this order:
-
-| If you need... | Read this first | Then use... |
-|---|---|---|
-| the fastest pilot | this page | `deploy/docker-compose.pilot.yml` |
-| vanilla EKS production | this page | [Vanilla EKS Quickstart](eks-vanilla-quickstart.md) |
-| mesh / ESO / cert-manager production | this page | [Deploy In Your Own AWS / EKS Infrastructure](own-infra-eks.md) |
-| a focused endpoint + MCP pilot | this page | [Enterprise MCP / Endpoint Pilot](enterprise-pilot.md) |
-| raw Helm, Docker, Terraform, or Kubernetes details | this page | the matching reference page only after you know you are leaving the paved path |
-
-## Deployment modes
-
-| Mode | Deploy first | What it gives you |
-|---|---|---|
-| **Scan only** | CLI, CI, or scheduled scan jobs | packages, images, IaC, MCP config, findings, blast radius |
-| **Inventory-first** | API + UI + Postgres + scan jobs + fleet sync | endpoints, MCP servers, transports, declared tools, credential-backed servers, last sync |
-| **Runtime-upgrade** | inventory-first plus selected `proxy` or `gateway` | live MCP audit, inline policy enforcement, runtime rate limits, response inspection |
-
-## Runtime surfaces
-
-| Surface | Best fit | Not required for |
-|---|---|---|
-| **`agent-bom proxy`** | local stdio MCPs and workload-local sidecars | inventory, fleet, or findings review |
-| **`agent-bom gateway serve`** | shared remote MCP traffic over HTTP/SSE | local sidecar enforcement or basic MCP inventory |
-| **optional monitor DaemonSet** | node-wide runtime coverage when an operator explicitly wants a higher-trust deployment shape | scans, fleet, gateway, or selected sidecar proxy rollout |
-
-If you need the concrete operator rule for where each one fits, see
-[When To Use Proxy vs Gateway vs Fleet](proxy-vs-gateway-vs-fleet.md).
-
-## Recommended defaults
-
-If you do not already have a strong reason to diverge, use these defaults:
-
-| Decision | Recommended default |
-|---|---|
-| **pilot path** | `deploy/docker-compose.pilot.yml` |
-| **production path** | `scripts/deploy/install-eks-reference.sh` |
-| **control-plane backend** | Postgres |
-| **first runtime step** | scans + fleet, without runtime rollout |
-| **shared remote MCP traffic** | gateway |
-| **workload-local inline enforcement** | selected sidecar proxy |
-| **node-wide runtime coverage** | optional monitor only when the operator explicitly accepts a DaemonSet |
-| **analytics and lake add-ons** | add ClickHouse, OTEL, or Snowflake only when the Postgres-first path is no longer enough |
-
-## What You Can Offer In Customer-Controlled Infra
-
-This is the current code-backed self-hosted story:
-
-| Surface | What the customer deploys | What it does |
-|---|---|---|
-| **agent-bom Scan** | CronJobs, CI runners, one-off jobs, endpoint CLI runs | Discovers agents, MCP servers, packages, images, IaC, Kubernetes, and cloud assets; writes findings and graph state |
-| **agent-bom Fleet** | Endpoint collectors or workstation CLI pushes | Persists inventory and scan history into the control plane without requiring a separate endpoint daemon product |
-| **agent-bom Proxy** | Sidecar or local wrapper near selected MCP servers | Enforces allow/warn/deny policy, detects credential exposure, blocks undeclared tools, emits signed audit logs, and can fail closed on tampered cached policy bundles |
-| **agent-bom Gateway** | Shared remote MCP traffic plane plus policy/audit surface | Stores, serves, and audits the policies consumed by proxies and managed runtime paths, including in-process reload for file-backed policy bundles |
-| **agent-bom Runtime** | Proxy + audit + policy pull + event persistence | Gives runtime visibility without forcing all traffic through one shared chokepoint |
-| **agent-bom Control Plane** | API + UI + Postgres, with optional ClickHouse | Presents findings, graph, remediation, fleet review, audit, and policy management from one operator-owned plane |
+| **first pilot** | `deploy/docker-compose.pilot.yml` |
+| **production installer** | `scripts/deploy/install-eks-reference.sh` |
+| **system of record** | Postgres |
+| **analytics/lake** | optional ClickHouse, Snowflake, OTEL, or S3 exports |
+| **runtime enforcement** | selected proxy or gateway, not all traffic by default |
 
 ## Enterprise Deployment Promise
 
@@ -186,48 +119,52 @@ destinations; they are not an agent-bom hosted control plane.
 ### Enterprise Self-Hosted Topology
 
 ```mermaid
-flowchart LR
-    classDef edge fill:#111827,stroke:#38bdf8,color:#e0f2fe
+flowchart TB
+    classDef src fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
+    classDef access fill:#111827,stroke:#38bdf8,color:#e0f2fe
     classDef ctrl fill:#0f172a,stroke:#6366f1,color:#e0e7ff
     classDef run fill:#0f172a,stroke:#10b981,color:#d1fae5
     classDef scan fill:#111827,stroke:#a78bfa,color:#ede9fe
     classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
-    classDef ext fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
 
-    Browser["Operator browser"]:::ext
-    IdP["Corporate IdP"]:::ext
-    Endpoints["Endpoints / laptops<br/>agent-bom CLI or collector"]:::ext
-    Pipelines["CI / operator-pull adapters<br/>signed inventory"]:::ext
-    Cloud["Cloud APIs<br/>read-only scopes"]:::ext
-    Remote["Remote MCP servers"]:::ext
+    subgraph Sources["Customer inputs"]
+      direction LR
+      Browser["Operator browser"]:::src
+      IdP["Corporate IdP"]:::src
+      Endpoint["Endpoints / laptops<br/>CLI or collector"]:::src
+      Adapter["CI / operator-pull<br/>signed inventory"]:::src
+      Cloud["Cloud APIs<br/>read-only scopes"]:::src
+      Remote["Remote MCPs"]:::src
+    end
 
     subgraph Customer["Customer VPC / EKS / self-hosted cluster"]
-      direction LR
+      direction TB
 
       subgraph Access["Access"]
-        Ingress["Ingress / TLS"]:::edge
-        Secrets["Secrets / IRSA / Vault"]:::edge
+        direction LR
+        Ingress["Ingress / TLS"]:::access
+        Secrets["Secrets / IRSA / Vault"]:::access
       end
 
       subgraph Control["Control plane"]
-        direction TB
+        direction LR
         UI["agent-bom UI<br/>dashboard"]:::ctrl
         API["agent-bom API<br/>auth · RBAC · tenant scope"]:::ctrl
-        Jobs["agent-bom scan workers<br/>inventory · CVE · graph"]:::scan
+        Workers["agent-bom scan workers<br/>inventory · CVE · graph"]:::scan
       end
 
-      subgraph Runtime["Data plane"]
-        direction TB
-        Proxy["agent-bom proxy<br/>local / sidecar MCP enforcement"]:::run
-        Gateway["agent-bom gateway<br/>shared remote MCP relay"]:::run
+      subgraph Runtime["Runtime enforcement"]
+        direction LR
+        Proxy["agent-bom proxy<br/>local / sidecar MCP"]:::run
+        Gateway["agent-bom gateway<br/>shared remote MCP"]:::run
       end
 
       subgraph Stores["Customer-managed stores"]
-        direction TB
-        Postgres[("Postgres")]:::data
-        ClickHouse[("ClickHouse")]:::data
-        S3[("S3 archive")]:::data
-        Obs["OTEL / Prometheus"]:::edge
+        direction LR
+        Postgres[("Postgres<br/>system of record")]:::data
+        Analytics[("ClickHouse / Snowflake<br/>optional analytics")]:::data
+        Archive[("S3 archive<br/>evidence export")]:::data
+        Obs["OTEL / Prometheus"]:::access
       end
     end
 
@@ -236,20 +173,21 @@ flowchart LR
     Ingress --> UI
     Ingress --> API
     UI --> API
-    Jobs -->|scan results| API
-    Endpoints -->|fleet sync<br/>/v1/fleet/sync| API
-    Pipelines -->|pushed inventory<br/>/v1/discovery/inventory| API
-    Jobs -->|read-only discovery| Cloud
-    Proxy -->|policy pull| API
-    Proxy -->|runtime audit events| API
-    Gateway -->|policy pull / evaluate| API
-    Gateway -->|gateway audit events| API
-    Gateway -->|remote MCP traffic| Remote
+
+    Endpoint -->|fleet sync| API
+    Adapter -->|schema-validated inventory| API
+    Workers -->|scan results| API
+    Workers -. read-only discovery .-> Cloud
+
+    Proxy -->|policy pull + audit events| API
+    Gateway -->|policy pull + audit events| API
+    Gateway -->|relay| Remote
+
     Secrets --> API
     Secrets --> Gateway
     API --> Postgres
-    API -. analytics .-> ClickHouse
-    API -. evidence export .-> S3
+    API -. analytics .-> Analytics
+    API -. evidence export .-> Archive
     API --> Obs
     Gateway --> Obs
 ```
@@ -269,51 +207,55 @@ Truth block:
 ### Enterprise Self-Hosted Data and Runtime Flow
 
 ```mermaid
-flowchart TD
+flowchart LR
     classDef src fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
     classDef proc fill:#0f172a,stroke:#6366f1,color:#e0e7ff
     classDef run fill:#0f172a,stroke:#10b981,color:#d1fae5
     classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
 
-    Direct["Direct scan<br/>agent-bom CLI / worker"]:::src
-    Pushed["Pushed inventory<br/>operator adapter / CI / skill"]:::src
-    Fleet["Fleet sync<br/>endpoint CLI or collector"]:::src
-    ProxyTraffic["Selected local MCP traffic"]:::src
-    RemoteTraffic["Shared remote MCP traffic"]:::src
+    subgraph Inventory["Inventory and scan data"]
+      direction TB
+      Direct["Direct scan<br/>CLI / worker"]:::src
+      Pushed["Pushed inventory<br/>adapter / CI / skill"]:::src
+      Fleet["Fleet sync<br/>endpoint CLI / collector"]:::src
+      Normalize["validate · redact · normalize"]:::proc
+      Direct --> Normalize
+      Pushed --> Normalize
+      Fleet --> Normalize
+    end
 
-    Proxy["agent-bom proxy<br/>inline local enforcement"]:::run
-    Gateway["agent-bom gateway<br/>shared remote enforcement"]:::run
+    subgraph RuntimeFlow["Runtime evidence"]
+      direction TB
+      LocalMCP["Selected local MCP traffic"]:::src
+      RemoteMCP["Shared remote MCP traffic"]:::src
+      Proxy["agent-bom proxy<br/>local enforcement"]:::run
+      Gateway["agent-bom gateway<br/>remote enforcement"]:::run
+      RuntimeEvents["policy decisions + audit events"]:::proc
+      LocalMCP --> Proxy
+      RemoteMCP --> Gateway
+      Proxy --> RuntimeEvents
+      Gateway --> RuntimeEvents
+    end
 
-    API["agent-bom API / control plane<br/>auth · RBAC · tenant scope"]:::proc
-    Policy["Policy service<br/>author · sign · distribute"]:::proc
-    Audit["Audit service<br/>append · redact · export"]:::proc
-    Graph["Canonical evidence<br/>inventory · findings · graph · remediation"]:::proc
-    Store[("Postgres")]:::data
-    Exports["OTEL / SIEM / Snowflake / ClickHouse / S3"]:::data
+    API["agent-bom API<br/>auth · RBAC · tenant scope"]:::proc
+    Evidence["Canonical evidence<br/>inventory · findings · graph · remediation"]:::proc
+    Postgres[("Postgres<br/>system of record")]:::data
+    Export["Optional exports<br/>OTEL · SIEM · Snowflake · ClickHouse · S3"]:::data
 
-    Direct -->|normalized inventory + findings| API
-    Pushed -->|schema-validated inventory| API
-    Fleet -->|tenant-scoped inventory| API
-    ProxyTraffic --> Proxy
-    RemoteTraffic --> Gateway
-    Proxy -->|policy pull / decision evidence| Policy
-    Gateway -->|policy pull / decision evidence| Policy
-    Proxy -->|runtime audit events| Audit
-    Gateway -->|gateway audit events| Audit
-    Policy --> API
-    Audit --> API
-    API --> Graph
-    Graph --> Store
-    API -->|optional export / analytics| Exports
+    Normalize --> API
+    RuntimeEvents --> API
+    API --> Evidence
+    Evidence --> Postgres
+    API -. export / analytics .-> Export
 ```
 
 Truth block:
-- Auth, RBAC, tenant resolution, and audit happen in the control plane, not in
-  the browser.
-- Scans, pushed inventory, and fleet establish inventory first; proxy and
-  gateway add runtime enforcement and runtime evidence only where deployed.
-- Policy and audit are separate responsibilities: policy decides and distributes;
-  audit records what happened after redaction.
+- Inventory sources converge through validation, redaction, and normalization
+  before they become graph or finding evidence.
+- Proxy and gateway are optional runtime surfaces. They add policy decisions and
+  audit events; they are not required to get inventory, findings, or graph state.
+- The API is the authority for auth, RBAC, tenant scope, policy distribution,
+  audit intake, and export decisions.
 
 ## Best Self-Hosted Path
 

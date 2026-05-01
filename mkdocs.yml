@@ -91,37 +91,44 @@ nav:
       - Policy Engine: features/policy.md
   - Deployment:
       - Overview: deployment/overview.md
-      - Deployment Modes and Alignment: deployment/deployment-modes-and-alignment.md
-      - AWS Company Rollout (Reference): deployment/aws-company-rollout.md
-      - Enterprise Auth and Tenancy: deployment/enterprise-auth-and-tenancy.md
-      - Enterprise MCP / Endpoint Pilot: deployment/enterprise-pilot.md
-      - Endpoint Fleet: deployment/endpoint-fleet.md
-      - Proxy vs Gateway vs Fleet: deployment/proxy-vs-gateway-vs-fleet.md
-      - Focused EKS MCP Pilot: deployment/eks-mcp-pilot.md
-      - Your Own AWS / EKS: deployment/own-infra-eks.md
-      - Terraform AWS Baseline (Reference): deployment/terraform-aws-baseline.md
-      - Postgres Provisioning Workflow (Reference): deployment/postgres-provisioning.md
-      - Packaged API + UI Control Plane (Reference): deployment/control-plane-helm.md
-      - Control-Plane Data Model and Store Parity: deployment/control-plane-data-model.md
-      - Audit Chain vs Compliance Signing: deployment/audit-and-compliance-verification.md
-      - Customer Data and Support Boundary: deployment/customer-data-and-support-boundary.md
-      - Data Access Boundaries and Operator Control: deployment/data-access-boundaries.md
-      - Data Retention by Class: deployment/data-retention.md
-      - Backup and Restore Runbook: deployment/backup-restore.md
-      - Air-Gapped Image Bundle: deployment/airgapped-image-bundle.md
-      - Performance, Sizing, and Benchmarks: deployment/performance-and-sizing.md
-      - Runtime Operations: deployment/runtime-operations.md
-      - Visual Leak Detection: deployment/visual-leak-detection.md
-      - Worker and Scheduler Concurrency: deployment/worker-and-scheduler-concurrency.md
-      - Gateway Auto-Discovery: deployment/gateway-auto-discovery.md
-      - Backend Parity: deployment/backend-parity.md
-      - Backend and Security-Lake Strategy: deployment/backend-and-security-lakes.md
-      - Snowflake-Native Backend: deployment/snowflake-backend.md
-      - Docker (Reference): deployment/docker.md
-      - Kubernetes (Reference): deployment/kubernetes.md
-      - SIEM Integration: deployment/siem-integration.md
-      - Runtime Monitoring (Optional): deployment/runtime-monitoring.md
-      - Grafana Dashboard (Reference): deployment/grafana.md
+      - Paved Paths:
+          - One-machine Docker Pilot: deployment/docker.md
+          - Vanilla EKS Quickstart: deployment/eks-vanilla-quickstart.md
+          - Your Own AWS / EKS: deployment/own-infra-eks.md
+          - Focused EKS MCP Pilot: deployment/eks-mcp-pilot.md
+          - Snowflake POV: deployment/snowflake-pov.md
+      - Runtime and Fleet:
+          - Endpoint Fleet: deployment/endpoint-fleet.md
+          - Proxy vs Gateway vs Fleet: deployment/proxy-vs-gateway-vs-fleet.md
+          - Runtime Operations: deployment/runtime-operations.md
+          - Gateway Auto-Discovery: deployment/gateway-auto-discovery.md
+      - Enterprise Controls:
+          - Enterprise Auth and Tenancy: deployment/enterprise-auth-and-tenancy.md
+          - Data Access Boundaries: deployment/data-access-boundaries.md
+          - Customer Data and Support Boundary: deployment/customer-data-and-support-boundary.md
+          - Data Retention by Class: deployment/data-retention.md
+          - Audit Chain vs Compliance Signing: deployment/audit-and-compliance-verification.md
+      - Operations Reference:
+          - Packaged API + UI Control Plane: deployment/control-plane-helm.md
+          - Postgres Provisioning Workflow: deployment/postgres-provisioning.md
+          - Backup and Restore Runbook: deployment/backup-restore.md
+          - Air-Gapped Image Bundle: deployment/airgapped-image-bundle.md
+          - Performance, Sizing, and Benchmarks: deployment/performance-and-sizing.md
+          - Worker and Scheduler Concurrency: deployment/worker-and-scheduler-concurrency.md
+          - SIEM Integration: deployment/siem-integration.md
+          - Grafana Dashboard: deployment/grafana.md
+      - Specialized Reference:
+          - Deployment Modes and Alignment: deployment/deployment-modes-and-alignment.md
+          - AWS Company Rollout: deployment/aws-company-rollout.md
+          - Enterprise MCP / Endpoint Pilot: deployment/enterprise-pilot.md
+          - Terraform AWS Baseline: deployment/terraform-aws-baseline.md
+          - Control-Plane Data Model and Store Parity: deployment/control-plane-data-model.md
+          - Backend Parity: deployment/backend-parity.md
+          - Backend and Security-Lake Strategy: deployment/backend-and-security-lakes.md
+          - Snowflake-Native Backend: deployment/snowflake-backend.md
+          - Kubernetes: deployment/kubernetes.md
+          - Runtime Monitoring: deployment/runtime-monitoring.md
+          - Visual Leak Detection: deployment/visual-leak-detection.md
   - Architecture:
       - Overview: architecture/overview.md
       - How Agent-BOM Works: architecture/how-agent-bom-works.md

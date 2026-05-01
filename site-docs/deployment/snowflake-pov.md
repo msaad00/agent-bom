@@ -6,7 +6,7 @@ the operator boundary.
 
 ## Scope
 
-The v0.83.4 POV scope is:
+The v0.84.0 POV scope is:
 
 - self-hosted API + UI control plane
 - operator-owned Postgres-compatible control-plane database
@@ -172,7 +172,7 @@ goal.
 
 | Surface | Current state |
 |---|---|
-| Draft PR remediation | Roadmap; not part of v0.83.4 |
+| Draft PR remediation | Roadmap; not part of v0.84.0 |
 | Auto-remediation | Roadmap |
 | Full Compliance Hub | Roadmap |
 | Complete IAM-to-agent traversal | Roadmap |

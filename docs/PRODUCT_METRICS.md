@@ -5,20 +5,21 @@
 This appendix is the canonical home for volatile product counts.
 Keep counts out of public positioning copy and update this file from the repo instead of hand-editing numbers.
 
-- Generated on: `2026-04-28`
-- Version: `0.83.4`
+- Generated on: `2026-04-30`
+- Version: `0.84.0`
 
 | Metric | Value | Source | Notes |
 | --- | ---: | --- | --- |
-| MCP tools | 9 | `src/agent_bom/mcp_server.py` | Counted from @mcp.tool decorators. |
-| MCP resources | 0 | `src/agent_bom/mcp_server.py` | Counted from @mcp.resource decorators. |
+| MCP tools | 36 | `src/agent_bom/mcp_server_metadata.py` | Counted from the advertised server-card tools. |
+| MCP resources | 6 | `src/agent_bom/mcp_server_metadata.py` | Counted from the advertised server-card resources. |
+| MCP prompts | 6 | `src/agent_bom/mcp_server_metadata.py` | Counted from the advertised server-card workflow prompts. |
 | GitHub workflow files | 35 | `.github/workflows` | Counts .yml and .yaml workflow definitions. |
-| Test files | 394 | `tests/` | Counts files matching test_*.py. |
+| Test files | 414 | `tests/` | Counts files matching test_*.py. |
 | API route modules | 18 | `src/agent_bom/api/routes` | Counts Python files in the routes package, including __init__.py. |
 | UI app pages | 23 | `ui/app` | Counts page.tsx and page.jsx files recursively. |
-| Python modules | 409 | `src/agent_bom` | Counts all Python files recursively. |
+| Python modules | 421 | `src/agent_bom` | Counts all Python files recursively. |
 | Supported package ecosystems | 15 | `src/agent_bom/ecosystems.py` | Counted from SUPPORTED_PACKAGE_ECOSYSTEMS. |
-| Compliance surfaces | 15 | `src/agent_bom/api/routes/compliance.py` | 14 tag-mapped frameworks plus the OWASP AISVS benchmark surface. |
+| Compliance surfaces | 15 | `src/agent_bom/compliance_coverage.py` | 14 tag-mapped frameworks plus the OWASP AISVS benchmark surface. |
 | Proxy inline detectors | 7 | `src/agent_bom/proxy.py` | Inline detector chain used by the MCP proxy path. |
 | Runtime protection engine detectors | 8 | `src/agent_bom/runtime/protection.py` | Broader protection engine used outside the lighter proxy-only path. |
 

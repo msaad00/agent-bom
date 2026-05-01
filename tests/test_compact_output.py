@@ -139,6 +139,7 @@ def test_compact_summary_distinguishes_clean_vulns_from_config_posture():
     report = AIBOMReport(agents=[agent])
     output = _plain(_capture(print_compact_summary, report))
     assert "CONFIG POSTURE GRADE" in output
+    assert "No vulnerabilities found" in output
     assert "best-practice/config posture" in output
     assert "SECURITY POSTURE:" in output
     assert "CLEAN" in output
@@ -232,6 +233,23 @@ def test_compact_agents_table():
     output = _capture(print_compact_agents, report)
     assert "claude-desktop" in output
     assert "cursor" in output
+
+
+def test_compact_agents_humanizes_project_scoped_names():
+    """Project-scoped synthetic IDs should not be the primary table label."""
+    agent = _make_agent(
+        name="project:agent-bom-first-run",
+        agent_type=AgentType.CUSTOM,
+        servers=[_make_server()],
+    )
+    agent.config_path = "/tmp/agent-bom-first-run/claude-review.json"
+    report = AIBOMReport(agents=[agent])
+
+    output = _plain(_capture(print_compact_agents, report))
+
+    assert "claude-review.json" in output
+    assert "(agent-bom-first-run)" in output
+    assert "project:agent-bom-first-run" not in output
 
 
 def test_compact_agents_skips_unconfigured():

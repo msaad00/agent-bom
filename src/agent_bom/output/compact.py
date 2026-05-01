@@ -13,6 +13,8 @@ remediation plan, etc.).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.table import Table
@@ -61,6 +63,21 @@ def _compact_detail(text: str, limit: int = 88) -> str:
     if len(clean) <= limit:
         return clean
     return clean[: limit - 1].rstrip() + "…"
+
+
+def _agent_display_name(agent) -> str:
+    """Return a human-readable agent label for compact tables."""
+    name = str(getattr(agent, "name", "") or "").strip()
+    if not name.startswith("project:"):
+        return name or "unknown-agent"
+
+    config_path = str(getattr(agent, "config_path", "") or "").strip()
+    project_name = name.removeprefix("project:").strip(":") or "project"
+    if config_path:
+        path = Path(config_path)
+        if path.name and path.name != project_name:
+            return f"{path.name} ({project_name})"
+    return f"{project_name} (project)"
 
 
 def _iter_cis_bundles(report: AIBOMReport):
@@ -246,7 +263,7 @@ def print_compact_agents(report: AIBOMReport) -> None:
         vuln_style = "red" if n_vulns > 0 else "dim"
         cred_style = "yellow" if n_creds > 0 else "dim"
         table.add_row(
-            f"[bold]{a.name}[/bold]",
+            f"[bold]{_agent_display_name(a)}[/bold]",
             a.agent_type.value if hasattr(a.agent_type, "value") else str(a.agent_type),
             str(n_servers),
             str(n_pkgs),

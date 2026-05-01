@@ -226,6 +226,7 @@ def _load_csv_inventory(fp: io.TextIOBase) -> dict:  # type: ignore[override]
 
     # Build inventory structure
     agents_by_name: dict[str, dict] = {}
+    skipped_empty_identity_rows = 0
     for (agent_name, server_name), rows in groups.items():
         packages = []
         env: dict[str, str] = {}
@@ -234,6 +235,7 @@ def _load_csv_inventory(fp: io.TextIOBase) -> dict:  # type: ignore[override]
             version = (row.get(col_version) or "").strip()
             ecosystem = _normalize_inventory_ecosystem((row.get(col_ecosystem) or "").strip())
             if not name or not version:
+                skipped_empty_identity_rows += 1
                 continue
             packages.append(
                 {
@@ -268,5 +270,11 @@ def _load_csv_inventory(fp: io.TextIOBase) -> dict:  # type: ignore[override]
 
     if not agents_by_name:
         raise ValueError("CSV produced no valid inventory entries (check name/version columns)")
+
+    if skipped_empty_identity_rows:
+        logger.warning(
+            "Skipped %s CSV inventory row(s) with empty package name or version",
+            skipped_empty_identity_rows,
+        )
 
     return _validate_inventory_payload({"agents": list(agents_by_name.values())})

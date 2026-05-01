@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agent_bom.http_client import create_client, request_with_retry
+from agent_bom.mcp_registry_text import normalize_registry_description
 from agent_bom.models import MCPServer, Package
 
 logger = logging.getLogger(__name__)
@@ -349,7 +350,7 @@ async def sync_from_smithery(
                     "package": qn,
                     "ecosystem": "smithery",
                     "latest_version": "latest",
-                    "description": s.get("description", "")[:200],
+                    "description": normalize_registry_description(s.get("description", "")),
                     "name": display,
                     "category": "remote-mcp" if remote else "local-mcp",
                     "risk_level": risk,

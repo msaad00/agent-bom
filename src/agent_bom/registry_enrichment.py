@@ -25,6 +25,8 @@ from typing import Any
 
 import httpx
 
+from agent_bom.mcp_registry_text import normalize_registry_description
+
 _logger = logging.getLogger(__name__)
 
 # Registry file path
@@ -76,7 +78,7 @@ def _fetch_smithery(max_pages: int = 40) -> dict[str, dict[str, Any]]:
                     "smithery_use_count": srv.get("useCount", 0),
                     "smithery_verified": srv.get("verified", False),
                     "smithery_display_name": srv.get("displayName", ""),
-                    "smithery_description": srv.get("description", ""),
+                    "smithery_description": normalize_registry_description(srv.get("description", "")),
                     "smithery_remote": srv.get("remote", False),
                     "smithery_homepage": srv.get("homepage", ""),
                     "smithery_created_at": srv.get("createdAt", ""),
@@ -118,7 +120,7 @@ def _fetch_docker_hub(max_pages: int = 5) -> dict[str, dict[str, Any]]:
                     "docker_pull_count": img.get("pull_count", 0),
                     "docker_star_count": img.get("star_count", 0),
                     "docker_last_updated": img.get("last_updated", ""),
-                    "docker_description": img.get("description", ""),
+                    "docker_description": normalize_registry_description(img.get("description", "")),
                 }
 
             url = data.get("next")
@@ -166,7 +168,7 @@ def _fetch_github(max_results: int = 1000) -> dict[str, dict[str, Any]]:
                     "github_last_push": repo.get("pushed_at", ""),
                     "github_language": repo.get("language", ""),
                     "github_license": (repo.get("license") or {}).get("spdx_id", ""),
-                    "github_description": repo.get("description", ""),
+                    "github_description": normalize_registry_description(repo.get("description", "")),
                     "github_archived": repo.get("archived", False),
                     "github_topics": repo.get("topics", []),
                 }
@@ -264,7 +266,7 @@ def enrich_registry(
                 "package": name,
                 "ecosystem": "unknown",
                 "name": meta.get("smithery_display_name", name),
-                "description": meta.get("smithery_description", ""),
+                "description": normalize_registry_description(meta.get("smithery_description", "")),
                 "source_url": meta.get("smithery_homepage", ""),
                 "category": "community",
                 "risk_level": "unknown",
@@ -290,6 +292,7 @@ def enrich_registry(
 
     # Flag risks on all servers
     for srv in servers.values():
+        srv["description"] = normalize_registry_description(srv.get("description", ""))
         srv["risk_flags"] = _flag_risks(srv)
 
     # Update metadata

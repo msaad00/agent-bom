@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agent_bom.http_client import create_client, request_with_retry
+from agent_bom.mcp_registry_text import normalize_registry_description
 from agent_bom.models import MCPServer, Package
 
 logger = logging.getLogger(__name__)
@@ -263,7 +264,7 @@ async def sync_from_official_registry(
                     "package": qn,
                     "ecosystem": "mcp-registry",
                     "latest_version": s.get("version", "latest"),
-                    "description": (s.get("description", "") or "")[:200],
+                    "description": normalize_registry_description(s.get("description", "")),
                     "name": qn,
                     "category": category,
                     "risk_level": risk,

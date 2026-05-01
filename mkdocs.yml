@@ -156,6 +156,7 @@ nav:
       - Output: api/output.md
       - Scanners: api/scanners.md
       - Parsers: api/parsers.md
+      - Extension Entry Points: api/extensions.md
       - Finding: api/finding.md
   - Skills:
       - Overview: skills/index.md

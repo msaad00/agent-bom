@@ -374,6 +374,35 @@ def test_relay_accepts_control_plane_api_key_and_applies_tenant(monkeypatch) -> 
     assert audit_events[-1]["tenant_id"] == "tenant-alpha"
 
 
+def test_relay_fails_closed_when_api_key_store_verification_errors(monkeypatch) -> None:
+    upstream_calls: list[dict[str, Any]] = []
+
+    async def fake_caller(upstream, message, extra_headers):
+        upstream_calls.append(message)
+        return {"jsonrpc": "2.0", "id": message["id"], "result": {"ok": True}}
+
+    class _FakeKeyStore:
+        def has_keys(self) -> bool:
+            return True
+
+        def verify(self, raw_key: str):
+            raise RuntimeError("key store unavailable")
+
+    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _FakeKeyStore())
+
+    settings = GatewaySettings(registry=_simple_registry(), policy={}, upstream_caller=fake_caller)
+    client = TestClient(create_gateway_app(settings))
+    resp = client.post(
+        "/mcp/filesystem",
+        headers={"X-API-Key": "tenant-alpha-key"},
+        json=_json_rpc("tools/call", name="read_file", arguments={"path": "/tmp/x"}),
+    )
+
+    assert resp.status_code == 503
+    assert resp.json()["detail"] == "gateway authentication unavailable"
+    assert upstream_calls == []
+
+
 def test_relay_rejects_viewer_api_key_before_forwarding(monkeypatch) -> None:
     upstream_calls: list[dict[str, Any]] = []
 

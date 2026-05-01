@@ -163,6 +163,23 @@ class TestBuildUnifiedGraphFromReport:
         assert g.has_edge("server:device-a:claude-desktop:team-chat-server", "pkg:npm:axios@1.4.0")
         assert g.has_edge("server:device-b:claude-desktop:team-chat-server", "pkg:npm:axios@1.4.0")
 
+    def test_agent_source_id_colons_do_not_collide_with_graph_id_segments(self):
+        report = {
+            "agents": [
+                {
+                    "name": "claude-desktop",
+                    "source_id": "device:prod",
+                    "mcp_servers": [],
+                },
+            ],
+        }
+
+        g = build_unified_graph_from_report(report)
+
+        assert "agent:device%3Aprod:claude-desktop" in g.nodes
+        assert "agent:device:prod:claude-desktop" not in g.nodes
+        assert g.nodes["agent:device%3Aprod:claude-desktop"].attributes["source_id"] == "device:prod"
+
     def test_provider_nodes_and_hosts_edges(self):
         g = build_unified_graph_from_report(_minimal_report())
         providers = g.nodes_by_type(EntityType.PROVIDER)

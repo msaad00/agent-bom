@@ -237,11 +237,11 @@ def test_single_package_without_github_token_uses_fail_fast_rate_limit_backoff(m
     assert mock_fetch.await_args.kwargs["rate_limit_backoff"] == _GHSA_SINGLE_PACKAGE_RATE_LIMIT_BACKOFF
 
 
-def test_multi_package_scan_preserves_ghsa_rate_limit_backoff(monkeypatch):
+def test_multi_package_without_github_token_uses_fail_fast_rate_limit_backoff(monkeypatch):
     import asyncio
     from unittest.mock import AsyncMock, patch
 
-    from agent_bom.scanners.ghsa_advisory import _GHSA_RATE_LIMIT_BACKOFF, check_github_advisories
+    from agent_bom.scanners.ghsa_advisory import _GHSA_SINGLE_PACKAGE_RATE_LIMIT_BACKOFF, check_github_advisories
 
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("GH_TOKEN", raising=False)
@@ -260,7 +260,7 @@ def test_multi_package_scan_preserves_ghsa_rate_limit_backoff(monkeypatch):
 
     assert count == 0
     assert mock_fetch.await_count == 2
-    assert {call.kwargs["rate_limit_backoff"] for call in mock_fetch.await_args_list} == {_GHSA_RATE_LIMIT_BACKOFF}
+    assert {call.kwargs["rate_limit_backoff"] for call in mock_fetch.await_args_list} == {_GHSA_SINGLE_PACKAGE_RATE_LIMIT_BACKOFF}
 
 
 def test_advisory_filtered_by_package_name():

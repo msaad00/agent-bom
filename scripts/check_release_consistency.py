@@ -88,6 +88,24 @@ MANAGED_VERSION_REFS: list[tuple[Path, re.Pattern[str], str]] = [
         re.compile(r"\| `([0-9]+\.[0-9]+\.[0-9]+)` \| Current stable version \(pinned\) \|"),
         "Docker Hub stable tag",
     ),
+    (
+        ROOT / "site-docs" / "deployment" / "airgapped-image-bundle.md",
+        re.compile(
+            r"(?:--version |agent-bom-airgap-|VERSION=|tag:\s*\"|agent-bom-ui:\")"
+            r"([0-9]+\.[0-9]+\.[0-9]+)"
+        ),
+        "air-gapped bundle release example",
+    ),
+    (
+        ROOT / "site-docs" / "deployment" / "aws-company-rollout.md",
+        re.compile(r"(?:--version |refs/tags/v)([0-9]+\.[0-9]+\.[0-9]+)"),
+        "AWS company rollout release example",
+    ),
+    (
+        ROOT / "site-docs" / "reference" / "remediate-output.md",
+        re.compile(r'"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"'),
+        "remediate output example version",
+    ),
 ]
 MANAGED_ACTION_REFS: list[Path] = [
     ROOT / "README.md",

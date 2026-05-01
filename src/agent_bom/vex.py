@@ -93,8 +93,11 @@ def load_vex(path: str) -> VexDocument:
       "statements": [{"vulnerability_id": "CVE-...", "status": "..."}]
     }
     """
-    with open(path) as f:
-        data = json.load(f)
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"VEX JSON error in {path}: line {exc.lineno}, column {exc.colno}: {exc.msg}") from exc
 
     statements = []
     for stmt_data in data.get("statements", []):

@@ -47,12 +47,13 @@ class _Node:
 
 
 class _Edge:
-    __slots__ = ("source", "target", "kind")
+    __slots__ = ("source", "target", "kind", "evidence")
 
-    def __init__(self, source: str, target: str, kind: str) -> None:
+    def __init__(self, source: str, target: str, kind: str, evidence: dict[str, Any] | None = None) -> None:
         self.source = source
         self.target = target
         self.kind = kind
+        self.evidence = _compact_attributes(evidence)
 
 
 class DepGraph:
@@ -61,7 +62,7 @@ class DepGraph:
     def __init__(self) -> None:
         self._nodes: dict[str, _Node] = {}
         self._edges: list[_Edge] = []
-        self._edge_set: set[tuple[str, str]] = set()
+        self._edge_set: set[tuple[str, str, str]] = set()
 
     def add_node(self, node_id: str, label: str, kind: str, severity: str = "", attributes: dict[str, Any] | None = None) -> None:
         if node_id not in self._nodes:
@@ -69,11 +70,11 @@ class DepGraph:
         elif attributes:
             self._nodes[node_id].attributes.update(_compact_attributes(attributes))
 
-    def add_edge(self, source: str, target: str, kind: str) -> None:
-        key = (source, target)
+    def add_edge(self, source: str, target: str, kind: str, evidence: dict[str, Any] | None = None) -> None:
+        key = (source, target, kind)
         if key not in self._edge_set:
             self._edge_set.add(key)
-            self._edges.append(_Edge(source, target, kind))
+            self._edges.append(_Edge(source, target, kind, evidence))
 
     @property
     def nodes(self) -> list[_Node]:
@@ -97,6 +98,30 @@ def _compact_attributes(attributes: dict[str, Any] | None) -> dict[str, Any]:
     if not isinstance(attributes, dict):
         return {}
     return {key: value for key, value in attributes.items() if value not in (None, "", [], {})}
+
+
+def _credential_names_from_server(server: dict[str, Any]) -> list[str]:
+    env_vars = server.get("credential_env_vars")
+    if isinstance(env_vars, list):
+        return sorted({str(item) for item in env_vars if str(item).strip()})
+    env = server.get("env")
+    if not isinstance(env, dict):
+        return []
+    from agent_bom.constants import SENSITIVE_PATTERNS
+
+    return sorted({key for key in env if any(pattern in key.lower() for pattern in SENSITIVE_PATTERNS)})
+
+
+def _tool_names_from_server(server: dict[str, Any]) -> list[str]:
+    names: list[str] = []
+    for item in server.get("tools", []) or []:
+        if isinstance(item, dict):
+            name = item.get("name")
+        else:
+            name = item
+        if str(name or "").strip():
+            names.append(str(name))
+    return names
 
 
 def _agent_node_attributes(agent: dict[str, Any]) -> dict[str, Any]:
@@ -143,6 +168,32 @@ def build_graph_from_scan_data(data: dict[str, Any]) -> DepGraph:
             srv_id = f"server:{agent_name}/{srv_name}"
             graph.add_node(srv_id, srv_name, srv_kind)
             graph.add_edge(agent_id, srv_id, "uses")
+
+            tool_ids: list[tuple[str, str]] = []
+            for tool_name in _tool_names_from_server(server):
+                tool_id = f"tool:{agent_name}/{srv_name}/{tool_name}"
+                graph.add_node(tool_id, tool_name, "tool", attributes={"server": srv_id})
+                graph.add_edge(srv_id, tool_id, "provides_tool")
+                tool_ids.append((tool_name, tool_id))
+
+            for cred_name in _credential_names_from_server(server):
+                cred_id = f"cred:{cred_name}"
+                graph.add_node(cred_id, cred_name, "credential", attributes={"server": srv_id})
+                graph.add_edge(srv_id, cred_id, "exposes_cred")
+                for tool_name, tool_id in tool_ids:
+                    graph.add_edge(
+                        cred_id,
+                        tool_id,
+                        "reaches_tool",
+                        evidence={
+                            "source": source,
+                            "server": srv_id,
+                            "credential_env_var": cred_name,
+                            "tool": tool_name,
+                            "mapping_method": "server_scope_conservative",
+                            "confidence": "medium",
+                        },
+                    )
 
             for pkg in server.get("packages", []):
                 pkg_name = pkg.get("name", "?")
@@ -199,6 +250,8 @@ _DOT_COLORS: dict[str, str] = {
     "agent": "#2ea043",
     "server": "#6e7681",
     "server_cred": "#d29922",
+    "credential": "#f59e0b",
+    "tool": "#38bdf8",
     "pkg": "#8b949e",
     "pkg_vuln": "#f85149",
     "pkg_transitive": "#8b949e",
@@ -210,6 +263,8 @@ _DOT_SHAPES: dict[str, str] = {
     "agent": "box",
     "server": "ellipse",
     "server_cred": "ellipse",
+    "credential": "note",
+    "tool": "component",
     "pkg": "rectangle",
     "pkg_vuln": "rectangle",
     "pkg_transitive": "rectangle",
@@ -292,6 +347,8 @@ def to_mermaid(graph: DepGraph) -> str:
             "agent": "agent",
             "server": "server",
             "server_cred": "servercred",
+            "credential": "credential",
+            "tool": "tool",
             "pkg": "pkg",
             "pkg_vuln": "pkgvuln",
             "pkg_transitive": "pkgtrans",
@@ -304,6 +361,8 @@ def to_mermaid(graph: DepGraph) -> str:
         "    classDef agent fill:#2ea043,color:#fff,stroke:#16a34a",
         "    classDef server fill:#6e7681,color:#fff,stroke:#374151",
         "    classDef servercred fill:#d29922,color:#fff,stroke:#b45309",
+        "    classDef credential fill:#f59e0b,color:#111827,stroke:#b45309",
+        "    classDef tool fill:#38bdf8,color:#082f49,stroke:#0369a1",
         "    classDef pkg fill:#8b949e,color:#fff,stroke:#374151",
         "    classDef pkgvuln fill:#f85149,color:#fff,stroke:#dc2626",
         "    classDef pkgtrans fill:#8b949e,color:#ddd,stroke:#6b7280,stroke-dasharray:4 2",
@@ -351,7 +410,7 @@ def to_json(graph: DepGraph) -> dict:
             }
             for n in graph.nodes
         ],
-        "edges": [{"source": e.source, "target": e.target, "kind": e.kind} for e in graph.edges],
+        "edges": [{"source": e.source, "target": e.target, "kind": e.kind, "evidence": e.evidence} for e in graph.edges],
         "stats": {
             "node_count": graph.node_count(),
             "edge_count": graph.edge_count(),
@@ -367,6 +426,8 @@ _NEO4J_LABELS: dict[str, str] = {
     "agent": "AIAgent",
     "server": "MCPServer",
     "server_cred": "MCPServer",
+    "credential": "Credential",
+    "tool": "Tool",
     "pkg": "Package",
     "pkg_vuln": "Package",
     "pkg_transitive": "Package",
@@ -379,6 +440,9 @@ _NEO4J_REL_TYPES: dict[str, str] = {
     "uses": "USES_SERVER",
     "depends_on": "DEPENDS_ON",
     "affects": "AFFECTS",
+    "provides_tool": "PROVIDES_TOOL",
+    "exposes_cred": "EXPOSES_CRED",
+    "reaches_tool": "REACHES_TOOL",
 }
 
 # GraphML data key definitions for AIBOM attributes
@@ -391,6 +455,7 @@ _GRAPHML_KEYS = [
     ("is_transitive", "node", "boolean", "Transitive (indirect) dependency"),
     ("attributes_json", "node", "string", "Additional AIBOM node attributes as compact JSON"),
     ("relationship", "edge", "string", "AIBOM relationship type"),
+    ("evidence_json", "edge", "string", "Additional edge evidence as compact JSON"),
 ]
 
 
@@ -450,6 +515,8 @@ def to_graphml(graph: DepGraph) -> str:
         tgt = _xml_escape(edge.target)
         lines.append(f'    <edge id="e{i}" source="{src}" target="{tgt}">')
         lines.append(f'      <data key="relationship">{_xml_escape(edge.kind)}</data>')
+        if edge.evidence:
+            lines.append(f'      <data key="evidence_json">{_xml_escape(json.dumps(edge.evidence, sort_keys=True))}</data>')
         lines.append("    </edge>")
 
     lines.append("  </graph>")
@@ -483,6 +550,8 @@ def to_cypher(graph: DepGraph) -> str:
         "// ── Create constraints for idempotent import ──",
         "CREATE CONSTRAINT IF NOT EXISTS FOR (n:AIAgent) REQUIRE n.id IS UNIQUE;",
         "CREATE CONSTRAINT IF NOT EXISTS FOR (n:MCPServer) REQUIRE n.id IS UNIQUE;",
+        "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Credential) REQUIRE n.id IS UNIQUE;",
+        "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Tool) REQUIRE n.id IS UNIQUE;",
         "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Package) REQUIRE n.id IS UNIQUE;",
         "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Vulnerability) REQUIRE n.id IS UNIQUE;",
         "CREATE CONSTRAINT IF NOT EXISTS FOR (n:Provider) REQUIRE n.id IS UNIQUE;",

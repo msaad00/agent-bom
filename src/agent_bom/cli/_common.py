@@ -29,6 +29,7 @@ BANNER = r"""
 
 SEVERITY_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, "none": 0, "unknown": -1}
 PORT_RANGE = click.IntRange(1, 65535)
+LISTEN_PORT_RANGE = click.IntRange(1024, 65535)
 OPTIONAL_PORT_RANGE = click.IntRange(0, 65535)
 
 

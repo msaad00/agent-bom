@@ -470,8 +470,8 @@ def introspect_cmd(server_command, server_url, timeout, introspect_all, baseline
     baseline: dict[str, list[str]] = {}
     if baseline_path:
         try:
-            baseline = _json.loads(Path(baseline_path).read_text())
-        except Exception as e:  # noqa: BLE001
+            baseline = read_json_file_for_cli(baseline_path, label="baseline file")
+        except click.ClickException as e:
             con.print(f"[yellow]Warning: could not load baseline: {e}[/yellow]")
 
     # Introspect

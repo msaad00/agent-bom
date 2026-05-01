@@ -166,7 +166,10 @@ def _load_from_stdin() -> dict:
 
     fmt = _detect_format(content)
     if fmt == "json":
-        return _validate_inventory_payload(json.loads(content))
+        try:
+            return _validate_inventory_payload(json.loads(content))
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Inventory JSON error in stdin: line {exc.lineno}, column {exc.colno}: {exc.msg}") from exc
 
     return _load_csv_inventory(io.StringIO(content))
 
@@ -181,7 +184,11 @@ def _detect_format(content: str) -> str:
 
 def _load_json_inventory(fp: io.TextIOBase) -> dict:  # type: ignore[override]
     """Parse JSON inventory from a file-like object."""
-    return _validate_inventory_payload(json.load(fp))
+    try:
+        return _validate_inventory_payload(json.load(fp))
+    except json.JSONDecodeError as exc:
+        source = getattr(fp, "name", "inventory file")
+        raise ValueError(f"Inventory JSON error in {source}: line {exc.lineno}, column {exc.colno}: {exc.msg}") from exc
 
 
 def _load_csv_inventory(fp: io.TextIOBase) -> dict:  # type: ignore[override]

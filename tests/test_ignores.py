@@ -50,18 +50,28 @@ def test_load_ignore_file_yaml(tmp_path):
     assert entries[0]["id"] == "CVE-2024-1111"
 
 
-def test_load_ignore_file_invalid_yaml_returns_empty(tmp_path):
+def test_load_ignore_file_invalid_yaml_raises(tmp_path):
     pytest.importorskip("yaml")
     f = tmp_path / ".agent-bom-ignore.yaml"
     f.write_text("ignores:\n  - id: [unterminated\n")
-    assert load_ignore_file(f) == []
+    with pytest.raises(ValueError, match="Invalid YAML in ignore file"):
+        load_ignore_file(f)
 
 
 def test_load_ignore_file_requires_mapping_top_level(tmp_path):
     pytest.importorskip("yaml")
     f = tmp_path / ".agent-bom-ignore.yaml"
     f.write_text("- id: CVE-2024-1111\n  reason: test\n")
-    assert load_ignore_file(f) == []
+    with pytest.raises(ValueError, match="must be a YAML mapping"):
+        load_ignore_file(f)
+
+
+def test_load_ignore_file_requires_ignores_list(tmp_path):
+    pytest.importorskip("yaml")
+    f = tmp_path / ".agent-bom-ignore.yaml"
+    f.write_text("ignores: nope\n")
+    with pytest.raises(ValueError, match="field 'ignores' must be a list"):
+        load_ignore_file(f)
 
 
 def test_load_ignore_file_default_name(tmp_path, monkeypatch):

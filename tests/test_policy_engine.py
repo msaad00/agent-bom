@@ -114,6 +114,16 @@ def test_load_policy_invalid_json(tmp_path):
         load_policy(str(path))
 
 
+def test_load_policy_invalid_yaml(tmp_path):
+    """Malformed YAML raises ValueError instead of leaking a parser exception."""
+    pytest.importorskip("yaml")
+    path = tmp_path / "bad.yaml"
+    path.write_text("rules:\n  - id: [unterminated\n")
+
+    with pytest.raises(ValueError, match="Invalid YAML"):
+        load_policy(str(path))
+
+
 # ---------------------------------------------------------------------------
 # _validate_policy
 # ---------------------------------------------------------------------------

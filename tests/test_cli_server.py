@@ -57,7 +57,7 @@ def test_serve_cmd_invalid_port_is_usage_error():
 
     assert result.exit_code == 2
     assert "Invalid value for '--port'" in result.output
-    assert "1<=x<=65535" in result.output
+    assert "1024<=x<=65535" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -91,7 +91,19 @@ def test_api_cmd_invalid_port_is_usage_error():
 
     assert result.exit_code == 2
     assert "Invalid value for '--port'" in result.output
-    assert "1<=x<=65535" in result.output
+    assert "1024<=x<=65535" in result.output
+
+
+def test_api_cmd_rejects_privileged_port_before_binding():
+    runner = CliRunner()
+
+    with patch("uvicorn.run") as mock_run:
+        result = runner.invoke(api_cmd, ["--port", "80"])
+
+    assert result.exit_code == 2
+    assert "Invalid value for '--port'" in result.output
+    assert "1024<=x<=65535" in result.output
+    mock_run.assert_not_called()
 
 
 def test_api_cmd_rejects_unauthenticated_non_loopback_bind():
@@ -277,6 +289,15 @@ def test_serve_cmd_requires_clickhouse_url_for_backend():
 # ---------------------------------------------------------------------------
 # mcp_server_cmd
 # ---------------------------------------------------------------------------
+
+
+def test_mcp_server_cmd_invalid_port_is_usage_error():
+    runner = CliRunner()
+    result = runner.invoke(mcp_server_cmd, ["--port", "99999"])
+
+    assert result.exit_code == 2
+    assert "Invalid value for '--port'" in result.output
+    assert "1024<=x<=65535" in result.output
 
 
 def test_mcp_server_cmd_stdio():

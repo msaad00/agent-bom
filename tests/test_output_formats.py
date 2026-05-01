@@ -15,6 +15,7 @@ from agent_bom.models import (
     AIBOMReport,
     BlastRadius,
     MCPServer,
+    MCPTool,
     Package,
     Severity,
     TransportType,
@@ -54,6 +55,8 @@ def _make_agent(
 def _make_server(
     name: str = "test-server",
     packages: list[Package] | None = None,
+    tools: list[MCPTool] | None = None,
+    env: dict[str, str] | None = None,
 ) -> MCPServer:
     return MCPServer(
         name=name,
@@ -61,7 +64,8 @@ def _make_server(
         args=[name],
         transport=TransportType.STDIO,
         packages=packages or [],
-        env={},
+        tools=tools or [],
+        env=env or {},
     )
 
 
@@ -434,3 +438,25 @@ def test_html_renders_unified_non_cve_findings_with_asset_context():
     assert "/tmp/mcp.json" in html
     assert "Matched the MCP intelligence blocklist." in html
     assert "Unified non-CVE findings" in html
+
+
+def test_cytoscape_graph_includes_credential_to_tool_reachability_evidence():
+    from agent_bom.output.graph import build_graph_elements
+
+    server = _make_server(
+        "github",
+        tools=[MCPTool(name="create_issue", description="Create issue"), MCPTool(name="delete_repo", description="Delete repo")],
+        env={"GITHUB_TOKEN": "***"},
+    )
+    report = _make_report(agents=[_make_agent(servers=[server])])
+
+    elements = build_graph_elements(report, [])
+    reaches_edges = [
+        element["data"]
+        for element in elements
+        if element.get("data", {}).get("type") == "reaches_tool" and element["data"].get("credential_env_var") == "GITHUB_TOKEN"
+    ]
+
+    assert reaches_edges
+    assert reaches_edges[0]["mapping_method"] == "server_scope_conservative"
+    assert reaches_edges[0]["confidence"] == "medium"

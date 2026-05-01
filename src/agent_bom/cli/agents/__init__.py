@@ -489,6 +489,36 @@ def scan(
 
     _out.console = con
 
+    _validated_ignore_entries: list[dict[str, Any]] | None = None
+    if policy:
+        from agent_bom.policy import load_policy as _load_policy_for_validation
+
+        try:
+            _load_policy_for_validation(policy)
+        except (FileNotFoundError, ValueError) as exc:
+            raise click.ClickException(f"Policy error: {exc}") from exc
+    if ignore_file:
+        from agent_bom.ignores import load_ignore_file as _load_ignore_file_for_validation
+
+        try:
+            _validated_ignore_entries = _load_ignore_file_for_validation(ignore_file)
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
+    if vex_path:
+        from agent_bom.vex import load_vex as _load_vex_for_validation
+
+        try:
+            _load_vex_for_validation(vex_path)
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
+    if baseline:
+        from agent_bom.scan_delta import load_baseline as _load_baseline_for_validation
+
+        try:
+            _load_baseline_for_validation(baseline)
+        except (FileNotFoundError, ValueError) as exc:
+            raise click.ClickException(f"Baseline error: {exc}") from exc
+
     if demo:
         con.print("\n[bold yellow]Demo mode[/bold yellow] — curated agent + MCP sample with known-vulnerable packages.\n")
 
@@ -2025,7 +2055,10 @@ def scan(
     # Apply ignore/allowlist file (.agent-bom-ignore.yaml or --ignore-file)
     from agent_bom.ignores import apply_ignores, load_ignore_file
 
-    _ignore_entries = load_ignore_file(ignore_file)
+    try:
+        _ignore_entries = _validated_ignore_entries if _validated_ignore_entries is not None else load_ignore_file(ignore_file)
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
     if _ignore_entries:
         blast_radii, _suppressed = apply_ignores(blast_radii, _ignore_entries)
         if _suppressed and not quiet:
@@ -2052,6 +2085,62 @@ def scan(
     # Attach blast_radii and report to context for downstream phases
     ctx.blast_radii = blast_radii
     ctx.report = report
+
+    current_report_json = to_json(report)
+
+    # Step 4h: Delta mode must run before rendering so JSON/SARIF artifacts
+    # and CI exit gates both reflect the same new-only finding set.
+    if delta_mode:
+        from agent_bom.scan_delta import compute_delta, load_baseline
+
+        _baseline_path = baseline
+        if not _baseline_path:
+            from agent_bom.scan_delta import _DEFAULT_BASELINE_PATH
+
+            if _DEFAULT_BASELINE_PATH.exists():
+                _baseline_path = str(_DEFAULT_BASELINE_PATH)
+            else:
+                logger.warning(
+                    "Delta mode requested but no --baseline file specified and no auto-baseline found at %s. Skipping delta filter.",
+                    _DEFAULT_BASELINE_PATH,
+                )
+
+        if _baseline_path:
+            try:
+                _baseline_data = load_baseline(_baseline_path)
+                _delta_result = compute_delta(current_report_json, _baseline_data)
+                _delta_result.baseline_path = _baseline_path
+                ctx.delta_result = _delta_result
+                report.delta_data = {
+                    "enabled": True,
+                    "new_count": _delta_result.new_count,
+                    "pre_existing_count": _delta_result.pre_existing_count,
+                    "baseline_path": _baseline_path,
+                }
+
+                _new_keys = {(d.get("vulnerability_id", "").upper(), d.get("package", "")) for d in _delta_result.new_items}
+                blast_radii = [
+                    br for br in blast_radii if (br.vulnerability.id.upper(), f"{br.package.name}@{br.package.version}") in _new_keys
+                ]
+                report.blast_radii = blast_radii
+                if report.findings:
+                    from agent_bom.finding import FindingType
+
+                    _new_cve_ids = {d.get("vulnerability_id", "").upper() for d in _delta_result.new_items}
+                    report.findings = [
+                        finding
+                        for finding in report.findings
+                        if finding.finding_type != FindingType.CVE or str(finding.cve_id or "").upper() in _new_cve_ids
+                    ]
+                ctx.blast_radii = blast_radii
+                current_report_json = to_json(report)
+
+                if not quiet:
+                    from rich.console import Console as _Console
+
+                    _Console().print(f"\n[bold]Delta:[/bold] {_delta_result.summary_line()} (baseline: {_baseline_path})\n")
+            except (FileNotFoundError, ValueError) as exc:
+                logger.warning("Delta baseline error: %s — skipping delta filter", exc)
 
     # Step 5: Output
     _step_t0 = _time.monotonic()
@@ -2082,7 +2171,6 @@ def scan(
         return
 
     # Step 6: Save report to history + asset tracking
-    current_report_json = to_json(report)
     if save_report:
         from agent_bom.history import save_report as _save
 
@@ -2112,43 +2200,12 @@ def scan(
 
     # Step 7: Diff against baseline
     if baseline:
-        from agent_bom.history import diff_reports, load_report
+        from agent_bom.history import diff_reports
+        from agent_bom.scan_delta import load_baseline
 
-        baseline_data = load_report(Path(baseline))
+        baseline_data = load_baseline(Path(baseline))
         diff = diff_reports(baseline_data, current_report_json)
         print_diff(diff)
-
-    # Step 7a: Delta mode — exit code based on new findings only
-    if delta_mode:
-        from agent_bom.scan_delta import compute_delta, load_baseline
-
-        _baseline_path = baseline
-        if not _baseline_path:
-            from agent_bom.scan_delta import _DEFAULT_BASELINE_PATH
-
-            if _DEFAULT_BASELINE_PATH.exists():
-                _baseline_path = str(_DEFAULT_BASELINE_PATH)
-            else:
-                logger.warning(
-                    "Delta mode requested but no --baseline file specified and no auto-baseline found at %s. Skipping delta filter.",
-                    _DEFAULT_BASELINE_PATH,
-                )
-
-        if _baseline_path:
-            try:
-                _baseline_data = load_baseline(_baseline_path)
-                _delta_result = compute_delta(current_report_json, _baseline_data)
-                _delta_result.baseline_path = _baseline_path
-                ctx.delta_result = _delta_result
-                if not quiet:
-                    from rich.console import Console as _Console
-
-                    _Console().print(f"\n[bold]Delta:[/bold] {_delta_result.summary_line()} (baseline: {_baseline_path})\n")
-                from agent_bom.scan_delta import apply_delta_to_scan
-
-                current_report_json = apply_delta_to_scan(current_report_json, _delta_result)
-            except (FileNotFoundError, ValueError) as exc:
-                logger.warning("Delta baseline error: %s — skipping delta filter", exc)
 
     ctx.step_timings["output"] = _time.monotonic() - _step_t0
 

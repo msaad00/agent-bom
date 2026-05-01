@@ -871,6 +871,8 @@ def to_json(report: AIBOMReport) -> dict:
 
     if report.runtime_correlation:
         result["runtime_correlation"] = report.runtime_correlation
+    if report.delta_data:
+        result["delta"] = report.delta_data
     if report.scan_performance_data:
         result["scan_performance"] = report.scan_performance_data
     if report.runtime_session_graph:

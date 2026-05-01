@@ -383,6 +383,8 @@ def load_policy(path: str) -> dict:
             data = yaml.safe_load(text)
         except ImportError:
             raise ImportError("PyYAML is required for YAML policy files: pip install pyyaml")
+        except yaml.YAMLError as e:
+            raise ValueError(f"Invalid YAML in policy file: {e}") from e
     else:
         try:
             data = json.loads(text)

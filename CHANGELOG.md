@@ -11,6 +11,15 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.84.2] – 2026-05-01
+
+### Fixed
+- **Release tag gates** — reusable docs builds now skip GitHub Pages deployment when invoked by the tag release workflow with `deploy: false`, preventing protected Pages environments from blocking package publication.
+- **MCP registry sync determinism** — all bundled registry writers now share Unicode-preserving JSON serialization, preventing release-gate churn from rewriting capped descriptions between literal `…` and escaped `\u2026`.
+- **Bundled registry freshness** — refreshed the committed MCP registry to 658 servers so the strict `sync-all` release gate can pass without weakening freshness checks.
+
+---
+
 ## [0.84.1] – 2026-05-01
 
 ### Fixed
@@ -982,7 +991,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.84.1...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.84.2...HEAD
+[0.84.2]: https://github.com/msaad00/agent-bom/compare/v0.84.1...v0.84.2
 [0.84.1]: https://github.com/msaad00/agent-bom/compare/v0.84.0...v0.84.1
 [0.84.0]: https://github.com/msaad00/agent-bom/compare/v0.83.4...v0.84.0
 [0.83.4]: https://github.com/msaad00/agent-bom/compare/v0.83.3...v0.83.4

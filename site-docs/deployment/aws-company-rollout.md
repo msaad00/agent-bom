@@ -342,8 +342,8 @@ through a managed tap instead of direct package upload.
 
 ```bash
 python3 scripts/render_homebrew_formula.py \
-  --version 0.84.1 \
-  --url https://github.com/msaad00/agent-bom/archive/refs/tags/v0.84.1.tar.gz \
+  --version 0.84.2 \
+  --url https://github.com/msaad00/agent-bom/archive/refs/tags/v0.84.2.tar.gz \
   --sha256 <release-sha256>
 ```
 

@@ -123,6 +123,20 @@ test("scan flow reaches result view and exports graph JSON", async ({ page }) =>
     });
   });
 
+  await page.route(`**/v1/scan/${scanJob.job_id}/status`, async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        job_id: scanJob.job_id,
+        status: scanJob.status,
+        created_at: scanJob.created_at,
+        completed_at: "2026-04-20T12:00:13Z",
+        request: scanJob.request,
+        summary: scanJob.result.summary,
+      }),
+    });
+  });
+
   await page.route(`**/v1/scan/${scanJob.job_id}/stream`, async (route) => {
     await route.fulfill({
       contentType: "text/event-stream",

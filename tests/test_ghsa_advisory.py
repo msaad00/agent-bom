@@ -263,6 +263,39 @@ def test_multi_package_without_github_token_uses_fail_fast_rate_limit_backoff(mo
     assert {call.kwargs["rate_limit_backoff"] for call in mock_fetch.await_args_list} == {_GHSA_SINGLE_PACKAGE_RATE_LIMIT_BACKOFF}
 
 
+def test_without_github_token_applies_package_budget(monkeypatch):
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    from agent_bom.scanners.ghsa_advisory import _GHSA_SINGLE_PACKAGE_RATE_LIMIT_BACKOFF, check_github_advisories
+    from agent_bom.scanners.state import consume_scan_warnings, reset_scan_warnings
+
+    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+    monkeypatch.delenv("GH_TOKEN", raising=False)
+    monkeypatch.setattr("agent_bom.scanners.ghsa_advisory._CONFIG_GHSA_UNAUTH_PACKAGE_BUDGET", 2)
+    reset_scan_warnings()
+    packages = [
+        Package(name="express", version="4.17.1", ecosystem="npm"),
+        Package(name="lodash", version="4.17.20", ecosystem="npm"),
+        Package(name="requests", version="2.31.0", ecosystem="pypi"),
+    ]
+
+    async def run():
+        with patch("agent_bom.scanners.ghsa_advisory._fetch_advisories_for_package", new_callable=AsyncMock) as mock_fetch:
+            mock_fetch.return_value = []
+            count = await check_github_advisories(packages)
+            return count, mock_fetch
+
+    count, mock_fetch = asyncio.run(run())
+
+    assert count == 0
+    assert mock_fetch.await_count == 2
+    assert {call.args[0].name for call in mock_fetch.await_args_list} == {"express", "lodash"}
+    assert {call.kwargs["rate_limit_backoff"] for call in mock_fetch.await_args_list} == {_GHSA_SINGLE_PACKAGE_RATE_LIMIT_BACKOFF}
+    warnings = consume_scan_warnings()
+    assert any("GHSA advisory enrichment limited to 2 unauthenticated package lookup(s); skipped 1" in item for item in warnings)
+
+
 def test_advisory_filtered_by_package_name():
     """Advisories for different packages are filtered out (substring match fix).
 

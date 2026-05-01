@@ -183,6 +183,9 @@ CLOUD_DISCOVERY_TIMEOUT = _float("AGENT_BOM_CLOUD_DISCOVERY_TIMEOUT", 45.0)
 SCANNER_MAX_CONCURRENT = _int("AGENT_BOM_SCANNER_MAX_CONCURRENT", 10)
 SCANNER_BATCH_DELAY = _float("AGENT_BOM_SCANNER_BATCH_DELAY", 0.5)
 SCANNER_BATCH_SIZE = _int("AGENT_BOM_SCANNER_BATCH_SIZE", 1000)  # OSV API max is 1000
+# Cap unauthenticated GHSA advisory lookups so no-token scans fail fast
+# with partial coverage instead of spending minutes on GitHub rate limits.
+GHSA_UNAUTH_PACKAGE_BUDGET = _int("AGENT_BOM_GHSA_UNAUTH_PACKAGE_BUDGET", 25)
 
 
 # ── Scan Cache ────────────────────────────────────────────────────────────────

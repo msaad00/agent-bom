@@ -52,6 +52,9 @@ def mcp_scan_cmd(server_spec: str, ecosystem: str | None, quiet: bool, no_color:
     """Check a single MCP server package or npx/uvx spec before adding it."""
     from agent_bom.cli._check import check
 
+    if not server_spec.strip():
+        raise click.UsageError("MCP server package spec cannot be empty.")
+
     callback = check.callback
     if callback is None:
         raise click.ClickException("check command is unavailable")

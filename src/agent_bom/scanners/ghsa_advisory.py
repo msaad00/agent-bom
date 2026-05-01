@@ -14,6 +14,7 @@ import time
 
 import httpx
 
+from agent_bom.config import GHSA_UNAUTH_PACKAGE_BUDGET as _CONFIG_GHSA_UNAUTH_PACKAGE_BUDGET
 from agent_bom.enrichment_posture import record_enrichment_source
 from agent_bom.http_client import create_client, request_with_retry
 from agent_bom.models import Package, Severity, Vulnerability
@@ -48,6 +49,10 @@ class GHSARateLimitError(RuntimeError):
 
 def _github_token() -> str:
     return os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN") or ""
+
+
+def _unauthenticated_package_budget() -> int:
+    return max(0, int(_CONFIG_GHSA_UNAUTH_PACKAGE_BUDGET))
 
 
 def _ghsa_headers() -> dict[str, str]:
@@ -294,12 +299,30 @@ async def check_github_advisories(
     if max_packages is not None:
         queryable = queryable[:max_packages]
 
-    logger.info("GHSA advisory check for %d packages", len(queryable))
     github_token_available = bool(_github_token())
     if not github_token_available:
+        if max_packages is None:
+            unauth_budget = _unauthenticated_package_budget()
+            if len(queryable) > unauth_budget:
+                skipped = len(queryable) - unauth_budget
+                queryable = queryable[:unauth_budget]
+                from agent_bom.scanners.state import record_scan_warning
+
+                warning = (
+                    "GHSA advisory enrichment limited to "
+                    f"{unauth_budget} unauthenticated package lookup(s); skipped {skipped}. "
+                    "Set GITHUB_TOKEN or GH_TOKEN for full GHSA coverage."
+                )
+                logger.warning(warning)
+                record_scan_warning(warning)
         logger.warning(
             "GITHUB_TOKEN/GH_TOKEN is not set; GHSA advisory enrichment will fail fast on GitHub rate limits instead of pausing."
         )
+    if not queryable:
+        record_enrichment_source("ghsa", "failure", error="unauthenticated package budget disabled GHSA lookups")
+        return 0
+
+    logger.info("GHSA advisory check for %d packages", len(queryable))
 
     # Build a reverse lookup: all packages sharing the same name+ecosystem
     pkg_groups: dict[str, list[Package]] = {}

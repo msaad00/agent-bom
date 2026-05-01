@@ -58,6 +58,15 @@ def test_documented_primary_commands_are_real_cli_surfaces() -> None:
         assert result.exit_code == 0, f"agent-bom {' '.join(command)} failed:\n{result.output}"
 
 
+def test_cli_reference_lists_all_visible_root_commands() -> None:
+    cli_reference = (ROOT / "site-docs" / "reference" / "cli.md").read_text(encoding="utf-8")
+    visible_commands = sorted(name for name, command in main.commands.items() if not getattr(command, "hidden", False))
+
+    missing = [name for name in visible_commands if f"| `{name}` |" not in cli_reference]
+
+    assert missing == []
+
+
 def test_public_docs_do_not_overclaim_smithery_catalog_liveness() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     smithery_doc = (ROOT / "site-docs" / "integrations" / "smithery.md").read_text(encoding="utf-8")

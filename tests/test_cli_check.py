@@ -140,6 +140,20 @@ def test_mcp_scan_delegates_to_package_check(monkeypatch):
     assert "No known vulnerabilities" in result.output
 
 
+def test_mcp_scan_empty_spec_is_usage_error():
+    result = CliRunner().invoke(main, ["mcp", "scan", ""])
+
+    assert result.exit_code == 2
+    assert "cannot be empty" in result.output
+
+
+def test_sbom_missing_file_is_usage_error():
+    result = CliRunner().invoke(main, ["sbom", "/missing.json"])
+
+    assert result.exit_code == 2
+    assert "does not exist" in result.output
+
+
 def test_check_quiet_suppresses_scan_chatter(monkeypatch):
     async def _scan_packages(pkgs, **_kwargs):
         import agent_bom.scanners as scanners

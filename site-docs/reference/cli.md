@@ -2,27 +2,76 @@
 
 ## Commands
 
+### Scanning
+
 | Command | Description |
 |---------|-------------|
-| `agents` | Discover MCP clients + scan for vulnerabilities |
-| `check` | Check a specific package for CVEs |
+| `agents` | Discover MCP clients, extract dependencies, scan packages, and compute blast radius |
+| `skills` | Scan, verify, and rescan AI instruction files and skills |
+| `image` | Scan a container image |
+| `fs` | Scan a filesystem directory or mounted VM disk snapshot |
+| `iac` | Scan Dockerfile, Kubernetes, Terraform, CloudFormation, and live Kubernetes posture |
+| `sbom` | Ingest an existing CycloneDX or SPDX SBOM and scan it |
+| `cloud` | Scan AWS, Azure, or GCP infrastructure posture |
+| `check` | Check one package before install or approval |
 | `verify` | Verify package integrity / provenance or self-verify `agent-bom` |
-| `where` | Show MCP discovery paths checked on this machine |
-| `image` | Container image scan |
-| `fs` | Filesystem / VM scan |
-| `iac` | Infrastructure-as-code misconfigurations |
-| `mcp` | Discover, scan, and manage MCP agents |
-| `mcp server` | Start MCP server (stdio) |
-| `cloud` | Cloud posture + CIS benchmarks |
-| `runtime proxy` | Runtime MCP proxy with enforcement |
-| `runtime protect` | 7-detector anomaly engine |
-| `runtime watch` | Config file change monitoring |
+| `secrets` | Scan a directory for hardcoded secrets and PII |
+| `code` | Analyze source code for AI components, prompts, guardrails, and tools |
+
+### Runtime
+
+| Command | Description |
+|---------|-------------|
+| `proxy` | Run an MCP server through the agent-bom security proxy |
+| `audit` | View and analyze a proxy audit JSONL log |
+
+### MCP
+
+| Command | Description |
+|---------|-------------|
+| `mcp` | Discover, scan, and manage MCP agents and servers |
+| `mcp inventory` | Discover MCP agents and servers without CVE scanning |
+| `mcp scan` | Check a single MCP server package or npx/uvx spec |
+| `mcp introspect` | Connect to live servers and list tools |
+| `mcp registry` | Browse and manage the MCP server security registry |
+| `mcp server` | Start agent-bom as an MCP server over stdio |
+| `mcp where` | Show MCP discovery paths checked on this machine |
+| `mcp validate` | Validate an MCP/client inventory file |
+| `where` | Top-level shortcut for MCP discovery paths |
+
+### Reporting
+
+| Command | Description |
+|---------|-------------|
+| `graph` | Export the transitive dependency graph from a scan report |
+| `mesh` | Show lightweight agent/MCP topology without CVE scanning |
+| `report` | History, diff, analytics, dashboard, and compliance narrative workflows |
+
+### Governance And Operations
+
+| Command | Description |
+|---------|-------------|
+| `policy` | Policy templates, application, and install-guard checks |
+| `trust` | Show data access, network, auth, and storage boundaries |
+| `fleet` | Manage AI agent fleet discovery, lifecycle, and posture |
+| `serve` | Start the API server and dashboard |
+| `api` | Start the REST API server |
+| `schedule` | Manage recurring scan schedules |
 | `remediate` | Generate a prioritized remediation plan |
-| `report` | History, diff, analytics, dashboard |
-| `policy` | Templates and remediation |
-| `serve` | Start REST API server |
-| `guard` | Pre-install CVE check |
-| `registry` | Registry management (list, search, update) |
+| `teardown` | Tear down the AWS/EKS reference install owned by agent-bom |
+
+### Database And Utilities
+
+| Command | Description |
+|---------|-------------|
+| `db` | Manage the local vulnerability database |
+| `doctor` | Check environment readiness for scanning |
+| `gateway` | Multi-MCP gateway commands |
+| `proxy-bootstrap` | Generate managed endpoint onboarding material |
+| `samples` | Create bundled sample inputs for demos and first runs |
+| `sidecar-injector` | Run the TLS admission webhook for sidecar injection |
+| `upgrade` | Check for and install the latest version of agent-bom |
+| `completions` | Print a shell completion script |
 
 ## Command contracts
 

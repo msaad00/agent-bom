@@ -177,7 +177,7 @@ def iac_cmd(
 
 
 @click.command("sbom")
-@click.argument("path")
+@click.argument("path", type=click.Path(exists=True, dir_okay=False, readable=True))
 @click.option("--name", "sbom_name", help="Label for the SBOM resource")
 @click.option("-f", "--format", "output_format", default="console", help="Output format")
 @click.option("-o", "--output", "output_path", help="Output file path")

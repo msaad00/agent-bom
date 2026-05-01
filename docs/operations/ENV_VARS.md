@@ -121,6 +121,7 @@ so they cannot regress silently, but they are not part of this reference.
 ## Scanner Batching
 | Env var | Type | Default | Description |
 |---|---|---|---|
+| `AGENT_BOM_GHSA_UNAUTH_PACKAGE_BUDGET` | `int` | `25` | Cap unauthenticated GHSA advisory lookups so no-token scans fail fast with partial coverage instead of spending minutes on GitHub rate limits. |
 | `AGENT_BOM_SCANNER_BATCH_DELAY` | `float` | `0.5` | — |
 | `AGENT_BOM_SCANNER_BATCH_SIZE` | `int` | `1000` | OSV API max is 1000 |
 | `AGENT_BOM_SCANNER_MAX_CONCURRENT` | `int` | `10` | Used by scanners/__init__.py for OSV batch API concurrency.  10 concurrent requests with 500ms delay between batches keeps us well under OSV.dev's rate limit while still being fast for large inventories. |

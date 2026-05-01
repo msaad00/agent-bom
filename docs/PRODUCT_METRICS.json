@@ -1,18 +1,24 @@
 {
-  "generated_on": "2026-04-28",
-  "version": "0.83.4",
+  "generated_on": "2026-04-30",
+  "version": "0.84.0",
   "metrics": [
     {
       "name": "MCP tools",
-      "value": 9,
-      "source": "src/agent_bom/mcp_server.py",
-      "notes": "Counted from @mcp.tool decorators."
+      "value": 36,
+      "source": "src/agent_bom/mcp_server_metadata.py",
+      "notes": "Counted from the advertised server-card tools."
     },
     {
       "name": "MCP resources",
-      "value": 0,
-      "source": "src/agent_bom/mcp_server.py",
-      "notes": "Counted from @mcp.resource decorators."
+      "value": 6,
+      "source": "src/agent_bom/mcp_server_metadata.py",
+      "notes": "Counted from the advertised server-card resources."
+    },
+    {
+      "name": "MCP prompts",
+      "value": 6,
+      "source": "src/agent_bom/mcp_server_metadata.py",
+      "notes": "Counted from the advertised server-card workflow prompts."
     },
     {
       "name": "GitHub workflow files",
@@ -22,7 +28,7 @@
     },
     {
       "name": "Test files",
-      "value": 394,
+      "value": 414,
       "source": "tests/",
       "notes": "Counts files matching test_*.py."
     },
@@ -40,7 +46,7 @@
     },
     {
       "name": "Python modules",
-      "value": 409,
+      "value": 421,
       "source": "src/agent_bom",
       "notes": "Counts all Python files recursively."
     },
@@ -53,7 +59,7 @@
     {
       "name": "Compliance surfaces",
       "value": 15,
-      "source": "src/agent_bom/api/routes/compliance.py",
+      "source": "src/agent_bom/compliance_coverage.py",
       "notes": "14 tag-mapped frameworks plus the OWASP AISVS benchmark surface."
     },
     {

@@ -7,6 +7,7 @@ Exit 0 = all consistent. Exit 1 = drift detected.
 
 from __future__ import annotations
 
+import ast
 import re
 import sys
 from pathlib import Path
@@ -44,15 +45,42 @@ def _check(label: str, expected: str, files: list[str], pattern: str, exclude_pa
 
 # ── Source of truth: count from actual code ────────────────────────────────
 
-# MCP tools: count @mcp.tool decorators
-mcp_server = ROOT / "src/agent_bom/mcp_server.py"
-mcp_tool_count = mcp_server.read_text().count("@mcp.tool") if mcp_server.exists() else 0
+# MCP tools: count the advertised server card. The implementation is split
+# across modules, but this is the surface MCP clients and registries consume.
+metadata = ROOT / "src/agent_bom/mcp_server_metadata.py"
+if metadata.exists():
+    module = ast.parse(metadata.read_text())
+    mcp_tool_count = 0
+    for node in module.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == "_SERVER_CARD_TOOLS" for target in node.targets):
+            continue
+        value = ast.literal_eval(node.value)
+        mcp_tool_count = len(value) if isinstance(value, list) else 0
+        break
+else:
+    mcp_tool_count = 0
 
-# Runtime detectors: count class definitions in detectors.py
-detectors = ROOT / "src/agent_bom/runtime/detectors.py"
+# Runtime detectors: count the broader protection engine imports. The lighter
+# proxy path intentionally uses fewer inline detectors and is documented
+# separately in PRODUCT_METRICS.
+protection = ROOT / "src/agent_bom/runtime/protection.py"
 detector_classes = (
-    len(re.findall(r"^class \w+(?:Detector|Analyzer|Inspector|Correlator)\b", detectors.read_text(), re.MULTILINE))
-    if detectors.exists()
+    len(
+        [
+            line
+            for line in re.search(
+                r"from agent_bom\.runtime\.detectors import \((.*?)\)\n",
+                protection.read_text(),
+                re.DOTALL,
+            )
+            .group(1)
+            .splitlines()
+            if line.strip()
+        ]
+    )
+    if protection.exists()
     else 0
 )
 
@@ -89,8 +117,6 @@ SURFACES = [
     "README.md",
     "DOCKER_HUB_README.md",
     "docs/ARCHITECTURE.md",
-    "docs/archive/STRATEGIC_AUDIT_2026_03.md",
-    "docs/archive/AUDIT.md",
     "pyproject.toml",
     "action.yml",
 ]
@@ -99,7 +125,13 @@ SURFACES = [
 _check("MCP tools", str(mcp_tool_count), SURFACES, r"\d+ MCP (?:server )?tools")
 
 # Check detector count
-_check("Detectors", str(detector_classes), SURFACES, r"\d+ (?:behavioral )?detectors", exclude_pattern=r"17 behavioral")
+_check(
+    "Detectors",
+    str(detector_classes),
+    SURFACES,
+    r"\d+ (?:behavioral )?detectors",
+    exclude_pattern=r"17 behavioral|7 detectors.*8 detectors",
+)
 
 # Check dashboard pages
 _check("Pages", str(pages), SURFACES, r"\d+-page")

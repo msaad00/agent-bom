@@ -98,19 +98,19 @@
     "arguments": []
   },
   {
-    "name": "inventory",
-    "description": "List all discovered MCP configurations and servers without running a CVE scan.",
-    "arguments": [
-      {"name": "project_path", "type": "string", "desc": "Directory to scan (default: auto-detect)"},
-      {"name": "output_format", "type": "string", "desc": "Output format: json, table"}
-    ]
-  },
-  {
     "name": "tool_risk_assessment",
     "description": "Score live-introspected MCP tool capabilities and server risk — classifies tools as READ/WRITE/EXECUTE/NETWORK/FILE_ACCESS and flags dangerous capability combinations.",
     "arguments": [
       {"name": "config_path", "type": "string", "desc": "Path to MCP client config directory (default: auto-discover)"},
       {"name": "timeout", "type": "number", "desc": "Per-server introspection timeout in seconds (default: 10.0)"}
+    ]
+  },
+  {
+    "name": "inventory",
+    "description": "List all discovered MCP configurations and servers without running a CVE scan.",
+    "arguments": [
+      {"name": "project_path", "type": "string", "desc": "Directory to scan (default: auto-detect)"},
+      {"name": "output_format", "type": "string", "desc": "Output format: json, table"}
     ]
   },
   {

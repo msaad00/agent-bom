@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 from datetime import date
@@ -34,11 +35,28 @@ def _count_python_modules() -> int:
 
 
 def _count_mcp_tools() -> int:
-    return (ROOT / "src" / "agent_bom" / "mcp_server.py").read_text().count("@mcp.tool")
+    return _count_server_card_entries("_SERVER_CARD_TOOLS")
 
 
 def _count_mcp_resources() -> int:
-    return (ROOT / "src" / "agent_bom" / "mcp_server.py").read_text().count("@mcp.resource")
+    return _count_server_card_entries("_SERVER_CARD_RESOURCES")
+
+
+def _count_mcp_prompts() -> int:
+    return _count_server_card_entries("_SERVER_CARD_PROMPTS")
+
+
+def _count_server_card_entries(variable_name: str) -> int:
+    content = (ROOT / "src" / "agent_bom" / "mcp_server_metadata.py").read_text()
+    module = ast.parse(content)
+    for node in module.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == variable_name for target in node.targets):
+            continue
+        value = ast.literal_eval(node.value)
+        return len(value) if isinstance(value, list) else 0
+    return 0
 
 
 def _count_package_ecosystems() -> int:
@@ -50,12 +68,16 @@ def _count_package_ecosystems() -> int:
 
 
 def _count_compliance_frameworks() -> int:
-    content = (ROOT / "src" / "agent_bom" / "api" / "routes" / "compliance.py").read_text()
-    match = re.search(r"all_frameworks\s*=\s*\[(.*?)\]", content, re.DOTALL)
-    if not match:
-        return 0
-    entries = [line.strip().rstrip(",") for line in match.group(1).splitlines() if line.strip()]
-    return len(entries)
+    content = (ROOT / "src" / "agent_bom" / "compliance_coverage.py").read_text()
+    module = ast.parse(content)
+    for node in module.body:
+        if isinstance(node, ast.Assign):
+            if not any(isinstance(target, ast.Name) and target.id == "TAG_MAPPED_FRAMEWORKS" for target in node.targets):
+                continue
+            return len(node.value.elts) if isinstance(node.value, ast.Tuple) else 0
+        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "TAG_MAPPED_FRAMEWORKS":
+            return len(node.value.elts) if isinstance(node.value, ast.Tuple) else 0
+    return 0
 
 
 def _count_compliance_surfaces() -> int:
@@ -96,14 +118,20 @@ def build_snapshot() -> dict[str, object]:
             {
                 "name": "MCP tools",
                 "value": _count_mcp_tools(),
-                "source": "src/agent_bom/mcp_server.py",
-                "notes": "Counted from @mcp.tool decorators.",
+                "source": "src/agent_bom/mcp_server_metadata.py",
+                "notes": "Counted from the advertised server-card tools.",
             },
             {
                 "name": "MCP resources",
                 "value": _count_mcp_resources(),
-                "source": "src/agent_bom/mcp_server.py",
-                "notes": "Counted from @mcp.resource decorators.",
+                "source": "src/agent_bom/mcp_server_metadata.py",
+                "notes": "Counted from the advertised server-card resources.",
+            },
+            {
+                "name": "MCP prompts",
+                "value": _count_mcp_prompts(),
+                "source": "src/agent_bom/mcp_server_metadata.py",
+                "notes": "Counted from the advertised server-card workflow prompts.",
             },
             {
                 "name": "GitHub workflow files",
@@ -144,7 +172,7 @@ def build_snapshot() -> dict[str, object]:
             {
                 "name": "Compliance surfaces",
                 "value": _count_compliance_surfaces(),
-                "source": "src/agent_bom/api/routes/compliance.py",
+                "source": "src/agent_bom/compliance_coverage.py",
                 "notes": "14 tag-mapped frameworks plus the OWASP AISVS benchmark surface.",
             },
             {

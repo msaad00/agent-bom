@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import ast
+import json
 import re
 import sys
 from pathlib import Path
@@ -10,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 README = ROOT / "README.md"
 PYPI_README = ROOT / "PYPI_README.md"
+CHANGELOG = ROOT / "CHANGELOG.md"
 DEMO_TAPE = ROOT / "docs" / "demo.tape"
 DEMO_LATEST = ROOT / "docs" / "images" / "demo-latest.gif"
 GLAMA_SERVER = ROOT / "integrations" / "glama" / "server.json"
@@ -25,6 +28,80 @@ MANAGED_IMAGE_REFS: list[tuple[Path, re.Pattern[str]]] = [
     (ROOT / "site-docs" / "deployment" / "docker.md", re.compile(r"agentbom/agent-bom:([0-9]+\.[0-9]+\.[0-9]+)")),
     (ROOT / "docs" / "RUNTIME_MONITORING.md", re.compile(r"agentbom/agent-bom:([0-9]+\.[0-9]+\.[0-9]+)")),
 ]
+MANAGED_VERSION_REFS: list[tuple[Path, re.Pattern[str], str]] = [
+    (
+        ROOT / "src" / "agent_bom" / "__init__.py",
+        re.compile(r'__version__\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"'),
+        "__version__",
+    ),
+    (ROOT / "uv.lock", re.compile(r'name = "agent-bom"\nversion = "([0-9]+\.[0-9]+\.[0-9]+)"'), "uv.lock package version"),
+    (ROOT / "ui" / "package.json", re.compile(r'"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"'), "UI package version"),
+    (
+        ROOT / "deploy" / "helm" / "agent-bom" / "values.yaml",
+        re.compile(r'tag:\s*"([0-9]+\.[0-9]+\.[0-9]+)"'),
+        "Helm values image tag",
+    ),
+    (
+        ROOT / "deploy" / "docker" / "Dockerfile.runtime",
+        re.compile(r"^ARG VERSION=([0-9]+\.[0-9]+\.[0-9]+)$", re.M),
+        "runtime Dockerfile ARG",
+    ),
+    (
+        ROOT / "deploy" / "docker" / "Dockerfile.sse",
+        re.compile(r"^ARG VERSION=([0-9]+\.[0-9]+\.[0-9]+)$", re.M),
+        "SSE Dockerfile ARG",
+    ),
+    (
+        ROOT / "deploy" / "docker" / "Dockerfile.mcp",
+        re.compile(r"^ARG VERSION=([0-9]+\.[0-9]+\.[0-9]+)$", re.M),
+        "MCP Dockerfile ARG",
+    ),
+    (
+        ROOT / "deploy" / "docker" / "Dockerfile.snowpark",
+        re.compile(r"^ARG VERSION=([0-9]+\.[0-9]+\.[0-9]+)$", re.M),
+        "Snowpark Dockerfile ARG",
+    ),
+    (
+        ROOT / "deploy" / "k8s" / "sidecar-example.yaml",
+        re.compile(r"agentbom/agent-bom:([0-9]+\.[0-9]+\.[0-9]+)"),
+        "K8s sidecar image",
+    ),
+    (
+        ROOT / "deploy" / "k8s" / "proxy-sidecar-pilot.yaml",
+        re.compile(r"agentbom/agent-bom:([0-9]+\.[0-9]+\.[0-9]+)"),
+        "K8s proxy sidecar image",
+    ),
+    (
+        ROOT / "integrations" / "mcp-registry" / "server.json",
+        re.compile(r'"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"'),
+        "MCP Registry manifest version",
+    ),
+    (ROOT / "integrations" / "glama" / "server.json", re.compile(r'"version":\s*"([0-9]+\.[0-9]+\.[0-9]+)"'), "Glama manifest version"),
+    (ROOT / "docs" / "RELEASE_VERIFICATION.md", re.compile(r"^TAG=v([0-9]+\.[0-9]+\.[0-9]+)$", re.M), "release verification tag"),
+    (
+        ROOT / "docs" / "PUBLISHING.md",
+        re.compile(r"(?:--version \"|git tag v|git push origin v)([0-9]+\.[0-9]+\.[0-9]+)"),
+        "publishing example version",
+    ),
+    (
+        ROOT / "DOCKER_HUB_README.md",
+        re.compile(r"\| `([0-9]+\.[0-9]+\.[0-9]+)` \| Current stable version \(pinned\) \|"),
+        "Docker Hub stable tag",
+    ),
+]
+MANAGED_ACTION_REFS: list[Path] = [
+    ROOT / "README.md",
+    ROOT / "docs" / "AI_INFRASTRUCTURE_SCANNING.md",
+    ROOT / "docs" / "ENTERPRISE_DEPLOYMENT.md",
+    ROOT / "docs" / "MCP_SECURITY_MODEL.md",
+    ROOT / "site-docs" / "features" / "policy.md",
+]
+MCP_COUNT_DOCS: list[Path] = [
+    ROOT / "README.md",
+    ROOT / "docs" / "MCP_SERVER.md",
+    ROOT / "site-docs" / "getting-started" / "mcp-server.md",
+]
+DOCKER_MCP_TOOLS = ROOT / "integrations" / "docker-mcp-registry" / "tools.json"
 
 
 def _load_version() -> str:
@@ -48,11 +125,44 @@ def _fail(message: str) -> None:
     raise SystemExit(1)
 
 
+def _server_card_list(variable_name: str) -> list[dict[str, object]]:
+    metadata = ROOT / "src" / "agent_bom" / "mcp_server_metadata.py"
+    module = ast.parse(metadata.read_text())
+    for node in module.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(target, ast.Name) and target.id == variable_name for target in node.targets):
+            continue
+        value = ast.literal_eval(node.value)
+        if isinstance(value, list):
+            return value
+    _fail(f"{metadata.relative_to(ROOT)} is missing {variable_name}")
+
+
+def _server_card_catalog() -> tuple[list[str], list[str], list[str]]:
+    tools = [str(tool["name"]) for tool in _server_card_list("_SERVER_CARD_TOOLS")]
+    resources = [str(resource["uri"]) for resource in _server_card_list("_SERVER_CARD_RESOURCES")]
+    prompts = [str(prompt["name"]) for prompt in _server_card_list("_SERVER_CARD_PROMPTS")]
+    return tools, resources, prompts
+
+
+def _assert_versions(path: Path, pattern: re.Pattern[str], expected: str, label: str) -> None:
+    if not path.exists():
+        _fail(f"{path.relative_to(ROOT)} is missing from release surface")
+    text = path.read_text()
+    versions = {match.group(1) for match in pattern.finditer(text)}
+    if not versions:
+        _fail(f"{path.relative_to(ROOT)} has no managed {label}")
+    if versions != {expected}:
+        _fail(f"{path.relative_to(ROOT)} has stale {label}: {sorted(versions)} != {expected}")
+
+
 def main() -> int:
     version = _load_version()
     description = _load_description()
     readme = README.read_text()
     pypi_readme = PYPI_README.read_text()
+    changelog = CHANGELOG.read_text()
     demo_tape = DEMO_TAPE.read_text()
 
     required_github_markers = [
@@ -137,6 +247,11 @@ def main() -> int:
         if marker in description:
             _fail(f"pyproject.toml description contains stale storefront phrase: {marker}")
 
+    if f"## [{version}]" not in changelog:
+        _fail(f"CHANGELOG.md must include a {version} release entry before tagging")
+    if f"[Unreleased]: https://github.com/msaad00/agent-bom/compare/v{version}...HEAD" not in changelog:
+        _fail(f"CHANGELOG.md Unreleased compare link must start at v{version}")
+
     leaked_patterns = [
         r"/Users/[^/\s]+",
         r"[A-Za-z]:\\Users\\[^\\\s]+",
@@ -167,6 +282,47 @@ def main() -> int:
         versions = {match.group(1) for match in pattern.finditer(text)}
         if versions and versions != {version}:
             _fail(f"{path.relative_to(ROOT)} contains stale managed image version(s): {sorted(versions)} != {version}")
+    for path, pattern, label in MANAGED_VERSION_REFS:
+        _assert_versions(path, pattern, version, label)
+    ui_lock = json.loads((ROOT / "ui" / "package-lock.json").read_text())
+    ui_lock_versions = {ui_lock.get("version"), ui_lock.get("packages", {}).get("", {}).get("version")}
+    if ui_lock_versions != {version}:
+        _fail(f"ui/package-lock.json has stale root package version(s): {sorted(ui_lock_versions)} != {version}")
+    for skill in sorted((ROOT / "integrations" / "openclaw").rglob("SKILL.md")):
+        _assert_versions(skill, re.compile(r"^version:\s*([0-9]+\.[0-9]+\.[0-9]+)$", re.M), version, "OpenClaw skill frontmatter version")
+        text = skill.read_text()
+        docker_versions = set(re.findall(r"ghcr\.io/msaad00/agent-bom:([0-9]+\.[0-9]+\.[0-9]+)", text))
+        verify_versions = set(re.findall(r"agent-bom verify agent-bom@([0-9]+\.[0-9]+\.[0-9]+)", text))
+        if docker_versions and docker_versions != {version}:
+            _fail(f"{skill.relative_to(ROOT)} has stale OpenClaw Docker pin(s): {sorted(docker_versions)} != {version}")
+        if verify_versions and verify_versions != {version}:
+            _fail(f"{skill.relative_to(ROOT)} has stale OpenClaw verify pin(s): {sorted(verify_versions)} != {version}")
+    for path in MANAGED_ACTION_REFS:
+        text = path.read_text()
+        action_versions = set(re.findall(r"msaad00/agent-bom@v([0-9]+\.[0-9]+\.[0-9]+)", text))
+        if action_versions and action_versions != {version}:
+            _fail(f"{path.relative_to(ROOT)} has stale GitHub Action ref(s): {sorted(action_versions)} != {version}")
+
+    tool_names, resource_uris, prompt_names = _server_card_catalog()
+    tools = len(tool_names)
+    resources = len(resource_uris)
+    prompts = len(prompt_names)
+    if (tools, resources, prompts) != (36, 6, 6):
+        _fail(f"MCP server card count changed unexpectedly: tools={tools}, resources={resources}, prompts={prompts}")
+    docker_mcp_tool_names = [str(tool["name"]) for tool in json.loads(DOCKER_MCP_TOOLS.read_text())]
+    if docker_mcp_tool_names != tool_names:
+        missing = sorted(set(tool_names) - set(docker_mcp_tool_names))
+        extra = sorted(set(docker_mcp_tool_names) - set(tool_names))
+        _fail(f"integrations/docker-mcp-registry/tools.json is out of sync with MCP server-card tools: missing={missing}, extra={extra}")
+    for path in MCP_COUNT_DOCS:
+        text = path.read_text()
+        readme_count_phrase = f"{tools} read-only security tools, {resources} resources, and {prompts} workflow prompts"
+        if path.name == "README.md" and readme_count_phrase not in text:
+            _fail("README.md must advertise current MCP tool/resource/prompt counts")
+        if path.name == "MCP_SERVER.md" and f"Tool Categories ({tools} tools)" not in text:
+            _fail("docs/MCP_SERVER.md must advertise current MCP tool count")
+        if path.name == "mcp-server.md" and f"{resources} resources and {prompts} workflow prompts" not in text:
+            _fail("site-docs/getting-started/mcp-server.md must advertise current MCP resource/prompt counts")
 
     helm_chart = ROOT / "deploy" / "helm" / "agent-bom" / "Chart.yaml"
     helm_text = helm_chart.read_text()

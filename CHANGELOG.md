@@ -11,6 +11,25 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.84.0] – 2026-04-30
+
+### Added
+- **Graph capability reachability** — graph construction now emits `EXPLOITABLE_VIA` edges from affected packages/vulnerabilities to reachable MCP tool capability nodes, closing the package → MCP server → tool → agent attack-path chain for graph consumers.
+- **Cloud discovery and ingest skills** — bundled skills now cover Azure, GCP, Snowflake, and pushed-inventory ingest workflows alongside the existing AWS discovery path, with the same guardrail contract, provenance requirements, and read-only defaults.
+- **MCP server resources, prompts, and capability metadata** — the server card now advertises 36 read-only tools, 6 resources, 6 workflow prompts, and machine-readable capability classes so agents can choose the right workflow without guessing.
+
+### Changed
+- **Human reports and graph risk state** — Markdown, HTML, compact console output, and graph nodes now render unified non-CVE findings such as MCP blocklist hits with matching severity, evidence, remediation, and blocked/warning state.
+- **Snowflake and self-hosted deployment path** — Snowflake POV docs, EKS deployment profile, BYO Postgres guidance, and deployment navigation were tightened around the current operator-pull and customer-managed data-store model.
+- **MCP documentation and metrics alignment** — MCP docs, server-card descriptions, product metrics, Glama/MCP registry manifests, Docker/Helm references, OpenClaw skill metadata, and README release refs now align to the v0.84.0 surface.
+
+### Fixed
+- **Bundled skill contract enforcement** — skill guardrail metadata is now regression-tested so new skills must declare credential handling, data flow, file access, network endpoints, invocation policy, and verification posture.
+- **Posture headline calibration** — compact output no longer pairs high/critical policy findings with a misleading strong/clean posture headline.
+- **Release-surface drift** — package metadata, Helm chart/app versions, image pins, registry manifests, skill versions, and verification docs were bumped together for the v0.84.0 release.
+
+---
+
 ## [0.83.4] – 2026-04-30
 
 ### Added
@@ -947,7 +966,13 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.82.1...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.84.0...HEAD
+[0.84.0]: https://github.com/msaad00/agent-bom/compare/v0.83.4...v0.84.0
+[0.83.4]: https://github.com/msaad00/agent-bom/compare/v0.83.3...v0.83.4
+[0.83.3]: https://github.com/msaad00/agent-bom/compare/v0.83.2...v0.83.3
+[0.83.2]: https://github.com/msaad00/agent-bom/compare/v0.83.1...v0.83.2
+[0.83.1]: https://github.com/msaad00/agent-bom/compare/v0.83.0...v0.83.1
+[0.83.0]: https://github.com/msaad00/agent-bom/compare/v0.82.1...v0.83.0
 [0.82.1]: https://github.com/msaad00/agent-bom/compare/v0.82.0...v0.82.1
 [0.82.0]: https://github.com/msaad00/agent-bom/compare/v0.81.3...v0.82.0
 [0.76.4]: https://github.com/msaad00/agent-bom/compare/v0.76.2...v0.76.4

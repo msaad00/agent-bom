@@ -97,8 +97,12 @@ def print_compact_summary(report: AIBOMReport) -> None:
         sev_counts[str(finding.severity).upper()] += 1
 
     scorecard = compute_posture_scorecard(report)
+    coverage = report.scan_performance_data or {}
+    coverage_incomplete = coverage.get("coverage_state") == "incomplete"
     high_risk_policy_count = sev_counts.get("CRITICAL", 0) + sev_counts.get("HIGH", 0)
     scorecard_summary = scorecard.summary
+    if coverage_incomplete:
+        scorecard_summary = "scan coverage incomplete"
     if high_risk_policy_count and not active_findings:
         scorecard_summary = f"{high_risk_policy_count} high-risk policy/security finding(s) present"
     preferred_driver_order = [
@@ -124,7 +128,10 @@ def print_compact_summary(report: AIBOMReport) -> None:
             if len(weak_dimensions) >= 2:
                 break
 
-    if report.total_vulnerabilities == 0 and not policy_findings:
+    if coverage_incomplete:
+        posture = "[bold black on yellow] PARTIAL COVERAGE [/bold black on yellow]"
+        border_style = "yellow"
+    elif report.total_vulnerabilities == 0 and not policy_findings:
         posture = "[bold white on green] CLEAN [/bold white on green]"
         border_style = "green"
     else:

@@ -152,6 +152,10 @@ def _exit_incomplete_scan_with_partial_summary(
         blast_radii=[],
         findings=blocklist_findings_for_agents(agents),
         scan_sources=["agent_discovery"],
+        scan_performance_data={
+            "coverage_state": "incomplete",
+            "coverage_reason": str(exc),
+        },
     )
     ctx.con.print(f"  [yellow]⚠[/yellow] {exc}")
     if output_format == "console" and not output and not quiet:

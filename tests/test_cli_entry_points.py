@@ -294,6 +294,15 @@ class TestNoDuplication:
         check_cmd = policy.get_command(None, "check") if policy else None
         assert check_cmd is not None
 
+    def test_policy_group_help_describes_check_as_install_guard(self):
+        from agent_bom.cli import main
+
+        r = CliRunner().invoke(main, ["policy", "--help"])
+
+        assert r.exit_code == 0
+        assert "Pre-install package guard" in r.output
+        assert "agent-bom agents --policy PATH" in r.output
+
     def test_aws_cmd_is_same_object(self):
         """aws_cmd registered on both cloud module and cloud_group must be the same object."""
         from agent_bom.cli._cloud_group import aws_cmd as group_aws

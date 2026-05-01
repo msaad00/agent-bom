@@ -362,6 +362,8 @@ def test_scan_incomplete_offline_scan_exits_two(monkeypatch):
     assert result.exit_code == 2
     assert "populated local vulnerability DB" in result.output
     assert "SECURITY POSTURE" in result.output
+    assert "PARTIAL COVERAGE" in result.output
+    assert "CLEAN" not in result.output
     assert "Agents" in result.output
 
 

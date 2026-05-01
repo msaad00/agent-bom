@@ -217,6 +217,9 @@ def print_posture_summary(report: AIBOMReport) -> None:
     """Print a high-level security posture summary with ecosystem and credential aggregation."""
     from collections import Counter
 
+    coverage = report.scan_performance_data or {}
+    coverage_incomplete = coverage.get("coverage_state") == "incomplete"
+
     # Aggregate agent status counts
     configured = sum(1 for a in report.agents if a.status == AgentStatus.CONFIGURED)
     not_configured = sum(1 for a in report.agents if a.status == AgentStatus.INSTALLED_NOT_CONFIGURED)
@@ -259,7 +262,10 @@ def print_posture_summary(report: AIBOMReport) -> None:
             sev_counts[br.vulnerability.severity.value.upper()] += 1
 
     # Posture headline
-    if report.total_vulnerabilities == 0:
+    if coverage_incomplete:
+        posture = "[bold yellow]PARTIAL COVERAGE[/bold yellow]"
+        border_style = "yellow"
+    elif report.total_vulnerabilities == 0:
         posture = "[bold green]CLEAN[/bold green]"
         border_style = "green"
     elif sev_counts.get("CRITICAL", 0) > 0:
@@ -280,6 +286,9 @@ def print_posture_summary(report: AIBOMReport) -> None:
     # Build the panel content
     lines: list[str] = []
     lines.append(f"  [bold]SECURITY POSTURE:[/bold]  {posture}")
+    if coverage_incomplete:
+        reason = str(coverage.get("coverage_reason") or "scan coverage incomplete")
+        lines.append(f"  [yellow]Coverage[/yellow]          {reason}")
     lines.append("")
 
     # Agent summary

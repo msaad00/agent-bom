@@ -298,6 +298,14 @@ def test_docs_workflow_never_deploys_pages_from_release_tags():
     assert "actions/deploy-pages" in workflow
 
 
+def test_release_registry_gate_is_deterministic_without_live_sync():
+    """Tag releases should not mutate the bundled registry from live catalogs."""
+    workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    assert "agent-bom registry status --stale-after-days 14 --fail-on-stale" in workflow
+    assert "dumps_registry_json" in workflow
+    assert "agent-bom registry sync-all" not in workflow
+
+
 def test_publish_registries_workflow_requires_public_smithery_surface_and_curated_clawhub_set():
     """Registry publishing should fail fast on auth-gated Smithery URLs and avoid omnibus ClawHub skills."""
     workflow = (ROOT / ".github" / "workflows" / "publish-registries.yml").read_text()

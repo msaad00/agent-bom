@@ -1,7 +1,7 @@
 {
   "name": "agent-bom",
   "description": "Security scanner and graph for agentic infrastructure — agents, MCP, runtime, and blast radius.",
-  "version": "0.84.3",
+  "version": "0.84.4",
   "license": "Apache-2.0",
   "repository": "https://github.com/msaad00/agent-bom",
   "transport": "stdio",

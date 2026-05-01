@@ -7,7 +7,7 @@ description: >-
   inventory AWS Bedrock, ECS, SageMaker, Lambda, EKS, Step Functions, EC2, or
   agentic AWS infrastructure as canonical inventory. Passing that inventory
   to agent-bom is optional and operator-chosen.
-version: 0.84.3
+version: 0.84.4
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+, agent-bom installed from this repository or PyPI, and

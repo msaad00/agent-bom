@@ -11,6 +11,14 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.84.4] – 2026-05-01
+
+### Fixed
+- **Deterministic release registry gate** — tag workflows now verify committed registry freshness and local JSON serialization stability without running live registry syncs against moving external catalogs.
+- **Patch release alignment** — bumped release surfaces from the failed `v0.84.3` tag to `v0.84.4` after the registry gate proved the live-sync check was nondeterministic.
+
+---
+
 ## [0.84.3] – 2026-05-01
 
 ### Fixed
@@ -999,7 +1007,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.84.3...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.84.4...HEAD
+[0.84.4]: https://github.com/msaad00/agent-bom/compare/v0.84.3...v0.84.4
 [0.84.3]: https://github.com/msaad00/agent-bom/compare/v0.84.2...v0.84.3
 [0.84.2]: https://github.com/msaad00/agent-bom/compare/v0.84.1...v0.84.2
 [0.84.1]: https://github.com/msaad00/agent-bom/compare/v0.84.0...v0.84.1

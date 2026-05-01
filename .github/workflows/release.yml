@@ -133,16 +133,27 @@ jobs:
         run: |
           set -euo pipefail
           if ! uv run agent-bom registry status --stale-after-days 14 --fail-on-stale --format json; then
-            echo "::error::Bundled MCP registry freshness is stale or invalid. Run 'uv run agent-bom registry sync-all --max-pages 10', review and commit src/agent_bom/mcp_registry.json, then retag the release."
+            echo "::error::Bundled MCP registry freshness is stale or invalid. Refresh the committed registry in a pre-release PR, review src/agent_bom/mcp_registry.json, then retag the release."
             exit 1
           fi
 
-      - name: Verify MCP registry sync is committed
+      - name: Verify MCP registry serialization is stable
         run: |
           set -euo pipefail
-          uv run agent-bom registry sync-all --max-pages 10
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+
+          from agent_bom.mcp_registry_text import dumps_registry_json
+
+          path = Path("src/agent_bom/mcp_registry.json")
+          current = path.read_text(encoding="utf-8")
+          normalized = dumps_registry_json(json.loads(current))
+          if normalized != current:
+              path.write_text(normalized, encoding="utf-8")
+          PY
           if ! git diff --quiet -- src/agent_bom/mcp_registry.json; then
-            echo "::error::Bundled MCP registry changed during release sync. Run 'uv run agent-bom registry sync-all --max-pages 10', review and commit src/agent_bom/mcp_registry.json, then retag the release."
+            echo "::error::Bundled MCP registry serialization is not stable. Run the registry formatter locally, review and commit src/agent_bom/mcp_registry.json, then retag the release."
             git diff --stat -- src/agent_bom/mcp_registry.json
             git diff -- src/agent_bom/mcp_registry.json | head -200 || true
             exit 1

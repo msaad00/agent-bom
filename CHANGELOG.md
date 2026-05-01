@@ -11,6 +11,19 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.84.5] – 2026-05-01
+
+### Added
+- **MCP package version provenance** — packages now carry canonical `version_source` and `confidence` metadata, structured evidence, version conflicts, and resolved-version timestamps across scanner data, graph/API outputs, SARIF, SBOM formats, attack-flow exports, SVG graph output, and dashboard surfaces.
+- **Floating MCP command resolution evidence** — `npx` and `uvx` package detection now upgrades floating commands from low-confidence registry fallback to higher-confidence local tool-cache evidence when downloaded package metadata is available.
+
+### Fixed
+- **Focused CLI flag parity** — `agent-bom secrets` and `agent-bom skills scan` now accept `--no-color`, `--log-json`, and `--log-file` consistently with the rest of the CLI.
+- **Version provenance evidence redaction** — package-version evidence now sanitizes local package paths before findings are emitted.
+- **Skills quiet output** — `agent-bom skills scan --quiet` suppresses extra prose without dropping the findings table.
+
+---
+
 ## [0.84.4] – 2026-05-01
 
 ### Fixed
@@ -1007,7 +1020,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.84.4...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.84.5...HEAD
+[0.84.5]: https://github.com/msaad00/agent-bom/compare/v0.84.4...v0.84.5
 [0.84.4]: https://github.com/msaad00/agent-bom/compare/v0.84.3...v0.84.4
 [0.84.3]: https://github.com/msaad00/agent-bom/compare/v0.84.2...v0.84.3
 [0.84.2]: https://github.com/msaad00/agent-bom/compare/v0.84.1...v0.84.2

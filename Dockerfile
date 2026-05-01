@@ -22,7 +22,7 @@ RUN apk add --no-cache build-base ca-certificates git linux-headers \
     && apk upgrade --no-cache --available \
     && update-ca-certificates
 
-COPY pyproject.toml README.md LICENSE ./
+COPY pyproject.toml README.md PYPI_README.md LICENSE ./
 COPY src/ ./src/
 
 RUN pip install --no-cache-dir --prefix=/install ".[api,snowflake]"
@@ -30,7 +30,7 @@ RUN pip install --no-cache-dir --prefix=/install ".[api,snowflake]"
 ## ── Runtime stage ────────────────────────────────────────────────────────────
 FROM python:3.14.3-alpine3.23@sha256:faee120f7885a06fcc9677922331391fa690d911c020abb9e8025ff3d908e510
 
-ARG VERSION=0.84.4
+ARG VERSION=0.84.5
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY

@@ -46,6 +46,7 @@ htmlcov/
 docs/
 *.md
 !README.md
+!PYPI_README.md
 
 # CI/CD
 .github/

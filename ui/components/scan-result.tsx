@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { api, type ScanJob, type ScanResult, type BlastRadius, type RemediationItem, type GraphExportFormat, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS, severityColor } from "@/lib/api";
+import { api, type ScanJob, type ScanJobStatus, type ScanResult, type BlastRadius, type RemediationItem, type GraphExportFormat, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS, severityColor } from "@/lib/api";
 import type { StepEvent, SSEEvent } from "@/lib/api";
 import { ScanPipeline } from "@/components/scan-pipeline";
 import { SeverityBadge } from "@/components/severity-badge";
@@ -21,9 +21,52 @@ export function ScanResultView({ id }: { id: string }) {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   const logRef = useRef<HTMLDivElement>(null);
+  const fetchedResultRef = useRef(false);
+  const fetchingResultRef = useRef(false);
 
   useEffect(() => {
-    api.getScan(id).then(setJob).catch(() => {});
+    let cancelled = false;
+
+    function mergeStatus(prev: ScanJob | null, status: ScanJobStatus): ScanJob {
+      return {
+        job_id: status.job_id,
+        tenant_id: status.tenant_id ?? prev?.tenant_id,
+        status: status.status,
+        created_at: status.created_at,
+        completed_at: status.completed_at ?? prev?.completed_at,
+        request: status.request ?? prev?.request ?? {},
+        progress: prev?.progress ?? [],
+        result: prev?.result,
+        error: status.error ?? prev?.error,
+      };
+    }
+
+    async function fetchFullResultOnce() {
+      if (fetchedResultRef.current || fetchingResultRef.current) return;
+      fetchingResultRef.current = true;
+      try {
+        const fullJob = await api.getScan(id);
+        if (!cancelled) {
+          setJob(fullJob);
+          fetchedResultRef.current = true;
+        }
+      } finally {
+        fetchingResultRef.current = false;
+      }
+    }
+
+    async function refreshStatus() {
+      const status = await api.getScanStatus(id);
+      if (cancelled) return;
+      setJob((prev) => mergeStatus(prev, status));
+      if (status.status === "done" || status.status === "failed" || status.status === "cancelled") {
+        await fetchFullResultOnce();
+      }
+    }
+
+    fetchedResultRef.current = false;
+    fetchingResultRef.current = false;
+    refreshStatus().catch(() => {});
 
     const cleanup = api.streamScan(
       id,
@@ -40,14 +83,17 @@ export function ScanResultView({ id }: { id: string }) {
           const d = data as { message?: string };
           if (d.message) setMessages((m) => [...m, d.message!]);
         }
-        api.getScan(id).then(setJob).catch(() => {});
+        refreshStatus().catch(() => {});
       },
       () => {
         setStreaming(false);
-        api.getScan(id).then(setJob).catch(() => {});
+        refreshStatus().catch(() => {});
       }
     );
-    return cleanup;
+    return () => {
+      cancelled = true;
+      cleanup();
+    };
   }, [id]);
 
   useEffect(() => {

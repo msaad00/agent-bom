@@ -9,6 +9,7 @@ import type {
   ScanRequest,
   SSEEvent,
   ScanJob,
+  ScanJobStatus,
   GraphSnapshot,
   UnifiedGraphResponse,
   GraphNodeDetailResponse,
@@ -83,6 +84,7 @@ export type {
   DoneEvent,
   SSEEvent,
   ScanJob,
+  ScanJobStatus,
   ScanResult,
   GraphPagination,
   GraphSnapshot,
@@ -383,6 +385,9 @@ export const api = {
 
   /** Poll scan status + results */
   getScan: (jobId: string) => get<ScanJob>(`/v1/scan/${jobId}`),
+
+  /** Poll scan status without loading large result payloads */
+  getScanStatus: (jobId: string) => get<ScanJobStatus>(`/v1/scan/${jobId}/status`),
 
   /** Export a completed scan graph in a graph-native format. */
   downloadScanGraph: (jobId: string, format: GraphExportFormat = "json") =>

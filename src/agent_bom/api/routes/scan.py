@@ -2,7 +2,8 @@
 
 Endpoints:
     POST /v1/scan                      start a scan (async, returns job_id)
-    GET  /v1/scan/{job_id}             poll scan status + results
+    GET  /v1/scan/{job_id}             fetch scan status + full results
+    GET  /v1/scan/{job_id}/status      poll lightweight scan status
     GET  /v1/scan/{job_id}/attack-flow attack flow graph (React Flow)
     GET  /v1/scan/{job_id}/context-graph context graph with lateral movement
     GET  /v1/scan/{job_id}/graph-export graph export (json/dot/mermaid/graphml/cypher)
@@ -307,8 +308,14 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
 
 @router.get("/v1/scan/{job_id}", response_model=ScanJob, tags=["scan"])
 async def get_scan(request: Request, job_id: str) -> ScanJob:
-    """Poll scan status and results."""
+    """Fetch scan status and full results."""
     return _job_for_request(request, job_id)
+
+
+@router.get("/v1/scan/{job_id}/status", tags=["scan"])
+async def get_scan_status(request: Request, job_id: str) -> dict[str, Any]:
+    """Poll lightweight scan status without serializing large result payloads."""
+    return _job_summary_payload(_job_for_request(request, job_id))
 
 
 @router.get("/v1/scan/{job_id}/attack-flow", tags=["scan"])

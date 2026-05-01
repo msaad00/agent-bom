@@ -461,3 +461,17 @@ def test_mcp_registry_has_source_metadata():
     data = json.loads(f.read_text())
     assert "_sources" in data, "mcp_registry.json is missing '_sources' key"
     assert "mcp-official" in data["_sources"], f"'mcp-official' not in _sources: {data['_sources']}"
+
+
+def test_mcp_registry_descriptions_are_bounded():
+    """Bundled registry descriptions stay safe for catalog/UI consumers."""
+    from agent_bom.mcp_registry_text import MCP_REGISTRY_DESCRIPTION_MAX_CHARS
+
+    f = ROOT / "src" / "agent_bom" / "mcp_registry.json"
+    data = json.loads(f.read_text())
+    too_long = [
+        (name, len(str(entry.get("description", ""))))
+        for name, entry in data.get("servers", {}).items()
+        if len(str(entry.get("description", ""))) > MCP_REGISTRY_DESCRIPTION_MAX_CHARS
+    ]
+    assert not too_long, f"registry descriptions exceed {MCP_REGISTRY_DESCRIPTION_MAX_CHARS} chars: {too_long[:5]}"

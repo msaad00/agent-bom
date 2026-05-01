@@ -16,6 +16,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from agent_bom.http_client import create_client, request_with_retry
+from agent_bom.mcp_registry_text import normalize_registry_description
 from agent_bom.models import Package
 
 logger = logging.getLogger(__name__)
@@ -258,7 +259,7 @@ async def sync_from_glama(
                 entry = {
                     "ecosystem": ecosystem,
                     "package": key,
-                    "description": server.description[:300],
+                    "description": normalize_registry_description(server.description),
                     "risk_level": risk,
                     "tools": [t.get("name", "") for t in server.tools[:20]],
                     "repository": server.repository_url,

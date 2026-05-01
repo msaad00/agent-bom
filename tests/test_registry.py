@@ -451,7 +451,13 @@ def test_cli_registry_status_fail_on_stale_exits_nonzero():
     from agent_bom.cli import main
 
     runner = CliRunner()
-    result = runner.invoke(main, ["registry", "status", "--stale-after-days", "0", "--fail-on-stale", "-f", "json"])
+    stale_registry = {
+        "_updated": "2000-01-01",
+        "_sources": ["mcp-official"],
+        "servers": {"example/server": {"package": "example/server"}},
+    }
+    with patch("agent_bom.registry._load_registry_full", return_value=stale_registry):
+        result = runner.invoke(main, ["registry", "status", "--stale-after-days", "0", "--fail-on-stale", "-f", "json"])
     assert result.exit_code == 1
     data = json.loads(result.output)
     assert data["needs_refresh"] is True

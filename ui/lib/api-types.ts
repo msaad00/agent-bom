@@ -1086,6 +1086,7 @@ export interface JobListItem {
   job_id: string;
   status: JobStatus;
   created_at: string;
+  tenant_id?: string | undefined;
   completed_at?: string | undefined;
   request?: ScanRequest | undefined;
   summary?: Summary | undefined;
@@ -1093,6 +1094,8 @@ export interface JobListItem {
   pushed?: boolean | undefined;
   error?: string | undefined;
 }
+
+export type ScanJobStatus = JobListItem;
 
 export interface AgentsResponse {
   agents: Agent[];

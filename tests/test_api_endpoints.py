@@ -287,6 +287,45 @@ def test_get_scan_after_create():
     assert get_resp.json()["job_id"] == job_id
 
 
+def test_get_scan_status_omits_large_result_payload():
+    """Status polling should not serialize the full scan result on every tick."""
+    client, store = _fresh_client()
+    job = ScanJob(
+        job_id="job-large-result",
+        tenant_id="default",
+        status=JobStatus.DONE,
+        created_at="2026-01-01T00:00:00Z",
+        completed_at="2026-01-01T00:00:13Z",
+        request=ScanRequest(inventory="/tmp/agents.json"),
+        progress=["scan started", "scan complete"],
+        result={
+            "summary": {
+                "total_agents": 8,
+                "total_servers": 8,
+                "total_packages": 165,
+                "total_vulnerabilities": 28,
+            },
+            "agents": [{"name": "agent", "payload": "x" * 250_000}],
+            "blast_radius": [{"package": "pkg", "payload": "y" * 250_000}],
+        },
+    )
+    store.put(job)
+
+    full = client.get("/v1/scan/job-large-result")
+    status = client.get("/v1/scan/job-large-result/status")
+
+    assert full.status_code == 200
+    assert status.status_code == 200
+    body = status.json()
+    assert body["job_id"] == "job-large-result"
+    assert body["status"] == "done"
+    assert body["summary"]["total_packages"] == 165
+    assert body["request"]["inventory"] == "<path:agents.json>"
+    assert "result" not in body
+    assert "progress" not in body
+    assert len(status.content) < len(full.content) / 100
+
+
 # ---------------------------------------------------------------------------
 # 8. DELETE scan
 # ---------------------------------------------------------------------------

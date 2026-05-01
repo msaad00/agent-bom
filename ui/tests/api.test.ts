@@ -206,6 +206,37 @@ describe('api.getScan', () => {
     expect(result.result?.summary?.total_agents).toBe(2)
   })
 
+  it('polls lightweight scan status without requesting full results', async () => {
+    const payload = {
+      job_id: 'job-1',
+      status: 'running',
+      created_at: '2024-01-01T00:00:00Z',
+      request: {},
+      summary: {
+        total_agents: 2,
+        total_servers: 5,
+        total_packages: 100,
+        total_vulnerabilities: 3,
+      },
+    }
+    const fetchMock = mockFetch(payload)
+    global.fetch = fetchMock
+
+    const result = await api.getScanStatus('job-1')
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/v1/scan/job-1/status",
+      expect.objectContaining({
+        credentials: "include",
+        headers: {},
+        signal: expect.any(AbortSignal),
+      }),
+    )
+    expect(result.job_id).toBe('job-1')
+    expect(result.summary?.total_packages).toBe(100)
+    expect('result' in result).toBe(false)
+  })
+
   it('preserves richer scan contract fields from the backend', async () => {
     const payload = {
       job_id: 'job-2',

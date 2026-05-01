@@ -1476,8 +1476,9 @@ def _agent_identity_scope(agent_dict: dict[str, Any]) -> str:
 def _agent_node_id(agent_name: Any, source_id: str = "") -> str:
     """Build an agent graph ID without collapsing same-name fleet endpoints."""
     name = str(agent_name or "unknown").strip() or "unknown"
-    if source_id:
-        return f"agent:{source_id}:{name}"
+    source = _clean_graph_part(source_id).replace(":", "%3A")
+    if source:
+        return f"agent:{source}:{name}"
     return f"agent:{name}"
 
 

@@ -295,6 +295,11 @@ async def check_github_advisories(
         queryable = queryable[:max_packages]
 
     logger.info("GHSA advisory check for %d packages", len(queryable))
+    github_token_available = bool(_github_token())
+    if not github_token_available:
+        logger.warning(
+            "GITHUB_TOKEN/GH_TOKEN is not set; GHSA advisory enrichment will fail fast on GitHub rate limits instead of pausing."
+        )
 
     # Build a reverse lookup: all packages sharing the same name+ecosystem
     pkg_groups: dict[str, list[Package]] = {}
@@ -312,7 +317,7 @@ async def check_github_advisories(
     try:
         async with create_client(timeout=15.0) as client:
             rate_limit_backoff = _GHSA_RATE_LIMIT_BACKOFF
-            if len(queryable) == 1 and not _github_token():
+            if not github_token_available:
                 rate_limit_backoff = _GHSA_SINGLE_PACKAGE_RATE_LIMIT_BACKOFF
             tasks = [_fetch_advisories_for_package(p, client, semaphore, rate_limit_backoff=rate_limit_backoff) for p in queryable]
             results = await asyncio.gather(*tasks, return_exceptions=True)

@@ -299,8 +299,9 @@ def _gateway_requires_auth(settings: GatewaySettings) -> bool:
         return True
     try:
         return get_key_store().has_keys()
-    except Exception:
-        return False
+    except Exception as exc:
+        logger.warning("Gateway key store status unavailable: %s", _sanitize_for_log(exc))
+        return True
 
 
 def _role_allows_gateway_relay(role: object) -> bool:
@@ -330,18 +331,23 @@ def _authenticate_gateway_request(request: Request, settings: GatewaySettings) -
 
     try:
         store = get_key_store()
-        if store.has_keys():
-            api_key = store.verify(raw_token) if raw_token else None
-            if api_key is None:
-                raise HTTPException(status_code=401, detail="gateway authentication required")
-            allowed, reason = _api_key_allows_gateway_relay(api_key)
-            if not allowed:
-                raise HTTPException(status_code=403, detail=reason)
-            return api_key.tenant_id or "default", "api_key"
-    except HTTPException:
-        raise
+        has_keys = store.has_keys()
     except Exception as exc:
-        logger.warning("Gateway key verification unavailable: %s", _sanitize_for_log(exc))
+        logger.warning("Gateway key store unavailable: %s", _sanitize_for_log(exc))
+        raise HTTPException(status_code=503, detail="gateway authentication unavailable") from exc
+
+    if has_keys:
+        try:
+            api_key = store.verify(raw_token) if raw_token else None
+        except Exception as exc:
+            logger.warning("Gateway key verification unavailable: %s", _sanitize_for_log(exc))
+            raise HTTPException(status_code=503, detail="gateway authentication unavailable") from exc
+        if api_key is None:
+            raise HTTPException(status_code=401, detail="gateway authentication required")
+        allowed, reason = _api_key_allows_gateway_relay(api_key)
+        if not allowed:
+            raise HTTPException(status_code=403, detail=reason)
+        return api_key.tenant_id or "default", "api_key"
 
     return "default", "none"
 

@@ -166,16 +166,20 @@ test("scan flow reaches result view and exports graph JSON", async ({ page }) =>
   await page.waitForLoadState("networkidle");
 
   const imageInput = page.getByPlaceholder("nginx:1.25 or ghcr.io/org/app:v1");
-  await expect(imageInput, "image input must be visible after hydration").toBeVisible({ timeout: 15_000 });
-  await expect(imageInput, "image input must be enabled after hydration").toBeEnabled({ timeout: 15_000 });
-
-  // If the page never hydrated, surface the captured browser errors before
-  // letting the implicit fill timeout swallow them.
-  if (consoleErrors.length > 0) {
-    throw new Error(
-      "Browser reported errors before scan flow could start (likely CSP block or hydration failure):\n" +
-        consoleErrors.map((e) => `  - ${e}`).join("\n"),
-    );
+  try {
+    await expect(imageInput, "image input must be visible after hydration").toBeVisible({ timeout: 15_000 });
+    await expect(imageInput, "image input must be enabled after hydration").toBeEnabled({ timeout: 15_000 });
+  } catch (err) {
+    // If the page never hydrated, surface the captured browser errors before
+    // letting the implicit fill timeout swallow them. Do not fail a hydrated
+    // scan page for unrelated Next.js background prefetch noise.
+    if (consoleErrors.length > 0) {
+      throw new Error(
+        "Browser reported errors before scan flow could start (likely CSP block or hydration failure):\n" +
+          consoleErrors.map((e) => `  - ${e}`).join("\n"),
+      );
+    }
+    throw err;
   }
 
   await imageInput.fill("nginx:1.25");

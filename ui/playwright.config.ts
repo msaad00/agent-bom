@@ -3,8 +3,11 @@ import { defineConfig, devices } from "@playwright/test";
 const PORT = 3001;
 const baseURL = `http://127.0.0.1:${PORT}`;
 const serverCommand =
-  `if test -f .next/standalone/server.js && test -f .next/standalone/.next/server/pages-manifest.json; ` +
-  `then HOSTNAME=127.0.0.1 PORT=${PORT} node .next/standalone/server.js; ` +
+  `if test -f .next/standalone/server.js; ` +
+  `then mkdir -p .next/standalone/.next && rm -rf .next/standalone/.next/static .next/standalone/public && ` +
+  `cp -R .next/static .next/standalone/.next/static && ` +
+  `if test -d public; then cp -R public .next/standalone/public; fi && ` +
+  `cd .next/standalone && HOSTNAME=127.0.0.1 PORT=${PORT} node server.js; ` +
   `else npm run dev -- --hostname 127.0.0.1 --port ${PORT}; fi`;
 
 export default defineConfig({

@@ -68,16 +68,15 @@ def load_ignore_file(path: str | Path | None = None) -> list[dict[str, Any]]:
     try:
         with target.open() as fh:
             data = yaml.safe_load(fh) or {}
-    except (OSError, yaml.YAMLError) as exc:
-        logger.warning("agent-bom-ignore: failed to parse %s: %s", target, exc)
-        return []
+    except OSError as exc:
+        raise ValueError(f"Could not read ignore file {target}: {exc}") from exc
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Invalid YAML in ignore file {target}: {exc}") from exc
     if not isinstance(data, dict):
-        logger.warning("agent-bom-ignore: expected mapping at top level — skipping file")
-        return []
+        raise ValueError(f"Ignore file {target} must be a YAML mapping with an 'ignores' list")
     entries = data.get("ignores", [])
     if not isinstance(entries, list):
-        logger.warning("agent-bom-ignore: 'ignores' must be a list — skipping file")
-        return []
+        raise ValueError(f"Ignore file {target} field 'ignores' must be a list")
     return entries
 
 
@@ -89,11 +88,11 @@ def _parse_minimal_yaml(path: Path) -> list[dict[str, Any]]:
         if text.strip().startswith("{") or text.strip().startswith("["):
             data = json.loads(text)
             return data.get("ignores", data) if isinstance(data, dict) else data
-    except (OSError, json.JSONDecodeError) as exc:
-        logger.warning("agent-bom-ignore: failed to parse %s without PyYAML: %s", path, exc)
-        pass
-    logger.warning("agent-bom-ignore: PyYAML not installed and file is not JSON — ignore file skipped. Install PyYAML: pip install pyyaml")
-    return []
+    except OSError as exc:
+        raise ValueError(f"Could not read ignore file {path}: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in ignore file {path}: line {exc.lineno}, column {exc.colno}: {exc.msg}") from exc
+    raise ValueError("PyYAML is required for YAML ignore files: pip install pyyaml")
 
 
 def _entry_is_expired(entry: dict[str, Any]) -> bool:

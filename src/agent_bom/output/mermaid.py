@@ -113,6 +113,16 @@ def to_mermaid(report: AIBOMReport, blast_radii: list[BlastRadius]) -> str:
                 edge = f'    {srv_node} -->|exposes| {tool_node}["{_sanitize_label(tool.name)}"]'
                 edges.add(edge)
 
+        # credential → tools reachable through the same affected server scope.
+        # This mirrors the conservative graph-builder mapping used by JSON,
+        # Cytoscape, GraphML, and Cypher exports.
+        for cred in br.exposed_credentials:
+            cred_node = ids.get(f"cred:{cred}")
+            for tool in br.exposed_tools:
+                tool_node = ids.get(f"tool:{tool.name}")
+                edge = f"    {cred_node} -.->|reaches_tool| {tool_node}"
+                edges.add(edge)
+
     # Add edges
     for edge in sorted(edges):
         lines.append(edge)
@@ -204,6 +214,18 @@ def to_mermaid_supply_chain(report: AIBOMReport) -> str:
             if len(srv.packages) > 5:
                 more_node = ids.get(f"more:{agent.name}:{srv.name}")
                 edges.add(f'    {srv_node} -.-> {more_node}["{len(srv.packages) - 5} more..."]')
+
+            tool_nodes: list[tuple[str, str]] = []
+            for tool in srv.tools:
+                tool_node = ids.get(f"tool:{agent.name}:{srv.name}:{tool.name}")
+                tool_nodes.append((tool.name, tool_node))
+                edges.add(f'    {srv_node} -->|provides_tool| {tool_node}["{_sanitize_label(tool.name)}"]')
+
+            for cred in srv.credential_names:
+                cred_node = ids.get(f"cred:{agent.name}:{srv.name}:{cred}")
+                edges.add(f'    {srv_node} -->|exposes_cred| {cred_node}["{_sanitize_label(cred)}"]')
+                for _tool_name, tool_node in tool_nodes:
+                    edges.add(f"    {cred_node} -.->|reaches_tool| {tool_node}")
 
     for edge in sorted(edges):
         lines.append(edge)

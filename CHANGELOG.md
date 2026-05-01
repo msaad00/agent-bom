@@ -11,6 +11,16 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.84.1] – 2026-05-01
+
+### Fixed
+- **Graph export parity** — CLI Cytoscape, Graph HTML, Mermaid, GraphML, Cypher, and API graph paths now surface conservative credential → tool `reaches_tool` evidence consistently.
+- **CLI error contracts** — listener ports now reject privileged or invalid values before socket bind, and malformed inventory, VEX, policy, and ignore files fail loudly with actionable parser messages instead of raw tracebacks or silent skips.
+- **Delta gate artifact consistency** — delta-mode filtering now happens before report rendering so JSON/SARIF artifacts and CI exit gates reflect the same new-only finding set.
+- **UI E2E production parity** — Playwright now runs against a staged standalone bundle that mirrors the container runtime, preventing hydration checks from passing only in dev mode.
+
+---
+
 ## [0.84.0] – 2026-04-30
 
 ### Added

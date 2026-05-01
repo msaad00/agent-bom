@@ -28,6 +28,20 @@ def _created_tables(sql: str) -> set[str]:
     return {match.rsplit(".", 1)[-1] for match in re.findall(r"CREATE TABLE IF NOT EXISTS ([a-zA-Z0-9_.]+)", sql)}
 
 
+def _created_table_columns(sql: str) -> dict[str, set[str]]:
+    tables: dict[str, set[str]] = {}
+    pattern = re.compile(r"CREATE TABLE IF NOT EXISTS ([a-zA-Z0-9_.]+)\s*\((.*?)\)\s*ENGINE", re.DOTALL)
+    for table, body in pattern.findall(sql):
+        columns: set[str] = set()
+        for raw_line in body.splitlines():
+            line = raw_line.strip().rstrip(",")
+            if not line or line.startswith("--"):
+                continue
+            columns.add(line.split()[0].strip("`"))
+        tables[table.rsplit(".", 1)[-1]] = columns
+    return tables
+
+
 # ─── ClickHouseClient tests ─────────────────────────────────────────────────
 
 
@@ -203,6 +217,16 @@ class TestClickHouseClient:
         assert init_tables == runtime_tables
         assert "cis_benchmark_checks" in init_tables
         assert "control_plane_schema_versions" in init_tables
+
+    def test_supabase_init_schema_columns_match_runtime_tables(self):
+        """Supabase ClickHouse bootstrap must include every runtime column."""
+        from agent_bom.cloud.clickhouse import _TABLE_DDL
+
+        runtime_columns = _created_table_columns("\n".join(_TABLE_DDL))
+        init_sql = Path("deploy/supabase/clickhouse/init.sql").read_text(encoding="utf-8")
+        init_columns = _created_table_columns(init_sql)
+
+        assert init_columns == runtime_columns
 
 
 # ─── NullAnalyticsStore tests ───────────────────────────────────────────────

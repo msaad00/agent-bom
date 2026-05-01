@@ -8,6 +8,7 @@ from agent_bom.models import (
     AIBOMReport,
     BlastRadius,
     MCPServer,
+    MCPTool,
     Package,
     Severity,
     TransportType,
@@ -101,6 +102,43 @@ def test_mermaid_credential_exposure():
     report, brs = _make_report_and_blast_radii()
     result = to_mermaid(report, brs)
     assert "API_KEY" in result
+
+
+def test_mermaid_attack_flow_shows_credential_to_tool_reachability():
+    """Attack-flow Mermaid output carries conservative credential -> tool evidence."""
+    report, brs = _make_report_and_blast_radii()
+    brs[0].exposed_tools = [MCPTool(name="delete_repo", description="Delete repository")]
+    result = to_mermaid(report, brs)
+    assert "delete_repo" in result
+    assert "|reaches_tool|" in result
+
+
+def test_mermaid_supply_chain_shows_credential_to_tool_reachability():
+    """Supply-chain Mermaid output carries conservative credential -> tool evidence."""
+    server = MCPServer(
+        name="github",
+        command="npx",
+        args=["-y", "@modelcontextprotocol/server-github"],
+        env={"GITHUB_TOKEN": "***"},
+        transport=TransportType.STDIO,
+        tools=[
+            MCPTool(name="create_issue", description="Create issue"),
+            MCPTool(name="delete_repo", description="Delete repository"),
+        ],
+    )
+    agent = Agent(
+        name="claude-desktop",
+        agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/config.json",
+        mcp_servers=[server],
+    )
+    result = to_mermaid_supply_chain(AIBOMReport(agents=[agent]))
+
+    assert "GITHUB_TOKEN" in result
+    assert "delete_repo" in result
+    assert "|provides_tool|" in result
+    assert "|exposes_cred|" in result
+    assert "|reaches_tool|" in result
 
 
 def test_mermaid_severity_styling():

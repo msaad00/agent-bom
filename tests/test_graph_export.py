@@ -71,7 +71,13 @@ def _vuln(vid: str = "CVE-2024-0001", severity: str = "high") -> dict:
     return {"id": vid, "severity": severity, "summary": "A test vulnerability.", "cvss_score": 7.5}
 
 
-def _server(name: str, pkgs: list | None = None, has_creds: bool = False) -> dict:
+def _server(
+    name: str,
+    pkgs: list | None = None,
+    has_creds: bool = False,
+    tools: list[dict] | None = None,
+    credential_env_vars: list[str] | None = None,
+) -> dict:
     return {
         "name": name,
         "command": "npx",
@@ -79,6 +85,8 @@ def _server(name: str, pkgs: list | None = None, has_creds: bool = False) -> dic
         "transport": "stdio",
         "url": "",
         "has_credentials": has_creds,
+        "tools": tools or [],
+        "credential_env_vars": credential_env_vars or [],
         "packages": pkgs or [],
     }
 
@@ -146,6 +154,29 @@ def test_loads_agent_server_package_nodes():
         assert "agent" in kinds
         assert "server" in kinds
         assert "pkg" in kinds
+    finally:
+        os.unlink(path)
+
+
+def test_credential_to_tool_reaches_edges_export_with_evidence():
+    server = _server(
+        "github",
+        tools=[{"name": "create_issue"}, {"name": "delete_repo"}],
+        credential_env_vars=["GITHUB_TOKEN"],
+    )
+    data = _make_scan_json([_agent("a", [server])])
+    path = _write_scan(data)
+    try:
+        graph = load_graph_from_scan(path)
+        payload = to_json(graph)
+        edge = next(edge for edge in payload["edges"] if edge["kind"] == "reaches_tool" and edge["target"].endswith("/delete_repo"))
+
+        assert edge["source"] == "cred:GITHUB_TOKEN"
+        assert edge["evidence"]["mapping_method"] == "server_scope_conservative"
+        assert edge["evidence"]["confidence"] == "medium"
+        assert "|reaches_tool|" in to_mermaid(graph)
+        assert "REACHES_TOOL" in to_cypher(graph)
+        assert "reaches_tool" in to_graphml(graph)
     finally:
         os.unlink(path)
 

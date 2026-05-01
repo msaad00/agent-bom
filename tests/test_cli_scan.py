@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 from click.testing import CliRunner
 
 from agent_bom.cli import main
+from agent_bom.models import Agent, AgentType, BlastRadius, MCPServer, Package, Severity, Vulnerability
 from agent_bom.scanners import IncompleteScanError
 
 # ---------------------------------------------------------------------------
@@ -200,6 +201,44 @@ def test_scan_bad_inventory_json_exits_two(tmp_path):
     assert "Expecting property name" in result.output
 
 
+def test_scan_bad_ignore_file_yaml_exits_one(tmp_path):
+    ignore_file = tmp_path / ".agent-bom-ignore.yaml"
+    ignore_file.write_text("ignores:\n  - id: [unterminated\n", encoding="utf-8")
+
+    with patch("agent_bom.cli.agents.discover_all", return_value=[]):
+        result = _run(["scan", "--ignore-file", str(ignore_file), "--no-scan"])
+
+    assert result.exit_code == 1
+    assert "Invalid YAML in ignore file" in result.output
+    assert "line" in result.output
+
+
+def test_scan_bad_policy_json_exits_one_with_message(tmp_path):
+    policy = tmp_path / "policy.json"
+    policy.write_text("{bad json", encoding="utf-8")
+
+    with patch("agent_bom.cli.agents.discover_all", return_value=[]):
+        result = _run(["scan", "--policy", str(policy), "--no-scan", "--quiet"])
+
+    assert result.exit_code == 1
+    assert "Policy error" in result.output
+    assert "Invalid JSON in policy file" in result.output
+
+
+def test_scan_bad_baseline_json_exits_before_rendering(tmp_path):
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text("{bad json", encoding="utf-8")
+    output = tmp_path / "report.json"
+
+    with patch("agent_bom.cli.agents.discover_all", return_value=[]):
+        result = _run(["scan", "--baseline", str(baseline), "--no-scan", "--format", "json", "--output", str(output)])
+
+    assert result.exit_code == 1
+    assert "Baseline error" in result.output
+    assert "not valid JSON" in result.output
+    assert not output.exists()
+
+
 def test_scan_missing_inventory_schema_exits_two(tmp_path):
     inventory = tmp_path / "inventory.json"
     inventory.write_text('{"agents": []}', encoding="utf-8")
@@ -249,6 +288,74 @@ def test_scan_delta_with_baseline(tmp_path):
     with patch("agent_bom.cli.agents.discover_all", return_value=[]):
         result = _run(["scan", "--delta", "--baseline", str(baseline), "--no-scan"])
     assert result.exit_code == 0
+
+
+def test_scan_delta_filters_json_output_before_render(tmp_path):
+    old_vuln = Vulnerability(id="CVE-2026-0001", summary="old finding", severity=Severity.HIGH, fixed_version="1.0.1")
+    new_vuln = Vulnerability(id="CVE-2026-0002", summary="new finding", severity=Severity.HIGH, fixed_version="1.0.1")
+    old_pkg = Package(name="oldpkg", version="1.0.0", ecosystem="pypi", vulnerabilities=[old_vuln])
+    new_pkg = Package(name="newpkg", version="1.0.0", ecosystem="pypi", vulnerabilities=[new_vuln])
+    server = MCPServer(name="srv", command="python", packages=[old_pkg, new_pkg])
+    agent = Agent(name="agent", agent_type=AgentType.CUSTOM, config_path="agent.json", mcp_servers=[server])
+    blast_radii = [
+        BlastRadius(
+            vulnerability=old_vuln,
+            package=old_pkg,
+            affected_servers=[server],
+            affected_agents=[agent],
+            exposed_credentials=[],
+            exposed_tools=[],
+        ),
+        BlastRadius(
+            vulnerability=new_vuln,
+            package=new_pkg,
+            affected_servers=[server],
+            affected_agents=[agent],
+            exposed_credentials=[],
+            exposed_tools=[],
+        ),
+    ]
+    baseline = tmp_path / "baseline.json"
+    baseline.write_text(
+        json.dumps(
+            {
+                **_minimal_report_json(1),
+                "blast_radius": [{"vulnerability_id": "CVE-2026-0001", "package": "oldpkg@1.0.0"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    output = tmp_path / "delta.json"
+    project = tmp_path / "project"
+    project.mkdir()
+
+    with (
+        patch("agent_bom.cli.agents.discover_all", return_value=[agent]),
+        patch("agent_bom.cli.agents.extract_packages", return_value=[]),
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=blast_radii),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
+    ):
+        result = _run(
+            [
+                "scan",
+                "--project",
+                str(project),
+                "--delta",
+                "--baseline",
+                str(baseline),
+                "-f",
+                "json",
+                "-o",
+                str(output),
+                "--no-auto-update-db",
+            ]
+        )
+
+    assert result.exit_code == 0
+    data = json.loads(output.read_text(encoding="utf-8"))
+    assert data["delta"]["new_count"] == 1
+    assert data["delta"]["pre_existing_count"] == 1
+    assert [item["vulnerability_id"] for item in data["blast_radius"]] == ["CVE-2026-0002"]
 
 
 def test_scan_enrich_flag():

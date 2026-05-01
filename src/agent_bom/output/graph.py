@@ -102,12 +102,17 @@ def build_graph_elements(
       - ``server_intel``   — MCP server with non-blocking MCP intelligence findings
       - ``server_cred``    — MCP server with exposed credentials
       - ``server_clean``   — MCP server, no issues
+      - ``credential``  — credential reference exposed by an MCP server
+      - ``tool``        — MCP tool reachable through a server
       - ``pkg_vuln``    — vulnerable package summary
       - ``cve``         — individual CVE/advisory
 
     Edge types (in ``data.type``):
       - ``hosts``       — provider → agent
       - ``uses``        — agent → server
+      - ``exposes_cred`` — server → credential
+      - ``provides_tool`` — server → tool
+      - ``reaches_tool`` — credential → tool
       - ``depends_on``  — server → package
       - ``affects``     — package → CVE
     """
@@ -278,6 +283,72 @@ def build_graph_elements(
                     }
                 }
             )
+
+            tool_ids: list[tuple[str, str]] = []
+            for tool in srv.tools:
+                tool_id = f"tool:{agent.name}:{srv.name}:{tool.name}"
+                tool_ids.append((tool.name, tool_id))
+                elements.append(
+                    {
+                        "data": {
+                            "id": tool_id,
+                            "label": tool.name,
+                            "type": "tool",
+                            "tip": f"MCP Tool: {tool.name}\nServer: {srv.name}",
+                            "server": sid,
+                            "searchText": " ".join([tool.name, srv.name, agent.name]).lower(),
+                        }
+                    }
+                )
+                elements.append(
+                    {
+                        "data": {
+                            "source": sid,
+                            "target": tool_id,
+                            "type": "provides_tool",
+                        }
+                    }
+                )
+
+            for cred in srv.credential_names:
+                cred_id = f"cred:{agent.name}:{srv.name}:{cred}"
+                elements.append(
+                    {
+                        "data": {
+                            "id": cred_id,
+                            "label": cred,
+                            "type": "credential",
+                            "tip": f"Credential: {cred}\nServer: {srv.name}",
+                            "server": sid,
+                            "searchText": " ".join([cred, srv.name, agent.name]).lower(),
+                        }
+                    }
+                )
+                elements.append(
+                    {
+                        "data": {
+                            "source": sid,
+                            "target": cred_id,
+                            "type": "exposes_cred",
+                        }
+                    }
+                )
+                for tool_name, tool_id in tool_ids:
+                    elements.append(
+                        {
+                            "data": {
+                                "source": cred_id,
+                                "target": tool_id,
+                                "type": "reaches_tool",
+                                "relationship": "reaches_tool",
+                                "server": sid,
+                                "credential_env_var": cred,
+                                "tool": tool_name,
+                                "mapping_method": "server_scope_conservative",
+                                "confidence": "medium",
+                            }
+                        }
+                    )
 
             # ── Package nodes (vulnerable only) ───────────────────────
             seen_pkg_ids: set[str] = set()
@@ -807,6 +878,14 @@ const cy=cytoscape({{
       'background-color':'#4c3411','border-color':'#f2b84b','border-width':3,
       'width':'mapData(vulnCount, 0, 40, 200, 300)','height':56
     }}}},
+    {{selector:'node[type="credential"]',style:{{
+      'background-color':'#f2b84b','border-color':'#b45309','color':'#111827',
+      'shape':'tag','width':150,'height':42,'font-size':12
+    }}}},
+    {{selector:'node[type="tool"]',style:{{
+      'background-color':'#38bdf8','border-color':'#0369a1','color':'#082f49',
+      'shape':'roundrectangle','width':160,'height':42,'font-size':12
+    }}}},
     {{selector:'node[type="pkg_vuln"]',style:{{
       'background-color':'#3b1a1a','border-color':'#da3633',
       'width':'mapData(vulnCount, 1, 15, 180, 280)','height':58,'text-max-width':220
@@ -828,6 +907,9 @@ const cy=cytoscape({{
     {{selector:'edge[type="uses"][securityBlocked = 1]',style:{{'line-color':'#ff3b30','target-arrow-color':'#ff3b30','width':3.5}}}},
     {{selector:'edge[type="uses"][securityIntelligence = 1]',style:{{'line-color':'#f59e0b','target-arrow-color':'#f59e0b','width':3}}}},
     {{selector:'edge[type="uses"][credentialEdge = 1]',style:{{'line-color':'#f2b84b','target-arrow-color':'#f2b84b','width':3}}}},
+    {{selector:'edge[type="exposes_cred"]',style:{{'line-color':'#f2b84b','target-arrow-color':'#f2b84b','width':2}}}},
+    {{selector:'edge[type="provides_tool"]',style:{{'line-color':'#38bdf8','target-arrow-color':'#38bdf8','width':1.8}}}},
+    {{selector:'edge[type="reaches_tool"]',style:{{'line-style':'dashed','line-color':'#f59e0b','target-arrow-color':'#f59e0b','width':2}}}},
     {{selector:'edge[type="depends_on"]',style:{{'line-color':'#8b949e','target-arrow-color':'#8b949e','width':1.5}}}},
     {{selector:'edge[type="depends_on"][maxSeverity = "critical"]',style:{{
       'line-color':'#ff5d5d','target-arrow-color':'#ff5d5d','width':2.5

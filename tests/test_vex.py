@@ -198,6 +198,13 @@ class TestVexLoad:
         with pytest.raises(ValueError, match="Unknown VEX status"):
             load_vex(str(path))
 
+    def test_load_malformed_json_raises_cli_safe_error(self, tmp_path):
+        path = tmp_path / "vex.json"
+        path.write_text("{bad json", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="VEX JSON error.*line 1, column 2"):
+            load_vex(str(path))
+
     def test_load_unknown_justification_ignored(self, tmp_path):
         data = {
             "statements": [

@@ -67,6 +67,7 @@ jobs:
         # trusting the PR's `scripts` block.
         run: |
           cd ui
+          cp package-lock.json /tmp/ui-package-lock.from-pr.json
           npm install --package-lock-only --ignore-scripts
 
       - name: Commit normalized lockfile
@@ -81,7 +82,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
         run: |
-          if git diff --quiet -- ui/package-lock.json; then
+          if cmp -s /tmp/ui-package-lock.from-pr.json ui/package-lock.json; then
             echo "No normalized lockfile changes to commit."
             exit 0
           fi

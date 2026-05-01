@@ -46,6 +46,7 @@ class RelationshipType(str, Enum):
     DEPENDS_ON = "depends_on"  # server → package
     PROVIDES_TOOL = "provides_tool"  # server → tool
     EXPOSES_CRED = "exposes_cred"  # server → credential
+    REACHES_TOOL = "reaches_tool"  # credential → tool
     SERVES_MODEL = "serves_model"  # server → model
     CONTAINS = "contains"  # container → package
 

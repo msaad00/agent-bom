@@ -107,7 +107,7 @@ def test_compact_summary_clean():
     report = AIBOMReport(agents=[agent])
     output = _capture(print_compact_summary, report)
     assert "CLEAN" in output
-    assert "POSTURE GRADE" in output
+    assert "CONFIG POSTURE GRADE" in output
     assert "Agents" in output
     assert "1" in output
 
@@ -121,9 +121,27 @@ def test_compact_summary_with_vulns():
     br = _blast(vuln, pkg, [agent], [server])
     report = AIBOMReport(agents=[agent], blast_radii=[br])
     output = _capture(print_compact_summary, report)
-    assert "POSTURE GRADE" in output
+    assert "CONFIG POSTURE GRADE" in output
     assert "CRIT" in output  # Badge shows " CRIT " not "CRITICAL"
     assert "Vulns" in output
+
+
+def test_compact_summary_distinguishes_clean_vulns_from_config_posture():
+    agent = _make_agent(
+        servers=[
+            _make_server(
+                packages=[
+                    Package(name="express", version="4.19.0", ecosystem="npm"),
+                ]
+            )
+        ]
+    )
+    report = AIBOMReport(agents=[agent])
+    output = _plain(_capture(print_compact_summary, report))
+    assert "CONFIG POSTURE GRADE" in output
+    assert "best-practice/config posture" in output
+    assert "SECURITY POSTURE:" in output
+    assert "CLEAN" in output
 
 
 def test_compact_summary_includes_non_cve_findings():
@@ -142,7 +160,8 @@ def test_compact_summary_includes_non_cve_findings():
     assert "CLEAN" not in output
     assert "HIGH" in output
     assert "Findings" in output
-    assert "high-risk policy/security finding" in output
+    assert "high-risk policy/security" in output
+    assert "finding(s) present" in output
     assert "Strong security posture" not in output
 
 

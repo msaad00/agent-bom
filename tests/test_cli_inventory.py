@@ -83,7 +83,8 @@ def test_inventory_with_bad_config(tmp_path):
 
     result = runner.invoke(inventory, ["--config", str(config_file)])
     assert result.exit_code == 1
-    assert "Error parsing" in result.output
+    assert "MCP config JSON error" in result.output
+    assert "JSONDecodeError" not in result.output
 
 
 def test_inventory_transitive():
@@ -162,6 +163,8 @@ def test_validate_invalid_json(tmp_path):
 
     result = runner.invoke(validate, [str(inv_file)])
     assert result.exit_code == 1
+    assert "inventory file JSON error" in result.output
+    assert "JSONDecodeError" not in result.output
 
 
 def test_inventory_schema_path_points_to_repo_schema():

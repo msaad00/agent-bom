@@ -7,6 +7,8 @@ import sys
 import click
 from rich.console import Console
 
+from agent_bom.cli._common import OPTIONAL_PORT_RANGE, PORT_RANGE
+
 
 @click.command("proxy")
 @click.option("--policy", type=click.Path(exists=True), help="Policy file for runtime enforcement")
@@ -23,7 +25,7 @@ from rich.console import Console
 @click.option(
     "--alert-webhook", default=None, envvar="AGENT_BOM_ALERT_WEBHOOK", help="Webhook URL for runtime alerts (Slack/Teams/PagerDuty)"
 )
-@click.option("--metrics-port", default=8422, show_default=True, help="Prometheus metrics port (0 to disable)")
+@click.option("--metrics-port", default=8422, show_default=True, type=OPTIONAL_PORT_RANGE, help="Prometheus metrics port (0 to disable)")
 @click.option("--metrics-token", default=None, envvar="AGENT_BOM_METRICS_TOKEN", help="Bearer token for Prometheus /metrics endpoint")
 @click.option(
     "--control-plane-url",
@@ -560,7 +562,7 @@ def proxy_bootstrap_cmd(
     show_default=True,
     help="Input mode: stdin (line-delimited JSON) or http (HTTP endpoint)",
 )
-@click.option("--port", default=8423, show_default=True, help="HTTP listen port (used with --mode http)")
+@click.option("--port", default=8423, show_default=True, type=PORT_RANGE, help="HTTP listen port (used with --mode http)")
 @click.option("--host", default="127.0.0.1", show_default=True, help="HTTP bind address (used with --mode http)")
 @click.option("--detectors", default="all", show_default=True, help="Comma-separated detector list: drift,args,creds,rate,sequence")
 @click.option("--alert-file", default=None, help="Write alerts to JSONL file")

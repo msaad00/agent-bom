@@ -9,6 +9,7 @@ from click.testing import CliRunner
 from agent_bom.cli._runtime import (
     _NoOpDetector,
     audit_replay_cmd,
+    protect_cmd,
     proxy_bootstrap_cmd,
     proxy_cmd,
     proxy_configure_cmd,
@@ -44,6 +45,24 @@ def test_proxy_cmd_runs_proxy(tmp_path):
     ):
         result = runner.invoke(proxy_cmd, ["--", "echo", "hello"])
         assert result.exit_code == 0
+
+
+def test_proxy_cmd_invalid_metrics_port_is_usage_error():
+    runner = CliRunner()
+    result = runner.invoke(proxy_cmd, ["--metrics-port", "99999", "--", "echo", "hello"])
+
+    assert result.exit_code == 2
+    assert "Invalid value for '--metrics-port'" in result.output
+    assert "0<=x<=65535" in result.output
+
+
+def test_protect_cmd_invalid_http_port_is_usage_error():
+    runner = CliRunner()
+    result = runner.invoke(protect_cmd, ["--mode", "http", "--port", "99999"])
+
+    assert result.exit_code == 2
+    assert "Invalid value for '--port'" in result.output
+    assert "1<=x<=65535" in result.output
 
 
 def test_proxy_cmd_with_project_config():

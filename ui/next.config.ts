@@ -14,6 +14,14 @@ const isExport = process.env.NEXT_EXPORT === "1";
 // and the Vercel static deployment never drift. Tests in
 // tests/security-headers.test.ts pin the contract.
 const securityHeaders = buildSecurityHeaders();
+const headersForNextServer =
+  process.env.NODE_ENV === "development"
+    ? securityHeaders.map((header) =>
+        header.key === "Content-Security-Policy"
+          ? { ...header, value: header.value.replace("script-src 'self'", "script-src 'self' 'unsafe-eval'") }
+          : header,
+      )
+    : securityHeaders;
 
 const nextConfig: NextConfig = {
   images: { unoptimized: true },
@@ -25,7 +33,7 @@ const nextConfig: NextConfig = {
   // without CORS issues and without needing a separate nginx/caddy setup.
   ...(!isExport && {
     async headers() {
-      return [{ source: "/:path*", headers: securityHeaders }];
+      return [{ source: "/:path*", headers: headersForNextServer }];
     },
     async rewrites() {
       return [

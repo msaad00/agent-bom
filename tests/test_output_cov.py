@@ -192,6 +192,17 @@ class TestPrintScanPerformanceSummary:
         }
         print_scan_performance_summary(report)
 
+    def test_suppresses_zero_lookup_cache_summary(self, capsys):
+        report = _make_report()
+        report.scan_performance_data = {
+            "osv": {"cache_hits": 0, "cache_misses": 0, "packages_queried": 0, "cache_hit_rate_pct": 0, "lookup_errors": 0},
+            "registry": {"cache_hits": 0, "cache_misses": 0, "network_requests": 0, "cache_hit_rate_pct": 0},
+        }
+        print_scan_performance_summary(report)
+        output = capsys.readouterr().out
+        assert "Cache & lookup reuse" not in output
+        assert "0 hit / 0 miss" not in output
+
 
 # ── print_posture_summary ────────────────────────────────────────────────────
 

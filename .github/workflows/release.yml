@@ -110,9 +110,47 @@ jobs:
     with:
       deploy: false
 
+  mcp-registry-freshness-gate:
+    name: MCP registry freshness gate
+    needs: version-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Verify bundled MCP registry freshness
+        run: |
+          set -euo pipefail
+          if ! uv run agent-bom registry status --stale-after-days 14 --fail-on-stale --format json; then
+            echo "::error::Bundled MCP registry freshness is stale or invalid. Run 'uv run agent-bom registry sync-all --max-pages 10', review and commit src/agent_bom/mcp_registry.json, then retag the release."
+            exit 1
+          fi
+
+      - name: Verify MCP registry sync is committed
+        run: |
+          set -euo pipefail
+          uv run agent-bom registry sync-all --max-pages 10
+          if ! git diff --quiet -- src/agent_bom/mcp_registry.json; then
+            echo "::error::Bundled MCP registry changed during release sync. Run 'uv run agent-bom registry sync-all --max-pages 10', review and commit src/agent_bom/mcp_registry.json, then retag the release."
+            git diff --stat -- src/agent_bom/mcp_registry.json
+            git diff -- src/agent_bom/mcp_registry.json | head -200 || true
+            exit 1
+          fi
+
   build:
     name: Build distribution
-    needs: version-guard
+    needs: [version-guard, mcp-registry-freshness-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

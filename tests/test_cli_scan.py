@@ -58,9 +58,12 @@ def test_main_version():
 
 def test_scan_help():
     result = _run(["scan", "--help"])
+    normalized = " ".join(result.output.split())
     assert result.exit_code == 0
     assert "--output" in result.output
     assert "--format" in result.output
+    assert "graph (Cytoscape.js graph JSON)" in normalized
+    assert "graph (raw graph JSON)" not in normalized
 
 
 # ---------------------------------------------------------------------------

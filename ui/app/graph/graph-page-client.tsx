@@ -129,6 +129,7 @@ const RELATIONSHIP_SCOPE_MAP: Record<FilterState["relationshipScope"], Relations
     RelationshipType.DEPENDS_ON,
     RelationshipType.PROVIDES_TOOL,
     RelationshipType.EXPOSES_CRED,
+    RelationshipType.REACHES_TOOL,
     RelationshipType.SERVES_MODEL,
     RelationshipType.CONTAINS,
   ],

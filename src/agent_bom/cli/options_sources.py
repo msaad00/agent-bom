@@ -132,7 +132,7 @@ def output_options(fn):
                     "Plain: plain (no color, for piping/logging) — alias: text.\n"
                     "Monitoring: prometheus (Prometheus exposition format).\n"
                     "Visualization: mermaid, graph-html (interactive), svg.\n"
-                    "Other: graph (raw graph JSON), badge (single-line status)."
+                    "Other: graph (Cytoscape.js graph JSON), badge (single-line status)."
                 ),
             ),
             click.option(

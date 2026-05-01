@@ -12,7 +12,7 @@ from typing import Optional
 import click
 from rich.console import Console
 
-from agent_bom.cli._common import _make_console
+from agent_bom.cli._common import _make_console, read_json_file_for_cli
 from agent_bom.discovery import discover_all
 from agent_bom.inventory import _inventory_schema_path, _inventory_validator
 from agent_bom.mcp_blocklist import flag_blocklisted_mcp_servers
@@ -42,7 +42,7 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
         if config:
             config_path = Path(config)
             try:
-                config_data = json.loads(config_path.read_text())
+                config_data = read_json_file_for_cli(config_path, label="MCP config")
                 from agent_bom.discovery import parse_mcp_config
                 from agent_bom.models import Agent, AgentType
 
@@ -59,9 +59,10 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
                     if servers
                     else []
                 )
+            except click.ClickException:
+                raise
             except Exception as e:
-                con.print(f"[red]Error parsing config: {e}[/red]")
-                sys.exit(1)
+                raise click.ClickException(f"Error parsing MCP config {config_path}: {e}") from e
         else:
             agents = discover_all(project_dir=project)
 
@@ -123,12 +124,7 @@ def validate(inventory_file: str):
         console.print("[red]Schema file not found. Run from the agent-bom repo root.[/red]")
         sys.exit(1)
 
-    with open(inventory_file) as f:
-        try:
-            data = json.load(f)
-        except json.JSONDecodeError as e:
-            console.print(f"[red]JSON parse error: {e}[/red]")
-            sys.exit(1)
+    data = read_json_file_for_cli(inventory_file, label="inventory file")
 
     try:
         validator = _inventory_validator()

@@ -664,6 +664,7 @@ class UnifiedGraph:
                 RelationshipType.DEPENDS_ON,
                 RelationshipType.PROVIDES_TOOL,
                 RelationshipType.EXPOSES_CRED,
+                RelationshipType.REACHES_TOOL,
                 RelationshipType.SERVES_MODEL,
                 RelationshipType.CONTAINS,
             ),
@@ -680,6 +681,7 @@ class UnifiedGraph:
             RelationshipType.USES,
             RelationshipType.EXPOSES_CRED,
             RelationshipType.PROVIDES_TOOL,
+            RelationshipType.REACHES_TOOL,
             RelationshipType.VULNERABLE_TO,
         }
         return self._subgraph(edge_filter=lambda e: e.relationship in lateral_rels)
@@ -855,6 +857,7 @@ RELATIONSHIP_LEGEND: list[LegendEntry] = [
     LegendEntry(key="depends_on", label="Depends On", color="#52525b"),
     LegendEntry(key="provides_tool", label="Provides Tool", color="#a855f7"),
     LegendEntry(key="exposes_cred", label="Exposes Credential", color="#f59e0b"),
+    LegendEntry(key="reaches_tool", label="Credential Reaches Tool", color="#fbbf24"),
     LegendEntry(key="serves_model", label="Serves Model", color="#8b5cf6"),
     LegendEntry(key="contains", label="Contains", color="#6366f1"),
     # Vulnerability

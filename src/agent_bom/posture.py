@@ -317,9 +317,9 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
 
     # Build summary
     if grade in ("A", "B"):
-        summary = f"Strong security posture ({grade}, {total_score}%)"
+        summary = f"Strong best-practice/config posture ({grade}, {total_score}%)"
     elif grade == "C":
-        summary = f"Moderate security posture ({grade}, {total_score}%) — improvements recommended"
+        summary = f"Moderate best-practice/config posture ({grade}, {total_score}%) — improvements recommended"
     else:
         drivers: list[str] = []
         if total_cred_servers > 0:
@@ -331,9 +331,9 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
                 f"server{'s' if total_servers != 1 else ''}"
             )
         if drivers:
-            summary = f"Weak security posture ({grade}, {total_score}%) — this grade is driven by " + " and ".join(drivers)
+            summary = f"Weak best-practice/config posture ({grade}, {total_score}%) — this grade is driven by " + " and ".join(drivers)
         else:
-            summary = f"Weak security posture ({grade}, {total_score}%) — immediate attention required"
+            summary = f"Weak best-practice/config posture ({grade}, {total_score}%) — immediate attention required"
 
     return PostureScorecard(
         grade=grade,

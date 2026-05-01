@@ -13,7 +13,7 @@ from agent_bom.models import (
     TransportType,
     Vulnerability,
 )
-from agent_bom.output.mermaid import to_mermaid, to_mermaid_lifecycle
+from agent_bom.output.mermaid import to_mermaid, to_mermaid_lifecycle, to_mermaid_supply_chain
 
 
 def _make_report_and_blast_radii():
@@ -70,6 +70,30 @@ def test_mermaid_edges():
     assert "-->|in|" in result
     assert "-->|used by|" in result
     assert "-->|exposes|" in result
+
+
+def test_mermaid_uses_short_ids_with_descriptive_labels():
+    """Flowchart IDs stay readable while labels keep entity names."""
+    report, brs = _make_report_and_blast_radii()
+    result = to_mermaid(report, brs)
+    assert "n1" in result
+    assert "CVE_2024_1234" not in result
+    assert "srv_test_server" not in result
+    assert "CVE-2024-1234" in result
+    assert "test-server" in result
+    assert "claude-desktop" in result
+
+
+def test_mermaid_supply_chain_uses_short_ids_with_descriptive_labels():
+    """Supply-chain Mermaid output avoids long agent/server IDs."""
+    report, _brs = _make_report_and_blast_radii()
+    result = to_mermaid_supply_chain(report)
+    assert "n1" in result
+    assert "agt_claude_desktop" not in result
+    assert "srv_claude_desktop_test_server" not in result
+    assert "claude-desktop" in result
+    assert "test-server" in result
+    assert "express@4.17.1" in result
 
 
 def test_mermaid_credential_exposure():

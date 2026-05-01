@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+from pathlib import Path
 from unittest.mock import patch
 
 import httpx
@@ -20,6 +22,10 @@ def _mock_response(text: str = "", status_code: int = 200) -> httpx.Response:
     """Create a mock httpx.Response."""
     resp = httpx.Response(status_code=status_code, text=text)
     return resp
+
+
+def _created_tables(sql: str) -> set[str]:
+    return {match.rsplit(".", 1)[-1] for match in re.findall(r"CREATE TABLE IF NOT EXISTS ([a-zA-Z0-9_.]+)", sql)}
 
 
 # ─── ClickHouseClient tests ─────────────────────────────────────────────────
@@ -185,6 +191,18 @@ class TestClickHouseClient:
             # 1 CREATE DATABASE + N CREATE TABLE + M ALTER migrations + schema-version marker
             expected = 1 + len(_TABLE_DDL) + len(_TABLE_MIGRATIONS) + 1
             assert mock_req.call_count == expected
+
+    def test_supabase_init_schema_matches_runtime_tables(self):
+        """Supabase ClickHouse bootstrap must not lag runtime table DDL."""
+        from agent_bom.cloud.clickhouse import _TABLE_DDL
+
+        runtime_tables = _created_tables("\n".join(_TABLE_DDL))
+        init_sql = Path("deploy/supabase/clickhouse/init.sql").read_text(encoding="utf-8")
+        init_tables = _created_tables(init_sql)
+
+        assert init_tables == runtime_tables
+        assert "cis_benchmark_checks" in init_tables
+        assert "control_plane_schema_versions" in init_tables
 
 
 # ─── NullAnalyticsStore tests ───────────────────────────────────────────────

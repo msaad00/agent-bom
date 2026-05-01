@@ -7,6 +7,7 @@ from pathlib import Path
 
 import click
 
+from agent_bom.cli._common import PORT_RANGE
 from agent_bom.deploy_teardown import (
     DEFAULT_STATE_DIR,
     build_reference_teardown_plan,
@@ -102,7 +103,7 @@ def teardown_cmd(
     show_default=True,
     help="Host for the admission webhook listener.",
 )
-@click.option("--port", default=8443, show_default=True, type=int, help="TLS port for the admission webhook listener.")
+@click.option("--port", default=8443, show_default=True, type=PORT_RANGE, help="TLS port for the admission webhook listener.")
 @click.option("--tls-cert-file", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True, help="TLS certificate file.")
 @click.option("--tls-key-file", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True, help="TLS private key file.")
 @click.option(
@@ -137,7 +138,13 @@ def teardown_cmd(
     type=int,
     help="Fallback localhost MCP port when no explicit mcp-url annotation is set.",
 )
-@click.option("--metrics-port", default=8422, show_default=True, type=int, help="Metrics port exposed by the injected proxy sidecar.")
+@click.option(
+    "--metrics-port",
+    default=8422,
+    show_default=True,
+    type=PORT_RANGE,
+    help="Metrics port exposed by the injected proxy sidecar.",
+)
 @click.option("--policy-refresh-seconds", default=30, show_default=True, type=int, help="Policy pull interval for the injected sidecar.")
 @click.option("--audit-push-interval", default=10, show_default=True, type=int, help="Audit push interval for the injected sidecar.")
 @click.option(

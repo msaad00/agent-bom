@@ -9,16 +9,30 @@ See docs/design/MULTI_MCP_GATEWAY.md.
 
 from __future__ import annotations
 
-import json
 import logging
 import sys
 from pathlib import Path
 
 import click
 
+from agent_bom.cli._common import read_json_file_for_cli
 from agent_bom.cli._server import _enforce_remote_mcp_auth_defaults
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_bind(bind: str) -> tuple[str, int]:
+    host, sep, port_text = bind.rpartition(":")
+    if not sep:
+        raise click.UsageError("--bind must be in host:port form, for example 127.0.0.1:8090.")
+    host = host or "0.0.0.0"  # nosec B104 - explicit gateway bind default
+    try:
+        port_num = int(port_text)
+    except ValueError as exc:
+        raise click.UsageError("--bind port must be an integer from 1 to 65535.") from exc
+    if not 1 <= port_num <= 65535:
+        raise click.UsageError("--bind port must be in range 1..65535.")
+    return host, port_num
 
 
 @click.group(help="Multi-MCP gateway commands.")
@@ -159,6 +173,8 @@ def serve_cmd(
         )
         sys.exit(2)
 
+    host, port_num = _parse_bind(bind)
+
     from agent_bom.gateway_server import GatewaySettings, build_control_plane_audit_sink, create_gateway_app
     from agent_bom.gateway_upstreams import (
         UpstreamConfigError,
@@ -194,18 +210,12 @@ def serve_cmd(
 
     policy: dict = {}
     if policy_path is not None:
-        try:
-            policy = json.loads(policy_path.read_text())
-        except (json.JSONDecodeError, OSError) as exc:
-            click.echo(f"policy file error: {exc}", err=True)
-            sys.exit(2)
+        policy = read_json_file_for_cli(policy_path, label="policy file")
     if policy_reload_seconds < 0:
         raise click.ClickException("--policy-reload-seconds must be >= 0")
     if policy_reload_seconds > 0 and policy_path is None:
         raise click.ClickException("--policy-reload-seconds requires --policy")
 
-    host, _, port = bind.partition(":")
-    host = host or "0.0.0.0"  # nosec B104
     _enforce_remote_mcp_auth_defaults(host, bearer_token, allow_insecure_no_auth)
     if detect_visual_leaks and not allow_visual_leak_best_effort:
         try:
@@ -234,8 +244,6 @@ def serve_cmd(
     # service mesh terminates external traffic in front of this pod. Set
     # --bind 127.0.0.1:8090 on a dev workstation to restrict.
     host = host  # nosec B104
-    port_num = int(port or "8090")
-
     click.echo(f"agent-bom gateway serving on http://{host}:{port_num} fronting {len(registry)} upstream(s): {', '.join(registry.names())}")
     rows = [
         ("Bind", f"http://{host}:{port_num}"),

@@ -400,6 +400,38 @@ class TestBuildUnifiedGraphFromReport:
         assert "GITHUB_TOKEN" in labels
         assert "OPENAI_API_KEY" in labels
 
+    def test_credential_to_tool_reaches_edges(self):
+        g = build_unified_graph_from_report(_minimal_report())
+        github_cred_id = "cred:GITHUB_TOKEN"
+        read_tool_id = "tool:server:claude-desktop:mcp-fs:read_file"
+        write_tool_id = "tool:server:claude-desktop:mcp-fs:write_file"
+
+        assert g.has_edge(github_cred_id, read_tool_id)
+        assert g.has_edge(github_cred_id, write_tool_id)
+        edge = next(
+            edge
+            for edge in g.edges
+            if edge.source == github_cred_id and edge.target == write_tool_id and edge.relationship == RelationshipType.REACHES_TOOL
+        )
+        assert edge.evidence["server"] == "server:claude-desktop:mcp-fs"
+        assert edge.evidence["credential_env_var"] == "GITHUB_TOKEN"
+        assert edge.evidence["mapping_method"] == "server_scope_conservative"
+        assert edge.evidence["confidence"] == "medium"
+
+    def test_credential_to_tool_edges_stay_server_scoped(self):
+        report = _minimal_report()
+        report["agents"][1]["mcp_servers"][0]["tools"] = [{"name": "delete_repo", "description": "Delete a repo"}]
+
+        g = build_unified_graph_from_report(report)
+
+        assert g.has_edge("cred:GITHUB_TOKEN", "tool:server:cursor:mcp-fs:delete_repo")
+        assert not any(
+            edge.source == "cred:OPENAI_API_KEY"
+            and edge.target == "tool:server:cursor:mcp-fs:delete_repo"
+            and edge.relationship == RelationshipType.REACHES_TOOL
+            for edge in g.edges
+        )
+
     def test_vulnerability_nodes(self):
         g = build_unified_graph_from_report(_minimal_report())
         vulns = g.nodes_by_type(EntityType.VULNERABILITY)

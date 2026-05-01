@@ -2,6 +2,10 @@ import { defineConfig, devices } from "@playwright/test";
 
 const PORT = 3001;
 const baseURL = `http://127.0.0.1:${PORT}`;
+const serverCommand =
+  `if test -f .next/standalone/server.js && test -f .next/standalone/.next/server/pages-manifest.json; ` +
+  `then HOSTNAME=127.0.0.1 PORT=${PORT} node .next/standalone/server.js; ` +
+  `else npm run dev -- --hostname 127.0.0.1 --port ${PORT}; fi`;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -14,7 +18,7 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   webServer: {
-    command: `npm run start -- --hostname 127.0.0.1 --port ${PORT}`,
+    command: serverCommand,
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

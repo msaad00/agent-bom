@@ -170,7 +170,7 @@ def print_compact_summary(report: AIBOMReport) -> None:
     pkg_detail = f" ({n_direct}D/{n_transitive}T)" if n_transitive else ""
 
     lines = [
-        f"  [bold]POSTURE GRADE:[/bold]  {_posture_grade_badge(scorecard.grade)} "
+        f"  [bold]CONFIG POSTURE GRADE:[/bold]  {_posture_grade_badge(scorecard.grade)} "
         f"[bold]{scorecard.score:.1f}/100[/bold]  [dim]{scorecard_summary}[/dim]",
         f"  [bold]SECURITY POSTURE:[/bold]  {posture}",
         "",

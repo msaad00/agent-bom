@@ -302,6 +302,24 @@ def test_to_mermaid_basic_structure():
         os.unlink(path)
 
 
+def test_to_mermaid_uses_short_ids_and_descriptive_labels():
+    pkg = _pkg("@scope/very-long-package", "1.2.3", "npm", vulns=[_vuln("CVE-2026-9999")])
+    data = _make_scan_json([_agent("claude desktop", [_server("filesystem server", [pkg])])])
+    path = _write_scan(data)
+    try:
+        g = load_graph_from_scan(path)
+        mmd = to_mermaid(g)
+        assert "n1" in mmd
+        assert "agent_claude_desktop" not in mmd
+        assert "server_claude_desktop_filesystem_server" not in mmd
+        assert "claude desktop" in mmd
+        assert "filesystem server" in mmd
+        assert "@scope/very-long-package@1.2.3" in mmd
+        assert "CVE-2026-9999" in mmd
+    finally:
+        os.unlink(path)
+
+
 def test_to_mermaid_empty_graph():
     g = DepGraph()
     mmd = to_mermaid(g)

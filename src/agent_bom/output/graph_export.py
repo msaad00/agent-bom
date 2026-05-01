@@ -22,7 +22,6 @@ Closes #292.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Any, Union
 
@@ -279,8 +278,13 @@ def to_mermaid(graph: DepGraph) -> str:
         Mermaid flowchart string.
     """
 
+    id_map: dict[str, str] = {}
+
     def _safe_id(raw: str) -> str:
-        return re.sub(r"[^a-zA-Z0-9_]", "_", raw)
+        """Return a short deterministic Mermaid node ID for a raw graph ID."""
+        if raw not in id_map:
+            id_map[raw] = f"n{len(id_map) + 1}"
+        return id_map[raw]
 
     def _style_class(kind: str) -> str:
         return {

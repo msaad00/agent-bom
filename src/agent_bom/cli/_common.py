@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import importlib
+import json
 import logging
 import threading
 from pathlib import Path
+from typing import Any
 
+import click
 from rich.console import Console
 
 from agent_bom import __version__
@@ -25,6 +28,19 @@ BANNER = r"""
 """
 
 SEVERITY_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, "none": 0, "unknown": -1}
+PORT_RANGE = click.IntRange(1, 65535)
+OPTIONAL_PORT_RANGE = click.IntRange(0, 65535)
+
+
+def read_json_file_for_cli(path: str | Path, *, label: str = "JSON file") -> Any:
+    """Read a JSON file and raise concise Click errors for CLI users."""
+    file_path = Path(path)
+    try:
+        return json.loads(file_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise click.ClickException(f"{label} JSON error in {file_path}: line {exc.lineno}, column {exc.colno}: {exc.msg}") from exc
+    except OSError as exc:
+        raise click.ClickException(f"Could not read {label.lower()} {file_path}: {exc.strerror or exc}") from exc
 
 
 def _make_console(quiet: bool = False, output_format: str = "console", no_color: bool = False) -> Console:

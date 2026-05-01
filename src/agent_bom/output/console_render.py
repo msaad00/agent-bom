@@ -144,13 +144,13 @@ def print_summary(report: AIBOMReport) -> None:
     osv = perf.get("osv") or {}
     registry = perf.get("registry") or {}
     advisory = perf.get("advisory_coverage") or {}
-    if osv:
+    if osv and _osv_lookup_count(osv) > 0:
         hit_rate = osv.get("cache_hit_rate_pct")
         osv_label = f"{osv.get('cache_hits', 0)} hit / {osv.get('cache_misses', 0)} miss"
         if hit_rate is not None:
             osv_label += f" ({hit_rate}% hit rate)"
         table.add_row("OSV cache", osv_label)
-    if registry:
+    if registry and _registry_lookup_count(registry) > 0:
         reg_label = f"{registry.get('cache_hits', 0)} hit / {registry.get('cache_misses', 0)} miss"
         reg_rate = registry.get("cache_hit_rate_pct")
         if reg_rate is not None:
@@ -178,7 +178,7 @@ def print_scan_performance_summary(report: AIBOMReport) -> None:
         return
 
     lines: list[str] = []
-    if osv:
+    if osv and _osv_lookup_count(osv) > 0:
         osv_line = (
             f"OSV cache {osv.get('cache_hits', 0)} hit / {osv.get('cache_misses', 0)} miss"
             f" · {osv.get('packages_queried', 0)} package lookup(s)"
@@ -189,7 +189,7 @@ def print_scan_performance_summary(report: AIBOMReport) -> None:
         if osv.get("lookup_errors", 0):
             osv_line += f" · {osv.get('lookup_errors', 0)} lookup error(s)"
         lines.append(osv_line)
-    if registry:
+    if registry and _registry_lookup_count(registry) > 0:
         reg_line = (
             f"Registry cache {registry.get('cache_hits', 0)} hit / {registry.get('cache_misses', 0)} miss"
             f" · {registry.get('network_requests', 0)} network request(s)"
@@ -208,9 +208,21 @@ def print_scan_performance_summary(report: AIBOMReport) -> None:
         lines.append(
             f"Threat intel {primary_line} · {enrich_line} · {advisory.get('records_with_multiple_sources', 0)} multi-source record(s)"
         )
+    if not lines:
+        return
     _console().print("\n[dim]Cache & lookup reuse[/dim]")
     for line in lines:
         _console().print(f"  [dim]{line}[/dim]")
+
+
+def _osv_lookup_count(osv: dict) -> int:
+    """Return online OSV lookups represented by a performance payload."""
+    return int(osv.get("packages_queried") or osv.get("cache_hits", 0) + osv.get("cache_misses", 0) or 0)
+
+
+def _registry_lookup_count(registry: dict) -> int:
+    """Return registry lookups represented by a performance payload."""
+    return int(registry.get("network_requests") or registry.get("cache_hits", 0) + registry.get("cache_misses", 0) or 0)
 
 
 def print_posture_summary(report: AIBOMReport) -> None:

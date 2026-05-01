@@ -51,6 +51,15 @@ def test_serve_cmd_help_mentions_auth_for_non_loopback_bind():
     assert "serve --host 0.0.0.0 --api-key <key>" in result.output
 
 
+def test_serve_cmd_invalid_port_is_usage_error():
+    runner = CliRunner()
+    result = runner.invoke(serve_cmd, ["--port", "99999"])
+
+    assert result.exit_code == 2
+    assert "Invalid value for '--port'" in result.output
+    assert "1<=x<=65535" in result.output
+
+
 # ---------------------------------------------------------------------------
 # api_cmd
 # ---------------------------------------------------------------------------
@@ -74,6 +83,15 @@ def test_api_cmd_missing_uvicorn():
         assert result.exit_code == 1
         assert "uvicorn" in result.output.lower()
         assert "uv pip install 'agent-bom[api]'" in result.output
+
+
+def test_api_cmd_invalid_port_is_usage_error():
+    runner = CliRunner()
+    result = runner.invoke(api_cmd, ["--port", "0"])
+
+    assert result.exit_code == 2
+    assert "Invalid value for '--port'" in result.output
+    assert "1<=x<=65535" in result.output
 
 
 def test_api_cmd_rejects_unauthenticated_non_loopback_bind():
@@ -153,6 +171,37 @@ def test_api_cmd_requires_clickhouse_url_for_backend():
     assert result.exit_code == 1
     assert "ClickHouse analytics requires" in result.output
     mock_run.assert_not_called()
+
+
+def test_gateway_serve_invalid_bind_port_is_usage_error(tmp_path):
+    runner = CliRunner()
+    upstreams = tmp_path / "upstreams.yml"
+    upstreams.write_text("upstreams:\n  - name: jira\n    url: https://jira.example.com/mcp\n", encoding="utf-8")
+
+    result = runner.invoke(
+        gateway_serve_cmd,
+        ["--bind", "127.0.0.1:99999", "--upstreams", str(upstreams)],
+    )
+
+    assert result.exit_code == 2
+    assert "--bind port must be in range 1..65535" in result.output
+
+
+def test_gateway_serve_policy_json_error_is_wrapped(tmp_path):
+    runner = CliRunner()
+    upstreams = tmp_path / "upstreams.yml"
+    upstreams.write_text("upstreams:\n  - name: jira\n    url: https://jira.example.com/mcp\n", encoding="utf-8")
+    policy = tmp_path / "policy.json"
+    policy.write_text("{bad", encoding="utf-8")
+
+    result = runner.invoke(
+        gateway_serve_cmd,
+        ["--bind", "127.0.0.1:8090", "--upstreams", str(upstreams), "--policy", str(policy)],
+    )
+
+    assert result.exit_code == 1
+    assert "policy file JSON error" in result.output
+    assert "JSONDecodeError" not in result.output
 
 
 def test_serve_cmd_rejects_unauthenticated_non_loopback_bind():

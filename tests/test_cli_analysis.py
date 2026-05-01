@@ -266,6 +266,7 @@ def test_mesh_cmd_live_summary():
         result = runner.invoke(mesh_cmd, [])
         assert result.exit_code == 0
         assert "Mesh" in result.output
+        assert "machine-wide" in result.output
         assert "claude" in result.output
         assert "filesystem" in result.output
 
@@ -276,6 +277,18 @@ def test_mesh_cmd_summary_rejects_output_path(tmp_path):
     scan_file.write_text(json.dumps({"agents": [{"name": "a", "mcp_servers": []}], "blast_radius": []}))
     result = runner.invoke(mesh_cmd, [str(scan_file), "--output", str(tmp_path / "mesh.txt")])
     assert result.exit_code == 2
+
+
+def test_mesh_cmd_json_error_is_wrapped(tmp_path):
+    runner = CliRunner()
+    scan_file = tmp_path / "scan.json"
+    scan_file.write_text("{bad", encoding="utf-8")
+
+    result = runner.invoke(mesh_cmd, [str(scan_file)])
+
+    assert result.exit_code == 1
+    assert "scan file JSON error" in result.output
+    assert "JSONDecodeError" not in result.output
 
 
 def test_mesh_cmd_quiet_suppresses_summary_heading():
@@ -333,6 +346,15 @@ def test_dashboard_no_streamlit():
     with patch("shutil.which", return_value=None):
         result = runner.invoke(dashboard_cmd, [])
         assert result.exit_code == 1
+
+
+def test_dashboard_invalid_port_is_usage_error():
+    runner = CliRunner()
+    result = runner.invoke(dashboard_cmd, ["--port", "99999"])
+
+    assert result.exit_code == 2
+    assert "Invalid value for '--port'" in result.output
+    assert "1<=x<=65535" in result.output
 
 
 # ---------------------------------------------------------------------------

@@ -34,6 +34,18 @@ def _sanitize_label(text: str) -> str:
     return text.replace('"', "'").replace("\n", " ")[:80]
 
 
+class _MermaidIds:
+    """Map descriptive raw entity keys to short deterministic Mermaid IDs."""
+
+    def __init__(self) -> None:
+        self._ids: dict[str, str] = {}
+
+    def get(self, raw: str) -> str:
+        if raw not in self._ids:
+            self._ids[raw] = f"n{len(self._ids) + 1}"
+        return self._ids[raw]
+
+
 def to_mermaid(report: AIBOMReport, blast_radii: list[BlastRadius]) -> str:
     """Generate a Mermaid flowchart from blast radius data.
 
@@ -57,15 +69,16 @@ def to_mermaid(report: AIBOMReport, blast_radii: list[BlastRadius]) -> str:
     edges: set[str] = set()
     # Track severity for CVE node styling
     cve_severities: dict[str, str] = {}
+    ids = _MermaidIds()
 
     for br in blast_radii:
         cve_id = br.vulnerability.id
-        cve_node = _sanitize_id(cve_id)
+        cve_node = ids.get(f"cve:{cve_id}")
         sev = br.vulnerability.severity.value.lower()
         cve_severities[cve_node] = sev
 
         pkg_label = f"{br.package.name}@{br.package.version}"
-        pkg_node = _sanitize_id(f"pkg_{br.package.name}_{br.package.version}")
+        pkg_node = ids.get(f"pkg:{br.package.ecosystem}:{br.package.name}@{br.package.version}")
 
         # CVE → package
         edge = f'    {cve_node}["{_sanitize_label(cve_id)}"] -->|affects| {pkg_node}["{_sanitize_label(pkg_label)}"]'
@@ -73,30 +86,30 @@ def to_mermaid(report: AIBOMReport, blast_radii: list[BlastRadius]) -> str:
 
         # package → servers
         for server in br.affected_servers:
-            srv_node = _sanitize_id(f"srv_{server.name}")
+            srv_node = ids.get(f"srv:{server.name}")
             edge = f'    {pkg_node} -->|in| {srv_node}["{_sanitize_label(server.name)}"]'
             edges.add(edge)
 
             # server → agents
             for agent in br.affected_agents:
-                agt_node = _sanitize_id(f"agt_{agent.name}")
+                agt_node = ids.get(f"agt:{agent.name}")
                 edge = f'    {srv_node} -->|used by| {agt_node}["{_sanitize_label(agent.name)}"]'
                 edges.add(edge)
 
         # server → credentials
         for cred in br.exposed_credentials:
-            cred_node = _sanitize_id(f"cred_{cred}")
+            cred_node = ids.get(f"cred:{cred}")
             # Link from each affected server
             for server in br.affected_servers:
-                srv_node = _sanitize_id(f"srv_{server.name}")
+                srv_node = ids.get(f"srv:{server.name}")
                 edge = f'    {srv_node} -->|exposes| {cred_node}["{_sanitize_label(cred)}"]'
                 edges.add(edge)
 
         # server → tools
         for tool in br.exposed_tools:
-            tool_node = _sanitize_id(f"tool_{tool.name}")
+            tool_node = ids.get(f"tool:{tool.name}")
             for server in br.affected_servers:
-                srv_node = _sanitize_id(f"srv_{server.name}")
+                srv_node = ids.get(f"srv:{server.name}")
                 edge = f'    {srv_node} -->|exposes| {tool_node}["{_sanitize_label(tool.name)}"]'
                 edges.add(edge)
 
@@ -140,11 +153,12 @@ def to_mermaid_supply_chain(report: AIBOMReport) -> str:
     server_styles: dict[str, str] = {}
     pkg_styles: dict[str, str] = {}
     provider_seen: set[str] = set()
+    ids = _MermaidIds()
 
     for agent in report.agents:
         source = agent.source or "local"
-        prov_node = _sanitize_id(f"prov_{source}")
-        agt_node = _sanitize_id(f"agt_{agent.name}")
+        prov_node = ids.get(f"prov:{source}")
+        agt_node = ids.get(f"agt:{agent.name}")
 
         # Provider node (only once)
         if source not in provider_seen:
@@ -156,7 +170,7 @@ def to_mermaid_supply_chain(report: AIBOMReport) -> str:
         edges.add(f'    {prov_node} --> {agt_node}["{_sanitize_label(agent.name)}"]')
 
         for srv in agent.mcp_servers:
-            srv_node = _sanitize_id(f"srv_{agent.name}_{srv.name}")
+            srv_node = ids.get(f"srv:{agent.name}:{srv.name}")
             cred_badge = ""
             if srv.has_credentials:
                 cred_badge = f" 🔑{len(srv.credential_names)}"
@@ -170,7 +184,7 @@ def to_mermaid_supply_chain(report: AIBOMReport) -> str:
 
             # Server → Packages (show top 5 per server to avoid explosion)
             for pkg in srv.packages[:5]:
-                pkg_node = _sanitize_id(f"pkg_{pkg.name}_{pkg.version}")
+                pkg_node = ids.get(f"pkg:{pkg.ecosystem}:{pkg.name}@{pkg.version}")
                 pkg_label = f"{pkg.name}@{pkg.version}"
 
                 if pkg.vulnerabilities:
@@ -188,7 +202,7 @@ def to_mermaid_supply_chain(report: AIBOMReport) -> str:
                 edges.add(f'    {srv_node} --> {pkg_node}["{_sanitize_label(pkg_label)}"]')
 
             if len(srv.packages) > 5:
-                more_node = _sanitize_id(f"more_{agent.name}_{srv.name}")
+                more_node = ids.get(f"more:{agent.name}:{srv.name}")
                 edges.add(f'    {srv_node} -.-> {more_node}["{len(srv.packages) - 5} more..."]')
 
     for edge in sorted(edges):

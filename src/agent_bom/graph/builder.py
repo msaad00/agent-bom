@@ -262,9 +262,11 @@ def build_unified_graph_from_report(
                         )
 
             # ── Tools ──
+            tool_ids: list[str] = []
             for tool_dict in srv_dict.get("tools", []):
                 tool_name = tool_dict.get("name", "unknown")
                 tool_id = f"tool:{srv_id}:{tool_name}"
+                tool_ids.append(tool_id)
                 capabilities, capability_source = _tool_capabilities(tool_dict)
                 graph.add_node(
                     UnifiedNode(
@@ -322,6 +324,21 @@ def build_unified_graph_from_report(
                     )
                 )
                 cred_to_agents[env_key].append(agent_id)
+                for tool_id in tool_ids:
+                    graph.add_edge(
+                        UnifiedEdge(
+                            source=cred_id,
+                            target=tool_id,
+                            relationship=RelationshipType.REACHES_TOOL,
+                            evidence={
+                                "source": data_source_tag,
+                                "server": srv_id,
+                                "credential_env_var": env_key,
+                                "mapping_method": "server_scope_conservative",
+                                "confidence": "medium",
+                            },
+                        )
+                    )
 
     for vuln_node_id, srv_id, pkg_id, package_evidence, severity in pending_exploitable_edges:
         _add_exploitable_via_edges(

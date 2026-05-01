@@ -11,6 +11,8 @@ from typing import Any, Optional
 
 import click
 
+from agent_bom.cli._common import PORT_RANGE
+
 
 def _is_loopback_host(host: str) -> bool:
     """Return True when ``host`` resolves to loopback-only access."""
@@ -191,7 +193,7 @@ def _analytics_summary_rows(
     show_default=True,
     help="Host to bind to (non-loopback requires --api-key / OIDC or --allow-insecure-no-auth).",
 )
-@click.option("--port", default=8422, show_default=True, help="API server port")
+@click.option("--port", default=8422, show_default=True, type=PORT_RANGE, help="API server port")
 @click.option("--persist", default=None, metavar="DB_PATH", help="Enable persistent job storage via SQLite (e.g. --persist jobs.db).")
 @click.option("--cors-allow-all", is_flag=True, default=False, help="Allow all CORS origins (dev mode).")
 @click.option(
@@ -363,7 +365,7 @@ def serve_cmd(
     show_default=True,
     help="Host to bind to (non-loopback requires --api-key / OIDC or --allow-insecure-no-auth).",
 )
-@click.option("--port", default=8422, show_default=True, help="Port to listen on")
+@click.option("--port", default=8422, show_default=True, type=PORT_RANGE, help="Port to listen on")
 @click.option("--reload", is_flag=True, help="Auto-reload on code changes (development mode)")
 @click.option("--workers", default=1, show_default=True, help="Number of worker processes")
 @click.option("--cors-origins", default=None, metavar="ORIGINS", help="Comma-separated CORS origins (default: localhost:3000).")
@@ -580,7 +582,7 @@ def api_cmd(
     show_default=True,
     help="MCP transport protocol.",
 )
-@click.option("--port", default=8423, show_default=True, help="Port for HTTP/SSE transport.")
+@click.option("--port", default=8423, show_default=True, type=PORT_RANGE, help="Port for HTTP/SSE transport.")
 @click.option("--host", default="127.0.0.1", show_default=True, help="Host for HTTP/SSE transport.")
 @click.option(
     "--bearer-token",

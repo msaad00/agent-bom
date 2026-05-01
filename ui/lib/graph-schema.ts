@@ -44,6 +44,7 @@ export enum RelationshipType {
   DEPENDS_ON = "depends_on",
   PROVIDES_TOOL = "provides_tool",
   EXPOSES_CRED = "exposes_cred",
+  REACHES_TOOL = "reaches_tool",
   SERVES_MODEL = "serves_model",
   CONTAINS = "contains",
   // Vulnerability
@@ -326,6 +327,7 @@ export const RELATIONSHIP_COLOR_MAP: Record<string, string> = {
   [RelationshipType.DEPENDS_ON]: "#52525b",
   [RelationshipType.PROVIDES_TOOL]: "#a855f7",
   [RelationshipType.EXPOSES_CRED]: "#f59e0b",
+  [RelationshipType.REACHES_TOOL]: "#fbbf24",
   [RelationshipType.SERVES_MODEL]: "#8b5cf6",
   [RelationshipType.CONTAINS]: "#6366f1",
   [RelationshipType.AFFECTS]: "#ef4444",
@@ -500,6 +502,7 @@ export const RELATIONSHIP_LEGEND: LegendEntry[] = [
   { key: "depends_on", label: "Depends On", color: "#52525b", shape: "circle" },
   { key: "provides_tool", label: "Provides Tool", color: "#a855f7", shape: "circle" },
   { key: "exposes_cred", label: "Exposes Credential", color: "#f59e0b", shape: "circle" },
+  { key: "reaches_tool", label: "Credential Reaches Tool", color: "#fbbf24", shape: "circle" },
   { key: "vulnerable_to", label: "Vulnerable To", color: "#ef4444", shape: "circle" },
   { key: "shares_server", label: "Shares Server", color: "#22d3ee", shape: "circle" },
   { key: "shares_cred", label: "Shares Credential", color: "#f97316", shape: "circle" },

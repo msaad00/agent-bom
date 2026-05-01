@@ -11,21 +11,23 @@ from typing import TYPE_CHECKING, Optional
 import click
 from rich.console import Console
 
+from agent_bom.cli._common import PORT_RANGE, read_json_file_for_cli
+
 if TYPE_CHECKING:
     from agent_bom.mcp_introspect import IntrospectionReport, ServerIntrospection
 
 
-def _load_mesh_source(scan_file: Optional[str], project_dir: Optional[str]) -> tuple[list[dict], list[dict] | None]:
+def _load_mesh_source(scan_file: Optional[str], project_dir: Optional[str]) -> tuple[list[dict], list[dict] | None, str]:
     """Load agent topology from either a saved report or live discovery."""
     if scan_file:
-        data = json.loads(Path(scan_file).read_text())
+        data = read_json_file_for_cli(scan_file, label="scan file")
         agents_data = data.get("agents", [])
         blast_radius = data.get("blast_radius")
         if not isinstance(agents_data, list):
             raise ValueError("scan file did not contain a valid 'agents' list")
         if blast_radius is not None and not isinstance(blast_radius, list):
             blast_radius = None
-        return agents_data, blast_radius
+        return agents_data, blast_radius, "saved scan"
 
     from dataclasses import asdict
 
@@ -38,7 +40,8 @@ def _load_mesh_source(scan_file: Optional[str], project_dir: Optional[str]) -> t
             if not server.packages:
                 server.packages = extract_packages(server)
 
-    return [asdict(agent) for agent in agents], None
+    scope_label = f"project-scoped ({project_dir})" if project_dir else "machine-wide"
+    return [asdict(agent) for agent in agents], None, scope_label
 
 
 def _coerce_introspection_results(
@@ -51,7 +54,7 @@ def _coerce_introspection_results(
     return results
 
 
-def _render_mesh_summary(con: Console, agents_data: list[dict], mesh: dict, *, quiet: bool = False) -> None:
+def _render_mesh_summary(con: Console, agents_data: list[dict], mesh: dict, *, scope_label: str, quiet: bool = False) -> None:
     """Print a compact human-readable topology summary."""
     stats = mesh.get("stats", {})
     shared_counts: Counter[str] = Counter()
@@ -63,7 +66,7 @@ def _render_mesh_summary(con: Console, agents_data: list[dict], mesh: dict, *, q
         con.print()
         con.print(
             f"[bold]Mesh[/bold]  "
-            f"[dim]{stats.get('total_agents', 0)} agents · {stats.get('total_servers', 0)} servers · "
+            f"[dim]{scope_label} · {stats.get('total_agents', 0)} agents · {stats.get('total_servers', 0)} servers · "
             f"{stats.get('total_tools', 0)} tools · {stats.get('total_vulnerabilities', 0)} vulns[/dim]"
         )
 
@@ -311,7 +314,7 @@ def mesh_cmd(scan_file: Optional[str], project_dir: Optional[str], fmt: str, out
     con = Console()
 
     try:
-        agents_data, blast_radius = _load_mesh_source(scan_file, project_dir)
+        agents_data, blast_radius, scope_label = _load_mesh_source(scan_file, project_dir)
     except (ValueError, OSError, json.JSONDecodeError) as exc:
         con.print(f"[red]Error loading mesh source:[/red] {exc}")
         raise SystemExit(1) from exc
@@ -339,12 +342,12 @@ def mesh_cmd(scan_file: Optional[str], project_dir: Optional[str], fmt: str, out
         con.print("[red]--output is only supported with --format json for mesh.[/red]")
         raise SystemExit(2)
 
-    _render_mesh_summary(con, agents_data, mesh, quiet=quiet)
+    _render_mesh_summary(con, agents_data, mesh, scope_label=scope_label, quiet=quiet)
 
 
 @click.command("dashboard")
 @click.option("--report", type=click.Path(exists=True), default=None, help="Path to agent-bom JSON report file.")
-@click.option("--port", default=8501, show_default=True, help="Streamlit server port.")
+@click.option("--port", default=8501, show_default=True, type=PORT_RANGE, help="Streamlit server port.")
 def dashboard_cmd(report: Optional[str], port: int):
     """Launch the interactive Streamlit dashboard.
 

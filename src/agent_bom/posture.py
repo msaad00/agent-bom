@@ -315,8 +315,17 @@ def compute_posture_scorecard(report: "AIBOMReport") -> PostureScorecard:
     total_score = round(min(100.0, max(0.0, total_score)), 1)
     grade = _score_to_grade(total_score)
 
-    # Build summary
-    if grade in ("A", "B"):
+    # Build summary. Keep vulnerability cleanliness separate from
+    # best-practice/configuration quality so clean scans do not read as
+    # contradictory when optional metadata is incomplete.
+    if total_vulns == 0:
+        if grade in ("A", "B"):
+            summary = f"No vulnerabilities found; strong best-practice/config posture ({grade}, {total_score}%)"
+        elif grade == "C":
+            summary = f"No vulnerabilities found; config/best-practice improvements recommended ({grade}, {total_score}%)"
+        else:
+            summary = f"No vulnerabilities found; config/best-practice gaps need attention ({grade}, {total_score}%)"
+    elif grade in ("A", "B"):
         summary = f"Strong best-practice/config posture ({grade}, {total_score}%)"
     elif grade == "C":
         summary = f"Moderate best-practice/config posture ({grade}, {total_score}%) — improvements recommended"

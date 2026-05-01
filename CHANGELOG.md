@@ -17,6 +17,7 @@ Versions follow [Semantic Versioning](https://semver.org/).
 - **Graph export parity** — CLI Cytoscape, Graph HTML, Mermaid, GraphML, Cypher, and API graph paths now surface conservative credential → tool `reaches_tool` evidence consistently.
 - **Dashboard scan polling** — the scan detail UI now polls a lightweight status endpoint during async scans and fetches the full result only once at completion, avoiding repeated multi-MB `/v1/scan/{id}` payloads.
 - **CLI error contracts** — listener ports now reject privileged or invalid values before socket bind, and malformed inventory, VEX, policy, and ignore files fail loudly with actionable parser messages instead of raw tracebacks or silent skips.
+- **Pre-release output polish** — clean scans now describe config-posture gaps without contradicting `SECURITY POSTURE: CLEAN`, project-scoped agents render with human-readable labels, and CSV inventory ingestion logs skipped empty package rows.
 - **Delta gate artifact consistency** — delta-mode filtering now happens before report rendering so JSON/SARIF artifacts and CI exit gates reflect the same new-only finding set.
 - **UI E2E production parity** — Playwright now runs against a staged standalone bundle that mirrors the container runtime, preventing hydration checks from passing only in dev mode.
 

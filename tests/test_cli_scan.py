@@ -495,10 +495,13 @@ def test_scan_incomplete_offline_scan_exits_two(monkeypatch):
 
     assert result.exit_code == 2
     assert "populated local vulnerability DB" in result.output
-    assert "SECURITY POSTURE" in result.output
+    # Verdict-led default panel labels the row "Security posture:"; the
+    # ``--verbose`` form labels it "SECURITY POSTURE:". Either is acceptable
+    # — the contract under test is that the partial-coverage state surfaces.
+    assert "Security posture" in result.output or "SECURITY POSTURE" in result.output
     assert "PARTIAL COVERAGE" in result.output
     assert "CLEAN" not in result.output
-    assert "Agents" in result.output
+    assert "agents" in result.output.lower()
 
 
 def test_scan_expands_local_docker_mcp_image():

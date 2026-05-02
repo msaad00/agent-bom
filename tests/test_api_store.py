@@ -69,6 +69,31 @@ def test_in_memory_cleanup():
     assert store.get("j2") is not None
 
 
+def test_in_memory_retention_evicts_oldest_completed_jobs():
+    store = InMemoryJobStore(max_retained_jobs=2)
+    old = _make_job("old", status=JobStatus.DONE, completed_at="2026-02-23T12:00:00+00:00")
+    running = _make_job("running", status=JobStatus.RUNNING)
+    new = _make_job("new", status=JobStatus.DONE, completed_at="2026-02-23T12:01:00+00:00")
+
+    store.put(old)
+    store.put(running)
+    store.put(new)
+
+    assert store.get("old") is None
+    assert store.get("running") is not None
+    assert store.get("new") is not None
+
+
+def test_scan_job_progress_is_bounded(monkeypatch):
+    monkeypatch.setattr("agent_bom.config.API_MAX_JOB_PROGRESS_EVENTS", 3)
+    job = _make_job("progress")
+
+    for idx in range(5):
+        job.progress.append(f"event-{idx}")
+
+    assert job.progress == ["event-2", "event-3", "event-4"]
+
+
 # ── SQLiteJobStore ───────────────────────────────────────────────────────────
 
 
@@ -152,12 +177,33 @@ def test_sqlite_list_summary():
         db_path = f.name
     try:
         store = SQLiteJobStore(db_path=db_path)
-        store.put(_make_job("j1"))
+        store.put(_make_job("j1", triggered_by="api-user"))
         summary = store.list_summary()
         assert len(summary) == 1
         assert summary[0]["job_id"] == "j1"
+        assert summary[0]["triggered_by"] == "api-user"
         assert "status" in summary[0]
         assert "created_at" in summary[0]
+    finally:
+        Path(db_path).unlink(missing_ok=True)
+
+
+def test_sqlite_list_summary_does_not_hydrate_full_result(monkeypatch):
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    try:
+        store = SQLiteJobStore(db_path=db_path)
+        job = _make_job("j1", status=JobStatus.DONE, triggered_by="api-user")
+        job.result = {"blob": "x" * 1_000_000}
+        store.put(job)
+
+        def fail_deserialize(_data: str) -> ScanJob:
+            raise AssertionError("list_summary should not deserialize full job data")
+
+        monkeypatch.setattr(store, "_deserialize", fail_deserialize)
+        summary = store.list_summary()
+        assert summary[0]["job_id"] == "j1"
+        assert summary[0]["triggered_by"] == "api-user"
     finally:
         Path(db_path).unlink(missing_ok=True)
 

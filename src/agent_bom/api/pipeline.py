@@ -695,9 +695,8 @@ def _run_scan_sync(job: ScanJob) -> None:
             try:
                 from agent_bom.asset_tracker import AssetTracker
 
-                tracker = AssetTracker(tenant_id=str(getattr(job, "tenant_id", None) or "default"))
-                asset_diff = tracker.record_scan(report_json)
-                tracker.close()
+                with AssetTracker(tenant_id=str(getattr(job, "tenant_id", None) or "default")) as tracker:
+                    asset_diff = tracker.record_scan(report_json)
                 with lock:
                     job.progress.append(
                         "Asset tracker synced "

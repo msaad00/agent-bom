@@ -107,10 +107,10 @@ def test_duplicate_upstream_name_rejected(tmp_path: Path) -> None:
         UpstreamRegistry.from_yaml(path)
 
 
-def test_empty_upstreams_list_rejected(tmp_path: Path) -> None:
+def test_empty_upstreams_list_builds_empty_registry(tmp_path: Path) -> None:
     path = _write_yaml(tmp_path, "upstreams: []\n")
-    with pytest.raises(UpstreamConfigError, match="non-empty"):
-        UpstreamRegistry.from_yaml(path)
+    registry = UpstreamRegistry.from_yaml(path)
+    assert registry.names() == []
 
 
 def test_non_http_url_rejected(tmp_path: Path) -> None:

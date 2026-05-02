@@ -14,6 +14,7 @@ from agent_bom.http_client import (
     _sanitize_for_log,
     create_client,
     request_with_retry,
+    sync_request_with_retry,
 )
 
 
@@ -95,6 +96,22 @@ class TestRequestWithRetry:
         client.request.side_effect = [mock_429, mock_200]
         result = await request_with_retry(client, "GET", "https://example.com", max_retries=2)
         assert result.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_github_advisory_429_fails_fast_without_retry(self, monkeypatch):
+        mock_429 = MagicMock()
+        mock_429.status_code = 429
+        mock_429.headers = {"Retry-After": "60"}
+        client = AsyncMock()
+        client.request.return_value = mock_429
+        sleep = AsyncMock()
+        monkeypatch.setattr(asyncio, "sleep", sleep)
+
+        result = await request_with_retry(client, "GET", "https://api.github.com/advisories", max_retries=3)
+
+        assert result.status_code == 429
+        assert client.request.await_count == 1
+        sleep.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_retries_on_500(self):
@@ -181,3 +198,19 @@ class TestRequestWithRetry:
         result = await request_with_retry(client, "GET", "https://example.com", max_retries=2)
         assert result.status_code == 200
         assert sleep_calls == [0.11]
+
+
+def test_sync_github_advisory_429_fails_fast_without_retry(monkeypatch):
+    mock_429 = MagicMock()
+    mock_429.status_code = 429
+    mock_429.headers = {"Retry-After": "60"}
+    client = MagicMock()
+    client.request.return_value = mock_429
+    sleep = MagicMock()
+    monkeypatch.setattr("agent_bom.http_client.time.sleep", sleep)
+
+    result = sync_request_with_retry(client, "GET", "https://api.github.com/advisories", max_retries=3)
+
+    assert result.status_code == 429
+    assert client.request.call_count == 1
+    sleep.assert_not_called()

@@ -21,5 +21,7 @@ Published schemas:
 - `fleet-snapshot.schema.json` - tenant/fleet agent posture rows.
 - `finding-feedback.schema.json` - tenant finding feedback and suppression
   lifecycle records.
-- `audit-export.schema.json` - signed audit export envelope.
+- `audit-export.schema.json` - signed audit export envelope returned by
+  `GET /v1/audit/export`, including `filters`, `integrity`, and audit-entry
+  `hmac_signature` / `prev_signature` chain fields.
 - `evidence.schema.json` - procurement/compliance evidence record.

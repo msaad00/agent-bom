@@ -1,17 +1,28 @@
 {
   "tenant_id": "tenant-demo",
   "exported_at": "2026-04-25T00:00:00Z",
+  "filters": {
+    "action": null,
+    "resource": null,
+    "since": null,
+    "limit": 1000,
+    "offset": 0
+  },
   "entries": [
     {
+      "entry_id": "audit-entry-001",
       "timestamp": "2026-04-25T00:00:00Z",
       "action": "scan.completed",
       "actor": "system",
-      "hmac_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "prev_hmac_sha256": null
+      "resource": "scan/demo",
+      "details": {},
+      "prev_signature": "",
+      "hmac_signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }
   ],
-  "verification": {
-    "hmac_chain_valid": true,
-    "entry_count": 1
+  "integrity": {
+    "verified": 1,
+    "tampered": 0,
+    "checked": 1
   }
 }

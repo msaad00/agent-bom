@@ -182,7 +182,6 @@ def serve_cmd(
         fetch_discovered_upstreams,
     )
     from agent_bom.proxy_policy import summarize_policy_bundle
-    from agent_bom.runtime.visual_leak_detector import require_visual_leak_runtime
 
     registry: UpstreamRegistry | None = None
 
@@ -219,6 +218,8 @@ def serve_cmd(
     _enforce_remote_mcp_auth_defaults(host, bearer_token, allow_insecure_no_auth)
     if detect_visual_leaks and not allow_visual_leak_best_effort:
         try:
+            from agent_bom.runtime.visual_leak_detector import require_visual_leak_runtime
+
             require_visual_leak_runtime()
         except RuntimeError as exc:
             raise click.ClickException(str(exc)) from exc

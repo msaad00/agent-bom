@@ -624,7 +624,7 @@ _STUCK_JOB_TIMEOUT = 1800  # 30 minutes — mark RUNNING jobs as FAILED
 async def _cleanup_loop():
     """Background task that removes expired jobs and unsticks RUNNING jobs."""
     while True:
-        await asyncio.sleep(300)
+        await asyncio.sleep(60)
         store = _get_store()
         store.cleanup_expired(_JOB_TTL_SECONDS)
         # Unstick jobs that have been RUNNING for too long

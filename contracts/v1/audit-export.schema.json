@@ -3,31 +3,46 @@
   "$id": "https://agent-bom.dev/contracts/v1/audit-export.schema.json",
   "title": "agent-bom audit export v1",
   "type": "object",
-  "required": ["tenant_id", "exported_at", "entries", "verification"],
+  "required": ["tenant_id", "exported_at", "filters", "entries", "integrity"],
   "properties": {
     "tenant_id": { "type": "string", "minLength": 1 },
     "exported_at": { "type": "string", "format": "date-time" },
+    "filters": {
+      "type": "object",
+      "properties": {
+        "action": { "type": ["string", "null"] },
+        "resource": { "type": ["string", "null"] },
+        "since": { "type": ["string", "null"] },
+        "limit": { "type": "integer", "minimum": 0 },
+        "offset": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": true
+    },
     "entries": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["timestamp", "action", "actor", "hmac_sha256"],
+        "required": ["entry_id", "timestamp", "action", "actor", "resource", "details", "prev_signature", "hmac_signature"],
         "properties": {
+          "entry_id": { "type": "string", "minLength": 1 },
           "timestamp": { "type": "string", "format": "date-time" },
           "action": { "type": "string", "minLength": 1 },
           "actor": { "type": "string" },
-          "hmac_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-          "prev_hmac_sha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" }
+          "resource": { "type": "string" },
+          "details": { "type": "object" },
+          "prev_signature": { "type": "string", "pattern": "^$|^[a-f0-9]{64}$" },
+          "hmac_signature": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
         },
         "additionalProperties": true
       }
     },
-    "verification": {
+    "integrity": {
       "type": "object",
-      "required": ["hmac_chain_valid"],
+      "required": ["verified", "tampered", "checked"],
       "properties": {
-        "hmac_chain_valid": { "type": "boolean" },
-        "entry_count": { "type": "integer", "minimum": 0 }
+        "verified": { "type": "integer", "minimum": 0 },
+        "tampered": { "type": "integer", "minimum": 0 },
+        "checked": { "type": "integer", "minimum": 0 }
       },
       "additionalProperties": true
     }

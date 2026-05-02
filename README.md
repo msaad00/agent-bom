@@ -348,7 +348,7 @@ agent-bom agents -p . --compliance-export fedramp -o fedramp-evidence.zip
 agent-bom agents -p . --compliance-export nist-ai-rmf -o evidence.zip
 ```
 
-The audit log itself is HMAC-chained and exportable as a signed JSON/JSONL bundle at `GET /v1/audit/export`.
+The audit log itself is HMAC-chained and exportable as a signed JSON/JSONL bundle at `GET /v1/audit/export`. JSON exports include `filters`, `integrity`, and entry-level `hmac_signature` / `prev_signature` fields.
 
 ## Install & deploy
 

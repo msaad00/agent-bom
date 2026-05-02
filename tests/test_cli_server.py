@@ -402,6 +402,19 @@ def test_gateway_serve_allows_non_loopback_bind_with_bearer_token(tmp_path):
     mock_run.assert_called_once()
 
 
+def test_gateway_serve_empty_upstreams_yaml_reaches_uvicorn(tmp_path):
+    runner = CliRunner()
+    upstreams = tmp_path / "upstreams.yaml"
+    upstreams.write_text("upstreams: []\n")
+
+    with patch("uvicorn.run") as mock_run:
+        result = runner.invoke(gateway_serve_cmd, ["--bind", "127.0.0.1:8090", "--upstreams", str(upstreams)])
+
+    assert result.exit_code == 0
+    assert "fronting 0 upstream(s)" in result.output
+    mock_run.assert_called_once()
+
+
 def test_gateway_serve_requires_visual_runtime_when_enabled(tmp_path):
     runner = CliRunner()
     upstreams = tmp_path / "upstreams.yaml"

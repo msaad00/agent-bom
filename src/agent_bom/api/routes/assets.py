@@ -32,11 +32,10 @@ async def list_assets(
     try:
         from agent_bom.asset_tracker import AssetTracker
 
-        tracker = AssetTracker(tenant_id=getattr(request.state, "tenant_id", "default"))
-        assets = tracker.list_assets(status=status, severity=severity, limit=limit)
-        stats = tracker.stats()
-        mttr = tracker.mttr_days()
-        tracker.close()
+        with AssetTracker(tenant_id=getattr(request.state, "tenant_id", "default")) as tracker:
+            assets = tracker.list_assets(status=status, severity=severity, limit=limit)
+            stats = tracker.stats()
+            mttr = tracker.mttr_days()
         return {
             "assets": assets,
             "count": len(assets),
@@ -60,10 +59,9 @@ async def get_asset_stats(request: Request) -> dict:
     try:
         from agent_bom.asset_tracker import AssetTracker
 
-        tracker = AssetTracker(tenant_id=getattr(request.state, "tenant_id", "default"))
-        stats = tracker.stats()
-        mttr = tracker.mttr_days()
-        tracker.close()
+        with AssetTracker(tenant_id=getattr(request.state, "tenant_id", "default")) as tracker:
+            stats = tracker.stats()
+            mttr = tracker.mttr_days()
         return {"stats": stats, "mttr_days": mttr}
     except Exception:
         _logger.exception("Failed to get asset stats")

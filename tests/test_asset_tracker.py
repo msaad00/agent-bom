@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -251,3 +252,80 @@ def test_tenant_scopes_assets_with_shared_database(tmp_path: Path) -> None:
     finally:
         alpha.close()
         beta.close()
+
+
+def test_legacy_asset_database_migrates_to_tenant_schema(tmp_path: Path) -> None:
+    db_path = tmp_path / "legacy-assets.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE assets (
+                vuln_id TEXT NOT NULL,
+                package TEXT NOT NULL,
+                ecosystem TEXT NOT NULL DEFAULT '',
+                severity TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'open',
+                first_seen TEXT NOT NULL,
+                last_seen TEXT NOT NULL,
+                resolved_at TEXT,
+                scan_count INTEGER NOT NULL DEFAULT 1,
+                metadata TEXT NOT NULL DEFAULT '{}',
+                PRIMARY KEY (vuln_id, package, ecosystem)
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO assets (
+                vuln_id, package, ecosystem, severity, status,
+                first_seen, last_seen, resolved_at, scan_count, metadata
+            )
+            VALUES (
+                'CVE-2024-0001', 'lodash', 'npm', 'high', 'open',
+                '2024-01-01T00:00:00+00:00', '2024-01-01T00:00:00+00:00',
+                NULL, 1, '{}'
+            )
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    tracker = AssetTracker(db_path=db_path, tenant_id="default")
+    try:
+        asset = tracker.get_asset("CVE-2024-0001", "lodash", "npm")
+        assert asset is not None
+        assert asset["tenant_id"] == "default"
+        tracker.record_scan(_report([_finding("CVE-2024-0002", "express", "npm")]))
+    finally:
+        tracker.close()
+
+    conn = sqlite3.connect(db_path)
+    try:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(assets)")}
+        indexes = {row[1] for row in conn.execute("PRAGMA index_list(assets)")}
+    finally:
+        conn.close()
+
+    assert "tenant_id" in columns
+    assert "idx_assets_tenant_status" in indexes
+
+
+def test_asset_tracker_context_manager_closes_connection(tmp_path: Path) -> None:
+    db_path = tmp_path / "assets.db"
+
+    with AssetTracker(db_path=db_path) as tracker:
+        tracker.record_scan(_report([_finding("CVE-2024-0001", "lodash", "npm")]))
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        tracker.stats()
+
+
+def test_asset_tracker_enables_wal_for_file_database(tmp_path: Path) -> None:
+    db_path = tmp_path / "assets.db"
+
+    with AssetTracker(db_path=db_path) as tracker:
+        mode = tracker._conn.execute("PRAGMA journal_mode").fetchone()[0]  # noqa: SLF001
+
+    assert mode.lower() == "wal"

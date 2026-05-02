@@ -22,9 +22,10 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 logger = logging.getLogger(__name__)
+_VALID_PROXY_POLICIES = {"allowed", "blocked"}
 
 
 @dataclass
@@ -140,22 +141,58 @@ def load_audit_log(path: str | Path) -> list[ToolCallRecord]:
             logger.warning("Skipping invalid JSON at line %d", line_num)
             continue
 
+        if not isinstance(data, dict):
+            logger.warning("Skipping non-object JSONL record at line %d", line_num)
+            continue
+
         if data.get("type") != "tools/call":
             continue
 
-        records.append(
-            ToolCallRecord(
-                timestamp=data.get("ts", ""),
-                tool_name=data.get("tool", ""),
-                arguments=data.get("args", {}),
-                policy_result=data.get("policy", "allowed"),
-                reason=data.get("reason", ""),
-                payload_sha256=data.get("payload_sha256", ""),
-                message_id=data.get("message_id"),
-            )
-        )
+        record = _parse_proxy_tool_call_record(data, line_num=line_num)
+        if record is not None:
+            records.append(record)
 
     return records
+
+
+def _parse_proxy_tool_call_record(data: dict[str, Any], *, line_num: int) -> ToolCallRecord | None:
+    """Parse a proxy ``tools/call`` audit record, rejecting malformed records."""
+    ts = data.get("ts")
+    tool = data.get("tool")
+    args = data.get("args")
+    policy = data.get("policy")
+    invalid_fields: list[str] = []
+    if not isinstance(ts, str) or not ts.strip():
+        invalid_fields.append("ts")
+    if not isinstance(tool, str) or not tool.strip():
+        invalid_fields.append("tool")
+    if not isinstance(args, dict):
+        invalid_fields.append("args")
+    if policy not in _VALID_PROXY_POLICIES:
+        invalid_fields.append("policy")
+    if invalid_fields:
+        logger.warning(
+            "Skipping invalid proxy tools/call audit record at line %d: %s",
+            line_num,
+            ", ".join(invalid_fields),
+        )
+        return None
+
+    ts_str = cast(str, ts)
+    tool_name = cast(str, tool)
+    args_dict = cast(dict[str, Any], args)
+    policy_str = cast(str, policy)
+    reason = data.get("reason", "")
+    payload_sha256 = data.get("payload_sha256", "")
+    return ToolCallRecord(
+        timestamp=ts_str,
+        tool_name=tool_name.strip(),
+        arguments=args_dict,
+        policy_result=policy_str,
+        reason=reason if isinstance(reason, str) else "",
+        payload_sha256=payload_sha256 if isinstance(payload_sha256, str) else "",
+        message_id=data.get("message_id"),
+    )
 
 
 def _aggregate_calls(

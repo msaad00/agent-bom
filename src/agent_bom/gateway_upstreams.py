@@ -230,8 +230,8 @@ class UpstreamRegistry:
             raise UpstreamConfigError(f"malformed YAML in {path}: {exc}") from exc
 
         raw_upstreams = data.get("upstreams")
-        if not isinstance(raw_upstreams, list) or not raw_upstreams:
-            raise UpstreamConfigError(f"{path} must define a non-empty 'upstreams' list")
+        if not isinstance(raw_upstreams, list):
+            raise UpstreamConfigError(f"{path} must define an 'upstreams' list")
 
         upstreams = [_parse_upstream(raw, source=str(path)) for raw in raw_upstreams]
         logger.info("gateway: loaded %d upstreams from %s", len(upstreams), path)

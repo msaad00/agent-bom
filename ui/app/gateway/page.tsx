@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   api,
+  type FirewallRuntimeStats,
   type GatewayPolicy,
   type GatewayPolicyRuntimeSummary,
   type GatewayStatsResponse,
@@ -172,6 +173,9 @@ export default function GatewayPage() {
       {stats && (
         <>
           <RuntimePostureCard runtime={stats.policy_runtime} />
+          {stats.firewall_runtime && stats.firewall_runtime.total_decisions > 0 && (
+            <FirewallRuntimeCard runtime={stats.firewall_runtime} />
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <StatCard label="Total Policies" value={stats.total_policies} icon={Lock} color="text-zinc-400" />
             <StatCard label="Enforce Mode" value={stats.enforce_count} icon={ShieldAlert} color="text-red-400" />
@@ -594,6 +598,124 @@ function RuntimePostureCard({ runtime }: { runtime: GatewayPolicyRuntimeSummary 
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Inter-agent firewall runtime card (#982 PR 4) ─────────────────────────
+
+const FIREWALL_DECISION_COLORS: Record<"allow" | "warn" | "deny", string> = {
+  allow: "text-emerald-400",
+  warn: "text-amber-400",
+  deny: "text-rose-400",
+};
+
+function FirewallRuntimeCard({ runtime }: { runtime: FirewallRuntimeStats }) {
+  const lastSeen = runtime.last_seen_ts
+    ? new Date(runtime.last_seen_ts * 1000).toLocaleString()
+    : "—";
+  const enforcementMode = runtime.recent[0]?.enforcement_mode ?? null;
+
+  return (
+    <div className="rounded-2xl border border-zinc-800 bg-[linear-gradient(135deg,rgba(24,24,27,0.98),rgba(9,9,11,0.98))] p-5 space-y-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+              Inter-agent firewall
+            </span>
+            {enforcementMode && (
+              <span className="rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-300">
+                {enforcementMode === "dry_run" ? "dry run" : enforcementMode}
+              </span>
+            )}
+          </div>
+          <p className="max-w-2xl text-sm text-zinc-300">
+            {runtime.total_decisions} agent → agent decision(s) seen across the runtime plane. Last seen {lastSeen}.
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+          <FirewallStat label="Total" value={runtime.total_decisions} tone="text-zinc-100" />
+          <FirewallStat label="Allow" value={runtime.allow} tone="text-emerald-400" />
+          <FirewallStat label="Warn" value={runtime.warn} tone="text-amber-400" />
+          <FirewallStat label="Deny" value={runtime.deny} tone="text-rose-400" />
+        </div>
+      </div>
+      {runtime.top_pairs.length > 0 && (
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 mb-2">Top pairs</div>
+          <div className="flex flex-wrap gap-2">
+            {runtime.top_pairs.map((p) => (
+              <div
+                key={`${p.source_agent}->${p.target_agent}`}
+                className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-1.5 text-xs"
+              >
+                <span className="font-medium text-zinc-200">{p.source_agent}</span>
+                <span className="text-zinc-500">→</span>
+                <span className="font-medium text-zinc-200">{p.target_agent}</span>
+                {p.deny > 0 && <span className="text-rose-400">{p.deny}d</span>}
+                {p.warn > 0 && <span className="text-amber-400">{p.warn}w</span>}
+                {p.allow > 0 && <span className="text-emerald-400">{p.allow}a</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {runtime.recent.length > 0 && (
+        <div>
+          <div className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 mb-2">
+            Recent decisions
+          </div>
+          <div className="overflow-hidden rounded-lg border border-zinc-800">
+            <table className="w-full text-xs">
+              <thead className="bg-zinc-900/60 text-zinc-500 uppercase tracking-[0.14em] text-[10px]">
+                <tr>
+                  <th className="text-left px-3 py-2 font-medium">When</th>
+                  <th className="text-left px-3 py-2 font-medium">Source → Target</th>
+                  <th className="text-left px-3 py-2 font-medium">Decision</th>
+                  <th className="text-left px-3 py-2 font-medium">Rule</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-900">
+                {runtime.recent.slice(0, 10).map((r, idx) => (
+                  <tr key={`${r.timestamp}-${idx}`} className="bg-zinc-950/40">
+                    <td className="px-3 py-2 text-zinc-400">
+                      {r.timestamp ? new Date(r.timestamp * 1000).toLocaleTimeString() : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-zinc-200">
+                      <span>{r.source_agent}</span>
+                      <span className="text-zinc-500 mx-1">→</span>
+                      <span>{r.target_agent}</span>
+                    </td>
+                    <td className={`px-3 py-2 font-semibold ${FIREWALL_DECISION_COLORS[r.effective_decision]}`}>
+                      {r.effective_decision.toUpperCase()}
+                      {r.decision !== r.effective_decision && (
+                        <span className="text-zinc-500 ml-1">
+                          (was {r.decision})
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-zinc-400">
+                      {r.matched_rule
+                        ? r.matched_rule.description || `${r.matched_rule.source} → ${r.matched_rule.target}`
+                        : "default"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FirewallStat({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2">
+      <div className="text-[10px] uppercase tracking-[0.16em] text-zinc-600">{label}</div>
+      <div className={`mt-1 text-sm font-semibold ${tone}`}>{value}</div>
     </div>
   );
 }

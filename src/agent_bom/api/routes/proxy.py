@@ -78,6 +78,9 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
             cached["idempotent_replay"] = True
             return cached
 
+    from agent_bom.api.stores import _get_firewall_decision_store
+
+    firewall_store = _get_firewall_decision_store()
     for alert in body.alerts:
         enriched = dict(alert)
         enriched.setdefault("source_id", source_id)
@@ -85,6 +88,12 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         enriched.setdefault("request_id", request_id)
         enriched.setdefault("trace_id", trace_id)
         push_proxy_alert(enriched)
+        # Tally inter-agent firewall decisions for the runtime-tab dashboard
+        # (#982 PR 4). Non-firewall alerts are silently ignored by record().
+        try:
+            firewall_store.record(tenant_id=tenant_id, event=enriched)
+        except Exception:  # noqa: BLE001 — store is best-effort, never block ingest
+            pass
         analytics_events.append(
             {
                 "event_id": enriched.get("event_id", ""),

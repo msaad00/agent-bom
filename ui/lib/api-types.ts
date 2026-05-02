@@ -1451,6 +1451,42 @@ export interface GatewayStatsResponse {
   blocked_count: number;
   alerted_count: number;
   policy_runtime: GatewayPolicyRuntimeSummary;
+  firewall_runtime: FirewallRuntimeStats;
+}
+
+// ─── Inter-agent firewall (#982) ────────────────────────────────────────
+
+export interface FirewallPairTally {
+  source_agent: string;
+  target_agent: string;
+  allow: number;
+  warn: number;
+  deny: number;
+}
+
+export interface FirewallDecisionRecord {
+  timestamp: number;
+  source_agent: string;
+  target_agent: string;
+  decision: "allow" | "deny" | "warn";
+  effective_decision: "allow" | "deny" | "warn";
+  matched_rule: {
+    source: string;
+    target: string;
+    decision: "allow" | "deny" | "warn";
+    description: string;
+  } | null;
+  enforcement_mode: "enforce" | "dry_run" | null;
+}
+
+export interface FirewallRuntimeStats {
+  total_decisions: number;
+  allow: number;
+  warn: number;
+  deny: number;
+  last_seen_ts: number | null;
+  top_pairs: FirewallPairTally[];
+  recent: FirewallDecisionRecord[];
 }
 
 export interface GatewayPolicyRuntimeSummary {

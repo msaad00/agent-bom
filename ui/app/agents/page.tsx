@@ -9,6 +9,7 @@ import {
   Agent,
   isConfigured,
   type AgentDetailResponse,
+  type DiscoveryEnvelope,
   type DiscoveryProvenance,
   type AgentLifecycleResponse,
   type AttackFlowNodeData,
@@ -455,6 +456,9 @@ function AgentsList() {
                       )}
                     </div>
                   </div>
+                ) : null}
+                {agent.discovery_envelope ? (
+                  <DiscoveryEnvelopeCard envelope={agent.discovery_envelope} />
                 ) : null}
                 {agent.mcp_servers?.map((srv, j) => (
                   <div key={j} className="bg-zinc-800 border border-zinc-700 rounded-lg p-3">
@@ -1418,5 +1422,81 @@ export default function AgentsPage() {
     <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><Loader2 className="w-8 h-8 animate-spin text-zinc-500" /></div>}>
       <AgentsRouter />
     </Suspense>
+  );
+}
+
+// ─── Discovery envelope card (#2083 PR C) ─────────────────────────────────
+
+const SCAN_MODE_LABEL: Record<string, string> = {
+  local_only: "local only",
+  cloud_read_only: "cloud read-only",
+  saas_read_only: "SaaS read-only",
+  runtime_probe: "runtime probe",
+  container_local: "container (local)",
+  endpoint_push: "endpoint push",
+};
+
+const REDACTION_LABEL: Record<string, string> = {
+  never_collected: "never collected",
+  redacted_in_place: "redacted in place",
+  central_sanitizer_applied: "central sanitizer",
+  not_applicable: "n/a",
+};
+
+function DiscoveryEnvelopeCard({ envelope }: { envelope: DiscoveryEnvelope }) {
+  const captured = envelope.captured_at
+    ? new Date(envelope.captured_at).toLocaleString()
+    : null;
+  const mode = SCAN_MODE_LABEL[envelope.scan_mode] ?? envelope.scan_mode;
+  const redaction = REDACTION_LABEL[envelope.redaction_status] ?? envelope.redaction_status;
+  return (
+    <div className="rounded-lg border border-emerald-900/60 bg-emerald-950/20 p-3">
+      <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-300">
+        <Shield className="h-3.5 w-3.5" />
+        Scan trust contract
+      </div>
+      <p className="mb-2 text-[11px] text-emerald-200/80">
+        Scan ran inside your environment with read-only roles. No findings, inventory, or credentials are sent to agent-bom — everything stays in your deployment.
+      </p>
+      <div className="mb-2 flex flex-wrap gap-1.5">
+        <span className="rounded border border-emerald-800 bg-emerald-950/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-emerald-300">
+          {mode}
+        </span>
+        <span className="rounded border border-zinc-700 bg-zinc-900/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-300">
+          redaction: {redaction}
+        </span>
+      </div>
+      {envelope.discovery_scope.length > 0 && (
+        <div className="mt-2 text-[11px] text-zinc-400">
+          <div className="mb-1 text-[10px] uppercase tracking-[0.14em] text-zinc-500">Scope</div>
+          <div className="flex flex-wrap gap-1.5">
+            {envelope.discovery_scope.map((s) => (
+              <span key={s} className="rounded border border-zinc-800 bg-zinc-950 px-1.5 py-0.5 font-mono text-zinc-300">
+                {s}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {envelope.permissions_used.length > 0 && (
+        <details className="mt-2 text-[11px] text-zinc-400">
+          <summary className="cursor-pointer text-[10px] uppercase tracking-[0.14em] text-zinc-500 hover:text-zinc-300">
+            Permissions used ({envelope.permissions_used.length})
+          </summary>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {envelope.permissions_used.map((p) => (
+              <span key={p} className="rounded border border-zinc-800 bg-zinc-950 px-1.5 py-0.5 font-mono text-zinc-300">
+                {p}
+              </span>
+            ))}
+          </div>
+        </details>
+      )}
+      {captured && (
+        <div className="mt-2 text-[10px] text-zinc-500">
+          Captured {captured} · envelope v{envelope.envelope_version}
+        </div>
+      )}
+    </div>
   );
 }

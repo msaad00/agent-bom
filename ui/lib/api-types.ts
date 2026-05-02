@@ -230,8 +230,21 @@ export interface Agent {
   last_seen?: string | undefined;
   metadata?: Record<string, unknown> | undefined;
   discovery_provenance?: DiscoveryProvenance | undefined;
+  // Per-run discovery envelope (#2083). Trust contract for the scan run that
+  // produced this Agent record: scan_mode, discovery_scope, permissions_used,
+  // redaction_status. Optional because legacy records pre-envelope don't carry it.
+  discovery_envelope?: DiscoveryEnvelope | null | undefined;
   mcp_servers: MCPServer[];
   automation_settings?: string[] | undefined;
+}
+
+export interface DiscoveryEnvelope {
+  envelope_version: number;
+  scan_mode: string;
+  discovery_scope: string[];
+  permissions_used: string[];
+  redaction_status: string;
+  captured_at: string;
 }
 
 export interface MCPServer {

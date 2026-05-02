@@ -262,8 +262,9 @@ def test_multi_package_without_github_token_uses_fail_fast_rate_limit_backoff(mo
     assert {call.kwargs["rate_limit_backoff"] for call in mock_fetch.await_args_list} == {_GHSA_SINGLE_PACKAGE_RATE_LIMIT_BACKOFF}
 
 
-def test_without_github_token_applies_package_budget(monkeypatch):
+def test_without_github_token_applies_package_budget(monkeypatch, caplog):
     import asyncio
+    import logging
     from unittest.mock import AsyncMock, patch
 
     from agent_bom.scanners.ghsa_advisory import _GHSA_SINGLE_PACKAGE_RATE_LIMIT_BACKOFF, check_github_advisories
@@ -282,7 +283,8 @@ def test_without_github_token_applies_package_budget(monkeypatch):
     async def run():
         with patch("agent_bom.scanners.ghsa_advisory._fetch_advisories_for_package", new_callable=AsyncMock) as mock_fetch:
             mock_fetch.return_value = []
-            count = await check_github_advisories(packages)
+            with caplog.at_level(logging.INFO, logger="agent_bom.scanners.ghsa_advisory"):
+                count = await check_github_advisories(packages)
             return count, mock_fetch
 
     count, mock_fetch = asyncio.run(run())
@@ -291,8 +293,17 @@ def test_without_github_token_applies_package_budget(monkeypatch):
     assert mock_fetch.await_count == 2
     assert {call.args[0].name for call in mock_fetch.await_args_list} == {"express", "lodash"}
     assert {call.kwargs["rate_limit_backoff"] for call in mock_fetch.await_args_list} == {_GHSA_SINGLE_PACKAGE_RATE_LIMIT_BACKOFF}
-    warnings = consume_scan_warnings()
-    assert any("GHSA advisory enrichment limited to 2 unauthenticated package lookup(s); skipped 1" in item for item in warnings)
+
+    # The token-budget hint is now an INFO-level note (so default scans don't
+    # surface it as a scan-quality warning) and is intentionally NOT recorded
+    # via record_scan_warning. It still shows under --verbose / --log-level
+    # info via the logger; assert it shows up there with the expected counts.
+    info_text = "\n".join(rec.getMessage() for rec in caplog.records if rec.name == "agent_bom.scanners.ghsa_advisory")
+    assert "GHSA advisory enrichment limited to 2 unauthenticated package lookup(s); skipped 1" in info_text
+    # And confirm it does NOT bubble into the scan_warnings bucket (the
+    # warnings_all badge users see on every scan report would otherwise
+    # mark a clean scan as "completed with warnings").
+    assert not any("unauthenticated package lookup" in item for item in consume_scan_warnings())
 
 
 def test_advisory_filtered_by_package_name():

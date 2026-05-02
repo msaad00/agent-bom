@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from enum import Enum
 from typing import Any, Literal
 
@@ -27,6 +28,24 @@ class StepStatus(str, Enum):
 
 
 # ─── Scan Models ───────────────────────────────────────────────────────────
+
+
+class _BoundedProgress(list[str]):
+    """List that keeps only the latest configured API progress events."""
+
+    def _trim(self) -> None:
+        from agent_bom.config import API_MAX_JOB_PROGRESS_EVENTS
+
+        if API_MAX_JOB_PROGRESS_EVENTS > 0 and len(self) > API_MAX_JOB_PROGRESS_EVENTS:
+            del self[: len(self) - API_MAX_JOB_PROGRESS_EVENTS]
+
+    def append(self, item: str) -> None:
+        super().append(item)
+        self._trim()
+
+    def extend(self, iterable: Iterable[str]) -> None:
+        super().extend(iterable)
+        self._trim()
 
 
 class ScanRequest(BaseModel):
@@ -125,6 +144,10 @@ class ScanJob(BaseModel):
     error: str | None = None
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def model_post_init(self, __context: Any) -> None:
+        if not isinstance(self.progress, _BoundedProgress):
+            self.progress = _BoundedProgress(self.progress)
 
     @field_serializer("request", return_type=ScanRequest)
     def _serialize_request(self, value: ScanRequest) -> ScanRequest:

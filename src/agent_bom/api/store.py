@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Protocol
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
+from agent_bom.config import API_MAX_IN_MEMORY_JOBS
 
 from .server import JobStatus, ScanJob
 
@@ -33,13 +34,26 @@ class JobStore(Protocol):
 class InMemoryJobStore:
     """Dict-based in-memory store (original behavior). Thread-safe via lock."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, max_retained_jobs: int | None = API_MAX_IN_MEMORY_JOBS) -> None:
         self._jobs: dict[str, ScanJob] = {}
         self._lock = threading.Lock()
+        self._max_retained_jobs = max_retained_jobs
 
     def put(self, job: ScanJob) -> None:
         with self._lock:
             self._jobs[job.job_id] = job
+            self._evict_completed_locked()
+
+    def _evict_completed_locked(self) -> None:
+        if self._max_retained_jobs is None or self._max_retained_jobs <= 0:
+            return
+        if len(self._jobs) <= self._max_retained_jobs:
+            return
+
+        completed = [(jid, job) for jid, job in self._jobs.items() if job.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)]
+        completed.sort(key=lambda item: (item[1].completed_at is None, item[1].completed_at or item[1].created_at))
+        for jid, _job in completed[: len(self._jobs) - self._max_retained_jobs]:
+            self._jobs.pop(jid, None)
 
     def get(self, job_id: str, tenant_id: str | None = None) -> ScanJob | None:
         with self._lock:
@@ -133,9 +147,13 @@ class SQLiteJobStore:
                 created_at TEXT NOT NULL,
                 completed_at TEXT,
                 tenant_id TEXT NOT NULL DEFAULT 'default',
+                triggered_by TEXT,
                 data TEXT NOT NULL
             )
         """)
+        columns = {row[1] for row in self._conn.execute("PRAGMA table_info(jobs)").fetchall()}
+        if "triggered_by" not in columns:
+            self._conn.execute("ALTER TABLE jobs ADD COLUMN triggered_by TEXT")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_completed ON jobs(completed_at)")
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_tenant ON jobs(tenant_id)")
@@ -151,9 +169,17 @@ class SQLiteJobStore:
 
     def put(self, job: ScanJob) -> None:
         self._conn.execute(
-            """INSERT OR REPLACE INTO jobs (job_id, status, created_at, completed_at, tenant_id, data)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (job.job_id, job.status.value, job.created_at, job.completed_at, job.tenant_id, self._serialize(job)),
+            """INSERT OR REPLACE INTO jobs (job_id, status, created_at, completed_at, tenant_id, triggered_by, data)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (
+                job.job_id,
+                job.status.value,
+                job.created_at,
+                job.completed_at,
+                job.tenant_id,
+                job.triggered_by,
+                self._serialize(job),
+            ),
         )
         self._conn.commit()
 
@@ -193,11 +219,11 @@ class SQLiteJobStore:
     def list_summary(self, tenant_id: str | None = None) -> list[dict]:
         if tenant_id is None:
             rows = self._conn.execute(
-                "SELECT job_id, tenant_id, status, created_at, completed_at, data FROM jobs ORDER BY created_at DESC"
+                "SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by FROM jobs ORDER BY created_at DESC"
             ).fetchall()
         else:
             rows = self._conn.execute(
-                """SELECT job_id, tenant_id, status, created_at, completed_at, data
+                """SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by
                    FROM jobs
                    WHERE tenant_id = ?
                    ORDER BY created_at DESC""",
@@ -205,12 +231,11 @@ class SQLiteJobStore:
             ).fetchall()
         summaries: list[dict] = []
         for row in rows:
-            data = self._deserialize(row[5])
             summaries.append(
                 {
                     "job_id": row[0],
                     "tenant_id": row[1],
-                    "triggered_by": data.triggered_by,
+                    "triggered_by": row[5],
                     "status": row[2],
                     "created_at": row[3],
                     "completed_at": row[4],

@@ -7,6 +7,7 @@ import logging
 import random
 import time
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -94,6 +95,16 @@ def _jittered_wait(wait: float) -> float:
     return min(wait + random.uniform(0.0, wait * 0.1), MAX_BACKOFF)
 
 
+def _should_retry_status(status_code: int, url: str) -> bool:
+    """Return whether an HTTP status should enter the shared retry loop."""
+    if status_code not in RETRYABLE_STATUS_CODES:
+        return False
+    parsed = urlparse(url)
+    if status_code == 429 and (parsed.hostname or "").lower() == "api.github.com" and parsed.path.rstrip("/") == "/advisories":
+        return False
+    return True
+
+
 def create_client(timeout: float | None = None, max_redirects: int = 0) -> httpx.AsyncClient:
     """Create an httpx.AsyncClient with connection-level retries.
 
@@ -160,7 +171,7 @@ async def request_with_retry(
         try:
             response = await client.request(method, safe_url, **kwargs)
 
-            if response.status_code not in RETRYABLE_STATUS_CODES:
+            if not _should_retry_status(response.status_code, safe_url):
                 return response
 
             # Retryable status — check Retry-After header
@@ -273,7 +284,7 @@ def sync_request_with_retry(
         try:
             response = client.request(method, url, **kwargs)
 
-            if response.status_code not in RETRYABLE_STATUS_CODES:
+            if not _should_retry_status(response.status_code, url):
                 return response
 
             retry_after = response.headers.get("Retry-After")

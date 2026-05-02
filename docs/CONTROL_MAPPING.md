@@ -19,7 +19,7 @@ settings in the customer environment.
 | Evidence | Product path | Primary implementation |
 |---|---|---|
 | Tenant-scoped audit export | `GET /v1/audit/export` | `src/agent_bom/api/routes/enterprise.py`, `src/agent_bom/api/audit_log.py` |
-| Audit chain verification | `POST /v1/audit/verify` | `src/agent_bom/api/audit_log.py` |
+| Audit chain verification | `POST /v1/audit/export/verify` | `src/agent_bom/api/audit_log.py` |
 | Compliance report | `GET /v1/compliance/{framework}/report` | `src/agent_bom/api/routes/compliance.py` |
 | Evidence bundle signing posture | `GET /v1/compliance/signing/status` | `src/agent_bom/api/compliance_signing.py` |
 | Auth and secret posture | `GET /v1/auth/policy` | `src/agent_bom/api/routes/auth.py`, `src/agent_bom/api/audit_log.py` |

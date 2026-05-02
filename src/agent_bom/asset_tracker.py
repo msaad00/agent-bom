@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -48,6 +49,13 @@ CREATE INDEX IF NOT EXISTS idx_assets_tenant_status ON assets(tenant_id, status)
 CREATE INDEX IF NOT EXISTS idx_assets_tenant_severity ON assets(tenant_id, severity);
 """
 
+_CREATE_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_assets_tenant_status ON assets(tenant_id, status);
+CREATE INDEX IF NOT EXISTS idx_assets_tenant_severity ON assets(tenant_id, severity);
+"""
+
+_SCHEMA_LOCK = threading.RLock()
+
 
 class AssetTracker:
     """SQLite-backed vulnerability asset tracker."""
@@ -58,30 +66,72 @@ class AssetTracker:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(self._db_path))
         self._conn.row_factory = sqlite3.Row
+        self._configure_connection()
         self._ensure_schema()
 
-    def _ensure_schema(self) -> None:
-        self._conn.executescript(_SCHEMA)
-        columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(assets)")}
-        if "tenant_id" in columns:
-            return
+    def _configure_connection(self) -> None:
+        try:
+            self._conn.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.DatabaseError:
+            # Some non-file SQLite targets cannot enable WAL; schema locking
+            # still prevents same-process migration races.
+            pass
 
-        self._conn.execute("ALTER TABLE assets RENAME TO assets_legacy")
-        self._conn.executescript(_SCHEMA)
-        self._conn.execute(
-            """
-            INSERT INTO assets (
-                tenant_id, vuln_id, package, ecosystem, severity, status,
-                first_seen, last_seen, resolved_at, scan_count, metadata
+    def _ensure_schema(self) -> None:
+        with _SCHEMA_LOCK:
+            columns = {row["name"] for row in self._conn.execute("PRAGMA table_info(assets)")}
+            if not columns:
+                self._conn.executescript(_SCHEMA)
+                self._conn.commit()
+                return
+
+            if "tenant_id" in columns:
+                self._conn.executescript(_CREATE_INDEXES)
+                self._conn.commit()
+                return
+
+            # Legacy single-tenant databases were created with a primary key on
+            # (vuln_id, package, ecosystem). Rebuild the table so tenant_id becomes
+            # part of the key; ALTER TABLE cannot change a SQLite primary key.
+            legacy_columns = columns
+            required = {
+                "vuln_id",
+                "package",
+                "ecosystem",
+                "severity",
+                "status",
+                "first_seen",
+                "last_seen",
+                "resolved_at",
+                "scan_count",
+                "metadata",
+            }
+            missing = required - legacy_columns
+            if missing:
+                raise RuntimeError(f"Legacy asset tracker schema missing required columns: {', '.join(sorted(missing))}")
+
+            self._conn.execute("ALTER TABLE assets RENAME TO assets_legacy")
+            self._conn.executescript(_SCHEMA)
+            self._conn.execute(
+                """
+                INSERT INTO assets (
+                    tenant_id, vuln_id, package, ecosystem, severity, status,
+                    first_seen, last_seen, resolved_at, scan_count, metadata
+                )
+                SELECT
+                    'default', vuln_id, package, ecosystem, severity, status,
+                    first_seen, last_seen, resolved_at, scan_count, metadata
+                FROM assets_legacy
+                """
             )
-            SELECT
-                'default', vuln_id, package, ecosystem, severity, status,
-                first_seen, last_seen, resolved_at, scan_count, metadata
-            FROM assets_legacy
-            """
-        )
-        self._conn.execute("DROP TABLE assets_legacy")
-        self._conn.commit()
+            self._conn.execute("DROP TABLE assets_legacy")
+            self._conn.commit()
+
+    def __enter__(self) -> "AssetTracker":
+        return self
+
+    def __exit__(self, *_exc_info: object) -> None:
+        self.close()
 
     def close(self) -> None:
         self._conn.close()

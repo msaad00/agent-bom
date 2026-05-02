@@ -33,6 +33,11 @@ Relevant endpoints:
 - `GET /v1/audit`
 - `GET /v1/audit/integrity`
 - `GET /v1/audit/export`
+- `POST /v1/audit/export/verify`
+
+The JSON export body includes `filters`, `integrity`, and each entry's
+`hmac_signature` / `prev_signature` chain fields. JSONL exports carry the same
+entry shape one record per line.
 
 Typical audit event for compliance export:
 

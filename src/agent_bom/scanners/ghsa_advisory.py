@@ -230,38 +230,33 @@ async def _fetch_advisories_for_package(
     async with semaphore:
         advisories: list[dict] = []
         for page in range(1, max_pages + 1):
-            for attempt in range(2):
-                resp = await request_with_retry(
-                    client,
-                    "GET",
-                    _GITHUB_ADVISORY_API,
-                    params={
-                        "ecosystem": eco,
-                        "package": pkg.name,
-                        "per_page": str(_GHSA_PER_PAGE),
-                        "page": str(page),
-                    },
-                    headers=_ghsa_headers(),
-                )
-                if resp and resp.status_code == 200:
-                    try:
-                        page_data = resp.json()
-                    except (ValueError, KeyError):
-                        return advisories
-                    if not isinstance(page_data, list):
-                        return advisories
-                    advisories.extend(item for item in page_data if isinstance(item, dict))
-                    if len(page_data) < _GHSA_PER_PAGE:
-                        return advisories
-                    break
-                if resp and _is_rate_limited(resp):
-                    wait_seconds = min(_rate_limit_retry_after(resp, rate_limit_backoff), rate_limit_backoff)
-                    if attempt == 0 and wait_seconds > 0:
-                        logger.warning("GHSA rate limit for %s; pausing %.0fs before retry", pkg.name, wait_seconds)
-                        await asyncio.sleep(wait_seconds)
-                        continue
-                    raise GHSARateLimitError(wait_seconds)
-                return advisories
+            resp = await request_with_retry(
+                client,
+                "GET",
+                _GITHUB_ADVISORY_API,
+                params={
+                    "ecosystem": eco,
+                    "package": pkg.name,
+                    "per_page": str(_GHSA_PER_PAGE),
+                    "page": str(page),
+                },
+                headers=_ghsa_headers(),
+            )
+            if resp and resp.status_code == 200:
+                try:
+                    page_data = resp.json()
+                except (ValueError, KeyError):
+                    return advisories
+                if not isinstance(page_data, list):
+                    return advisories
+                advisories.extend(item for item in page_data if isinstance(item, dict))
+                if len(page_data) < _GHSA_PER_PAGE:
+                    return advisories
+                continue
+            if resp and _is_rate_limited(resp):
+                wait_seconds = min(_rate_limit_retry_after(resp, rate_limit_backoff), rate_limit_backoff)
+                raise GHSARateLimitError(wait_seconds)
+            return advisories
         return advisories
 
 

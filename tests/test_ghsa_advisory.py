@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from agent_bom.models import Package, Severity, Vulnerability
 from agent_bom.scanners.ghsa_advisory import (
     _ECOSYSTEM_MAP,
@@ -150,19 +152,15 @@ def test_fetch_advisories_paginates_and_uses_github_token(monkeypatch):
     assert request.await_args_list[0].kwargs["headers"]["Authorization"] == "Bearer ghp_test"
 
 
-def test_fetch_advisories_retries_once_on_rate_limit():
+def test_fetch_advisories_fails_fast_on_rate_limit_even_with_backoff():
     import asyncio
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    from agent_bom.scanners.ghsa_advisory import _fetch_advisories_for_package
+    from agent_bom.scanners.ghsa_advisory import GHSARateLimitError, _fetch_advisories_for_package
 
     limited = MagicMock()
     limited.status_code = 429
     limited.headers = {"Retry-After": "0.01"}
-    ok = MagicMock()
-    ok.status_code = 200
-    ok.headers = {}
-    ok.json.return_value = []
     pkg = Package(name="express", version="4.17.1", ecosystem="npm")
 
     async def run():
@@ -170,14 +168,15 @@ def test_fetch_advisories_retries_once_on_rate_limit():
             patch("agent_bom.scanners.ghsa_advisory.request_with_retry", new_callable=AsyncMock) as request,
             patch("agent_bom.scanners.ghsa_advisory.asyncio.sleep", new_callable=AsyncMock) as sleep,
         ):
-            request.side_effect = [limited, ok]
-            await _fetch_advisories_for_package(pkg, MagicMock(), asyncio.Semaphore(1), rate_limit_backoff=0.01)
+            request.return_value = limited
+            with pytest.raises(GHSARateLimitError):
+                await _fetch_advisories_for_package(pkg, MagicMock(), asyncio.Semaphore(1), rate_limit_backoff=0.01)
             return request, sleep
 
     request, sleep = asyncio.run(run())
 
-    assert request.await_count == 2
-    sleep.assert_awaited_once_with(0.01)
+    assert request.await_count == 1
+    sleep.assert_not_awaited()
 
 
 def test_fetch_advisories_can_fail_fast_on_rate_limit():

@@ -76,6 +76,7 @@ def _jobs_put(job_id: str, job: ScanJob) -> None:
             completed.sort(key=lambda x: (x[1].completed_at is None, x[1].completed_at or ""))
             for jid, _ in completed[: len(_jobs) - _MAX_IN_MEMORY_JOBS]:
                 _jobs.pop(jid, None)
+                _job_locks.pop(jid, None)
 
 
 def _jobs_get(job_id: str) -> ScanJob | None:
@@ -87,6 +88,7 @@ def _jobs_get(job_id: str) -> ScanJob | None:
 def _jobs_pop(job_id: str) -> ScanJob | None:
     """Thread-safe pop from _jobs."""
     with _jobs_lock:
+        _job_locks.pop(job_id, None)
         return _jobs.pop(job_id, None)
 
 

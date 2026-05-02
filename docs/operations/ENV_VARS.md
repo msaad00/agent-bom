@@ -28,6 +28,7 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_API_MAX_ACTIVE_SCAN_JOBS_PER_TENANT` | `int` | `API_MAX_CONCURRENT_JOBS` | — |
 | `AGENT_BOM_API_MAX_FLEET_AGENTS_PER_TENANT` | `int` | `1000` | — |
 | `AGENT_BOM_API_MAX_JOBS` | `int` | `10` | Used by api/server.py for the REST API job queue.  10 concurrent scan jobs prevents resource exhaustion on shared hosts. 1-hour TTL auto-cleans completed jobs.  200 in-memory ceiling triggers LRU eviction for long-running API instances. |
+| `AGENT_BOM_API_MAX_JOB_PROGRESS_EVENTS` | `int` | `500` | — |
 | `AGENT_BOM_API_MAX_MEMORY_JOBS` | `int` | `200` | — |
 | `AGENT_BOM_API_MAX_RETAINED_JOBS_PER_TENANT` | `int` | `500` | — |
 | `AGENT_BOM_API_MAX_SCHEDULES_PER_TENANT` | `int` | `100` | — |

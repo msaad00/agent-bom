@@ -115,6 +115,43 @@ def test_jobs_bounded_eviction_keeps_none_completed_at_until_real_oldest_removed
                     del _jobs[k]
 
 
+def test_jobs_bounded_eviction_removes_evicted_job_locks():
+    """Evicted hot-cache jobs should not leave per-job locks behind forever."""
+    from agent_bom.api import stores as _stores
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest, _jobs, _jobs_lock, _jobs_put
+
+    original_max = _stores._MAX_IN_MEMORY_JOBS
+    try:
+        _stores._MAX_IN_MEMORY_JOBS = 1
+        with _jobs_lock:
+            _jobs.clear()
+            _stores._job_locks.clear()
+
+        old = ScanJob(job_id="lock-old", created_at="2025-01-01T00:00:00Z", request=ScanRequest())
+        old.status = JobStatus.DONE
+        old.completed_at = "2025-01-01T00:01:00Z"
+        new = ScanJob(job_id="lock-new", created_at="2025-01-01T00:00:00Z", request=ScanRequest())
+        new.status = JobStatus.DONE
+        new.completed_at = "2025-01-01T00:02:00Z"
+
+        _stores._job_lock("lock-old")
+        _jobs_put("lock-old", old)
+        _jobs_put("lock-new", new)
+
+        with _jobs_lock:
+            assert "lock-old" not in _jobs
+            assert "lock-old" not in _stores._job_locks
+    finally:
+        _stores._MAX_IN_MEMORY_JOBS = original_max
+        with _jobs_lock:
+            for k in list(_jobs.keys()):
+                if k.startswith("lock-"):
+                    del _jobs[k]
+            for k in list(_stores._job_locks.keys()):
+                if k.startswith("lock-"):
+                    del _stores._job_locks[k]
+
+
 def test_jobs_concurrent_access():
     """Concurrent _jobs_put/_jobs_get don't raise."""
     from agent_bom.api.server import ScanJob, ScanRequest, _jobs_get, _jobs_pop, _jobs_put

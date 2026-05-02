@@ -221,3 +221,38 @@ def test_version_in_range_pypi_fixed_requests_regression():
     assert version_in_range("2.33.0", None, "2.6.0", None, "pypi") is False
     assert version_in_range("2.33.0", "2.3.0", "2.31.0", None, "pypi") is False
     assert version_in_range("2.25.0", "2.3.0", "2.31.0", None, "pypi") is True
+
+
+def test_npm_canary_prerelease_compare_avoids_false_positive():
+    """Regression: ``next@16.2.4`` must not match a fix bound of ``13.4.20-canary.13``.
+
+    PEP 440 ``packaging.Version`` rejects npm SemVer pre-release tags like
+    ``-canary.13`` / ``-rc.1`` / ``-beta.4`` as invalid. Without a pre-release
+    fall-back, ``compare_version_order`` returned ``None`` and the OSV/GHSA
+    range matcher conservatively marked the package as affected — producing
+    a false positive on ``CVE-2023-46298`` for ``next@16.2.4`` (a Next.js 16
+    install was flagged by an advisory whose fix was a Next.js 13 canary).
+    """
+    # Direct comparator: 16.2.4 is greater than 13.4.20-canary.13.
+    assert compare_version_order("16.2.4", "13.4.20-canary.13", "npm") == 1
+    assert compare_version_order("13.4.20-canary.13", "16.2.4", "npm") == -1
+
+    # Range matcher must NOT mark 16.2.4 as affected.
+    assert version_in_range("16.2.4", "0.9.9", "13.4.20-canary.13", None, "npm") is False
+
+    # But the truly vulnerable cases stay vulnerable.
+    assert version_in_range("13.4.19", "0.9.9", "13.4.20-canary.13", None, "npm") is True
+    assert version_in_range("1.0.0", "0.9.9", "13.4.20-canary.13", None, "npm") is True
+
+
+def test_npm_other_semver_prerelease_tags_compare_correctly():
+    """Other npm pre-release tag stems must round-trip the same way."""
+    # rc / beta / alpha / pre / nightly / next / snapshot — all SemVer 2.0
+    # pre-release stems that PEP 440 doesn't accept directly. The fall-back
+    # comparator strips them so a higher stable release is correctly seen as
+    # newer than a pre-release of an older line.
+    assert compare_version_order("5.0.0", "4.18.0-rc.1", "npm") == 1
+    assert compare_version_order("3.0.0", "2.0.0-beta.4", "npm") == 1
+    assert compare_version_order("2.0.0", "1.0.0-alpha.0", "npm") == 1
+    assert compare_version_order("2.0.0", "1.99.0-pre.5", "npm") == 1
+    assert compare_version_order("4.0.0", "3.5.0-nightly.20240101", "npm") == 1

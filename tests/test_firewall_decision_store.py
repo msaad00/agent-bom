@@ -144,7 +144,11 @@ def test_store_reset_for_tenant() -> None:
 # ─── Endpoint integration: ingest -> store -> /v1/firewall/stats ────────────
 
 
-_PROXY_SECRET = "firewall-tests-proxy-secret"
+# Match the constant used by other API auth tests so that regardless of
+# which test imports the FastAPI app first, the trusted-proxy secret cached
+# in middleware at instance time matches the value our headers use. Tests
+# that swap the secret per-test would race against the cached value.
+_PROXY_SECRET = "test-proxy-secret-with-32-plus-bytes"
 _AUTH_HEADERS = {
     "X-Agent-Bom-Role": "admin",
     # Use the "default" tenant — /v1/proxy/audit ingest reads tenant_id from

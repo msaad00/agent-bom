@@ -135,6 +135,23 @@ async def test_rotate_key_replaces_old_key_and_preserves_overlap_window(isolated
 
 
 @pytest.mark.asyncio
+async def test_rotate_key_accepts_missing_body(isolated_key_store):
+    """Per #2196 audit: rotation with no overrides should accept a missing
+    or empty body. The previous behaviour 422'd on no body, forcing callers
+    to send `{}` for a no-op default rotation."""
+    _, alpha = create_api_key("alpha", Role.ADMIN, tenant_id="tenant-alpha")
+    isolated_key_store.add(alpha)
+
+    # Missing body (req=None) -> defaults applied silently.
+    result = await enterprise.rotate_key(
+        _request("tenant-alpha", "alice-admin"),
+        alpha.key_id,
+    )
+    assert result["replaced_key_id"] == alpha.key_id
+    assert result["tenant_id"] == "tenant-alpha"
+
+
+@pytest.mark.asyncio
 async def test_rotate_key_returns_404_for_cross_tenant_key(isolated_key_store):
     _, beta = create_api_key("beta", Role.ADMIN, tenant_id="tenant-beta")
     isolated_key_store.add(beta)

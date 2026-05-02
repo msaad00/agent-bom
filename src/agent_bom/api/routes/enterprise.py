@@ -455,10 +455,22 @@ async def create_key(request: Request, req: CreateKeyRequest) -> dict:
 
 
 @router.post("/v1/auth/keys/{key_id}/rotate", tags=["enterprise"], status_code=201)
-async def rotate_key(request: Request, key_id: str, req: RotateKeyRequest) -> dict:
-    """Rotate an API key by minting a replacement and revoking the old key."""
+async def rotate_key(
+    request: Request,
+    key_id: str,
+    req: RotateKeyRequest | None = None,
+) -> dict:
+    """Rotate an API key by minting a replacement and revoking the old key.
+
+    Body is optional -- a rotation with no overrides accepts both `{}` and a
+    completely missing body. All RotateKeyRequest fields default to None
+    (inherit name from the current key, no expiry change, default overlap).
+    """
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.auth import create_api_key, get_api_key_policy, get_key_store, normalize_rotation_overlap_seconds
+
+    if req is None:
+        req = RotateKeyRequest()
 
     tenant_id = getattr(request.state, "tenant_id", "default")
     actor = getattr(request.state, "api_key_name", "") or "system"

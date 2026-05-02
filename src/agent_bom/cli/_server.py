@@ -32,16 +32,58 @@ def _oidc_enabled() -> bool:
     return oidc_enabled_from_env()
 
 
+def _scim_bearer_enabled() -> bool:
+    """True when a SCIM bearer token is configured.
+
+    Imported lazily so command-line tooling that doesn't touch SCIM doesn't
+    pay the import cost.
+    """
+    from agent_bom.api.scim import scim_enabled_from_env
+
+    return scim_enabled_from_env()
+
+
 def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_insecure_no_auth: bool) -> None:
-    """Refuse unauthenticated non-loopback binds unless explicitly overridden."""
-    if api_key or _oidc_enabled() or _is_loopback_host(host):
+    """Refuse unauthenticated non-loopback binds unless explicitly overridden.
+
+    Recognises four auth paths:
+    - explicit API key (--api-key / AGENT_BOM_API_KEY)
+    - OIDC (AGENT_BOM_OIDC_ISSUER + tenant providers)
+    - SCIM bearer (AGENT_BOM_SCIM_BEARER_TOKEN) -- the SCIM middleware
+      authenticates every endpoint when this is configured
+    - --allow-insecure-no-auth (explicit override; emits a loud warning when
+      another auth method is also configured so operators understand that
+      their `--allow-insecure-no-auth` does NOT actually disable the SCIM /
+      OIDC / API-key middleware path that's still in effect)
+    """
+    if _is_loopback_host(host):
+        return
+    has_api_key = bool(api_key)
+    has_oidc = _oidc_enabled()
+    has_scim = _scim_bearer_enabled()
+    if has_api_key or has_oidc or has_scim:
+        if allow_insecure_no_auth:
+            active: list[str] = []
+            if has_api_key:
+                active.append("API-key")
+            if has_oidc:
+                active.append("OIDC")
+            if has_scim:
+                active.append("SCIM-bearer")
+            click.secho(
+                f"warning: --allow-insecure-no-auth was passed but {', '.join(active)} authentication is "
+                "still configured -- requests will continue to be authenticated. "
+                "Unset the relevant env vars to actually run unauthenticated.",
+                fg="yellow",
+                err=True,
+            )
         return
     if allow_insecure_no_auth:
         return
     raise click.ClickException(
         f"Refusing to expose `{command}` on non-loopback host {host!r} without authentication. "
-        "Set --api-key / AGENT_BOM_API_KEY or configure AGENT_BOM_OIDC_ISSUER / "
-        "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON, "
+        "Set --api-key / AGENT_BOM_API_KEY, configure AGENT_BOM_OIDC_ISSUER / "
+        "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON, set AGENT_BOM_SCIM_BEARER_TOKEN, "
         "or pass --allow-insecure-no-auth to override."
     )
 
@@ -201,13 +243,22 @@ def _analytics_summary_rows(
     default=None,
     envvar="AGENT_BOM_API_KEY",
     metavar="KEY",
-    help="Require API key auth (Bearer token or X-API-Key header).",
+    help=(
+        "Require API key auth (Bearer token or X-API-Key header). "
+        "Other accepted auth paths: AGENT_BOM_OIDC_ISSUER (OIDC) and "
+        "AGENT_BOM_SCIM_BEARER_TOKEN (SCIM bearer for IdP integration)."
+    ),
 )
 @click.option(
     "--allow-insecure-no-auth",
     is_flag=True,
     default=False,
-    help="Allow unauthenticated non-loopback API exposure. Unsafe outside local development.",
+    help=(
+        "Allow unauthenticated non-loopback API exposure. Unsafe outside local development. "
+        "Note: when AGENT_BOM_API_KEY / AGENT_BOM_OIDC_ISSUER / "
+        "AGENT_BOM_SCIM_BEARER_TOKEN is also set, those auth paths still "
+        "enforce; the flag emits a warning instead of bypassing them."
+    ),
 )
 @click.option("--reload", is_flag=True, help="Auto-reload on code changes (development mode)")
 @click.option(
@@ -375,13 +426,22 @@ def serve_cmd(
     default=None,
     envvar="AGENT_BOM_API_KEY",
     metavar="KEY",
-    help="Require API key auth (Bearer token or X-API-Key header).",
+    help=(
+        "Require API key auth (Bearer token or X-API-Key header). "
+        "Other accepted auth paths: AGENT_BOM_OIDC_ISSUER (OIDC) and "
+        "AGENT_BOM_SCIM_BEARER_TOKEN (SCIM bearer for IdP integration)."
+    ),
 )
 @click.option(
     "--allow-insecure-no-auth",
     is_flag=True,
     default=False,
-    help="Allow unauthenticated non-loopback API exposure. Unsafe outside local development.",
+    help=(
+        "Allow unauthenticated non-loopback API exposure. Unsafe outside local development. "
+        "Note: when AGENT_BOM_API_KEY / AGENT_BOM_OIDC_ISSUER / "
+        "AGENT_BOM_SCIM_BEARER_TOKEN is also set, those auth paths still "
+        "enforce; the flag emits a warning instead of bypassing them."
+    ),
 )
 @click.option(
     "--rate-limit",

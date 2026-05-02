@@ -61,7 +61,14 @@ class SCIMStore(Protocol):
 
     def put_user(self, user: SCIMUser) -> SCIMUser: ...
     def get_user(self, tenant_id: str, user_id: str) -> SCIMUser | None: ...
-    def list_users(self, tenant_id: str, *, filter_attr: str | None = None, filter_value: str | None = None) -> list[SCIMUser]: ...
+    def list_users(
+        self,
+        tenant_id: str,
+        *,
+        filter_attr: str | None = None,
+        filter_value: str | None = None,
+        include_inactive: bool = False,
+    ) -> list[SCIMUser]: ...
     def deactivate_user(self, tenant_id: str, user_id: str) -> SCIMUser | None: ...
     def put_group(self, group: SCIMGroup) -> SCIMGroup: ...
     def get_group(self, tenant_id: str, group_id: str) -> SCIMGroup | None: ...
@@ -88,11 +95,28 @@ class InMemorySCIMStore:
             record = self._users.get((normalize_tenant_id(tenant_id), user_id))
             return record.model_copy(deep=True) if record else None
 
-    def list_users(self, tenant_id: str, *, filter_attr: str | None = None, filter_value: str | None = None) -> list[SCIMUser]:
+    def list_users(
+        self,
+        tenant_id: str,
+        *,
+        filter_attr: str | None = None,
+        filter_value: str | None = None,
+        include_inactive: bool = False,
+    ) -> list[SCIMUser]:
         tenant = normalize_tenant_id(tenant_id)
         with self._lock:
             users = [u.model_copy(deep=True) for (tid, _), u in self._users.items() if tid == tenant]
-        return [u for u in users if _matches_user(u, filter_attr, filter_value)]
+        matched = [u for u in users if _matches_user(u, filter_attr, filter_value)]
+        # Bulk listing (no filter) excludes deactivated users by default so
+        # SCIM DELETE actually removes them from IdP listings (Okta/Azure AD
+        # deprovisioning). Precise lookups by userName/externalId/id keep
+        # finding deactivated users -- IdP admins rely on these filters to
+        # verify a deprovisioning landed. `?filter=active eq <bool>` and
+        # `include_inactive=True` are both explicit "include inactive"
+        # signals.
+        if include_inactive or filter_attr in ("active", "userName", "externalId", "id"):
+            return matched
+        return [u for u in matched if u.active]
 
     def deactivate_user(self, tenant_id: str, user_id: str) -> SCIMUser | None:
         with self._lock:
@@ -191,12 +215,25 @@ class SQLiteSCIMStore:
         ).fetchone()
         return SCIMUser(**json.loads(row[0])) if row else None
 
-    def list_users(self, tenant_id: str, *, filter_attr: str | None = None, filter_value: str | None = None) -> list[SCIMUser]:
+    def list_users(
+        self,
+        tenant_id: str,
+        *,
+        filter_attr: str | None = None,
+        filter_value: str | None = None,
+        include_inactive: bool = False,
+    ) -> list[SCIMUser]:
         rows = self._conn.execute(
             "SELECT data FROM scim_users WHERE tenant_id = ? ORDER BY user_name ASC, user_id ASC",
             (normalize_tenant_id(tenant_id),),
         ).fetchall()
-        return [user for user in (SCIMUser(**json.loads(row[0])) for row in rows) if _matches_user(user, filter_attr, filter_value)]
+        users = [user for user in (SCIMUser(**json.loads(row[0])) for row in rows) if _matches_user(user, filter_attr, filter_value)]
+        # Matches in-memory + Postgres contract: bulk list excludes inactive
+        # by default; precise lookups by userName/externalId/id include
+        # inactive so IdP admins can verify deprovisioning.
+        if include_inactive or filter_attr in ("active", "userName", "externalId", "id"):
+            return users
+        return [u for u in users if u.active]
 
     def deactivate_user(self, tenant_id: str, user_id: str) -> SCIMUser | None:
         user = self.get_user(tenant_id, user_id)

@@ -1,4 +1,4 @@
-"""Regression tests for quality issues found by Codex audits.
+"""Regression tests for quality issues caught by historical scanner audits.
 
 These tests prevent regressions on fixes that were verified at runtime.
 """

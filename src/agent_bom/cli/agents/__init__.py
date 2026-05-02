@@ -1176,16 +1176,26 @@ def scan(
             if not quiet:
                 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[bold]{task.description}[/bold]"),
-                    BarColumn(bar_width=30),
-                    MofNCompleteColumn(),
-                    TextColumn("[dim]{task.fields[phase]}[/dim]"),
-                    TimeElapsedColumn(),
-                    console=con,
-                    transient=True,
-                ) as progress:
+                from agent_bom.cli._common import rich_log_handler_during_progress
+
+                # Route ``agent_bom.scanners.*`` warnings (rate-limit retries,
+                # OSV fallbacks, etc.) through Rich for the duration of the
+                # spinner so log lines render *above* the live region instead
+                # of punching through it. Without this the terminal stacks
+                # copies of "Scanning N packages" each time a warning fires.
+                with (
+                    rich_log_handler_during_progress(con),
+                    Progress(
+                        SpinnerColumn(),
+                        TextColumn("[bold]{task.description}[/bold]"),
+                        BarColumn(bar_width=30),
+                        MofNCompleteColumn(),
+                        TextColumn("[dim]{task.fields[phase]}[/dim]"),
+                        TimeElapsedColumn(),
+                        console=con,
+                        transient=True,
+                    ) as progress,
+                ):
                     scan_task = progress.add_task(
                         f"Scanning {_unique_pkgs} packages",
                         total=4,
@@ -1266,7 +1276,28 @@ def scan(
             if scan_warnings:
                 con.print(f"  [yellow]⚠[/yellow] Scan completed with {len(scan_warnings)} warning(s); results may be incomplete.")
             if blast_radii:
-                con.print(f"  [red]⚠[/red] Scan complete — [bold]{len(blast_radii)}[/bold] finding(s)")
+                # Don't repeat the bare finding count — the scanner already
+                # printed "Found N vulnerabilities across N finding(s)" above.
+                # Surface a severity breakdown here instead so the closer
+                # line tells the operator something new.
+                sev_counts: dict[str, int] = {}
+                for br in blast_radii:
+                    # ``BlastRadius.severity`` lives on the wrapped Vulnerability,
+                    # not the BlastRadius dataclass itself. Severity is a
+                    # ``str, Enum`` so ``str(...)`` yields the canonical token.
+                    raw_sev = getattr(br.vulnerability, "severity", None) if getattr(br, "vulnerability", None) else None
+                    sev_key = (str(raw_sev).lower() if raw_sev else "unknown") or "unknown"
+                    sev_counts[sev_key] = sev_counts.get(sev_key, 0) + 1
+                _sev_order = ["critical", "high", "medium", "low", "unknown"]
+                _sev_color = {
+                    "critical": "red bold",
+                    "high": "red",
+                    "medium": "yellow",
+                    "low": "blue",
+                    "unknown": "dim",
+                }
+                _sev_str = " · ".join(f"[{_sev_color[s]}]{sev_counts[s]} {s}[/{_sev_color[s]}]" for s in _sev_order if s in sev_counts)
+                con.print(f"  [red]⚠[/red] Scan complete — {_sev_str}")
             elif offline:
                 if unresolved:
                     con.print(

@@ -429,7 +429,56 @@ def compare_version_order(left: str, right: str, ecosystem: str) -> int | None:
         right_norm = normalize_version(right, eco)
         return (Version(left_norm) > Version(right_norm)) - (Version(left_norm) < Version(right_norm))
     except Exception:  # noqa: BLE001
-        return None
+        # PEP 440 (``packaging.Version``) rejects npm-style pre-release tags
+        # like ``13.4.20-canary.13`` / ``5.0.0-rc.1`` / ``1.0.0-beta.4`` which
+        # are valid SemVer for npm/yarn/pnpm publishes. Without a fall-back
+        # the comparator returns None, the OSV/GHSA range matcher conserva-
+        # tively marks the package as affected, and downstream emits a false
+        # positive (e.g. ``next@16.2.4`` flagged by an advisory whose fix is
+        # ``< 13.4.20-canary.13``).
+        #
+        # Retry with the pre-release suffix stripped from BOTH sides so we
+        # get a defensible numeric major.minor.patch comparison. This is
+        # technically lossy (``13.4.20-canary.X`` is a pre-release of
+        # ``13.4.20`` per SemVer 2.0), but for OSV/GHSA introduced/fixed
+        # bounds the major.minor.patch view is the safe answer: operators
+        # on a strictly higher major.minor.patch shouldn't be flagged.
+        try:
+            from packaging.version import Version
+
+            left_stripped = _strip_semver_prerelease_tag(left)
+            right_stripped = _strip_semver_prerelease_tag(right)
+            if left_stripped == left and right_stripped == right:
+                return None  # no pre-release tag — original failure stands
+            ln = normalize_version(left_stripped, eco)
+            rn = normalize_version(right_stripped, eco)
+            return (Version(ln) > Version(rn)) - (Version(ln) < Version(rn))
+        except Exception:  # noqa: BLE001
+            return None
+
+
+_SEMVER_PRERELEASE_TAG_RE = None
+
+
+def _strip_semver_prerelease_tag(version: str) -> str:
+    """Strip a SemVer pre-release suffix from a version string.
+
+    Recognised tag stems: ``canary, beta, alpha, rc, pre, dev, nightly,
+    next, snapshot, m`` (Spring milestone), ``preview``. Everything after
+    the tag (e.g. ``.13`` in ``13.4.20-canary.13``) is also discarded so
+    build-metadata and serial counters fall away. Returns the input
+    unchanged when no recognized suffix is present so the caller can
+    detect "nothing to retry" and avoid an infinite loop.
+    """
+    global _SEMVER_PRERELEASE_TAG_RE
+    if _SEMVER_PRERELEASE_TAG_RE is None:
+        import re
+
+        _SEMVER_PRERELEASE_TAG_RE = re.compile(
+            r"-(?:canary|beta|alpha|rc|pre|dev|nightly|next|snapshot|m|preview)(?:\.[A-Za-z0-9.-]+)?$",
+            re.IGNORECASE,
+        )
+    return _SEMVER_PRERELEASE_TAG_RE.sub("", version)
 
 
 @lru_cache(maxsize=65536)

@@ -356,7 +356,22 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
 
     console.print()
     total = len(display_list)
-    title = f"Top Findings ({min(limit, total)} of {total})" if total > limit else f"Findings ({len(shown)})"
+    shown_n = len(shown)
+    total_active = len(active_findings)
+    if total > limit:
+        # Priority list truncated by --limit; tell the operator how many
+        # additional priority rows aren't shown.
+        suffix = ""
+        if total_active > total:
+            suffix = f" · {total_active - total} more below priority"
+        title = f"Top Findings ({min(limit, total)} of {total}{suffix})"
+    elif total_active > shown_n:
+        # Display list fits in --limit but priority filtering hid some
+        # lower-severity rows further down. Tell the operator both numbers
+        # so '+ N hidden' below the table doesn't look contradictory.
+        title = f"Findings ({shown_n} of {total_active} shown · {total_active - shown_n} hidden)"
+    else:
+        title = f"Findings ({shown_n})"
     console.print(Rule(f"[bold]{title}[/bold]", style="dim"))
 
     # Context-aware table layout

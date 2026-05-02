@@ -1283,10 +1283,18 @@ def scan(
                 sev_counts: dict[str, int] = {}
                 for br in blast_radii:
                     # ``BlastRadius.severity`` lives on the wrapped Vulnerability,
-                    # not the BlastRadius dataclass itself. Severity is a
-                    # ``str, Enum`` so ``str(...)`` yields the canonical token.
+                    # not the BlastRadius dataclass itself. ``Severity(str, Enum)``
+                    # holds the canonical token in ``.value`` (e.g. "critical").
+                    # On Python 3.13 ``str(Severity.CRITICAL)`` returns
+                    # "Severity.CRITICAL" rather than "critical", so reach for
+                    # ``.value`` first and only fall through to ``str()`` for
+                    # plain-string severities (policy findings, mocks).
                     raw_sev = getattr(br.vulnerability, "severity", None) if getattr(br, "vulnerability", None) else None
-                    sev_key = (str(raw_sev).lower() if raw_sev else "unknown") or "unknown"
+                    if raw_sev is None:
+                        sev_key = "unknown"
+                    else:
+                        sev_value = getattr(raw_sev, "value", raw_sev)
+                        sev_key = str(sev_value).lower() or "unknown"
                     sev_counts[sev_key] = sev_counts.get(sev_key, 0) + 1
                 _sev_order = ["critical", "high", "medium", "low", "unknown"]
                 _sev_color = {

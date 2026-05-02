@@ -875,3 +875,30 @@ def test_compliance_export_help_lists_supported_values():
     assert result.exit_code == 0
     assert "--compliance-export" in result.output
     assert "cmmc, fedramp, nist-ai-rmf" in result.output
+
+
+def test_scan_complete_closer_renders_severity_breakdown():
+    """Regression: ``Scan complete -- N high · M medium`` must render content,
+    not just an empty trailing dash.
+
+    On Python 3.13 ``str(Severity.CRITICAL)`` returns ``'Severity.CRITICAL'``
+    rather than ``'critical'``, which previously caused the closer's
+    severity-key lookup to miss every entry in the canonical
+    ``["critical", "high", "medium", "low", "unknown"]`` order list and
+    render an empty breakdown after ``Scan complete --``.
+    """
+    result = _run(["scan", "--demo", "--no-auto-update-db"])
+
+    # The closer fires only when blast_radii is non-empty; demo provides 50+.
+    if "Scan complete" in result.output:
+        # Must NOT be the empty-breakdown form.
+        # Find the closer line and confirm it has content after the em dash.
+        for line in result.output.splitlines():
+            if "Scan complete" in line and "—" in line:
+                trailing = line.split("—", 1)[1].strip()
+                assert trailing, f"closer rendered empty breakdown: {line!r}"
+                # And the trailing content should mention at least one severity tier.
+                assert any(s in trailing.lower() for s in ("critical", "high", "medium", "low", "advisory")), (
+                    f"closer rendered no severity tier: {line!r}"
+                )
+                break

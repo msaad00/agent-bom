@@ -120,10 +120,36 @@ def test_scim_user_create_list_patch_and_deactivate(scim_client: TestClient) -> 
     deleted = scim_client.delete(f"/scim/v2/Users/{user_id}", headers=_headers())
     assert deleted.status_code == 204
 
+    # Per #2196 audit, the SCIM DELETE soft-deletes via active=false. The user
+    # MUST disappear from default list responses so Okta/Azure AD see the
+    # deprovisioning land. GET by id still works (so IdPs can verify the
+    # deactivation worked) and shows active=false.
     fetched = scim_client.get(f"/scim/v2/Users/{user_id}", headers=_headers())
     assert fetched.status_code == 200
     assert fetched.json()["active"] is False
     assert fetched.json()[AGENT_BOM_USER_EXTENSION]["memberships"][0]["active"] is False
+
+    # Default list excludes deactivated users -- this is the audit-blocking
+    # IdP deprovisioning fix (#2196).
+    default_list = scim_client.get("/scim/v2/Users", headers=_headers())
+    assert default_list.status_code == 200
+    listed_ids = [r["id"] for r in default_list.json()["Resources"]]
+    assert user_id not in listed_ids
+    assert default_list.json()["totalResults"] == len(listed_ids)
+
+    # Filter `active eq false` surfaces deactivated users so admins can audit.
+    inactive_list = scim_client.get("/scim/v2/Users?filter=active eq false", headers=_headers())
+    assert inactive_list.status_code == 200
+    assert any(r["id"] == user_id for r in inactive_list.json()["Resources"])
+
+    # Re-creating a userName for a deactivated user still 409s (the
+    # duplicate check looks at the full set, including inactive).
+    re_created = scim_client.post(
+        "/scim/v2/Users",
+        headers=_headers(),
+        json={"userName": "alice.renamed@example.com"},
+    )
+    assert re_created.status_code == 409
 
 
 def test_scim_user_roles_are_normalized_and_tenant_bound(

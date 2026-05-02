@@ -23,6 +23,11 @@ SCIM_RESOURCE_TYPE_SCHEMA = "urn:ietf:params:scim:schemas:core:2.0:ResourceType"
 SCIM_AGENT_BOM_USER_EXTENSION = "urn:agent-bom:params:scim:schemas:extension:identity:1.0:User"
 router = APIRouter(prefix=scim_base_path(), tags=["scim"])
 _FILTER_RE = re.compile(r'^\s*(userName|displayName|externalId|id)\s+eq\s+"([^"]{1,512})"\s*$')
+# `active` is a boolean filter — admins use `?filter=active eq false` to audit
+# deactivated users (Okta/Azure AD deprovisioning verification). The regex
+# accepts an optional quoted form so SCIM clients that always quote literals
+# still work.
+_ACTIVE_FILTER_RE = re.compile(r'^\s*active\s+eq\s+"?(true|false)"?\s*$', re.IGNORECASE)
 
 
 def _tenant_id(request: Request) -> str:
@@ -42,9 +47,12 @@ def _parse_filter(raw: str | None) -> tuple[str | None, str | None]:
     if not raw:
         return None, None
     match = _FILTER_RE.match(raw)
-    if not match:
-        raise HTTPException(status_code=400, detail="Unsupported SCIM filter")
-    return match.group(1), match.group(2)
+    if match:
+        return match.group(1), match.group(2)
+    active = _ACTIVE_FILTER_RE.match(raw)
+    if active:
+        return "active", active.group(1).lower()
+    raise HTTPException(status_code=400, detail="Unsupported SCIM filter")
 
 
 def _paginate(items: list[Any], start_index: int, count: int) -> list[Any]:
@@ -344,7 +352,14 @@ async def list_users(
 ) -> dict[str, Any]:
     _require_scim(request)
     attr, value = _parse_filter(scim_filter)
-    users = _get_scim_store().list_users(_tenant_id(request), filter_attr=attr, filter_value=value)
+    if attr == "active":
+        # `?filter=active eq true|false` — caller wants only active or only
+        # deactivated. Resolve the boolean here and let the store honour it.
+        want_active = value == "true"
+        all_users = _get_scim_store().list_users(_tenant_id(request), include_inactive=True)
+        users = [u for u in all_users if u.active == want_active]
+    else:
+        users = _get_scim_store().list_users(_tenant_id(request), filter_attr=attr, filter_value=value)
     page = _paginate(users, start_index, count)
     return {
         "schemas": [SCIM_LIST_SCHEMA],
@@ -361,9 +376,11 @@ async def create_user(request: Request, body: dict[str, Any]) -> dict[str, Any]:
     tenant_id = _tenant_id(request)
     store = _get_scim_store()
     user = _user_from_payload(tenant_id, body)
-    if store.list_users(tenant_id, filter_attr="userName", filter_value=user.user_name):
+    # Duplicate check must include deactivated users so re-creating a
+    # deprovisioned userName doesn't silently shadow the deactivated record.
+    if store.list_users(tenant_id, filter_attr="userName", filter_value=user.user_name, include_inactive=True):
         raise HTTPException(status_code=409, detail="User already exists")
-    if user.external_id and store.list_users(tenant_id, filter_attr="externalId", filter_value=user.external_id):
+    if user.external_id and store.list_users(tenant_id, filter_attr="externalId", filter_value=user.external_id, include_inactive=True):
         raise HTTPException(status_code=409, detail="User already exists")
     saved = store.put_user(user)
     log_action(

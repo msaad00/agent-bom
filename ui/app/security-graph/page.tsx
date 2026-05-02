@@ -14,6 +14,13 @@ import {
 } from "lucide-react";
 
 import { ApiOfflineState } from "@/components/api-offline-state";
+import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
+
+function _classifyGraphErrorKind(err: unknown): "network" | "auth" | "forbidden" {
+  if (err instanceof ApiAuthError) return "auth";
+  if (err instanceof ApiForbiddenError) return "forbidden";
+  return "network";
+}
 import { AttackPathCard } from "@/components/attack-path-card";
 import { GraphEmptyState } from "@/components/graph-state-panels";
 import { PostureGrade } from "@/components/posture-grade";
@@ -91,6 +98,7 @@ function SecurityGraphPageContent() {
   const [loadingSnapshots, setLoadingSnapshots] = useState(true);
   const [loadingGraph, setLoadingGraph] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [apiErrorKind, setApiErrorKind] = useState<"network" | "auth" | "forbidden">("network");
   const [selectedAttackPathKey, setSelectedAttackPathKey] = useState<string | null>(null);
   const [focusApplied, setFocusApplied] = useState(false);
 
@@ -132,6 +140,7 @@ function SecurityGraphPageContent() {
       } catch (error) {
         if (cancelled) return;
         setApiError(error instanceof Error ? error.message : "Failed to load graph snapshots");
+        setApiErrorKind(_classifyGraphErrorKind(error));
         setSnapshots([]);
         setGraphData(null);
       } finally {
@@ -305,10 +314,12 @@ function SecurityGraphPageContent() {
   }
 
   if (apiError && !loadingSnapshots && snapshots.length === 0) {
+    const fallbackTitle = apiErrorKind === "network" ? "Cannot load the security graph" : undefined;
     return (
       <ApiOfflineState
-        title="Cannot load the security graph"
+        title={fallbackTitle}
         detail={apiError}
+        kind={apiErrorKind}
       />
     );
   }

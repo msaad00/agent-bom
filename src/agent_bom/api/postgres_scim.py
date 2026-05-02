@@ -84,7 +84,14 @@ class PostgresSCIMStore:
             ).fetchone()
         return _load_user(row[0]) if row else None
 
-    def list_users(self, tenant_id: str, *, filter_attr: str | None = None, filter_value: str | None = None) -> list[SCIMUser]:
+    def list_users(
+        self,
+        tenant_id: str,
+        *,
+        filter_attr: str | None = None,
+        filter_value: str | None = None,
+        include_inactive: bool = False,
+    ) -> list[SCIMUser]:
         tenant = normalize_tenant_id(tenant_id)
         query = "SELECT data FROM scim_users WHERE tenant_id = %s ORDER BY user_name ASC, user_id ASC"
         params: tuple[object, ...] = (tenant,)
@@ -99,7 +106,15 @@ class PostgresSCIMStore:
             params = (tenant, filter_value)
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(query, params).fetchall()
-        return [_load_user(row[0]) for row in rows]
+        users = [_load_user(row[0]) for row in rows]
+        # Bulk listing excludes deactivated users so SCIM DELETE actually
+        # removes them from IdP listings (Okta/Azure AD deprovisioning).
+        # Precise lookups by userName/externalId/id keep finding deactivated
+        # users -- IdP admins rely on those filters to verify a
+        # deprovisioning landed. Matches the in-memory store contract.
+        if include_inactive or filter_attr in ("active", "userName", "externalId", "id"):
+            return users
+        return [u for u in users if u.active]
 
     def deactivate_user(self, tenant_id: str, user_id: str) -> SCIMUser | None:
         user = self.get_user(tenant_id, user_id)

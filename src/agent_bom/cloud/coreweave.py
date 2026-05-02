@@ -19,6 +19,7 @@ import logging
 import shutil
 import subprocess
 
+from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
@@ -132,6 +133,26 @@ def discover(
     except Exception as exc:
         warnings.append(f"CoreWeave InfiniBand error: {exc}")
 
+    # Per-run discovery envelope (#2083 PR B). CoreWeave reads through kubectl
+    # against the user's kubeconfig context; the kube RBAC verbs we exercise
+    # are documented here so operators can audit the role bindings.
+    scope: list[str] = []
+    if context:
+        scope.append(f"coreweave:context/{context}")
+    if namespace:
+        scope.append(f"coreweave:namespace/{namespace}")
+    attach_envelope_to_agents(
+        agents,
+        scan_mode=ScanMode.CLOUD_READ_ONLY,
+        discovery_scope=tuple(scope),
+        permissions_used=(
+            "kube:virtualservers.virtualization.coreweave.com:list",
+            "kube:inferenceservices.serving.kserve.io:list",
+            "kube:pods:list",
+            "kube:jobs.batch:list",
+        ),
+        redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+    )
     return agents, warnings
 
 

@@ -25,6 +25,7 @@ import os
 import re
 from typing import Any, Optional
 
+from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
@@ -191,6 +192,23 @@ def discover(
     except Exception as exc:
         warnings.append(f"Could not list Databricks serving endpoints: {exc}")
 
+    # Per-run discovery envelope (#2083 PR B).
+    scope: list[str] = []
+    if host:
+        scope.append(f"databricks:workspace/{host}")
+    attach_envelope_to_agents(
+        agents,
+        scan_mode=ScanMode.SAAS_READ_ONLY,
+        discovery_scope=tuple(scope),
+        permissions_used=(
+            "clusters:list",
+            "clusters:get",
+            "libraries:cluster-status",
+            "serving-endpoints:list",
+            "serving-endpoints:get",
+        ),
+        redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+    )
     return agents, warnings
 
 

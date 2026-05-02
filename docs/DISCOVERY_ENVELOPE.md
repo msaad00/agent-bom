@@ -67,9 +67,29 @@ forward-compatible producer doesn't crash an older consumer.
 
 ## Producers
 
-Cloud providers populate the envelope at the end of `discover()` and attach
-it to every returned `Agent`. AWS is the canonical example wired in the
-foundation PR (#2083 PR A); other providers + connectors follow.
+Every cloud / SaaS / local provider populates the envelope at the end of
+its `discover()` and attaches it to every returned `Agent` via
+`attach_envelope_to_agents(...)`. As of PR B the wired set is:
+
+| Provider | `scan_mode` |
+|---|---|
+| `aws` | `cloud_read_only` |
+| `gcp` | `cloud_read_only` |
+| `azure` | `cloud_read_only` |
+| `coreweave` | `cloud_read_only` |
+| `nebius` | `cloud_read_only` |
+| `snowflake` | `saas_read_only` |
+| `databricks` | `saas_read_only` |
+| `mlflow_provider` | `saas_read_only` |
+| `wandb_provider` | `saas_read_only` |
+| `huggingface` | `saas_read_only` |
+| `openai_provider` | `saas_read_only` |
+| `ollama` | `local_only` |
+
+A parametric test in `tests/test_discovery_envelope.py` enforces that each
+of these providers references the canonical envelope type and uses its
+declared `ScanMode`, so a future refactor can't quietly reclass a SaaS
+provider as `cloud_read_only` (or vice versa) without the test catching it.
 
 ```python
 from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode

@@ -10,6 +10,7 @@ import logging
 import os
 from pathlib import Path
 
+from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,23 @@ def discover(
     else:
         warnings.append(f"Ollama not detected (no API at {resolved_host}, no manifests at {_MANIFEST_DIR})")
 
+    # Per-run discovery envelope (#2083 PR B). Ollama is local-only -- no
+    # network egress, just an HTTP call to localhost + filesystem reads of
+    # the manifest directory.
+    scope: list[str] = []
+    if resolved_host:
+        scope.append(f"ollama:host/{resolved_host}")
+    scope.append(f"ollama:manifest_dir/{_MANIFEST_DIR}")
+    attach_envelope_to_agents(
+        agents,
+        scan_mode=ScanMode.LOCAL_ONLY,
+        discovery_scope=tuple(scope),
+        permissions_used=(
+            "ollama:GET /api/tags",
+            "filesystem:read manifests",
+        ),
+        redaction_status=RedactionStatus.NOT_APPLICABLE,
+    )
     return agents, warnings
 
 

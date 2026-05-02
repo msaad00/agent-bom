@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import os
 
+from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
@@ -109,6 +110,28 @@ def discover(
     except Exception as exc:
         warnings.append(sanitize_discovery_warning(f"Cloud Run discovery error: {exc}"))
 
+    # Per-run discovery envelope (#2083 PR B).
+    scope: list[str] = []
+    if resolved_project:
+        scope.append(f"gcp:project/{resolved_project}")
+    if region:
+        scope.append(f"gcp:region/{region}")
+    attach_envelope_to_agents(
+        agents,
+        scan_mode=ScanMode.CLOUD_READ_ONLY,
+        discovery_scope=tuple(scope),
+        permissions_used=(
+            "aiplatform.endpoints.list",
+            "aiplatform.endpoints.get",
+            "cloudfunctions.functions.list",
+            "cloudfunctions.functions.get",
+            "container.clusters.list",
+            "container.clusters.get",
+            "run.services.list",
+            "run.services.get",
+        ),
+        redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+    )
     return agents, warnings
 
 

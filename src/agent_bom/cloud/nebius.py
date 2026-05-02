@@ -16,6 +16,7 @@ import os
 import shutil
 import subprocess
 
+from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
 from .base import CloudDiscoveryError
@@ -141,6 +142,24 @@ def discover(
     except Exception as exc:
         warnings.append(f"Nebius container service discovery error: {exc}")
 
+    # Per-run discovery envelope (#2083 PR B).
+    scope: list[str] = []
+    if resolved_project:
+        scope.append(f"nebius:project/{resolved_project}")
+    attach_envelope_to_agents(
+        agents,
+        scan_mode=ScanMode.CLOUD_READ_ONLY,
+        discovery_scope=tuple(scope),
+        permissions_used=(
+            "ai-studio:endpoints:list",
+            "ai-studio:endpoints:get",
+            "compute:instances:list",
+            "compute:instances:get",
+            "k8s:pods:list",
+            "container-service:list",
+        ),
+        redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+    )
     return agents, warnings
 
 

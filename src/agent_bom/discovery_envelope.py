@@ -151,9 +151,38 @@ class DiscoveryEnvelope:
         )
 
 
+def attach_envelope_to_agents(
+    agents: "list[Any]",
+    *,
+    scan_mode: ScanMode,
+    discovery_scope: tuple[str, ...] = (),
+    permissions_used: tuple[str, ...] = (),
+    redaction_status: RedactionStatus = RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+) -> None:
+    """Build a single envelope and attach it to every Agent that doesn't carry one.
+
+    Convenience for cloud / SaaS providers: build once at the end of
+    `discover()`, attach to every Agent in one pass. Existing envelopes
+    on individual Agents are preserved (so a provider that produces
+    multiple agent kinds with different envelopes can pre-populate
+    selectively before calling this).
+    """
+    envelope = DiscoveryEnvelope(
+        scan_mode=scan_mode,
+        discovery_scope=discovery_scope,
+        permissions_used=permissions_used,
+        redaction_status=redaction_status,
+    )
+    payload = envelope.to_dict()
+    for agent in agents:
+        if getattr(agent, "discovery_envelope", None) is None:
+            agent.discovery_envelope = payload
+
+
 __all__ = [
     "ENVELOPE_SCHEMA_VERSION",
     "DiscoveryEnvelope",
     "RedactionStatus",
     "ScanMode",
+    "attach_envelope_to_agents",
 ]

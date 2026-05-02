@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import os
 
+from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
 from .base import CloudDiscoveryError
@@ -80,6 +81,19 @@ def discover(
         except Exception as exc:
             warnings.append(f"HF inference endpoint discovery error: {exc}")
 
+    # Per-run discovery envelope (#2083 PR B).
+    attach_envelope_to_agents(
+        agents,
+        scan_mode=ScanMode.SAAS_READ_ONLY,
+        discovery_scope=("huggingface:hub",),
+        permissions_used=(
+            "huggingface:models:list",
+            "huggingface:models:get",
+            "huggingface:spaces:list",
+            "huggingface:inference-endpoints:list",
+        ),
+        redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+    )
     return agents, warnings
 
 

@@ -194,3 +194,63 @@ def test_aws_envelope_attached_to_discovered_agents(monkeypatch: pytest.MonkeyPa
     assert "sts:GetCallerIdentity" in envelope["permissions_used"]
     assert "bedrock-agent:ListAgents" in envelope["permissions_used"]
     assert envelope["envelope_version"] == ENVELOPE_SCHEMA_VERSION
+
+
+# ─── PR B parity: every wired provider attaches a valid envelope ─────────
+
+
+def test_attach_envelope_helper_skips_agents_with_existing_envelope() -> None:
+    from agent_bom.discovery_envelope import attach_envelope_to_agents
+
+    pre = DiscoveryEnvelope(scan_mode=ScanMode.RUNTIME_PROBE).to_dict()
+    a = Agent(
+        name="x",
+        agent_type=AgentType.CUSTOM,
+        config_path="/tmp/x",
+        discovery_envelope=pre,
+    )
+    b = Agent(name="y", agent_type=AgentType.CUSTOM, config_path="/tmp/y")
+    attach_envelope_to_agents(
+        [a, b],
+        scan_mode=ScanMode.CLOUD_READ_ONLY,
+        permissions_used=("test:perm",),
+    )
+    assert a.discovery_envelope == pre
+    assert b.discovery_envelope is not None
+    assert b.discovery_envelope["scan_mode"] == ScanMode.CLOUD_READ_ONLY.value
+
+
+@pytest.mark.parametrize(
+    "module_path,expected_mode",
+    [
+        ("agent_bom.cloud.aws", ScanMode.CLOUD_READ_ONLY),
+        ("agent_bom.cloud.gcp", ScanMode.CLOUD_READ_ONLY),
+        ("agent_bom.cloud.azure", ScanMode.CLOUD_READ_ONLY),
+        ("agent_bom.cloud.coreweave", ScanMode.CLOUD_READ_ONLY),
+        ("agent_bom.cloud.nebius", ScanMode.CLOUD_READ_ONLY),
+        ("agent_bom.cloud.snowflake", ScanMode.SAAS_READ_ONLY),
+        ("agent_bom.cloud.databricks", ScanMode.SAAS_READ_ONLY),
+        ("agent_bom.cloud.mlflow_provider", ScanMode.SAAS_READ_ONLY),
+        ("agent_bom.cloud.wandb_provider", ScanMode.SAAS_READ_ONLY),
+        ("agent_bom.cloud.huggingface", ScanMode.SAAS_READ_ONLY),
+        ("agent_bom.cloud.openai_provider", ScanMode.SAAS_READ_ONLY),
+        ("agent_bom.cloud.ollama", ScanMode.LOCAL_ONLY),
+    ],
+)
+def test_provider_imports_envelope_and_attach_helper(module_path, expected_mode):
+    """Every PR-B-wired provider imports the envelope helpers + uses the
+    right ScanMode for its surface.
+
+    Guards against regressions where a provider drops the import or quietly
+    switches surfaces (e.g. SaaS reclassed as cloud_read_only).
+    """
+    import importlib
+
+    mod = importlib.import_module(module_path)
+    src = open(mod.__file__).read()  # noqa: SIM115
+    # Provider may use the helper or build the envelope inline; either way it
+    # must reference the canonical type so the trust contract is auditable.
+    assert "attach_envelope_to_agents" in src or "DiscoveryEnvelope(" in src, (
+        f"{module_path} must reference DiscoveryEnvelope or attach_envelope_to_agents"
+    )
+    assert f"ScanMode.{expected_mode.name}" in src, f"{module_path} should use ScanMode.{expected_mode.name}"

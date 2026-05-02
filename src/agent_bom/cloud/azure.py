@@ -14,6 +14,7 @@ import logging
 import os
 from typing import Any
 
+from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
@@ -158,6 +159,26 @@ def discover(
     except Exception as exc:
         warnings.append(f"Azure ML endpoints discovery error: {exc}")
 
+    # Per-run discovery envelope (#2083 PR B).
+    scope: list[str] = []
+    if resolved_sub:
+        scope.append(f"azure:subscription/{resolved_sub}")
+    if resource_group:
+        scope.append(f"azure:resource-group/{resource_group}")
+    attach_envelope_to_agents(
+        agents,
+        scan_mode=ScanMode.CLOUD_READ_ONLY,
+        discovery_scope=tuple(scope),
+        permissions_used=(
+            "Microsoft.App/containerApps/read",
+            "Microsoft.CognitiveServices/accounts/read",
+            "Microsoft.CognitiveServices/accounts/deployments/read",
+            "Microsoft.Web/sites/read",
+            "Microsoft.ContainerInstance/containerGroups/read",
+            "Microsoft.MachineLearningServices/workspaces/onlineEndpoints/read",
+        ),
+        redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+    )
     return agents, warnings
 
 

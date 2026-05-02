@@ -38,6 +38,7 @@ import re
 import warnings
 from typing import Any
 
+from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.governance import (
     AccessRecord,
     ActivityTimeline,
@@ -359,6 +360,30 @@ def discover(
     finally:
         conn.close()
 
+    # Per-run discovery envelope (#2083 PR B). Snowflake reads through the
+    # SQL surface using the user's role. We expose the role as a scope
+    # qualifier so operators can see which Snowflake role this run used.
+    scope: list[str] = []
+    if resolved_account:
+        scope.append(f"snowflake:account/{resolved_account}")
+    if database:
+        scope.append(f"snowflake:database/{database}")
+    if schema:
+        scope.append(f"snowflake:schema/{schema}")
+    attach_envelope_to_agents(
+        agents,
+        scan_mode=ScanMode.SAAS_READ_ONLY,
+        discovery_scope=tuple(scope),
+        permissions_used=(
+            "INFORMATION_SCHEMA.AGENTS:SELECT",
+            "INFORMATION_SCHEMA.CORTEX_SEARCH_SERVICES:SELECT",
+            "INFORMATION_SCHEMA.PACKAGES:SELECT",
+            "INFORMATION_SCHEMA.STAGES:SELECT",
+            "INFORMATION_SCHEMA.STREAMLITS:SELECT",
+            "INFORMATION_SCHEMA.NOTEBOOKS:SELECT",
+        ),
+        redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+    )
     return agents, warnings
 
 

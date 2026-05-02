@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import os
 
+from agent_bom.discovery_envelope import RedactionStatus, ScanMode, attach_envelope_to_agents
 from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
 
 from .base import CloudDiscoveryError
@@ -71,6 +72,25 @@ def discover(
     except Exception as exc:
         warnings.append(f"W&B artifact discovery error: {exc}")
 
+    # Per-run discovery envelope (#2083 PR B).
+    scope: list[str] = []
+    if resolved_entity:
+        scope.append(f"wandb:entity/{resolved_entity}")
+    if project:
+        scope.append(f"wandb:project/{project}")
+    attach_envelope_to_agents(
+        agents,
+        scan_mode=ScanMode.SAAS_READ_ONLY,
+        discovery_scope=tuple(scope),
+        permissions_used=(
+            "wandb:runs:list",
+            "wandb:runs:get",
+            "wandb:artifacts:list",
+            "wandb:artifacts:get",
+            "wandb:registry:get",
+        ),
+        redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+    )
     return agents, warnings
 
 

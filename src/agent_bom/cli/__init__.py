@@ -162,6 +162,10 @@ policy_group.add_command(apply_command, "apply")
 policy_group.add_command(guard_cmd, "check")  # guard → policy check
 main.add_command(policy_group)
 
+from agent_bom.cli._firewall import firewall_group  # noqa: E402
+
+main.add_command(firewall_group)
+
 from agent_bom.cli._server import api_cmd, mcp_server_cmd, serve_cmd  # noqa: E402
 
 main.add_command(serve_cmd, "serve")

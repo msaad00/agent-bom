@@ -8,6 +8,12 @@ from agent_bom.models import Agent, AgentType, BlastRadius, MCPServer, Package, 
 
 
 class _DummyStore:
+    # Mirror the real InMemoryJobStore semantics: store and caller share the
+    # same job object reference, so the pipeline must skip in-place result
+    # compaction (which would strip `agents`/`blast_radius` from the very
+    # object the caller is asserting on).
+    retains_job_objects_in_memory = True
+
     def __init__(self) -> None:
         self.jobs: list[ScanJob] = []
 

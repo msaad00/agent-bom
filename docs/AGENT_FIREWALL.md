@@ -98,13 +98,83 @@ agent-bom firewall check ./firewall.json cursor snowflake-cli \
     --source-role trusted-orchestrator
 ```
 
+## Gateway integration
+
+The gateway is the central authority for firewall decisions. Operators run:
+
+```bash
+agent-bom gateway serve \
+    --upstreams ./gateway-upstreams.yaml \
+    --firewall-policy ./firewall.json \
+    --firewall-policy-reload-seconds 5
+```
+
+This wires the policy file into the gateway lifespan. Hot reload is mtime-based
+and skips identical files. Malformed JSON or schema errors surface as
+`firewall_runtime.last_error` on `/healthz` without taking the gateway down —
+the previous good policy stays loaded.
+
+### `POST /v1/firewall/check`
+
+Server-authoritative decision endpoint. The proxy fast-path will call this
+when its local cache is cold or stale; operators can also hit it directly.
+
+Request:
+
+```json
+{
+  "source_agent": "cursor",
+  "target_agent": "snowflake-cli",
+  "source_roles": ["trusted"],
+  "target_roles": ["data-plane"]
+}
+```
+
+Response:
+
+```json
+{
+  "source_agent": "cursor",
+  "target_agent": "snowflake-cli",
+  "source_roles": ["trusted"],
+  "target_roles": ["data-plane"],
+  "decision": "deny",
+  "effective_decision": "deny",
+  "matched_rule": {"source": "cursor", "target": "snowflake-cli", "decision": "deny", "description": "..."},
+  "policy": {
+    "source": "/var/run/agent-bom/firewall.json",
+    "loaded_at": 1714665600.0,
+    "default_decision": "allow",
+    "enforcement_mode": "enforce",
+    "tenant_id": "acme"
+  }
+}
+```
+
+Any non-allow effective decision (i.e. `deny` in enforce mode, `warn` always,
+or `deny → warn` under dry-run) emits a `gateway.firewall_decision` audit event
+through the configured audit sink. In a normal cluster install that sink fans
+out to `/v1/proxy/audit`, so denies and warns flow into the same HMAC-chained
+audit table the proxy already writes to.
+
+### `GET /healthz`
+
+The `firewall_runtime` block exposes:
+
+- `source` — file path or `default-allow` when no policy is loaded.
+- `source_kind` — `file` or `default-allow`.
+- `reload_enabled` / `reload_interval_seconds` / `last_loaded_at` / `last_error`.
+- `rule_count`, `default_decision`, `enforcement_mode`, `tenant_id`.
+
 ## Roadmap
 
-This is PR 1 of a four-PR series implementing #982:
+Four-PR series implementing #982:
 
-1. **Foundation** (this PR) — schema, loader, evaluator, CLI, tests.
-2. **Gateway evaluator** — gateway loads the policy, evaluates on each agent→agent
-   path, emits decisions to `/v1/proxy/audit`.
+1. **Foundation** (PR 1, merged) — schema, loader, evaluator, CLI, tests.
+2. **Gateway evaluator** (this PR) — gateway loads the policy, evaluates via
+   `POST /v1/firewall/check`, hot-reloads, and fans out audit events to the
+   `/v1/proxy/audit` HMAC-chained relay. Surfaced in `/healthz` and the
+   `agent-bom gateway serve` startup banner.
 3. **Proxy fast-path** — proxy detector consults the cached policy; gateway
    remains authoritative for refreshes.
 4. **Dashboard runtime overlay** — per-pair decision counter, recent denials,

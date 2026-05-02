@@ -86,6 +86,21 @@ def gateway_group() -> None:
     show_default=True,
     help="Reload the gateway policy JSON file in-process on this interval (0 disables hot reload).",
 )
+@click.option(
+    "--firewall-policy",
+    "firewall_policy_path",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help=("Inter-agent firewall policy JSON file (#982). Schema: see `agent-bom firewall validate --help` and docs/AGENT_FIREWALL.md."),
+)
+@click.option(
+    "--firewall-policy-reload-seconds",
+    type=int,
+    envvar="AGENT_BOM_GATEWAY_FIREWALL_POLICY_RELOAD_SECONDS",
+    default=0,
+    show_default=True,
+    help="Hot-reload the firewall policy JSON file on this interval (0 disables).",
+)
 @click.option("--bind", default="0.0.0.0:8090", show_default=True, help="Bind address host:port.")
 @click.option(
     "--runtime-rate-limit-per-tenant-per-minute",
@@ -139,6 +154,8 @@ def serve_cmd(
     control_plane_token: str | None,
     policy_path: Path | None,
     policy_reload_seconds: int,
+    firewall_policy_path: Path | None,
+    firewall_policy_reload_seconds: int,
     bind: str,
     runtime_rate_limit_per_tenant_per_minute: int,
     require_shared_rate_limit: bool,
@@ -215,6 +232,21 @@ def serve_cmd(
     if policy_reload_seconds > 0 and policy_path is None:
         raise click.ClickException("--policy-reload-seconds requires --policy")
 
+    if firewall_policy_reload_seconds < 0:
+        raise click.ClickException("--firewall-policy-reload-seconds must be >= 0")
+    if firewall_policy_reload_seconds > 0 and firewall_policy_path is None:
+        raise click.ClickException("--firewall-policy-reload-seconds requires --firewall-policy")
+    # Fail fast on a malformed firewall policy at startup so operators see the
+    # error immediately instead of after the gateway is up. The same loader
+    # runs on every hot reload.
+    if firewall_policy_path is not None:
+        from agent_bom.firewall import FirewallPolicyError, load_firewall_policy_file
+
+        try:
+            load_firewall_policy_file(firewall_policy_path)
+        except FirewallPolicyError as exc:
+            raise click.ClickException(f"firewall policy invalid: {exc}") from exc
+
     _enforce_remote_mcp_auth_defaults(host, bearer_token, allow_insecure_no_auth)
     if detect_visual_leaks and not allow_visual_leak_best_effort:
         try:
@@ -237,6 +269,8 @@ def serve_cmd(
         require_shared_rate_limit=require_shared_rate_limit,
         policy_path=policy_path,
         policy_reload_interval_seconds=max(policy_reload_seconds, 0),
+        firewall_policy_path=firewall_policy_path,
+        firewall_policy_reload_interval_seconds=max(firewall_policy_reload_seconds, 0),
     )
     app = create_gateway_app(settings)
     policy_summary = summarize_policy_bundle(policy)
@@ -273,6 +307,25 @@ def serve_cmd(
         rows.append(("Visual leaks", f"Enabled ({mode})"))
     if policy_path and policy_reload_seconds > 0:
         rows.append(("Policy reload", f"Policy hot reload: enabled every {policy_reload_seconds}s from {policy_path}"))
+    if firewall_policy_path is not None:
+        from agent_bom.firewall import load_firewall_policy_file
+
+        firewall_policy = load_firewall_policy_file(firewall_policy_path)
+        rows.append(
+            (
+                "Firewall",
+                f"{len(firewall_policy.rules)} rule(s) "
+                f"(default={firewall_policy.default_decision.value}, mode={firewall_policy.enforcement_mode.value}) "
+                f"from {firewall_policy_path}",
+            )
+        )
+    if firewall_policy_path and firewall_policy_reload_seconds > 0:
+        rows.append(
+            (
+                "Firewall reload",
+                f"Firewall hot reload: enabled every {firewall_policy_reload_seconds}s from {firewall_policy_path}",
+            )
+        )
     click.echo("")
     click.echo("  agent-bom gateway")
     for label, value in rows:

@@ -5,7 +5,7 @@ description: >-
   GCP, Snowflake, CMDB, or endpoint collectors. Use when a user has canonical
   inventory JSON and wants local findings, graph, policy, provenance, or
   auditor-ready exports without giving agent-bom direct cloud credentials.
-version: 0.84.6
+version: 0.85.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+ and agent-bom 0.84.4+. Inventory must conform to the

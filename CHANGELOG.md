@@ -11,6 +11,31 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.85.0] – 2026-05-02
+
+Two new product surfaces (inter-agent firewall + per-run discovery envelope) plus four audit-driven defect fixes from the v0.84.6 hands-on review.
+
+### Added
+- **Inter-agent firewall** — tenant-scoped policy engine for agent → agent delegation. Pairwise + role-tag rules with `allow` / `deny` / `warn-only` decisions, dry-run mode for safe rollouts, hot-reloadable policy file. Decisions emit through the existing `/v1/proxy/audit` HMAC-chained audit relay. CLI: `agent-bom firewall validate / list / check`. Runtime card on the gateway dashboard tab. Issue #982 closed by #2188 / #2189 / #2190 / #2191.
+- **Per-run discovery envelope** (#2083) — every discovered Agent now carries a trust contract recording the actual scan mode, explicit scope, IAM/API permissions exercised, and redaction posture for that run. Locked enums (`scan_mode`, `redaction_status`), schema-versioned (`envelope_version: 1`), surfaced through the existing `/v1/agents` API and a new `DiscoveryEnvelopeCard` on agent detail with a data-residency note. Wired on AWS, GCP, Azure, CoreWeave, Nebius, Snowflake, Databricks, MLflow, W&B, HuggingFace, OpenAI, and Ollama. Cross-provider least-privilege + redaction lock-in matrix tests every catalog entry against an explicit read-only verb allowlist (`Get` / `List` / `Describe` / `Search` / `Read` / `Select` / `View` / `Retrieve` / `Show` / `Fetch` / `Scan` / `watch` / `GET` / `HEAD` / `OPTIONS`). Issue #2083 closed by #2192 / #2193 / #2194 / #2195.
+- **Diagrams alignment** — engine-internals and compliance SVGs realigned to canonical product counts (15 ecosystems, 14 + AISVS frameworks, 29 MCP clients, 36 MCP server tools, 26 output formats, 419 test files); OpenClaw / ClawHub framed as distribution surfaces in `integrations/openclaw/README.md`. Issue #2150 closed by #2187.
+
+### Fixed
+- **SCIM DELETE removes users from default listing** (P1 IdP-blocker, audit #2196) — `deactivate_user` flips `active=False` and bulk `list_users` now excludes deactivated users, matching Okta/Azure AD deprovisioning expectations. Precise lookups by `userName` / `externalId` / `id` keep finding deactivated users so admins can verify the deactivation landed; `?filter=active eq <bool>` is the new admin-audit primitive. Re-creating a deprovisioned `userName` still 409s.
+- **`--allow-insecure-no-auth` no longer silently overridden by SCIM bearer** (P2 audit #2196) — `_enforce_auth_defaults` recognises `AGENT_BOM_SCIM_BEARER_TOKEN` as a valid auth path. When the flag is set together with any auth method, a yellow warning to stderr names the active method instead of pretending the flag disabled auth.
+- **Dashboard "Cannot connect" splash distinguishes auth from network errors** (P2 audit #2196) — `ApiOfflineState` takes a `kind: "network" | "auth" | "forbidden"` prop; pages classify thrown errors via `ApiAuthError` / `ApiForbiddenError`. Auth/forbidden cases get distinct copy ("Sign in to view the dashboard" / "This account doesn't have access").
+- **`POST /v1/auth/keys/{id}/rotate` accepts empty body** (P3 audit #2196) — body now optional; defaults applied silently for missing or `{}` payloads.
+- **Strict MCP tool argument contract** (P1 audit #2197) — every registered tool's JSON schema now sets `additionalProperties: false`, and a runtime guard at the tool-manager call boundary rejects calls with unknown argument keys before FastMCP's Pydantic validation silently drops them. Pre-fix, AI agents passing typo args (`Version` capital, `frob`, etc.) got false-clean verdicts on the pre-install gate.
+- **Skill trust verdict split into provenance + content axes** (P1 audit #2197) — `TrustAssessmentResult` now carries `provenance_verdict` (signed? install metadata complete? source URL?) and `content_verdict` (behavioural risk signals from the audit) alongside the legacy `verdict`. Pre-fix, three legitimate cybersecurity playbooks were marked `malicious` purely because they were unsigned and lacked a frontmatter `source:` URL despite zero detected risk signals (~80% false-positive rate on real security skill trees).
+- **`--self-scan` walks every venv distribution** (P2 audit #2197) — `_build_self_scan_inventory` now uses `importlib.metadata.distributions()` so transitive deps appear in the inventory. Pre-fix, only ~23 declared deps were scanned vs ~66 actually installed.
+- **Proxy stderr sandbox warning is single-emission** (P3 audit #2197) — the duplicated `sys.stderr.write(warning)` is dropped; `logger.warning(warning)` is the single source. The structured `mcp_execution_posture` audit event still carries the same posture detail in machine-readable form.
+
+### Documentation
+- New `docs/AGENT_FIREWALL.md` — schema reference, gateway integration, proxy fast-path, dashboard overlay, 4-PR roadmap.
+- New `docs/DISCOVERY_ENVELOPE.md` — schema reference, locked vocabulary, producers table, API + UI surface, lock-in matrix.
+
+---
+
 ## [0.84.6] – 2026-05-02
 
 ### Added
@@ -1036,7 +1061,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.84.6...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.85.0...HEAD
+[0.85.0]: https://github.com/msaad00/agent-bom/compare/v0.84.6...v0.85.0
 [0.84.6]: https://github.com/msaad00/agent-bom/compare/v0.84.5...v0.84.6
 [0.84.5]: https://github.com/msaad00/agent-bom/compare/v0.84.4...v0.84.5
 [0.84.4]: https://github.com/msaad00/agent-bom/compare/v0.84.3...v0.84.4

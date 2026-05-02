@@ -837,7 +837,13 @@ def _run_scan_sync(job: ScanJob) -> None:
         # Persist final state
         store = _get_store()
         store.put(job)
-        if not bool(getattr(store, "retains_job_objects_in_memory", False)):
+        # Default to "retains in memory" so a store that does not declare the
+        # attribute (e.g. test mocks, third-party plugins) keeps a usable job
+        # result for the caller. Durable stores that fully serialize on put()
+        # opt in to in-place compaction by setting
+        # ``retains_job_objects_in_memory = False`` explicitly — see
+        # SQLiteJobStore, PostgresJobStore, SnowflakeJobStore.
+        if not bool(getattr(store, "retains_job_objects_in_memory", True)):
             _compact_terminal_job_in_place(job)
         _jobs_put(job.job_id, job, compact_terminal=True)
         _release_scan_memory()

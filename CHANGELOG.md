@@ -11,6 +11,22 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.84.6] – 2026-05-02
+
+### Added
+- **CLI startup banner** — running `agent-bom` with no subcommand now renders a branded banner with three quick-start commands and a docs pointer (#2181).
+- **Verdict-led compact summary** — `agent-bom scan` ends with a one-line posture verdict plus inventory; the previous detailed configuration-posture panel is preserved behind `--verbose` (#2184).
+- **Severity-coloured scan closer** — the trailing line now renders a coloured `Scan complete — N critical · N high · …` breakdown instead of a generic finding count (#2181).
+- **Findings header label** — when priority filtering hides rows, the table header reports `Findings (X of Y shown · Z hidden)` so the elision is visible (#2181).
+
+### Fixed
+- **Severity closer rendered empty on Python 3.13** — `Severity(str, Enum)` `str()` semantics changed; the closer now reads `Severity.value` so the breakdown renders content on every supported Python (#2185).
+- **npm SemVer pre-release tag handling** — `compare_version_order` now strips `-canary.N`, `-beta.N`, `-rc.N`, etc. before PEP 440 parsing so npm pre-releases no longer fall through to the conservative "affected" verdict (e.g. CVE-2023-46298 false positive on `next@16.2.4-canary.13`) (#2182).
+- **Stacked progress lines under interleaved log warnings** — scanner warnings now flow through Rich during the progress block, so spinners stop double-rendering when GHSA/OSV emit warnings mid-scan (#2183).
+- **OSV-first GHSA UX** — the "GITHUB_TOKEN not set" / "limited to N unauthenticated lookups" notes are now informational only and no longer surface as scan warnings; OSV mirrors GHSA within ~24h, so the unauthenticated path is fine for typical use (matches Trivy/Grype defaults) (#2181).
+
+---
+
 ## [0.84.5] – 2026-05-01
 
 ### Added
@@ -1020,7 +1036,8 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.84.5...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.84.6...HEAD
+[0.84.6]: https://github.com/msaad00/agent-bom/compare/v0.84.5...v0.84.6
 [0.84.5]: https://github.com/msaad00/agent-bom/compare/v0.84.4...v0.84.5
 [0.84.4]: https://github.com/msaad00/agent-bom/compare/v0.84.3...v0.84.4
 [0.84.3]: https://github.com/msaad00/agent-bom/compare/v0.84.2...v0.84.3

@@ -245,8 +245,8 @@ async def test_check_pypi_provenance_uses_file_scoped_integrity_api():
     metadata_response.status_code = 200
     metadata_response.json.return_value = {
         "urls": [
-            {"filename": "agent_bom-0.84.5-py3-none-any.whl"},
-            {"filename": "agent_bom-0.84.5.tar.gz"},
+            {"filename": "agent_bom-0.84.6-py3-none-any.whl"},
+            {"filename": "agent_bom-0.84.6.tar.gz"},
         ]
     }
     wheel_response = MagicMock()
@@ -262,23 +262,23 @@ async def test_check_pypi_provenance_uses_file_scoped_integrity_api():
         "agent_bom.integrity.request_with_retry",
         side_effect=[metadata_response, wheel_response, sdist_response],
     ) as request:
-        result = await check_pypi_provenance("agent-bom", "0.84.5", mock_client)
+        result = await check_pypi_provenance("agent-bom", "0.84.6", mock_client)
 
     assert result == {
         "has_provenance": True,
         "status": "verified",
         "attestation_count": 2,
-        "files": ["agent_bom-0.84.5-py3-none-any.whl", "agent_bom-0.84.5.tar.gz"],
+        "files": ["agent_bom-0.84.6-py3-none-any.whl", "agent_bom-0.84.6.tar.gz"],
         "attestations_by_file": {
-            "agent_bom-0.84.5-py3-none-any.whl": 1,
-            "agent_bom-0.84.5.tar.gz": 1,
+            "agent_bom-0.84.6-py3-none-any.whl": 1,
+            "agent_bom-0.84.6.tar.gz": 1,
         },
     }
     requested_urls = [call.args[2] for call in request.call_args_list]
     assert requested_urls == [
-        "https://pypi.org/pypi/agent-bom/0.84.5/json",
-        "https://pypi.org/integrity/agent-bom/0.84.5/agent_bom-0.84.5-py3-none-any.whl/provenance",
-        "https://pypi.org/integrity/agent-bom/0.84.5/agent_bom-0.84.5.tar.gz/provenance",
+        "https://pypi.org/pypi/agent-bom/0.84.6/json",
+        "https://pypi.org/integrity/agent-bom/0.84.6/agent_bom-0.84.6-py3-none-any.whl/provenance",
+        "https://pypi.org/integrity/agent-bom/0.84.6/agent_bom-0.84.6.tar.gz/provenance",
     ]
 
 
@@ -468,7 +468,7 @@ def test_verify_partial_provenance_fails_verdict():
         "has_provenance": False,
         "status": "partial",
         "attestation_count": 1,
-        "missing_files": ["agent_bom-0.84.5.tar.gz"],
+        "missing_files": ["agent_bom-0.84.6.tar.gz"],
     }
 
     result = _run_verify_with_mocks(["verify", "--json"], record, integrity, partial_provenance, pypi_meta)

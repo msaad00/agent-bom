@@ -21,7 +21,7 @@ spec:
       serviceAccountName: agent-bom
       containers:
         - name: monitor
-          image: agentbom/agent-bom:0.84.5
+          image: agentbom/agent-bom:0.84.6
           command: ["agent-bom"]
           args:
             - "protect"

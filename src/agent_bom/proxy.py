@@ -222,6 +222,132 @@ def set_gateway_evaluator(fn) -> None:  # noqa: ANN001
     _gateway_evaluator = fn
 
 
+# ─── Inter-agent firewall evaluator hook (#982 PR 3) ─────────────────────────
+
+_firewall_evaluator = None  # type: ignore[var-annotated]
+_firewall_target_id: str | None = None
+
+
+def set_firewall_evaluator(fn, *, target_id: str | None = None) -> None:  # noqa: ANN001
+    """Register an async inter-agent firewall evaluator.
+
+    The callable signature must be
+    ``async (source_agent: str, target_agent: str, source_roles: frozenset[str],
+              target_roles: frozenset[str]) -> FirewallEvaluation``.
+
+    `target_id` is the agent identity this proxy is wrapping (the *target*
+    side of the source -> target firewall pair). When set, the proxy uses
+    it for every firewall lookup; when unset, the firewall is not consulted.
+    """
+    global _firewall_evaluator
+    global _firewall_target_id
+    _firewall_evaluator = fn
+    _firewall_target_id = target_id
+
+
+def clear_firewall_evaluator() -> None:
+    """Test/teardown helper — drop the registered evaluator."""
+    global _firewall_evaluator
+    global _firewall_target_id
+    _firewall_evaluator = None
+    _firewall_target_id = None
+
+
+def _firewall_target_for_proxy() -> str | None:
+    return _firewall_target_id
+
+
+async def _maybe_block_on_firewall(
+    *,
+    source_agent: str,
+    target_agent: str,
+    tool_name: str,
+    arguments: dict,
+    log_file,  # noqa: ANN001 — proxy uses an open file handle / RotatingAuditLog
+    payload_sha256: str | None,
+    message_id,  # noqa: ANN001 — JSON-RPC id can be int / str / None
+    tenant_id: str | None,
+    metrics=None,  # noqa: ANN001 — ProxyMetrics; SSE proxy path doesn't track metrics
+) -> str | None:
+    """Run the registered firewall evaluator for source -> target.
+
+    Returns:
+        - the reason string when the call should be blocked (caller emits the
+          JSON-RPC error response so this helper stays decision-only),
+        - None when the call may proceed.
+
+    On exception inside the evaluator the proxy fails open here. The
+    `FirewallClient` already encodes the gateway fail-mode (open / closed)
+    internally, so unexpected raises here are out-of-policy errors.
+    """
+
+    from agent_bom.firewall import FirewallDecision
+
+    if _firewall_evaluator is None:
+        return None
+    try:
+        evaluation = await _firewall_evaluator(
+            source_agent,
+            target_agent,
+            frozenset(),
+            frozenset(),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "firewall evaluator raised; allowing call (source=%s, target=%s): %s",
+            source_agent,
+            target_agent,
+            exc,
+        )
+        return None
+
+    effective = evaluation.effective_decision
+    if effective == FirewallDecision.ALLOW:
+        return None
+
+    matched = evaluation.matched_rule
+    rule_desc = (
+        f"{matched.source} -> {matched.target} ({matched.decision.value})" + (f" · {matched.description}" if matched.description else "")
+        if matched is not None
+        else "default"
+    )
+
+    if effective == FirewallDecision.WARN:
+        if metrics is not None:
+            metrics.record_blocked("firewall_warn")
+        if log_file:
+            log_tool_call(
+                log_file,
+                tool_name,
+                arguments,
+                "warn",
+                f"firewall warn: {source_agent} -> {target_agent} [{rule_desc}]",
+                payload_sha256=payload_sha256 or "",
+                message_id=message_id,
+                agent_id=source_agent,
+                tenant_id=tenant_id or "default",
+            )
+        return None
+
+    # DENY
+    reason = f"firewall: {source_agent} -> {target_agent} blocked [{rule_desc}]"
+    if metrics is not None:
+        metrics.record_blocked("firewall")
+    if log_file:
+        log_tool_call(
+            log_file,
+            tool_name,
+            arguments,
+            "blocked",
+            reason,
+            payload_sha256=payload_sha256 or "",
+            message_id=message_id,
+            agent_id=source_agent,
+            tenant_id=tenant_id or "default",
+        )
+    return reason
+
+
 def _sanitize_for_log(value: object) -> str:
     return str(value).replace("\r", "").replace("\n", "")
 
@@ -827,6 +953,26 @@ async def _proxy_sse_server(
                         sys.stdout.buffer.flush()
                         continue
 
+                # Inter-agent firewall (#982 PR 3) — same hook as the stdio path.
+                # SSE proxy doesn't carry a ProxyMetrics object so metrics arg is omitted.
+                fw_target_id = _firewall_target_for_proxy()
+                if _firewall_evaluator is not None and fw_target_id:
+                    fw_outcome = await _maybe_block_on_firewall(
+                        source_agent=agent_id or "unknown",
+                        target_agent=fw_target_id,
+                        tool_name=tool_name,
+                        arguments=arguments,
+                        log_file=log_file,
+                        payload_sha256=p_hash,
+                        message_id=msg_id,
+                        tenant_id=control_plane_tenant_id,
+                    )
+                    if fw_outcome is not None:
+                        error_resp = make_error_response(msg_id, -32600, fw_outcome)
+                        sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
+                        sys.stdout.buffer.flush()
+                        continue
+
                 # Argument analysis
                 arg_alerts = arg_analyzer.check(tool_name, arguments)
                 _handle_alerts_sse(arg_alerts, log_file)
@@ -965,6 +1111,12 @@ async def run_proxy(
     audit_push_interval: int = 10,
     response_signing_key: Optional[str] = None,
     sandbox_config: SandboxConfig | None = None,
+    firewall_gateway_url: Optional[str] = None,
+    firewall_gateway_token: Optional[str] = None,
+    firewall_local_policy_path: Optional[str] = None,
+    firewall_target_id: Optional[str] = None,
+    firewall_cache_ttl_seconds: float = 60.0,
+    firewall_fail_mode: str = "open",
 ) -> int:
     """Main proxy loop. Spawns server subprocess, relays JSON-RPC.
 
@@ -1218,6 +1370,44 @@ async def run_proxy(
             return _evaluate_gateway_policy_bundle(control_plane_policies, agent_id, tool_name, arguments)
 
         set_gateway_evaluator(_control_plane_gateway_evaluator)
+
+    # ── Inter-agent firewall (#982 PR 3) ───────────────────────────────────
+    # Activated when --firewall-target-id is set together with at least one of
+    # --firewall-gateway-url or --firewall-policy. The FirewallClient is
+    # cache-first; the gateway is consulted on cache miss / TTL expiry.
+    firewall_client = None
+    if firewall_target_id and (firewall_gateway_url or firewall_local_policy_path):
+        from agent_bom.firewall import FirewallPolicyError, load_firewall_policy_file
+        from agent_bom.firewall_client import FirewallClient, FirewallFailMode
+
+        firewall_local_policy = None
+        if firewall_local_policy_path:
+            try:
+                firewall_local_policy = load_firewall_policy_file(Path(firewall_local_policy_path))
+            except FirewallPolicyError as exc:
+                logger.error("invalid firewall policy at %s: %s", firewall_local_policy_path, exc)
+                raise SystemExit(1) from exc
+        try:
+            fw_fail_mode = FirewallFailMode(firewall_fail_mode)
+        except ValueError as exc:
+            raise SystemExit(f"invalid --firewall-fail-mode {firewall_fail_mode!r}") from exc
+        firewall_client = FirewallClient(
+            gateway_url=firewall_gateway_url,
+            bearer_token=firewall_gateway_token,
+            cache_ttl_seconds=max(0.0, firewall_cache_ttl_seconds),
+            fail_mode=fw_fail_mode,
+            local_policy=firewall_local_policy,
+        )
+
+        async def _firewall_evaluator_fn(source, target, source_roles, target_roles):
+            return await firewall_client.decision(
+                source_agent=source,
+                target_agent=target,
+                source_roles=source_roles,
+                target_roles=target_roles,
+            )
+
+        set_firewall_evaluator(_firewall_evaluator_fn, target_id=firewall_target_id)
 
     async def _policy_refresh_loop() -> None:
         if not control_plane_url:
@@ -1473,6 +1663,27 @@ async def run_proxy(
                                     tenant_id=control_plane_tenant_id,
                                 )
                             error_resp = make_error_response(msg.get("id"), -32600, gw_reason)
+                            sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
+                            sys.stdout.buffer.flush()
+                            continue
+
+                    # Inter-agent firewall (#982 PR 3) — gateway is authoritative,
+                    # FirewallClient handles cache + fail-mode + local-policy fallback.
+                    fw_target_id = _firewall_target_for_proxy()
+                    if _firewall_evaluator is not None and fw_target_id:
+                        fw_outcome = await _maybe_block_on_firewall(
+                            source_agent=agent_id or "unknown",
+                            target_agent=fw_target_id,
+                            tool_name=tool_name,
+                            arguments=arguments,
+                            log_file=log_file,
+                            payload_sha256=p_hash,
+                            message_id=msg_id,
+                            tenant_id=control_plane_tenant_id,
+                            metrics=metrics,
+                        )
+                        if fw_outcome is not None:
+                            error_resp = make_error_response(msg.get("id"), -32600, fw_outcome)
                             sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
                             sys.stdout.buffer.flush()
                             continue
@@ -1802,6 +2013,9 @@ async def run_proxy(
             log_file.close()
         await metrics_server.stop()
         set_gateway_evaluator(None)
+        clear_firewall_evaluator()
+        if firewall_client is not None:
+            await firewall_client.aclose()
         if process.returncode is None:
             process.terminate()
             try:

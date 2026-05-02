@@ -166,19 +166,70 @@ The `firewall_runtime` block exposes:
 - `reload_enabled` / `reload_interval_seconds` / `last_loaded_at` / `last_error`.
 - `rule_count`, `default_decision`, `enforcement_mode`, `tenant_id`.
 
+## Proxy fast-path
+
+The MCP proxy is on the hot path of every JSON-RPC call between an MCP host
+and an MCP server. Hitting the gateway over HTTP per call would blow the
+latency budget, so the proxy uses the `FirewallClient` from
+`src/agent_bom/firewall_client.py`:
+
+- per-process **TTL cache** keyed by `(source_agent, target_agent, source_roles, target_roles)`,
+- configurable **fail mode** (`open` / `closed`) when the gateway is unreachable
+  AND no local policy is configured,
+- optional **local policy fallback** (`--firewall-policy <file>`) for air-gapped
+  installs or as a degraded-mode policy,
+- gateway remains authoritative — the client just caches and degrades.
+
+```bash
+agent-bom proxy \
+    --firewall-target-id snowflake-cli \
+    --firewall-gateway-url https://gateway.internal:8090 \
+    --firewall-gateway-token "$AGENT_BOM_PROXY_FIREWALL_GATEWAY_TOKEN" \
+    --firewall-cache-ttl-seconds 60 \
+    --firewall-fail-mode open \
+    -- npx @mcp/server-snowflake
+```
+
+Activation rule: the firewall is *only* consulted when `--firewall-target-id`
+is set together with at least one of `--firewall-gateway-url` or
+`--firewall-policy`. Without a target identity the proxy can't form a
+source -> target pair, so the firewall stays inert.
+
+Decision behaviour at the proxy:
+
+- `effective_decision = ALLOW` -> call proceeds.
+- `effective_decision = WARN`  -> audited, `metrics.firewall_warn` incremented,
+  call proceeds. Useful for soak / dry-run rollouts.
+- `effective_decision = DENY`  -> JSON-RPC error returned to the client,
+  audited, `metrics.firewall` incremented. Decision reason names the matched
+  rule for fast triage.
+
+Fail mode reference:
+
+| `--firewall-fail-mode` | Gateway up | Gateway down, local policy | Gateway down, no local |
+|---|---|---|---|
+| `open` (default) | gateway authoritative | local evaluator wins | default-allow |
+| `closed`         | gateway authoritative | local evaluator wins | default-deny |
+
+The proxy registers its evaluator via `set_firewall_evaluator(fn, target_id=...)`
+so tests can swap implementations cleanly. `clear_firewall_evaluator()` restores
+the default.
+
 ## Roadmap
 
 Four-PR series implementing #982:
 
 1. **Foundation** (PR 1, merged) — schema, loader, evaluator, CLI, tests.
-2. **Gateway evaluator** (this PR) — gateway loads the policy, evaluates via
-   `POST /v1/firewall/check`, hot-reloads, and fans out audit events to the
+2. **Gateway evaluator** (PR 2, in flight) — gateway loads the policy, evaluates
+   via `POST /v1/firewall/check`, hot-reloads, and fans out audit events to the
    `/v1/proxy/audit` HMAC-chained relay. Surfaced in `/healthz` and the
-   `agent-bom gateway serve` startup banner.
-3. **Proxy fast-path** — proxy detector consults the cached policy; gateway
-   remains authoritative for refreshes.
+   `agent-bom gateway serve` startup banner. Helm chart `gateway.firewallPolicyPath`.
+3. **Proxy fast-path** (this PR) — `FirewallClient` with TTL cache + fail mode +
+   local fallback; proxy CLI wires it via `--firewall-target-id` and friends;
+   helper `_maybe_block_on_firewall` consulted from both stdio and SSE paths.
 4. **Dashboard runtime overlay** — per-pair decision counter, recent denials,
-   policy hot-reload status on the runtime tab.
+   policy hot-reload status on the runtime tab. `/v1/gateway/stats` extended
+   with `firewall_runtime` aggregation.
 
 Capability-keyed rules (`agent_a may invoke tool X via agent_b`) are deliberately
 deferred to a v2 once pairwise + role tags prove out in production.

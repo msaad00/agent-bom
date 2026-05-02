@@ -126,6 +126,50 @@ from agent_bom.cli._common import OPTIONAL_PORT_RANGE, PORT_RANGE
     type=click.Choice(["deny", "allow-all"]),
     help="Network egress posture for isolated MCP server.",
 )
+@click.option(
+    "--firewall-target-id",
+    default=None,
+    envvar="AGENT_BOM_PROXY_FIREWALL_TARGET_ID",
+    help=(
+        "Inter-agent firewall (#982): the agent identity this proxy wraps "
+        "(target side of the source -> target firewall pair). Required "
+        "alongside --firewall-gateway-url or --firewall-policy to activate "
+        "firewall enforcement on this proxy."
+    ),
+)
+@click.option(
+    "--firewall-gateway-url",
+    default=None,
+    envvar="AGENT_BOM_PROXY_FIREWALL_GATEWAY_URL",
+    help="agent-bom gateway base URL (POST /v1/firewall/check) for firewall decisions.",
+)
+@click.option(
+    "--firewall-gateway-token",
+    default=None,
+    envvar="AGENT_BOM_PROXY_FIREWALL_GATEWAY_TOKEN",
+    help="Bearer token for the firewall gateway.",
+)
+@click.option(
+    "--firewall-policy",
+    "firewall_local_policy_path",
+    type=click.Path(exists=True, dir_okay=False),
+    default=None,
+    help="Local firewall policy JSON used as fallback when the gateway is unreachable.",
+)
+@click.option(
+    "--firewall-cache-ttl-seconds",
+    type=float,
+    default=60.0,
+    show_default=True,
+    help="TTL on cached firewall decisions (per source -> target pair).",
+)
+@click.option(
+    "--firewall-fail-mode",
+    type=click.Choice(["open", "closed"], case_sensitive=False),
+    default="open",
+    show_default=True,
+    help="Fail-open (allow) or fail-closed (deny) when the gateway is unreachable AND no local policy is set.",
+)
 @click.argument("server_cmd", nargs=-1, required=False)
 def proxy_cmd(
     policy,
@@ -155,6 +199,12 @@ def proxy_cmd(
     sandbox_tmpfs_size,
     sandbox_timeout_seconds,
     sandbox_egress,
+    firewall_target_id,
+    firewall_gateway_url,
+    firewall_gateway_token,
+    firewall_local_policy_path,
+    firewall_cache_ttl_seconds,
+    firewall_fail_mode,
     server_cmd,
 ):
     """Run an MCP server through agent-bom's security proxy.
@@ -268,6 +318,12 @@ def proxy_cmd(
             audit_push_interval=audit_push_interval,
             response_signing_key=response_sign_key,
             sandbox_config=sandbox_config,
+            firewall_gateway_url=firewall_gateway_url,
+            firewall_gateway_token=firewall_gateway_token,
+            firewall_local_policy_path=firewall_local_policy_path,
+            firewall_target_id=firewall_target_id,
+            firewall_cache_ttl_seconds=firewall_cache_ttl_seconds,
+            firewall_fail_mode=firewall_fail_mode.lower(),
         )
     )
     sys.exit(exit_code)

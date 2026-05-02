@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.store import InMemoryJobStore, SQLiteJobStore
@@ -84,6 +85,68 @@ def test_in_memory_retention_evicts_oldest_completed_jobs():
     assert store.get("new") is not None
 
 
+def test_completed_scan_refreshes_bounded_hot_cache(monkeypatch):
+    from agent_bom.api import stores
+    from agent_bom.api.pipeline import _run_scan_sync
+
+    monkeypatch.setattr(stores, "_MAX_IN_MEMORY_JOBS", 3)
+    stores._jobs.clear()
+    stores._job_locks.clear()
+    store = InMemoryJobStore(max_retained_jobs=3)
+    stores.set_job_store(store)
+
+    jobs = []
+    for idx in range(5):
+        job = _make_job(f"job-{idx}")
+        job.request = ScanRequest(dry_run=True, no_scan=True)
+        jobs.append(job)
+        store.put(job)
+        stores._jobs_put(job.job_id, job)
+
+    for job in jobs:
+        _run_scan_sync(job)
+
+    assert len(store.list_all()) == 3
+    assert len(stores._jobs) == 3
+    assert sorted(stores._jobs) == ["job-2", "job-3", "job-4"]
+    assert all(stores._jobs_is_compacted(job) for job in stores._jobs.values())
+    assert all(store.get(job_id).result for job_id in ["job-2", "job-3", "job-4"])
+
+
+def test_scan_memory_release_is_best_effort(monkeypatch):
+    from agent_bom.api import pipeline
+
+    monkeypatch.setattr(pipeline.gc, "collect", lambda: 0)
+    monkeypatch.setattr(pipeline.ctypes, "CDLL", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("missing libc")))
+
+    pipeline._release_scan_memory()
+
+
+def test_compacted_hot_cache_job_hydrates_full_scan_response(monkeypatch):
+    from agent_bom.api import stores
+    from agent_bom.api.pipeline import _run_scan_sync
+    from agent_bom.api.routes.scan import _job_for_request
+
+    stores._jobs.clear()
+    stores._job_locks.clear()
+    store = InMemoryJobStore(max_retained_jobs=3)
+    stores.set_job_store(store)
+
+    job = _make_job("full-job")
+    job.request = ScanRequest(dry_run=True, no_scan=True)
+    store.put(job)
+    stores._jobs_put(job.job_id, job)
+    _run_scan_sync(job)
+
+    cached = stores._jobs["full-job"]
+    assert stores._jobs_is_compacted(cached)
+    assert cached.result != store.get("full-job").result
+
+    request = SimpleNamespace(state=SimpleNamespace(tenant_id="default"))
+    hydrated = _job_for_request(request, "full-job")
+    assert hydrated.result == store.get("full-job").result
+
+
 def test_scan_job_progress_is_bounded(monkeypatch):
     monkeypatch.setattr("agent_bom.config.API_MAX_JOB_PROGRESS_EVENTS", 3)
     job = _make_job("progress")
@@ -109,6 +172,19 @@ def test_sqlite_put_and_get():
         assert retrieved is not None
         assert retrieved.job_id == "test-123"
         assert retrieved.status == JobStatus.PENDING
+    finally:
+        Path(db_path).unlink(missing_ok=True)
+
+
+def test_sqlite_bounds_connection_cache():
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = f.name
+    try:
+        store = SQLiteJobStore(db_path=db_path)
+
+        assert store._conn.execute("PRAGMA cache_size").fetchone()[0] == -2048
+        assert store._conn.execute("PRAGMA temp_store").fetchone()[0] == 1
+        assert store._conn.execute("PRAGMA mmap_size").fetchone()[0] == 0
     finally:
         Path(db_path).unlink(missing_ok=True)
 

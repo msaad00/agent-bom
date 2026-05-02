@@ -10,8 +10,10 @@ Extracted from api/server.py (Phase 4). Contains:
 
 from __future__ import annotations
 
+import ctypes
+import gc
 import logging
-import os
+import sys
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -21,7 +23,16 @@ from typing import Any
 
 from agent_bom import __version__
 from agent_bom.api.models import JobStatus, ScanJob, StepStatus
-from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_graph_store, _get_store, _job_lock
+from agent_bom.api.stores import (
+    _compact_terminal_job_in_place,
+    _get_analytics_store,
+    _get_fleet_store,
+    _get_graph_store,
+    _get_store,
+    _job_lock,
+    _jobs_put,
+)
+from agent_bom.config import API_SCAN_WORKER_RECYCLE_JOBS, API_SCAN_WORKERS
 from agent_bom.security import sanitize_error
 
 _logger = logging.getLogger(__name__)
@@ -37,8 +48,10 @@ _logger = logging.getLogger(__name__)
 # every subsequent test that reaches the scan path. ``get_executor()`` restores
 # the pool on demand so shutdown becomes idempotent and recoverable rather than
 # terminal.
-_executor_lock = threading.Lock()
-_executor = ThreadPoolExecutor(max_workers=min(8, (os.cpu_count() or 4) + 2))
+_executor_lock = threading.RLock()
+_executor = ThreadPoolExecutor(max_workers=max(1, API_SCAN_WORKERS))
+_executor_active_jobs = 0
+_executor_completed_jobs = 0
 
 
 def get_executor() -> ThreadPoolExecutor:
@@ -46,8 +59,62 @@ def get_executor() -> ThreadPoolExecutor:
     global _executor
     with _executor_lock:
         if _executor._shutdown:
-            _executor = ThreadPoolExecutor(max_workers=min(8, (os.cpu_count() or 4) + 2))
+            _executor = ThreadPoolExecutor(max_workers=max(1, API_SCAN_WORKERS))
         return _executor
+
+
+def _recycle_executor_if_idle() -> None:
+    global _executor  # noqa: PLW0603
+    if API_SCAN_WORKER_RECYCLE_JOBS <= 0:
+        return
+    if _executor_active_jobs != 0 or _executor_completed_jobs % API_SCAN_WORKER_RECYCLE_JOBS != 0:
+        return
+    old_executor = _executor
+    _executor = ThreadPoolExecutor(max_workers=max(1, API_SCAN_WORKERS))
+    old_executor.shutdown(wait=False, cancel_futures=False)
+    _release_scan_memory()
+
+
+def submit_scan_job(job: ScanJob) -> None:
+    """Submit a scan job to the bounded worker pool and observe completion."""
+    global _executor_active_jobs, _executor_completed_jobs  # noqa: PLW0603
+
+    with _executor_lock:
+        executor = get_executor()
+        _executor_active_jobs += 1
+        future = executor.submit(_run_scan_sync, job)
+
+    def _done(done_future) -> None:
+        global _executor_active_jobs, _executor_completed_jobs  # noqa: PLW0603
+        try:
+            exc = done_future.exception()
+            if exc is not None:
+                _logger.error("Unhandled API scan worker failure", exc_info=(type(exc), exc, exc.__traceback__))
+        except Exception:  # noqa: BLE001
+            _logger.exception("Failed to observe API scan worker completion")
+        finally:
+            with _executor_lock:
+                _executor_active_jobs = max(0, _executor_active_jobs - 1)
+                _executor_completed_jobs += 1
+                _recycle_executor_if_idle()
+
+    future.add_done_callback(_done)
+
+
+def _release_scan_memory() -> None:
+    """Best-effort memory reclamation after large scan artifacts are persisted."""
+    gc.collect()
+    try:
+        if sys.platform.startswith("linux"):
+            malloc_trim = getattr(ctypes.CDLL("libc.so.6"), "malloc_trim", None)
+            if malloc_trim is not None:
+                malloc_trim(0)
+        elif sys.platform == "darwin":
+            pressure_relief = getattr(ctypes.CDLL(None), "malloc_zone_pressure_relief", None)
+            if pressure_relief is not None:
+                pressure_relief(None, 0)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 # ─── Constants ───────────────────────────────────────────────────────────────
@@ -770,6 +837,10 @@ def _run_scan_sync(job: ScanJob) -> None:
         # Persist final state
         store = _get_store()
         store.put(job)
+        if not bool(getattr(store, "retains_job_objects_in_memory", False)):
+            _compact_terminal_job_in_place(job)
+        _jobs_put(job.job_id, job, compact_terminal=True)
+        _release_scan_memory()
         # Update operator-visible scan metrics. The active gauge feeds
         # the KEDA scaler in deploy/helm/agent-bom; the completion
         # counter feeds dashboards + alerting on failure rate.

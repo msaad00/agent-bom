@@ -182,6 +182,8 @@ def test_sandbox_posture_warning_is_visible_when_disabled():
     assert warning is not None
     assert "sandbox isolation is disabled" in warning
     assert "AGENT_BOM_MCP_SANDBOX=1" in warning
+    assert "--isolate" in warning
+    assert "--sandbox" not in warning
     assert sandbox_posture_warning({"enabled": True}) is None
 
 

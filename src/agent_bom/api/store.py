@@ -34,6 +34,8 @@ class JobStore(Protocol):
 class InMemoryJobStore:
     """Dict-based in-memory store (original behavior). Thread-safe via lock."""
 
+    retains_job_objects_in_memory = True
+
     def __init__(self, *, max_retained_jobs: int | None = API_MAX_IN_MEMORY_JOBS) -> None:
         self._jobs: dict[str, ScanJob] = {}
         self._lock = threading.Lock()
@@ -125,6 +127,8 @@ class SQLiteJobStore:
     are duplicated as columns for efficient queries.
     """
 
+    retains_job_objects_in_memory = False
+
     def __init__(self, db_path: str = "agent_bom_jobs.db") -> None:
         self._db_path = db_path
         self._local = threading.local()
@@ -136,28 +140,53 @@ class SQLiteJobStore:
         if not hasattr(self._local, "conn") or self._local.conn is None:
             self._local.conn = sqlite3.connect(self._db_path, check_same_thread=False)
             self._local.conn.execute("PRAGMA journal_mode=WAL")
+            # API workers write and read large scan artifacts. Keep SQLite's
+            # per-connection cache bounded so each worker thread cannot retain
+            # an unbounded page cache in long-running serve mode.
+            self._local.conn.execute("PRAGMA cache_size=-2048")
+            self._local.conn.execute("PRAGMA temp_store=FILE")
+            self._local.conn.execute("PRAGMA mmap_size=0")
         return self._local.conn
 
+    def _shrink_connection_memory(self) -> None:
+        try:
+            self._conn.execute("PRAGMA shrink_memory")
+        except sqlite3.Error:
+            pass
+
+    def _close_thread_connection(self) -> None:
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            return
+        try:
+            conn.close()
+        finally:
+            self._local.conn = None
+
     def _init_db(self) -> None:
-        ensure_sqlite_schema_version(self._conn, "scan_jobs")
-        self._conn.execute("""
-            CREATE TABLE IF NOT EXISTS jobs (
-                job_id TEXT PRIMARY KEY,
-                status TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                completed_at TEXT,
-                tenant_id TEXT NOT NULL DEFAULT 'default',
-                triggered_by TEXT,
-                data TEXT NOT NULL
-            )
-        """)
-        columns = {row[1] for row in self._conn.execute("PRAGMA table_info(jobs)").fetchall()}
-        if "triggered_by" not in columns:
-            self._conn.execute("ALTER TABLE jobs ADD COLUMN triggered_by TEXT")
-        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
-        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_completed ON jobs(completed_at)")
-        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_tenant ON jobs(tenant_id)")
-        self._conn.commit()
+        try:
+            ensure_sqlite_schema_version(self._conn, "scan_jobs")
+            self._conn.execute("""
+                CREATE TABLE IF NOT EXISTS jobs (
+                    job_id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    completed_at TEXT,
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
+                    triggered_by TEXT,
+                    data TEXT NOT NULL
+                )
+            """)
+            columns = {row[1] for row in self._conn.execute("PRAGMA table_info(jobs)").fetchall()}
+            if "triggered_by" not in columns:
+                self._conn.execute("ALTER TABLE jobs ADD COLUMN triggered_by TEXT")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_completed ON jobs(completed_at)")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_tenant ON jobs(tenant_id)")
+            self._conn.commit()
+        finally:
+            self._shrink_connection_memory()
+            self._close_thread_connection()
 
     @staticmethod
     def _serialize(job: ScanJob) -> str:
@@ -168,89 +197,113 @@ class SQLiteJobStore:
         return ScanJob.model_validate_json(data)
 
     def put(self, job: ScanJob) -> None:
-        self._conn.execute(
-            """INSERT OR REPLACE INTO jobs (job_id, status, created_at, completed_at, tenant_id, triggered_by, data)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (
-                job.job_id,
-                job.status.value,
-                job.created_at,
-                job.completed_at,
-                job.tenant_id,
-                job.triggered_by,
-                self._serialize(job),
-            ),
-        )
-        self._conn.commit()
+        try:
+            self._conn.execute(
+                """INSERT OR REPLACE INTO jobs (job_id, status, created_at, completed_at, tenant_id, triggered_by, data)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    job.job_id,
+                    job.status.value,
+                    job.created_at,
+                    job.completed_at,
+                    job.tenant_id,
+                    job.triggered_by,
+                    self._serialize(job),
+                ),
+            )
+            self._conn.commit()
+        finally:
+            self._shrink_connection_memory()
+            self._close_thread_connection()
 
     def get(self, job_id: str, tenant_id: str | None = None) -> ScanJob | None:
-        if tenant_id is None:
-            row = self._conn.execute("SELECT data FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
-        else:
-            row = self._conn.execute(
-                "SELECT data FROM jobs WHERE job_id = ? AND tenant_id = ?",
-                (job_id, tenant_id),
-            ).fetchone()
-        if row is None:
-            return None
-        return self._deserialize(row[0])
+        try:
+            if tenant_id is None:
+                row = self._conn.execute("SELECT data FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
+            else:
+                row = self._conn.execute(
+                    "SELECT data FROM jobs WHERE job_id = ? AND tenant_id = ?",
+                    (job_id, tenant_id),
+                ).fetchone()
+            if row is None:
+                return None
+            return self._deserialize(row[0])
+        finally:
+            self._shrink_connection_memory()
+            self._close_thread_connection()
 
     def delete(self, job_id: str, tenant_id: str | None = None) -> bool:
-        if tenant_id is None:
-            cursor = self._conn.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
-        else:
-            cursor = self._conn.execute(
-                "DELETE FROM jobs WHERE job_id = ? AND tenant_id = ?",
-                (job_id, tenant_id),
-            )
-        self._conn.commit()
-        return cursor.rowcount > 0
+        try:
+            if tenant_id is None:
+                cursor = self._conn.execute("DELETE FROM jobs WHERE job_id = ?", (job_id,))
+            else:
+                cursor = self._conn.execute(
+                    "DELETE FROM jobs WHERE job_id = ? AND tenant_id = ?",
+                    (job_id, tenant_id),
+                )
+            self._conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            self._shrink_connection_memory()
+            self._close_thread_connection()
 
     def list_all(self, tenant_id: str | None = None) -> list[ScanJob]:
-        if tenant_id is None:
-            rows = self._conn.execute("SELECT data FROM jobs ORDER BY created_at DESC").fetchall()
-        else:
-            rows = self._conn.execute(
-                "SELECT data FROM jobs WHERE tenant_id = ? ORDER BY created_at DESC",
-                (tenant_id,),
-            ).fetchall()
-        return [self._deserialize(r[0]) for r in rows]
+        try:
+            if tenant_id is None:
+                rows = self._conn.execute("SELECT data FROM jobs ORDER BY created_at DESC").fetchall()
+            else:
+                rows = self._conn.execute(
+                    "SELECT data FROM jobs WHERE tenant_id = ? ORDER BY created_at DESC",
+                    (tenant_id,),
+                ).fetchall()
+            return [self._deserialize(r[0]) for r in rows]
+        finally:
+            self._shrink_connection_memory()
+            self._close_thread_connection()
 
     def list_summary(self, tenant_id: str | None = None) -> list[dict]:
-        if tenant_id is None:
-            rows = self._conn.execute(
-                "SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by FROM jobs ORDER BY created_at DESC"
-            ).fetchall()
-        else:
-            rows = self._conn.execute(
-                """SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by
-                   FROM jobs
-                   WHERE tenant_id = ?
-                   ORDER BY created_at DESC""",
-                (tenant_id,),
-            ).fetchall()
-        summaries: list[dict] = []
-        for row in rows:
-            summaries.append(
-                {
-                    "job_id": row[0],
-                    "tenant_id": row[1],
-                    "triggered_by": row[5],
-                    "status": row[2],
-                    "created_at": row[3],
-                    "completed_at": row[4],
-                }
-            )
-        return summaries
+        try:
+            if tenant_id is None:
+                rows = self._conn.execute(
+                    "SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by FROM jobs ORDER BY created_at DESC"
+                ).fetchall()
+            else:
+                rows = self._conn.execute(
+                    """SELECT job_id, tenant_id, status, created_at, completed_at, triggered_by
+                       FROM jobs
+                       WHERE tenant_id = ?
+                       ORDER BY created_at DESC""",
+                    (tenant_id,),
+                ).fetchall()
+            summaries: list[dict] = []
+            for row in rows:
+                summaries.append(
+                    {
+                        "job_id": row[0],
+                        "tenant_id": row[1],
+                        "triggered_by": row[5],
+                        "status": row[2],
+                        "created_at": row[3],
+                        "completed_at": row[4],
+                    }
+                )
+            return summaries
+        finally:
+            self._shrink_connection_memory()
+            self._close_thread_connection()
 
     def cleanup_expired(self, ttl_seconds: int = _JOB_TTL_SECONDS) -> int:
-        now = datetime.now(timezone.utc).isoformat()
-        cursor = self._conn.execute(
-            """DELETE FROM jobs
-               WHERE status IN ('done', 'failed', 'cancelled')
-                 AND completed_at IS NOT NULL
-                 AND julianday(?) - julianday(completed_at) > ?""",
-            (now, ttl_seconds / 86400.0),
-        )
-        self._conn.commit()
-        return cursor.rowcount
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            cursor = self._conn.execute(
+                """DELETE FROM jobs
+                   WHERE status IN ('done', 'failed', 'cancelled')
+                     AND completed_at IS NOT NULL
+                     AND julianday(?) - julianday(completed_at) > ?""",
+                (now, ttl_seconds / 86400.0),
+            )
+            self._conn.commit()
+            return cursor.rowcount
+        finally:
+            self._shrink_connection_memory()
+            self._close_thread_connection()

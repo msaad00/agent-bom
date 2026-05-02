@@ -52,6 +52,7 @@ def set_job_store(store: Any) -> None:
 _jobs: dict[str, ScanJob] = {}
 _jobs_lock = threading.Lock()
 _job_locks: dict[str, threading.Lock] = {}
+_COMPACTED_RESULT_MARKER = "_agent_bom_hot_cache_compacted"
 
 
 def _job_lock(job_id: str) -> threading.Lock:
@@ -62,12 +63,40 @@ def _job_lock(job_id: str) -> threading.Lock:
         return _job_locks[job_id]
 
 
-def _jobs_put(job_id: str, job: ScanJob) -> None:
+def _compact_terminal_job(job: ScanJob) -> ScanJob:
+    """Return a hot-cache copy that keeps status/progress but drops full results."""
+    from agent_bom.api.models import JobStatus
+
+    if job.status not in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED):
+        return job
+
+    compact_result: dict[str, Any] = {_COMPACTED_RESULT_MARKER: True}
+    if isinstance(job.result, dict):
+        for key in ("summary", "scan_timestamp", "pushed"):
+            if key in job.result:
+                compact_result[key] = job.result[key]
+    return job.model_copy(update={"result": compact_result})
+
+
+def _compact_terminal_job_in_place(job: ScanJob) -> None:
+    """Drop heavy terminal results from an already-persisted in-process job."""
+    compact = _compact_terminal_job(job)
+    if compact is not job:
+        job.result = compact.result
+
+
+def _jobs_is_compacted(job: ScanJob) -> bool:
+    """Return True when a hot-cache job has only compact terminal metadata."""
+    return isinstance(job.result, dict) and bool(job.result.get(_COMPACTED_RESULT_MARKER))
+
+
+def _jobs_put(job_id: str, job: ScanJob, *, compact_terminal: bool = False) -> None:
     """Add a job to _jobs with bounded eviction."""
     from agent_bom.api.models import JobStatus
 
+    cached_job = _compact_terminal_job(job) if compact_terminal else job
     with _jobs_lock:
-        _jobs[job_id] = job
+        _jobs[job_id] = cached_job
         if len(_jobs) > _MAX_IN_MEMORY_JOBS:
             completed = [(jid, j) for jid, j in _jobs.items() if j.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.CANCELLED)]
             # Evict the oldest completed jobs first. Jobs missing a completion

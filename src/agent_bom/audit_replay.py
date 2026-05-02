@@ -182,6 +182,29 @@ def parse_audit_log(path: Path) -> AuditLog:
                 )
             )
 
+        elif "tool" in entry and ("outcome" in entry or "policy" in entry):
+            # Generic MCP audit JSONL adapter. This keeps replay useful for
+            # simple third-party logs while preserving the richer proxy schema
+            # for native agent-bom records.
+            outcome = str(entry.get("policy") or entry.get("outcome") or "allowed").lower()
+            policy = "blocked" if outcome in {"blocked", "denied", "deny", "rejected", "failed"} else "allowed"
+            raw_args = entry.get("args")
+            args: dict = dict(raw_args) if isinstance(raw_args, dict) else {}
+            if entry.get("server") and "server" not in args:
+                args = {**args, "server": entry.get("server")}
+            log.tool_calls.append(
+                ToolCallEntry(
+                    ts=str(entry.get("ts") or entry.get("timestamp") or ""),
+                    tool=str(entry.get("tool") or "unknown"),
+                    policy=policy,
+                    reason=str(entry.get("reason") or entry.get("outcome") or ""),
+                    agent_id=str(entry.get("agent_id") or entry.get("agent") or ""),
+                    args=args,
+                    payload_sha256=str(entry.get("payload_sha256") or ""),
+                    message_id=entry.get("message_id") or entry.get("id"),
+                )
+            )
+
         else:
             log.unknown.append(entry)
 

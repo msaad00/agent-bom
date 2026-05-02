@@ -18,11 +18,11 @@ from agent_bom.api.store import InMemoryJobStore
 def _mock_scan_pipeline(monkeypatch):
     """Prevent real MCP discovery during scan CRUD tests.
 
-    The scan endpoint calls loop.run_in_executor(_executor, _run_scan_sync, job)
-    which triggers discover_all() scanning the local machine. Replace with a
-    no-op so these tests only exercise HTTP routing, not the full pipeline.
+    The scan endpoint submits jobs to the API scan worker pool, which triggers
+    discover_all() scanning the local machine. Replace submission with a no-op
+    so these tests only exercise HTTP routing, not the full pipeline.
     """
-    monkeypatch.setattr("agent_bom.api.routes.scan._run_scan_sync", lambda job: None)
+    monkeypatch.setattr("agent_bom.api.routes.scan.submit_scan_job", lambda job: None)
 
 
 # ---------------------------------------------------------------------------

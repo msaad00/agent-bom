@@ -222,6 +222,27 @@ class TestValuesYamlSecrets:
         findings = scan_values_yaml(p)
         assert "HELM-003" in _rule_ids(findings)
 
+    def test_kubernetes_reference_keys_not_flagged(self, tmp_path):
+        p = _write(
+            tmp_path,
+            "values.yaml",
+            """\
+            topologySpread:
+              zone:
+                topologyKey: topology.kubernetes.io/zone
+            injector:
+              selectors:
+                namespaceLabelKey: agent-bom.io/proxy-inject
+                podLabelKey: agent-bom.io/proxy
+                tenantLabelKey: agent-bom.io/tenant
+              controlPlane:
+                tokenSecretName: agent-bom-token
+                tokenSecretKey: token
+        """,
+        )
+        findings = scan_values_yaml(p)
+        assert "HELM-003" not in _rule_ids(findings)
+
     def test_jinja_template_variable_not_flagged(self, tmp_path):
         """{{ .Values.* }} template references must NOT trigger HELM-003 — they
         are resolved at deploy time and are not hardcoded secrets."""

@@ -1,5 +1,10 @@
 # OpenClaw / ClawHub Skill Publishing
 
+> **Ownership.** These skills are owned and maintained by `agent-bom`.
+> OpenClaw and ClawHub are distribution surfaces — they package and surface
+> agent-bom skills for installation; the implementation, version, security
+> review, and release cadence stay with agent-bom.
+
 `agent-bom` keeps the public ClawHub surface intentionally small.
 
 Published skills:

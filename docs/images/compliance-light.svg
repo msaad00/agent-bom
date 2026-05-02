@@ -15,7 +15,7 @@
   <rect width="960" height="364" rx="12" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/>
 
   <text x="480" y="28" text-anchor="middle" class="title">Compliance coverage</text>
-  <text x="480" y="44" text-anchor="middle" class="subtitle">11 frameworks, 300+ controls mapped automatically from scan findings</text>
+  <text x="480" y="44" text-anchor="middle" class="subtitle">14 frameworks + AISVS, 300+ controls mapped automatically from scan findings</text>
 
   <!-- ═══ ROW 1: 5 frameworks ═══ -->
 

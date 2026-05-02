@@ -49,7 +49,7 @@
 
   <rect x="38" y="232" width="172" height="28" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
   <text x="50" y="250" class="mod-name">Package Parsers</text>
-  <text x="210" y="250" text-anchor="end" class="mod-sub" fill="#2563eb">5 ecosystems</text>
+  <text x="210" y="250" text-anchor="end" class="mod-sub" fill="#2563eb">15 ecosystems</text>
 
   <rect x="38" y="266" width="172" height="28" rx="6" fill="#eff6ff" stroke="#bfdbfe" stroke-width="0.5"/>
   <text x="50" y="284" class="mod-name">SBOM + Model Ingest</text>
@@ -109,7 +109,7 @@
 
   <rect x="530" y="164" width="172" height="28" rx="6" fill="#fff1f2" stroke="#fecdd3" stroke-width="0.5"/>
   <text x="542" y="182" class="mod-name">Compliance</text>
-  <text x="702" y="182" text-anchor="end" class="mod-sub" fill="#e11d48">11 frameworks</text>
+  <text x="702" y="182" text-anchor="end" class="mod-sub" fill="#e11d48">14 + AISVS</text>
 
   <rect x="530" y="198" width="172" height="28" rx="6" fill="#fff1f2" stroke="#fecdd3" stroke-width="0.5"/>
   <text x="542" y="216" class="mod-name">Policy Engine</text>
@@ -214,7 +214,7 @@
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <rect x="24" y="482" width="912" height="44" rx="8" fill="#f4f4f5" stroke="#e4e4e7" stroke-width="1"/>
 
-  <text x="92" y="504" text-anchor="middle" class="stat-num" fill="#2563eb">21</text>
+  <text x="92" y="504" text-anchor="middle" class="stat-num" fill="#2563eb">29</text>
   <text x="92" y="518" text-anchor="middle" class="stat-label">MCP clients</text>
 
   <text x="222" y="504" text-anchor="middle" class="stat-num" fill="#d97706">6</text>
@@ -223,15 +223,15 @@
   <text x="352" y="504" text-anchor="middle" class="stat-num" fill="#e11d48">427+</text>
   <text x="352" y="518" text-anchor="middle" class="stat-label">registry servers</text>
 
-  <text x="482" y="504" text-anchor="middle" class="stat-num" fill="#e11d48">14</text>
-  <text x="482" y="518" text-anchor="middle" class="stat-label">compliance frameworks</text>
+  <text x="482" y="504" text-anchor="middle" class="stat-num" fill="#e11d48">15</text>
+  <text x="482" y="518" text-anchor="middle" class="stat-label">compliance surfaces</text>
 
-  <text x="612" y="504" text-anchor="middle" class="stat-num" fill="#059669">12</text>
+  <text x="612" y="504" text-anchor="middle" class="stat-num" fill="#059669">26</text>
   <text x="612" y="518" text-anchor="middle" class="stat-label">output formats</text>
 
-  <text x="742" y="504" text-anchor="middle" class="stat-num" fill="#7c3aed">30</text>
+  <text x="742" y="504" text-anchor="middle" class="stat-num" fill="#7c3aed">36</text>
   <text x="742" y="518" text-anchor="middle" class="stat-label">MCP server tools</text>
 
-  <text x="872" y="504" text-anchor="middle" class="stat-num" fill="#a1a1aa">4,400+</text>
-  <text x="872" y="518" text-anchor="middle" class="stat-label">tests</text>
+  <text x="872" y="504" text-anchor="middle" class="stat-num" fill="#a1a1aa">419</text>
+  <text x="872" y="518" text-anchor="middle" class="stat-label">test files</text>
 </svg>

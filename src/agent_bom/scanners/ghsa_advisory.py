@@ -301,17 +301,23 @@ async def check_github_advisories(
             if len(queryable) > unauth_budget:
                 skipped = len(queryable) - unauth_budget
                 queryable = queryable[:unauth_budget]
-                from agent_bom.scanners.state import record_scan_warning
-
-                warning = (
-                    "GHSA advisory enrichment limited to "
-                    f"{unauth_budget} unauthenticated package lookup(s); skipped {skipped}. "
-                    "Set GITHUB_TOKEN or GH_TOKEN for full GHSA coverage."
+                # OSV mirrors GHSA within ~24h, so the skipped lookups are
+                # almost always already covered by the offline OSV bundle —
+                # this is an info-level note, not a scan-quality warning.
+                # Surface only at --verbose / --log-level info, and don't
+                # record it on the scan report's warnings_all badge.
+                logger.info(
+                    "GHSA advisory enrichment limited to %d unauthenticated package lookup(s); skipped %d. "
+                    "OSV bundle (refreshed via `agent-bom db update`) already covers GHSA — set GITHUB_TOKEN "
+                    "only if you need <24h advisory freshness.",
+                    unauth_budget,
+                    skipped,
                 )
-                logger.warning(warning)
-                record_scan_warning(warning)
-        logger.warning(
-            "GITHUB_TOKEN/GH_TOKEN is not set; GHSA advisory enrichment will fail fast on GitHub rate limits instead of pausing."
+        # Same rationale as above: token absence is not a scan-quality
+        # warning when OSV already covers the same GHSA data offline.
+        logger.info(
+            "GITHUB_TOKEN/GH_TOKEN is not set; GHSA advisory live enrichment uses fail-fast budget. "
+            "OSV bundle covers GHSA already — set the token only for <24h advisory freshness."
         )
     if not queryable:
         record_enrichment_source("ghsa", "failure", error="unauthenticated package budget disabled GHSA lookups")

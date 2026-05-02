@@ -1272,7 +1272,11 @@ def scan(
                 # line tells the operator something new.
                 sev_counts: dict[str, int] = {}
                 for br in blast_radii:
-                    sev_key = (str(br.severity).lower() if br.severity else "unknown") or "unknown"
+                    # ``BlastRadius.severity`` lives on the wrapped Vulnerability,
+                    # not the BlastRadius dataclass itself. Severity is a
+                    # ``str, Enum`` so ``str(...)`` yields the canonical token.
+                    raw_sev = getattr(br.vulnerability, "severity", None) if getattr(br, "vulnerability", None) else None
+                    sev_key = (str(raw_sev).lower() if raw_sev else "unknown") or "unknown"
                     sev_counts[sev_key] = sev_counts.get(sev_key, 0) + 1
                 _sev_order = ["critical", "high", "medium", "low", "unknown"]
                 _sev_color = {

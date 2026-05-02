@@ -784,6 +784,15 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         tool_metrics_snapshot=_tool_metrics_snapshot,
     )
 
+    # Strict-arg contract on every registered tool (#2197 audit P1).
+    # Sets `additionalProperties: false` on the JSON Schema served via
+    # tools/list AND wraps each tool's runner so unknown arg keys raise
+    # instead of being silently dropped. Pre-fix, AI agents passing typo
+    # args (e.g. `Version` capital) got false-clean verdicts.
+    from agent_bom.mcp_strict_args import harden_tool_arguments
+
+    harden_tool_arguments(mcp)
+
     return mcp
 
 

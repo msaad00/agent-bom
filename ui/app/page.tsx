@@ -12,6 +12,13 @@ import {
 } from "@/components/posture-grade";
 import { AttackPathCard } from "@/components/attack-path-card";
 import { ApiOfflineState } from "@/components/api-offline-state";
+import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
+
+function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
+  if (err instanceof ApiAuthError) return "auth";
+  if (err instanceof ApiForbiddenError) return "forbidden";
+  return "network";
+}
 import { buildSecurityGraphHref } from "@/lib/attack-paths";
 import {
   ShieldAlert, Server, Package, Bug, Zap, ArrowRight, Clock,
@@ -326,6 +333,10 @@ export default function Dashboard() {
   const [agentsLoading, setAgentsLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(true);
   const [apiError, setApiError] = useState(false);
+  // Differentiate "API down" from "API rejected my request" (#2196 audit fix).
+  // 401 -> "auth", 403 -> "forbidden", network/5xx -> "network".
+  const [apiErrorKind, setApiErrorKind] = useState<"network" | "auth" | "forbidden">("network");
+  const [apiErrorDetail, setApiErrorDetail] = useState<string | null>(null);
   const [importedReport, setImportedReport] = useState<ScanResult | null>(null);
   const [posture, setPosture] = useState<PostureResponse | null>(null);
 
@@ -347,9 +358,11 @@ export default function Dashboard() {
           : [];
         setJobs(jobsList);
         setApiError(false);
-      } catch {
+      } catch (err) {
         if (cancelled) return;
         setApiError(true);
+        setApiErrorKind(_classifyApiErrorKind(err));
+        setApiErrorDetail(err instanceof Error ? err.message : null);
         setJobs([]);
         setDetailJobs([]);
       } finally {
@@ -510,7 +523,7 @@ export default function Dashboard() {
   const agentsReady = !agentsLoading || Boolean(importedReport);
   const detailsReady = !detailLoading || Boolean(importedReport);
 
-  if (apiError && !importedReport) return <ApiOfflineState onImport={setImportedReport} />;
+  if (apiError && !importedReport) return <ApiOfflineState onImport={setImportedReport} kind={apiErrorKind} detail={apiErrorDetail} />;
 
   return (
     <div className="space-y-8">

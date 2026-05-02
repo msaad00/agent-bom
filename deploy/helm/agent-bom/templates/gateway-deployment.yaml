@@ -55,6 +55,14 @@ spec:
             - --policy-reload-seconds
             - {{ .Values.gateway.policyReloadSeconds | quote }}
             {{- end }}
+            {{- if .Values.gateway.firewallPolicyPath }}
+            - --firewall-policy
+            - {{ .Values.gateway.firewallPolicyPath }}
+            {{- end }}
+            {{- if gt (int (.Values.gateway.firewallPolicyReloadSeconds | default 0)) 0 }}
+            - --firewall-policy-reload-seconds
+            - {{ .Values.gateway.firewallPolicyReloadSeconds | quote }}
+            {{- end }}
             {{- if gt (int (.Values.gateway.runtimeRateLimitPerTenantPerMinute | default 0)) 0 }}
             - --runtime-rate-limit-per-tenant-per-minute
             - {{ .Values.gateway.runtimeRateLimitPerTenantPerMinute | quote }}

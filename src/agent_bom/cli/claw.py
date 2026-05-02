@@ -77,7 +77,7 @@ def fleet_group(ctx: click.Context) -> None:
       sync       Run discovery and sync results into fleet registry
       list       List fleet agents with filtering
       stats      Fleet-wide statistics
-      state      Update agent lifecycle state
+      reconcile-k8s  Compare Kubernetes inventory snapshots
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -91,8 +91,9 @@ def fleet_sync_cmd(quiet: bool) -> None:
 
     con = Console(stderr=True, quiet=quiet)
     con.print("[dim]Fleet sync requires the API server. Start with:[/dim]")
-    con.print("  [cyan]agent-claw api[/cyan]")
+    con.print("  [cyan]agent-bom api[/cyan]")
     con.print("  [cyan]curl -X POST http://localhost:8422/v1/fleet/sync[/cyan]")
+    raise click.ClickException("fleet sync is not available as a local-only command; call the API endpoint instead")
 
 
 @click.command("list")
@@ -105,8 +106,9 @@ def fleet_list_cmd(state, environment, quiet) -> None:
 
     con = Console(stderr=True, quiet=quiet)
     con.print("[dim]Fleet list requires the API server. Start with:[/dim]")
-    con.print("  [cyan]agent-claw api[/cyan]")
+    con.print("  [cyan]agent-bom api[/cyan]")
     con.print("  [cyan]curl http://localhost:8422/v1/fleet[/cyan]")
+    raise click.ClickException("fleet list is not available as a local-only command; call the API endpoint instead")
 
 
 @click.command("stats")
@@ -117,8 +119,9 @@ def fleet_stats_cmd(quiet) -> None:
 
     con = Console(stderr=True, quiet=quiet)
     con.print("[dim]Fleet stats requires the API server. Start with:[/dim]")
-    con.print("  [cyan]agent-claw api[/cyan]")
+    con.print("  [cyan]agent-bom api[/cyan]")
     con.print("  [cyan]curl http://localhost:8422/v1/fleet/stats[/cyan]")
+    raise click.ClickException("fleet stats is not available as a local-only command; call the API endpoint instead")
 
 
 fleet_group.add_command(fleet_sync_cmd, "sync")

@@ -14,6 +14,33 @@ logger = logging.getLogger(__name__)
 _SCHEDULER_LEADER_LOCK_ID = 4_197_042_001
 
 
+def validate_cron_expression(cron_expr: str) -> bool:
+    """Return True when a cron expression is in the scheduler's supported subset."""
+    parts = cron_expr.strip().split()
+    if len(parts) != 5:
+        return False
+
+    ranges = ((0, 59), (0, 23), (1, 31), (1, 12), (0, 7))
+    for spec, (min_val, max_val) in zip(parts, ranges, strict=True):
+        if spec == "*":
+            continue
+        if spec.startswith("*/"):
+            try:
+                step = int(spec[2:])
+            except ValueError:
+                return False
+            if step <= 0 or step > max_val:
+                return False
+            continue
+        try:
+            value = int(spec)
+        except ValueError:
+            return False
+        if value < min_val or value > max_val:
+            return False
+    return True
+
+
 def parse_cron_next(cron_expr: str, after: datetime) -> datetime | None:
     """Calculate next run time from a basic cron expression.
 
@@ -29,9 +56,9 @@ def parse_cron_next(cron_expr: str, after: datetime) -> datetime | None:
 
     Returns None if the expression cannot be parsed.
     """
-    parts = cron_expr.strip().split()
-    if len(parts) != 5:
+    if not validate_cron_expression(cron_expr):
         return None
+    parts = cron_expr.strip().split()
 
     try:
         minute_spec, hour_spec, dom_spec, month_spec, dow_spec = parts

@@ -387,6 +387,15 @@ def test_schedule_add():
         assert "Schedule created" in result.output
 
 
+def test_schedule_add_rejects_invalid_cron():
+    runner = CliRunner()
+    with patch("agent_bom.api.schedule_store.InMemoryScheduleStore") as mock_cls:
+        result = runner.invoke(schedule, ["add", "--name", "daily", "--cron", "bad cron"])
+        assert result.exit_code != 0
+        assert "Invalid cron expression" in result.output
+        mock_cls.assert_not_called()
+
+
 def test_schedule_list_empty():
     runner = CliRunner()
     with patch("agent_bom.api.schedule_store.InMemoryScheduleStore") as mock_cls:

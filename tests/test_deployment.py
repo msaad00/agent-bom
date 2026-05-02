@@ -22,6 +22,38 @@ def test_dockerfile_sse_exists():
     assert "EXPOSE" in content
 
 
+def test_deployment_metadata_uses_canonical_mcp_server_command():
+    """Glama, mcporter, and stdio Docker metadata should not drift to the hidden alias."""
+    glama = json.loads((ROOT / "integrations" / "glama" / "server.json").read_text())
+    mcporter = json.loads((ROOT / "config" / "mcporter.json").read_text())
+    dockerfile_mcp = (ROOT / "deploy" / "docker" / "Dockerfile.mcp").read_text()
+    glama_dockerfile = (ROOT / "integrations" / "glama" / "Dockerfile").read_text()
+
+    assert glama["command"] == "agent-bom"
+    assert glama["args"] == ["mcp", "server"]
+    assert mcporter["mcpServers"]["agent-bom"] == {
+        "command": "agent-bom",
+        "args": ["mcp", "server"],
+    }
+    assert 'ENTRYPOINT ["agent-bom", "mcp", "server"]' in dockerfile_mcp
+    assert 'ENTRYPOINT ["agent-bom", "mcp", "server"]' in glama_dockerfile
+    assert '"mcp-server"' not in glama_dockerfile
+    assert '"mcp-server"' not in dockerfile_mcp
+
+
+def test_remote_mcp_deployment_uses_canonical_streamable_http_command():
+    """Remote deployment files should invoke the canonical grouped command."""
+    remote_files = [
+        ROOT / "deploy" / "docker" / "Dockerfile.sse",
+        ROOT / "deploy" / "Procfile",
+    ]
+
+    for path in remote_files:
+        content = path.read_text()
+        assert "agent-bom mcp server --transport streamable-http" in content
+        assert "agent-bom mcp-server" not in content
+
+
 def test_railway_json_valid():
     """railway.json should be valid JSON with correct deploy config."""
     f = ROOT / "railway.json"

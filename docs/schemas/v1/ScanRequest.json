@@ -8,12 +8,34 @@
       "title": "Agent Projects",
       "type": "array"
     },
+    "auto_update_db": {
+      "default": false,
+      "title": "Auto Update Db",
+      "type": "boolean"
+    },
     "connectors": {
       "items": {
         "type": "string"
       },
       "title": "Connectors",
       "type": "array"
+    },
+    "db_sources": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Db Sources"
+    },
+    "dry_run": {
+      "default": false,
+      "title": "Dry Run",
+      "type": "boolean"
     },
     "dynamic_discovery": {
       "default": false,
@@ -122,6 +144,16 @@
       ],
       "default": null,
       "title": "Min Severity"
+    },
+    "no_scan": {
+      "default": false,
+      "title": "No Scan",
+      "type": "boolean"
+    },
+    "offline": {
+      "default": false,
+      "title": "Offline",
+      "type": "boolean"
     },
     "sbom": {
       "anyOf": [

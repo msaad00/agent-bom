@@ -159,6 +159,7 @@ def run_local_discovery(
     if (
         not skill_only
         and not scan_prompts
+        and not browser_extensions
         and not ctx.agents
         and not images
         and not k8s

@@ -28,6 +28,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urljoin, urlparse
 
 _logger = logging.getLogger(__name__)
 
@@ -49,7 +50,8 @@ def _validate_sync_url(url: str, param_name: str = "url") -> None:
 
 # Source URLs — all public, no auth required
 _OSV_ALL_ZIP_URL = "https://osv-vulnerabilities.storage.googleapis.com/all.zip"
-_EPSS_CSV_URL = "https://epss.cyentia.com/epss_scores-current.csv.gz"
+_EPSS_CSV_URL = "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
+_EPSS_REDIRECT_HOSTS = {"epss.cyentia.com", "epss.empiricalsecurity.com"}
 _KEV_JSON_URL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 _GHSA_REST_URL = "https://api.github.com/advisories"
 _NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
@@ -525,6 +527,41 @@ def sync_alpine_secdb(
 # ---------------------------------------------------------------------------
 
 
+def _resolve_epss_redirect(current_url: str, location: str) -> str:
+    """Resolve an EPSS redirect without allowing arbitrary host pivots."""
+    next_url = urljoin(current_url, location)
+    _validate_sync_url(next_url, "epss redirect url")
+    current_host = (urlparse(current_url).hostname or "").lower()
+    next_host = (urlparse(next_url).hostname or "").lower()
+    allowed_hosts = set(_EPSS_REDIRECT_HOSTS)
+    if current_host:
+        allowed_hosts.add(current_host)
+    if next_host not in allowed_hosts:
+        raise ValueError(f"epss redirect url host is not allowed: {next_host!r}")
+    return next_url
+
+
+def _fetch_epss_csv_bytes(src: str) -> bytes:
+    """Fetch EPSS CSV bytes, following only expected HTTPS EPSS redirects."""
+    from agent_bom.http_client import create_sync_client, sync_request_with_retry
+
+    current_url = src
+    with create_sync_client(timeout=30) as client:
+        for _ in range(4):
+            response = sync_request_with_retry(client, "GET", current_url)
+            if response is None:
+                raise ConnectionError(f"Failed to fetch EPSS data from {current_url!r} after retries")
+            if response.status_code in {301, 302, 303, 307, 308}:
+                location = response.headers.get("location")
+                if not location:
+                    response.raise_for_status()
+                current_url = _resolve_epss_redirect(current_url, location)
+                continue
+            response.raise_for_status()
+            return response.content
+    raise RuntimeError("EPSS download exceeded redirect limit")
+
+
 def sync_epss(conn: sqlite3.Connection, url: Optional[str] = None) -> int:
     """Download and ingest the FIRST EPSS scores CSV.
 
@@ -532,14 +569,12 @@ def sync_epss(conn: sqlite3.Connection, url: Optional[str] = None) -> int:
     """
     import gzip
 
-    from agent_bom.http_client import fetch_bytes
-
     src = url or _EPSS_CSV_URL
     _validate_sync_url(src, "epss url")
     _logger.info("Downloading EPSS scores from %s …", src)
 
     try:
-        raw = fetch_bytes(src, timeout=30)
+        raw = _fetch_epss_csv_bytes(src)
     except Exception as exc:
         _logger.error("Failed to download EPSS data: %s", exc)
         raise

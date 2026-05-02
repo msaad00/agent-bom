@@ -39,6 +39,14 @@ class TestAgentBom:
         assert r.exit_code == 0
         assert "OpenSSF Scorecard" in r.output
 
+    def test_report_dashboard_help_points_to_serve_for_next_ui(self):
+        from agent_bom.cli import main
+
+        r = CliRunner().invoke(main, ["report", "--help"])
+        assert r.exit_code == 0
+        assert "agent-bom serve" in r.output
+        assert "legacy Streamlit compatibility" in r.output
+
     def test_scan_backward_compat(self):
         from agent_bom.cli import main
 
@@ -161,6 +169,22 @@ class TestAgentCloud:
         assert r.exit_code == 0
         assert "--project" in r.output
 
+    def test_cloud_provider_wrappers_disable_auto_db_refresh(self, monkeypatch):
+        from agent_bom.cli.cloud import cloud
+
+        seen = []
+
+        def fake_scan(**kwargs):
+            seen.append(kwargs)
+
+        monkeypatch.setattr("agent_bom.cli.agents.scan.callback", fake_scan)
+
+        for command in ("aws", "azure", "gcp"):
+            r = CliRunner().invoke(cloud, [command])
+            assert r.exit_code == 0
+
+        assert [item["auto_update_db"] for item in seen] == [False, False, False]
+
     def test_snowflake_help(self):
         from agent_bom.cli.cloud import cloud
 
@@ -270,6 +294,19 @@ class TestAgentClaw:
         assert "sync" in r.output
         assert "list" in r.output
         assert "stats" in r.output
+        assert "reconcile-k8s" in r.output
+        fleet = claw.get_command(None, "fleet")
+        assert fleet.get_command(None, "state") is None
+
+    def test_fleet_placeholder_commands_fail_closed(self):
+        from agent_bom.cli.claw import claw
+
+        for command in ("sync", "list", "stats"):
+            r = CliRunner().invoke(claw, ["fleet", command])
+            assert r.exit_code != 0
+            assert "agent-bom api" in r.output
+            assert "agent-claw api" not in r.output
+            assert "not available as a local-only command" in r.output
 
     def test_schedule_help(self):
         from agent_bom.cli.claw import claw

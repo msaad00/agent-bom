@@ -29,6 +29,7 @@ async def run_scan_pipeline(
     sbom_path: Optional[str] = None,
     enrich: bool = False,
     transitive: bool = False,
+    offline: bool = False,
 ):
     """Run discovery -> extraction -> scanning and return agents + findings."""
     from agent_bom.discovery import discover_all
@@ -136,8 +137,8 @@ async def run_scan_pipeline(
             if not server.packages:
                 server.packages = extract_packages(server)
 
-    if enrich:
-        blast_radii = await scan_agents_with_enrichment(agents, options=ScanOptions(offline=False))
+    if enrich and not offline:
+        blast_radii = await scan_agents_with_enrichment(agents, options=ScanOptions(offline=offline))
     else:
-        blast_radii = await scan_agents(agents, options=ScanOptions(offline=False))
+        blast_radii = await scan_agents(agents, options=ScanOptions(offline=offline))
     return agents, blast_radii, warnings, scan_sources

@@ -269,6 +269,26 @@ async def test_schedule_create_audit_logs_authenticated_tenant(isolated_audit_lo
 
 
 @pytest.mark.asyncio
+async def test_schedule_create_rejects_invalid_cron(isolated_audit_log):
+    store = InMemoryScheduleStore()
+    set_schedule_store(store)
+
+    with pytest.raises(HTTPException) as exc:
+        await schedule_routes.create_schedule(
+            _request("tenant-alpha"),
+            ScheduleCreate(
+                name="bad-scan",
+                cron_expression="bad cron",
+                scan_config={"path": "."},
+            ),
+        )
+
+    assert exc.value.status_code == 422
+    assert store.list_all(tenant_id="tenant-alpha") == []
+    assert isolated_audit_log.list_entries() == []
+
+
+@pytest.mark.asyncio
 async def test_scan_routes_are_tenant_scoped():
     store = InMemoryJobStore()
     set_job_store(store)

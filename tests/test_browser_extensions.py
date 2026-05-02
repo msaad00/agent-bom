@@ -6,6 +6,9 @@ import json
 import zipfile
 from pathlib import Path
 
+from click.testing import CliRunner
+
+from agent_bom.cli import main
 from agent_bom.parsers.browser_extensions import (
     _assess_extension_risk,
     _build_extension,
@@ -242,6 +245,38 @@ def test_discover_returns_list(monkeypatch):
     result = discover_browser_extensions()
     assert isinstance(result, list)
     assert result == []
+
+
+def test_browser_extensions_cli_reports_empty_scan(monkeypatch, tmp_path):
+    """--browser-extensions should leave observable JSON even when no profiles match."""
+    monkeypatch.setattr("agent_bom.parsers.browser_extensions.discover_browser_extensions", lambda include_low_risk=False: [])
+    monkeypatch.setattr("agent_bom.cli.agents._discovery._discover_all_default", lambda *args, **kwargs: [])
+    out_file = tmp_path / "report.json"
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "scan",
+            "--browser-extensions",
+            "--project",
+            str(tmp_path),
+            "--format",
+            "json",
+            "--output",
+            str(out_file),
+            "--no-auto-update-db",
+        ],
+    )
+
+    assert result.exit_code == 0
+    data = json.loads(out_file.read_text())
+    assert data["browser_extensions"] == {
+        "extensions": [],
+        "total": 0,
+        "critical_count": 0,
+        "high_count": 0,
+    }
+    assert "browser_extensions" in data["scan_sources"]
 
 
 def test_discover_filters_low_risk(monkeypatch, tmp_path):

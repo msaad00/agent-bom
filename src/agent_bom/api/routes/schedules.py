@@ -27,12 +27,15 @@ async def create_schedule(request: Request, body: ScheduleCreate) -> dict:
     """Create a recurring scan schedule."""
     from agent_bom.api.audit_log import log_action
     from agent_bom.api.schedule_store import ScanSchedule
-    from agent_bom.api.scheduler import parse_cron_next
+    from agent_bom.api.scheduler import parse_cron_next, validate_cron_expression
 
     tenant_id = getattr(request.state, "tenant_id", "default")
     actor = getattr(request.state, "api_key_name", "") or "system"
     if body.tenant_id not in ("default", tenant_id):
         raise HTTPException(status_code=403, detail="Forbidden — tenant_id must match the authenticated tenant")
+
+    if not validate_cron_expression(body.cron_expression):
+        raise HTTPException(status_code=422, detail="Invalid cron expression")
 
     now = datetime.now(timezone.utc)
     next_run = parse_cron_next(body.cron_expression, now)

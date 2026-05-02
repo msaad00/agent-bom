@@ -287,6 +287,7 @@ def _run_scan_sync(job: ScanJob) -> None:
         req = job.request
         agents = []
         warnings_all: list[str] = []
+        side_effects_enabled = not (req.dry_run or req.no_scan)
 
         # ── Path validation (prevent path traversal via API) ──
         path_fields = (
@@ -300,6 +301,53 @@ def _run_scan_sync(job: ScanJob) -> None:
         )
         for p in path_fields:
             validate_path(p, must_exist=True)
+
+        if req.dry_run:
+            pipeline.start_step("discovery", "Dry run: validating scan request")
+            pipeline.complete_step("discovery", "Dry run request validated")
+            pipeline.skip_step("extraction", "Dry run")
+            pipeline.skip_step("scanning", "Dry run")
+            pipeline.skip_step("enrichment", "Dry run")
+            pipeline.skip_step("analysis", "Dry run")
+            pipeline.skip_step("output", "Dry run completed without side effects")
+            with lock:
+                job.result = {
+                    "dry_run": True,
+                    "scan_skipped": True,
+                    "offline": req.offline,
+                    "no_scan": req.no_scan,
+                    "side_effects": "skipped",
+                    "would_scan": {
+                        "inventory": bool(req.inventory),
+                        "images": list(req.images),
+                        "kubernetes": req.k8s,
+                        "terraform_dirs": list(req.tf_dirs),
+                        "github_actions": bool(req.gha_path),
+                        "agent_projects": list(req.agent_projects),
+                        "jupyter_dirs": list(req.jupyter_dirs),
+                        "sbom": bool(req.sbom),
+                        "connectors": list(req.connectors),
+                        "filesystem_paths": list(req.filesystem_paths),
+                        "dynamic_discovery": req.dynamic_discovery,
+                    },
+                    "warnings": [],
+                }
+                job.status = JobStatus.DONE
+                job.completed_at = _now()
+            return
+
+        if req.auto_update_db and not req.offline and not req.no_scan:
+            try:
+                from agent_bom.db.schema import db_freshness_days
+                from agent_bom.db.sync import sync_db
+
+                source_list = [s.strip() for s in req.db_sources.split(",") if s.strip()] if req.db_sources else None
+                freshness = db_freshness_days()
+                if freshness is None or freshness > 7 or source_list:
+                    sync_db(sources=source_list)
+            except Exception as db_exc:  # noqa: BLE001
+                _logger.warning("API auto DB refresh failed: %s", sanitize_error(db_exc))
+                warnings_all.append(f"Auto DB refresh skipped: {sanitize_error(db_exc)}")
 
         # ── Discovery phase ──
         pipeline.start_step("discovery", "Discovering local MCP configurations...")
@@ -521,30 +569,64 @@ def _run_scan_sync(job: ScanJob) -> None:
         pipeline.complete_step("extraction", f"Extracted {total_pkgs} packages", {"packages": total_pkgs})
 
         # ── Scanning phase ──
-        scan_message = (
-            f"Scanning {total_pkgs} packages via OSV.dev with vulnerability enrichment..."
-            if req.enrich
-            else f"Scanning {total_pkgs} packages via OSV.dev..."
-        )
-        pipeline.start_step("scanning", scan_message)
-        try:
-            blast_radii = scan_agents_sync(agents, enable_enrichment=req.enrich, offline=False)
-        except Exception as scan_exc:  # noqa: BLE001
-            # Log but don't crash — return what we have with warning
-            _logger.warning("Scan phase error (retrying without enrichment): %s", scan_exc)
-            pipeline.update_step("scanning", f"Scan error: {sanitize_error(scan_exc)} — retrying without enrichment")
+        blast_radii = []
+        effective_enrich = bool(req.enrich and not req.offline)
+        if req.no_scan:
+            pipeline.skip_step("scanning", "Vulnerability scanning skipped by request")
+            warnings_all.append("Vulnerability scanning skipped by request")
+        else:
+            if req.offline:
+                scan_message = f"Scanning {total_pkgs} packages against the local vulnerability DB only..."
+            else:
+                scan_message = (
+                    f"Scanning {total_pkgs} packages via OSV.dev with vulnerability enrichment..."
+                    if effective_enrich
+                    else f"Scanning {total_pkgs} packages via OSV.dev..."
+                )
+            pipeline.start_step("scanning", scan_message)
             try:
-                blast_radii = scan_agents_sync(agents, enable_enrichment=False, offline=False)
-            except Exception as retry_exc:  # noqa: BLE001
-                _logger.error("Scan retry also failed: %s", retry_exc)
-                blast_radii = []
-                warnings_all.append(f"CVE scanning failed: {sanitize_error(retry_exc)}")
-        total_vulns = sum(len(p.vulnerabilities) for a in agents for s in a.mcp_servers for p in s.packages)
-        if total_pkgs > 0 and total_vulns == 0 and not blast_radii:
-            warnings_all.append(
-                f"Scanned {total_pkgs} packages but found 0 vulnerabilities. This may indicate a network issue reaching OSV.dev."
+                blast_radii = scan_agents_sync(agents, enable_enrichment=effective_enrich, offline=req.offline)
+            except Exception as scan_exc:  # noqa: BLE001
+                if req.offline:
+                    _logger.warning("Offline scan phase error: %s", scan_exc)
+                    pipeline.update_step("scanning", f"Offline scan error: {sanitize_error(scan_exc)}")
+                    warnings_all.append(f"Offline CVE scanning failed: {sanitize_error(scan_exc)}")
+                    blast_radii = []
+                else:
+                    # Log but don't crash — return what we have with warning
+                    _logger.warning("Scan phase error (retrying without enrichment): %s", scan_exc)
+                    pipeline.update_step("scanning", f"Scan error: {sanitize_error(scan_exc)} — retrying without enrichment")
+                    try:
+                        blast_radii = scan_agents_sync(agents, enable_enrichment=False, offline=False)
+                    except Exception as retry_exc:  # noqa: BLE001
+                        _logger.error("Scan retry also failed: %s", retry_exc)
+                        blast_radii = []
+                        warnings_all.append(f"CVE scanning failed: {sanitize_error(retry_exc)}")
+            total_vulns = sum(len(p.vulnerabilities) for a in agents for s in a.mcp_servers for p in s.packages)
+            if total_pkgs > 0 and total_vulns == 0 and not blast_radii and not req.offline:
+                warnings_all.append(
+                    f"Scanned {total_pkgs} packages but found 0 vulnerabilities. This may indicate a network issue reaching OSV.dev."
+                )
+            pipeline.complete_step("scanning", f"Found {total_vulns} vulnerabilities", {"vulnerabilities": total_vulns})
+
+        if req.no_scan:
+            total_vulns = 0
+        elif req.offline and req.enrich:
+            warnings_all.append("Enrichment skipped because offline mode was requested")
+
+        if req.no_scan:
+            pipeline.skip_step("enrichment", "Vulnerability scanning skipped")
+        elif effective_enrich:
+            # Enrichment is executed inside scan_agents_sync, alongside the
+            # vulnerability query. Emit a terminal event only so SSE timing does
+            # not claim a separate enrichment phase ran after scanning.
+            pipeline.complete_step(
+                "enrichment",
+                "Enrichment completed during scanning",
+                {"executed_in_step": "scanning"},
             )
-        pipeline.complete_step("scanning", f"Found {total_vulns} vulnerabilities", {"vulnerabilities": total_vulns})
+        else:
+            pipeline.skip_step("enrichment", "Enrichment not requested")
 
         # ── Severity filtering (post-scan) ──
         if req.min_severity:
@@ -556,25 +638,16 @@ def _run_scan_sync(job: ScanJob) -> None:
             from agent_bom.api.stores import _get_exception_store
             from agent_bom.suppression_rules import apply_tenant_suppression_rules
 
-            suppression = apply_tenant_suppression_rules(blast_radii, _get_exception_store(), tenant_id=job.tenant_id or "default")
+            suppression = (
+                {"suppressed": 0}
+                if req.no_scan
+                else apply_tenant_suppression_rules(blast_radii, _get_exception_store(), tenant_id=job.tenant_id or "default")
+            )
             if suppression["suppressed"]:
                 warnings_all.append(f"{suppression['suppressed']} finding(s) suppressed by tenant feedback/rules")
         except Exception as exc:  # noqa: BLE001
             _logger.warning("Tenant suppression-rule evaluation skipped: %s", sanitize_error(exc))
             warnings_all.append("Tenant suppression-rule evaluation skipped")
-
-        # ── Enrichment phase ──
-        if req.enrich:
-            # Enrichment is executed inside scan_agents_sync, alongside the
-            # vulnerability query. Emit a terminal event only so SSE timing does
-            # not claim a separate enrichment phase ran after scanning.
-            pipeline.complete_step(
-                "enrichment",
-                "Enrichment completed during scanning",
-                {"executed_in_step": "scanning"},
-            )
-        else:
-            pipeline.skip_step("enrichment", "Enrichment not requested")
 
         # ── Analysis phase ──
         pipeline.start_step("analysis", "Computing blast radius...")
@@ -610,68 +683,74 @@ def _run_scan_sync(job: ScanJob) -> None:
             job.result = report_json
             job.status = JobStatus.DONE
 
-        try:
-            pipeline.update_step("output", "Persisting unified graph...")
-            _persist_graph_snapshot(job, report_json, lock=lock)
-        except Exception as graph_exc:  # noqa: BLE001
-            _logger.warning("Unified graph persistence failed: %s", graph_exc)
-            with lock:
-                job.progress.append(f"Graph persistence skipped: {sanitize_error(graph_exc)}")
+        if side_effects_enabled:
+            try:
+                pipeline.update_step("output", "Persisting unified graph...")
+                _persist_graph_snapshot(job, report_json, lock=lock)
+            except Exception as graph_exc:  # noqa: BLE001
+                _logger.warning("Unified graph persistence failed: %s", graph_exc)
+                with lock:
+                    job.progress.append(f"Graph persistence skipped: {sanitize_error(graph_exc)}")
 
-        try:
-            from agent_bom.asset_tracker import AssetTracker
+            try:
+                from agent_bom.asset_tracker import AssetTracker
 
-            tracker = AssetTracker(tenant_id=str(getattr(job, "tenant_id", None) or "default"))
-            asset_diff = tracker.record_scan(report_json)
-            tracker.close()
+                tracker = AssetTracker(tenant_id=str(getattr(job, "tenant_id", None) or "default"))
+                asset_diff = tracker.record_scan(report_json)
+                tracker.close()
+                with lock:
+                    job.progress.append(
+                        "Asset tracker synced "
+                        f"(new={asset_diff['summary']['new_count']}, "
+                        f"resolved={asset_diff['summary']['resolved_count']}, "
+                        f"open={asset_diff['summary']['total_open']})"
+                    )
+            except Exception as asset_exc:  # noqa: BLE001
+                _logger.warning("Asset tracker persistence failed: %s", asset_exc)
+                with lock:
+                    job.progress.append(f"Asset tracker skipped: {sanitize_error(asset_exc)}")
+        else:
             with lock:
-                job.progress.append(
-                    "Asset tracker synced "
-                    f"(new={asset_diff['summary']['new_count']}, "
-                    f"resolved={asset_diff['summary']['resolved_count']}, "
-                    f"open={asset_diff['summary']['total_open']})"
-                )
-        except Exception as asset_exc:  # noqa: BLE001
-            _logger.warning("Asset tracker persistence failed: %s", asset_exc)
-            with lock:
-                job.progress.append(f"Asset tracker skipped: {sanitize_error(asset_exc)}")
+                job.progress.append("Result side-effect persistence skipped by request")
 
         pipeline.complete_step("output", "Report ready")
 
         # Auto-sync discovered agents to fleet registry
-        try:
-            _sync_scan_agents_to_fleet(agents, tenant_id=str(getattr(job, "tenant_id", None) or "default"))
-        except Exception as fleet_exc:  # noqa: BLE001
-            with lock:
-                job.progress.append(f"Fleet sync skipped: {fleet_exc}")
+        if side_effects_enabled:
+            try:
+                _sync_scan_agents_to_fleet(agents, tenant_id=str(getattr(job, "tenant_id", None) or "default"))
+            except Exception as fleet_exc:  # noqa: BLE001
+                with lock:
+                    job.progress.append(f"Fleet sync skipped: {fleet_exc}")
 
-        try:
-            from agent_bom.analytics_contract import build_scan_analytics_payload
+        if side_effects_enabled:
+            try:
+                from agent_bom.analytics_contract import build_scan_analytics_payload
 
-            analytics_store = _get_analytics_store()
-            analytics = build_scan_analytics_payload(report, report_json=report_json, scan_id=job.job_id, source="api")
-            # Plumb the job's tenant through to analytics so the shared
-            # ClickHouse cluster stays segregated per tenant at row level.
-            tenant_id = str(getattr(job, "tenant_id", None) or "default")
-            for agent_name, findings in analytics.agent_findings.items():
-                analytics_store.record_scan(analytics.scan_id, agent_name, findings, tenant_id=tenant_id)
-            analytics_store.record_scan_metadata(analytics.scan_metadata, tenant_id=tenant_id)
-            for agent_name, snapshot in analytics.posture_snapshots.items():
-                analytics_store.record_posture(agent_name, snapshot, tenant_id=tenant_id)
-            for fleet_snapshot in analytics.fleet_snapshots:
-                # The analytics builder seeds tenant_id="default" so CLI scans
-                # without a request context keep working. When a real job is
-                # on the wire we override with the authed tenant so dashboards
-                # see the finding in the right column.
-                fleet_snapshot["tenant_id"] = tenant_id
-                analytics_store.record_fleet_snapshot(fleet_snapshot)
-            for control in analytics.compliance_controls:
-                analytics_store.record_compliance_control(control, tenant_id=tenant_id)
-            analytics_store.record_cis_benchmark_checks(analytics.cis_benchmark_checks, tenant_id=tenant_id)
-        except Exception as analytics_exc:  # noqa: BLE001
-            _logger.warning("API ClickHouse analytics persistence failed: %s", analytics_exc)
-            with lock:
-                job.progress.append(f"Analytics sync skipped: {sanitize_error(analytics_exc)}")
+                analytics_store = _get_analytics_store()
+                analytics = build_scan_analytics_payload(report, report_json=report_json, scan_id=job.job_id, source="api")
+                # Plumb the job's tenant through to analytics so the shared
+                # ClickHouse cluster stays segregated per tenant at row level.
+                tenant_id = str(getattr(job, "tenant_id", None) or "default")
+                for agent_name, findings in analytics.agent_findings.items():
+                    analytics_store.record_scan(analytics.scan_id, agent_name, findings, tenant_id=tenant_id)
+                analytics_store.record_scan_metadata(analytics.scan_metadata, tenant_id=tenant_id)
+                for agent_name, snapshot in analytics.posture_snapshots.items():
+                    analytics_store.record_posture(agent_name, snapshot, tenant_id=tenant_id)
+                for fleet_snapshot in analytics.fleet_snapshots:
+                    # The analytics builder seeds tenant_id="default" so CLI scans
+                    # without a request context keep working. When a real job is
+                    # on the wire we override with the authed tenant so dashboards
+                    # see the finding in the right column.
+                    fleet_snapshot["tenant_id"] = tenant_id
+                    analytics_store.record_fleet_snapshot(fleet_snapshot)
+                for control in analytics.compliance_controls:
+                    analytics_store.record_compliance_control(control, tenant_id=tenant_id)
+                analytics_store.record_cis_benchmark_checks(analytics.cis_benchmark_checks, tenant_id=tenant_id)
+            except Exception as analytics_exc:  # noqa: BLE001
+                _logger.warning("API ClickHouse analytics persistence failed: %s", analytics_exc)
+                with lock:
+                    job.progress.append(f"Analytics sync skipped: {sanitize_error(analytics_exc)}")
 
     except Exception as exc:  # noqa: BLE001
         with lock:

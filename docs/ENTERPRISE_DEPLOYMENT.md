@@ -434,8 +434,10 @@ python scripts/install_helm_profile.py --list
 ### 4. Cloud Infrastructure — agentless discovery
 
 ```bash
-# Scan all cloud providers in one command
-agent-bom cloud aws,azure,gcp
+# Scan configured providers individually
+agent-bom cloud aws
+agent-bom cloud azure
+agent-bom cloud gcp
 
 # With CIS benchmarks
 agent-bom cloud aws --cis

@@ -62,6 +62,21 @@ class ScanRequest(BaseModel):
     enrich: bool = False
     """Enrich with NVD CVSS, EPSS, and CISA KEV data."""
 
+    offline: bool = False
+    """Use the local vulnerability DB only; do not perform network vulnerability lookups."""
+
+    dry_run: bool = False
+    """Validate and preview the scan request without discovery, vulnerability scanning, or result side effects."""
+
+    no_scan: bool = False
+    """Run discovery and package extraction only; skip vulnerability scanning and result side effects."""
+
+    auto_update_db: bool = False
+    """Explicitly refresh the local vulnerability DB before scanning when stale."""
+
+    db_sources: str | None = None
+    """Comma-separated vulnerability DB sources to refresh when auto_update_db is enabled."""
+
     connectors: list[str] = Field(default_factory=list)
     """SaaS connectors to discover from (e.g. ['jira', 'servicenow', 'slack'])."""
 

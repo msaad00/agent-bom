@@ -1466,7 +1466,12 @@ async def run_proxy(
         sandbox_evidence = sandbox_config.evidence()
 
     if warning := sandbox_posture_warning(sandbox_evidence):
-        sys.stderr.write(warning + "\n")
+        # Single emission via the logger (#2197 audit P3). The previous code
+        # printed to both `sys.stderr` and `logger.warning(...)`, which
+        # duplicated the message in the operator's terminal because the
+        # default logging handler ALSO writes to stderr. The structured
+        # `mcp_execution_posture` audit event in the audit log already
+        # carries the same posture detail in machine-readable form.
         logger.warning(warning)
 
     # Validate the effective server command before spawning

@@ -54,33 +54,37 @@ class TestSelfScanInventory:
                 pass
         assert resolved >= 5, f"Expected >=5 resolved deps, got {resolved}"
 
-    def test_self_scan_inventory_deduplicates_and_hides_local_paths(self):
-        """Self-scan inventory should not duplicate packages or leak temp paths."""
+    def test_self_scan_inventory_walks_installed_distributions(self):
+        """Per #2197 audit: self-scan walks every installed distribution
+        in the venv (not just declared deps), excludes agent-bom itself,
+        and dedups duplicate (name, version, ecosystem) tuples."""
 
         class _FakeDist:
-            requires = [
-                "agent-bom>=0.75.9",
-                "Agent-Bom>=0.75.9",
-                "requests>=2.33.0",
-                "requests>=2.33.0",
-            ]
+            def __init__(self, name: str, version: str) -> None:
+                self.metadata = {"Name": name}
+                self.version = version
 
-        def _fake_version(name: str) -> str:
-            versions = {"agent-bom": "0.75.9", "Agent-Bom": "0.75.9", "requests": "2.33.0"}
-            return versions[name]
+        fake_dists = [
+            _FakeDist("agent-bom", "0.75.9"),  # excluded -- this IS the tool
+            _FakeDist("requests", "2.33.0"),
+            _FakeDist("Requests", "2.33.0"),  # case-only duplicate, dropped
+            _FakeDist("urllib3", "2.0.0"),  # transitive dep, must appear
+            _FakeDist("", "1.0.0"),  # empty name, dropped
+            _FakeDist("foo", ""),  # empty version, dropped
+        ]
 
-        with (
-            patch("importlib.metadata.distribution", return_value=_FakeDist()),
-            patch("importlib.metadata.version", side_effect=_fake_version),
-        ):
+        with patch("importlib.metadata.distributions", return_value=fake_dists):
             inventory = _build_self_scan_inventory()
 
         agent = inventory["agents"][0]
         packages = agent["mcp_servers"][0]["packages"]
         assert agent["config_path"] == "self-scan://agent-bom"
+        # Sorted by lowercased name; agent-bom self excluded; the first
+        # case-variant ("requests") wins the dedup key, so capitalised
+        # "Requests" is dropped; empty name/version entries dropped.
         assert packages == [
-            {"name": "agent-bom", "version": "0.75.9", "ecosystem": "pypi"},
             {"name": "requests", "version": "2.33.0", "ecosystem": "pypi"},
+            {"name": "urllib3", "version": "2.0.0", "ecosystem": "pypi"},
         ]
 
 

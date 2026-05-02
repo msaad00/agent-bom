@@ -6,28 +6,34 @@ import importlib.metadata as metadata
 
 
 def _build_self_scan_inventory() -> dict[str, list[dict[str, object]]]:
-    """Build a deterministic self-scan inventory for the installed package."""
+    """Build a self-scan inventory of every package installed in the venv.
+
+    Pre-#2197 the scan walked only `agent-bom`'s declared `requires` (top
+    level deps from pyproject.toml). The audit caught this: a fresh venv
+    install of `agent-bom` carries ~23 declared deps but ~66 actual
+    distributions once transitive deps resolve. CVEs in transitive deps
+    were therefore invisible to `--self-scan`. We now walk
+    `importlib.metadata.distributions()` so the self-scan reflects the
+    real attack surface.
+    """
     pkgs: list[dict[str, str]] = []
     seen: set[tuple[str, str, str]] = set()
 
-    dist = metadata.distribution("agent-bom")
-    for req_str in dist.requires or []:
-        name = req_str.split(";")[0].split("[")[0].strip()
-        for op in (">=", "<=", "==", "!=", "~=", ">", "<"):
-            if op in name:
-                name = name[: name.index(op)].strip()
-                break
-        if not name:
+    for dist in metadata.distributions():
+        name = (dist.metadata["Name"] or "").strip()
+        version = (dist.version or "").strip()
+        if not name or not version:
             continue
-        try:
-            version = metadata.version(name)
-        except metadata.PackageNotFoundError:
+        # Skip agent-bom itself -- it's the running tool, not a dep.
+        if name.lower() == "agent-bom":
             continue
         key = (name.lower(), version, "pypi")
         if key in seen:
             continue
         seen.add(key)
         pkgs.append({"name": name, "version": version, "ecosystem": "pypi"})
+
+    pkgs.sort(key=lambda p: (p["name"].lower(), p["version"]))
 
     return {
         "agents": [

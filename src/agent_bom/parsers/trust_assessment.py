@@ -82,12 +82,30 @@ class TrustCategoryResult:
 
 @dataclass
 class TrustAssessmentResult:
-    """Complete trust assessment across all 5 categories."""
+    """Complete trust assessment across all 5 categories.
+
+    The legacy single `verdict` conflated provenance signals (signed?
+    source URL?) with content risk signals (credential access? shell
+    exec? exfiltration?). Per #2197 audit, that misclassified legitimate
+    cybersecurity playbooks as `malicious` whenever they were unsigned
+    and lacked a frontmatter `source:` URL, even when the audit found
+    zero behavioural risk signals.
+
+    The result now carries TWO axes:
+
+    - `provenance_verdict` -- signed, install metadata complete, source URL?
+    - `content_verdict`    -- behavioural risk signals from the audit?
+
+    `verdict` (the union of both) and `review_verdict` are preserved so
+    pre-#2197 consumers don't break.
+    """
 
     categories: list[TrustCategoryResult] = field(default_factory=list)
     verdict: Verdict = Verdict.BENIGN
     review_verdict: ReviewVerdict = ReviewVerdict.REVIEW
     confidence: Confidence = Confidence.LOW
+    provenance_verdict: Verdict = Verdict.BENIGN
+    content_verdict: Verdict = Verdict.BENIGN
     recommendations: list[str] = field(default_factory=list)
     review_reasons: list[str] = field(default_factory=list)
     reviewer_guidance: list[str] = field(default_factory=list)
@@ -111,6 +129,10 @@ class TrustAssessmentResult:
             "verdict": self.verdict.value,
             "review_verdict": self.review_verdict.value,
             "confidence": self.confidence.value,
+            # Two-axis split (#2197 audit). `verdict` above is kept for
+            # backward compat; new consumers should prefer these axes.
+            "provenance_verdict": self.provenance_verdict.value,
+            "content_verdict": self.content_verdict.value,
             "categories": [
                 {
                     "name": c.name,
@@ -596,6 +618,45 @@ def _compute_verdict(
     return Verdict.BENIGN, Confidence.LOW
 
 
+# Per #2197 audit: split verdict into provenance + content axes.
+# `install_mechanism` is the only category that scores on metadata
+# completeness (signed? source URL? install methods declared?). Every
+# other category scores on actual behavioural risk in the skill content.
+_PROVENANCE_CATEGORY_KEYS = frozenset({"install_mechanism"})
+
+
+def _split_categories(
+    categories: list[TrustCategoryResult],
+) -> tuple[list[TrustCategoryResult], list[TrustCategoryResult]]:
+    """Partition categories into (provenance, content) axes."""
+    provenance = [c for c in categories if c.key in _PROVENANCE_CATEGORY_KEYS]
+    content = [c for c in categories if c.key not in _PROVENANCE_CATEGORY_KEYS]
+    return provenance, content
+
+
+def _compute_axis_verdict(categories: list[TrustCategoryResult]) -> Verdict:
+    """Compute a single-axis verdict (BENIGN/SUSPICIOUS/MALICIOUS).
+
+    Used independently for provenance and content axes so the trust
+    contract surfaces honestly which dimension is suspect (#2197).
+    """
+    if not categories:
+        return Verdict.BENIGN
+    fail_count = sum(1 for c in categories if c.level == TrustLevel.FAIL)
+    warn_count = sum(1 for c in categories if c.level == TrustLevel.WARN)
+    if fail_count >= 2:
+        return Verdict.MALICIOUS
+    if fail_count >= 1:
+        # On a single-axis assessment a single FAIL no longer escalates to
+        # MALICIOUS unless paired with corroborating WARNs -- that's what
+        # the audit caught (one FAIL on `install_mechanism` was scoring
+        # the whole file MALICIOUS).
+        return Verdict.SUSPICIOUS if warn_count == 0 else Verdict.MALICIOUS
+    if warn_count >= 1:
+        return Verdict.SUSPICIOUS
+    return Verdict.BENIGN
+
+
 # ── Recommendations ──────────────────────────────────────────────────────────
 
 
@@ -746,6 +807,11 @@ def assess_trust(
     ]
 
     verdict, confidence = _compute_verdict(categories)
+    # Per #2197 audit: split verdict into provenance + content so a clean
+    # skill that's just unsigned no longer reads as `malicious`.
+    provenance_categories, content_categories = _split_categories(categories)
+    provenance_verdict = _compute_axis_verdict(provenance_categories)
+    content_verdict = _compute_axis_verdict(content_categories)
     recommendations = _generate_recommendations(categories)
     review_verdict = _compute_review_verdict(verdict, categories, audit)
     review_reasons = _build_review_reasons(categories, audit)
@@ -756,6 +822,8 @@ def assess_trust(
         verdict=verdict,
         review_verdict=review_verdict,
         confidence=confidence,
+        provenance_verdict=provenance_verdict,
+        content_verdict=content_verdict,
         recommendations=recommendations,
         review_reasons=review_reasons,
         reviewer_guidance=reviewer_guidance,

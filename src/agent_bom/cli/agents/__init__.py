@@ -1266,7 +1266,24 @@ def scan(
             if scan_warnings:
                 con.print(f"  [yellow]⚠[/yellow] Scan completed with {len(scan_warnings)} warning(s); results may be incomplete.")
             if blast_radii:
-                con.print(f"  [red]⚠[/red] Scan complete — [bold]{len(blast_radii)}[/bold] finding(s)")
+                # Don't repeat the bare finding count — the scanner already
+                # printed "Found N vulnerabilities across N finding(s)" above.
+                # Surface a severity breakdown here instead so the closer
+                # line tells the operator something new.
+                sev_counts: dict[str, int] = {}
+                for br in blast_radii:
+                    sev_key = (str(br.severity).lower() if br.severity else "unknown") or "unknown"
+                    sev_counts[sev_key] = sev_counts.get(sev_key, 0) + 1
+                _sev_order = ["critical", "high", "medium", "low", "unknown"]
+                _sev_color = {
+                    "critical": "red bold",
+                    "high": "red",
+                    "medium": "yellow",
+                    "low": "blue",
+                    "unknown": "dim",
+                }
+                _sev_str = " · ".join(f"[{_sev_color[s]}]{sev_counts[s]} {s}[/{_sev_color[s]}]" for s in _sev_order if s in sev_counts)
+                con.print(f"  [red]⚠[/red] Scan complete — {_sev_str}")
             elif offline:
                 if unresolved:
                     con.print(

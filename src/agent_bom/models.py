@@ -693,6 +693,13 @@ class Agent:
     metadata: dict = field(default_factory=dict)  # Extra config data (permissions, hooks, etc.)
     automation_settings: list = field(default_factory=list)  # Risky automation settings (scheduled tasks, etc.)
     discovery_provenance: Optional[dict] = None  # Sanitized discovery provenance contract for this agent asset
+    # Per-run discovery envelope (#2083): trust contract for THIS scan run
+    # -- scan_mode, discovery_scope, permissions_used, redaction_status.
+    # Stored as a dict so the model stays JSON-friendly without dragging
+    # `discovery_envelope.DiscoveryEnvelope` into the import path; producers
+    # populate via `DiscoveryEnvelope.to_dict()` and consumers can re-hydrate
+    # via `DiscoveryEnvelope.from_dict()`.
+    discovery_envelope: Optional[dict] = None
 
     def __post_init__(self) -> None:
         """Backfill lifecycle fields for legacy Agent construction paths."""

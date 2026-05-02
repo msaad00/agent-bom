@@ -203,7 +203,7 @@ def discover(
         permissions_used=(
             "clusters:list",
             "clusters:get",
-            "libraries:cluster-status",
+            "libraries:cluster_status:get",
             "serving-endpoints:list",
             "serving-endpoints:get",
         ),

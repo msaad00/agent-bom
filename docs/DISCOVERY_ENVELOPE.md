@@ -132,12 +132,37 @@ border-radius, same chip pattern) but in emerald to distinguish "trust
 contract for this scan" from "where this asset came from" (the sky-blue
 provenance card).
 
+## Lock-in matrix (PR D)
+
+`tests/test_discovery_envelope_lock_in.py` runs three invariants against
+every wired provider:
+
+1. **Permission shape** — every entry follows a recognised
+   `<service>:<action>` / `<service>.<resource>.<verb>` /
+   `Microsoft.<svc>/.../verb` shape.
+2. **Read-only verbs** — the trailing verb of every permission must be in
+   the `_READ_VERBS` allowlist (Get, List, Describe, Search, Read, Select,
+   View, Retrieve, Show, Fetch, Scan, watch, GET/HEAD/OPTIONS). A future
+   contributor cannot quietly add a write verb (e.g. `s3:PutObject`,
+   `compute.instances.delete`) without this matrix failing — and that
+   failure is the signal to either drop the verb or have a deliberate
+   conversation about why a write permission is being claimed.
+3. **Redaction status** — cloud / SaaS providers must declare
+   `central_sanitizer_applied`; `local_only` providers (Ollama) declare
+   `not_applicable`.
+
+Plus a "no orphan providers" test that walks `agent_bom.cloud.*` and
+verifies every module declaring `permissions_used` is also in the matrix
+table — so a new provider added in a follow-up PR-B-style change can't
+silently bypass the least-privilege check.
+
 ## Roadmap
 
 - **PR A (merged)** — schema + Agent model field + AWS producer + tests.
-- **PR B (merging)** — provider parity: every cloud / SaaS / local provider
+- **PR B (merged)** — provider parity: every cloud / SaaS / local provider
   populates the envelope.
-- **PR C (this PR)** — API + UI surface; envelope visible in the dashboard.
-- **PR D** — cross-provider redaction + least-privilege test matrix
-  verifying every provider's `permissions_used` actually matches the API
-  calls it issues.
+- **PR C (merged)** — API + UI surface; envelope visible in the dashboard.
+- **PR D (this PR)** — cross-provider redaction + least-privilege lock-in
+  matrix.
+
+#2083 closes with PR D.

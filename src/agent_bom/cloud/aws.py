@@ -21,6 +21,7 @@ from email.parser import Parser as EmailParser
 from pathlib import Path
 from typing import Any
 
+from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode
 from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
 from .base import CloudDiscoveryError
@@ -279,7 +280,110 @@ def discover(
         )
         agents.append(ecs_agent)
 
+    # ── Per-run discovery envelope (#2083) ────────────────────────────────
+    # Capture the trust contract for THIS run: the modes / scope / IAM
+    # permissions actually exercised, plus the redaction posture. The
+    # central sanitizer in `agent_bom.security` is what ultimately scrubs
+    # values before storage, so we report `central_sanitizer_applied`.
+    discovery_scope: list[str] = []
+    if account_id:
+        discovery_scope.append(f"aws:account/{account_id}")
+    if resolved_region:
+        discovery_scope.append(f"aws:region/{resolved_region}")
+    if tag_filter:
+        for k, v in sorted(tag_filter.items()):
+            discovery_scope.append(f"aws:tag/{k}={v}")
+
+    permissions_used = _aws_permissions_for_jobs(
+        include_ecs=include_ecs,
+        include_sagemaker=include_sagemaker,
+        include_lambda=include_lambda,
+        include_eks=include_eks,
+        include_step_functions=include_step_functions,
+        include_ec2=include_ec2,
+    )
+    envelope = DiscoveryEnvelope(
+        scan_mode=ScanMode.CLOUD_READ_ONLY,
+        discovery_scope=tuple(discovery_scope),
+        permissions_used=permissions_used,
+        redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+    )
+    envelope_payload = envelope.to_dict()
+    for agent in agents:
+        if agent.discovery_envelope is None:
+            agent.discovery_envelope = envelope_payload
+
     return agents, warnings
+
+
+# IAM permissions exercised by AWS provider helpers, by job. Each entry is
+# the read-only API call list the corresponding `_discover_*` function
+# actually issues. Kept here so the per-run envelope `permissions_used`
+# field stays honest -- producers control the catalog, not external docs.
+_AWS_BEDROCK_PERMISSIONS: tuple[str, ...] = (
+    "bedrock-agent:ListAgents",
+    "bedrock-agent:GetAgent",
+    "bedrock-agent:ListAgentActionGroups",
+    "bedrock-agent:GetAgentActionGroup",
+    "bedrock-agent:ListAgentKnowledgeBases",
+)
+_AWS_ECS_PERMISSIONS: tuple[str, ...] = (
+    "ecs:ListClusters",
+    "ecs:ListTasks",
+    "ecs:DescribeTasks",
+    "ecs:DescribeTaskDefinition",
+)
+_AWS_SAGEMAKER_PERMISSIONS: tuple[str, ...] = (
+    "sagemaker:ListEndpoints",
+    "sagemaker:DescribeEndpoint",
+    "sagemaker:DescribeEndpointConfig",
+    "sagemaker:DescribeModel",
+)
+_AWS_LAMBDA_PERMISSIONS: tuple[str, ...] = (
+    "lambda:ListFunctions",
+    "lambda:GetFunction",
+)
+_AWS_EKS_PERMISSIONS: tuple[str, ...] = (
+    "eks:ListClusters",
+    "eks:DescribeCluster",
+)
+_AWS_STEP_FUNCTIONS_PERMISSIONS: tuple[str, ...] = (
+    "states:ListStateMachines",
+    "states:DescribeStateMachine",
+)
+_AWS_EC2_PERMISSIONS: tuple[str, ...] = ("ec2:DescribeInstances",)
+_AWS_BASELINE_PERMISSIONS: tuple[str, ...] = ("sts:GetCallerIdentity",)
+
+
+def _aws_permissions_for_jobs(
+    *,
+    include_ecs: bool,
+    include_sagemaker: bool,
+    include_lambda: bool,
+    include_eks: bool,
+    include_step_functions: bool,
+    include_ec2: bool,
+) -> tuple[str, ...]:
+    """Return the IAM action list this run is allowed to exercise.
+
+    Bedrock + the baseline `sts:GetCallerIdentity` are always in scope
+    because `discover()` always tries to resolve the account and list agents.
+    Other services are gated on the include_* flags.
+    """
+    perms: list[str] = list(_AWS_BASELINE_PERMISSIONS) + list(_AWS_BEDROCK_PERMISSIONS)
+    if include_ecs:
+        perms.extend(_AWS_ECS_PERMISSIONS)
+    if include_sagemaker:
+        perms.extend(_AWS_SAGEMAKER_PERMISSIONS)
+    if include_lambda:
+        perms.extend(_AWS_LAMBDA_PERMISSIONS)
+    if include_eks:
+        perms.extend(_AWS_EKS_PERMISSIONS)
+    if include_step_functions:
+        perms.extend(_AWS_STEP_FUNCTIONS_PERMISSIONS)
+    if include_ec2:
+        perms.extend(_AWS_EC2_PERMISSIONS)
+    return tuple(sorted(set(perms)))
 
 
 def _resolve_account_id(session: Any) -> str | None:

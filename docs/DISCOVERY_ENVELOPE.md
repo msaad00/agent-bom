@@ -107,11 +107,37 @@ The envelope is stored on `Agent.discovery_envelope` as a plain dict so the
 model stays JSON-friendly without dragging the dataclass into the import
 path. Consumers can re-hydrate via `DiscoveryEnvelope.from_dict(...)`.
 
+## API + UI surface (PR C)
+
+The envelope rides through the existing `/v1/agents` + `/v1/agents/{name}`
+endpoints — `_serialize_agent` calls `asdict(agent)` and the envelope is a
+plain dict on the dataclass, so no shape transformation is needed.
+TypeScript types in `ui/lib/api-types.ts` carry the canonical
+`DiscoveryEnvelope` interface.
+
+The agents page renders a `DiscoveryEnvelopeCard` on each agent's expanded
+detail view (mounted only when the envelope is present). The card shows:
+
+- a clear data-residency note ("scan ran inside your environment with
+  read-only roles, no findings are sent to agent-bom") so operators
+  understand the trust posture without reading docs,
+- `scan_mode` + `redaction_status` chips,
+- the `discovery_scope` list as compact mono-styled tags,
+- the `permissions_used` list collapsed by default with a `<details>`
+  summary showing the count,
+- the `captured_at` timestamp + envelope version in the footer.
+
+Visual style mirrors the existing `DiscoveryProvenanceTags` block (same
+border-radius, same chip pattern) but in emerald to distinguish "trust
+contract for this scan" from "where this asset came from" (the sky-blue
+provenance card).
+
 ## Roadmap
 
-- **PR A (this PR)** — schema + Agent model field + AWS producer + tests.
-- PR B — connector + endpoint parity (Snowflake, Databricks, GCP, Azure,
-  vector DBs, MLflow, W&B, …) all populate the envelope.
-- PR C — UI surface on the agent / source detail view; `/v1/agents` and
-  `/v1/discovery/providers` API responses include the envelope.
-- PR D — cross-provider redaction + least-privilege test matrix.
+- **PR A (merged)** — schema + Agent model field + AWS producer + tests.
+- **PR B (merging)** — provider parity: every cloud / SaaS / local provider
+  populates the envelope.
+- **PR C (this PR)** — API + UI surface; envelope visible in the dashboard.
+- **PR D** — cross-provider redaction + least-privilege test matrix
+  verifying every provider's `permissions_used` actually matches the API
+  calls it issues.

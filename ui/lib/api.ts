@@ -105,6 +105,7 @@ export type {
   MCPServer,
   MCPProvenance,
   DiscoveryProvenance,
+  DiscoveryEnvelope,
   Package,
   Vulnerability,
   BlastRadius,

@@ -254,3 +254,48 @@ def test_provider_imports_envelope_and_attach_helper(module_path, expected_mode)
         f"{module_path} must reference DiscoveryEnvelope or attach_envelope_to_agents"
     )
     assert f"ScanMode.{expected_mode.name}" in src, f"{module_path} should use ScanMode.{expected_mode.name}"
+
+
+# ─── PR C: API surface ─────────────────────────────────────────────────
+
+
+def test_serialize_agent_includes_envelope_in_api_payload() -> None:
+    """The /v1/agents API serialiser is `_serialize_agent`, which calls
+    `asdict(agent)`. The envelope is a plain dict on the dataclass so it
+    flows through automatically -- this test guards against a future
+    refactor that drops it.
+    """
+    from agent_bom.api.routes.discovery import _serialize_agent
+
+    envelope = DiscoveryEnvelope(
+        scan_mode=ScanMode.CLOUD_READ_ONLY,
+        discovery_scope=("aws:account/123",),
+        permissions_used=("ec2:DescribeInstances",),
+        redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,
+    )
+    agent = Agent(
+        name="bedrock-agent-1",
+        agent_type=AgentType.CUSTOM,
+        config_path="arn:aws:bedrock:...",
+        source="aws-bedrock",
+        discovery_envelope=envelope.to_dict(),
+    )
+    payload = _serialize_agent(agent)
+    assert "discovery_envelope" in payload
+    assert payload["discovery_envelope"]["scan_mode"] == "cloud_read_only"
+    assert payload["discovery_envelope"]["envelope_version"] == ENVELOPE_SCHEMA_VERSION
+    assert payload["discovery_envelope"]["permissions_used"] == ["ec2:DescribeInstances"]
+
+
+def test_serialize_agent_legacy_record_envelope_is_none() -> None:
+    """Legacy Agent records (created before #2083) carry no envelope; the
+    API surface reports `None` rather than fabricating one."""
+    from agent_bom.api.routes.discovery import _serialize_agent
+
+    agent = Agent(
+        name="legacy",
+        agent_type=AgentType.CLAUDE_DESKTOP,
+        config_path="/tmp/legacy",
+    )
+    payload = _serialize_agent(agent)
+    assert payload.get("discovery_envelope") is None

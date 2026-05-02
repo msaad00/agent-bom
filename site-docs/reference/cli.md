@@ -52,6 +52,7 @@
 | Command | Description |
 |---------|-------------|
 | `policy` | Policy templates, application, and install-guard checks |
+| `firewall` | Inter-agent firewall policy validate / list / check |
 | `trust` | Show data access, network, auth, and storage boundaries |
 | `fleet` | Manage AI agent fleet discovery, lifecycle, and posture |
 | `serve` | Start the API server and dashboard |

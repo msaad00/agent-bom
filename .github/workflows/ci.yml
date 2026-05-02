@@ -260,6 +260,12 @@ jobs:
         # declared in config.py nor explicitly allowlisted.
         run: uv run python scripts/generate_env_var_reference.py --check
 
+      - name: CLI reference alignment (fast preflight)
+        # Mirrors tests/test_public_docs_cli_alignment.py but runs in Lint so a
+        # new CLI root command missing a site-docs/reference/cli.md row fails
+        # in ~1 min instead of burning 6-8 min on the Test matrix.
+        run: uv run python scripts/check_cli_reference_alignment.py
+
   ui:
     name: UI Validate
     runs-on: ubuntu-latest

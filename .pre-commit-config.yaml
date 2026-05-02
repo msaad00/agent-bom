@@ -42,3 +42,17 @@ repos:
         args: [--severity-level, medium, -r]
         files: ^src/
         exclude: ^tests/
+
+  - repo: local
+    hooks:
+      # Catches new AGENT_BOM_* env vars added under src/agent_bom/ that are
+      # neither declared in config.py nor allowlisted. The generator is pure
+      # AST-parsing so it runs cleanly under the pre-commit env without the
+      # project venv. Same gate the CI Lint stage runs — pre-commit just
+      # surfaces it locally before push.
+      - id: env-var-reference-drift
+        name: env-var reference drift (config.py + allowlist gate)
+        entry: python3 scripts/generate_env_var_reference.py --check
+        language: system
+        pass_filenames: false
+        files: ^(src/agent_bom/.*\.py|src/agent_bom/config\.py|scripts/env_var_allowlist\.txt|docs/operations/ENV_VARS\.md)$

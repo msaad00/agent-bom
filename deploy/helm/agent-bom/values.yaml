@@ -147,6 +147,13 @@ gateway:
   policyPath: ""
   # In-process policy file reload interval; requires policyPath when > 0.
   policyReloadSeconds: 0
+  # Optional inter-agent firewall policy JSON path (#982). Schema:
+  # docs/AGENT_FIREWALL.md. Mount via extraVolumes + extraVolumeMounts the
+  # same way as policyPath. Independent from policyPath so operators can
+  # rotate firewall rules without touching MCP method-gating policy.
+  firewallPolicyPath: ""
+  # Hot-reload interval for firewallPolicyPath; requires firewallPolicyPath when > 0.
+  firewallPolicyReloadSeconds: 0
   # Tenant-scoped runtime request limit for gateway relay traffic (0 disables).
   runtimeRateLimitPerTenantPerMinute: 0
   # Fail closed unless runtime rate limiting uses a shared backend.

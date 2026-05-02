@@ -46,6 +46,13 @@ from agent_bom.api.auth import Role, get_key_store
 from agent_bom.api.metrics import record_gateway_relay, record_rate_limit_hit
 from agent_bom.api.middleware import InMemoryRateLimitStore, PostgresRateLimitStore
 from agent_bom.api.tracing import get_tracer, inject_trace_headers, make_request_trace
+from agent_bom.firewall import (
+    AgentFirewallPolicy,
+    FirewallDecision,
+    FirewallPolicyError,
+    load_firewall_policy_file,
+)
+from agent_bom.firewall import evaluate as evaluate_firewall_policy
 from agent_bom.gateway_upstreams import UpstreamConfig, UpstreamRegistry
 from agent_bom.proxy import check_policy, is_tools_call, parse_jsonrpc, policy_subject_from_message
 from agent_bom.proxy_policy import summarize_policy_bundle
@@ -100,6 +107,11 @@ class GatewaySettings:
     require_shared_rate_limit: bool = False
     policy_path: Path | None = None
     policy_reload_interval_seconds: int = 0
+    # Inter-agent firewall policy (#982). Optional and independent from the
+    # MCP method-gating policy above so operators can rotate firewall rules
+    # without touching the MCP allow/deny patterns.
+    firewall_policy_path: Path | None = None
+    firewall_policy_reload_interval_seconds: int = 0
     upstream_failure_threshold: int = 3
     upstream_circuit_cooldown_seconds: float = 30.0
     upstream_http_timeout_seconds: float = 30.0
@@ -511,25 +523,87 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             await asyncio.sleep(max(settings.policy_reload_interval_seconds, 1))
             await _reload_policy_if_changed()
 
+    # === Inter-agent firewall (#982 PR 2) ============================
+    # Parallel state and reload loop so firewall policy can be rotated
+    # independently from the MCP method-gating policy. Empty / missing file
+    # falls back to a permissive default-allow policy so a missing config
+    # never breaks the gateway.
+    firewall_state: dict[str, Any] = {
+        "policy": AgentFirewallPolicy(),
+        "source": str(settings.firewall_policy_path) if settings.firewall_policy_path else "default-allow",
+        "last_loaded_at": None,
+        "last_error": None,
+        "last_mtime": None,
+    }
+    firewall_lock = asyncio.Lock()
+    firewall_reload_task: asyncio.Task[None] | None = None
+
+    async def _reload_firewall_policy_if_changed(force: bool = False) -> bool:
+        if settings.firewall_policy_path is None:
+            return False
+
+        async with firewall_lock:
+            try:
+                stat = settings.firewall_policy_path.stat()
+                mtime = stat.st_mtime
+                if not force and firewall_state["last_mtime"] == mtime:
+                    return False
+                next_policy = load_firewall_policy_file(settings.firewall_policy_path)
+            except (FileNotFoundError, FirewallPolicyError) as exc:
+                firewall_state["last_error"] = str(exc)
+                logger.warning(
+                    "gateway firewall policy reload failed for %s: %s",
+                    settings.firewall_policy_path,
+                    _sanitize_for_log(exc),
+                )
+                return False
+            except Exception as exc:  # noqa: BLE001
+                firewall_state["last_error"] = str(exc)
+                logger.warning(
+                    "gateway firewall policy reload failed for %s: %s",
+                    settings.firewall_policy_path,
+                    _sanitize_for_log(exc),
+                )
+                return False
+
+            firewall_state["policy"] = next_policy
+            firewall_state["last_loaded_at"] = time.time()
+            firewall_state["last_error"] = None
+            firewall_state["last_mtime"] = mtime
+        logger.info("gateway firewall policy reloaded from %s", settings.firewall_policy_path)
+        return True
+
+    async def _firewall_reload_loop() -> None:
+        while True:
+            await asyncio.sleep(max(settings.firewall_policy_reload_interval_seconds, 1))
+            await _reload_firewall_policy_if_changed()
+
     @asynccontextmanager
     async def _lifespan(_app: FastAPI):
         nonlocal reload_task
+        nonlocal firewall_reload_task
         try:
             if settings.policy_path is not None:
                 await _reload_policy_if_changed(force=True)
                 if settings.policy_reload_interval_seconds > 0:
                     reload_task = asyncio.create_task(_policy_reload_loop())
+            if settings.firewall_policy_path is not None:
+                await _reload_firewall_policy_if_changed(force=True)
+                if settings.firewall_policy_reload_interval_seconds > 0:
+                    firewall_reload_task = asyncio.create_task(_firewall_reload_loop())
             yield
         finally:
             if managed_upstream_relay is not None:
                 await managed_upstream_relay.aclose()
-            if reload_task is not None:
-                reload_task.cancel()
-                try:
-                    await reload_task
-                except asyncio.CancelledError:
-                    pass
-                reload_task = None
+            for task in (reload_task, firewall_reload_task):
+                if task is not None:
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+            reload_task = None
+            firewall_reload_task = None
 
     app = FastAPI(title="agent-bom gateway", version="1", lifespan=_lifespan)
 
@@ -546,6 +620,20 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 "last_error": policy_state["last_error"],
                 **policy_summary,
             }
+        async with firewall_lock:
+            firewall_policy: AgentFirewallPolicy = firewall_state["policy"]
+            firewall_runtime = {
+                "source": firewall_state["source"],
+                "source_kind": "file" if settings.firewall_policy_path else "default-allow",
+                "reload_enabled": bool(settings.firewall_policy_path and settings.firewall_policy_reload_interval_seconds > 0),
+                "reload_interval_seconds": settings.firewall_policy_reload_interval_seconds,
+                "last_loaded_at": firewall_state["last_loaded_at"],
+                "last_error": firewall_state["last_error"],
+                "rule_count": len(firewall_policy.rules),
+                "default_decision": firewall_policy.default_decision.value,
+                "enforcement_mode": firewall_policy.enforcement_mode.value,
+                "tenant_id": firewall_policy.tenant_id,
+            }
         health: dict[str, Any] = {
             "status": "ok",
             "upstreams": settings.registry.names(),
@@ -560,6 +648,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
             },
             "rate_limit_runtime": _gateway_rate_limit_runtime_status(settings),
             "policy_runtime": policy_runtime,
+            "firewall_runtime": firewall_runtime,
         }
         if settings.enable_visual_leak_detection:
             from agent_bom.runtime.visual_leak_detector import visual_leak_runtime_health
@@ -569,6 +658,103 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
                 "required": settings.require_visual_leak_detection_ready,
             }
         return health
+
+    @app.post("/v1/firewall/check")
+    async def firewall_check(request: Request) -> JSONResponse:
+        """Evaluate the inter-agent firewall policy for a source -> target pair.
+
+        Body shape (#982 PR 2):
+            {
+              "source_agent": "cursor",
+              "target_agent": "snowflake-cli",
+              "source_roles": ["trusted"],          # optional
+              "target_roles": ["data-plane"]        # optional
+            }
+
+        Returns the matched decision plus the *effective* decision (with
+        dry-run mode applied). On any non-allow effective decision, an audit
+        event is emitted to the configured audit_sink so denies and warns
+        flow into the existing /v1/proxy/audit relay.
+        """
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=400, detail=f"invalid JSON body: {exc.msg}") from exc
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="firewall check body must be a JSON object")
+
+        source_agent = payload.get("source_agent")
+        target_agent = payload.get("target_agent")
+        if not isinstance(source_agent, str) or not source_agent.strip():
+            raise HTTPException(status_code=400, detail="'source_agent' is required")
+        if not isinstance(target_agent, str) or not target_agent.strip():
+            raise HTTPException(status_code=400, detail="'target_agent' is required")
+
+        raw_source_roles = payload.get("source_roles") or []
+        raw_target_roles = payload.get("target_roles") or []
+        if not isinstance(raw_source_roles, list) or not all(isinstance(r, str) for r in raw_source_roles):
+            raise HTTPException(status_code=400, detail="'source_roles' must be a list of strings")
+        if not isinstance(raw_target_roles, list) or not all(isinstance(r, str) for r in raw_target_roles):
+            raise HTTPException(status_code=400, detail="'target_roles' must be a list of strings")
+
+        async with firewall_lock:
+            policy: AgentFirewallPolicy = firewall_state["policy"]
+            policy_source = firewall_state["source"]
+            policy_loaded_at = firewall_state["last_loaded_at"]
+        result = evaluate_firewall_policy(
+            policy,
+            source_agent=source_agent,
+            target_agent=target_agent,
+            source_roles=set(raw_source_roles),
+            target_roles=set(raw_target_roles),
+        )
+
+        response_payload = {
+            "source_agent": source_agent,
+            "target_agent": target_agent,
+            "source_roles": list(raw_source_roles),
+            "target_roles": list(raw_target_roles),
+            "decision": result.decision.value,
+            "effective_decision": result.effective_decision.value,
+            "matched_rule": (
+                {
+                    "source": result.matched_rule.source,
+                    "target": result.matched_rule.target,
+                    "decision": result.matched_rule.decision.value,
+                    "description": result.matched_rule.description,
+                }
+                if result.matched_rule is not None
+                else None
+            ),
+            "policy": {
+                "source": policy_source,
+                "loaded_at": policy_loaded_at,
+                "default_decision": policy.default_decision.value,
+                "enforcement_mode": policy.enforcement_mode.value,
+                "tenant_id": policy.tenant_id,
+            },
+        }
+
+        # Audit fan-out: emit on any non-allow effective decision so denies
+        # and warns flow into the existing /v1/proxy/audit HMAC-chained relay.
+        if result.effective_decision != FirewallDecision.ALLOW and settings.audit_sink is not None:
+            await settings.audit_sink(
+                {
+                    "action": "gateway.firewall_decision",
+                    "decision": result.decision.value,
+                    "effective_decision": result.effective_decision.value,
+                    "source_agent": source_agent,
+                    "target_agent": target_agent,
+                    "source_roles": list(raw_source_roles),
+                    "target_roles": list(raw_target_roles),
+                    "matched_rule": response_payload["matched_rule"],
+                    "tenant_id": policy.tenant_id,
+                    "enforcement_mode": policy.enforcement_mode.value,
+                    "timestamp": time.time(),
+                }
+            )
+
+        return JSONResponse(response_payload)
 
     @app.get("/metrics")
     async def metrics() -> Response:

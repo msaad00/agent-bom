@@ -113,6 +113,18 @@ def test_healthz_lists_configured_upstreams() -> None:
             "protects_secret_paths": False,
             "restricts_unknown_egress": False,
         },
+        "firewall_runtime": {
+            "source": "default-allow",
+            "source_kind": "default-allow",
+            "reload_enabled": False,
+            "reload_interval_seconds": 0,
+            "last_loaded_at": None,
+            "last_error": None,
+            "rule_count": 0,
+            "default_decision": "allow",
+            "enforcement_mode": "enforce",
+            "tenant_id": None,
+        },
     }
 
 

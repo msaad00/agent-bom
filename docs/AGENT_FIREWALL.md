@@ -215,21 +215,56 @@ The proxy registers its evaluator via `set_firewall_evaluator(fn, target_id=...)
 so tests can swap implementations cleanly. `clear_firewall_evaluator()` restores
 the default.
 
+## Dashboard runtime overlay
+
+The gateway tab in the dashboard surfaces firewall decisions live so operators
+can see the policy in action without tailing logs.
+
+### API
+
+- `GET /v1/firewall/stats` — aggregated counters (`total_decisions`, `allow`,
+  `warn`, `deny`), top decision pairs by deny count, and recent decisions for
+  the "recent denials" list. Tenant-scoped.
+- `GET /v1/gateway/stats` — extended with a `firewall_runtime` block that
+  embeds the same shape (capped at 10 recent + 10 top pairs) so the existing
+  gateway page renders it alongside the policy posture card.
+
+### Storage
+
+In-memory tally per API process, populated when `/v1/proxy/audit` ingests a
+`gateway.firewall_decision` event. The canonical decision record stays in the
+audit pipeline (HMAC-chained, replicated through analytics_store). The
+in-memory tally exists so the dashboard can poll without scanning audit
+history on every refresh — restart-safe by design (the audit table replays).
+
+### UI
+
+`FirewallRuntimeCard` on the gateway page renders when `total_decisions > 0`:
+
+- counters: total / allow / warn / deny + last-seen timestamp + enforcement
+  mode (`enforce` or `dry run`)
+- top-pairs strip — most active source → target pairs with per-decision tallies
+- recent decisions table — effective decision (and the original decision if it
+  was downgraded under dry-run) plus the matched rule description
+
 ## Roadmap
 
 Four-PR series implementing #982:
 
 1. **Foundation** (PR 1, merged) — schema, loader, evaluator, CLI, tests.
-2. **Gateway evaluator** (PR 2, in flight) — gateway loads the policy, evaluates
+2. **Gateway evaluator** (PR 2, merged) — gateway loads the policy, evaluates
    via `POST /v1/firewall/check`, hot-reloads, and fans out audit events to the
    `/v1/proxy/audit` HMAC-chained relay. Surfaced in `/healthz` and the
    `agent-bom gateway serve` startup banner. Helm chart `gateway.firewallPolicyPath`.
-3. **Proxy fast-path** (this PR) — `FirewallClient` with TTL cache + fail mode +
-   local fallback; proxy CLI wires it via `--firewall-target-id` and friends;
-   helper `_maybe_block_on_firewall` consulted from both stdio and SSE paths.
-4. **Dashboard runtime overlay** — per-pair decision counter, recent denials,
-   policy hot-reload status on the runtime tab. `/v1/gateway/stats` extended
-   with `firewall_runtime` aggregation.
+3. **Proxy fast-path** (PR 3, merged) — `FirewallClient` with TTL cache + fail
+   mode + local fallback; proxy CLI wires it via `--firewall-target-id` and
+   friends; helper `_maybe_block_on_firewall` consulted from both stdio and
+   SSE paths.
+4. **Dashboard runtime overlay** (this PR) — per-pair decision counter, recent
+   denials, last-seen timestamp on the runtime tab. `/v1/firewall/stats` and
+   `/v1/gateway/stats.firewall_runtime` backed by an in-memory tally that
+   ingests `gateway.firewall_decision` events from `/v1/proxy/audit`. K8s
+   sidecar example documents firewall flag opt-in.
 
 Capability-keyed rules (`agent_a may invoke tool X via agent_b`) are deliberately
 deferred to a v2 once pairwise + role tags prove out in production.

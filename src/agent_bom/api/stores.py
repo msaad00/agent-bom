@@ -228,6 +228,28 @@ def set_schedule_store(store: ScheduleStore) -> None:
     _schedule_store = store
 
 
+# ─── Inter-agent firewall decision tally (#982 PR 4) ───────────────────────
+_firewall_decision_store: Any = None
+
+
+def _get_firewall_decision_store():
+    """Get the active firewall decision tally (in-memory, per-process)."""
+    global _firewall_decision_store
+    if _firewall_decision_store is None:
+        with _store_lock:
+            if _firewall_decision_store is None:
+                from agent_bom.api.firewall_decision_store import FirewallDecisionStore
+
+                _firewall_decision_store = FirewallDecisionStore()
+    return _firewall_decision_store
+
+
+def set_firewall_decision_store(store) -> None:  # noqa: ANN001
+    """Swap the firewall decision tally for tests."""
+    global _firewall_decision_store
+    _firewall_decision_store = store
+
+
 # ─── Tenant quota override store (pluggable) ───────────────────────────────
 _tenant_quota_store: TenantQuotaStore | None = None
 _scim_store: SCIMStore | None = None

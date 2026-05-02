@@ -62,6 +62,7 @@ import type {
   GatewayPolicyResponse,
   GatewayAuditResponse,
   GatewayStatsResponse,
+  FirewallRuntimeStats,
   EvaluateResult,
   PostureResponse,
   EnrichmentPostureResponse,
@@ -182,6 +183,9 @@ export type {
   GatewayAuditResponse,
   GatewayStatsResponse,
   GatewayPolicyRuntimeSummary,
+  FirewallRuntimeStats,
+  FirewallPairTally,
+  FirewallDecisionRecord,
   EvaluateResult,
   PostureResponse,
   EnrichmentSourcePosture,
@@ -618,6 +622,7 @@ export const api = {
     post<EvaluateResult>("/v1/gateway/evaluate", body),
   listGatewayAudit: () => get<GatewayAuditResponse>("/v1/gateway/audit"),
   getGatewayStats: () => get<GatewayStatsResponse>("/v1/gateway/stats"),
+  getFirewallStats: () => get<FirewallRuntimeStats>("/v1/firewall/stats"),
 
   // Governance
   getGovernance: (days = 30) => get<GovernanceReport>(`/v1/governance?days=${days}`),

@@ -344,6 +344,7 @@ async def discovered_upstreams(request: Request) -> dict:
 @router.get("/v1/gateway/stats", tags=["gateway"], dependencies=[_dep("audit_read")])
 async def gateway_stats(request: Request):
     """Gateway-wide statistics."""
+    from agent_bom.api.stores import _get_firewall_decision_store
     from agent_bom.gateway import summarize_gateway_policies
 
     tenant_id = getattr(request.state, "tenant_id", "default")
@@ -360,6 +361,7 @@ async def gateway_stats(request: Request):
         "enabled_policies": len(active_policies),
         **summarize_gateway_policies(active_policies),
     }
+    firewall_runtime = _get_firewall_decision_store().stats(tenant_id=tenant_id, recent_limit=10, top_pairs=10)
     return {
         "total_policies": len(policies),
         "enforce_count": enforce_count,
@@ -370,4 +372,21 @@ async def gateway_stats(request: Request):
         "blocked_count": blocked,
         "alerted_count": alerted,
         "policy_runtime": policy_runtime,
+        "firewall_runtime": firewall_runtime,
     }
+
+
+@router.get("/v1/firewall/stats", tags=["gateway"], dependencies=[_dep("audit_read")])
+async def firewall_stats(request: Request):
+    """Aggregated inter-agent firewall decisions for the runtime-tab overlay.
+
+    Returns counters (total / allow / warn / deny), the top decision pairs by
+    deny count, and the most recent decisions for the dashboard's
+    "recent denials" list. Backed by an in-memory tally that is populated
+    when /v1/proxy/audit ingests `gateway.firewall_decision` events; the
+    canonical record stays in the audit pipeline.
+    """
+    from agent_bom.api.stores import _get_firewall_decision_store
+
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    return _get_firewall_decision_store().stats(tenant_id=tenant_id, recent_limit=200, top_pairs=25)

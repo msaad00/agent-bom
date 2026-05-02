@@ -71,6 +71,8 @@ def build_connection_params() -> dict:
 class SnowflakeJobStore:
     """Snowflake-backed scan job persistence."""
 
+    retains_job_objects_in_memory = False
+
     def __init__(self, connection_params: dict) -> None:
         self._conn_params = connection_params
         self._init_tables()

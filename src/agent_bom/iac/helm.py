@@ -53,6 +53,10 @@ _PLACEHOLDER_VALUES = frozenset(
 _PLACEHOLDER_PREFIX_RE = re.compile(r"^your[-_]", re.IGNORECASE)
 # Helm/Jinja template expressions — resolved at deploy time, never hardcoded secrets
 _TEMPLATE_VAR_RE = re.compile(r"\{\{.*?\}\}", re.DOTALL)
+_SECRET_REFERENCE_FIELD_RE = re.compile(
+    r"(?:^topologyKey$|LabelKey$|SecretKey$|SecretName$)",
+    re.IGNORECASE,
+)
 
 
 def _find_line(content: str, key: str, value: Any, start_line: int = 1) -> int:
@@ -88,11 +92,16 @@ def _is_placeholder(value: str) -> bool:
     return False
 
 
+def _is_secret_reference_field(key: str) -> bool:
+    """Return True for Kubernetes reference/metadata keys that are not secret material."""
+    return bool(_SECRET_REFERENCE_FIELD_RE.search(key))
+
+
 def _walk_secret_fields(obj: Any, content: str, file_path: str, findings: list[IaCFinding]) -> None:
     """Recursively walk a parsed YAML object and flag secret-like fields with real values."""
     if isinstance(obj, dict):
         for k, v in obj.items():
-            if isinstance(k, str) and _SECRET_FIELD_RE.search(k):
+            if isinstance(k, str) and _SECRET_FIELD_RE.search(k) and not _is_secret_reference_field(k):
                 if isinstance(v, str) and v and not _is_placeholder(v):
                     findings.append(
                         IaCFinding(

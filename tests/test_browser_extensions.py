@@ -10,6 +10,7 @@ from click.testing import CliRunner
 
 from agent_bom.cli import main
 from agent_bom.parsers.browser_extensions import (
+    BrowserExtension,
     _assess_extension_risk,
     _build_extension,
     _chrome_profile_dirs,
@@ -277,6 +278,50 @@ def test_browser_extensions_cli_reports_empty_scan(monkeypatch, tmp_path):
         "high_count": 0,
     }
     assert "browser_extensions" in data["scan_sources"]
+
+
+def test_browser_extension_risks_are_normalized_into_top_level_findings(monkeypatch, tmp_path):
+    """Browser-extension risks should be visible to common findings consumers."""
+    monkeypatch.setattr(
+        "agent_bom.parsers.browser_extensions.discover_browser_extensions",
+        lambda include_low_risk=False: [
+            BrowserExtension(
+                id="danger",
+                name="Danger Extension",
+                version="1.0.0",
+                browser="chrome",
+                permissions=["debugger"],
+                host_permissions=["<all_urls>"],
+                risk_level="critical",
+                risk_reasons=["Critical permission: debugger", "Broad host access: <all_urls>"],
+                path=str(tmp_path / "danger"),
+            )
+        ],
+    )
+    monkeypatch.setattr("agent_bom.cli.agents._discovery._discover_all_default", lambda *args, **kwargs: [])
+    out_file = tmp_path / "report.json"
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "scan",
+            "--browser-extensions",
+            "--project",
+            str(tmp_path),
+            "--format",
+            "json",
+            "--output",
+            str(out_file),
+            "--no-auto-update-db",
+        ],
+    )
+
+    assert result.exit_code == 0
+    data = json.loads(out_file.read_text())
+    browser_findings = [finding for finding in data["findings"] if finding.get("source") == "BROWSER_EXTENSION_SCAN"]
+    assert len(browser_findings) == 1
+    assert browser_findings[0]["severity"] == "critical"
+    assert browser_findings[0]["asset"]["asset_type"] == "browser_extension"
 
 
 def test_discover_filters_low_risk(monkeypatch, tmp_path):

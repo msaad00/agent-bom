@@ -141,6 +141,33 @@ def test_parse_tool_calls():
     assert log.tool_calls[1].reason == "policy:no-delete"
 
 
+def test_parse_generic_mcp_audit_jsonl():
+    p = _write_log(
+        [
+            {
+                "timestamp": "2026-05-02T00:00:00Z",
+                "tool": "list_directory",
+                "server": "filesystem",
+                "agent": "claude-desktop",
+                "outcome": "allowed",
+            },
+            {
+                "timestamp": "2026-05-02T00:00:01Z",
+                "tool": "write_file",
+                "server": "filesystem",
+                "agent": "claude-desktop",
+                "outcome": "denied",
+            },
+        ]
+    )
+    log = parse_audit_log(p)
+    assert len(log.tool_calls) == 2
+    assert log.unknown == []
+    assert log.tool_calls[0].policy == "allowed"
+    assert log.tool_calls[0].args["server"] == "filesystem"
+    assert log.tool_calls[1].policy == "blocked"
+
+
 def test_parse_alert_entry():
     p = _write_log([ALERT])
     log = parse_audit_log(p)

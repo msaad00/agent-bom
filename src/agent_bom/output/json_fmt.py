@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from pathlib import Path
 
 from agent_bom.asset_provenance import (
@@ -55,6 +56,85 @@ def _package_occurrence_to_dict(occurrence) -> dict[str, object]:
         "created_by": getattr(occurrence, "created_by", None),
         "dockerfile_instruction": getattr(occurrence, "dockerfile_instruction", None),
     }
+
+
+def _stable_report_finding_id(*parts: object) -> str:
+    raw = ":".join(str(part or "") for part in parts)
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, f"agent-bom:finding:{raw}"))
+
+
+def _prompt_scan_findings(prompt_scan: dict) -> list[dict[str, object]]:
+    findings: list[dict[str, object]] = []
+    for item in prompt_scan.get("findings") or []:
+        if not isinstance(item, dict):
+            continue
+        source_file = str(item.get("source_file") or "")
+        line_number = item.get("line_number")
+        title = str(item.get("title") or "Prompt security finding")
+        category = str(item.get("category") or "prompt_security")
+        severity = str(item.get("severity") or "unknown").lower()
+        findings.append(
+            {
+                "id": _stable_report_finding_id("prompt_scan", source_file, line_number, title, item.get("matched_text")),
+                "finding_type": "PROMPT_SECURITY",
+                "source": "PROMPT_SCAN",
+                "asset": {
+                    "name": Path(source_file).name if source_file else "prompt",
+                    "asset_type": "prompt_template",
+                    "identifier": source_file or None,
+                    "location": source_file or None,
+                    "stable_id": _stable_report_finding_id("prompt_asset", source_file),
+                },
+                "severity": severity,
+                "effective_severity": severity,
+                "title": title,
+                "description": item.get("detail") or title,
+                "category": category,
+                "line_number": line_number,
+                "matched_text": item.get("matched_text"),
+                "remediation_guidance": item.get("recommendation"),
+                "scan_sources": ["prompt_scan"],
+            }
+        )
+    return findings
+
+
+def _browser_extension_findings(browser_extensions: dict) -> list[dict[str, object]]:
+    findings: list[dict[str, object]] = []
+    for item in browser_extensions.get("extensions") or []:
+        if not isinstance(item, dict):
+            continue
+        risk_reasons = [str(reason) for reason in item.get("risk_reasons") or []]
+        extension_id = str(item.get("id") or item.get("name") or "unknown")
+        browser = str(item.get("browser") or "browser")
+        name = str(item.get("name") or extension_id)
+        severity = str(item.get("risk_level") or "unknown").lower()
+        findings.append(
+            {
+                "id": _stable_report_finding_id("browser_extension", browser, extension_id, item.get("version")),
+                "finding_type": "BROWSER_EXTENSION_RISK",
+                "source": "BROWSER_EXTENSION_SCAN",
+                "asset": {
+                    "name": name,
+                    "asset_type": "browser_extension",
+                    "identifier": extension_id,
+                    "location": item.get("path"),
+                    "stable_id": _stable_report_finding_id("browser_extension_asset", browser, extension_id),
+                },
+                "severity": severity,
+                "effective_severity": severity,
+                "title": f"{name} browser extension risk",
+                "description": "; ".join(risk_reasons) if risk_reasons else f"{name} has {severity} browser-extension risk",
+                "browser": browser,
+                "version": item.get("version"),
+                "permissions": item.get("permissions") or [],
+                "host_permissions": item.get("host_permissions") or [],
+                "risk_reasons": risk_reasons,
+                "remediation_guidance": "Review extension permissions and remove or restrict the extension if it is not required.",
+                "scan_sources": ["browser_extensions"],
+            }
+        )
+    return findings
 
 
 def _build_remediation_json(report: AIBOMReport) -> list[dict]:
@@ -828,6 +908,9 @@ def to_json(report: AIBOMReport) -> dict:
 
     if report.prompt_scan_data:
         result["prompt_scan"] = report.prompt_scan_data
+        findings = result.get("findings")
+        if isinstance(findings, list):
+            findings.extend(_prompt_scan_findings(report.prompt_scan_data))
 
     if report.model_files:
         result["model_files"] = report.model_files
@@ -906,6 +989,9 @@ def to_json(report: AIBOMReport) -> dict:
         result["serving_configs"] = report.serving_configs
     if report.browser_extensions:
         result["browser_extensions"] = report.browser_extensions
+        findings = result.get("findings")
+        if isinstance(findings, list):
+            findings.extend(_browser_extension_findings(report.browser_extensions))
     if report.ai_inventory_data:
         result["ai_inventory"] = report.ai_inventory_data
     if report.project_inventory_data:

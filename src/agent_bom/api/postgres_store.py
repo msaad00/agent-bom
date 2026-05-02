@@ -43,6 +43,8 @@ _JOB_TTL_SECONDS = 3600
 class PostgresJobStore:
     """PostgreSQL-backed scan job persistence."""
 
+    retains_job_objects_in_memory = False
+
     def __init__(self, pool=None) -> None:
         self._pool = pool or _get_pool()
         self._init_tables()

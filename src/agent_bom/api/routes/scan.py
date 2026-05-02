@@ -48,12 +48,13 @@ from agent_bom.api.models import (
     ScanRequest,
     TrainingPipelinesRequest,
 )
-from agent_bom.api.pipeline import _now, _run_scan_sync, get_executor
+from agent_bom.api.pipeline import _now, submit_scan_job
 from agent_bom.api.scan_job_reconciliation import reconcile_scan_jobs_active
 from agent_bom.api.stores import (
     _get_store,
     _job_lock,
     _jobs_get,
+    _jobs_is_compacted,
     _jobs_pop,
     _jobs_put,
 )
@@ -405,6 +406,10 @@ def _job_for_request(request: Request, job_id: str) -> ScanJob:
     tenant_id = _tenant_id(request)
     in_mem = _jobs_get(job_id)
     if in_mem is not None and _visible_to_tenant(in_mem, tenant_id):
+        if _jobs_is_compacted(in_mem):
+            persisted = _get_store().get(job_id, tenant_id=tenant_id)
+            if persisted is not None:
+                return persisted
         return in_mem
     job = _get_store().get(job_id, tenant_id=tenant_id)
     if job is None:
@@ -449,8 +454,7 @@ def enqueue_scan_job(
         except Exception:  # noqa: BLE001
             pass
 
-    loop = asyncio.get_running_loop()
-    loop.run_in_executor(get_executor(), _run_scan_sync, job)
+    submit_scan_job(job)
     return job
 
 

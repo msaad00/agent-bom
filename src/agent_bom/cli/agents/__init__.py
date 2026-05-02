@@ -1176,16 +1176,26 @@ def scan(
             if not quiet:
                 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn("[bold]{task.description}[/bold]"),
-                    BarColumn(bar_width=30),
-                    MofNCompleteColumn(),
-                    TextColumn("[dim]{task.fields[phase]}[/dim]"),
-                    TimeElapsedColumn(),
-                    console=con,
-                    transient=True,
-                ) as progress:
+                from agent_bom.cli._common import rich_log_handler_during_progress
+
+                # Route ``agent_bom.scanners.*`` warnings (rate-limit retries,
+                # OSV fallbacks, etc.) through Rich for the duration of the
+                # spinner so log lines render *above* the live region instead
+                # of punching through it. Without this the terminal stacks
+                # copies of "Scanning N packages" each time a warning fires.
+                with (
+                    rich_log_handler_during_progress(con),
+                    Progress(
+                        SpinnerColumn(),
+                        TextColumn("[bold]{task.description}[/bold]"),
+                        BarColumn(bar_width=30),
+                        MofNCompleteColumn(),
+                        TextColumn("[dim]{task.fields[phase]}[/dim]"),
+                        TimeElapsedColumn(),
+                        console=con,
+                        transient=True,
+                    ) as progress,
+                ):
                     scan_task = progress.add_task(
                         f"Scanning {_unique_pkgs} packages",
                         total=4,

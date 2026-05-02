@@ -44,6 +44,48 @@ def read_json_file_for_cli(path: str | Path, *, label: str = "JSON file") -> Any
         raise click.ClickException(f"Could not read {label.lower()} {file_path}: {exc.strerror or exc}") from exc
 
 
+import contextlib  # noqa: E402 — kept beside the helper that uses it for grep-locality
+
+
+@contextlib.contextmanager
+def rich_log_handler_during_progress(console: Console, *, logger_name: str = "agent_bom.scanners"):
+    """Route warnings from ``logger_name`` through Rich for the duration.
+
+    When a Rich ``Progress`` / ``Live`` region is active, a ``logger.warning(...)``
+    that goes through a plain stderr handler punches through the live region:
+    each warning line pushes the spinner down, the spinner redraws below it,
+    and the terminal accumulates a stack of "Scanning N packages" lines
+    instead of a single redrawing one.
+
+    Bind a ``RichHandler`` to the same ``Console`` for the duration of the
+    progress block so log records render *above* the live region without
+    breaking the redraw, then restore the original handlers on exit.
+    """
+    from rich.logging import RichHandler
+
+    target = logging.getLogger(logger_name)
+    saved_handlers = list(target.handlers)
+    saved_propagate = target.propagate
+
+    rich_h = RichHandler(
+        console=console,
+        show_time=True,
+        show_path=False,
+        markup=False,
+        rich_tracebacks=False,
+        log_time_format="%H:%M:%S",
+        omit_repeated_times=False,
+    )
+    rich_h.setLevel(logging.WARNING)
+    target.handlers = [rich_h]
+    target.propagate = False
+    try:
+        yield
+    finally:
+        target.handlers = saved_handlers
+        target.propagate = saved_propagate
+
+
 def _make_console(quiet: bool = False, output_format: str = "console", no_color: bool = False) -> Console:
     """Create a Console that routes output correctly.
 

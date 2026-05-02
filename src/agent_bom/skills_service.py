@@ -199,6 +199,9 @@ def _looks_like_instruction_surface(path: Path, *, allow_docs_skills: bool = Fal
     if any(parent.name == "skills" for parent in path.parents):
         return True
 
+    if any(parent.name == "prompts" for parent in path.parents):
+        return True
+
     if any(parent.name == "rules" and parent.parent.name == ".cursor" for parent in path.parents if parent.parent != parent):
         return True
 

@@ -9,7 +9,7 @@ from agent_bom.api.schedule_store import (
     ScanSchedule,
     SQLiteScheduleStore,
 )
-from agent_bom.api.scheduler import parse_cron_next
+from agent_bom.api.scheduler import parse_cron_next, validate_cron_expression
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -193,6 +193,13 @@ class TestParseCronNext:
         after = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
         result = parse_cron_next("*/0 * * * *", after)
         assert result is None
+
+    def test_validation_rejects_invalid_ignored_fields(self):
+        assert validate_cron_expression("0 0 bad * *") is False
+        assert parse_cron_next("0 0 bad * *", datetime(2025, 1, 1, tzinfo=timezone.utc)) is None
+
+    def test_validation_accepts_basic_five_field_cron(self):
+        assert validate_cron_expression("0 0 * * *") is True
 
 
 # ─── scheduler_loop ───────────────────────────────────────────────────────────

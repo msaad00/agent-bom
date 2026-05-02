@@ -25,7 +25,7 @@ def schedule_add(name: str, cron: str, config: Optional[str]):
     import uuid as _uuid
 
     from agent_bom.api.schedule_store import InMemoryScheduleStore, ScanSchedule, SQLiteScheduleStore
-    from agent_bom.api.scheduler import parse_cron_next
+    from agent_bom.api.scheduler import parse_cron_next, validate_cron_expression
 
     console = Console()
 
@@ -37,6 +37,8 @@ def schedule_add(name: str, cron: str, config: Optional[str]):
     from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc)
+    if not validate_cron_expression(cron):
+        raise click.ClickException("Invalid cron expression")
     next_run = parse_cron_next(cron, now)
 
     db_path = _os.environ.get("AGENT_BOM_DB")

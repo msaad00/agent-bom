@@ -347,9 +347,11 @@ def mesh_cmd(scan_file: Optional[str], project_dir: Optional[str], fmt: str, out
 
 @click.command("dashboard")
 @click.option("--report", type=click.Path(exists=True), default=None, help="Path to agent-bom JSON report file.")
-@click.option("--port", default=8501, show_default=True, type=PORT_RANGE, help="Streamlit server port.")
+@click.option("--port", default=8501, show_default=True, type=PORT_RANGE, help="Legacy Streamlit server port.")
 def dashboard_cmd(report: Optional[str], port: int):
-    """Launch the interactive Streamlit dashboard.
+    """Launch the legacy Streamlit compatibility dashboard.
+
+    The bundled Next.js dashboard is served by `agent-bom serve`.
 
     \b
     Requires:  pip install 'agent-bom[dashboard]'

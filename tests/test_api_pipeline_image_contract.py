@@ -4,7 +4,7 @@ import json
 
 from agent_bom.api.models import JobStatus, ScanJob, ScanRequest
 from agent_bom.api.pipeline import _run_scan_sync
-from agent_bom.models import BlastRadius, Package, Severity, Vulnerability
+from agent_bom.models import Agent, AgentType, BlastRadius, MCPServer, Package, Severity, TransportType, Vulnerability
 
 
 class _DummyStore:
@@ -13,6 +13,24 @@ class _DummyStore:
 
     def put(self, job: ScanJob) -> None:
         self.jobs.append(job)
+
+
+def _agent_with_package() -> Agent:
+    return Agent(
+        name="api-agent",
+        agent_type=AgentType.CUSTOM,
+        config_path="/tmp/api-agent",
+        mcp_servers=[
+            MCPServer(
+                name="api-server",
+                command="npx",
+                args=[],
+                env={},
+                transport=TransportType.STDIO,
+                packages=[Package(name="express", version="4.18.2", ecosystem="npm")],
+            )
+        ],
+    )
 
 
 def test_api_pipeline_image_scan_uses_container_surface(monkeypatch):
@@ -40,6 +58,93 @@ def test_api_pipeline_image_scan_uses_container_surface(monkeypatch):
     assert job.result["summary"]["total_agents"] == 1
     assert job.result["agents"][0]["source"] == "image"
     assert job.result["agents"][0]["mcp_servers"][0]["surface"] == "container-image"
+
+
+def test_api_pipeline_dry_run_skips_discovery_scan_and_side_effects(monkeypatch):
+    store = _DummyStore()
+    job = ScanJob(
+        job_id="dry-run-123",
+        created_at="2026-03-25T12:00:00Z",
+        request=ScanRequest(images=["agentbom/agent-bom:latest"], dry_run=True, auto_update_db=True),
+    )
+
+    def _unexpected(*_args, **_kwargs):
+        raise AssertionError("dry-run must not reach discovery, scan, DB sync, or persistence hooks")
+
+    monkeypatch.setattr("agent_bom.api.pipeline._get_store", lambda: store)
+    monkeypatch.setattr("agent_bom.discovery.discover_all", _unexpected)
+    monkeypatch.setattr("agent_bom.scanners.scan_agents_sync", _unexpected)
+    monkeypatch.setattr("agent_bom.db.sync.sync_db", _unexpected)
+    monkeypatch.setattr("agent_bom.api.pipeline._persist_graph_snapshot", _unexpected)
+    monkeypatch.setattr("agent_bom.api.pipeline._sync_scan_agents_to_fleet", _unexpected)
+    monkeypatch.setattr("agent_bom.api.pipeline._get_analytics_store", _unexpected)
+
+    _run_scan_sync(job)
+
+    assert job.status == JobStatus.DONE
+    assert job.result is not None
+    assert job.result["dry_run"] is True
+    assert job.result["side_effects"] == "skipped"
+    assert store.jobs[-1].job_id == "dry-run-123"
+
+
+def test_api_pipeline_no_scan_skips_vulnerability_scan_and_result_side_effects(monkeypatch):
+    store = _DummyStore()
+    job = ScanJob(
+        job_id="no-scan-123",
+        created_at="2026-03-25T12:00:00Z",
+        request=ScanRequest(no_scan=True, auto_update_db=True),
+    )
+
+    def _unexpected(*_args, **_kwargs):
+        raise AssertionError("no_scan must not reach vulnerability scan, DB sync, or result side-effect hooks")
+
+    monkeypatch.setattr("agent_bom.api.pipeline._get_store", lambda: store)
+    monkeypatch.setattr("agent_bom.discovery.discover_all", lambda *args, **kwargs: [_agent_with_package()])
+    monkeypatch.setattr("agent_bom.scanners.scan_agents_sync", _unexpected)
+    monkeypatch.setattr("agent_bom.db.sync.sync_db", _unexpected)
+    monkeypatch.setattr("agent_bom.api.pipeline._persist_graph_snapshot", _unexpected)
+    monkeypatch.setattr("agent_bom.api.pipeline._sync_scan_agents_to_fleet", _unexpected)
+    monkeypatch.setattr("agent_bom.api.pipeline._get_analytics_store", _unexpected)
+
+    _run_scan_sync(job)
+
+    assert job.status == JobStatus.DONE
+    assert job.result is not None
+    assert job.result["summary"]["total_agents"] == 1
+    assert job.result["summary"]["total_vulnerabilities"] == 0
+    assert "Vulnerability scanning skipped by request" in job.result["warnings"]
+
+
+def test_api_pipeline_offline_scan_never_retries_online(monkeypatch):
+    store = _DummyStore()
+    job = ScanJob(
+        job_id="offline-123",
+        created_at="2026-03-25T12:00:00Z",
+        request=ScanRequest(offline=True, enrich=True),
+    )
+    seen_offline: list[bool | None] = []
+
+    monkeypatch.setattr("agent_bom.api.pipeline._get_store", lambda: store)
+    monkeypatch.setattr("agent_bom.api.pipeline._sync_scan_agents_to_fleet", lambda _agents, tenant_id="default": None)
+    monkeypatch.setattr("agent_bom.api.pipeline._persist_graph_snapshot", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr("agent_bom.discovery.discover_all", lambda *args, **kwargs: [_agent_with_package()])
+
+    def _offline_scan(_agents, enable_enrichment=False, **kwargs):
+        seen_offline.append(kwargs.get("offline"))
+        assert enable_enrichment is False
+        assert kwargs.get("offline") is True
+        raise RuntimeError("local DB missing")
+
+    monkeypatch.setattr("agent_bom.scanners.scan_agents_sync", _offline_scan)
+
+    _run_scan_sync(job)
+
+    assert job.status == JobStatus.DONE
+    assert seen_offline == [True]
+    assert job.result is not None
+    assert "Offline CVE scanning failed: local DB missing" in job.result["warnings"]
+    assert "Enrichment skipped because offline mode was requested" in job.result["warnings"]
 
 
 def test_api_pipeline_persists_clickhouse_analytics(monkeypatch):

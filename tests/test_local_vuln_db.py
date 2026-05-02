@@ -12,10 +12,12 @@ import pytest
 from agent_bom.db.lookup import VulnDB, _version_affected, lookup_package
 from agent_bom.db.schema import DB_PATH, _validated_db_path, db_stats, init_db
 from agent_bom.db.sync import (
+    _EPSS_CSV_URL,
     _ingest_alpine_secdb_payload,
     _ingest_osv_file,
     _parse_alpine_secfix_tokens,
     _parse_osv_entry,
+    _resolve_epss_redirect,
     _validate_sync_url,
     sync_alpine_secdb,
     sync_epss,
@@ -404,12 +406,29 @@ def test_sync_kev_mocked(tmp_db):
 def test_sync_epss_mocked(tmp_db):
     csv_content = b"cve,epss,percentile\nCVE-2024-1,0.95,99.5\nCVE-2024-2,0.10,50.0\n"
 
-    with patch("agent_bom.http_client.fetch_bytes", return_value=csv_content):
+    with patch("agent_bom.db.sync._fetch_epss_csv_bytes", return_value=csv_content):
         count = sync_epss(tmp_db, url="https://fake/epss.csv.gz")
 
     assert count == 2
     row = tmp_db.execute("SELECT probability FROM epss_scores WHERE cve_id='CVE-2024-1'").fetchone()
     assert row[0] == pytest.approx(0.95)
+
+
+def test_default_epss_url_uses_current_host():
+    assert _EPSS_CSV_URL == "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
+
+
+def test_epss_redirect_allows_legacy_to_current_host():
+    redirected = _resolve_epss_redirect(
+        "https://epss.cyentia.com/epss_scores-current.csv.gz",
+        "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz",
+    )
+    assert redirected == "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
+
+
+def test_epss_redirect_rejects_unexpected_host():
+    with pytest.raises(ValueError, match="not allowed"):
+        _resolve_epss_redirect("https://epss.empiricalsecurity.com/epss_scores-current.csv.gz", "https://example.com/epss.csv.gz")
 
 
 # ---------------------------------------------------------------------------

@@ -26,8 +26,6 @@ def _run(coro):
 
 def _call_tool(server, name, args=None):
     """Call a tool and extract the text result."""
-    if name == "scan" and (args is None or "auto_update_db" not in args):
-        raise AssertionError("MCP scan unit tests must set auto_update_db explicitly to avoid live DB refresh")
     content_blocks, _meta = _run(server.call_tool(name, args or {}))
     return json.loads(content_blocks[0].text)
 
@@ -261,6 +259,46 @@ def test_scan_no_agents(mock_pipeline):
     server = create_mcp_server()
     result = _call_tool(server, "scan", {"auto_update_db": False})
     assert result["status"] == "no_agents_found"
+
+
+@patch("agent_bom.mcp_server._run_scan_pipeline")
+def test_scan_default_read_only_contract_does_not_refresh_db_and_uses_offline_scan(mock_pipeline):
+    """Default read-only scan must avoid DB refresh and online vulnerability scans."""
+    mock_pipeline.return_value = ([], [], [], [])
+
+    from agent_bom.mcp_server import create_mcp_server
+
+    def _unexpected_sync(*_args, **_kwargs):
+        raise AssertionError("default MCP scan must not refresh the vulnerability DB")
+
+    server = create_mcp_server()
+    with patch("agent_bom.db.sync.sync_db", side_effect=_unexpected_sync):
+        result = _call_tool(server, "scan")
+
+    assert result["status"] == "no_agents_found"
+    _args, kwargs = mock_pipeline.call_args
+    assert kwargs["offline"] is True
+
+
+@patch("agent_bom.mcp_server._run_scan_pipeline")
+def test_scan_online_db_refresh_requires_explicit_opt_in(mock_pipeline):
+    """Callers can opt back into the historical DB refresh + online scan behavior."""
+    mock_pipeline.return_value = ([], [], [], [])
+    sync_calls: list[object] = []
+
+    from agent_bom.mcp_server import create_mcp_server
+
+    server = create_mcp_server()
+    with (
+        patch("agent_bom.db.schema.db_freshness_days", return_value=99),
+        patch("agent_bom.db.sync.sync_db", side_effect=lambda sources=None: sync_calls.append(sources)),
+    ):
+        result = _call_tool(server, "scan", {"offline": False, "auto_update_db": True, "db_sources": "osv,ghsa"})
+
+    assert result["status"] == "no_agents_found"
+    assert sync_calls == [["osv", "ghsa"]]
+    _args, kwargs = mock_pipeline.call_args
+    assert kwargs["offline"] is False
 
 
 # ---------------------------------------------------------------------------

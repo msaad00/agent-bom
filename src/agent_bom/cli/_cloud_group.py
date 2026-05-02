@@ -74,6 +74,7 @@ def cloud_group(ctx: click.Context) -> None:
             aws_cis_benchmark="aws" in providers,
             azure_cis_benchmark="azure" in providers,
             gcp_cis_benchmark="gcp" in providers,
+            auto_update_db=False,
         )
 
 
@@ -113,6 +114,7 @@ def aws_cmd(
         aws_include_eks=include_eks,
         aws_include_ec2=include_ec2,
         aws_cis_benchmark=cis and not no_cis,
+        auto_update_db=False,
         output_format=output_format,
         output=output_path,
         quiet=quiet,
@@ -143,6 +145,7 @@ def azure_cmd(
         azure_flag=True,
         azure_subscription=subscription,
         azure_cis_benchmark=cis and not no_cis,
+        auto_update_db=False,
         output_format=output_format,
         output=output_path,
         quiet=quiet,
@@ -173,6 +176,7 @@ def gcp_cmd(
         gcp_flag=True,
         gcp_project=project,
         gcp_cis_benchmark=cis and not no_cis,
+        auto_update_db=False,
         output_format=output_format,
         output=output_path,
         quiet=quiet,

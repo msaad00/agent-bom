@@ -18,12 +18,13 @@ async def scan_impl(
     image: str | None = None,
     sbom_path: str | None = None,
     enrich: bool = False,
+    offline: bool = True,
     scorecard: bool = False,
     transitive: bool = False,
     verify_integrity: bool = False,
     fail_severity: str | None = None,
     warn_severity: str | None = None,
-    auto_update_db: bool = True,
+    auto_update_db: bool = False,
     db_sources: str | None = None,
     output_format: str = "json",
     policy: dict | None = None,
@@ -35,8 +36,19 @@ async def scan_impl(
         from agent_bom.models import AIBOMReport
         from agent_bom.output import to_json
 
-        # Auto-refresh stale DB before scanning
-        if auto_update_db:
+        pre_warnings: list[str] = []
+        if offline and enrich:
+            enrich = False
+            pre_warnings.append("Enrichment skipped because offline mode was requested")
+        if offline and scorecard:
+            scorecard = False
+            pre_warnings.append("OpenSSF Scorecard enrichment skipped because offline mode was requested")
+        if offline and verify_integrity:
+            verify_integrity = False
+            pre_warnings.append("Package integrity verification skipped because offline mode was requested")
+
+        # Auto-refresh stale DB before scanning only when explicitly requested.
+        if auto_update_db and not offline:
             try:
                 from agent_bom.db.schema import db_freshness_days
                 from agent_bom.db.sync import sync_db
@@ -47,6 +59,9 @@ async def scan_impl(
                     sync_db(sources=source_list)
             except Exception as exc:
                 logger.warning("Auto DB refresh failed: %s", exc)
+                pre_warnings.append(f"Auto DB refresh skipped: {sanitize_error(exc)}")
+        elif auto_update_db and offline:
+            pre_warnings.append("Auto DB refresh skipped because offline mode was requested")
 
         agents, blast_radii, scan_warnings, scan_sources = await _run_scan_pipeline(
             config_path,
@@ -54,7 +69,9 @@ async def scan_impl(
             sbom_path,
             enrich,
             transitive=transitive,
+            offline=offline,
         )
+        scan_warnings = [*pre_warnings, *scan_warnings]
         if not agents:
             result: dict[str, object] = {"status": "no_agents_found", "agents": [], "blast_radii": []}
             if scan_warnings:

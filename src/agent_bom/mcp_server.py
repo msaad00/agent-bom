@@ -1,8 +1,9 @@
 """agent-bom MCP Server — expose security scanning as MCP tools.
 
 Start with:
-    agent-bom mcp server              # stdio (for Claude Desktop, Cursor, etc.)
-    agent-bom mcp server --sse        # SSE transport (for remote clients)
+    agent-bom mcp server                          # stdio (for Claude Desktop, Cursor, etc.)
+    agent-bom mcp server --transport sse          # SSE transport (for remote clients)
+    agent-bom mcp server --transport streamable-http
 
 Tools (36):
     scan                — Full discovery → scan → output pipeline
@@ -327,6 +328,7 @@ async def _run_scan_pipeline(
     sbom_path: Optional[str] = None,
     enrich: bool = False,
     transitive: bool = False,
+    offline: bool = False,
 ):
     """Run discovery -> extraction -> scanning and return (agents, blast_radii, warnings)."""
     return await _mcp_scan.run_scan_pipeline(
@@ -336,6 +338,7 @@ async def _run_scan_pipeline(
         sbom_path=sbom_path,
         enrich=enrich,
         transitive=transitive,
+        offline=offline,
     )
 
 
@@ -385,6 +388,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         image: Annotated[str | None, Field(description="Docker image to scan (e.g. 'nginx:1.25', 'ghcr.io/org/app:v1').")] = None,
         sbom_path: Annotated[str | None, Field(description="Path to existing CycloneDX or SPDX JSON SBOM file to ingest.")] = None,
         enrich: Annotated[bool, Field(description="Enable NVD CVSS, EPSS probability, and CISA KEV enrichment.")] = False,
+        offline: Annotated[
+            bool,
+            Field(description="Use the local vulnerability DB only and skip registry, OSV, GHSA, and NVIDIA network lookups."),
+        ] = True,
         scorecard: Annotated[
             bool, Field(description="Enrich packages with OpenSSF Scorecard scores (requires resolvable GitHub repos).")
         ] = False,
@@ -404,7 +411,10 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
                 )
             ),
         ] = None,
-        auto_update_db: Annotated[bool, Field(description="Auto-refresh local vuln DB if stale (>7 days) before scanning.")] = True,
+        auto_update_db: Annotated[
+            bool,
+            Field(description="Explicitly refresh the local vuln DB if stale (>7 days) before scanning."),
+        ] = False,
         db_sources: Annotated[
             str | None,
             Field(description="Comma-separated DB sources to sync before scanning (e.g. 'nvd,ghsa,osv,epss,kev')."),
@@ -441,6 +451,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
             image=image,
             sbom_path=sbom_path,
             enrich=enrich,
+            offline=offline,
             scorecard=scorecard,
             transitive=transitive,
             verify_integrity=verify_integrity,

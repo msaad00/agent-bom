@@ -10,6 +10,7 @@ from agent_bom.cli import main
 from agent_bom.inventory import load_inventory
 from agent_bom.parsers import scan_project_directory, summarize_project_inventory
 from agent_bom.samples import write_first_run_sample
+from agent_bom.skills_service import scan_skill_targets
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE = ROOT / "examples" / "first-run-ai-stack"
@@ -36,6 +37,14 @@ def test_first_run_project_manifests_are_scannable() -> None:
     assert summary["declaration_only_directories"] == 1
     assert summary["ecosystems"]["npm"] >= 2
     assert summary["ecosystems"]["pypi"] >= 3
+
+
+def test_first_run_prompt_is_recognized_by_skills_scan() -> None:
+    report = scan_skill_targets([SAMPLE])
+    payload = report.to_dict()
+
+    assert payload["summary"]["files_scanned"] >= 1
+    assert any(Path(file_report.path).name == "agent-system-prompt.md" for file_report in report.files)
 
 
 def test_first_run_docs_reference_real_paths() -> None:

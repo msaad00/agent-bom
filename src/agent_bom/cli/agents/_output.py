@@ -144,8 +144,8 @@ def render_output(
                 print_attack_flow_tree(report)
             print_threat_frameworks(report)
         else:
-            # Compact output (default)
-            print_compact_summary(report)
+            # Compact output (default) — verdict-led posture summary.
+            print_compact_summary(report, verbose=verbose)
             print_scan_performance_summary(report)
             print_compact_agents(report)
             print_compact_blast_radius(report, fixable_only=fixable_only)

@@ -96,8 +96,18 @@ def _iter_cis_bundles(report: AIBOMReport):
 # ─── Compact Output (default mode) ───────────────────────────────────────────
 
 
-def print_compact_summary(report: AIBOMReport) -> None:
-    """Compact summary — posture + key metrics in ~8 lines."""
+def print_compact_summary(report: AIBOMReport, *, verbose: bool = False) -> None:
+    """Compact summary — verdict-led posture in 2-4 lines.
+
+    Default (``verbose=False``) leads with a severity-coloured one-liner
+    verdict, follows with an inventory count line, and only mentions the
+    posture grade / drivers / credentials when richer context exists,
+    pointing the operator at ``--verbose`` for that detail.
+
+    ``verbose=True`` re-renders the previous detailed panel form
+    (posture grade, weak driver dimensions, credential list, privilege
+    counts, AI inventory).
+    """
     from collections import Counter
 
     from agent_bom.finding import FindingType
@@ -186,6 +196,46 @@ def print_compact_summary(report: AIBOMReport) -> None:
     n_transitive = len(all_pkgs) - n_direct
     pkg_detail = f" ({n_direct}D/{n_transitive}T)" if n_transitive else ""
 
+    has_ai_inventory = bool(getattr(report, "ai_inventory_data", None) and (report.ai_inventory_data or {}).get("total_components", 0) > 0)
+    has_more_context = bool(weak_dimensions or cred_names or elevated or has_ai_inventory or coverage_incomplete or scorecard.score < 90)
+
+    inventory_line = (
+        f"  [bold]{report.total_agents}[/bold] agents [dim]·[/dim] "
+        f"[bold]{report.total_servers}[/bold] servers [dim]·[/dim] "
+        f"[bold]{report.total_packages}[/bold][dim]{pkg_detail}[/dim] packages"
+    )
+
+    if not verbose:
+        # Default verdict-led form: 2 lines + optional --verbose hint.
+        lines = [
+            f"  [bold]Security posture:[/bold]  {posture}",
+            inventory_line,
+        ]
+        if has_more_context:
+            hint_bits: list[str] = []
+            if scorecard.score < 100:
+                hint_bits.append(f"posture grade {_posture_grade_badge(scorecard.grade)} {scorecard.score:.0f}/100")
+            if weak_dimensions:
+                hint_bits.append(f"{len(weak_dimensions)} weak driver(s)")
+            if cred_names:
+                hint_bits.append(f"{len(cred_names)} credential(s)")
+            if elevated:
+                hint_bits.append(f"{elevated} elevated server(s)")
+            hint_text = " · ".join(hint_bits) if hint_bits else "drivers and credentials"
+            lines.append("")
+            lines.append(f"  [dim]→ Run with[/dim] [bold]--verbose[/bold] [dim]for[/dim] {hint_text}")
+
+        console.print(
+            Panel(
+                "\n".join(lines),
+                title=f"[bold]agent-bom[/bold]  v{report.tool_version}",
+                border_style=border_style,
+                padding=(0, 1),
+            )
+        )
+        return
+
+    # Verbose form: full posture detail (the previous default rendering).
     lines = [
         f"  [bold]CONFIG POSTURE GRADE:[/bold]  {_posture_grade_badge(scorecard.grade)} "
         f"[bold]{scorecard.score:.1f}/100[/bold]  [dim]{scorecard_summary}[/dim]",

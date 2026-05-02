@@ -94,7 +94,7 @@ def _blast(vuln, pkg, agents, servers, creds=None):
 
 
 def test_compact_summary_clean():
-    """0 vulns → CLEAN posture."""
+    """0 vulns → CLEAN posture (verbose form keeps the explicit grade row)."""
     agent = _make_agent(
         servers=[
             _make_server(
@@ -105,7 +105,7 @@ def test_compact_summary_clean():
         ]
     )
     report = AIBOMReport(agents=[agent])
-    output = _capture(print_compact_summary, report)
+    output = _capture(lambda r: print_compact_summary(r, verbose=True), report)
     assert "CLEAN" in output
     assert "CONFIG POSTURE GRADE" in output
     assert "Agents" in output
@@ -113,20 +113,41 @@ def test_compact_summary_clean():
 
 
 def test_compact_summary_with_vulns():
-    """Shows severity breakdown when vulns exist."""
+    """Shows severity breakdown when vulns exist (verbose form keeps the explicit grade row)."""
     vuln = _vuln()
     pkg = Package(name="lodash", version="4.17.20", ecosystem="npm", vulnerabilities=[vuln])
     server = _make_server(packages=[pkg])
     agent = _make_agent(servers=[server])
     br = _blast(vuln, pkg, [agent], [server])
     report = AIBOMReport(agents=[agent], blast_radii=[br])
-    output = _capture(print_compact_summary, report)
+    output = _capture(lambda r: print_compact_summary(r, verbose=True), report)
     assert "CONFIG POSTURE GRADE" in output
     assert "CRIT" in output  # Badge shows " CRIT " not "CRITICAL"
     assert "Vulns" in output
 
 
 def test_compact_summary_distinguishes_clean_vulns_from_config_posture():
+    """Verbose form keeps the explicit CONFIG POSTURE GRADE / SECURITY POSTURE split."""
+    agent = _make_agent(
+        servers=[
+            _make_server(
+                packages=[
+                    Package(name="express", version="4.19.0", ecosystem="npm"),
+                ]
+            )
+        ]
+    )
+    report = AIBOMReport(agents=[agent])
+    output = _plain(_capture(lambda r: print_compact_summary(r, verbose=True), report))
+    assert "CONFIG POSTURE GRADE" in output
+    assert "No vulnerabilities found" in output
+    assert "best-practice/config posture" in output
+    assert "SECURITY POSTURE:" in output
+    assert "CLEAN" in output
+
+
+def test_compact_summary_default_is_verdict_led():
+    """Default form is verdict-led: posture + inventory, no driver/credential dump."""
     agent = _make_agent(
         servers=[
             _make_server(
@@ -138,15 +159,17 @@ def test_compact_summary_distinguishes_clean_vulns_from_config_posture():
     )
     report = AIBOMReport(agents=[agent])
     output = _plain(_capture(print_compact_summary, report))
-    assert "CONFIG POSTURE GRADE" in output
-    assert "No vulnerabilities found" in output
-    assert "best-practice/config posture" in output
-    assert "SECURITY POSTURE:" in output
+    # Detailed sections moved behind --verbose:
+    assert "CONFIG POSTURE GRADE" not in output
+    assert "Top Drivers" not in output
+    # Verdict + inventory still surface:
     assert "CLEAN" in output
+    assert "agents" in output
+    assert "packages" in output
 
 
 def test_compact_summary_includes_non_cve_findings():
-    """Policy and blocklist findings should not render as CLEAN."""
+    """Policy and blocklist findings should not render as CLEAN — verbose form keeps the rationale."""
     finding = Finding(
         finding_type=FindingType.MCP_BLOCKLIST,
         source=FindingSource.MCP_SCAN,
@@ -156,7 +179,7 @@ def test_compact_summary_includes_non_cve_findings():
     )
     report = AIBOMReport(findings=[finding])
 
-    output = _capture(print_compact_summary, report)
+    output = _capture(lambda r: print_compact_summary(r, verbose=True), report)
 
     assert "CLEAN" not in output
     assert "HIGH" in output
@@ -166,13 +189,34 @@ def test_compact_summary_includes_non_cve_findings():
     assert "Strong security posture" not in output
 
 
+def test_compact_summary_default_does_not_render_clean_for_policy_findings():
+    """Default (verdict-led) form must still surface non-CVE policy findings as non-clean."""
+    finding = Finding(
+        finding_type=FindingType.MCP_BLOCKLIST,
+        source=FindingSource.MCP_SCAN,
+        asset=Asset(name="bad-server", asset_type="mcp_server"),
+        severity="high",
+        title="Blocked MCP server",
+    )
+    report = AIBOMReport(findings=[finding])
+    output = _capture(print_compact_summary, report)
+    assert "CLEAN" not in output
+    assert "HIGH" in output
+
+
 def test_compact_summary_credentials():
-    """Shows credential names."""
+    """Verbose form lists credential names; default form just hints at the count."""
     server = _make_server(name="github", env={"GITHUB_TOKEN": "xxx"})
     agent = _make_agent(servers=[server])
     report = AIBOMReport(agents=[agent])
-    output = _capture(print_compact_summary, report)
-    assert "GITHUB_TOKEN" in output
+
+    verbose_output = _capture(lambda r: print_compact_summary(r, verbose=True), report)
+    assert "GITHUB_TOKEN" in verbose_output
+
+    default_output = _plain(_capture(print_compact_summary, report))
+    # Default form does NOT list credential names — it surfaces the count via
+    # the --verbose hint when something interesting exists in the scorecard.
+    assert "GITHUB_TOKEN" not in default_output
 
 
 def test_compact_summary_unknown_severity_is_labeled_advisory():
@@ -189,16 +233,30 @@ def test_compact_summary_unknown_severity_is_labeled_advisory():
 
 
 def test_compact_summary_shows_top_drivers_for_weak_posture():
-    """Weak posture should surface the key drivers inline."""
+    """Verbose form surfaces the key drivers inline."""
     vuln = _vuln(severity=Severity.HIGH, fixed="9.9.9")
     pkg = Package(name="pkg", version="1.0.0", ecosystem="npm", vulnerabilities=[vuln])
     server = _make_server(packages=[pkg], env={"AWS_SECRET_ACCESS_KEY": "x"})
     agent = _make_agent(servers=[server])
     br = _blast(vuln, pkg, [agent], [server], creds=["AWS_SECRET_ACCESS_KEY"])
     report = AIBOMReport(agents=[agent], blast_radii=[br])
-    output = _capture(print_compact_summary, report)
+    output = _capture(lambda r: print_compact_summary(r, verbose=True), report)
     assert "Top Drivers" in output
     assert "Credential Hygiene" in output
+
+
+def test_compact_summary_default_offers_verbose_hint_when_drivers_weak():
+    """Default form replaces inline drivers with a -> Run with --verbose hint."""
+    vuln = _vuln(severity=Severity.HIGH, fixed="9.9.9")
+    pkg = Package(name="pkg", version="1.0.0", ecosystem="npm", vulnerabilities=[vuln])
+    server = _make_server(packages=[pkg], env={"AWS_SECRET_ACCESS_KEY": "x"})
+    agent = _make_agent(servers=[server])
+    br = _blast(vuln, pkg, [agent], [server], creds=["AWS_SECRET_ACCESS_KEY"])
+    report = AIBOMReport(agents=[agent], blast_radii=[br])
+    output = _plain(_capture(print_compact_summary, report))
+    assert "Top Drivers" not in output  # moved to --verbose
+    assert "--verbose" in output  # hint surfaces
+    assert "weak driver" in output or "credential" in output  # hint mentions what's behind it
 
 
 # ── print_compact_agents ─────────────────────────────────────────────────────

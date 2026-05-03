@@ -1,7 +1,8 @@
 """Cloud provider auto-discovery for AI agents and MCP servers.
 
 Discovers agents from AWS, Azure, GCP, CoreWeave, Databricks, Snowflake,
-Nebius, Hugging Face Hub, W&B, MLflow, OpenAI, and Ollama (local) APIs.
+Nebius, Hugging Face Hub, W&B, MLflow, OpenAI, Ollama (local), Lambda Labs,
+RunPod, Vast.ai, and Crusoe Energy APIs.
 Each provider is an optional dependency — install with e.g. ``pip install 'agent-bom[aws]'``.
 """
 
@@ -33,6 +34,10 @@ _PROVIDERS: dict[str, str] = {
     "mlflow": "agent_bom.cloud.mlflow_provider",
     "openai": "agent_bom.cloud.openai_provider",
     "ollama": "agent_bom.cloud.ollama",
+    "lambda": "agent_bom.cloud.lambda_labs",
+    "runpod": "agent_bom.cloud.runpod",
+    "vastai": "agent_bom.cloud.vastai",
+    "crusoe": "agent_bom.cloud.crusoe",
 }
 
 _BUILTIN_PROVIDERS: dict[str, str] = dict(_PROVIDERS)
@@ -89,6 +94,10 @@ _PROVIDER_PERMISSIONS_USED: dict[str, tuple[str, ...]] = {
     "openai": ("openai:assistants:read", "openai:models:read", "openai:responses:read"),
     "snowflake": ("snowflake:show:read", "snowflake:account_usage:read"),
     "wandb": ("wandb:artifacts:read", "wandb:runs:read"),
+    "lambda": ("lambda-cloud:instances:read",),
+    "runpod": ("runpod:pods:read", "runpod:serverless:read"),
+    "vastai": ("vastai:instances:read",),
+    "crusoe": ("crusoe:vms:read",),
 }
 
 

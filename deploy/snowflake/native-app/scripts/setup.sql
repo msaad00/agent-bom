@@ -179,15 +179,19 @@ CREATE OR REPLACE TASK core.auto_scan_task
 AS
     CALL core.trigger_scan();
 
+-- Phase 2: Compliance Hub Snowpark proc (V002__compliance_proc.sql)
+-- Creates core.apply_compliance_hub() and core.compliance_posture view.
+EXECUTE IMMEDIATE FROM 'dcm/V002__compliance_proc.sql';
+
 -- 7. Streamlit dashboard (default_streamlit in manifest)
 CREATE STREAMLIT IF NOT EXISTS core.dashboard
     FROM 'streamlit'
     MAIN_FILE = 'dashboard.py';
 GRANT USAGE ON STREAMLIT core.dashboard TO APPLICATION ROLE app_user;
 
--- 6. Service (agent-bom API in Snowpark Container Services)
+-- 6. Services (agent-bom API + UI in Snowpark Container Services)
 -- Note: compute pool must be created by the consumer and granted to the app.
--- The app creates the service once a compute pool is available.
+-- The app creates the services once a compute pool is available.
 CREATE SERVICE IF NOT EXISTS core.agent_bom_api
     IN COMPUTE POOL consumer_pool  -- consumer must grant this
     FROM SPECIFICATION_FILE = '/service-spec.yaml'
@@ -195,3 +199,5 @@ CREATE SERVICE IF NOT EXISTS core.agent_bom_api
     MAX_INSTANCES = 1;
 
 GRANT USAGE ON SERVICE core.agent_bom_api TO APPLICATION ROLE app_user;
+GRANT SERVICE ROLE core.agent_bom_api!api TO APPLICATION ROLE app_user;
+GRANT SERVICE ROLE core.agent_bom_api!ui TO APPLICATION ROLE app_user;

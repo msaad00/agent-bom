@@ -20,6 +20,7 @@ import re
 from pathlib import Path
 
 from agent_bom.iac.cloudformation import _is_cloudformation, scan_cloudformation
+from agent_bom.iac.dcm import is_dcm_migration, scan_dcm_migration
 from agent_bom.iac.dockerfile import scan_dockerfile
 from agent_bom.iac.helm import scan_chart_yaml, scan_values_yaml
 from agent_bom.iac.kubernetes import scan_k8s_manifest
@@ -30,6 +31,7 @@ __all__ = [
     "scan_iac_directory",
     "scan_chart_yaml",
     "scan_values_yaml",
+    "scan_dcm_migration",
 ]
 
 # Dockerfile filename patterns
@@ -132,6 +134,11 @@ def scan_iac_directory(root: str | Path) -> list[IaCFinding]:
             findings.extend(scan_dockerfile(path))
         elif path.suffix == ".tf":
             findings.extend(scan_terraform_security(path))
+        elif is_dcm_migration(path):
+            # DCM check before generic .sql so V<seq>__name.sql doesn't fall
+            # through to other handlers. Native App's own DCM project at
+            # deploy/snowflake/native-app/dcm/ self-tests via this path.
+            findings.extend(scan_dcm_migration(path))
         elif _is_k8s_manifest(path):
             # K8s check before CloudFormation — both match .yaml/.yml but
             # K8s markers (apiVersion + kind) are more specific than "Resources:"

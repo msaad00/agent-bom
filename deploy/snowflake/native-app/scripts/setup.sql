@@ -189,9 +189,10 @@ CREATE STREAMLIT IF NOT EXISTS core.dashboard
     MAIN_FILE = 'dashboard.py';
 GRANT USAGE ON STREAMLIT core.dashboard TO APPLICATION ROLE app_user;
 
--- 6. Services (agent-bom API + UI in Snowpark Container Services)
+-- 6. Services (Phase 3: API + UI both defined in service-spec.yaml)
 -- Note: compute pool must be created by the consumer and granted to the app.
--- The app creates the services once a compute pool is available.
+-- The app creates the service once a compute pool is available.
+-- service-spec.yaml defines two containers: agent-bom (API:8422) + agent-bom-ui (UI:3000).
 CREATE SERVICE IF NOT EXISTS core.agent_bom_api
     IN COMPUTE POOL consumer_pool  -- consumer must grant this
     FROM SPECIFICATION_FILE = '/service-spec.yaml'
@@ -199,5 +200,7 @@ CREATE SERVICE IF NOT EXISTS core.agent_bom_api
     MAX_INSTANCES = 1;
 
 GRANT USAGE ON SERVICE core.agent_bom_api TO APPLICATION ROLE app_user;
+-- Service roles surface each endpoint independently so consumers can grant
+-- API or UI access without exposing both.
 GRANT SERVICE ROLE core.agent_bom_api!api TO APPLICATION ROLE app_user;
-GRANT SERVICE ROLE core.agent_bom_api!ui TO APPLICATION ROLE app_user;
+GRANT SERVICE ROLE core.agent_bom_api!ui  TO APPLICATION ROLE app_user;

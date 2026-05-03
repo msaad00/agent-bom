@@ -180,25 +180,83 @@ _api_key_roles: dict[str, Role] = {}
 _lock = threading.Lock()
 
 
+# Minimum length for a customer-supplied API key. 32 random bytes (~256 bits)
+# is the entropy floor that matches the 32-byte secrets we mint via
+# `secrets.token_urlsafe(32)`. Customer-provided keys shorter than this
+# trigger an ApiKeyEntropyError so a misconfigured short value can't slip
+# into production. The check is on the key string itself, not a Shannon
+# estimate — operators using strings that are 32+ chars but low-entropy
+# are still able to set them, but the bar prevents accidental "abc" keys.
+MIN_API_KEY_LENGTH = 32
+
+
+class InvalidRoleError(ValueError):
+    """Raised when a configured role isn't one of admin / analyst / viewer.
+
+    The agent-bom Role enum is a closed set — see ``rbac.Role`` and the
+    contract in ``docs/IDENTITY_AND_NAMING_CONTRACT.md``. A typo or
+    mis-cased value at config-time fails fast here so the operator sees
+    the error at boot instead of silently dropping into viewer.
+    """
+
+
+class ApiKeyEntropyError(ValueError):
+    """Raised when a customer-supplied API key falls below the entropy bar."""
+
+
+def _coerce_role(value: str, *, source: str) -> Role:
+    """Parse a role string, raising InvalidRoleError on miss.
+
+    `source` names where the value came from (e.g. "AGENT_BOM_DEFAULT_ROLE",
+    "AGENT_BOM_API_KEYS entry") so the error names the offending config.
+    """
+    try:
+        return Role(value)
+    except ValueError as exc:
+        valid = ", ".join(r.value for r in Role)
+        parts = [
+            "Invalid role " + repr(value) + " from " + source + ".",
+            "agent-bom roles are a closed enum (" + valid + ").",
+            "Use one of those values, or unset to fall back to viewer.",
+        ]
+        raise InvalidRoleError(" ".join(parts)) from exc
+
+
 def configure_api_keys(key_map: dict[str, str]) -> None:
     """Set API key to role mappings.
 
     Args:
         key_map: Dict of {api_key: role_name}
+
+    Raises:
+        InvalidRoleError: when an entry's role isn't admin/analyst/viewer.
+        ApiKeyEntropyError: when an entry's key is shorter than
+            ``MIN_API_KEY_LENGTH``. Customer-supplied values must clear
+            the entropy floor that matches what we mint internally.
     """
+    # Validate first so a bad entry doesn't half-populate the table.
+    validated: dict[str, Role] = {}
+    for key, role_name in key_map.items():
+        if not isinstance(key, str) or len(key) < MIN_API_KEY_LENGTH:
+            raise ApiKeyEntropyError(
+                f"API key for role {role_name!r} is too short "
+                f"({len(key)} chars; minimum {MIN_API_KEY_LENGTH}). "
+                "agent-bom mints keys via secrets.token_urlsafe(32). "
+                "Customer-supplied keys must clear the same bar."
+            )
+        validated[key] = _coerce_role(role_name, source="AGENT_BOM_API_KEYS entry")
+
     with _lock:
         _api_key_roles.clear()
-        for key, role_name in key_map.items():
-            try:
-                _api_key_roles[key] = Role(role_name)
-            except ValueError:
-                logger.warning("Invalid role %r for API key, skipping", role_name)
+        _api_key_roles.update(validated)
 
 
 def load_api_keys_from_env() -> None:
     """Load API keys from AGENT_BOM_API_KEYS env var.
 
-    Format: key1:admin,key2:analyst,key3:viewer
+    Format: ``key1:role1,key2:role2`` where each role is one of
+    admin/analyst/viewer. Bad rows raise immediately so misconfiguration
+    surfaces at boot, not at first request.
     """
     raw = os.environ.get("AGENT_BOM_API_KEYS", "")
     if not raw:
@@ -218,6 +276,12 @@ def resolve_role(api_key: str | None = None, role_header: str | None = None) -> 
     Priority:
         1. API key lookup (if AGENT_BOM_API_KEYS configured)
         2. Default role from AGENT_BOM_DEFAULT_ROLE env var
+
+    Raises:
+        InvalidRoleError: if AGENT_BOM_DEFAULT_ROLE is set to a value
+            outside the closed admin/analyst/viewer enum. Set strictly
+            so a typo can't silently downgrade callers to viewer
+            (security) or upgrade a default (also security).
     """
     # API key takes priority
     if api_key:
@@ -229,12 +293,16 @@ def resolve_role(api_key: str | None = None, role_header: str | None = None) -> 
     if role_header:
         logger.warning("Ignoring unauthenticated X-Agent-Bom-Role header outside API middleware attestation")
 
-    # Default role — least privilege (viewer) unless explicitly overridden
-    default = os.environ.get("AGENT_BOM_DEFAULT_ROLE", "viewer")
-    try:
-        return Role(default)
-    except ValueError:
+    # Default role — least privilege (viewer) unless explicitly overridden.
+    # An explicitly-set bad value raises rather than silently coercing to viewer
+    # because both directions matter: a typo'd "admion" silently becoming viewer
+    # surprises the operator (something they set is being ignored), and a
+    # downstream tool relying on AGENT_BOM_DEFAULT_ROLE=admin would break
+    # without warning if the value were ever silently coerced upward.
+    raw = os.environ.get("AGENT_BOM_DEFAULT_ROLE")
+    if raw is None:
         return Role.VIEWER
+    return _coerce_role(raw, source="AGENT_BOM_DEFAULT_ROLE")
 
 
 def check_permission(role: Role, action: str) -> bool:

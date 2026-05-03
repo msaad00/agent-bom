@@ -50,6 +50,7 @@ def emit_dry_run_plan(
     jupyter_dirs: tuple,
     model_dirs: tuple,
     dataset_dirs: tuple,
+    scan_pii: bool,
     training_dirs: tuple,
     gha_path: str | None,
     skill_paths: tuple,
@@ -106,7 +107,8 @@ def emit_dry_run_plan(
     for mdir in model_dirs:
         reads.append(f"  [green]Would read:[/green]   {mdir}  (ML model files .gguf, .safetensors, .onnx, .pt, etc.)")
     for ddir in dataset_dirs:
-        reads.append(f"  [green]Would read:[/green]   {ddir}  (dataset cards: dataset_info.json, README.md, .dvc)")
+        label = "dataset cards + PII scan (CSV/JSON/JSONL)" if scan_pii else "dataset cards: dataset_info.json, README.md, .dvc"
+        reads.append(f"  [green]Would read:[/green]   {ddir}  ({label})")
     for tdir in training_dirs:
         reads.append(f"  [green]Would read:[/green]   {tdir}  (training pipelines: MLflow, Kubeflow, W&B)")
     if gha_path:

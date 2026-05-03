@@ -100,6 +100,13 @@ def discovery_options(fn):
                 help="Scan for dataset cards (dataset_info.json, README.md frontmatter, .dvc files). Repeatable.",
             ),
             click.option(
+                "--scan-pii",
+                "scan_pii",
+                is_flag=True,
+                default=False,
+                help="Scan CSV/JSON/JSONL dataset files for PII/PHI content (emails, SSNs, credit cards, medical data).",
+            ),
+            click.option(
                 "--training-pipelines",
                 "training_dirs",
                 multiple=True,

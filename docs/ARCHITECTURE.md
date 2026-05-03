@@ -113,7 +113,7 @@ sequenceDiagram
 
     CLI->>BlastRadius: Vulns + topology
     BlastRadius->>BlastRadius: CVE → package → server → agent → creds → tools
-    BlastRadius->>BlastRadius: Tag 14 frameworks + attach AISVS benchmark
+    BlastRadius->>BlastRadius: Tag 15 frameworks + attach AISVS benchmark
     BlastRadius-->>CLI: Scored + tagged findings
 
     CLI->>Reporter: Full results
@@ -159,7 +159,7 @@ graph LR
 
 ## 4. Compliance Tagging
 
-Every finding is tagged against 14 tag-mapped frameworks, grouped into four families. OWASP AISVS is exposed as a separate benchmark result with per-check evidence. The bundled mappings are a curated subset of each framework focused on AI/MCP/agent risk-relevant controls — they are not a complete catalog. See [Coverage per framework](#coverage-per-framework) below for the honest control counts.
+Every finding is tagged against 15 tag-mapped frameworks, grouped into four families. OWASP AISVS is exposed as a separate benchmark result with per-check evidence. The bundled mappings are a curated subset of each framework focused on AI/MCP/agent risk-relevant controls — they are not a complete catalog. See [Coverage per framework](#coverage-per-framework) below for the honest control counts.
 
 ```mermaid
 graph LR

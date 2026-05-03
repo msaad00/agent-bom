@@ -28,7 +28,7 @@
     },
     {
       "name": "Test files",
-      "value": 414,
+      "value": 438,
       "source": "tests/",
       "notes": "Counts files matching test_*.py."
     },
@@ -60,7 +60,7 @@
       "name": "Compliance surfaces",
       "value": 15,
       "source": "src/agent_bom/compliance_coverage.py",
-      "notes": "14 tag-mapped frameworks plus the OWASP AISVS benchmark surface."
+      "notes": "15 tag-mapped frameworks plus the OWASP AISVS benchmark surface."
     },
     {
       "name": "Proxy inline detectors",

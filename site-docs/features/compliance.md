@@ -1,6 +1,6 @@
 # Compliance Frameworks
 
-agent-bom maps scan findings to 14 tag-mapped security and compliance frameworks and exposes OWASP AISVS as benchmark evidence.
+agent-bom maps scan findings to 15 tag-mapped security and compliance frameworks and exposes OWASP AISVS as benchmark evidence.
 
 Framework catalogs are pinned in-repo by default so scans stay deterministic,
 offline-friendly, and reproducible. Catalog refreshes can happen out of band;

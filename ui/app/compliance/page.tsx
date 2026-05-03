@@ -7,6 +7,7 @@ import {
   ComplianceResponse,
   ComplianceControl,
   FrameworkCatalogMetadata,
+  MitreAtlasCatalogMetadata,
   HubPostureResponse,
   OWASP_LLM_TOP10,
   OWASP_MCP_TOP10,
@@ -379,6 +380,7 @@ function CompliancePageContent() {
   const queryParam = searchParams.get("q") ?? "";
   const [data, setData] = useState<ComplianceResponse | null>(null);
   const [mitreCatalog, setMitreCatalog] = useState<FrameworkCatalogMetadata | null>(null);
+  const [atlasCatalog, setAtlasCatalog] = useState<MitreAtlasCatalogMetadata | null>(null);
   const [hubPosture, setHubPosture] = useState<HubPostureResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -410,6 +412,7 @@ function CompliancePageContent() {
         }
         if (catalogResult.status === "fulfilled") {
           setMitreCatalog(catalogResult.value.frameworks?.mitre_attack ?? null);
+          setAtlasCatalog(catalogResult.value.frameworks?.mitre_atlas ?? null);
         }
         // Hub posture is best-effort: a missing endpoint shouldn't blank the page
         if (hubResult.status === "fulfilled") {
@@ -621,6 +624,34 @@ function CompliancePageContent() {
                 Bundled by default for deterministic scans. Refresh explicitly with{" "}
                 <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-zinc-300">agent-bom db update-frameworks</code>{" "}
                 when you want a newer upstream snapshot.
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {atlasCatalog ? (
+          <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-[0.24em] text-fuchsia-400">MITRE ATLAS catalog</div>
+                <div className="text-sm text-zinc-300">
+                  {atlasCatalog.atlas_version || "unknown version"} ·{" "}
+                  {typeof atlasCatalog.curated_count === "number"
+                    ? `${atlasCatalog.curated_count} curated / ${atlasCatalog.technique_count} upstream`
+                    : `${atlasCatalog.technique_count} techniques`}{" "}
+                  · {atlasCatalog.tactic_count} tactics
+                </div>
+                <div className="text-xs text-zinc-500">
+                  Source: {atlasCatalog.source}
+                  {atlasCatalog.updated_at ? ` · updated ${formatDate(atlasCatalog.updated_at)}` : ""}
+                </div>
+              </div>
+              <div className="text-xs text-zinc-500 lg:max-w-sm">
+                Curated tag surface stays load-bearing for tagging precision; the bundled
+                upstream catalog powers coverage rollups. Refresh explicitly with{" "}
+                <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-zinc-300">
+                  agent-bom db update-frameworks --framework atlas
+                </code>
+                .
               </div>
             </div>
           </div>

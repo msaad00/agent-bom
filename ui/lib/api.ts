@@ -203,8 +203,9 @@ export type {
   AuditEntry,
   AuditLogResponse,
   AuditIntegrityResponse,
-  HubPostureResponse
+  HubPostureResponse,
 } from "./api-types";
+export type { MitreAtlasCatalogMetadata } from "./api-types";
 
 // ── Scan Pipeline Step Types ────────────────────────────────────────────────
 

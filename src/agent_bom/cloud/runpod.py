@@ -116,19 +116,28 @@ def discover(
             location = machine.get("location", "unknown")
 
             packages = []
+            container_sbom = None
             if image:
+                img_name = image.split(":")[0].replace("/", "-")
+                img_version = image.split(":")[-1] if ":" in image else "latest"
                 packages.append(
                     Package(
-                        name=image.split(":")[0].replace("/", "-"),
-                        version=image.split(":")[-1] if ":" in image else "latest",
+                        name=img_name,
+                        version=img_version,
                         ecosystem="container-image",
                         purl=build_package_purl(
                             ecosystem="container-image",
-                            name=image.split(":")[0].replace("/", "-"),
-                            version=image.split(":")[-1] if ":" in image else "latest",
+                            name=img_name,
+                            version=img_version,
                         ),
                     )
                 )
+                try:
+                    from agent_bom.cloud.container_sbom import scan_container_image
+
+                    container_sbom = scan_container_image(image).to_dict()
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Container SBOM scan skipped for %s: %s", image, exc)
 
             server = MCPServer(
                 name=f"runpod:{pod_name}",
@@ -149,6 +158,7 @@ def discover(
                     "gpu_count": gpu_count,
                     "location": location,
                     "image": image,
+                    "container_sbom": container_sbom,
                     "cloud_origin": build_cloud_origin(
                         provider="runpod",
                         service="compute",

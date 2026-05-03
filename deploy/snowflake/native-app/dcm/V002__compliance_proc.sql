@@ -146,6 +146,7 @@ GRANT USAGE ON PROCEDURE core.apply_compliance_hub(VARCHAR)
 CREATE OR REPLACE TASK core.compliance_hub_classify_task
     WAREHOUSE = 'COMPUTE_WH'
     SCHEDULE  = 'USING CRON 0 * * * * UTC'
+    USER_TASK_TIMEOUT_MS = 300000
 AS
     CALL core.apply_compliance_hub('default');
 

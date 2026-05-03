@@ -618,6 +618,7 @@ def to_json(report: AIBOMReport) -> dict:
             "total_agents": report.total_agents,
             "total_mcp_servers": report.total_servers,
             "total_packages": report.total_packages,
+            "unique_packages": len(inventory_snapshot.get("packages", [])),
             "total_vulnerabilities": report.total_vulnerabilities,
             "critical_findings": len(report.critical_vulns),
         },

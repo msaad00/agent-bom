@@ -353,6 +353,32 @@ def test_json_includes_ai_bom_entities():
     assert data["ai_bom_entities"]["summary"]["agents"] == 1
 
 
+def test_json_summary_distinguishes_total_vs_unique_packages():
+    """Same package on two servers counts twice in `total_packages` (occurrences)
+    but once in `unique_packages` (deduped by stable_id), matching
+    `inventory_snapshot.packages` and `ai_bom_entities.packages`.
+
+    v0.84.6 audit flagged operators reading `total_packages` and finding
+    fewer entries in `inventory_snapshot.packages` than expected. Surfacing
+    `unique_packages` makes the occurrence-vs-unique split self-documenting
+    so the asymmetry can't read as a bug.
+    """
+    pkg = _make_pkg(name="lodash", version="4.17.20")
+    pkg_other = _make_pkg(name="lodash", version="4.17.20")
+    agent = _make_agent(
+        servers=[
+            _make_server(name="srv-a", packages=[pkg]),
+            _make_server(name="srv-b", packages=[pkg_other]),
+        ]
+    )
+    data = to_json(_make_report(agents=[agent]))
+
+    assert data["summary"]["total_packages"] == 2, "occurrence count across servers"
+    assert data["summary"]["unique_packages"] == 1, "deduped by stable_id"
+    assert len(data["inventory_snapshot"]["packages"]) == data["summary"]["unique_packages"]
+    assert len(data["ai_bom_entities"]["packages"]) == data["summary"]["unique_packages"]
+
+
 # ── Markdown ─────────────────────────────────────────────────────────────────
 
 

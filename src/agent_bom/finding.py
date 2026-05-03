@@ -118,6 +118,9 @@ class Finding:
 
     # Compliance mappings (same tags as BlastRadius for parity)
     compliance_tags: list[str] = field(default_factory=list)  # all framework tags combined
+    # Framework slugs that govern this finding (set by compliance_hub.apply_hub_classification).
+    # Distinct from the per-framework `*_tags` fields below, which hold control codes.
+    applicable_frameworks: list[str] = field(default_factory=list)
     owasp_tags: list[str] = field(default_factory=list)
     atlas_tags: list[str] = field(default_factory=list)
     attack_tags: list[str] = field(default_factory=list)
@@ -215,6 +218,7 @@ class Finding:
             "fixed_version": self.fixed_version,
             "remediation_guidance": self.remediation_guidance,
             "compliance_tags": self.all_compliance_tags(),
+            "applicable_frameworks": list(self.applicable_frameworks),
             "owasp_tags": self.owasp_tags,
             "atlas_tags": self.atlas_tags,
             "attack_tags": self.attack_tags,
@@ -391,7 +395,9 @@ def blast_radius_to_finding(br: object) -> "Finding":
 
     sev = vuln.severity.value if hasattr(vuln.severity, "value") else str(vuln.severity)
 
-    return Finding(
+    from agent_bom.compliance_hub import apply_hub_classification
+
+    finding = Finding(
         finding_type=FindingType.CVE,
         source=FindingSource.MCP_SCAN,
         asset=asset,
@@ -421,3 +427,4 @@ def blast_radius_to_finding(br: object) -> "Finding":
         evidence=evidence,
         risk_score=br.risk_score,
     )
+    return apply_hub_classification(finding)

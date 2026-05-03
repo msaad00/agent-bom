@@ -377,47 +377,48 @@ def flag_blocklisted_mcp_servers(agents: list[Agent], blocklist: dict[str, Any] 
 
 def blocklist_findings_for_agents(agents: list[Agent], blocklist: dict[str, Any] | None = None) -> list[Finding]:
     """Create unified findings for MCP blocklist hits and stamp server warnings."""
+    from agent_bom.compliance_hub import apply_hub_classification
+
     findings: list[Finding] = []
     for agent in agents:
         for server in agent.mcp_servers:
             for match in match_mcp_server(server, blocklist):
                 _stamp_server_match(server, match)
 
-                findings.append(
-                    Finding(
-                        finding_type=FindingType.MCP_BLOCKLIST,
-                        source=FindingSource.MCP_SCAN,
-                        asset=Asset(
-                            name=server.name,
-                            asset_type="mcp_server",
-                            identifier=server.registry_id,
-                            location=server.config_path or server.command or None,
-                        ),
-                        severity=match.severity,
-                        title=match.title,
-                        description=match.description,
-                        remediation_guidance="Remove or disable the matched MCP server until the blocklist entry is reviewed.",
-                        owasp_mcp_tags=["MCP04", "MCP07"],
-                        evidence={
-                            "agent_name": agent.name,
-                            "server_name": server.name,
-                            "server_stable_id": server.stable_id,
-                            "entry_id": match.entry_id,
-                            "match_type": match.match_type,
-                            "matched_value": match.matched_value,
-                            "blocklist_source": match.source,
-                            "confidence": match.confidence,
-                            "default_recommendation": match.default_recommendation,
-                            "source_type": match.source_type,
-                            "ecosystem": match.ecosystem,
-                            "package": match.package,
-                            "affected_versions": match.affected_versions,
-                            "first_seen": match.first_seen,
-                            "last_verified": match.last_verified,
-                            "remediation_actions": list(match.remediation_actions),
-                            "references": list(match.references),
-                        },
-                        risk_score=10.0 if match.severity == "critical" else 8.0,
-                    )
+                finding = Finding(
+                    finding_type=FindingType.MCP_BLOCKLIST,
+                    source=FindingSource.MCP_SCAN,
+                    asset=Asset(
+                        name=server.name,
+                        asset_type="mcp_server",
+                        identifier=server.registry_id,
+                        location=server.config_path or server.command or None,
+                    ),
+                    severity=match.severity,
+                    title=match.title,
+                    description=match.description,
+                    remediation_guidance="Remove or disable the matched MCP server until the blocklist entry is reviewed.",
+                    owasp_mcp_tags=["MCP04", "MCP07"],
+                    evidence={
+                        "agent_name": agent.name,
+                        "server_name": server.name,
+                        "server_stable_id": server.stable_id,
+                        "entry_id": match.entry_id,
+                        "match_type": match.match_type,
+                        "matched_value": match.matched_value,
+                        "blocklist_source": match.source,
+                        "confidence": match.confidence,
+                        "default_recommendation": match.default_recommendation,
+                        "source_type": match.source_type,
+                        "ecosystem": match.ecosystem,
+                        "package": match.package,
+                        "affected_versions": match.affected_versions,
+                        "first_seen": match.first_seen,
+                        "last_verified": match.last_verified,
+                        "remediation_actions": list(match.remediation_actions),
+                        "references": list(match.references),
+                    },
+                    risk_score=10.0 if match.severity == "critical" else 8.0,
                 )
+                findings.append(apply_hub_classification(finding))
     return findings

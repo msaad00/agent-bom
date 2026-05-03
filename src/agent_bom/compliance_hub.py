@@ -19,7 +19,12 @@ asset type means adding a row here, not editing every adapter.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from agent_bom.finding import FindingSource, FindingType
+
+if TYPE_CHECKING:
+    from agent_bom.finding import Finding
 
 # ─── Framework slugs ─────────────────────────────────────────────────────────
 # Aligned with `agent_bom.compliance_coverage.TAG_MAPPED_FRAMEWORKS` slugs.
@@ -193,6 +198,34 @@ def select_frameworks(
         selected.update(_GOV_FRAMEWORKS)
 
     return [f for f in ALL_FRAMEWORKS if f in selected]
+
+
+def apply_hub_classification(finding: "Finding", *, include_gov: bool = False) -> "Finding":
+    """Populate `finding.applicable_frameworks` using the hub selection table.
+
+    Idempotent and additive: existing entries are preserved, the hub-derived
+    slugs are merged in (deduped, canonical order). Used by every finding
+    generator and ingestion adapter so a finding's framework classification
+    is consistent regardless of which entry point produced it.
+
+    Returns the same finding for fluent chaining.
+    """
+    selected = select_frameworks(
+        finding.source,
+        asset_type=finding.asset.asset_type,
+        finding_type=finding.finding_type,
+        include_gov=include_gov,
+    )
+    seen = set(finding.applicable_frameworks)
+    for slug in selected:
+        if slug not in seen:
+            finding.applicable_frameworks.append(slug)
+            seen.add(slug)
+    # Re-order to canonical so consumers can hash the list reliably.
+    finding.applicable_frameworks = [slug for slug in ALL_FRAMEWORKS if slug in seen] + [
+        slug for slug in finding.applicable_frameworks if slug not in ALL_FRAMEWORKS
+    ]
+    return finding
 
 
 def is_framework_relevant(

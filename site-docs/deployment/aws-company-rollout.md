@@ -91,45 +91,34 @@ It does **not** try to replace a customer's full AWS platform stack. Keep these 
 
 ```mermaid
 flowchart LR
+    classDef platform fill:#0b1220,stroke:#38bdf8,color:#e0f2fe
+    classDef installer fill:#0f172a,stroke:#6366f1,color:#e0e7ff
+
     subgraph AWS["Customer AWS account"]
+      direction LR
+
       subgraph Platform["Company platform-owned layer"]
-        VPC["VPC / subnets / route tables"]
-        EKS["EKS cluster"]
-        Ingress["Ingress controller + DNS + TLS"]
-        Controllers["Shared controllers<br/>cert-manager / ExternalSecrets / observability"]
+        direction TB
+        VPC["VPC / subnets"]:::platform
+        EKS["EKS cluster"]:::platform
+        Controllers["Ingress + cert-manager<br/>+ ExternalSecrets + observability"]:::platform
       end
 
       subgraph AgentBom["agent-bom product-owned layer"]
-        TF["AWS baseline<br/>Terraform module"]
-        RDS["RDS Postgres"]
-        S3["S3 backup bucket"]
-        IAM["IRSA roles"]
-        Secrets["Secrets Manager"]
-        Helm["agent-bom Helm release"]
-        API["API/runtime image"]
-        UI["UI image"]
-        Jobs["Scan jobs / workers"]
-        Gateway["Optional gateway"]
+        direction TB
+        TF["AWS baseline<br/>Terraform module"]:::installer
+        Primitives["Customer AWS primitives<br/>RDS · S3 · IRSA · Secrets Manager"]:::installer
+        Helm["agent-bom Helm release"]:::installer
+        Workloads["agent-bom workloads<br/>API · UI · jobs · gateway"]:::installer
       end
     end
 
     VPC --> EKS
-    Ingress --> EKS
     Controllers --> EKS
-    TF --> RDS
-    TF --> S3
-    TF --> IAM
-    TF --> Secrets
+    TF --> Primitives
     TF --> Helm
-    Helm --> API
-    Helm --> UI
-    Helm --> Jobs
-    Helm --> Gateway
-    API --> RDS
-    Jobs --> RDS
-    API --> S3
-    API --> Secrets
-    API --> IAM
+    Helm --> Workloads
+    Workloads --> Primitives
 ```
 
 This is the clean ownership model:

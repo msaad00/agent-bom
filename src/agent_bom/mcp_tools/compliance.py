@@ -197,6 +197,7 @@ async def license_compliance_scan_impl(
     *,
     scan_json: str,
     policy_json: str = "",
+    scan_dir: str = "",
     _truncate_response,
 ) -> str:
     """Implementation of the license_compliance_scan tool."""
@@ -248,7 +249,18 @@ async def license_compliance_scan_impl(
             ]
 
         report = evaluate_license_policy(agents, policy=policy)
-        return _truncate_response(json.dumps(to_serializable(report), indent=2))
+        result = to_serializable(report)
+
+        # Optional: scan a local directory for LICENSE files and SPDX headers
+        if scan_dir:
+            from pathlib import Path
+
+            from agent_bom.license_file_scanner import scan_directory
+
+            dir_result = scan_directory(Path(scan_dir))
+            result["license_file_scan"] = dir_result.to_dict()
+
+        return _truncate_response(json.dumps(result, indent=2))
     except Exception as exc:
         logger.exception("MCP tool error")
         return json.dumps({"error": sanitize_error(exc)})

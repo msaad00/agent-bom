@@ -1425,3 +1425,69 @@ spec:
         findings = scan_k8s_manifest(tmp_k8s(content))
         k8s035 = [f for f in findings if f.rule_id == "K8S-035"]
         assert len(k8s035) == 0
+
+
+class TestK8sNvidiaDevicePluginRBAC:
+    """K8S-036: nvidia-device-plugin ClusterRole with mutation verbs."""
+
+    def test_mutation_verbs_flagged(self, tmp_k8s):
+        content = """\
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nvidia-device-plugin
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+"""
+        findings = scan_k8s_manifest(tmp_k8s(content))
+        k8s036 = [f for f in findings if f.rule_id == "K8S-036"]
+        assert len(k8s036) == 1
+        assert k8s036[0].severity == "high"
+        assert "update" in k8s036[0].message or "patch" in k8s036[0].message
+
+    def test_read_only_verbs_not_flagged(self, tmp_k8s):
+        content = """\
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nvidia-device-plugin
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+"""
+        findings = scan_k8s_manifest(tmp_k8s(content))
+        k8s036 = [f for f in findings if f.rule_id == "K8S-036"]
+        assert len(k8s036) == 0
+
+    def test_non_device_plugin_role_not_flagged(self, tmp_k8s):
+        content = """\
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: my-app-role
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["create", "delete", "update"]
+"""
+        findings = scan_k8s_manifest(tmp_k8s(content))
+        k8s036 = [f for f in findings if f.rule_id == "K8S-036"]
+        assert len(k8s036) == 0
+
+    def test_delete_verb_flagged(self, tmp_k8s):
+        content = """\
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: nvidia-device-plugin-manager
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete"]
+"""
+        findings = scan_k8s_manifest(tmp_k8s(content))
+        k8s036 = [f for f in findings if f.rule_id == "K8S-036"]
+        assert len(k8s036) == 1

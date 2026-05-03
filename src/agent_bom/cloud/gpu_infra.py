@@ -485,6 +485,66 @@ def check_nvidia_driver_cves(node: GpuNode) -> list[dict]:
     return findings
 
 
+# AMD ROCm driver CVEs requiring runtime driver version check.
+_AMD_DRIVER_CVES = [
+    ("CVE-2023-31315", "AMD ROCm kernel driver MSR validation bypass allowing SMM config modification (CVSS 7.5)", "6.0"),
+    ("CVE-2024-21944", "AMD ROCm runtime out-of-bounds write via malformed UApp/ABL command (CVSS 7.8)", "6.1"),
+]
+
+
+def _query_amd_driver_version(node_name: str, kubectl_context: str | None) -> str | None:
+    if not shutil.which("kubectl"):
+        return None
+    try:
+        cmd = ["kubectl"]
+        if kubectl_context:
+            cmd.extend(["--context", kubectl_context])
+        cmd.extend(
+            [
+                "exec",
+                "-n",
+                "default",
+                "--",
+                "sh",
+                "-c",
+                "cat /sys/module/amdgpu/version 2>/dev/null "
+                "|| rocm-smi --showdriverversion 2>/dev/null "
+                "| grep -oE '[0-9]+\\.[0-9]+(\\.[0-9]+)?' | head -1",
+            ]
+        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            version = result.stdout.strip()
+            if version and re.match(r"^\d+\.\d+", version):
+                return version
+    except Exception:  # noqa: BLE001
+        pass
+    logger.debug("Could not query AMD driver version on node %s", node_name)
+    return None
+
+
+def check_amd_driver_cves(node: GpuNode) -> list[dict]:
+    """Return CVE finding dicts for the node when AMD ROCm driver version is vulnerable."""
+    driver = node.cuda_driver_version
+    if not driver:
+        return []
+    findings = []
+    for cve_id, summary, fixed in _AMD_DRIVER_CVES:
+        if _driver_lt(driver, fixed):
+            findings.append(
+                {
+                    "cve_id": cve_id,
+                    "summary": summary,
+                    "severity": "high",
+                    "cvss_score": 7.5,
+                    "driver_version": driver,
+                    "fixed_version": fixed,
+                    "node": node.name,
+                }
+            )
+    return findings
+
+
 def discover_k8s_gpu_nodes(
     context: str | None = None,
 ) -> tuple[list[GpuNode], list[str]]:
@@ -536,9 +596,11 @@ def discover_k8s_gpu_nodes(
             else:
                 cuda_driver = labels.get("nvidia.com/cuda.driver-version")
 
-            # If label-based version is unavailable, attempt runtime query via nvidia-smi
+            # If label-based version is unavailable, attempt runtime query via nvidia-smi / rocm-smi
             if not cuda_driver and gpu_vendor == "nvidia":
                 cuda_driver = _query_nvidia_driver_version(name, context)
+            if not cuda_driver and gpu_vendor == "amd":
+                cuda_driver = _query_amd_driver_version(name, context)
 
             # Collect vendor-relevant labels
             gpu_label_keywords = ("nvidia", "amd", "gpu", "intel", "rocm")

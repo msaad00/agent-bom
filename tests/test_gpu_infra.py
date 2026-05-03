@@ -1114,3 +1114,85 @@ def test_discover_k8s_gpu_nodes_queries_driver_when_labels_missing():
     assert len(nodes) == 1
     mock_query.assert_called_once_with("gpu-node", None)
     assert nodes[0].cuda_driver_version == "525.85"
+
+
+# ─── AMD driver CVE gate ──────────────────────────────────────────────────────
+
+from agent_bom.cloud.gpu_infra import (  # noqa: E402
+    _query_amd_driver_version,
+    check_amd_driver_cves,
+)
+
+
+def test_check_amd_driver_cves_vulnerable():
+    node = GpuNode(name="amd-node-1", gpu_vendor="amd", gpu_capacity=4, gpu_allocatable=4, gpu_allocated=0, cuda_driver_version="5.7")
+    findings = check_amd_driver_cves(node)
+    assert len(findings) == 2
+    cve_ids = {f["cve_id"] for f in findings}
+    assert "CVE-2023-31315" in cve_ids
+    assert "CVE-2024-21944" in cve_ids
+    for f in findings:
+        assert f["severity"] == "high"
+        assert f["node"] == "amd-node-1"
+
+
+def test_check_amd_driver_cves_patched():
+    node = GpuNode(name="amd-node-2", gpu_vendor="amd", gpu_capacity=4, gpu_allocatable=4, gpu_allocated=0, cuda_driver_version="6.1")
+    findings = check_amd_driver_cves(node)
+    assert findings == []
+
+
+def test_check_amd_driver_cves_no_version():
+    node = GpuNode(name="amd-node-3", gpu_vendor="amd", gpu_capacity=4, gpu_allocatable=4, gpu_allocated=0, cuda_driver_version=None)
+    findings = check_amd_driver_cves(node)
+    assert findings == []
+
+
+def test_query_amd_driver_version_no_kubectl():
+    with patch("shutil.which", return_value=None):
+        result = _query_amd_driver_version("amd-node", None)
+    assert result is None
+
+
+def test_query_amd_driver_version_success():
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = "5.7.0\n"
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/kubectl"),
+        patch("subprocess.run", return_value=mock_result),
+    ):
+        result = _query_amd_driver_version("amd-node", None)
+    assert result == "5.7.0"
+
+
+def test_discover_k8s_gpu_nodes_queries_amd_driver_when_labels_missing():
+    """AMD nodes without labels trigger _query_amd_driver_version."""
+    node_list = {
+        "items": [
+            {
+                "metadata": {"name": "amd-node", "labels": {}},
+                "status": {
+                    "capacity": {"amd.com/gpu": "4", "cpu": "32"},
+                    "allocatable": {"amd.com/gpu": "4", "cpu": "32"},
+                },
+            }
+        ]
+    }
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/kubectl"),
+        patch("subprocess.run") as mock_run,
+        patch("agent_bom.cloud.gpu_infra._query_amd_driver_version", return_value="5.7.0") as mock_query,
+    ):
+        result = MagicMock()
+        result.returncode = 0
+        result.stdout = json.dumps(node_list)
+        mock_run.return_value = result
+
+        nodes, _ = discover_k8s_gpu_nodes()
+
+    assert len(nodes) == 1
+    mock_query.assert_called_once_with("amd-node", None)
+    assert nodes[0].cuda_driver_version == "5.7.0"

@@ -164,7 +164,6 @@ def discover(
             "compute:instances:list",
             "compute:instances:get",
             "k8s:pods:list",
-            "k8s:pods:list:rdma",
             "container-service:list",
         ),
         redaction_status=RedactionStatus.CENTRAL_SANITIZER_APPLIED,

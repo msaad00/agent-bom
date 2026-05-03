@@ -1,15 +1,61 @@
 spec:
   containers:
+    # ── agent-bom API (FastAPI) ───────────────────────────────────────────────
     - name: agent-bom
       image: /db/schema/agent_bom_repo/agent-bom:latest
       env:
         SNOWFLAKE_ACCOUNT: "{{ snowflake_account }}"
         SNOWFLAKE_DATABASE: "{{ database }}"
         SNOWFLAKE_SCHEMA: "{{ schema }}"
+        AGENT_BOM_MCP_MODE: "0"
+        AGENT_BOM_LOG_LEVEL: "INFO"
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp/agent-bom
       readinessProbe:
         port: 8422
         path: /health
+      resources:
+        requests:
+          memory: 512M
+          cpu: 0.5
+        limits:
+          memory: 2G
+          cpu: 2
+
+    # ── agent-bom UI (Next.js) ───────────────────────────────────────────────
+    # Proxies /api/* to the API container via localhost; no public egress.
+    - name: agent-bom-ui
+      image: /db/schema/agent_bom_repo/agent-bom-ui:latest
+      env:
+        # Both containers share the same SPCS service network namespace,
+        # so the API is reachable on localhost without an external round-trip.
+        NEXT_PUBLIC_API_URL: "http://localhost:8422"
+        NODE_ENV: production
+        PORT: "3000"
+      readinessProbe:
+        port: 3000
+        path: /api/health
+      resources:
+        requests:
+          memory: 256M
+          cpu: 0.25
+        limits:
+          memory: 1G
+          cpu: 1
+
+  volumes:
+    - name: tmp
+      source: local
+      size: 1Gi
+
   endpoints:
+    # Internal API endpoint — consumed by the UI container and Streamlit dashboard.
     - name: api
       port: 8422
+      public: false
+
+    # Internal UI endpoint — accessed via the Snowflake Native App ingress URL.
+    - name: ui
+      port: 3000
       public: false

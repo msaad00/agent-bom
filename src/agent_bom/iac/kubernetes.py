@@ -39,6 +39,8 @@ K8S-030  Deployment without PodAntiAffinity (single point of failure)
 K8S-031  Missing seccompProfile
 K8S-032  Container with NET_ADMIN capability
 K8S-033  Pod with shareProcessNamespace: true
+K8S-034  GPU container with privileged mode or allowPrivilegeEscalation (GPU escape pattern)
+K8S-035  hostPath volume mounting /dev/nvidia or /proc/driver/nvidia (direct device exposure)
 """
 
 from __future__ import annotations
@@ -697,6 +699,41 @@ def scan_k8s_manifest(file_path: str | Path) -> list[IaCFinding]:
                         )
                     )
 
+            # K8S-034: GPU container with privileged mode or allowPrivilegeEscalation
+            # A container requesting nvidia.com/gpu resources combined with privileged: true
+            # or allowPrivilegeEscalation: true creates a GPU-assisted container escape path.
+            resource_requests = (container.get("resources", {}) or {}).get("requests", {}) or {}
+            resource_limits = (container.get("resources", {}) or {}).get("limits", {}) or {}
+            has_gpu_resource = any(
+                k in ("nvidia.com/gpu", "amd.com/gpu", "gpu.intel.com/i915", "gpu.intel.com/xe")
+                for k in list(resource_requests) + list(resource_limits)
+            )
+            if has_gpu_resource:
+                is_privileged = sec_ctx.get("privileged") is True
+                allows_escalation = sec_ctx.get("allowPrivilegeEscalation") is True
+                if is_privileged or allows_escalation:
+                    escalation_flag = "privileged: true" if is_privileged else "allowPrivilegeEscalation: true"
+                    findings.append(
+                        IaCFinding(
+                            rule_id="K8S-034",
+                            severity="critical",
+                            title="GPU container with privilege escalation",
+                            message=(
+                                f"Container '{cname}' in '{name}' requests GPU resources and sets "
+                                f"{escalation_flag}. A privileged GPU container can access all GPU "
+                                "device files on the host, enabling full host escape. "
+                                "Remove privilege escalation from GPU workloads."
+                            ),
+                            file_path=rel_path,
+                            line_number=_find_line(content, "privileged", True)
+                            if is_privileged
+                            else _find_line(content, "allowPrivilegeEscalation", True),
+                            category="kubernetes",
+                            compliance=["CIS-K8s-5.2.1", "NIST-AC-6", "NIST-SI-3"],
+                            attack_techniques=["T1611"],
+                        )
+                    )
+
         # K8S-019: emptyDir without sizeLimit / K8S-014: hostPath
         volumes = pod_spec.get("volumes", []) or []
         for vol in volumes:
@@ -731,6 +768,27 @@ def scan_k8s_manifest(file_path: str | Path) -> list[IaCFinding]:
                         compliance=["CIS-K8s-5.2.12", "NIST-SC-7"],
                     )
                 )
+                # K8S-035: hostPath mounting NVIDIA device files exposes the GPU driver directly
+                host_path_value = (vol.get("hostPath") or {}).get("path", "")
+                if any(host_path_value.startswith(p) for p in ("/dev/nvidia", "/proc/driver/nvidia")):
+                    findings.append(
+                        IaCFinding(
+                            rule_id="K8S-035",
+                            severity="critical",
+                            title=f"hostPath mounts NVIDIA device file '{host_path_value}'",
+                            message=(
+                                f"Volume '{vol_name}' in '{name}' mounts '{host_path_value}' "
+                                "directly from the host. Exposing NVIDIA device files bypasses "
+                                "container isolation and grants raw GPU hardware access. "
+                                "Use the NVIDIA device plugin instead of hostPath mounts."
+                            ),
+                            file_path=rel_path,
+                            line_number=_find_key_line(content, vol_name),
+                            category="kubernetes",
+                            compliance=["CIS-K8s-5.2.12", "NIST-AC-6", "NIST-SI-3"],
+                            attack_techniques=["T1611"],
+                        )
+                    )
 
         # K8S-013: No securityContext at pod level
         if not pod_spec.get("securityContext"):

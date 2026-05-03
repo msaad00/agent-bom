@@ -30,3 +30,98 @@ configuration:
   scan_interval_hours:
     type: NUMBER
     default: 6
+  network_policy_name:
+    type: STRING
+    default: ""
+  fail_open:
+    type: BOOLEAN
+    default: false
+  prefer_local_db:
+    type: BOOLEAN
+    default: true
+  retention_days:
+    type: NUMBER
+    default: 90
+
+references:
+  - cloud_asset_tables:
+      label: "Cloud Asset Tables"
+      description: >-
+        SELECT access to the customer's cloud asset inventory tables.
+        agent-bom reads these tables to discover cloud resources for scanning.
+        No write access is requested or granted.
+      object_type: TABLE
+      privileges:
+        - SELECT
+  - iam_tables:
+      label: "IAM Tables"
+      description: >-
+        SELECT access to the customer's IAM/identity tables.
+        agent-bom reads these to map principal-to-resource relationships.
+        No write access is requested or granted.
+      object_type: TABLE
+      privileges:
+        - SELECT
+  - vuln_tables:
+      label: "Vulnerability Tables"
+      description: >-
+        SELECT access to the customer's existing vulnerability data tables
+        (optional — agent-bom can populate these itself).
+        No write access is requested or granted.
+      object_type: TABLE
+      privileges:
+        - SELECT
+  - log_tables:
+      label: "Audit Log Tables"
+      description: >-
+        SELECT access to the customer's audit log / CloudTrail tables.
+        agent-bom reads these to correlate access patterns with findings.
+        No write access is requested or granted.
+      object_type: TABLE
+      privileges:
+        - SELECT
+  - artifact_stages:
+      label: "Artifact Stages"
+      description: >-
+        READ access to the customer's artifact stages (container images,
+        model files). agent-bom reads manifest files to enumerate packages.
+        No write access is requested or granted.
+      object_type: STAGE
+      privileges:
+        - READ
+
+external_access_integrations:
+  - osv_dev:
+      label: "OSV.dev Advisory Feed"
+      description: >-
+        Allows agent-bom to query the OSV.dev vulnerability database for
+        open-source package CVEs. Disabled by default — enable only if you
+        want agent-bom to enrich findings with OSV data.
+      enabled: false
+      egress_destinations:
+        - api.osv.dev
+        - osv.dev
+  - cisa_kev:
+      label: "CISA KEV Feed"
+      description: >-
+        Allows agent-bom to fetch the CISA Known Exploited Vulnerabilities
+        catalogue. Disabled by default.
+      enabled: false
+      egress_destinations:
+        - www.cisa.gov
+  - first_epss:
+      label: "FIRST EPSS Feed"
+      description: >-
+        Allows agent-bom to query FIRST EPSS scores for CVE prioritisation.
+        Disabled by default.
+      enabled: false
+      egress_destinations:
+        - api.first.org
+  - github_ghsa:
+      label: "GitHub Advisory Database (GHSA)"
+      description: >-
+        Allows agent-bom to query the GitHub Advisory Database for package
+        vulnerabilities. Disabled by default.
+      enabled: false
+      egress_destinations:
+        - api.github.com

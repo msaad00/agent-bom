@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 280" fill="none">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 364" fill="none">
   <style>
     text { font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
     .title { font-size: 16px; font-weight: 700; fill: #f4f4f5; }
@@ -12,10 +12,10 @@
     .summary-label { font-size: 9px; font-weight: 500; fill: #71717a; }
   </style>
 
-  <rect width="960" height="280" rx="12" fill="#09090b"/>
+  <rect width="960" height="364" rx="12" fill="#09090b"/>
 
   <text x="480" y="28" text-anchor="middle" class="title">Compliance coverage</text>
-  <text x="480" y="44" text-anchor="middle" class="subtitle">14 frameworks, 300+ controls mapped automatically from scan findings</text>
+  <text x="480" y="44" text-anchor="middle" class="subtitle">15 frameworks, 300+ controls mapped automatically from scan findings</text>
 
   <!-- ═══ ROW 1: 5 frameworks ═══ -->
 
@@ -111,24 +111,71 @@
   <text x="788" y="210" class="fw-count" fill="#34d399">200+</text>
   <text x="828" y="210" class="fw-label">checks</text>
 
+  <!-- ═══ ROW 3: 5 frameworks ═══ -->
+
+  <!-- CMMC 2.0 -->
+  <rect x="20" y="232" width="176" height="72" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+  <text x="36" y="252" class="fw-name">CMMC 2.0</text>
+  <text x="36" y="264" class="fw-code">DoD contractor cybersecurity maturity</text>
+  <rect x="36" y="272" width="144" height="4" rx="2" class="bar-bg"/>
+  <rect x="36" y="272" width="86" height="4" rx="2" fill="#6366f1"/>
+  <text x="36" y="294" class="fw-count" fill="#6366f1">17</text>
+  <text x="64" y="294" class="fw-label">practices</text>
+
+  <!-- NIST 800-53 -->
+  <rect x="208" y="232" width="176" height="72" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+  <text x="224" y="252" class="fw-name">NIST 800-53 Rev 5</text>
+  <text x="224" y="264" class="fw-code">Federal information system controls</text>
+  <rect x="224" y="272" width="144" height="4" rx="2" class="bar-bg"/>
+  <rect x="224" y="272" width="108" height="4" rx="2" fill="#10b981"/>
+  <text x="224" y="294" class="fw-count" fill="#10b981">29</text>
+  <text x="252" y="294" class="fw-label">controls</text>
+
+  <!-- FedRAMP -->
+  <rect x="396" y="232" width="176" height="72" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+  <text x="412" y="252" class="fw-name">FedRAMP</text>
+  <text x="412" y="264" class="fw-code">Low / Moderate / High baselines</text>
+  <rect x="412" y="272" width="144" height="4" rx="2" class="bar-bg"/>
+  <rect x="412" y="272" width="72" height="4" rx="2" fill="#0ea5e9"/>
+  <text x="412" y="294" class="fw-count" fill="#0ea5e9">3</text>
+  <text x="432" y="294" class="fw-label">baselines</text>
+
+  <!-- MITRE ATT&CK -->
+  <rect x="584" y="232" width="176" height="72" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+  <text x="600" y="252" class="fw-name">MITRE ATT&amp;CK</text>
+  <text x="600" y="264" class="fw-code">Enterprise adversary techniques</text>
+  <rect x="600" y="272" width="144" height="4" rx="2" class="bar-bg"/>
+  <rect x="600" y="272" width="108" height="4" rx="2" fill="#f59e0b"/>
+  <text x="600" y="294" class="fw-count" fill="#f59e0b">200+</text>
+  <text x="640" y="294" class="fw-label">techniques</text>
+
+  <!-- MITRE ATT&CK Enterprise -->
+  <rect x="772" y="232" width="168" height="72" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+  <text x="788" y="252" class="fw-name">MITRE ATT&amp;CK Enterprise</text>
+  <text x="788" y="264" class="fw-code">Adversary techniques (CWE→CAPEC→ATT&amp;CK)</text>
+  <rect x="788" y="272" width="136" height="4" rx="2" class="bar-bg"/>
+  <rect x="788" y="272" width="122" height="4" rx="2" fill="#fb7185"/>
+  <text x="788" y="294" class="fw-count" fill="#fb7185">~600</text>
+  <text x="828" y="294" class="fw-label">techniques</text>
+
   <!-- ═══ SUMMARY BAR ═══ -->
-  <rect x="20" y="236" width="920" height="32" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+  <rect x="20" y="320" width="920" height="32" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
 
-  <text x="80" y="258" text-anchor="middle" class="summary-num" fill="#3b82f6">13</text>
-  <text x="126" y="258" class="summary-label">frameworks</text>
+  <text x="80" y="342" text-anchor="middle" class="summary-num" fill="#3b82f6">15</text>
+  <text x="126" y="342" class="summary-label">frameworks</text>
 
-  <rect x="186" y="244" width="1" height="16" fill="#27272a"/>
+  <rect x="186" y="328" width="1" height="16" fill="#27272a"/>
 
-  <text x="230" y="258" text-anchor="middle" class="summary-num" fill="#10b981">300+</text>
-  <text x="276" y="258" class="summary-label">controls mapped</text>
+  <text x="230" y="342" text-anchor="middle" class="summary-num" fill="#10b981">300+</text>
+  <text x="276" y="342" class="summary-label">controls mapped</text>
 
-  <rect x="370" y="244" width="1" height="16" fill="#27272a"/>
+  <rect x="370" y="328" width="1" height="16" fill="#27272a"/>
 
-  <text x="420" y="258" text-anchor="middle" class="summary-num" fill="#f59e0b">3</text>
-  <text x="442" y="258" class="summary-label">OWASP standards (LLM + MCP + Agentic)</text>
+  <text x="420" y="342" text-anchor="middle" class="summary-num" fill="#f59e0b">3</text>
+  <text x="442" y="342" class="summary-label">OWASP standards (LLM + MCP + Agentic)</text>
 
-  <rect x="660" y="244" width="1" height="16" fill="#27272a"/>
+  <rect x="660" y="328" width="1" height="16" fill="#27272a"/>
 
-  <text x="710" y="258" text-anchor="middle" class="summary-num" fill="#a78bfa">auto</text>
-  <text x="756" y="258" class="summary-label">mapped from scan findings — no manual config</text>
+  <text x="710" y="342" text-anchor="middle" class="summary-num" fill="#a78bfa">auto</text>
+  <text x="756" y="342" class="summary-label">mapped from scan findings — no manual config</text>
 </svg>

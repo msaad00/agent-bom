@@ -10,7 +10,9 @@ version:
 
 artifacts:
   setup_script: scripts/setup.sql
-  default_streamlit: streamlit/dashboard.py
+  default_web_endpoint:
+    service: core.agent_bom_api
+    endpoint: ui
   container_services:
     images:
       - /db/schema/agent_bom_repo/agent-bom:latest

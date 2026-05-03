@@ -183,16 +183,9 @@ AS
 -- Creates core.apply_compliance_hub() and core.compliance_posture view.
 EXECUTE IMMEDIATE FROM 'dcm/V002__compliance_proc.sql';
 
--- 7. Streamlit dashboard (default_streamlit in manifest)
-CREATE STREAMLIT IF NOT EXISTS core.dashboard
-    FROM 'streamlit'
-    MAIN_FILE = 'dashboard.py';
-GRANT USAGE ON STREAMLIT core.dashboard TO APPLICATION ROLE app_user;
-
--- 6. Services (Phase 3: API + UI both defined in service-spec.yaml)
--- Note: compute pool must be created by the consumer and granted to the app.
--- The app creates the service once a compute pool is available.
--- service-spec.yaml defines two containers: agent-bom (API:8422) + agent-bom-ui (UI:3000).
+-- 7. SPCS service — API + Next.js UI (Phase 3)
+-- Consumer must provision a compute pool and grant it to the app before this runs.
+-- manifest.yml default_web_endpoint → ui endpoint (port 3000) opens on app launch.
 CREATE SERVICE IF NOT EXISTS core.agent_bom_api
     IN COMPUTE POOL consumer_pool  -- consumer must grant this
     FROM SPECIFICATION_FILE = '/service-spec.yaml'

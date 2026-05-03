@@ -204,7 +204,7 @@ def test_hub_posture_with_no_findings_returns_zeros():
     assert body["framework_counts"]["hub"] == {}
 
 
-def test_hub_posture_native_counts_aggregate_all_14_frameworks():
+def test_hub_posture_native_counts_aggregate_all_15_frameworks():
     """Regression: posture endpoint must aggregate every framework in
     TAG_MAPPED_FRAMEWORKS, not just an inline subset. Previously the
     aggregator silently dropped nist-800-53, fedramp, cmmc, and pci-dss.
@@ -237,7 +237,7 @@ def test_hub_posture_native_counts_aggregate_all_14_frameworks():
     native_counts = body["framework_counts"]["native"]
 
     expected_slugs = {metadata.slug for metadata in TAG_MAPPED_FRAMEWORKS}
-    assert len(expected_slugs) == 14, "TAG_MAPPED_FRAMEWORKS shape changed; update this regression and the posture aggregator together."
+    assert len(expected_slugs) == 15, "TAG_MAPPED_FRAMEWORKS shape changed; update this regression and the posture aggregator together."
     # The four slugs that the legacy 10-tuple silently dropped.
     for slug in ("nist-800-53", "fedramp", "cmmc", "pci-dss"):
         assert native_counts.get(slug) == 1, f"posture endpoint dropped framework {slug!r}: got {native_counts}"

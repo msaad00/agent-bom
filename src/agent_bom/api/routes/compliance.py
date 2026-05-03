@@ -1393,3 +1393,180 @@ async def get_incident_correlation(request: Request) -> dict:
 
     incidents = latest_result.get("incident_correlation", [])
     return {"incidents": incidents, "count": len(incidents)}
+
+
+# ─── Compliance Hub (#1044 PR C) ──────────────────────────────────────────────
+
+
+_HUB_VALID_FORMATS = ("sarif", "cyclonedx", "csv", "json")
+
+
+@router.post(
+    "/v1/compliance/ingest",
+    tags=["compliance"],
+    status_code=201,
+    dependencies=[_dep("scan")],
+)
+async def ingest_compliance_findings(request: Request) -> dict:
+    """Ingest external findings (SARIF / CycloneDX / CSV / JSON).
+
+    Body:
+        {"format": "sarif" | "cyclonedx" | "csv" | "json",
+         "content": "<file body as a string>"}
+
+    The content is parsed via the matching adapter in
+    ``compliance_hub_ingest``; every produced finding is hub-classified
+    and appended to the tenant's hub store. Returns the per-framework
+    framework-hit breakdown so the caller can verify classification ran.
+    """
+    import tempfile
+    from pathlib import Path
+
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+    from agent_bom.compliance_hub_ingest import ingest_findings
+
+    body = await request.json()
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Body must be a JSON object")
+    fmt = (body.get("format") or "").lower()
+    if fmt not in _HUB_VALID_FORMATS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"format must be one of {list(_HUB_VALID_FORMATS)}",
+        )
+    content = body.get("content")
+    if not isinstance(content, str) or not content.strip():
+        raise HTTPException(status_code=400, detail="content (string) is required")
+
+    suffix = ".csv" if fmt == "csv" else ".json"
+    with tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False, encoding="utf-8") as tmp:
+        tmp.write(content)
+        tmp_path = Path(tmp.name)
+
+    try:
+        findings = ingest_findings(tmp_path, fmt=fmt)
+    finally:
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    if not findings:
+        raise HTTPException(
+            status_code=422,
+            detail=f"No findings parsed from {fmt} content. Check the format matches the body shape (e.g. SARIF runs[].results[]).",
+        )
+
+    payloads = [f.to_dict() for f in findings]
+    tenant_id = _tenant_id(request)
+    store = get_compliance_hub_store()
+    new_total = store.add(tenant_id, payloads)
+
+    framework_counts: dict[str, int] = {}
+    for payload in payloads:
+        for slug in payload.get("applicable_frameworks") or []:
+            framework_counts[slug] = framework_counts.get(slug, 0) + 1
+
+    return {
+        "ingested": len(payloads),
+        "tenant_total": new_total,
+        "format": fmt,
+        "framework_hits": dict(sorted(framework_counts.items())),
+    }
+
+
+@router.get("/v1/compliance/hub/findings", tags=["compliance"])
+async def list_hub_findings(request: Request, limit: int = 200, offset: int = 0) -> dict:
+    """List hub-ingested findings for the current tenant."""
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    findings = get_compliance_hub_store().list(_tenant_id(request))
+    limit = max(1, min(limit, 1000))
+    offset = max(0, offset)
+    page = findings[offset : offset + limit]
+    return {
+        "findings": page,
+        "count": len(page),
+        "total": len(findings),
+        "limit": limit,
+        "offset": offset,
+    }
+
+
+@router.get("/v1/compliance/hub/posture", tags=["compliance"])
+async def get_hub_posture(request: Request) -> dict:
+    """Aggregate compliance posture across native scans + hub-ingested findings.
+
+    Returns per-framework counts, severity breakdown, and source mix
+    (native vs external) so the dashboard /compliance page can render a
+    single posture story across every entry point.
+    """
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    tenant_id = _tenant_id(request)
+    hub_findings = get_compliance_hub_store().list(tenant_id)
+
+    # Native sources: count blast radii from completed scan jobs as a
+    # proxy for "native finding count per framework" using their tag fields.
+    native_framework_counts: dict[str, int] = {}
+    native_total = 0
+    for job in _tenant_jobs(request):
+        if job.status != JobStatus.DONE or not job.result:
+            continue
+        for br in job.result.get("blast_radius", []) or []:
+            native_total += 1
+            for slug, field in (
+                ("owasp-llm", "owasp_tags"),
+                ("atlas", "atlas_tags"),
+                ("nist", "nist_ai_rmf_tags"),
+                ("owasp-mcp", "owasp_mcp_tags"),
+                ("owasp-agentic", "owasp_agentic_tags"),
+                ("eu-ai-act", "eu_ai_act_tags"),
+                ("nist-csf", "nist_csf_tags"),
+                ("iso-27001", "iso_27001_tags"),
+                ("soc2", "soc2_tags"),
+                ("cis", "cis_tags"),
+            ):
+                if br.get(field):
+                    native_framework_counts[slug] = native_framework_counts.get(slug, 0) + 1
+
+    hub_framework_counts: dict[str, int] = {}
+    hub_severity_counts: dict[str, int] = {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0, "unknown": 0}
+    for f in hub_findings:
+        sev = (f.get("severity") or "unknown").lower()
+        hub_severity_counts[sev] = hub_severity_counts.get(sev, 0) + 1
+        for slug in f.get("applicable_frameworks") or []:
+            hub_framework_counts[slug] = hub_framework_counts.get(slug, 0) + 1
+
+    combined: dict[str, int] = {}
+    for slug, count in native_framework_counts.items():
+        combined[slug] = combined.get(slug, 0) + count
+    for slug, count in hub_framework_counts.items():
+        combined[slug] = combined.get(slug, 0) + count
+
+    return {
+        "totals": {
+            "native": native_total,
+            "hub": len(hub_findings),
+            "combined": native_total + len(hub_findings),
+        },
+        "framework_counts": {
+            "native": dict(sorted(native_framework_counts.items())),
+            "hub": dict(sorted(hub_framework_counts.items())),
+            "combined": dict(sorted(combined.items())),
+        },
+        "hub_severity_breakdown": hub_severity_counts,
+    }
+
+
+@router.delete("/v1/compliance/hub/findings", tags=["compliance"], dependencies=[_dep("policy_write")])
+async def clear_hub_findings(request: Request) -> dict:
+    """Clear all hub-ingested findings for the current tenant.
+
+    Useful when a tenant wants to re-import a clean batch (e.g. after
+    a scanner-version upgrade). Native scan results are not affected.
+    """
+    from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+
+    removed = get_compliance_hub_store().clear(_tenant_id(request))
+    return {"removed": removed}

@@ -31,10 +31,17 @@ from agent_bom.compliance_hub import (
     FRAMEWORK_OWASP_AGENTIC,
     FRAMEWORK_OWASP_LLM,
     FRAMEWORK_OWASP_MCP,
+    FRAMEWORK_PCI_DSS,
     FRAMEWORK_SOC2,
     select_frameworks,
 )
-from agent_bom.compliance_hub_ingest import ingest_sarif_findings
+from agent_bom.compliance_hub_ingest import (
+    ingest_csv_findings,
+    ingest_cyclonedx_vulnerabilities,
+    ingest_findings,
+    ingest_json_findings,
+    ingest_sarif_findings,
+)
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
 from agent_bom.mcp_blocklist import blocklist_findings_for_agents
 from agent_bom.models import (
@@ -304,3 +311,215 @@ def test_sarif_finding_serialises_with_applicable_frameworks(sarif_with_secret_f
     payload = findings[0].to_dict()
     assert "applicable_frameworks" in payload
     assert FRAMEWORK_NIST_CSF in payload["applicable_frameworks"]
+
+
+# ─── CycloneDX ingestion ─────────────────────────────────────────────────────
+
+
+def test_cyclonedx_vulns_become_sbom_findings(tmp_path: Path):
+    """CycloneDX vuln entries -> Finding(source=SBOM) so the hub assigns
+    NIST CSF / SOC 2 / PCI DSS — the supply-chain framework triplet."""
+    sbom = {
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.5",
+        "components": [
+            {
+                "bom-ref": "pkg:npm/lodash@4.17.20",
+                "name": "lodash",
+                "version": "4.17.20",
+                "purl": "pkg:npm/lodash@4.17.20",
+            }
+        ],
+        "vulnerabilities": [
+            {
+                "id": "CVE-2021-23337",
+                "description": "Command injection",
+                "ratings": [{"severity": "high", "score": 7.2}],
+                "affects": [{"ref": "pkg:npm/lodash@4.17.20"}],
+            }
+        ],
+    }
+    target = tmp_path / "vulns.cdx.json"
+    target.write_text(json.dumps(sbom), encoding="utf-8")
+    findings = ingest_cyclonedx_vulnerabilities(target)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.source == FindingSource.SBOM
+    assert f.cve_id == "CVE-2021-23337"
+    assert f.severity == "high"
+    assert f.cvss_score == 7.2
+    assert f.asset.identifier == "pkg:npm/lodash@4.17.20"
+    for fw in (FRAMEWORK_NIST_CSF, FRAMEWORK_SOC2, FRAMEWORK_PCI_DSS):
+        assert fw in f.applicable_frameworks
+
+
+def test_cyclonedx_missing_file_returns_empty_list(tmp_path: Path):
+    assert ingest_cyclonedx_vulnerabilities(tmp_path / "no.json") == []
+
+
+def test_cyclonedx_no_vulnerabilities_section_returns_empty(tmp_path: Path):
+    sbom = {"bomFormat": "CycloneDX", "specVersion": "1.5", "components": []}
+    target = tmp_path / "empty.cdx.json"
+    target.write_text(json.dumps(sbom), encoding="utf-8")
+    assert ingest_cyclonedx_vulnerabilities(target) == []
+
+
+# ─── CSV ingestion ───────────────────────────────────────────────────────────
+
+
+def test_csv_findings_with_cve_classified_as_supply_chain(tmp_path: Path):
+    """Row with a CVE id -> CVE finding, EXTERNAL source. EXTERNAL pulls
+    every framework, but the asset_type=package keeps things sensible."""
+    target = tmp_path / "vulns.csv"
+    target.write_text(
+        "Title,Severity,Description,File,CVE\n"
+        "lodash CVE,High,Command injection,node_modules/lodash,CVE-2021-23337\n"
+        "no-cve,medium,no cve here,src/app.py,\n",
+        encoding="utf-8",
+    )
+    findings = ingest_csv_findings(target)
+    assert len(findings) == 2
+    cve_finding = next(f for f in findings if f.cve_id)
+    assert cve_finding.cve_id == "CVE-2021-23337"
+    assert cve_finding.finding_type == FindingType.CVE
+    assert cve_finding.severity == "high"
+    sast_finding = next(f for f in findings if not f.cve_id)
+    assert sast_finding.finding_type == FindingType.SAST
+    assert sast_finding.asset.location == "src/app.py"
+
+
+def test_csv_skips_rows_with_no_title_or_cve(tmp_path: Path):
+    target = tmp_path / "sparse.csv"
+    target.write_text("Title,Severity\n,low\nValid,medium\n", encoding="utf-8")
+    findings = ingest_csv_findings(target)
+    assert len(findings) == 1
+    assert findings[0].title == "Valid"
+
+
+def test_csv_severity_normalisation(tmp_path: Path):
+    target = tmp_path / "sevs.csv"
+    target.write_text(
+        "Title,Severity\nA,Crit\nB,Moderate\nC,Informational\n",
+        encoding="utf-8",
+    )
+    findings = ingest_csv_findings(target)
+    sevs = [f.severity for f in findings]
+    assert sevs == ["critical", "medium", "info"]
+
+
+# ─── Generic JSON ingestion ──────────────────────────────────────────────────
+
+
+def test_json_list_of_findings(tmp_path: Path):
+    payload = [
+        {
+            "title": "Hardcoded API key",
+            "severity": "critical",
+            "asset_name": "src/api.py",
+            "asset_type": "file",
+            "finding_type": "CREDENTIAL_EXPOSURE",
+            "location": "src/api.py:12",
+        },
+        {
+            "cve_id": "CVE-2024-1234",
+            "severity": "high",
+            "asset_name": "left-pad",
+            "asset_type": "package",
+        },
+    ]
+    target = tmp_path / "findings.json"
+    target.write_text(json.dumps(payload), encoding="utf-8")
+    findings = ingest_json_findings(target)
+    assert len(findings) == 2
+
+    cred = next(f for f in findings if f.finding_type == FindingType.CREDENTIAL_EXPOSURE)
+    assert cred.severity == "critical"
+    assert cred.asset.location == "src/api.py:12"
+    # CREDENTIAL_EXPOSURE refinement -> enterprise audit frameworks
+    assert FRAMEWORK_ISO_27001 in cred.applicable_frameworks
+    assert FRAMEWORK_SOC2 in cred.applicable_frameworks
+
+
+def test_json_findings_dict_with_findings_key(tmp_path: Path):
+    target = tmp_path / "wrapped.json"
+    target.write_text(
+        json.dumps({"findings": [{"title": "X", "severity": "low"}]}),
+        encoding="utf-8",
+    )
+    findings = ingest_json_findings(target)
+    assert len(findings) == 1
+    assert findings[0].title == "X"
+
+
+def test_json_findings_passes_through_unknown_keys_into_evidence(tmp_path: Path):
+    target = tmp_path / "extra.json"
+    target.write_text(
+        json.dumps([{"title": "X", "severity": "low", "custom_field": "preserve_me"}]),
+        encoding="utf-8",
+    )
+    findings = ingest_json_findings(target)
+    assert findings[0].evidence.get("passthrough", {}).get("custom_field") == "preserve_me"
+
+
+def test_json_findings_skips_non_dict_rows(tmp_path: Path):
+    target = tmp_path / "mixed.json"
+    target.write_text(json.dumps(["not-a-dict", {"title": "real", "severity": "low"}]), encoding="utf-8")
+    findings = ingest_json_findings(target)
+    assert len(findings) == 1
+
+
+# ─── Format dispatch ─────────────────────────────────────────────────────────
+
+
+def test_dispatch_detects_sarif_by_schema_url(sarif_with_secret_finding: Path):
+    findings = ingest_findings(sarif_with_secret_finding)
+    assert len(findings) == 1
+    assert findings[0].source == FindingSource.EXTERNAL
+
+
+def test_dispatch_detects_cyclonedx_by_bomformat(tmp_path: Path):
+    sbom = {
+        "bomFormat": "CycloneDX",
+        "specVersion": "1.5",
+        "components": [
+            {
+                "bom-ref": "pkg:pypi/torch@2.3.0",
+                "name": "torch",
+                "version": "2.3.0",
+                "purl": "pkg:pypi/torch@2.3.0",
+            }
+        ],
+        "vulnerabilities": [
+            {
+                "id": "CVE-2024-X",
+                "description": "x",
+                "ratings": [{"severity": "medium"}],
+                "affects": [{"ref": "pkg:pypi/torch@2.3.0"}],
+            }
+        ],
+    }
+    target = tmp_path / "sbom.json"  # extension .json, not .cdx.json
+    target.write_text(json.dumps(sbom), encoding="utf-8")
+    findings = ingest_findings(target)
+    assert len(findings) == 1
+    assert findings[0].source == FindingSource.SBOM
+
+
+def test_dispatch_csv_by_extension(tmp_path: Path):
+    target = tmp_path / "x.csv"
+    target.write_text("Title,Severity\nA,low\n", encoding="utf-8")
+    findings = ingest_findings(target)
+    assert len(findings) == 1
+
+
+def test_dispatch_unknown_extension_returns_empty(tmp_path: Path):
+    target = tmp_path / "x.txt"
+    target.write_text("nope", encoding="utf-8")
+    assert ingest_findings(target) == []
+
+
+def test_dispatch_explicit_fmt_overrides_extension(tmp_path: Path):
+    target = tmp_path / "renamed.txt"
+    target.write_text("Title,Severity\nA,low\n", encoding="utf-8")
+    findings = ingest_findings(target, fmt="csv")
+    assert len(findings) == 1

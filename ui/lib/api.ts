@@ -74,7 +74,8 @@ import type {
   ProxyAlertsResponse,
   AuditEntry,
   AuditLogResponse,
-  AuditIntegrityResponse
+  AuditIntegrityResponse,
+  HubPostureResponse
 } from "./api-types";
 export type {
   JobStatus,
@@ -201,7 +202,8 @@ export type {
   ProxyAlertsResponse,
   AuditEntry,
   AuditLogResponse,
-  AuditIntegrityResponse
+  AuditIntegrityResponse,
+  HubPostureResponse
 } from "./api-types";
 
 // ── Scan Pipeline Step Types ────────────────────────────────────────────────
@@ -563,6 +565,9 @@ export const api = {
   /** Single-framework compliance narrative */
   getComplianceNarrativeByFramework: (framework: string) =>
     get<ComplianceNarrativeResponse>(`/v1/compliance/narrative/${encodeURIComponent(framework)}`),
+
+  /** Compliance Hub: aggregate posture across native + ingested findings (#1044) */
+  getHubPosture: () => get<HubPostureResponse>("/v1/compliance/hub/posture"),
 
   /** Fleet management */
   listFleet: (filters?: {

@@ -7,6 +7,7 @@ import {
   ComplianceResponse,
   ComplianceControl,
   FrameworkCatalogMetadata,
+  HubPostureResponse,
   OWASP_LLM_TOP10,
   OWASP_MCP_TOP10,
   OWASP_AGENTIC_TOP10,
@@ -378,6 +379,7 @@ function CompliancePageContent() {
   const queryParam = searchParams.get("q") ?? "";
   const [data, setData] = useState<ComplianceResponse | null>(null);
   const [mitreCatalog, setMitreCatalog] = useState<FrameworkCatalogMetadata | null>(null);
+  const [hubPosture, setHubPosture] = useState<HubPostureResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Per #2199 splash-kind sweep: classify API errors so the splash matches
@@ -393,8 +395,12 @@ function CompliancePageContent() {
   }, [queryParam]);
 
   useEffect(() => {
-    void Promise.allSettled([api.getCompliance(), api.getFrameworkCatalogs()])
-      .then(([complianceResult, catalogResult]) => {
+    void Promise.allSettled([
+      api.getCompliance(),
+      api.getFrameworkCatalogs(),
+      api.getHubPosture(),
+    ])
+      .then(([complianceResult, catalogResult, hubResult]) => {
         if (complianceResult.status === "fulfilled") {
           setData(complianceResult.value);
         } else {
@@ -404,6 +410,10 @@ function CompliancePageContent() {
         }
         if (catalogResult.status === "fulfilled") {
           setMitreCatalog(catalogResult.value.frameworks?.mitre_attack ?? null);
+        }
+        // Hub posture is best-effort: a missing endpoint shouldn't blank the page
+        if (hubResult.status === "fulfilled") {
+          setHubPosture(hubResult.value);
         }
       })
       .finally(() => setLoading(false));
@@ -561,6 +571,37 @@ function CompliancePageContent() {
             </div>
           </div>
         </div>
+
+        {/* Compliance Hub aggregate (#1044) — surfaces external ingest counts
+            alongside the native posture so the page tells one unified story. */}
+        {hubPosture && hubPosture.totals.combined > 0 ? (
+          <div className="mt-6 rounded-xl border border-emerald-900/40 bg-emerald-950/20 p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div className="space-y-1">
+                <div className="text-xs uppercase tracking-[0.24em] text-emerald-400">Compliance Hub</div>
+                <div className="text-sm text-zinc-200">
+                  {hubPosture.totals.combined.toLocaleString()} finding{hubPosture.totals.combined !== 1 ? "s" : ""} across all sources
+                  {hubPosture.totals.hub > 0 ? (
+                    <>
+                      {" "}<span className="text-emerald-400">({hubPosture.totals.hub.toLocaleString()} ingested external)</span>
+                    </>
+                  ) : null}
+                </div>
+                <div className="text-xs text-zinc-500">
+                  Native: {hubPosture.totals.native.toLocaleString()} · Hub-ingested: {hubPosture.totals.hub.toLocaleString()}
+                  {Object.keys(hubPosture.framework_counts.combined).length > 0 ? (
+                    <> · Frameworks lit: {Object.keys(hubPosture.framework_counts.combined).length}</>
+                  ) : null}
+                </div>
+              </div>
+              <div className="text-xs text-zinc-500 lg:max-w-sm">
+                Import SARIF / CycloneDX / CSV / JSON via{" "}
+                <code className="rounded bg-zinc-900 px-1.5 py-0.5 text-zinc-300">POST /v1/compliance/ingest</code>{" "}
+                — every external finding is auto-mapped to the same framework set as native scans.
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {/* Framework mini-cards */}
         {mitreCatalog ? (

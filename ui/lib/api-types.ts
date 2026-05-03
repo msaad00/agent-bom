@@ -1723,3 +1723,19 @@ export interface AuditIntegrityResponse {
   tampered: number;
   checked: number;
 }
+
+// ─── Compliance Hub (#1044) ─────────────────────────────────────────────────
+
+export interface HubPostureResponse {
+  totals: {
+    native: number;
+    hub: number;
+    combined: number;
+  };
+  framework_counts: {
+    native: Record<string, number>;
+    hub: Record<string, number>;
+    combined: Record<string, number>;
+  };
+  hub_severity_breakdown: Record<string, number>;
+}

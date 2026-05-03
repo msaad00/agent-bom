@@ -85,6 +85,12 @@ _AMD_PRODUCT_MAP: dict[str, list[str]] = {
     "tensorflow rocm": [
         "tensorflow_rocm",
     ],
+    # AMD GPU kernel driver / DKMS packages — affected by GPU driver-level CVEs
+    "amd gpu driver": [
+        "amdgpu",
+        "rocm_dkms",
+        "amdgpu_dkms",
+    ],
 }
 
 # Reverse map: normalised package name → AMD product names it belongs to

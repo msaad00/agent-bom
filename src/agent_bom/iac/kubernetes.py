@@ -41,6 +41,7 @@ K8S-032  Container with NET_ADMIN capability
 K8S-033  Pod with shareProcessNamespace: true
 K8S-034  GPU container with privileged mode or allowPrivilegeEscalation (GPU escape pattern)
 K8S-035  hostPath volume mounting /dev/nvidia or /proc/driver/nvidia (direct device exposure)
+K8S-036  nvidia-device-plugin ClusterRole with mutation verbs (least-privilege RBAC violation)
 """
 
 from __future__ import annotations
@@ -210,6 +211,32 @@ def scan_k8s_manifest(file_path: str | Path) -> list[IaCFinding]:
                         compliance=["CIS-K8s-5.1.1", "NIST-AC-6"],
                     )
                 )
+
+        # K8S-036: nvidia-device-plugin ClusterRole with mutation verbs
+        if kind == "ClusterRole" and "nvidia" in name.lower() and "device-plugin" in name.lower():
+            rules = doc.get("rules", []) or []
+            _mutation_verbs = {"create", "delete", "update", "patch", "bind", "escalate", "impersonate"}
+            for rule in rules:
+                found_mutations = set(rule.get("verbs", []) or []) & _mutation_verbs
+                if found_mutations:
+                    findings.append(
+                        IaCFinding(
+                            rule_id="K8S-036",
+                            severity="high",
+                            title=f"nvidia-device-plugin ClusterRole '{name}' grants mutation verbs",
+                            message=(
+                                f"ClusterRole '{name}' includes mutation verbs {sorted(found_mutations)}. "
+                                "The nvidia-device-plugin requires only get/list/watch permissions. "
+                                "Remove mutation verbs to enforce least-privilege for the GPU device plugin."
+                            ),
+                            file_path=rel_path,
+                            line_number=_find_key_line(content, "verbs"),
+                            category="kubernetes",
+                            compliance=["CIS-K8s-5.1.3", "NIST-AC-6"],
+                            attack_techniques=["T1548"],
+                        )
+                    )
+                    break
 
         # K8S-028: NetworkPolicy missing egress rules
         if kind == "NetworkPolicy":

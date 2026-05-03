@@ -5,8 +5,30 @@ catalogs adversary tactics, techniques, and procedures (TTPs) targeting AI/ML
 systems. We map agent-bom findings to the most relevant ATLAS techniques so
 security teams can prioritize remediation using a familiar framework.
 
+Curation rationale
+------------------
+The ``ATLAS_TECHNIQUES`` dict below is a deliberately curated 65-technique
+subset of the full upstream catalog (170 techniques as of ATLAS 5.6.0, see
+``data/mitre_atlas_catalog.json``). The curation rules are:
+
+- **Include** every technique that is observable from static, agentless
+  signals: package metadata, IaC manifests, MCP tool capability, exposed
+  credentials, severity, and CVE category. These are the techniques the
+  blast-radius tagger in :func:`tag_blast_radius` can light up with high
+  precision and zero runtime model introspection.
+- **Exclude** techniques that fundamentally require runtime model probing,
+  inference-time observation, training-pipeline telemetry, or red-team
+  campaign data. Tagging those from a static SBOM-style scan would produce
+  noise and false positives. Examples: live model extraction probes, online
+  evasion attempts, deployed-model poisoning detection, runtime adversarial
+  example crafting.
+- **Keep the curated set load-bearing for tagging.** The bundled JSON catalog
+  (``mitre_atlas_catalog.json``) is reference data only — it powers
+  "X of N upstream techniques covered" rollups in the dashboard and SARIF
+  metadata, but the tag surface stays at 65 to preserve precision.
+
 Reference: https://atlas.mitre.org/
-Catalog version: as published at github.com/mitre-atlas/atlas-data (March 2026)
+Upstream source: https://github.com/mitre-atlas/atlas-data
 """
 
 from __future__ import annotations
@@ -21,9 +43,9 @@ if TYPE_CHECKING:
     from agent_bom.models import BlastRadius
 
 
-# ─── Catalog (current as of ATLAS March 2026 release) ─────────────────────────
-# Only the techniques relevant to AI/ML supply chain risk and agent security
-# are included; the full catalog has 75+ entries.
+# ─── Catalog (curated tagging surface — see module docstring for rationale) ───
+# 65 techniques chosen for static-signal observability. The full upstream
+# catalog ships in ``data/mitre_atlas_catalog.json`` for reference.
 
 ATLAS_TECHNIQUES: dict[str, str] = {
     # Reconnaissance
@@ -252,3 +274,26 @@ def atlas_label(technique_id: str) -> str:
 def atlas_labels(technique_ids: list[str]) -> list[str]:
     """Return human-readable labels for a list of ATLAS technique IDs."""
     return [atlas_label(t) for t in technique_ids]
+
+
+def upstream_catalog() -> dict:
+    """Return the bundled (or synced) full upstream ATLAS catalog.
+
+    Used by dashboard / SARIF surfaces to show coverage as
+    "curated X of N upstream techniques". The tagging surface in
+    :data:`ATLAS_TECHNIQUES` stays at the curated subset; this function
+    exposes the broader reference catalog without widening the tag map.
+    """
+    from agent_bom.atlas_fetch import load_catalog
+
+    return load_catalog()
+
+
+def upstream_total() -> int:
+    """Return the count of techniques in the upstream ATLAS reference catalog."""
+    return len(upstream_catalog().get("techniques", {}))
+
+
+def curated_total() -> int:
+    """Return the count of techniques in the curated tag surface."""
+    return len(ATLAS_TECHNIQUES)

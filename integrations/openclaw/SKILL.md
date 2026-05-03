@@ -361,13 +361,13 @@ skill_trust(skill_path="./SKILL.md")
 - A scan finds `CRITICAL` CVEs — present findings and ask whether to generate a remediation plan.
 - The user asks to scan a path outside their home directory.
 
-## Supported Frameworks (14)
+## Supported Frameworks (15)
 
 - **OWASP LLM Top 10** (2025) — prompt injection, supply chain, data leakage
 - **OWASP MCP Top 10** — MCP-specific security risks
 - **OWASP Agentic Top 10** — tool poisoning, rug pulls, credential theft
-- **OWASP AISVS v1.0** — AI Security Verification Standard (9 checks)
 - **MITRE ATLAS** — adversarial ML threat framework
+- **MITRE ATT&CK Enterprise** — adversary techniques tagged via CWE → CAPEC → ATT&CK on every blast-radius finding
 - **NIST AI RMF** — govern, map, measure, manage lifecycle
 - **NIST CSF 2.0** — identify, protect, detect, respond, recover
 - **NIST 800-53 Rev 5** — federal security controls (CM-8, RA-5, SI-2, SR-3)
@@ -377,6 +377,9 @@ skill_trust(skill_path="./SKILL.md")
 - **SOC 2** — Trust Services Criteria
 - **CIS Controls v8** — implementation groups IG1/IG2/IG3
 - **CMMC 2.0** — cybersecurity maturity model (Level 1-3)
+- **PCI DSS v4.0** — payment-card data security requirements
+
+OWASP AISVS v1.0 ships as a **benchmark surface** alongside the tag-mapped frameworks (9 verification checks).
 
 ## Privacy & Data Handling
 

@@ -105,106 +105,80 @@ provider-style admin operations remain a separate product track.
 
 ## Enterprise Self-Hosted Diagrams
 
-Use two diagrams, not one overloaded graph:
+Use three single-concern diagrams instead of one overloaded graph:
 
-- **Enterprise Self-Hosted Topology** answers what runs where.
-- **Enterprise Self-Hosted Data and Runtime Flow** answers how data moves and
-  where policy, auth, RBAC, tenant scope, and audit are enforced.
+- **Topology** answers who runs what, where.
+- **Auth + Ingress Flow** answers how operators get in.
+- **Inventory & Runtime Evidence Flow** answers how data and policy move.
 
 In the diagrams below, every box prefixed with `agent-bom` is code from this
 project running in the customer's environment. The browser, IdP, cloud APIs,
 remote MCPs, and storage systems are customer-owned dependencies or optional
 destinations; they are not an agent-bom hosted control plane.
 
-### Enterprise Self-Hosted Topology
+### Topology — Who Runs What, Where
 
 ```mermaid
 flowchart TB
-    classDef src fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
-    classDef access fill:#111827,stroke:#38bdf8,color:#e0f2fe
-    classDef ctrl fill:#0f172a,stroke:#6366f1,color:#e0e7ff
-    classDef run fill:#0f172a,stroke:#10b981,color:#d1fae5
-    classDef scan fill:#111827,stroke:#a78bfa,color:#ede9fe
-    classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
-
-    subgraph Sources["Customer inputs"]
-      direction LR
-      Browser["Operator browser"]:::src
-      IdP["Corporate IdP"]:::src
-      Endpoint["Endpoints / laptops<br/>CLI or collector"]:::src
-      Adapter["CI / operator-pull<br/>signed inventory"]:::src
-      Cloud["Cloud APIs<br/>read-only scopes"]:::src
-      Remote["Remote MCPs"]:::src
-    end
+    classDef ab fill:#0f172a,stroke:#6366f1,color:#e0e7ff
+    classDef cust fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
 
     subgraph Customer["Customer VPC / EKS / self-hosted cluster"]
       direction TB
-
-      subgraph Access["Access"]
-        direction LR
-        Ingress["Ingress / TLS"]:::access
-        Secrets["Secrets / IRSA / Vault"]:::access
-      end
-
-      subgraph Control["Control plane"]
-        direction LR
-        UI["agent-bom UI<br/>dashboard"]:::ctrl
-        API["agent-bom API<br/>auth · RBAC · tenant scope"]:::ctrl
-        Workers["agent-bom scan workers<br/>inventory · CVE · graph"]:::scan
-      end
-
-      subgraph Runtime["Runtime enforcement"]
-        direction LR
-        Proxy["agent-bom proxy<br/>local / sidecar MCP"]:::run
-        Gateway["agent-bom gateway<br/>shared remote MCP"]:::run
-      end
-
-      subgraph Stores["Customer-managed stores"]
-        direction LR
-        Postgres[("Postgres<br/>system of record")]:::data
-        Analytics[("ClickHouse / Snowflake<br/>optional analytics")]:::data
-        Archive[("S3 archive<br/>evidence export")]:::data
-        Obs["OTEL / Prometheus"]:::access
-      end
+      Platform["agent-bom platform<br/>UI + API + scan workers"]:::ab
+      Runtime["agent-bom runtime<br/>proxy + gateway"]:::ab
+      Postgres[("Postgres<br/>system of record")]:::ab
+      Sinks[("Optional sinks<br/>ClickHouse · Snowflake · S3 · OTEL")]:::cust
     end
 
-    Browser --> Ingress
-    IdP -. OIDC / SAML .-> Ingress
-    Ingress --> UI
-    Ingress --> API
-    UI --> API
+    subgraph External["Customer-owned external"]
+      direction TB
+      IdP["Corporate IdP"]:::cust
+      Cloud["Cloud APIs"]:::cust
+      Remote["Remote MCPs"]:::cust
+      Endpoints["Endpoints / browser"]:::cust
+    end
 
-    Endpoint -->|fleet sync| API
-    Adapter -->|schema-validated inventory| API
-    Workers -->|scan results| API
-    Workers -. read-only discovery .-> Cloud
-
-    Proxy -->|policy pull + audit events| API
-    Gateway -->|policy pull + audit events| API
-    Gateway -->|relay| Remote
-
-    Secrets --> API
-    Secrets --> Gateway
-    API --> Postgres
-    API -. analytics .-> Analytics
-    API -. evidence export .-> Archive
-    API --> Obs
-    Gateway --> Obs
+    Platform --> Postgres
+    Platform -. optional export .-> Sinks
+    Runtime --> Platform
 ```
 
 Truth block:
 - `agent-bom` is the UI, API, scan workers, proxy, gateway, and optional endpoint
   CLI/collector. It is not a hidden SaaS dependency in this topology.
-- Users enter through ingress; the API remains the single control-plane authority
-  for auth, RBAC, tenant scope, graph, audit, and policy.
-- Fleet sync, pushed inventory, scan workers, and runtime surfaces report back to
-  the same API, so inventory and enforcement stay aligned.
-- Gateway fronts shared remote MCP traffic. Local proxies stay near selected
-  endpoint or workload MCP traffic.
-- Optional analytics and archive stores stay visually secondary to Postgres,
-  which remains the required system of record.
+- Postgres is the required system of record; ClickHouse, Snowflake, S3, and OTEL
+  remain optional sinks.
+- IdP, cloud APIs, remote MCPs, and operator endpoints stay customer-owned.
+  agent-bom integrates with them; it does not host them.
 
-### Enterprise Self-Hosted Data and Runtime Flow
+### Auth + Ingress Flow
+
+```mermaid
+flowchart LR
+    classDef ab fill:#0f172a,stroke:#6366f1,color:#e0e7ff
+    classDef cust fill:#0b1220,stroke:#475569,color:#cbd5e1,stroke-dasharray:3 3
+
+    Browser["Operator browser"]:::cust
+    IdP["Corporate IdP"]:::cust
+    Ingress["Ingress / TLS"]:::ab
+    UI["agent-bom UI"]:::ab
+    API["agent-bom API<br/>auth · RBAC · tenant scope"]:::ab
+    Secrets["Secrets / Vault / IRSA"]:::cust
+
+    Browser --> Ingress
+    IdP -. OIDC / SAML .-> Ingress
+    Ingress --> UI
+    UI --> API
+    Secrets --> API
+```
+
+Truth block:
+- Operators enter through the customer's ingress and TLS; the UI never short-circuits the API.
+- The API remains the single control-plane authority for auth, RBAC, and tenant scope.
+- Corporate IdP and secret stores stay customer-owned; agent-bom reads from them, it does not replace them.
+
+### Inventory & Runtime Evidence Flow
 
 ```mermaid
 flowchart LR

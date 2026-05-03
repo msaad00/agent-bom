@@ -113,7 +113,7 @@ sequenceDiagram
 
     CLI->>BlastRadius: Vulns + topology
     BlastRadius->>BlastRadius: CVE → package → server → agent → creds → tools
-    BlastRadius->>BlastRadius: Tag 14 frameworks + attach AISVS benchmark
+    BlastRadius->>BlastRadius: Tag 15 frameworks + attach AISVS benchmark
     BlastRadius-->>CLI: Scored + tagged findings
 
     CLI->>Reporter: Full results
@@ -159,7 +159,7 @@ graph LR
 
 ## 4. Compliance Tagging
 
-Every finding is tagged against 14 tag-mapped frameworks, grouped into four families. OWASP AISVS is exposed as a separate benchmark result with per-check evidence. The bundled mappings are a curated subset of each framework focused on AI/MCP/agent risk-relevant controls — they are not a complete catalog. See [Coverage per framework](#coverage-per-framework) below for the honest control counts.
+Every finding is tagged against 15 tag-mapped frameworks, grouped into four families. OWASP AISVS is exposed as a separate benchmark result with per-check evidence. The bundled mappings are a curated subset of each framework focused on AI/MCP/agent risk-relevant controls — they are not a complete catalog. See [Coverage per framework](#coverage-per-framework) below for the honest control counts.
 
 ```mermaid
 graph LR
@@ -214,6 +214,7 @@ agent-bom ships a curated control set per framework, sized to the AI/MCP/agent t
 | NIST / FedRAMP | 800-53 Rev 5 | 29 controls | ~1,006 | Vulnerability-driven mapping (RA-5, SI-2, etc.); not a complete catalog |
 | NIST / FedRAMP | FedRAMP Moderate | 25 controls | ~325 | Subset of 800-53 controls in the Moderate baseline |
 | MITRE | ATLAS | 65 techniques | ~90 | LLM/AI techniques: prompt injection, jailbreak, supply-chain, exfiltration, agent tool abuse |
+| MITRE | ATT&CK Enterprise | 0 techniques | ~600 | Adversary techniques tagged via CWE → CAPEC → ATT&CK on every blast-radius finding |
 | Regulatory | EU AI Act | 6 articles | ~113 | Articles 5/6/9/10/15/17 (prohibited practices, high-risk classification, risk mgmt, data governance, accuracy/cybersecurity, QMS) |
 | Regulatory | ISO/IEC 27001:2022 | 9 Annex A controls | 93 | Supplier, vulnerability, cryptography, secure-dev, evidence collection |
 | Regulatory | SOC 2 TSC | 9 criteria | ~64 | Common Criteria 6.x / 7.x / 8.x / 9.x (access, monitoring, change mgmt, vendor risk) |

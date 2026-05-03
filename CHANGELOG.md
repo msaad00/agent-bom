@@ -20,7 +20,7 @@ AI-infra and supply-chain breadth release: ATLAS catalog wired through to dashbo
 - **Durable Compliance Hub backends** — SQLite and Postgres stores back the hub with tenant-scoped persistence and reserved-namespace tenant validation, replacing the in-memory placeholder (#2205).
 - **MITRE ATLAS catalog refresh** — `atlas_fetch.py` pulls from `mitre-atlas/atlas-data` so the catalog stays current; CI guards against drift (#2215).
 - **IaC → ATLAS mapping for AI infra** — Terraform / Helm / K8s findings annotate the matching ATLAS technique IDs so dashboards can pivot from infra control gaps to adversary technique coverage (#2216).
-- **ATLAS coverage tile on dashboard** — new tile surfaces per-technique coverage from active scans (#2217).
+- **ATLAS coverage tile on dashboard** — `/compliance` page surfaces the bundled MITRE ATLAS catalog (version, curated-vs-upstream technique count, last-updated) so users can verify the catalog they are matching against (#2217).
 - **Snowflake Native App Phase 1** — manifest, customer-approved access policy, DCM module, and tenancy boundary (#2210, #2220).
 - **Snowflake Native App Phase 2** — Snowpark stored procedure that materialises Compliance Hub posture inside the customer's Snowflake account; results never leave tenant boundary (#2226).
 - **Snowflake Native App Phase 3** — SPCS-hosted Next.js UI with service-role binding so customers run the full agent-bom dashboard inside Snowpark Container Services (#2227).
@@ -42,7 +42,7 @@ AI-infra and supply-chain breadth release: ATLAS catalog wired through to dashbo
 - **`--self-scan` walks the active venv** — `_build_self_scan_inventory` now uses `importlib.metadata.distributions()` so transitive deps appear in the inventory (#2197).
 - **Dashboard splash kind classification on `/compliance` and `/vulns`** — auth and forbidden errors now render distinct copy instead of the generic "Cannot connect" splash (#2199).
 - **v0.85.0 multi-persona audit P1 items** — close-out doc fixes for the persona-targeted README/docs surfaces flagged in the v0.85.0 review (#2208).
-- **Compliance Hub posture aggregates all 14 frameworks** — posture endpoint no longer truncates at the first frameworks; CHANGELOG synced in the same PR to match shipped behaviour (#2221).
+- **Compliance Hub posture aggregates all 15 frameworks** — posture endpoint no longer truncates at the first frameworks; CHANGELOG synced in the same PR to match shipped behaviour (#2221).
 - **Docker Hub short description trimmed to 100-char API limit** — release publish step no longer 422s on the description sync (#2225).
 
 ### Documentation

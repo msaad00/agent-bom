@@ -15,7 +15,7 @@
   <rect width="960" height="364" rx="12" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/>
 
   <text x="480" y="28" text-anchor="middle" class="title">Compliance coverage</text>
-  <text x="480" y="44" text-anchor="middle" class="subtitle">14 frameworks, 300+ controls mapped automatically from scan findings</text>
+  <text x="480" y="44" text-anchor="middle" class="subtitle">15 frameworks, 300+ controls mapped automatically from scan findings</text>
 
   <!-- ═══ ROW 1: 5 frameworks ═══ -->
 
@@ -149,10 +149,19 @@
   <text x="600" y="294" class="fw-count" fill="#f59e0b">200+</text>
   <text x="640" y="294" class="fw-label">techniques</text>
 
+  <!-- MITRE ATT&CK Enterprise -->
+  <rect x="772" y="232" width="168" height="72" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
+  <text x="788" y="252" class="fw-name">MITRE ATT&amp;CK Enterprise</text>
+  <text x="788" y="264" class="fw-code">Adversary techniques (CWE→CAPEC→ATT&amp;CK)</text>
+  <rect x="788" y="272" width="136" height="4" rx="2" class="bar-bg"/>
+  <rect x="788" y="272" width="122" height="4" rx="2" fill="#9f1239"/>
+  <text x="788" y="294" class="fw-count" fill="#9f1239">~600</text>
+  <text x="828" y="294" class="fw-label">techniques</text>
+
   <!-- ═══ SUMMARY BAR ═══ -->
   <rect x="20" y="320" width="920" height="32" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
 
-  <text x="80" y="342" text-anchor="middle" class="summary-num" fill="#3b82f6">14</text>
+  <text x="80" y="342" text-anchor="middle" class="summary-num" fill="#3b82f6">15</text>
   <text x="126" y="342" class="summary-label">frameworks</text>
 
   <rect x="186" y="328" width="1" height="16" fill="#e4e4e7"/>

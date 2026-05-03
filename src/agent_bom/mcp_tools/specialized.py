@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 async def dataset_card_scan_impl(
     *,
     directory: str,
+    scan_pii: bool = False,
     _truncate_response,
 ) -> str:
     """Implementation of the dataset_card_scan tool."""
@@ -25,7 +26,15 @@ async def dataset_card_scan_impl(
         from agent_bom.parsers.dataset_cards import scan_dataset_directory
 
         result = scan_dataset_directory(path)
-        return _truncate_response(json.dumps(result.to_dict(), indent=2, default=str))
+        output = result.to_dict()
+
+        if scan_pii:
+            from agent_bom.parsers.dataset_pii_scanner import scan_directory_for_pii
+
+            pii_result = scan_directory_for_pii(path)
+            output["pii_scan"] = pii_result.to_dict()
+
+        return _truncate_response(json.dumps(output, indent=2, default=str))
     except Exception as exc:
         logger.exception("MCP tool error")
         return json.dumps({"error": sanitize_error(exc)})

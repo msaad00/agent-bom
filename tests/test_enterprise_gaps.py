@@ -62,9 +62,11 @@ class TestRBAC:
     def test_resolve_role_from_api_key(self):
         from agent_bom.rbac import configure_api_keys, resolve_role
 
-        configure_api_keys({"key-abc": "analyst", "key-xyz": "admin"})
-        assert resolve_role(api_key="key-abc").value == "analyst"
-        assert resolve_role(api_key="key-xyz").value == "admin"
+        analyst_key = "key-abc-" + "a" * 32
+        admin_key = "key-xyz-" + "x" * 32
+        configure_api_keys({analyst_key: "analyst", admin_key: "admin"})
+        assert resolve_role(api_key=analyst_key).value == "analyst"
+        assert resolve_role(api_key=admin_key).value == "admin"
         configure_api_keys({})  # cleanup
 
     def test_resolve_role_ignores_unauthenticated_header(self):
@@ -88,10 +90,12 @@ class TestRBAC:
     def test_load_api_keys_from_env(self):
         from agent_bom.rbac import configure_api_keys, load_api_keys_from_env, resolve_role
 
-        with patch.dict(os.environ, {"AGENT_BOM_API_KEYS": "k1:admin,k2:viewer"}):
+        admin_key = "k1-" + "a" * 32
+        viewer_key = "k2-" + "v" * 32
+        with patch.dict(os.environ, {"AGENT_BOM_API_KEYS": f"{admin_key}:admin,{viewer_key}:viewer"}):
             load_api_keys_from_env()
-            assert resolve_role(api_key="k1").value == "admin"
-            assert resolve_role(api_key="k2").value == "viewer"
+            assert resolve_role(api_key=admin_key).value == "admin"
+            assert resolve_role(api_key=viewer_key).value == "viewer"
         configure_api_keys({})  # cleanup
 
 

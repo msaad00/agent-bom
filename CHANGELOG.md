@@ -62,7 +62,7 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 - **Severity closer rendered empty on Python 3.13** — `Severity(str, Enum)` `str()` semantics changed; the closer now reads `Severity.value` so the breakdown renders content on every supported Python (#2185).
 - **npm SemVer pre-release tag handling** — `compare_version_order` now strips `-canary.N`, `-beta.N`, `-rc.N`, etc. before PEP 440 parsing so npm pre-releases no longer fall through to the conservative "affected" verdict (e.g. CVE-2023-46298 false positive on `next@16.2.4-canary.13`) (#2182).
 - **Stacked progress lines under interleaved log warnings** — scanner warnings now flow through Rich during the progress block, so spinners stop double-rendering when GHSA/OSV emit warnings mid-scan (#2183).
-- **OSV-first GHSA UX** — the "GITHUB_TOKEN not set" / "limited to N unauthenticated lookups" notes are now informational only and no longer surface as scan warnings; OSV mirrors GHSA within ~24h, so the unauthenticated path is fine for typical use (matches Trivy/Grype defaults) (#2181).
+- **OSV-first GHSA UX** — the "GITHUB_TOKEN not set" / "limited to N unauthenticated lookups" notes are now informational only and no longer surface as scan warnings; OSV mirrors GHSA within ~24h, so the unauthenticated path is the default for typical use and a `GITHUB_TOKEN` is only needed for fresh-CVE turnaround under 24h (#2181).
 
 ---
 

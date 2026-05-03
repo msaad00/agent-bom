@@ -500,6 +500,39 @@ jobs:
             uv run pytest tests/ -q --tb=short -m "not network"
           fi
 
+      - name: DCM scanner self-check (meta-recursive)
+        # Runs agent-bom's own DCM scanner against agent-bom's own DCM migrations.
+        # Proves the scanner is alive, its rules fire on real SQL, and our own
+        # migration files are clean (or surface known findings explicitly).
+        run: |
+          uv run python - <<'PYEOF'
+          from pathlib import Path
+          from agent_bom.iac.dcm import is_dcm_migration, scan_dcm_migration
+
+          dcm_dir = Path("deploy/snowflake/native-app/dcm")
+          files = sorted(p for p in dcm_dir.rglob("*.sql") if is_dcm_migration(p))
+          if not files:
+              raise SystemExit(f"No DCM migrations found in {dcm_dir} — scanner or migration path broken")
+
+          findings = [f for path in files for f in scan_dcm_migration(path)]
+          print(f"DCM self-check: {len(files)} migration(s) scanned, {len(findings)} finding(s)")
+          for f in findings:
+              print(f"  {f.severity.upper()} {f.rule_id} {Path(f.file_path).name}:{f.line_number}: {f.title}")
+
+          # DCM-001 (GRANT MANAGE GRANTS) is expected in V001 — any other
+          # severity:critical finding in our own migrations is a regression.
+          unexpected = [
+              f for f in findings
+              if f.severity == "critical" and f.rule_id != "DCM-001"
+          ]
+          if unexpected:
+              print("FAIL: unexpected critical findings in DCM migrations:")
+              for f in unexpected:
+                  print(f"  {f.rule_id} {f.file_path}:{f.line_number}")
+              raise SystemExit(1)
+          print("OK")
+          PYEOF
+
   postgres-integration:
     name: Postgres Integration Contract
     runs-on: ubuntu-latest

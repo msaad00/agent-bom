@@ -140,23 +140,23 @@
   <text x="412" y="294" class="fw-count" fill="#0ea5e9">3</text>
   <text x="432" y="294" class="fw-label">baselines</text>
 
-  <!-- MITRE ATT&CK -->
+  <!-- MITRE ATT&CK Enterprise -->
   <rect x="584" y="232" width="176" height="72" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
-  <text x="600" y="252" class="fw-name">MITRE ATT&amp;CK</text>
-  <text x="600" y="264" class="fw-code">Enterprise adversary techniques</text>
+  <text x="600" y="252" class="fw-name">MITRE ATT&amp;CK Enterprise</text>
+  <text x="600" y="264" class="fw-code">Adversary techniques (CWE→CAPEC→ATT&amp;CK)</text>
   <rect x="600" y="272" width="144" height="4" rx="2" class="bar-bg"/>
-  <rect x="600" y="272" width="108" height="4" rx="2" fill="#f59e0b"/>
-  <text x="600" y="294" class="fw-count" fill="#f59e0b">200+</text>
+  <rect x="600" y="272" width="128" height="4" rx="2" fill="#fb7185"/>
+  <text x="600" y="294" class="fw-count" fill="#fb7185">~600</text>
   <text x="640" y="294" class="fw-label">techniques</text>
 
-  <!-- MITRE ATT&CK Enterprise -->
+  <!-- PCI DSS v4.0 -->
   <rect x="772" y="232" width="168" height="72" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
-  <text x="788" y="252" class="fw-name">MITRE ATT&amp;CK Enterprise</text>
-  <text x="788" y="264" class="fw-code">Adversary techniques (CWE→CAPEC→ATT&amp;CK)</text>
+  <text x="788" y="252" class="fw-name">PCI DSS v4.0</text>
+  <text x="788" y="264" class="fw-code">Payment-card data security requirements</text>
   <rect x="788" y="272" width="136" height="4" rx="2" class="bar-bg"/>
-  <rect x="788" y="272" width="122" height="4" rx="2" fill="#fb7185"/>
-  <text x="788" y="294" class="fw-count" fill="#fb7185">~600</text>
-  <text x="828" y="294" class="fw-label">techniques</text>
+  <rect x="788" y="272" width="100" height="4" rx="2" fill="#f472b6"/>
+  <text x="788" y="294" class="fw-count" fill="#f472b6">12</text>
+  <text x="816" y="294" class="fw-label">requirements</text>
 
   <!-- ═══ SUMMARY BAR ═══ -->
   <rect x="20" y="320" width="920" height="32" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>

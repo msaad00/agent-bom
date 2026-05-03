@@ -38,8 +38,8 @@ python scripts/check_scale_evidence.py
 ### Blast-radius tag indexing — `_index_blast_radii_by_tag`
 
 The O(n × k) pass that feeds every compliance bundle. Measured across
-1k / 10k / 50k blast-radius findings each tagged under all 14
-compliance frameworks (≈14 tag fields per finding).
+1k / 10k / 50k blast-radius findings each tagged under all 15
+compliance frameworks (≈15 tag fields per finding).
 
 | Inventory size | Mean | StdDev | Throughput |
 |---:|---:|---:|---:|

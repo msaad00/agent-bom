@@ -30,6 +30,9 @@ AI-infra and supply-chain breadth release: ATLAS catalog wired through to dashbo
 - **AMD advisory scanner** — AMD PSIRT advisory ingestion + GPU driver CVE mapping + K8s GPU compound rules (#2224).
 - **AMD PSIRT live-feed fetcher** — keeps AMD advisory data fresh; falls back to a checked-in static seed if the upstream feed is unreachable (#2230).
 - **AMD/Intel driver CVE gates + Intel advisory feed + K8S-036** — per-node driver checks for both vendors plus a K8s rule (`K8S-036`) for `nvidia-device-plugin` RBAC scope (#2232).
+- **Intel i915/xe driver CVE gate** — per-node check for CVE-2023-22655 / CVE-2023-25546; reads `/sys/module/i915/version` or `/sys/module/xe/version` via `kubectl exec`, falls back to `uname -r` (#2236).
+- **NVIDIA DGX/HGX firmware + BMC advisories** — `firmware_advisory.py` ships a 6-CVE NVIDIA CSAF seed (3× H100 BMC/CLI critical/high, DGX A100 SBIOS, ConnectX-6 DoS, DGX Station A100 OOB write); per-node product mapping via GPU-model labels; surfaces through `GpuInfraReport.firmware_findings` and `risk_summary.firmware_cve_count` (#2236).
+- **Container image SBOM (RunPod / Vast.ai)** — `container_sbom.py` fetches Docker Hub registry v2 metadata (manifest digest, config labels, layer size). Emits `UNPINNED_TAG`, `NO_SBOM_ATTESTATION`, `STALE_IMAGE` (>180d), `MISSING_PROVENANCE` findings; offline-safe and graceful on token/manifest failures; per-process `lru_cache` so duplicate pods share one Docker Hub round-trip (#2236).
 - **GPU cloud provider discovery** — Lambda Labs, RunPod, Vast.ai, and Crusoe added to the cloud catalog; agents emerge with `cloud_origin.provider` set to the right vendor (#2229).
 - **Nebius InfiniBand training job discovery** — Nebius training jobs and their InfiniBand fabric scope are discovered as agents (#2231).
 - **SPDX license file scanner** — detects `LICENSE` / `COPYING` files and SPDX source-header markers across the inventory; results feed the existing license posture surface (#2234).

@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from functools import lru_cache
 
 logger = logging.getLogger(__name__)
 
@@ -202,12 +203,19 @@ def _check_labels(labels: dict[str, str]) -> tuple[bool, bool]:
     return sbom, prov
 
 
+@lru_cache(maxsize=512)
 def scan_container_image(image_ref: str) -> ContainerImageSbom:
     """Scan a container image reference for SBOM and provenance posture.
 
     Queries Docker Hub registry API v2 to fetch manifest and config blob
     without downloading image layers. For non-Docker Hub registries, returns
     a best-effort record with MISSING_PROVENANCE finding.
+
+    Cached per-process by ``image_ref`` so that fleets running the same
+    image across many pods (RunPod / Vast.ai discovery) only make one
+    Docker Hub round-trip per unique image, avoiding anonymous rate
+    limits (100 / 6h) and saving ~3 sequential ``requests.get`` calls per
+    duplicate. Cache size is bounded to 512 entries.
 
     Args:
         image_ref: Image reference string, e.g. ``"pytorch/pytorch:2.1.0"``.

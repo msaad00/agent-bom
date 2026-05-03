@@ -26,6 +26,15 @@ from agent_bom.cloud.container_sbom import (
     scan_container_image,
 )
 
+
+@pytest.fixture(autouse=True)
+def _clear_scan_cache():
+    """scan_container_image is process-cached (lru_cache) so duplicate
+    pods share one Docker Hub round-trip. Tests must reset between cases
+    so mocked responses don't leak across tests."""
+    scan_container_image.cache_clear()
+
+
 # ─── Unit: _parse_image_ref ───────────────────────────────────────────────────
 
 

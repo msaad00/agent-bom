@@ -114,7 +114,7 @@ jobs:
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
           set -euo pipefail
-          SHORT_DESCRIPTION="Open security scanner for AI supply chain and infrastructure: agents, MCP, containers, cloud, GPU, and runtime."
+          SHORT_DESCRIPTION="Open security scanner for AI supply chain and infrastructure: agents, MCP, cloud, GPU, runtime."
           TOKEN=$(curl -sf -X POST "https://hub.docker.com/v2/users/login" \
             -H "Content-Type: application/json" \
             -d "{\"username\":\"${DOCKERHUB_USERNAME}\",\"password\":\"${DOCKERHUB_TOKEN}\"}" \

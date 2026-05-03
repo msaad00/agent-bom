@@ -258,6 +258,7 @@ def scan(
     require_model_signatures: bool,
     block_unsafe_model_formats: bool,
     dataset_dirs: tuple,
+    scan_pii: bool,
     training_dirs: tuple,
     hf_models: tuple,
     introspect: bool,
@@ -588,6 +589,7 @@ def scan(
             jupyter_dirs=jupyter_dirs,
             model_dirs=model_dirs,
             dataset_dirs=dataset_dirs,
+            scan_pii=scan_pii,
             training_dirs=training_dirs,
             gha_path=gha_path,
             skill_paths=skill_paths,
@@ -1867,6 +1869,34 @@ def scan(
             _scan_sources.append("dataset_cards")
         for w in all_ds_warnings:
             con.print(f"  [yellow]⚠[/yellow] {w}")
+
+        # PII content scan (opt-in via --scan-pii)
+        if scan_pii:
+            from pathlib import Path as _PIIPath
+
+            from agent_bom.parsers.dataset_pii_scanner import scan_directory_for_pii
+
+            for ddir in dataset_dirs:
+                con.print(f"  [cyan]>[/cyan] Scanning dataset content for PII/PHI in {ddir}...")
+                pii_result = scan_directory_for_pii(_PIIPath(ddir))
+                if pii_result.total_findings > 0:
+                    con.print(
+                        f"    [red]PII detected:[/red] {pii_result.total_findings} finding(s)"
+                        f" across {pii_result.files_with_pii} file(s)"
+                        + (
+                            f" [bold red]({pii_result.high_severity_count} high-severity)[/bold red]"
+                            if pii_result.high_severity_count
+                            else ""
+                        )
+                    )
+                else:
+                    con.print(f"    [green]No PII found[/green] in {pii_result.files_scanned} file(s)")
+                if report.dataset_cards is None:
+                    report.dataset_cards = {}
+                report.dataset_cards["pii_scan"] = pii_result.to_dict()
+                _scan_sources.append("dataset_pii")
+                for w in pii_result.warnings:
+                    con.print(f"  [yellow]⚠[/yellow] {w}")
 
     # ── Step 1l: Training pipeline scan ──────────────────────────────
     # Auto-detect: check project for MLmodel, wandb-metadata.json, pipeline YAML

@@ -87,12 +87,21 @@ def register_specialized_ai_tools(
             str,
             Field(description="Directory path to scan for dataset cards (dataset_info.json, README.md frontmatter, .dvc files)."),
         ],
+        scan_pii: Annotated[
+            bool,
+            Field(
+                description=(
+                    "Also scan CSV/JSON/JSONL file contents for PII/PHI (emails, SSNs, credit cards, medical data). Default false."
+                )
+            ),
+        ] = False,
     ) -> str:
-        """Scan a directory for ML dataset card metadata and provenance."""
+        """Scan a directory for ML dataset card metadata, provenance, and optionally PII/PHI content."""
         return await execute_tool_async(
             "dataset_card_scan",
             dataset_card_scan_impl,
             directory=str(safe_path(directory)),
+            scan_pii=scan_pii,
             _truncate_response=truncate_response,
         )
 

@@ -1307,9 +1307,26 @@ export interface FrameworkCatalogMetadata {
   path?: string | undefined;
 }
 
+export interface MitreAtlasCatalogMetadata {
+  schema_version: number;
+  catalog_id: string;
+  catalog_type: string;
+  source: string;
+  atlas_version: string;
+  updated_at: string;
+  fetched_at: number;
+  normalized_sha256: string;
+  sources: Record<string, unknown>;
+  technique_count: number;
+  tactic_count: number;
+  curated_count?: number;
+  path?: string | undefined;
+}
+
 export interface FrameworkCatalogsResponse {
   frameworks: {
     mitre_attack: FrameworkCatalogMetadata;
+    mitre_atlas?: MitreAtlasCatalogMetadata;
   };
 }
 

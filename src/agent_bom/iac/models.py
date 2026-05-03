@@ -18,4 +18,5 @@ class IaCFinding:
     category: str  # "dockerfile", "kubernetes", "terraform"
     compliance: list[str] = field(default_factory=list)  # e.g. ["CIS-5.1", "NIST-CM-6"]
     attack_techniques: list[str] = field(default_factory=list)  # MITRE ATT&CK IDs, e.g. ["T1552.001"]
+    atlas_techniques: list[str] = field(default_factory=list)  # MITRE ATLAS IDs, e.g. ["AML.T0010"]
     remediation: str = ""  # Fix guidance

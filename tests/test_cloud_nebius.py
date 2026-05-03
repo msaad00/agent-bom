@@ -12,6 +12,7 @@ from agent_bom.cloud.nebius import (
     _discover_ai_studio,
     _discover_container_services,
     _discover_gpu_instances,
+    _discover_infiniband_jobs,
     _discover_k8s_gpu_pods,
     _nebius_get,
     discover,
@@ -86,6 +87,7 @@ def test_discover_all_subsystems():
         patch("agent_bom.cloud.nebius._discover_gpu_instances", return_value=([], [])),
         patch("agent_bom.cloud.nebius._discover_k8s_gpu_pods", return_value=([], [])),
         patch("agent_bom.cloud.nebius._discover_container_services", return_value=([], [])),
+        patch("agent_bom.cloud.nebius._discover_infiniband_jobs", return_value=([], [])),
     ):
         agents, warnings = discover(api_key="key", project_id="proj")
         assert agents == []
@@ -98,6 +100,7 @@ def test_discover_subsystem_exception():
         patch("agent_bom.cloud.nebius._discover_gpu_instances", return_value=([], [])),
         patch("agent_bom.cloud.nebius._discover_k8s_gpu_pods", return_value=([], [])),
         patch("agent_bom.cloud.nebius._discover_container_services", return_value=([], [])),
+        patch("agent_bom.cloud.nebius._discover_infiniband_jobs", return_value=([], [])),
     ):
         agents, warnings = discover(api_key="key", project_id="proj")
         assert any("AI Studio" in w for w in warnings)
@@ -269,3 +272,104 @@ def test_container_services_error():
         agents, warnings = _discover_container_services("key", "proj")
         assert len(agents) == 0
         assert len(warnings) == 1
+
+
+# ---------------------------------------------------------------------------
+# _discover_infiniband_jobs
+# ---------------------------------------------------------------------------
+
+
+def test_infiniband_jobs_no_kubectl():
+    with patch("shutil.which", return_value=None):
+        agents, warnings = _discover_infiniband_jobs("key", "proj")
+        assert agents == []
+        assert warnings == []
+
+
+def test_infiniband_jobs_with_rdma_pod():
+    import json
+
+    pod_list = {
+        "items": [
+            {
+                "metadata": {"name": "nccl-train-0", "namespace": "training"},
+                "spec": {
+                    "containers": [
+                        {
+                            "name": "trainer",
+                            "image": "nvcr.io/nvidia/pytorch:24.01-py3",
+                            "resources": {
+                                "limits": {"rdma/ib": "1", "nvidia.com/gpu": "8"},
+                                "requests": {"rdma/ib": "1", "nvidia.com/gpu": "8"},
+                            },
+                        }
+                    ]
+                },
+            }
+        ]
+    }
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = json.dumps(pod_list)
+
+    with patch("shutil.which", return_value="/usr/bin/kubectl"), patch("subprocess.run", return_value=mock_result):
+        agents, warnings = _discover_infiniband_jobs("key", "proj")
+        assert len(agents) == 1
+        assert agents[0].metadata.get("infiniband") is True
+        assert agents[0].metadata.get("training_job") is True
+        assert agents[0].metadata.get("gpu_count") == 8
+        assert "nebius-training:training/nccl-train-0" in agents[0].name
+        assert warnings == []
+
+
+def test_infiniband_jobs_skips_non_ib_pods():
+    import json
+
+    pod_list = {
+        "items": [
+            {
+                "metadata": {"name": "inference-pod", "namespace": "default"},
+                "spec": {
+                    "containers": [
+                        {
+                            "name": "server",
+                            "image": "vllm/vllm-openai:latest",
+                            "resources": {
+                                "limits": {"nvidia.com/gpu": "4"},
+                                "requests": {"nvidia.com/gpu": "4"},
+                            },
+                        }
+                    ]
+                },
+            }
+        ]
+    }
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = json.dumps(pod_list)
+
+    with patch("shutil.which", return_value="/usr/bin/kubectl"), patch("subprocess.run", return_value=mock_result):
+        agents, warnings = _discover_infiniband_jobs("key", "proj")
+        assert agents == []
+
+
+def test_infiniband_jobs_kubectl_failure():
+    mock_result = MagicMock()
+    mock_result.returncode = 1
+    mock_result.stderr = "connection refused"
+
+    with patch("shutil.which", return_value="/usr/bin/kubectl"), patch("subprocess.run", return_value=mock_result):
+        agents, warnings = _discover_infiniband_jobs("key", "proj")
+        assert agents == []
+        assert len(warnings) == 1
+
+
+def test_infiniband_jobs_timeout():
+    import subprocess
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/kubectl"),
+        patch("subprocess.run", side_effect=subprocess.TimeoutExpired(cmd="kubectl", timeout=60)),
+    ):
+        agents, warnings = _discover_infiniband_jobs("key", "proj")
+        assert any("timed out" in w for w in warnings)

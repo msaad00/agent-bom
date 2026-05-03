@@ -238,3 +238,122 @@ def test_clear_requires_write_permission():
     reader.headers.update(proxy_headers(role="viewer", tenant="tenant-alpha"))
     resp = reader.delete("/v1/compliance/hub/findings")
     assert resp.status_code in (401, 403), f"viewer should be denied (got {resp.status_code})"
+
+
+# ─── SQLite backend ──────────────────────────────────────────────────────────
+
+
+def test_sqlite_backend_persists_across_store_instances(tmp_path):
+    """Findings written through one SQLiteComplianceHubStore must be
+    readable from a fresh instance pointing at the same file. This is
+    the single-node persistence contract: API restart -> findings still
+    visible. In-memory backend would fail this test."""
+    from agent_bom.api.compliance_hub_store import (
+        SQLiteComplianceHubStore,
+        set_compliance_hub_store,
+    )
+
+    db = tmp_path / "hub.db"
+    store_a = SQLiteComplianceHubStore(str(db))
+    set_compliance_hub_store(store_a)
+
+    client = _client(tenant="tenant-alpha")
+    client.post(
+        "/v1/compliance/ingest",
+        json={"format": "sarif", "content": json.dumps(_sarif_doc())},
+    )
+    assert client.get("/v1/compliance/hub/findings").json()["total"] == 1
+
+    # Rebind to a fresh store instance with the same db path -> data persists.
+    store_b = SQLiteComplianceHubStore(str(db))
+    set_compliance_hub_store(store_b)
+
+    after_restart = client.get("/v1/compliance/hub/findings").json()
+    assert after_restart["total"] == 1, "SQLite persistence contract: findings must survive a store restart"
+
+
+def test_sqlite_backend_keeps_tenant_data_separate(tmp_path):
+    from agent_bom.api.compliance_hub_store import (
+        SQLiteComplianceHubStore,
+        set_compliance_hub_store,
+    )
+
+    set_compliance_hub_store(SQLiteComplianceHubStore(str(tmp_path / "x.db")))
+
+    a = _client(tenant="tenant-alpha")
+    b = _client(tenant="tenant-beta")
+    a.post("/v1/compliance/ingest", json={"format": "sarif", "content": json.dumps(_sarif_doc())})
+
+    assert a.get("/v1/compliance/hub/findings").json()["total"] == 1
+    assert b.get("/v1/compliance/hub/findings").json()["total"] == 0
+
+
+def test_sqlite_backend_clear_only_affects_caller_tenant(tmp_path):
+    from agent_bom.api.compliance_hub_store import (
+        SQLiteComplianceHubStore,
+        set_compliance_hub_store,
+    )
+
+    set_compliance_hub_store(SQLiteComplianceHubStore(str(tmp_path / "y.db")))
+
+    a = _client(tenant="tenant-alpha")
+    b = _client(tenant="tenant-beta")
+    a.post("/v1/compliance/ingest", json={"format": "sarif", "content": json.dumps(_sarif_doc())})
+    b.post("/v1/compliance/ingest", json={"format": "sarif", "content": json.dumps(_sarif_doc())})
+
+    a.delete("/v1/compliance/hub/findings")
+    assert a.get("/v1/compliance/hub/findings").json()["total"] == 0
+    assert b.get("/v1/compliance/hub/findings").json()["total"] == 1
+
+
+def test_sqlite_backend_preserves_ingest_order(tmp_path):
+    """`list` returns oldest-first; the SQLite ordinal column drives
+    that contract. Pagination + UI rendering both depend on it."""
+    from agent_bom.api.compliance_hub_store import (
+        SQLiteComplianceHubStore,
+        set_compliance_hub_store,
+    )
+
+    set_compliance_hub_store(SQLiteComplianceHubStore(str(tmp_path / "ord.db")))
+    client = _client()
+    for i in range(5):
+        csv = f"Title,Severity\nrow-{i},low\n"
+        client.post("/v1/compliance/ingest", json={"format": "csv", "content": csv})
+
+    titles = [f["title"] for f in client.get("/v1/compliance/hub/findings").json()["findings"]]
+    assert titles == [f"row-{i}" for i in range(5)]
+
+
+def test_sqlite_backend_denormalises_framework_csv_for_aggregation(tmp_path):
+    """The schema stores `applicable_frameworks_csv` so SQL-layer
+    posture aggregation can filter without parsing JSON. This test
+    asserts the column is populated for every row, which the column
+    NOT NULL constraint partly guarantees but the actual contents are
+    what aggregation will read."""
+    import sqlite3
+
+    from agent_bom.api.compliance_hub_store import (
+        SQLiteComplianceHubStore,
+        set_compliance_hub_store,
+    )
+
+    db = tmp_path / "csv.db"
+    set_compliance_hub_store(SQLiteComplianceHubStore(str(db)))
+
+    client = _client()
+    client.post(
+        "/v1/compliance/ingest",
+        json={"format": "sarif", "content": json.dumps(_sarif_doc())},
+    )
+
+    direct = sqlite3.connect(str(db))
+    rows = direct.execute(
+        "SELECT applicable_frameworks_csv FROM compliance_hub_findings WHERE tenant_id = ?",
+        ("tenant-alpha",),
+    ).fetchall()
+    direct.close()
+    assert rows, "expected at least one row"
+    csv_value = rows[0][0]
+    # SECRET rule -> CREDENTIAL_EXPOSURE -> SOC 2 / ISO / NIST CSF must be in csv
+    for slug in ("soc2", "iso-27001", "nist-csf"):
+        assert slug in csv_value, f"{slug} missing from denormalised csv: {csv_value!r}"

@@ -9,6 +9,20 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- **Compliance Hub series** — `compliance_hub.py` engine plus four ingestion adapters (SARIF / CycloneDX / CSV / JSON) and four hub API endpoints (`POST /v1/compliance/ingest`, `GET /v1/compliance/hub/findings`, `GET /v1/compliance/hub/posture`, `DELETE /v1/compliance/hub/findings`) so external scanner output lands in the same per-tenant posture surface as native scans. Closes #1044 (#2200, #2201, #2202, #2203, #2204).
+- **Durable Compliance Hub backends** — SQLite and Postgres stores back the hub with tenant-scoped persistence and reserved-namespace tenant validation, replacing the in-memory placeholder (#2205).
+- **`summary.unique_packages` field on JSON output** — disambiguates occurrence count from the deduplicated package count so dashboards stop double-counting transitive duplicates (#2199).
+- **`summary.total_packages` semantics clarified** — documented as occurrence-shaped to match the existing wire format and pair with `unique_packages` (#2199).
+
+### Fixed
+- **Dashboard splash kind classification on `/compliance` and `/vulns`** — auth and forbidden errors now render distinct copy instead of the generic "Cannot connect" splash (#2199).
+- **`--self-scan` walks the active venv** — `_build_self_scan_inventory` now uses `importlib.metadata.distributions()` so transitive deps appear in the inventory (#2197).
+
+### Documentation
+- **`--self-scan` flag reference** added to the CLI docs (#2202).
+- **Compliance SVG framework alignment** with `COMPLIANCE_FRAMEWORKS` so the diagram and code list never drift (#2206).
+
 ---
 
 ## [0.85.0] – 2026-05-02

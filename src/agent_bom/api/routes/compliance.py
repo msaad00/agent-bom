@@ -1502,12 +1502,20 @@ async def get_hub_posture(request: Request) -> dict:
     single posture story across every entry point.
     """
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
+    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
 
     tenant_id = _tenant_id(request)
     hub_findings = get_compliance_hub_store().list(tenant_id)
 
     # Native sources: count blast radii from completed scan jobs as a
     # proxy for "native finding count per framework" using their tag fields.
+    # Driven by TAG_MAPPED_FRAMEWORKS so all 14 frameworks (owasp-llm, owasp-mcp,
+    # owasp-agentic, atlas, nist, nist-csf, nist-800-53, fedramp, eu-ai-act,
+    # iso-27001, soc2, cis, cmmc, pci-dss) aggregate consistently. Slug→field
+    # is NOT a pure replace (e.g. nist → nist_ai_rmf_tags), so we read the
+    # canonical mapping straight off the metadata.
+    slug_to_tag_field: tuple[tuple[str, str], ...] = tuple((metadata.slug, metadata.tag_field) for metadata in TAG_MAPPED_FRAMEWORKS)
+
     native_framework_counts: dict[str, int] = {}
     native_total = 0
     for job in _tenant_jobs(request):
@@ -1515,18 +1523,7 @@ async def get_hub_posture(request: Request) -> dict:
             continue
         for br in job.result.get("blast_radius", []) or []:
             native_total += 1
-            for slug, field in (
-                ("owasp-llm", "owasp_tags"),
-                ("atlas", "atlas_tags"),
-                ("nist", "nist_ai_rmf_tags"),
-                ("owasp-mcp", "owasp_mcp_tags"),
-                ("owasp-agentic", "owasp_agentic_tags"),
-                ("eu-ai-act", "eu_ai_act_tags"),
-                ("nist-csf", "nist_csf_tags"),
-                ("iso-27001", "iso_27001_tags"),
-                ("soc2", "soc2_tags"),
-                ("cis", "cis_tags"),
-            ):
+            for slug, field in slug_to_tag_field:
                 if br.get(field):
                     native_framework_counts[slug] = native_framework_counts.get(slug, 0) + 1
 

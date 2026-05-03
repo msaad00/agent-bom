@@ -224,8 +224,13 @@ def _build_vuln_from_seed(
     )
 
 
-def check_amd_advisories(packages: list[Package]) -> int:
-    """Check AMD/ROCm packages against the AMD PSIRT advisory seed.
+def check_amd_advisories(packages: list[Package], *, live: bool = True) -> int:
+    """Check AMD/ROCm packages against AMD PSIRT advisories.
+
+    Attempts a live fetch from the AMD PSIRT JSON endpoint and ROCm GHSA
+    first (``live=True``).  On any network failure or empty response the
+    static ``_AMD_ADVISORY_SEED`` is used as a safe fallback so air-gapped
+    environments are never left without coverage.
 
     Returns count of new vulnerabilities attached to the given packages.
     """
@@ -239,8 +244,19 @@ def check_amd_advisories(packages: list[Package]) -> int:
 
     logger.info("AMD advisory check for products: %s", set(product_to_pkgs))
 
+    advisory_db = _AMD_ADVISORY_SEED
+    if live:
+        try:
+            from agent_bom.scanners.amd_advisory_fetch import fetch_live_advisories, merge_with_seed
+
+            live_entries = fetch_live_advisories()
+            if live_entries:
+                advisory_db = merge_with_seed(live_entries, _AMD_ADVISORY_SEED)
+        except Exception as exc:
+            logger.debug("AMD live feed unavailable, using seed: %s", exc)
+
     total_new = 0
-    for cve_id, summary, severity, cvss_score, affected_products, fixed_version, references in _AMD_ADVISORY_SEED:
+    for cve_id, summary, severity, cvss_score, affected_products, fixed_version, references in advisory_db:
         vuln = _build_vuln_from_seed(cve_id, summary, severity, cvss_score, fixed_version, references)
 
         for product in affected_products:

@@ -57,14 +57,14 @@ def _make_pkg(name: str, version: str = "5.0") -> Package:
 
 def test_check_amd_advisories_no_rocm_packages():
     packages = [_make_pkg("requests"), _make_pkg("flask"), _make_pkg("numpy")]
-    assert check_amd_advisories(packages) == 0
+    assert check_amd_advisories(packages, live=False) == 0
     for pkg in packages:
         assert pkg.vulnerabilities == []
 
 
 def test_check_amd_advisories_rocm_package_gets_vulns():
     pkg = _make_pkg("rocm", version="5.5")
-    total = check_amd_advisories([pkg])
+    total = check_amd_advisories([pkg], live=False)
     assert total > 0
     assert len(pkg.vulnerabilities) > 0
     cve_ids = {v.id for v in pkg.vulnerabilities}
@@ -73,7 +73,7 @@ def test_check_amd_advisories_rocm_package_gets_vulns():
 
 def test_check_amd_advisories_hip_runtime_gets_vulns():
     pkg = _make_pkg("hip-runtime-amd", version="5.5")
-    total = check_amd_advisories([pkg])
+    total = check_amd_advisories([pkg], live=False)
     assert total > 0
     cve_ids = {v.id for v in pkg.vulnerabilities}
     assert "CVE-2024-21139" in cve_ids
@@ -81,15 +81,15 @@ def test_check_amd_advisories_hip_runtime_gets_vulns():
 
 def test_check_amd_advisories_no_duplicate_cves():
     pkg = _make_pkg("rocm", version="5.5")
-    check_amd_advisories([pkg])
+    check_amd_advisories([pkg], live=False)
     first_count = len(pkg.vulnerabilities)
-    check_amd_advisories([pkg])
+    check_amd_advisories([pkg], live=False)
     assert len(pkg.vulnerabilities) == first_count
 
 
 def test_check_amd_advisories_severity_shape():
     pkg = _make_pkg("rocm", version="5.5")
-    check_amd_advisories([pkg])
+    check_amd_advisories([pkg], live=False)
     for vuln in pkg.vulnerabilities:
         assert vuln.severity in (Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW)
         assert "amd_psirt" in vuln.advisory_sources
@@ -97,7 +97,7 @@ def test_check_amd_advisories_severity_shape():
 
 
 def test_check_amd_advisories_empty_list():
-    assert check_amd_advisories([]) == 0
+    assert check_amd_advisories([], live=False) == 0
 
 
 # ─── _driver_lt ──────────────────────────────────────────────────────────────

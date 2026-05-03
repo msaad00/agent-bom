@@ -43,6 +43,10 @@ PROVIDERS: list[tuple[str, ScanMode, RedactionStatus]] = [
     ("agent_bom.cloud.huggingface", ScanMode.SAAS_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
     ("agent_bom.cloud.openai_provider", ScanMode.SAAS_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
     ("agent_bom.cloud.ollama", ScanMode.LOCAL_ONLY, RedactionStatus.NOT_APPLICABLE),
+    ("agent_bom.cloud.lambda_labs", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
+    ("agent_bom.cloud.runpod", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
+    ("agent_bom.cloud.vastai", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
+    ("agent_bom.cloud.crusoe", ScanMode.CLOUD_READ_ONLY, RedactionStatus.CENTRAL_SANITIZER_APPLIED),
 ]
 
 

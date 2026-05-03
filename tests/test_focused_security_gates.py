@@ -6,7 +6,7 @@ from unittest.mock import patch
 from click.testing import CliRunner
 
 from agent_bom.cli import main
-from agent_bom.iac.models import IaCFinding
+from agent_bom.iac.models import IaCFinding, ScannerVerdict, ScanResult
 from agent_bom.secret_scanner import SecretFinding, SecretScanResult
 
 
@@ -76,7 +76,8 @@ def test_iac_command_exits_one_for_high_findings_by_default(tmp_path: Path):
         category="terraform",
     )
 
-    with patch("agent_bom.iac.scan_iac_directory", return_value=[finding]):
+    _scan_result = ScanResult(findings=[finding], verdicts=[ScannerVerdict("terraform", "ran", 1)])
+    with patch("agent_bom.iac.scan_iac_with_context", return_value=_scan_result):
         result = CliRunner().invoke(main, ["iac", str(tmp_path)])
 
     assert result.exit_code == 1
@@ -94,7 +95,8 @@ def test_iac_command_json_exits_one_for_high_findings_by_default(tmp_path: Path)
         category="terraform",
     )
 
-    with patch("agent_bom.iac.scan_iac_directory", return_value=[finding]):
+    _scan_result = ScanResult(findings=[finding], verdicts=[ScannerVerdict("terraform", "ran", 1)])
+    with patch("agent_bom.iac.scan_iac_with_context", return_value=_scan_result):
         result = CliRunner().invoke(main, ["iac", str(tmp_path), "--format", "json"])
 
     assert result.exit_code == 1
@@ -102,7 +104,8 @@ def test_iac_command_json_exits_one_for_high_findings_by_default(tmp_path: Path)
 
 
 def test_iac_command_exits_zero_when_clean(tmp_path: Path):
-    with patch("agent_bom.iac.scan_iac_directory", return_value=[]):
+    _scan_result = ScanResult(findings=[], verdicts=[])
+    with patch("agent_bom.iac.scan_iac_with_context", return_value=_scan_result):
         result = CliRunner().invoke(main, ["iac", str(tmp_path)])
 
     assert result.exit_code == 0

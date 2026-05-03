@@ -1,3 +1,22 @@
+# ───────────────────────────────────────────────────────────────────────────
+# IMPORTANT: `controlPlane.enabled` defaults to `false` (scanner-only render).
+#
+# The default render ships ONLY the CLI scanner Job + supporting RBAC. The API,
+# dashboard, gateway, proxy, firewall, MCP server, and Postgres are all gated
+# behind `controlPlane.enabled=true`. EKS / GKE / AKS users that want the full
+# platform — running scans, browsing findings in the UI, hitting the REST API,
+# enforcing runtime policy — must set:
+#
+#     helm install agent-bom agent-bom/agent-bom \
+#       --set controlPlane.enabled=true
+#
+# Without that flag a `helm install` succeeds quietly and only the scanner
+# pieces are deployed. See the `controlPlane:` block below (around line 257)
+# for the full set of subcomponents this flag toggles on, and the chart
+# README at deploy/helm/agent-bom/README.md (or the project README's
+# "Helm / Kubernetes" section) for the complete quick-start.
+# ───────────────────────────────────────────────────────────────────────────
+#
 # For the canonical AGENT_BOM_* env-var reference (auto-generated from
 # src/agent_bom/config.py), see docs/operations/ENV_VARS.md. CI fails if a
 # new AGENT_BOM_* env var is referenced in src/ without being declared in

@@ -213,7 +213,8 @@ def scan_k8s_manifest(file_path: str | Path) -> list[IaCFinding]:
                 )
 
         # K8S-036: nvidia-device-plugin ClusterRole with mutation verbs
-        if kind == "ClusterRole" and "nvidia" in name.lower() and "device-plugin" in name.lower():
+        _name_lower = (name or "").lower()
+        if kind == "ClusterRole" and "nvidia" in _name_lower and "device-plugin" in _name_lower:
             rules = doc.get("rules", []) or []
             _mutation_verbs = {"create", "delete", "update", "patch", "bind", "escalate", "impersonate"}
             for rule in rules:

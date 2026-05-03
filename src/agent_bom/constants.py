@@ -601,6 +601,7 @@ COMPLIANCE_FRAMEWORKS: tuple[tuple[str, str], ...] = (
     ("cmmc", "CMMC 2.0"),
     ("nist_800_53", "NIST 800-53 Rev 5"),
     ("fedramp", "FedRAMP Moderate"),
+    ("pci_dss", "PCI DSS"),
 )
 
 COMPLIANCE_FRAMEWORK_COUNT: int = len(COMPLIANCE_FRAMEWORKS)

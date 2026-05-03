@@ -102,8 +102,14 @@ Advanced/manual path from a checked-out repo:
 ```bash
 helm upgrade --install agent-bom deploy/helm/agent-bom \
   --namespace agent-bom --create-namespace \
+  --set controlPlane.enabled=true \
   -f deploy/helm/agent-bom/examples/eks-production-values.yaml
 ```
+
+> **Note:** `controlPlane.enabled` defaults to `false` (scanner-only render). The
+> API, dashboard, gateway, proxy, firewall, and Postgres only deploy when
+> `controlPlane.enabled=true`. The bundled example values files set this for
+> you; if you build your own values file, set the flag explicitly.
 
 After the first scan:
 

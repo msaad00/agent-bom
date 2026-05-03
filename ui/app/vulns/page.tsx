@@ -5,6 +5,13 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api, Vulnerability, ScanJob, ScanResult, severityColor, severityDot, JobListItem, RemediationItem } from "@/lib/api";
 import { ApiOfflineState } from "@/components/api-offline-state";
+import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
+
+function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
+  if (err instanceof ApiAuthError) return "auth";
+  if (err instanceof ApiForbiddenError) return "forbidden";
+  return "network";
+}
 import { Bug, Download, ExternalLink, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, Loader2, Package, Server, ShieldOff, Radar, FileSearch, ShieldAlert } from "lucide-react";
 
 function downloadJson(data: unknown, filename: string) {
@@ -180,6 +187,9 @@ function VulnsPage() {
   const [loading, setLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
+  // Per #2199 splash-kind sweep: track auth/forbidden/network so the splash
+  // matches the actual cause instead of always reading as a connect failure.
+  const [errorKind, setErrorKind] = useState<"network" | "auth" | "forbidden">("network");
   const [scope, setScope] = useState<ScanScope>("latest");
   const [filter, setFilter] = useState<SeverityFilter>(
     paramSeverity && ["critical", "high", "medium", "low"].includes(paramSeverity)
@@ -313,6 +323,7 @@ function VulnsPage() {
         setJobs(doneJobs);
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Failed to load");
+        setErrorKind(_classifyApiErrorKind(e));
       } finally {
         setLoading(false);
       }
@@ -341,6 +352,7 @@ function VulnsPage() {
         }
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : "Failed to load");
+        setErrorKind(_classifyApiErrorKind(e));
       } finally {
         setDetailLoading(false);
       }
@@ -479,8 +491,9 @@ function VulnsPage() {
       )}
       {!loading && error && (
         <ApiOfflineState
-          title="Findings need the agent-bom API"
+          title={errorKind === "network" ? "Findings need the agent-bom API" : undefined}
           detail={error}
+          kind={errorKind}
         />
       )}
 

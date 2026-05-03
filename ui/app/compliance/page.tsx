@@ -42,6 +42,13 @@ import Link from "next/link";
 import { ComplianceHeatmap } from "@/components/compliance-heatmap";
 import { ComplianceMatrix } from "@/components/compliance-matrix";
 import { ApiOfflineState } from "@/components/api-offline-state";
+import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
+
+function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
+  if (err instanceof ApiAuthError) return "auth";
+  if (err instanceof ApiForbiddenError) return "forbidden";
+  return "network";
+}
 
 // ─── Status helpers ──────────────────────────────────────────────────────────
 
@@ -373,6 +380,10 @@ function CompliancePageContent() {
   const [mitreCatalog, setMitreCatalog] = useState<FrameworkCatalogMetadata | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Per #2199 splash-kind sweep: classify API errors so the splash matches
+  // the actual cause (auth/forbidden/network) instead of always reading as
+  // "Cannot connect to the agent-bom API".
+  const [errorKind, setErrorKind] = useState<"network" | "auth" | "forbidden">("network");
   const [viewMode, setViewMode] = useState<"detail" | "heatmap" | "matrix">("detail");
   const [controlQuery, setControlQuery] = useState(queryParam);
   const [statusFilter, setStatusFilter] = useState<"all" | "pass" | "warning" | "fail">("all");
@@ -387,7 +398,9 @@ function CompliancePageContent() {
         if (complianceResult.status === "fulfilled") {
           setData(complianceResult.value);
         } else {
-          setError(complianceResult.reason?.message ?? "Failed to load compliance view");
+          const reason = complianceResult.reason;
+          setError(reason?.message ?? "Failed to load compliance view");
+          setErrorKind(_classifyApiErrorKind(reason));
         }
         if (catalogResult.status === "fulfilled") {
           setMitreCatalog(catalogResult.value.frameworks?.mitre_attack ?? null);
@@ -405,10 +418,12 @@ function CompliancePageContent() {
   }
 
   if (error) {
+    const fallbackTitle = errorKind === "network" ? "Compliance view needs the agent-bom API" : undefined;
     return (
       <ApiOfflineState
-        title="Compliance view needs the agent-bom API"
+        title={fallbackTitle}
         detail={error}
+        kind={errorKind}
       />
     );
   }

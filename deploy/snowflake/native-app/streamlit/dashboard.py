@@ -48,6 +48,23 @@ def load_audit(limit: int = 200) -> pd.DataFrame:
     )
 
 
+@st.cache_data(ttl=120)
+def load_compliance_posture() -> pd.DataFrame:
+    return _query(
+        "SELECT framework_slug, severity, tenant_id, finding_count FROM core.compliance_posture ORDER BY framework_slug, severity"
+    )
+
+
+@st.cache_data(ttl=120)
+def load_findings_by_framework(framework: str) -> pd.DataFrame:
+    return _query(
+        f"SELECT finding_id, severity, finding_type, asset_type, asset_name, classified_at "
+        f"FROM core.findings_by_framework "
+        f"WHERE framework_slug = '{framework}' "
+        f"ORDER BY classified_at DESC LIMIT 200"
+    )
+
+
 def _parse_variant(df: pd.DataFrame, col: str = "DATA") -> list[dict]:
     """Parse VARIANT column into list of dicts."""
     results = []
@@ -153,8 +170,8 @@ filtered_vulns = [v for v in all_vulns if v["severity"].lower() in severity_filt
 
 # ─── Tabs ─────────────────────────────────────────────────────────────────────
 
-tab_dash, tab_agents, tab_vulns, tab_compliance, tab_policies = st.tabs(
-    ["Dashboard", "Agents", "Vulnerabilities", "Compliance", "Policies"]
+tab_dash, tab_agents, tab_vulns, tab_compliance, tab_fw, tab_policies = st.tabs(
+    ["Dashboard", "Agents", "Vulnerabilities", "Compliance", "Framework Drill-down", "Policies"]
 )
 
 # ── Tab 1: Dashboard ─────────────────────────────────────────────────────────
@@ -286,28 +303,88 @@ with tab_vulns:
 # ── Tab 4: Compliance ────────────────────────────────────────────────────────
 
 with tab_compliance:
-    st.subheader("Compliance Posture")
+    st.subheader("Compliance Posture — All Frameworks")
 
-    compliance = result.get("compliance", {})
-    if compliance:
-        frameworks = compliance.get("frameworks", {})
-        for fw_name, fw_data in frameworks.items():
-            score = fw_data.get("score", 0)
-            status = fw_data.get("status", "unknown")
-            checks = fw_data.get("checks", [])
+    posture_df = load_compliance_posture()
+    if not posture_df.empty:
+        # Pivot: frameworks × severity → finding_count heatmap
+        pivot = posture_df.pivot_table(
+            index="FRAMEWORK_SLUG",
+            columns="SEVERITY",
+            values="FINDING_COUNT",
+            aggfunc="sum",
+            fill_value=0,
+        ).reset_index()
 
-            color = "green" if score >= 80 else "orange" if score >= 50 else "red"
-            st.markdown(f"### {fw_name} — :{color}[{score}%] ({status})")
+        sev_cols = [c for c in ["critical", "high", "medium", "low"] if c in pivot.columns]
+        pivot["total"] = pivot[sev_cols].sum(axis=1)
+        pivot = pivot.sort_values("total", ascending=False)
 
-            if checks:
-                for check in checks:
-                    icon = "✅" if check.get("passed") else "❌"
-                    st.markdown(f"- {icon} **{check.get('id', '')}**: {check.get('description', '')}")
-            st.divider()
+        st.dataframe(
+            pivot,
+            use_container_width=True,
+            hide_index=True,
+            column_config={c: st.column_config.NumberColumn(c.capitalize()) for c in sev_cols},
+        )
+
+        # Bar chart: total findings per framework
+        fig = px.bar(
+            pivot,
+            x="FRAMEWORK_SLUG",
+            y=sev_cols,
+            title="Findings by Framework and Severity",
+            color_discrete_map={
+                "critical": "#dc2626",
+                "high": "#f97316",
+                "medium": "#eab308",
+                "low": "#3b82f6",
+            },
+            labels={"value": "Findings", "FRAMEWORK_SLUG": "Framework"},
+        )
+        fig.update_layout(height=400, xaxis_tickangle=-30)
+        st.plotly_chart(fig, use_container_width=True)
+
+        if st.button("Re-classify findings now"):
+            with st.spinner("Running core.apply_compliance_hub()…"):
+                _conn.query("CALL core.apply_compliance_hub('default')")
+            st.cache_data.clear()
+            st.success("Re-classification complete. Refresh to see updated posture.")
     else:
-        st.info("No compliance data in the selected scan. Run with `--compliance` flag.")
+        st.info("Compliance posture not yet computed. Run `CALL core.apply_compliance_hub('default');` or wait for the hourly task.")
 
-# ── Tab 5: Policies ──────────────────────────────────────────────────────────
+# ── Tab 5: Framework Drill-down ──────────────────────────────────────────────
+
+with tab_fw:
+    st.subheader("Framework Drill-down")
+
+    all_slugs = [
+        "owasp-llm",
+        "owasp-mcp",
+        "owasp-agentic",
+        "atlas",
+        "nist",
+        "nist-csf",
+        "nist-800-53",
+        "fedramp",
+        "eu-ai-act",
+        "iso-27001",
+        "soc2",
+        "cis",
+        "cmmc",
+        "pci-dss",
+    ]
+    selected_fw = st.selectbox("Framework", options=all_slugs, index=0)
+
+    fw_df = load_findings_by_framework(selected_fw)
+    if not fw_df.empty:
+        fw_df_display = fw_df[["FINDING_ID", "SEVERITY", "FINDING_TYPE", "ASSET_TYPE", "ASSET_NAME", "CLASSIFIED_AT"]].copy()
+        fw_df_display.columns = ["Finding ID", "Severity", "Type", "Asset Type", "Asset", "Classified At"]
+        st.dataframe(fw_df_display, use_container_width=True, hide_index=True)
+        st.caption(f"{len(fw_df)} findings classified under {selected_fw}")
+    else:
+        st.info(f"No findings classified under **{selected_fw}** yet.")
+
+# ── Tab 6: Policies ──────────────────────────────────────────────────────────
 
 with tab_policies:
     left_col, right_col = st.columns(2)

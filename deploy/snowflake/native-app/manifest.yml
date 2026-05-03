@@ -10,10 +10,22 @@ version:
 
 artifacts:
   setup_script: scripts/setup.sql
-  default_streamlit: streamlit/dashboard.py
+  default_web_endpoint:
+    service: core.agent_bom_api
+    endpoint: ui
   container_services:
     images:
       - /db/schema/agent_bom_repo/agent-bom:latest
+      - /db/schema/agent_bom_repo/agent-bom-ui:latest
+  service_roles:
+    - name: api
+      comment: >-
+        Grants USAGE on the FastAPI backend service endpoint (port 8422).
+        Assign to roles that need programmatic access to the agent-bom REST API.
+    - name: ui
+      comment: >-
+        Grants USAGE on the Next.js dashboard service endpoint (port 3000).
+        Assign to roles that need browser-based access to the agent-bom UI.
 
 privileges:
   - CREATE COMPUTE POOL:

@@ -93,7 +93,7 @@ _RULE_PATTERNS: list[tuple[str, str, str, str, str, list[str]]] = [
     (
         "DCM-004",
         "medium",
-        r"CREATE(?:\s+OR\s+REPLACE)?\s+TASK\s+\w+(?:\s+WAREHOUSE\s*=\s*[^;\s]+)?(?:[^;]*?)(?<!USER_TASK_TIMEOUT_MS\s=\s)\s*AS\s",
+        r"CREATE(?:\s+OR\s+REPLACE)?\s+TASK\s+\S+(?![^;]*USER_TASK_TIMEOUT_MS\b)[^;]*\bAS\b",
         "TASK without USER_TASK_TIMEOUT_MS cap",
         "TASK without USER_TASK_TIMEOUT_MS will run until success or kill, "
         "consuming credits unbounded on stuck procedures. Set "

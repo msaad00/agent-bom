@@ -6,7 +6,7 @@ description: >-
   giving agent-bom long-lived GCP credentials. Use when a user asks to
   inventory Vertex AI, Cloud Run, Cloud Functions, GKE, or agentic GCP
   infrastructure as canonical inventory.
-version: 0.85.0
+version: 0.86.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+, agent-bom installed from this repository or PyPI, and

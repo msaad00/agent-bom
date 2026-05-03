@@ -6,7 +6,7 @@ description: >-
   agent-bom inventory JSON, and scan it without giving agent-bom long-lived
   Snowflake credentials. Use when a user asks to inventory Snowflake AI or
   Cortex infrastructure as canonical inventory.
-version: 0.85.0
+version: 0.86.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+, agent-bom installed with the snowflake extra, and

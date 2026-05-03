@@ -24,17 +24,17 @@
 
 image:
   repository: agentbom/agent-bom
-  tag: "0.85.0"
+  tag: "0.86.0"
   pullPolicy: IfNotPresent
 
 uiImage:
   repository: agentbom/agent-bom-ui
-  tag: "0.85.0"
+  tag: "0.86.0"
   pullPolicy: IfNotPresent
 
 runtimeImage:
   repository: agentbom/agent-bom
-  tag: "0.85.0"
+  tag: "0.86.0"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
@@ -57,7 +57,7 @@ tests:
   includeUi: true
   image:
     repository: agentbom/agent-bom
-    tag: "0.85.0"
+    tag: "0.86.0"
     pullPolicy: IfNotPresent
   resources:
     requests:

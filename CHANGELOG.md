@@ -9,19 +9,49 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+---
+
+## [0.86.0] – 2026-05-03
+
+AI-infra and supply-chain breadth release: ATLAS catalog wired through to dashboard, Snowflake Native App Phases 1–3 with DCM as a first-class IaC type, GPU cloud + driver/firmware coverage (AMD/Intel/NVIDIA, Lambda Labs / RunPod / Vast.ai / Crusoe / Nebius), Compliance Hub closed end-to-end (#1044), plus two new content scanners (SPDX licenses, dataset PII/PHI).
+
 ### Added
-- **Compliance Hub series** — `compliance_hub.py` engine plus four ingestion adapters (SARIF / CycloneDX / CSV / JSON) and four hub API endpoints (`POST /v1/compliance/ingest`, `GET /v1/compliance/hub/findings`, `GET /v1/compliance/hub/posture`, `DELETE /v1/compliance/hub/findings`) so external scanner output lands in the same per-tenant posture surface as native scans. Closes #1044 (#2200, #2201, #2202, #2203, #2204).
+- **Compliance Hub series** — `compliance_hub.py` engine plus four ingestion adapters (SARIF / CycloneDX / CSV / JSON) and four hub API endpoints (`POST /v1/compliance/ingest`, `GET /v1/compliance/hub/findings`, `GET /v1/compliance/hub/posture`, `DELETE /v1/compliance/hub/findings`) so external scanner output lands in the same per-tenant posture surface as native scans. Closes #1044 (#2200, #2201, #2203, #2204).
 - **Durable Compliance Hub backends** — SQLite and Postgres stores back the hub with tenant-scoped persistence and reserved-namespace tenant validation, replacing the in-memory placeholder (#2205).
+- **MITRE ATLAS catalog refresh** — `atlas_fetch.py` pulls from `mitre-atlas/atlas-data` so the catalog stays current; CI guards against drift (#2215).
+- **IaC → ATLAS mapping for AI infra** — Terraform / Helm / K8s findings annotate the matching ATLAS technique IDs so dashboards can pivot from infra control gaps to adversary technique coverage (#2216).
+- **ATLAS coverage tile on dashboard** — new tile surfaces per-technique coverage from active scans (#2217).
+- **Snowflake Native App Phase 1** — manifest, customer-approved access policy, DCM module, and tenancy boundary (#2210, #2220).
+- **Snowflake Native App Phase 2** — Snowpark stored procedure that materialises Compliance Hub posture inside the customer's Snowflake account; results never leave tenant boundary (#2226).
+- **Snowflake Native App Phase 3** — SPCS-hosted Next.js UI with service-role binding so customers run the full agent-bom dashboard inside Snowpark Container Services (#2227).
+- **Snowflake DCM as first-class IaC type** — DCM scripts get a dedicated parser and finding namespace alongside Terraform/Helm/K8s/CFN/Pulumi (#2218, #2222).
+- **DCM fullstack wiring + IAM-to-agent graph edges** — DCM resources flow through the scan pipeline into the graph; IAM principals get a `MANAGES` edge to derived agents (#2233).
+- **IaC scanner context — two-gate dispatch, capability verdicts, deployment-aware** — scanners now carry deployment context so the verdict reflects "what this manifest actually deploys" rather than syntactic posture (#2223).
+- **AMD advisory scanner** — AMD PSIRT advisory ingestion + GPU driver CVE mapping + K8s GPU compound rules (#2224).
+- **AMD PSIRT live-feed fetcher** — keeps AMD advisory data fresh; falls back to a checked-in static seed if the upstream feed is unreachable (#2230).
+- **AMD/Intel driver CVE gates + Intel advisory feed + K8S-036** — per-node driver checks for both vendors plus a K8s rule (`K8S-036`) for `nvidia-device-plugin` RBAC scope (#2232).
+- **GPU cloud provider discovery** — Lambda Labs, RunPod, Vast.ai, and Crusoe added to the cloud catalog; agents emerge with `cloud_origin.provider` set to the right vendor (#2229).
+- **Nebius InfiniBand training job discovery** — Nebius training jobs and their InfiniBand fabric scope are discovered as agents (#2231).
+- **SPDX license file scanner** — detects `LICENSE` / `COPYING` files and SPDX source-header markers across the inventory; results feed the existing license posture surface (#2234).
+- **Dataset PII/PHI content scanner** — CSV / JSON / JSONL content scanner that flags datasets containing PII/PHI columns or values (#2235).
+- **Identity and naming contract hardening** — locks the platform identity / canonical-name vocabulary so downstream surfaces stop drifting (#2207).
 - **`summary.unique_packages` field on JSON output** — disambiguates occurrence count from the deduplicated package count so dashboards stop double-counting transitive duplicates (#2199).
 - **`summary.total_packages` semantics clarified** — documented as occurrence-shaped to match the existing wire format and pair with `unique_packages` (#2199).
 
 ### Fixed
-- **Dashboard splash kind classification on `/compliance` and `/vulns`** — auth and forbidden errors now render distinct copy instead of the generic "Cannot connect" splash (#2199).
 - **`--self-scan` walks the active venv** — `_build_self_scan_inventory` now uses `importlib.metadata.distributions()` so transitive deps appear in the inventory (#2197).
+- **Dashboard splash kind classification on `/compliance` and `/vulns`** — auth and forbidden errors now render distinct copy instead of the generic "Cannot connect" splash (#2199).
+- **v0.85.0 multi-persona audit P1 items** — close-out doc fixes for the persona-targeted README/docs surfaces flagged in the v0.85.0 review (#2208).
+- **Compliance Hub posture aggregates all 14 frameworks** — posture endpoint no longer truncates at the first frameworks; CHANGELOG synced in the same PR to match shipped behaviour (#2221).
+- **Docker Hub short description trimmed to 100-char API limit** — release publish step no longer 422s on the description sync (#2225).
 
 ### Documentation
 - **`--self-scan` flag reference** added to the CLI docs (#2202).
 - **Compliance SVG framework alignment** with `COMPLIANCE_FRAMEWORKS` so the diagram and code list never drift (#2206).
+- **Policy-precedence + runtime-reference consolidation** — single source of truth for how runtime gating, firewall, and proxy policies interact (#2209).
+
+### CI
+- **DCM scanner self-check** — meta-recursive job runs the DCM scanner against the agent-bom-shipped DCM manifests on every PR (#2228).
 
 ---
 
@@ -1075,7 +1105,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.85.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.86.0...HEAD
+[0.86.0]: https://github.com/msaad00/agent-bom/compare/v0.85.0...v0.86.0
 [0.85.0]: https://github.com/msaad00/agent-bom/compare/v0.84.6...v0.85.0
 [0.84.6]: https://github.com/msaad00/agent-bom/compare/v0.84.5...v0.84.6
 [0.84.5]: https://github.com/msaad00/agent-bom/compare/v0.84.4...v0.84.5

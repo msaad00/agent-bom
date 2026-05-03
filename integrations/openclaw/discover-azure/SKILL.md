@@ -6,7 +6,7 @@ description: >-
   giving agent-bom long-lived Azure credentials. Use when a user asks to
   inventory Azure OpenAI, Container Apps, AKS, Functions, ML, or agentic Azure
   infrastructure as canonical inventory.
-version: 0.85.0
+version: 0.86.0
 license: Apache-2.0
 compatibility: >-
   Requires Python 3.11+, agent-bom installed from this repository or PyPI, and

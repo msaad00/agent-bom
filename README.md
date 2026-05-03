@@ -381,7 +381,7 @@ for the full split-vs-single-image guidance.
 |------|----------|
 | CLI (`agent-bom agents`) | local audit + project scan |
 | Endpoint fleet (`--push-url …/v1/fleet/sync`) | employee laptops pushing into self-hosted fleet |
-| GitHub Action (`uses: msaad00/agent-bom@v0.85.0`) | CI/CD + SARIF |
+| GitHub Action (`uses: msaad00/agent-bom@v0.86.0`) | CI/CD + SARIF |
 | Docker (`agentbom/agent-bom`) | isolated scans, API jobs, and non-browser self-hosted entrypoints |
 | Browser UI image (`agentbom/agent-bom-ui`) | the dashboard image paired with the same self-hosted control plane |
 | Kubernetes / Helm (`helm install agent-bom deploy/helm/agent-bom`) | self-hosted API + dashboard, scheduled discovery |
@@ -410,7 +410,7 @@ References: [PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) · [PRODUCT_METRICS.md](do
 <summary><b>CI/CD in 60 seconds</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.85.0
+- uses: msaad00/agent-bom@v0.86.0
   with:
     scan-type: scan
     severity-threshold: high

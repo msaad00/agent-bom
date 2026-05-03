@@ -132,6 +132,9 @@ def scan_iac_directory(root: str | Path) -> list[IaCFinding]:
             findings.extend(scan_dockerfile(path))
         elif path.suffix == ".tf":
             findings.extend(scan_terraform_security(path))
+            from agent_bom.iac.terraform_ai import scan_terraform_ai
+
+            findings.extend(scan_terraform_ai(path))
         elif _is_k8s_manifest(path):
             # K8s check before CloudFormation — both match .yaml/.yml but
             # K8s markers (apiVersion + kind) are more specific than "Resources:"
@@ -140,11 +143,14 @@ def scan_iac_directory(root: str | Path) -> list[IaCFinding]:
             findings.extend(scan_cloudformation(path))
 
     # Enrich with MITRE ATT&CK technique IDs
+    from agent_bom.iac.atlas_mapping import get_atlas_techniques
     from agent_bom.iac.attack_mapping import get_attack_techniques
 
     for finding in findings:
         if not finding.attack_techniques:
             finding.attack_techniques = get_attack_techniques(finding.rule_id)
+        if not finding.atlas_techniques:
+            finding.atlas_techniques = get_atlas_techniques(finding.rule_id, message=finding.message)
 
     # Sort: critical first, then by file path
     findings.sort(key=lambda f: (severity_order.get(f.severity, 9), f.file_path, f.line_number))

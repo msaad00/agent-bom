@@ -950,6 +950,46 @@ async def scan_packages(
             console.print(f"  [yellow]⚠[/yellow] NVIDIA advisory check skipped: {exc}")
             record_scan_warning("NVIDIA advisory enrichment skipped")
 
+    # Supplemental: check AMD PSIRT advisories for ROCm / HIP packages.
+    amd_packages = [
+        p
+        for p in scannable
+        if any(
+            p.name.lower().replace("-", "_").startswith(prefix)
+            for prefix in (
+                "rocm",
+                "hip_",
+                "hipcc",
+                "hip_base",
+                "miopen",
+                "rocblas",
+                "rocsolver",
+                "rccl",
+                "rocprim",
+                "rocthrust",
+                "rocrand",
+                "rocfft",
+                "hipsparse",
+                "hipblas",
+                "composablekernel",
+                "tensorflow_rocm",
+                "jax_rocm",
+            )
+        )
+    ]
+    if amd_packages:
+        try:
+            from agent_bom.scanners.amd_advisory import check_amd_advisories
+
+            amd_new = check_amd_advisories(amd_packages)
+            if amd_new:
+                total_vulns += amd_new
+                console.print(f"  [green]✓[/green] AMD advisories: {amd_new} additional CVE(s)")
+        except Exception as exc:
+            _logger.warning("AMD advisory check failed for %d package(s): %s", len(amd_packages), exc)
+            console.print(f"  [yellow]⚠[/yellow] AMD advisory check skipped: {exc}")
+            record_scan_warning("AMD advisory enrichment skipped")
+
     # Supplemental: check GitHub Security Advisories for all packages
     if scannable and not scan_offline:
         try:

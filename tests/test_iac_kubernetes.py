@@ -1206,3 +1206,222 @@ spec:
         for f in findings:
             assert len(f.compliance) > 0, f"Finding {f.rule_id} has no compliance tags"
             assert f.category == "kubernetes"
+
+
+class TestK8sGpuPrivilegeEscape:
+    """K8S-034: GPU container with privileged mode or allowPrivilegeEscalation."""
+
+    def test_gpu_privileged_flagged(self, tmp_k8s):
+        content = """\
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-workload
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  containers:
+    - name: trainer
+      image: nvcr.io/nvidia/pytorch:23.10-py3
+      securityContext:
+        privileged: true
+        readOnlyRootFilesystem: false
+      resources:
+        limits:
+          nvidia.com/gpu: "1"
+          cpu: "4"
+          memory: "16Gi"
+"""
+        findings = scan_k8s_manifest(tmp_k8s(content))
+        k8s034 = [f for f in findings if f.rule_id == "K8S-034"]
+        assert len(k8s034) == 1
+        assert k8s034[0].severity == "critical"
+        assert "T1611" in k8s034[0].attack_techniques
+
+    def test_gpu_allow_privilege_escalation_flagged(self, tmp_k8s):
+        content = """\
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-workload
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  containers:
+    - name: trainer
+      image: nvcr.io/nvidia/cuda:12.3
+      securityContext:
+        allowPrivilegeEscalation: true
+        readOnlyRootFilesystem: false
+      resources:
+        limits:
+          nvidia.com/gpu: "2"
+"""
+        findings = scan_k8s_manifest(tmp_k8s(content))
+        k8s034 = [f for f in findings if f.rule_id == "K8S-034"]
+        assert len(k8s034) == 1
+        assert k8s034[0].severity == "critical"
+
+    def test_gpu_without_privilege_not_flagged(self, tmp_k8s):
+        content = """\
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-workload
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  containers:
+    - name: trainer
+      image: nvcr.io/nvidia/cuda:12.3
+      securityContext:
+        privileged: false
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+      resources:
+        limits:
+          nvidia.com/gpu: "1"
+          cpu: "4"
+          memory: "16Gi"
+"""
+        findings = scan_k8s_manifest(tmp_k8s(content))
+        k8s034 = [f for f in findings if f.rule_id == "K8S-034"]
+        assert len(k8s034) == 0
+
+    def test_non_gpu_privileged_does_not_trigger_k8s034(self, tmp_k8s):
+        content = """\
+apiVersion: v1
+kind: Pod
+metadata:
+  name: priv-app
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  containers:
+    - name: app
+      image: myapp:1.0
+      securityContext:
+        privileged: true
+      resources:
+        limits:
+          cpu: "1"
+          memory: "512Mi"
+"""
+        findings = scan_k8s_manifest(tmp_k8s(content))
+        k8s034 = [f for f in findings if f.rule_id == "K8S-034"]
+        assert len(k8s034) == 0
+
+    def test_amd_gpu_privileged_flagged(self, tmp_k8s):
+        content = """\
+apiVersion: v1
+kind: Pod
+metadata:
+  name: amd-gpu-workload
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  containers:
+    - name: rocm-trainer
+      image: rocm/pytorch:latest
+      securityContext:
+        privileged: true
+        readOnlyRootFilesystem: false
+      resources:
+        limits:
+          amd.com/gpu: "1"
+"""
+        findings = scan_k8s_manifest(tmp_k8s(content))
+        k8s034 = [f for f in findings if f.rule_id == "K8S-034"]
+        assert len(k8s034) == 1
+        assert k8s034[0].severity == "critical"
+
+
+class TestK8sNvidiaDeviceExposure:
+    """K8S-035: hostPath volume mounting /dev/nvidia or /proc/driver/nvidia."""
+
+    def test_dev_nvidia_flagged(self, tmp_k8s):
+        content = """\
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-direct
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  containers:
+    - name: app
+      image: nvcr.io/nvidia/cuda:12.3
+      securityContext:
+        readOnlyRootFilesystem: true
+      resources:
+        limits:
+          cpu: "1"
+          memory: "1Gi"
+      volumeMounts:
+        - name: nvidia-dev
+          mountPath: /dev/nvidia0
+  volumes:
+    - name: nvidia-dev
+      hostPath:
+        path: /dev/nvidia0
+"""
+        findings = scan_k8s_manifest(tmp_k8s(content))
+        k8s035 = [f for f in findings if f.rule_id == "K8S-035"]
+        assert len(k8s035) == 1
+        assert k8s035[0].severity == "critical"
+        assert "T1611" in k8s035[0].attack_techniques
+
+    def test_proc_driver_nvidia_flagged(self, tmp_k8s):
+        content = """\
+apiVersion: v1
+kind: Pod
+metadata:
+  name: gpu-direct
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  containers:
+    - name: app
+      image: nvcr.io/nvidia/cuda:12.3
+      securityContext:
+        readOnlyRootFilesystem: true
+      resources:
+        limits:
+          cpu: "1"
+          memory: "1Gi"
+  volumes:
+    - name: nv-proc
+      hostPath:
+        path: /proc/driver/nvidia
+"""
+        findings = scan_k8s_manifest(tmp_k8s(content))
+        k8s035 = [f for f in findings if f.rule_id == "K8S-035"]
+        assert len(k8s035) == 1
+        assert k8s035[0].severity == "critical"
+
+    def test_non_nvidia_hostpath_not_flagged_by_035(self, tmp_k8s):
+        content = """\
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app
+  namespace: prod
+spec:
+  automountServiceAccountToken: false
+  containers:
+    - name: app
+      image: myapp:1.0
+      securityContext:
+        readOnlyRootFilesystem: true
+      resources:
+        limits:
+          cpu: "1"
+          memory: "1Gi"
+  volumes:
+    - name: data
+      hostPath:
+        path: /var/data
+"""
+        findings = scan_k8s_manifest(tmp_k8s(content))
+        k8s035 = [f for f in findings if f.rule_id == "K8S-035"]
+        assert len(k8s035) == 0

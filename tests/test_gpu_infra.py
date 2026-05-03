@@ -1196,3 +1196,216 @@ def test_discover_k8s_gpu_nodes_queries_amd_driver_when_labels_missing():
     assert len(nodes) == 1
     mock_query.assert_called_once_with("amd-node", None)
     assert nodes[0].cuda_driver_version == "5.7.0"
+
+
+# ─── Intel driver CVE gate ────────────────────────────────────────────────────
+
+from agent_bom.cloud.gpu_infra import (  # noqa: E402
+    _query_intel_driver_version,
+    check_intel_driver_cves,
+)
+
+
+def test_check_intel_driver_cves_vulnerable():
+    node = GpuNode(name="intel-node-1", gpu_vendor="intel", gpu_capacity=2, gpu_allocatable=2, gpu_allocated=0, cuda_driver_version="6.1")
+    findings = check_intel_driver_cves(node)
+    assert len(findings) == 2
+    cve_ids = {f["cve_id"] for f in findings}
+    assert "CVE-2023-22655" in cve_ids
+    assert "CVE-2023-25546" in cve_ids
+    for f in findings:
+        assert f["severity"] == "high"
+        assert f["node"] == "intel-node-1"
+
+
+def test_check_intel_driver_cves_partially_patched():
+    """Kernel 6.2 fixes CVE-2023-25546 but not CVE-2023-22655 (needs 6.3)."""
+    node = GpuNode(name="intel-node-2", gpu_vendor="intel", gpu_capacity=2, gpu_allocatable=2, gpu_allocated=0, cuda_driver_version="6.2")
+    findings = check_intel_driver_cves(node)
+    cve_ids = {f["cve_id"] for f in findings}
+    assert "CVE-2023-22655" in cve_ids
+    assert "CVE-2023-25546" not in cve_ids
+
+
+def test_check_intel_driver_cves_fully_patched():
+    node = GpuNode(name="intel-node-3", gpu_vendor="intel", gpu_capacity=2, gpu_allocatable=2, gpu_allocated=0, cuda_driver_version="6.3")
+    findings = check_intel_driver_cves(node)
+    assert findings == []
+
+
+def test_check_intel_driver_cves_newer_kernel():
+    node = GpuNode(name="intel-node-4", gpu_vendor="intel", gpu_capacity=2, gpu_allocatable=2, gpu_allocated=0, cuda_driver_version="6.8")
+    findings = check_intel_driver_cves(node)
+    assert findings == []
+
+
+def test_check_intel_driver_cves_no_version():
+    node = GpuNode(name="intel-node-5", gpu_vendor="intel", gpu_capacity=2, gpu_allocatable=2, gpu_allocated=0, cuda_driver_version=None)
+    findings = check_intel_driver_cves(node)
+    assert findings == []
+
+
+def test_query_intel_driver_version_no_kubectl():
+    with patch("shutil.which", return_value=None):
+        result = _query_intel_driver_version("intel-node", None)
+    assert result is None
+
+
+def test_query_intel_driver_version_i915():
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = "6.2\n"
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/kubectl"),
+        patch("subprocess.run", return_value=mock_result),
+    ):
+        result = _query_intel_driver_version("intel-node", None)
+    assert result == "6.2"
+
+
+def test_query_intel_driver_version_failure():
+    mock_result = MagicMock()
+    mock_result.returncode = 1
+    mock_result.stdout = ""
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/kubectl"),
+        patch("subprocess.run", return_value=mock_result),
+    ):
+        result = _query_intel_driver_version("intel-node", None)
+    assert result is None
+
+
+def test_discover_k8s_gpu_nodes_queries_intel_driver_when_labels_missing():
+    """Intel nodes without labels trigger _query_intel_driver_version."""
+    node_list = {
+        "items": [
+            {
+                "metadata": {"name": "intel-node", "labels": {}},
+                "status": {
+                    "capacity": {"gpu.intel.com/i915": "2", "cpu": "32"},
+                    "allocatable": {"gpu.intel.com/i915": "2", "cpu": "32"},
+                },
+            }
+        ]
+    }
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/kubectl"),
+        patch("subprocess.run") as mock_run,
+        patch("agent_bom.cloud.gpu_infra._query_intel_driver_version", return_value="6.2") as mock_query,
+    ):
+        result = MagicMock()
+        result.returncode = 0
+        result.stdout = json.dumps(node_list)
+        mock_run.return_value = result
+
+        nodes, _ = discover_k8s_gpu_nodes()
+
+    assert len(nodes) == 1
+    mock_query.assert_called_once_with("intel-node", None)
+    assert nodes[0].cuda_driver_version == "6.2"
+
+
+# ─── scan_gpu_infra: driver + firmware wiring ────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_scan_gpu_infra_driver_findings_wired():
+    """scan_gpu_infra populates driver_findings for vulnerable NVIDIA nodes."""
+    from agent_bom.cloud.gpu_infra import GpuNode
+
+    nodes = [GpuNode(name="gpu-1", gpu_vendor="nvidia", gpu_capacity=4, gpu_allocatable=4, gpu_allocated=0, cuda_driver_version="525")]
+
+    with (
+        patch("agent_bom.cloud.gpu_infra.discover_docker_gpu_containers", return_value=([], [])),
+        patch("agent_bom.cloud.gpu_infra.discover_k8s_gpu_nodes", return_value=(nodes, [])),
+        patch("agent_bom.cloud.gpu_infra.probe_dcgm_from_containers", return_value=[]),
+        patch("agent_bom.cloud.gpu_infra.check_firmware_advisories", return_value=[]),
+    ):
+        report = await scan_gpu_infra()
+
+    assert len(report.driver_findings) == 3  # 3 NVIDIA CVEs for 525
+    assert all(f["node"] == "gpu-1" for f in report.driver_findings)
+
+
+@pytest.mark.asyncio
+async def test_scan_gpu_infra_firmware_findings_wired():
+    """scan_gpu_infra populates firmware_findings from firmware_advisory scanner."""
+    from agent_bom.cloud.gpu_infra import GpuNode
+    from agent_bom.scanners.firmware_advisory import FirmwareFinding
+
+    nodes = [
+        GpuNode(
+            name="h100-node",
+            gpu_vendor="nvidia",
+            gpu_capacity=8,
+            gpu_allocatable=8,
+            gpu_allocated=0,
+            cuda_driver_version="570",
+            labels={"nvidia.com/gpu.product": "NVIDIA-H100-SXM4-80GB"},
+        )
+    ]
+
+    fake_finding = FirmwareFinding(
+        node_name="h100-node",
+        gpu_vendor="nvidia",
+        gpu_model="H100",
+        cve_id="CVE-2023-31028",
+        title="BMC",
+        severity="critical",
+        cvss_score=9.0,
+        affected_product="DGX H100",
+        fixed_version="1.05.0",
+        reference_url="https://nvidia.custhelp.com/",
+    )
+
+    with (
+        patch("agent_bom.cloud.gpu_infra.discover_docker_gpu_containers", return_value=([], [])),
+        patch("agent_bom.cloud.gpu_infra.discover_k8s_gpu_nodes", return_value=(nodes, [])),
+        patch("agent_bom.cloud.gpu_infra.probe_dcgm_from_containers", return_value=[]),
+        patch("agent_bom.cloud.gpu_infra.check_firmware_advisories", return_value=[fake_finding]),
+    ):
+        report = await scan_gpu_infra()
+
+    assert len(report.firmware_findings) == 1
+    assert report.firmware_findings[0]["cve_id"] == "CVE-2023-31028"
+
+
+@pytest.mark.asyncio
+async def test_scan_gpu_infra_risk_summary_includes_cve_counts():
+    """risk_summary includes driver_cve_count and firmware_cve_count."""
+    with (
+        patch("agent_bom.cloud.gpu_infra.discover_docker_gpu_containers", return_value=([], [])),
+        patch("agent_bom.cloud.gpu_infra.discover_k8s_gpu_nodes", return_value=([], [])),
+        patch("agent_bom.cloud.gpu_infra.probe_dcgm_from_containers", return_value=[]),
+        patch("agent_bom.cloud.gpu_infra.check_firmware_advisories", return_value=[]),
+    ):
+        report = await scan_gpu_infra()
+
+    summary = report.risk_summary
+    assert "driver_cve_count" in summary
+    assert "firmware_cve_count" in summary
+    assert summary["driver_cve_count"] == 0
+    assert summary["firmware_cve_count"] == 0
+
+
+def test_gpu_infra_to_agents_k8s_cluster_scope_includes_cve_counts():
+    """K8s cluster agent cloud_origin scope includes driver and firmware CVE counts."""
+    nodes = [
+        GpuNode(name="node-1", gpu_vendor="nvidia", gpu_capacity=4, gpu_allocatable=4, gpu_allocated=0, cuda_driver_version="525"),
+    ]
+    report = GpuInfraReport(
+        gpu_containers=[],
+        dcgm_endpoints=[],
+        gpu_nodes=nodes,
+        warnings=[],
+        driver_findings=[{"cve_id": "CVE-2024-0090", "node": "node-1"}],
+        firmware_findings=[{"cve_id": "CVE-2023-31028", "node": "node-1"}],
+    )
+    agents = gpu_infra_to_agents(report)
+    assert len(agents) == 1
+    scope = agents[0].metadata["cloud_origin"]["scope"]
+    assert scope["driver_cve_count"] == 1
+    assert scope["firmware_cve_count"] == 1

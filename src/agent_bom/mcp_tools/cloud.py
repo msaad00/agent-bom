@@ -69,6 +69,7 @@ async def gpu_infra_scan_impl(
             "k8s_gpu_nodes": [
                 {
                     "name": n.name,
+                    "gpu_vendor": n.gpu_vendor,
                     "gpu_capacity": n.gpu_capacity,
                     "gpu_allocatable": n.gpu_allocatable,
                     "gpu_allocated": n.gpu_allocated,
@@ -87,6 +88,8 @@ async def gpu_infra_scan_impl(
                 }
                 for ep in report.dcgm_endpoints
             ],
+            "driver_findings": report.driver_findings,
+            "firmware_findings": report.firmware_findings,
             "warnings": report.warnings,
         }
         return _truncate_response(json.dumps(result, indent=2, default=str))

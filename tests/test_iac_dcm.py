@@ -193,3 +193,72 @@ def test_scan_iac_directory_does_not_treat_dcm_as_kubernetes(tmp_path):
     # — the absence of a wrong-category classification is the assertion.
     for f_ in findings:
         assert f_.category == "dcm" or f_.category != "kubernetes", f"DCM file misclassified as {f_.category}: {f_.rule_id}"
+
+
+# ─── IaCResourceType wiring ───────────────────────────────────────────────────
+
+from agent_bom.iac.models import IaCResourceType  # noqa: E402
+
+
+def test_dcm_findings_carry_resource_type(tmp_path):
+    """Every DCM finding must carry an IaCResourceType value so graph/compliance wiring works."""
+    dcm_dir = tmp_path / "dcm"
+    dcm_dir.mkdir()
+    # DCM-001 → DCM_GRANT; DCM-002 → DCM_NETWORK_POLICY; DCM-004 → DCM_TASK; DCM-005 → DCM_SERVICE
+    sql = (
+        "GRANT MANAGE GRANTS ON ACCOUNT TO ROLE x;\n"
+        "CREATE NETWORK POLICY p ALLOWED_IP_LIST=('0.0.0.0/0');\n"
+        "CREATE TASK t AS BEGIN RETURN 1; END;\n"
+        "CREATE SERVICE s IN COMPUTE POOL c AS spec='...';\n"
+    )
+    (dcm_dir / "V001__setup.sql").write_text(sql, encoding="utf-8")
+    findings = scan_iac_directory(tmp_path)
+    dcm = [f for f in findings if f.category == "dcm"]
+    assert dcm, "Expected DCM findings"
+    for f in dcm:
+        assert f.resource_type is not None, f"{f.rule_id} missing resource_type"
+        assert isinstance(f.resource_type, IaCResourceType)
+
+
+def test_dcm_grant_rules_have_dcm_grant_type(tmp_path):
+    """DCM-001/003/006/007/008 are all GRANT-class — resource_type must be DCM_GRANT."""
+    dcm_dir = tmp_path / "dcm"
+    dcm_dir.mkdir()
+    (dcm_dir / "V001__grants.sql").write_text(
+        "GRANT MANAGE GRANTS ON ACCOUNT TO ROLE x;\n",
+        encoding="utf-8",
+    )
+    findings = scan_iac_directory(tmp_path)
+    dcm001 = [f for f in findings if f.rule_id == "DCM-001"]
+    assert dcm001, "DCM-001 not triggered"
+    assert dcm001[0].resource_type == IaCResourceType.DCM_GRANT
+
+
+def test_dcm_attack_techniques_populated(tmp_path):
+    """DCM findings must have ATT&CK techniques enriched via attack_mapping."""
+    dcm_dir = tmp_path / "dcm"
+    dcm_dir.mkdir()
+    (dcm_dir / "V001__priv.sql").write_text(
+        "GRANT MANAGE GRANTS ON ACCOUNT TO ROLE x;\n",
+        encoding="utf-8",
+    )
+    findings = scan_iac_directory(tmp_path)
+    dcm001 = [f for f in findings if f.rule_id == "DCM-001"]
+    assert dcm001
+    assert dcm001[0].attack_techniques, "DCM-001 missing ATT&CK techniques"
+    assert "T1098" in dcm001[0].attack_techniques
+
+
+def test_dcm_atlas_techniques_populated(tmp_path):
+    """DCM-001 and DCM-005/006/008 must have ATLAS techniques (AI-data relevance)."""
+    dcm_dir = tmp_path / "dcm"
+    dcm_dir.mkdir()
+    (dcm_dir / "V001__priv.sql").write_text(
+        "GRANT MANAGE GRANTS ON ACCOUNT TO ROLE x;\n",
+        encoding="utf-8",
+    )
+    findings = scan_iac_directory(tmp_path)
+    dcm001 = [f for f in findings if f.rule_id == "DCM-001"]
+    assert dcm001
+    assert dcm001[0].atlas_techniques, "DCM-001 missing ATLAS techniques"
+    assert "AML.T0007" in dcm001[0].atlas_techniques

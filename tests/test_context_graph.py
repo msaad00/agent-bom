@@ -555,3 +555,61 @@ class TestAPIContextGraph:
         # Lateral paths should only originate from a1
         for p in data["lateral_paths"]:
             assert p["source"] == "agent:a1"
+
+
+# ─── IAM role → agent edges (#980) ───────────────────────────────────────────
+
+
+class TestIamRoleAgentEdges:
+    """IAM_ROLE nodes and ATTACHED_TO edges from cloud_principal metadata."""
+
+    def _agent_with_principal(self, name: str, principal_id: str, principal_type: str = "role") -> dict:
+        return {
+            "name": name,
+            "type": "cloud",
+            "status": "active",
+            "mcp_servers": [],
+            "metadata": {
+                "cloud_principal": {
+                    "principal_id": principal_id,
+                    "principal_name": principal_id,
+                    "principal_type": principal_type,
+                    "provider": "aws",
+                    "service": "lambda",
+                }
+            },
+        }
+
+    def test_iam_role_node_created(self):
+        agent = self._agent_with_principal("fn1", "arn:aws:iam::123:role/MyRole")
+        graph = build_context_graph([agent], [])
+        role_id = "iam_role:arn:aws:iam::123:role/MyRole"
+        assert role_id in graph.nodes
+        assert graph.nodes[role_id].kind.value == "iam_role"
+
+    def test_attached_to_edge_created(self):
+        agent = self._agent_with_principal("fn1", "arn:aws:iam::123:role/MyRole")
+        graph = build_context_graph([agent], [])
+        role_id = "iam_role:arn:aws:iam::123:role/MyRole"
+        agent_id = "agent:fn1"
+        attached = [e for e in graph.edges if e.source == role_id and e.target == agent_id]
+        assert attached, "Expected ATTACHED_TO edge from IAM role to agent"
+        assert attached[0].kind.value == "attached_to"
+
+    def test_no_principal_no_iam_node(self):
+        agent = {"name": "plain", "type": "mcp", "status": "active", "mcp_servers": [], "metadata": {}}
+        graph = build_context_graph([agent], [])
+        iam_nodes = [n for n in graph.nodes.values() if n.kind.value == "iam_role"]
+        assert iam_nodes == []
+
+    def test_shared_role_single_node(self):
+        """Two agents with the same IAM role share one IAM_ROLE node."""
+        role_arn = "arn:aws:iam::123:role/SharedRole"
+        a1 = self._agent_with_principal("fn1", role_arn)
+        a2 = self._agent_with_principal("fn2", role_arn)
+        graph = build_context_graph([a1, a2], [])
+        iam_nodes = [n for n in graph.nodes.values() if n.kind.value == "iam_role"]
+        assert len(iam_nodes) == 1
+        # Both agents have an ATTACHED_TO edge from the shared role
+        attached = [e for e in graph.edges if e.kind.value == "attached_to"]
+        assert len(attached) == 2

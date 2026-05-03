@@ -3,6 +3,34 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from enum import Enum
+
+
+class IaCResourceType(str, Enum):
+    """First-class IaC resource types surfaced by agent-bom scanners."""
+
+    # Terraform
+    TF_RESOURCE = "tf_resource"
+    # Kubernetes
+    K8S_POD = "k8s_pod"
+    K8S_DEPLOYMENT = "k8s_deployment"
+    K8S_SERVICE = "k8s_service"
+    K8S_ROLE = "k8s_role"
+    K8S_CLUSTER_ROLE = "k8s_cluster_role"
+    K8S_NETWORK_POLICY = "k8s_network_policy"
+    # Dockerfile
+    DOCKERFILE = "dockerfile"
+    # CloudFormation
+    CFN_RESOURCE = "cfn_resource"
+    # Helm
+    HELM_RESOURCE = "helm_resource"
+    # Snowflake DCM (Database Change Management)
+    DCM_ROLE = "dcm_role"
+    DCM_NETWORK_POLICY = "dcm_network_policy"
+    DCM_TABLE = "dcm_table"
+    DCM_GRANT = "dcm_grant"
+    DCM_TASK = "dcm_task"
+    DCM_SERVICE = "dcm_service"
 
 
 @dataclass
@@ -15,11 +43,12 @@ class IaCFinding:
     message: str  # Detailed explanation with fix guidance
     file_path: str  # Relative path to the file
     line_number: int  # Line where the issue was found
-    category: str  # "dockerfile", "kubernetes", "terraform"
+    category: str  # "dockerfile", "kubernetes", "terraform", "dcm"
     compliance: list[str] = field(default_factory=list)  # e.g. ["CIS-5.1", "NIST-CM-6"]
     attack_techniques: list[str] = field(default_factory=list)  # MITRE ATT&CK IDs, e.g. ["T1552.001"]
     atlas_techniques: list[str] = field(default_factory=list)  # MITRE ATLAS IDs, e.g. ["AML.T0010"]
     remediation: str = ""  # Fix guidance
+    resource_type: IaCResourceType | None = None  # Structured resource type for graph/compliance wiring
 
 
 @dataclass

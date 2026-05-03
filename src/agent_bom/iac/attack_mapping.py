@@ -116,6 +116,15 @@ IAC_ATTACK_MAP: dict[str, list[str]] = {
     "HELM-005": ["T1552.001"],  # Secrets in values
     "HELM-006": ["T1562.001"],  # No health checks
     "HELM-007": ["T1190"],  # Service exposed without policy
+    # ── Snowflake DCM ───────────────────────────────────────────────────────
+    "DCM-001": ["T1098", "T1078.004"],  # MANAGE GRANTS → Account Manipulation + Cloud Accounts
+    "DCM-002": ["T1190"],  # NETWORK POLICY 0.0.0.0/0 → Exploit Public-Facing Application
+    "DCM-003": ["T1098", "T1078"],  # GRANT ALL → Account Manipulation + Valid Accounts
+    "DCM-004": ["T1496"],  # TASK without timeout → Resource Hijacking (unbounded credit burn)
+    "DCM-005": ["T1190", "T1133"],  # SERVICE without policy → Public App + External Remote Services
+    "DCM-006": ["T1078.004", "T1098"],  # GRANT ACCOUNTADMIN/SECURITYADMIN → Cloud Accounts + Account Manip.
+    "DCM-007": ["T1078", "T1530"],  # USAGE on DATABASE → Valid Accounts + Data from Cloud Storage
+    "DCM-008": ["T1078", "T1530"],  # Privilege to PUBLIC → Valid Accounts + Data from Cloud Storage
 }
 
 

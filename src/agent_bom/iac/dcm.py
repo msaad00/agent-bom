@@ -32,7 +32,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from agent_bom.iac.models import IaCFinding
+from agent_bom.iac.models import IaCFinding, IaCResourceType
 
 # ─── DCM project shape detection ─────────────────────────────────────────────
 
@@ -143,6 +143,17 @@ _RULE_PATTERNS: list[tuple[str, str, str, str, str, list[str]]] = [
     ),
 ]
 
+_RULE_RESOURCE_TYPE: dict[str, IaCResourceType] = {
+    "DCM-001": IaCResourceType.DCM_GRANT,
+    "DCM-002": IaCResourceType.DCM_NETWORK_POLICY,
+    "DCM-003": IaCResourceType.DCM_GRANT,
+    "DCM-004": IaCResourceType.DCM_TASK,
+    "DCM-005": IaCResourceType.DCM_SERVICE,
+    "DCM-006": IaCResourceType.DCM_GRANT,
+    "DCM-007": IaCResourceType.DCM_GRANT,
+    "DCM-008": IaCResourceType.DCM_GRANT,
+}
+
 _REMEDIATION_BY_RULE: dict[str, str] = {
     "DCM-001": "Drop MANAGE GRANTS; use SECURITYADMIN or ROLE-OWNERSHIP.",
     "DCM-002": "Replace 0.0.0.0/0 with VPN / bastion CIDRs in ALLOWED_IP_LIST.",
@@ -198,6 +209,7 @@ def scan_dcm_migration(path: Path) -> list[IaCFinding]:
                     category="dcm",
                     compliance=list(compliance),
                     remediation=_REMEDIATION_BY_RULE.get(rule_id, ""),
+                    resource_type=_RULE_RESOURCE_TYPE.get(rule_id),
                 )
             )
 

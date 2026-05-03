@@ -60,6 +60,7 @@ class NodeKind(str, Enum):
     CREDENTIAL = "credential"
     TOOL = "tool"
     VULNERABILITY = "vulnerability"
+    IAM_ROLE = "iam_role"  # Cloud IAM role / workload identity attached to an agent
 
 
 class EdgeKind(str, Enum):
@@ -69,6 +70,7 @@ class EdgeKind(str, Enum):
     VULNERABLE_TO = "vulnerable_to"  # server → vulnerability
     SHARES_SERVER = "shares_server"  # agent ↔ agent
     SHARES_CREDENTIAL = "shares_credential"  # agent ↔ agent
+    ATTACHED_TO = "attached_to"  # iam_role → agent (workload identity correlation)
 
 
 # ── Data structures (backward-compat) ────────────────────────────────────
@@ -187,6 +189,36 @@ def build_context_graph(
                 },
             )
         )
+
+        # Wire IAM role / cloud principal → agent edge when cloud providers
+        # have recorded workload identity in agent metadata.
+        cloud_principal = (agent_dict.get("metadata") or {}).get("cloud_principal")
+        if cloud_principal and isinstance(cloud_principal, dict):
+            principal_id = cloud_principal.get("principal_id") or cloud_principal.get("principal_name", "")
+            if principal_id:
+                role_id = f"iam_role:{principal_id}"
+                if role_id not in graph.nodes:
+                    graph.add_node(
+                        GraphNode(
+                            id=role_id,
+                            kind=NodeKind.IAM_ROLE,
+                            label=principal_id,
+                            metadata={
+                                "principal_type": cloud_principal.get("principal_type", ""),
+                                "provider": cloud_principal.get("provider", ""),
+                                "service": cloud_principal.get("service", ""),
+                            },
+                        )
+                    )
+                graph.add_edge(
+                    GraphEdge(
+                        source=role_id,
+                        target=agent_id,
+                        kind=EdgeKind.ATTACHED_TO,
+                        weight=2.0,
+                        metadata={"principal_type": cloud_principal.get("principal_type", "")},
+                    )
+                )
 
         for srv_dict in agent_dict.get("mcp_servers", []):
             srv_name = srv_dict.get("name", "unknown")

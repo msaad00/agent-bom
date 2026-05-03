@@ -159,9 +159,36 @@ jobs:
             exit 1
           fi
 
+  atlas-catalog-freshness-gate:
+    name: MITRE ATLAS catalog freshness gate
+    needs: version-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-python
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Verify bundled MITRE ATLAS catalog freshness
+        run: |
+          set -euo pipefail
+          if ! uv run agent-bom db framework-status --framework atlas --stale-after-days 180 --fail-on-stale --format json; then
+            echo "::error::Bundled MITRE ATLAS catalog is stale, empty, or missing. Refresh in a pre-release PR via 'uv run agent-bom db update-frameworks --framework atlas', review src/agent_bom/data/mitre_atlas_catalog.json, then retag the release."
+            exit 1
+          fi
+
   build:
     name: Build distribution
-    needs: [version-guard, mcp-registry-freshness-gate]
+    needs: [version-guard, mcp-registry-freshness-gate, atlas-catalog-freshness-gate]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

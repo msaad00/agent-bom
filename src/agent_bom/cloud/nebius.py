@@ -1,4 +1,4 @@
-"""Nebius cloud discovery — GPU cloud AI workloads, AI Studio, and compute instances.
+"""Nebius cloud discovery — GPU cloud AI workloads, AI Studio, compute instances, and InfiniBand training.
 
 Requires ``requests``.  Install with::
 
@@ -83,7 +83,7 @@ def discover(
     """Discover AI workloads from Nebius GPU cloud.
 
     Discovers AI Studio inference endpoints, GPU compute instances,
-    Managed K8s GPU pods, and container services.
+    Managed K8s GPU pods, container services, and InfiniBand training jobs.
 
     Returns:
         (agents, warnings) — discovered agents and non-fatal warnings.
@@ -141,6 +141,14 @@ def discover(
         warnings.extend(cs_warns)
     except Exception as exc:
         warnings.append(f"Nebius container service discovery error: {exc}")
+
+    # ── InfiniBand training jobs ──────────────────────────────────────────
+    try:
+        ib_agents, ib_warns = _discover_infiniband_jobs(resolved_key, resolved_project)
+        agents.extend(ib_agents)
+        warnings.extend(ib_warns)
+    except Exception as exc:
+        warnings.append(f"Nebius InfiniBand discovery error: {exc}")
 
     # Per-run discovery envelope (#2083 PR B).
     scope: list[str] = []
@@ -531,5 +539,124 @@ def _discover_container_services(
 
     except Exception as exc:
         warnings.append(f"Could not list Nebius container services: {exc}")
+
+    return agents, warnings
+
+
+# ── InfiniBand Training Jobs ──────────────────────────────────────────────
+
+
+def _discover_infiniband_jobs(
+    api_key: str,
+    project_id: str,
+) -> tuple[list[Agent], list[str]]:
+    """Discover multi-node training pods using Nebius InfiniBand (rdma/ib resources).
+
+    Scans all namespaces via kubectl for pods requesting ``rdma/ib`` resources,
+    which indicates multi-node NCCL training over InfiniBand fabric.  Mirrors the
+    CoreWeave InfiniBand discovery pattern.  Requires kubectl configured with
+    Nebius cluster credentials.
+    """
+    agents: list[Agent] = []
+    warnings: list[str] = []
+
+    if not shutil.which("kubectl"):
+        logger.debug("kubectl not found — skipping Nebius InfiniBand job discovery")
+        return agents, warnings
+
+    try:
+        result = subprocess.run(
+            ["kubectl", "get", "pods", "-A", "-o", "json"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        if result.returncode != 0:
+            warnings.append(f"kubectl failed for Nebius InfiniBand jobs: {result.stderr.strip()[:200]}")
+            return agents, warnings
+
+        data = json.loads(result.stdout)
+        seen_jobs: set[str] = set()
+
+        for pod in data.get("items", []):
+            meta = pod.get("metadata", {})
+            pod_name = meta.get("name", "unknown")
+            pod_ns = meta.get("namespace", "default")
+
+            for container in pod.get("spec", {}).get("containers", []):
+                resources = container.get("resources", {})
+                limits = resources.get("limits", {})
+                requests_res = resources.get("requests", {})
+
+                ib_limit = str(limits.get("rdma/ib", "0"))
+                ib_request = str(requests_res.get("rdma/ib", "0"))
+
+                if ib_limit == "0" and ib_request == "0":
+                    continue
+
+                job_key = f"{pod_ns}/{pod_name}"
+                if job_key in seen_jobs:
+                    continue
+                seen_jobs.add(job_key)
+
+                image_ref = container.get("image", "").strip()
+                gpu_limits = str(limits.get("nvidia.com/gpu", "0"))
+
+                packages: list[Package] = []
+                if image_ref:
+                    image_parts = parse_container_image_package(image_ref)
+                    if image_parts:
+                        packages.append(
+                            Package(
+                                name=image_parts[0],
+                                version=image_parts[1],
+                                ecosystem="container-image",
+                                purl=build_package_purl(
+                                    ecosystem="container-image",
+                                    name=image_parts[0],
+                                    version=image_parts[1],
+                                ),
+                            )
+                        )
+
+                server = MCPServer(
+                    name=f"nebius-training:{pod_ns}/{pod_name}",
+                    transport=TransportType.UNKNOWN,
+                    packages=packages,
+                )
+
+                agent = Agent(
+                    name=f"nebius-training:{pod_ns}/{pod_name}",
+                    agent_type=AgentType.CUSTOM,
+                    config_path=f"nebius://{project_id}/training/{pod_ns}/{pod_name}",
+                    source="nebius-training",
+                    version=f"infiniband+gpu:{gpu_limits}" if gpu_limits != "0" else "infiniband",
+                    mcp_servers=[server],
+                    metadata={
+                        "training_job": True,
+                        "infiniband": True,
+                        "gpu_count": int(gpu_limits) if gpu_limits != "0" else 0,
+                        "image": image_ref,
+                        "kind": "Pod",
+                        "cloud_origin": build_cloud_origin(
+                            provider="nebius",
+                            service="kubernetes",
+                            resource_type="training-pod",
+                            resource_id=f"{pod_ns}/{pod_name}",
+                            resource_name=pod_name,
+                            project_id=project_id,
+                            raw_identity={"namespace": pod_ns, "pod": pod_name, "image": image_ref},
+                        ),
+                    },
+                )
+                agents.append(agent)
+
+    except json.JSONDecodeError as exc:
+        warnings.append(f"kubectl produced invalid JSON for InfiniBand jobs: {exc}")
+    except subprocess.TimeoutExpired:
+        warnings.append("kubectl timed out during Nebius InfiniBand job discovery")
+    except Exception as exc:
+        warnings.append(f"Nebius InfiniBand job discovery failed: {exc}")
 
     return agents, warnings

@@ -1072,21 +1072,36 @@ def run_local_discovery(
 
     # Step 1g5: IaC misconfiguration scan (--iac)
     if not skill_only and iac_paths:
-        from agent_bom.iac import scan_iac_directory
+        # Detect deployment context: GitHub Actions, MCP, or standalone.
+        import os as _os
 
+        from agent_bom.cli.agents._preflight import _print_scanner_verdicts
+        from agent_bom.iac import scan_iac_with_context
+        from agent_bom.iac.models import ScanContext as IaCContext
+
+        if _os.environ.get("GITHUB_ACTIONS") == "true":
+            _deployment_mode = "github-action"
+        elif _os.environ.get("AGENT_BOM_MCP_MODE") == "1":
+            _deployment_mode = "mcp"
+        else:
+            _deployment_mode = "standalone"
+
+        iac_scan_ctx = IaCContext(deployment_mode=_deployment_mode)
         all_iac_findings: list = []
+        all_iac_verdicts: list = []
         printed_iac_heading = False
         for iac_path in iac_paths:
             iac_path_obj = Path(iac_path)
             is_synthetic_demo_iac = iac_path_obj.name.startswith("agent-bom-demo-dir-")
-            iac_findings = scan_iac_directory(iac_path)
-            all_iac_findings.extend(iac_findings)
-            if iac_findings:
+            result = scan_iac_with_context(iac_path, iac_scan_ctx)
+            all_iac_findings.extend(result.findings)
+            all_iac_verdicts.extend(result.verdicts)
+            if result.findings:
                 if not printed_iac_heading:
                     con.print(f"\n[bold blue]Scanning {len(iac_paths)} path(s) for IaC misconfigurations...[/bold blue]\n")
                     printed_iac_heading = True
                 by_sev: dict[str, int] = {}
-                for iac_f in iac_findings:
+                for iac_f in result.findings:
                     by_sev[iac_f.severity] = by_sev.get(iac_f.severity, 0) + 1
                 sev_parts = []
                 for sev in ("critical", "high", "medium", "low"):
@@ -1094,12 +1109,15 @@ def run_local_discovery(
                         sev_colors = {"critical": "red bold", "high": "red", "medium": "yellow", "low": "dim"}
                         style = sev_colors.get(sev, "white")
                         sev_parts.append(f"[{style}]{by_sev[sev]} {sev}[/{style}]")
-                con.print(f"  [green]\u2713[/green] {iac_path}: {len(iac_findings)} finding(s) ({', '.join(sev_parts)})")
+                con.print(f"  [green]\u2713[/green] {iac_path}: {len(result.findings)} finding(s) ({', '.join(sev_parts)})")
             elif not is_synthetic_demo_iac:
                 if not printed_iac_heading:
                     con.print(f"\n[bold blue]Scanning {len(iac_paths)} path(s) for IaC misconfigurations...[/bold blue]\n")
                     printed_iac_heading = True
                 con.print(f"  [dim]  {iac_path}: no misconfigurations found[/dim]")
+
+        if verbose and all_iac_verdicts:
+            _print_scanner_verdicts(con, all_iac_verdicts)
 
         if all_iac_findings:
             from rich.panel import Panel

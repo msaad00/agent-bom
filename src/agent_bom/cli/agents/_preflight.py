@@ -21,6 +21,22 @@ from agent_bom.cli.agents._output import render_output
 from agent_bom.models import AIBOMReport
 
 
+def _print_scanner_verdicts(con: Any, verdicts: list) -> None:
+    """Render a compact scanner capability table (--verbose only)."""
+    con.print("\n  [dim]Scanner capability[/dim]")
+    for v in verdicts:
+        if v.status == "ran":
+            icon, style = "✓", "green"
+            detail = f"{v.files_scanned} file(s)"
+        elif v.status == "not-applicable":
+            icon, style = "—", "dim"
+            detail = "no targets"
+        else:  # disabled
+            icon, style = "✗", "red"
+            detail = v.reason or "locked out"
+        con.print(f"  [{style}]{icon}[/{style}]  {v.scanner_id:<18} [{style}]{detail}[/{style}]")
+
+
 def emit_dry_run_plan(
     con: Any,
     *,
@@ -201,28 +217,34 @@ def run_iac_only_scan(
     fail_on_severity: str | None,
 ) -> None:
     """Execute the dedicated IaC-only scan path and exit from the main command."""
-    from agent_bom.iac import scan_iac_directory
+    from agent_bom.iac import scan_iac_with_context
+    from agent_bom.iac.models import ScanContext as IaCContext
     from agent_bom.k8s import K8sDiscoveryError, scan_live_cluster_posture
 
     iac_ctx = ScanContext(con=con)
     all_iac_findings: list = []
+    all_iac_verdicts: list = []
 
     if iac_paths:
         con.print(f"\n[bold blue]Scanning {len(iac_paths)} path(s) for IaC misconfigurations...[/bold blue]\n")
+        iac_scan_ctx = IaCContext(deployment_mode="standalone")
         for iac_path in iac_paths:
-            iac_findings = scan_iac_directory(iac_path)
-            all_iac_findings.extend(iac_findings)
-            if iac_findings:
+            result = scan_iac_with_context(iac_path, iac_scan_ctx)
+            all_iac_findings.extend(result.findings)
+            all_iac_verdicts.extend(result.verdicts)
+            if result.findings:
                 from collections import Counter
 
-                severity_counts = Counter(f.severity for f in iac_findings)
+                severity_counts = Counter(f.severity for f in result.findings)
                 severity_parts = [
                     f"[red]{severity_counts.get('critical', 0)} critical[/red]",
                     f"[yellow]{severity_counts.get('high', 0)} high[/yellow]",
                 ]
-                con.print(f"  [red]⚠[/red]  {iac_path}: {len(iac_findings)} finding(s) ({', '.join(severity_parts)})")
+                con.print(f"  [red]⚠[/red]  {iac_path}: {len(result.findings)} finding(s) ({', '.join(severity_parts)})")
             else:
                 con.print(f"  [green]✓[/green] {iac_path}: no misconfigurations")
+        if verbose and all_iac_verdicts:
+            _print_scanner_verdicts(con, all_iac_verdicts)
 
     if k8s_live:
         con.print("\n[bold blue]Inspecting live Kubernetes cluster posture...[/bold blue]\n")

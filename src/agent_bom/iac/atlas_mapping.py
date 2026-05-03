@@ -87,6 +87,19 @@ IAC_ATLAS_MAP: dict[str, list[str]] = {
     "K8S-AI-001": ["AML.T0007", "AML.T0010"],
     # K8s PV / PVC mounting an open training dataset volume.
     "K8S-AI-002": ["AML.T0035", "AML.T0036"],
+    # ── Snowflake DCM — AI-data relevant rules ─────────────────────────────
+    # DCM-001: MANAGE GRANTS — lets recipient read/delegate on any Snowflake
+    # object including Cortex models, Snowpark stages, and ML feature stores.
+    "DCM-001": ["AML.T0007", "AML.T0036"],
+    # DCM-005: SPCS SERVICE without network policy — SPCS hosts AI inference
+    # containers; an unrestricted service is a discoverable inference endpoint.
+    "DCM-005": ["AML.T0010", "AML.T0010.003"],
+    # DCM-006: GRANT ACCOUNTADMIN/SECURITYADMIN — account-level admin provides
+    # full read access to every Snowflake ML registry and artifact store.
+    "DCM-006": ["AML.T0007", "AML.T0010"],
+    # DCM-008: Privilege to PUBLIC — exposes Snowflake tables/stages/models to
+    # every account user, enabling AI artifact discovery and collection.
+    "DCM-008": ["AML.T0007", "AML.T0035"],
 }
 
 # ─── Resource-type prefix fallback ─────────────────────────────────────────

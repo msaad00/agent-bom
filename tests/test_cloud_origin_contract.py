@@ -17,13 +17,17 @@ MOCKED_CLOUD_ORIGIN_PROVIDERS = {
     "aws",
     "azure",
     "coreweave",
+    "crusoe",
     "databricks",
     "gcp",
     "huggingface",
+    "lambda",
     "mlflow",
     "nebius",
     "openai",
+    "runpod",
     "snowflake",
+    "vastai",
     "wandb",
 }
 

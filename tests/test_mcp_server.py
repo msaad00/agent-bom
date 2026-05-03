@@ -336,7 +336,7 @@ def test_directory_tools_use_safe_path_before_impl(tool_name, impl_target):
     captured: dict[str, str] = {}
     safe_path = Path("/tmp/safe-target")
 
-    async def _fake_impl(*, directory, _truncate_response):
+    async def _fake_impl(*, directory, _truncate_response, **_extra):
         captured["directory"] = directory
         return json.dumps({"directory": directory})
 

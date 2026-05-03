@@ -15,7 +15,7 @@
   <rect width="960" height="364" rx="12" fill="#ffffff" stroke="#e4e4e7" stroke-width="1"/>
 
   <text x="480" y="28" text-anchor="middle" class="title">Compliance coverage</text>
-  <text x="480" y="44" text-anchor="middle" class="subtitle">14 frameworks + AISVS, 300+ controls mapped automatically from scan findings</text>
+  <text x="480" y="44" text-anchor="middle" class="subtitle">14 frameworks, 300+ controls mapped automatically from scan findings</text>
 
   <!-- ═══ ROW 1: 5 frameworks ═══ -->
 
@@ -102,10 +102,10 @@
   <text x="600" y="210" class="fw-count" fill="#f43f5e">10</text>
   <text x="628" y="210" class="fw-label">controls</text>
 
-  <!-- CIS Benchmarks -->
+  <!-- CIS Controls v8 -->
   <rect x="772" y="148" width="168" height="72" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
-  <text x="788" y="168" class="fw-name">CIS Benchmarks</text>
-  <text x="788" y="180" class="fw-code">AWS v3.0, Snowflake v1.0</text>
+  <text x="788" y="168" class="fw-name">CIS Controls v8</text>
+  <text x="788" y="180" class="fw-code">18 critical security controls</text>
   <rect x="788" y="188" width="136" height="4" rx="2" class="bar-bg"/>
   <rect x="788" y="188" width="136" height="4" rx="2" fill="#34d399"/>
   <text x="788" y="210" class="fw-count" fill="#34d399">200+</text>
@@ -140,14 +140,14 @@
   <text x="412" y="294" class="fw-count" fill="#0ea5e9">3</text>
   <text x="432" y="294" class="fw-label">baselines</text>
 
-  <!-- AISVS -->
+  <!-- MITRE ATT&CK Enterprise -->
   <rect x="584" y="232" width="176" height="72" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>
-  <text x="600" y="252" class="fw-name">AISVS v1.0</text>
-  <text x="600" y="264" class="fw-code">AI security verification standard</text>
+  <text x="600" y="252" class="fw-name">MITRE ATT&amp;CK</text>
+  <text x="600" y="264" class="fw-code">Enterprise adversary techniques</text>
   <rect x="600" y="272" width="144" height="4" rx="2" class="bar-bg"/>
   <rect x="600" y="272" width="108" height="4" rx="2" fill="#f59e0b"/>
-  <text x="600" y="294" class="fw-count" fill="#f59e0b">12</text>
-  <text x="628" y="294" class="fw-label">checks</text>
+  <text x="600" y="294" class="fw-count" fill="#f59e0b">200+</text>
+  <text x="640" y="294" class="fw-label">techniques</text>
 
   <!-- ═══ SUMMARY BAR ═══ -->
   <rect x="20" y="320" width="920" height="32" rx="8" fill="#fafafa" stroke="#e4e4e7" stroke-width="1"/>

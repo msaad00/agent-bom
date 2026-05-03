@@ -15,7 +15,7 @@
   <rect width="960" height="280" rx="12" fill="#09090b"/>
 
   <text x="480" y="28" text-anchor="middle" class="title">Compliance coverage</text>
-  <text x="480" y="44" text-anchor="middle" class="subtitle">14 frameworks + AISVS, 300+ controls mapped automatically from scan findings</text>
+  <text x="480" y="44" text-anchor="middle" class="subtitle">14 frameworks, 300+ controls mapped automatically from scan findings</text>
 
   <!-- ═══ ROW 1: 5 frameworks ═══ -->
 
@@ -102,10 +102,10 @@
   <text x="600" y="210" class="fw-count" fill="#f43f5e">10</text>
   <text x="628" y="210" class="fw-label">controls</text>
 
-  <!-- CIS Benchmarks -->
+  <!-- CIS Controls v8 -->
   <rect x="772" y="148" width="168" height="72" rx="8" fill="#18181b" stroke="#27272a" stroke-width="1"/>
-  <text x="788" y="168" class="fw-name">CIS Benchmarks</text>
-  <text x="788" y="180" class="fw-code">AWS v3.0, Snowflake v1.0</text>
+  <text x="788" y="168" class="fw-name">CIS Controls v8</text>
+  <text x="788" y="180" class="fw-code">18 critical security controls</text>
   <rect x="788" y="188" width="136" height="4" rx="2" class="bar-bg"/>
   <rect x="788" y="188" width="136" height="4" rx="2" fill="#34d399"/>
   <text x="788" y="210" class="fw-count" fill="#34d399">200+</text>

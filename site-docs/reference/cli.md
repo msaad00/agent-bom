@@ -120,7 +120,12 @@ agent-bom agents --generate-vex --vex-output vex.json
 
 # Config directory
 agent-bom agents --config-dir /path/to/configs
+
+# Self-scan (scan agent-bom's own installed dependencies)
+agent-bom agents --self-scan
 ```
+
+The `--self-scan` flag is on the `agents` subcommand (not top-level). It walks the active Python environment via `importlib.metadata.distributions()` and emits a CVE report against agent-bom's own runtime so you can audit the tool with the tool.
 
 ## Troubleshooting
 

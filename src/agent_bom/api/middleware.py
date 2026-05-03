@@ -1165,6 +1165,15 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 status_code=401,
                 content={"detail": "Authentication required — trusted proxy requests must include X-Agent-Bom-Tenant-ID"},
             )
+        # Customer-supplied identifiers must not collide with the agent-bom
+        # reserved tenant namespace (system fallbacks + role/permission
+        # vocabulary). See docs/IDENTITY_AND_NAMING_CONTRACT.md.
+        from agent_bom.platform_invariants import ReservedTenantIdError, validate_customer_tenant_id
+
+        try:
+            tenant_id = validate_customer_tenant_id(tenant_id)
+        except ReservedTenantIdError as exc:
+            return JSONResponse(status_code=400, content={"detail": str(exc)})
 
         from agent_bom.api.auth import Role
 

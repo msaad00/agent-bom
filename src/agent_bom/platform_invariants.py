@@ -17,17 +17,20 @@ def now_utc_iso() -> str:
 # Tenant identifier contract — agent-bom owns a small reserved namespace;
 # everything else is the customer's. See docs/IDENTITY_AND_NAMING_CONTRACT.md.
 #
-# `default` is the system fallback for unset/blank tenant identifiers (single-
-# tenant deployments + tests rely on it). Other reserved names are kept
-# in sync with role/permission vocabulary so a customer can't shadow our
-# enums by accident.
+# Reserved names are the role/permission vocabulary plus the system sentinels.
+# A customer-supplied tenant ID matching a role name would shadow our enums
+# in URLs and audit logs.
+#
+# `default` is intentionally NOT reserved. It's the canonical single-tenant
+# value; the system fallback bucket and any customer-supplied "default" both
+# resolve to the same bucket — that's the desired behaviour for single-tenant
+# pilots and tests.
 RESERVED_TENANT_IDS: frozenset[str] = frozenset(
     {
-        "default",
-        "system",
         "admin",
         "analyst",
         "viewer",
+        "system",
         "__system__",
     }
 )
@@ -55,8 +58,8 @@ def is_reserved_tenant_id(tenant_id: str | None) -> bool:
     """Return True if ``tenant_id`` is in the reserved namespace.
 
     The namespace is intentionally small (``RESERVED_TENANT_IDS``); it
-    covers our role + permission vocabulary plus the `default` fallback
-    so customer-supplied identifiers can't collide with system buckets.
+    covers our role/permission vocabulary plus the system sentinels.
+    `default` is NOT reserved — see the constant's comment for why.
     """
     return (tenant_id or "").strip().lower() in RESERVED_TENANT_IDS
 

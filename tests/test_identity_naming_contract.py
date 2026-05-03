@@ -132,12 +132,21 @@ def test_validate_customer_tenant_id_rejects_reserved_names(reserved):
 
 
 def test_validate_customer_tenant_id_is_case_insensitive_to_reserved():
-    """`Default` and `DEFAULT` collide with the system fallback the same
-    way `default` does — a customer can't bypass the reserved set with
-    a different casing."""
-    for variant in ("Default", "DEFAULT", "Admin", "VIEWER"):
+    """A customer can't bypass the reserved set by changing case —
+    `Admin` and `VIEWER` are rejected the same way `admin` is."""
+    for variant in ("Admin", "VIEWER", "Analyst", "System"):
         with pytest.raises(ReservedTenantIdError):
             validate_customer_tenant_id(variant)
+
+
+def test_default_is_a_valid_customer_tenant_id():
+    """`default` is the canonical single-tenant value used by the system
+    fallback, tests, and many deployments. It MUST remain accepted as a
+    customer-supplied tenant id — single-tenant pilots use it directly,
+    and ingress validation rejecting it would break the whole test suite
+    + every deployment that hasn't customised the tenant header."""
+    assert validate_customer_tenant_id("default") == "default"
+    assert validate_customer_tenant_id("DEFAULT") == "DEFAULT"
 
 
 def test_validate_customer_tenant_id_rejects_blank():
@@ -169,10 +178,11 @@ def test_normalize_tenant_id_still_falls_back_to_default():
 
 
 def test_is_reserved_tenant_id_helper():
-    assert is_reserved_tenant_id("default") is True
     assert is_reserved_tenant_id("admin") is True
+    assert is_reserved_tenant_id("VIEWER") is True  # case-insensitive
+    assert is_reserved_tenant_id("default") is False  # NOT reserved
     assert is_reserved_tenant_id("Customer-Acme") is False
-    assert is_reserved_tenant_id(None) is False  # blank is reserved-via-validate, not is_reserved
+    assert is_reserved_tenant_id(None) is False
 
 
 # ─── Cleanup so test ordering doesn't leak api-key state ─────────────────────

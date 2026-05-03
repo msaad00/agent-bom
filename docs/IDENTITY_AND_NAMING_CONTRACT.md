@@ -62,9 +62,11 @@ These names will not change. The variable's *value* is yours to set however your
 
 `src/agent_bom/platform_invariants.py:RESERVED_TENANT_IDS` — agent-bom owns this small namespace; customer tenant IDs cannot collide.
 
-`default`, `system`, `admin`, `analyst`, `viewer`, `__system__`.
+`admin`, `analyst`, `viewer`, `system`, `__system__`.
 
-`default` is the system fallback bucket for unset/blank tenant IDs. Customer-supplied IDs (HTTP headers, JWT claims, SCIM payloads) that match any reserved name are rejected with `400 ReservedTenantIdError`. See [tenant ID rules](#tenant-identifiers) below.
+These are the role/permission vocabulary plus the system sentinels — a customer-supplied tenant ID matching a role name would shadow our enums in URLs and audit logs. Customer-supplied IDs (HTTP headers, JWT claims, SCIM payloads) that match any reserved name are rejected with `400 ReservedTenantIdError`.
+
+`default` is **intentionally not reserved**. It's the canonical single-tenant value; the system fallback bucket and any customer-supplied `default` resolve to the same bucket — single-tenant pilots and tests can keep using it.
 
 ---
 
@@ -117,13 +119,13 @@ Best-of-both-worlds onboarding: works without configuration, accepts your overri
 
 **Hybrid defaults for onboarding.** Day-one customers get a working system without filling in 12 environment variables. Defaults are always the least-privileged / least-surprising / most-ephemeral option, and every default is overridable.
 
-**Reserved namespace for system buckets.** A tiny set of names (six total) is reserved so customer-supplied identifiers can't shadow our internal vocabulary. Any name not in `RESERVED_TENANT_IDS` is yours.
+**Reserved namespace for system buckets.** A tiny set of names (five total — three role names plus two system sentinels) is reserved so customer-supplied identifiers can't shadow our internal vocabulary. Any name not in `RESERVED_TENANT_IDS` is yours, including `default`.
 
 ---
 
 ## Operator quick reference
 
-- **Naming a tenant?** Anything except `default`, `system`, `admin`, `analyst`, `viewer`, `__system__`.
+- **Naming a tenant?** Anything except `admin`, `analyst`, `viewer`, `system`, `__system__`. `default` is fine — it just shares a bucket with the system fallback.
 - **Wiring an API key?** ≥ 32 chars; we'll reject shorter at boot.
 - **Setting a default role?** One of `admin`/`analyst`/`viewer` exactly; case-sensitive; bad value raises at boot.
 - **Renaming an env var in your secret manager?** Doesn't matter — agent-bom reads `os.environ.get('AGENT_BOM_*')` by literal name. Map your secret to the agent-bom variable name in your manifest.

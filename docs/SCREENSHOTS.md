@@ -16,20 +16,33 @@ version footer matches the tag.
 
 ## One-shot capture
 
-```bash
-# 1. From the repo root, populate the API with a real scan so the
-#    dashboard renders live state instead of empty surfaces.
-agent-bom api --port 8422 &
-AGENT_BOM_API_KEY=dev-key agent-bom scan --demo --format json -o /tmp/seed.json
+The `/` Risk overview and `/findings` table render from in-memory state and
+capture cleanly with the recipe below. The `/mesh` and `/security-graph`
+routes render from **persisted graph storage** — they show skeleton/empty
+surfaces in memory-only mode and need a Postgres-backed deployment with a
+real scan persisted to render the topology and attack-path canvases.
 
-# 2. From ui/, run the screenshot job.  Playwright auto-boots the
+```bash
+# 1. Boot API with no-auth so the dashboard reads without a session token.
+#    For mesh + security-graph captures, point AGENT_BOM_POSTGRES_URL at
+#    a populated database first — otherwise those two routes capture
+#    empty.
+agent-bom api --port 8422 --allow-insecure-no-auth &
+
+# 2. Push a real scan against the agent-bom repo so the dashboard has
+#    rich blast-radius / attack-path data instead of demo-only stubs.
+curl -X POST -H "Content-Type: application/json" \
+  http://127.0.0.1:8422/v1/scan \
+  -d '{"agent_projects":["'$PWD'"]}'
+
+# 3. From ui/, run the screenshot job.  Playwright auto-boots the
 #    Next.js dev server on :3001 (see ui/playwright.config.ts).
 cd ui
-NEXT_PUBLIC_API_URL=http://127.0.0.1:8422 \
-  AGENT_BOM_API_KEY=dev-key \
-  npm run screenshots
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8422 npm run screenshots
 
-# 3. Confirm the four PNGs in docs/images/ updated, eyeball them, commit.
+# 4. Eyeball each PNG in docs/images/ before committing — `/mesh` and
+#    `/security-graph` will show skeletons unless persisted graph
+#    storage is configured.
 git diff --stat docs/images/
 ```
 

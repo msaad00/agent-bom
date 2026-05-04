@@ -15,6 +15,7 @@
     "lint": "eslint",
     "lock:normalize": "npm install --package-lock-only --ignore-scripts",
     "test:e2e": "playwright test",
+    "screenshots": "playwright test e2e/screenshots.spec.ts --reporter=list",
     "verify:toolchain": "node scripts/verify-toolchain.mjs",
     "headers:sync": "node scripts/sync-vercel-headers.mjs",
     "headers:check": "node scripts/sync-vercel-headers.mjs --check",

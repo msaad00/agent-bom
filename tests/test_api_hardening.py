@@ -165,6 +165,44 @@ def test_api_key_middleware_blocks_without_key():
     assert resp.status_code == 401
 
 
+def test_api_key_middleware_exempts_cors_preflight():
+    """CORS preflight (OPTIONS) MUST bypass auth.
+
+    Browsers do not attach Authorization headers to preflight requests
+    (CORS spec / Fetch §3.2.2). Rejecting OPTIONS with 401 before
+    CORSMiddleware runs blocks every cross-origin dashboard / SaaS UI
+    / SDK from talking to the API — the actual request never fires
+    because the preflight failed. The auth boundary stays enforced for
+    the real request methods (GET/POST/PUT/DELETE/PATCH).
+    """
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    test_app = Starlette(routes=[Route("/v1/test", dummy, methods=["GET", "OPTIONS"])])
+    test_app.add_middleware(APIKeyMiddleware, api_key="test-key-cors")
+
+    client = TestClient(test_app)
+    # Preflight without bearer — must NOT 401; CORSMiddleware (in real
+    # app stack) will then add Access-Control-Allow-* headers.
+    resp = client.options(
+        "/v1/test",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization",
+        },
+    )
+    assert resp.status_code != 401, "OPTIONS preflight must bypass APIKeyMiddleware"
+    # Real request (GET) without bearer still 401 — auth boundary intact.
+    assert client.get("/v1/test").status_code == 401
+    # Real request with bearer succeeds.
+    assert client.get("/v1/test", headers={"X-API-Key": "test-key-cors"}).status_code == 200
+
+
 def test_api_key_middleware_exempts_packaged_dashboard_assets():
     """Dashboard shell assets must load before browser auth/bootstrap completes."""
     from starlette.applications import Starlette

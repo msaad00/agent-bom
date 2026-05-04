@@ -900,6 +900,15 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         return resolution.role, None
 
     async def dispatch(self, request: StarletteRequest, call_next):
+        # CORS preflight (OPTIONS) MUST bypass auth: browsers do not attach
+        # Authorization headers to preflights (CORS spec / Fetch §3.2.2).
+        # Rejecting them with 401 before CORSMiddleware runs blocks every
+        # cross-origin dashboard / SaaS UI / SDK from talking to the API —
+        # the actual request never fires because the preflight failed.
+        # CORSMiddleware will reply with the right Access-Control-Allow-*
+        # headers for the configured origin set.
+        if request.method == "OPTIONS":
+            return await call_next(request)
         if request.url.path in self._EXEMPT_PATHS:
             return await call_next(request)
         if self._is_dashboard_public_request(request.url.path, request.method):

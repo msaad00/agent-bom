@@ -1,5 +1,10 @@
 # SIEM Integration
 
+> **You do not need to read this unless** you are wiring `agent-bom`
+> events into a SIEM or security lake (Splunk, Elastic, Snowflake,
+> generic OCSF). The product runs end-to-end without OCSF; this page is
+> the boundary contract.
+
 Agent BOM can push events downstream in two formats:
 
 - `raw`: the canonical `agent-bom` event shape

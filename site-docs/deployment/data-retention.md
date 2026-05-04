@@ -1,5 +1,10 @@
 # Data Retention by Class
 
+> **You do not need to read this unless** you are tuning retention for a
+> compliance or cost target — or trying to decide whether to add ClickHouse
+> / S3 alongside the Postgres control plane. Default deployments work
+> without changing retention settings.
+
 `agent-bom` should not feel like "whatever the backend keeps." Retention is a
 product contract.
 

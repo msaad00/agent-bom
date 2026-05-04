@@ -1,5 +1,9 @@
 # Visual Leak Detection
 
+> **You do not need to read this unless** you are turning on OCR-based
+> response inspection for screenshot / image-heavy MCP tools. It is
+> opt-in because of the OCR dependency and CPU cost.
+
 The visual leak detector is the OCR-backed response safety layer for screenshot
 and image-heavy MCP tools. It is intentionally opt-in because it adds OCR
 dependencies and CPU cost to the runtime path.

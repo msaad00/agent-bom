@@ -1,5 +1,10 @@
 # Control-Plane Data Model and Store Parity
 
+> **You do not need to read this unless** you are answering an auditor
+> on which entity lives in which table on which backend, or designing
+> a new connector / store adapter. For the day-1 backend choice use
+> [Backend Parity](backend-parity.md).
+
 This is the operator and auditor view of the `agent-bom` control-plane
 data model.
 

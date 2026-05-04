@@ -1,5 +1,10 @@
 # Audit Chain vs Compliance Signing
 
+> **You do not need to read this unless** an auditor is asking
+> "is this evidence tamper-proof?" or you are integrating audit-log
+> verification into a compliance pipeline. For day-1 deployment choices
+> use [Deployment Overview](overview.md).
+
 `agent-bom` has **two different integrity mechanisms** that solve different
 problems.
 

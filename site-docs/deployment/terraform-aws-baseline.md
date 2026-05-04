@@ -1,5 +1,11 @@
 # Terraform AWS Baseline
 
+> **You do not need to read this unless** your platform team owns the
+> AWS pieces around `agent-bom` (RDS, IRSA, S3 backup bucket, Secrets
+> Manager) directly through Terraform instead of through the reference
+> installer. For the paved AWS rollout use
+> [Your Own AWS / EKS](own-infra-eks.md).
+
 Use this page when the question is not "how do I deploy the chart?" but
 "who owns the AWS pieces around the chart, and how do I destroy them cleanly?"
 

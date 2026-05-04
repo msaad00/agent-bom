@@ -1,5 +1,9 @@
 # Air-Gapped Image Bundle
 
+> **You do not need to read this unless** you are shipping `agent-bom`
+> images into a disconnected registry or cluster. The connected pilot and
+> production paths are in [Deployment Overview](overview.md).
+
 Use this workflow when a customer must import release images into a disconnected
 registry or cluster. The bundle contains the API/runtime image, the UI image,
 checksums, and a loader script. Bundles are platform-specific; produce one for

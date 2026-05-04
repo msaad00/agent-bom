@@ -1,12 +1,12 @@
 # Packaged API + UI Control Plane
 
+> **You do not need to read this unless** you are installing or
+> customising the agent-bom Helm chart directly (instead of going through
+> the reference installer in [Deployment Overview](overview.md)).
+
 `agent-bom` now ships a Helm-packaged control plane for teams that want the API
 and dashboard inside their own Kubernetes environment instead of running custom
 Deployment manifests by hand.
-
-If you still need to choose a path, start with [Deployment Overview](overview.md).
-Use this page after you already know you want the chart itself, either through
-the reference installer or your own Helm layering.
 
 This is the right path when you want:
 

@@ -1,5 +1,10 @@
 # Data Access Boundaries and Operator Control
 
+> **You do not need to read this unless** you are answering "what can
+> agent-bom read?" / "where does the data stay?" / "which controls
+> disable each path?" For the maintainer-access boundary see
+> [Customer Data and Support Boundary](customer-data-and-support-boundary.md).
+
 `agent-bom` is designed to answer a narrow security question: where are AI
 agents, MCP servers, tool paths, packages, credentials references, and related
 runtime risks exposed?

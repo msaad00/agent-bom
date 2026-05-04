@@ -1,5 +1,8 @@
 # Grafana Dashboard
 
+> **You do not need to read this unless** you already run Grafana and
+> want the shipped agent-bom dashboard for API + proxy Prometheus metrics.
+
 `agent-bom` ships a pre-built Grafana dashboard for visualizing Prometheus
 metrics from the API and proxy.
 

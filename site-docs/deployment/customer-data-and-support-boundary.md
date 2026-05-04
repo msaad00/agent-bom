@@ -1,5 +1,11 @@
 # Customer Data and Support Boundary
 
+> **You do not need to read this unless** procurement / security is
+> reviewing the self-hosted trust boundary, or you are answering
+> "can the agent-bom maintainers see our data?" For the related
+> least-privilege contract see
+> [Data Access Boundaries](data-access-boundaries.md).
+
 This page defines the default self-hosted trust boundary for `agent-bom`.
 
 The short version:

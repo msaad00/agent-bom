@@ -1,8 +1,11 @@
 # Kubernetes Deployment
 
-If you still need to choose a rollout path, start with
-[Deployment Overview](overview.md). This page is Kubernetes reference material
-for teams that already know they want raw manifests or direct chart controls.
+> **You do not need to read this unless** you are working with the raw
+> `deploy/k8s/` manifests, the optional sidecar-injection webhook, or
+> low-level Helm value tuning. The paved EKS rollout paths are
+> [Vanilla EKS Quickstart](eks-vanilla-quickstart.md) and
+> [Your Own AWS / EKS](own-infra-eks.md); the chart contract lives in
+> [Packaged API + UI Control Plane](control-plane-helm.md).
 
 ## Pre-built manifests
 

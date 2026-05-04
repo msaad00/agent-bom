@@ -1,5 +1,11 @@
 # Runtime Operations
 
+> **You do not need to read this unless** you are rotating the proxy
+> policy-bundle Ed25519 signing key or renewing the cert-manager-backed
+> sidecar webhook chain. The default rollout in
+> [Deployment Overview](overview.md) does not require these tasks on
+> day 1.
+
 Use this page for the small but important operator tasks that sit between
 "feature shipped" and "production stayed healthy":
 

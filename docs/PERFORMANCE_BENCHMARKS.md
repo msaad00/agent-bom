@@ -81,7 +81,7 @@ each carrying a variable number of evidence entries.
 **Scaling:** linear in canonical-JSON size — serialisation dominates
 over HMAC-SHA256 itself.
 
-**Implication:** a realistic 14-framework report (≈220 controls total
+**Implication:** a realistic 15-framework report (≈220 controls total
 across frameworks, up to ~10 evidence entries each) signs in **under 5
 ms** end-to-end. Ed25519 adds ~0.2 ms on top.
 

@@ -20,15 +20,34 @@ from agent_bom.parsers.dataset_pii_scanner import (
 # ─── _redact ─────────────────────────────────────────────────────────────────
 
 
-def test_redact_short():
-    assert "[ssn:***]" == _redact("123", "ssn")
-
-
-def test_redact_long():
-    r = _redact("john@example.com", "email")
-    assert r.startswith("[email:jo")
-    assert r.endswith("om]")
-    assert "john@example" not in r
+def test_redact_never_reveals_any_characters():
+    """Trust contract: redaction must NEVER reveal any chars of the matched
+    value. PCI DSS § 3.4.1 prohibits storing readable PAN; partial SSN /
+    IBAN / passport / NHS leaks identity-linkable data. The finding's
+    file_path + row_index + column already locate the cell — no preview
+    needed. Any preview becomes a downstream leak vector (JSON → DB →
+    audit log → dashboard)."""
+    # Short value
+    assert _redact("123", "ssn") == "[ssn:REDACTED]"
+    # Credit card — must not leak any digits
+    cc = "4532123456789012"
+    r = _redact(cc, "credit_card")
+    assert r == "[credit_card:REDACTED]"
+    for digit in cc:
+        assert digit not in r, f"redaction leaked digit {digit!r}: {r!r}"
+    # SSN — must not leak any digits
+    ssn = "123-45-6789"
+    r = _redact(ssn, "ssn")
+    assert r == "[ssn:REDACTED]"
+    for ch in "1234567890":
+        assert ch not in r
+    # Email — full value must not appear
+    email = "john@example.com"
+    r = _redact(email, "email")
+    assert r == "[email:REDACTED]"
+    assert "john" not in r
+    assert "example" not in r
+    assert "@" not in r
 
 
 # ─── _scan_cell ──────────────────────────────────────────────────────────────

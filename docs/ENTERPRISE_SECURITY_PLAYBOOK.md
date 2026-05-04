@@ -167,7 +167,7 @@ Central policy management at [`/v1/gateway/policies`](../src/agent_bom/api/route
 
 - **HMAC-chained audit log** — [`api/audit_log.py`](../src/agent_bom/api/audit_log.py). Every entry signs the previous entry's signature; tampering with any row invalidates the chain from that point forward.
 - **Ed25519-signed evidence bundles** — [`api/compliance_signing.py`](../src/agent_bom/api/compliance_signing.py). Auditor fetches the public key from [`/v1/compliance/verification-key`](../src/agent_bom/api/routes/compliance.py) once, pins it, verifies every bundle offline. Cookbook: [COMPLIANCE_SIGNING.md](COMPLIANCE_SIGNING.md).
-- **14 tag-mapped compliance frameworks plus AISVS** — OWASP LLM Top 10, OWASP MCP Top 10, OWASP Agentic Top 10, MITRE ATLAS, NIST AI RMF, NIST CSF 2.0, NIST 800-53, FedRAMP, ISO 27001, SOC 2, CIS Controls v8, CMMC, EU AI Act, and PCI DSS are mapped to findings inline. OWASP AISVS is exposed as a benchmark result with per-check evidence.
+- **15 tag-mapped compliance frameworks plus AISVS** — OWASP LLM Top 10, OWASP MCP Top 10, OWASP Agentic Top 10, MITRE ATLAS, MITRE ATT&CK Enterprise, NIST AI RMF, NIST CSF 2.0, NIST 800-53, FedRAMP, ISO 27001, SOC 2, CIS Controls v8, CMMC, EU AI Act, and PCI DSS are mapped to findings inline. OWASP AISVS is exposed as a benchmark result with per-check evidence.
 - **Tenant isolation on every export** — evidence bundle only carries scans + audit events from the authed tenant. Cross-tenant tests: [`tests/test_api_cross_tenant_matrix.py`](../tests/test_api_cross_tenant_matrix.py), [`tests/test_cross_tenant_leakage.py`](../tests/test_cross_tenant_leakage.py).
 
 ### 2.8 Scale: "Will this hold up at 50k packages and a 5k-agent fleet?"

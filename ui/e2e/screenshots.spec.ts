@@ -19,11 +19,12 @@ const SHOTS: {
 }[] = [
   // Risk overview — wait for the main panel to mount.
   { name: "dashboard-live.png", route: "/", readySelector: "main" },
-  // Attack-paths surface — wait for React Flow viewport with edges.
+  // Supply-chain graph (the product moat) — full /v1/graph blast-radius
+  // visualization. Wait for at least one React Flow node to render.
   {
     name: "dashboard-paths-live.png",
-    route: "/security-graph",
-    readySelector: ".react-flow__viewport, [data-testid='security-graph-canvas']",
+    route: "/graph",
+    readySelector: ".react-flow__node, [data-testid='graph-node']",
   },
   // Agent mesh — wait for at least one mesh node to render.
   {
@@ -40,27 +41,55 @@ const SHOTS: {
 ];
 
 test.describe("docs screenshot capture", () => {
-  test.beforeEach(async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 900 });
-  });
-
   for (const { name, route, readySelector } of SHOTS) {
     test(`capture ${name}`, async ({ page }) => {
+      // Graph + mesh need a tall viewport to fit the canvas below the
+      // header and stats row; / and /findings stay at hero crop size.
+      const isGraphRoute = route === "/graph" || route === "/mesh";
+      // Graph routes routinely exceed the 30s default — 244-node dagre
+      // layout + interaction + settle adds up. Bump per-test cap.
+      if (isGraphRoute) {
+        test.setTimeout(90_000);
+      }
+      await page.setViewportSize({
+        width: 1600,
+        height: isGraphRoute ? 1400 : 900,
+      });
+
       const resp = await page.goto(route, { waitUntil: "networkidle" });
       expect(resp?.ok(), `${route} did not return 2xx`).toBeTruthy();
 
       // Wait for the route-specific surface so we capture the real
-      // visualisation, not the loading skeleton. Soft-fail so empty-data
-      // states still capture (with the timeout giving slow charts time
-      // to render before falling back).
+      // visualisation, not the loading skeleton.
       await page
-        .waitForSelector(readySelector, { state: "visible", timeout: 8000 })
+        .waitForSelector(readySelector, { state: "visible", timeout: 20000 })
         .catch(() => {
           /* selector not found in time — capture whatever is there */
         });
 
+      // For graph routes the canvas only renders after the user picks a
+      // layout — the default `/graph` view shows "How to read this graph"
+      // help prose and "filter resolves to findings only" until the
+      // operator clicks a Layouts button. Click "Layered" so the
+      // capture shows the actual blast-radius topology, not the help.
+      if (isGraphRoute) {
+        for (const label of ["Layered", "Compounds", "Sources"]) {
+          const btn = page.getByRole("button", { name: label }).first();
+          if (await btn.isVisible({ timeout: 1000 }).catch(() => false)) {
+            await btn.click().catch(() => {});
+            break;
+          }
+        }
+        await page
+          .locator(".react-flow")
+          .first()
+          .scrollIntoViewIfNeeded()
+          .catch(() => {});
+      }
+
       // Final settle for chart animations / React Flow auto-layout.
-      await page.waitForTimeout(1500);
+      const settleMs = isGraphRoute ? 4000 : 1500;
+      await page.waitForTimeout(settleMs);
 
       await page.screenshot({
         path: path.join(OUT_DIR, name),

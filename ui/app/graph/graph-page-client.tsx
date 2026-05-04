@@ -60,11 +60,25 @@ function PulseStyles() {
   return (
     <style jsx global>{`
       @keyframes pulse-critical {
-        0%, 100% { box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
-        50% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.8); }
+        0%, 100% { box-shadow: 0 0 6px rgba(239, 68, 68, 0.35); }
+        50% { box-shadow: 0 0 12px rgba(239, 68, 68, 0.55); }
       }
       .node-critical-pulse {
-        animation: pulse-critical 2s ease-in-out infinite;
+        animation: pulse-critical 3.2s ease-in-out infinite;
+        /* Respect reduced-motion preferences. */
+      }
+      /* Stagger so a graph with many critical nodes does NOT strobe in
+         sync — when ten or twenty nodes pulse together at the same
+         phase the page reads as a flickering page-wide flash. The
+         animation-delay buckets desync neighbours visually. */
+      .node-critical-pulse:nth-child(3n)   { animation-delay: -0.4s; }
+      .node-critical-pulse:nth-child(3n+1) { animation-delay: -1.2s; }
+      .node-critical-pulse:nth-child(3n+2) { animation-delay: -2.0s; }
+      @media (prefers-reduced-motion: reduce) {
+        .node-critical-pulse {
+          animation: none;
+          box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+        }
       }
     `}</style>
   );
@@ -787,7 +801,13 @@ export default function GraphPageClient() {
   }
 
   return (
-    <div className="h-[calc(100vh-3.5rem)] flex flex-col">
+    // min-h instead of h so the page can grow taller than the viewport
+    // when the snapshot diff cards / how-to-read prose / findings
+    // fallback panel push content past the fold. Previously the fixed
+    // h-[calc(100vh-3.5rem)] container clipped everything below the
+    // viewport, leaving users stuck on the snapshot row with no way
+    // to scroll to the React Flow canvas or the findings panel.
+    <div className="min-h-[calc(100vh-3.5rem)] flex flex-col">
       <PulseStyles />
 
       <div className="border-b border-zinc-800 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.12),transparent_26%),linear-gradient(180deg,rgba(24,24,27,0.96),rgba(9,9,11,0.96))] px-4 py-4">
@@ -1128,10 +1148,10 @@ export default function GraphPageClient() {
         )}
       </div>
 
-      <div className="flex-1 flex relative overflow-hidden">
+      <div className="flex-1 flex relative min-h-[60vh]">
         <FilterPanel filters={filters} onChange={setFilters} agentNames={flow.agentNames} />
 
-        <div className="flex-1 relative">
+        <div className="flex-1 relative min-h-[60vh]">
           {loadingGraph && !graphData ? (
             <GraphPanelSkeleton
               title="Loading graph window"

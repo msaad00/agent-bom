@@ -280,13 +280,20 @@ jobs:
           echo "cve_count=$(cat /tmp/cve_count 2>/dev/null || echo 0)" >> "$GITHUB_OUTPUT"
 
       - name: Configure signed automation commits
+        id: signing
         if: steps.count.outputs.new_count != '0' || steps.count.outputs.toolhive_count != '0' || steps.count.outputs.version_count != '0' || steps.count.outputs.cve_count != '0'
         env:
           AUTOMATION_SSH_SIGNING_KEY: ${{ secrets.AUTOMATION_SSH_SIGNING_KEY }}
         run: |
           if [ -z "$AUTOMATION_SSH_SIGNING_KEY" ]; then
-            echo "AUTOMATION_SSH_SIGNING_KEY is required for signed automation PRs." >&2
-            exit 1
+            # Graceful skip: scheduled runs on repos without the signing
+            # secret previously hard-failed daily.  Skip the PR-create
+            # step and exit successfully so the cron stops alerting.
+            # Repos that want signed automation PRs can set the secret
+            # per docs/AUTOMATION_SIGNING.md and the next run will sign.
+            echo "AUTOMATION_SSH_SIGNING_KEY not configured — skipping PR creation."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           mkdir -p "$HOME/.ssh"
           printf '%s\n' "$AUTOMATION_SSH_SIGNING_KEY" > "$HOME/.ssh/automation_signing_key"
@@ -299,9 +306,10 @@ jobs:
           git config gpg.format ssh
           git config user.signingkey "$HOME/.ssh/automation_signing_key.pub"
           git config commit.gpgsign true
+          echo "configured=true" >> "$GITHUB_OUTPUT"
 
       - name: Create PR if registry changed
-        if: steps.count.outputs.new_count != '0' || steps.count.outputs.toolhive_count != '0' || steps.count.outputs.version_count != '0' || steps.count.outputs.cve_count != '0'
+        if: (steps.count.outputs.new_count != '0' || steps.count.outputs.toolhive_count != '0' || steps.count.outputs.version_count != '0' || steps.count.outputs.cve_count != '0') && steps.signing.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           NEW_COUNT: ${{ steps.count.outputs.new_count }}

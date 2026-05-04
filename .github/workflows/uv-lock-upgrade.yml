@@ -42,13 +42,20 @@ jobs:
           fi
 
       - name: Configure signed automation commits
+        id: signing
         if: steps.diff.outputs.changed == 'true'
         env:
           AUTOMATION_SSH_SIGNING_KEY: ${{ secrets.AUTOMATION_SSH_SIGNING_KEY }}
         run: |
           if [ -z "$AUTOMATION_SSH_SIGNING_KEY" ]; then
-            echo "AUTOMATION_SSH_SIGNING_KEY is required for signed automation PRs." >&2
-            exit 1
+            # Graceful skip: scheduled runs on repos without the signing
+            # secret previously hard-failed daily.  Skip the PR-open step
+            # and exit successfully so the cron stops alerting.  Repos
+            # that want signed automation PRs can set the secret per
+            # docs/AUTOMATION_SIGNING.md and the next run will sign.
+            echo "AUTOMATION_SSH_SIGNING_KEY not configured — skipping PR creation."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           eval "$(ssh-agent -s)"
           ssh-add - <<< "$AUTOMATION_SSH_SIGNING_KEY"
@@ -63,9 +70,10 @@ jobs:
             echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK"
             echo "SSH_AGENT_PID=$SSH_AGENT_PID"
           } >> "$GITHUB_ENV"
+          echo "configured=true" >> "$GITHUB_OUTPUT"
 
       - name: Open PR if lockfile changed
-        if: steps.diff.outputs.changed == 'true'
+        if: steps.diff.outputs.changed == 'true' && steps.signing.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -97,7 +105,7 @@ jobs:
           fi
 
       - name: Stop signing agent
-        if: always() && steps.diff.outputs.changed == 'true'
+        if: always() && steps.diff.outputs.changed == 'true' && steps.signing.outputs.configured == 'true'
         run: |
           ssh-agent -k || true
 

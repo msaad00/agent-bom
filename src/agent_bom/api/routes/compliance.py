@@ -1,7 +1,7 @@
 """Compliance and posture API routes.
 
 Endpoints:
-    GET  /v1/compliance                      14-framework compliance posture + AISVS benchmark
+    GET  /v1/compliance                      15-framework compliance posture + AISVS benchmark
     GET  /v1/compliance/aisvs                OWASP AISVS benchmark posture
     GET  /v1/compliance/narrative            full compliance narrative (all frameworks)
     GET  /v1/compliance/narrative/{framework} single-framework narrative
@@ -1509,9 +1509,10 @@ async def get_hub_posture(request: Request) -> dict:
 
     # Native sources: count blast radii from completed scan jobs as a
     # proxy for "native finding count per framework" using their tag fields.
-    # Driven by TAG_MAPPED_FRAMEWORKS so all 14 frameworks (owasp-llm, owasp-mcp,
-    # owasp-agentic, atlas, nist, nist-csf, nist-800-53, fedramp, eu-ai-act,
-    # iso-27001, soc2, cis, cmmc, pci-dss) aggregate consistently. Slug→field
+    # Driven by TAG_MAPPED_FRAMEWORKS so all 15 frameworks (owasp-llm, owasp-mcp,
+    # owasp-agentic, atlas, attack, nist, nist-csf, nist-800-53, fedramp,
+    # eu-ai-act, iso-27001, soc2, cis, cmmc, pci-dss) aggregate consistently.
+    # Slug→field
     # is NOT a pure replace (e.g. nist → nist_ai_rmf_tags), so we read the
     # canonical mapping straight off the metadata.
     slug_to_tag_field: tuple[tuple[str, str], ...] = tuple((metadata.slug, metadata.tag_field) for metadata in TAG_MAPPED_FRAMEWORKS)

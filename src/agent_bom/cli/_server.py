@@ -681,7 +681,7 @@ def mcp_server_cmd(
       policy_check           Evaluate policy rules against scan findings
       registry_lookup        Query MCP server security metadata registry
       generate_sbom          Generate CycloneDX or SPDX SBOM
-      compliance             14-framework compliance posture
+      compliance             15-framework compliance posture
       remediate              Generate actionable remediation plan
       skill_scan             Scan instruction files for trust, provenance, and findings
       skill_verify           Verify Sigstore provenance for instruction files

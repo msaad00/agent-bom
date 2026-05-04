@@ -49,6 +49,10 @@ def _clear_scan_cache():
         ("nvidia/cuda:11.8-cudnn8", "docker.io", "nvidia", "cuda", "11.8-cudnn8"),
         ("rocm/pytorch:latest", "docker.io", "rocm", "pytorch", "latest"),
         ("vllm/vllm-openai:v0.4.0", "docker.io", "vllm", "vllm-openai", "v0.4.0"),
+        # Self-hosted registry with port (audit P3 — was misclassified as docker.io org)
+        ("host:5000/img:tag", "host:5000", "library", "img", "tag"),
+        ("localhost:5000/myimg", "localhost:5000", "library", "myimg", "latest"),
+        ("registry.io:443/org/img:1.0", "registry.io:443", "org", "img", "1.0"),
     ],
 )
 def test_parse_image_ref(image_ref, registry, org, repo, tag):

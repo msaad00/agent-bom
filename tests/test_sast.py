@@ -374,6 +374,11 @@ def test_scan_code_default_uses_local_rules_and_auto(monkeypatch, tmp_path):
     """default config should prefer local rule bundles and still include Semgrep auto."""
     monkeypatch.setattr("agent_bom.sast.shutil.which", lambda _: "/usr/bin/semgrep")
     monkeypatch.setattr("agent_bom.sast._get_semgrep_version", lambda: "1.50.0")
+    # Pin Path.home() to a clean tmp directory so the dev's real ~/.semgrep
+    # config (if any) doesn't get auto-discovered and flip the assertion.
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr("agent_bom.sast.Path.home", lambda: fake_home)
     rules_dir = tmp_path / ".agent-bom" / "sast-rules"
     rules_dir.mkdir(parents=True)
     (rules_dir / "custom.yaml").write_text("rules: []", encoding="utf-8")

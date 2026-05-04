@@ -1,16 +1,14 @@
 # Docker Deployment
 
-Use this page for containerized entrypoints. `agent-bom` is one product with
-two deployable images:
+> **You do not need to read this unless** you are running `agent-bom`
+> directly through Docker (compose, ad hoc `docker run`, or the SSE/runtime
+> Dockerfiles). For the production rollout path, start with
+> [Deployment Overview](overview.md) and follow the paved path it recommends.
 
-If you still need to choose a deployment path, start with
-[Deployment Overview](overview.md). This page is Docker-specific reference
-material after that decision, not the primary production rollout guide.
-
-- `agentbom/agent-bom` = the main runtime image for CLI scans, the API,
-  scanner jobs, gateway, MCP server mode, and other non-browser entrypoints
-- `agentbom/agent-bom-ui` = the standalone browser UI image used when the
-  self-hosted control plane runs the UI separately from the API
+Use this page for containerized entrypoints. The product split (one
+`agentbom/agent-bom` runtime image plus the `agentbom/agent-bom-ui` browser
+image) is documented in [Deployment Overview](overview.md#product-surfaces);
+this page only covers Docker-specific commands and image variants.
 
 Pilot on one workstation:
 

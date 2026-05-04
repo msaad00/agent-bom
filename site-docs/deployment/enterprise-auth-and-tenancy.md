@@ -1,5 +1,9 @@
 # Enterprise Auth and Tenant Isolation
 
+> **You do not need to read this unless** you are wiring SSO, SCIM,
+> trusted reverse-proxy identity, or tenant propagation on a
+> self-hosted deployment. Default API-key auth works without this page.
+
 This page is the operator-facing contract for how `agent-bom` handles:
 
 - API keys

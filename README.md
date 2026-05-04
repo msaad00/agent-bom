@@ -181,10 +181,17 @@ The recommended motion is simple:
 
 That keeps the day-1 path easy while still giving you a full runtime story later.
 
-Two diagrams explain the self-hosted shape without collapsing into one overloaded chart:
+Start with the deployment chooser — it is the canonical entry point and links into
+every paved path:
 
-- [Enterprise Self-Hosted Topology](site-docs/deployment/overview.md#enterprise-self-hosted-topology)
-- [Enterprise Self-Hosted Data and Runtime Flow](site-docs/deployment/overview.md#enterprise-self-hosted-data-and-runtime-flow)
+- **[Deployment Overview (chooser)](site-docs/deployment/overview.md)**
+
+Three single-concern diagrams in that overview explain the self-hosted shape
+without collapsing into one overloaded chart:
+
+- [Topology — Who Runs What, Where](site-docs/deployment/overview.md#enterprise-self-hosted-diagrams)
+- [Auth + Ingress Flow](site-docs/deployment/overview.md#auth-ingress-flow)
+- [Inventory & Runtime Evidence Flow](site-docs/deployment/overview.md#inventory-runtime-evidence-flow)
 
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#0f172a","primaryBorderColor":"#6366f1","primaryTextColor":"#e0e7ff","lineColor":"#64748b"}}}%%

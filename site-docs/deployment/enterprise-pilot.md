@@ -1,5 +1,10 @@
 # Enterprise MCP / Endpoint Pilot
 
+> **You do not need to read this unless** you are scoping an
+> open-source pilot that combines endpoint fleet, server-side MCP
+> visibility, gateway policy, and selected proxy enforcement. For the
+> paved production paths use [Deployment Overview](overview.md).
+
 This is the canonical `agent-bom` pilot shape for a company that wants one
 open-source control plane for:
 

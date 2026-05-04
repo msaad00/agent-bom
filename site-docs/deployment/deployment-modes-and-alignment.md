@@ -1,5 +1,13 @@
 # Deployment Modes and Alignment
 
+> **You do not need to read this unless** you are aligning packaging,
+> docs, UX, and release wording across the product (the
+> `local` / `fleet` / `cluster` / `hybrid` modes, the `#1520`
+> deployment-mode-aware navigation track, or the `agent-bom` vs
+> `agent-bom-ui` image story). For "what should I deploy?" use
+> [Deployment Overview](overview.md). For runtime choice use
+> [Proxy vs Gateway vs Fleet](proxy-vs-gateway-vs-fleet.md).
+
 Use this page when the question is not "can `agent-bom` do this?" but "how do
 we package, deploy, explain, and scale it without making the product feel more
 complicated than it is?"
@@ -32,19 +40,12 @@ The honest auth and runtime gaps that still matter are:
 
 ## One Product, Two Images
 
-Keep the image model simple and stable:
-
-| Product concept | Deployable image | Purpose |
-|---|---|---|
-| **agent-bom API / runtime image** | `agentbom/agent-bom` | CLI, API, scanner jobs, gateway, proxy, MCP server |
-| **agent-bom UI companion image** | `agentbom/agent-bom-ui` | Browser UI for the self-hosted control plane |
-
-This is the correct split:
-
-- Python runtime surfaces and the Node UI have different patch cadence, scaling, and blast radius
-- separate images are cleaner and safer in customer EKS
-- the mistake is not having two images
-- the mistake is presenting them like two products
+The two-image split (`agentbom/agent-bom` runtime + `agentbom/agent-bom-ui`
+companion) is documented as canonical in
+[Deployment Overview — Product Surfaces](overview.md#product-surfaces).
+Same image taxonomy across CLI, API, jobs, gateway, proxy, MCP server, and
+the browser UI; the mistake to avoid is presenting the two images like two
+separate products.
 
 Use this wording everywhere:
 
@@ -81,15 +82,12 @@ This is the clean customer-facing deployment story:
 
 ### What the customer actually deploys
 
-| Layer | Runs in customer infra | Why it exists |
-|---|---|---|
-| **UI** | browser-facing deployment | review, trigger, schedule, export |
-| **API / control plane** | FastAPI service | auth, RBAC, tenant scope, orchestration, graph, audit, policy |
-| **scanner jobs** | CronJobs, CI runners, one-off jobs | repo, image, IaC, MCP, cloud, and cluster scanning |
-| **fleet ingest** | endpoint or collector pushes | workstation and collector inventory without a mandatory daemon product |
-| **proxy** | sidecar or laptop wrapper | local enforcement near MCP traffic |
-| **gateway** | shared relay and policy surface | central runtime control where shared relay is useful |
-| **stores** | Postgres required, ClickHouse optional, Snowflake optional | transactional state, analytics, governance-oriented backends |
+The per-surface ownership (UI, API, scanner jobs, fleet ingest, proxy,
+gateway, stores) is described in [Deployment Overview — Product
+Surfaces](overview.md#product-surfaces) and the
+[Self-Hosted Product Architecture](../architecture/self-hosted-product-architecture.md)
+page. Do not re-document it here; this section exists to anchor the alignment
+matrix below.
 
 ### Response to the three practical concerns
 

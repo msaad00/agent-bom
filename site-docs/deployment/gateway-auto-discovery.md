@@ -1,5 +1,11 @@
 # Gateway Auto-Discovery From the Control Plane
 
+> **You do not need to read this unless** you are bringing up a gateway
+> after fleet / scan data already populated remote MCPs in the control
+> plane and want to skip a hand-edited `upstreams.yaml`. For the choice
+> of runtime surface use
+> [Proxy vs Gateway vs Fleet](proxy-vs-gateway-vs-fleet.md).
+
 `agent-bom gateway serve --from-control-plane` lets the gateway load remote MCP
 upstreams directly from fleet and scan data already stored in the control plane.
 

@@ -1,5 +1,10 @@
 # Performance, Sizing, and Benchmarks
 
+> **You do not need to read this unless** you are sizing nodes / replicas
+> / autoscaling for a real EKS rollout, or validating the shipped
+> benchmark harness against your own load. Defaults from the paved
+> installers fit pilot and small-team workloads without tuning.
+
 This guide is the operator-facing follow-up to the packaged Helm control plane
 and enterprise pilot docs. It does not promise fixed throughput numbers the
 repo has not published. It gives a defensible starting point for sizing,

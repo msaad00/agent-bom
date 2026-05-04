@@ -13,15 +13,19 @@ For the concrete runtime gateway discovery path after fleet and cluster scans
 have populated remote MCPs, see [Gateway Auto-Discovery From the Control
 Plane](gateway-auto-discovery.md).
 
-`agent-bom` stays one product with two deployable images:
+> **You do not need to read this unless** you are documenting an
+> opinionated AWS / EKS rollout for a platform team — covering Postgres,
+> IRSA, backup bucket, auth secrets, Helm release, fleet onboarding, and
+> gateway / proxy patterns under one ownership story.
+>
+> If you still need to pick a path, start with [Deployment
+> Overview](overview.md) and use [Deploy In Your Own AWS /
+> EKS](own-infra-eks.md) for the paved production rollout.
 
-- `agentbom/agent-bom` for scanner, API, jobs, proxy, gateway, and workers
-- `agentbom/agent-bom-ui` for the browser dashboard
-
-Use [Deployment Overview](overview.md) first if you still need to choose a
-path. Use [Deploy In Your Own AWS / EKS Infrastructure](own-infra-eks.md) for
-the paved production rollout. This page is the deeper AWS reference once that
-decision is already made.
+The two-image product split (`agentbom/agent-bom` plus
+`agentbom/agent-bom-ui`) and the runtime-surface defaults are documented in
+[Deployment Overview](overview.md#product-surfaces). This page is the deeper
+AWS-specific reference once that decision is already made.
 
 ## Reference Entry Points
 
@@ -129,17 +133,13 @@ This is the clean ownership model:
 
 ## Product Surfaces In A Company EKS Rollout
 
-These are the product surfaces a real enterprise rollout usually cares about:
-
-- **control plane**: API, UI, auth, graph, findings, remediation, audit, policy
-- **scan and discovery**: repos, images, IaC, MCP configs, skills, cluster and cloud surfaces
-- **fleet**: endpoint and collector inventory pushed into the control plane
-- **gateway**: shared remote MCP traffic, policy, and audit in the cluster
-- **proxy**: laptop or sidecar runtime enforcement where inline MCP inspection is needed
-
-`gateway` and `proxy` are core features of the product. In practice they are
-deployed selectively by workload and traffic path, not to every process in the
-environment on day 1.
+The five product surfaces an enterprise AWS rollout cares about (control
+plane, scan and discovery, fleet, gateway, proxy) are described in
+[Deployment Overview — Product Surfaces](overview.md#product-surfaces) and
+the "When to use" decision lives in
+[Proxy vs Gateway vs Fleet](proxy-vs-gateway-vs-fleet.md). In a real EKS
+rollout `gateway` and `proxy` are deployed selectively by workload and
+traffic path, not to every process on day 1.
 
 ## Runtime Flow For Fleet, Proxy, And Gateway
 

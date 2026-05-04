@@ -1,5 +1,10 @@
 # Backup And Restore Runbook
 
+> **You do not need to read this unless** you are operating the packaged
+> Postgres backup CronJob (`controlPlane.backup.enabled=true`) or
+> rehearsing a restore. Snowflake-native deployments use the warehouse
+> durability and recovery model instead and do not need this page.
+
 This runbook covers the packaged Postgres backup path for self-hosted control
 planes. It applies when `controlPlane.backup.enabled=true` in the Helm chart.
 Snowflake-native deployments use the warehouse durability and recovery model

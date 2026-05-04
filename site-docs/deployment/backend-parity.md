@@ -1,5 +1,10 @@
 # Backend Parity Matrix
 
+> **You do not need to read this unless** you are choosing between
+> SQLite, Postgres / Supabase, ClickHouse, and Snowflake — or verifying
+> exactly which API surfaces are wired against each backend today.
+> Most deployments should use Postgres (the documented default).
+
 `agent-bom` does not treat every backend as interchangeable.
 
 The product contract is:

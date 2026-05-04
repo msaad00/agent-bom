@@ -114,6 +114,7 @@ nav:
           - Backup and Restore Runbook: deployment/backup-restore.md
           - Air-Gapped Image Bundle: deployment/airgapped-image-bundle.md
           - Performance, Sizing, and Benchmarks: deployment/performance-and-sizing.md
+          - Scaling SLOs and Autoscaling: deployment/scaling-slo.md
           - Worker and Scheduler Concurrency: deployment/worker-and-scheduler-concurrency.md
           - SIEM Integration: deployment/siem-integration.md
           - Grafana Dashboard: deployment/grafana.md

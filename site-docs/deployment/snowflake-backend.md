@@ -1,5 +1,11 @@
 # Snowflake-native backend
 
+> **You do not need to read this unless** your organization has decided
+> to govern control-plane data in Snowflake. The default self-hosted
+> path uses Postgres — see [Deployment Overview](overview.md) and
+> [Backend Parity](backend-parity.md). For a Snowflake POV, start with
+> [Snowflake POV](snowflake-pov.md).
+
 `agent-bom` runs against Snowflake as the primary store for scan jobs,
 fleet agents, schedules, gateway policies, vulnerability exceptions, and the policy audit trail. Use this
 mode when your organisation already governs data in Snowflake and you

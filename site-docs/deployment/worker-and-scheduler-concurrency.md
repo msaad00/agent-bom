@@ -1,5 +1,10 @@
 # Worker and Scheduler Concurrency
 
+> **You do not need to read this unless** you are debugging job queue
+> behavior, tuning concurrency for high-volume scans, or making a
+> deliberate choice between API-triggered scans, recurring schedules, and
+> packaged CronJobs.
+
 `agent-bom` uses a few different execution models at once:
 
 - API-triggered ad hoc scans

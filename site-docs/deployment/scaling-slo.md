@@ -1,5 +1,11 @@
 # Scaling SLOs and KEDA-driven autoscaling
 
+> **You do not need to read this unless** you are running KEDA-backed
+> autoscaling, validating the shipped per-tier SLOs, or signing off
+> production sizing for the EKS reference deployment. For default
+> sizing guidance use [Performance, Sizing, and
+> Benchmarks](performance-and-sizing.md).
+
 This page publishes the per-tier scaling SLOs agent-bom commits to under the
 documented EKS reference deployment, and explains the autoscaling primitives
 the chart ships with so you can validate them against your own load.

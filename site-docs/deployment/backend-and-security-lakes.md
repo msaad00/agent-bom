@@ -1,5 +1,10 @@
 # Backend and Security-Lake Strategy
 
+> **You do not need to read this unless** you are reasoning about how
+> Postgres, ClickHouse, Snowflake, S3, and (future) Databricks fit
+> together as a tiered store strategy. For the per-API capability
+> matrix use [Backend Parity](backend-parity.md).
+
 `agent-bom` is one product, but not every backend does the same job.
 
 The backend strategy should stay simple:

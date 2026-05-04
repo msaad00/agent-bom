@@ -1,5 +1,11 @@
 # Postgres Provisioning Workflow
 
+> **You do not need to read this unless** your platform team is
+> provisioning Postgres outside of the reference installer (e.g. with
+> custom Terraform, an existing RDS, or a non-default user/role layout).
+> The paved-path installers in [Deployment Overview](overview.md) handle
+> this for you.
+
 This page documents the Postgres contract for self-hosted `agent-bom`
 operators.
 

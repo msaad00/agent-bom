@@ -271,14 +271,6 @@ For the default self-hosted data-ownership and support-sharing boundary, see
 | **Gateway runtime** | shared remote MCP client | remote MCP + control-plane audit/policy | central remote MCP traffic plane |
 | **Analytics / archive** | control plane | ClickHouse, S3, SIEM, OTEL | optional longer retention, analytics, and exports |
 
-This is the product split to keep in mind:
-
-- **UI** drives workflows and review
-- **API** owns auth, RBAC, graph, audit, and policy
-- **workers** do scans and normalization
-- **fleet** persists endpoint inventory
-- **proxy and gateway** are runtime surfaces deployed where they fit
-
 By default, the control plane, job results, fleet inventory, graph snapshots,
 remediation output, and proxy audit data stay inside the customer's
 infrastructure. External egress only happens when the operator explicitly enables
@@ -288,45 +280,6 @@ webhooks.
 That same self-hosted boundary also means `agent-bom` maintainers do not get
 silent access to tenant data. For the full operator-facing contract, see
 [Customer Data and Support Boundary](customer-data-and-support-boundary.md).
-
-## Which Service Does What
-
-| Surface | Deploy it when | What it owns | What it is not |
-|---|---|---|---|
-| **Scan** | you need discovery, CVE analysis, Kubernetes inventory, CI gates, or scheduled audits | package, container, IaC, MCP, cloud, and cluster scanning | a live enforcement layer |
-| **Fleet** | you want laptops, workstations, or other collectors to persist inventory into one control plane | endpoint and collector push into `/v1/fleet/sync`, review in `/fleet` | an always-on endpoint agent or MDM product |
-| **Proxy / runtime** | you need inline MCP inspection or policy enforcement on live tool traffic | `agent-bom proxy`, audit push, selected blocks/warns, local or sidecar enforcement | a generic shared network gateway for every workload |
-| **Gateway** | you want central policy authoring and optional shared remote MCP traffic | `/gateway`, `/v1/gateway/policies`, policy pull for proxies, `agent-bom gateway serve` | a replacement for the proxy itself |
-| **API + UI** | you want one operator control plane | findings, graph, remediation, fleet review, audit, policy management | a hosted vendor control plane |
-| **MCP server** | you want `agent-bom` exposed as tools to assistants or remote clients | `agent-bom mcp server` tool surface | the same thing as the runtime proxy |
-
-## Hosted product checklist
-
-For the packaged product to feel end to end, the UI should drive the control
-plane instead of collecting data itself.
-
-| Operator action in UI | Backend/API owner | Data actually comes from |
-|---|---|---|
-| Create a scan job | `POST /v1/scan` | worker jobs that scan repos, images, IaC, MCP configs, or cloud targets |
-| Poll progress / stream status | `GET /v1/scan/{job_id}`, `GET /v1/scan/{job_id}/stream`, `GET /v1/jobs` | control-plane job state |
-| Export graph / licenses / VEX / reports | `GET /v1/scan/{job_id}/graph-export`, `/licenses`, `/vex`, `/skill-audit`; `GET /v1/compliance/{framework}/report` | normalized findings and graph state already stored in the control plane |
-| Schedule recurring collection | `POST /v1/schedules`, `GET /v1/schedules`, `PUT /v1/schedules/{id}/toggle`, `DELETE /v1/schedules/{id}` | scheduled worker execution |
-| Review fleet and endpoint inventory | `GET /v1/fleet`, `GET /v1/fleet/stats`, `GET /v1/fleet/{agent_id}` | endpoint or collector pushes to `POST /v1/fleet/sync` |
-| Review traces and pushed results | `POST /v1/traces`, `POST /v1/results/push`, `GET /v1/activity`, `GET /v1/governance` | OTLP, event collectors, or customer-owned push paths |
-| Manage runtime policy | `GET/POST/PUT/DELETE /v1/gateway/policies`, `POST /v1/gateway/evaluate` | proxy and gateway policy pull/evaluation |
-| Review runtime audit and health | `GET /v1/proxy/status`, `GET /v1/proxy/alerts`, `GET /v1/gateway/audit`, `GET /v1/gateway/stats` | `agent-bom proxy` and gateway audit push to `/v1/proxy/audit` |
-| Manage auth, keys, and audit export | `/v1/auth/*`, `/v1/audit*`, `/v1/exceptions*` | control-plane auth, RBAC, audit, and policy state |
-| Review graph, findings, posture, and compliance | `/v1/graph*`, `/v1/assets*`, `/v1/compliance*`, `/v1/posture*`, `/v1/governance*` | canonical entities, findings, events, and graph state in the control plane |
-
-That is the intended split:
-
-- `UI` = configure, trigger, schedule, review, export
-- `API / control plane` = auth, RBAC, tenant scope, orchestration, graph, persistence, audit, policy
-- `workers / connectors` = do the privileged read or collection work
-- `proxy / gateway` = enforce and audit runtime MCP traffic
-
-For the concrete backend and UI rollout plan behind this split, see [Hosted
-Product Control-Plane Spec](../architecture/hosted-product-spec.md).
 
 ## Approved intake paths today
 
@@ -413,41 +366,13 @@ YAML.
 
 ![agent-bom remediation view](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/remediation-live.png)
 
-## Start Here
+## Where to go next
 
-- [AWS Company Rollout](aws-company-rollout.md)
-- [Your Own AWS / EKS](own-infra-eks.md)
-- [Enterprise MCP / Endpoint Pilot](enterprise-pilot.md)
-- [Endpoint Fleet](endpoint-fleet.md)
-- [When To Use Proxy vs Gateway vs Fleet](proxy-vs-gateway-vs-fleet.md)
-- [Focused EKS MCP Pilot](eks-mcp-pilot.md)
-- [Packaged API + UI Control Plane](control-plane-helm.md)
-- [Snowflake POV Deployment Runbook](snowflake-pov.md)
-- [Performance, Sizing, and Benchmarks](performance-and-sizing.md)
-- [Visual Leak Detection](visual-leak-detection.md)
-- [Worker and Scheduler Concurrency](worker-and-scheduler-concurrency.md)
-- [Gateway Auto-Discovery From the Control Plane](gateway-auto-discovery.md)
-- [Backend Parity](backend-parity.md)
+The chooser table at the top of this page is the canonical entry. After that:
 
-## Hosting and Storage Boundaries
+- runtime surface decision lives in [When To Use Proxy vs Gateway vs Fleet](proxy-vs-gateway-vs-fleet.md)
+- backend choice (Postgres / ClickHouse / Snowflake) is documented in [Backend Parity Matrix](backend-parity.md) and [Backend and Security-Lake Strategy](backend-and-security-lakes.md)
+- the deeper data-model and store mapping is in [Control-Plane Data Model and Store Parity](control-plane-data-model.md)
+- the API + UI control-plane image and operator split is in [Packaged API + UI Control Plane](control-plane-helm.md) and [Hosted Product Control-Plane Spec](../architecture/hosted-product-spec.md)
 
-`agent-bom` is deployable in multiple honest ways:
-
-- **Local laptop / workstation**: CLI or `agent-bom serve` with SQLite
-- **Self-hosted VM / container**: `agent-bom api` or `agent-bom serve` behind
-  your ingress and auth
-- **Docker Compose / container platforms**: packaged API, proxy, or MCP server
-- **Kubernetes / Helm**: control plane, scanner, optional runtime monitor, and
-  operator surfaces
-- **Postgres / Supabase**: primary transactional backend
-- **ClickHouse**: analytics add-on
-- **Snowflake**: warehouse-native governance surface with explicit parity
-  limits, not the default full hosting contract
-
-Default guidance:
-
-- **Postgres** is the normal self-hosted control-plane answer
-- **ClickHouse** is the first analytics add-on when event volume grows
-- **Snowflake** is an explicit advanced path, not the default production recommendation
-
-For the detailed backend matrix, see [Backend Parity Matrix](backend-parity.md).
+Everything else in the deployment section is reference material — open it only when your platform team needs that specific detail.

@@ -119,9 +119,17 @@ function SkeletonColumn({ bars }: { bars: number }) {
 export function GraphFindingsFallback({
   nodes,
   onSelect,
+  onExpandScope,
 }: {
   nodes: Array<{ id: string; data: LineageNodeData }>;
   onSelect: (id: string, data: LineageNodeData) => void;
+  // Optional: when provided, a "Show full graph" button replaces the dead
+  // "relax the scope to recover the graph" prose with an actual click target
+  // that swaps the active filters to the expanded preset. The graph page
+  // wires this so memory-only mode (no persisted graph backend) and focused
+  // filters that drop the surrounding agent/server context can recover the
+  // topology in one click instead of hunting through filter checkboxes.
+  onExpandScope?: () => void;
 }) {
   const shouldVirtualize = nodes.length > FINDINGS_VIRTUALIZE_THRESHOLD;
 
@@ -136,6 +144,16 @@ export function GraphFindingsFallback({
               You are looking at the vulnerability slice without enough surrounding package, server, or agent context to form a topology.
               Use this list for evidence and remediation, or relax the scope to recover the graph.
             </p>
+            {onExpandScope ? (
+              <button
+                type="button"
+                onClick={onExpandScope}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20 hover:border-emerald-400 transition-colors"
+              >
+                Show full graph
+                <span className="text-[10px] text-emerald-400/70">(expand scope)</span>
+              </button>
+            ) : null}
           </div>
           <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-2 text-xs text-[color:var(--text-secondary)]">
             {nodes.length} finding{nodes.length !== 1 ? "s" : ""} in scope

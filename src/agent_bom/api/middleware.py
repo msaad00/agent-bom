@@ -59,11 +59,29 @@ _AUTH_RUNTIME_STATUS: dict[str, object] = {
     "recommended_ui_mode": "no_auth",
 }
 _API_CSP = "default-src 'self'"
+# /docs (Swagger UI) and /redoc serve HTML shells that load swagger-ui /
+# redoc bundles + a favicon from public CDNs (cdn.jsdelivr.net,
+# fastapi.tiangolo.com). The strict default-src 'self' API CSP blocks
+# them, leaving a blank page. We narrowly relax CSP for these two
+# documentation routes — they remain disable-able via
+# AGENT_BOM_DISABLE_DOCS for production deployments per the
+# _EXEMPT_PATHS toggle below.
+_DOCS_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "img-src 'self' data: https://fastapi.tiangolo.com https://cdn.jsdelivr.net; "
+    "font-src 'self' data: https://cdn.jsdelivr.net; "
+    "worker-src 'self' blob:; "
+    "connect-src 'self'"
+)
 _TRUSTED_PROXY_SECRET_MIN_BYTES = 32
 
 
 def _content_security_policy(path: str, content_type: str) -> str:
     """Return a route-aware CSP that keeps the API strict and the dashboard usable."""
+    if path.startswith(("/docs", "/redoc")) and "text/html" in content_type:
+        return _DOCS_CSP
     if "text/html" in content_type and not path.startswith(("/v1/", "/docs", "/redoc", "/openapi.json")):
         return dashboard_csp_header()
     return _API_CSP

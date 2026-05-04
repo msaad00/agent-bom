@@ -93,7 +93,7 @@ wandb = ["wandb>=0.16"]
 # Temporarily unbundled from agent-bom extras until upstream MLflow CVEs are fixed.
 # MLflow discovery still works if users install `mlflow` separately.
 openai = ["openai>=1.12"]
-ai-enrich = ["litellm>=1.30"]
+ai-enrich = ["litellm>=1.83.7"]
 graph = [
     "networkx>=3.0",
     "numpy>=1.26",

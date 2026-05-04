@@ -1154,7 +1154,13 @@ export default function GraphPageClient() {
               ]}
             />
           ) : graphOnlyFindings ? (
-            <GraphFindingsFallback nodes={findingNodes} onSelect={selectFindingCard} />
+            <GraphFindingsFallback
+              nodes={findingNodes}
+              onSelect={selectFindingCard}
+              onExpandScope={() =>
+                setFilters(createExpandedGraphFilters(filters.agentName ?? flow.agentNames[0] ?? null))
+              }
+            />
           ) : (
             <ReactFlow
               nodes={displayNodes}

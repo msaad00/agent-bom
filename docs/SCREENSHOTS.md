@@ -56,5 +56,3 @@ The screenshot job is intentionally **not** wired to CI — capturing meaningful
 dashboards needs a populated API, and a mocked-out empty-state shot is worse
 than the current PNG. Treat screenshot refresh as a release-checklist item
 rather than a green/red gate.
-
-Closes #2149.

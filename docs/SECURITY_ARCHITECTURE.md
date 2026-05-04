@@ -142,7 +142,7 @@ If engaging a third-party auditor, the recommended scope:
 
 ### Compliance Framework Mapping
 
-agent-bom **maps findings TO compliance controls** across 14 tag-mapped frameworks and exposes AISVS as a benchmark:
+agent-bom **maps findings TO compliance controls** across 15 tag-mapped frameworks and exposes AISVS as a benchmark:
 
 OWASP LLM Top 10, OWASP MCP Top 10, OWASP Agentic Top 10,
 EU AI Act, NIST AI RMF, NIST CSF, NIST 800-53 Rev 5, FedRAMP Moderate,

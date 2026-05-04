@@ -207,11 +207,17 @@ class DirectoryPiiResult:
 
 
 def _redact(value: str, pii_type: str) -> str:
-    """Return a safe redacted representation for display."""
-    s = str(value)
-    if len(s) <= 4:
-        return f"[{pii_type}:***]"
-    return f"[{pii_type}:{s[:2]}***{s[-2:]}]"
+    """Return a safe redacted representation for display.
+
+    The contract is **never reveal any digits / characters of the matched value** —
+    not even prefix/suffix snippets. PCI DSS § 3.4.1 prohibits storing readable
+    PAN; partial SSN exposes identity-linkable digits; partial IBAN / passport /
+    NHS / Medicare leaks the same. Findings carry only the type and severity;
+    the file path, row index, and column already give the operator everything
+    needed to locate the cell — they don't need our preview, and any preview
+    becomes a downstream leak vector (JSON output → DB → audit log → dashboard).
+    """
+    return f"[{pii_type}:REDACTED]"
 
 
 def _scan_cell(value: str, row_idx: int, col: str, file_path: str) -> list[PiiFinding]:

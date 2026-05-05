@@ -23,10 +23,11 @@ function _classifyGraphErrorKind(err: unknown): "network" | "auth" | "forbidden"
 }
 import { AttackPathCard } from "@/components/attack-path-card";
 import { GraphEmptyState } from "@/components/graph-state-panels";
-import { PostureGrade } from "@/components/posture-grade";
 import {
   api,
   formatDate,
+  type FixFirstGraphViewResponse,
+  type FixFirstPathCard,
   type GraphSnapshot,
   type PostureResponse,
   type UnifiedGraphResponse,
@@ -94,6 +95,7 @@ function SecurityGraphPageContent() {
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
   const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
+  const [fixFirstView, setFixFirstView] = useState<FixFirstGraphViewResponse | null>(null);
   const [posture, setPosture] = useState<PostureResponse | null>(null);
   const [loadingSnapshots, setLoadingSnapshots] = useState(true);
   const [loadingGraph, setLoadingGraph] = useState(false);
@@ -157,6 +159,7 @@ function SecurityGraphPageContent() {
   useEffect(() => {
     if (!selectedScanId) {
       setGraphData(null);
+      setFixFirstView(null);
       setSelectedAttackPathKey(null);
       return;
     }
@@ -166,18 +169,29 @@ function SecurityGraphPageContent() {
     async function loadGraph() {
       setLoadingGraph(true);
       try {
-        const graph = await api.getGraph({
-          scanId: selectedScanId,
-          entityTypes: ATTACK_PATH_ENTITY_TYPES,
-          maxDepth: 6,
-          limit: 1200,
-        });
+        const [graph, view] = await Promise.all([
+          api.getGraph({
+            scanId: selectedScanId,
+            entityTypes: ATTACK_PATH_ENTITY_TYPES,
+            maxDepth: 6,
+            limit: 1200,
+          }),
+          api.getFixFirstGraphView({
+            scanId: selectedScanId,
+            cve: focus.cve || undefined,
+            packageName: focus.packageName || undefined,
+            agentName: focus.agentName || undefined,
+            limit: 12,
+          }),
+        ]);
         if (cancelled) return;
         setGraphData(graph);
+        setFixFirstView(view);
         setApiError(null);
       } catch (error) {
         if (cancelled) return;
         setGraphData(emptyGraphResponse(selectedScanId));
+        setFixFirstView(null);
         setApiError(error instanceof Error ? error.message : "Failed to load security graph");
       } finally {
         if (!cancelled) setLoadingGraph(false);
@@ -188,7 +202,7 @@ function SecurityGraphPageContent() {
     return () => {
       cancelled = true;
     };
-  }, [selectedScanId]);
+  }, [focus.agentName, focus.cve, focus.packageName, selectedScanId]);
 
   const selectedSnapshot = useMemo(
     () => snapshots.find((snapshot) => snapshot.scan_id === selectedScanId) ?? null,
@@ -200,12 +214,24 @@ function SecurityGraphPageContent() {
     [graphData?.nodes],
   );
 
+  const fixFirstCards = useMemo(() => fixFirstView?.cards ?? [], [fixFirstView?.cards]);
+
+  const cardByPathKey = useMemo(() => {
+    const next = new Map<string, FixFirstPathCard>();
+    for (const card of fixFirstCards) {
+      next.set(attackPathKey(card.attack_path), card);
+    }
+    return next;
+  }, [fixFirstCards]);
+
   const attackPaths = useMemo(
     () =>
-      [...(graphData?.attack_paths ?? [])].sort(
-        (left, right) => right.composite_risk - left.composite_risk,
-      ),
-    [graphData?.attack_paths],
+      fixFirstCards.length > 0
+        ? fixFirstCards.map((card) => card.attack_path)
+        : [...(graphData?.attack_paths ?? [])].sort(
+            (left, right) => right.composite_risk - left.composite_risk,
+          ),
+    [fixFirstCards, graphData?.attack_paths],
   );
 
   const hasFocusContext = Boolean(focus.cve || focus.packageName || focus.agentName);
@@ -229,6 +255,11 @@ function SecurityGraphPageContent() {
         ? attackPaths.find((path) => attackPathKey(path) === selectedAttackPathKey) ?? null
         : attackPaths[0] ?? null,
     [attackPaths, selectedAttackPathKey],
+  );
+
+  const selectedFixFirstCard = useMemo(
+    () => (selectedAttackPath ? cardByPathKey.get(attackPathKey(selectedAttackPath)) ?? null : null),
+    [cardByPathKey, selectedAttackPath],
   );
 
   const selectedPathAgents = useMemo(
@@ -369,7 +400,7 @@ function SecurityGraphPageContent() {
           </div>
         </div>
 
-        <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="mt-6 grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -419,18 +450,43 @@ function SecurityGraphPageContent() {
                 </div>
               )
             )}
+
+            {fixFirstView && (
+              <div className="mt-4 grid gap-3 border-t border-[color:var(--border-subtle)] pt-4 sm:grid-cols-3">
+                <QuickStat label="Matched paths" value={String(fixFirstView.summary.matched_paths)} tone="blue" />
+                <QuickStat label="Covered findings" value={String(fixFirstView.summary.covered_findings)} tone="amber" />
+                <QuickStat label="Highest risk" value={fixFirstView.summary.highest_risk.toFixed(1)} tone="red" />
+              </div>
+            )}
           </div>
 
           <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
             <p className="text-[10px] uppercase tracking-[0.2em] text-[color:var(--text-tertiary)]">Current pressure</p>
             {posture ? (
-              <div className="mt-3">
-                <PostureGrade
-                  grade={posture.grade}
-                  score={posture.score}
-                  dimensions={posture.dimensions}
-                  drilldown
-                />
+              <div className="mt-4">
+                <div className="flex items-end justify-between gap-4">
+                  <div>
+                    <div className="font-mono text-5xl font-semibold text-red-300">{posture.grade}</div>
+                    <p className="mt-1 text-xs text-[color:var(--text-tertiary)]">{posture.summary}</p>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-mono text-2xl text-[color:var(--foreground)]">{posture.score}</div>
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">score</div>
+                  </div>
+                </div>
+                <div className="mt-4 h-2 overflow-hidden rounded-full bg-[color:var(--surface-muted)]">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-red-500 via-amber-400 to-emerald-400"
+                    style={{ width: `${Math.max(0, Math.min(100, posture.score))}%` }}
+                  />
+                </div>
+                <Link
+                  href="/insights"
+                  className="mt-4 inline-flex items-center gap-2 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
+                >
+                  Open posture details
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
               </div>
             ) : (
               <div className="mt-4 rounded-2xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5 text-sm text-[color:var(--text-secondary)]">
@@ -486,10 +542,10 @@ function SecurityGraphPageContent() {
               <div>
                 <p className="text-[10px] uppercase tracking-[0.2em] text-orange-400">Attack path queue</p>
                 <h2 className="mt-1 text-lg font-semibold text-[color:var(--foreground)]">
-                  {attackPaths.length} high-signal path{attackPaths.length !== 1 ? "s" : ""} in the selected snapshot
+                  {attackPaths.length} ranked fix-first path{attackPaths.length !== 1 ? "s" : ""} in the selected snapshot
                 </h2>
                 <p className="mt-1 text-sm text-[color:var(--text-tertiary)]">
-                  Focus one exploit chain at a time, then jump into the full graph only when you need broader topology.
+                  Ranked by composite risk and operator context so the first screen starts with what to validate, contain, or expand.
                 </p>
                 <p className="mt-2 text-xs text-[color:var(--text-tertiary)]">
                   Keyboard: focus this queue and use ← / → to step through paths.
@@ -539,19 +595,48 @@ function SecurityGraphPageContent() {
             >
               {attackPaths.slice(0, 8).map((path) => {
                 const key = attackPathKey(path);
+                const card = cardByPathKey.get(key);
                 const pathNodes = toAttackCardNodes(path, graphNodeById);
                 if (pathNodes.length === 0) return null;
                 const active = selectedAttackPath ? attackPathKey(selectedAttackPath) === key : false;
                 return (
                   <div
                     key={key}
-                    className={`min-w-[360px] rounded-2xl transition ${active ? "ring-2 ring-orange-400/70 ring-offset-2 ring-offset-zinc-950" : ""}`}
+                    className={`min-w-[380px] rounded-2xl border bg-[color:var(--surface-elevated)] p-3 transition ${
+                      active
+                        ? "border-orange-400/70 ring-2 ring-orange-400/70 ring-offset-2 ring-offset-zinc-950"
+                        : "border-[color:var(--border-subtle)]"
+                    }`}
                   >
+                    {card && (
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-[0.18em] text-orange-300">#{card.rank} fix first</div>
+                          <div className="mt-1 text-sm font-semibold leading-5 text-[color:var(--foreground)]">{card.title}</div>
+                        </div>
+                        <div className="rounded-full border border-red-900/60 bg-red-950/30 px-2 py-1 font-mono text-[11px] text-red-200">
+                          {card.attack_path.composite_risk.toFixed(1)}
+                        </div>
+                      </div>
+                    )}
                     <AttackPathCard
                       nodes={pathNodes}
                       riskScore={path.composite_risk}
                       onClick={() => setSelectedAttackPathKey(key)}
                     />
+                    {card && card.risk_reasons.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {card.risk_reasons.slice(0, 3).map((reason) => (
+                          <span
+                            key={`${card.id}-${reason.kind}`}
+                            title={reason.detail}
+                            className="rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface)] px-2 py-1 text-[10px] text-[color:var(--text-secondary)]"
+                          >
+                            {reason.label}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -565,10 +650,11 @@ function SecurityGraphPageContent() {
                   <div>
                     <p className="text-[10px] uppercase tracking-[0.2em] text-orange-400">Selected path</p>
                     <h2 className="mt-1 text-lg font-semibold text-[color:var(--foreground)]">
-                      {selectedAttackPath.summary || "Credential-aware exploit chain"}
+                      {selectedFixFirstCard?.title || selectedAttackPath.summary || "Credential-aware exploit chain"}
                     </h2>
                     <p className="mt-2 text-sm leading-6 text-[color:var(--text-secondary)]">
-                      The graph already resolved this chain. Use it as the operator-facing shortlist before you branch into detailed evidence.
+                      {selectedFixFirstCard?.summary ||
+                        "The graph already resolved this chain. Use it as the operator-facing shortlist before you branch into detailed evidence."}
                     </p>
                   </div>
                   <div className="rounded-2xl border border-red-900/60 bg-red-950/20 px-4 py-3">
@@ -576,6 +662,20 @@ function SecurityGraphPageContent() {
                     <div className="mt-1 font-mono text-2xl text-red-200">{selectedAttackPath.composite_risk.toFixed(1)}</div>
                   </div>
                 </div>
+
+                {selectedFixFirstCard && selectedFixFirstCard.risk_reasons.length > 0 && (
+                  <div className="mt-4 rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
+                    <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">Why this is prioritized</div>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      {selectedFixFirstCard.risk_reasons.map((reason) => (
+                        <div key={reason.kind} className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-3">
+                          <div className="text-sm font-semibold text-[color:var(--foreground)]">{reason.label}</div>
+                          <p className="mt-1 text-xs leading-5 text-[color:var(--text-tertiary)]">{reason.detail}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <QuickStat label="Hop count" value={String(Math.max(0, selectedAttackPath.hops.length - 1))} />
@@ -636,7 +736,7 @@ function SecurityGraphPageContent() {
                   Recommended next steps
                 </div>
                 <div className="mt-3 grid gap-3 lg:grid-cols-3">
-                  {selectedPathActions.map((action) => (
+                  {(selectedFixFirstCard?.next_actions ?? selectedPathActions).map((action) => (
                     <Link
                       key={action.title}
                       href={action.href}

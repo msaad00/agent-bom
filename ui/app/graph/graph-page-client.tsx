@@ -31,7 +31,7 @@ import {
   type FilterState,
 } from "@/components/lineage-filter";
 import { lineageNodeTypes, type LineageNodeData, type LineageNodeType } from "@/components/lineage-nodes";
-import { useDagreLayout } from "@/lib/use-dagre-layout";
+import { useForceLayout } from "@/lib/use-force-layout";
 import {
   EntityType,
   RelationshipType,
@@ -579,12 +579,10 @@ export default function GraphPageClient() {
     [flow.nodes],
   );
 
-  const { nodes: layoutNodes, edges: layoutEdges } = useDagreLayout(flow.nodes, flow.edges, {
-    direction: filters.agentName || filters.vulnOnly ? "TB" : "LR",
-    nodeWidth: filters.agentName ? 208 : 188,
-    nodeHeight: 72,
-    rankSep: filters.agentName ? 118 : 104,
-    nodeSep: filters.agentName ? 22 : 28,
+  const { nodes: layoutNodes, edges: layoutEdges } = useForceLayout(flow.nodes, flow.edges, {
+    idealEdgeLength: filters.agentName ? 168 : 196,
+    nodeRepulsion: filters.agentName ? 3600 : 4400,
+    preservePinnedPositions: true,
   });
 
   const connectedIds = useMemo(

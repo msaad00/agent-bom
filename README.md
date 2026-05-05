@@ -240,6 +240,7 @@ Current graph scale boundary:
 
 - the graph is strong for pilot and mid-market investigation flows, but larger tenants should stay windowed by snapshot, page, search, and blast-radius drilldown instead of expecting one giant browser canvas to stay smooth
 - operator sizing guidance and the shipped benchmark harness live in [Performance, Sizing, and Benchmarks](site-docs/deployment/performance-and-sizing.md)
+- the full contract — entity / edge coverage, accuracy guarantees, scaling tiers, non-promises, and known gaps — is in [docs/graph/CONTRACT.md](docs/graph/CONTRACT.md)
 
 Backend defaults:
 

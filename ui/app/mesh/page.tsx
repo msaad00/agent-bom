@@ -10,9 +10,10 @@ import {
   type Edge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { ShieldAlert, Loader2, AlertTriangle, Search, SlidersHorizontal, Network, GitBranch } from "lucide-react";
+import { ShieldAlert, Loader2, AlertTriangle, Search, SlidersHorizontal, Network, GitBranch, Orbit } from "lucide-react";
 import { api, type JobListItem, type ScanJob } from "@/lib/api";
 import { useDagreLayout } from "@/lib/use-dagre-layout";
+import { useRadialLayout } from "@/lib/use-radial-layout";
 import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nodes";
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import { MeshStats } from "@/components/mesh-stats";
@@ -169,6 +170,8 @@ function MeshToolbar({
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
+type MeshLayoutMode = "radial" | "topology" | "spawn-tree";
+
 export default function MeshPage() {
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [selectedJob, setSelectedJob] = useState<string>("");
@@ -178,9 +181,7 @@ export default function MeshPage() {
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [activeJob, setActiveJob] = useState<ScanJob | null>(null);
-
-  // Layout direction: "LR" for topology, "TB" for spawn tree
-  const [layoutMode, setLayoutMode] = useState<"LR" | "TB">("LR");
+  const [layoutMode, setLayoutMode] = useState<MeshLayoutMode>("radial");
 
   // Filters
   const [nodeFilter, setNodeFilter] = useState<NodeTypeFilter>({
@@ -298,18 +299,24 @@ export default function MeshPage() {
     return { rawNodes: nodes, rawEdges: edges, stats };
   }, [activeResult, nodeFilter, severityFilter, selectedAgents, vulnerableOnly]);
 
-  const { nodes: layoutNodes, edges: layoutEdges } = useDagreLayout(rawNodes, rawEdges, {
-    direction: layoutMode,
+  const { nodes: layoutNodes, edges: layoutEdges } = useRadialLayout(rawNodes, rawEdges, {
+    baseRadius: 240,
+    ringSpacing: 220,
+  });
+  const { nodes: dagreNodes, edges: dagreEdges } = useDagreLayout(rawNodes, rawEdges, {
+    direction: layoutMode === "spawn-tree" ? "TB" : "LR",
     nodeWidth: 200,
     nodeHeight: 70,
     rankSep: 140,
     nodeSep: 25,
   });
+  const visibleNodes = layoutMode === "radial" ? layoutNodes : dagreNodes;
+  const visibleEdges = layoutMode === "radial" ? layoutEdges : dagreEdges;
 
   // Search highlighting
   const searchMatches = useMemo(
-    () => (searchQuery ? searchNodes(layoutNodes, searchQuery) : null),
-    [layoutNodes, searchQuery]
+    () => (searchQuery ? searchNodes(visibleNodes, searchQuery) : null),
+    [visibleNodes, searchQuery]
   );
 
   const toggleAgent = useCallback((name: string) => {
@@ -323,35 +330,35 @@ export default function MeshPage() {
 
   // Hover highlighting
   const connectedIds = useMemo(
-    () => (hoveredNodeId ? getConnectedIds(hoveredNodeId, layoutEdges) : null),
-    [hoveredNodeId, layoutEdges]
+    () => (hoveredNodeId ? getConnectedIds(hoveredNodeId, visibleEdges) : null),
+    [hoveredNodeId, visibleEdges]
   );
 
   const displayNodes = useMemo(() => {
     if (searchMatches && searchMatches.size > 0) {
-      return layoutNodes?.map((n) => ({
+      return visibleNodes?.map((n) => ({
         ...n,
         data: { ...n.data, dimmed: !searchMatches.has(n.id), highlighted: searchMatches.has(n.id) },
       }));
     }
-    if (!connectedIds) return layoutNodes;
-    return layoutNodes?.map((n) => ({
+    if (!connectedIds) return visibleNodes;
+    return visibleNodes?.map((n) => ({
       ...n,
       data: { ...n.data, dimmed: !connectedIds.has(n.id), highlighted: connectedIds.has(n.id) },
     }));
-  }, [layoutNodes, connectedIds, searchMatches]);
+  }, [visibleNodes, connectedIds, searchMatches]);
 
   const displayEdges = useMemo(() => {
     const activeSet = searchMatches && searchMatches.size > 0 ? searchMatches : connectedIds;
-    if (!activeSet) return layoutEdges;
-    return layoutEdges?.map((e) => ({
+    if (!activeSet) return visibleEdges;
+    return visibleEdges?.map((e) => ({
       ...e,
       style: {
         ...e.style,
         opacity: activeSet.has(e.source) && activeSet.has(e.target) ? 1 : 0.12,
       },
     }));
-  }, [layoutEdges, connectedIds, searchMatches]);
+  }, [visibleEdges, connectedIds, searchMatches]);
 
   const legendItems = useMemo(
     () => legendItemsForVisibleGraph(displayNodes, displayEdges),
@@ -417,32 +424,27 @@ export default function MeshPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Layout toggle */}
-          <div className="flex items-center bg-zinc-800 rounded-lg border border-zinc-700 overflow-hidden">
-            <button
-              onClick={() => setLayoutMode("LR")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
-                layoutMode === "LR"
-                  ? "bg-emerald-600 text-white"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              <Network className="w-3.5 h-3.5" />
-              Topology
-            </button>
-            <button
-              onClick={() => setLayoutMode("TB")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
-                layoutMode === "TB"
-                  ? "bg-emerald-600 text-white"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              <GitBranch className="w-3.5 h-3.5" />
-              Spawn Tree
-            </button>
+          <div className="flex items-center overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800">
+            {[
+              { key: "radial" as const, label: "Radial", icon: Orbit },
+              { key: "topology" as const, label: "Topology", icon: Network },
+              { key: "spawn-tree" as const, label: "Spawn Tree", icon: GitBranch },
+            ].map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setLayoutMode(key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
+                  layoutMode === key
+                    ? "bg-emerald-600 text-white"
+                    : "text-zinc-400 hover:text-zinc-200"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
           </div>
-
           <select
             value={selectedJob}
             onChange={(e) => setSelectedJob(e.target.value)}

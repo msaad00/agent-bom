@@ -65,7 +65,7 @@ CVE-2025-XXXX (CRITICAL)
                  └── Credentials exposed: DB_URL, ANTHROPIC_API_KEY
 ```
 
-**What agent-bom does:** scans every package in every discovered server against OSV, NVD, EPSS, CISA KEV, and GHSA. Maps CVE → package → server → agent → credentials → tools (blast radius).
+**What agent-bom does:** scans every package in every discovered server against OSV, NVD, EPSS, CISA KEV, and GHSA. Maps CVE → package → server → agent → credentials → tools (blast radius). The full contract for the security graph — entity / edge coverage, accuracy guarantees, scaling tiers, and known gaps — is in [docs/graph/CONTRACT.md](graph/CONTRACT.md).
 
 agent-bom also ships bundled MCP intelligence at `src/agent_bom/data/mcp-blocklist.json`
 with a machine-readable contract in `src/agent_bom/data/mcp-intelligence.schema.json`.

@@ -24,6 +24,7 @@ import logging
 import os
 import time
 from typing import Literal, Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -134,6 +135,224 @@ def _validate_entity_type_list(values: list[str]) -> list[str]:
     if invalid:
         raise HTTPException(status_code=422, detail=f"Unsupported graph entity type: {invalid[0]}")
     return cleaned
+
+
+def _node_labels_for_types(graph: UnifiedGraph, path_hops: list[str], entity_types: set[EntityType]) -> list[str]:
+    labels: list[str] = []
+    seen: set[str] = set()
+    for hop in path_hops:
+        node = graph.nodes.get(hop)
+        if not node or node.entity_type not in entity_types:
+            continue
+        label = node.label or node.id
+        key = label.lower()
+        if key in seen:
+            continue
+        labels.append(label)
+        seen.add(key)
+    return labels
+
+
+def _finding_ids_for_path(graph: UnifiedGraph, path_hops: list[str], vuln_ids: list[str]) -> list[str]:
+    ids: list[str] = []
+    seen: set[str] = set()
+    for value in vuln_ids:
+        cleaned = value.strip()
+        if cleaned and cleaned not in seen:
+            ids.append(cleaned)
+            seen.add(cleaned)
+    for hop in path_hops:
+        node = graph.nodes.get(hop)
+        if not node or node.entity_type not in {EntityType.VULNERABILITY, EntityType.MISCONFIGURATION}:
+            continue
+        label = node.label or node.id
+        if label not in seen:
+            ids.append(label)
+            seen.add(label)
+    return ids
+
+
+def _first_href_for_agent(agent: str) -> str:
+    return f"/agents?name={quote(agent)}"
+
+
+def _risk_reasons_for_path(graph: UnifiedGraph, path) -> list[dict[str, str]]:
+    reasons: list[dict[str, str]] = []
+    if path.composite_risk >= 90:
+        reasons.append(
+            {
+                "kind": "critical_reach",
+                "label": "Critical reach",
+                "detail": "Composite risk is at or above the release-blocking threshold.",
+            }
+        )
+    elif path.composite_risk >= 70:
+        reasons.append(
+            {
+                "kind": "high_reach",
+                "label": "High reach",
+                "detail": "Composite risk is high enough to prioritize before broad topology review.",
+            }
+        )
+    if path.credential_exposure:
+        reasons.append(
+            {
+                "kind": "credential_exposure",
+                "label": "Credential exposure",
+                "detail": f"{len(path.credential_exposure)} credential signal(s) sit on this path.",
+            }
+        )
+    if path.tool_exposure:
+        dangerous_tools = [
+            tool
+            for tool in path.tool_exposure
+            if any(keyword in tool.lower() for keyword in ("shell", "exec", "run", "command", "subprocess", "filesystem"))
+        ]
+        reasons.append(
+            {
+                "kind": "tool_reach",
+                "label": "Tool reach",
+                "detail": (
+                    f"{len(dangerous_tools)} execution/file-capable tool(s) are reachable."
+                    if dangerous_tools
+                    else f"{len(path.tool_exposure)} tool(s) are reachable from the affected agent/server."
+                ),
+            }
+        )
+    finding_ids = _finding_ids_for_path(graph, path.hops, path.vuln_ids)
+    if finding_ids:
+        reasons.append(
+            {
+                "kind": "finding",
+                "label": "Finding in chain",
+                "detail": f"{len(finding_ids)} vulnerability or misconfiguration finding(s) anchor this path.",
+            }
+        )
+    if not reasons:
+        reasons.append(
+            {
+                "kind": "topology",
+                "label": "Connected exposure",
+                "detail": "The graph found a connected exposure path that should be reviewed before full expansion.",
+            }
+        )
+    return reasons[:4]
+
+
+def _next_actions_for_path(graph: UnifiedGraph, path) -> list[dict[str, str]]:
+    findings = _finding_ids_for_path(graph, path.hops, path.vuln_ids)
+    agents = _node_labels_for_types(
+        graph,
+        path.hops,
+        {EntityType.AGENT, EntityType.USER, EntityType.GROUP, EntityType.SERVICE_ACCOUNT},
+    )
+    actions: list[dict[str, str]] = []
+    if findings:
+        actions.append(
+            {
+                "title": "Validate lead finding",
+                "detail": "Open the first finding and confirm the root cause before expanding the graph.",
+                "href": f"/findings?cve={quote(findings[0])}",
+            }
+        )
+    if agents:
+        actions.append(
+            {
+                "title": "Inspect exposed identity",
+                "detail": "Review the agent, user, or service account that can trigger this path.",
+                "href": _first_href_for_agent(agents[0]),
+            }
+        )
+    if path.credential_exposure:
+        actions.append(
+            {
+                "title": "Contain credentials",
+                "detail": "Rotate, scope, or remove exposed credentials before widening blast-radius analysis.",
+                "href": "/mesh",
+            }
+        )
+    elif path.tool_exposure:
+        actions.append(
+            {
+                "title": "Review reachable tools",
+                "detail": "Check whether the tool permissions turn this finding into a real incident path.",
+                "href": "/mesh",
+            }
+        )
+    actions.append(
+        {
+            "title": "Expand topology",
+            "detail": "Open the full lineage graph only when neighboring context is needed.",
+            "href": "/graph",
+        }
+    )
+    return actions[:4]
+
+
+def _fix_first_card_for_path(graph: UnifiedGraph, path, rank: int) -> dict:
+    findings = _finding_ids_for_path(graph, path.hops, path.vuln_ids)
+    agents = _node_labels_for_types(
+        graph,
+        path.hops,
+        {EntityType.AGENT, EntityType.USER, EntityType.GROUP, EntityType.SERVICE_ACCOUNT},
+    )
+    servers = _node_labels_for_types(graph, path.hops, {EntityType.SERVER, EntityType.CONTAINER, EntityType.CLOUD_RESOURCE})
+    packages = _node_labels_for_types(graph, path.hops, {EntityType.PACKAGE})
+    sequence = [graph.nodes[hop].label for hop in path.hops if hop in graph.nodes]
+    title_parts = [findings[0] if findings else "Exposure path"]
+    if agents:
+        title_parts.append(f"via {agents[0]}")
+    if path.tool_exposure:
+        title_parts.append(f"with {path.tool_exposure[0]}")
+    return {
+        "id": f"{path.source}::{path.target}::{'->'.join(path.hops)}",
+        "rank": rank,
+        "title": " ".join(title_parts),
+        "summary": path.summary or "Review this path before opening the full topology graph.",
+        "attack_path": path.to_dict(),
+        "sequence_labels": sequence,
+        "risk_reasons": _risk_reasons_for_path(graph, path),
+        "next_actions": _next_actions_for_path(graph, path),
+        "affected": {
+            "agents": agents,
+            "servers": servers,
+            "packages": packages,
+            "findings": findings,
+            "credentials": list(path.credential_exposure),
+            "tools": list(path.tool_exposure),
+        },
+    }
+
+
+def _path_matches_focus(graph: UnifiedGraph, path, *, cve: str, package: str, agent: str) -> bool:
+    def norm(value: str) -> str:
+        return value.strip().lower()
+
+    cve_n = norm(cve)
+    package_n = norm(package)
+    agent_n = norm(agent)
+    if not cve_n and not package_n and not agent_n:
+        return True
+    labels = {norm(graph.nodes[hop].label) for hop in path.hops if hop in graph.nodes}
+    finding_ids = {norm(value) for value in _finding_ids_for_path(graph, path.hops, path.vuln_ids)}
+    if cve_n and cve_n not in labels and cve_n not in finding_ids:
+        return False
+    if package_n:
+        package_labels = {norm(label) for label in _node_labels_for_types(graph, path.hops, {EntityType.PACKAGE})}
+        if package_n not in package_labels:
+            return False
+    if agent_n:
+        agent_labels = {
+            norm(label)
+            for label in _node_labels_for_types(
+                graph,
+                path.hops,
+                {EntityType.AGENT, EntityType.USER, EntityType.GROUP, EntityType.SERVICE_ACCOUNT},
+            )
+        }
+        if agent_n not in agent_labels:
+            return False
+    return True
 
 
 def _bounded_env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
@@ -403,6 +622,64 @@ async def get_graph(
             min_severity_rank=min_rank,
         ),
         "pagination": _page_meta(total, offset, limit, cursor=cursor, next_cursor=next_cursor),
+    }
+
+
+@router.get("/v1/graph/views/fix-first", tags=["graph"])
+async def get_fix_first_graph_view(
+    request: Request,
+    scan_id: Optional[str] = Query(None, description="Scan snapshot ID; latest if omitted"),
+    cve: str = Query("", description="Optional finding focus"),
+    package: str = Query("", description="Optional package focus"),
+    agent: str = Query("", description="Optional agent or identity focus"),
+    limit: int = Query(8, ge=1, le=25, description="Maximum ranked path cards to return"),
+) -> dict:
+    """Return a fix-first security graph view model.
+
+    This endpoint is intentionally more product-shaped than `/v1/graph`: it
+    ranks persisted attack paths and attaches the operator context needed for
+    a Wiz/Orca-style remediation cockpit. The full topology remains available
+    through `/v1/graph`; this view answers "what should I inspect first?"
+    """
+
+    tenant = _tenant(request)
+    graph_store = _get_graph_store_or_503()
+    requested_scan_id = scan_id or ""
+
+    if not requested_scan_id and not await _graph_store_call(graph_store.latest_snapshot_id, tenant_id=tenant):
+        raise HTTPException(status_code=503, detail="Graph snapshots not found. Run a scan first.")
+
+    graph = await _graph_store_call(
+        graph_store.load_graph,
+        scan_id=requested_scan_id,
+        tenant_id=tenant,
+    )
+    ranked_paths = sorted(
+        (path for path in graph.attack_paths if _path_matches_focus(graph, path, cve=cve, package=package, agent=agent)),
+        key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),
+        reverse=True,
+    )
+    cards = [_fix_first_card_for_path(graph, path, index + 1) for index, path in enumerate(ranked_paths[:limit])]
+    covered_findings = {finding for card in cards for finding in card["affected"]["findings"]}
+    return {
+        "scan_id": graph.scan_id,
+        "tenant_id": graph.tenant_id,
+        "created_at": graph.created_at,
+        "cards": cards,
+        "summary": {
+            "total_paths": len(graph.attack_paths),
+            "matched_paths": len(ranked_paths),
+            "returned_paths": len(cards),
+            "highest_risk": cards[0]["attack_path"]["composite_risk"] if cards else 0.0,
+            "covered_findings": len(covered_findings),
+            "node_count": len(graph.nodes),
+            "edge_count": len(graph.edges),
+        },
+        "focus": {
+            "cve": cve,
+            "package": package,
+            "agent": agent,
+        },
     }
 
 

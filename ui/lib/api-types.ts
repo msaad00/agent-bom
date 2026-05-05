@@ -1,6 +1,6 @@
 /** Shared API response and request contracts. */
 
-import type { UnifiedEdge, UnifiedGraphData, UnifiedNode } from "./graph-schema";
+import type { AttackPath, UnifiedEdge, UnifiedGraphData, UnifiedNode } from "./graph-schema";
 
 export type JobStatus = "pending" | "running" | "done" | "failed" | "cancelled";
 
@@ -97,6 +97,58 @@ export interface GraphSnapshot {
 
 export interface UnifiedGraphResponse extends UnifiedGraphData {
   pagination: GraphPagination;
+}
+
+export interface FixFirstRiskReason {
+  kind: string;
+  label: string;
+  detail: string;
+}
+
+export interface FixFirstAction {
+  title: string;
+  detail: string;
+  href: string;
+}
+
+export interface FixFirstPathCard {
+  id: string;
+  rank: number;
+  title: string;
+  summary: string;
+  attack_path: AttackPath;
+  sequence_labels: string[];
+  risk_reasons: FixFirstRiskReason[];
+  next_actions: FixFirstAction[];
+  affected: {
+    agents: string[];
+    servers: string[];
+    packages: string[];
+    findings: string[];
+    credentials: string[];
+    tools: string[];
+  };
+}
+
+export interface FixFirstGraphViewResponse {
+  scan_id: string;
+  tenant_id: string;
+  created_at: string;
+  cards: FixFirstPathCard[];
+  summary: {
+    total_paths: number;
+    matched_paths: number;
+    returned_paths: number;
+    highest_risk: number;
+    covered_findings: number;
+    node_count: number;
+    edge_count: number;
+  };
+  focus: {
+    cve: string;
+    package: string;
+    agent: string;
+  };
 }
 
 export interface GraphImpactResponse {

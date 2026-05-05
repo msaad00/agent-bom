@@ -8,6 +8,72 @@
 export const GRAPH_SCHEMA_VERSION = 1 as const;
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Semantic layers
+// ═══════════════════════════════════════════════════════════════════════════
+
+export enum GraphSemanticLayer {
+  USER = "user",
+  IDENTITY = "identity",
+  APP = "app",
+  API_GATEWAY = "api_gateway",
+  ORCHESTRATION = "orchestration",
+  MCP_SERVER = "mcp_server",
+  TOOL = "tool",
+  PACKAGE = "package",
+  RUNTIME_EVIDENCE = "runtime_evidence",
+  ASSET = "asset",
+  INFRA = "infra",
+  FINDING = "finding",
+}
+
+export type GraphSemanticLayerKey = "user" | "identity" | "app" | "api_gateway" | "orchestration" | "mcp_server" | "tool" | "package" | "runtime_evidence" | "asset" | "infra" | "finding";
+
+export const GRAPH_SEMANTIC_LAYERS: readonly GraphSemanticLayerKey[] = ["user", "identity", "app", "api_gateway", "orchestration", "mcp_server", "tool", "package", "runtime_evidence", "asset", "infra", "finding"] as const;
+
+export interface GraphSemanticLayerMeta {
+  label: string;
+}
+
+export const GRAPH_SEMANTIC_LAYER_META: Record<GraphSemanticLayerKey, GraphSemanticLayerMeta> = {
+  "user": {
+    "label": "User"
+  },
+  "identity": {
+    "label": "Identity"
+  },
+  "app": {
+    "label": "Application"
+  },
+  "api_gateway": {
+    "label": "API / Gateway"
+  },
+  "orchestration": {
+    "label": "Orchestration"
+  },
+  "mcp_server": {
+    "label": "MCP Server"
+  },
+  "tool": {
+    "label": "Tool"
+  },
+  "package": {
+    "label": "Package"
+  },
+  "runtime_evidence": {
+    "label": "Runtime Evidence"
+  },
+  "asset": {
+    "label": "Asset"
+  },
+  "infra": {
+    "label": "Infrastructure"
+  },
+  "finding": {
+    "label": "Finding"
+  },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Node kinds (entity types)
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -40,7 +106,7 @@ export interface GraphNodeKindMeta {
   label: string;
   color: string;
   shape: string;
-  layer: string;
+  layer: GraphSemanticLayerKey;
   icon: string;
   category_uid: number;
   class_uid: number;

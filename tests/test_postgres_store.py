@@ -213,10 +213,10 @@ class MockConnection:
                     scan_id = params[1] if len(params) > 1 else ""
                     requested_sources = set(params[2:])
                     rows = [
-                        r for r in rows if r[9] == tenant_id and r[8] == scan_id and (not requested_sources or r[0] in requested_sources)
+                        r for r in rows if r[11] == tenant_id and r[10] == scan_id and (not requested_sources or r[0] in requested_sources)
                     ]
                 rows.sort(key=lambda r: (-float(r[3]), str(r[0]), str(r[1])))
-                cursor.rows = [(r[0], r[1], r[4], r[5], r[3], r[6], r[7]) for r in rows]
+                cursor.rows = [(r[0], r[1], r[5], r[6], r[3], r[4], r[7], r[8], r[9]) for r in rows]
             elif params:
                 for table_data in self._store.values():
                     for pk, row in table_data.items():
@@ -1309,7 +1309,9 @@ def test_graph_store_attack_paths_for_sources_uses_materialized_table(mock_pool,
             hops=["agent:a", "vuln:cve"],
             edges=["edge:1"],
             composite_risk=9.4,
+            summary="agent-a reaches CVE-2026-0001",
             credential_exposure=["API_KEY"],
+            tool_exposure=["run_shell"],
             vuln_ids=["CVE-2026-0001"],
         )
     )
@@ -1323,7 +1325,9 @@ def test_graph_store_attack_paths_for_sources_uses_materialized_table(mock_pool,
 
     assert len(paths) == 1
     assert paths[0].target == "vuln:cve"
+    assert paths[0].summary == "agent-a reaches CVE-2026-0001"
     assert paths[0].credential_exposure == ["API_KEY"]
+    assert paths[0].tool_exposure == ["run_shell"]
     select_sql = "\n".join(sql for sql, _params in mock_pool._conn.executed if "FROM attack_paths" in sql)
     assert "source_node IN" in select_sql
 

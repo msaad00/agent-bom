@@ -173,9 +173,11 @@ class PostgresGraphStore:
                     target_node TEXT NOT NULL,
                     hop_count INTEGER DEFAULT 0,
                     composite_risk DOUBLE PRECISION DEFAULT 0.0,
+                    summary TEXT DEFAULT '',
                     path_nodes TEXT DEFAULT '[]',
                     path_edges TEXT DEFAULT '[]',
                     credential_exposure TEXT DEFAULT '[]',
+                    tool_exposure TEXT DEFAULT '[]',
                     vuln_ids TEXT DEFAULT '[]',
                     scan_id TEXT NOT NULL,
                     tenant_id TEXT NOT NULL DEFAULT 'default',
@@ -188,6 +190,8 @@ class PostgresGraphStore:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_pg_attack_paths_scan_risk ON attack_paths(tenant_id, scan_id, composite_risk DESC)"
             )
+            conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS summary TEXT DEFAULT ''")
+            conn.execute("ALTER TABLE attack_paths ADD COLUMN IF NOT EXISTS tool_exposure TEXT DEFAULT '[]'")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS interaction_risks (
@@ -410,9 +414,11 @@ class PostgresGraphStore:
                         ap.target,
                         len(ap.hops),
                         ap.composite_risk,
+                        ap.summary,
                         json.dumps(ap.hops),
                         json.dumps(ap.edges),
                         json.dumps(ap.credential_exposure),
+                        json.dumps(ap.tool_exposure),
                         json.dumps(ap.vuln_ids),
                         scan,
                         tenant,
@@ -501,15 +507,17 @@ class PostgresGraphStore:
                 """
                 INSERT INTO attack_paths (
                     source_node, target_node, hop_count, composite_risk,
-                    path_nodes, path_edges, credential_exposure, vuln_ids,
-                    scan_id, tenant_id, computed_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    summary, path_nodes, path_edges, credential_exposure,
+                    tool_exposure, vuln_ids, scan_id, tenant_id, computed_at
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (source_node, target_node, scan_id, tenant_id) DO UPDATE SET
                     hop_count = EXCLUDED.hop_count,
                     composite_risk = EXCLUDED.composite_risk,
+                    summary = EXCLUDED.summary,
                     path_nodes = EXCLUDED.path_nodes,
                     path_edges = EXCLUDED.path_edges,
                     credential_exposure = EXCLUDED.credential_exposure,
+                    tool_exposure = EXCLUDED.tool_exposure,
                     vuln_ids = EXCLUDED.vuln_ids,
                     computed_at = EXCLUDED.computed_at
                 """,
@@ -630,7 +638,8 @@ class PostgresGraphStore:
 
             for row in conn.execute(
                 """
-                SELECT source_node, target_node, path_nodes, path_edges, composite_risk, credential_exposure, vuln_ids
+                SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
+                       summary, credential_exposure, tool_exposure, vuln_ids
                 FROM attack_paths
                 WHERE tenant_id = %s AND scan_id = %s
                 """,
@@ -643,8 +652,10 @@ class PostgresGraphStore:
                         hops=json.loads(row[2]),
                         edges=json.loads(row[3]),
                         composite_risk=row[4],
-                        credential_exposure=json.loads(row[5]),
-                        vuln_ids=json.loads(row[6]),
+                        summary=row[5] or "",
+                        credential_exposure=json.loads(row[6]),
+                        tool_exposure=json.loads(row[7]),
+                        vuln_ids=json.loads(row[8]),
                     )
                 )
 
@@ -777,7 +788,8 @@ class PostgresGraphStore:
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
                 f"""
-                SELECT source_node, target_node, path_nodes, path_edges, composite_risk, credential_exposure, vuln_ids
+                SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
+                       summary, credential_exposure, tool_exposure, vuln_ids
                 FROM attack_paths
                 WHERE tenant_id = %s AND scan_id = %s AND source_node IN ({placeholders})
                 ORDER BY composite_risk DESC, source_node ASC, target_node ASC
@@ -794,8 +806,10 @@ class PostgresGraphStore:
                 hops=json.loads(row[2]),
                 edges=json.loads(row[3]),
                 composite_risk=row[4],
-                credential_exposure=json.loads(row[5]),
-                vuln_ids=json.loads(row[6]),
+                summary=row[5] or "",
+                credential_exposure=json.loads(row[6]),
+                tool_exposure=json.loads(row[7]),
+                vuln_ids=json.loads(row[8]),
             )
             for row in rows
         ]

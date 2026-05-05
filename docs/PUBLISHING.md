@@ -135,13 +135,12 @@ automated base-image vulnerability issue when new actionable findings appear.
 
 ---
 
-## 6. GitHub Container Registry (GHCR)
+## 6. Docker Images
 
 Automated via `.github/workflows/publish-mcp.yml` after each release.
 
 Images published:
-- `ghcr.io/msaad00/agent-bom:{tag}` — stdio MCP server
-- `ghcr.io/msaad00/agent-bom-sse:{tag}` — SSE MCP server
+- `agentbom/agent-bom:{tag}` — CLI, API, scanner jobs, gateway, and MCP server
 
 ---
 

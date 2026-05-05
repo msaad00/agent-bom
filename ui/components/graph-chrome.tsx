@@ -27,7 +27,15 @@ import type { LegendItem } from "@/lib/graph-utils";
 
 // ─── Legend Bar ──────────────────────────────────────────────────────────────
 
-export function GraphLegend({ items }: { items: LegendItem[] }) {
+export function GraphLegend({
+  items,
+  defaultOpen = false,
+  embedded = false,
+}: {
+  items: LegendItem[];
+  defaultOpen?: boolean;
+  embedded?: boolean;
+}) {
   const [open, setOpen] = useState(false);
 
   if (items.length === 0) return null;
@@ -40,7 +48,7 @@ export function GraphLegend({ items }: { items: LegendItem[] }) {
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800/80 px-2.5 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700 backdrop-blur-sm"
+        className={`${embedded ? "hidden" : "flex"} items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800/80 px-2.5 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700 backdrop-blur-sm`}
         aria-expanded={open}
         aria-label={open ? "Hide legend" : "Show legend"}
       >
@@ -48,8 +56,8 @@ export function GraphLegend({ items }: { items: LegendItem[] }) {
         <span className="rounded-full bg-zinc-900 px-1.5 py-0.5 text-[10px] text-zinc-400">{items.length}</span>
         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
-      {open && (
-        <div className="absolute right-0 top-full z-20 mt-2 w-[min(22rem,calc(100vw-2rem))] rounded-xl border border-zinc-700 bg-zinc-900/95 p-3 shadow-2xl shadow-black/30 backdrop-blur-md">
+      {(open || defaultOpen || embedded) && (
+        <div className={`${embedded ? "relative w-[min(30rem,calc(100vw-2rem))] shadow-none" : "absolute right-0 top-full z-20 mt-2 w-[min(30rem,calc(100vw-2rem))] shadow-2xl shadow-black/30"} max-h-[60vh] overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-900/95 p-3 backdrop-blur-md`}>
           {nodeItems.length > 0 && (
             <LegendSection title="Entities" items={nodeItems} />
           )}
@@ -66,12 +74,12 @@ function LegendSection({ title, items }: { title: string; items: LegendItem[] })
   return (
     <div className="first:mt-0 mt-3">
       <div className="mb-2 text-[10px] uppercase tracking-[0.18em] text-zinc-500">{title}</div>
-      <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] text-zinc-300 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-x-3 gap-y-2 text-[11px] text-zinc-300 sm:grid-cols-2">
         {items.map((item) => (
-          <span key={`${title}:${item.label}`} className="flex items-center gap-2 whitespace-nowrap">
+          <span key={`${title}:${item.label}`} className="flex min-w-0 items-center gap-2">
             <LegendMarker item={item} />
             <LegendIcon item={item} />
-            {item.label}
+            <span className="min-w-0 truncate" title={item.label}>{item.label}</span>
           </span>
         ))}
       </div>

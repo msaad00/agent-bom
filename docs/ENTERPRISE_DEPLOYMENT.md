@@ -11,7 +11,7 @@ agent-bom is built on four security principles:
 | Principle | Implementation |
 |-----------|---------------|
 | **Read-only** | Only `List*`, `Describe*`, `Get*` APIs. Zero write calls to any target. |
-| **Agentless** | No agent installed on targets. Uses standard SDK credential chains. |
+| **Agentless cloud discovery** | Cloud and SaaS scans use read-only APIs and standard SDK credential chains. Endpoint fleet/runtime rollout is explicit and installs or schedules `agent-bom` on managed devices. |
 | **Zero-credential** | Never stores, logs, or transmits credential values. Only names (`ANTHROPIC_KEY`, never the key itself). |
 | **Least privilege** | Each cloud provider tells you the exact read-only IAM policy on access denied. |
 
@@ -50,7 +50,7 @@ Reasons that **do not** hold up:
 
 ### Practical operator guidance
 
-**Default**: pull `agentbom/agent-bom` only. The dashboard ships inside the wheel and serves at the same origin as the API. This is the right answer for single-host pilots, dev, CI, air-gapped registry mirrors, and the majority of pilots under ~500 agents.
+**Single-process default**: pull `agentbom/agent-bom` only. The dashboard ships inside the wheel and serves at the same origin as the API. This is the right answer for `agent-bom serve`, dev, CI, air-gapped registry mirrors, and API-only pilots.
 
 **Pull both** when you specifically want one of these properties:
 
@@ -59,8 +59,7 @@ Reasons that **do not** hold up:
 - the UI tier needs a **smaller attack-surface container** with no Python, no cloud SDKs, no MCP subprocess in scope (the second image is intentionally minimal)
 - a separate UI image lets your release cadence ship UI patches without re-rolling the backend image
 
-If none of those properties matter for your deployment, the second image is just bytes you don't need to pull, scan, or sign.
-| Kubernetes with shared ingress and modest scale | either is fine; the chart defaults to both for the multi-replica case |
+If none of those properties matter for your deployment, the second image is just bytes you don't need to pull, scan, or sign. The packaged Docker Compose and Helm examples still use the split API + UI shape because they model the multi-replica production layout.
 
 The Helm chart (`deploy/helm/agent-bom`) deploys both by default because the production EKS preset assumes the multi-replica case. To run API-only, set `controlPlane.ui.enabled=false` and the chart skips the UI Deployment, Service, and HPA.
 

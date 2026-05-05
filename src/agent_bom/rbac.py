@@ -419,6 +419,8 @@ def require_authenticated_permission(action: str) -> Callable:
         x_tenant_id: str | None = Header(None, alias="X-Agent-Bom-Tenant-ID"),
         x_proxy_secret: str | None = Header(None, alias="X-Agent-Bom-Proxy-Secret"),
     ) -> Role:
+        from agent_bom.api.middleware import get_auth_runtime_status
+
         state_role = getattr(request.state, "api_key_role", None)
         if state_role:
             try:
@@ -428,6 +430,24 @@ def require_authenticated_permission(action: str) -> Callable:
             if not getattr(request.state, "tenant_id", None):
                 request.state.tenant_id = "default"
             return _authorize(role, action)
+
+        auth_runtime = get_auth_runtime_status()
+        env_auth_configured = any(
+            os.environ.get(name, "").strip()
+            for name in (
+                "AGENT_BOM_API_KEY",
+                "AGENT_BOM_OIDC_ISSUER",
+                "AGENT_BOM_TRUST_PROXY_AUTH",
+                "AGENT_BOM_SCIM_BEARER_TOKEN",
+            )
+        )
+        proxy_identity_headers_present = bool(x_role or x_tenant_id or x_proxy_secret)
+        if not auth_runtime["auth_required"] and not env_auth_configured and not proxy_identity_headers_present:
+            request.state.api_key_name = "local-no-auth"
+            request.state.api_key_role = Role.ADMIN.value
+            request.state.tenant_id = getattr(request.state, "tenant_id", None) or "default"
+            request.state.auth_method = "no_auth"
+            return _authorize(Role.ADMIN, action)
 
         trusted_proxy_enabled = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {
             "1",

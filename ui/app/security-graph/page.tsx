@@ -209,6 +209,15 @@ function SecurityGraphPageContent() {
   );
 
   const hasFocusContext = Boolean(focus.cve || focus.packageName || focus.agentName);
+  const fullGraphHref = useMemo(() => {
+    const params = new URLSearchParams();
+    if (selectedScanId) params.set("scan", selectedScanId);
+    if (focus.agentName) params.set("agent", focus.agentName);
+    if (focus.cve) params.set("q", focus.cve);
+    else if (focus.packageName) params.set("q", focus.packageName);
+    const query = params.toString();
+    return query ? `/graph?${query}` : "/graph";
+  }, [focus.agentName, focus.cve, focus.packageName, selectedScanId]);
   const resetFocusHref = useMemo(
     () => buildSecurityGraphHref({ scanId: selectedScanId || undefined }),
     [selectedScanId],
@@ -344,7 +353,7 @@ function SecurityGraphPageContent() {
 
           <div className="flex flex-wrap items-center gap-2">
             <Link
-              href="/graph"
+              href={fullGraphHref}
               className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"
             >
               Open full lineage graph
@@ -446,7 +455,7 @@ function SecurityGraphPageContent() {
           />
           <div className="mt-4 flex flex-wrap gap-3 border-t border-[color:var(--border-subtle)] pt-4">
             <Link
-              href="/graph"
+              href={fullGraphHref}
               className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
             >
               Open full graph
@@ -492,7 +501,7 @@ function SecurityGraphPageContent() {
                 )}
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Link
-                    href="/graph"
+                    href={fullGraphHref}
                     className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
                   >
                     Full graph
@@ -642,7 +651,7 @@ function SecurityGraphPageContent() {
                   ))}
 
                   <Link
-                    href="/graph"
+                    href={fullGraphHref}
                     className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4 transition hover:border-[color:var(--border-strong)]"
                   >
                     <div className="flex items-center justify-between gap-3">

@@ -39,7 +39,7 @@ Compose file into production.
 ## Quick scan
 
 ```bash
-docker run --rm ghcr.io/msaad00/agent-bom:latest scan
+docker run --rm agentbom/agent-bom:latest scan
 ```
 
 ## With host config access
@@ -50,7 +50,7 @@ Mount your MCP client configs for auto-discovery:
 docker run --rm \
   -v "$HOME/.config:/home/abom/.config:ro" \
   -v "$HOME/Library/Application Support:/home/abom/Library/Application Support:ro" \
-  ghcr.io/msaad00/agent-bom:latest scan
+  agentbom/agent-bom:latest scan
 ```
 
 ## Self-hosted SSE server
@@ -84,7 +84,7 @@ docker run --rm \
   -e SSL_CERT_FILE=/certs/internal-ca.pem \
   -e REQUESTS_CA_BUNDLE=/certs/internal-ca.pem \
   -v ./internal-ca.pem:/certs/internal-ca.pem:ro \
-  ghcr.io/msaad00/agent-bom:latest --version
+  agentbom/agent-bom:latest --version
 ```
 
 ## Runtime proxy sidecar
@@ -103,7 +103,7 @@ docker run --rm -i \
 
 | Image | Purpose |
 |-------|---------|
-| `ghcr.io/msaad00/agent-bom:latest` | Main runtime image: CLI, API, scanner jobs, gateway, MCP server |
+| `agentbom/agent-bom:latest` | Main runtime image: CLI, API, scanner jobs, gateway, MCP server |
 | `agentbom/agent-bom-ui` | Standalone browser UI image for split control-plane deploys |
 | `deploy/docker/Dockerfile.sse` | SSE MCP server |
 | `deploy/docker/Dockerfile.runtime` | Local rebuild recipe for the runtime proxy path shipped in `agentbom/agent-bom` |

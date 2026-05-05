@@ -43,9 +43,9 @@ pre-Next.js views or from the Snowflake Streamlit compatibility surface.
 
 | Asset | Page | Required scope | Rationale |
 |---|---|---|---|
-| `dashboard-live.png` | `/dashboard?capture=1` (Risk overview) | All agents · top crop showing the gauge, posture sub-scores, score breakdown, and the start of the attack-path list | The published README should not use one tall stitched dashboard asset when two shorter frames tell the story more clearly |
-| `dashboard-paths-live.png` | `/dashboard?capture=1` (Risk overview) | All agents · mid-page crop showing the attack-path list, exposure KPI band, and the first backlog charts | Keeps the fix-first path list readable in GitHub while still proving the KPI / backlog context lives on the same page |
-| `mesh-live.png` | `/mesh` | Filter to `cursor` | Has 2 servers, 8 packages, 10+ CVEs, and richer tool + credential traversal than the smaller `claude-desktop` slice |
+| `dashboard-live.png` | `/?capture=1` (Risk overview) | All agents · top crop showing the gauge, posture sub-scores, score breakdown, and the start of the attack-path list | The published README should not use one tall stitched dashboard asset when two shorter frames tell the story more clearly |
+| `dashboard-paths-live.png` | `/?capture=1` (Risk overview) | All agents · mid-page crop showing the attack-path list, exposure KPI band, and the first backlog charts | Keeps the fix-first path list readable in GitHub while still proving the KPI / backlog context lives on the same page |
+| `mesh-live.png` | `/mesh` | Filter to the highest-signal demo agent, currently `cursor`; if another agent is used, note why in the PR | Keeps the mesh dense enough to show servers, tools, credentials, package versions, and vulnerability edges without becoming a full-tenant hairball |
 | `remediation-live.png` | `/remediation` | All frameworks tab | Shows the full prioritized fix list |
 
 ### Dashboard layout (current)

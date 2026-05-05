@@ -66,6 +66,9 @@ def _build_persisted_graph(db, scan_id="test-scan-001"):
             edges=["uses", "vulnerable_to"],
             composite_risk=9.0,
             summary="agent-a → mcp-fs → CVE-2024-1",
+            credential_exposure=["AWS_SECRET_ACCESS_KEY"],
+            tool_exposure=["run_shell"],
+            vuln_ids=["CVE-2024-1"],
         )
     )
     save_graph(db, g)
@@ -408,6 +411,44 @@ class TestGraphEndpointLogic:
 
         assert len(attack_paths) == 1
         assert attack_paths[0].target == "vuln:cve"
+        assert attack_paths[0].summary == ""
+        assert attack_paths[0].tool_exposure == []
+
+    def test_sqlite_graph_store_attack_paths_round_trip_summary_and_tools(self, tmp_path):
+        store = SQLiteGraphStore(tmp_path / "graph.db")
+        graph = UnifiedGraph(scan_id="attack-path-fields", tenant_id="default")
+        graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        graph.add_node(UnifiedNode(id="tool:shell", entity_type=EntityType.TOOL, label="run_shell"))
+        graph.add_node(UnifiedNode(id="vuln:cve", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1"))
+        graph.add_edge(UnifiedEdge(source="agent:a", target="tool:shell", relationship=RelationshipType.REACHES_TOOL))
+        graph.add_edge(UnifiedEdge(source="tool:shell", target="vuln:cve", relationship=RelationshipType.VULNERABLE_TO))
+        graph.attack_paths.append(
+            AttackPath(
+                source="agent:a",
+                target="vuln:cve",
+                hops=["agent:a", "tool:shell", "vuln:cve"],
+                edges=["reaches_tool", "vulnerable_to"],
+                composite_risk=9.9,
+                summary="agent-a can reach run_shell before CVE-2026-1",
+                credential_exposure=["AWS_SECRET_ACCESS_KEY"],
+                tool_exposure=["run_shell"],
+                vuln_ids=["CVE-2026-1"],
+            )
+        )
+
+        store.save_graph(graph)
+
+        loaded = store.load_graph(tenant_id="default", scan_id="attack-path-fields")
+        assert len(loaded.attack_paths) == 1
+        path = loaded.attack_paths[0]
+        assert path.summary == "agent-a can reach run_shell before CVE-2026-1"
+        assert path.credential_exposure == ["AWS_SECRET_ACCESS_KEY"]
+        assert path.tool_exposure == ["run_shell"]
+        assert path.vuln_ids == ["CVE-2026-1"]
+
+        sourced = store.attack_paths_for_sources(tenant_id="default", scan_id="attack-path-fields", source_ids={"agent:a"})
+        assert sourced[0].summary == path.summary
+        assert sourced[0].tool_exposure == ["run_shell"]
 
     def test_sqlite_graph_store_node_context_preserves_bidirectional_neighbors(self, tmp_path):
         store = SQLiteGraphStore(tmp_path / "graph.db")
@@ -820,13 +861,29 @@ def recording_graph_store():
 
 class TestGraphStoreBackendSelection:
     def test_graph_routes_use_pluggable_store(self, recording_graph_store):
+        recording_graph_store.graph.add_node(UnifiedNode(id="vuln:cve", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1"))
+        recording_graph_store.graph.attack_paths.append(
+            AttackPath(
+                source="agent:a",
+                target="vuln:cve",
+                hops=["agent:a", "vuln:cve"],
+                edges=["vulnerable_to"],
+                composite_risk=8.8,
+                summary="agent-a reaches CVE-2026-1",
+                tool_exposure=["run_shell"],
+            )
+        )
         client = TestClient(app)
 
         response = client.get("/v1/graph")
         assert response.status_code == 200
-        assert response.json()["scan_id"] == "store-scan"
+        body = response.json()
+        assert body["scan_id"] == "store-scan"
+        assert body["attack_paths"][0]["summary"] == "agent-a reaches CVE-2026-1"
+        assert body["attack_paths"][0]["tool_exposure"] == ["run_shell"]
         assert any(call[0] == "latest_snapshot_id" for call in recording_graph_store.calls)
         assert any(call[0] == "page_nodes" for call in recording_graph_store.calls)
+        assert any(call[0] == "attack_paths_for_sources" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
 
     def test_graph_overview_filtered_page_stays_store_backed(self, recording_graph_store):
@@ -1133,8 +1190,31 @@ class TestGraphStoreBackendSelection:
             ("server:s", "vuln:CVE-2026-1"),
         }
         assert body["attack_paths"][0]["target"] == "vuln:CVE-2026-1"
+        assert body["attack_paths"][0]["summary"] == "agent-a -> server-s -> CVE-2026-1"
         assert any(call[0] == "traverse_subgraph" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
+
+    def test_graph_get_rejects_unknown_relationship(self, recording_graph_store):
+        client = TestClient(app)
+
+        response = client.get("/v1/graph?relationships=uses,not_a_relationship")
+
+        assert response.status_code == 422
+        assert "Unsupported graph relationship type" in response.json()["detail"]
+
+    def test_graph_query_rejects_unknown_relationship(self, recording_graph_store):
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/graph/query",
+            json={
+                "roots": ["agent:a"],
+                "relationship_types": ["not_a_relationship"],
+            },
+        )
+
+        assert response.status_code == 422
+        assert "Unsupported graph relationship type" in response.json()["detail"]
 
     def test_graph_node_uses_store_native_context(self, recording_graph_store):
         recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")

@@ -4,7 +4,7 @@ set -euo pipefail
 BASE_URL="${1:-${AGENT_BOM_API_URL:-http://127.0.0.1:8422}}"
 BASE_URL="${BASE_URL%/}"
 PUSH_URL="${BASE_URL}/v1/results/push"
-DASHBOARD_URL="${BASE_URL}/dashboard"
+DASHBOARD_URL="${BASE_URL}/"
 REPORT_PATH="$(mktemp "${TMPDIR:-/tmp}/agent-bom-demo-report.XXXXXX.json")"
 
 cleanup() {
@@ -16,7 +16,7 @@ args=(
   agents
   --demo
   --offline
-  --no-update-db
+  --no-auto-update-db
   --quiet
   -f json
   -o "$REPORT_PATH"

@@ -89,8 +89,8 @@ describe("buildMeshGraph", () => {
     expect(nodes.some((node) => node.id === "agent:claude-desktop")).toBe(true);
     expect(nodes.some((node) => node.id === "agent:cursor")).toBe(true);
     expect(nodes.some((node) => node.id === "agent:zed")).toBe(false);
-    expect(edges.some((edge) => edge.id === "agent:claude-desktop->server:filesystem")).toBe(true);
-    expect(edges.some((edge) => edge.id === "agent:cursor->server:filesystem")).toBe(true);
+    expect(edges.some((edge) => edge.id === "agent:claude-desktop->server:filesystem::")).toBe(true);
+    expect(edges.some((edge) => edge.id === "agent:cursor->server:filesystem::")).toBe(true);
   });
 
   it("respects selected agent scope without dropping the shared server edge", () => {
@@ -102,8 +102,8 @@ describe("buildMeshGraph", () => {
     );
 
     expect(nodes.some((node) => node.id === "agent:cursor")).toBe(true);
-    expect(nodes.some((node) => node.id === "server:filesystem")).toBe(true);
-    expect(edges.some((edge) => edge.id === "agent:cursor->server:filesystem")).toBe(true);
+    expect(nodes.some((node) => node.id === "server:filesystem::")).toBe(true);
+    expect(edges.some((edge) => edge.id === "agent:cursor->server:filesystem::")).toBe(true);
   });
 
   it("keeps same-named agents separate across fleet endpoints", () => {
@@ -159,7 +159,75 @@ describe("buildMeshGraph", () => {
     expect(nodes.some((node) => node.id === "agent:claude-desktop@device-a")).toBe(true);
     expect(nodes.some((node) => node.id === "agent:claude-desktop@device-b")).toBe(true);
     expect(nodes.filter((node) => node.data.label === "claude-desktop · alice-mac")).toHaveLength(1);
-    expect(edges.some((edge) => edge.id === "agent:claude-desktop@device-a->server:filesystem")).toBe(true);
-    expect(edges.some((edge) => edge.id === "agent:claude-desktop@device-b->server:filesystem")).toBe(true);
+    expect(edges.some((edge) => edge.id === "agent:claude-desktop@device-a->server:filesystem::")).toBe(true);
+    expect(edges.some((edge) => edge.id === "agent:claude-desktop@device-b->server:filesystem::")).toBe(true);
+  });
+
+  it("does not merge same-named servers with different command identity", () => {
+    const result: ScanResult = {
+      agents: [
+        {
+          name: "claude-desktop",
+          agent_type: "desktop",
+          mcp_servers: [
+            {
+              name: "filesystem",
+              command: "npx @modelcontextprotocol/server-filesystem /tmp/a",
+              packages: [],
+              tools: [{ name: "read_file", description: "Read a file" }],
+            },
+          ],
+        },
+        {
+          name: "cursor",
+          agent_type: "desktop",
+          mcp_servers: [
+            {
+              name: "filesystem",
+              command: "npx @modelcontextprotocol/server-filesystem /tmp/b",
+              packages: [],
+              tools: [{ name: "read_file", description: "Read a file" }],
+            },
+          ],
+        },
+      ],
+      blast_radius: [],
+    };
+
+    const { nodes } = buildMeshGraph(result, { packages: true, vulnerabilities: true, credentials: true, tools: true }, "all");
+
+    const serverNodes = nodes.filter((node) => node.data.nodeType === "server" || node.data.nodeType === "sharedServer");
+    expect(serverNodes).toHaveLength(2);
+    expect(serverNodes.every((node) => node.data.nodeType === "server")).toBe(true);
+  });
+
+  it("keeps package versions as distinct visible package nodes", () => {
+    const result: ScanResult = {
+      agents: [
+        {
+          name: "claude-desktop",
+          agent_type: "desktop",
+          mcp_servers: [
+            {
+              name: "filesystem",
+              packages: [
+                { name: "server-filesystem", ecosystem: "npm", version: "1.0.0", vulnerabilities: [] },
+                { name: "server-filesystem", ecosystem: "npm", version: "2.0.0", vulnerabilities: [] },
+              ],
+              tools: [],
+            },
+          ],
+        },
+      ],
+      blast_radius: [],
+    };
+
+    const { nodes } = buildMeshGraph(result, { packages: true, vulnerabilities: true, credentials: true, tools: true }, "all");
+
+    const packageLabels = nodes
+      .filter((node) => node.data.nodeType === "package")
+      .map((node) => node.data.label)
+      .sort();
+    expect(packageLabels).toEqual(["server-filesystem@1.0.0", "server-filesystem@2.0.0"]);
   });
 });

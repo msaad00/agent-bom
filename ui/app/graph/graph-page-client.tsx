@@ -463,6 +463,13 @@ function GraphPageInner() {
   const seededFromUrlRef = useRef<boolean>(
     typeof window !== "undefined" && new URLSearchParams(window.location.search).toString().length > 0,
   );
+  const requestedScanIdRef = useRef<string>(
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("scan") ||
+        new URLSearchParams(window.location.search).get("scan_id") ||
+        ""
+      : "",
+  );
   const firstScanSelectionRef = useRef(true);
 
   useEffect(() => {
@@ -472,7 +479,14 @@ function GraphPageInner() {
       .then((items) => {
         setSnapshots(items);
         if (items.length > 0) {
-          setSelectedScanId((current) => current || items[0]!.scan_id);
+          setSelectedScanId((current) => {
+            if (current) return current;
+            const requested = requestedScanIdRef.current;
+            if (requested && items.some((item) => item.scan_id === requested)) {
+              return requested;
+            }
+            return items[0]!.scan_id;
+          });
         }
       })
       .catch((e) => setError(e.message))
@@ -535,6 +549,7 @@ function GraphPageInner() {
       return;
     }
 
+    let cancelled = false;
     setLoadingGraph(true);
     setSelectedNode(null);
     api
@@ -550,14 +565,21 @@ function GraphPageInner() {
         limit: filters.pageSize,
       })
       .then((result) => {
+        if (cancelled) return;
         setGraphData(result);
         setError(null);
       })
       .catch((e) => {
+        if (cancelled) return;
         setError(e.message);
         setGraphData(null);
       })
-      .finally(() => setLoadingGraph(false));
+      .finally(() => {
+        if (!cancelled) setLoadingGraph(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [
     selectedScanId,
     serverEntityTypes,
@@ -679,12 +701,14 @@ function GraphPageInner() {
   // copied address bar reproduces the view but back/forward isn't spammed.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const next = encodeFiltersToParams(filters).toString();
+    const nextParams = encodeFiltersToParams(filters);
+    if (selectedScanId) nextParams.set("scan", selectedScanId);
+    const next = nextParams.toString();
     const current = searchParams?.toString() ?? "";
     if (next === current) return;
     const url = next ? `${pathname}?${next}` : pathname;
     router.replace(url, { scroll: false });
-  }, [filters, pathname, router, searchParams]);
+  }, [filters, pathname, router, searchParams, selectedScanId]);
 
   // Constraint propagation — recompute valid values whenever graph or
   // filters change. Cheap on focused snapshots, BFS-bounded on expanded.
@@ -1423,11 +1447,8 @@ function GraphPageInner() {
                 bgColor={MINIMAP_BG}
                 maskColor={MINIMAP_MASK}
               />
-              {/* Dock legend on the canvas itself so node-color → entity-type
-                  is one glance away instead of "scroll back up to the hero
-                  block to find which colour means agent". Wraps in a
-                  <details> so it can be collapsed when the operator wants
-                  more canvas. */}
+              {/* Dock legend on the canvas itself so node-color -> entity-type
+                  is one glance away. */}
               <Panel position="top-right" className="!m-2">
                 <details className="rounded-xl border border-zinc-800 bg-zinc-950/85 backdrop-blur p-2 group">
                   <summary className="flex items-center gap-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden text-[10px] uppercase tracking-[0.2em] text-zinc-400">
@@ -1436,7 +1457,7 @@ function GraphPageInner() {
                     <span className="text-zinc-600 hidden group-open:inline">▾</span>
                   </summary>
                   <div className="mt-2">
-                    <GraphLegend items={legendItems} />
+                    <GraphLegend items={legendItems} embedded />
                   </div>
                 </details>
               </Panel>

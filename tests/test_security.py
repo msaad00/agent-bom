@@ -274,6 +274,19 @@ def test_validate_url_http():
         validate_url("http://example.com/api")
 
 
+def test_validate_url_private_egress_override_allows_http_localhost(monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", "true")
+
+    validate_url("http://localhost/api")
+
+
+def test_validate_url_private_egress_override_rejects_public_http(monkeypatch):
+    monkeypatch.setenv("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", "true")
+
+    with pytest.raises(SecurityError, match="HTTP URLs are only allowed"):
+        validate_url("http://93.184.216.34/api")
+
+
 def test_validate_url_metadata():
     with pytest.raises(SecurityError, match="metadata"):
         validate_url("https://169.254.169.254/latest/meta-data/")

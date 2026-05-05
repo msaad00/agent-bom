@@ -249,8 +249,8 @@ export function ScanResultView({ id }: { id: string }) {
           </div>
           {!collapsedSections.has("blast") && (
             <div className="space-y-3">
-              {blastRadius.sort((a, b) => b.blast_score - a.blast_score).map((b) => (
-                <BlastRadiusCard key={b.vulnerability_id} blast={b} />
+              {blastRadius.sort((a, b) => b.blast_score - a.blast_score).map((b, index) => (
+                <BlastRadiusCard key={`${b.vulnerability_id}:${b.package ?? "unknown"}:${index}`} blast={b} />
               ))}
             </div>
           )}
@@ -404,9 +404,9 @@ function BlastRadiusCard({ blast }: { blast: BlastRadius }) {
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <ImpactPill icon={Zap} label="Agents affected" items={blast.affected_agents} />
-        <ImpactPill icon={Key} label="Credentials exposed" items={blast.exposed_credentials} accent="orange" />
-        <ImpactPill icon={Wrench} label="Tools reachable" items={blast.reachable_tools} />
+        <ImpactPill icon={Zap} label="Agents affected" items={blast.affected_agents ?? []} />
+        <ImpactPill icon={Key} label="Credentials exposed" items={blast.exposed_credentials ?? []} accent="orange" />
+        <ImpactPill icon={Wrench} label="Tools reachable" items={blast.reachable_tools ?? blast.exposed_tools ?? []} />
       </div>
       {((blast.owasp_tags && blast.owasp_tags.length > 0) || (blast.atlas_tags && blast.atlas_tags.length > 0)) && (
         <div className="mt-3 flex flex-wrap gap-1.5">
@@ -426,17 +426,18 @@ function BlastRadiusCard({ blast }: { blast: BlastRadius }) {
   );
 }
 
-function ImpactPill({ icon: Icon, label, items, accent }: { icon: React.ElementType; label: string; items: string[]; accent?: string }) {
-  const accentClass = accent === "orange" && items.length > 0 ? "text-orange-400" : "text-zinc-300";
+function ImpactPill({ icon: Icon, label, items, accent }: { icon: React.ElementType; label: string; items?: string[]; accent?: string }) {
+  const safeItems = items ?? [];
+  const accentClass = accent === "orange" && safeItems.length > 0 ? "text-orange-400" : "text-zinc-300";
   return (
     <div className="bg-zinc-800 rounded-lg p-3">
       <div className={`flex items-center gap-1.5 text-xs font-semibold mb-2 ${accentClass}`}>
-        <Icon className="w-3.5 h-3.5" /><span>{label} ({items.length})</span>
+        <Icon className="w-3.5 h-3.5" /><span>{label} ({safeItems.length})</span>
       </div>
-      {items.length > 0 ? (
+      {safeItems.length > 0 ? (
         <div className="space-y-1">
-          {items.slice(0, 4).map((item, i) => <p key={i} className="text-xs font-mono text-zinc-400 truncate">{item}</p>)}
-          {items.length > 4 && <p className="text-xs text-zinc-600">+{items.length - 4} more</p>}
+          {safeItems.slice(0, 4).map((item, i) => <p key={i} className="text-xs font-mono text-zinc-400 truncate">{item}</p>)}
+          {safeItems.length > 4 && <p className="text-xs text-zinc-600">+{safeItems.length - 4} more</p>}
         </div>
       ) : (
         <p className="text-xs text-zinc-600">None</p>

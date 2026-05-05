@@ -21,13 +21,13 @@ pip install "agent-bom[all]"         # Everything
 
 ```bash
 # CLI scanning
-docker run --rm ghcr.io/msaad00/agent-bom:latest scan
+docker run --rm agentbom/agent-bom:latest scan
 
 # With host config access (for MCP client discovery)
 docker run --rm \
   -v "$HOME/.config:/home/abom/.config:ro" \
   -v "$HOME/Library/Application Support:/home/abom/Library/Application Support:ro" \
-  ghcr.io/msaad00/agent-bom:latest scan
+  agentbom/agent-bom:latest scan
 ```
 
 ## From source

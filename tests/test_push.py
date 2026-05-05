@@ -255,6 +255,22 @@ class TestPushResults:
         headers = call_kwargs.kwargs.get("headers", {})
         assert headers.get("Authorization") == "Bearer test-key-123"
 
+    def test_push_url_private_egress_override_allows_http_localhost(self, monkeypatch):
+        monkeypatch.setenv("AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS", "true")
+        mock_resp = AsyncMock()
+        mock_resp.status_code = 200
+
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(return_value=mock_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("agent_bom.http_client.create_client", return_value=mock_client):
+            result = push_results("http://localhost:8422/v1/results/push", {"agents": []})
+
+        assert result is True
+        assert mock_client.post.call_args.args[0] == "http://localhost:8422/v1/results/push"
+
     def test_push_network_error(self):
         """Network errors retry up to max attempts then return False."""
         mock_client = AsyncMock()

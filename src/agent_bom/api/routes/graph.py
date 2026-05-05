@@ -98,6 +98,36 @@ def _parse_entity_type_filter(raw: str | None) -> set[str] | None:
     return values or None
 
 
+def _parse_relationship_filter(raw: str | None) -> set[RelationshipType]:
+    if not raw:
+        return set()
+    parsed: set[RelationshipType] = set()
+    for value in raw.split(","):
+        value = value.strip()
+        if not value:
+            continue
+        try:
+            parsed.add(RelationshipType(value))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"Unsupported graph relationship type: {value}") from exc
+    return parsed
+
+
+def _validate_relationship_list(values: list[str]) -> set[RelationshipType] | None:
+    if not values:
+        return None
+    parsed: set[RelationshipType] = set()
+    for value in values:
+        cleaned = value.strip()
+        if not cleaned:
+            continue
+        try:
+            parsed.add(RelationshipType(cleaned))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"Unsupported graph relationship type: {cleaned}") from exc
+    return parsed or None
+
+
 def _validate_entity_type_list(values: list[str]) -> list[str]:
     cleaned = [value.strip() for value in values if value.strip()]
     invalid = sorted(set(cleaned) - _ALLOWED_ENTITY_TYPES)
@@ -277,7 +307,7 @@ async def get_graph(
     Nodes are paginated (offset/limit). Edges are filtered to only include
     edges between returned nodes. Stats reflect the full (unpaginated) graph.
     """
-    from agent_bom.graph import SEVERITY_RANK, GraphFilterOptions, RelationshipType
+    from agent_bom.graph import SEVERITY_RANK, GraphFilterOptions
 
     tenant = _tenant(request)
     graph_store = _get_graph_store_or_503()
@@ -300,14 +330,7 @@ async def get_graph(
             entity_types=et_set,
             min_severity_rank=min_rank,
         )
-        rel_set: set[RelationshipType] = set()
-        if relationships:
-            for r in relationships.split(","):
-                r = r.strip()
-                try:
-                    rel_set.add(RelationshipType(r))
-                except ValueError:
-                    pass
+        rel_set = _parse_relationship_filter(relationships)
         filters = GraphFilterOptions(
             relationship_types=rel_set,
             static_only=static_only,
@@ -358,13 +381,19 @@ async def get_graph(
         tenant_id=tenant,
         node_ids=paged_ids,
     )
+    attack_paths = await _graph_store_call(
+        graph_store.attack_paths_for_sources,
+        scan_id=effective_scan_id,
+        tenant_id=tenant,
+        source_ids=paged_ids,
+    )
     return {
         "scan_id": effective_scan_id,
         "tenant_id": tenant,
         "created_at": created_at,
         "nodes": [n.to_dict() for n in paged_nodes],
         "edges": [e.to_dict() for e in paged_edges],
-        "attack_paths": [],
+        "attack_paths": [path.to_dict() for path in attack_paths],
         "interaction_risks": [],
         "stats": await _graph_store_call(
             graph_store.snapshot_stats,
@@ -577,7 +606,7 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
     if missing_roots:
         raise HTTPException(status_code=404, detail={"message": "Root nodes not found", "missing_roots": missing_roots})
 
-    rel_types = {RelationshipType(rel) for rel in body.relationship_types} if body.relationship_types else None
+    rel_types = _validate_relationship_list(body.relationship_types)
     deadline = time.monotonic() + (body.timeout_ms / 1000)
     traversal_graph, depth_by_node, truncated = await _graph_store_call(
         graph_store.traverse_subgraph,

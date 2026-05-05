@@ -20,12 +20,12 @@ The graph subsystem has one source of truth in code: enums in `src/agent_bom/gra
 | `tool` | `mcp_introspect.py`, `risk_analyzer.classify_mcp_tool` | One tool advertised by a server with classified capabilities (read / write / execute / network) |
 | `model` | `cloud/`, model-card scanners | One model artifact: HuggingFace ID, local path, or cloud-served endpoint |
 | `dataset` | `cloud/`, dataset discovery | One referenced dataset (cloud or local) |
-| `container` | `image_scanner.py`, `filesystem.py` | One OCI image or unpacked filesystem |
+| `container` | `image.py`, `cloud/container_sbom.py`, `filesystem.py` | One OCI image or unpacked filesystem |
 | `cloud_resource` | `cloud/aws.py`, `cloud/azure.py`, `cloud/gcp.py` | One discovered cloud asset (workload identity target, bucket, key, etc.) |
 | `vulnerability` | `scanners/__init__.py`, `enrichment.py` | One CVE / GHSA after OSV + NVD + EPSS + KEV enrichment |
 | `misconfiguration` | `iac/`, `cis/` | One IaC / CIS rule violation |
 | `credential` | `context_graph._is_credential_key` against MCP server `env` | One credential-shaped env key (no secret value stored) |
-| `user` | SCIM ingest (`scim_provisioning.py`) | One identity from the customer IdP |
+| `user` | SCIM ingest (`api/routes/scim.py`) | One identity from the customer IdP |
 | `group` | SCIM ingest | One identity group |
 | `service_account` | Cloud workload-identity discovery | One non-human principal |
 | `provider`, `environment`, `fleet`, `cluster` | Fleet sync, cloud discovery | Organisational hierarchy nodes (no security state of their own) |
@@ -44,7 +44,7 @@ The graph subsystem has one source of truth in code: enums in `src/agent_bom/gra
 | `exposes_cred` | server → credential | The server's launch env carries a credential-shaped key. | Emitted only when `_is_credential_key(env_key)` returns true; the value is never stored. |
 | `reaches_tool` | credential → tool | A credential is reachable by an executable tool on the same server. | Emitted only when both nodes share a server *and* the tool has the `execute` capability. |
 | `serves_model` | server → model | The server fronts a model endpoint. | Emitted by cloud / HuggingFace / Ollama scanners. |
-| `contains` | container → package | A container image contains this package. | Emitted by `image_scanner.py` / `filesystem.py`. |
+| `contains` | container → package | A container image contains this package. | Emitted by `image.py`, `cloud/container_sbom.py`, and `filesystem.py`. |
 | `affects` | vulnerability → package | The CVE affects this package version. | Emitted from OSV / GHSA advisory data. |
 | `vulnerable_to` | server / package → vulnerability | The server (via its packages) is exposed to this CVE. | Emitted when a CVE in `blast_radius` lists the server in `affected_servers`. |
 | `exploitable_via` | vulnerability → tool / credential | An exploitation path leads through this tool or credential. | Emitted by blast-radius propagation when a path exists. |
@@ -82,16 +82,16 @@ agent-bom's graph is a static analytical artifact derived from inventory plus ca
 
 ## 3. Scaling boundaries
 
-The graph renderer ships explicit thresholds. Operators can override per-tenant; defaults match the table below.
+The graph renderer ships deterministic focused and expanded modes. Operators can override per-tenant; defaults match the table below.
 
-| Node count `N` | Default behaviour | Why |
+| Mode / size | Default behaviour | Why |
 |---|---|---|
-| `N ≤ 30` | Full graph render — every node and every edge in the canvas. | Pilot fleets; one screen, no aggregation needed. |
-| `30 < N ≤ 100` | Focus mode default — start anchored at the highest-risk entity, expand on demand. | Mid-market scale; the canvas is still legible if the operator drives navigation. |
-| `100 < N ≤ 300` | Sibling aggregation default — agents that share the same set of servers / credentials collapse into a single sibling cluster, expandable. | Avoids the hairball problem when many agents share infrastructure. |
-| `N > 300` | Anchor required — the operator must pick an entity, and the renderer returns the 3-hop neighbourhood around it. | Beyond ~300 nodes, no force-directed layout in a browser stays interactive. Pagination + anchored neighbourhoods are how large tenants navigate. |
+| Focused default | 3-hop neighbourhood, 250-node page size, sibling fan-outs of 5+ collapsed into expandable cluster pills. | Starts every investigation readable, even on the 244-node self-scan. |
+| Expanded mode | 6-hop neighbourhood, 1000-node page size, sibling fan-outs of 20+ collapsed. | Lets operators widen context deliberately without losing the map. |
+| Zoomed out | Level-of-detail renderer swaps detail cards for summary cards and cluster bubbles below the zoom thresholds. | Dense snapshots stay navigable instead of turning into unreadable labels. |
+| Large snapshots | Snapshot selector, search, filters, pagination, and graph query endpoints bound the visible canvas. | Large tenants navigate by scope, not by rendering the whole tenant in one frame. |
 
-Operators reaching the 300-node boundary should pivot to scoped queries (`/v1/agents/mesh?anchor=…`), the blast-radius drilldown, or the snapshot + page + search workflow described in `site-docs/deployment/performance-and-sizing.md`. The graph is designed for investigation, not for "render the whole tenant in one canvas."
+Operators reaching large-snapshot scale should pivot to scoped queries, security-graph attack paths, the blast-radius drilldown, or the snapshot + page + search workflow described in `site-docs/deployment/performance-and-sizing.md`. The graph is designed for investigation, not for "render the whole tenant in one canvas."
 
 ---
 

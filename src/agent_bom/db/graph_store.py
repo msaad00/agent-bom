@@ -113,9 +113,11 @@ CREATE TABLE IF NOT EXISTS attack_paths (
     target_node     TEXT NOT NULL,
     hop_count       INTEGER DEFAULT 0,
     composite_risk  REAL DEFAULT 0.0,
+    summary         TEXT DEFAULT '',
     path_nodes      TEXT DEFAULT '[]',
     path_edges      TEXT DEFAULT '[]',
     credential_exposure TEXT DEFAULT '[]',
+    tool_exposure   TEXT DEFAULT '[]',
     vuln_ids        TEXT DEFAULT '[]',
     scan_id         TEXT NOT NULL,
     tenant_id       TEXT DEFAULT '',
@@ -176,6 +178,11 @@ def _init_db(conn: sqlite3.Connection) -> None:
             "INSERT INTO graph_schema_version (version) VALUES (?)",
             (_GRAPH_SCHEMA_VERSION,),
         )
+    existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(attack_paths)").fetchall()}
+    if "summary" not in existing_columns:
+        conn.execute("ALTER TABLE attack_paths ADD COLUMN summary TEXT DEFAULT ''")
+    if "tool_exposure" not in existing_columns:
+        conn.execute("ALTER TABLE attack_paths ADD COLUMN tool_exposure TEXT DEFAULT '[]'")
     conn.commit()
 
 
@@ -367,18 +374,20 @@ def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
             """\
             INSERT OR REPLACE INTO attack_paths (
                 source_node, target_node, hop_count, composite_risk,
-                path_nodes, path_edges, credential_exposure, vuln_ids,
-                scan_id, tenant_id, computed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                summary, path_nodes, path_edges, credential_exposure,
+                tool_exposure, vuln_ids, scan_id, tenant_id, computed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 ap.source,
                 ap.target,
                 len(ap.hops),
                 ap.composite_risk,
+                ap.summary,
                 json.dumps(ap.hops),
                 json.dumps(ap.edges),
                 json.dumps(ap.credential_exposure),
+                json.dumps(ap.tool_exposure),
                 json.dumps(ap.vuln_ids),
                 scan,
                 tenant,
@@ -498,7 +507,9 @@ def load_graph(
                 hops=json.loads(row["path_nodes"]),
                 edges=json.loads(row["path_edges"]),
                 composite_risk=row["composite_risk"],
+                summary=row["summary"] or "",
                 credential_exposure=json.loads(row["credential_exposure"]),
+                tool_exposure=json.loads(row["tool_exposure"]),
                 vuln_ids=json.loads(row["vuln_ids"]),
             )
         )

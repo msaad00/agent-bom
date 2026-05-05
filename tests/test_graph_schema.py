@@ -644,6 +644,7 @@ class TestGraphStore:
                 edges=["uses", "vulnerable_to"],
                 composite_risk=9.0,
                 summary="agent-a → mcp-fs → CVE-2024-1",
+                tool_exposure=["read_file"],
             )
         )
         save_graph(db, g)
@@ -651,6 +652,8 @@ class TestGraphStore:
         loaded = load_graph(db, scan_id="test-001")
         assert len(loaded.attack_paths) == 1
         assert loaded.attack_paths[0].composite_risk == 9.0
+        assert loaded.attack_paths[0].summary == "agent-a → mcp-fs → CVE-2024-1"
+        assert loaded.attack_paths[0].tool_exposure == ["read_file"]
 
     def test_interaction_risks_persisted(self, db):
         from agent_bom.db.graph_store import load_graph, save_graph

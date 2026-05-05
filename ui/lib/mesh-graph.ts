@@ -25,7 +25,10 @@ export interface MeshStatsData {
 }
 
 export interface ServerGroup {
+  id: string;
   name: string;
+  command: string;
+  transport: string;
   agents: Set<string>;
   agentLabels: Map<string, string>;
   servers: MCPServer[];
@@ -88,6 +91,16 @@ export function getMeshAgentLabel(agent: Agent): string {
 function meshAgentNodeId(agentOrKey: Agent | string): string {
   const key = typeof agentOrKey === "string" ? agentOrKey : getMeshAgentKey(agentOrKey);
   return `agent:${key}`;
+}
+
+function serverIdentity(server: MCPServer): string {
+  return `${server.name}|${server.command ?? ""}|${server.transport ?? ""}`;
+}
+
+function meshServerNodeId(serverOrGroup: MCPServer | ServerGroup): string {
+  const command = "command" in serverOrGroup ? serverOrGroup.command : serverOrGroup.command ?? "";
+  const transport = "transport" in serverOrGroup ? serverOrGroup.transport : serverOrGroup.transport ?? "";
+  return `server:${serverOrGroup.name}:${command}:${transport}`;
 }
 
 function getCredKeys(server: MCPServer): string[] {
@@ -176,7 +189,7 @@ export function detectSharedServers(agents: Agent[]): Map<string, ServerGroup> {
     const agentKey = getMeshAgentKey(agent);
     const agentLabel = getMeshAgentLabel(agent);
     for (const server of agent.mcp_servers) {
-      const key = server.name;
+      const key = serverIdentity(server);
       const existing = groups.get(key);
       const creds = getCredKeys(server);
       if (existing) {
@@ -189,7 +202,10 @@ export function detectSharedServers(agents: Agent[]): Map<string, ServerGroup> {
         creds.forEach((c) => existing.credNames.add(c));
       } else {
         groups.set(key, {
+          id: key,
           name: server.name,
+          command: server.command ?? "",
+          transport: server.transport ?? "",
           agents: new Set([agentKey]),
           agentLabels: new Map([[agentKey, agentLabel]]),
           servers: [server],
@@ -382,9 +398,9 @@ export function buildMeshGraph(
   }
 
   // ── Server nodes (shared vs regular) ──
-  for (const [name, group] of serverGroups) {
+  for (const group of serverGroups.values()) {
     const isShared = group.agents.size > 1;
-    const serverId = `server:${name}`;
+    const serverId = meshServerNodeId(group);
     const firstServer = group.servers[0];
     if (!firstServer) continue;
 
@@ -393,7 +409,7 @@ export function buildMeshGraph(
       type: isShared ? "sharedServerNode" : "serverNode",
       position: { x: 0, y: 0 },
       data: {
-        label: name,
+        label: group.name,
         nodeType: isShared ? "sharedServer" : "server",
         command: firstServer.command || firstServer.transport || "",
         toolCount: group.totalTools,
@@ -406,7 +422,7 @@ export function buildMeshGraph(
 
     // Agent → Server edges
     for (const agentKey of group.agents) {
-      const edgeId = `${meshAgentNodeId(agentKey)}->server:${name}`;
+      const edgeId = `${meshAgentNodeId(agentKey)}->${serverId}`;
       if (!seen.has(edgeId)) {
         seen.add(edgeId);
         edges.push({
@@ -431,7 +447,7 @@ export function buildMeshGraph(
     // ── Credential nodes ──
     if (showCreds) {
       for (const cred of group.credNames) {
-        const credId = `cred:${name}:${cred}`;
+        const credId = `cred:${serverId}:${cred}`;
         if (!seen.has(credId)) {
           seen.add(credId);
           const multiAgent = (credAgentMap.get(cred)?.size ?? 0) > 1;
@@ -442,7 +458,7 @@ export function buildMeshGraph(
             data: {
               label: cred,
               nodeType: "credential",
-              serverName: name,
+              serverName: group.name,
               sharedBy: credAgentMap.get(cred)?.size,
             } satisfies LineageNodeData,
           });
@@ -468,7 +484,7 @@ export function buildMeshGraph(
       const allTools = group.servers.flatMap((s) => s.tools ?? []);
       const uniqueTools = [...new Map(allTools.map((t) => [t.name, t])).values()].slice(0, 5);
       for (const tool of uniqueTools) {
-        const toolId = `tool:${name}:${tool.name}`;
+        const toolId = `tool:${serverId}:${tool.name}`;
         if (!seen.has(toolId)) {
           seen.add(toolId);
           const multiAgent = (toolAgentMap.get(tool.name)?.size ?? 0) > 1;
@@ -501,12 +517,12 @@ export function buildMeshGraph(
     // ── Package nodes ──
     if (showPkgs) {
       // Collect all unique packages across server instances in this group
-      const pkgMap = new Map<string, { pkg: typeof group.servers[0]["packages"][0]; serverName: string }>();
+      const pkgMap = new Map<string, { pkg: typeof group.servers[0]["packages"][0]; serverId: string }>();
       for (const srv of group.servers) {
         for (const pkg of srv.packages) {
           const key = `${pkg.ecosystem}:${pkg.name}@${pkg.version}`;
           if (!pkgMap.has(key)) {
-            pkgMap.set(key, { pkg, serverName: name });
+            pkgMap.set(key, { pkg, serverId });
           }
         }
       }
@@ -541,8 +557,8 @@ export function buildMeshGraph(
         .slice(0, vulnerableOnly ? 0 : 2);
       const displayPkgs = [...vulnPkgs.slice(0, vulnerableOnly ? 8 : 6), ...cleanPkgs];
 
-      for (const { pkg, serverName, matchingVulns } of displayPkgs) {
-        const pkgId = `pkg:${serverName}:${pkg.ecosystem}:${pkg.name}`;
+      for (const { pkg, serverId: packageServerId, matchingVulns } of displayPkgs) {
+        const pkgId = `pkg:${packageServerId}:${pkg.ecosystem}:${pkg.name}@${pkg.version}`;
         if (seen.has(pkgId)) continue;
         seen.add(pkgId);
 
@@ -565,7 +581,7 @@ export function buildMeshGraph(
         });
         edges.push({
           id: `${serverId}->${pkgId}`,
-          source: serverId,
+          source: packageServerId,
           target: pkgId,
           type: "smoothstep",
           data: { relationship: "depends_on" },

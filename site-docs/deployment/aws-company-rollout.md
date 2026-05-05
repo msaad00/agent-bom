@@ -166,15 +166,16 @@ flowchart LR
     end
 
     IDE --> Proxy
+    Proxy -->|local MCP relay| MCP
     Proxy -->|policy pull + audit push| API
-    Proxy -->|runtime MCP relay| GW
     Fleet -->|/v1/fleet/sync| API
     GW --> MCP
     Jobs --> Cloud
     Jobs --> API
-    ProxySidecar --> GW
+    ProxySidecar -->|sidecar MCP relay| MCP
+    ProxySidecar -->|policy pull + audit push| API
     API --> DB
-    GW --> API
+    GW -->|policy + audit| API
     UI --> API
 ```
 

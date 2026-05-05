@@ -235,12 +235,24 @@ const SEVERITY_ORDER_MAP: Record<string, number> = {
   critical: 4, high: 3, medium: 2, low: 1,
 };
 
+function blastTools(blast: BlastRadius): string[] {
+  return blast.exposed_tools ?? blast.reachable_tools ?? [];
+}
+
+function blastCredentials(blast: BlastRadius): string[] {
+  return blast.exposed_credentials ?? [];
+}
+
+function blastAgents(blast: BlastRadius): string[] {
+  return blast.affected_agents ?? [];
+}
+
 function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {
   const issues: CompoundIssue[] = [];
 
   // 1. CISA KEV + reachable tool exposure
   const kevReachable = allBlast.filter(
-    (b) => (b.is_kev ?? b.cisa_kev) && (b.exposed_tools ?? b.reachable_tools).length > 0
+    (b) => (b.is_kev ?? b.cisa_kev) && blastTools(b).length > 0
   );
   if (kevReachable.length > 0) {
     issues.push({
@@ -257,7 +269,7 @@ function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {
 
   // 2. CISA KEV + credential exposure
   const kevCredential = allBlast.filter(
-    (b) => (b.is_kev ?? b.cisa_kev) && b.exposed_credentials.length > 0
+    (b) => (b.is_kev ?? b.cisa_kev) && blastCredentials(b).length > 0
   );
   if (kevCredential.length > 0) {
     issues.push({
@@ -295,8 +307,8 @@ function aggregateCompoundIssues(allBlast: BlastRadius[]): CompoundIssue[] {
   // 4. Credential exposure + reachable exec tools
   const credExec = allBlast.filter(
     (b) =>
-      b.exposed_credentials.length > 0 &&
-      (b.exposed_tools ?? b.reachable_tools).some((t) =>
+      blastCredentials(b).length > 0 &&
+      blastTools(b).some((t) =>
         ["bash", "exec", "shell", "run", "execute", "subprocess"].some((kw) =>
           t.toLowerCase().includes(kw)
         )
@@ -476,11 +488,8 @@ export default function Dashboard() {
   const scatterData = useMemo(() => aggregateEpssVsCvss(allBlast), [allBlast]);
   const compoundIssues = useMemo(() => aggregateCompoundIssues(allBlast), [allBlast]);
   const kevCount = useMemo(() => allBlast.filter((b) => (b.is_kev ?? b.cisa_kev) === true).length, [allBlast]);
-  const credentialExposureCount = useMemo(() => allBlast.filter((b) => b.exposed_credentials.length > 0).length, [allBlast]);
-  const reachableToolCount = useMemo(
-    () => new Set(allBlast.flatMap((b) => b.exposed_tools ?? b.reachable_tools ?? [])).size,
-    [allBlast]
-  );
+  const credentialExposureCount = useMemo(() => allBlast.filter((b) => blastCredentials(b).length > 0).length, [allBlast]);
+  const reachableToolCount = useMemo(() => new Set(allBlast.flatMap(blastTools)).size, [allBlast]);
 
   // Unique CVE count
   const uniqueCVEs = useMemo(() => {
@@ -627,23 +636,25 @@ export default function Dashboard() {
             {[...allBlast]
               .sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score))
               .slice(0, 5)
-              .map((b) => {
+              .map((b, index) => {
                 const nodes: { type: "cve" | "package" | "server" | "agent" | "credential"; label: string; severity?: string }[] = [
                   { type: "cve", label: b.vulnerability_id, severity: b.severity?.toLowerCase() },
                 ];
                 if (b.package) nodes.push({ type: "package", label: b.package });
                 if (b.affected_servers && b.affected_servers.length > 0) nodes.push({ type: "server", label: b.affected_servers[0]! });
-                if (b.affected_agents.length > 0) nodes.push({ type: "agent", label: b.affected_agents[0]! });
-                if (b.exposed_credentials.length > 0) nodes.push({ type: "credential", label: b.exposed_credentials[0]! });
+                const agents = blastAgents(b);
+                const credentials = blastCredentials(b);
+                if (agents.length > 0) nodes.push({ type: "agent", label: agents[0]! });
+                if (credentials.length > 0) nodes.push({ type: "credential", label: credentials[0]! });
                 return (
                   <AttackPathCard
-                    key={b.vulnerability_id}
+                    key={`${b.vulnerability_id}:${b.package ?? "unknown"}:${index}`}
                     nodes={nodes}
                     riskScore={b.risk_score ?? b.blast_score / 10}
                     href={buildSecurityGraphHref({
                       cve: b.vulnerability_id,
                       packageName: b.package,
-                      agentName: b.affected_agents[0],
+                      agentName: agents[0],
                     })}
                   />
                 );
@@ -828,9 +839,9 @@ export default function Dashboard() {
             {[...allBlast]
               .sort((a, b) => (b.risk_score ?? b.blast_score) - (a.risk_score ?? a.blast_score))
               .slice(0, 5)
-              .map((b) => (
+              .map((b, index) => (
                 <BlastCard
-                  key={b.vulnerability_id}
+                  key={`${b.vulnerability_id}:${b.package ?? "unknown"}:${index}`}
                   blast={b}
                   detailHref={`/findings?cve=${b.vulnerability_id}`}
                 />
@@ -1050,11 +1061,11 @@ function BlastCard({ blast, detailHref }: { blast: BlastRadius; detailHref: stri
           </a>
         </div>
         <div className="flex flex-wrap gap-3 mt-1.5 text-xs text-zinc-500">
-          <span>{blast.affected_agents.length} agent{blast.affected_agents.length !== 1 ? "s" : ""}</span>
-          {blast.exposed_credentials.length > 0 && (
-            <span className="text-orange-400">{blast.exposed_credentials.length} credential{blast.exposed_credentials.length !== 1 ? "s" : ""}</span>
+          <span>{blastAgents(blast).length} agent{blastAgents(blast).length !== 1 ? "s" : ""}</span>
+          {blastCredentials(blast).length > 0 && (
+            <span className="text-orange-400">{blastCredentials(blast).length} credential{blastCredentials(blast).length !== 1 ? "s" : ""}</span>
           )}
-          <span>{(blast.exposed_tools ?? blast.reachable_tools).length} tool{(blast.exposed_tools ?? blast.reachable_tools).length !== 1 ? "s" : ""}</span>
+          <span>{blastTools(blast).length} tool{blastTools(blast).length !== 1 ? "s" : ""}</span>
           {(blast.is_kev ?? blast.cisa_kev) && <span className="text-red-400 font-semibold">CISA KEV</span>}
           {blast.cvss_score != null && <span>CVSS {blast.cvss_score.toFixed(1)}</span>}
           {blast.epss_score != null && <span>EPSS {(blast.epss_score * 100).toFixed(0)}%</span>}
@@ -1199,9 +1210,9 @@ function CompoundIssueCard({ issue }: { issue: CompoundIssue }) {
           {issue.description}
         </p>
         <div className="flex flex-wrap gap-1.5">
-          {issue.findings.slice(0, 4).map((f) => (
+          {issue.findings.slice(0, 4).map((f, index) => (
             <span
-              key={f.vulnerability_id}
+              key={`${issue.id}:${f.vulnerability_id}:${f.package ?? "unknown"}:${index}`}
               className={`text-[10px] font-mono rounded px-1.5 py-0.5 ${badgeColor}`}
             >
               {f.vulnerability_id}

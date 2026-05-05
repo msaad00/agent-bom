@@ -200,10 +200,13 @@ flowchart LR
     classDef data fill:#0f172a,stroke:#f59e0b,color:#fef3c7
     classDef edge fill:#0f172a,stroke:#38bdf8,color:#e0f2fe
 
-    Scan["Scans + Fleet"]:::data --> API["API + UI + Postgres"]:::ctrl
-    API --> Graph["Findings + Graph + Audit"]:::data
-    API --> Gateway["Optional Gateway"]:::edge
-    API --> Proxy["Optional Proxy"]:::edge
+    Browser["Browser UI"]:::ctrl --> API["Control-plane API"]:::ctrl
+    Workers["Scans + workers"]:::data --> API
+    Fleet["Fleet sync"]:::data --> API
+    API --> Store["Postgres / SQLite"]:::data
+    API --> Graph["Findings + graph + audit"]:::data
+    Proxy["Optional proxy"]:::edge --> API
+    Gateway["Optional gateway"]:::edge --> API
 ```
 
 Deployment truth:

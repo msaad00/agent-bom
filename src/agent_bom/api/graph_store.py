@@ -765,7 +765,8 @@ class SQLiteGraphStore:
             placeholders = ",".join("?" for _ in source_ids)
             rows = conn.execute(
                 f"""
-                SELECT source_node, target_node, path_nodes, path_edges, composite_risk, credential_exposure, vuln_ids
+                SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
+                       summary, credential_exposure, tool_exposure, vuln_ids
                 FROM attack_paths
                 WHERE tenant_id = ? AND scan_id = ? AND source_node IN ({placeholders})
                 """,  # nosec B608 - placeholders are generated internally
@@ -778,7 +779,9 @@ class SQLiteGraphStore:
                     hops=json.loads(row["path_nodes"]),
                     edges=json.loads(row["path_edges"]),
                     composite_risk=row["composite_risk"],
+                    summary=row["summary"] or "",
                     credential_exposure=json.loads(row["credential_exposure"]),
+                    tool_exposure=json.loads(row["tool_exposure"]),
                     vuln_ids=json.loads(row["vuln_ids"]),
                 )
                 for row in rows

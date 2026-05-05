@@ -33,7 +33,7 @@ graph TB
     end
 
     subgraph Shield["agent-shield — Runtime Protection"]
-        Proxy["proxy\nMCP proxy + audit"]
+        ShieldProxy["proxy\nMCP proxy + audit"]
         Protect["protect --shield\n8 detectors + deep defense"]
         Run_Cmd["run\nZero-config proxy"]
     end
@@ -68,15 +68,16 @@ graph TB
         Console["Console\nTable / verbose"]
         Formats["Formats\nJSON / SARIF / HTML / CycloneDX"]
         API["REST API + MCP\n36 tools"]
-        Proxy["Runtime Proxy\n7 inline detectors"]
+        RuntimeProxy["Runtime Proxy\n7 inline detectors"]
     end
 
     Scan & MCP_Cmd --> Discovery
-    Image_Cmd & FS_Cmd & SBOM_Cmd --> Parser
-    IAC_Cmd --> IaC
-    Cloud_Cmd --> CIS
+    Image_Cmd --> Parser
+    IaCScan --> IaC
+    AWS & Platforms --> CIS
     Check_Cmd --> Scanner
-    Run_Cmd --> Proxy
+    Run_Cmd --> RuntimeProxy
+    ShieldProxy --> RuntimeProxy
 
     Discovery --> Parser --> Scanner --> Blast
     Blast --> Console & Formats & API

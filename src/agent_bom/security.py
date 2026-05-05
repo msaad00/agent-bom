@@ -551,8 +551,9 @@ def validate_url(url: str, *, allowed_schemes: tuple[str, ...] = ("https",), all
         "yes",
         "on",
     }
+    http_private_override = allow_private and parsed.scheme == "http" and allowed_schemes == ("https",)
 
-    if parsed.scheme not in allowed_schemes:
+    if parsed.scheme not in allowed_schemes and not http_private_override:
         if allowed_schemes == ("https",):
             raise SecurityError(f"URL must use HTTPS; got: {parsed.scheme}")
         expected = ", ".join(f"{scheme}://" for scheme in allowed_schemes)
@@ -600,6 +601,9 @@ def validate_url(url: str, *, allowed_schemes: tuple[str, ...] = ("https",), all
                 return
         except ValueError:
             continue
+
+    if http_private_override:
+        raise SecurityError("HTTP URLs are only allowed for private egress targets when AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS is enabled")
 
     # Static log — no user-controlled values to prevent both cleartext
     # credential logging and log injection (CodeQL py/clear-text-logging,

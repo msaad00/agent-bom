@@ -12,6 +12,7 @@ import type {
   ScanJobStatus,
   GraphSnapshot,
   UnifiedGraphResponse,
+  FixFirstGraphViewResponse,
   GraphNodeDetailResponse,
   GraphSearchResponse,
   GraphAgentsResponse,
@@ -91,6 +92,8 @@ export type {
   GraphPagination,
   GraphSnapshot,
   UnifiedGraphResponse,
+  FixFirstGraphViewResponse,
+  FixFirstPathCard,
   GraphImpactResponse,
   GraphNodeDetailResponse,
   GraphSearchResponse,
@@ -488,6 +491,24 @@ export const api = {
     if (filters?.limit != null) params.set("limit", String(filters.limit));
     const qs = params.toString();
     return get<UnifiedGraphResponse>(`/v1/graph${qs ? `?${qs}` : ""}`);
+  },
+
+  /** Load the ranked fix-first security graph view model */
+  getFixFirstGraphView: (filters?: {
+    scanId?: string | undefined;
+    cve?: string | undefined;
+    packageName?: string | undefined;
+    agentName?: string | undefined;
+    limit?: number | undefined;
+  }) => {
+    const params = new URLSearchParams();
+    if (filters?.scanId) params.set("scan_id", filters.scanId);
+    if (filters?.cve) params.set("cve", filters.cve);
+    if (filters?.packageName) params.set("package", filters.packageName);
+    if (filters?.agentName) params.set("agent", filters.agentName);
+    if (filters?.limit != null) params.set("limit", String(filters.limit));
+    const qs = params.toString();
+    return get<FixFirstGraphViewResponse>(`/v1/graph/views/fix-first${qs ? `?${qs}` : ""}`);
   },
 
   /** Search graph nodes within a snapshot */

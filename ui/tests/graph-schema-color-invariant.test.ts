@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { RELATIONSHIP_COLOR_MAP, RelationshipType } from "@/lib/graph-schema";
+import { GRAPH_NODE_KIND_META, RELATIONSHIP_COLOR_MAP, RelationshipType } from "@/lib/graph-schema";
 
 describe("RELATIONSHIP_COLOR_MAP", () => {
   it("has a color for every RelationshipType", () => {
@@ -29,6 +29,18 @@ describe("RELATIONSHIP_COLOR_MAP", () => {
     for (const [key, color] of Object.entries(RELATIONSHIP_COLOR_MAP)) {
       if (!/^#[0-9a-fA-F]{3,8}$/.test(color)) {
         bad.push(`${key}=${color}`);
+      }
+    }
+    expect(bad).toEqual([]);
+  });
+});
+
+describe("GRAPH_NODE_KIND_META", () => {
+  it("has label, color, shape, and semantic layer for every node kind", () => {
+    const bad: string[] = [];
+    for (const [key, meta] of Object.entries(GRAPH_NODE_KIND_META)) {
+      if (!meta.label || !meta.shape || !meta.layer || !/^#[0-9a-fA-F]{3,8}$/.test(meta.color)) {
+        bad.push(key);
       }
     }
     expect(bad).toEqual([]);

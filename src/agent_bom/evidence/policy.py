@@ -59,6 +59,9 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         "scope",
         "scopes",
         "command_name",
+        "event_id",
+        "event_type",
+        "event_timestamp",
         # Host / network identifiers
         "hostname",
         "host",
@@ -69,6 +72,8 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         # Identity / agent identifiers
         "client_id",
         "agent_id",
+        "agent_name",
+        "source_id",
         "tenant_id",
         "session_id",
         "actor_id",

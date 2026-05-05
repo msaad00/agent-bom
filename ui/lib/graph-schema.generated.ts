@@ -40,6 +40,7 @@ export interface GraphNodeKindMeta {
   label: string;
   color: string;
   shape: string;
+  layer: string;
   icon: string;
   category_uid: number;
   class_uid: number;
@@ -50,6 +51,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "AI Agent",
     "color": "#10b981",
     "shape": "circle",
+    "layer": "orchestration",
     "icon": "circle",
     "category_uid": 5,
     "class_uid": 4001
@@ -58,6 +60,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "Cloud Resource",
     "color": "#0ea5e9",
     "shape": "square",
+    "layer": "infra",
     "icon": "square",
     "category_uid": 5,
     "class_uid": 4001
@@ -66,6 +69,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "Cluster",
     "color": "#4b5563",
     "shape": "square",
+    "layer": "infra",
     "icon": "square",
     "category_uid": 5,
     "class_uid": 4001
@@ -74,6 +78,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "Container",
     "color": "#6366f1",
     "shape": "square",
+    "layer": "infra",
     "icon": "square",
     "category_uid": 5,
     "class_uid": 4001
@@ -82,6 +87,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "Credential",
     "color": "#f59e0b",
     "shape": "diamond",
+    "layer": "identity",
     "icon": "diamond",
     "category_uid": 5,
     "class_uid": 4001
@@ -90,6 +96,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "Dataset",
     "color": "#06b6d4",
     "shape": "square",
+    "layer": "asset",
     "icon": "square",
     "category_uid": 5,
     "class_uid": 4001
@@ -98,6 +105,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "Environment",
     "color": "#9ca3af",
     "shape": "square",
+    "layer": "infra",
     "icon": "square",
     "category_uid": 0,
     "class_uid": 0
@@ -106,6 +114,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "Fleet",
     "color": "#6b7280",
     "shape": "square",
+    "layer": "infra",
     "icon": "square",
     "category_uid": 5,
     "class_uid": 4001
@@ -114,6 +123,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "Group",
     "color": "#0d9488",
     "shape": "circle",
+    "layer": "identity",
     "icon": "circle",
     "category_uid": 3,
     "class_uid": 3001
@@ -122,6 +132,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "Misconfiguration",
     "color": "#f97316",
     "shape": "triangle",
+    "layer": "finding",
     "icon": "triangle",
     "category_uid": 2,
     "class_uid": 2003
@@ -130,6 +141,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "Model",
     "color": "#8b5cf6",
     "shape": "square",
+    "layer": "asset",
     "icon": "square",
     "category_uid": 5,
     "class_uid": 4001
@@ -138,6 +150,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "Package",
     "color": "#52525b",
     "shape": "square",
+    "layer": "package",
     "icon": "square",
     "category_uid": 5,
     "class_uid": 4001
@@ -146,6 +159,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "Provider",
     "color": "#d1d5db",
     "shape": "square",
+    "layer": "infra",
     "icon": "square",
     "category_uid": 0,
     "class_uid": 0
@@ -154,6 +168,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "MCP Server",
     "color": "#3b82f6",
     "shape": "circle",
+    "layer": "mcp_server",
     "icon": "circle",
     "category_uid": 5,
     "class_uid": 4001
@@ -162,6 +177,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "Service Account",
     "color": "#0f766e",
     "shape": "circle",
+    "layer": "identity",
     "icon": "circle",
     "category_uid": 3,
     "class_uid": 3001
@@ -170,6 +186,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "Tool",
     "color": "#a855f7",
     "shape": "diamond",
+    "layer": "tool",
     "icon": "diamond",
     "category_uid": 5,
     "class_uid": 4001
@@ -178,6 +195,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "User",
     "color": "#14b8a6",
     "shape": "circle",
+    "layer": "user",
     "icon": "circle",
     "category_uid": 3,
     "class_uid": 3001
@@ -186,6 +204,7 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "Vulnerability",
     "color": "#ef4444",
     "shape": "triangle",
+    "layer": "finding",
     "icon": "triangle",
     "category_uid": 2,
     "class_uid": 2001

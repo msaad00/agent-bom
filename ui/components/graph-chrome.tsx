@@ -27,6 +27,37 @@ import type { LegendItem } from "@/lib/graph-utils";
 
 // ─── Legend Bar ──────────────────────────────────────────────────────────────
 
+const LAYER_ORDER = [
+  "user",
+  "identity",
+  "app",
+  "api_gateway",
+  "orchestration",
+  "mcp_server",
+  "tool",
+  "package",
+  "runtime_evidence",
+  "asset",
+  "infra",
+  "finding",
+] as const;
+
+const LAYER_LABELS: Record<string, string> = {
+  user: "User",
+  identity: "Identity",
+  app: "Application",
+  api_gateway: "API / Gateway",
+  orchestration: "Orchestration",
+  mcp_server: "MCP Servers",
+  tool: "Tools",
+  package: "Packages",
+  runtime_evidence: "Runtime Evidence",
+  asset: "Assets",
+  infra: "Infrastructure",
+  finding: "Findings",
+  other: "Other",
+};
+
 export function GraphLegend({
   items,
   defaultOpen = false,
@@ -58,15 +89,39 @@ export function GraphLegend({
       </button>
       {(open || defaultOpen || embedded) && (
         <div className={`${embedded ? "relative w-[min(30rem,calc(100vw-2rem))] shadow-none" : "absolute right-0 top-full z-20 mt-2 w-[min(30rem,calc(100vw-2rem))] shadow-2xl shadow-black/30"} max-h-[60vh] overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-900/95 p-3 backdrop-blur-md`}>
-          {nodeItems.length > 0 && (
-            <LegendSection title="Entities" items={nodeItems} />
-          )}
+          {nodeItems.length > 0 && <LayeredLegendSections items={nodeItems} />}
           {edgeItems.length > 0 && (
             <LegendSection title="Relationships" items={edgeItems} />
           )}
         </div>
       )}
     </div>
+  );
+}
+
+function LayeredLegendSections({ items }: { items: LegendItem[] }) {
+  const grouped = new Map<string, LegendItem[]>();
+  for (const item of items) {
+    const layer = item.layer || "other";
+    const existing = grouped.get(layer);
+    if (existing) {
+      existing.push(item);
+    } else {
+      grouped.set(layer, [item]);
+    }
+  }
+
+  const orderedLayers = [
+    ...LAYER_ORDER.filter((layer) => grouped.has(layer)),
+    ...[...grouped.keys()].filter((layer) => !(LAYER_ORDER as readonly string[]).includes(layer)).sort(),
+  ];
+
+  return (
+    <>
+      {orderedLayers.map((layer) => (
+        <LegendSection key={layer} title={LAYER_LABELS[layer] ?? layer.replace(/_/g, " ")} items={grouped.get(layer) ?? []} />
+      ))}
+    </>
   );
 }
 

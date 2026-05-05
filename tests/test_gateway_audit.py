@@ -101,7 +101,7 @@ def test_evaluate_block_writes_audit_entry() -> None:
     assert entry["tool_name"] == "shell.exec"
     assert entry["action_taken"] == "blocked"
     assert "shell.exec" in entry["reason"]
-    assert entry["arguments_preview"] == {"cmd": "ls"}
+    assert entry["arguments_preview"] == {"cmd": "[replay-only]"}
     assert entry["timestamp"]
     assert entry["tenant_id"] == "default"
 
@@ -185,10 +185,11 @@ def test_evaluate_redacts_oversized_argument_values() -> None:
         json={
             "agent_name": "agent-a",
             "tool_name": "shell.exec",
-            "arguments": {"payload": long_value},
+            "arguments": {"command_name": long_value, "path": "/Users/alice/prod/secrets.txt"},
         },
     )
     entry = client.get("/v1/gateway/audit").json()["entries"][0]
-    preview = entry["arguments_preview"]["payload"]
+    preview = entry["arguments_preview"]["command_name"]
     assert len(preview) <= 257  # 256 chars + ellipsis
     assert preview.endswith("…")
+    assert entry["arguments_preview"]["path"] == "[replay-only]"

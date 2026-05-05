@@ -133,6 +133,28 @@ const NODE_COLORS: Record<LineageNodeType, string> = {
   misconfiguration: "#f97316",
 };
 
+const NODE_LAYERS: Record<LineageNodeType, string> = {
+  provider: "infra",
+  agent: "orchestration",
+  user: "user",
+  group: "identity",
+  serviceAccount: "identity",
+  environment: "infra",
+  fleet: "infra",
+  cluster: "infra",
+  server: "mcp_server",
+  sharedServer: "mcp_server",
+  package: "package",
+  vulnerability: "finding",
+  credential: "identity",
+  tool: "tool",
+  model: "asset",
+  dataset: "asset",
+  container: "infra",
+  cloudResource: "infra",
+  misconfiguration: "finding",
+};
+
 const FINDING_NODE_TYPES = new Set<LineageNodeType>(["vulnerability", "misconfiguration"]);
 const RUNTIME_RELATIONSHIPS = new Set<string>([
   RelationshipType.INVOKED,
@@ -475,6 +497,7 @@ function legendForNodeTypes(nodeTypes: Set<LineageNodeType>): LegendItem[] {
     .map((nodeType) => ({
       label: NODE_LABELS[nodeType],
       color: NODE_COLORS[nodeType],
+      layer: NODE_LAYERS[nodeType],
       shape: legendShapeForNodeType(nodeType),
     }));
 }

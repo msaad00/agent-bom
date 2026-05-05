@@ -284,7 +284,15 @@ async def test_proxy_audit_ingest_records_analytics_with_session_trace_context(m
     payload = ProxyAuditIngestRequest(
         source_id="laptop-1",
         session_id="sess-1",
-        alerts=[{"type": "runtime_alert", "detector": "credential_leak", "severity": "critical", "message": "AWS key"}],
+        alerts=[
+            {
+                "type": "runtime_alert",
+                "detector": "credential_leak",
+                "severity": "critical",
+                "message": "AWS key copied from /Users/alice/prod",
+                "details": {"prompt": "raw user prompt", "url": "https://example.com?token=secret"},
+            }
+        ],
     )
     resp = await proxy_mod.ingest_proxy_audit(request, payload)
     assert resp["ingested"] is True
@@ -293,6 +301,8 @@ async def test_proxy_audit_ingest_records_analytics_with_session_trace_context(m
     assert analytics.events[0]["source_id"] == "laptop-1"
     assert analytics.events[0]["request_id"] == "req-1"
     assert analytics.events[0]["trace_id"] == "0123456789abcdef0123456789abcdef"
+    assert "message" not in analytics.events[0]
+    assert "details" not in analytics.events[0]
 
     proxy_mod._proxy_alerts.clear()
     proxy_mod._proxy_metrics = None

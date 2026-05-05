@@ -35,7 +35,9 @@ import {
 import {
   attackPathKey,
   attackPathSequenceLabels,
+  buildGraphInvestigationHref,
   buildSecurityGraphHref,
+  investigationRootForAttackPath,
   labelsForAttackPathType,
   matchesAttackPathFocus,
   recommendedInteractionRiskActions,
@@ -200,26 +202,39 @@ function SecurityGraphPageContent() {
   );
 
   const hasFocusContext = Boolean(focus.cve || focus.packageName || focus.agentName);
-  const fullGraphHref = useMemo(() => {
-    const params = new URLSearchParams();
-    if (selectedScanId) params.set("scan", selectedScanId);
-    if (focus.agentName) params.set("agent", focus.agentName);
-    if (focus.cve) params.set("q", focus.cve);
-    else if (focus.packageName) params.set("q", focus.packageName);
-    const query = params.toString();
-    return query ? `/graph?${query}` : "/graph";
-  }, [focus.agentName, focus.cve, focus.packageName, selectedScanId]);
-  const resetFocusHref = useMemo(
-    () => buildSecurityGraphHref({ scanId: selectedScanId || undefined }),
-    [selectedScanId],
-  );
-
   const selectedAttackPath = useMemo(
     () =>
       selectedAttackPathKey
         ? attackPaths.find((path) => attackPathKey(path) === selectedAttackPathKey) ?? null
         : attackPaths[0] ?? null,
     [attackPaths, selectedAttackPathKey],
+  );
+  const investigationRoot = useMemo(
+    () =>
+      selectedAttackPath
+        ? investigationRootForAttackPath(selectedAttackPath, graphNodeById, focus)
+        : null,
+    [focus, graphNodeById, selectedAttackPath],
+  );
+  const fullGraphHref = useMemo(() => {
+    if (investigationRoot) {
+      return buildGraphInvestigationHref({
+        scanId: selectedScanId || undefined,
+        agentName: focus.agentName || undefined,
+        rootId: investigationRoot.id,
+        rootLabel: investigationRoot.label,
+      });
+    }
+
+    const params = new URLSearchParams();
+    if (selectedScanId) params.set("scan", selectedScanId);
+    if (focus.agentName) params.set("agent", focus.agentName);
+    const query = params.toString();
+    return query ? `/graph?${query}` : "/graph";
+  }, [focus.agentName, investigationRoot, selectedScanId]);
+  const resetFocusHref = useMemo(
+    () => buildSecurityGraphHref({ scanId: selectedScanId || undefined }),
+    [selectedScanId],
   );
 
   const selectedFixFirstCard = useMemo(

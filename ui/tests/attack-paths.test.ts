@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   attackPathKey,
   attackPathSequenceLabels,
+  buildGraphInvestigationHref,
   buildSecurityGraphHref,
+  decodeGraphInvestigationParams,
+  investigationRootForAttackPath,
   labelsForAttackPathType,
   mapAttackPathNodeType,
   matchesAttackPathFocus,
@@ -16,6 +19,27 @@ import {
 import { EntityType, type AttackPath, type UnifiedNode } from "@/lib/graph-schema";
 
 describe("attack path helpers", () => {
+  function graphNode(id: string, entityType: EntityType, label: string): UnifiedNode {
+    return {
+      id,
+      entity_type: entityType,
+      label,
+      category_uid: 5,
+      class_uid: 4001,
+      type_uid: 0,
+      status: "active",
+      risk_score: 6,
+      severity: "high",
+      severity_id: 4,
+      first_seen: "2026-04-14T00:00:00Z",
+      last_seen: "2026-04-14T00:00:00Z",
+      attributes: {},
+      compliance_tags: [],
+      data_sources: [],
+      dimensions: {},
+    };
+  }
+
   it("builds a stable key from source, target, and hops", () => {
     const path: AttackPath = {
       source: "pkg",
@@ -169,6 +193,49 @@ describe("attack path helpers", () => {
         agentName: "Claude Desktop",
       }),
     ).toBe("/security-graph?scan=scan-123&cve=CVE-2026-0002&package=flask&agent=Claude+Desktop");
+  });
+
+  it("builds a shareable graph investigation href", () => {
+    expect(
+      buildGraphInvestigationHref({
+        scanId: "scan-123",
+        agentName: "Claude Desktop",
+        rootId: "pkg-1",
+        rootLabel: "flask",
+      }),
+    ).toBe("/graph?scan=scan-123&agent=Claude+Desktop&investigate=1&root=pkg-1&q=flask");
+  });
+
+  it("decodes graph investigation roots from URL params", () => {
+    expect(decodeGraphInvestigationParams(new URLSearchParams("investigate=1&root=pkg-1&q=flask"))).toEqual({
+      rootId: "pkg-1",
+      rootLabel: "flask",
+    });
+    expect(decodeGraphInvestigationParams(new URLSearchParams("investigate=0&root=pkg-1"))).toBeNull();
+  });
+
+  it("chooses a concrete investigation root from the selected attack path", () => {
+    const path: AttackPath = {
+      source: "cve-1",
+      target: "agent-1",
+      hops: ["cve-1", "pkg-1", "server-1", "agent-1"],
+      edges: [],
+      composite_risk: 9.4,
+      summary: "focused path",
+      credential_exposure: [],
+      tool_exposure: [],
+      vuln_ids: ["CVE-2026-0002"],
+    };
+    const nodes = new Map<string, UnifiedNode>([
+      ["cve-1", graphNode("cve-1", EntityType.VULNERABILITY, "CVE-2026-0002")],
+      ["pkg-1", graphNode("pkg-1", EntityType.PACKAGE, "flask")],
+      ["server-1", graphNode("server-1", EntityType.SERVER, "mcp-server")],
+      ["agent-1", graphNode("agent-1", EntityType.AGENT, "Claude Desktop")],
+    ]);
+
+    expect(investigationRootForAttackPath(path, nodes, { packageName: "flask" })?.id).toBe("pkg-1");
+    expect(investigationRootForAttackPath(path, nodes, { agentName: "Claude Desktop" })?.id).toBe("agent-1");
+    expect(investigationRootForAttackPath(path, nodes, {})?.id).toBe("cve-1");
   });
 
   it("matches a focused attack path by cve, package, and agent labels", () => {

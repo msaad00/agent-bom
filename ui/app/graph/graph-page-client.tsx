@@ -52,7 +52,12 @@ import {
   RelationshipType,
   type UnifiedNode,
 } from "@/lib/graph-schema";
-import { attackPathKey, toAttackCardNodes } from "@/lib/attack-paths";
+import {
+  attackPathKey,
+  decodeGraphInvestigationParams,
+  toAttackCardNodes,
+  type GraphInvestigationRequest,
+} from "@/lib/attack-paths";
 import {
   BACKGROUND_COLOR,
   BACKGROUND_GAP,
@@ -509,6 +514,11 @@ function GraphPageInner() {
         ""
       : "",
   );
+  const requestedInvestigationRef = useRef<GraphInvestigationRequest | null>(
+    typeof window !== "undefined"
+      ? decodeGraphInvestigationParams(new URLSearchParams(window.location.search))
+      : null,
+  );
   const firstScanSelectionRef = useRef(true);
 
   useEffect(() => {
@@ -582,7 +592,7 @@ function GraphPageInner() {
       return;
     }
 
-    if (investigationMode) return;
+    if (investigationMode || requestedInvestigationRef.current) return;
 
     if (serverEntityTypes.length === 0) {
       setGraphData(emptyGraphResponse(selectedScanId));
@@ -746,12 +756,23 @@ function GraphPageInner() {
     if (typeof window === "undefined") return;
     const nextParams = encodeFiltersToParams(filters);
     if (selectedScanId) nextParams.set("scan", selectedScanId);
+    const shareableInvestigation = investigationMode ?? requestedInvestigationRef.current;
+    if (shareableInvestigation) {
+      nextParams.set("investigate", "1");
+      nextParams.set("root", shareableInvestigation.rootId);
+      if (
+        shareableInvestigation.rootLabel &&
+        shareableInvestigation.rootLabel !== shareableInvestigation.rootId
+      ) {
+        nextParams.set("q", shareableInvestigation.rootLabel);
+      }
+    }
     const next = nextParams.toString();
     const current = searchParams?.toString() ?? "";
     if (next === current) return;
     const url = next ? `${pathname}?${next}` : pathname;
     router.replace(url, { scroll: false });
-  }, [filters, pathname, router, searchParams, selectedScanId]);
+  }, [filters, investigationMode, pathname, router, searchParams, selectedScanId]);
 
   // Constraint propagation — recompute valid values whenever graph or
   // filters change. Cheap on focused snapshots, BFS-bounded on expanded.
@@ -1019,26 +1040,34 @@ function GraphPageInner() {
     }
   }, [filters.severity, searchQuery, selectedScanId, serverEntityTypes]);
 
-  const focusSearchResult = useCallback(
-    async (node: UnifiedNode) => {
-      const fallback = flowNodeDataById.get(node.id) ?? buildFallbackNodeData(node);
-      setSelectedNode({
-        ...fallback,
-        attributes: {
-          ...(fallback.attributes ?? {}),
-          node_id: node.id,
-        },
-      });
-      setSelectedNodeId(node.id);
+  const loadRootInvestigation = useCallback(
+    async (request: GraphInvestigationRequest & { node?: UnifiedNode | undefined }) => {
+      if (!selectedScanId) return;
+
+      const fallback = request.node
+        ? flowNodeDataById.get(request.node.id) ?? buildFallbackNodeData(request.node)
+        : null;
+      if (fallback) {
+        setSelectedNode({
+          ...fallback,
+          attributes: {
+            ...(fallback.attributes ?? {}),
+            node_id: request.rootId,
+          },
+        });
+      } else {
+        setSelectedNode(null);
+      }
+      setSelectedNodeId(request.rootId);
       setPinnedFocusId(null);
-      setHoveredNodeId(node.id);
+      setHoveredNodeId(request.rootId);
       setSelectedAttackPathKey(null);
       setSearchResults([]);
-      setSearchQuery(node.label);
+      setSearchQuery(request.rootLabel ?? request.node?.label ?? request.rootId);
       setLoadingGraph(true);
       try {
         const response = await api.queryGraph({
-          roots: [node.id],
+          roots: [request.rootId],
           scan_id: selectedScanId,
           direction: "both",
           max_depth: filters.vulnOnly ? 3 : 4,
@@ -1052,10 +1081,14 @@ function GraphPageInner() {
           include_attack_paths: true,
           relationship_types: serverRelationships,
         });
+        const rootNode = response.nodes.find((node) => node.id === request.rootId) ?? request.node;
+        if (rootNode) {
+          setSelectedNode(buildFallbackNodeData(rootNode));
+        }
         setGraphData(queryResponseToGraphResponse(response));
         setInvestigationMode({
-          rootId: node.id,
-          rootLabel: node.label,
+          rootId: request.rootId,
+          rootLabel: rootNode?.label ?? request.rootLabel ?? request.rootId,
           truncated: response.truncated,
           nodeCount: response.nodes.length,
           edgeCount: response.edges.length,
@@ -1068,6 +1101,24 @@ function GraphPageInner() {
       }
     },
     [filters.runtimeMode, filters.vulnOnly, flowNodeDataById, selectedScanId, serverRelationships],
+  );
+
+  useEffect(() => {
+    const requested = requestedInvestigationRef.current;
+    if (!requested || !selectedScanId) return;
+    requestedInvestigationRef.current = null;
+    void loadRootInvestigation(requested);
+  }, [loadRootInvestigation, selectedScanId]);
+
+  const focusSearchResult = useCallback(
+    async (node: UnifiedNode) => {
+      await loadRootInvestigation({
+        rootId: node.id,
+        rootLabel: node.label,
+        node,
+      });
+    },
+    [loadRootInvestigation],
   );
 
   const clearInvestigationMode = useCallback(() => {

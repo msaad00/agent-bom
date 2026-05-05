@@ -1,6 +1,7 @@
 import { MarkerType, type Edge, type Node } from "@xyflow/react";
 
 import type { LineageNodeData, LineageNodeType } from "@/components/lineage-nodes";
+import { readReachBreakdown, readReachScore, reachEdgeWidth, reachStrokeColor } from "@/lib/effective-reach";
 import type { LegendItem } from "@/lib/graph-utils";
 import {
   EntityType,
@@ -348,6 +349,7 @@ function toLineageData(
       data.cvssScore = numberAttr(node, "cvss_score");
       data.epssScore = numberAttr(node, "epss_score");
       data.isKev = booleanAttr(node, "is_kev");
+      data.effectiveReach = readReachBreakdown(node.attributes?.effective_reach);
       data.fixedVersion = stringAttr(node, "fixed_version");
       data.owaspTags = complianceSubset(node.compliance_tags, "OWASP");
       data.atlasTags = complianceSubset(node.compliance_tags, "ATLAS");
@@ -389,8 +391,11 @@ function toLineageData(
 function toFlowEdge(edge: UnifiedEdge): Edge {
   const relationship = String(edge.relationship);
   const color = RELATIONSHIP_COLOR_MAP[relationship] ?? "#52525b";
+  const reachScore = readReachScore(edge.evidence?.effective_reach_score);
+  const reachColor = reachStrokeColor(reachScore);
+  const strokeColor = reachColor ?? color;
   const dashed = DASHED_RELATIONSHIPS.has(relationship);
-  const animated = ANIMATED_RELATIONSHIPS.has(relationship) || edge.weight >= 4;
+  const animated = ANIMATED_RELATIONSHIPS.has(relationship) || edge.weight >= 4 || (reachScore ?? 0) >= 90;
 
   return {
     id: edge.id || `${edge.source}:${relationship}:${edge.target}`,
@@ -400,14 +405,14 @@ function toFlowEdge(edge: UnifiedEdge): Edge {
     data: { relationship },
     animated,
     style: {
-      stroke: color,
-      strokeWidth: Math.min(Math.max(edge.weight, 1.2), 4.5),
+      stroke: strokeColor,
+      strokeWidth: Math.max(Math.min(Math.max(edge.weight, 1.2), 4.5), reachEdgeWidth(reachScore)),
       opacity: animated ? 0.95 : 0.82,
       strokeDasharray: dashed ? "6 3" : undefined,
     },
     markerEnd: {
       type: MarkerType.ArrowClosed,
-      color,
+      color: strokeColor,
       width: 14,
       height: 10,
     },

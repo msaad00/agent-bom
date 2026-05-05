@@ -311,10 +311,49 @@ def _iter_package_findings(job: ScanJob) -> list[dict[str, Any]]:
     return findings
 
 
+def _effective_reach_lookup(job: ScanJob) -> dict[str, dict[str, Any]]:
+    """Build a per-vuln lookup of the effective-reach breakdown.
+
+    Builds a one-shot context graph from the job's ``agents`` +
+    ``blast_radius`` and runs :func:`agent_bom.effective_reach.annotate_graph`.
+    Returned dict is keyed by *vulnerability_id* (e.g. ``CVE-2024-1234``)
+    so the various finding shapes (top-level, blast-radius, package
+    inner-vuln) can all hydrate from the same map.
+    """
+    result = job.result or {}
+    try:
+        from agent_bom.context_graph import NodeKind, build_context_graph
+
+        graph = build_context_graph(
+            result.get("agents", []) or [],
+            result.get("blast_radius", []) or result.get("blast_radii", []) or [],
+        )
+    except Exception:  # pragma: no cover - never break the findings list
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for node in graph.nodes.values():
+        if node.kind != NodeKind.VULNERABILITY:
+            continue
+        breakdown = node.metadata.get("effective_reach")
+        if isinstance(breakdown, dict):
+            out[node.label] = breakdown
+    return out
+
+
 def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
     result = job.result or {}
     findings: list[dict[str, Any]] = []
     seen: set[str] = set()
+    reach = _effective_reach_lookup(job)
+
+    def _attach_reach(row: dict[str, Any]) -> dict[str, Any]:
+        vuln_id = row.get("vulnerability_id") or row.get("cve_id") or row.get("id") or ""
+        breakdown = reach.get(str(vuln_id))
+        if breakdown:
+            row["effective_reach"] = breakdown
+            row.setdefault("effective_reach_score", breakdown.get("composite"))
+            row.setdefault("effective_reach_band", breakdown.get("band"))
+        return row
 
     for item in result.get("findings", []) or []:
         if not isinstance(item, dict):
@@ -326,7 +365,7 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
         if key in seen:
             continue
         seen.add(key)
-        findings.append(row)
+        findings.append(_attach_reach(row))
 
     for item in result.get("blast_radius", []) or result.get("blast_radii", []) or []:
         if not isinstance(item, dict):
@@ -336,14 +375,14 @@ def _iter_scan_findings(job: ScanJob) -> list[dict[str, Any]]:
         if key in seen:
             continue
         seen.add(key)
-        findings.append(row)
+        findings.append(_attach_reach(row))
 
     for row in _iter_package_findings(job):
         key = _finding_key(row)
         if key in seen:
             continue
         seen.add(key)
-        findings.append(row)
+        findings.append(_attach_reach(row))
 
     return findings
 
@@ -810,14 +849,48 @@ async def list_jobs(
     }
 
 
+_ALLOWED_FINDING_SORTS = ("effective_reach", "cvss", "severity")
+
+
+def _finding_sort_key(row: dict[str, Any], sort: str) -> tuple[float, float, float]:
+    """Stable sort key — descending order on the requested signal,
+    with CVSS + severity-rank tiebreakers so the order is fully
+    deterministic for a given input.
+    """
+    sev_rank = {"critical": 4, "high": 3, "medium": 2, "low": 1}.get(str(row.get("severity", "")).lower(), 0)
+    cvss = float(row.get("cvss_score") or 0.0)
+    reach = row.get("effective_reach_score")
+    if reach is None:
+        breakdown = row.get("effective_reach") or {}
+        if isinstance(breakdown, dict):
+            reach = breakdown.get("composite")
+    reach_val = float(reach or 0.0)
+
+    if sort == "cvss":
+        primary = cvss
+    elif sort == "severity":
+        primary = float(sev_rank)
+    else:  # default — effective_reach
+        primary = reach_val
+    # Descending: negate, with cvss + severity as deterministic tiebreakers.
+    return (-primary, -cvss, -float(sev_rank))
+
+
 @router.get("/v1/findings", tags=["scan"])
 async def list_findings(
     request: Request,
     severity: str | None = None,
+    sort: str = "effective_reach",
     limit: int = 500,
     offset: int = 0,
 ) -> dict:
-    """List vulnerability findings aggregated from completed scan results."""
+    """List vulnerability findings aggregated from completed scan results.
+
+    Default sort is ``effective_reach`` — the composite triage signal that
+    combines CVSS / EPSS / KEV with reachable-tool capability, credential
+    visibility and agent breadth.  Pass ``?sort=cvss`` for the legacy
+    CVSS-only ordering, or ``?sort=severity`` for severity-band ordering.
+    """
     tenant_id = _tenant_id(request)
     findings: list[dict[str, Any]] = []
     for job in _completed_jobs_for_tenant(tenant_id):
@@ -826,6 +899,11 @@ async def list_findings(
     if severity:
         normalized = severity.lower()
         findings = [item for item in findings if str(item.get("severity", "")).lower() == normalized]
+
+    sort_key = sort.lower().strip() if isinstance(sort, str) else "effective_reach"
+    if sort_key not in _ALLOWED_FINDING_SORTS:
+        sort_key = "effective_reach"
+    findings.sort(key=lambda row: _finding_sort_key(row, sort_key))
 
     limit = max(1, min(limit, 1000))
     offset = max(0, offset)
@@ -837,6 +915,7 @@ async def list_findings(
         "total": total,
         "limit": limit,
         "offset": offset,
+        "sort": sort_key,
         "warnings": [],
     }
 

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 
 import { severityColor } from "@/lib/api";
+import type { ReachBreakdown } from "@/lib/effective-reach";
 
 export type LineageNodeType =
   | "provider"
@@ -82,6 +83,7 @@ export type LineageNodeData = {
   cvssScore?: number | undefined;
   epssScore?: number | undefined;
   isKev?: boolean | undefined;
+  effectiveReach?: ReachBreakdown | undefined;
   fixedVersion?: string | undefined;
   owaspTags?: string[] | undefined;
   atlasTags?: string[] | undefined;

@@ -19,6 +19,11 @@ import {
 } from "lucide-react";
 
 import { severityColor } from "@/lib/api";
+import {
+  reachColorClass,
+  reachFormula,
+  reachTextClass,
+} from "@/lib/effective-reach";
 import { getOsvVulnerabilityUrl } from "@/lib/vulnerabilities";
 import type { LineageNodeData } from "./lineage-nodes";
 
@@ -254,6 +259,48 @@ export function LineageDetailPanel({
               </div>
             )}
             {data.fixedVersion && <Row label="Fix version" value={data.fixedVersion} className="text-emerald-400" />}
+            {data.effectiveReach && (
+              <div className="space-y-1.5">
+                <Label>Effective reach</Label>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`inline-block w-2.5 h-2.5 rounded-full ${reachColorClass(
+                      data.effectiveReach.band
+                    )}`}
+                    aria-label={`reach band ${data.effectiveReach.band}`}
+                  />
+                  <span
+                    className={`text-xs font-mono ${reachTextClass(
+                      data.effectiveReach.band
+                    )}`}
+                  >
+                    {data.effectiveReach.composite.toFixed(1)} / 100 ·{" "}
+                    {data.effectiveReach.band}
+                  </span>
+                </div>
+                <div className="text-[10px] font-mono text-zinc-400 break-all">
+                  {reachFormula(data.effectiveReach)}
+                </div>
+                {data.effectiveReach.reachable_tools &&
+                  data.effectiveReach.reachable_tools.length > 0 && (
+                    <Row
+                      label="Reachable tools"
+                      value={data.effectiveReach.reachable_tools
+                        .slice(0, 4)
+                        .join(", ")}
+                    />
+                  )}
+                {data.effectiveReach.reachable_creds &&
+                  data.effectiveReach.reachable_creds.length > 0 && (
+                    <Row
+                      label="Reachable creds"
+                      value={data.effectiveReach.reachable_creds
+                        .slice(0, 4)
+                        .join(", ")}
+                    />
+                  )}
+              </div>
+            )}
             {data.owaspTags && data.owaspTags.length > 0 && <TagList label="OWASP" tags={data.owaspTags} />}
             {data.atlasTags && data.atlasTags.length > 0 && <TagList label="ATLAS" tags={data.atlasTags} />}
             {osvUrl && (

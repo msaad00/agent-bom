@@ -372,6 +372,19 @@ def build_context_graph(
                         )
                     )
 
+    # ── Effective-reach scoring (issue #2262) ─────────────────────────
+    # Annotate every vulnerability node with a deterministic 0..100
+    # composite that combines CVSS/EPSS/KEV with reachable tool
+    # capability + credential visibility + agent breadth.  Edges
+    # adjacent to scored nodes inherit the higher endpoint score for
+    # the dashboard's edge-thickness signal.
+    try:
+        from agent_bom.effective_reach import annotate_graph
+
+        annotate_graph(graph)
+    except Exception:  # pragma: no cover - defensive: never break the graph build
+        pass
+
     return graph
 
 

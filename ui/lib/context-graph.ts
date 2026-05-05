@@ -5,6 +5,7 @@
 
 import { type Node, type Edge, MarkerType } from "@xyflow/react";
 import type { LineageNodeData, LineageNodeType } from "@/components/lineage-nodes";
+import { readReachBreakdown, readReachScore, reachEdgeWidth, reachStrokeColor } from "@/lib/effective-reach";
 
 // ─── Types (mirror Python context_graph.to_serializable) ────────────────────
 
@@ -148,6 +149,9 @@ export function buildContextFlowGraph(
       highlighted,
       severity: (n.metadata?.severity as string) ?? undefined,
       cvssScore: (n.metadata?.cvss_score as number) ?? undefined,
+      epssScore: (n.metadata?.epss_score as number) ?? undefined,
+      isKev: n.metadata?.is_kev === true,
+      effectiveReach: readReachBreakdown(n.metadata?.effective_reach),
       description: (n.metadata?.description as string) ?? undefined,
       serverName: (n.metadata?.agent as string) ?? undefined,
       serverCount: (n.metadata?.server_count as number) ?? undefined,
@@ -166,6 +170,9 @@ export function buildContextFlowGraph(
     .map((e, i) => {
     const isOnPath = pathEdgePairs.has(`${e.source}→${e.target}`);
     const baseColor = EDGE_COLORS[e.kind] ?? "#52525b";
+    const reachScore = readReachScore(e.metadata?.effective_reach_score);
+    const reachColor = reachStrokeColor(reachScore);
+    const strokeColor = isOnPath ? "#f97316" : reachColor ?? baseColor;
 
       return {
         id: `ctx-edge-${i}`,
@@ -174,14 +181,14 @@ export function buildContextFlowGraph(
         type: "smoothstep",
         animated: isOnPath,
         style: {
-          stroke: isOnPath ? "#f97316" : baseColor,
-          strokeWidth: isOnPath ? 2.5 : 1.5,
+          stroke: strokeColor,
+          strokeWidth: isOnPath ? 2.5 : Math.max(1.5, reachEdgeWidth(reachScore)),
           strokeDasharray: isOnPath ? "8 4" : undefined,
           opacity: selectedAgent && pathNodeIds.size > 0 && !isOnPath ? 0.15 : 1,
         },
         markerEnd: {
           type: MarkerType.ArrowClosed,
-          color: isOnPath ? "#f97316" : baseColor,
+          color: strokeColor,
           width: 12,
           height: 12,
         },

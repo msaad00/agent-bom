@@ -1,0 +1,42 @@
+{
+  "high_reach": {
+    "agent_breadth": 2,
+    "band": "pulsing-red",
+    "composite": 100.0,
+    "cred_visibility": 1.0,
+    "cvss": 9.8,
+    "epss": 0.92,
+    "is_kev": true,
+    "reachable_agents": [
+      "claude-desktop",
+      "cursor"
+    ],
+    "reachable_creds": [
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SECRET_ACCESS_KEY",
+      "GITHUB_TOKEN"
+    ],
+    "reachable_tools": [
+      "list_files",
+      "run_shell"
+    ],
+    "tool_capability": 1.0
+  },
+  "low_reach": {
+    "agent_breadth": 1,
+    "band": "green",
+    "composite": 27.4,
+    "cred_visibility": 0.0,
+    "cvss": 6.5,
+    "epss": 0.02,
+    "is_kev": false,
+    "reachable_agents": [
+      "claude-desktop"
+    ],
+    "reachable_creds": [],
+    "reachable_tools": [
+      "search_documents"
+    ],
+    "tool_capability": 0.1
+  }
+}

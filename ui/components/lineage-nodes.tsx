@@ -799,9 +799,9 @@ export const lineageNodeTypesSummary = {
 };
 
 /**
- * Cluster-band registry — every node-type collapses to `ClusterBubbleNode`.
- * Even cluster pills go through the bubble renderer here because at zoom
- * < 0.4 a "+N tools" pill is unreadable anyway.
+ * Cluster-band registry — regular node-types collapse to `ClusterBubbleNode`.
+ * Aggregation pills keep their summary representation so a materially
+ * compressed graph still shows meaningful "+N" cluster affordances.
  */
 export const lineageNodeTypesCluster = {
   providerNode: ClusterBubbleNode,
@@ -823,5 +823,5 @@ export const lineageNodeTypesCluster = {
   containerNode: ClusterBubbleNode,
   cloudResourceNode: ClusterBubbleNode,
   sharedServerNode: ClusterBubbleNode,
-  clusterPillNode: ClusterBubbleNode,
+  clusterPillNode: ClusterPillNode,
 };

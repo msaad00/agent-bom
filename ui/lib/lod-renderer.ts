@@ -23,6 +23,7 @@ export type LodBand = "cluster" | "summary" | "detail";
 /** Zoom thresholds — swap to a finer-grained renderer as the operator zooms in. */
 export const LOD_CLUSTER_MAX_ZOOM = 0.4;
 export const LOD_SUMMARY_MAX_ZOOM = 1.0;
+export const LOD_CLUSTER_MIN_COLLAPSED_SHARE = 0.25;
 
 /**
  * Pure resolver: zoom -> band. Exported separately from the hook so logic
@@ -32,6 +33,30 @@ export function lodBandForZoom(zoom: number): LodBand {
   if (!Number.isFinite(zoom) || zoom < LOD_CLUSTER_MAX_ZOOM) return "cluster";
   if (zoom < LOD_SUMMARY_MAX_ZOOM) return "summary";
   return "detail";
+}
+
+export interface LodGraphShape {
+  sourceNodeCount: number;
+  renderedNodeCount: number;
+  clusterCount: number;
+}
+
+/**
+ * Low-zoom bubbles are only useful when sibling aggregation has materially
+ * compressed the graph. Otherwise the canvas becomes a field of unlabeled
+ * dots, so keep the labeled summary renderer even below the cluster zoom.
+ */
+export function effectiveLodBandForGraph(band: LodBand, shape: LodGraphShape): LodBand {
+  if (band !== "cluster") return band;
+
+  const sourceNodeCount = Math.max(0, shape.sourceNodeCount);
+  const renderedNodeCount = Math.max(0, shape.renderedNodeCount);
+  if (shape.clusterCount <= 0 || sourceNodeCount <= 0 || renderedNodeCount >= sourceNodeCount) {
+    return "summary";
+  }
+
+  const collapsedShare = (sourceNodeCount - renderedNodeCount) / sourceNodeCount;
+  return collapsedShare >= LOD_CLUSTER_MIN_COLLAPSED_SHARE ? "cluster" : "summary";
 }
 
 /**

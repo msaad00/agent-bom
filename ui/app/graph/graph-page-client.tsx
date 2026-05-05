@@ -39,7 +39,7 @@ import {
   type LineageNodeType,
 } from "@/components/lineage-nodes";
 import { useDagreLayout } from "@/lib/use-dagre-layout";
-import { useLodBand } from "@/lib/lod-renderer";
+import { effectiveLodBandForGraph, useLodBand } from "@/lib/lod-renderer";
 import {
   aggregateSiblings,
   EXPANDED_AGGREGATION_THRESHOLD,
@@ -479,6 +479,9 @@ function GraphPageInner() {
 
   useEffect(() => {
     setPageOffset(0);
+    setExpandedClusterIds(new Set());
+    setPinnedFocusId(null);
+    setHoveredNodeId(null);
   }, [serverFilterKey]);
 
   useEffect(() => {
@@ -658,6 +661,21 @@ function GraphPageInner() {
     [flow.nodes, flow.edges, aggregationThreshold, expandedClusterIds],
   );
 
+  const graphIdentityKey = useMemo(
+    () =>
+      JSON.stringify({
+        nodes: flow.nodes.map((node) => node.id),
+        edges: flow.edges.map((edge) => `${edge.source}->${edge.target}:${edge.id}`),
+      }),
+    [flow.nodes, flow.edges],
+  );
+
+  useEffect(() => {
+    setExpandedClusterIds(new Set());
+    setPinnedFocusId(null);
+    setHoveredNodeId(null);
+  }, [graphIdentityKey]);
+
   const { nodes: layoutNodes, edges: layoutEdges } = useDagreLayout(aggregated.nodes, aggregated.edges, {
     direction: filters.agentName || filters.vulnOnly ? "TB" : "LR",
     nodeWidth: filters.agentName ? 208 : 188,
@@ -831,10 +849,15 @@ function GraphPageInner() {
   // returns "cluster" | "summary" | "detail". The chosen registry
   // swaps node renderers without touching node positions or data.
   const lodBand = useLodBand();
+  const effectiveLodBand = effectiveLodBandForGraph(lodBand, {
+    sourceNodeCount: flow.nodes.length,
+    renderedNodeCount: aggregated.nodes.length,
+    clusterCount: aggregated.clusters.size,
+  });
   const nodeTypesForBand =
-    lodBand === "cluster"
+    effectiveLodBand === "cluster"
       ? lineageNodeTypesCluster
-      : lodBand === "summary"
+      : effectiveLodBand === "summary"
         ? lineageNodeTypesSummary
         : lineageNodeTypes;
 
@@ -878,6 +901,7 @@ function GraphPageInner() {
         },
       });
       setSelectedNodeId(node.id);
+      setPinnedFocusId(null);
       setHoveredNodeId(node.id);
       setSelectedAttackPathKey(null);
       setSearchResults([]);

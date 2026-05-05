@@ -46,6 +46,13 @@ export interface ForceLayoutOptions {
   centerPull?: number;
   /** Initial radius for the seeded layout. */
   initialRadius?: number;
+  /**
+   * Keep caller-positioned aggregate/group anchors fixed when node metadata
+   * marks them as layout-pinned. This lets `/graph` compose this force pass
+   * inside a future aggregation layer without the inner layout moving the
+   * aggregate nodes themselves.
+   */
+  preservePinnedPositions?: boolean;
 }
 
 const DEFAULTS: Required<ForceLayoutOptions> = {
@@ -55,6 +62,7 @@ const DEFAULTS: Required<ForceLayoutOptions> = {
   edgeStiffness: 0.08,
   centerPull: 0.012,
   initialRadius: 320,
+  preservePinnedPositions: true,
 };
 
 interface Particle {
@@ -63,6 +71,26 @@ interface Particle {
   y: number;
   vx: number;
   vy: number;
+  fixed: boolean;
+}
+
+interface LayoutPinData {
+  layoutPinned?: unknown;
+  layoutLocked?: unknown;
+  layout?: {
+    pinned?: unknown;
+    locked?: unknown;
+  };
+}
+
+function isPinnedLayoutNode(node: Node): boolean {
+  const data = (node.data ?? {}) as LayoutPinData;
+  return (
+    data.layoutPinned === true ||
+    data.layoutLocked === true ||
+    data.layout?.pinned === true ||
+    data.layout?.locked === true
+  );
 }
 
 export interface ForceLayoutResult {
@@ -85,8 +113,18 @@ export function applyForceLayout(
 
   // 1. Seed positions deterministically off the seeded RNG.
   const particles: Particle[] = nodes.map((node) => {
+    if (opts.preservePinnedPositions && isPinnedLayoutNode(node)) {
+      return {
+        id: node.id,
+        x: Math.round(node.position.x),
+        y: Math.round(node.position.y),
+        vx: 0,
+        vy: 0,
+        fixed: true,
+      };
+    }
     const { x, y } = seededPosition(node.id, seed, opts.initialRadius);
-    return { id: node.id, x, y, vx: 0, vy: 0 };
+    return { id: node.id, x, y, vx: 0, vy: 0, fixed: false };
   });
   const indexById = new Map(particles.map((p, i) => [p.id, i] as const));
 
@@ -127,10 +165,14 @@ export function applyForceLayout(
         const force = repulsion / distSq;
         const fx = (dx / dist) * force;
         const fy = (dy / dist) * force;
-        pi.vx += fx;
-        pi.vy += fy;
-        pj.vx -= fx;
-        pj.vy -= fy;
+        if (!pi.fixed) {
+          pi.vx += fx;
+          pi.vy += fy;
+        }
+        if (!pj.fixed) {
+          pj.vx -= fx;
+          pj.vy -= fy;
+        }
       }
     }
 
@@ -145,15 +187,24 @@ export function applyForceLayout(
       const force = displacement * stiffness;
       const fx = (dx / dist) * force;
       const fy = (dy / dist) * force;
-      pa.vx += fx;
-      pa.vy += fy;
-      pb.vx -= fx;
-      pb.vy -= fy;
+      if (!pa.fixed) {
+        pa.vx += fx;
+        pa.vy += fy;
+      }
+      if (!pb.fixed) {
+        pb.vx -= fx;
+        pb.vy -= fy;
+      }
     }
 
     // Pull every particle toward the origin so loose components don't drift.
     // Integrate with cooling-scaled velocity.
     for (const p of particles) {
+      if (p.fixed) {
+        p.vx = 0;
+        p.vy = 0;
+        continue;
+      }
       p.vx -= p.x * centerPull;
       p.vy -= p.y * centerPull;
       p.x += p.vx * cooling;
@@ -198,6 +249,7 @@ export function useForceLayout(
   const edgeStiffness = options.edgeStiffness;
   const centerPull = options.centerPull;
   const initialRadius = options.initialRadius;
+  const preservePinnedPositions = options.preservePinnedPositions;
   return useMemo(() => {
     const opts: ForceLayoutOptions = {};
     if (iterations !== undefined) opts.iterations = iterations;
@@ -206,6 +258,7 @@ export function useForceLayout(
     if (edgeStiffness !== undefined) opts.edgeStiffness = edgeStiffness;
     if (centerPull !== undefined) opts.centerPull = centerPull;
     if (initialRadius !== undefined) opts.initialRadius = initialRadius;
+    if (preservePinnedPositions !== undefined) opts.preservePinnedPositions = preservePinnedPositions;
     const result = applyForceLayout(nodes, edges, opts);
     return { ...result, pending: false as const };
   }, [
@@ -217,5 +270,6 @@ export function useForceLayout(
     edgeStiffness,
     centerPull,
     initialRadius,
+    preservePinnedPositions,
   ]);
 }

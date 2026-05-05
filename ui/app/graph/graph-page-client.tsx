@@ -582,6 +582,7 @@ export default function GraphPageClient() {
   const { nodes: layoutNodes, edges: layoutEdges } = useForceLayout(flow.nodes, flow.edges, {
     idealEdgeLength: filters.agentName ? 168 : 196,
     nodeRepulsion: filters.agentName ? 3600 : 4400,
+    preservePinnedPositions: true,
   });
 
   const connectedIds = useMemo(

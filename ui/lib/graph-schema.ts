@@ -1,11 +1,41 @@
 /**
- * Unified Graph Schema — TypeScript mirror of Python graph_schema.py.
+ * Unified Graph Schema — TypeScript surface for the Python graph schema.
  *
- * Single source of truth for all graph types in the Next.js UI.
- * Every enum, interface, and constant here mirrors the Python module exactly.
+ * As of #2255 the canonical taxonomy (entity types + relationship types)
+ * is generated from the Python source via `npm run codegen:graph-schema`
+ * into ./graph-schema.generated.ts. This file re-exports the generated
+ * kind enums and continues to host the richer TypeScript-specific types
+ * (UnifiedNode/UnifiedEdge interfaces, OCSF mappings, severity helpers,
+ * legend data) that are not part of the cross-language contract.
  *
- * OCSF-aligned: every node carries category_uid / class_uid / type_uid.
+ * When adding a new entity / edge type:
+ *   1. Add it to agent_bom.graph.types in Python.
+ *   2. Run `cd ui && npm run codegen:graph-schema` to refresh
+ *      graph-schema.generated.ts.
+ *   3. Extend any UI-only maps in this file (ENTITY_OCSF_MAP, color
+ *      maps, etc.) to cover the new key.
  */
+
+// Re-export the codegen output so consumers can keep the
+// `from "@/lib/graph-schema"` import path while still resolving the
+// generated, drift-checked enum/union types.
+export {
+  GRAPH_SCHEMA_VERSION,
+  GraphNodeKind,
+  GraphEdgeKind,
+  GRAPH_NODE_KINDS,
+  GRAPH_EDGE_KINDS,
+  GRAPH_NODE_KIND_META,
+  GRAPH_EDGE_KIND_META,
+  isGraphNodeKind,
+  isGraphEdgeKind,
+} from "./graph-schema.generated";
+export type {
+  GraphNodeKindKey,
+  GraphEdgeKindKey,
+  GraphNodeKindMeta,
+  GraphEdgeKindMeta,
+} from "./graph-schema.generated";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Enums
@@ -77,6 +107,33 @@ export enum NodeStatus {
   VULNERABLE = "vulnerable",
   REMEDIATED = "remediated",
 }
+
+// Compile-time parity guard — fails the typecheck if the hand-rolled
+// EntityType / RelationshipType enums above drift from the generated
+// GraphNodeKind / GraphEdgeKind. The generated file is the source of
+// truth (#2255); this guard turns drift into a tsc error rather than a
+// silent runtime miss.
+import type {
+  GraphNodeKindKey as _GraphNodeKindKey,
+  GraphEdgeKindKey as _GraphEdgeKindKey,
+} from "./graph-schema.generated";
+type _AssertExtends<T extends U, U> = T;
+type _EntityTypeValue = `${EntityType}`;
+type _RelationshipTypeValue = `${RelationshipType}`;
+type _NodeParity = _AssertExtends<_EntityTypeValue, _GraphNodeKindKey>;
+type _EdgeParity = _AssertExtends<_RelationshipTypeValue, _GraphEdgeKindKey>;
+type _GeneratedNodeParity = _AssertExtends<_GraphNodeKindKey, _EntityTypeValue>;
+type _GeneratedEdgeParity = _AssertExtends<
+  _GraphEdgeKindKey,
+  _RelationshipTypeValue
+>;
+// Surface the helper aliases so they aren't pruned as unused imports.
+export type _GraphSchemaParity = [
+  _NodeParity,
+  _EdgeParity,
+  _GeneratedNodeParity,
+  _GeneratedEdgeParity,
+];
 
 export enum OCSFSeverity {
   UNKNOWN = 0,

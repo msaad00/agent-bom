@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from agent_bom.api.policy_store import GatewayPolicy
 
 router = APIRouter()
+_REPLAY_ONLY_ARGUMENT_VALUE = "[replay-only]"
 
 
 def _dep(permission: str) -> Any:
@@ -41,6 +42,28 @@ def _policy_collection_etag(policies: list["GatewayPolicy"]) -> str:
     payload = json.dumps([p.model_dump() for p in policies], sort_keys=True, separators=(",", ":"))
     digest = hashlib.sha256(payload.encode()).hexdigest()
     return f'"{digest}"'
+
+
+def _build_arguments_preview(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Build a bounded tier-A preview of gateway arguments."""
+    from agent_bom.evidence import EvidenceTier, classify_field, redact_for_persistence
+    from agent_bom.security import sanitize_sensitive_payload
+
+    sanitized = sanitize_sensitive_payload(arguments)
+    if not isinstance(sanitized, dict):
+        return {}
+
+    preview: dict[str, Any] = {}
+    for key, value in list(sanitized.items())[:32]:
+        key_text = str(key)
+        if classify_field(key_text) is not EvidenceTier.SAFE_TO_STORE:
+            preview[key_text] = _REPLAY_ONLY_ARGUMENT_VALUE
+            continue
+        safe_value = redact_for_persistence({key_text: value}, EvidenceTier.SAFE_TO_STORE).get(key_text)
+        if isinstance(safe_value, str) and len(safe_value) > 256:
+            safe_value = safe_value[:256] + "…"
+        preview[key_text] = safe_value
+    return preview
 
 
 @router.get("/v1/gateway/policies", tags=["gateway"], dependencies=[_dep("policy_read")])
@@ -208,7 +231,6 @@ async def evaluate_gateway(body: EvaluateRequest, request: Request):
 
     from agent_bom.api.policy_store import PolicyAuditEntry
     from agent_bom.gateway import evaluate_gateway_policies_detail
-    from agent_bom.security import sanitize_sensitive_payload
 
     tenant_id = getattr(request.state, "tenant_id", "default")
     store = _get_policy_store()
@@ -237,17 +259,9 @@ async def evaluate_gateway(body: EvaluateRequest, request: Request):
         action_taken = "blocked"
         log_reason = reason
 
-    # Build a redacted arguments preview — never store full secret material in
-    # the audit row. Keys are kept; values are truncated and have credentials
-    # masked by the existing sanitizer.
-    sanitized_args = sanitize_sensitive_payload(body.arguments)
-    args_preview: dict[str, Any] = sanitized_args if isinstance(sanitized_args, dict) else {}
-    if len(args_preview) > 32:
-        # cap to keep audit-row size bounded
-        args_preview = dict(list(args_preview.items())[:32])
-    for k, v in list(args_preview.items()):
-        if isinstance(v, str) and len(v) > 256:
-            args_preview[k] = v[:256] + "…"
+    # Keep argument names for incident reconstruction, but only persist values
+    # that the two-bucket evidence policy marks safe to store indefinitely.
+    args_preview = _build_arguments_preview(body.arguments)
 
     request_id = getattr(request.state, "request_id", "") or ""
     trace_id = getattr(request.state, "trace_id", "") or ""

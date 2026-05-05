@@ -23,6 +23,7 @@ if TYPE_CHECKING:
 
 from agent_bom.api.models import ProxyAuditIngestRequest
 from agent_bom.api.stores import _get_idempotency_store
+from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.security import sanitize_sensitive_payload
 
 router = APIRouter()
@@ -100,21 +101,24 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         except Exception:  # noqa: BLE001 — store is best-effort, never block ingest
             pass
         analytics_events.append(
-            {
-                "event_id": enriched.get("event_id", ""),
-                "event_timestamp": enriched.get("timestamp") or enriched.get("ts"),
-                "tenant_id": tenant_id,
-                "event_type": enriched.get("event_type", enriched.get("type", "runtime_alert")),
-                "detector": enriched.get("detector", ""),
-                "severity": enriched.get("severity", "INFO"),
-                "tool_name": enriched.get("tool_name", enriched.get("tool", "")),
-                "message": enriched.get("message", ""),
-                "agent_name": enriched.get("agent_name", ""),
-                "session_id": enriched.get("session_id", ""),
-                "trace_id": enriched.get("trace_id", ""),
-                "request_id": enriched.get("request_id", ""),
-                "source_id": enriched.get("source_id", ""),
-            }
+            redact_for_persistence(
+                {
+                    "event_id": enriched.get("event_id", ""),
+                    "event_timestamp": enriched.get("timestamp") or enriched.get("ts"),
+                    "tenant_id": tenant_id,
+                    "event_type": enriched.get("event_type", enriched.get("type", "runtime_alert")),
+                    "detector": enriched.get("detector", ""),
+                    "severity": enriched.get("severity", "INFO"),
+                    "tool_name": enriched.get("tool_name", enriched.get("tool", "")),
+                    "message": enriched.get("message", ""),
+                    "agent_name": enriched.get("agent_name", ""),
+                    "session_id": enriched.get("session_id", ""),
+                    "trace_id": enriched.get("trace_id", ""),
+                    "request_id": enriched.get("request_id", ""),
+                    "source_id": enriched.get("source_id", ""),
+                },
+                EvidenceTier.SAFE_TO_STORE,
+            )
         )
 
     if body.summary:

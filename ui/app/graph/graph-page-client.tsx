@@ -5,6 +5,7 @@ import {
   Background,
   Controls,
   MiniMap,
+  Panel,
   ReactFlow,
   type Edge,
   type Node,
@@ -760,17 +761,6 @@ export default function GraphPageClient() {
     graphData && graphData.pagination.limit > 0
       ? Math.max(1, Math.ceil(graphData.pagination.total / graphData.pagination.limit))
       : 1;
-  const relationshipScopeLabel =
-    filters.relationshipScope === "all"
-      ? "all relationships"
-      : `${filters.relationshipScope} relationships`;
-  const runtimeModeLabel =
-    filters.runtimeMode === "all"
-      ? "static + runtime"
-      : filters.runtimeMode === "static"
-        ? "static only"
-        : "runtime only";
-
   if (loadingSnapshots) {
     return (
       <div className="flex items-center justify-center h-[80vh] text-zinc-400">
@@ -844,7 +834,6 @@ export default function GraphPageClient() {
             </select>
 
             <FullscreenButton />
-            <GraphLegend items={legendItems} />
           </div>
         </div>
 
@@ -967,49 +956,37 @@ export default function GraphPageClient() {
           )}
         </div>
 
-        {activeSnapshot && graphData && (
-          <div className="mt-4 grid gap-3 lg:grid-cols-4">
-            <SnapshotMetaCard
-              label="Snapshot"
-              value={`${activeSnapshot.scan_id.slice(0, 12)}…`}
-              detail={`Persisted ${new Date(activeSnapshot.created_at).toLocaleString()}`}
-            />
-            <SnapshotMetaCard
-              label="Topology"
-              value={`${activeSnapshot.node_count} nodes · ${activeSnapshot.edge_count} edges`}
-              detail={`${graphData.attack_paths.length} attack paths on this page`}
-            />
-            <SnapshotMetaCard
-              label="Scope"
-              value={filters.agentName ? filters.agentName : "all agents"}
-              detail={`${relationshipScopeLabel} · ${runtimeModeLabel}`}
-            />
-            <SnapshotMetaCard
-              label="Window"
-              value={graphData.pagination.total > 0 ? `${pageStart}-${pageEnd} of ${graphData.pagination.total}` : "empty"}
-              detail={`page ${pageNumber} of ${totalPages} · depth ${filters.maxDepth}`}
-            />
-          </div>
-        )}
-
+        {/* Snapshot diff + how-to-read default-collapsed so the canvas owns the
+            viewport. The four redundant SnapshotMetaCards (Snapshot/Topology/
+            Scope/Window) were removed — the inline summary above already
+            surfaces nodes / edges / captured-at / paging. Keep the diff and
+            the help available via <details> for operators who need them but
+            stop them from owning a full screen of vertical space on every
+            page-load. */}
         {activeSnapshot && (
-          <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.24em] text-sky-400">Snapshot diff</p>
-                <p className="mt-1 text-xs text-zinc-500">
-                  {previousSnapshot
-                    ? `Compared with ${previousSnapshot.scan_id.slice(0, 12)} captured ${new Date(previousSnapshot.created_at).toLocaleString()}`
-                    : "No older snapshot available for this tenant."}
-                </p>
-              </div>
-              {loadingDiff && (
-                <span className="flex items-center gap-1 text-xs text-sky-400">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  loading diff
+          <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 group">
+            <summary className="flex flex-wrap items-center justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+              <div className="flex items-center gap-3">
+                <span className="text-[10px] uppercase tracking-[0.24em] text-sky-400">Snapshot diff</span>
+                <span className="text-xs text-zinc-500">
+                  {graphDiff
+                    ? `+${graphDiff.nodes_added.length} −${graphDiff.nodes_removed.length} nodes · +${graphDiff.edges_added.length} −${graphDiff.edges_removed.length} edges`
+                    : previousSnapshot
+                      ? `Compared with ${previousSnapshot.scan_id.slice(0, 12)}`
+                      : "No older snapshot available."}
                 </span>
-              )}
-            </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {loadingDiff && (
+                  <span className="flex items-center gap-1 text-xs text-sky-400">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    loading
+                  </span>
+                )}
+                <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">show</span>
+                <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 hidden group-open:inline">hide</span>
+              </div>
+            </summary>
             {diffError ? (
               <div className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
                 {diffError}
@@ -1032,18 +1009,22 @@ export default function GraphPageClient() {
                 <DiffPreview label="Removed" items={graphDiff.nodes_removed} />
               </div>
             )}
-          </div>
+          </details>
         )}
 
-        <div className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 text-xs text-zinc-400">
-          <div className="font-medium text-zinc-200">How to read this graph</div>
+        <details className="mt-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3 text-xs text-zinc-400 group">
+          <summary className="flex items-center justify-between cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+            <span className="font-medium text-zinc-200">How to read this graph</span>
+            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 group-open:hidden">show</span>
+            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 hidden group-open:inline">hide</span>
+          </summary>
           <ul className="mt-2 space-y-1.5">
             <li>Each snapshot is a persisted control-plane view of entities, edges, attack paths, and relationship counts at one capture time.</li>
             <li>Node IDs are stable identifiers inside the graph model; the detail panel shows the node ID, first seen, last seen, sources, and edge counts.</li>
             <li>Pagination changes the visible canvas, not the persisted snapshot itself. Narrow the scope when the graph gets large; page when you need broader coverage.</li>
             <li>Focused view is for operator triage. Expanded view is for topology review. Attack-path cards are the fix-first shortlist, not the whole graph.</li>
           </ul>
-        </div>
+        </details>
 
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
           <button
@@ -1213,6 +1194,23 @@ export default function GraphPageClient() {
                 bgColor={MINIMAP_BG}
                 maskColor={MINIMAP_MASK}
               />
+              {/* Dock legend on the canvas itself so node-color → entity-type
+                  is one glance away instead of "scroll back up to the hero
+                  block to find which colour means agent". Wraps in a
+                  <details> so it can be collapsed when the operator wants
+                  more canvas. */}
+              <Panel position="top-right" className="!m-2">
+                <details className="rounded-xl border border-zinc-800 bg-zinc-950/85 backdrop-blur p-2 group">
+                  <summary className="flex items-center gap-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden text-[10px] uppercase tracking-[0.2em] text-zinc-400">
+                    <span>Legend</span>
+                    <span className="text-zinc-600 group-open:hidden">▸</span>
+                    <span className="text-zinc-600 hidden group-open:inline">▾</span>
+                  </summary>
+                  <div className="mt-2">
+                    <GraphLegend items={legendItems} />
+                  </div>
+                </details>
+              </Panel>
             </ReactFlow>
           )}
 
@@ -1306,24 +1304,6 @@ function PathTagList({
           </span>
         ))}
       </div>
-    </div>
-  );
-}
-
-function SnapshotMetaCard({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
-      <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</p>
-      <p className="mt-1 font-mono text-sm text-zinc-100">{value}</p>
-      <p className="mt-1 text-[11px] text-zinc-500">{detail}</p>
     </div>
   );
 }

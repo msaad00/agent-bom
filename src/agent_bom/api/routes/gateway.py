@@ -192,22 +192,100 @@ async def delete_gateway_policy(policy_id: str, request: Request):
 
 @router.post("/v1/gateway/evaluate", tags=["gateway"], dependencies=[_dep("policy_read")])
 async def evaluate_gateway(body: EvaluateRequest, request: Request):
-    """Dry-run evaluation of gateway policies against a tool call."""
-    from agent_bom.gateway import evaluate_gateway_policies
+    """Evaluate gateway policies against a tool call and audit-log every decision.
+
+    The audit row is written for both ``allow`` and ``deny`` outcomes so that
+    compliance/forensics tooling can replay every gateway decision back to a
+    specific policy *and* rule. Audit-mode matches (where the call is allowed
+    but a rule would have denied it in enforce mode) are recorded with
+    ``action_taken="alerted"`` so dashboards can distinguish them from clean
+    allows.
+    """
+    import logging
+    import uuid as _uuid
+    from datetime import datetime as _dt
+    from datetime import timezone as _tz
+
+    from agent_bom.api.policy_store import PolicyAuditEntry
+    from agent_bom.gateway import evaluate_gateway_policies_detail
+    from agent_bom.security import sanitize_sensitive_payload
 
     tenant_id = getattr(request.state, "tenant_id", "default")
-    policies = _get_policy_store().list_policies(tenant_id=tenant_id)
+    store = _get_policy_store()
+    policies = store.list_policies(tenant_id=tenant_id)
     active = [p for p in policies if p.enabled]
-    allowed, reason, policy_id = evaluate_gateway_policies(
-        active,
-        body.tool_name,
-        body.arguments,
-    )
+    (
+        allowed,
+        reason,
+        policy_id,
+        rule_id,
+        policy_name,
+        policy_mode,
+    ) = evaluate_gateway_policies_detail(active, body.tool_name, body.arguments)
+
+    # ── Audit-log every decision ────────────────────────────────────────────
+    # Compliance/forensics requirement: every block (and every audit-mode
+    # alert and every allow) must be replayable from the audit store.
+    if allowed and reason == "":
+        action_taken = "allowed"
+        log_reason = "no matching deny rule"
+    elif allowed:
+        # audit-mode match — call went through but a rule would have blocked
+        action_taken = "alerted"
+        log_reason = reason
+    else:
+        action_taken = "blocked"
+        log_reason = reason
+
+    # Build a redacted arguments preview — never store full secret material in
+    # the audit row. Keys are kept; values are truncated and have credentials
+    # masked by the existing sanitizer.
+    sanitized_args = sanitize_sensitive_payload(body.arguments)
+    args_preview: dict[str, Any] = sanitized_args if isinstance(sanitized_args, dict) else {}
+    if len(args_preview) > 32:
+        # cap to keep audit-row size bounded
+        args_preview = dict(list(args_preview.items())[:32])
+    for k, v in list(args_preview.items()):
+        if isinstance(v, str) and len(v) > 256:
+            args_preview[k] = v[:256] + "…"
+
+    request_id = getattr(request.state, "request_id", "") or ""
+    trace_id = getattr(request.state, "trace_id", "") or ""
+    actor = getattr(request.state, "api_key_name", "") or "unknown"
+    agent_name = body.agent_name or actor or "unknown"
+
+    try:
+        store.put_audit_entry(
+            PolicyAuditEntry(
+                entry_id=str(_uuid.uuid4()),
+                policy_id=policy_id or "",
+                policy_name=policy_name or "",
+                rule_id=rule_id or "",
+                agent_name=agent_name,
+                tool_name=body.tool_name,
+                arguments_preview=args_preview,
+                action_taken=action_taken,
+                reason=log_reason,
+                timestamp=_dt.now(_tz.utc).isoformat(),
+                tenant_id=tenant_id,
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        # Audit write failures must not break the evaluation response — they
+        # surface in server logs instead.
+        logging.getLogger(__name__).warning("gateway audit write failed: %s", exc)
+
     return {
         "allowed": allowed,
         "reason": reason,
         "policy_id": policy_id,
+        "rule_id": rule_id,
+        "policy_name": policy_name,
+        "policy_mode": policy_mode,
+        "action_taken": action_taken,
         "policies_evaluated": len(active),
+        "request_id": request_id,
+        "trace_id": trace_id,
     }
 
 

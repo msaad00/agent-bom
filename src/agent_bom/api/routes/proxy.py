@@ -87,6 +87,11 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         enriched.setdefault("session_id", session_id)
         enriched.setdefault("request_id", request_id)
         enriched.setdefault("trace_id", trace_id)
+        # Tag tenant_id on the in-memory record so per-tenant posture queries
+        # (e.g. compliance has_proxy) can scope correctly. The ring buffer is
+        # process-wide; without this tag every tenant sees every other
+        # tenant's alerts on shared deployments.
+        enriched.setdefault("tenant_id", tenant_id)
         push_proxy_alert(enriched)
         # Tally inter-agent firewall decisions for the runtime-tab dashboard
         # (#982 PR 4). Non-firewall alerts are silently ignored by record().

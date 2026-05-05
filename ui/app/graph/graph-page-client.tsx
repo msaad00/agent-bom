@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Background,
   Controls,
@@ -56,6 +57,11 @@ import {
   type UnifiedGraphResponse,
 } from "@/lib/api";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
+import {
+  applyFilters,
+  decodeFiltersFromParams,
+  encodeFiltersToParams,
+} from "@/lib/filter-algebra";
 
 function PulseStyles() {
   return (
@@ -377,8 +383,24 @@ export default function GraphPageClient() {
   const [searchResults, setSearchResults] = useState<UnifiedNode[]>([]);
   const [searching, setSearching] = useState(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // Seed filters from URL on first render so /graph?agent=...&severity=high
+  // reproduces the exact view in another tab.
+  const [filters, setFilters] = useState<FilterState>(() => {
+    const seed = { ...DEFAULT_FILTERS };
+    if (typeof window === "undefined") return seed;
+    const params = new URLSearchParams(window.location.search);
+    return { ...seed, ...decodeFiltersFromParams(params) };
+  });
   const [initializedFocus, setInitializedFocus] = useState(false);
+  // Track whether we've already seeded filters from the URL so the
+  // auto-focus effect that picks the first agent doesn't clobber an
+  // explicit ?agent= param on initial load.
+  const seededFromUrlRef = useRef<boolean>(
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).toString().length > 0,
+  );
 
   useEffect(() => {
     setLoadingSnapshots(true);
@@ -570,9 +592,38 @@ export default function GraphPageClient() {
 
   useEffect(() => {
     if (initializedFocus || flow.agentNames.length === 0) return;
+    if (seededFromUrlRef.current) {
+      // The user landed here with an explicit URL — respect it instead of
+      // overriding agentName with the first agent in the snapshot.
+      setInitializedFocus(true);
+      return;
+    }
     setFilters(createFocusedGraphFilters(flow.agentNames[0]));
     setInitializedFocus(true);
   }, [flow.agentNames, initializedFocus]);
+
+  // Push the current filter state into the URL (replace, not push) so a
+  // copied address bar reproduces the view but back/forward isn't spammed.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const next = encodeFiltersToParams(filters).toString();
+    const current = searchParams?.toString() ?? "";
+    if (next === current) return;
+    const url = next ? `${pathname}?${next}` : pathname;
+    router.replace(url, { scroll: false });
+  }, [filters, pathname, router, searchParams]);
+
+  // Constraint propagation — recompute valid values whenever graph or
+  // filters change. Cheap on focused snapshots, BFS-bounded on expanded.
+  const filterAlgebra = useMemo(
+    () => applyFilters(graphData, filters),
+    [graphData, filters],
+  );
+  const validValues = filterAlgebra.validValues;
+
+  const handleResetFilters = useCallback(() => {
+    setFilters(createExpandedGraphFilters(null));
+  }, []);
 
   const flowNodeDataById = useMemo(
     () => new Map(flow.nodes.map((node) => [node.id, node.data])),
@@ -1130,7 +1181,13 @@ export default function GraphPageClient() {
       </div>
 
       <div className="flex-1 flex relative min-h-[60vh]">
-        <FilterPanel filters={filters} onChange={setFilters} agentNames={flow.agentNames} />
+        <FilterPanel
+          filters={filters}
+          onChange={setFilters}
+          agentNames={flow.agentNames}
+          validValues={validValues}
+          onReset={handleResetFilters}
+        />
 
         <div className="flex-1 relative min-h-[60vh]">
           {loadingGraph && !graphData ? (

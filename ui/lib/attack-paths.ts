@@ -13,6 +13,11 @@ export type AttackPathFocus = {
   scanId?: string | undefined;
 };
 
+export type GraphInvestigationRequest = {
+  rootId: string;
+  rootLabel?: string | undefined;
+};
+
 export type AttackPathAction = {
   title: string;
   detail: string;
@@ -107,6 +112,35 @@ export function buildSecurityGraphHref(focus: AttackPathFocus): string {
   return query ? `/security-graph?${query}` : "/security-graph";
 }
 
+export function buildGraphInvestigationHref(
+  request: GraphInvestigationRequest & Pick<AttackPathFocus, "scanId" | "agentName">,
+): string {
+  const params = new URLSearchParams();
+  if (request.scanId) params.set("scan", request.scanId);
+  if (request.agentName) params.set("agent", request.agentName);
+  params.set("investigate", "1");
+  params.set("root", request.rootId);
+  if (request.rootLabel && request.rootLabel !== request.rootId) {
+    params.set("q", request.rootLabel);
+  }
+  return `/graph?${params.toString()}`;
+}
+
+export function decodeGraphInvestigationParams(
+  params: URLSearchParams | { get(name: string): string | null },
+): GraphInvestigationRequest | null {
+  const rootId = params.get("root") || params.get("root_id") || params.get("node");
+  if (!rootId) return null;
+
+  const investigate = params.get("investigate");
+  if (investigate && investigate !== "1" && investigate !== "true") return null;
+
+  return {
+    rootId,
+    rootLabel: params.get("q") || params.get("label") || undefined,
+  };
+}
+
 function normalizeLabel(value: string | undefined): string {
   return (value ?? "").trim().toLowerCase();
 }
@@ -133,6 +167,43 @@ export function labelsForAttackPathType(
     deduped.set(node.label, node.rawLabel);
   }
   return Array.from(deduped.values());
+}
+
+export function investigationRootForAttackPath(
+  path: AttackPath,
+  nodeById: Map<string, UnifiedNode>,
+  focus: AttackPathFocus = {},
+): UnifiedNode | null {
+  const cve = normalizeLabel(focus.cve);
+  const packageName = normalizeLabel(focus.packageName);
+  const agentName = normalizeLabel(focus.agentName);
+  const typedHops = path.hops
+    .map((hop) => nodeById.get(hop))
+    .filter((node): node is UnifiedNode => Boolean(node))
+    .map((node) => ({
+      node,
+      label: normalizeLabel(node.label),
+      type: mapAttackPathNodeType(String(node.entity_type)),
+    }));
+
+  if (cve) {
+    const focusedCve = typedHops.find(
+      (hop) => hop.type === "cve" && (hop.label === cve || path.vuln_ids.some((id) => normalizeLabel(id) === cve)),
+    );
+    if (focusedCve) return focusedCve.node;
+  }
+
+  if (packageName) {
+    const focusedPackage = typedHops.find((hop) => hop.type === "package" && hop.label === packageName);
+    if (focusedPackage) return focusedPackage.node;
+  }
+
+  if (agentName) {
+    const focusedAgent = typedHops.find((hop) => hop.type === "agent" && hop.label === agentName);
+    if (focusedAgent) return focusedAgent.node;
+  }
+
+  return nodeById.get(path.source) ?? typedHops[0]?.node ?? null;
 }
 
 export function recommendedAttackPathActions(

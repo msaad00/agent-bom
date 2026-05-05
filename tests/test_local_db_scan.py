@@ -61,6 +61,25 @@ def test_local_vuln_to_vulnerability_unknown_severity():
     assert v.severity == Severity.UNKNOWN  # unknown severity must not silently inflate to MEDIUM
 
 
+def test_local_vuln_to_vulnerability_osv_id_without_score_uses_medium_fallback():
+    from agent_bom.scanners import _local_vuln_to_vulnerability
+
+    lv = _make_local_vuln(vuln_id="OSV-2022-1074", severity="", cvss=None)
+    v = _local_vuln_to_vulnerability(lv)
+    assert v.severity == Severity.MEDIUM
+    assert v.severity_source == "osv_heuristic"
+
+
+def test_local_vuln_to_vulnerability_osv_alias_without_score_uses_medium_fallback():
+    from agent_bom.scanners import _local_vuln_to_vulnerability
+
+    lv = _make_local_vuln(vuln_id="CVE-2026-0001", severity="", cvss=None)
+    lv.aliases = ["PYSEC-2026-7"]
+    v = _local_vuln_to_vulnerability(lv)
+    assert v.severity == Severity.MEDIUM
+    assert v.severity_source == "osv_heuristic"
+
+
 def test_local_vuln_to_vulnerability_kev_flag():
     from agent_bom.scanners import _local_vuln_to_vulnerability
 

@@ -62,6 +62,15 @@ def test_osv_prefixed_advisory_without_score_uses_medium_fallback():
     assert sev_src == "osv_heuristic"
 
 
+def test_advisory_id_severity_fallback_keeps_unknown_ids_unknown():
+    from agent_bom.scanners.risk import advisory_id_severity_fallback
+
+    severity, sev_src = advisory_id_severity_fallback("VENDOR-2026-1")
+
+    assert severity == Severity.UNKNOWN
+    assert sev_src is None
+
+
 def test_ghsa_severity_unknown_label_not_medium():
     """GHSA advisory with unrecognized severity must return UNKNOWN, not MEDIUM."""
     from agent_bom.scanners.ghsa_advisory import _parse_ghsa_severity

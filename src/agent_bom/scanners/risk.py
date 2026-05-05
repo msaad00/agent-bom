@@ -14,6 +14,24 @@ from agent_bom.models import Severity
 
 _logger = logging.getLogger(__name__)
 
+_OSV_MEDIUM_FALLBACK_PREFIXES = ("OSV-", "PYSEC-", "RUSTSEC-", "GO-", "MAL-", "GSD-")
+
+
+def advisory_id_severity_fallback(advisory_id: str) -> tuple[Severity, Optional[str]]:
+    """Return conservative triage severity for advisory-only IDs.
+
+    Some advisory ecosystems publish IDs before CVSS/vendor severity arrives.
+    These should not stay invisible as ``unknown`` findings in operator views,
+    but only known advisory namespaces get this fallback. Arbitrary missing
+    severity still remains ``UNKNOWN``.
+    """
+    normalized = advisory_id.upper()
+    if normalized.startswith("GHSA-"):
+        return Severity.MEDIUM, "ghsa_heuristic"
+    if normalized.startswith(_OSV_MEDIUM_FALLBACK_PREFIXES):
+        return Severity.MEDIUM, "osv_heuristic"
+    return Severity.UNKNOWN, None
+
 
 def cvss_to_severity(score: Optional[float]) -> Severity:
     if score is None:
@@ -187,11 +205,9 @@ def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float], Opti
 
     if severity == Severity.UNKNOWN:
         advisory_id = str(vuln_data.get("id", "")).upper()
-        if advisory_id.startswith("GHSA-"):
-            severity = Severity.MEDIUM
-            severity_source = "ghsa_heuristic"
-        elif advisory_id.startswith(("OSV-", "PYSEC-", "RUSTSEC-", "GO-", "MAL-", "GSD-")):
-            severity = Severity.MEDIUM
-            severity_source = "osv_heuristic"
+        fallback, source = advisory_id_severity_fallback(advisory_id)
+        if fallback != Severity.UNKNOWN:
+            severity = fallback
+            severity_source = source
 
     return severity, cvss_score, severity_source

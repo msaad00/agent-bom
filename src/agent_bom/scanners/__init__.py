@@ -50,7 +50,13 @@ from agent_bom.scanners.osv import enrich_results_if_needed as _enrich_results_i
 from agent_bom.scanners.osv import is_valid_fix_version as _is_valid_fix_version
 from agent_bom.scanners.osv import package_lookup_names as _package_lookup_names
 from agent_bom.scanners.osv import parse_fixed_version, query_osv_batch_impl
-from agent_bom.scanners.risk import _parse_cvss4_vector, cvss_to_severity, parse_cvss_vector, parse_osv_severity
+from agent_bom.scanners.risk import (
+    _parse_cvss4_vector,
+    advisory_id_severity_fallback,
+    cvss_to_severity,
+    parse_cvss_vector,
+    parse_osv_severity,
+)
 from agent_bom.scanners.state import (
     _bump_scan_perf,
     _get_api_semaphore,
@@ -492,6 +498,7 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         "low": Severity.LOW,
     }
     severity = sev_map.get((lv.severity or "").lower(), Severity.UNKNOWN)
+    severity_source = None
 
     # Canonicalize: prefer CVE ID over GHSA/PYSEC for consistency with Trivy/NVD
     raw_id = lv.id
@@ -505,12 +512,21 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         canonical_id = raw_id
         all_aliases = [a for a in aliases if a != canonical_id]
 
+    if severity == Severity.UNKNOWN:
+        for advisory_id in [str(raw_id), *(str(alias) for alias in aliases)]:
+            fallback, source = advisory_id_severity_fallback(advisory_id)
+            if fallback != Severity.UNKNOWN:
+                severity = fallback
+                severity_source = source
+                break
+
     advisory_source = getattr(lv, "source", None)
 
     return Vulnerability(
         id=canonical_id,
         summary=lv.summary or "No description available",
         severity=severity,
+        severity_source=severity_source,
         cvss_score=lv.cvss_score,
         fixed_version=lv.fixed_version if _is_valid_fix_version(lv.fixed_version or "") else None,
         epss_score=lv.epss_probability,

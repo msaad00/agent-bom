@@ -84,6 +84,9 @@ operator jobs:
    Let operators collapse many exposed paths with one change instead of chasing
    every finding separately.
 
+For the product and review rubric behind these jobs, see
+[`docs/graph/SECURITY_GRAPH_UX_RUBRIC.md`](https://github.com/msaad00/agent-bom/blob/main/docs/graph/SECURITY_GRAPH_UX_RUBRIC.md).
+
 ## Reading the graph in the UI
 
 The UI exposes three layers of interpretation:

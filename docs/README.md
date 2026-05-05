@@ -18,4 +18,11 @@ Canonical docs here:
 - `SUPPLY_CHAIN.md`
 - `THREAT_MODEL.md`
 
+Graph docs:
+
+- `graph/CONTRACT.md` — graph coverage, accuracy guarantees, scaling
+  boundaries, non-promises, and known gaps
+- `graph/SECURITY_GRAPH_UX_RUBRIC.md` — review rubric for
+  Wiz/Orca/CrowdStrike-style graph usability and actionability
+
 Archived or historical writeups live under [`docs/archive`](archive/README.md).

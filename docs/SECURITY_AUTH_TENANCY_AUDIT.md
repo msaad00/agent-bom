@@ -1,7 +1,8 @@
 # Security, Auth, and Tenancy Audit
 
-> **Snapshot:** fresh pass over `main` as of 2026-04-20, after #1555–#1566
-> landed. Every rating below has a file reference — grep to verify. This
+> **Snapshot:** refreshed on 2026-05-05 after the gateway/proxy runtime,
+> visual-leak, graph-quality, and evidence-retention work landed. Every
+> rating below has a file reference — grep to verify. This
 > doc answers: "are SSO / SAML / OAuth / OIDC / multi-tenancy /
 > isolation / RBAC / least-priv / zero-trust / defense-in-depth /
 > non-repudiation / CIA / input sanitization / KMS / key rotation /
@@ -54,11 +55,21 @@ Every PR below reviewed against the on-disk code, not just the PR description. V
 - Impact: a pilot team's dashboard login goes through OIDC / SAML (their IdP enforces MFA) — so MFA is effectively present *via the IdP*. But there's no in-product MFA for API-key auth.
 - **Fix proposal:** documented today = OIDC + SAML users inherit the IdP's MFA; API keys stay machine-to-machine (operator is expected to protect API-key storage). File a docs-only issue to make this explicit in the `SECURITY_ARCHITECTURE.md`.
 
-### P1 — Screenshot / visual-capture sensitive data detection — *doesn't exist yet* (real feature gap)
+### Closed — Screenshot / visual-capture sensitive data detection now exists
 
-- `grep -rln "screenshot\|screen_capture" src/agent_bom/` returns only `parsers/skill_audit.py` (as a permission class check, not content analysis).
-- The gap you flagged: MCPs / agents that take screenshots can capture credentials, PII, customer data, internal URLs — agent-bom doesn't inspect or redact that content today.
-- **Filed as a new feature:** see issue link in the companion PR. Design sketch below in §Appendix.
+- `src/agent_bom/runtime/visual_leak_detector.py` implements the optional OCR
+  detector and redaction path for image-bearing tool responses.
+- `src/agent_bom/proxy.py` wires `--detect-visual-leaks` for proxy runtime
+  enforcement.
+- `src/agent_bom/gateway_server.py` wires visual-leak health, readiness, check,
+  and redact behavior for gateway responses.
+- `src/agent_bom/proxy_policy.py` classifies screenshot/screen-capture tool
+  names so policy can block that capability class before an upstream call.
+- `tests/test_visual_leak_detector.py` covers the visual channel.
+
+Remaining operator note: the feature is opt-in because OCR requires the
+`agent-bom[visual]` extra and a Tesseract binary on `PATH`. That is the right
+default for local-first scanning and lightweight gateway deployments.
 
 ### P2 — Password-based auth on upstream config should be explicitly banned
 
@@ -79,28 +90,30 @@ Every PR below reviewed against the on-disk code, not just the PR description. V
 - `src/agent_bom/graph/` + `context_graph.py` total ~2,850 LOC across 10 focused modules — code is good, but there's no "how this scales" doc (cardinality at 50k packages, memory growth).
 - **Fix:** extend `docs/PERFORMANCE_BENCHMARKS.md` with a graph-specific section. Small add, filed as companion issue.
 
-## Appendix: screenshot sensitive-data detection — design sketch
+## Appendix: screenshot sensitive-data detection — implemented shape
 
 **Why it matters:** any MCP that wraps a browser / screen-capture tool (Playwright-MCP, Puppeteer-MCP, plus Cursor/Claude running screen-read tools) can exfiltrate secrets, PII, and internal data through pixels that never hit the existing text-content detectors.
 
 **Where it slots into the existing architecture** (no new service):
 
-1. **Detector module** — `src/agent_bom/runtime/visual_leak_detector.py` (new) following the existing pattern of `CredentialLeakDetector` in [`runtime/detectors.py`](../src/agent_bom/runtime/detectors.py). Takes a tool response that contains an image (MCP protocol uses `content: [{"type": "image", "data": "<base64>"}]`).
-2. **OCR + pattern match** — run the image through `pytesseract` (optional dep) → feed extracted text into the same `CREDENTIAL_PATTERNS` + `_PII_PATTERNS` that already guard text responses.
-3. **Redact-in-place** — replace pixel regions matching the OCR boxes with a black rectangle before the response is forwarded to the agent. Return an `Alert(detector="visual_leak", severity=CRITICAL|HIGH)`.
-4. **Policy rule** — new `block_screen_captures: true` gateway rule that refuses `tools/call` on tools whose `class` is `screen_capture` entirely. Policy engine in [`proxy_policy.py`](../src/agent_bom/proxy_policy.py) already has the capability-class dispatch; add `screen_capture` to the tool classifier in [`runtime/detectors.py _classify_tool_classes`](../src/agent_bom/runtime/detectors.py).
-5. **Audit trail** — visual-leak hits land in the same HMAC-chained audit log as text-leak hits; `record_gateway_relay(upstream, "blocked")` and an `action: gateway.visual_leak_blocked` audit event.
-
-**Ship path:** new dep `agent-bom[visual]` that pulls `pytesseract` + `Pillow`, opt-in because OCR is CPU-heavy. Sidecar + gateway both call the detector when they receive an image-bearing tool response. CI tests use a synthetic PNG rendered with the PIL `ImageDraw` drawing of fake API keys + real redaction assertion.
-
-File size estimate: ~300 LOC core + 150 LOC tests.
+1. **Detector module** — [`runtime/visual_leak_detector.py`](../src/agent_bom/runtime/visual_leak_detector.py) follows the existing runtime-detector pattern and accepts image-bearing MCP content blocks.
+2. **OCR + pattern match** — when `agent-bom[visual]` and Tesseract are
+   available, the detector extracts text and applies credential/PII patterns to
+   the visual channel.
+3. **Redact-in-place** — matching image regions are redacted before the
+   response is forwarded.
+4. **Policy boundary** — [`proxy_policy.py`](../src/agent_bom/proxy_policy.py)
+   classifies screenshot and screen-capture tools so operators can block the
+   tool class at the gateway/proxy boundary.
+5. **Audit trail** — visual-leak alerts flow through the same runtime audit
+   path as text detector alerts, with the durable evidence-retention policy
+   keeping replay-only payloads out of long-lived analytics.
 
 ## What I recommend next (queued)
 
 1. Close out this audit with doc merge + follow-up issues filed (done in this PR).
-2. Ship the screenshot-redaction feature as a scoped PR (~1 day of focused work).
-3. Add the graph-scalability benchmark entry to `PERFORMANCE_BENCHMARKS.md` (~1 hour).
-4. Resume #1522 phases 2–4 for the remaining monoliths (though most landed in #1561, #1564, #1565, #1566 — only `cli/agents/__init__.py` remains large).
+2. Add the graph-scalability benchmark entry to `PERFORMANCE_BENCHMARKS.md` (~1 hour).
+3. Resume #1522 phases 2–4 for the remaining monoliths (though most landed in #1561, #1564, #1565, #1566 — only `cli/agents/__init__.py` remains large).
 
 ## How I verified every claim
 
@@ -111,5 +124,5 @@ grep -rn "def require_\|def _authorize" src/agent_bom/rbac.py
 grep -rn "rotation_policy\|def rotate_key" src/agent_bom/api/routes/
 grep -rn "tenant_id" src/agent_bom/api/postgres/ src/agent_bom/api/snowflake_store.py
 grep -rn "SSE-KMS\|kmsKeyId\|Ed25519" deploy/helm/agent-bom/ src/agent_bom/api/
-grep -rn "screenshot\|screen_capture" src/agent_bom/  # single match = gap
+grep -rn "screenshot\|screen_capture\|visual_leak" src/agent_bom/
 ```

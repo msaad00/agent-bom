@@ -565,6 +565,67 @@ function CloudResourceNode({ data }: { data: LineageNodeData }) {
   );
 }
 
+/**
+ * Cluster pill (#2257 — sibling aggregation).
+ *
+ * Visually distinct rounded pill that absorbs N siblings of the same type
+ * and edge kind. Subtle pulse signals "click me to expand". The data shape
+ * is the union of `LineageNodeData` + extra cluster fields injected by
+ * `aggregateSiblings` — we read the cluster fields off `data` defensively
+ * because the renderer is registered globally and any node could in theory
+ * land here under that key.
+ */
+function ClusterPillNode({ data }: { data: LineageNodeData }) {
+  const cluster = data as LineageNodeData & {
+    count?: number;
+    childType?: LineageNodeType;
+  };
+  const count = cluster.count ?? 0;
+  const childType = (cluster.childType ?? cluster.nodeType) as LineageNodeType;
+  const Icon = CLUSTER_PILL_ICONS[childType] ?? Box;
+  return (
+    <div
+      data-testid="cluster-pill"
+      data-cluster-count={count}
+      className={`relative rounded-full border border-sky-400/60 bg-sky-500/10 px-3 py-1.5 shadow-lg backdrop-blur transition-opacity hover:border-sky-300 hover:bg-sky-500/15 ${
+        data.dimmed ? "opacity-25" : ""
+      } cluster-pill-pulse cursor-pointer`}
+      title="Click to expand"
+    >
+      <Handle type="target" position={Position.Left} className="!w-2 !h-2 !bg-sky-300" />
+      <Handle type="source" position={Position.Right} className="!w-2 !h-2 !bg-sky-300" />
+      <div className="flex items-center gap-1.5">
+        <Icon className="w-3.5 h-3.5 text-sky-200" />
+        <span className="text-xs font-semibold text-sky-100 whitespace-nowrap">
+          {data.label}
+        </span>
+        <span className="text-[9px] uppercase tracking-[0.18em] text-sky-300/80">
+          expand
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const CLUSTER_PILL_ICONS: Partial<Record<LineageNodeType, ComponentType<{ className?: string }>>> = {
+  agent: ShieldAlert,
+  server: Server,
+  sharedServer: Server,
+  package: Package,
+  vulnerability: Bug,
+  misconfiguration: TriangleAlert,
+  credential: KeyRound,
+  tool: Wrench,
+  model: Brain,
+  dataset: Database,
+  container: Box,
+  cloudResource: Cloud,
+  provider: Building2,
+  environment: Cloud,
+  fleet: Building2,
+  cluster: Server,
+};
+
 function SharedServerNode({ data }: { data: LineageNodeData }) {
   return (
     <NodeCard
@@ -594,6 +655,98 @@ function SharedServerNode({ data }: { data: LineageNodeData }) {
   );
 }
 
+/**
+ * Summary-band renderer (#2257 LOD): compact dot with severity badge + label.
+ *
+ * Used when 0.4 <= zoom < 1.0 — the operator can still parse a label and a
+ * one-glance severity/CVE-count chip but the canvas isn't drowning in chips
+ * and footers. The same data shape as `LineageNodeData` so swap-in is free.
+ */
+function SummaryNode({ data }: { data: LineageNodeData }) {
+  const sev = (data.severity ?? "").toLowerCase();
+  const accent =
+    sev === "critical"
+      ? "border-red-500 bg-red-950/70 text-red-200"
+      : sev === "high"
+        ? "border-orange-500 bg-orange-950/60 text-orange-200"
+        : sev === "medium"
+          ? "border-yellow-500 bg-yellow-950/55 text-yellow-200"
+          : "border-zinc-700 bg-zinc-900/80 text-zinc-200";
+  const vulnCount = data.vulnCount ?? 0;
+  return (
+    <div
+      data-testid="summary-node"
+      className={`rounded-lg border px-2 py-1 min-w-[96px] max-w-[160px] shadow transition-opacity ${accent} ${
+        data.dimmed ? "opacity-25" : ""
+      } ${data.highlighted ? "ring-2 ring-sky-400" : ""}`}
+    >
+      <Handle type="target" position={Position.Left} className="!w-1.5 !h-1.5" />
+      <Handle type="source" position={Position.Right} className="!w-1.5 !h-1.5" />
+      <div className="flex items-center gap-1">
+        <span className="text-[10px] font-medium truncate">{data.label}</span>
+        {vulnCount > 0 && (
+          <span className="ml-auto rounded bg-black/40 px-1 text-[9px] font-mono">
+            {vulnCount}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Cluster-band renderer (#2257 LOD): one bubble per node — the operator
+ * is zoomed too far out for labels to be readable anyway, so we render a
+ * coloured circle keyed by entity type. The entity colour comes from the
+ * standard ENTITY_COLOR_MAP via the parent's `nodeType`.
+ */
+function ClusterBubbleNode({ data }: { data: LineageNodeData }) {
+  const color = CLUSTER_BUBBLE_COLORS[data.nodeType] ?? "#52525b";
+  return (
+    <div
+      data-testid="cluster-bubble"
+      className={`rounded-full border-2 transition-opacity ${
+        data.dimmed ? "opacity-25" : ""
+      } ${data.highlighted ? "ring-2 ring-sky-400" : ""}`}
+      style={{
+        width: 18,
+        height: 18,
+        backgroundColor: `${color}cc`,
+        borderColor: color,
+      }}
+    >
+      <Handle type="target" position={Position.Left} className="!w-1 !h-1 !bg-transparent !border-0" />
+      <Handle type="source" position={Position.Right} className="!w-1 !h-1 !bg-transparent !border-0" />
+    </div>
+  );
+}
+
+const CLUSTER_BUBBLE_COLORS: Record<LineageNodeType, string> = {
+  provider: "#71717a",
+  agent: "#10b981",
+  user: "#34d399",
+  group: "#d946ef",
+  serviceAccount: "#fbbf24",
+  environment: "#14b8a6",
+  fleet: "#22d3ee",
+  cluster: "#38bdf8",
+  server: "#3b82f6",
+  sharedServer: "#22d3ee",
+  package: "#52525b",
+  vulnerability: "#ef4444",
+  credential: "#f59e0b",
+  tool: "#a855f7",
+  model: "#8b5cf6",
+  dataset: "#06b6d4",
+  container: "#6366f1",
+  cloudResource: "#0ea5e9",
+  misconfiguration: "#f97316",
+};
+
+/**
+ * Detail-band renderer registry — the full chip-laden cards. This is the
+ * "default" map and matches what /graph rendered before LOD existed.
+ */
 export const lineageNodeTypes = {
   providerNode: ProviderNode,
   agentNode: AgentNode,
@@ -614,4 +767,61 @@ export const lineageNodeTypes = {
   containerNode: ContainerNode,
   cloudResourceNode: CloudResourceNode,
   sharedServerNode: SharedServerNode,
+  clusterPillNode: ClusterPillNode,
+};
+
+/**
+ * Summary-band registry — every node-type collapses to `SummaryNode`
+ * except cluster pills, which keep their dedicated renderer because they
+ * already encode "+N children" copy and wouldn't survive the squeeze.
+ */
+export const lineageNodeTypesSummary = {
+  providerNode: SummaryNode,
+  agentNode: SummaryNode,
+  userNode: SummaryNode,
+  groupNode: SummaryNode,
+  serviceAccountNode: SummaryNode,
+  environmentNode: SummaryNode,
+  fleetNode: SummaryNode,
+  clusterNode: SummaryNode,
+  serverNode: SummaryNode,
+  packageNode: SummaryNode,
+  vulnNode: SummaryNode,
+  misconfigNode: SummaryNode,
+  credentialNode: SummaryNode,
+  toolNode: SummaryNode,
+  modelNode: SummaryNode,
+  datasetNode: SummaryNode,
+  containerNode: SummaryNode,
+  cloudResourceNode: SummaryNode,
+  sharedServerNode: SummaryNode,
+  clusterPillNode: ClusterPillNode,
+};
+
+/**
+ * Cluster-band registry — every node-type collapses to `ClusterBubbleNode`.
+ * Even cluster pills go through the bubble renderer here because at zoom
+ * < 0.4 a "+N tools" pill is unreadable anyway.
+ */
+export const lineageNodeTypesCluster = {
+  providerNode: ClusterBubbleNode,
+  agentNode: ClusterBubbleNode,
+  userNode: ClusterBubbleNode,
+  groupNode: ClusterBubbleNode,
+  serviceAccountNode: ClusterBubbleNode,
+  environmentNode: ClusterBubbleNode,
+  fleetNode: ClusterBubbleNode,
+  clusterNode: ClusterBubbleNode,
+  serverNode: ClusterBubbleNode,
+  packageNode: ClusterBubbleNode,
+  vulnNode: ClusterBubbleNode,
+  misconfigNode: ClusterBubbleNode,
+  credentialNode: ClusterBubbleNode,
+  toolNode: ClusterBubbleNode,
+  modelNode: ClusterBubbleNode,
+  datasetNode: ClusterBubbleNode,
+  containerNode: ClusterBubbleNode,
+  cloudResourceNode: ClusterBubbleNode,
+  sharedServerNode: ClusterBubbleNode,
+  clusterPillNode: ClusterBubbleNode,
 };

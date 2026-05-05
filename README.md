@@ -193,6 +193,8 @@ without collapsing into one overloaded chart:
 - [Auth + Ingress Flow](site-docs/deployment/overview.md#auth-ingress-flow)
 - [Inventory & Runtime Evidence Flow](site-docs/deployment/overview.md#inventory-runtime-evidence-flow)
 
+The short README shape is:
+
 ```mermaid
 %%{init: {"theme":"base","themeVariables":{"primaryColor":"#0f172a","primaryBorderColor":"#6366f1","primaryTextColor":"#e0e7ff","lineColor":"#64748b"}}}%%
 flowchart LR

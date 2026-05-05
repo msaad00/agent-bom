@@ -114,5 +114,6 @@ class GraphLayout(str, Enum):
     DAGRE = "dagre"
     FORCE = "force"
     RADIAL = "radial"
+    SANKEY = "sankey"
     HIERARCHICAL = "hierarchical"
     GRID = "grid"

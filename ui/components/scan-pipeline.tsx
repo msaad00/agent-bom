@@ -29,7 +29,7 @@ import {
   Clock,
   SkipForward,
 } from "lucide-react";
-import { useDagreLayout } from "@/lib/use-dagre-layout";
+import { useSankeyLayout } from "@/lib/use-sankey-layout";
 import type { StepEvent, StepStatus } from "@/lib/api";
 import { PIPELINE_STEPS } from "@/lib/api";
 
@@ -237,12 +237,11 @@ function ScanPipelineInner({ steps, className }: ScanPipelineProps) {
     return { rawNodes, rawEdges };
   }, [steps]);
 
-  const { nodes, edges } = useDagreLayout(rawNodes, rawEdges, {
-    direction: "LR",
+  const { nodes, edges } = useSankeyLayout(rawNodes, rawEdges, {
     nodeWidth: 190,
     nodeHeight: 90,
-    rankSep: 50,
-    nodeSep: 20,
+    columnGap: 50,
+    rowGap: 20,
   });
 
   return (

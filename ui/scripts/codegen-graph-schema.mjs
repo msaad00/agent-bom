@@ -68,6 +68,7 @@ async function fetchSchema() {
   if (
     typeof data !== "object" ||
     data === null ||
+    !Array.isArray(data.semantic_layers) ||
     !Array.isArray(data.node_kinds) ||
     !Array.isArray(data.edge_kinds)
   ) {
@@ -77,6 +78,7 @@ async function fetchSchema() {
 }
 
 function render(schema) {
+  const semanticLayers = [...schema.semantic_layers];
   const nodeKinds = [...schema.node_kinds].sort((a, b) =>
     a.key.localeCompare(b.key),
   );
@@ -94,6 +96,22 @@ function render(schema) {
 
   const nodeUnion = nodeKinds.map((n) => JSON.stringify(n.key)).join(" | ");
   const edgeUnion = edgeKinds.map((e) => JSON.stringify(e.key)).join(" | ");
+  const semanticLayerUnion = semanticLayers.map((layer) => JSON.stringify(layer.key)).join(" | ");
+
+  const semanticLayerEnum = semanticLayers
+    .map((layer) => `  ${toEnumMember(layer.key)} = ${JSON.stringify(layer.key)},`)
+    .join("\n");
+
+  const semanticLayerList = semanticLayers.map((layer) => JSON.stringify(layer.key)).join(", ");
+
+  const semanticLayerMetadataObj = semanticLayers
+    .map(
+      (layer) =>
+        `  ${JSON.stringify(layer.key)}: ${jsonStringify({
+          label: layer.label,
+        }).replace(/\n/g, "\n  ")},`,
+    )
+    .join("\n");
 
   const nodeMetadataObj = nodeKinds
     .map(
@@ -138,6 +156,26 @@ function render(schema) {
 export const GRAPH_SCHEMA_VERSION = ${schema.version ?? 1} as const;
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Semantic layers
+// ═══════════════════════════════════════════════════════════════════════════
+
+export enum GraphSemanticLayer {
+${semanticLayerEnum}
+}
+
+export type GraphSemanticLayerKey = ${semanticLayerUnion};
+
+export const GRAPH_SEMANTIC_LAYERS: readonly GraphSemanticLayerKey[] = [${semanticLayerList}] as const;
+
+export interface GraphSemanticLayerMeta {
+  label: string;
+}
+
+export const GRAPH_SEMANTIC_LAYER_META: Record<GraphSemanticLayerKey, GraphSemanticLayerMeta> = {
+${semanticLayerMetadataObj}
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Node kinds (entity types)
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -153,7 +191,7 @@ export interface GraphNodeKindMeta {
   label: string;
   color: string;
   shape: string;
-  layer: string;
+  layer: GraphSemanticLayerKey;
   icon: string;
   category_uid: number;
   class_uid: number;

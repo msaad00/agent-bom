@@ -19,9 +19,8 @@
  * same `seed` field as the other layouts so visual-diff CI can key
  * snapshots uniformly (#2259).
  *
- * Wiring: this layout has no dashboard surface yet — it is pre-built so
- * the pipeline-DAG view (#2257 follow-up) can adopt it without further
- * library work.
+ * Wiring: used by the live scan-pipeline DAG so execution stages read as a
+ * directional flow instead of a generic topology graph.
  */
 
 "use client";

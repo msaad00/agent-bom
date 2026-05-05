@@ -622,11 +622,26 @@ _STUCK_JOB_TIMEOUT = 1800  # 30 minutes — mark RUNNING jobs as FAILED
 
 
 async def _cleanup_loop():
-    """Background task that removes expired jobs and unsticks RUNNING jobs."""
+    """Background task that removes expired jobs and unsticks RUNNING jobs.
+
+    Also drives the tier-B (replay-only) evidence TTL purge from issue
+    #2261: rows in ``proxy_replay_log`` with ``not_after < now`` are deleted
+    on every tick.
+    """
     while True:
         await asyncio.sleep(60)
         store = _get_store()
         store.cleanup_expired(_JOB_TTL_SECONDS)
+        # Tier-B replay-log TTL purge (#2261). Wrapped so a backend hiccup
+        # never takes down the whole cleanup loop.
+        try:
+            from agent_bom.api.proxy_replay_store import get_proxy_replay_store
+
+            removed = get_proxy_replay_store().cleanup_expired()
+            if removed:
+                _logger.info("proxy_replay_log cleanup removed %d expired rows", removed)
+        except Exception:  # noqa: BLE001
+            _logger.debug("proxy_replay_log cleanup skipped", exc_info=True)
         # Unstick jobs that have been RUNNING for too long
         try:
             from datetime import datetime, timezone

@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from agent_bom.api.compliance_hub_store import _frameworks_csv, _now_utc_iso
+from agent_bom.api.compliance_hub_store import _frameworks_csv, _now_utc_iso, _redact_findings
 from agent_bom.api.postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 
@@ -45,6 +45,7 @@ class PostgresComplianceHubStore:
             conn.commit()
 
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
+        findings = _redact_findings(findings)
         if not findings:
             return self.count(tenant_id)
         now = _now_utc_iso()

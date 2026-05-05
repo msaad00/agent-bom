@@ -121,6 +121,17 @@ def _resolve_server_command(server: str) -> list[str]:
     help="Write JSONL audit log to FILE.",
 )
 @click.option(
+    "--capture-replay",
+    is_flag=True,
+    envvar="AGENT_BOM_CAPTURE_REPLAY",
+    help=(
+        "Opt-in tier-B capture: persist raw prompts, tool args/outputs, "
+        "and request bodies to the replay store with a short TTL (default "
+        "7 days, AGENT_BOM_REPLAY_TTL_DAYS). Off by default — only tier-A "
+        "evidence (versions, scopes, ids, timestamps) hits storage."
+    ),
+)
+@click.option(
     "--block-undeclared",
     is_flag=True,
     help="Block tool calls that were not in the initial tools/list response.",
@@ -214,6 +225,7 @@ def run_cmd(
     policy: str | None,
     rate_limit: int,
     audit_log: str | None,
+    capture_replay: bool,
     block_undeclared: bool,
     detect_credentials: bool,
     detect_visual_leaks: bool,
@@ -257,9 +269,14 @@ def run_cmd(
       agent-bom run "ghcr.io/msaad00/agent-bom:latest" --audit-log audit.jsonl
       agent-bom run "python -m myserver" --rate-limit 30 --detect-credentials
     """
+    from agent_bom.api.proxy_replay_store import set_capture_replay
     from agent_bom.project_config import get_policy_path, load_project_config
     from agent_bom.proxy import run_proxy
     from agent_bom.proxy_sandbox import sandbox_config_from_env
+
+    # Activate tier-B (replay-only) capture for this process if --capture-replay
+    # is set. Without it, tier-B fields are dropped at the redaction layer.
+    set_capture_replay(capture_replay)
 
     # Auto-load .agent-bom.yaml policy if --policy not explicitly given
     if not policy:

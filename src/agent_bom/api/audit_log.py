@@ -653,9 +653,20 @@ def set_audit_log(store: AuditLogStore) -> None:
 
 
 def log_action(action: str, actor: str = "system", resource: str = "", **details: object) -> None:
-    """Convenience: append an audit entry."""
-    audit_details = dict(details)
-    audit_details["tenant_id"] = _default_tenant_id(audit_details)
+    """Convenience: append an audit entry.
+
+    The audit log is a tier-A (``SAFE_TO_STORE``) sink — see issue #2261.
+    Every payload is routed through the evidence redaction policy so any
+    tier-B field (raw prompts, tool inputs/outputs, full URLs, command
+    args, response bodies, workspace content) is dropped before HMAC
+    chaining and persistence.
+    """
+    from agent_bom.evidence import EvidenceTier, redact_for_persistence
+
+    raw_details = dict(details)
+    audit_details = redact_for_persistence(raw_details, EvidenceTier.SAFE_TO_STORE)
+    if not audit_details.get("tenant_id"):
+        audit_details["tenant_id"] = _default_tenant_id(raw_details)
     audit_details = sanitize_audit_details(audit_details)
     entry = AuditEntry(action=action, actor=actor, resource=resource, details=audit_details)
     get_audit_log().append(entry)

@@ -1438,6 +1438,56 @@ async def get_incident_correlation(request: Request) -> dict:
 _HUB_VALID_FORMATS = ("sarif", "cyclonedx", "csv", "json")
 
 
+def _native_hub_findings(request: Request) -> list[dict[str, Any]]:
+    """Return native scan findings in the compliance-hub list shape.
+
+    The hub posture endpoint already aggregates native scans and external
+    ingests together. This keeps the list endpoint aligned with that contract
+    so operators can drill into both sides of the combined posture count.
+    """
+    from agent_bom.api.routes.scan import _iter_scan_findings
+    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
+    from agent_bom.compliance_hub import select_frameworks
+    from agent_bom.finding import FindingSource, FindingType
+
+    slug_to_tag_field: tuple[tuple[str, str], ...] = tuple((metadata.slug, metadata.tag_field) for metadata in TAG_MAPPED_FRAMEWORKS)
+    rows: list[dict[str, Any]] = []
+    for job in _tenant_jobs(request):
+        if job.status != JobStatus.DONE or not job.result:
+            continue
+        for row in _iter_scan_findings(job):
+            package_name = str(row.get("package") or row.get("package_name") or "")
+            vulnerability_id = str(row.get("vulnerability_id") or row.get("cve_id") or row.get("id") or "")
+            has_mcp_context = bool(row.get("affected_agents") or row.get("affected_servers"))
+            source = FindingSource.MCP_SCAN if has_mcp_context else FindingSource.SBOM
+            asset_type = "mcp_server" if has_mcp_context else "package"
+            frameworks = [slug for slug, field in slug_to_tag_field if row.get(field)]
+            if not frameworks:
+                frameworks = select_frameworks(source, asset_type=asset_type, finding_type=FindingType.CVE)
+            payload = {
+                **row,
+                "id": row.get("id") or f"{job.job_id}:{vulnerability_id}:{package_name}",
+                "title": row.get("title") or f"{vulnerability_id or 'Vulnerability'} in {package_name or 'native scan asset'}",
+                "finding_type": FindingType.CVE.value,
+                "source": source.value,
+                "origin": "native_scan",
+                "asset": {
+                    "name": package_name or vulnerability_id or "native scan asset",
+                    "asset_type": asset_type,
+                    "identifier": f"pkg:{package_name}" if package_name else None,
+                    "location": None,
+                    "stable_id": None,
+                },
+                "scan_id": job.job_id,
+                "applicable_frameworks": frameworks,
+                "effective_severity": row.get("severity", "unknown"),
+            }
+            clean = redact_for_persistence(payload, EvidenceTier.SAFE_TO_STORE)
+            if isinstance(clean, dict):
+                rows.append(clean)
+    return rows
+
+
 @router.post(
     "/v1/compliance/ingest",
     tags=["compliance"],
@@ -1514,10 +1564,14 @@ async def ingest_compliance_findings(request: Request) -> dict:
 
 @router.get("/v1/compliance/hub/findings", tags=["compliance"])
 async def list_hub_findings(request: Request, limit: int = 200, offset: int = 0) -> dict:
-    """List hub-ingested findings for the current tenant."""
+    """List compliance-hub findings for the current tenant.
+
+    Includes durable external ingests plus native scan findings projected into
+    the same shape so the list endpoint matches `/hub/posture` totals.
+    """
     from agent_bom.api.compliance_hub_store import get_compliance_hub_store
 
-    findings = get_compliance_hub_store().list(_tenant_id(request))
+    findings = get_compliance_hub_store().list(_tenant_id(request)) + _native_hub_findings(request)
     limit = max(1, min(limit, 1000))
     offset = max(0, offset)
     page = findings[offset : offset + limit]

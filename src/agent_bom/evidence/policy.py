@@ -125,6 +125,7 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         "applicable_frameworks_csv",
         "control_id",
         "source",
+        "origin",
         "source_type",
         "observed_via",
         "collector",

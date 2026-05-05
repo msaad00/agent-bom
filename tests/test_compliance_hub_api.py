@@ -34,9 +34,14 @@ def teardown_module() -> None:
 
 @pytest.fixture(autouse=True)
 def _reset_store():
+    from agent_bom.api.server import set_job_store
+    from agent_bom.api.store import InMemoryJobStore
+
     reset_compliance_hub_store()
+    set_job_store(InMemoryJobStore())
     yield
     reset_compliance_hub_store()
+    set_job_store(InMemoryJobStore())
 
 
 def _client(tenant: str = "tenant-alpha", role: str = "admin") -> TestClient:
@@ -158,6 +163,52 @@ def test_list_hub_findings_pagination():
     assert body["count"] == 10
     assert body["total"] == 50
     assert body["offset"] == 20
+
+
+def test_list_hub_findings_includes_native_scan_findings():
+    """Native scans and external ingests must compose in the hub list.
+
+    `/v1/compliance/hub/posture` already counts native scan findings. The list
+    endpoint should expose the same native rows so operators can drill into the
+    combined compliance posture instead of seeing only external imports.
+    """
+    from agent_bom.api.server import ScanJob, ScanRequest, set_job_store
+    from agent_bom.api.store import InMemoryJobStore
+    from agent_bom.api.stores import _get_store
+
+    set_job_store(InMemoryJobStore())
+    job = ScanJob(
+        job_id="native-hub-job",
+        tenant_id="tenant-alpha",
+        created_at="2026-05-05T10:00:00Z",
+        request=ScanRequest(),
+    )
+    job.status = JobStatus.DONE
+    job.completed_at = "2026-05-05T10:01:00Z"
+    job.result = {
+        "findings": [
+            {
+                "id": "CVE-2026-12345",
+                "vulnerability_id": "CVE-2026-12345",
+                "package": "demo-package",
+                "severity": "high",
+                "affected_agents": ["claude-desktop"],
+                "affected_servers": ["filesystem"],
+            }
+        ]
+    }
+    _get_store().put(job)
+
+    body = _client().get("/v1/compliance/hub/findings").json()
+
+    assert body["total"] == 1
+    native = body["findings"][0]
+    assert native["origin"] == "native_scan"
+    assert native["source"] == "MCP_SCAN"
+    assert native["scan_id"] == "native-hub-job"
+    assert native["applicable_frameworks"]
+
+    set_job_store(InMemoryJobStore())
 
 
 # ─── Tenant isolation ────────────────────────────────────────────────────────

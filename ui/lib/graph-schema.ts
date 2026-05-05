@@ -118,10 +118,22 @@ import type {
   GraphEdgeKindKey as _GraphEdgeKindKey,
 } from "./graph-schema.generated";
 type _AssertExtends<T extends U, U> = T;
-type _NodeParity = _AssertExtends<EntityType, _GraphNodeKindKey>;
-type _EdgeParity = _AssertExtends<RelationshipType, _GraphEdgeKindKey>;
+type _EntityTypeValue = `${EntityType}`;
+type _RelationshipTypeValue = `${RelationshipType}`;
+type _NodeParity = _AssertExtends<_EntityTypeValue, _GraphNodeKindKey>;
+type _EdgeParity = _AssertExtends<_RelationshipTypeValue, _GraphEdgeKindKey>;
+type _GeneratedNodeParity = _AssertExtends<_GraphNodeKindKey, _EntityTypeValue>;
+type _GeneratedEdgeParity = _AssertExtends<
+  _GraphEdgeKindKey,
+  _RelationshipTypeValue
+>;
 // Surface the helper aliases so they aren't pruned as unused imports.
-export type _GraphSchemaParity = [_NodeParity, _EdgeParity];
+export type _GraphSchemaParity = [
+  _NodeParity,
+  _EdgeParity,
+  _GeneratedNodeParity,
+  _GeneratedEdgeParity,
+];
 
 export enum OCSFSeverity {
   UNKNOWN = 0,

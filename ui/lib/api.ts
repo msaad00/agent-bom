@@ -491,12 +491,35 @@ export const api = {
   },
 
   /** Search graph nodes within a snapshot */
-  searchGraph: (query: string, filters?: { scanId?: string; offset?: number; limit?: number }) => {
+  searchGraph: (
+    query: string,
+    filters?: {
+      scanId?: string;
+      entityTypes?: string[];
+      minSeverity?: string;
+      compliancePrefixes?: string[];
+      dataSources?: string[];
+      offset?: number;
+      limit?: number;
+      cursor?: string;
+    },
+  ) => {
     const params = new URLSearchParams();
     params.set("q", query);
     if (filters?.scanId) params.set("scan_id", filters.scanId);
+    if (filters?.entityTypes && filters.entityTypes.length > 0) {
+      params.set("entity_types", filters.entityTypes.join(","));
+    }
+    if (filters?.minSeverity) params.set("min_severity", filters.minSeverity);
+    if (filters?.compliancePrefixes && filters.compliancePrefixes.length > 0) {
+      params.set("compliance_prefixes", filters.compliancePrefixes.join(","));
+    }
+    if (filters?.dataSources && filters.dataSources.length > 0) {
+      params.set("data_sources", filters.dataSources.join(","));
+    }
     if (filters?.offset != null) params.set("offset", String(filters.offset));
     if (filters?.limit != null) params.set("limit", String(filters.limit));
+    if (filters?.cursor) params.set("cursor", filters.cursor);
     return get<GraphSearchResponse>(`/v1/graph/search?${params.toString()}`);
   },
 

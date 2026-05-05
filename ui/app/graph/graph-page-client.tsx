@@ -962,14 +962,19 @@ function GraphPageInner() {
     }
     setSearching(true);
     try {
-      const response = await api.searchGraph(query, { scanId: selectedScanId, limit: 8 });
+      const response = await api.searchGraph(query, {
+        scanId: selectedScanId,
+        entityTypes: serverEntityTypes,
+        ...(filters.severity ? { minSeverity: filters.severity } : {}),
+        limit: 16,
+      });
       setSearchResults(response.results);
     } catch {
       setSearchResults([]);
     } finally {
       setSearching(false);
     }
-  }, [searchQuery, selectedScanId]);
+  }, [filters.severity, searchQuery, selectedScanId, serverEntityTypes]);
 
   const focusSearchResult = useCallback(
     (node: UnifiedNode) => {
@@ -1150,6 +1155,9 @@ function GraphPageInner() {
 
           {searchResults.length > 0 && (
             <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-950/90 p-2">
+              <div className="mb-2 px-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                Search respects current entity scope{filters.severity ? ` and ${filters.severity}+ severity` : ""}
+              </div>
               <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                 {searchResults.map((result) => (
                   <button

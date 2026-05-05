@@ -814,6 +814,61 @@ class PostgresGraphStore:
             for row in rows
         ]
 
+    def attack_paths(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[str, str, list[Any], int]:
+        effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
+        if not effective_scan_id:
+            return scan_id, "", [], 0
+
+        with _tenant_connection(self._pool) as conn:
+            snapshot_row = conn.execute(
+                "SELECT created_at FROM graph_snapshots WHERE tenant_id = %s AND scan_id = %s",
+                (tenant_id, effective_scan_id),
+            ).fetchone()
+            total_row = conn.execute(
+                "SELECT COUNT(*) FROM attack_paths WHERE tenant_id = %s AND scan_id = %s",
+                (tenant_id, effective_scan_id),
+            ).fetchone()
+            rows = conn.execute(
+                """
+                SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
+                       summary, credential_exposure, tool_exposure, vuln_ids
+                FROM attack_paths
+                WHERE tenant_id = %s AND scan_id = %s
+                ORDER BY composite_risk DESC, source_node ASC, target_node ASC
+                LIMIT %s OFFSET %s
+                """,
+                (tenant_id, effective_scan_id, limit, offset),
+            ).fetchall()
+
+        from agent_bom.graph import AttackPath
+
+        return (
+            effective_scan_id,
+            str(snapshot_row[0]) if snapshot_row else "",
+            [
+                AttackPath(
+                    source=row[0],
+                    target=row[1],
+                    hops=json.loads(row[2]),
+                    edges=json.loads(row[3]),
+                    composite_risk=row[4],
+                    summary=row[5] or "",
+                    credential_exposure=json.loads(row[6]),
+                    tool_exposure=json.loads(row[7]),
+                    vuln_ids=json.loads(row[8]),
+                )
+                for row in rows
+            ],
+            int((total_row[0] if total_row else 0) or 0),
+        )
+
     def node_context(
         self,
         *,

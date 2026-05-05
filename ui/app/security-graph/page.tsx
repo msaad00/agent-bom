@@ -44,22 +44,6 @@ import {
   moveAttackPathSelection,
   toAttackCardNodes,
 } from "@/lib/attack-paths";
-import { EntityType } from "@/lib/graph-schema";
-
-const ATTACK_PATH_ENTITY_TYPES = [
-  EntityType.VULNERABILITY,
-  EntityType.MISCONFIGURATION,
-  EntityType.PACKAGE,
-  EntityType.SERVER,
-  EntityType.CONTAINER,
-  EntityType.CLOUD_RESOURCE,
-  EntityType.AGENT,
-  EntityType.USER,
-  EntityType.GROUP,
-  EntityType.SERVICE_ACCOUNT,
-  EntityType.CREDENTIAL,
-  EntityType.TOOL,
-];
 
 function emptyGraphResponse(scanId: string): UnifiedGraphResponse {
   return {
@@ -170,11 +154,9 @@ function SecurityGraphPageContent() {
       setLoadingGraph(true);
       try {
         const [graph, view] = await Promise.all([
-          api.getGraph({
+          api.getGraphAttackPaths({
             scanId: selectedScanId,
-            entityTypes: ATTACK_PATH_ENTITY_TYPES,
-            maxDepth: 6,
-            limit: 1200,
+            limit: 250,
           }),
           api.getFixFirstGraphView({
             scanId: selectedScanId,

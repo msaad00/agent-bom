@@ -414,6 +414,17 @@ class TestGraphEndpointLogic:
         assert attack_paths[0].summary == ""
         assert attack_paths[0].tool_exposure == []
 
+        effective_scan_id, created_at, global_paths, total = store.attack_paths(
+            tenant_id="default",
+            scan_id="attack-path-scan",
+            offset=0,
+            limit=10,
+        )
+        assert effective_scan_id == "attack-path-scan"
+        assert created_at
+        assert total == 1
+        assert global_paths[0].target == "vuln:cve"
+
     def test_sqlite_graph_store_attack_paths_round_trip_summary_and_tools(self, tmp_path):
         store = SQLiteGraphStore(tmp_path / "graph.db")
         graph = UnifiedGraph(scan_id="attack-path-fields", tenant_id="default")
@@ -779,6 +790,11 @@ class _RecordingGraphStore:
         self.calls.append(("attack_paths_for_sources", tenant_id, scan_id, tuple(sorted(source_ids))))
         return [ap for ap in self.graph.attack_paths if ap.source in source_ids]
 
+    def attack_paths(self, *, tenant_id: str = "", scan_id: str = "", offset: int = 0, limit: int = 100):
+        self.calls.append(("attack_paths", tenant_id, scan_id, offset, limit))
+        paths = sorted(self.graph.attack_paths, key=lambda path: (-path.composite_risk, path.source, path.target))
+        return self.graph.scan_id, self.graph.created_at, paths[offset : offset + limit], len(paths)
+
     def node_context(self, *, tenant_id: str = "", scan_id: str = "", node_id: str):
         self.calls.append(("node_context", tenant_id, scan_id, node_id))
         node = self.graph.get_node(node_id)
@@ -959,6 +975,32 @@ class TestGraphStoreBackendSelection:
 
         assert response.status_code == 422
         assert "Unsupported graph entity type" in response.json()["detail"]
+
+    def test_global_attack_paths_are_not_limited_to_node_page(self, recording_graph_store):
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="vuln:cve", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1"))
+        recording_graph_store.graph.attack_paths.append(
+            AttackPath(
+                source="agent:a",
+                target="vuln:cve",
+                hops=["agent:a", "server:s", "vuln:cve"],
+                edges=["uses", "vulnerable_to"],
+                composite_risk=9.8,
+                summary="agent-a reaches CVE-2026-1 outside the current node page",
+                tool_exposure=["run_shell"],
+            )
+        )
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/attack-paths", params={"limit": 1})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["attack_paths"][0]["summary"] == "agent-a reaches CVE-2026-1 outside the current node page"
+        assert {node["id"] for node in body["nodes"]} == {"agent:a", "server:s", "vuln:cve"}
+        assert body["pagination"]["total"] == 1
+        assert any(call[0] == "attack_paths" for call in recording_graph_store.calls)
+        assert any(call[0] == "nodes_by_ids" for call in recording_graph_store.calls)
 
     def test_graph_presets_use_pluggable_store(self, recording_graph_store):
         client = TestClient(app)

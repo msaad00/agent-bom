@@ -511,6 +511,20 @@ export const api = {
     return get<FixFirstGraphViewResponse>(`/v1/graph/views/fix-first${qs ? `?${qs}` : ""}`);
   },
 
+  /** Load the global risk-sorted attack path queue without node-page coupling */
+  getGraphAttackPaths: (filters?: {
+    scanId?: string | undefined;
+    offset?: number | undefined;
+    limit?: number | undefined;
+  }) => {
+    const params = new URLSearchParams();
+    if (filters?.scanId) params.set("scan_id", filters.scanId);
+    if (filters?.offset != null) params.set("offset", String(filters.offset));
+    if (filters?.limit != null) params.set("limit", String(filters.limit));
+    const qs = params.toString();
+    return get<UnifiedGraphResponse>(`/v1/graph/attack-paths${qs ? `?${qs}` : ""}`);
+  },
+
   /** Search graph nodes within a snapshot */
   searchGraph: (query: string, filters?: { scanId?: string; offset?: number; limit?: number }) => {
     const params = new URLSearchParams();

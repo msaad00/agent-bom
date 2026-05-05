@@ -3,6 +3,7 @@
 Endpoints:
   GET  /v1/graph                — load unified graph (filtered, paginated)
   GET  /v1/graph/diff           — diff between two scan snapshots
+  GET  /v1/graph/attack-paths   — global risk-sorted attack path queue
   GET  /v1/graph/paths          — attack paths from a source node
   GET  /v1/graph/impact         — blast radius of a node (reverse BFS)
   GET  /v1/graph/search         — full-text graph search
@@ -706,6 +707,53 @@ async def get_graph_diff(
 ) -> dict:
     """Diff two scan snapshots — nodes/edges added, removed, changed."""
     return await _graph_store_call(_get_graph_store_or_503().diff_snapshots, old, new, tenant_id=_tenant(request))
+
+
+@router.get("/v1/graph/attack-paths", tags=["graph"])
+async def get_graph_attack_paths(
+    request: Request,
+    scan_id: Optional[str] = Query(None, description="Scan ID"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    limit: int = Query(100, ge=1, le=1000, description="Max attack paths"),
+) -> dict:
+    """Return the global attack-path queue independent of node pagination.
+
+    `/v1/graph` intentionally windows nodes and therefore cannot be the source
+    of truth for fix-first triage. This endpoint ranks persisted paths across
+    the whole snapshot and hydrates only the hop nodes needed to render the
+    selected queue page.
+    """
+    tenant = _tenant(request)
+    graph_store = _get_graph_store_or_503()
+    effective_scan_id, created_at, paths, total = await _graph_store_call(
+        graph_store.attack_paths,
+        scan_id=scan_id or "",
+        tenant_id=tenant,
+        offset=offset,
+        limit=limit,
+    )
+    hop_ids = {hop for path in paths for hop in path.hops}
+    nodes = await _graph_store_call(
+        graph_store.nodes_by_ids,
+        scan_id=effective_scan_id,
+        tenant_id=tenant,
+        node_ids=hop_ids,
+    )
+    return {
+        "scan_id": effective_scan_id,
+        "tenant_id": tenant,
+        "created_at": created_at,
+        "nodes": [node.to_dict() for node in nodes],
+        "edges": [],
+        "attack_paths": [path.to_dict() for path in paths],
+        "interaction_risks": [],
+        "stats": await _graph_store_call(
+            graph_store.snapshot_stats,
+            scan_id=effective_scan_id,
+            tenant_id=tenant,
+        ),
+        "pagination": _page_meta(total, offset, limit),
+    }
 
 
 @router.get("/v1/graph/paths", tags=["graph"])

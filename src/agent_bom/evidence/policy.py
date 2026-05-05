@@ -49,6 +49,7 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         # Package / lockfile metadata
         "package_version",
         "package_name",
+        "packages",
         "ecosystem",
         "lockfile_source",
         "purl",
@@ -89,6 +90,8 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         "policy_result",
         "decision",
         "outcome",
+        "state",
+        "lifecycle_state",
         "severity",
         "ttl_seconds",
         "tier",
@@ -161,6 +164,9 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         "control_count",
         "finding_count",
         "audit_event_count",
+        "batch_size",
+        "class_counts",
+        "source_ids",
         "nonce",
         "key_id",
         "signature_key_id",
@@ -177,6 +183,12 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         "fleet_id",
         "exception_id",
         "alert_id",
+    }
+)
+
+TIER_A_COUNT_MAP_FIELDS: frozenset[str] = frozenset(
+    {
+        "class_counts",
     }
 )
 
@@ -253,16 +265,32 @@ def redact_for_persistence(payload: Any, target_tier: EvidenceTier) -> Any:
     if isinstance(payload, dict):
         out: dict[str, Any] = {}
         for key, value in payload.items():
-            tier = classify_field(str(key))
+            key_text = str(key)
+            tier = classify_field(key_text)
             if not _is_acceptable(tier, target_tier):
                 continue
-            out[str(key)] = redact_for_persistence(value, target_tier)
+            if target_tier is EvidenceTier.SAFE_TO_STORE and key_text.strip().lower() in TIER_A_COUNT_MAP_FIELDS:
+                out[key_text] = _redact_count_map(value)
+                continue
+            out[key_text] = redact_for_persistence(value, target_tier)
         return out
     if isinstance(payload, list):
         return [redact_for_persistence(item, target_tier) for item in payload]
     if isinstance(payload, tuple):
         return tuple(redact_for_persistence(item, target_tier) for item in payload)
     return payload
+
+
+def _redact_count_map(value: Any) -> dict[str, int | float]:
+    """Preserve non-content aggregate count maps with arbitrary bucket keys."""
+    if not isinstance(value, dict):
+        return {}
+    out: dict[str, int | float] = {}
+    for key, count in value.items():
+        if isinstance(count, bool) or not isinstance(count, (int, float)):
+            continue
+        out[str(key)[:96]] = count
+    return out
 
 
 # ─── Replay-only TTL helpers ────────────────────────────────────────────────

@@ -57,6 +57,7 @@ from agent_bom.evidence import (
 SYNTHETIC_PAYLOAD: dict[str, object] = {
     # Tier A — safe to store
     "package_version": "1.2.3",
+    "packages": 42,
     "lockfile_source": "package-lock.json",
     "tool_name": "fs.read",
     "tool": "fs.read",
@@ -68,6 +69,11 @@ SYNTHETIC_PAYLOAD: dict[str, object] = {
     "agent_id": "agent-7",
     "timestamp": "2026-05-03T12:00:00Z",
     "status_code": 200,
+    "state": "accepted_risk",
+    "lifecycle_state": "discovered",
+    "batch_size": 2,
+    "class_counts": {"2004": 1, "4001": 1},
+    "source_ids": ["splunk", "datadog"],
     "trace_id": "0af7651916cd43dd8448eb211c80319c",
     "span_id": "b7ad6b7169203331",
     "request_id": "req-42",
@@ -188,14 +194,21 @@ def test_redact_preserves_tier_a_fields():
     redacted = redact_for_persistence(SYNTHETIC_PAYLOAD, EvidenceTier.SAFE_TO_STORE)
     for field in [
         "package_version",
+        "packages",
         "tool_name",
         "agent_id",
         "tenant_id",
         "trace_id",
         "status_code",
+        "state",
+        "lifecycle_state",
+        "batch_size",
+        "class_counts",
+        "source_ids",
         "policy",
     ]:
         assert field in redacted, field
+    assert redacted["class_counts"] == {"2004": 1, "4001": 1}
 
 
 def test_redact_for_replay_only_keeps_everything():

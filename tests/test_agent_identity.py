@@ -291,5 +291,7 @@ def test_log_tool_call_redacts_nested_arguments_and_relationships():
     assert "/Users/alice" not in encoded
     assert "prod-secrets" not in encoded
     assert "token=" not in encoded
-    assert record["args"]["url"] == "https://example.com/callback"
-    assert record["event_relationships"]["resources"][0]["id"] == "https://example.com/callback"
+    assert "args" not in record
+    resources = record["event_relationships"]["resources"]
+    assert {"type": "url", "id": "https://example.com/callback", "role": "referenced_input", "source_field": "url"} in resources
+    assert {"type": "path", "id": "<path:openai-key.env>", "role": "referenced_input", "source_field": "path"} in resources

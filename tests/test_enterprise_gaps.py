@@ -207,13 +207,16 @@ class TestAuditLog:
                 "tenant_id": "tenant-alpha",
                 "bad key\r\n": "x" * 3000,
                 "nested": {"items": list(range(100))},
+                "key_id": "k" * 3000,
+                "source_ids": [f"source-{i}" for i in range(100)],
             },
         )
 
         details = store.list_entries()[0].details
-        assert "bad_key" in details
-        assert len(details["bad_key"]) == 2048
-        assert details["nested"]["items"][-1] == "[truncated]"
+        assert "bad_key" not in details
+        assert "nested" not in details
+        assert len(details["key_id"]) == 2048
+        assert details["source_ids"][-1] == "[truncated]"
         assert details["tenant_id"] == "tenant-alpha"
 
     def test_audit_bounded_size(self):

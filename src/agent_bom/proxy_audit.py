@@ -530,11 +530,40 @@ def _audit_chain_key(log_file: "IO[str] | RotatingAuditLog") -> str:
 
 
 def write_audit_record(log_file: "IO[str] | RotatingAuditLog", record: dict) -> dict:
-    """Write a chain-hashed audit record to the JSONL sink."""
+    """Write a chain-hashed audit record to the JSONL sink.
+
+    Tier-A sink (issue #2261): every record is routed through the evidence
+    redaction policy so tier-B fields (raw prompts, tool inputs/outputs,
+    full URLs, command args, response bodies, workspace content) never
+    reach the durable JSONL chain. Tier-B capture happens in the separate
+    replay-only store gated on ``--capture-replay``.
+    """
+    from agent_bom.evidence import EvidenceTier, redact_for_persistence
+
     log_key = _audit_chain_key(log_file)
     with _AUDIT_CHAIN_LOCK:
         prev_hash = _AUDIT_CHAIN_STATE.get(log_key, "")
-        payload = _sanitize_audit_record(record)
+        sanitized = _sanitize_audit_record(record)
+        # Tier-B opt-in capture: if --capture-replay is set, persist the
+        # un-redacted (but secret-sanitized) record to the replay store
+        # with a TTL before stripping it for the tier-A chain.
+        try:
+            from agent_bom.api.proxy_replay_store import capture_replay_enabled, capture_tier_b
+            from agent_bom.evidence import has_tier_b_fields
+
+            if capture_replay_enabled() and isinstance(sanitized, dict) and has_tier_b_fields(sanitized):
+                tenant_id = str(sanitized.get("tenant_id") or "default")
+                capture_tier_b(tenant_id, sanitized)
+        except Exception:  # pragma: no cover — replay capture must never break the chain
+            logger.debug("tier-B replay capture skipped", exc_info=True)
+        # Tier-A redaction strips fields above SAFE_TO_STORE. Re-attach only
+        # the structural record discriminator; free-text policy reasons stay
+        # replay-only unless callers provide a normalized reason_code.
+        payload = redact_for_persistence(sanitized, EvidenceTier.SAFE_TO_STORE)
+        if isinstance(sanitized, dict):
+            for header_field in ("type",):
+                if header_field in sanitized and header_field not in payload:
+                    payload[header_field] = sanitized[header_field]
         payload["prev_hash"] = prev_hash
         payload["record_hash_algorithm"] = "aes-cmac-128"
         payload["record_hash"] = _record_digest(payload)

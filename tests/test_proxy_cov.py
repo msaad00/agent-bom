@@ -117,7 +117,7 @@ class TestLogToolCall:
         buf.seek(0)
         record = json.loads(buf.read().strip())
         assert record["policy"] == "blocked"
-        assert record["reason"] == "policy violation"
+        assert "reason" not in record
 
     def test_with_metadata(self):
         buf = io.StringIO()

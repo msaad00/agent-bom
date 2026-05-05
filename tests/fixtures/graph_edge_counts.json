@@ -1,0 +1,16 @@
+{
+  "_meta": {
+    "fixture": "agent_bom_self_scan_inventory.json",
+    "rebuild_with": "python scripts/rebaseline_graph_edges.py",
+    "tolerance_pct": 5
+  },
+  "edge_counts": {
+    "uses": 8,
+    "vulnerable_to": 2
+  },
+  "node_counts": {
+    "agent": 1,
+    "server": 8,
+    "vulnerability": 2
+  }
+}

@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Background,
   Controls,
   MiniMap,
   Panel,
   ReactFlow,
+  ReactFlowProvider,
   type Edge,
   type Node,
 } from "@xyflow/react";
@@ -30,8 +32,21 @@ import {
   createFocusedGraphFilters,
   type FilterState,
 } from "@/components/lineage-filter";
-import { lineageNodeTypes, type LineageNodeData, type LineageNodeType } from "@/components/lineage-nodes";
-import { useDagreLayout } from "@/lib/use-dagre-layout";
+import {
+  lineageNodeTypes,
+  lineageNodeTypesCluster,
+  lineageNodeTypesSummary,
+  type LineageNodeData,
+  type LineageNodeType,
+} from "@/components/lineage-nodes";
+import { useForceLayout } from "@/lib/use-force-layout";
+import { effectiveLodBandForGraph, useLodBand } from "@/lib/lod-renderer";
+import {
+  aggregateSiblings,
+  EXPANDED_AGGREGATION_THRESHOLD,
+  FOCUSED_AGGREGATION_THRESHOLD,
+  isClusterPillNode,
+} from "@/lib/sibling-aggregator";
 import {
   EntityType,
   RelationshipType,
@@ -56,6 +71,11 @@ import {
   type UnifiedGraphResponse,
 } from "@/lib/api";
 import { buildUnifiedFlowGraph } from "@/lib/unified-graph-flow";
+import {
+  applyFilters,
+  decodeFiltersFromParams,
+  encodeFiltersToParams,
+} from "@/lib/filter-algebra";
 
 function PulseStyles() {
   return (
@@ -79,6 +99,37 @@ function PulseStyles() {
         .node-critical-pulse {
           animation: none;
           box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+        }
+      }
+
+      /* Focus-mode (#2257). Hovering or pinning a node fires CSS classes
+         on the React Flow node wrapper so non-connected nodes fade out
+         and the focused node gets a sky-blue glow. The transition is
+         short enough to feel responsive but long enough to read as a
+         deliberate dim, not a flicker. */
+      .lineage-node-dim {
+        opacity: 0.15;
+        transition: opacity 0.15s ease;
+      }
+      .lineage-node-focus {
+        box-shadow: 0 0 16px rgba(56, 189, 248, 0.6);
+        transition: box-shadow 0.15s ease;
+        z-index: 5;
+      }
+
+      /* Sibling-aggregation cluster pill pulses subtly to suggest
+         "click me to expand". Honors prefers-reduced-motion. */
+      @keyframes cluster-pill-pulse {
+        0%, 100% { box-shadow: 0 0 6px rgba(56, 189, 248, 0.35); }
+        50% { box-shadow: 0 0 14px rgba(56, 189, 248, 0.65); }
+      }
+      .cluster-pill-pulse {
+        animation: cluster-pill-pulse 2.6s ease-in-out infinite;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .cluster-pill-pulse {
+          animation: none;
+          box-shadow: 0 0 8px rgba(56, 189, 248, 0.45);
         }
       }
     `}</style>
@@ -359,7 +410,22 @@ function graphErrorState(message: string): { title: string; detail: string; sugg
   };
 }
 
+/**
+ * Wrapper — supplies the xyflow store at the page root so `useLodBand`
+ * (#2257) can read `viewport.zoom` from anywhere inside the page, not
+ * just from a child of `<ReactFlow>`. Without the explicit provider the
+ * page would have to thread the LOD band through props or duplicate
+ * `<ReactFlow>` ancestry.
+ */
 export default function GraphPageClient() {
+  return (
+    <ReactFlowProvider>
+      <GraphPageInner />
+    </ReactFlowProvider>
+  );
+}
+
+function GraphPageInner() {
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
   const [selectedScanId, setSelectedScanId] = useState("");
   const [graphData, setGraphData] = useState<UnifiedGraphResponse | null>(null);
@@ -377,8 +443,27 @@ export default function GraphPageClient() {
   const [searchResults, setSearchResults] = useState<UnifiedNode[]>([]);
   const [searching, setSearching] = useState(false);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
-  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  const [pinnedFocusId, setPinnedFocusId] = useState<string | null>(null);
+  const [expandedClusterIds, setExpandedClusterIds] = useState<Set<string>>(() => new Set());
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // Seed filters from URL on first render so /graph?agent=...&severity=high
+  // reproduces the exact view in another tab.
+  const [filters, setFilters] = useState<FilterState>(() => {
+    const seed = { ...DEFAULT_FILTERS };
+    if (typeof window === "undefined") return seed;
+    const params = new URLSearchParams(window.location.search);
+    return { ...seed, ...decodeFiltersFromParams(params) };
+  });
   const [initializedFocus, setInitializedFocus] = useState(false);
+  // Track whether we've already seeded filters from the URL so the
+  // auto-focus effect that picks the first agent doesn't clobber an
+  // explicit ?agent= param on initial load.
+  const seededFromUrlRef = useRef<boolean>(
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).toString().length > 0,
+  );
+  const firstScanSelectionRef = useRef(true);
 
   useEffect(() => {
     setLoadingSnapshots(true);
@@ -417,12 +502,22 @@ export default function GraphPageClient() {
 
   useEffect(() => {
     setPageOffset(0);
+    setExpandedClusterIds(new Set());
+    setPinnedFocusId(null);
+    setHoveredNodeId(null);
   }, [serverFilterKey]);
 
   useEffect(() => {
     setSearchResults([]);
     setSearchQuery("");
     setSelectedAttackPathKey(null);
+    if (firstScanSelectionRef.current) {
+      firstScanSelectionRef.current = false;
+      if (seededFromUrlRef.current) {
+        setInitializedFocus(true);
+        return;
+      }
+    }
     setFilters(DEFAULT_FILTERS);
     setInitializedFocus(false);
   }, [selectedScanId]);
@@ -570,26 +665,90 @@ export default function GraphPageClient() {
 
   useEffect(() => {
     if (initializedFocus || flow.agentNames.length === 0) return;
+    if (seededFromUrlRef.current) {
+      // The user landed here with an explicit URL — respect it instead of
+      // overriding agentName with the first agent in the snapshot.
+      setInitializedFocus(true);
+      return;
+    }
     setFilters(createFocusedGraphFilters(flow.agentNames[0]));
     setInitializedFocus(true);
   }, [flow.agentNames, initializedFocus]);
+
+  // Push the current filter state into the URL (replace, not push) so a
+  // copied address bar reproduces the view but back/forward isn't spammed.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const next = encodeFiltersToParams(filters).toString();
+    const current = searchParams?.toString() ?? "";
+    if (next === current) return;
+    const url = next ? `${pathname}?${next}` : pathname;
+    router.replace(url, { scroll: false });
+  }, [filters, pathname, router, searchParams]);
+
+  // Constraint propagation — recompute valid values whenever graph or
+  // filters change. Cheap on focused snapshots, BFS-bounded on expanded.
+  const filterAlgebra = useMemo(
+    () => applyFilters(graphData, filters),
+    [graphData, filters],
+  );
+  const validValues = filterAlgebra.validValues;
+
+  const handleResetFilters = useCallback(() => {
+    setFilters(createExpandedGraphFilters(null));
+  }, []);
 
   const flowNodeDataById = useMemo(
     () => new Map(flow.nodes.map((node) => [node.id, node.data])),
     [flow.nodes],
   );
 
-  const { nodes: layoutNodes, edges: layoutEdges } = useDagreLayout(flow.nodes, flow.edges, {
-    direction: filters.agentName || filters.vulnOnly ? "TB" : "LR",
-    nodeWidth: filters.agentName ? 208 : 188,
-    nodeHeight: 72,
-    rankSep: filters.agentName ? 118 : 104,
-    nodeSep: filters.agentName ? 22 : 28,
+  // Sibling aggregation (#2257). Threshold tracks the active filter
+  // preset — operator triage (focused) collapses faster than topology
+  // review (expanded). Run before layout so the layout engine never positions
+  // siblings that the cluster pill is going to hide.
+  const aggregationThreshold = filters.vulnOnly
+    ? FOCUSED_AGGREGATION_THRESHOLD
+    : EXPANDED_AGGREGATION_THRESHOLD;
+
+  const aggregated = useMemo(
+    () =>
+      aggregateSiblings(flow.nodes, flow.edges, {
+        thresholdN: aggregationThreshold,
+        expandedClusterIds: expandedClusterIds,
+      }),
+    [flow.nodes, flow.edges, aggregationThreshold, expandedClusterIds],
+  );
+
+  const graphIdentityKey = useMemo(
+    () =>
+      JSON.stringify({
+        nodes: flow.nodes.map((node) => node.id),
+        edges: flow.edges.map((edge) => `${edge.source}->${edge.target}:${edge.id}`),
+      }),
+    [flow.nodes, flow.edges],
+  );
+
+  useEffect(() => {
+    setExpandedClusterIds(new Set());
+    setPinnedFocusId(null);
+    setHoveredNodeId(null);
+  }, [graphIdentityKey]);
+
+  const { nodes: layoutNodes, edges: layoutEdges } = useForceLayout(aggregated.nodes, aggregated.edges, {
+    idealEdgeLength: filters.agentName ? 168 : 196,
+    nodeRepulsion: filters.agentName ? 3600 : 4400,
+    preservePinnedPositions: true,
   });
 
+  // Focus mode (#2257). The "active" focus is whichever the operator
+  // pinned (click) — falling back to whatever is hovered. Pinning
+  // survives until the operator clicks the empty pane or pins another
+  // node. Hover never overrides a pin.
+  const activeFocusId = pinnedFocusId ?? hoveredNodeId;
   const connectedIds = useMemo(
-    () => (hoveredNodeId ? getConnectedIds(hoveredNodeId, layoutEdges) : null),
-    [hoveredNodeId, layoutEdges],
+    () => (activeFocusId ? getConnectedIds(activeFocusId, layoutEdges) : null),
+    [activeFocusId, layoutEdges],
   );
 
   const attackPathNodeIds = useMemo(
@@ -602,27 +761,53 @@ export default function GraphPageClient() {
     [selectedAttackPath],
   );
 
+  /**
+   * Compose the existing className (e.g. `node-critical-pulse`) with the
+   * focus-mode classes the issue spec asked for. We keep the data-driven
+   * `dimmed`/`highlighted` flags too — node renderers were already wired
+   * to those — so dimming works in unit tests that read `data.dimmed`
+   * directly.
+   */
+  const composeFocusClass = (
+    base: string | undefined,
+    focused: boolean,
+    dimmed: boolean,
+  ): string =>
+    [base, focused ? "lineage-node-focus" : "", dimmed ? "lineage-node-dim" : ""]
+      .filter(Boolean)
+      .join(" ") || "";
+
   const displayNodes = useMemo(() => {
     if (attackPathNodeIds) {
-      return layoutNodes.map((node) => ({
-        ...node,
-        data: {
-          ...node.data,
-          dimmed: !attackPathNodeIds.has(node.id),
-          highlighted: attackPathNodeIds.has(node.id),
-        },
-      }));
+      return layoutNodes.map((node) => {
+        const inPath = attackPathNodeIds.has(node.id);
+        return {
+          ...node,
+          className: composeFocusClass(node.className, inPath, !inPath),
+          data: {
+            ...node.data,
+            dimmed: !inPath,
+            highlighted: inPath,
+          },
+        };
+      });
     }
     if (!connectedIds) return layoutNodes;
-    return layoutNodes.map((node) => ({
-      ...node,
-      data: {
-        ...node.data,
-        dimmed: !connectedIds.has(node.id),
-        highlighted: connectedIds.has(node.id),
-      },
-    }));
-  }, [layoutNodes, connectedIds, attackPathNodeIds]);
+    return layoutNodes.map((node) => {
+      const isFocused = node.id === activeFocusId;
+      const isConnected = connectedIds.has(node.id);
+      const dimmed = !isConnected;
+      return {
+        ...node,
+        className: composeFocusClass(node.className, isFocused, dimmed),
+        data: {
+          ...node.data,
+          dimmed,
+          highlighted: isConnected,
+        },
+      };
+    });
+  }, [layoutNodes, connectedIds, attackPathNodeIds, activeFocusId]);
 
   const displayEdges = useMemo(() => {
     if (attackPathEdgeKeys) {
@@ -679,6 +864,18 @@ export default function GraphPageClient() {
   );
 
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    // Cluster-pill click → restore the absorbed siblings in place. We
+    // never open the detail panel for a synthetic cluster node.
+    if (isClusterPillNode(node as Node<LineageNodeData>)) {
+      const id = node.id;
+      setExpandedClusterIds((current) => {
+        const next = new Set(current);
+        next.add(id);
+        return next;
+      });
+      return;
+    }
+
     const data = node.data as LineageNodeData;
     setSelectedNode({
       ...data,
@@ -689,6 +886,10 @@ export default function GraphPageClient() {
     });
     setSelectedNodeId(node.id);
     setSelectedAttackPathKey(null);
+    // Click pin (#2257): toggle a "pinned focus" on the clicked node.
+    // Re-clicking the same node clears the pin. Hover state is reset
+    // because the pin replaces hover as the focus source.
+    setPinnedFocusId((current) => (current === node.id ? null : node.id));
     setHoveredNodeId(null);
   }, []);
 
@@ -699,6 +900,23 @@ export default function GraphPageClient() {
   const onNodeMouseLeave = useCallback(() => {
     setHoveredNodeId(null);
   }, []);
+
+  // Levels-of-detail (#2257). Hook reads `viewport.zoom` from the
+  // xyflow store provided by the wrapping `<ReactFlowProvider>` and
+  // returns "cluster" | "summary" | "detail". The chosen registry
+  // swaps node renderers without touching node positions or data.
+  const lodBand = useLodBand();
+  const effectiveLodBand = effectiveLodBandForGraph(lodBand, {
+    sourceNodeCount: flow.nodes.length,
+    renderedNodeCount: aggregated.nodes.length,
+    clusterCount: aggregated.clusters.size,
+  });
+  const nodeTypesForBand =
+    effectiveLodBand === "cluster"
+      ? lineageNodeTypesCluster
+      : effectiveLodBand === "summary"
+        ? lineageNodeTypesSummary
+        : lineageNodeTypes;
 
   const selectFindingCard = useCallback((id: string, data: LineageNodeData) => {
     setSelectedNode({
@@ -740,6 +958,7 @@ export default function GraphPageClient() {
         },
       });
       setSelectedNodeId(node.id);
+      setPinnedFocusId(null);
       setHoveredNodeId(node.id);
       setSelectedAttackPathKey(null);
       setSearchResults([]);
@@ -1130,7 +1349,13 @@ export default function GraphPageClient() {
       </div>
 
       <div className="flex-1 flex relative min-h-[60vh]">
-        <FilterPanel filters={filters} onChange={setFilters} agentNames={flow.agentNames} />
+        <FilterPanel
+          filters={filters}
+          onChange={setFilters}
+          agentNames={flow.agentNames}
+          validValues={validValues}
+          onReset={handleResetFilters}
+        />
 
         <div className="flex-1 relative min-h-[60vh]">
           {loadingGraph && !graphData ? (
@@ -1166,7 +1391,7 @@ export default function GraphPageClient() {
             <ReactFlow
               nodes={displayNodes}
               edges={displayEdges}
-              nodeTypes={lineageNodeTypes}
+              nodeTypes={nodeTypesForBand}
               fitView
               fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
               minZoom={0.16}
@@ -1184,6 +1409,10 @@ export default function GraphPageClient() {
                 setSelectedNode(null);
                 setSelectedNodeId(null);
                 setHoveredNodeId(null);
+                // #2257: empty-pane click clears the pinned focus too,
+                // so the operator always has a single deterministic
+                // gesture to "stop focusing".
+                setPinnedFocusId(null);
               }}
             >
               <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />

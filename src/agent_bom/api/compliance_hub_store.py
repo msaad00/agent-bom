@@ -26,6 +26,29 @@ import sqlite3
 import threading
 from typing import Any, Protocol
 
+from agent_bom.evidence import EvidenceTier, redact_for_persistence
+
+
+def _redact_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop tier-B fields before any compliance-hub finding is stored.
+
+    The hub is a tier-A sink — findings are exported, queried by auditors,
+    and held indefinitely. See issue #2261.
+    """
+    redacted: list[dict[str, Any]] = []
+    for payload in findings:
+        if not isinstance(payload, dict):
+            continue
+        clean = redact_for_persistence(payload, EvidenceTier.SAFE_TO_STORE)
+        # Preserve identity fields the store keys on, even if the redactor
+        # didn't recognise them by exact name (e.g. legacy "id" alias).
+        if "id" not in clean and "id" in payload:
+            clean["id"] = str(payload["id"])
+        if "source" not in clean and "source" in payload:
+            clean["source"] = str(payload["source"])
+        redacted.append(clean)
+    return redacted
+
 
 class ComplianceHubStore(Protocol):
     """Append-only ledger of hub-ingested findings, scoped per tenant."""
@@ -58,9 +81,10 @@ class InMemoryComplianceHubStore:
         self._lock = threading.Lock()
 
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
+        clean = _redact_findings(findings)
         with self._lock:
             bucket = self._by_tenant.setdefault(tenant_id, [])
-            bucket.extend(findings)
+            bucket.extend(clean)
             return len(bucket)
 
     def list(self, tenant_id: str) -> list[dict[str, Any]]:
@@ -148,6 +172,7 @@ class SQLiteComplianceHubStore:
         return int(row[0]) + 1 if row else 1
 
     def add(self, tenant_id: str, findings: list[dict[str, Any]]) -> int:
+        findings = _redact_findings(findings)
         if not findings:
             return self.count(tenant_id)
         now = _now_utc_iso()

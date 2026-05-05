@@ -18,6 +18,8 @@
     "verify:toolchain": "node scripts/verify-toolchain.mjs",
     "headers:sync": "node scripts/sync-vercel-headers.mjs",
     "headers:check": "node scripts/sync-vercel-headers.mjs --check",
+    "codegen:graph-schema": "node scripts/codegen-graph-schema.mjs",
+    "codegen:graph-schema:check": "node scripts/codegen-graph-schema.mjs --check",
     "test": "vitest",
     "test:run": "vitest run"
   },

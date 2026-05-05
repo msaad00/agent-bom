@@ -6,6 +6,9 @@ For the data-model contract between native `agent-bom` objects and optional OCSF
 
 For the end-to-end intake story across direct scans, read-only integrations, pushed ingest, and imported artifacts, see [Data Ingestion and Security](data-ingestion-and-security.md).
 
+For the operator model behind attack paths, reachability, runtime evidence, and
+large graph readability, see [Security Graph Model](security-graph-model.md).
+
 For the shortest operator-facing explanation of inputs, engine, outputs, deployment models, and product surfaces, see [How Agent-BOM Works](how-agent-bom-works.md).
 
 For the next-phase hosted product plan that maps UI actions to control-plane

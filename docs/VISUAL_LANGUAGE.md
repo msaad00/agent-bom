@@ -10,7 +10,7 @@ deployments, but they are not the primary product visuals for README or docs.
 ## SVG — for hero visuals + dense product imagery
 
 Use when:
-- the diagram is the *story* of the section (blast-radius, scan pipeline, engine internals, compliance mapping, topology)
+- the diagram is the *story* of the section (blast-radius, scan pipeline, engine internals, compliance mapping)
 - you need typographic control, color hierarchy, or dense info per pixel
 - it does not change every PR
 
@@ -24,8 +24,7 @@ Current SVG inventory:
 | `logo-{light,dark}.svg` | Brand mark | hero |
 | `blast-radius-{light,dark}.svg` | Package → CVE → MCP → agent → credentials → tools | hero, under tagline |
 | `scan-pipeline-{light,dark}.svg` | 5-stage pipeline (discover → scan → analyze → report → enforce) | "How a scan moves" |
-| `engine-internals-{light,dark}.svg` | Inside the scanner | "How a scan moves" |
-| `topology-{light,dark}.svg` | Focused graph view (start scoped, expand) | "How a scan moves" |
+| `engine-internals-{light,dark}.svg` | Inside the scanner | available for deeper architecture docs; not currently embedded in the README |
 | `compliance-{light,dark}.svg` | Finding → control → evidence packet | Compliance section |
 | `dashboard-live.png` `dashboard-paths-live.png` `mesh-live.png` `remediation-live.png` | Live packaged Next.js dashboard screenshots | Product views |
 | `demo-latest.gif` | Terminal demo (1.04MB after compression) | "Try the demo" |

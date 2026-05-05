@@ -215,6 +215,15 @@ class GraphStoreProtocol(Protocol):
         source_ids: set[str],
     ) -> list[AttackPath]: ...
 
+    def attack_paths(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[str, str, list[AttackPath], int]: ...
+
     def node_context(
         self,
         *,
@@ -786,6 +795,58 @@ class SQLiteGraphStore:
                 )
                 for row in rows
             ]
+        finally:
+            conn.close()
+
+    def attack_paths(
+        self,
+        *,
+        tenant_id: str = "",
+        scan_id: str = "",
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[str, str, list[AttackPath], int]:
+        conn = self._open_ro_conn()
+        if conn is None:
+            return scan_id, "", [], 0
+        try:
+            effective_scan_id, created_at = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
+            if not effective_scan_id:
+                return scan_id, "", [], 0
+            total = conn.execute(
+                "SELECT COUNT(*) FROM attack_paths WHERE tenant_id = ? AND scan_id = ?",
+                (tenant_id, effective_scan_id),
+            ).fetchone()[0]
+            rows = conn.execute(
+                """
+                SELECT source_node, target_node, path_nodes, path_edges, composite_risk,
+                       summary, credential_exposure, tool_exposure, vuln_ids
+                FROM attack_paths
+                WHERE tenant_id = ? AND scan_id = ?
+                ORDER BY composite_risk DESC, source_node ASC, target_node ASC
+                LIMIT ? OFFSET ?
+                """,
+                (tenant_id, effective_scan_id, limit, offset),
+            ).fetchall()
+            return (
+                effective_scan_id,
+                created_at,
+                [
+                    AttackPath(
+                        source=row["source_node"],
+                        target=row["target_node"],
+                        hops=json.loads(row["path_nodes"]),
+                        edges=json.loads(row["path_edges"]),
+                        composite_risk=row["composite_risk"],
+                        summary=row["summary"] or "",
+                        credential_exposure=json.loads(row["credential_exposure"]),
+                        tool_exposure=json.loads(row["tool_exposure"]),
+                        vuln_ids=json.loads(row["vuln_ids"]),
+                    )
+                    for row in rows
+                ],
+                int(total or 0),
+            )
         finally:
             conn.close()
 

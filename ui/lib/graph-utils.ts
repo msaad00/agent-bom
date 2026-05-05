@@ -79,6 +79,7 @@ export const EDGE_COLORS = {
 export interface LegendItem {
   label: string;
   color: string;
+  layer?: string | undefined;
   dashed?: boolean | undefined;
   kind?: "node" | "edge" | undefined;
   lineStyle?: "solid" | "dashed" | undefined;
@@ -108,25 +109,25 @@ const NODE_TYPE_LEGEND_ORDER: LineageNodeType[] = [
 ];
 
 const NODE_TYPE_LEGEND_ITEMS: Record<LineageNodeType, LegendItem> = {
-  provider: { label: "Provider", color: "#71717a", kind: "node", shape: "dot" },
-  agent: { label: "Agent", color: "#10b981", kind: "node", shape: "dot" },
-  sharedServer: { label: "Shared", color: "#22d3ee", kind: "node", shape: "square" },
-  server: { label: "Server", color: "#3b82f6", kind: "node", shape: "square" },
-  package: { label: "Package", color: "#52525b", kind: "node", shape: "pill" },
-  model: { label: "Model", color: "#8b5cf6", kind: "node", shape: "pill" },
-  dataset: { label: "Dataset", color: "#06b6d4", kind: "node", shape: "pill" },
-  container: { label: "Container", color: "#6366f1", kind: "node", shape: "square" },
-  cloudResource: { label: "Cloud", color: "#0ea5e9", kind: "node", shape: "square" },
-  environment: { label: "Env", color: "#14b8a6", kind: "node", shape: "square" },
-  fleet: { label: "Fleet", color: "#22d3ee", kind: "node", shape: "square" },
-  cluster: { label: "Cluster", color: "#38bdf8", kind: "node", shape: "square" },
-  user: { label: "User", color: "#34d399", kind: "node", shape: "dot" },
-  group: { label: "Group", color: "#d946ef", kind: "node", shape: "pill" },
-  serviceAccount: { label: "Svc", color: "#fbbf24", kind: "node", shape: "dot" },
-  vulnerability: { label: "Vuln", color: "#ef4444", kind: "node", shape: "diamond" },
-  misconfiguration: { label: "Config", color: "#f97316", kind: "node", shape: "diamond" },
-  credential: { label: "Cred", color: "#f59e0b", kind: "node", shape: "dot" },
-  tool: { label: "Tool", color: "#a855f7", kind: "node", shape: "pill" },
+  provider: { label: "Provider", color: "#71717a", layer: "infra", kind: "node", shape: "dot" },
+  agent: { label: "Agent", color: "#10b981", layer: "orchestration", kind: "node", shape: "dot" },
+  sharedServer: { label: "Shared", color: "#22d3ee", layer: "mcp_server", kind: "node", shape: "square" },
+  server: { label: "Server", color: "#3b82f6", layer: "mcp_server", kind: "node", shape: "square" },
+  package: { label: "Package", color: "#52525b", layer: "package", kind: "node", shape: "pill" },
+  model: { label: "Model", color: "#8b5cf6", layer: "asset", kind: "node", shape: "pill" },
+  dataset: { label: "Dataset", color: "#06b6d4", layer: "asset", kind: "node", shape: "pill" },
+  container: { label: "Container", color: "#6366f1", layer: "infra", kind: "node", shape: "square" },
+  cloudResource: { label: "Cloud", color: "#0ea5e9", layer: "infra", kind: "node", shape: "square" },
+  environment: { label: "Env", color: "#14b8a6", layer: "infra", kind: "node", shape: "square" },
+  fleet: { label: "Fleet", color: "#22d3ee", layer: "infra", kind: "node", shape: "square" },
+  cluster: { label: "Cluster", color: "#38bdf8", layer: "infra", kind: "node", shape: "square" },
+  user: { label: "User", color: "#34d399", layer: "user", kind: "node", shape: "dot" },
+  group: { label: "Group", color: "#d946ef", layer: "identity", kind: "node", shape: "pill" },
+  serviceAccount: { label: "Svc", color: "#fbbf24", layer: "identity", kind: "node", shape: "dot" },
+  vulnerability: { label: "Vuln", color: "#ef4444", layer: "finding", kind: "node", shape: "diamond" },
+  misconfiguration: { label: "Config", color: "#f97316", layer: "finding", kind: "node", shape: "diamond" },
+  credential: { label: "Cred", color: "#f59e0b", layer: "identity", kind: "node", shape: "dot" },
+  tool: { label: "Tool", color: "#a855f7", layer: "tool", kind: "node", shape: "pill" },
 };
 
 const RELATIONSHIP_LEGEND_ORDER = [

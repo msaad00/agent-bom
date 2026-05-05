@@ -1,6 +1,6 @@
 /** Shared API response and request contracts. */
 
-import type { UnifiedEdge, UnifiedGraphData, UnifiedNode } from "./graph-schema";
+import type { AttackPath, UnifiedEdge, UnifiedGraphData, UnifiedNode } from "./graph-schema";
 
 export type JobStatus = "pending" | "running" | "done" | "failed" | "cancelled";
 
@@ -97,6 +97,92 @@ export interface GraphSnapshot {
 
 export interface UnifiedGraphResponse extends UnifiedGraphData {
   pagination: GraphPagination;
+}
+
+export interface FixFirstRiskReason {
+  kind: string;
+  label: string;
+  detail: string;
+}
+
+export interface FixFirstAction {
+  title: string;
+  detail: string;
+  href: string;
+}
+
+export interface FixFirstPathCard {
+  id: string;
+  rank: number;
+  title: string;
+  summary: string;
+  attack_path: AttackPath;
+  sequence_labels: string[];
+  risk_reasons: FixFirstRiskReason[];
+  next_actions: FixFirstAction[];
+  affected: {
+    agents: string[];
+    servers: string[];
+    packages: string[];
+    findings: string[];
+    credentials: string[];
+    tools: string[];
+  };
+}
+
+export interface FixFirstGraphViewResponse {
+  scan_id: string;
+  tenant_id: string;
+  created_at: string;
+  cards: FixFirstPathCard[];
+  summary: {
+    total_paths: number;
+    matched_paths: number;
+    returned_paths: number;
+    highest_risk: number;
+    covered_findings: number;
+    node_count: number;
+    edge_count: number;
+  };
+  focus: {
+    cve: string;
+    package: string;
+    agent: string;
+  };
+}
+
+export interface GraphQueryRequest {
+  roots: string[];
+  scan_id?: string | undefined;
+  direction?: "forward" | "reverse" | "both" | undefined;
+  max_depth?: number | undefined;
+  max_nodes?: number | undefined;
+  max_edges?: number | undefined;
+  timeout_ms?: number | undefined;
+  traversable_only?: boolean | undefined;
+  static_only?: boolean | undefined;
+  dynamic_only?: boolean | undefined;
+  include_roots?: boolean | undefined;
+  include_attack_paths?: boolean | undefined;
+  min_severity?: string | undefined;
+  entity_types?: string[] | undefined;
+  relationship_types?: string[] | undefined;
+  compliance_prefixes?: string[] | undefined;
+  data_sources?: string[] | undefined;
+}
+
+export interface GraphQueryResponse extends UnifiedGraphData {
+  roots: string[];
+  direction: "forward" | "reverse" | "both";
+  max_depth: number;
+  max_nodes: number;
+  max_edges: number;
+  timeout_ms: number;
+  budget: Record<string, number>;
+  truncated: boolean;
+  missing_roots: string[];
+  depth_by_node: Record<string, number>;
+  filters: Record<string, unknown>;
 }
 
 export interface GraphImpactResponse {

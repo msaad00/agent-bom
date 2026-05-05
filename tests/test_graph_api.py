@@ -414,6 +414,17 @@ class TestGraphEndpointLogic:
         assert attack_paths[0].summary == ""
         assert attack_paths[0].tool_exposure == []
 
+        effective_scan_id, created_at, global_paths, total = store.attack_paths(
+            tenant_id="default",
+            scan_id="attack-path-scan",
+            offset=0,
+            limit=10,
+        )
+        assert effective_scan_id == "attack-path-scan"
+        assert created_at
+        assert total == 1
+        assert global_paths[0].target == "vuln:cve"
+
     def test_sqlite_graph_store_attack_paths_round_trip_summary_and_tools(self, tmp_path):
         store = SQLiteGraphStore(tmp_path / "graph.db")
         graph = UnifiedGraph(scan_id="attack-path-fields", tenant_id="default")
@@ -779,6 +790,11 @@ class _RecordingGraphStore:
         self.calls.append(("attack_paths_for_sources", tenant_id, scan_id, tuple(sorted(source_ids))))
         return [ap for ap in self.graph.attack_paths if ap.source in source_ids]
 
+    def attack_paths(self, *, tenant_id: str = "", scan_id: str = "", offset: int = 0, limit: int = 100):
+        self.calls.append(("attack_paths", tenant_id, scan_id, offset, limit))
+        paths = sorted(self.graph.attack_paths, key=lambda path: (-path.composite_risk, path.source, path.target))
+        return self.graph.scan_id, self.graph.created_at, paths[offset : offset + limit], len(paths)
+
     def node_context(self, *, tenant_id: str = "", scan_id: str = "", node_id: str):
         self.calls.append(("node_context", tenant_id, scan_id, node_id))
         node = self.graph.get_node(node_id)
@@ -883,8 +899,50 @@ class TestGraphStoreBackendSelection:
         assert body["attack_paths"][0]["tool_exposure"] == ["run_shell"]
         assert any(call[0] == "latest_snapshot_id" for call in recording_graph_store.calls)
         assert any(call[0] == "page_nodes" for call in recording_graph_store.calls)
-        assert any(call[0] == "attack_paths_for_sources" for call in recording_graph_store.calls)
-        assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
+
+    def test_fix_first_graph_view_returns_ranked_operator_cards(self, recording_graph_store):
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:a:fs", entity_type=EntityType.SERVER, label="mcp-fs"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="pkg:npm:express", entity_type=EntityType.PACKAGE, label="express"))
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="vuln:cve",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-2026-1",
+                severity="critical",
+                risk_score=9.8,
+            )
+        )
+        recording_graph_store.graph.attack_paths.append(
+            AttackPath(
+                source="agent:a",
+                target="vuln:cve",
+                hops=["agent:a", "server:a:fs", "pkg:npm:express", "vuln:cve"],
+                edges=["uses", "depends_on", "vulnerable_to"],
+                composite_risk=94.0,
+                summary="agent-a reaches shell-capable MCP server before CVE-2026-1",
+                credential_exposure=["AWS_SECRET_ACCESS_KEY"],
+                tool_exposure=["run_shell"],
+                vuln_ids=["CVE-2026-1"],
+            )
+        )
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/views/fix-first", params={"scan_id": "store-scan", "cve": "CVE-2026-1"})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["summary"]["matched_paths"] == 1
+        assert body["cards"][0]["rank"] == 1
+        assert body["cards"][0]["title"].startswith("CVE-2026-1 via agent-a")
+        assert body["cards"][0]["affected"]["agents"] == ["agent-a"]
+        assert body["cards"][0]["affected"]["packages"] == ["express"]
+        assert {reason["kind"] for reason in body["cards"][0]["risk_reasons"]} >= {
+            "critical_reach",
+            "credential_exposure",
+            "tool_reach",
+        }
+        assert body["cards"][0]["next_actions"][0]["href"] == "/findings?cve=CVE-2026-1"
+        assert any(call[0] == "load_graph" for call in recording_graph_store.calls)
 
     def test_graph_overview_filtered_page_stays_store_backed(self, recording_graph_store):
         recording_graph_store.graph.add_node(
@@ -917,6 +975,32 @@ class TestGraphStoreBackendSelection:
 
         assert response.status_code == 422
         assert "Unsupported graph entity type" in response.json()["detail"]
+
+    def test_global_attack_paths_are_not_limited_to_node_page(self, recording_graph_store):
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="vuln:cve", entity_type=EntityType.VULNERABILITY, label="CVE-2026-1"))
+        recording_graph_store.graph.attack_paths.append(
+            AttackPath(
+                source="agent:a",
+                target="vuln:cve",
+                hops=["agent:a", "server:s", "vuln:cve"],
+                edges=["uses", "vulnerable_to"],
+                composite_risk=9.8,
+                summary="agent-a reaches CVE-2026-1 outside the current node page",
+                tool_exposure=["run_shell"],
+            )
+        )
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/attack-paths", params={"limit": 1})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["attack_paths"][0]["summary"] == "agent-a reaches CVE-2026-1 outside the current node page"
+        assert {node["id"] for node in body["nodes"]} == {"agent:a", "server:s", "vuln:cve"}
+        assert body["pagination"]["total"] == 1
+        assert any(call[0] == "attack_paths" for call in recording_graph_store.calls)
+        assert any(call[0] == "nodes_by_ids" for call in recording_graph_store.calls)
 
     def test_graph_presets_use_pluggable_store(self, recording_graph_store):
         client = TestClient(app)

@@ -23,6 +23,7 @@ from agent_bom.graph import (
     EntityType,
     GraphFilterOptions,
     GraphLayout,
+    GraphSemanticLayer,
     InteractionRisk,
     LegendEntry,
     NodeDimensions,

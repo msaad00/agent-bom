@@ -142,6 +142,10 @@ flowchart TB
     Platform --> Postgres
     Platform -. optional export .-> Sinks
     Runtime --> Platform
+    Endpoints --> Platform
+    IdP -. OIDC / SAML .-> Platform
+    Platform -. inventory reads .-> Cloud
+    Runtime -. MCP relay .-> Remote
 ```
 
 Truth block:

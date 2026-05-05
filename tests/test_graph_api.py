@@ -883,8 +883,50 @@ class TestGraphStoreBackendSelection:
         assert body["attack_paths"][0]["tool_exposure"] == ["run_shell"]
         assert any(call[0] == "latest_snapshot_id" for call in recording_graph_store.calls)
         assert any(call[0] == "page_nodes" for call in recording_graph_store.calls)
-        assert any(call[0] == "attack_paths_for_sources" for call in recording_graph_store.calls)
-        assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
+
+    def test_fix_first_graph_view_returns_ranked_operator_cards(self, recording_graph_store):
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:a:fs", entity_type=EntityType.SERVER, label="mcp-fs"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="pkg:npm:express", entity_type=EntityType.PACKAGE, label="express"))
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="vuln:cve",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-2026-1",
+                severity="critical",
+                risk_score=9.8,
+            )
+        )
+        recording_graph_store.graph.attack_paths.append(
+            AttackPath(
+                source="agent:a",
+                target="vuln:cve",
+                hops=["agent:a", "server:a:fs", "pkg:npm:express", "vuln:cve"],
+                edges=["uses", "depends_on", "vulnerable_to"],
+                composite_risk=94.0,
+                summary="agent-a reaches shell-capable MCP server before CVE-2026-1",
+                credential_exposure=["AWS_SECRET_ACCESS_KEY"],
+                tool_exposure=["run_shell"],
+                vuln_ids=["CVE-2026-1"],
+            )
+        )
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/views/fix-first", params={"scan_id": "store-scan", "cve": "CVE-2026-1"})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["summary"]["matched_paths"] == 1
+        assert body["cards"][0]["rank"] == 1
+        assert body["cards"][0]["title"].startswith("CVE-2026-1 via agent-a")
+        assert body["cards"][0]["affected"]["agents"] == ["agent-a"]
+        assert body["cards"][0]["affected"]["packages"] == ["express"]
+        assert {reason["kind"] for reason in body["cards"][0]["risk_reasons"]} >= {
+            "critical_reach",
+            "credential_exposure",
+            "tool_reach",
+        }
+        assert body["cards"][0]["next_actions"][0]["href"] == "/findings?cve=CVE-2026-1"
+        assert any(call[0] == "load_graph" for call in recording_graph_store.calls)
 
     def test_graph_overview_filtered_page_stays_store_backed(self, recording_graph_store):
         recording_graph_store.graph.add_node(

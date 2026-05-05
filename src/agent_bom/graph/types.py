@@ -54,8 +54,8 @@ class RelationshipType(str, Enum):
     AFFECTS = "affects"  # vulnerability → package (reverse)
     VULNERABLE_TO = "vulnerable_to"  # package/server → vulnerability
     EXPLOITABLE_VIA = "exploitable_via"  # vulnerability → tool/credential
-    REMEDIATES = "remediates"  # fix_version → vulnerability
-    TRIGGERS = "triggers"  # vulnerability → toxic_combination
+    REMEDIATES = "remediates"  # package/fixed package → vulnerability
+    TRIGGERS = "triggers"  # vulnerability → misconfiguration/risk condition
 
     # ── Lateral movement (computed) ──
     SHARES_SERVER = "shares_server"  # agent ↔ agent

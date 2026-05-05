@@ -175,6 +175,32 @@ def _result_has_runtime_signals(result: dict[str, Any]) -> bool:
     )
 
 
+def _tenant_has_proxy_alerts(tenant_id: str) -> bool:
+    """Return True when the in-process proxy-alert ring buffer holds any
+    alerts for ``tenant_id``.
+
+    Proxy alerts ingested via ``/v1/proxy/audit`` land in
+    ``agent_bom.api.routes.proxy._proxy_alerts`` — a bounded deque that is
+    independent of the scan-job result store and the gateway policy_store.
+    The ingestion path tags each record with ``tenant_id`` so this helper
+    can scope correctly on multi-tenant deployments. Older records that
+    pre-date the tagging carry no ``tenant_id``; for those we fall back to
+    a fleet-wide signal so a recently-ingested alert still surfaces in
+    posture even if its tenant attribution was lost on restart.
+    """
+    try:
+        from agent_bom.api.routes.proxy import _proxy_alerts
+    except ImportError:  # pragma: no cover — defensive
+        return False
+    if not _proxy_alerts:
+        return False
+    for alert in _proxy_alerts:
+        alert_tenant = alert.get("tenant_id")
+        if alert_tenant is None or alert_tenant == tenant_id:
+            return True
+    return False
+
+
 def _derive_deployment_context(request: Request, jobs: list[Any]) -> dict[str, Any]:
     tenant_id = _tenant_id(request)
     scan_sources: set[str] = set()
@@ -211,8 +237,17 @@ def _derive_deployment_context(request: Request, jobs: list[Any]) -> dict[str, A
     policies = policy_store.list_policies(tenant_id=tenant_id)
     policy_audit = policy_store.list_audit_entries(limit=1, tenant_id=tenant_id)
     has_gateway = bool(policies)
-    has_proxy = bool(policy_audit) or has_runtime_signals
-    has_traces = bool(policy_audit) or has_runtime_signals
+
+    # has_proxy must also flip when a runtime proxy has reported alerts — the
+    # /v1/proxy/audit ingestion path lands in an in-process ring buffer that's
+    # independent of scan-result correlations and policy_store entries. Without
+    # this signal, sites that ingest proxy alerts via the dedicated endpoint
+    # see "no proxy data" on the dashboard even when alerts are sitting in
+    # /v1/proxy/status. (audit P1-B)
+    has_proxy_alerts = _tenant_has_proxy_alerts(tenant_id)
+
+    has_proxy = bool(policy_audit) or has_runtime_signals or has_proxy_alerts
+    has_traces = bool(policy_audit) or has_runtime_signals or has_proxy_alerts
     has_mesh = (
         has_fleet_ingest
         or bool(scan_count and has_agent_context and has_mcp_context)

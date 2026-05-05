@@ -62,7 +62,7 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/postgres_|src/agent_bom/api/storage_schema\.py|tests/test_postgres_|\.github/workflows/ci\.yml$)'; then
             postgres=true
           fi
-          if printf '%s\n' "$changed" | grep -Eq '^(ui/|action\.yml|contracts/|src/agent_bom/api/(routes/|models\.py|server\.py)|src/agent_bom/models\.py|\.github/workflows/ci\.yml$)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(ui/|action\.yml|contracts/|src/agent_bom/(api/(routes/|models\.py|server\.py)|graph/|context_graph\.py|graph_schema\.py)|src/agent_bom/models\.py|\.github/workflows/ci\.yml$)'; then
             ui=true
           fi
           echo "action=${action}" >> "$GITHUB_OUTPUT"
@@ -319,6 +319,48 @@ jobs:
           cd ui
           npm run headers:check
 
+      - name: Set up Python for graph schema codegen
+        uses: ./.github/actions/setup-python
+        with:
+          python-version: '3.11'
+
+      - name: Install API dependencies for graph schema codegen
+        run: uv sync --frozen --extra dev --extra api
+
+      - name: Graph schema codegen — Python ↔ TypeScript drift gate
+        # Source of truth: agent_bom.graph.types (#2255).
+        # Boots the API on a fresh port, regenerates ui/lib/graph-schema
+        # .generated.ts, and fails the build if the checked-in copy drifts.
+        # The error message tells the dev to run the codegen locally.
+        run: |
+          set -euo pipefail
+          uv run uvicorn agent_bom.api.server:app \
+            --host 127.0.0.1 --port 8422 --log-level warning \
+            > /tmp/codegen-api.log 2>&1 &
+          API_PID=$!
+          trap 'kill "$API_PID" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8422/health >/dev/null 2>&1; then
+              break
+            fi
+            sleep 0.5
+          done
+          if ! curl -fsS http://127.0.0.1:8422/health >/dev/null 2>&1; then
+            echo "::error::API never became ready on 127.0.0.1:8422 — cannot run graph-schema codegen drift gate"
+            tail -n 50 /tmp/codegen-api.log || true
+            exit 1
+          fi
+          cd ui
+          AGENT_BOM_GRAPH_SCHEMA_URL=http://127.0.0.1:8422/v1/graph/schema \
+            npm run codegen:graph-schema
+          if ! git diff --exit-code lib/graph-schema.generated.ts; then
+            echo ""
+            echo "::error::ui/lib/graph-schema.generated.ts is out of date relative to /v1/graph/schema."
+            echo "Run \`cd ui && npm run codegen:graph-schema\` locally and commit the result."
+            echo "Issue: https://github.com/msaad00/agent-bom/issues/2255"
+            exit 1
+          fi
+
       - name: UI tests
         run: |
           cd ui
@@ -499,6 +541,36 @@ jobs:
           else
             uv run pytest tests/ -q --tb=short -m "not network"
           fi
+
+      - name: Graph accuracy guards (#2259 — round-trip + edge-count + visual-diff)
+        # Surfaces a re-baseline pointer when the graph builder drifts.  The
+        # underlying tests are already executed by the previous step; this job
+        # re-runs *just* the three guard files so the CI summary names them
+        # clearly and points operators at scripts/rebaseline_graph_edges.py.
+        if: always()
+        run: |
+          set +e
+          uv run pytest \
+            tests/test_graph_roundtrip.py \
+            tests/test_graph_edge_counts.py \
+            tests/test_graph_visual_snapshot.py \
+            -v --tb=short
+          status=$?
+          if [ $status -ne 0 ]; then
+            echo ""
+            echo "=========================================================="
+            echo "Graph accuracy guards FAILED."
+            echo ""
+            echo "If this drift is intentional (graph builder changed shape),"
+            echo "regenerate the recorded fixtures and commit them:"
+            echo ""
+            echo "    Re-baseline: python scripts/rebaseline_graph_edges.py"
+            echo ""
+            echo "Otherwise this is a real regression — fix the builder."
+            echo "=========================================================="
+          fi
+          uv run python scripts/rebaseline_graph_edges.py --dry-run
+          exit $status
 
       - name: DCM scanner self-check (meta-recursive)
         # Runs agent-bom's own DCM scanner against agent-bom's own DCM migrations.

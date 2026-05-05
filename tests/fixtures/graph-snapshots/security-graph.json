@@ -1,0 +1,123 @@
+{
+  "edge_count": 10,
+  "edge_kind_counts": {
+    "uses": 8,
+    "vulnerable_to": 2
+  },
+  "edges": [
+    {
+      "kind": "uses",
+      "source": "agent:project:",
+      "target": "server:project::"
+    },
+    {
+      "kind": "uses",
+      "source": "agent:project:",
+      "target": "server:project::.clusterfuzzlite"
+    },
+    {
+      "kind": "uses",
+      "source": "agent:project:",
+      "target": "server:project::dashboard"
+    },
+    {
+      "kind": "uses",
+      "source": "agent:project:",
+      "target": "server:project::deploy/snowflake"
+    },
+    {
+      "kind": "uses",
+      "source": "agent:project:",
+      "target": "server:project::examples/first-run-ai-stack/services/browser-helper"
+    },
+    {
+      "kind": "uses",
+      "source": "agent:project:",
+      "target": "server:project::examples/first-run-ai-stack/services/research-mcp"
+    },
+    {
+      "kind": "uses",
+      "source": "agent:project:",
+      "target": "server:project::sdks/typescript"
+    },
+    {
+      "kind": "uses",
+      "source": "agent:project:",
+      "target": "server:project::ui"
+    },
+    {
+      "kind": "vulnerable_to",
+      "source": "server:project::",
+      "target": "vuln:OSV-2022-1074"
+    },
+    {
+      "kind": "vulnerable_to",
+      "source": "server:project::",
+      "target": "vuln:OSV-2022-715"
+    }
+  ],
+  "node_count": 11,
+  "node_kind_counts": {
+    "agent": 1,
+    "server": 8,
+    "vulnerability": 2
+  },
+  "nodes": [
+    {
+      "id": "agent:project:",
+      "kind": "agent",
+      "label": "project:"
+    },
+    {
+      "id": "server:project::",
+      "kind": "server",
+      "label": ""
+    },
+    {
+      "id": "server:project::.clusterfuzzlite",
+      "kind": "server",
+      "label": ".clusterfuzzlite"
+    },
+    {
+      "id": "server:project::dashboard",
+      "kind": "server",
+      "label": "dashboard"
+    },
+    {
+      "id": "server:project::deploy/snowflake",
+      "kind": "server",
+      "label": "deploy/snowflake"
+    },
+    {
+      "id": "server:project::examples/first-run-ai-stack/services/browser-helper",
+      "kind": "server",
+      "label": "examples/first-run-ai-stack/services/browser-helper"
+    },
+    {
+      "id": "server:project::examples/first-run-ai-stack/services/research-mcp",
+      "kind": "server",
+      "label": "examples/first-run-ai-stack/services/research-mcp"
+    },
+    {
+      "id": "server:project::sdks/typescript",
+      "kind": "server",
+      "label": "sdks/typescript"
+    },
+    {
+      "id": "server:project::ui",
+      "kind": "server",
+      "label": "ui"
+    },
+    {
+      "id": "vuln:OSV-2022-1074",
+      "kind": "vulnerability",
+      "label": "OSV-2022-1074"
+    },
+    {
+      "id": "vuln:OSV-2022-715",
+      "kind": "vulnerability",
+      "label": "OSV-2022-715"
+    }
+  ],
+  "schema": "agent-bom.graph-snapshot/v1"
+}

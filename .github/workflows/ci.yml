@@ -500,6 +500,36 @@ jobs:
             uv run pytest tests/ -q --tb=short -m "not network"
           fi
 
+      - name: Graph accuracy guards (#2259 — round-trip + edge-count + visual-diff)
+        # Surfaces a re-baseline pointer when the graph builder drifts.  The
+        # underlying tests are already executed by the previous step; this job
+        # re-runs *just* the three guard files so the CI summary names them
+        # clearly and points operators at scripts/rebaseline_graph_edges.py.
+        if: always()
+        run: |
+          set +e
+          uv run pytest \
+            tests/test_graph_roundtrip.py \
+            tests/test_graph_edge_counts.py \
+            tests/test_graph_visual_snapshot.py \
+            -v --tb=short
+          status=$?
+          if [ $status -ne 0 ]; then
+            echo ""
+            echo "=========================================================="
+            echo "Graph accuracy guards FAILED."
+            echo ""
+            echo "If this drift is intentional (graph builder changed shape),"
+            echo "regenerate the recorded fixtures and commit them:"
+            echo ""
+            echo "    Re-baseline: python scripts/rebaseline_graph_edges.py"
+            echo ""
+            echo "Otherwise this is a real regression — fix the builder."
+            echo "=========================================================="
+          fi
+          uv run python scripts/rebaseline_graph_edges.py --dry-run
+          exit $status
+
       - name: DCM scanner self-check (meta-recursive)
         # Runs agent-bom's own DCM scanner against agent-bom's own DCM migrations.
         # Proves the scanner is alive, its rules fire on real SQL, and our own

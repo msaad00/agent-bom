@@ -256,8 +256,8 @@ single onboarding bundle that can be:
 - assembled into `.pkg` and `.msi` installers from the same generated bundle
 - published into a Homebrew tap via the shipped formula renderer
 
-That gives you one operator story without pretending every workload needs the
-same runtime path.
+That gives you one operator story while keeping proxy, gateway, and fleet as
+separate runtime choices.
 
 For the post-install maintenance path around proxy policy-signing key rotation
 and cert-manager-backed webhook certificate renewal, see
@@ -377,6 +377,6 @@ The chooser table at the top of this page is the canonical entry. After that:
 - runtime surface decision lives in [When To Use Proxy vs Gateway vs Fleet](proxy-vs-gateway-vs-fleet.md)
 - backend choice (Postgres / ClickHouse / Snowflake) is documented in [Backend Parity Matrix](backend-parity.md) and [Backend and Security-Lake Strategy](backend-and-security-lakes.md)
 - the deeper data-model and store mapping is in [Control-Plane Data Model and Store Parity](control-plane-data-model.md)
-- the API + UI control-plane image and operator split is in [Packaged API + UI Control Plane](control-plane-helm.md) and [Hosted Product Control-Plane Spec](../architecture/hosted-product-spec.md)
+- the API + UI control-plane image and operator split is in [Packaged API + UI Control Plane](control-plane-helm.md) and [Self-Hosted Product Architecture](../architecture/self-hosted-product-architecture.md)
 
 Everything else in the deployment section is reference material — open it only when your platform team needs that specific detail.

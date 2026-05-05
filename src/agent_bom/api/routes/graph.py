@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 
 from agent_bom.api.stores import _get_graph_store
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
-from agent_bom.graph import SEVERITY_RANK, EntityType, GraphFilterOptions, GraphSemanticLayer, RelationshipType, UnifiedGraph
+from agent_bom.graph import SEVERITY_RANK, AttackPath, EntityType, GraphFilterOptions, GraphSemanticLayer, RelationshipType, UnifiedGraph
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
@@ -326,6 +326,7 @@ def _fix_first_card_for_path(graph: UnifiedGraph, path, rank: int) -> dict:
         "title": " ".join(title_parts),
         "summary": path.summary or "Review this path before opening the full topology graph.",
         "attack_path": path.to_dict(),
+        "nodes": [graph.nodes[hop].to_dict() for hop in path.hops if hop in graph.nodes],
         "sequence_labels": sequence,
         "risk_reasons": _risk_reasons_for_path(graph, path),
         "next_actions": _next_actions_for_path(graph, path),
@@ -369,6 +370,130 @@ def _path_matches_focus(graph: UnifiedGraph, path, *, cve: str, package: str, ag
         if agent_n not in agent_labels:
             return False
     return True
+
+
+def _is_finding_like_node(node) -> bool:
+    entity_type = node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
+    return entity_type in {EntityType.VULNERABILITY.value, EntityType.MISCONFIGURATION.value}
+
+
+def _rel_value(edge) -> str:
+    return edge.relationship.value if hasattr(edge.relationship, "value") else str(edge.relationship)
+
+
+def _node_type_value(node) -> str:
+    return node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
+
+
+def _node_risk_100(node) -> float:
+    risk = float(getattr(node, "risk_score", 0.0) or 0.0)
+    if risk <= 10.0:
+        risk *= 10.0
+    if risk <= 0:
+        risk = float(SEVERITY_RANK.get(str(getattr(node, "severity", "") or "").lower(), 0) * 20)
+    return max(0.0, min(100.0, risk))
+
+
+def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
+    """Derive fix-first paths when a snapshot lacks materialised path rows.
+
+    Older snapshots and some stores have rich topology but no `attack_paths`
+    records. Security operators still need the obvious chain:
+    agent -> MCP server -> package/server -> vulnerability, enriched with the
+    server's credential and tool exposure. Keep this deterministic and bounded;
+    stores with first-class path rows remain the source of truth.
+    """
+    if graph.attack_paths:
+        return list(graph.attack_paths)
+
+    incoming: dict[str, list] = {}
+    outgoing: dict[str, list] = {}
+    for edge in graph.edges:
+        incoming.setdefault(edge.target, []).append(edge)
+        outgoing.setdefault(edge.source, []).append(edge)
+
+    paths: list[AttackPath] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    finding_types = {EntityType.VULNERABILITY.value, EntityType.MISCONFIGURATION.value}
+
+    for finding in graph.nodes.values():
+        if _node_type_value(finding) not in finding_types:
+            continue
+        for finding_edge in incoming.get(finding.id, []):
+            if _rel_value(finding_edge) != RelationshipType.VULNERABLE_TO.value:
+                continue
+            vulnerable_source = graph.nodes.get(finding_edge.source)
+            if vulnerable_source is None:
+                continue
+
+            server_ids: list[str] = []
+            if _node_type_value(vulnerable_source) == EntityType.SERVER.value:
+                server_ids.append(vulnerable_source.id)
+            else:
+                for source_edge in incoming.get(vulnerable_source.id, []):
+                    if _rel_value(source_edge) == RelationshipType.DEPENDS_ON.value:
+                        source_parent = graph.nodes.get(source_edge.source)
+                        if source_parent is not None and _node_type_value(source_parent) == EntityType.SERVER.value:
+                            server_ids.append(source_parent.id)
+
+            for server_id in server_ids:
+                agent_ids = [
+                    edge.source
+                    for edge in incoming.get(server_id, [])
+                    if _rel_value(edge) == RelationshipType.USES.value
+                    and graph.nodes.get(edge.source) is not None
+                    and _node_type_value(graph.nodes[edge.source])
+                    in {EntityType.AGENT.value, EntityType.USER.value, EntityType.SERVICE_ACCOUNT.value}
+                ]
+                if not agent_ids:
+                    agent_ids = [server_id]
+
+                credentials = [
+                    graph.nodes[edge.target].label
+                    for edge in outgoing.get(server_id, [])
+                    if _rel_value(edge) == RelationshipType.EXPOSES_CRED.value and edge.target in graph.nodes
+                ]
+                tools = [
+                    graph.nodes[edge.target].label
+                    for edge in outgoing.get(server_id, [])
+                    if _rel_value(edge) == RelationshipType.PROVIDES_TOOL.value and edge.target in graph.nodes
+                ]
+
+                for agent_id in sorted(set(agent_ids)):
+                    hop_ids = [agent_id, server_id]
+                    if vulnerable_source.id != server_id:
+                        hop_ids.append(vulnerable_source.id)
+                    hop_ids.append(finding.id)
+                    key = (agent_id, server_id, vulnerable_source.id, finding.id)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+
+                    risk = _node_risk_100(finding)
+                    risk += min(10.0, len(credentials) * 3.0)
+                    risk += min(10.0, len(tools) * 0.75)
+                    paths.append(
+                        AttackPath(
+                            source=agent_id,
+                            target=finding.id,
+                            hops=hop_ids,
+                            edges=[],
+                            composite_risk=round(min(100.0, risk), 2),
+                            summary=(
+                                "Derived from graph topology: vulnerable package/server is reachable from an agent "
+                                "and inherits the server's credential/tool exposure."
+                            ),
+                            credential_exposure=sorted(set(credentials)),
+                            tool_exposure=sorted(set(tools)),
+                            vuln_ids=[finding.label or finding.id],
+                        )
+                    )
+
+    return sorted(
+        paths,
+        key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),
+        reverse=True,
+    )
 
 
 def _bounded_env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
@@ -474,7 +599,7 @@ def _node_matches_query(
         entity_type = node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
         if entity_type not in entity_types:
             return False
-    if min_severity_rank and SEVERITY_RANK.get(node.severity.lower(), 0) < min_severity_rank:
+    if min_severity_rank and _is_finding_like_node(node) and SEVERITY_RANK.get(node.severity.lower(), 0) < min_severity_rank:
         return False
     if compliance_prefixes:
         prefixes = {tag.split("-")[0].upper() if "-" in tag else tag.upper() for tag in node.compliance_tags}
@@ -579,7 +704,7 @@ async def get_graph(
         paged_nodes, pagination = _paginate(all_nodes, offset, limit)
         paged_ids = {n.id for n in paged_nodes}
         paged_edges = [e for e in graph.edges if e.source in paged_ids and e.target in paged_ids]
-        attack_paths = [p.to_dict() for p in graph.attack_paths if p.hops and all(hop in paged_ids for hop in p.hops)]
+        attack_paths = [p.to_dict() for p in _derived_attack_paths(graph) if p.hops and all(hop in paged_ids for hop in p.hops)]
         interaction_risks = [
             r.to_dict() for r in graph.interaction_risks if r.agents and all(f"agent:{agent_name}" in paged_ids for agent_name in r.agents)
         ]
@@ -616,7 +741,7 @@ async def get_graph(
         tenant_id=tenant,
         node_ids=paged_ids,
     )
-    attack_paths = await _graph_store_call(
+    source_attack_paths = await _graph_store_call(
         graph_store.attack_paths_for_sources,
         scan_id=effective_scan_id,
         tenant_id=tenant,
@@ -628,7 +753,7 @@ async def get_graph(
         "created_at": created_at,
         "nodes": [n.to_dict() for n in paged_nodes],
         "edges": [e.to_dict() for e in paged_edges],
-        "attack_paths": [path.to_dict() for path in attack_paths],
+        "attack_paths": [path.to_dict() for path in source_attack_paths],
         "interaction_risks": [],
         "stats": await _graph_store_call(
             graph_store.snapshot_stats,
@@ -670,8 +795,9 @@ async def get_fix_first_graph_view(
         scan_id=requested_scan_id,
         tenant_id=tenant,
     )
+    available_paths = _derived_attack_paths(graph)
     ranked_paths = sorted(
-        (path for path in graph.attack_paths if _path_matches_focus(graph, path, cve=cve, package=package, agent=agent)),
+        (path for path in available_paths if _path_matches_focus(graph, path, cve=cve, package=package, agent=agent)),
         key=lambda path: (path.composite_risk, len(path.hops), len(path.credential_exposure), len(path.tool_exposure)),
         reverse=True,
     )
@@ -683,7 +809,7 @@ async def get_fix_first_graph_view(
         "created_at": graph.created_at,
         "cards": cards,
         "summary": {
-            "total_paths": len(graph.attack_paths),
+            "total_paths": len(available_paths),
             "matched_paths": len(ranked_paths),
             "returned_paths": len(cards),
             "highest_risk": cards[0]["attack_path"]["composite_risk"] if cards else 0.0,
@@ -732,6 +858,16 @@ async def get_graph_attack_paths(
         offset=offset,
         limit=limit,
     )
+    if total == 0:
+        graph = await _graph_store_call(
+            graph_store.load_graph,
+            scan_id=effective_scan_id,
+            tenant_id=tenant,
+        )
+        derived_paths = _derived_attack_paths(graph)
+        total = len(derived_paths)
+        paths = derived_paths[offset : offset + limit]
+        created_at = graph.created_at
     hop_ids = {hop for path in paths for hop in path.hops}
     nodes = await _graph_store_call(
         graph_store.nodes_by_ids,
@@ -739,6 +875,17 @@ async def get_graph_attack_paths(
         tenant_id=tenant,
         node_ids=hop_ids,
     )
+    stats = await _graph_store_call(
+        graph_store.snapshot_stats,
+        scan_id=effective_scan_id,
+        tenant_id=tenant,
+    )
+    if total and int(stats.get("attack_path_count") or 0) == 0:
+        stats = {
+            **stats,
+            "attack_path_count": total,
+            "max_attack_path_risk": max((path.composite_risk for path in paths), default=0.0),
+        }
     return {
         "scan_id": effective_scan_id,
         "tenant_id": tenant,
@@ -747,11 +894,7 @@ async def get_graph_attack_paths(
         "edges": [],
         "attack_paths": [path.to_dict() for path in paths],
         "interaction_risks": [],
-        "stats": await _graph_store_call(
-            graph_store.snapshot_stats,
-            scan_id=effective_scan_id,
-            tenant_id=tenant,
-        ),
+        "stats": stats,
         "pagination": _page_meta(total, offset, limit),
     }
 

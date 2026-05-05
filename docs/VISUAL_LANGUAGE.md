@@ -1,6 +1,8 @@
 # Visual language for agent-bom docs
 
-Three media, used deliberately. Picking the right one keeps the README
+Three media, used deliberately. agent-bom is one product with multiple
+surfaces; images should show the surface being discussed without implying a
+separate product or unshipped capability. Picking the right medium keeps the README
 readable, mobile-friendly, and easy to keep in sync with code.
 
 For product screenshots, the source of truth is the packaged Next.js
@@ -22,12 +24,20 @@ Current SVG inventory:
 | File | What it shows | Where it lives in the README |
 |---|---|---|
 | `logo-{light,dark}.svg` | Brand mark | hero |
-| `blast-radius-{light,dark}.svg` | Package → CVE → MCP → agent → credentials → tools | hero, under tagline |
+| `blast-radius-{light,dark}.svg` | CVE, package, MCP server, agent, credentials, and tools in one blast-radius path | hero, under tagline |
 | `scan-pipeline-{light,dark}.svg` | 5-stage pipeline (discover → scan → analyze → report → enforce) | "How a scan moves" |
 | `engine-internals-{light,dark}.svg` | Inside the scanner | available for deeper architecture docs; not currently embedded in the README |
 | `compliance-{light,dark}.svg` | Finding → control → evidence packet | Compliance section |
-| `dashboard-live.png` `dashboard-paths-live.png` `mesh-live.png` `remediation-live.png` | Live packaged Next.js dashboard screenshots | Product views |
 | `demo-latest.gif` | Terminal demo (1.04MB after compression) | "Try the demo" |
+
+Current PNG inventory:
+
+| File | What it shows | Where it lives in the README |
+|---|---|---|
+| `dashboard-live.png` | Packaged Next.js dashboard risk overview | Product views |
+| `dashboard-paths-live.png` | Packaged Next.js attack paths and exposure view | Product views |
+| `mesh-live.png` | Agent mesh graph surface | Product views |
+| `remediation-live.png` | Fix-first remediation surface | Product views |
 
 ## Mermaid — for code-true flows that evolve
 

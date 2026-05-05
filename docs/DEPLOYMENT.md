@@ -1,18 +1,22 @@
 # Deployment & Scalability Architecture
 
-## 🎯 Overview
+## Overview
 
-agent-bom is designed to scale from local CLI usage to enterprise-wide AI infrastructure scanning. This document explains deployment patterns, containerization, CI/CD integration, and cloud-native architectures.
+agent-bom is one product with multiple deployable surfaces: local CLI, CI
+scanner, container image, self-hosted API/UI, fleet sync, proxy, gateway, MCP
+server mode, and Snowflake-specific compatibility views. This document covers
+the maintained deployment shapes. For the canonical chooser, start with
+[`site-docs/deployment/overview.md`](../site-docs/deployment/overview.md).
 
 ---
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
 ### How agent-bom Works
 
 ```
 ┌─────────────────────────────────────────┐
-│  agent-bom (AI-BOM Generator + Scanner) │
+│  agent-bom (AI supply-chain scanner)    │
 │  ├─ Discovers MCP/AI agent configs      │
 │  ├─ Extracts packages (+ transitive)    │
 │  ├─ Scans for vulnerabilities (OSV)     │
@@ -39,7 +43,7 @@ That keeps auth, tenant isolation, auditability, and request throttling consiste
 
 ---
 
-## 📦 Deployment Patterns
+## Deployment Patterns
 
 ### 1. Local CLI (Current)
 
@@ -75,7 +79,7 @@ WORKDIR /workspace
 
 # Default command
 ENTRYPOINT ["agent-bom"]
-CMD ["scan", "--help"]
+CMD ["agents", "--help"]
 ```
 
 #### Usage
@@ -88,14 +92,14 @@ docker build -t agent-bom:latest .
 docker run --rm \
   -v $(pwd):/workspace \
   -v ~/.config:/home/abom/.config:ro \
-  agent-bom:latest scan --enrich --output /workspace/report.json
+  agent-bom:latest agents --enrich --output /workspace/report.json
 
 # Scan with environment variables
 docker run --rm \
   -e NVD_API_KEY=your-key \
   -e SNOWFLAKE_ACCOUNT=myaccount \
   -v $(pwd):/workspace \
-  agent-bom:latest scan --enrich
+  agent-bom:latest agents --enrich
 ```
 
 **Pros**: Portable, reproducible, version-locked
@@ -232,7 +236,7 @@ spec:
           - name: agent-bom
             image: agent-bom:latest
             args:
-              - scan
+              - agents
               - --enrich
               - --format
               - json
@@ -269,93 +273,6 @@ spec:
 **Cons**: Kubernetes expertise required
 
 For the maintained Helm chart in `deploy/helm/agent-bom/`, the runtime monitor DaemonSet now includes liveness, readiness, and startup probes by default when enabled, can optionally expose a Prometheus Operator `ServiceMonitor` for `/metrics`, can optionally create an `Ingress` and `PodDisruptionBudget` for the monitor service, and ships with an explicit `NetworkPolicy` egress baseline for DNS plus outbound web traffic instead of `allow-all` egress.
-
----
-
-### 5. AWS Lambda / Cloud Functions (Serverless)
-
-**Use case**: Event-driven scanning, API endpoints
-
-#### Lambda Handler
-
-```python
-import json
-import tempfile
-import os
-from agent_bom.cli import main
-
-def lambda_handler(event, context):
-    """
-    Trigger agent-bom agents from Lambda.
-    Event payload:
-    {
-        "snowflake_account": "myaccount",
-        "enrich": true,
-        "output_bucket": "s3://mybucket/ai-bom/"
-    }
-    """
-
-    # Parse event
-    snowflake_account = event.get('snowflake_account')
-    enrich = event.get('enrich', True)
-    output_bucket = event.get('output_bucket')
-
-    # Run scan
-    with tempfile.TemporaryDirectory() as tmpdir:
-        output_file = os.path.join(tmpdir, 'ai-bom.json')
-
-        # Build CLI args
-        args = ['scan', '--format', 'json', '--output', output_file]
-        if enrich:
-            args.append('--enrich')
-        if snowflake_account:
-            args.extend(['--snowflake-account', snowflake_account])
-
-        # Execute scan
-        main(args)
-
-        # Upload to S3
-        with open(output_file) as f:
-            report = json.load(f)
-
-        # TODO: Upload to S3 using boto3
-
-        return {
-            'statusCode': 200,
-            'body': json.dumps({
-                'message': 'Scan complete',
-                'vulnerabilities': len(report.get('blast_radii', []))
-            })
-        }
-```
-
-#### SAM Template
-
-```yaml
-AWSTemplateFormatVersion: '2010-09-09'
-Transform: AWS::Serverless-2016-10-31
-
-Resources:
-  AgentBomFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: agent-bom-scanner
-      Runtime: python3.11
-      Handler: lambda_function.lambda_handler
-      Timeout: 300
-      MemorySize: 1024
-      Environment:
-        Variables:
-          NVD_API_KEY: !Ref NVDApiKey
-      Events:
-        Schedule:
-          Type: Schedule
-          Properties:
-            Schedule: rate(6 hours)
-```
-
-**Pros**: No infrastructure management, auto-scaling
-**Cons**: 15-minute timeout, cold start latency
 
 ---
 
@@ -430,48 +347,11 @@ Additional env vars: `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_DATABASE`
 
 ## 🌐 Remote Scanning Architectures
 
-### Scanning VMs and Remote Systems
-
-#### 1. SSH-Based Remote Scanning
-
-```python
-# Future: agent-bom/remote_scanner.py
-
-import paramiko
-import tempfile
-
-def scan_remote_vm(hostname, username, key_path):
-    """Scan MCP configs on a remote VM via SSH."""
-
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(hostname, username=username, key_filename=key_path)
-
-    # Copy MCP configs to temp dir
-    with tempfile.TemporaryDirectory() as tmpdir:
-        sftp = ssh.open_sftp()
-        sftp.get('~/.config/claude-desktop/config.json',
-                 f'{tmpdir}/config.json')
-        sftp.close()
-
-        # Scan locally
-        from agent_bom.cli import main
-        main(['scan', '--config-dir', tmpdir])
-
-    ssh.close()
-```
-
-**Usage**:
-```bash
-agent-bom agents --remote ssh://user@vm.example.com --key ~/.ssh/id_rsa
-```
-
-#### 2. Agent-Based Cloud Scanning
+### Fleet and endpoint scanning
 
 ```
 ┌──────────────────────────────────────────┐
-│  Central Management Console              │
-│  (agent-bom server)                      │
+│  agent-bom API + UI                      │
 └───────────────┬──────────────────────────┘
                 │ HTTPS API
         ┌───────┴────────┬────────────┐
@@ -484,19 +364,12 @@ agent-bom agents --remote ssh://user@vm.example.com --key ~/.ssh/id_rsa
     └───────┘      └───────┘    └───────┘
 ```
 
-**Agent responsibilities**:
-- Discover local MCP configs
-- Extract packages
-- Send inventory to central server
-- Receive scan results
+Use `agent-bom fleet`, `agent-bom proxy-bootstrap`, or pushed fleet ingest for
+managed endpoint rollout. There is no shipped `agent-bom agents --remote ssh://`
+mode; use SSH or device-management tooling only as an external transport for
+running the normal CLI or onboarding bundle on the endpoint.
 
-**Central server responsibilities**:
-- Aggregate packages from all agents
-- Batch query OSV/NVD/EPSS/KEV
-- Calculate global blast radius
-- Provide web UI for results
-
-#### 3. API-Based Cloud Scanning
+### API-Based Cloud Scanning
 
 ```python
 # Scan Snowflake Cortex via API (uses SSO by default)
@@ -629,9 +502,8 @@ export SNOWFLAKE_PRIVATE_KEY_PATH=~/.ssh/snowflake_key.p8
 
 agent-bom agents --enrich
 
-# Or use secret managers
-agent-bom agents --secret-provider aws-secrets-manager \
-               --secret-id prod/agent-bom/nvd-key
+# In Kubernetes, mount keys through Secrets, External Secrets, or IRSA-backed
+# secret managers and expose only the required environment variables.
 ```
 
 ### 2. Network Isolation
@@ -659,61 +531,24 @@ spec:
 
 ### 3. RBAC and Audit Logging
 
-```python
-# Future: agent-bom with audit logging
-
-import logging
-logging.basicConfig(filename='/var/log/agent-bom/audit.log')
-
-def scan_with_audit(user, target):
-    logging.info(f"User {user} initiated scan of {target}")
-    result = scan(target)
-    logging.info(f"Scan complete: {len(result.vulnerabilities)} vulns found")
-    return result
-```
+Use the self-hosted API for authenticated operator workflows. The API enforces
+API-key/OIDC/SAML auth, RBAC, tenant propagation, rate limiting, and audit
+logging; proxy and gateway runtime events are posted back to the same audit
+surface.
 
 ---
 
-## 📈 Performance Benchmarks
+## 📈 Performance and Scale Evidence
 
-| Scale | Local CLI | Docker | Kubernetes | Lambda |
-|-------|-----------|--------|------------|--------|
-| 1 MCP server | 5s | 8s | 15s | 20s |
-| 10 MCP servers | 30s | 35s | 40s | 60s |
-| 100 packages | 2m | 2m 15s | 2m 30s | 4m |
-| 1,000 packages (batched) | 15m | 16m | 12m (parallel) | N/A |
+Use the measured performance docs instead of release-plan estimates:
 
-**Note**: With NVD API key, enrichment adds ~10% overhead. Without key, adds 5-10x overhead due to rate limiting.
+- [`docs/PERFORMANCE_BENCHMARKS.md`](PERFORMANCE_BENCHMARKS.md)
+- [`docs/perf/`](perf/)
+- [`site-docs/deployment/performance-and-sizing.md`](../site-docs/deployment/performance-and-sizing.md)
 
----
-
-## 🚀 Next Steps for Production
-
-### Phase 1: Containerization (Week 1)
-- [ ] Create Dockerfile
-- [ ] Publish to Docker Hub / GHCR
-- [ ] Test in CI/CD pipelines
-
-### Phase 2: Cloud Provider APIs (Week 2-3)
-- [ ] Implement Snowflake Cortex scanning
-- [ ] Implement AWS Bedrock scanning
-- [ ] Implement Azure OpenAI scanning
-
-### Phase 3: Remote Scanning (Week 4)
-- [ ] SSH-based remote scanning
-- [ ] Agent-based architecture (PoC)
-- [ ] API server for centralized management
-
-### Phase 4: Scale Testing (Week 5)
-- [ ] Benchmark 1,000+ package scans
-- [ ] Implement caching layer
-- [ ] Optimize batch processing
-
-### Phase 5: Enterprise Features (Later)
-- [ ] Web UI dashboard
-- [ ] SIEM/SOAR integrations
-- [ ] Multi-tenancy support
-- [ ] Historical trending
+For large API deployments, configure Postgres-backed stores so scan jobs, fleet
+state, schedules, API keys, audit, graph, and rate limiting survive API replica
+rotation and stay tenant-scoped.
 
 ---
 
@@ -739,8 +574,8 @@ agent-bom scales from local CLI to enterprise infrastructure by:
 
 1. **Containerization**: Docker images for portability
 2. **CI/CD Integration**: GitHub Actions, GitLab CI, Jenkins
-3. **Cloud-Native**: Kubernetes CronJobs, serverless functions
-4. **Remote Scanning**: SSH, agents, cloud APIs
+3. **Cloud-Native**: Kubernetes CronJobs and Helm-managed control-plane deployments
+4. **Remote Inventory**: fleet sync, pushed ingest, and cloud APIs
 5. **Performance**: Caching, batching, parallelization
 
 agent-bom can be deployed anywhere — CLI, Docker, CI/CD, Kubernetes, Snowflake, or as an MCP server — specialized for AI agent infrastructure security.

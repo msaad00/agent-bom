@@ -45,35 +45,6 @@ import {
   toAttackCardNodes,
 } from "@/lib/attack-paths";
 
-function emptyGraphResponse(scanId: string): UnifiedGraphResponse {
-  return {
-    scan_id: scanId,
-    tenant_id: "",
-    created_at: "",
-    nodes: [],
-    edges: [],
-    attack_paths: [],
-    interaction_risks: [],
-    stats: {
-      total_nodes: 0,
-      total_edges: 0,
-      node_types: {},
-      severity_counts: {},
-      relationship_types: {},
-      attack_path_count: 0,
-      interaction_risk_count: 0,
-      max_attack_path_risk: 0,
-      highest_interaction_risk: 0,
-    },
-    pagination: {
-      total: 0,
-      offset: 0,
-      limit: 0,
-      has_more: false,
-    },
-  };
-}
-
 function SecurityGraphPageContent() {
   const searchParams = useSearchParams();
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
@@ -84,6 +55,7 @@ function SecurityGraphPageContent() {
   const [loadingSnapshots, setLoadingSnapshots] = useState(true);
   const [loadingGraph, setLoadingGraph] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [graphLoadError, setGraphLoadError] = useState<string | null>(null);
   const [apiErrorKind, setApiErrorKind] = useState<"network" | "auth" | "forbidden">("network");
   const [selectedAttackPathKey, setSelectedAttackPathKey] = useState<string | null>(null);
   const [focusApplied, setFocusApplied] = useState(false);
@@ -123,12 +95,15 @@ function SecurityGraphPageContent() {
             : snapshotList[0]?.scan_id ?? "";
         setSelectedScanId(initialScanId);
         setApiError(null);
+        setGraphLoadError(null);
       } catch (error) {
         if (cancelled) return;
         setApiError(error instanceof Error ? error.message : "Failed to load graph snapshots");
         setApiErrorKind(_classifyGraphErrorKind(error));
         setSnapshots([]);
         setGraphData(null);
+        setFixFirstView(null);
+        setGraphLoadError(null);
       } finally {
         if (!cancelled) setLoadingSnapshots(false);
       }
@@ -145,6 +120,7 @@ function SecurityGraphPageContent() {
       setGraphData(null);
       setFixFirstView(null);
       setSelectedAttackPathKey(null);
+      setGraphLoadError(null);
       return;
     }
 
@@ -170,11 +146,13 @@ function SecurityGraphPageContent() {
         setGraphData(graph);
         setFixFirstView(view);
         setApiError(null);
+        setGraphLoadError(null);
       } catch (error) {
         if (cancelled) return;
-        setGraphData(emptyGraphResponse(selectedScanId));
+        setGraphData(null);
         setFixFirstView(null);
-        setApiError(error instanceof Error ? error.message : "Failed to load security graph");
+        setGraphLoadError(error instanceof Error ? error.message : "Failed to load security graph");
+        setApiErrorKind(_classifyGraphErrorKind(error));
       } finally {
         if (!cancelled) setLoadingGraph(false);
       }
@@ -191,12 +169,17 @@ function SecurityGraphPageContent() {
     [snapshots, selectedScanId],
   );
 
-  const graphNodeById = useMemo(
-    () => new Map((graphData?.nodes ?? []).map((node) => [node.id, node])),
-    [graphData?.nodes],
-  );
-
   const fixFirstCards = useMemo(() => fixFirstView?.cards ?? [], [fixFirstView?.cards]);
+
+  const graphNodeById = useMemo(() => {
+    const nodes = new Map((graphData?.nodes ?? []).map((node) => [node.id, node]));
+    for (const card of fixFirstCards) {
+      for (const node of card.nodes ?? []) {
+        nodes.set(node.id, node);
+      }
+    }
+    return nodes;
+  }, [fixFirstCards, graphData?.nodes]);
 
   const cardByPathKey = useMemo(() => {
     const next = new Map<string, FixFirstPathCard>();
@@ -297,6 +280,19 @@ function SecurityGraphPageContent() {
       ],
     };
   }, [focusLabel, hasFocusContext]);
+
+  const graphErrorState = useMemo(() => {
+    const detail = graphLoadError ?? "The graph API did not return attack-path data for this snapshot.";
+    return {
+      title: "Cannot load attack paths for this snapshot",
+      detail,
+      suggestions: [
+        "Retry the graph load after confirming the API is reachable.",
+        "Open the full graph only after this error clears.",
+        "Check API logs for the rejected or failed attack-path request.",
+      ],
+    };
+  }, [graphLoadError]);
 
   const loadingGraphMessage = focusLabel
     ? `Loading attack-path candidates for ${focusLabel} from the persisted graph.`
@@ -484,6 +480,32 @@ function SecurityGraphPageContent() {
           <Loader2 className="mx-auto mb-3 h-6 w-6 animate-spin text-sky-400" />
           {loadingGraphMessage}
         </section>
+      ) : graphLoadError ? (
+        <section className="rounded-3xl border border-red-900/60 bg-red-950/10 p-4">
+          <GraphEmptyState
+            title={graphErrorState.title}
+            detail={graphErrorState.detail}
+            suggestions={graphErrorState.suggestions}
+          />
+          <div className="mt-4 flex flex-wrap gap-3 border-t border-red-900/40 pt-4">
+            <Link
+              href={fullGraphHref}
+              className="inline-flex items-center gap-2 rounded-full border border-red-900/60 bg-red-950/30 px-3 py-1.5 text-xs text-red-200 transition hover:border-red-700"
+            >
+              Retry in full graph
+              <GitBranch className="h-3.5 w-3.5" />
+            </Link>
+            {hasFocusContext && (
+              <Link
+                href={resetFocusHref}
+                className="inline-flex items-center gap-2 rounded-full border border-red-900/60 bg-red-950/30 px-3 py-1.5 text-xs text-red-200 transition hover:border-red-700"
+              >
+                Clear focus
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            )}
+          </div>
+        </section>
       ) : attackPaths.length === 0 ? (
         <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
           <GraphEmptyState
@@ -570,12 +592,12 @@ function SecurityGraphPageContent() {
             </div>
 
             <div
-              className="mt-4 flex gap-3 overflow-x-auto pb-1 outline-none"
+              className="mt-4 grid max-w-full grid-cols-1 gap-3 outline-none md:grid-cols-2 xl:grid-cols-3"
               tabIndex={0}
               onKeyDown={handleAttackPathQueueKeyDown}
               aria-label="Attack path queue"
             >
-              {attackPaths.slice(0, 8).map((path) => {
+              {attackPaths.map((path) => {
                 const key = attackPathKey(path);
                 const card = cardByPathKey.get(key);
                 const pathNodes = toAttackCardNodes(path, graphNodeById);
@@ -584,7 +606,7 @@ function SecurityGraphPageContent() {
                 return (
                   <div
                     key={key}
-                    className={`min-w-[380px] rounded-2xl border bg-[color:var(--surface-elevated)] p-3 transition ${
+                    className={`min-w-0 rounded-2xl border bg-[color:var(--surface-elevated)] p-3 transition ${
                       active
                         ? "border-orange-400/70 ring-2 ring-orange-400/70 ring-offset-2 ring-offset-zinc-950"
                         : "border-[color:var(--border-subtle)]"

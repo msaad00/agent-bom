@@ -1,6 +1,9 @@
 # Architecture
 
-Five products, one package. System overview, scan pipeline, blast radius, compliance, and integration.
+One `agent-bom` product, multiple operational surfaces. The package exposes
+CLI entry points, API/UI, MCP server mode, runtime proxy/gateway, cloud posture,
+IaC scanning, fleet, graph, reporting, and compliance workflows over the same
+core evidence model.
 
 ---
 
@@ -16,40 +19,40 @@ Operational consequences:
 
 ---
 
-## 1. System Overview — 5 Products
+## 1. System Overview — Product Surfaces
 
 ```
-pip install agent-bom    → 5 CLI entry points, shared core engine
+pip install agent-bom    → shared core engine plus focused CLI entry points
 ```
 
 ```mermaid
 graph TB
-    subgraph BOM["agent-bom — BOM + Scanning"]
-        Scan["scan\nFull 12-step pipeline"]
+    subgraph ScanSurface["Scan surface"]
+        Scan["agents\nDiscovery + scan pipeline"]
         Check_Cmd["check\nPre-install CVE gate"]
         Image_Cmd["image / fs / sbom\nContainer + filesystem"]
         Graph_Cmd["graph\nGraphML / Neo4j / DOT"]
         MCP_Cmd["mcp\ninventory / introspect / registry"]
     end
 
-    subgraph Shield["agent-shield — Runtime Protection"]
+    subgraph RuntimeSurface["Runtime surface"]
         ShieldProxy["proxy\nMCP proxy + audit"]
         Protect["protect --shield\n8 detectors + deep defense"]
         Run_Cmd["run\nZero-config proxy"]
     end
 
-    subgraph Cloud["agent-cloud — Cloud Posture"]
+    subgraph CloudSurface["Cloud posture surface"]
         AWS["aws / azure / gcp\nCIS benchmarks"]
         Platforms["snowflake / databricks\nhuggingface / ollama"]
         Posture["posture\nCross-cloud summary"]
     end
 
-    subgraph IAC["agent-iac — IaC Security"]
+    subgraph IACSurface["IaC surface"]
         IaCScan["scan\n138 rules × 5 formats"]
         Policy["policy\ntemplate / apply"]
     end
 
-    subgraph Claw["agent-claw — Fleet Governance"]
+    subgraph OpsSurface["Fleet + control-plane surface"]
         Fleet["fleet\nsync / list / stats"]
         Serve["serve / api\nDashboard + REST"]
         Report["report\nhistory / analytics"]
@@ -59,7 +62,7 @@ graph TB
         Discovery["Discovery\n29 first-class clients"]
         Parser["Package Parser\n15 ecosystems"]
         Scanner["CVE Scanner\nOSV + NVD + GHSA"]
-        Blast["Blast Radius\nCVE → agent → credentials → tools"]
+        Blast["Blast Radius\nCVE → package → server → credential → tool"]
         IaC["IaC Engine\n138 rules"]
         CIS["CIS Benchmarks\nAWS / Azure / GCP"]
     end
@@ -140,10 +143,12 @@ graph LR
     TOOL["query_db · read_file\nwrite_file · run_shell"]
 
     CVE -->|affects| PKG
-    PKG -->|dependency of| SRV
-    SRV -->|used by| AGT1 & AGT2
-    AGT1 & AGT2 -->|exposes| CRED
-    AGT1 & AGT2 -->|reaches| TOOL
+    SRV -->|depends_on| PKG
+    SRV -->|vulnerable_to| CVE
+    AGT1 & AGT2 -->|uses| SRV
+    SRV -->|exposes_cred| CRED
+    SRV -->|provides_tool| TOOL
+    CRED -->|reaches_tool| TOOL
 
     style CVE fill:#dc2626,color:#fff
     style PKG fill:#ea580c,color:#fff

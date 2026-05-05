@@ -277,7 +277,8 @@ def test_read_alerts_from_log_with_valid_data():
         result = _read_alerts_from_log(Path(f.name))
 
     assert len(result) == 2
-    assert result[0]["message"] == "test alert"
+    assert result[0]["type"] == "runtime_alert"
+    assert "message" not in result[0]
 
 
 # ── ThreadPoolExecutor sizing ────────────────────────────────────────────────

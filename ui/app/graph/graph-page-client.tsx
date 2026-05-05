@@ -137,7 +137,15 @@ function PulseStyles() {
   );
 }
 
-function getConnectedIds(nodeId: string, edges: Edge[]): Set<string> {
+const FOCUS_NEIGHBORHOOD_DEPTH = 2;
+const FOCUS_NEIGHBORHOOD_NODE_LIMIT = 80;
+
+function getLocalNeighborhoodIds(
+  nodeId: string,
+  edges: Edge[],
+  maxDepth = FOCUS_NEIGHBORHOOD_DEPTH,
+  maxNodes = FOCUS_NEIGHBORHOOD_NODE_LIMIT,
+): Set<string> {
   const adjacency = new Map<string, Set<string>>();
   for (const edge of edges) {
     addNeighbor(adjacency, edge.source, edge.target);
@@ -145,13 +153,15 @@ function getConnectedIds(nodeId: string, edges: Edge[]): Set<string> {
   }
 
   const visited = new Set<string>([nodeId]);
-  const queue = [nodeId];
+  const queue = [{ id: nodeId, depth: 0 }];
   while (queue.length > 0) {
     const current = queue.shift()!;
-    for (const neighbor of adjacency.get(current) ?? []) {
+    if (current.depth >= maxDepth) continue;
+    for (const neighbor of adjacency.get(current.id) ?? []) {
       if (visited.has(neighbor)) continue;
       visited.add(neighbor);
-      queue.push(neighbor);
+      if (visited.size >= maxNodes) return visited;
+      queue.push({ id: neighbor, depth: current.depth + 1 });
     }
   }
 
@@ -803,8 +813,8 @@ function GraphPageInner() {
   // survives until the operator clicks the empty pane or pins another
   // node. Hover never overrides a pin.
   const activeFocusId = pinnedFocusId ?? hoveredNodeId;
-  const connectedIds = useMemo(
-    () => (activeFocusId ? getConnectedIds(activeFocusId, layoutEdges) : null),
+  const localNeighborhoodIds = useMemo(
+    () => (activeFocusId ? getLocalNeighborhoodIds(activeFocusId, layoutEdges) : null),
     [activeFocusId, layoutEdges],
   );
 
@@ -849,10 +859,10 @@ function GraphPageInner() {
         };
       });
     }
-    if (!connectedIds) return layoutNodes;
+    if (!localNeighborhoodIds) return layoutNodes;
     return layoutNodes.map((node) => {
       const isFocused = node.id === activeFocusId;
-      const isConnected = connectedIds.has(node.id);
+      const isConnected = localNeighborhoodIds.has(node.id);
       const dimmed = !isConnected;
       return {
         ...node,
@@ -864,7 +874,7 @@ function GraphPageInner() {
         },
       };
     });
-  }, [layoutNodes, connectedIds, attackPathNodeIds, activeFocusId]);
+  }, [layoutNodes, localNeighborhoodIds, attackPathNodeIds, activeFocusId]);
 
   const displayEdges = useMemo(() => {
     if (attackPathEdgeKeys) {
@@ -884,15 +894,15 @@ function GraphPageInner() {
         };
       });
     }
-    if (!connectedIds) return layoutEdges;
+    if (!localNeighborhoodIds) return layoutEdges;
     return layoutEdges.map((edge) => ({
       ...edge,
       style: {
         ...edge.style,
-        opacity: connectedIds.has(edge.source) && connectedIds.has(edge.target) ? 1 : 0.12,
+        opacity: localNeighborhoodIds.has(edge.source) && localNeighborhoodIds.has(edge.target) ? 1 : 0.12,
       },
     }));
-  }, [layoutEdges, connectedIds, attackPathEdgeKeys]);
+  }, [layoutEdges, localNeighborhoodIds, attackPathEdgeKeys]);
 
   const legendItems = useMemo(
     () => legendItemsForVisibleGraph(displayNodes, displayEdges),
@@ -1040,7 +1050,6 @@ function GraphPageInner() {
           dynamic_only: filters.runtimeMode === "dynamic",
           include_roots: true,
           include_attack_paths: true,
-          min_severity: filters.severity ?? "",
           relationship_types: serverRelationships,
         });
         setGraphData(queryResponseToGraphResponse(response));
@@ -1058,7 +1067,7 @@ function GraphPageInner() {
         setLoadingGraph(false);
       }
     },
-    [filters.runtimeMode, filters.severity, filters.vulnOnly, flowNodeDataById, selectedScanId, serverRelationships],
+    [filters.runtimeMode, filters.vulnOnly, flowNodeDataById, selectedScanId, serverRelationships],
   );
 
   const clearInvestigationMode = useCallback(() => {
@@ -1413,7 +1422,7 @@ function GraphPageInner() {
             </div>
 
             <div className="mt-3 flex gap-3 overflow-x-auto pb-1">
-              {attackPaths.slice(0, 6).map((path) => {
+              {attackPaths.map((path) => {
                 const key = attackPathKey(path);
                 const pathNodes = toAttackCardNodes(path, graphNodeById);
                 if (pathNodes.length === 0) return null;

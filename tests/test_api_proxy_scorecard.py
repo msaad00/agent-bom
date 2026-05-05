@@ -17,6 +17,7 @@ from agent_bom.api.server import (
     push_proxy_alert,
     push_proxy_metrics,
 )
+from tests.auth_helpers import disable_trusted_proxy_env, enable_trusted_proxy_env, proxy_headers
 
 # ── /v1/proxy/status ───────────────────────────────────────────────────────
 
@@ -245,6 +246,115 @@ def test_proxy_alert_api_redacts_runtime_alert_details():
     assert "/Users/alice" not in encoded
     assert "prod-secrets" not in encoded
     proxy_mod._proxy_alerts.clear()
+
+
+def test_proxy_alerts_are_tenant_scoped_for_http_reads():
+    import agent_bom.api.routes.proxy as proxy_mod
+    from agent_bom.api.server import configure_api
+
+    enable_trusted_proxy_env()
+    configure_api(api_key=None)
+    proxy_mod._proxy_alerts.clear()
+    proxy_mod._proxy_metrics = None
+    try:
+        client = TestClient(app)
+        alpha_headers = proxy_headers(role="admin", tenant="tenant-alpha")
+        beta_headers = proxy_headers(role="admin", tenant="tenant-beta")
+
+        assert (
+            client.post(
+                "/v1/proxy/audit",
+                headers=alpha_headers,
+                json={
+                    "source_id": "alpha-laptop",
+                    "session_id": "alpha-session",
+                    "alerts": [{"type": "runtime_alert", "detector": "cred", "severity": "critical", "message": "alpha-only"}],
+                    "summary": {"type": "proxy_summary", "total_tool_calls": 7, "total_blocked": 1},
+                },
+            ).status_code
+            == 200
+        )
+        assert (
+            client.post(
+                "/v1/proxy/audit",
+                headers=beta_headers,
+                json={
+                    "source_id": "beta-laptop",
+                    "session_id": "beta-session",
+                    "alerts": [{"type": "runtime_alert", "detector": "arg", "severity": "high", "message": "beta-only"}],
+                    "summary": {"type": "proxy_summary", "total_tool_calls": 3, "total_blocked": 0},
+                },
+            ).status_code
+            == 200
+        )
+
+        alpha_alerts = client.get("/v1/proxy/alerts", headers=alpha_headers).json()
+        beta_alerts = client.get("/v1/proxy/alerts", headers=beta_headers).json()
+        assert alpha_alerts["count"] == 1
+        assert beta_alerts["count"] == 1
+        assert alpha_alerts["alerts"][0]["source_id"] == "alpha-laptop"
+        assert beta_alerts["alerts"][0]["source_id"] == "beta-laptop"
+        assert "beta-laptop" not in json.dumps(alpha_alerts)
+        assert "alpha-laptop" not in json.dumps(beta_alerts)
+
+        alpha_status = client.get("/v1/proxy/status", headers=alpha_headers).json()
+        beta_status = client.get("/v1/proxy/status", headers=beta_headers).json()
+        assert alpha_status["source_id"] == "alpha-laptop"
+        assert beta_status["source_id"] == "beta-laptop"
+        assert alpha_status["alert_summary"]["total_alerts"] == 1
+        assert beta_status["alert_summary"]["total_alerts"] == 1
+    finally:
+        proxy_mod._proxy_alerts.clear()
+        proxy_mod._proxy_metrics = None
+        proxy_mod._proxy_metrics_by_tenant.clear()
+        disable_trusted_proxy_env()
+        configure_api(api_key=None)
+
+
+def test_proxy_alerts_drop_tier_b_replay_only_fields():
+    import agent_bom.api.routes.proxy as proxy_mod
+
+    proxy_mod._proxy_alerts.clear()
+    proxy_mod._proxy_metrics = None
+    try:
+        payload = {
+            "source_id": "laptop-1",
+            "session_id": "sess-1",
+            "alerts": [
+                {
+                    "type": "runtime_alert",
+                    "detector": "argument_analyzer",
+                    "severity": "critical",
+                    "message": "raw prompt copied from workspace",
+                    "tool_name": "shell.exec",
+                    "details": {
+                        "prompt": "summarize /Users/alice/customer-contract.txt",
+                        "tool_output": "customer secret output",
+                        "args": ["cat", "/Users/alice/customer-contract.txt"],
+                        "url": "https://example.com/full/path?token=secret",
+                        "hostname": "mcp.internal.example",
+                        "status_code": 403,
+                    },
+                }
+            ],
+        }
+        resp = TestClient(app).post("/v1/proxy/audit", json=payload)
+        assert resp.status_code == 200
+
+        data = TestClient(app).get("/v1/proxy/alerts").json()
+        encoded = json.dumps(data)
+        assert "shell.exec" in encoded
+        assert "mcp.internal.example" in encoded
+        assert "403" in encoded
+        assert "prompt" not in encoded
+        assert "tool_output" not in encoded
+        assert "customer-contract" not in encoded
+        assert "token=secret" not in encoded
+        assert "raw prompt copied" not in encoded
+    finally:
+        proxy_mod._proxy_alerts.clear()
+        proxy_mod._proxy_metrics = None
+        proxy_mod._proxy_metrics_by_tenant.clear()
 
 
 def test_proxy_audit_ingest_is_idempotent():

@@ -934,6 +934,12 @@ class TestGraphStoreBackendSelection:
         assert body["summary"]["matched_paths"] == 1
         assert body["cards"][0]["rank"] == 1
         assert body["cards"][0]["title"].startswith("CVE-2026-1 via agent-a")
+        assert {node["id"] for node in body["cards"][0]["nodes"]} == {
+            "agent:a",
+            "server:a:fs",
+            "pkg:npm:express",
+            "vuln:cve",
+        }
         assert body["cards"][0]["affected"]["agents"] == ["agent-a"]
         assert body["cards"][0]["affected"]["packages"] == ["express"]
         assert {reason["kind"] for reason in body["cards"][0]["risk_reasons"]} >= {
@@ -943,6 +949,49 @@ class TestGraphStoreBackendSelection:
         }
         assert body["cards"][0]["next_actions"][0]["href"] == "/findings?cve=CVE-2026-1"
         assert any(call[0] == "load_graph" for call in recording_graph_store.calls)
+
+    def test_fix_first_graph_view_derives_paths_when_snapshot_has_topology_but_no_path_rows(self, recording_graph_store):
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:a:fs", entity_type=EntityType.SERVER, label="mcp-fs"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="pkg:npm:form-data", entity_type=EntityType.PACKAGE, label="form-data"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="cred:aws", entity_type=EntityType.CREDENTIAL, label="AWS_SECRET_ACCESS_KEY"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="tool:shell", entity_type=EntityType.TOOL, label="run_shell"))
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="vuln:cve",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-2026-1",
+                severity="critical",
+                risk_score=9.8,
+            )
+        )
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="agent:a", target="server:a:fs", relationship=RelationshipType.USES))
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="server:a:fs", target="pkg:npm:form-data", relationship=RelationshipType.DEPENDS_ON)
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="pkg:npm:form-data", target="vuln:cve", relationship=RelationshipType.VULNERABLE_TO)
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="server:a:fs", target="cred:aws", relationship=RelationshipType.EXPOSES_CRED)
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="server:a:fs", target="tool:shell", relationship=RelationshipType.PROVIDES_TOOL)
+        )
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/views/fix-first", params={"scan_id": "store-scan"})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["summary"]["total_paths"] == 1
+        assert body["cards"][0]["affected"]["findings"] == ["CVE-2026-1"]
+        assert body["cards"][0]["affected"]["credentials"] == ["AWS_SECRET_ACCESS_KEY"]
+        assert body["cards"][0]["affected"]["tools"] == ["run_shell"]
+
+        queue = client.get("/v1/graph/attack-paths", params={"scan_id": "store-scan", "limit": 5}).json()
+        assert queue["pagination"]["total"] == 1
+        assert queue["stats"]["attack_path_count"] == 1
+        assert queue["attack_paths"][0]["hops"] == ["agent:a", "server:a:fs", "pkg:npm:form-data", "vuln:cve"]
 
     def test_graph_overview_filtered_page_stays_store_backed(self, recording_graph_store):
         recording_graph_store.graph.add_node(
@@ -1024,15 +1073,25 @@ class TestGraphStoreBackendSelection:
 
         persisted = UnifiedGraph(scan_id="job-123", tenant_id="default")
         persisted.add_node(UnifiedNode(id="agent:scan", entity_type=EntityType.AGENT, label="scan-agent"))
+        tenant_context: list[tuple[str, str]] = []
 
         monkeypatch.setattr("agent_bom.api.pipeline._get_graph_store", lambda: recording_graph_store)
         monkeypatch.setattr("agent_bom.graph.builder.build_unified_graph_from_report", lambda report_json, scan_id, tenant_id: persisted)
         monkeypatch.setattr("agent_bom.graph.webhooks.compute_delta_alerts", lambda previous, current: [])
+        monkeypatch.setattr(
+            "agent_bom.api.postgres_store.set_current_tenant",
+            lambda tenant_id: tenant_context.append(("set", tenant_id)) or "tenant-token",
+        )
+        monkeypatch.setattr(
+            "agent_bom.api.postgres_store.reset_current_tenant",
+            lambda token: tenant_context.append(("reset", token)),
+        )
 
         job = SimpleNamespace(job_id="job-123", tenant_id="default", progress=[])
         _persist_graph_snapshot(job, {"scan_id": "job-123"})
 
         assert ("save_graph", "job-123", "default") in recording_graph_store.calls
+        assert tenant_context == [("set", "default"), ("reset", "tenant-token")]
 
     def test_graph_search_uses_store_native_query(self, recording_graph_store):
         recording_graph_store.graph.add_node(UnifiedNode(id="server:a", entity_type=EntityType.SERVER, label="agent-a server"))
@@ -1277,6 +1336,57 @@ class TestGraphStoreBackendSelection:
         assert body["attack_paths"][0]["summary"] == "agent-a -> server-s -> CVE-2026-1"
         assert any(call[0] == "traverse_subgraph" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
+
+    def test_graph_query_severity_filter_preserves_non_finding_context(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="vuln:low",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-2026-LOW",
+                severity="low",
+                severity_id=2,
+            )
+        )
+        recording_graph_store.graph.add_node(
+            UnifiedNode(
+                id="vuln:critical",
+                entity_type=EntityType.VULNERABILITY,
+                label="CVE-2026-CRITICAL",
+                severity="critical",
+                severity_id=5,
+            )
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES, traversable=True)
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="server:s", target="vuln:low", relationship=RelationshipType.VULNERABLE_TO, traversable=True)
+        )
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="server:s", target="vuln:critical", relationship=RelationshipType.VULNERABLE_TO, traversable=True)
+        )
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/graph/query",
+            json={
+                "roots": ["agent:a"],
+                "direction": "forward",
+                "max_depth": 2,
+                "min_severity": "critical",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert {node["id"] for node in body["nodes"]} == {"agent:a", "server:s", "vuln:critical"}
+        assert {(edge["source"], edge["target"]) for edge in body["edges"]} == {
+            ("agent:a", "server:s"),
+            ("server:s", "vuln:critical"),
+        }
 
     def test_graph_get_rejects_unknown_relationship(self, recording_graph_store):
         client = TestClient(app)

@@ -149,12 +149,18 @@ def _persist_graph_snapshot(
     scan_id = report_json.get("scan_id") or job.job_id
     graph = build_unified_graph_from_report(report_json, scan_id=scan_id, tenant_id=tenant_id)
 
-    previous_graph = None
-    graph_store = _get_graph_store()
-    previous_scan_id = graph_store.latest_snapshot_id(tenant_id=tenant_id)
-    if previous_scan_id and previous_scan_id != scan_id:
-        previous_graph = graph_store.load_graph(tenant_id=tenant_id, scan_id=previous_scan_id)
-    graph_store.save_graph(graph)
+    from agent_bom.api.postgres_store import reset_current_tenant, set_current_tenant
+
+    tenant_token = set_current_tenant(tenant_id)
+    try:
+        previous_graph = None
+        graph_store = _get_graph_store()
+        previous_scan_id = graph_store.latest_snapshot_id(tenant_id=tenant_id)
+        if previous_scan_id and previous_scan_id != scan_id:
+            previous_graph = graph_store.load_graph(tenant_id=tenant_id, scan_id=previous_scan_id)
+        graph_store.save_graph(graph)
+    finally:
+        reset_current_tenant(tenant_token)
 
     alerts = compute_delta_alerts(previous_graph, graph)
     delivery = dispatch_delta_alerts(alerts, product_version=__version__) if alerts else None

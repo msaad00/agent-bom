@@ -117,6 +117,7 @@ export interface FixFirstPathCard {
   title: string;
   summary: string;
   attack_path: AttackPath;
+  nodes?: UnifiedNode[] | undefined;
   sequence_labels: string[];
   risk_reasons: FixFirstRiskReason[];
   next_actions: FixFirstAction[];

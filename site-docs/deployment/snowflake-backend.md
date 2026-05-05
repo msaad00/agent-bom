@@ -42,22 +42,9 @@ Pick Snowflake when:
 - You want to join `agent-bom` findings against other Snowflake
   governance data (user activity, cloud asset tables) without moving
   data across systems.
-- You want **one backend that covers the Snowflake-supported
-  transactional, streaming, and analytical workloads**. Snowflake now
-  ships:
-  - **Hybrid Tables** (row-oriented) for fast transactional writes to
-    the scan / fleet / policy / audit stores.
-  - **Standard columnar tables** for the analytics queries the
-    dashboard and compliance narratives run.
-  - **Snowpipe Streaming** for real-time audit / telemetry ingest
-    without a separate Kafka or ClickHouse hop.
-  - **Postgres-compatible protocol** (via the Postgres API / drivers
-    where applicable) so tooling that speaks `psycopg` can point at
-    Snowflake the same way it points at Postgres — reducing client-side
-    changes when you migrate.
-  - **Native cross-cloud replication + listings** so the control plane
-    in your EKS cluster can read/write the same Snowflake tables your
-    cloud + Cortex MCPs read, regardless of region.
+- You want selected `agent-bom` control-plane state in Snowflake:
+  scan jobs, fleet agents, schedules, gateway policies, vulnerability
+  exceptions, and gateway policy audit.
 
 Pick Postgres when you want broad API surface coverage and the fastest
 possible install, and you're comfortable adding ClickHouse only if
@@ -107,16 +94,17 @@ governance.
 
 ## Auth — zero-credential model
 
-**Key-pair auth is required** for the Snowflake backend in production
+**Key-pair auth is recommended** for the Snowflake backend in production
 ([`build_connection_params`](https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/api/snowflake_store.py)).
 Passwords are deprecated and emit a runtime warning; password auth is
 intentionally not recommended because it breaks rotation and short-lived
 credential hygiene.
 
 SSO (externalbrowser) is used for interactive operator CLI; the
-control-plane API uses key-pair. Both reject the deprecated
-`SNOWFLAKE_PASSWORD` path when
-`AGENT_BOM_SNOWFLAKE_REQUIRE_KEYPAIR=1`.
+control-plane API should use key-pair. Current code still accepts the
+deprecated `SNOWFLAKE_PASSWORD` path with a warning; enforce key-pair
+operationally by omitting password secrets and mounting only
+`SNOWFLAKE_PRIVATE_KEY_PATH`.
 
 ### Generate a key pair once
 
@@ -163,7 +151,8 @@ The example file configures:
 
 - `AGENT_BOM_STORE_BACKEND=snowflake` (and equivalent for fleet / policy / audit)
 - Key-pair auth via mounted `rsa_key.p8`
-- `AGENT_BOM_SNOWFLAKE_REQUIRE_KEYPAIR=1` — hard-fail on password fallback
+- `SNOWFLAKE_PRIVATE_KEY_PATH` mounted from the `agent-bom-snowflake` Secret;
+  do not include `SNOWFLAKE_PASSWORD` in that Secret for production
 - Postgres backup CronJob disabled (Snowflake handles durability)
 - Scanner CronJob still runs, pushes scan results to `/v1/fleet/sync`
 - Egress NetworkPolicy allowing only `*.snowflakecomputing.com` on 443
@@ -208,8 +197,7 @@ applies here. Snowflake-specific signals worth alerting on:
 
 - Source registry, API-key persistence, trend,
   graph, and the full HMAC-chained `audit_log` are not yet on
-  `SnowflakeStore`. Run Postgres alongside for these, or wait for
-  parity.
+  `SnowflakeStore`. Run Postgres alongside for these.
 - The scanner CronJob still runs in-cluster; it does not run inside
   Snowpark. Cortex / Snowpark-native discovery is a separate capability
   ([`src/agent_bom/cloud/snowflake.py`](https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/cloud/snowflake.py)).
@@ -221,5 +209,4 @@ applies here. Snowflake-specific signals worth alerting on:
 `Snowflake` is already a valid warehouse-native backend mode for governance,
 scan inventory, fleet state, schedules, and gateway policy paths. `Postgres` remains the
 default full control-plane answer. Use Snowflake when that warehouse-native
-shape is the goal, not because the product is pretending all backend roles are
-already identical.
+shape is the goal; do not treat it as full backend parity with Postgres.

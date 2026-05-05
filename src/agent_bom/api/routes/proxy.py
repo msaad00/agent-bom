@@ -43,13 +43,15 @@ router = APIRouter()
 _proxy_alerts: deque[dict] = deque(maxlen=1000)
 _proxy_alerts_total: int = 0
 _proxy_metrics: dict | None = None
+_proxy_metrics_by_tenant: dict[str, dict] = {}
 
 
 def push_proxy_alert(alert: dict) -> None:
     """Called by the proxy to record a runtime alert (in-process path)."""
     global _proxy_alerts_total
     sanitized = sanitize_sensitive_payload(alert)
-    _proxy_alerts.append(sanitized if isinstance(sanitized, dict) else {})
+    safe = redact_for_persistence(sanitized, EvidenceTier.SAFE_TO_STORE)
+    _proxy_alerts.append(safe if isinstance(safe, dict) else {})
     _proxy_alerts_total += 1
 
 
@@ -58,6 +60,24 @@ def push_proxy_metrics(metrics: dict) -> None:
     global _proxy_metrics
     sanitized = sanitize_sensitive_payload(metrics)
     _proxy_metrics = sanitized if isinstance(sanitized, dict) else {}
+    tenant_id = str(_proxy_metrics.get("tenant_id") or "default")
+    _proxy_metrics_by_tenant[tenant_id] = dict(_proxy_metrics)
+
+
+def _request_tenant_id(request: Request) -> str:
+    """Return the authenticated tenant for HTTP proxy endpoints."""
+    return str(getattr(request.state, "tenant_id", "default") or "default")
+
+
+def _alert_visible_to_tenant(alert: dict, tenant_id: str) -> bool:
+    """Scope process-wide proxy alerts to the authenticated tenant.
+
+    Historical single-user/local records may not have a tenant tag. Keep those
+    visible only to the default tenant so they do not leak into authenticated
+    customer tenants on shared deployments.
+    """
+    alert_tenant = str(alert.get("tenant_id") or "default")
+    return alert_tenant == tenant_id
 
 
 @router.post("/v1/proxy/audit", tags=["proxy"])
@@ -127,6 +147,7 @@ async def ingest_proxy_audit(request: Request, body: ProxyAuditIngestRequest) ->
         summary.setdefault("session_id", session_id)
         summary.setdefault("request_id", request_id)
         summary.setdefault("trace_id", trace_id)
+        summary.setdefault("tenant_id", tenant_id)
         push_proxy_metrics(summary)
 
     if analytics_events:
@@ -197,7 +218,9 @@ def _read_alerts_from_log(path: _Path) -> list[dict]:
                     if record.get("type") == "runtime_alert":
                         sanitized = sanitize_sensitive_payload(record)
                         if isinstance(sanitized, dict):
-                            alerts.append(sanitized)
+                            safe = redact_for_persistence(sanitized, EvidenceTier.SAFE_TO_STORE)
+                            if isinstance(safe, dict):
+                                alerts.append(safe)
                 except (ValueError, KeyError):
                     continue
     except OSError:
@@ -205,12 +228,14 @@ def _read_alerts_from_log(path: _Path) -> list[dict]:
     return alerts
 
 
-def _load_proxy_alerts() -> list[dict]:
+def _load_proxy_alerts(tenant_id: str = "default") -> list[dict]:
     """Return in-memory alerts, or fall back to the configured audit log."""
     log_path = _get_configured_log_path()
     if log_path and not _proxy_alerts:
-        return _read_alerts_from_log(log_path)
-    return list(_proxy_alerts)
+        alerts = _read_alerts_from_log(log_path)
+    else:
+        alerts = list(_proxy_alerts)
+    return [alert for alert in alerts if _alert_visible_to_tenant(alert, tenant_id)]
 
 
 def _summarize_proxy_alerts(alerts: list[dict]) -> dict:
@@ -248,7 +273,7 @@ def _summarize_proxy_alerts(alerts: list[dict]) -> dict:
     }
 
 
-def _read_metrics_from_log(path: _Path) -> dict | None:
+def _read_metrics_from_log(path: _Path, tenant_id: str = "default") -> dict | None:
     """Read the last proxy_summary record from a JSONL audit log."""
     import json as _json
 
@@ -263,7 +288,7 @@ def _read_metrics_from_log(path: _Path) -> dict | None:
                     continue
                 try:
                     record = _json.loads(line)
-                    if record.get("type") == "proxy_summary":
+                    if record.get("type") == "proxy_summary" and _alert_visible_to_tenant(record, tenant_id):
                         last_summary = record
                 except (ValueError, KeyError):
                     continue
@@ -276,25 +301,30 @@ def _read_metrics_from_log(path: _Path) -> dict | None:
 
 
 @router.get("/v1/proxy/status", tags=["proxy"])
-async def proxy_status() -> dict:
+async def proxy_status(request: Request) -> dict:
     """Get runtime proxy metrics.
 
     Returns the latest proxy metrics summary.  Reads from the in-process
     buffer (populated by ``push_proxy_metrics``) or from the audit log
     configured via the ``AGENT_BOM_LOG`` environment variable.
     """
+    tenant_id = _request_tenant_id(request)
     metrics: dict | None = None
     if _proxy_metrics is not None:
-        metrics = dict(_proxy_metrics)
+        tenant_metrics = _proxy_metrics_by_tenant.get(tenant_id)
+        if tenant_metrics is not None:
+            metrics = dict(tenant_metrics)
+        elif _alert_visible_to_tenant(_proxy_metrics, tenant_id):
+            metrics = dict(_proxy_metrics)
     else:
         log_path = _get_configured_log_path()
         if log_path:
-            metrics = _read_metrics_from_log(log_path)
+            metrics = _read_metrics_from_log(log_path, tenant_id)
             if metrics is not None:
                 metrics = dict(metrics)
 
     if metrics is not None:
-        alert_summary = _summarize_proxy_alerts(_load_proxy_alerts())
+        alert_summary = _summarize_proxy_alerts(_load_proxy_alerts(tenant_id))
         metrics["alert_summary"] = {key: value for key, value in alert_summary.items() if key != "recent_alerts"}
         metrics["recent_alerts"] = alert_summary["recent_alerts"]
         return metrics
@@ -307,6 +337,7 @@ async def proxy_status() -> dict:
 
 @router.get("/v1/proxy/alerts", tags=["proxy"])
 async def proxy_alerts(
+    request: Request,
     severity: str | None = None,
     detector: str | None = None,
     limit: int = Query(default=100, ge=1, le=1000, description="Max alerts to return (1-1000)"),
@@ -321,7 +352,8 @@ async def proxy_alerts(
         detector: Filter by detector name.
         limit: Maximum number of alerts to return (default 100).
     """
-    alerts = _load_proxy_alerts()
+    tenant_id = _request_tenant_id(request)
+    alerts = _load_proxy_alerts(tenant_id)
 
     # Apply filters
     if severity:
@@ -455,7 +487,7 @@ async def ws_proxy_metrics(websocket: WebSocket) -> None:
 
             # Count alerts in last 60 seconds
             cutoff = now - 60
-            recent_alerts = [a for a in _proxy_alerts if a.get("ts", 0) > cutoff]
+            recent_alerts = [a for a in _proxy_alerts if a.get("ts", 0) > cutoff and _alert_visible_to_tenant(a, "default")]
 
             await websocket.send_json(
                 {
@@ -508,6 +540,8 @@ async def ws_proxy_alerts(websocket: WebSocket) -> None:
             if current > seen:
                 new_count = min(current - seen, len(_proxy_alerts))
                 for alert in list(_proxy_alerts)[-new_count:]:
+                    if not _alert_visible_to_tenant(alert, "default"):
+                        continue
                     await websocket.send_json(alert)
                 seen = current
             await asyncio.sleep(0.25)

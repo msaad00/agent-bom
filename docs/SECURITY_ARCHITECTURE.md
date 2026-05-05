@@ -127,7 +127,7 @@ If engaging a third-party auditor, the recommended scope:
 
 ## Graph guarantees
 
-agent-bom builds a context graph from inventory and canonical advisory feeds (CISA KEV, OSV, NVD, EPSS, MITRE) to model lateral movement across MCP agents, servers, credentials, and tools. The graph is deterministic, round-trip-clean against the source inventory, and tenant-scoped at the database layer via Postgres row-level security. It does not use ML inference, does not encode causality without runtime traces from the proxy / gateway, and does not update in real time without those runtimes in the path.
+agent-bom builds a context graph from inventory and canonical advisory feeds (CISA KEV, OSV, NVD, EPSS, MITRE) to model reachability across MCP agents, servers, credentials, and tools. Static edges use the contract names: `agent -> server` (`uses`), `server -> credential` (`exposes_cred`), `server -> tool` (`provides_tool`), and `credential -> tool` (`reaches_tool`). The graph is deterministic, round-trip-clean against the source inventory, and tenant-scoped at the database layer via Postgres row-level security. It does not use ML inference, does not encode causality without runtime traces from the proxy / gateway, and does not update in real time without those runtimes in the path.
 
 The full contract — entity and edge enums, accuracy guarantees, scaling tiers, re-baseline procedure, and known coverage gaps — is in [docs/graph/CONTRACT.md](graph/CONTRACT.md).
 
@@ -136,8 +136,10 @@ The full contract — entity and edge enums, accuracy guarantees, scaling tiers,
 ### What agent-bom IS
 
 - A **local CLI tool** that scans your infrastructure
+- A **self-hosted API + UI** for operator workflows, graph, audit, remediation, and policy
 - An **MCP server** that exposes scan tools to AI agents
 - A **runtime proxy** that monitors MCP traffic
+- A **gateway and fleet surface** for shared remote MCP policy and endpoint inventory
 - **Apache 2.0 licensed** open source software
 
 ### What agent-bom IS NOT

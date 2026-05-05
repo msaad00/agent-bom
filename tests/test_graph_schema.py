@@ -1100,8 +1100,9 @@ class TestGraphSchemaEndpoint:
         resp = client.get("/v1/graph/schema")
         assert resp.status_code == 200
         body = resp.json()
-        assert set(body) >= {"version", "node_kinds", "edge_kinds"}
+        assert set(body) >= {"version", "semantic_layers", "node_kinds", "edge_kinds"}
         assert isinstance(body["version"], int) and body["version"] >= 1
+        assert isinstance(body["semantic_layers"], list) and body["semantic_layers"]
         assert isinstance(body["node_kinds"], list) and body["node_kinds"]
         assert isinstance(body["edge_kinds"], list) and body["edge_kinds"]
 
@@ -1118,9 +1119,11 @@ class TestGraphSchemaEndpoint:
     def test_schema_entries_carry_label_color_shape_icon(self):
         client = self._client()
         body = client.get("/v1/graph/schema").json()
+        layer_keys = {entry["key"] for entry in body["semantic_layers"]}
         for entry in body["node_kinds"]:
-            assert {"key", "label", "color", "shape", "icon", "category_uid", "class_uid"} <= set(entry)
+            assert {"key", "label", "color", "shape", "layer", "icon", "category_uid", "class_uid"} <= set(entry)
             assert entry["color"].startswith("#")
+            assert entry["layer"] in layer_keys
             assert isinstance(entry["category_uid"], int)
             assert isinstance(entry["class_uid"], int)
         for entry in body["edge_kinds"]:
@@ -1140,6 +1143,16 @@ class TestGraphSchemaEndpoint:
             assert isinstance(entry["source_types"], list)
             assert isinstance(entry["target_types"], list)
             assert isinstance(entry["traversable"], bool)
+
+    def test_every_entity_type_has_semantic_layer(self):
+        from agent_bom.graph import ENTITY_LEGEND, GraphSemanticLayer
+        from agent_bom.graph.types import EntityType
+
+        allowed_layers = {layer.value for layer in GraphSemanticLayer}
+        layer_by_entity = {entry.key: entry.layer for entry in ENTITY_LEGEND}
+        assert set(layer_by_entity) == {entity.value for entity in EntityType}
+        assert set(layer_by_entity.values()) <= allowed_layers
+        assert all(layer_by_entity.values())
 
     def test_schema_relationship_metadata_uses_known_node_types(self):
         from agent_bom.graph.types import EntityType, RelationshipType
@@ -1207,5 +1220,6 @@ class TestGraphSchemaEndpoint:
         assert new_entry["label"]
         assert new_entry["color"].startswith("#")
         assert new_entry["shape"] in {"circle", "diamond", "square", "triangle"}
+        assert new_entry["layer"] == "asset"
         # Silence flake8 for the unused alias — kept for future legend tests.
         assert _container is not None

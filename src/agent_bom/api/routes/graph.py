@@ -30,7 +30,7 @@ from pydantic import BaseModel, Field
 
 from agent_bom.api.stores import _get_graph_store
 from agent_bom.backpressure import BackpressureRejectedError, adaptive_backpressure
-from agent_bom.graph import SEVERITY_RANK, EntityType, GraphFilterOptions, RelationshipType, UnifiedGraph
+from agent_bom.graph import SEVERITY_RANK, EntityType, GraphFilterOptions, GraphSemanticLayer, RelationshipType, UnifiedGraph
 from agent_bom.security import sanitize_error
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,21 @@ _GRAPH_QUERY_DEFAULT_BUDGET = {
     "max_nodes": 1000,
     "max_edges": 10_000,
     "timeout_ms": 2500,
+}
+
+_SEMANTIC_LAYER_LABELS = {
+    GraphSemanticLayer.USER.value: "User",
+    GraphSemanticLayer.IDENTITY.value: "Identity",
+    GraphSemanticLayer.APP.value: "Application",
+    GraphSemanticLayer.API_GATEWAY.value: "API / Gateway",
+    GraphSemanticLayer.ORCHESTRATION.value: "Orchestration",
+    GraphSemanticLayer.MCP_SERVER.value: "MCP Server",
+    GraphSemanticLayer.TOOL.value: "Tool",
+    GraphSemanticLayer.PACKAGE.value: "Package",
+    GraphSemanticLayer.RUNTIME_EVIDENCE.value: "Runtime Evidence",
+    GraphSemanticLayer.ASSET.value: "Asset",
+    GraphSemanticLayer.INFRA.value: "Infrastructure",
+    GraphSemanticLayer.FINDING.value: "Finding",
 }
 
 
@@ -734,7 +749,7 @@ async def get_graph_legend() -> dict:
     from agent_bom.graph import ENTITY_LEGEND, RELATIONSHIP_LEGEND
 
     return {
-        "entities": [{"key": e.key, "label": e.label, "color": e.color, "shape": e.shape} for e in ENTITY_LEGEND],
+        "entities": [{"key": e.key, "label": e.label, "color": e.color, "shape": e.shape, "layer": e.layer} for e in ENTITY_LEGEND],
         "relationships": [{"key": r.key, "label": r.label, "color": r.color} for r in RELATIONSHIP_LEGEND],
     }
 
@@ -952,12 +967,14 @@ async def get_graph_schema() -> dict:
         label = legend.label if legend else entity.value.replace("_", " ").title()
         color = legend.color if legend else "#6b7280"
         shape = legend.shape if legend else "circle"
+        layer = legend.layer if legend and legend.layer else GraphSemanticLayer.ASSET.value
         node_kinds.append(
             {
                 "key": entity.value,
                 "label": label,
                 "color": color,
                 "shape": shape,
+                "layer": layer,
                 "icon": _SHAPE_TO_ICON.get(shape, "circle"),
                 "category_uid": ENTITY_OCSF_MAP.get(entity.value, {}).get("category_uid", 0),
                 "class_uid": ENTITY_OCSF_MAP.get(entity.value, {}).get("class_uid", 0),
@@ -989,6 +1006,7 @@ async def get_graph_schema() -> dict:
 
     return {
         "version": 1,
+        "semantic_layers": [{"key": layer.value, "label": _SEMANTIC_LAYER_LABELS[layer.value]} for layer in GraphSemanticLayer],
         "node_kinds": sorted(node_kinds, key=lambda d: d["key"]),
         "edge_kinds": sorted(edge_kinds, key=lambda d: d["key"]),
     }

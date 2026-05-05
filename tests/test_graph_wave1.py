@@ -275,3 +275,10 @@ class TestLegends:
     def test_legend_entries_have_color(self):
         for entry in ENTITY_LEGEND + RELATIONSHIP_LEGEND:
             assert entry.color.startswith("#"), f"Bad color for {entry.key}: {entry.color}"
+
+    def test_entity_legend_entries_have_semantic_layer(self):
+        from agent_bom.graph import GraphSemanticLayer
+
+        allowed_layers = {layer.value for layer in GraphSemanticLayer}
+        for entry in ENTITY_LEGEND:
+            assert entry.layer in allowed_layers, f"Bad layer for {entry.key}: {entry.layer}"

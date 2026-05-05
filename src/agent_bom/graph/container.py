@@ -11,7 +11,7 @@ from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import UnifiedNode
 from agent_bom.graph.ocsf import FINDING_ENTITY_TYPES
 from agent_bom.graph.severity import SEVERITY_RANK
-from agent_bom.graph.types import EntityType, NodeStatus, RelationshipType
+from agent_bom.graph.types import EntityType, GraphSemanticLayer, NodeStatus, RelationshipType
 from agent_bom.graph.util import _now_iso
 
 
@@ -651,22 +651,26 @@ class UnifiedGraph:
 
     def inventory_view(self) -> UnifiedGraph:
         return self._subgraph(
-            node_filter=lambda n: n.status == NodeStatus.ACTIVE
-            and n.entity_type
-            not in (
-                EntityType.VULNERABILITY,
-                EntityType.MISCONFIGURATION,
+            node_filter=lambda n: (
+                n.status == NodeStatus.ACTIVE
+                and n.entity_type
+                not in (
+                    EntityType.VULNERABILITY,
+                    EntityType.MISCONFIGURATION,
+                )
             ),
-            edge_filter=lambda e: e.relationship
-            in (
-                RelationshipType.HOSTS,
-                RelationshipType.USES,
-                RelationshipType.DEPENDS_ON,
-                RelationshipType.PROVIDES_TOOL,
-                RelationshipType.EXPOSES_CRED,
-                RelationshipType.REACHES_TOOL,
-                RelationshipType.SERVES_MODEL,
-                RelationshipType.CONTAINS,
+            edge_filter=lambda e: (
+                e.relationship
+                in (
+                    RelationshipType.HOSTS,
+                    RelationshipType.USES,
+                    RelationshipType.DEPENDS_ON,
+                    RelationshipType.PROVIDES_TOOL,
+                    RelationshipType.EXPOSES_CRED,
+                    RelationshipType.REACHES_TOOL,
+                    RelationshipType.SERVES_MODEL,
+                    RelationshipType.CONTAINS,
+                )
             ),
         )
 
@@ -826,28 +830,31 @@ class LegendEntry:
     label: str
     color: str
     shape: str = "circle"  # circle / diamond / square / triangle
+    layer: str = ""
 
 
 # Entity legend
 ENTITY_LEGEND: list[LegendEntry] = [
-    LegendEntry(key="agent", label="AI Agent", color="#10b981", shape="circle"),
-    LegendEntry(key="server", label="MCP Server", color="#3b82f6", shape="circle"),
-    LegendEntry(key="package", label="Package", color="#52525b", shape="square"),
-    LegendEntry(key="tool", label="Tool", color="#a855f7", shape="diamond"),
-    LegendEntry(key="vulnerability", label="Vulnerability", color="#ef4444", shape="triangle"),
-    LegendEntry(key="credential", label="Credential", color="#f59e0b", shape="diamond"),
-    LegendEntry(key="misconfiguration", label="Misconfiguration", color="#f97316", shape="triangle"),
-    LegendEntry(key="model", label="Model", color="#8b5cf6", shape="square"),
-    LegendEntry(key="container", label="Container", color="#6366f1", shape="square"),
-    LegendEntry(key="cloud_resource", label="Cloud Resource", color="#0ea5e9", shape="square"),
-    LegendEntry(key="user", label="User", color="#14b8a6", shape="circle"),
-    LegendEntry(key="group", label="Group", color="#0d9488", shape="circle"),
-    LegendEntry(key="service_account", label="Service Account", color="#0f766e", shape="circle"),
-    LegendEntry(key="fleet", label="Fleet", color="#6b7280", shape="square"),
-    LegendEntry(key="cluster", label="Cluster", color="#4b5563", shape="square"),
-    LegendEntry(key="dataset", label="Dataset", color="#06b6d4", shape="square"),
-    LegendEntry(key="environment", label="Environment", color="#9ca3af", shape="square"),
-    LegendEntry(key="provider", label="Provider", color="#d1d5db", shape="square"),
+    LegendEntry(key="agent", label="AI Agent", color="#10b981", shape="circle", layer=GraphSemanticLayer.ORCHESTRATION.value),
+    LegendEntry(key="server", label="MCP Server", color="#3b82f6", shape="circle", layer=GraphSemanticLayer.MCP_SERVER.value),
+    LegendEntry(key="package", label="Package", color="#52525b", shape="square", layer=GraphSemanticLayer.PACKAGE.value),
+    LegendEntry(key="tool", label="Tool", color="#a855f7", shape="diamond", layer=GraphSemanticLayer.TOOL.value),
+    LegendEntry(key="vulnerability", label="Vulnerability", color="#ef4444", shape="triangle", layer=GraphSemanticLayer.FINDING.value),
+    LegendEntry(key="credential", label="Credential", color="#f59e0b", shape="diamond", layer=GraphSemanticLayer.IDENTITY.value),
+    LegendEntry(
+        key="misconfiguration", label="Misconfiguration", color="#f97316", shape="triangle", layer=GraphSemanticLayer.FINDING.value
+    ),
+    LegendEntry(key="model", label="Model", color="#8b5cf6", shape="square", layer=GraphSemanticLayer.ASSET.value),
+    LegendEntry(key="container", label="Container", color="#6366f1", shape="square", layer=GraphSemanticLayer.INFRA.value),
+    LegendEntry(key="cloud_resource", label="Cloud Resource", color="#0ea5e9", shape="square", layer=GraphSemanticLayer.INFRA.value),
+    LegendEntry(key="user", label="User", color="#14b8a6", shape="circle", layer=GraphSemanticLayer.USER.value),
+    LegendEntry(key="group", label="Group", color="#0d9488", shape="circle", layer=GraphSemanticLayer.IDENTITY.value),
+    LegendEntry(key="service_account", label="Service Account", color="#0f766e", shape="circle", layer=GraphSemanticLayer.IDENTITY.value),
+    LegendEntry(key="fleet", label="Fleet", color="#6b7280", shape="square", layer=GraphSemanticLayer.INFRA.value),
+    LegendEntry(key="cluster", label="Cluster", color="#4b5563", shape="square", layer=GraphSemanticLayer.INFRA.value),
+    LegendEntry(key="dataset", label="Dataset", color="#06b6d4", shape="square", layer=GraphSemanticLayer.ASSET.value),
+    LegendEntry(key="environment", label="Environment", color="#9ca3af", shape="square", layer=GraphSemanticLayer.INFRA.value),
+    LegendEntry(key="provider", label="Provider", color="#d1d5db", shape="square", layer=GraphSemanticLayer.INFRA.value),
 ]
 
 RELATIONSHIP_LEGEND: list[LegendEntry] = [

@@ -37,6 +37,23 @@ class EntityType(str, Enum):
     CLUSTER = "cluster"
 
 
+class GraphSemanticLayer(str, Enum):
+    """Operator-facing AI system layers used to group graph entities."""
+
+    USER = "user"
+    IDENTITY = "identity"
+    APP = "app"
+    API_GATEWAY = "api_gateway"
+    ORCHESTRATION = "orchestration"
+    MCP_SERVER = "mcp_server"
+    TOOL = "tool"
+    PACKAGE = "package"
+    RUNTIME_EVIDENCE = "runtime_evidence"
+    ASSET = "asset"
+    INFRA = "infra"
+    FINDING = "finding"
+
+
 class RelationshipType(str, Enum):
     """Edge relationship types across all graph surfaces."""
 

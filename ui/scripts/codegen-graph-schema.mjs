@@ -102,6 +102,7 @@ function render(schema) {
           label: n.label,
           color: n.color,
           shape: n.shape,
+          layer: n.layer,
           icon: n.icon,
           category_uid: n.category_uid,
           class_uid: n.class_uid,
@@ -152,6 +153,7 @@ export interface GraphNodeKindMeta {
   label: string;
   color: string;
   shape: string;
+  layer: string;
   icon: string;
   category_uid: number;
   class_uid: number;

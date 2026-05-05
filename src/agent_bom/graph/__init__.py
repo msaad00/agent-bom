@@ -37,7 +37,7 @@ from agent_bom.graph.severity import (
     severity_rank,
     severity_to_ocsf,
 )
-from agent_bom.graph.types import EntityType, GraphLayout, NodeStatus, RelationshipType
+from agent_bom.graph.types import EntityType, GraphLayout, GraphSemanticLayer, NodeStatus, RelationshipType
 from agent_bom.graph.util import _now_iso
 from agent_bom.graph.webhooks import compute_delta_alerts, dispatch_delta_alerts, format_alerts_for_siem
 
@@ -45,6 +45,7 @@ __all__ = [
     # Types
     "EntityType",
     "RelationshipType",
+    "GraphSemanticLayer",
     "NodeStatus",
     "GraphLayout",
     "OCSFSeverity",

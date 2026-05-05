@@ -113,7 +113,7 @@ def test_json_surfaces_infer_and_preserve_asset_discovery_provenance() -> None:
     assert skill_provenance["source_type"] == "skill_invoked_pull"
     assert skill_provenance["source"] == "<redacted>"
 
-    snapshot_pkg = next(pkg for pkg in payload["inventory_snapshot"]["packages"] if pkg["name"] == "mcp-server")
+    snapshot_pkg = next(pkg for pkg in payload["ai_bom_entities"]["packages"] if pkg["name"] == "mcp-server")
     assert snapshot_pkg["discovery_provenance"]["source_type"] == "registry_fallback"
     assert snapshot_pkg["version_provenance"]["version_source"] == "registry_latest"
 

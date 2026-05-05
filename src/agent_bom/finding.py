@@ -327,6 +327,29 @@ def _sanitized_evidence_field(value: object) -> object:
     return _sanitized_evidence_value(_evidence_payload(value))
 
 
+def _source_for_blast_radius(br: object) -> FindingSource:
+    """Derive finding source from the actual affected surface.
+
+    Generic package/image/SBOM findings should not inherit MCP/AI framework
+    applicability just because they flowed through the blast-radius shim.
+    """
+    surfaces = [getattr(server, "surface", None) for server in getattr(br, "affected_servers", []) or []]
+    surface_values = {getattr(surface, "value", str(surface)) for surface in surfaces if surface is not None}
+    if any(getattr(server, "is_mcp_surface", False) for server in getattr(br, "affected_servers", []) or []):
+        return FindingSource.MCP_SCAN
+    if {"container-image", "oci-tarball"} & surface_values:
+        return FindingSource.CONTAINER
+    if "filesystem" in surface_values:
+        return FindingSource.FILESYSTEM
+    if "external-scan" in surface_values:
+        return FindingSource.EXTERNAL
+    if "sast" in surface_values:
+        return FindingSource.SAST
+    if {"sbom", "os-packages"} & surface_values:
+        return FindingSource.SBOM
+    return FindingSource.SBOM
+
+
 def blast_radius_to_finding(br: object) -> "Finding":
     """Convert a BlastRadius instance to a unified Finding.
 
@@ -399,7 +422,7 @@ def blast_radius_to_finding(br: object) -> "Finding":
 
     finding = Finding(
         finding_type=FindingType.CVE,
-        source=FindingSource.MCP_SCAN,
+        source=_source_for_blast_radius(br),
         asset=asset,
         severity=sev,
         vendor_severity=getattr(vuln, "vendor_severity", None),

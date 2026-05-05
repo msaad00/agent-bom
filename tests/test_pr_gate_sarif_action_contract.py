@@ -69,7 +69,7 @@ def test_iac_sarif_output_path_writes_valid_sarif(tmp_path: Path) -> None:
 
 
 def test_sarif_sanitizes_unified_finding_evidence_at_sink() -> None:
-    token = "sk-" + "live-" + "1234567890" + "abcdef"
+    redaction_fixture = "redaction-fixture-value"
     report = AIBOMReport(
         findings=[
             Finding(
@@ -79,19 +79,41 @@ def test_sarif_sanitizes_unified_finding_evidence_at_sink() -> None:
                 severity="high",
                 title="Unsafe credential flow",
                 evidence={
-                    "api_key": token,
+                    "api_key": redaction_fixture,
                     "path": "/Users/alice/prod-secrets/app.py",
-                    "url": "https://alice:secret@example.com/hook?token=secret",
+                    "url": "https://alice:secret@example.com/hook?query=secret",
                 },
-                remediation_guidance=f"Rotate {token}",
+                remediation_guidance=f"Rotate {redaction_fixture}",
             )
         ]
     )
 
     encoded = json.dumps(to_sarif(report), sort_keys=True)
 
-    assert token not in encoded
+    assert redaction_fixture not in encoded
     assert "/Users/alice/prod-secrets" not in encoded
     assert "alice:secret" not in encoded
-    assert "***REDACTED***" in encoded
-    assert "<path:app.py>" in encoded
+    assert "<path:app.py>" not in encoded
+
+
+def test_sarif_sanitizes_free_text_messages_and_descriptions() -> None:
+    redaction_fixture = "redaction-fixture-value"
+    report = AIBOMReport(
+        findings=[
+            Finding(
+                finding_type=FindingType.SAST,
+                source=FindingSource.SAST,
+                asset=Asset(name="app", asset_type="source", location="/Users/alice/prod-secrets/app.py"),
+                severity="high",
+                title="Unsafe credential flow",
+                description=f"Copied workspace content from /Users/alice/prod-secrets/app.py with {redaction_fixture}",
+                remediation_guidance=f"Rotate {redaction_fixture}",
+            )
+        ]
+    )
+
+    encoded = json.dumps(to_sarif(report), sort_keys=True)
+
+    assert redaction_fixture not in encoded
+    assert "/Users/alice/prod-secrets" not in encoded
+    assert "Copied workspace content" not in encoded

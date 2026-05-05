@@ -208,6 +208,9 @@ def _get_inventory_snapshot(report: dict) -> dict:
     """Return inventory snapshot from a report, deriving a minimal one if absent."""
     snapshot = report.get("inventory_snapshot")
     ai_bom_entities = report.get("ai_bom_entities") or {}
+    rich_entity_keys = ("servers", "tools", "resources", "prompts", "packages", "relationships")
+    if ai_bom_entities and any(ai_bom_entities.get(key) for key in rich_entity_keys):
+        return ai_bom_entities
     if snapshot and ai_bom_entities:
         merged = dict(snapshot)
         if "relationships" not in merged and ai_bom_entities.get("relationships"):

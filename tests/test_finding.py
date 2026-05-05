@@ -17,6 +17,7 @@ from agent_bom.models import (
     MCPServer,
     Package,
     PackageOccurrence,
+    ServerSurface,
     Severity,
     TransportType,
     Vulnerability,
@@ -243,6 +244,23 @@ def test_blast_radius_to_finding_cve_type():
     finding = blast_radius_to_finding(br)
     assert finding.finding_type == FindingType.CVE
     assert finding.source == FindingSource.MCP_SCAN
+
+
+def test_blast_radius_to_finding_uses_sbom_source_for_non_mcp_surfaces():
+    server = _make_server("sbom-package")
+    server.surface = ServerSurface.SBOM
+    br = _make_blast_radius(servers=[server])
+    finding = blast_radius_to_finding(br)
+    assert finding.source == FindingSource.SBOM
+    assert "owasp_mcp" not in finding.applicable_frameworks
+
+
+def test_blast_radius_to_finding_uses_container_source_for_image_surfaces():
+    server = _make_server("container-image")
+    server.surface = ServerSurface.CONTAINER_IMAGE
+    br = _make_blast_radius(servers=[server])
+    finding = blast_radius_to_finding(br)
+    assert finding.source == FindingSource.CONTAINER
 
 
 def test_blast_radius_to_finding_severity_mapped():

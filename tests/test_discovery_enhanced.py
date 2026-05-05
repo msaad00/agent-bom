@@ -348,7 +348,7 @@ def test_json_includes_stable_ids_and_resources():
     assert data["agents"][0]["mcp_servers"][0]["tools"][0]["discovery_confidence"] is None
     assert data["agents"][0]["mcp_servers"][0]["tools"][0]["risk_score"] >= 1
     assert data["agents"][0]["mcp_servers"][0]["resources"][0]["risk_score"] >= 1
-    snapshot = data["inventory_snapshot"]
+    snapshot = data["ai_bom_entities"]
     assert snapshot["summary"]["agents"] == 1
     assert snapshot["summary"]["servers"] == 1
     assert snapshot["summary"]["tools"] == 1

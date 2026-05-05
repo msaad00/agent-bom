@@ -27,6 +27,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from agent_bom.api.models import ComplianceReportBundle, JobStatus
 from agent_bom.api.stores import _get_analytics_store, _get_fleet_store, _get_policy_store, _get_store
+from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.rbac import require_authenticated_permission
 
 if TYPE_CHECKING:
@@ -1427,6 +1428,7 @@ async def get_incident_correlation(request: Request) -> dict:
         return {"incidents": [], "count": 0}
 
     incidents = latest_result.get("incident_correlation", [])
+    incidents = redact_for_persistence(incidents, EvidenceTier.SAFE_TO_STORE)
     return {"incidents": incidents, "count": len(incidents)}
 
 

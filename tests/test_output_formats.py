@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
@@ -356,10 +357,10 @@ def test_json_includes_ai_bom_entities():
 def test_json_summary_distinguishes_total_vs_unique_packages():
     """Same package on two servers counts twice in `total_packages` (occurrences)
     but once in `unique_packages` (deduped by stable_id), matching
-    `inventory_snapshot.packages` and `ai_bom_entities.packages`.
+    `ai_bom_entities.packages`.
 
     v0.84.6 audit flagged operators reading `total_packages` and finding
-    fewer entries in `inventory_snapshot.packages` than expected. Surfacing
+    fewer entries in `ai_bom_entities.packages` than expected. Surfacing
     `unique_packages` makes the occurrence-vs-unique split self-documenting
     so the asymmetry can't read as a bug.
     """
@@ -375,8 +376,29 @@ def test_json_summary_distinguishes_total_vs_unique_packages():
 
     assert data["summary"]["total_packages"] == 2, "occurrence count across servers"
     assert data["summary"]["unique_packages"] == 1, "deduped by stable_id"
-    assert len(data["inventory_snapshot"]["packages"]) == data["summary"]["unique_packages"]
     assert len(data["ai_bom_entities"]["packages"]) == data["summary"]["unique_packages"]
+
+
+def test_json_inventory_snapshot_round_trips_through_inventory_schema(tmp_path):
+    from agent_bom.inventory import _inventory_validator, load_inventory
+
+    pkg = _make_pkg(name="openssl", version="3.0.16", ecosystem="deb")
+    server = _make_server(name="image-scan", packages=[pkg])
+    from agent_bom.models import ServerSurface
+
+    server.surface = ServerSurface.CONTAINER_IMAGE
+    agent = _make_agent(name="image:agent-bom", servers=[server])
+    data = to_json(_make_report(agents=[agent]))
+    snapshot = data["inventory_snapshot"]
+
+    errors = sorted(_inventory_validator().iter_errors(snapshot), key=lambda error: list(error.path))
+    assert errors == []
+    assert snapshot["agents"][0]["mcp_servers"][0]["packages"][0]["ecosystem"] == "unknown"
+
+    path = tmp_path / "inventory.json"
+    path.write_text(json.dumps(snapshot), encoding="utf-8")
+    loaded = load_inventory(str(path))
+    assert loaded["agents"][0]["name"] == "image:agent-bom"
 
 
 # ── Markdown ─────────────────────────────────────────────────────────────────

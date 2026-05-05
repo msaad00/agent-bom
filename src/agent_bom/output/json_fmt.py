@@ -15,7 +15,14 @@ from agent_bom.asset_provenance import (
 from agent_bom.compliance_utils import effective_blast_radius_tags
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
-from agent_bom.security import sanitize_command_args, sanitize_path_label, sanitize_security_warnings, sanitize_text, sanitize_url
+from agent_bom.security import (
+    sanitize_command_args,
+    sanitize_path_label,
+    sanitize_security_warnings,
+    sanitize_sensitive_payload,
+    sanitize_text,
+    sanitize_url,
+)
 
 
 def _severity_state(severity: Severity) -> str:
@@ -350,7 +357,7 @@ def _build_framework_summary(blast_radii: list[BlastRadius]) -> dict:
     }
 
 
-def _build_inventory_snapshot(report: AIBOMReport) -> dict:
+def _build_ai_bom_entities_snapshot(report: AIBOMReport) -> dict:
     """Build a deterministic inventory snapshot for diffing and BOM operations."""
     agents: list[dict] = []
     servers: dict[str, dict] = {}
@@ -491,6 +498,185 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
     }
 
 
+_INVENTORY_SCHEMA_AGENT_TYPES = {"claude-desktop", "claude-code", "cursor", "windsurf", "cline", "custom"}
+_INVENTORY_SCHEMA_ECOSYSTEMS = {"npm", "pypi", "go", "cargo", "maven", "nuget", "hex", "pub", "unknown"}
+_INVENTORY_SCHEMA_TRANSPORTS = {"stdio", "sse", "streamable-http"}
+_SECURITY_INTELLIGENCE_SCHEMA_FIELDS = {
+    "entry_id",
+    "title",
+    "severity",
+    "confidence",
+    "default_recommendation",
+    "source_type",
+    "source",
+    "match_type",
+    "matched_value",
+    "ecosystem",
+    "package",
+    "affected_versions",
+    "first_seen",
+    "last_verified",
+    "references",
+    "remediation_actions",
+}
+_DISCOVERY_PROVENANCE_SCHEMA_FIELDS = {
+    "source_type",
+    "observed_via",
+    "source",
+    "collector",
+    "provider",
+    "service",
+    "resource_type",
+    "resource_id",
+    "resource_name",
+    "location",
+    "confidence",
+    "resolved_from_registry",
+    "version_source",
+    "version_provenance",
+}
+_VERSION_PROVENANCE_SCHEMA_FIELDS = {
+    "declared_name",
+    "declared_version",
+    "resolved_version",
+    "version_source",
+    "confidence",
+    "observed_at",
+    "version_resolved_at",
+    "resolved_from_registry",
+    "floating_reference",
+    "floating_reference_reason",
+    "evidence",
+    "version_conflicts",
+}
+
+
+def _drop_empty(value: dict[str, object | None]) -> dict[str, object]:
+    """Drop optional empty values so inventory output validates with strict schema."""
+    return {key: item for key, item in value.items() if item not in (None, "", [], {})}
+
+
+def _schema_agent_type(value: str) -> str:
+    return value if value in _INVENTORY_SCHEMA_AGENT_TYPES else "custom"
+
+
+def _schema_ecosystem(value: str | None) -> str:
+    normalized = (value or "unknown").lower()
+    return normalized if normalized in _INVENTORY_SCHEMA_ECOSYSTEMS else "unknown"
+
+
+def _schema_transport(value: str) -> str | None:
+    return value if value in _INVENTORY_SCHEMA_TRANSPORTS else None
+
+
+def _schema_security_intelligence(entry: dict[str, object]) -> dict[str, object]:
+    sanitized = sanitize_security_intelligence_entry(entry)
+    return {key: value for key, value in sanitized.items() if key in _SECURITY_INTELLIGENCE_SCHEMA_FIELDS}
+
+
+def _schema_version_provenance(value: dict[str, object] | None) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    filtered = {key: item for key, item in value.items() if key in _VERSION_PROVENANCE_SCHEMA_FIELDS}
+    return _drop_empty(filtered)
+
+
+def _schema_discovery_provenance(value: dict[str, object] | None) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    filtered: dict[str, object | None] = {key: item for key, item in value.items() if key in _DISCOVERY_PROVENANCE_SCHEMA_FIELDS}
+    version_provenance = value.get("version_provenance")
+    filtered["version_provenance"] = _schema_version_provenance(version_provenance if isinstance(version_provenance, dict) else None)
+    return _drop_empty(filtered)
+
+
+def _schema_package(pkg, *, inherited_provenance: dict | None = None) -> dict[str, object]:
+    provenance = _schema_discovery_provenance(package_discovery_provenance(pkg, inherited=inherited_provenance))
+    package = _drop_empty(
+        {
+            "name": sanitize_text(pkg.name),
+            "version": sanitize_text(pkg.version or "unknown"),
+            "ecosystem": _schema_ecosystem(pkg.ecosystem),
+            "purl": sanitize_text(pkg.purl) if pkg.purl else None,
+            "discovery_provenance": provenance,
+        }
+    )
+    return package
+
+
+def _schema_tool(tool) -> dict[str, object]:
+    return _drop_empty(
+        {
+            "name": sanitize_text(tool.name),
+            "description": sanitize_text(tool.description),
+            "input_schema": sanitize_sensitive_payload(tool.input_schema or {}),
+        }
+    )
+
+
+def _schema_server(server, *, inherited_provenance: dict | None = None) -> dict[str, object]:
+    raw_intel = getattr(server, "security_intelligence", []) or []
+    security_intelligence = [
+        item
+        for item in (_schema_security_intelligence(entry) for entry in raw_intel if isinstance(entry, dict))
+        if item.get("entry_id") and item.get("title") and item.get("confidence") and item.get("default_recommendation")
+    ]
+    server_payload = _drop_empty(
+        {
+            "name": sanitize_text(server.name),
+            "command": sanitize_text(server.command),
+            "args": sanitize_command_args(server.args),
+            "transport": _schema_transport(server.transport.value),
+            "url": sanitize_url(server.url) if server.url else None,
+            "mcp_version": sanitize_text(server.mcp_version) if server.mcp_version else None,
+            "working_dir": sanitize_path_label(server.working_dir) if server.working_dir else None,
+            "tools": [_schema_tool(tool) for tool in server.tools],
+            "packages": [_schema_package(pkg, inherited_provenance=inherited_provenance) for pkg in server.packages],
+            "config_path": sanitize_path_label(server.config_path) if server.config_path else None,
+            "security_blocked": server.security_blocked if server.security_blocked else None,
+            "security_warnings": sanitize_security_warnings(server.security_warnings),
+            "security_intelligence": security_intelligence,
+            "discovery_provenance": _schema_discovery_provenance(
+                sanitize_discovery_provenance(
+                    getattr(server, "discovery_provenance", None),
+                    defaults=inherited_provenance,
+                )
+            ),
+        }
+    )
+    return server_payload
+
+
+def _build_inventory_snapshot(report: AIBOMReport) -> dict:
+    """Build a strict inventory-schema payload suitable for --inventory reuse."""
+    agents: list[dict[str, object]] = []
+    for agent in report.agents:
+        agent_provenance = _schema_discovery_provenance(agent_discovery_provenance(agent))
+        agents.append(
+            _drop_empty(
+                {
+                    "name": sanitize_text(agent.name),
+                    "agent_type": _schema_agent_type(agent.agent_type.value),
+                    "version": sanitize_text(agent.version) if agent.version else None,
+                    "config_path": sanitize_path_label(agent.config_path) if agent.config_path else None,
+                    "source": sanitize_text(agent.source) if agent.source else None,
+                    "metadata": sanitize_sensitive_payload(agent.metadata) if agent.metadata else None,
+                    "discovered_at": agent.discovered_at,
+                    "last_seen": agent.last_seen,
+                    "mcp_servers": [_schema_server(server, inherited_provenance=agent_provenance) for server in agent.mcp_servers],
+                    "discovery_provenance": agent_provenance,
+                }
+            )
+        )
+
+    return {
+        "schema_version": "1",
+        "source": "agent-bom",
+        "generated_at": report.generated_at.isoformat(),
+        "agents": agents,
+    }
+
+
 def _build_mcp_runtime_diff(report: AIBOMReport) -> dict | None:
     """Compare configured servers against observed/runtime evidence."""
     introspection_results = {
@@ -592,6 +778,7 @@ def _build_mcp_runtime_diff(report: AIBOMReport) -> dict | None:
 
 def to_json(report: AIBOMReport) -> dict:
     """Convert report to JSON-serializable dict."""
+    ai_bom_entities = _build_ai_bom_entities_snapshot(report)
     inventory_snapshot = _build_inventory_snapshot(report)
     mcp_runtime_diff = _build_mcp_runtime_diff(report)
     from agent_bom.mitre_fetch import get_catalog_metadata
@@ -612,13 +799,13 @@ def to_json(report: AIBOMReport) -> dict:
         },
         "ai_bom_entities": {
             "schema_version": "1.0",
-            **inventory_snapshot,
+            **ai_bom_entities,
         },
         "summary": {
             "total_agents": report.total_agents,
             "total_mcp_servers": report.total_servers,
             "total_packages": report.total_packages,
-            "unique_packages": len(inventory_snapshot.get("packages", [])),
+            "unique_packages": len(ai_bom_entities.get("packages", [])),
             "total_vulnerabilities": report.total_vulnerabilities,
             "critical_findings": len(report.critical_vulns),
         },

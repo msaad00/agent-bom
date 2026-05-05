@@ -59,6 +59,7 @@ from agent_bom.api.stores import (
     _jobs_put,
 )
 from agent_bom.api.tenant_quota import enforce_active_scan_quota, enforce_retained_jobs_quota, tenant_quota_guard
+from agent_bom.evidence import EvidenceTier, redact_for_persistence
 
 router = APIRouter()
 _logger = logging.getLogger(__name__)
@@ -908,7 +909,7 @@ async def list_findings(
     limit = max(1, min(limit, 1000))
     offset = max(0, offset)
     total = len(findings)
-    page = findings[offset : offset + limit]
+    page = redact_for_persistence(findings[offset : offset + limit], EvidenceTier.SAFE_TO_STORE)
     return {
         "findings": page,
         "count": len(page),

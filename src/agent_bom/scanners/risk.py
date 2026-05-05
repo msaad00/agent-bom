@@ -185,8 +185,13 @@ def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float], Opti
                 severity = resolved
                 severity_source = "osv_ecosystem"
 
-    if severity == Severity.UNKNOWN and str(vuln_data.get("id", "")).startswith("GHSA-"):
-        severity = Severity.MEDIUM
-        severity_source = "ghsa_heuristic"
+    if severity == Severity.UNKNOWN:
+        advisory_id = str(vuln_data.get("id", "")).upper()
+        if advisory_id.startswith("GHSA-"):
+            severity = Severity.MEDIUM
+            severity_source = "ghsa_heuristic"
+        elif advisory_id.startswith(("OSV-", "PYSEC-", "RUSTSEC-", "GO-", "MAL-", "GSD-")):
+            severity = Severity.MEDIUM
+            severity_source = "osv_heuristic"
 
     return severity, cvss_score, severity_source

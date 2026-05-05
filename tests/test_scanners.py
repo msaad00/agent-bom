@@ -53,6 +53,15 @@ def test_osv_severity_unknown_label_not_medium():
     assert severity == Severity.UNKNOWN
 
 
+def test_osv_prefixed_advisory_without_score_uses_medium_fallback():
+    """OSV-issued advisories with no score still need a non-unknown triage band."""
+    vuln = {"id": "OSV-2026-0001", "summary": "advisory without score"}
+    severity, score, sev_src = parse_osv_severity(vuln)
+    assert severity == Severity.MEDIUM
+    assert score is None
+    assert sev_src == "osv_heuristic"
+
+
 def test_ghsa_severity_unknown_label_not_medium():
     """GHSA advisory with unrecognized severity must return UNKNOWN, not MEDIUM."""
     from agent_bom.scanners.ghsa_advisory import _parse_ghsa_severity

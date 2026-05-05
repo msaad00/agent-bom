@@ -100,4 +100,4 @@ def test_json_inventory_snapshot_preserves_server_surface():
 
     assert payload["summary"]["total_agents"] == 1
     assert payload["agents"][0]["mcp_servers"][0]["surface"] == "container-image"
-    assert payload["inventory_snapshot"]["servers"][0]["surface"] == "container-image"
+    assert payload["ai_bom_entities"]["servers"][0]["surface"] == "container-image"

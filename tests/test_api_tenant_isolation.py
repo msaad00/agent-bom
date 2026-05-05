@@ -730,6 +730,59 @@ async def test_compliance_routes_are_tenant_scoped():
 
 
 @pytest.mark.asyncio
+async def test_findings_and_incidents_redact_replay_only_fields_on_read():
+    store = InMemoryJobStore()
+    set_job_store(store)
+    redaction_fixture = "redaction-fixture-value"
+    job = ScanJob(
+        job_id="job-alpha",
+        tenant_id="tenant-alpha",
+        status=JobStatus.DONE,
+        created_at=_now(),
+        completed_at=_now(),
+        request=ScanRequest(),
+        result={
+            "findings": [
+                {
+                    "id": "CVE-2026-0001",
+                    "package": "pillow",
+                    "package_version": "10.0.0",
+                    "severity": "high",
+                    "summary": f"Copied workspace content {redaction_fixture}",
+                    "references": [f"https://alice:{redaction_fixture}@example.com/private"],
+                    "file_path": "/Users/alice/prod-secrets/app.py",
+                }
+            ],
+            "incident_correlation": [
+                {
+                    "agent_name": "alpha-agent",
+                    "priority": "P1",
+                    "config_path": "/Users/alice/prod-secrets/claude.json",
+                    "recommended_action": f"Rotate {redaction_fixture}",
+                    "credentials_exposed": ["AWS_SECRET_ACCESS_KEY"],
+                    "severity_counts": {"critical": 1},
+                }
+            ],
+        },
+    )
+    store.put(job)
+    req = _request("tenant-alpha")
+
+    findings = await scan_routes.list_findings(req)
+    incidents = await compliance_routes.get_incident_correlation(req)
+    encoded = f"{findings}{incidents}"
+
+    assert "CVE-2026-0001" in encoded
+    assert "pillow" in encoded
+    assert "alpha-agent" in encoded
+    assert redaction_fixture not in encoded
+    assert "/Users/alice/prod-secrets" not in encoded
+    assert "summary" not in findings["findings"][0]
+    assert "config_path" not in incidents["incidents"][0]
+    assert incidents["incidents"][0]["severity_counts"] == {"critical": 1}
+
+
+@pytest.mark.asyncio
 async def test_discovery_and_traces_are_tenant_scoped():
     store = InMemoryJobStore()
     set_job_store(store)

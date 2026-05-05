@@ -13,6 +13,7 @@ from agent_bom.asset_provenance import (
     package_version_provenance,
     sanitize_discovery_provenance,
 )
+from agent_bom.evidence import EvidenceTier, redact_for_persistence
 from agent_bom.finding import FindingType
 from agent_bom.models import AIBOMReport, Severity
 from agent_bom.security import sanitize_sensitive_payload
@@ -67,7 +68,19 @@ def _to_relative_path(path: str) -> str:
 
 def _sanitize_sarif_property(value: Any) -> Any:
     """Apply final defensive redaction before data leaves via SARIF."""
-    return sanitize_sensitive_payload(value, max_str_len=1000)
+    sanitized = sanitize_sensitive_payload(value, max_str_len=1000)
+    if isinstance(sanitized, str):
+        return None
+    return redact_for_persistence({"details": sanitized}, EvidenceTier.SAFE_TO_STORE).get("details")
+
+
+def _sanitize_sarif_text(field_name: str, value: Any, *, fallback: str = "") -> str:
+    """Redact free-text SARIF fields using the two-bucket persistence policy."""
+    sanitized = sanitize_sensitive_payload(str(value or ""), key=field_name, max_str_len=1000)
+    redacted = redact_for_persistence({field_name: sanitized}, EvidenceTier.SAFE_TO_STORE).get(field_name)
+    if redacted is None:
+        return fallback
+    return str(redacted)
 
 
 def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
@@ -108,8 +121,14 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                 rule_props["tags"] = vuln.cwe_ids
             rule: dict = {
                 "id": rule_id,
-                "shortDescription": {"text": f"{vuln.severity.value.upper()}: {vuln.id} in {br.package.name}@{br.package.version}"},
-                "fullDescription": {"text": vuln.summary or f"Vulnerability {vuln.id}"},
+                "shortDescription": {
+                    "text": _sanitize_sarif_text(
+                        "title",
+                        f"{vuln.severity.value.upper()}: {vuln.id} in {br.package.name}@{br.package.version}",
+                        fallback=f"{vuln.id} package vulnerability",
+                    )
+                },
+                "fullDescription": {"text": _sanitize_sarif_text("description", vuln.summary, fallback=f"Vulnerability {vuln.id}")},
                 "helpUri": f"https://osv.dev/vulnerability/{vuln.id}",
                 "defaultConfiguration": {"level": level},
                 "properties": rule_props,
@@ -134,7 +153,7 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
             "ruleId": rule_id,
             "level": level,
             "kind": kind,
-            "message": {"text": message_text},
+            "message": {"text": _sanitize_sarif_text("title", message_text, fallback=f"{vuln.id} package vulnerability")},
             "fingerprints": {
                 "agent-bom/v1": fingerprint,
             },
@@ -230,8 +249,14 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
             rules.append(
                 {
                     "id": rule_id,
-                    "shortDescription": {"text": finding.finding_type.value.replace("_", " ").title()},
-                    "fullDescription": {"text": finding.description or finding.title or finding.finding_type.value},
+                    "shortDescription": {"text": _sanitize_sarif_text("title", finding.finding_type.value.replace("_", " ").title())},
+                    "fullDescription": {
+                        "text": _sanitize_sarif_text(
+                            "description",
+                            finding.description,
+                            fallback=_sanitize_sarif_text("title", finding.title or finding.finding_type.value),
+                        )
+                    },
                     "defaultConfiguration": {"level": level},
                     "properties": {
                         "security-severity": finding_sev_score.get(sev, "4.0"),
@@ -249,7 +274,13 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                 "ruleId": rule_id,
                 "level": level,
                 "kind": "fail" if level in {"error", "warning"} else "informational",
-                "message": {"text": finding.title or finding.description or finding.finding_type.value},
+                "message": {
+                    "text": _sanitize_sarif_text(
+                        "title",
+                        finding.title,
+                        fallback=_sanitize_sarif_text("description", finding.description, fallback=finding.finding_type.value),
+                    )
+                },
                 "fingerprints": {"agent-bom/v1": fingerprint},
                 "locations": [
                     {
@@ -262,7 +293,7 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                 "properties": {
                     "risk_score": finding.risk_score,
                     "asset_type": finding.asset.asset_type,
-                    "asset_name": finding.asset.name,
+                    "asset_name": _sanitize_sarif_text("title", finding.asset.name, fallback=finding.asset.asset_type),
                     "evidence": _sanitize_sarif_property(finding.evidence),
                     "remediation_guidance": _sanitize_sarif_property(finding.remediation_guidance),
                 },
@@ -286,8 +317,14 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                 rules.append(
                     {
                         "id": rule_id,
-                        "shortDescription": {"text": iac_finding.get("title", rule_id)},
-                        "fullDescription": {"text": iac_finding.get("message", iac_finding.get("title", ""))},
+                        "shortDescription": {"text": _sanitize_sarif_text("title", iac_finding.get("title", rule_id), fallback=rule_id)},
+                        "fullDescription": {
+                            "text": _sanitize_sarif_text(
+                                "description",
+                                iac_finding.get("message"),
+                                fallback=_sanitize_sarif_text("title", iac_finding.get("title", rule_id), fallback=rule_id),
+                            )
+                        },
                         "defaultConfiguration": {"level": level},
                         "properties": {
                             "security-severity": iac_sev_score.get(sev, "4.0"),
@@ -304,7 +341,13 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                     "ruleId": rule_id,
                     "level": level,
                     "kind": "fail",
-                    "message": {"text": iac_finding.get("message", iac_finding.get("title", "IaC misconfiguration"))},
+                    "message": {
+                        "text": _sanitize_sarif_text(
+                            "description",
+                            iac_finding.get("message"),
+                            fallback=_sanitize_sarif_text("title", iac_finding.get("title", "IaC misconfiguration")),
+                        )
+                    },
                     "fingerprints": {"agent-bom/v1": fingerprint},
                     "locations": [
                         {
@@ -338,8 +381,16 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                 rules.append(
                     {
                         "id": rule_id,
-                        "shortDescription": {"text": f"{sev.upper()}: {comp_type.replace('_', ' ')} — {name}"},
-                        "fullDescription": {"text": comp.get("description", "") or f"AI component finding: {name}"},
+                        "shortDescription": {
+                            "text": _sanitize_sarif_text("title", f"{sev.upper()}: {comp_type.replace('_', ' ')} - {name}")
+                        },
+                        "fullDescription": {
+                            "text": _sanitize_sarif_text(
+                                "description",
+                                comp.get("description", ""),
+                                fallback=f"AI component finding: {name}",
+                            )
+                        },
                         "defaultConfiguration": {"level": level},
                         "properties": {"security-severity": ai_sev_score.get(sev, "0.0")},
                     }
@@ -348,7 +399,7 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
             file_path = _to_relative_path(comp.get("file", "unknown") or "unknown")
             fp_input = f"{rule_id}:{file_path}:{comp.get('line', 1)}"
             fingerprint = hashlib.sha256(fp_input.encode()).hexdigest()
-            desc = comp.get("description", "") or f"{comp_type.replace('_', ' ')}: {name}"
+            desc = _sanitize_sarif_text("description", comp.get("description", ""), fallback=f"{comp_type.replace('_', ' ')}: {name}")
             results.append(
                 {
                     "ruleId": rule_id,
@@ -397,8 +448,20 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                 seen_rule_ids.add(rule_id)
                 cis_rule: dict = {
                     "id": rule_id,
-                    "shortDescription": {"text": f"{sev.upper()}: CIS {cloud_key.upper()} {check_id} — {title}"},
-                    "fullDescription": {"text": check.get("recommendation") or title},
+                    "shortDescription": {
+                        "text": _sanitize_sarif_text(
+                            "title",
+                            f"{sev.upper()}: CIS {cloud_key.upper()} {check_id} - {title}",
+                            fallback=rule_id,
+                        )
+                    },
+                    "fullDescription": {
+                        "text": _sanitize_sarif_text(
+                            "recommendation",
+                            check.get("recommendation"),
+                            fallback=_sanitize_sarif_text("title", title, fallback=rule_id),
+                        )
+                    },
                     "defaultConfiguration": {"level": level},
                     "properties": {
                         "security-severity": cis_sev_score.get(sev, "4.0"),
@@ -438,7 +501,13 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                     "ruleId": rule_id,
                     "level": level,
                     "kind": "fail",
-                    "message": {"text": f"CIS {cloud_key.upper()} {check_id} failed: {title}"},
+                    "message": {
+                        "text": _sanitize_sarif_text(
+                            "title",
+                            f"CIS {cloud_key.upper()} {check_id} failed: {title}",
+                            fallback=rule_id,
+                        )
+                    },
                     "fingerprints": {"agent-bom/v1": fingerprint},
                     "locations": [
                         {

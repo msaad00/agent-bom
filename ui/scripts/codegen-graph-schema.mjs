@@ -103,6 +103,8 @@ function render(schema) {
           color: n.color,
           shape: n.shape,
           icon: n.icon,
+          category_uid: n.category_uid,
+          class_uid: n.class_uid,
         }).replace(/\n/g, "\n  ")},`,
     )
     .join("\n");
@@ -113,6 +115,11 @@ function render(schema) {
         `  ${JSON.stringify(e.key)}: ${jsonStringify({
           label: e.label,
           color: e.color,
+          category: e.category,
+          direction: e.direction,
+          source_types: e.source_types,
+          target_types: e.target_types,
+          traversable: e.traversable,
         }).replace(/\n/g, "\n  ")},`,
     )
     .join("\n");
@@ -146,6 +153,8 @@ export interface GraphNodeKindMeta {
   color: string;
   shape: string;
   icon: string;
+  category_uid: number;
+  class_uid: number;
 }
 
 export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> = {
@@ -167,6 +176,11 @@ export const GRAPH_EDGE_KINDS: readonly GraphEdgeKindKey[] = [${edgeKindList}] a
 export interface GraphEdgeKindMeta {
   label: string;
   color: string;
+  category: string;
+  direction: "directed" | "bidirectional";
+  source_types: readonly GraphNodeKindKey[];
+  target_types: readonly GraphNodeKindKey[];
+  traversable: boolean;
 }
 
 export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> = {

@@ -722,6 +722,185 @@ _SHAPE_TO_ICON: dict[str, str] = {
 }
 
 
+_RELATIONSHIP_SCHEMA_META: dict[str, dict[str, object]] = {
+    RelationshipType.HOSTS.value: {
+        "category": "inventory",
+        "direction": "directed",
+        "source_types": [EntityType.PROVIDER.value, EntityType.ENVIRONMENT.value, EntityType.FLEET.value],
+        "target_types": [EntityType.AGENT.value, EntityType.SERVER.value],
+        "traversable": True,
+    },
+    RelationshipType.USES.value: {
+        "category": "inventory",
+        "direction": "directed",
+        "source_types": [EntityType.AGENT.value],
+        "target_types": [EntityType.SERVER.value],
+        "traversable": True,
+    },
+    RelationshipType.DEPENDS_ON.value: {
+        "category": "inventory",
+        "direction": "directed",
+        "source_types": [EntityType.SERVER.value, EntityType.CONTAINER.value],
+        "target_types": [EntityType.PACKAGE.value],
+        "traversable": True,
+    },
+    RelationshipType.PROVIDES_TOOL.value: {
+        "category": "inventory",
+        "direction": "directed",
+        "source_types": [EntityType.SERVER.value],
+        "target_types": [EntityType.TOOL.value],
+        "traversable": True,
+    },
+    RelationshipType.EXPOSES_CRED.value: {
+        "category": "inventory",
+        "direction": "directed",
+        "source_types": [EntityType.SERVER.value, EntityType.AGENT.value],
+        "target_types": [EntityType.CREDENTIAL.value],
+        "traversable": True,
+    },
+    RelationshipType.REACHES_TOOL.value: {
+        "category": "inventory",
+        "direction": "directed",
+        "source_types": [EntityType.CREDENTIAL.value, EntityType.AGENT.value],
+        "target_types": [EntityType.TOOL.value],
+        "traversable": True,
+    },
+    RelationshipType.SERVES_MODEL.value: {
+        "category": "inventory",
+        "direction": "directed",
+        "source_types": [EntityType.SERVER.value],
+        "target_types": [EntityType.MODEL.value],
+        "traversable": True,
+    },
+    RelationshipType.CONTAINS.value: {
+        "category": "inventory",
+        "direction": "directed",
+        "source_types": [EntityType.CONTAINER.value, EntityType.CLUSTER.value, EntityType.FLEET.value],
+        "target_types": [EntityType.PACKAGE.value, EntityType.SERVER.value, EntityType.CONTAINER.value],
+        "traversable": True,
+    },
+    RelationshipType.AFFECTS.value: {
+        "category": "vulnerability",
+        "direction": "directed",
+        "source_types": [EntityType.VULNERABILITY.value, EntityType.MISCONFIGURATION.value],
+        "target_types": [EntityType.PACKAGE.value, EntityType.SERVER.value, EntityType.CONTAINER.value],
+        "traversable": True,
+    },
+    RelationshipType.VULNERABLE_TO.value: {
+        "category": "vulnerability",
+        "direction": "directed",
+        "source_types": [EntityType.PACKAGE.value, EntityType.SERVER.value, EntityType.CONTAINER.value],
+        "target_types": [EntityType.VULNERABILITY.value],
+        "traversable": True,
+    },
+    RelationshipType.EXPLOITABLE_VIA.value: {
+        "category": "vulnerability",
+        "direction": "directed",
+        "source_types": [EntityType.VULNERABILITY.value, EntityType.MISCONFIGURATION.value],
+        "target_types": [EntityType.TOOL.value, EntityType.CREDENTIAL.value],
+        "traversable": True,
+    },
+    RelationshipType.REMEDIATES.value: {
+        "category": "vulnerability",
+        "direction": "directed",
+        "source_types": [EntityType.PACKAGE.value],
+        "target_types": [EntityType.VULNERABILITY.value, EntityType.MISCONFIGURATION.value],
+        "traversable": False,
+    },
+    RelationshipType.TRIGGERS.value: {
+        "category": "vulnerability",
+        "direction": "directed",
+        "source_types": [EntityType.VULNERABILITY.value],
+        "target_types": [EntityType.MISCONFIGURATION.value],
+        "traversable": True,
+    },
+    RelationshipType.SHARES_SERVER.value: {
+        "category": "lateral_movement",
+        "direction": "bidirectional",
+        "source_types": [EntityType.AGENT.value],
+        "target_types": [EntityType.AGENT.value],
+        "traversable": True,
+    },
+    RelationshipType.SHARES_CRED.value: {
+        "category": "lateral_movement",
+        "direction": "bidirectional",
+        "source_types": [EntityType.AGENT.value],
+        "target_types": [EntityType.AGENT.value],
+        "traversable": True,
+    },
+    RelationshipType.LATERAL_PATH.value: {
+        "category": "lateral_movement",
+        "direction": "directed",
+        "source_types": [EntityType.AGENT.value],
+        "target_types": [EntityType.AGENT.value],
+        "traversable": True,
+    },
+    RelationshipType.MANAGES.value: {
+        "category": "governance",
+        "direction": "directed",
+        "source_types": [EntityType.USER.value, EntityType.GROUP.value, EntityType.SERVICE_ACCOUNT.value],
+        "target_types": [EntityType.AGENT.value, EntityType.FLEET.value, EntityType.ENVIRONMENT.value],
+        "traversable": True,
+    },
+    RelationshipType.OWNS.value: {
+        "category": "governance",
+        "direction": "directed",
+        "source_types": [EntityType.USER.value, EntityType.GROUP.value, EntityType.SERVICE_ACCOUNT.value],
+        "target_types": [EntityType.ENVIRONMENT.value, EntityType.CLOUD_RESOURCE.value, EntityType.AGENT.value],
+        "traversable": True,
+    },
+    RelationshipType.PART_OF.value: {
+        "category": "governance",
+        "direction": "directed",
+        "source_types": [EntityType.AGENT.value, EntityType.SERVER.value, EntityType.CONTAINER.value],
+        "target_types": [EntityType.FLEET.value, EntityType.CLUSTER.value, EntityType.ENVIRONMENT.value],
+        "traversable": True,
+    },
+    RelationshipType.MEMBER_OF.value: {
+        "category": "governance",
+        "direction": "directed",
+        "source_types": [EntityType.USER.value, EntityType.SERVICE_ACCOUNT.value, EntityType.AGENT.value],
+        "target_types": [EntityType.GROUP.value, EntityType.AGENT.value, EntityType.FLEET.value],
+        "traversable": True,
+    },
+    RelationshipType.INVOKED.value: {
+        "category": "runtime",
+        "direction": "directed",
+        "source_types": [EntityType.AGENT.value],
+        "target_types": [EntityType.TOOL.value],
+        "traversable": True,
+    },
+    RelationshipType.ACCESSED.value: {
+        "category": "runtime",
+        "direction": "directed",
+        "source_types": [EntityType.TOOL.value],
+        "target_types": [EntityType.CLOUD_RESOURCE.value, EntityType.DATASET.value, EntityType.CREDENTIAL.value],
+        "traversable": True,
+    },
+    RelationshipType.DELEGATED_TO.value: {
+        "category": "runtime",
+        "direction": "directed",
+        "source_types": [EntityType.AGENT.value],
+        "target_types": [EntityType.AGENT.value],
+        "traversable": True,
+    },
+    RelationshipType.CORRELATES_WITH.value: {
+        "category": "correlation",
+        "direction": "bidirectional",
+        "source_types": [EntityType.AGENT.value, EntityType.SERVER.value],
+        "target_types": [EntityType.AGENT.value, EntityType.SERVER.value],
+        "traversable": True,
+    },
+    RelationshipType.POSSIBLY_CORRELATES_WITH.value: {
+        "category": "correlation",
+        "direction": "bidirectional",
+        "source_types": [EntityType.AGENT.value, EntityType.SERVER.value],
+        "target_types": [EntityType.AGENT.value, EntityType.SERVER.value],
+        "traversable": False,
+    },
+}
+
+
 @router.get("/v1/graph/schema", tags=["graph"])
 async def get_graph_schema() -> dict:
     """Canonical graph entity/edge taxonomy — single source of truth.
@@ -732,7 +911,7 @@ async def get_graph_schema() -> dict:
     would emit, so adding a new ``EntityType`` or ``RelationshipType`` in
     Python automatically forces a regen + commit on the UI side.
     """
-    from agent_bom.graph import ENTITY_LEGEND, RELATIONSHIP_LEGEND
+    from agent_bom.graph import ENTITY_LEGEND, ENTITY_OCSF_MAP, RELATIONSHIP_LEGEND
     from agent_bom.graph.types import EntityType, RelationshipType
 
     legend_entities = {entry.key: entry for entry in ENTITY_LEGEND}
@@ -751,6 +930,8 @@ async def get_graph_schema() -> dict:
                 "color": color,
                 "shape": shape,
                 "icon": _SHAPE_TO_ICON.get(shape, "circle"),
+                "category_uid": ENTITY_OCSF_MAP.get(entity.value, {}).get("category_uid", 0),
+                "class_uid": ENTITY_OCSF_MAP.get(entity.value, {}).get("class_uid", 0),
             }
         )
 
@@ -764,6 +945,16 @@ async def get_graph_schema() -> dict:
                 "key": rel.value,
                 "label": label,
                 "color": color,
+                **_RELATIONSHIP_SCHEMA_META.get(
+                    rel.value,
+                    {
+                        "category": "custom",
+                        "direction": "directed",
+                        "source_types": [],
+                        "target_types": [],
+                        "traversable": True,
+                    },
+                ),
             }
         )
 

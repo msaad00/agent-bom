@@ -778,6 +778,30 @@ class TestContextGraphBridge:
         assert ug.attack_paths[0].composite_risk == 5.0
         assert ug.attack_paths[0].credential_exposure == ["API_KEY"]
 
+    def test_to_unified_graph_preserves_legacy_iam_identity_edges(self):
+        from agent_bom.context_graph import ContextGraph, EdgeKind, GraphEdge, GraphNode, NodeKind, to_unified_graph
+        from agent_bom.graph_schema import EntityType, RelationshipType
+
+        cg = ContextGraph()
+        cg.add_node(GraphNode(id="iam_role:role-a", kind=NodeKind.IAM_ROLE, label="role-a"))
+        cg.add_node(GraphNode(id="agent:agent-a", kind=NodeKind.AGENT, label="agent-a"))
+        cg.add_edge(
+            GraphEdge(
+                source="iam_role:role-a",
+                target="agent:agent-a",
+                kind=EdgeKind.ATTACHED_TO,
+            )
+        )
+
+        ug = to_unified_graph(cg, scan_id="identity-bridge")
+
+        role = ug.nodes["iam_role:role-a"]
+        assert role.entity_type == EntityType.SERVICE_ACCOUNT
+        assert any(
+            edge.relationship == RelationshipType.MEMBER_OF and edge.source == "iam_role:role-a" and edge.target == "agent:agent-a"
+            for edge in ug.edges
+        )
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # graph_backend bridge
@@ -821,9 +845,11 @@ class TestBackwardCompat:
 
         assert _NODE_KIND_TO_ENTITY["agent"] == EntityType.AGENT
         assert _NODE_KIND_TO_ENTITY["vulnerability"] == EntityType.VULNERABILITY
+        assert _NODE_KIND_TO_ENTITY["iam_role"] == EntityType.SERVICE_ACCOUNT
         assert _EDGE_KIND_TO_RELATIONSHIP["uses"] == RelationshipType.USES
         assert _EDGE_KIND_TO_RELATIONSHIP["exposes"] == RelationshipType.EXPOSES_CRED
         assert _EDGE_KIND_TO_RELATIONSHIP["shares_credential"] == RelationshipType.SHARES_CRED
+        assert _EDGE_KIND_TO_RELATIONSHIP["attached_to"] == RelationshipType.MEMBER_OF
 
     def test_context_graph_still_exports_old_types(self):
         """Existing consumers that import NodeKind etc. from context_graph still work."""
@@ -1090,11 +1116,41 @@ class TestGraphSchemaEndpoint:
         client = self._client()
         body = client.get("/v1/graph/schema").json()
         for entry in body["node_kinds"]:
-            assert {"key", "label", "color", "shape", "icon"} <= set(entry)
+            assert {"key", "label", "color", "shape", "icon", "category_uid", "class_uid"} <= set(entry)
             assert entry["color"].startswith("#")
+            assert isinstance(entry["category_uid"], int)
+            assert isinstance(entry["class_uid"], int)
         for entry in body["edge_kinds"]:
-            assert {"key", "label", "color"} <= set(entry)
+            assert {
+                "key",
+                "label",
+                "color",
+                "category",
+                "direction",
+                "source_types",
+                "target_types",
+                "traversable",
+            } <= set(entry)
             assert entry["color"].startswith("#")
+            assert entry["category"]
+            assert entry["direction"] in {"directed", "bidirectional"}
+            assert isinstance(entry["source_types"], list)
+            assert isinstance(entry["target_types"], list)
+            assert isinstance(entry["traversable"], bool)
+
+    def test_schema_relationship_metadata_uses_known_node_types(self):
+        from agent_bom.graph.types import EntityType, RelationshipType
+
+        client = self._client()
+        body = client.get("/v1/graph/schema").json()
+        valid_nodes = {entity.value for entity in EntityType}
+        for entry in body["edge_kinds"]:
+            assert set(entry["source_types"]) <= valid_nodes
+            assert set(entry["target_types"]) <= valid_nodes
+
+        edge_entries = {entry["key"]: entry for entry in body["edge_kinds"]}
+        for relationship in RelationshipType:
+            assert edge_entries[relationship.value]["category"] != "custom"
 
     def test_schema_endpoint_picks_up_new_node_kind(self, monkeypatch):
         """If a new EntityType is added in Python, the schema endpoint must

@@ -41,6 +41,8 @@ export interface GraphNodeKindMeta {
   color: string;
   shape: string;
   icon: string;
+  category_uid: number;
+  class_uid: number;
 }
 
 export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> = {
@@ -48,109 +50,145 @@ export const GRAPH_NODE_KIND_META: Record<GraphNodeKindKey, GraphNodeKindMeta> =
     "label": "AI Agent",
     "color": "#10b981",
     "shape": "circle",
-    "icon": "circle"
+    "icon": "circle",
+    "category_uid": 5,
+    "class_uid": 4001
   },
   "cloud_resource": {
     "label": "Cloud Resource",
     "color": "#0ea5e9",
     "shape": "square",
-    "icon": "square"
+    "icon": "square",
+    "category_uid": 5,
+    "class_uid": 4001
   },
   "cluster": {
     "label": "Cluster",
     "color": "#4b5563",
     "shape": "square",
-    "icon": "square"
+    "icon": "square",
+    "category_uid": 5,
+    "class_uid": 4001
   },
   "container": {
     "label": "Container",
     "color": "#6366f1",
     "shape": "square",
-    "icon": "square"
+    "icon": "square",
+    "category_uid": 5,
+    "class_uid": 4001
   },
   "credential": {
     "label": "Credential",
     "color": "#f59e0b",
     "shape": "diamond",
-    "icon": "diamond"
+    "icon": "diamond",
+    "category_uid": 5,
+    "class_uid": 4001
   },
   "dataset": {
     "label": "Dataset",
     "color": "#06b6d4",
     "shape": "square",
-    "icon": "square"
+    "icon": "square",
+    "category_uid": 5,
+    "class_uid": 4001
   },
   "environment": {
     "label": "Environment",
     "color": "#9ca3af",
     "shape": "square",
-    "icon": "square"
+    "icon": "square",
+    "category_uid": 0,
+    "class_uid": 0
   },
   "fleet": {
     "label": "Fleet",
     "color": "#6b7280",
     "shape": "square",
-    "icon": "square"
+    "icon": "square",
+    "category_uid": 5,
+    "class_uid": 4001
   },
   "group": {
     "label": "Group",
     "color": "#0d9488",
     "shape": "circle",
-    "icon": "circle"
+    "icon": "circle",
+    "category_uid": 3,
+    "class_uid": 3001
   },
   "misconfiguration": {
     "label": "Misconfiguration",
     "color": "#f97316",
     "shape": "triangle",
-    "icon": "triangle"
+    "icon": "triangle",
+    "category_uid": 2,
+    "class_uid": 2003
   },
   "model": {
     "label": "Model",
     "color": "#8b5cf6",
     "shape": "square",
-    "icon": "square"
+    "icon": "square",
+    "category_uid": 5,
+    "class_uid": 4001
   },
   "package": {
     "label": "Package",
     "color": "#52525b",
     "shape": "square",
-    "icon": "square"
+    "icon": "square",
+    "category_uid": 5,
+    "class_uid": 4001
   },
   "provider": {
     "label": "Provider",
     "color": "#d1d5db",
     "shape": "square",
-    "icon": "square"
+    "icon": "square",
+    "category_uid": 0,
+    "class_uid": 0
   },
   "server": {
     "label": "MCP Server",
     "color": "#3b82f6",
     "shape": "circle",
-    "icon": "circle"
+    "icon": "circle",
+    "category_uid": 5,
+    "class_uid": 4001
   },
   "service_account": {
     "label": "Service Account",
     "color": "#0f766e",
     "shape": "circle",
-    "icon": "circle"
+    "icon": "circle",
+    "category_uid": 3,
+    "class_uid": 3001
   },
   "tool": {
     "label": "Tool",
     "color": "#a855f7",
     "shape": "diamond",
-    "icon": "diamond"
+    "icon": "diamond",
+    "category_uid": 5,
+    "class_uid": 4001
   },
   "user": {
     "label": "User",
     "color": "#14b8a6",
     "shape": "circle",
-    "icon": "circle"
+    "icon": "circle",
+    "category_uid": 3,
+    "class_uid": 3001
   },
   "vulnerability": {
     "label": "Vulnerability",
     "color": "#ef4444",
     "shape": "triangle",
-    "icon": "triangle"
+    "icon": "triangle",
+    "category_uid": 2,
+    "class_uid": 2001
   },
 };
 
@@ -193,108 +231,378 @@ export const GRAPH_EDGE_KINDS: readonly GraphEdgeKindKey[] = ["accessed", "affec
 export interface GraphEdgeKindMeta {
   label: string;
   color: string;
+  category: string;
+  direction: "directed" | "bidirectional";
+  source_types: readonly GraphNodeKindKey[];
+  target_types: readonly GraphNodeKindKey[];
+  traversable: boolean;
 }
 
 export const GRAPH_EDGE_KIND_META: Record<GraphEdgeKindKey, GraphEdgeKindMeta> = {
   "accessed": {
     "label": "Accessed (runtime)",
-    "color": "#3b82f6"
+    "color": "#3b82f6",
+    "category": "runtime",
+    "direction": "directed",
+    "source_types": [
+      "tool"
+    ],
+    "target_types": [
+      "cloud_resource",
+      "dataset",
+      "credential"
+    ],
+    "traversable": true
   },
   "affects": {
     "label": "Affects",
-    "color": "#dc2626"
+    "color": "#dc2626",
+    "category": "vulnerability",
+    "direction": "directed",
+    "source_types": [
+      "vulnerability",
+      "misconfiguration"
+    ],
+    "target_types": [
+      "package",
+      "server",
+      "container"
+    ],
+    "traversable": true
   },
   "contains": {
     "label": "Contains",
-    "color": "#6366f1"
+    "color": "#6366f1",
+    "category": "inventory",
+    "direction": "directed",
+    "source_types": [
+      "container",
+      "cluster",
+      "fleet"
+    ],
+    "target_types": [
+      "package",
+      "server",
+      "container"
+    ],
+    "traversable": true
   },
   "correlates_with": {
     "label": "Correlates With (cross-env)",
-    "color": "#0ea5e9"
+    "color": "#0ea5e9",
+    "category": "correlation",
+    "direction": "bidirectional",
+    "source_types": [
+      "agent",
+      "server"
+    ],
+    "target_types": [
+      "agent",
+      "server"
+    ],
+    "traversable": true
   },
   "delegated_to": {
     "label": "Delegated To (runtime)",
-    "color": "#a855f7"
+    "color": "#a855f7",
+    "category": "runtime",
+    "direction": "directed",
+    "source_types": [
+      "agent"
+    ],
+    "target_types": [
+      "agent"
+    ],
+    "traversable": true
   },
   "depends_on": {
     "label": "Depends On",
-    "color": "#52525b"
+    "color": "#52525b",
+    "category": "inventory",
+    "direction": "directed",
+    "source_types": [
+      "server",
+      "container"
+    ],
+    "target_types": [
+      "package"
+    ],
+    "traversable": true
   },
   "exploitable_via": {
     "label": "Exploitable Via",
-    "color": "#b91c1c"
+    "color": "#b91c1c",
+    "category": "vulnerability",
+    "direction": "directed",
+    "source_types": [
+      "vulnerability",
+      "misconfiguration"
+    ],
+    "target_types": [
+      "tool",
+      "credential"
+    ],
+    "traversable": true
   },
   "exposes_cred": {
     "label": "Exposes Credential",
-    "color": "#f59e0b"
+    "color": "#f59e0b",
+    "category": "inventory",
+    "direction": "directed",
+    "source_types": [
+      "server",
+      "agent"
+    ],
+    "target_types": [
+      "credential"
+    ],
+    "traversable": true
   },
   "hosts": {
     "label": "Hosts",
-    "color": "#6b7280"
+    "color": "#6b7280",
+    "category": "inventory",
+    "direction": "directed",
+    "source_types": [
+      "provider",
+      "environment",
+      "fleet"
+    ],
+    "target_types": [
+      "agent",
+      "server"
+    ],
+    "traversable": true
   },
   "invoked": {
     "label": "Invoked (runtime)",
-    "color": "#10b981"
+    "color": "#10b981",
+    "category": "runtime",
+    "direction": "directed",
+    "source_types": [
+      "agent"
+    ],
+    "target_types": [
+      "tool"
+    ],
+    "traversable": true
   },
   "lateral_path": {
     "label": "Lateral Path",
-    "color": "#ea580c"
+    "color": "#ea580c",
+    "category": "lateral_movement",
+    "direction": "directed",
+    "source_types": [
+      "agent"
+    ],
+    "target_types": [
+      "agent"
+    ],
+    "traversable": true
   },
   "manages": {
     "label": "Manages",
-    "color": "#14b8a6"
+    "color": "#14b8a6",
+    "category": "governance",
+    "direction": "directed",
+    "source_types": [
+      "user",
+      "group",
+      "service_account"
+    ],
+    "target_types": [
+      "agent",
+      "fleet",
+      "environment"
+    ],
+    "traversable": true
   },
   "member_of": {
     "label": "Member Of",
-    "color": "#4b5563"
+    "color": "#4b5563",
+    "category": "governance",
+    "direction": "directed",
+    "source_types": [
+      "user",
+      "service_account",
+      "agent"
+    ],
+    "target_types": [
+      "group",
+      "agent",
+      "fleet"
+    ],
+    "traversable": true
   },
   "owns": {
     "label": "Owns",
-    "color": "#0d9488"
+    "color": "#0d9488",
+    "category": "governance",
+    "direction": "directed",
+    "source_types": [
+      "user",
+      "group",
+      "service_account"
+    ],
+    "target_types": [
+      "environment",
+      "cloud_resource",
+      "agent"
+    ],
+    "traversable": true
   },
   "part_of": {
     "label": "Part Of",
-    "color": "#6b7280"
+    "color": "#6b7280",
+    "category": "governance",
+    "direction": "directed",
+    "source_types": [
+      "agent",
+      "server",
+      "container"
+    ],
+    "target_types": [
+      "fleet",
+      "cluster",
+      "environment"
+    ],
+    "traversable": true
   },
   "possibly_correlates_with": {
     "label": "Possibly Correlates With (low confidence)",
-    "color": "#7dd3fc"
+    "color": "#7dd3fc",
+    "category": "correlation",
+    "direction": "bidirectional",
+    "source_types": [
+      "agent",
+      "server"
+    ],
+    "target_types": [
+      "agent",
+      "server"
+    ],
+    "traversable": false
   },
   "provides_tool": {
     "label": "Provides Tool",
-    "color": "#a855f7"
+    "color": "#a855f7",
+    "category": "inventory",
+    "direction": "directed",
+    "source_types": [
+      "server"
+    ],
+    "target_types": [
+      "tool"
+    ],
+    "traversable": true
   },
   "reaches_tool": {
     "label": "Credential Reaches Tool",
-    "color": "#fbbf24"
+    "color": "#fbbf24",
+    "category": "inventory",
+    "direction": "directed",
+    "source_types": [
+      "credential",
+      "agent"
+    ],
+    "target_types": [
+      "tool"
+    ],
+    "traversable": true
   },
   "remediates": {
     "label": "Remediates",
-    "color": "#22c55e"
+    "color": "#22c55e",
+    "category": "vulnerability",
+    "direction": "directed",
+    "source_types": [
+      "package"
+    ],
+    "target_types": [
+      "vulnerability",
+      "misconfiguration"
+    ],
+    "traversable": false
   },
   "serves_model": {
     "label": "Serves Model",
-    "color": "#8b5cf6"
+    "color": "#8b5cf6",
+    "category": "inventory",
+    "direction": "directed",
+    "source_types": [
+      "server"
+    ],
+    "target_types": [
+      "model"
+    ],
+    "traversable": true
   },
   "shares_cred": {
     "label": "Shares Credential",
-    "color": "#f97316"
+    "color": "#f97316",
+    "category": "lateral_movement",
+    "direction": "bidirectional",
+    "source_types": [
+      "agent"
+    ],
+    "target_types": [
+      "agent"
+    ],
+    "traversable": true
   },
   "shares_server": {
     "label": "Shares Server",
-    "color": "#22d3ee"
+    "color": "#22d3ee",
+    "category": "lateral_movement",
+    "direction": "bidirectional",
+    "source_types": [
+      "agent"
+    ],
+    "target_types": [
+      "agent"
+    ],
+    "traversable": true
   },
   "triggers": {
     "label": "Triggers",
-    "color": "#f97316"
+    "color": "#f97316",
+    "category": "vulnerability",
+    "direction": "directed",
+    "source_types": [
+      "vulnerability"
+    ],
+    "target_types": [
+      "misconfiguration"
+    ],
+    "traversable": true
   },
   "uses": {
     "label": "Uses",
-    "color": "#10b981"
+    "color": "#10b981",
+    "category": "inventory",
+    "direction": "directed",
+    "source_types": [
+      "agent"
+    ],
+    "target_types": [
+      "server"
+    ],
+    "traversable": true
   },
   "vulnerable_to": {
     "label": "Vulnerable To",
-    "color": "#ef4444"
+    "color": "#ef4444",
+    "category": "vulnerability",
+    "direction": "directed",
+    "source_types": [
+      "package",
+      "server",
+      "container"
+    ],
+    "target_types": [
+      "vulnerability"
+    ],
+    "traversable": true
   },
 };
 

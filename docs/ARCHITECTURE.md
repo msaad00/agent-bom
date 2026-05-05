@@ -155,6 +155,8 @@ graph LR
 
 **Color key:** Red = CVE · Orange = Package · Amber = Server · Blue = Agent · Purple = Credentials · Green = Tools
 
+The full contract for what the graph promises and what it does not — entity types, edge kinds, scaling tiers, re-baseline procedure, and known coverage gaps — is in [docs/graph/CONTRACT.md](graph/CONTRACT.md).
+
 ---
 
 ## 4. Compliance Tagging
@@ -268,5 +270,5 @@ graph TB
 | MCP Server | `src/agent_bom/mcp_server.py` | FastMCP server (36 tools) |
 | Cloud | `src/agent_bom/cloud/` | AWS, Azure, GCP, Snowflake, Databricks, ClickHouse |
 | Asset Tracker | `src/agent_bom/asset_tracker.py` | Persistent vuln tracking — first_seen, resolved, MTTR |
-| Context Graph | `src/agent_bom/context_graph.py` | Lateral movement analysis |
+| Context Graph | `src/agent_bom/context_graph.py` | Lateral movement analysis — see [Graph Contract](graph/CONTRACT.md) for entity/edge coverage, accuracy guarantees, and scaling boundaries |
 | Guard | `src/agent_bom/guard.py` | Pre-install CVE scan for pip/npm packages |

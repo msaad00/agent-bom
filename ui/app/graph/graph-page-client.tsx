@@ -761,17 +761,6 @@ export default function GraphPageClient() {
     graphData && graphData.pagination.limit > 0
       ? Math.max(1, Math.ceil(graphData.pagination.total / graphData.pagination.limit))
       : 1;
-  const relationshipScopeLabel =
-    filters.relationshipScope === "all"
-      ? "all relationships"
-      : `${filters.relationshipScope} relationships`;
-  const runtimeModeLabel =
-    filters.runtimeMode === "all"
-      ? "static + runtime"
-      : filters.runtimeMode === "static"
-        ? "static only"
-        : "runtime only";
-
   if (loadingSnapshots) {
     return (
       <div className="flex items-center justify-center h-[80vh] text-zinc-400">
@@ -1315,24 +1304,6 @@ function PathTagList({
           </span>
         ))}
       </div>
-    </div>
-  );
-}
-
-function SnapshotMetaCard({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
-      <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">{label}</p>
-      <p className="mt-1 font-mono text-sm text-zinc-100">{value}</p>
-      <p className="mt-1 text-[11px] text-zinc-500">{detail}</p>
     </div>
   );
 }

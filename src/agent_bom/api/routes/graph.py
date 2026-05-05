@@ -11,6 +11,7 @@ Endpoints:
   GET  /v1/graph/node/{id}      — single node detail with edges + impact
   GET  /v1/graph/snapshots      — list persisted scan snapshots
   GET  /v1/graph/legend         — entity + relationship legends
+  GET  /v1/graph/schema         — canonical entity/edge taxonomy (codegen source)
   POST /v1/graph/presets        — save a filter preset
   GET  /v1/graph/presets        — list saved presets
   DEL  /v1/graph/presets/{name} — delete a preset
@@ -706,6 +707,70 @@ async def get_graph_legend() -> dict:
     return {
         "entities": [{"key": e.key, "label": e.label, "color": e.color, "shape": e.shape} for e in ENTITY_LEGEND],
         "relationships": [{"key": r.key, "label": r.label, "color": r.color} for r in RELATIONSHIP_LEGEND],
+    }
+
+
+# Map canonical "shape" hint → icon hint that the TS lineage-nodes module
+# understands.  Keeping the mapping server-side means the TypeScript codegen
+# stays a thin renderer; adding a new icon in lucide just means changing the
+# server map and re-running the codegen.
+_SHAPE_TO_ICON: dict[str, str] = {
+    "circle": "circle",
+    "diamond": "diamond",
+    "square": "square",
+    "triangle": "triangle",
+}
+
+
+@router.get("/v1/graph/schema", tags=["graph"])
+async def get_graph_schema() -> dict:
+    """Canonical graph entity/edge taxonomy — single source of truth.
+
+    Drives the TypeScript codegen at ``ui/scripts/codegen-graph-schema.mjs``,
+    which materialises ``ui/lib/graph-schema.generated.ts``.  CI fails the
+    build when the checked-in generated file drifts from what this endpoint
+    would emit, so adding a new ``EntityType`` or ``RelationshipType`` in
+    Python automatically forces a regen + commit on the UI side.
+    """
+    from agent_bom.graph import ENTITY_LEGEND, RELATIONSHIP_LEGEND
+    from agent_bom.graph.types import EntityType, RelationshipType
+
+    legend_entities = {entry.key: entry for entry in ENTITY_LEGEND}
+    legend_relationships = {entry.key: entry for entry in RELATIONSHIP_LEGEND}
+
+    node_kinds = []
+    for entity in EntityType:
+        legend = legend_entities.get(entity.value)
+        label = legend.label if legend else entity.value.replace("_", " ").title()
+        color = legend.color if legend else "#6b7280"
+        shape = legend.shape if legend else "circle"
+        node_kinds.append(
+            {
+                "key": entity.value,
+                "label": label,
+                "color": color,
+                "shape": shape,
+                "icon": _SHAPE_TO_ICON.get(shape, "circle"),
+            }
+        )
+
+    edge_kinds = []
+    for rel in RelationshipType:
+        legend = legend_relationships.get(rel.value)
+        label = legend.label if legend else rel.value.replace("_", " ").title()
+        color = legend.color if legend else "#6b7280"
+        edge_kinds.append(
+            {
+                "key": rel.value,
+                "label": label,
+                "color": color,
+            }
+        )
+
+    return {
+        "version": 1,
+        "node_kinds": sorted(node_kinds, key=lambda d: d["key"]),
+        "edge_kinds": sorted(edge_kinds, key=lambda d: d["key"]),
     }
 
 

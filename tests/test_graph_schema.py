@@ -1043,3 +1043,110 @@ class TestGraphFilterOptions:
         sub = g.filtered_view(filters)
         # Only critical vuln node should pass
         assert len(sub.nodes) == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# /v1/graph/schema endpoint — codegen contract for the TypeScript dashboard
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestGraphSchemaEndpoint:
+    """Regression tests for the codegen contract introduced in #2255.
+
+    The TypeScript dashboard calls ``GET /v1/graph/schema`` to materialise
+    ``ui/lib/graph-schema.generated.ts`` at build time. CI fails the build if
+    that file drifts. These tests pin the contract on the Python side so the
+    UI never silently drops nodes of a freshly-added kind.
+    """
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+
+        from agent_bom.api.server import app
+
+        return TestClient(app)
+
+    def test_schema_endpoint_returns_canonical_taxonomy(self):
+        client = self._client()
+        resp = client.get("/v1/graph/schema")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert set(body) >= {"version", "node_kinds", "edge_kinds"}
+        assert isinstance(body["version"], int) and body["version"] >= 1
+        assert isinstance(body["node_kinds"], list) and body["node_kinds"]
+        assert isinstance(body["edge_kinds"], list) and body["edge_kinds"]
+
+    def test_schema_endpoint_lists_every_python_entity_and_relationship(self):
+        from agent_bom.graph.types import EntityType, RelationshipType
+
+        client = self._client()
+        body = client.get("/v1/graph/schema").json()
+        node_keys = {entry["key"] for entry in body["node_kinds"]}
+        edge_keys = {entry["key"] for entry in body["edge_kinds"]}
+        assert node_keys == {et.value for et in EntityType}
+        assert edge_keys == {rt.value for rt in RelationshipType}
+
+    def test_schema_entries_carry_label_color_shape_icon(self):
+        client = self._client()
+        body = client.get("/v1/graph/schema").json()
+        for entry in body["node_kinds"]:
+            assert {"key", "label", "color", "shape", "icon"} <= set(entry)
+            assert entry["color"].startswith("#")
+        for entry in body["edge_kinds"]:
+            assert {"key", "label", "color"} <= set(entry)
+            assert entry["color"].startswith("#")
+
+    def test_schema_endpoint_picks_up_new_node_kind(self, monkeypatch):
+        """If a new EntityType is added in Python, the schema endpoint must
+        surface it without any code change in the route handler — that is the
+        whole point of the codegen contract: drift is impossible because the
+        endpoint reflects the Python enum literally.
+        """
+        import enum
+
+        from agent_bom.graph import container as _container
+        from agent_bom.graph import types as _types
+
+        class _ExtendedEntityType(str, enum.Enum):
+            AGENT = "agent"
+            SERVER = "server"
+            PACKAGE = "package"
+            TOOL = "tool"
+            MODEL = "model"
+            DATASET = "dataset"
+            CONTAINER = "container"
+            CLOUD_RESOURCE = "cloud_resource"
+            VULNERABILITY = "vulnerability"
+            MISCONFIGURATION = "misconfiguration"
+            CREDENTIAL = "credential"
+            USER = "user"
+            GROUP = "group"
+            SERVICE_ACCOUNT = "service_account"
+            PROVIDER = "provider"
+            ENVIRONMENT = "environment"
+            FLEET = "fleet"
+            CLUSTER = "cluster"
+            # Hypothetical new kind, e.g. for #2256+ workflow.
+            FAKE_NEW_KIND = "fake_new_kind"
+
+        monkeypatch.setattr(_types, "EntityType", _ExtendedEntityType)
+
+        # The route handler imports EntityType from agent_bom.graph.types
+        # at call time, so the monkeypatch is observed without re-importing
+        # the module.
+        client = self._client()
+        body = client.get("/v1/graph/schema").json()
+        node_keys = {entry["key"] for entry in body["node_kinds"]}
+        assert "fake_new_kind" in node_keys, (
+            "Adding a new EntityType in Python must automatically appear in "
+            "GET /v1/graph/schema. If this fails, the route handler is "
+            "hard-coding the kind list instead of reflecting the enum."
+        )
+        # Even though the new kind has no legend entry, the endpoint must
+        # synthesise sane fallback metadata so the UI codegen does not crash.
+        new_entry = next(entry for entry in body["node_kinds"] if entry["key"] == "fake_new_kind")
+        assert new_entry["label"]
+        assert new_entry["color"].startswith("#")
+        assert new_entry["shape"] in {"circle", "diamond", "square", "triangle"}
+        # Silence flake8 for the unused alias — kept for future legend tests.
+        assert _container is not None

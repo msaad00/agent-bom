@@ -401,6 +401,7 @@ export default function GraphPageClient() {
   const seededFromUrlRef = useRef<boolean>(
     typeof window !== "undefined" && new URLSearchParams(window.location.search).toString().length > 0,
   );
+  const firstScanSelectionRef = useRef(true);
 
   useEffect(() => {
     setLoadingSnapshots(true);
@@ -445,6 +446,13 @@ export default function GraphPageClient() {
     setSearchResults([]);
     setSearchQuery("");
     setSelectedAttackPathKey(null);
+    if (firstScanSelectionRef.current) {
+      firstScanSelectionRef.current = false;
+      if (seededFromUrlRef.current) {
+        setInitializedFocus(true);
+        return;
+      }
+    }
     setFilters(DEFAULT_FILTERS);
     setInitializedFocus(false);
   }, [selectedScanId]);

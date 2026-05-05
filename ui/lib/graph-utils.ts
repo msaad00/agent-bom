@@ -4,6 +4,10 @@
  */
 
 import type { LineageNodeData, LineageNodeType } from "@/components/lineage-nodes";
+import {
+  GRAPH_NODE_KIND_META,
+  type GraphNodeKindKey,
+} from "@/lib/graph-schema";
 
 // ─── Shared Styling Constants ────────────────────────────────────────────────
 
@@ -17,29 +21,45 @@ export const MINIMAP_MASK = "rgba(24,24,27,0.82)";
 export const BACKGROUND_COLOR = "#1c1c1e";
 export const BACKGROUND_GAP = 24;
 
+const SHARED_SERVER_COLOR = "#22d3ee";
+
+const LINEAGE_NODE_GRAPH_KIND: Record<LineageNodeType, GraphNodeKindKey | null> = {
+  provider: "provider",
+  agent: "agent",
+  server: "server",
+  sharedServer: "server",
+  package: "package",
+  vulnerability: "vulnerability",
+  misconfiguration: "misconfiguration",
+  credential: "credential",
+  tool: "tool",
+  model: "model",
+  dataset: "dataset",
+  container: "container",
+  cloudResource: "cloud_resource",
+  user: "user",
+  group: "group",
+  serviceAccount: "service_account",
+  environment: "environment",
+  fleet: "fleet",
+  cluster: "cluster",
+};
+
+function generatedMetaForNodeType(nodeType: LineageNodeType) {
+  const kind = LINEAGE_NODE_GRAPH_KIND[nodeType];
+  return kind ? GRAPH_NODE_KIND_META[kind] : null;
+}
+
 // ─── MiniMap Node Color Map ──────────────────────────────────────────────────
 
-export const NODE_COLOR_MAP: Record<LineageNodeType, string> = {
-  provider: "#71717a",
-  agent: "#10b981",
-  server: "#3b82f6",
-  sharedServer: "#22d3ee",
-  package: "#52525b",
-  vulnerability: "#ef4444",
-  misconfiguration: "#f97316",
-  credential: "#f59e0b",
-  tool: "#a855f7",
-  model: "#8b5cf6",
-  dataset: "#06b6d4",
-  container: "#6366f1",
-  cloudResource: "#0ea5e9",
-  user: "#34d399",
-  group: "#d946ef",
-  serviceAccount: "#fbbf24",
-  environment: "#14b8a6",
-  fleet: "#22d3ee",
-  cluster: "#38bdf8",
-};
+export const NODE_COLOR_MAP: Record<LineageNodeType, string> = Object.fromEntries(
+  (Object.keys(LINEAGE_NODE_GRAPH_KIND) as LineageNodeType[]).map((nodeType) => [
+    nodeType,
+    nodeType === "sharedServer"
+      ? SHARED_SERVER_COLOR
+      : generatedMetaForNodeType(nodeType)?.color ?? "#52525b",
+  ]),
+) as Record<LineageNodeType, string>;
 
 export function minimapNodeColor(n: { data: Record<string, unknown> }): string {
   const d = n.data as LineageNodeData;
@@ -86,6 +106,20 @@ export interface LegendItem {
   shape?: "dot" | "square" | "diamond" | "pill" | undefined;
 }
 
+function legendShapeForGraphShape(shape: string): LegendItem["shape"] {
+  switch (shape) {
+    case "circle":
+      return "dot";
+    case "diamond":
+    case "triangle":
+      return "diamond";
+    case "square":
+      return "square";
+    default:
+      return "pill";
+  }
+}
+
 const NODE_TYPE_LEGEND_ORDER: LineageNodeType[] = [
   "provider",
   "agent",
@@ -108,27 +142,30 @@ const NODE_TYPE_LEGEND_ORDER: LineageNodeType[] = [
   "tool",
 ];
 
-const NODE_TYPE_LEGEND_ITEMS: Record<LineageNodeType, LegendItem> = {
-  provider: { label: "Provider", color: "#71717a", layer: "infra", kind: "node", shape: "dot" },
-  agent: { label: "Agent", color: "#10b981", layer: "orchestration", kind: "node", shape: "dot" },
-  sharedServer: { label: "Shared", color: "#22d3ee", layer: "mcp_server", kind: "node", shape: "square" },
-  server: { label: "Server", color: "#3b82f6", layer: "mcp_server", kind: "node", shape: "square" },
-  package: { label: "Package", color: "#52525b", layer: "package", kind: "node", shape: "pill" },
-  model: { label: "Model", color: "#8b5cf6", layer: "asset", kind: "node", shape: "pill" },
-  dataset: { label: "Dataset", color: "#06b6d4", layer: "asset", kind: "node", shape: "pill" },
-  container: { label: "Container", color: "#6366f1", layer: "infra", kind: "node", shape: "square" },
-  cloudResource: { label: "Cloud", color: "#0ea5e9", layer: "infra", kind: "node", shape: "square" },
-  environment: { label: "Env", color: "#14b8a6", layer: "infra", kind: "node", shape: "square" },
-  fleet: { label: "Fleet", color: "#22d3ee", layer: "infra", kind: "node", shape: "square" },
-  cluster: { label: "Cluster", color: "#38bdf8", layer: "infra", kind: "node", shape: "square" },
-  user: { label: "User", color: "#34d399", layer: "user", kind: "node", shape: "dot" },
-  group: { label: "Group", color: "#d946ef", layer: "identity", kind: "node", shape: "pill" },
-  serviceAccount: { label: "Svc", color: "#fbbf24", layer: "identity", kind: "node", shape: "dot" },
-  vulnerability: { label: "Vuln", color: "#ef4444", layer: "finding", kind: "node", shape: "diamond" },
-  misconfiguration: { label: "Config", color: "#f97316", layer: "finding", kind: "node", shape: "diamond" },
-  credential: { label: "Cred", color: "#f59e0b", layer: "identity", kind: "node", shape: "dot" },
-  tool: { label: "Tool", color: "#a855f7", layer: "tool", kind: "node", shape: "pill" },
-};
+export function legendItemForNodeType(nodeType: LineageNodeType): LegendItem {
+  if (nodeType === "sharedServer") {
+    return {
+      label: "Shared Server",
+      color: SHARED_SERVER_COLOR,
+      layer: GRAPH_NODE_KIND_META.server.layer,
+      kind: "node",
+      shape: "square",
+    };
+  }
+
+  const meta = generatedMetaForNodeType(nodeType);
+  return {
+    label: meta?.label ?? nodeType,
+    color: meta?.color ?? "#52525b",
+    layer: meta?.layer,
+    kind: "node",
+    shape: meta ? legendShapeForGraphShape(meta.shape) : "pill",
+  };
+}
+
+const NODE_TYPE_LEGEND_ITEMS: Record<LineageNodeType, LegendItem> = Object.fromEntries(
+  NODE_TYPE_LEGEND_ORDER.map((nodeType) => [nodeType, legendItemForNodeType(nodeType)]),
+) as Record<LineageNodeType, LegendItem>;
 
 const RELATIONSHIP_LEGEND_ORDER = [
   "uses",

@@ -346,3 +346,62 @@ def test_compliance_summary_counts():
     assert s["owasp_pass"] + s["owasp_warn"] + s["owasp_fail"] == 10
 
     _clear_jobs()
+
+
+def test_posture_has_proxy_flips_on_proxy_alert_ingest():
+    """audit P1-B: ingesting proxy alerts via /v1/proxy/audit must flip
+    the ``has_proxy`` posture flag on /v1/posture/counts.
+
+    Before this fix, ``has_proxy`` only flipped when scan-job results
+    carried runtime_correlation/introspection/health_check signals OR
+    when the gateway policy_audit log was non-empty. Sites that ingest
+    proxy alerts via the dedicated runtime endpoint saw "no proxy data"
+    on the dashboard while alerts were sitting in /v1/proxy/status.
+    """
+    from agent_bom.api.policy_store import InMemoryPolicyStore
+    from agent_bom.api.routes.proxy import _proxy_alerts
+    from agent_bom.api.server import set_policy_store
+
+    _clear_jobs()
+    # ensure the ring buffer is empty for a deterministic before/after,
+    # and reset the policy store so a previous test's audit entries don't
+    # already flip has_proxy to True via the policy_audit fallback path.
+    _proxy_alerts.clear()
+    set_policy_store(InMemoryPolicyStore())
+    client = TestClient(app)
+
+    before = client.get("/v1/posture/counts", headers=_AUTH_HEADERS).json()
+    assert before["has_proxy"] is False
+
+    admin_headers = proxy_headers(role="admin", tenant="default")
+    resp = client.post(
+        "/v1/proxy/audit",
+        headers=admin_headers,
+        json={
+            "source_id": "proxy-1",
+            "session_id": "s1",
+            "alerts": [
+                {
+                    "detector": "secret_exfil",
+                    "severity": "high",
+                    "message": "AWS key in tool args",
+                    "tool_name": "http.post",
+                    "ts": 1735000000,
+                },
+            ],
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["alert_count"] == 1
+
+    after = client.get("/v1/posture/counts", headers=_AUTH_HEADERS).json()
+    assert after["has_proxy"] is True
+    assert after["has_traces"] is True
+
+    # tenant scoping: a different tenant must NOT see this alert
+    other_tenant_headers = proxy_headers(tenant="other-tenant")
+    other = client.get("/v1/posture/counts", headers=other_tenant_headers).json()
+    assert other["has_proxy"] is False
+
+    _proxy_alerts.clear()
+    _clear_jobs()

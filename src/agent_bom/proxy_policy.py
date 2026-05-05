@@ -222,7 +222,24 @@ def summarize_policy_bundle(policy: dict) -> dict[str, object]:
 
 
 def check_policy(policy: dict, tool_name: str, arguments: dict) -> tuple[bool, str]:
-    """Evaluate runtime policy against a tools/call request."""
+    """Evaluate runtime policy against a tools/call request.
+
+    Returns ``(allowed, reason)``. For audit-trail callers that need the
+    matched rule id, see :func:`check_policy_detail`.
+    """
+    allowed, reason, _rule_id = check_policy_detail(policy, tool_name, arguments)
+    return allowed, reason
+
+
+def check_policy_detail(policy: dict, tool_name: str, arguments: dict) -> tuple[bool, str, str | None]:
+    """Evaluate runtime policy and return the matched rule id on deny.
+
+    Same evaluation semantics as :func:`check_policy`; additionally returns
+    the ``id`` of the rule that produced the deny reason (or ``None`` when
+    the tool is allowed). Used by the gateway audit logger so every block
+    is traceable to a specific rule even when the reason string only
+    references a regex pattern (tool_name_pattern / arg_pattern).
+    """
     rules = policy.get("rules", [])
     tool_classes = _classify_tool_classes(tool_name, arguments)
     argument_paths = _extract_argument_paths(arguments)
@@ -235,8 +252,9 @@ def check_policy(policy: dict, tool_name: str, arguments: dict) -> tuple[bool, s
         if action not in ("fail", "block"):
             continue
         allowed_tools = rule.get("allow_tools", [])
+        rule_id = str(rule.get("id", "?"))
         if tool_name not in allowed_tools:
-            return False, f"Tool '{tool_name}' not in allowlist for rule '{rule.get('id', '?')}'"
+            return False, f"Tool '{tool_name}' not in allowlist for rule '{rule_id}'", rule_id
         break
 
     for rule in rules:
@@ -245,35 +263,48 @@ def check_policy(policy: dict, tool_name: str, arguments: dict) -> tuple[bool, s
             continue
         if rule.get("mode") == "allowlist":
             continue
+        rule_id = str(rule.get("id", "?"))
 
         blocked = rule.get("block_tools", [])
         if blocked and ("*" in blocked or tool_name in blocked):
-            return False, f"Tool '{tool_name}' is blocked by rule '{rule.get('id', '?')}'"
+            return False, f"Tool '{tool_name}' is blocked by rule '{rule_id}'", rule_id
 
         denied_classes = {str(item).lower() for item in rule.get("deny_tool_classes", [])}
         if denied_classes:
             matched_classes = sorted(tool_classes & denied_classes)
             if matched_classes:
                 joined = ", ".join(matched_classes)
-                return False, f"Tool '{tool_name}' matched denied tool class(es) {joined} in rule '{rule.get('id', '?')}'"
+                return (
+                    False,
+                    f"Tool '{tool_name}' matched denied tool class(es) {joined} in rule '{rule_id}'",
+                    rule_id,
+                )
 
         if rule.get("read_only") and tool_classes & {"write", "execute", "destructive"}:
-            return False, f"Tool '{tool_name}' violates read-only mode in rule '{rule.get('id', '?')}'"
+            return False, f"Tool '{tool_name}' violates read-only mode in rule '{rule_id}'", rule_id
 
         if rule.get("block_secret_paths"):
             matched_path = next((path for path in argument_paths if _matches_secret_path(path)), None)
             if matched_path:
-                return False, f"Argument path '{matched_path}' matches a protected secret path in rule '{rule.get('id', '?')}'"
+                return (
+                    False,
+                    f"Argument path '{matched_path}' matches a protected secret path in rule '{rule_id}'",
+                    rule_id,
+                )
 
         if rule.get("block_unknown_egress"):
             allowed_hosts = [str(host) for host in rule.get("allowed_hosts", [])]
             unmatched_host = next((host for host in argument_hosts if not _host_allowed(host, allowed_hosts)), None)
             if unmatched_host:
-                return False, f"Outbound host '{unmatched_host}' is not allowlisted in rule '{rule.get('id', '?')}'"
+                return (
+                    False,
+                    f"Outbound host '{unmatched_host}' is not allowlisted in rule '{rule_id}'",
+                    rule_id,
+                )
 
         rule_tool = rule.get("tool_name")
         if rule_tool and rule_tool == tool_name:
-            return False, f"Tool '{tool_name}' blocked by rule '{rule.get('id', '?')}'"
+            return False, f"Tool '{tool_name}' blocked by rule '{rule_id}'", rule_id
 
         pattern = rule.get("tool_name_pattern")
         if pattern:
@@ -281,7 +312,7 @@ def check_policy(policy: dict, tool_name: str, arguments: dict) -> tuple[bool, s
                 if len(pattern) > 500:
                     logger.warning("Skipping oversized tool_name_pattern (%d chars)", len(pattern))
                 elif _safe_regex_match(pattern, tool_name):
-                    return False, f"Tool '{tool_name}' matches blocked pattern '{pattern}'"
+                    return False, f"Tool '{tool_name}' matches blocked pattern '{pattern}'", rule_id
             except re.error:
                 pass
 
@@ -293,8 +324,12 @@ def check_policy(policy: dict, tool_name: str, arguments: dict) -> tuple[bool, s
                     logger.warning("Skipping oversized arg_pattern for '%s' (%d chars)", arg_name, len(arg_regex))
                     continue
                 if _safe_regex_search(arg_regex, arg_value):
-                    return False, f"Argument '{arg_name}' matches blocked pattern '{arg_regex}'"
+                    return (
+                        False,
+                        f"Argument '{arg_name}' matches blocked pattern '{arg_regex}'",
+                        rule_id,
+                    )
             except re.error:
                 pass
 
-    return True, ""
+    return True, "", None

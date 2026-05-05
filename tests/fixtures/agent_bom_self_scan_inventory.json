@@ -1,0 +1,122 @@
+{
+  "agents": [
+    {
+      "mcp_servers": [
+        {
+          "command": "project",
+          "env": {},
+          "name": "",
+          "packages": [],
+          "tools": [],
+          "transport": "stdio"
+        },
+        {
+          "command": "project",
+          "env": {},
+          "name": ".clusterfuzzlite",
+          "packages": [],
+          "tools": [],
+          "transport": "stdio"
+        },
+        {
+          "command": "project",
+          "env": {},
+          "name": "dashboard",
+          "packages": [],
+          "tools": [],
+          "transport": "stdio"
+        },
+        {
+          "command": "project",
+          "env": {},
+          "name": "deploy/snowflake",
+          "packages": [],
+          "tools": [],
+          "transport": "stdio"
+        },
+        {
+          "command": "project",
+          "env": {},
+          "name": "examples/first-run-ai-stack/services/browser-helper",
+          "packages": [],
+          "tools": [],
+          "transport": "stdio"
+        },
+        {
+          "command": "project",
+          "env": {},
+          "name": "examples/first-run-ai-stack/services/research-mcp",
+          "packages": [],
+          "tools": [],
+          "transport": "stdio"
+        },
+        {
+          "command": "project",
+          "env": {},
+          "name": "sdks/typescript",
+          "packages": [],
+          "tools": [],
+          "transport": "stdio"
+        },
+        {
+          "command": "project",
+          "env": {},
+          "name": "ui",
+          "packages": [],
+          "tools": [],
+          "transport": "stdio"
+        }
+      ],
+      "metadata": {},
+      "name": "project:",
+      "status": "configured",
+      "type": "custom"
+    }
+  ],
+  "blast_radius": [
+    {
+      "affected_agents": [
+        "project:"
+      ],
+      "affected_servers": [
+        ""
+      ],
+      "cvss_score": null,
+      "epss_score": null,
+      "exposed_credentials": [],
+      "exposed_tools": [],
+      "is_kev": false,
+      "package": "pillow@12.2.0",
+      "risk_score": 1.0,
+      "severity": "unknown",
+      "vulnerability_id": "OSV-2022-1074"
+    },
+    {
+      "affected_agents": [
+        "project:"
+      ],
+      "affected_servers": [
+        ""
+      ],
+      "cvss_score": null,
+      "epss_score": null,
+      "exposed_credentials": [],
+      "exposed_tools": [],
+      "is_kev": false,
+      "package": "pillow@12.2.0",
+      "risk_score": 1.0,
+      "severity": "unknown",
+      "vulnerability_id": "OSV-2022-715"
+    }
+  ],
+  "document_type": "AI-BOM",
+  "spec_version": "1.0",
+  "summary": {
+    "critical_findings": 0,
+    "total_agents": 1,
+    "total_mcp_servers": 8,
+    "total_packages": 849,
+    "total_vulnerabilities": 2,
+    "unique_packages": 829
+  }
+}

@@ -10,7 +10,16 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from agent_bom.proxy import check_policy
-from agent_bom.proxy_policy import summarize_policy_bundle
+from agent_bom.proxy_policy import check_policy_detail, summarize_policy_bundle
+
+__all__ = [
+    "check_policy",
+    "evaluate_gateway_policies",
+    "evaluate_gateway_policies_detail",
+    "gateway_policies_to_proxy_bundle",
+    "gateway_policy_to_proxy_format",
+    "summarize_gateway_policies",
+]
 
 if TYPE_CHECKING:
     from agent_bom.api.policy_store import GatewayPolicy
@@ -91,22 +100,56 @@ def evaluate_gateway_policies(
         ``(allowed, reason, policy_id)`` — if blocked, ``reason``
         explains why and ``policy_id`` identifies the blocking policy.
     """
-    first_audit_match: tuple[str, str] | None = None
+    allowed, reason, policy_id, _rule_id, _policy_name, _mode = evaluate_gateway_policies_detail(policies, tool_name, arguments)
+    return allowed, reason, policy_id
+
+
+def evaluate_gateway_policies_detail(
+    policies: list["GatewayPolicy"],
+    tool_name: str,
+    arguments: dict,
+) -> tuple[bool, str, str | None, str | None, str | None, str | None]:
+    """Evaluate a tool call and return full audit-trail metadata.
+
+    Same semantics as :func:`evaluate_gateway_policies` but additionally
+    returns the matched ``rule_id``, the policy's display ``name``, and
+    the policy ``mode`` (``enforce`` or ``audit``).  Used by the
+    ``/v1/gateway/evaluate`` route to write a structured audit row for
+    every decision so block actions are traceable to a specific policy
+    *and* a specific rule, not just a pattern string.
+
+    Returns:
+        ``(allowed, reason, policy_id, rule_id, policy_name, policy_mode)``.
+
+        - On enforce-mode block: ``allowed=False`` with all four metadata
+          fields populated.
+        - On audit-mode match: ``allowed=True`` (call goes through) but
+          ``reason`` is prefixed with ``[audit]`` and the metadata
+          fields point at the audit-mode rule that would have blocked.
+        - On clean allow: ``allowed=True`` with all metadata ``None``.
+    """
+    first_audit_match: tuple[str, str, str | None, str, str] | None = None
     for policy in policies:
         if not policy.enabled:
             continue
 
         proxy_fmt = gateway_policy_to_proxy_format(policy)
-        allowed, reason = check_policy(proxy_fmt, tool_name, arguments)
+        allowed, reason, rule_id = check_policy_detail(proxy_fmt, tool_name, arguments)
 
         if not allowed:
             if policy.mode.value == "enforce":
-                return False, reason, policy.policy_id
+                return False, reason, policy.policy_id, rule_id, policy.name, policy.mode.value
             # audit mode — log but allow
             if first_audit_match is None:
-                first_audit_match = (f"[audit] {reason}", policy.policy_id)
+                first_audit_match = (
+                    f"[audit] {reason}",
+                    policy.policy_id,
+                    rule_id,
+                    policy.name,
+                    policy.mode.value,
+                )
 
     if first_audit_match is not None:
-        reason, policy_id = first_audit_match
-        return True, reason, policy_id
-    return True, "", None
+        reason, policy_id, rule_id, policy_name, mode = first_audit_match
+        return True, reason, policy_id, rule_id, policy_name, mode
+    return True, "", None, None, None, None

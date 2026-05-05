@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, RotateCcw } from "lucide-react";
 
 import type { LineageNodeType } from "./lineage-nodes";
+import type { FilterValidValues } from "@/lib/filter-algebra";
 
 export interface FilterState {
   layers: Record<LineageNodeType, boolean>;
@@ -92,7 +93,67 @@ interface FilterPanelProps {
   filters: FilterState;
   onChange: (f: FilterState) => void;
   agentNames: string[];
+  /** Constraint-propagation valid values from filter-algebra. When omitted, every value is enabled. */
+  validValues?: FilterValidValues;
+  /** Click handler for the "Reset to wide" button at the panel header. */
+  onReset?: () => void;
 }
+
+const DISABLED_TOOLTIP = "no nodes match this combination";
+
+const SEVERITY_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "", label: "All" },
+  { value: "critical", label: "Critical only" },
+  { value: "high", label: "High + critical" },
+  { value: "medium", label: "Medium + above" },
+  { value: "low", label: "Low + above" },
+];
+
+const RELATIONSHIP_SCOPE_OPTIONS: Array<{ value: FilterState["relationshipScope"]; label: string }> = [
+  { value: "all", label: "All relationships" },
+  { value: "inventory", label: "Inventory only" },
+  { value: "attack", label: "Attack / lateral" },
+  { value: "runtime", label: "Runtime only" },
+  { value: "governance", label: "Governance only" },
+];
+
+/** Edge-kind sets used to decide whether a relationship-scope option is reachable. */
+const SCOPE_RELATIONSHIPS: Record<Exclude<FilterState["relationshipScope"], "all">, string[]> = {
+  inventory: [
+    "hosts",
+    "uses",
+    "depends_on",
+    "provides_tool",
+    "exposes_cred",
+    "reaches_tool",
+    "serves_model",
+    "contains",
+  ],
+  attack: [
+    "affects",
+    "vulnerable_to",
+    "exploitable_via",
+    "remediates",
+    "triggers",
+    "shares_server",
+    "shares_cred",
+    "lateral_path",
+  ],
+  runtime: ["invoked", "accessed", "delegated_to"],
+  governance: ["manages", "owns", "part_of", "member_of"],
+};
+
+/** Severity rank used to decide whether a min-severity option is reachable. */
+const SEVERITY_RANK_MAP: Record<string, number> = {
+  critical: 5,
+  high: 4,
+  medium: 3,
+  low: 2,
+  info: 1,
+  informational: 1,
+  none: 0,
+  unknown: 0,
+};
 
 const LAYER_LABELS: { key: LineageNodeType; label: string; color: string }[] = [
   { key: "provider", label: "Providers", color: "bg-zinc-500" },
@@ -119,7 +180,7 @@ const AGENT_OPTION_HEIGHT = 32;
 const AGENT_VISIBLE_ROWS = 8;
 const AGENT_OVERSCAN_ROWS = 4;
 
-export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps) {
+export function FilterPanel({ filters, onChange, agentNames, validValues, onReset }: FilterPanelProps) {
   const [openSections, setOpenSections] = useState({
     layers: true,
     severity: true,
@@ -133,8 +194,48 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
   const toggleSection = (key: keyof typeof openSections) =>
     setOpenSections((current) => ({ ...current, [key]: !current[key] }));
 
+  const isLayerEnabled = (key: LineageNodeType): boolean => {
+    if (!validValues) return true;
+    return validValues.layers.has(key);
+  };
+  const isSeverityEnabled = (value: string): boolean => {
+    if (!validValues) return true;
+    if (!value) return true; // "All" is always selectable
+    // A severity option enables iff there's at least one node with severity >= value.
+    const minRank = SEVERITY_RANK_MAP[value] ?? 0;
+    for (const sev of validValues.severities) {
+      const rank = SEVERITY_RANK_MAP[sev] ?? 0;
+      if (rank >= minRank) return true;
+    }
+    return false;
+  };
+  const isAgentEnabled = (name: string): boolean => {
+    if (!validValues) return true;
+    return validValues.agents.has(name);
+  };
+  const isScopeEnabled = (value: FilterState["relationshipScope"]): boolean => {
+    if (!validValues || value === "all") return true;
+    const required = SCOPE_RELATIONSHIPS[value] ?? [];
+    return required.some((r) => validValues.relationships.has(r));
+  };
+
   return (
     <div className="w-48 bg-zinc-950/90 backdrop-blur-sm border-r border-zinc-800 p-3 space-y-4 overflow-y-auto text-xs">
+      <div className="flex items-center justify-between -mt-1 -mx-1 mb-1">
+        <span className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 px-1">Filters</span>
+        {onReset && (
+          <button
+            type="button"
+            onClick={onReset}
+            title="Reset to wide — show every layer, every severity, every relationship"
+            className="flex items-center gap-1 rounded border border-zinc-800 bg-zinc-900/80 px-2 py-1 text-[10px] text-zinc-400 transition hover:border-emerald-600/40 hover:text-emerald-200"
+          >
+            <RotateCcw className="h-3 w-3" />
+            Reset to wide
+          </button>
+        )}
+      </div>
+
       <FilterSection
         title="Layers"
         open={openSections.layers}
@@ -142,18 +243,31 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
         summary={`${Object.values(filters.layers).filter(Boolean).length} visible`}
       >
         <div className="space-y-1.5">
-          {LAYER_LABELS?.map(({ key, label, color }) => (
-            <label key={key} className="flex items-center gap-2 cursor-pointer text-zinc-400 hover:text-zinc-200">
-              <input
-                type="checkbox"
-                checked={filters.layers[key]}
-                onChange={() => toggle(key)}
-                className="accent-emerald-500 w-3 h-3"
-              />
-              <span className={`w-2 h-2 rounded-full ${color}`} />
-              {label}
-            </label>
-          ))}
+          {LAYER_LABELS?.map(({ key, label, color }) => {
+            const enabled = isLayerEnabled(key);
+            const checked = filters.layers[key];
+            return (
+              <label
+                key={key}
+                title={enabled ? undefined : DISABLED_TOOLTIP}
+                className={`flex items-center gap-2 ${
+                  enabled || checked
+                    ? "cursor-pointer text-zinc-400 hover:text-zinc-200"
+                    : "cursor-not-allowed text-zinc-600 opacity-50"
+                }`}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={!enabled && !checked}
+                  onChange={() => toggle(key)}
+                  className="accent-emerald-500 w-3 h-3"
+                />
+                <span className={`w-2 h-2 rounded-full ${color}`} />
+                {label}
+              </label>
+            );
+          })}
         </div>
       </FilterSection>
 
@@ -168,11 +282,20 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
           onChange={(e) => onChange({ ...filters, severity: e.target.value || null })}
           className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
         >
-          <option value="">All</option>
-          <option value="critical">Critical only</option>
-          <option value="high">High + critical</option>
-          <option value="medium">Medium + above</option>
-          <option value="low">Low + above</option>
+          {SEVERITY_OPTIONS.map(({ value, label }) => {
+            const enabled = isSeverityEnabled(value);
+            return (
+              <option
+                key={value || "__all__"}
+                value={value}
+                disabled={!enabled}
+                title={enabled ? undefined : DISABLED_TOOLTIP}
+              >
+                {label}
+                {!enabled ? " — no matches" : ""}
+              </option>
+            );
+          })}
         </select>
       </FilterSection>
 
@@ -192,11 +315,20 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
           }
           className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
         >
-          <option value="all">All relationships</option>
-          <option value="inventory">Inventory only</option>
-          <option value="attack">Attack / lateral</option>
-          <option value="runtime">Runtime only</option>
-          <option value="governance">Governance only</option>
+          {RELATIONSHIP_SCOPE_OPTIONS.map(({ value, label }) => {
+            const enabled = isScopeEnabled(value);
+            return (
+              <option
+                key={value}
+                value={value}
+                disabled={!enabled}
+                title={enabled ? undefined : DISABLED_TOOLTIP}
+              >
+                {label}
+                {!enabled ? " — no matches" : ""}
+              </option>
+            );
+          })}
         </select>
       </FilterSection>
 
@@ -252,6 +384,7 @@ export function FilterPanel({ filters, onChange, agentNames }: FilterPanelProps)
           <VirtualizedAgentPicker
             agentNames={agentNames}
             selectedAgent={filters.agentName}
+            isAgentEnabled={isAgentEnabled}
             onSelect={(agentName) => onChange({ ...filters, agentName })}
           />
         </FilterSection>
@@ -295,10 +428,12 @@ function VirtualizedAgentPicker({
   agentNames,
   selectedAgent,
   onSelect,
+  isAgentEnabled,
 }: {
   agentNames: string[];
   selectedAgent: string | null;
   onSelect: (agentName: string | null) => void;
+  isAgentEnabled?: (name: string) => boolean;
 }) {
   const [query, setQuery] = useState("");
   const [scrollTop, setScrollTop] = useState(0);
@@ -349,23 +484,30 @@ function VirtualizedAgentPicker({
         aria-label="Graph agent selector"
       >
         <div style={{ paddingTop: topPadding, paddingBottom: bottomPadding }}>
-          {visibleAgents.map((agentName) => (
-            <button
-              key={agentName}
-              type="button"
-              role="option"
-              aria-selected={selectedAgent === agentName}
-              onClick={() => onSelect(agentName)}
-              className={`block h-8 w-full truncate px-2 text-left font-mono text-[11px] transition ${
-                selectedAgent === agentName
-                  ? "bg-emerald-500/15 text-emerald-200"
-                  : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
-              }`}
-              title={agentName}
-            >
-              {agentName}
-            </button>
-          ))}
+          {visibleAgents.map((agentName) => {
+            const enabled = isAgentEnabled ? isAgentEnabled(agentName) : true;
+            const isSelected = selectedAgent === agentName;
+            return (
+              <button
+                key={agentName}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                disabled={!enabled && !isSelected}
+                onClick={() => onSelect(agentName)}
+                className={`block h-8 w-full truncate px-2 text-left font-mono text-[11px] transition ${
+                  isSelected
+                    ? "bg-emerald-500/15 text-emerald-200"
+                    : enabled
+                      ? "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200"
+                      : "cursor-not-allowed text-zinc-600 opacity-50"
+                }`}
+                title={enabled ? agentName : DISABLED_TOOLTIP}
+              >
+                {agentName}
+              </button>
+            );
+          })}
           {visibleAgents.length === 0 && (
             <div className="px-2 py-3 text-[11px] text-zinc-500">No agents match this filter.</div>
           )}

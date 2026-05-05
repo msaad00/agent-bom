@@ -125,6 +125,12 @@ If engaging a third-party auditor, the recommended scope:
 - **mitmproxy** — Test proxy behavior from the client side
 - **Semgrep** — Rule-based SAST (complement to Bandit)
 
+## Graph guarantees
+
+agent-bom builds a context graph from inventory and canonical advisory feeds (CISA KEV, OSV, NVD, EPSS, MITRE) to model lateral movement across MCP agents, servers, credentials, and tools. The graph is deterministic, round-trip-clean against the source inventory, and tenant-scoped at the database layer via Postgres row-level security. It does not use ML inference, does not encode causality without runtime traces from the proxy / gateway, and does not update in real time without those runtimes in the path.
+
+The full contract — entity and edge enums, accuracy guarantees, scaling tiers, re-baseline procedure, and known coverage gaps — is in [docs/graph/CONTRACT.md](graph/CONTRACT.md).
+
 ## Compliance Posture
 
 ### What agent-bom IS

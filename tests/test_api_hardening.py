@@ -203,6 +203,48 @@ def test_api_key_middleware_exempts_cors_preflight():
     assert client.get("/v1/test", headers={"X-API-Key": "test-key-cors"}).status_code == 200
 
 
+def test_configured_app_cors_preflight_survives_auth_and_rate_limit(monkeypatch):
+    """The real middleware stack must let browser preflights reach CORSMiddleware."""
+    original = list(app.user_middleware)
+    try:
+        monkeypatch.delenv("AGENT_BOM_OIDC_ISSUER", raising=False)
+        monkeypatch.delenv("AGENT_BOM_OIDC_AUDIENCE", raising=False)
+        monkeypatch.delenv("AGENT_BOM_TRUST_PROXY_AUTH", raising=False)
+        monkeypatch.delenv("AGENT_BOM_POSTGRES_URL", raising=False)
+        monkeypatch.delenv("AGENT_BOM_REQUIRE_SHARED_RATE_LIMIT", raising=False)
+        configure_api(
+            cors_origins=["http://localhost:3000"],
+            api_key="test-key-cors",
+            rate_limit_rpm=10,
+        )
+        client = TestClient(app)
+
+        resp = client.options(
+            "/v1/graph/snapshots",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "authorization,x-api-key",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.headers.get("access-control-allow-origin") == "http://localhost:3000"
+        assert "GET" in resp.headers.get("access-control-allow-methods", "")
+        allow_headers = resp.headers.get("access-control-allow-headers", "").lower()
+        assert "authorization" in allow_headers
+        assert "x-api-key" in allow_headers
+
+        real_request = client.get(
+            "/v1/graph/snapshots",
+            headers={"Origin": "http://localhost:3000"},
+        )
+        assert real_request.status_code == 401
+    finally:
+        app.user_middleware = original
+        if app.middleware_stack is not None:
+            app.middleware_stack = app.build_middleware_stack()
+
+
 def test_api_key_middleware_exempts_packaged_dashboard_assets():
     """Dashboard shell assets must load before browser auth/bootstrap completes."""
     from starlette.applications import Starlette

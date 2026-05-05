@@ -10,9 +10,9 @@ import {
   type Edge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { ShieldAlert, Loader2, AlertTriangle, Search, SlidersHorizontal, Network, GitBranch } from "lucide-react";
+import { ShieldAlert, Loader2, AlertTriangle, Search, SlidersHorizontal } from "lucide-react";
 import { api, type JobListItem, type ScanJob } from "@/lib/api";
-import { useDagreLayout } from "@/lib/use-dagre-layout";
+import { useRadialLayout } from "@/lib/use-radial-layout";
 import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nodes";
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import { MeshStats } from "@/components/mesh-stats";
@@ -179,9 +179,6 @@ export default function MeshPage() {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [activeJob, setActiveJob] = useState<ScanJob | null>(null);
 
-  // Layout direction: "LR" for topology, "TB" for spawn tree
-  const [layoutMode, setLayoutMode] = useState<"LR" | "TB">("LR");
-
   // Filters
   const [nodeFilter, setNodeFilter] = useState<NodeTypeFilter>({
     packages: true,
@@ -298,12 +295,9 @@ export default function MeshPage() {
     return { rawNodes: nodes, rawEdges: edges, stats };
   }, [activeResult, nodeFilter, severityFilter, selectedAgents, vulnerableOnly]);
 
-  const { nodes: layoutNodes, edges: layoutEdges } = useDagreLayout(rawNodes, rawEdges, {
-    direction: layoutMode,
-    nodeWidth: 200,
-    nodeHeight: 70,
-    rankSep: 140,
-    nodeSep: 25,
+  const { nodes: layoutNodes, edges: layoutEdges } = useRadialLayout(rawNodes, rawEdges, {
+    baseRadius: 240,
+    ringSpacing: 220,
   });
 
   // Search highlighting
@@ -417,32 +411,6 @@ export default function MeshPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Layout toggle */}
-          <div className="flex items-center bg-zinc-800 rounded-lg border border-zinc-700 overflow-hidden">
-            <button
-              onClick={() => setLayoutMode("LR")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
-                layoutMode === "LR"
-                  ? "bg-emerald-600 text-white"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              <Network className="w-3.5 h-3.5" />
-              Topology
-            </button>
-            <button
-              onClick={() => setLayoutMode("TB")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
-                layoutMode === "TB"
-                  ? "bg-emerald-600 text-white"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              <GitBranch className="w-3.5 h-3.5" />
-              Spawn Tree
-            </button>
-          </div>
-
           <select
             value={selectedJob}
             onChange={(e) => setSelectedJob(e.target.value)}

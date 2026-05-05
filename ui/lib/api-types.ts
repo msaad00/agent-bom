@@ -151,6 +151,40 @@ export interface FixFirstGraphViewResponse {
   };
 }
 
+export interface GraphQueryRequest {
+  roots: string[];
+  scan_id?: string | undefined;
+  direction?: "forward" | "reverse" | "both" | undefined;
+  max_depth?: number | undefined;
+  max_nodes?: number | undefined;
+  max_edges?: number | undefined;
+  timeout_ms?: number | undefined;
+  traversable_only?: boolean | undefined;
+  static_only?: boolean | undefined;
+  dynamic_only?: boolean | undefined;
+  include_roots?: boolean | undefined;
+  include_attack_paths?: boolean | undefined;
+  min_severity?: string | undefined;
+  entity_types?: string[] | undefined;
+  relationship_types?: string[] | undefined;
+  compliance_prefixes?: string[] | undefined;
+  data_sources?: string[] | undefined;
+}
+
+export interface GraphQueryResponse extends UnifiedGraphData {
+  roots: string[];
+  direction: "forward" | "reverse" | "both";
+  max_depth: number;
+  max_nodes: number;
+  max_edges: number;
+  timeout_ms: number;
+  budget: Record<string, number>;
+  truncated: boolean;
+  missing_roots: string[];
+  depth_by_node: Record<string, number>;
+  filters: Record<string, unknown>;
+}
+
 export interface GraphImpactResponse {
   node_id: string;
   affected_nodes: string[];

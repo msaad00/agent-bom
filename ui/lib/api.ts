@@ -13,6 +13,8 @@ import type {
   GraphSnapshot,
   UnifiedGraphResponse,
   FixFirstGraphViewResponse,
+  GraphQueryRequest,
+  GraphQueryResponse,
   GraphNodeDetailResponse,
   GraphSearchResponse,
   GraphAgentsResponse,
@@ -94,6 +96,8 @@ export type {
   UnifiedGraphResponse,
   FixFirstGraphViewResponse,
   FixFirstPathCard,
+  GraphQueryRequest,
+  GraphQueryResponse,
   GraphImpactResponse,
   GraphNodeDetailResponse,
   GraphSearchResponse,
@@ -524,6 +528,10 @@ export const api = {
     const qs = params.toString();
     return get<UnifiedGraphResponse>(`/v1/graph/attack-paths${qs ? `?${qs}` : ""}`);
   },
+
+  /** Run a bounded root-centered graph traversal */
+  queryGraph: (body: GraphQueryRequest) =>
+    post<GraphQueryResponse>("/v1/graph/query", body),
 
   /** Search graph nodes within a snapshot */
   searchGraph: (query: string, filters?: { scanId?: string; offset?: number; limit?: number }) => {

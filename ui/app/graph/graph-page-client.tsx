@@ -67,6 +67,7 @@ import {
   api,
   type GraphDiffResponse,
   type GraphNodeDetailResponse,
+  type GraphQueryResponse,
   type GraphSnapshot,
   type UnifiedGraphResponse,
 } from "@/lib/api";
@@ -410,6 +411,33 @@ function graphErrorState(message: string): { title: string; detail: string; sugg
   };
 }
 
+type InvestigationMode = {
+  rootId: string;
+  rootLabel: string;
+  truncated: boolean;
+  nodeCount: number;
+  edgeCount: number;
+};
+
+function queryResponseToGraphResponse(response: GraphQueryResponse): UnifiedGraphResponse {
+  return {
+    scan_id: response.scan_id,
+    tenant_id: response.tenant_id,
+    created_at: response.created_at,
+    nodes: response.nodes,
+    edges: response.edges,
+    attack_paths: response.attack_paths,
+    interaction_risks: response.interaction_risks,
+    stats: response.stats,
+    pagination: {
+      total: response.nodes.length,
+      offset: 0,
+      limit: response.nodes.length,
+      has_more: false,
+    },
+  };
+}
+
 /**
  * Wrapper — supplies the xyflow store at the page root so `useLodBand`
  * (#2257) can read `viewport.zoom` from anywhere inside the page, not
@@ -442,6 +470,7 @@ function GraphPageInner() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<UnifiedNode[]>([]);
   const [searching, setSearching] = useState(false);
+  const [investigationMode, setInvestigationMode] = useState<InvestigationMode | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [pinnedFocusId, setPinnedFocusId] = useState<string | null>(null);
   const [expandedClusterIds, setExpandedClusterIds] = useState<Set<string>>(() => new Set());
@@ -525,6 +554,7 @@ function GraphPageInner() {
     setSearchResults([]);
     setSearchQuery("");
     setSelectedAttackPathKey(null);
+    setInvestigationMode(null);
     if (firstScanSelectionRef.current) {
       firstScanSelectionRef.current = false;
       if (seededFromUrlRef.current) {
@@ -541,6 +571,8 @@ function GraphPageInner() {
       setGraphData(null);
       return;
     }
+
+    if (investigationMode) return;
 
     if (serverEntityTypes.length === 0) {
       setGraphData(emptyGraphResponse(selectedScanId));
@@ -589,6 +621,7 @@ function GraphPageInner() {
     filters.severity,
     filters.pageSize,
     pageOffset,
+    investigationMode,
   ]);
 
   const activeSnapshot = useMemo(
@@ -972,7 +1005,7 @@ function GraphPageInner() {
   }, [searchQuery, selectedScanId]);
 
   const focusSearchResult = useCallback(
-    (node: UnifiedNode) => {
+    async (node: UnifiedNode) => {
       const fallback = flowNodeDataById.get(node.id) ?? buildFallbackNodeData(node);
       setSelectedNode({
         ...fallback,
@@ -987,9 +1020,48 @@ function GraphPageInner() {
       setSelectedAttackPathKey(null);
       setSearchResults([]);
       setSearchQuery(node.label);
+      setLoadingGraph(true);
+      try {
+        const response = await api.queryGraph({
+          roots: [node.id],
+          scan_id: selectedScanId,
+          direction: "both",
+          max_depth: filters.vulnOnly ? 3 : 4,
+          max_nodes: filters.vulnOnly ? 400 : 800,
+          max_edges: filters.vulnOnly ? 3000 : 8000,
+          timeout_ms: 2500,
+          traversable_only: false,
+          static_only: filters.runtimeMode === "static",
+          dynamic_only: filters.runtimeMode === "dynamic",
+          include_roots: true,
+          include_attack_paths: true,
+          min_severity: filters.severity ?? "",
+          relationship_types: serverRelationships,
+        });
+        setGraphData(queryResponseToGraphResponse(response));
+        setInvestigationMode({
+          rootId: node.id,
+          rootLabel: node.label,
+          truncated: response.truncated,
+          nodeCount: response.nodes.length,
+          edgeCount: response.edges.length,
+        });
+        setError(null);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load root-centered graph");
+      } finally {
+        setLoadingGraph(false);
+      }
     },
-    [flowNodeDataById],
+    [filters.runtimeMode, filters.severity, filters.vulnOnly, flowNodeDataById, selectedScanId, serverRelationships],
   );
+
+  const clearInvestigationMode = useCallback(() => {
+    setInvestigationMode(null);
+    setPinnedFocusId(null);
+    setHoveredNodeId(null);
+    setSelectedAttackPathKey(null);
+  }, []);
 
   const pageStart = graphData && graphData.pagination.total > 0 ? graphData.pagination.offset + 1 : 0;
   const pageEnd =
@@ -1141,12 +1213,30 @@ function GraphPageInner() {
           </div>
 
           <div className="mt-2 text-xs text-zinc-500">
-            {graphOnlyFindings
-              ? "This scope currently resolves to findings without surrounding context. Relax filters or expand the view to recover package, server, and agent relationships."
-              : filters.agentName
-                ? `Focused on ${filters.agentName}. Expand only when you need more of the surrounding graph.`
-                : "Focused view keeps the graph scoped. Use Expanded when you need broader topology."}
+            {investigationMode
+              ? `Investigating ${investigationMode.rootLabel}: ${investigationMode.nodeCount} nodes and ${investigationMode.edgeCount} edges loaded from a bounded root-centered query.`
+              : graphOnlyFindings
+                ? "This scope currently resolves to findings without surrounding context. Relax filters or expand the view to recover package, server, and agent relationships."
+                : filters.agentName
+                  ? `Focused on ${filters.agentName}. Expand only when you need more of the surrounding graph.`
+                  : "Focused view keeps the graph scoped. Use Expanded when you need broader topology."}
           </div>
+
+          {investigationMode && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
+              <span>
+                Root-centered investigation: <span className="font-mono">{investigationMode.rootId}</span>
+                {investigationMode.truncated ? " · traversal budget reached" : ""}
+              </span>
+              <button
+                type="button"
+                onClick={clearInvestigationMode}
+                className="rounded-lg border border-sky-400/30 bg-sky-950/60 px-2.5 py-1 text-sky-100 transition hover:border-sky-300"
+              >
+                Return to paged graph
+              </button>
+            </div>
+          )}
 
           {searchResults.length > 0 && (
             <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-950/90 p-2">
@@ -1155,7 +1245,7 @@ function GraphPageInner() {
                   <button
                     key={result.id}
                     type="button"
-                    onClick={() => focusSearchResult(result)}
+                    onClick={() => void focusSearchResult(result)}
                     className="rounded-xl border border-zinc-800 bg-zinc-900/80 px-3 py-2 text-left transition hover:border-zinc-600 hover:bg-zinc-900"
                   >
                     <p className="truncate text-sm font-medium text-zinc-100">{result.label}</p>

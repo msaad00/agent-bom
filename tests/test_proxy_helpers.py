@@ -193,7 +193,7 @@ def test_log_tool_call_blocked():
     buf.seek(0)
     record = json.loads(buf.readline())
     assert record["policy"] == "blocked"
-    assert record["reason"] == "undeclared"
+    assert "reason" not in record
     assert record["payload_sha256"] == "abc123"
     assert record["message_id"] == 42
     assert record["event_relationships"]["targets"][0]["id"] == "exec"

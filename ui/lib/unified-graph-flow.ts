@@ -286,6 +286,9 @@ function toLineageData(
     complianceTags: node.compliance_tags ?? [],
     attributes,
     isCritical: isCriticalNode(node),
+    evidenceTier: evidenceTierAttr(attributes),
+    evidenceCaptureReplay: attributes.capture_replay_enabled === true,
+    evidenceNotAfter: stringAttr(node, "not_after"),
   };
 
   switch (nodeType) {
@@ -634,6 +637,11 @@ function numberAttr(node: UnifiedNode, key: string): number | undefined {
 
 function booleanAttr(node: UnifiedNode, key: string): boolean {
   return node.attributes?.[key] === true;
+}
+
+function evidenceTierAttr(attributes: Record<string, unknown>): "safe_to_store" | "replay_only" | undefined {
+  const value = attributes.evidence_tier ?? attributes.tier;
+  return value === "safe_to_store" || value === "replay_only" ? value : undefined;
 }
 
 function complianceSubset(tags: string[], prefix: string): string[] {

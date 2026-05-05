@@ -93,6 +93,10 @@ export type LineageNodeData = {
   dimmed?: boolean | undefined;
   highlighted?: boolean | undefined;
   isCritical?: boolean | undefined;
+  // Evidence redaction tier (#2261) — per-row badge in lineage detail panel.
+  evidenceTier?: "safe_to_store" | "replay_only" | undefined;
+  evidenceCaptureReplay?: boolean | undefined;
+  evidenceNotAfter?: string | undefined;
 };
 
 type CardProps = {

@@ -79,9 +79,7 @@ def test_write_audit_record_sanitizes_generic_records():
     assert "user:pass" not in encoded
     assert token not in encoded
     assert "/Users/alice" not in encoded
-    assert payload["details"]["password"] == "***REDACTED***"
-    assert payload["details"]["url"] == "https://example.com/callback"
-    assert payload["details"]["path"] == "<path:key.txt>"
+    assert payload["details"] == {}
     assert payload["record_hash_algorithm"] == "aes-cmac-128"
 
 
@@ -216,7 +214,7 @@ def test_log_tool_call():
     assert record["tool"] == "read_file"
     assert record["policy"] == "allowed"
     assert "ts" in record
-    assert record["args"]["path"] == "<path:hosts>"
+    assert "args" not in record
     assert record["prev_hash"] == ""
     assert record["record_hash_algorithm"] == "aes-cmac-128"
     assert len(record["record_hash"]) == 32

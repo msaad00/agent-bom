@@ -9,10 +9,13 @@ import {
   Cloud,
   Database,
   ExternalLink,
+  Hourglass,
   KeyRound,
+  Lock,
   Package,
   Server,
   ShieldAlert,
+  ShieldOff,
   TriangleAlert,
   Wrench,
   X,
@@ -318,6 +321,12 @@ export function LineageDetailPanel({
           <GenericAssetSection description={data.description} attributes={data.attributes} />
         )}
 
+        <EvidenceTierBadge
+          tier={data.evidenceTier}
+          captureReplay={data.evidenceCaptureReplay}
+          notAfter={data.evidenceNotAfter}
+        />
+
         {(data.status || data.riskScore != null || data.firstSeen || data.lastSeen) && (
           <div className="space-y-2">
             <Label>Lifecycle</Label>
@@ -511,4 +520,57 @@ function prettifyKey(value: string): string {
   return value
     .replace(/_/g, " ")
     .replace(/\b\w/g, (match) => match.toUpperCase());
+}
+
+/**
+ * Evidence redaction tier badge (issue #2261).
+ *
+ * Renders one of three states next to each evidence row so auditors can
+ * see at a glance whether the underlying data is safe to keep, on a
+ * short-TTL replay rotation, or dropped before it ever hits storage.
+ */
+function EvidenceTierBadge({
+  tier,
+  captureReplay,
+  notAfter,
+}: {
+  tier?: "safe_to_store" | "replay_only" | undefined;
+  captureReplay?: boolean | undefined;
+  notAfter?: string | undefined;
+}) {
+  if (!tier) return null;
+
+  if (tier === "safe_to_store") {
+    return (
+      <div className="flex items-center gap-1.5 rounded border border-emerald-800 bg-emerald-950 px-2 py-1 text-[10px] font-mono text-emerald-300">
+        <Lock className="w-3 h-3" />
+        <span>Safe to store</span>
+      </div>
+    );
+  }
+
+  // replay_only
+  if (!captureReplay) {
+    return (
+      <div className="flex items-center gap-1.5 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[10px] font-mono text-zinc-400">
+        <ShieldOff className="w-3 h-3" />
+        <span>Not persisted</span>
+      </div>
+    );
+  }
+
+  let rotatesIn: number | null = null;
+  if (notAfter) {
+    const expiry = new Date(notAfter).getTime();
+    if (!Number.isNaN(expiry)) {
+      const deltaDays = Math.max(0, Math.floor((expiry - Date.now()) / 86_400_000));
+      rotatesIn = deltaDays;
+    }
+  }
+  return (
+    <div className="flex items-center gap-1.5 rounded border border-amber-800 bg-amber-950 px-2 py-1 text-[10px] font-mono text-amber-300">
+      <Hourglass className="w-3 h-3" />
+      <span>{rotatesIn != null ? `Rotates in ${rotatesIn} days` : "Replay only"}</span>
+    </div>
+  );
 }

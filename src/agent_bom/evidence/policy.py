@@ -51,7 +51,6 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         "package_name",
         "ecosystem",
         "lockfile_source",
-        "lockfile_path",
         "purl",
         # Tool / capability metadata
         "tool_name",
@@ -103,6 +102,7 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         "ordinal",
         "rule_id",
         "check_id",
+        "reason_code",
         # Cryptographic checksums (hashes are fingerprints, not content)
         "payload_sha256",
         "record_hash",
@@ -120,6 +120,63 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         "epss_score",
         "is_kev",
         "fixed_version",
+        # Normalized structural finding fields. Free-text labels,
+        # descriptions, reasons, recommendations, and remediations are
+        # intentionally replay-only because scanners and runtimes often
+        # populate them with copied user/workspace content.
+        "id",
+        "title",
+        "category",
+        "detector",
+        "asset_type",
+        "finding_type",
+        "cve_id",
+        "ghsa_id",
+        "advisory_id",
+        "rule",
+        "vendor",
+        "kind",
+        "type",
+        # Safe container keys. The values inside these containers are still
+        # recursively classified, so raw args, URLs, paths, and free text are
+        # dropped from tier-A even when the envelope is retained.
+        "details",
+        "event_relationships",
+        "actor",
+        "targets",
+        "resources",
+        "attributes",
+        "normalization_version",
+        "role",
+        "source_field",
+        # Operational audit-trail metadata. These are non-content fields:
+        # counters, format / version discriminators, key-ids, nonces, time
+        # ranges, expiry timestamps. Audit-log writers in api/routes/* pass
+        # them via log_action() and they belong in the durable chain.
+        "format",
+        "version",
+        "since",
+        "until",
+        "expires_at",
+        "control_count",
+        "finding_count",
+        "audit_event_count",
+        "nonce",
+        "key_id",
+        "signature_key_id",
+        "method",
+        "count",
+        "size",
+        "bytes",
+        "duration_ms",
+        "started_at",
+        "completed_at",
+        "scan_id",
+        "job_id",
+        "policy_id",
+        "fleet_id",
+        "exception_id",
+        "alert_id",
     }
 )
 

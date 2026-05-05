@@ -556,13 +556,12 @@ def write_audit_record(log_file: "IO[str] | RotatingAuditLog", record: dict) -> 
                 capture_tier_b(tenant_id, sanitized)
         except Exception:  # pragma: no cover — replay capture must never break the chain
             logger.debug("tier-B replay capture skipped", exc_info=True)
-        # Tier-A redaction strips fields above SAFE_TO_STORE. We re-attach a
-        # small allowlist of well-known structural keys so the JSONL header
-        # stays stable for downstream tooling (record discriminator, policy
-        # decision reason).
+        # Tier-A redaction strips fields above SAFE_TO_STORE. Re-attach only
+        # the structural record discriminator; free-text policy reasons stay
+        # replay-only unless callers provide a normalized reason_code.
         payload = redact_for_persistence(sanitized, EvidenceTier.SAFE_TO_STORE)
         if isinstance(sanitized, dict):
-            for header_field in ("type", "reason"):
+            for header_field in ("type",):
                 if header_field in sanitized and header_field not in payload:
                     payload[header_field] = sanitized[header_field]
         payload["prev_hash"] = prev_hash

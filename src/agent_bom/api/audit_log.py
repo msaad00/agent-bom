@@ -25,10 +25,11 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Protocol
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from agent_bom.api.storage_schema import ensure_sqlite_schema_version
-from agent_bom.security import sanitize_sensitive_payload
+from agent_bom.security import sanitize_path_label, sanitize_sensitive_payload
 
 logger = logging.getLogger(__name__)
 _AUDIT_DETAIL_KEY_RE = re.compile(r"[^a-zA-Z0-9_.:-]+")
@@ -646,6 +647,21 @@ def sanitize_audit_details(details: dict[str, object]) -> dict[str, object]:
     }
 
 
+def _safe_audit_label(value: object, *, key: str, default: str = "") -> str:
+    """Return a durable tier-A label for top-level actor/resource fields."""
+    if value in (None, ""):
+        return default
+    text = str(sanitize_sensitive_payload(value, key=key, max_str_len=256) or "")
+    if not text:
+        return default
+    parsed = urlparse(text)
+    if parsed.scheme and parsed.netloc:
+        return f"<url:{parsed.hostname or 'host'}>"
+    if text.startswith(("/", "~/")) or re.match(r"^[A-Za-z]:[\\/]", text):
+        return sanitize_path_label(text)
+    return text[:256]
+
+
 def set_audit_log(store: AuditLogStore) -> None:
     global _audit_log
     with _audit_lock:
@@ -668,7 +684,12 @@ def log_action(action: str, actor: str = "system", resource: str = "", **details
     if not audit_details.get("tenant_id"):
         audit_details["tenant_id"] = _default_tenant_id(raw_details)
     audit_details = sanitize_audit_details(audit_details)
-    entry = AuditEntry(action=action, actor=actor, resource=resource, details=audit_details)
+    entry = AuditEntry(
+        action=action,
+        actor=_safe_audit_label(actor, key="actor_id", default="system"),
+        resource=_safe_audit_label(resource, key="resource_id"),
+        details=audit_details,
+    )
     get_audit_log().append(entry)
     try:
         from agent_bom.api.stores import _get_analytics_store

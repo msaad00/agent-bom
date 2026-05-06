@@ -58,7 +58,7 @@ def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_i
     """
     if _is_loopback_host(host):
         return
-    has_api_key = bool(api_key)
+    has_api_key = bool(api_key or os.environ.get("AGENT_BOM_API_KEYS", "").strip())
     has_oidc = _oidc_enabled()
     has_scim = _scim_bearer_enabled()
     if has_api_key or has_oidc or has_scim:
@@ -82,7 +82,7 @@ def _enforce_auth_defaults(command: str, host: str, api_key: str | None, allow_i
         return
     raise click.ClickException(
         f"Refusing to expose `{command}` on non-loopback host {host!r} without authentication. "
-        "Set --api-key / AGENT_BOM_API_KEY, configure AGENT_BOM_OIDC_ISSUER / "
+        "Set --api-key / AGENT_BOM_API_KEY, configure AGENT_BOM_API_KEYS, configure AGENT_BOM_OIDC_ISSUER / "
         "AGENT_BOM_OIDC_TENANT_PROVIDERS_JSON, set AGENT_BOM_SCIM_BEARER_TOKEN, "
         "or pass --allow-insecure-no-auth to override."
     )
@@ -184,7 +184,7 @@ def _auth_summary(
     mcp_remote: bool = False,
 ) -> str:
     """Return a user-facing summary for the active auth mode."""
-    if api_key:
+    if api_key or os.environ.get("AGENT_BOM_API_KEYS", "").strip():
         return "API key required (Bearer / X-API-Key)"
     if bearer_token:
         return "Bearer token required"

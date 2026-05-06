@@ -21,7 +21,7 @@ from typing import Any, cast
 from agent_bom import __version__
 from agent_bom.api import stores as _stores
 from agent_bom.api.audit_log import get_audit_log
-from agent_bom.api.auth import get_key_store
+from agent_bom.api.auth import Role, create_api_key_record, get_key_store
 from agent_bom.api.middleware import (
     APIKeyMiddleware,
     MaxBodySizeMiddleware,
@@ -468,6 +468,47 @@ _cors_env = os.environ.get("CORS_ORIGINS")
 _cors_origins: list[str] = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else _default_origins
 _api_key: str | None = None
 _rate_limit_rpm: int = 60
+_env_api_keys_seeded = False
+
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_cors_origins_from_env(default: list[str]) -> tuple[list[str], bool]:
+    raw = os.environ.get("CORS_ORIGINS", "").strip()
+    if not raw:
+        return default, False
+    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return origins or default, "*" in origins
+
+
+def _seed_api_key_store_from_env() -> bool:
+    """Seed RBAC keys from AGENT_BOM_API_KEYS for direct ASGI imports."""
+    global _env_api_keys_seeded
+
+    configured = os.environ.get("AGENT_BOM_API_KEYS", "").strip()
+    if not configured:
+        return False
+    if _env_api_keys_seeded:
+        return get_key_store().has_keys()
+
+    store = get_key_store()
+    for idx, item in enumerate(configured.split(","), start=1):
+        raw_item = item.strip()
+        if not raw_item:
+            continue
+        raw_key, sep, role_value = raw_item.partition(":")
+        if not sep or not raw_key.strip() or not role_value.strip():
+            raise RuntimeError("AGENT_BOM_API_KEYS entries must use '<raw-key>:<admin|analyst|viewer>' format")
+        try:
+            role = Role(role_value.strip().lower())
+        except ValueError as exc:
+            raise RuntimeError(f"Invalid AGENT_BOM_API_KEYS role {role_value!r}; expected admin, analyst, or viewer") from exc
+        store.add(create_api_key_record(raw_key.strip(), f"env:{role.value}:{idx}", role))
+
+    _env_api_keys_seeded = True
+    return store.has_keys()
 
 
 def _apply_cors_middleware(origins: list[str]) -> None:
@@ -521,15 +562,17 @@ def configure_api(
     _api_key = api_key
     _rate_limit_rpm = rate_limit_rpm
 
+    env_key_store_configured = _seed_api_key_store_from_env()
+
     from agent_bom.api.oidc import oidc_enabled_from_env
     from agent_bom.api.scim import scim_enabled_from_env
 
     oidc_enabled = oidc_enabled_from_env()
     scim_enabled = scim_enabled_from_env()
     trusted_proxy_enabled = os.environ.get("AGENT_BOM_TRUST_PROXY_AUTH", "").strip().lower() in {"1", "true", "yes", "on"}
-    auth_required = bool(api_key or oidc_enabled or trusted_proxy_enabled or scim_enabled)
+    auth_required = bool(api_key or env_key_store_configured or oidc_enabled or trusted_proxy_enabled or scim_enabled)
     configure_auth_runtime(
-        api_key_configured=bool(api_key),
+        api_key_configured=bool(api_key or env_key_store_configured),
         oidc_enabled=oidc_enabled,
         trusted_proxy_enabled=trusted_proxy_enabled,
         scim_enabled=scim_enabled,
@@ -553,6 +596,34 @@ def configure_api(
     _replace_middleware(MaxBodySizeMiddleware)
     if app.middleware_stack is not None:
         app.middleware_stack = app.build_middleware_stack()
+
+
+def configure_api_from_env() -> None:
+    """Configure API hardening for direct ASGI imports such as raw uvicorn."""
+    api_key = os.environ.get("AGENT_BOM_API_KEY") or None
+    has_api_keys = bool(os.environ.get("AGENT_BOM_API_KEYS", "").strip())
+    auth_env_present = any(
+        (
+            api_key,
+            has_api_keys,
+            os.environ.get("AGENT_BOM_OIDC_ISSUER"),
+            _env_truthy("AGENT_BOM_TRUST_PROXY_AUTH"),
+            os.environ.get("AGENT_BOM_SCIM_BEARER_TOKEN"),
+        )
+    )
+    if not auth_env_present:
+        return
+
+    origins, allow_all = _parse_cors_origins_from_env(_default_origins)
+    configure_api(
+        cors_origins=origins,
+        cors_allow_all=allow_all,
+        api_key=api_key,
+        rate_limit_rpm=60,
+    )
+
+
+configure_api_from_env()
 
 
 # ─── Scan Pipeline (extracted to api/pipeline.py) ────────────────────────────

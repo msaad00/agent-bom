@@ -38,6 +38,29 @@ _SECURITY_SEVERITY_SCORE = {
     Severity.UNKNOWN: "0.0",
 }
 
+_FRAMEWORK_TAXONOMY_META: dict[str, tuple[str, str, str]] = {
+    "owasp_tags": (
+        "owasp-llm-top10",
+        "OWASP Top 10 for Large Language Model Applications",
+        "https://owasp.org/www-project-top-10-for-large-language-model-applications/",
+    ),
+    "atlas_tags": ("mitre-atlas", "MITRE ATLAS", "https://atlas.mitre.org/"),
+    "attack_tags": ("mitre-attack", "MITRE ATT&CK", "https://attack.mitre.org/"),
+    "nist_ai_rmf_tags": ("nist-ai-rmf", "NIST AI Risk Management Framework", "https://www.nist.gov/itl/ai-risk-management-framework"),
+    "owasp_mcp_tags": ("owasp-mcp", "OWASP MCP Security", "https://owasp.org/"),
+    "owasp_agentic_tags": ("owasp-agentic", "OWASP Agentic AI Security", "https://owasp.org/"),
+    "eu_ai_act_tags": ("eu-ai-act", "EU AI Act", "https://artificialintelligenceact.eu/"),
+    "nist_csf_tags": ("nist-csf", "NIST Cybersecurity Framework", "https://www.nist.gov/cyberframework"),
+    "iso_27001_tags": ("iso-27001", "ISO/IEC 27001", "https://www.iso.org/standard/27001"),
+    "soc2_tags": (
+        "soc2",
+        "SOC 2 Trust Services Criteria",
+        "https://www.aicpa-cima.com/resources/landing/system-and-organization-controls-soc-suite-of-services",
+    ),
+    "cis_tags": ("cis-controls", "CIS Controls", "https://www.cisecurity.org/controls"),
+    "cmmc_tags": ("cmmc", "Cybersecurity Maturity Model Certification", "https://dodcio.defense.gov/CMMC/"),
+}
+
 
 def _to_relative_path(path: str) -> str:
     """Convert an absolute path to a relative path suitable for SARIF.
@@ -81,6 +104,36 @@ def _sanitize_sarif_text(field_name: str, value: Any, *, fallback: str = "") -> 
     if redacted is None:
         return fallback
     return str(redacted)
+
+
+def _build_run_taxonomies(results: list[dict]) -> list[dict]:
+    """Build SARIF run-level taxonomies from per-result framework tags."""
+    tags_by_property: dict[str, set[str]] = {key: set() for key in _FRAMEWORK_TAXONOMY_META}
+    for result in results:
+        properties = result.get("properties") or {}
+        if not isinstance(properties, dict):
+            continue
+        for property_name in tags_by_property:
+            raw_tags = properties.get(property_name) or []
+            if isinstance(raw_tags, str):
+                raw_tags = [raw_tags]
+            if isinstance(raw_tags, list):
+                tags_by_property[property_name].update(str(tag) for tag in raw_tags if str(tag).strip())
+
+    taxonomies: list[dict] = []
+    for property_name, tags in tags_by_property.items():
+        if not tags:
+            continue
+        name, full_name, uri = _FRAMEWORK_TAXONOMY_META[property_name]
+        taxonomies.append(
+            {
+                "name": name,
+                "fullName": full_name,
+                "informationUri": uri,
+                "taxa": [{"id": tag, "name": tag} for tag in sorted(tags)],
+            }
+        )
+    return taxonomies
 
 
 def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
@@ -521,23 +574,26 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                 }
             )
 
+    taxonomies = _build_run_taxonomies(results)
+    run: dict = {
+        "tool": {
+            "driver": {
+                "name": "agent-bom",
+                "version": report.tool_version,
+                "informationUri": "https://github.com/msaad00/agent-bom",
+                "rules": rules,
+            }
+        },
+        "results": results,
+        **({"automationDetails": {"id": f"agent-bom/{report.scan_id}"}} if report.scan_id else {}),
+    }
+    if taxonomies:
+        run["taxonomies"] = taxonomies
+
     return {
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json",
         "version": "2.1.0",
-        "runs": [
-            {
-                "tool": {
-                    "driver": {
-                        "name": "agent-bom",
-                        "version": report.tool_version,
-                        "informationUri": "https://github.com/msaad00/agent-bom",
-                        "rules": rules,
-                    }
-                },
-                "results": results,
-                **({"automationDetails": {"id": f"agent-bom/{report.scan_id}"}} if report.scan_id else {}),
-            }
-        ],
+        "runs": [run],
     }
 
 

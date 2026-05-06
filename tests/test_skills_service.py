@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from agent_bom.skill_bundles import build_skill_bundle
-from agent_bom.skills_service import rescan_skill_catalog, scan_skill_targets
+from agent_bom.skill_intel import ThreatIntelStatus
+from agent_bom.skills_service import _review_to_status, rescan_skill_catalog, scan_skill_targets
 
 
 def test_scan_skill_targets_records_catalog_and_intel(tmp_path):
@@ -50,6 +52,13 @@ def test_scan_skill_targets_records_catalog_and_intel(tmp_path):
     assert payload["schema_version"] == "1"
     assert payload["report_type"] == "skills_scan"
     assert payload["generated_at"].endswith("Z")
+
+
+def test_high_risk_local_skill_review_counts_as_malicious_status():
+    """Local high-risk verdicts should not drift from malicious summary counts."""
+    report = SimpleNamespace(threat_intel=None, trust=SimpleNamespace(review_verdict=SimpleNamespace(value="high_risk")))
+
+    assert _review_to_status(report) == ThreatIntelStatus.MALICIOUS
 
 
 def test_scan_skill_targets_redacts_server_args_in_output(tmp_path):

@@ -11,7 +11,7 @@ import pytest
 from fastapi import Response
 from starlette.testclient import TestClient
 
-from agent_bom.api.auth import KeyStore, Role, create_api_key, get_key_store, set_key_store
+from agent_bom.api.auth import KeyStore, Role, create_api_key, create_api_key_record, get_key_store, set_key_store
 from agent_bom.api.browser_session import (
     CSRF_COOKIE_NAME,
     CSRF_HEADER_NAME,
@@ -28,6 +28,7 @@ from agent_bom.api.server import (
     RateLimitMiddleware,
     app,
     configure_api,
+    configure_api_from_env,
 )
 
 
@@ -42,6 +43,56 @@ def test_health_no_auth():
     client = TestClient(app)
     resp = client.get("/health")
     assert resp.status_code == 200
+
+
+def test_direct_asgi_import_configures_static_api_key_from_env(monkeypatch):
+    """Raw uvicorn imports must honor AGENT_BOM_API_KEY without the CLI wrapper."""
+    raw_key = "raw-uvicorn-static-key"
+    monkeypatch.setenv("AGENT_BOM_API_KEY", raw_key)
+    configure_api_from_env()
+    try:
+        client = TestClient(app)
+        assert client.get("/v1/auth/policy").status_code == 401
+        assert client.get("/v1/auth/policy", headers={"Authorization": f"Bearer {raw_key}"}).status_code == 200
+    finally:
+        monkeypatch.delenv("AGENT_BOM_API_KEY", raising=False)
+        configure_api(api_key=None)
+
+
+def test_direct_asgi_import_configures_rbac_api_keys_from_env(monkeypatch):
+    """AGENT_BOM_API_KEYS should fail closed and preserve per-key roles."""
+    raw_admin = "raw-uvicorn-admin-key"
+    raw_viewer = "raw-uvicorn-viewer-key"
+    original_store = get_key_store()
+    set_key_store(KeyStore())
+    monkeypatch.setattr("agent_bom.api.server._env_api_keys_seeded", False)
+    monkeypatch.setenv("AGENT_BOM_API_KEYS", f"{raw_admin}:admin,{raw_viewer}:viewer")
+    configure_api_from_env()
+    try:
+        client = TestClient(app)
+        assert client.get("/v1/auth/policy").status_code == 401
+        assert client.get("/v1/auth/policy", headers={"Authorization": f"Bearer {raw_admin}"}).status_code == 200
+        denied = client.post("/v1/auth/keys", json={"name": "new", "role": "viewer"}, headers={"Authorization": f"Bearer {raw_viewer}"})
+        assert denied.status_code == 403
+        allowed = client.post("/v1/auth/keys", json={"name": "new", "role": "viewer"}, headers={"Authorization": f"Bearer {raw_admin}"})
+        assert allowed.status_code == 201
+    finally:
+        monkeypatch.delenv("AGENT_BOM_API_KEYS", raising=False)
+        set_key_store(original_store)
+        monkeypatch.setattr("agent_bom.api.server._env_api_keys_seeded", False)
+        configure_api(api_key=None)
+
+
+def test_create_api_key_record_verifies_operator_supplied_key():
+    """Operator-supplied env keys must be stored as hashes, not raw material."""
+    raw_key = "operator-provided-api-key"
+    store = KeyStore()
+    record = create_api_key_record(raw_key, "env:admin:1", Role.ADMIN)
+    store.add(record)
+
+    assert record.key_hash != raw_key
+    assert store.verify(raw_key) == record
+    assert store.verify("wrong") is None
 
 
 @pytest.mark.asyncio

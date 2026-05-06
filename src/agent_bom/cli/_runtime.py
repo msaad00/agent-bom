@@ -897,3 +897,52 @@ def audit_replay_cmd(log_path, tool, entry_type, blocked_only, alerts_only, sign
         as_json=as_json,
     )
     sys.exit(exit_code)
+
+
+@click.command("audit-drain-dlq")
+@click.argument("dlq_path", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--output",
+    "output_path",
+    required=True,
+    type=click.Path(dir_okay=False),
+    help="JSONL file to append valid DLQ records to.",
+)
+@click.option("--max-records", type=int, default=None, help="Maximum number of valid records to drain.")
+@click.option("--delete-drained", is_flag=True, help="Remove drained valid records from the DLQ after appending them.")
+@click.option("--json", "as_json", is_flag=True, help="Output machine-readable JSON summary.")
+def audit_drain_dlq_cmd(dlq_path, output_path, max_records, delete_drained, as_json):
+    """Drain valid proxy audit DLQ records into a JSONL file."""
+    import json
+    from pathlib import Path
+
+    from agent_bom.proxy_audit import drain_proxy_audit_dlq
+
+    if max_records is not None and max_records <= 0:
+        raise click.UsageError("--max-records must be greater than zero")
+
+    result = drain_proxy_audit_dlq(
+        Path(dlq_path),
+        Path(output_path),
+        max_records=max_records,
+        delete_drained=delete_drained,
+    )
+    payload = {
+        "dlq_path": str(result.dlq_path),
+        "output_path": str(result.output_path),
+        "records_written": result.records_written,
+        "invalid_lines": result.invalid_lines,
+        "remaining_lines": result.remaining_lines,
+        "deleted_drained": result.deleted_drained,
+    }
+    if as_json:
+        click.echo(json.dumps(payload, sort_keys=True))
+        return
+
+    console = Console()
+    console.print(
+        "[green]Drained[/green] "
+        f"{result.records_written} valid record(s) to {result.output_path} "
+        f"({result.invalid_lines} invalid line(s); "
+        f"{'deleted drained records' if result.deleted_drained else 'left DLQ unchanged'})."
+    )

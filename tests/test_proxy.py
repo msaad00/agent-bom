@@ -39,7 +39,7 @@ from agent_bom.proxy import (
     sandbox_posture_warning,
     undeclared_tool_block_reason,
 )
-from agent_bom.proxy_audit import _AUDIT_CHAIN_STATE, write_audit_record
+from agent_bom.proxy_audit import _AUDIT_CHAIN_STATE, drain_proxy_audit_dlq, write_audit_record
 
 
 def test_proxy_message_size_budget_is_two_mib_or_less():
@@ -643,6 +643,34 @@ def test_audit_spillover_store_diverts_to_dlq_when_spillover_full(tmp_path: Path
     assert destination == "dlq"
     assert store.spillover_size_bytes() == 0
     assert store.dlq_size_bytes() > 0
+
+
+def test_drain_proxy_audit_dlq_appends_valid_records_and_preserves_invalid(tmp_path: Path):
+    dlq = tmp_path / "audit.dlq.jsonl"
+    output = tmp_path / "audit.recovered.jsonl"
+    dlq.write_text('{"event":"one"}\nnot-json\n["not", "an", "object"]\n{"event":"two"}\n', encoding="utf-8")
+
+    result = drain_proxy_audit_dlq(dlq, output, delete_drained=True)
+
+    assert result.records_written == 2
+    assert result.invalid_lines == 2
+    assert result.remaining_lines == 2
+    assert output.read_text(encoding="utf-8") == '{"event":"one"}\n{"event":"two"}\n'
+    assert dlq.read_text(encoding="utf-8") == 'not-json\n["not", "an", "object"]\n'
+
+
+def test_drain_proxy_audit_dlq_without_delete_leaves_dlq_unchanged(tmp_path: Path):
+    dlq = tmp_path / "audit.dlq.jsonl"
+    output = tmp_path / "audit.recovered.jsonl"
+    body = '{"event":"one"}\n{"event":"two"}\n'
+    dlq.write_text(body, encoding="utf-8")
+
+    result = drain_proxy_audit_dlq(dlq, output, max_records=1)
+
+    assert result.records_written == 1
+    assert result.remaining_lines == 0
+    assert output.read_text(encoding="utf-8") == '{"event":"one"}\n'
+    assert dlq.read_text(encoding="utf-8") == body
 
 
 # ── CLI proxy --help ─────────────────────────────────────────────────────────

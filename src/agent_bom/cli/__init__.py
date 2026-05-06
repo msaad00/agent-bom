@@ -189,6 +189,7 @@ main.commands["registry"].hidden = True  # Available under `mcp registry`
 
 from agent_bom.cli._runtime import (  # noqa: E402
     _NoOpDetector,
+    audit_drain_dlq_cmd,
     audit_replay_cmd,
     protect_cmd,
     proxy_bootstrap_cmd,
@@ -204,6 +205,7 @@ from agent_bom.cli._runtime_group import runtime_group  # noqa: E402
 
 runtime_group.add_command(proxy_cmd, "proxy")
 runtime_group.add_command(audit_replay_cmd, "audit")
+runtime_group.add_command(audit_drain_dlq_cmd, "drain-dlq")
 runtime_group.add_command(proxy_bootstrap_cmd, "bootstrap")
 # Deprecated — hidden but still work for backward compat
 runtime_group.add_command(proxy_configure_cmd, "configure")
@@ -219,6 +221,7 @@ main.commands["runtime"].hidden = True  # Use proxy/audit directly
 main.add_command(proxy_cmd, "proxy")
 main.add_command(proxy_bootstrap_cmd, "proxy-bootstrap")
 main.add_command(audit_replay_cmd, "audit")
+main.add_command(audit_drain_dlq_cmd, "audit-drain-dlq")
 
 from agent_bom.cli._analysis import (  # noqa: E402
     analytics_cmd,

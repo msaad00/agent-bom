@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import json
 
+from click.testing import CliRunner
+
 from agent_bom.api.server import (
+    PIPELINE_DAG_EDGES,
+    PIPELINE_DAG_EVENT_SCHEMA,
     PIPELINE_STEPS,
     ScanJob,
     ScanPipeline,
     ScanRequest,
     StepStatus,
+    iter_pipeline_dag_event_records,
+    pipeline_dag_events_jsonl,
 )
+from agent_bom.cli._report_group import pipeline_events_cmd
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -218,3 +225,87 @@ class TestSSEEventFormat:
         parsed = json.loads(job.progress[0])
         assert isinstance(parsed["status"], str)
         assert parsed["status"] == "running"
+
+
+# ---------------------------------------------------------------------------
+# Dashboard DAG event artifact
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineDagEventArtifact:
+    def test_dag_event_records_include_step_edges_for_dashboard(self):
+        job = _make_job()
+        job.tenant_id = "tenant-a"
+        pipeline = ScanPipeline(job)
+
+        pipeline.start_step("discovery", "Discovering...")
+        pipeline.complete_step("discovery", "Found 2 agents", stats={"agents": 2})
+        pipeline.start_step("extraction", "Extracting packages...")
+        pipeline.skip_step("scanning", "Vulnerability scanning skipped")
+        job.progress.append("legacy progress line")
+
+        records = iter_pipeline_dag_event_records(job.progress, scan_id=job.job_id, tenant_id=job.tenant_id)
+
+        assert len(records) == 4
+        assert all(record["schema_version"] == PIPELINE_DAG_EVENT_SCHEMA for record in records)
+        assert all(record["type"] == "pipeline_dag_step" for record in records)
+        assert all(record["scan_id"] == job.job_id for record in records)
+        assert all(record["tenant_id"] == "tenant-a" for record in records)
+
+        discovery = records[0]
+        assert discovery["step"]["id"] == "discovery"
+        assert discovery["step"]["index"] == 0
+        assert discovery["dag"]["depends_on"] == []
+        assert discovery["dag"]["next_steps"] == ["extraction"]
+        assert discovery["dag"]["edges"] == PIPELINE_DAG_EDGES
+        assert discovery["dashboard"] == {
+            "lane": "scan_pipeline",
+            "render": "dag_step",
+            "terminal": False,
+        }
+
+        scanning = records[-1]
+        assert scanning["step"]["id"] == "scanning"
+        assert scanning["step"]["status"] == "skipped"
+        assert scanning["dag"]["depends_on"] == ["extraction"]
+        assert scanning["dag"]["next_steps"] == ["enrichment"]
+        assert scanning["dashboard"]["terminal"] is True
+
+    def test_dag_event_jsonl_serializes_one_record_per_structured_step(self):
+        job = _make_job()
+        pipeline = ScanPipeline(job)
+        pipeline.start_step("analysis", "Computing blast radius...", sub_step="agent-a")
+        pipeline.update_step("analysis", "Halfway", stats={"blast_radius": 1}, progress_pct=50)
+        pipeline.complete_step("analysis", "Done", stats={"blast_radius": 2})
+        job.progress.append("plain progress")
+
+        jsonl = pipeline_dag_events_jsonl(job)
+        lines = jsonl.splitlines()
+
+        assert len(lines) == 3
+        parsed = [json.loads(line) for line in lines]
+        assert [record["sequence"] for record in parsed] == [0, 1, 2]
+        assert parsed[0]["event_id"] == "test-123:0:analysis:running"
+        assert parsed[0]["step"]["sub_step"] == "agent-a"
+        assert parsed[1]["step"]["progress_pct"] == 50
+        assert parsed[2]["step"]["stats"] == {"blast_radius": 2}
+        assert parsed[2]["dashboard"]["terminal"] is True
+
+    def test_report_cli_exports_pipeline_dag_event_jsonl(self, tmp_path):
+        job = _make_job()
+        pipeline = ScanPipeline(job)
+        pipeline.start_step("output", "Building report...")
+        pipeline.complete_step("output", "Report ready")
+
+        scan_job_path = tmp_path / "scan-job.json"
+        output_path = tmp_path / "pipeline-events.jsonl"
+        scan_job_path.write_text(json.dumps(job.model_dump(mode="json")), encoding="utf-8")
+
+        result = CliRunner().invoke(pipeline_events_cmd, [str(scan_job_path), "--output", str(output_path)])
+
+        assert result.exit_code == 0
+        assert output_path.exists()
+        records = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
+        assert [record["step"]["status"] for record in records] == ["running", "done"]
+        assert records[0]["dag"]["depends_on"] == ["analysis"]
+        assert records[0]["dag"]["next_steps"] == []

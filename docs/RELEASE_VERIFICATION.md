@@ -86,12 +86,23 @@ fixed-verified, accepted-risk, and false-positive states. It is intentionally
 not a claim of customer-wide real-world false-positive or false-negative rates;
 those require a published external corpus.
 
+## Inspect graph epic proof
+
+Graph release claims are backed by the closure artifact in
+[`docs/graph/WIZ_CLASS_GRAPH_PROOF.md`](graph/WIZ_CLASS_GRAPH_PROOF.md):
+
+```bash
+python scripts/check_graph_epic_proof.py
+pytest tests/test_graph_schema_ui_parity.py tests/test_graph_edge_counts.py tests/test_graph_visual_snapshot.py tests/test_effective_reach.py tests/test_evidence_policy.py
+```
+
 ## What this proves
 
 - the distribution artifacts were signed by GitHub Actions OIDC via Sigstore
 - the build provenance is available as SLSA attestations
 - the release includes a self-SBOM that can be inspected or rescanned later
 - scanner accuracy claims are backed by a versioned local evidence artifact
+- graph readability/trust claims are linked to deterministic, checked-in proof
 
 This is the release trust baseline. Runtime trust, container attestations, and
 registry-specific provenance still live in their own workflows and docs.

@@ -284,7 +284,7 @@ def _review_to_status(report: SkillFileReport) -> ThreatIntelStatus:
     verdict = report.trust.review_verdict.value
     if verdict == "trusted":
         return ThreatIntelStatus.CLEAN
-    if verdict == "blocked":
+    if verdict in {"blocked", "high_risk"}:
         return ThreatIntelStatus.MALICIOUS
     return ThreatIntelStatus.SUSPICIOUS
 

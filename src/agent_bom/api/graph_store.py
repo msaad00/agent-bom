@@ -23,13 +23,18 @@ from agent_bom.graph import AttackPath, EntityType, NodeDimensions, NodeStatus, 
 _CREATE_PRESET_TABLE_SQLITE = """\
 CREATE TABLE IF NOT EXISTS graph_filter_presets (
     name TEXT NOT NULL,
-    tenant_id TEXT DEFAULT '',
+    tenant_id TEXT NOT NULL DEFAULT 'default',
     description TEXT DEFAULT '',
     filters TEXT NOT NULL,
     created_at TEXT NOT NULL,
     PRIMARY KEY (name, tenant_id)
 )
 """
+
+_API_GRAPH_TENANT_TABLE_KEYS: dict[str, tuple[str, ...]] = {
+    "graph_filter_presets": ("name",),
+    "graph_node_search": ("node_id", "scan_id"),
+}
 
 _CREATE_SEARCH_TABLE_SQLITE = """\
 CREATE VIRTUAL TABLE IF NOT EXISTS graph_node_search
@@ -266,6 +271,7 @@ class SQLiteGraphStore:
         sqlite_graph_store._init_db(conn)
         conn.execute(_CREATE_PRESET_TABLE_SQLITE)
         conn.execute(_CREATE_SEARCH_TABLE_SQLITE)
+        sqlite_graph_store._backfill_empty_tenant_ids(conn, _API_GRAPH_TENANT_TABLE_KEYS)
         conn.commit()
         return conn
 
@@ -277,6 +283,7 @@ class SQLiteGraphStore:
         sqlite_graph_store._init_db(conn)
         conn.execute(_CREATE_PRESET_TABLE_SQLITE)
         conn.execute(_CREATE_SEARCH_TABLE_SQLITE)
+        sqlite_graph_store._backfill_empty_tenant_ids(conn, _API_GRAPH_TENANT_TABLE_KEYS)
         conn.commit()
         return conn
 
@@ -317,6 +324,7 @@ class SQLiteGraphStore:
         return clause, params
 
     def _refresh_snapshot_search_index(self, conn: sqlite3.Connection, *, tenant_id: str, scan_id: str) -> None:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn.execute("DELETE FROM graph_node_search WHERE tenant_id = ? AND scan_id = ?", (tenant_id, scan_id))
         rows = conn.execute(
             """
@@ -351,6 +359,7 @@ class SQLiteGraphStore:
 
     def delete_tenant(self, *, tenant_id: str = "") -> int:
         """Delete graph rows for one tenant and return the number of rows removed."""
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_rw_conn()
         try:
             total = 0
@@ -473,6 +482,7 @@ class SQLiteGraphStore:
         scan_id: str = "",
         node_ids: set[str],
     ) -> list[UnifiedNode]:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         if not node_ids:
             return []
         conn = self._open_ro_conn()
@@ -516,6 +526,7 @@ class SQLiteGraphStore:
         dynamic_only: bool,
         include_roots: bool,
     ) -> tuple[str, str, set[str], dict[str, int], dict[tuple[str, str, str], UnifiedEdge], dict[str, str], list[str], bool]:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         effective_scan_id, created_at = sqlite_graph_store._resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
         if not effective_scan_id:
             return scan_id, "", set(), {}, {}, {}, [], False
@@ -762,6 +773,7 @@ class SQLiteGraphStore:
         scan_id: str = "",
         source_ids: set[str],
     ) -> list[AttackPath]:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         if not source_ids:
             return []
         conn = self._open_ro_conn()
@@ -806,6 +818,7 @@ class SQLiteGraphStore:
         offset: int = 0,
         limit: int = 100,
     ) -> tuple[str, str, list[AttackPath], int]:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return scan_id, "", [], 0
@@ -857,6 +870,7 @@ class SQLiteGraphStore:
         scan_id: str = "",
         node_id: str,
     ) -> dict[str, Any] | None:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return None
@@ -917,6 +931,7 @@ class SQLiteGraphStore:
         scan_id: str = "",
         framework: str = "",
     ) -> dict[str, Any]:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return {
@@ -993,6 +1008,7 @@ class SQLiteGraphStore:
             conn.close()
 
     def latest_snapshot_id(self, *, tenant_id: str = "") -> str:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return ""
@@ -1002,6 +1018,7 @@ class SQLiteGraphStore:
             conn.close()
 
     def previous_snapshot_id(self, *, tenant_id: str = "", before_scan_id: str = "") -> str:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return ""
@@ -1016,6 +1033,7 @@ class SQLiteGraphStore:
             conn.execute(_CREATE_SEARCH_TABLE_SQLITE)
             sqlite_graph_store.save_graph(conn, graph)
             self._refresh_snapshot_search_index(conn, tenant_id=graph.tenant_id, scan_id=graph.scan_id)
+            sqlite_graph_store._backfill_empty_tenant_ids(conn, _API_GRAPH_TENANT_TABLE_KEYS)
             conn.commit()
 
     def load_graph(
@@ -1026,6 +1044,7 @@ class SQLiteGraphStore:
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
     ) -> UnifiedGraph:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return UnifiedGraph(scan_id=scan_id, tenant_id=tenant_id)
@@ -1041,6 +1060,7 @@ class SQLiteGraphStore:
             conn.close()
 
     def diff_snapshots(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return {
@@ -1056,6 +1076,7 @@ class SQLiteGraphStore:
             conn.close()
 
     def list_snapshots(self, *, tenant_id: str = "", limit: int = 50) -> list[dict[str, Any]]:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return []
@@ -1072,6 +1093,7 @@ class SQLiteGraphStore:
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
     ) -> dict[str, Any]:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return {
@@ -1177,6 +1199,7 @@ class SQLiteGraphStore:
         offset: int = 0,
         limit: int = 500,
     ) -> tuple[str, str, list[UnifiedNode], int, str | None]:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return scan_id, "", [], 0, None
@@ -1245,6 +1268,7 @@ class SQLiteGraphStore:
         scan_id: str = "",
         node_ids: set[str],
     ) -> list[Any]:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         if not node_ids:
             return []
         conn = self._open_ro_conn()
@@ -1299,6 +1323,7 @@ class SQLiteGraphStore:
         offset: int = 0,
         limit: int = 50,
     ) -> tuple[list[UnifiedNode], int, str | None]:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return [], 0, None
@@ -1409,6 +1434,7 @@ class SQLiteGraphStore:
             conn.close()
 
     def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict[str, Any], created_at: str) -> None:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_rw_conn()
         try:
             conn.execute(
@@ -1420,6 +1446,7 @@ class SQLiteGraphStore:
             conn.close()
 
     def list_presets(self, *, tenant_id: str) -> list[dict[str, Any]]:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_ro_conn()
         if conn is None:
             return []
@@ -1441,6 +1468,7 @@ class SQLiteGraphStore:
             conn.close()
 
     def delete_preset(self, *, tenant_id: str, name: str) -> bool:
+        tenant_id = sqlite_graph_store.normalize_graph_tenant_id(tenant_id)
         conn = self._open_rw_conn()
         try:
             cursor = conn.execute(

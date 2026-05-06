@@ -12,6 +12,7 @@ PR can't quietly weaken the read-only contract.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -283,13 +284,20 @@ def test_release_workflow_derives_version_from_pyproject_when_unset():
 
 def test_release_workflow_pins_actions_and_rejects_latest_native_app_images():
     workflow = RELEASE_WORKFLOW_PATH.read_text(encoding="utf-8")
-    assert "actions/checkout@v4" in workflow
-    assert "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5" in workflow
-    assert "actions/setup-python@v5" in workflow
-    assert "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065" in workflow
-    assert "actions/upload-artifact@v4" in workflow
-    assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in workflow
-    assert "actions/download-artifact@v4" in workflow
-    assert "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093" in workflow
+    action_refs = dict(
+        re.findall(
+            r"^\s*-\s*uses:\s*(actions/(?:checkout|setup-python|upload-artifact|download-artifact))@([0-9a-f]{40})\s*$",
+            workflow,
+            flags=re.MULTILINE,
+        )
+    )
+    assert action_refs.keys() == {
+        "actions/checkout",
+        "actions/setup-python",
+        "actions/upload-artifact",
+        "actions/download-artifact",
+    }
+    assert not re.search(r"^\s*-\s*uses:\s*actions/[^@\s]+@(?:v\d+|latest)\s*$", workflow, flags=re.MULTILINE)
+    assert not re.search(r"#\s*actions/[^@\s]+@v\d+", workflow)
     assert 'assert ":latest" not in text' in workflow
     assert 'assert f":{version}" in text' in workflow

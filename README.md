@@ -403,6 +403,12 @@ for the full split-vs-single-image guidance.
 | Runtime proxy (`agent-bom proxy`) | MCP traffic enforcement |
 | Shield SDK (`from agent_bom.shield import Shield`) | in-process protection |
 
+MCP and skills setup is documented in the client guides, not in repo-local
+assistant launch files: [Claude](docs/CLAUDE_INTEGRATION.md),
+[Codex CLI](docs/CODEX_CLI.md), [Cortex Code](docs/CORTEX_CODE.md),
+[MCP client matrix](docs/MCP_CLIENT_GUIDES.md), and
+[agent-bom skills](docs/CONTRIBUTING_SKILLS.md).
+
 Backend choices stay explicit and optional:
 
 - `SQLite` for local and single-node use

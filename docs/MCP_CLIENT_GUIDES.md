@@ -28,6 +28,20 @@ Two modes matter:
 | Codex CLI | `~/.codex/config.toml` on macOS, Linux, and Windows | `agent-bom mcp server` via `[mcp_servers.agent-bom]` | Codex uses TOML, not JSON. `proxy-configure` does not rewrite TOML configs; wrap manually when needed. |
 | Gemini CLI | `~/.gemini/settings.json` on macOS, Linux, and Windows | `agent-bom mcp server` | Uses standard JSON MCP config. |
 
+## Snowflake and skills
+
+There are two Snowflake paths, and they solve different problems:
+
+- Use Cortex CoCo / Cortex Code MCP config when you want an assistant inside
+  that workflow to call `agent-bom` tools.
+- Use `agent-bom agents --snowflake` or the Snowflake Native App docs when you
+  want account inventory, Cortex, Snowpark, notebook, Streamlit, package, and
+  query-history evidence collected from Snowflake itself.
+
+For instruction and skill files, use `agent-bom skills scan` and
+`agent-bom skills verify`. Those commands audit `CLAUDE.md`, `AGENTS.md`,
+`.cursorrules`, and supported `skills/*` surfaces independently of the MCP host.
+
 ## Config snippets
 
 ### JSON clients
@@ -93,5 +107,7 @@ args = ["proxy", "--log", "~/.agent-bom/logs/filesystem.jsonl", "--", "npx", "@m
 - [Claude Desktop / Claude Code](CLAUDE_INTEGRATION.md)
 - [Cortex CoCo / Cortex Code](CORTEX_CODE.md)
 - [Codex CLI](CODEX_CLI.md)
+- [Snowflake Native App](snowflake-native-app/INSTALL.md)
+- [Skills contribution and trust contract](CONTRIBUTING_SKILLS.md)
 - [MCP server mode](MCP_SERVER.md)
 - [Runtime monitoring and proxy](RUNTIME_MONITORING.md)

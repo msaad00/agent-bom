@@ -47,6 +47,35 @@ Add to your MCP client config:
     }
     ```
 
+=== "Codex CLI"
+
+    Add to `~/.codex/config.toml`:
+
+    ```toml
+    [mcp_servers.agent-bom]
+    command = "uvx"
+    args = ["agent-bom", "mcp", "server"]
+    ```
+
+=== "Cortex Code"
+
+    Add to `~/.snowflake/cortex/mcp.json`:
+
+    ```json
+    {
+      "mcpServers": {
+        "agent-bom": {
+          "command": "uvx",
+          "args": ["agent-bom", "mcp", "server"]
+        }
+      }
+    }
+    ```
+
+    `agent-bom agents --snowflake` also discovers Snowflake Cortex, MCP server,
+    Snowpark, notebook, Streamlit, package, and query-history evidence when the
+    Snowflake connector is configured.
+
 ## Self-hosted SSE
 
 ```bash
@@ -128,3 +157,12 @@ Connect with:
 | `fleet-audit` | Validate and scan a pushed inventory or fleet export |
 | `incident-triage` | Prioritize a CVE or suspicious MCP finding by blast radius |
 | `remediation-plan` | Draft a human-reviewed remediation plan without file writes |
+
+## Client and skill guides
+
+- [MCP client matrix](https://github.com/msaad00/agent-bom/blob/main/docs/MCP_CLIENT_GUIDES.md)
+- [Claude Desktop / Claude Code](https://github.com/msaad00/agent-bom/blob/main/docs/CLAUDE_INTEGRATION.md)
+- [Codex CLI](https://github.com/msaad00/agent-bom/blob/main/docs/CODEX_CLI.md)
+- [Cortex CoCo / Cortex Code](https://github.com/msaad00/agent-bom/blob/main/docs/CORTEX_CODE.md)
+- [Snowflake Native App](https://github.com/msaad00/agent-bom/blob/main/docs/snowflake-native-app/INSTALL.md)
+- [Contributing agent-bom skills](https://github.com/msaad00/agent-bom/blob/main/docs/CONTRIBUTING_SKILLS.md)

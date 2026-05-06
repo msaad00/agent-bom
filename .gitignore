@@ -25,6 +25,7 @@ report.json
 report.html
 node_modules/
 .DS_Store
+.claude/launch.json
 .claude/settings.local.json
 .claude/settings.json
 src/agent_bom/ui_dist/

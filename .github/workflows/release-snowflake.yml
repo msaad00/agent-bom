@@ -34,6 +34,7 @@ jobs:
   package:
     name: Validate Native App package
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     outputs:
       package_version: ${{ steps.version.outputs.version }}
     steps:
@@ -93,6 +94,7 @@ jobs:
   publish:
     name: Publish release lane
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     needs: package
     if: ${{ inputs.dry_run == false }}
     environment: snowflake-marketplace

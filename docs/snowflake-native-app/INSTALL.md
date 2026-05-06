@@ -6,7 +6,7 @@ Run the entire agent-bom AI-supply-chain security stack inside your own Snowflak
 
 - **15-framework compliance posture** — SOC 2, ISO 27001, FedRAMP, EU AI Act, NIST AI RMF, NIST CSF, OWASP LLM/MCP/Agentic, MITRE ATLAS, CIS Controls, CMMC, NIST 800-53, PCI DSS — automatically classifying findings from your existing scanner outputs
 - **Inventory + blast radius** across structured cloud asset tables, semi-structured event JSON, and unstructured stages (notebooks, IaC, model artifacts, prompt corpora)
-- **Wiz-shaped dashboard** — Next.js with React Flow graph viz, hosted on Snowpark Container Services inside your account
+- **Fix-first security dashboard** — Next.js with React Flow graph viz, hosted on Snowpark Container Services inside your account
 - **Audit log** with HMAC chain, OCSF-shaped events, customer-owned (we cannot read it)
 - **Zero data egress by default** — only customer-approved advisory feeds (OSV / KEV / EPSS / GHSA) reach outbound
 - **Opt-in Phase 4 services** — scanner and MCP runtime service specs are packaged, but neither starts until you call the enable procedures

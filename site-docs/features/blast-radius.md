@@ -5,7 +5,7 @@ Maps the full impact chain from a CVE to the business assets at risk.
 ## How it works
 
 ```
-CVE → Package → MCP Server → Agent → Credentials + Tools
+Package → Vulnerability Finding → MCP Server → Agent → Credentials + Tools
 ```
 
 For each vulnerability found, agent-bom traces:

@@ -4,7 +4,7 @@
 
 ## Table of Contents
 
-1. [Competitive Landscape](#1-competitive-landscape)
+1. [Market Landscape](#1-market-landscape)
 2. [agent-bom Capability Audit](#2-agent-bom-capability-audit)
 3. [Differentiators & Uniqueness](#3-differentiators--uniqueness)
 4. [Snowflake Coco / Cortex Code Integration](#4-snowflake-coco--cortex-code-integration)
@@ -14,20 +14,17 @@
 
 ---
 
-## 1. Competitive Landscape
+## 1. Market Landscape
 
-### Direct Competitors (AI Agent Security Scanners)
+### Adjacent AI Agent Security Scanners
 
-| Tool | Vendor | GitHub Stars | Focus | Key Capabilities | Gaps vs agent-bom |
-|------|--------|-------------|-------|-------------------|-------------------|
-| **agent-scan** | Snyk | ~1.7k | MCP + Skills | 15+ risk types, auto-discovery (Claude/Cursor/Gemini/Windsurf), prompt injection, tool poisoning, tool shadowing, toxic flows, rug pull, background monitoring, Snyk Evo integration | No CVE scanning, no blast radius, no SBOM, no runtime proxy, no cloud scanning, no compliance mapping, no enrichment pipeline |
-| **skill-scanner** | Cisco AI Defense | ~900 | Skill files | Static analysis of SKILL.md files, comprehensive but CLI-only, requires Python 3.10+ and 3 API keys | No MCP scanning, no runtime, no CVE/vuln scanning, no cloud, heavy setup |
-| **SkillCheck** | Repello AI | N/A (SaaS) | Browser-based | Prompt injection, policy violations, payload delivery, severity score /100, zero setup | Browser-only, no CLI, no MCP scanning, no CVE, no runtime |
-| **mcp-scan** | Invariant Labs | ~3k+ | MCP servers | Tool poisoning, prompt injection, cross-origin escalation, WhitelistGuard | No CVE scanning, no skills, no cloud, no compliance |
-| **MCP Scan** | Enkrypt AI | N/A (SaaS) | MCP assessment | Security assessment of MCP servers | Limited scope |
-| **GuardFive** | GuardFive | N/A (SaaS) | MCP security | Tool poisoning, credential theft detection, enterprise features | SaaS-only, limited public info |
-| **Proximity** | Open source | ~500 | MCP scanning | Open-source MCP security scanner | Narrower scope |
-| **mcp-guard** | SaravanaGuhan | <100 | MCP servers | Comprehensive MCP server scanning | Small project, limited maintenance |
+| Category | Focus | Typical Capabilities | Gaps vs agent-bom |
+|----------|-------|----------------------|-------------------|
+| MCP and skill behavior scanners | MCP servers + instruction files | Prompt injection, tool poisoning, tool shadowing, toxic flows, background monitoring | No CVE scanning, no blast radius, no SBOM, no runtime proxy, no cloud scanning, no compliance mapping, no enrichment pipeline |
+| Skill-file static analyzers | SKILL.md and local instruction files | Static policy checks, provenance checks, suspicious instruction detection | No MCP scanning, no runtime, no CVE/vuln scanning, no cloud, heavy setup |
+| Browser-based agent security tools | Prompt and policy assessment | Prompt injection, policy violations, payload delivery, severity score /100 | Browser-only, no CLI, no MCP scanning, no CVE, no runtime |
+| MCP server assessment tools | MCP tool schemas and server config | Tool poisoning, prompt injection, cross-origin escalation, allow/deny policies | No CVE scanning, no skills, no cloud, no compliance |
+| Open-source MCP scanners | MCP servers | MCP server configuration and tool-surface checks | Narrower scope |
 
 ### Indirect Competitors
 
@@ -40,12 +37,12 @@
 
 ### Key Insight
 
-**No single competitor covers what agent-bom covers.** The market is fragmented:
+**The market is fragmented across adjacent categories.**
 - Agent security scanners: skill/MCP *behavioral* scanning (prompt injection, poisoning) — no CVEs
 - External CVE scanner CLIs: CVE scanning — no AI agent awareness
 - Cloud posture platforms: cloud posture — no MCP, no agent runtime
 
-**agent-bom is the only tool that combines:** CVE scanning + AI agent discovery + MCP tool security + blast radius + runtime proxy + compliance mapping + cloud scanning + enrichment pipeline + SBOM + VEX + policy engine. This is the core differentiator.
+**agent-bom combines:** CVE scanning + AI agent discovery + MCP tool security + blast radius + runtime proxy + compliance mapping + cloud scanning + enrichment pipeline + SBOM + VEX + policy engine. This is the core differentiator.
 
 ---
 
@@ -236,7 +233,7 @@ Claude Desktop, Claude Code, Cursor, Windsurf, Cline, Continue, Zed, VS Code Cop
 | SBOM/VEX | ✅ | ❌ | ❌ | ❌ | ✅ (SBOM) | ✅ (SBOM) |
 | MCP server (AI tool) | ✅ (23) | ❌ | ❌ | ❌ | ❌ | ❌ |
 | GPU/AI compute | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| SIEM integration | ✅ | Via Snyk | ❌ | ❌ | ❌ | ❌ |
+| SIEM integration | ✅ | Available in some adjacent tools | ❌ | ❌ | ❌ | ❌ |
 | Browser extensions | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | OTel trace analysis | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | Policy engine | ✅ (17) | ❌ | ❌ | ❌ | ❌ | ✅ (Rego) |
@@ -400,14 +397,14 @@ OpenAI launched **Frontier** on Feb 5, 2026 — an enterprise platform for build
 | **P3** | RAG poisoning detection in vector stores | Medium | Extend vector DB scanning |
 | **P3** | MCP OAuth 2.1 auth verification | Medium | As MCP auth standardizes |
 
-### 6.2 Competitive Responses Needed
+### 6.2 Adjacent Capability Responses Needed
 
-| Competitor Move | Our Response |
-|-----------------|-------------|
-| Snyk agent-scan: background monitoring + Snyk Evo dashboard | agent-bom watch + SIEM push already covers this; consider adding `--daemon` mode |
-| Cisco skill-scanner: deep static analysis | Our SKILL.md scanning already does 17 patterns + typosquat; add Cisco's API-key-gated patterns if publicly documented |
-| Repello SkillCheck: zero-setup browser scanner | Consider a hosted web UI for quick scans (lower priority — our CLI/MCP/Action coverage is stronger) |
-| mcp-scan: WhitelistGuard | Our policy engine can do this — document `allowed_tools` policy condition |
+| Adjacent market move | agent-bom response |
+|----------------------|--------------------|
+| Background monitoring + hosted dashboard | `agent-bom watch` + SIEM push already covers this; consider adding `--daemon` mode |
+| Deeper static analysis for skill files | SKILL.md scanning already covers 17 patterns + typosquat; add more publicly documented patterns as they mature |
+| Zero-setup browser scanner | Consider a hosted web UI for quick scans (lower priority — CLI/MCP/Action coverage is stronger) |
+| Allow-list guardrails for MCP tools | The policy engine can do this — document the `allowed_tools` policy condition |
 
 ### 6.3 Scalability Assessment
 
@@ -469,4 +466,4 @@ Potentially patentable novel methods:
 4. **Engage Renxu** — he can champion internal adoption at Snowflake
 5. **Position clearly**: "agent-bom is the only security scanner that covers the full AI agent stack — from CVEs to MCP tools to runtime enforcement to compliance"
 
-The competitive landscape is fragmented. Snyk has brand recognition but narrow scope. Cisco has static analysis but no runtime. Nobody else has the depth we have. The window to establish agent-bom as the definitive AI infrastructure security scanner is now.
+The market landscape is fragmented across package scanning, MCP assessment, skill-file auditing, runtime control, and cloud posture. The window to establish agent-bom as a comprehensive AI infrastructure security scanner is now.

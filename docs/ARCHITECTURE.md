@@ -62,7 +62,7 @@ graph TB
         Discovery["Discovery\n29 first-class clients"]
         Parser["Package Parser\n15 ecosystems"]
         Scanner["CVE Scanner\nOSV + NVD + GHSA"]
-        Blast["Blast Radius\nCVE → package → server → credential → tool"]
+        Blast["Blast Radius\npackage → finding → server → credential → tool"]
         IaC["IaC Engine\n138 rules"]
         CIS["CIS Benchmarks\nAWS / Azure / GCP"]
     end
@@ -116,7 +116,7 @@ sequenceDiagram
     Enrichment-->>CLI: Enriched vulnerabilities
 
     CLI->>BlastRadius: Vulns + topology
-    BlastRadius->>BlastRadius: CVE → package → server → agent → creds → tools
+    BlastRadius->>BlastRadius: package → finding → server → agent → creds → tools
     BlastRadius->>BlastRadius: Tag 15 frameworks + attach AISVS benchmark
     BlastRadius-->>CLI: Scored + tagged findings
 

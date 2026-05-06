@@ -164,6 +164,47 @@ def test_healthz_reports_policy_rollout_summary_for_advisory_rules() -> None:
     assert runtime["protects_secret_paths"] is True
 
 
+def test_gateway_app_refuses_non_loopback_without_auth(monkeypatch) -> None:
+    class _NoKeyStore:
+        def has_keys(self) -> bool:
+            return False
+
+    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _NoKeyStore())
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        listener_host="0.0.0.0",
+    )
+
+    try:
+        create_gateway_app(settings)
+    except RuntimeError as exc:
+        assert "non-loopback listener without incoming authentication" in str(exc)
+    else:
+        raise AssertionError("expected gateway startup to fail closed")
+
+
+def test_gateway_app_allows_explicit_insecure_non_loopback_override(monkeypatch) -> None:
+    class _NoKeyStore:
+        def has_keys(self) -> bool:
+            return False
+
+    monkeypatch.setattr("agent_bom.gateway_server.get_key_store", lambda: _NoKeyStore())
+
+    settings = GatewaySettings(
+        registry=_simple_registry(),
+        policy={},
+        listener_host="0.0.0.0",
+        allow_insecure_no_auth=True,
+    )
+
+    client = TestClient(create_gateway_app(settings))
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    assert resp.json()["auth"]["incoming_token_required"] is False
+
+
 def test_healthz_reports_policy_rollout_summary_for_default_deny() -> None:
     settings = GatewaySettings(
         registry=_simple_registry(),

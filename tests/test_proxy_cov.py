@@ -407,6 +407,21 @@ class TestRotatingAuditLog:
             os.unlink(link_path)
             os.unlink(real_path)
 
+    def test_fsync_mode_flushes_to_disk(self, monkeypatch):
+        calls: list[int] = []
+        monkeypatch.setattr(os, "fsync", lambda fileno: calls.append(fileno))
+
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
+            path = f.name
+
+        try:
+            log = RotatingAuditLog(path, fsync=True)
+            log.write('{"test": 1}\n')
+            log.close()
+            assert calls
+        finally:
+            os.unlink(path)
+
 
 # -- Gateway evaluator --
 
@@ -441,6 +456,28 @@ class TestRotatingAuditLogRotation:
         log.close()
 
         assert Path(path).exists()
+
+    def test_rotation_preserves_more_than_one_backup(self):
+        from pathlib import Path
+
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
+            path = f.name
+        os.unlink(path)
+
+        try:
+            log = RotatingAuditLog(path, max_bytes=20, max_rotated_files=3)
+            for i in range(8):
+                log.write(f'{{"i": {i}, "payload": "xxxx"}}\n')
+            log.close()
+
+            assert Path(path).exists()
+            assert Path(path + ".1").exists()
+            assert Path(path + ".2").exists()
+        finally:
+            for suffix in ("", ".1", ".2", ".3"):
+                candidate = path + suffix
+                if os.path.exists(candidate):
+                    os.unlink(candidate)
 
 
 class TestProxyMetricsSummaryNoLatency:

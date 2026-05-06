@@ -192,6 +192,17 @@ def make_error_response(request_id: int | str | None, code: int, message: str) -
     }
 
 
+def undeclared_tool_block_reason(block_undeclared: bool, declared_tools: set[str], tool_name: str) -> str | None:
+    """Return a hard-block reason for undeclared tools when enforcement is on."""
+    if not block_undeclared:
+        return None
+    if tool_name in declared_tools:
+        return None
+    if declared_tools:
+        return f"Tool '{tool_name}' not in declared tools/list"
+    return f"Tool '{tool_name}' blocked because no tools/list declarations are available"
+
+
 def sandbox_posture_warning(sandbox_evidence: Mapping[str, object]) -> str | None:
     """Return an operator-visible warning when proxy isolation is not active."""
     if sandbox_evidence.get("enabled"):
@@ -914,21 +925,21 @@ async def _proxy_sse_server(
                     sys.stdout.buffer.flush()
                     continue
 
-                if is_tool_call and block_undeclared and declared_tools and tool_name not in declared_tools:
-                    reason = f"Tool '{tool_name}' not in declared tools/list"
+                undeclared_reason = undeclared_tool_block_reason(block_undeclared and is_tool_call, declared_tools, tool_name)
+                if undeclared_reason:
                     if log_file:
                         log_tool_call(
                             log_file,
                             tool_name,
                             arguments,
                             "blocked",
-                            reason,
+                            undeclared_reason,
                             payload_sha256=p_hash,
                             message_id=msg_id,
                             agent_id=agent_id,
                             tenant_id=control_plane_tenant_id,
                         )
-                    error_resp = make_error_response(msg_id, -32600, reason)
+                    error_resp = make_error_response(msg_id, -32600, undeclared_reason)
                     sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
                     sys.stdout.buffer.flush()
                     continue
@@ -1607,9 +1618,10 @@ async def run_proxy(
                         # log_only: warn but don't block
                         logger.warning("Replay detected (advisory): %s", tool_name)
 
-                    # Check if tool is declared
-                    if block_undeclared and declared_tools and tool_name not in declared_tools:
-                        reason = f"Tool '{tool_name}' not in declared tools/list"
+                    # Check if tool is declared. With --block-undeclared, missing
+                    # tools/list evidence is treated as deny rather than advisory.
+                    undeclared_reason = undeclared_tool_block_reason(block_undeclared, declared_tools, tool_name)
+                    if undeclared_reason:
                         metrics.record_blocked("undeclared")
                         if log_file:
                             log_tool_call(
@@ -1617,13 +1629,13 @@ async def run_proxy(
                                 tool_name,
                                 arguments,
                                 "blocked",
-                                reason,
+                                undeclared_reason,
                                 payload_sha256=p_hash,
                                 message_id=msg_id,
                                 agent_id=agent_id,
                                 tenant_id=control_plane_tenant_id,
                             )
-                        error_resp = make_error_response(msg_id, -32600, reason)
+                        error_resp = make_error_response(msg_id, -32600, undeclared_reason)
                         sys.stdout.buffer.write((json.dumps(error_resp) + "\n").encode())
                         sys.stdout.buffer.flush()
                         continue

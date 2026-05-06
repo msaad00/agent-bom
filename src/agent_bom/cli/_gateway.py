@@ -16,7 +16,7 @@ from pathlib import Path
 import click
 
 from agent_bom.cli._common import read_json_file_for_cli
-from agent_bom.cli._server import _enforce_remote_mcp_auth_defaults
+from agent_bom.cli._server import _is_loopback_host
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,27 @@ def _parse_bind(bind: str) -> tuple[str, int]:
     if not 1 <= port_num <= 65535:
         raise click.UsageError("--bind port must be in range 1..65535.")
     return host, port_num
+
+
+def _enforce_gateway_auth_defaults(host: str, bearer_token: str | None, allow_insecure_no_auth: bool) -> None:
+    if bearer_token or _is_loopback_host(host):
+        return
+    try:
+        from agent_bom.api.auth import get_key_store
+
+        if get_key_store().has_keys():
+            return
+    except Exception:
+        # App construction performs the fail-closed check and reports
+        # authentication backend startup errors without falling open.
+        return
+    if allow_insecure_no_auth:
+        return
+    raise click.ClickException(
+        f"Refusing to expose `gateway serve` on non-loopback host {host!r} without incoming authentication. "
+        "Set --bearer-token / AGENT_BOM_GATEWAY_BEARER_TOKEN, configure gateway API keys, "
+        "or pass --allow-insecure-no-auth to override."
+    )
 
 
 @click.group(help="Multi-MCP gateway commands.")
@@ -247,7 +268,7 @@ def serve_cmd(
         except FirewallPolicyError as exc:
             raise click.ClickException(f"firewall policy invalid: {exc}") from exc
 
-    _enforce_remote_mcp_auth_defaults(host, bearer_token, allow_insecure_no_auth)
+    _enforce_gateway_auth_defaults(host, bearer_token, allow_insecure_no_auth)
     if detect_visual_leaks and not allow_visual_leak_best_effort:
         try:
             from agent_bom.runtime.visual_leak_detector import require_visual_leak_runtime
@@ -271,6 +292,8 @@ def serve_cmd(
         policy_reload_interval_seconds=max(policy_reload_seconds, 0),
         firewall_policy_path=firewall_policy_path,
         firewall_policy_reload_interval_seconds=max(firewall_policy_reload_seconds, 0),
+        listener_host=host,
+        allow_insecure_no_auth=allow_insecure_no_auth,
     )
     app = create_gateway_app(settings)
     policy_summary = summarize_policy_bundle(policy)

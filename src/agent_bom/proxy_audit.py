@@ -30,13 +30,38 @@ _AUDIT_CHAIN_STATE: dict[str, str] = {}
 _AUDIT_CHAIN_LOCK = threading.Lock()
 
 
+def _env_flag_enabled(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on", "enabled"}
+
+
+def _env_positive_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        logger.warning("Invalid %s=%r; using %d", name, raw, default)
+        return default
+
+
 class RotatingAuditLog:
     """File-like wrapper that rotates the JSONL audit log at a size threshold."""
 
-    def __init__(self, path: str, max_bytes: int = _AUDIT_LOG_MAX_BYTES) -> None:
+    def __init__(
+        self,
+        path: str,
+        max_bytes: int = _AUDIT_LOG_MAX_BYTES,
+        *,
+        fsync: bool | None = None,
+        max_rotated_files: int | None = None,
+    ) -> None:
         self._path = path
         self._max_bytes = max_bytes
+        self._fsync = _env_flag_enabled("AGENT_BOM_PROXY_AUDIT_FSYNC") if fsync is None else fsync
+        self._max_rotated_files = max_rotated_files or _env_positive_int("AGENT_BOM_PROXY_AUDIT_MAX_ROTATED_FILES", 5)
         self._writes = 0
+        self._current_bytes = self._initial_size(path)
         self._file = self._open(path)
 
     @staticmethod
@@ -47,10 +72,21 @@ class RotatingAuditLog:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         return os.fdopen(fd, "a")
 
+    @staticmethod
+    def _initial_size(path: str) -> int:
+        try:
+            return Path(path).stat().st_size
+        except FileNotFoundError:
+            return 0
+
     def write(self, data: str) -> int:
         result = self._file.write(data)
+        self._current_bytes += len(data.encode("utf-8"))
         self._writes += 1
-        if self._writes % 1000 == 0:
+        if self._fsync:
+            self._file.flush()
+            os.fsync(self._file.fileno())
+        if self._writes % 1000 == 0 or self._current_bytes >= self._max_bytes:
             self._maybe_rotate()
         return result
 
@@ -62,14 +98,20 @@ class RotatingAuditLog:
 
     def _maybe_rotate(self) -> None:
         try:
-            size = Path(self._path).stat().st_size
+            self._file.flush()
+            size = max(self._current_bytes, Path(self._path).stat().st_size)
             if size >= self._max_bytes:
                 self._file.close()
-                rotated = self._path + ".1"
-                if Path(rotated).exists():
-                    Path(rotated).unlink()
-                Path(self._path).rename(rotated)
+                oldest = Path(f"{self._path}.{self._max_rotated_files}")
+                if oldest.exists():
+                    oldest.unlink()
+                for index in range(self._max_rotated_files - 1, 0, -1):
+                    current = Path(f"{self._path}.{index}")
+                    if current.exists():
+                        current.rename(f"{self._path}.{index + 1}")
+                Path(self._path).rename(f"{self._path}.1")
                 self._file = self._open(self._path)
+                self._current_bytes = 0
                 logger.info("Rotated audit log at %d bytes", size)
         except OSError as exc:
             logger.warning("Audit log rotation failed: %s — log may grow unbounded", exc)

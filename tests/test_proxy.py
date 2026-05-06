@@ -37,6 +37,7 @@ from agent_bom.proxy import (
     parse_jsonrpc,
     policy_subject_from_message,
     sandbox_posture_warning,
+    undeclared_tool_block_reason,
 )
 from agent_bom.proxy_audit import _AUDIT_CHAIN_STATE, write_audit_record
 
@@ -173,6 +174,18 @@ def test_policy_subject_gates_resource_prompt_sampling_and_extensions():
 
 def test_policy_subject_leaves_discovery_methods_ungated():
     assert policy_subject_from_message({"method": "tools/list", "params": {}}) is None
+
+
+def test_block_undeclared_fails_closed_without_tool_declarations():
+    reason = undeclared_tool_block_reason(True, set(), "write_file")
+    assert reason == "Tool 'write_file' blocked because no tools/list declarations are available"
+
+
+def test_block_undeclared_allows_declared_tool_and_blocks_missing_tool():
+    declared = {"read_file"}
+    assert undeclared_tool_block_reason(True, declared, "read_file") is None
+    assert undeclared_tool_block_reason(True, declared, "write_file") == "Tool 'write_file' not in declared tools/list"
+    assert undeclared_tool_block_reason(False, declared, "write_file") is None
 
 
 def test_sandbox_posture_warning_is_visible_when_disabled():
@@ -969,6 +982,46 @@ def test_proxy_sse_policy_blocks_gated_resource_reads(tmp_path, monkeypatch):
     written = stdout.buffer.getvalue().decode()
     assert "no-resource-read" in written
     assert "resources/read" in written
+
+
+def test_proxy_sse_block_undeclared_fails_closed_when_tools_list_is_empty(monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from agent_bom.proxy import _proxy_sse_server
+
+    tools_response = MagicMock()
+    tools_response.raise_for_status = MagicMock()
+    tools_response.json.return_value = {"jsonrpc": "2.0", "id": 1, "result": {"tools": []}}
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.post = AsyncMock(return_value=tools_response)
+
+    tool_call = {
+        "jsonrpc": "2.0",
+        "id": 9,
+        "method": "tools/call",
+        "params": {"name": "write_file", "arguments": {"path": "/tmp/out"}},
+    }
+    monkeypatch.setattr(proxy_mod, "create_async_stdin_reader", AsyncMock(return_value=object()))
+    monkeypatch.setattr(
+        proxy_mod,
+        "read_async_stdin_line",
+        AsyncMock(side_effect=[(json.dumps(tool_call) + "\n").encode(), b""]),
+    )
+
+    stdout = type("Stdout", (), {"buffer": io.BytesIO()})()
+    monkeypatch.setattr(proxy_mod.sys, "stdout", stdout)
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        exit_code = asyncio.run(_proxy_sse_server(url="http://localhost:3000", block_undeclared=True))
+
+    assert exit_code == 0
+    assert mock_client.post.await_count == 1
+    written = stdout.buffer.getvalue().decode()
+    assert "no tools/list declarations are available" in written
+    assert "write_file" in written
 
 
 def test_proxy_sse_forwards_allowed_gated_messages_to_message_endpoint(monkeypatch):

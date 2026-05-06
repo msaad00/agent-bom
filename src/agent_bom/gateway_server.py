@@ -28,6 +28,7 @@ Non-goals for MVP (see design doc):
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 import os
@@ -117,6 +118,8 @@ class GatewaySettings:
     upstream_http_timeout_seconds: float = 30.0
     upstream_http_max_connections: int = 100
     upstream_http_max_keepalive_connections: int = 20
+    listener_host: str = "127.0.0.1"
+    allow_insecure_no_auth: bool = False
 
 
 class GatewayCircuitOpenError(RuntimeError):
@@ -316,6 +319,40 @@ def _gateway_requires_auth(settings: GatewaySettings) -> bool:
         return True
 
 
+def _is_loopback_host(host: str) -> bool:
+    normalized = (host or "").strip().strip("[]").lower()
+    if normalized in {"localhost", "127.0.0.1", "::1"}:
+        return True
+    if not normalized:
+        return False
+    try:
+        return ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return False
+
+
+def _env_flag_enabled(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on", "enabled"}
+
+
+def _enforce_gateway_auth_posture(settings: GatewaySettings) -> None:
+    if _gateway_requires_auth(settings):
+        return
+    if _is_loopback_host(settings.listener_host):
+        return
+    if settings.allow_insecure_no_auth or _env_flag_enabled("AGENT_BOM_GATEWAY_ALLOW_INSECURE_NO_AUTH"):
+        logger.warning(
+            "Gateway starting without incoming authentication on non-loopback listener %s due to explicit insecure override",
+            _sanitize_for_log(settings.listener_host),
+        )
+        return
+    raise RuntimeError(
+        "Refusing to start gateway on a non-loopback listener without incoming authentication. "
+        "Configure AGENT_BOM_GATEWAY_BEARER_TOKEN or API keys, bind to loopback, "
+        "or set AGENT_BOM_GATEWAY_ALLOW_INSECURE_NO_AUTH=1 for an explicit insecure override."
+    )
+
+
 def _role_allows_gateway_relay(role: object) -> bool:
     try:
         normalized = role if isinstance(role, Role) else Role(str(role).lower())
@@ -476,6 +513,7 @@ def create_gateway_app(settings: GatewaySettings) -> FastAPI:
         from agent_bom.runtime.visual_leak_detector import require_visual_leak_runtime
 
         require_visual_leak_runtime()
+    _enforce_gateway_auth_posture(settings)
 
     managed_upstream_relay = GatewayUpstreamRelay(settings) if settings.upstream_caller is None else None
     upstream_caller = settings.upstream_caller or managed_upstream_relay

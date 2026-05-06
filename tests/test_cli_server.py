@@ -381,9 +381,14 @@ def test_gateway_serve_rejects_unauthenticated_non_loopback_bind(tmp_path):
     upstreams = tmp_path / "upstreams.yaml"
     upstreams.write_text("upstreams:\n  - name: jira\n    url: https://jira.example.com/mcp\n")
 
-    result = runner.invoke(gateway_serve_cmd, ["--bind", "0.0.0.0:8090", "--upstreams", str(upstreams)])
+    class _NoKeyStore:
+        def has_keys(self) -> bool:
+            return False
+
+    with patch("agent_bom.api.auth.get_key_store", return_value=_NoKeyStore()):
+        result = runner.invoke(gateway_serve_cmd, ["--bind", "0.0.0.0:8090", "--upstreams", str(upstreams)])
     assert result.exit_code == 1
-    assert "without transport authentication" in result.output
+    assert "without incoming authentication" in result.output
 
 
 def test_gateway_serve_allows_non_loopback_bind_with_bearer_token(tmp_path):
@@ -399,6 +404,26 @@ def test_gateway_serve_allows_non_loopback_bind_with_bearer_token(tmp_path):
     assert "Upstreams" in result.output
     assert "Bind" in result.output
     assert "No runtime policy rules configured." in result.output
+    mock_run.assert_called_once()
+
+
+def test_gateway_serve_allows_non_loopback_bind_with_api_key_store(tmp_path):
+    runner = CliRunner()
+    upstreams = tmp_path / "upstreams.yaml"
+    upstreams.write_text("upstreams:\n  - name: jira\n    url: https://jira.example.com/mcp\n")
+
+    class _KeyStore:
+        def has_keys(self) -> bool:
+            return True
+
+    with (
+        patch("agent_bom.api.auth.get_key_store", return_value=_KeyStore()),
+        patch("agent_bom.gateway_server.get_key_store", return_value=_KeyStore()),
+        patch("uvicorn.run") as mock_run,
+    ):
+        result = runner.invoke(gateway_serve_cmd, ["--bind", "0.0.0.0:8090", "--upstreams", str(upstreams)])
+
+    assert result.exit_code == 0
     mock_run.assert_called_once()
 
 

@@ -12,8 +12,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { ShieldAlert, Loader2, AlertTriangle, Search, SlidersHorizontal, Network, GitBranch, Orbit } from "lucide-react";
 import { api, type JobListItem, type ScanJob } from "@/lib/api";
-import { useDagreLayout } from "@/lib/use-dagre-layout";
-import { useRadialLayout } from "@/lib/use-radial-layout";
+import { useGraphLayout } from "@/lib/use-graph-layout";
 import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nodes";
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import { MeshStats } from "@/components/mesh-stats";
@@ -299,19 +298,18 @@ export default function MeshPage() {
     return { rawNodes: nodes, rawEdges: edges, stats };
   }, [activeResult, nodeFilter, severityFilter, selectedAgents, vulnerableOnly]);
 
-  const { nodes: layoutNodes, edges: layoutEdges } = useRadialLayout(rawNodes, rawEdges, {
-    baseRadius: 240,
-    ringSpacing: 220,
+  const { nodes: visibleNodes, edges: visibleEdges } = useGraphLayout(layoutMode, rawNodes, rawEdges, {
+    radial: {
+      baseRadius: 240,
+      ringSpacing: 220,
+    },
+    dagre: {
+      nodeWidth: 200,
+      nodeHeight: 70,
+      rankSep: 140,
+      nodeSep: 25,
+    },
   });
-  const { nodes: dagreNodes, edges: dagreEdges } = useDagreLayout(rawNodes, rawEdges, {
-    direction: layoutMode === "spawn-tree" ? "TB" : "LR",
-    nodeWidth: 200,
-    nodeHeight: 70,
-    rankSep: 140,
-    nodeSep: 25,
-  });
-  const visibleNodes = layoutMode === "radial" ? layoutNodes : dagreNodes;
-  const visibleEdges = layoutMode === "radial" ? layoutEdges : dagreEdges;
 
   // Search highlighting
   const searchMatches = useMemo(

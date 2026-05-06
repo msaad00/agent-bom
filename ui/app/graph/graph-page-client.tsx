@@ -39,7 +39,7 @@ import {
   type LineageNodeData,
   type LineageNodeType,
 } from "@/components/lineage-nodes";
-import { useForceLayout } from "@/lib/use-force-layout";
+import { useGraphLayout } from "@/lib/use-graph-layout";
 import { effectiveLodBandForGraph, useLodBand } from "@/lib/lod-renderer";
 import {
   aggregateSiblings,
@@ -823,10 +823,12 @@ function GraphPageInner() {
     setHoveredNodeId(null);
   }, [graphIdentityKey]);
 
-  const { nodes: layoutNodes, edges: layoutEdges } = useForceLayout(aggregated.nodes, aggregated.edges, {
-    idealEdgeLength: filters.agentName ? 168 : 196,
-    nodeRepulsion: filters.agentName ? 3600 : 4400,
-    preservePinnedPositions: true,
+  const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout("force", aggregated.nodes, aggregated.edges, {
+    force: {
+      idealEdgeLength: filters.agentName ? 168 : 196,
+      nodeRepulsion: filters.agentName ? 3600 : 4400,
+      preservePinnedPositions: true,
+    },
   });
 
   // Focus mode (#2257). The "active" focus is whichever the operator

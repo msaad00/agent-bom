@@ -29,7 +29,7 @@ import {
   Clock,
   SkipForward,
 } from "lucide-react";
-import { useSankeyLayout } from "@/lib/use-sankey-layout";
+import { useGraphLayout } from "@/lib/use-graph-layout";
 import type { StepEvent, StepStatus } from "@/lib/api";
 import { PIPELINE_STEPS } from "@/lib/api";
 
@@ -237,11 +237,13 @@ function ScanPipelineInner({ steps, className }: ScanPipelineProps) {
     return { rawNodes, rawEdges };
   }, [steps]);
 
-  const { nodes, edges } = useSankeyLayout(rawNodes, rawEdges, {
-    nodeWidth: 190,
-    nodeHeight: 90,
-    columnGap: 50,
-    rowGap: 20,
+  const { nodes, edges } = useGraphLayout("sankey", rawNodes, rawEdges, {
+    sankey: {
+      nodeWidth: 190,
+      nodeHeight: 90,
+      columnGap: 50,
+      rowGap: 20,
+    },
   });
 
   return (

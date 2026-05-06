@@ -280,11 +280,17 @@ class SQLiteGraphStore:
             return None
         conn = sqlite3.connect(str(self._db_path), timeout=10)
         conn.row_factory = sqlite3.Row
-        sqlite_graph_store._init_db(conn)
-        conn.execute(_CREATE_PRESET_TABLE_SQLITE)
-        conn.execute(_CREATE_SEARCH_TABLE_SQLITE)
-        sqlite_graph_store._backfill_empty_tenant_ids(conn, _API_GRAPH_TENANT_TABLE_KEYS)
-        conn.commit()
+        sqlite_graph_store._init_db(conn, backfill_legacy_tenants=False)
+        try:
+            conn.execute(_CREATE_PRESET_TABLE_SQLITE)
+            conn.execute(_CREATE_SEARCH_TABLE_SQLITE)
+            sqlite_graph_store._backfill_empty_tenant_ids(conn)
+            sqlite_graph_store._backfill_empty_tenant_ids(conn, _API_GRAPH_TENANT_TABLE_KEYS)
+            conn.commit()
+        except sqlite3.OperationalError as exc:
+            if "locked" not in str(exc).lower():
+                raise
+            conn.rollback()
         return conn
 
     @staticmethod

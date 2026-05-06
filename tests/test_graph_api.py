@@ -480,6 +480,21 @@ class TestGraphEndpointLogic:
         finally:
             conn.close()
 
+    def test_sqlite_graph_store_read_path_does_not_run_legacy_backfill(self, tmp_path, monkeypatch):
+        store = SQLiteGraphStore(tmp_path / "read-path-graph.db")
+        graph = UnifiedGraph(scan_id="read-scan", tenant_id="tenant-alpha")
+        graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        store.save_graph(graph)
+
+        def fail_backfill(*_args, **_kwargs):
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr("agent_bom.api.graph_store.sqlite_graph_store._backfill_empty_tenant_ids", fail_backfill)
+
+        loaded = store.load_graph(tenant_id="tenant-alpha", scan_id="read-scan")
+
+        assert "agent:a" in loaded.nodes
+
     def test_sqlite_graph_store_new_api_tables_do_not_default_to_empty_tenant(self, tmp_path):
         store = SQLiteGraphStore(tmp_path / "schema-defaults.db")
         conn = store._open_rw_conn()

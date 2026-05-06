@@ -216,7 +216,7 @@ def default_graph_db_path() -> Path:
     return Path.home() / ".agent-bom" / "db" / "graph.db"
 
 
-def _init_db(conn: sqlite3.Connection) -> None:
+def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) -> None:
     """Ensure tables exist and schema is current."""
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -233,7 +233,8 @@ def _init_db(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE attack_paths ADD COLUMN summary TEXT DEFAULT ''")
     if "tool_exposure" not in existing_columns:
         conn.execute("ALTER TABLE attack_paths ADD COLUMN tool_exposure TEXT DEFAULT '[]'")
-    _backfill_empty_tenant_ids(conn)
+    if backfill_legacy_tenants:
+        _backfill_empty_tenant_ids(conn)
     conn.commit()
 
 

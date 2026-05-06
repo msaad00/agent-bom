@@ -1,0 +1,37 @@
+spec:
+  containers:
+    - name: agent-bom-mcp-runtime
+      image: /db/schema/agent_bom_repo/agent-bom-mcp-runtime:latest
+      env:
+        SNOWFLAKE_ACCOUNT: "{{ snowflake_account }}"
+        SNOWFLAKE_DATABASE: "{{ database }}"
+        SNOWFLAKE_SCHEMA: "{{ schema }}"
+        AGENT_BOM_SNOWFLAKE_NATIVE_APP: "1"
+        AGENT_BOM_MCP_MODE: "1"
+        AGENT_BOM_MCP_BEARER_TOKEN: "{{ mcp_bearer_token }}"
+        AGENT_BOM_LOG_LEVEL: "INFO"
+      command:
+        - agent-bom
+        - mcp
+        - server
+        - --transport
+        - streamable-http
+        - --host
+        - "0.0.0.0"
+        - --port
+        - "8423"
+      readinessProbe:
+        port: 8423
+        path: /health
+      resources:
+        requests:
+          memory: 256M
+          cpu: 0.25
+        limits:
+          memory: 1G
+          cpu: 1
+
+  endpoints:
+    - name: mcp_runtime
+      port: 8423
+      public: false

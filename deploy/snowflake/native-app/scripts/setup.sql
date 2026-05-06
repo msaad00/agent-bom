@@ -61,6 +61,18 @@ INSERT INTO core.app_config (key, value)
     SELECT 'retention_days', PARSE_JSON('90')
     WHERE NOT EXISTS (SELECT 1 FROM core.app_config WHERE key = 'retention_days');
 
+INSERT INTO core.app_config (key, value)
+    SELECT 'enable_scanner_service', PARSE_JSON('false')
+    WHERE NOT EXISTS (SELECT 1 FROM core.app_config WHERE key = 'enable_scanner_service');
+
+INSERT INTO core.app_config (key, value)
+    SELECT 'enable_mcp_runtime_service', PARSE_JSON('false')
+    WHERE NOT EXISTS (SELECT 1 FROM core.app_config WHERE key = 'enable_mcp_runtime_service');
+
+INSERT INTO core.app_config (key, value)
+    SELECT 'advisory_egress_enabled', PARSE_JSON('false')
+    WHERE NOT EXISTS (SELECT 1 FROM core.app_config WHERE key = 'advisory_egress_enabled');
+
 -- 3c. Governance findings table
 CREATE TABLE IF NOT EXISTS core.governance_findings (
     finding_id VARCHAR PRIMARY KEY,
@@ -172,7 +184,38 @@ END;
 
 GRANT USAGE ON PROCEDURE core.trigger_scan() TO APPLICATION ROLE app_user;
 
--- 10. Auto-scan scheduled task (consumer starts with ALTER TASK ... RESUME)
+-- 10. Customer post-install health check.
+-- This is intentionally read-only and surfaces the service toggles that matter
+-- during Marketplace/private-preview validation.
+CREATE OR REPLACE PROCEDURE core.health_check()
+    RETURNS VARIANT
+    LANGUAGE SQL
+AS
+BEGIN
+    RETURN OBJECT_CONSTRUCT(
+        'status', 'ok',
+        'api_service', 'core.agent_bom_api',
+        'scanner_service_enabled', (
+            SELECT COALESCE(value::BOOLEAN, FALSE)
+            FROM core.app_config
+            WHERE key = 'enable_scanner_service'
+        ),
+        'mcp_runtime_service_enabled', (
+            SELECT COALESCE(value::BOOLEAN, FALSE)
+            FROM core.app_config
+            WHERE key = 'enable_mcp_runtime_service'
+        ),
+        'advisory_egress_enabled', (
+            SELECT COALESCE(value::BOOLEAN, FALSE)
+            FROM core.app_config
+            WHERE key = 'advisory_egress_enabled'
+        )
+    );
+END;
+
+GRANT USAGE ON PROCEDURE core.health_check() TO APPLICATION ROLE app_user;
+
+-- 11. Auto-scan scheduled task (consumer starts with ALTER TASK ... RESUME)
 CREATE OR REPLACE TASK core.auto_scan_task
     WAREHOUSE = 'COMPUTE_WH'
     SCHEDULE = 'USING CRON 0 */6 * * * UTC'
@@ -183,7 +226,7 @@ AS
 -- Creates core.apply_compliance_hub() and core.compliance_posture view.
 EXECUTE IMMEDIATE FROM 'dcm/V002__compliance_proc.sql';
 
--- 7. SPCS service — API + Next.js UI (Phase 3)
+-- 12. SPCS service — API + Next.js UI (Phase 3)
 -- Consumer must provision a compute pool and grant it to the app before this runs.
 -- manifest.yml default_web_endpoint → ui endpoint (port 3000) opens on app launch.
 CREATE SERVICE IF NOT EXISTS core.agent_bom_api
@@ -197,3 +240,64 @@ GRANT USAGE ON SERVICE core.agent_bom_api TO APPLICATION ROLE app_user;
 -- API or UI access without exposing both.
 GRANT SERVICE ROLE core.agent_bom_api!api TO APPLICATION ROLE app_user;
 GRANT SERVICE ROLE core.agent_bom_api!ui  TO APPLICATION ROLE app_user;
+
+-- 13. Phase 4 opt-in SPCS scanner service
+-- Egress is not available to this container unless the customer binds all
+-- advisory-feed EAI references and explicitly calls this procedure.
+CREATE OR REPLACE PROCEDURE core.enable_scanner_service()
+    RETURNS VARCHAR
+    LANGUAGE SQL
+AS
+BEGIN
+    CREATE SERVICE IF NOT EXISTS core.agent_bom_scanner
+        IN COMPUTE POOL consumer_pool
+        FROM SPECIFICATION_FILE = '/service-specs/scanner-service.yaml'
+        EXTERNAL_ACCESS_INTEGRATIONS = (
+            reference('osv_dev'),
+            reference('cisa_kev'),
+            reference('first_epss'),
+            reference('github_ghsa')
+        )
+        MIN_INSTANCES = 1
+        MAX_INSTANCES = 1
+        AUTO_RESUME = FALSE;
+
+    GRANT USAGE ON SERVICE core.agent_bom_scanner TO APPLICATION ROLE app_user;
+    GRANT SERVICE ROLE core.agent_bom_scanner!scanner TO APPLICATION ROLE app_user;
+
+    CALL core.set_config('enable_scanner_service', PARSE_JSON('true'));
+    CALL core.set_config('advisory_egress_enabled', PARSE_JSON('true'));
+    RETURN 'Scanner service created. Resume explicitly with ALTER SERVICE core.agent_bom_scanner RESUME.';
+END;
+
+GRANT USAGE ON PROCEDURE core.enable_scanner_service() TO APPLICATION ROLE app_user;
+
+-- 14. Phase 4 optional MCP runtime service
+-- The runtime is default-off and requires a caller-provided bearer token.
+-- No advisory-feed EAI is attached here; this service has Snowflake-only
+-- networking unless a future procedure deliberately adds bounded egress.
+CREATE OR REPLACE PROCEDURE core.enable_mcp_runtime_service(mcp_bearer_token VARCHAR)
+    RETURNS VARCHAR
+    LANGUAGE SQL
+AS
+BEGIN
+    IF (mcp_bearer_token IS NULL OR LENGTH(TRIM(mcp_bearer_token)) < 32) THEN
+        RETURN 'MCP runtime not created: provide a bearer token with at least 32 characters.';
+    END IF;
+
+    CREATE SERVICE IF NOT EXISTS core.agent_bom_mcp_runtime
+        IN COMPUTE POOL consumer_pool
+        FROM SPECIFICATION_TEMPLATE_FILE = '/service-specs/mcp-runtime-service.yaml'
+        USING (mcp_bearer_token => :mcp_bearer_token)
+        MIN_INSTANCES = 1
+        MAX_INSTANCES = 1
+        AUTO_RESUME = FALSE;
+
+    GRANT USAGE ON SERVICE core.agent_bom_mcp_runtime TO APPLICATION ROLE app_user;
+    GRANT SERVICE ROLE core.agent_bom_mcp_runtime!mcp_runtime TO APPLICATION ROLE app_user;
+
+    CALL core.set_config('enable_mcp_runtime_service', PARSE_JSON('true'));
+    RETURN 'MCP runtime service created. Resume explicitly with ALTER SERVICE core.agent_bom_mcp_runtime RESUME.';
+END;
+
+GRANT USAGE ON PROCEDURE core.enable_mcp_runtime_service(VARCHAR) TO APPLICATION ROLE app_user;

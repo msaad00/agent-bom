@@ -9,6 +9,7 @@ Run the entire agent-bom AI-supply-chain security stack inside your own Snowflak
 - **Wiz-shaped dashboard** — Next.js with React Flow graph viz, hosted on Snowpark Container Services inside your account
 - **Audit log** with HMAC chain, OCSF-shaped events, customer-owned (we cannot read it)
 - **Zero data egress by default** — only customer-approved advisory feeds (OSV / KEV / EPSS / GHSA) reach outbound
+- **Opt-in Phase 4 services** — scanner and MCP runtime service specs are packaged, but neither starts until you call the enable procedures
 
 ## Prerequisites
 
@@ -72,7 +73,40 @@ agent-bom needs OSV / KEV / EPSS / GHSA to enrich findings with vulnerability me
 
 If you want fully air-gapped (no outbound network at all): leave all four EAIs OFF. agent-bom still scans + classifies; CVE enrichment is just less complete.
 
-## 5 — (Recommended) Set a network policy
+The packaged scanner service is also off by default. To run the SPCS scanner
+with advisory enrichment, bind all four EAI references first, then opt in:
+
+```sql
+CALL agent_bom.core.enable_scanner_service();
+ALTER SERVICE agent_bom.core.agent_bom_scanner RESUME;
+```
+
+The scanner service attaches only these EAIs:
+
+- `osv_dev`
+- `cisa_kev`
+- `first_epss`
+- `github_ghsa`
+
+If any EAI is unbound, service creation should fail before outbound access is
+available.
+
+## 5 — (Optional) Enable the MCP runtime service
+
+The MCP runtime service is packaged for customers that want read-only agent-bom
+MCP tools available inside the Native App boundary. It is not created during
+install, has no advisory-feed EAI attached, and requires an operator-provided
+bearer token.
+
+```sql
+CALL agent_bom.core.enable_mcp_runtime_service('<32+ character bearer token>');
+ALTER SERVICE agent_bom.core.agent_bom_mcp_runtime RESUME;
+```
+
+Store the bearer token in your own secret manager or Snowflake secret workflow.
+Do not hard-code it in the app package or worksheet history.
+
+## 6 — (Recommended) Set a network policy
 
 Restrict where the dashboard can be reached from. Templates in [`network_policies.sql`](../../deploy/snowflake/native-app/scripts/network_policies.sql):
 
@@ -82,7 +116,7 @@ Restrict where the dashboard can be reached from. Templates in [`network_policie
 ALTER APPLICATION agent_bom SET CONFIGURATION network_policy_name = 'AGENT_BOM_SOC_DEFAULT';
 ```
 
-## 6 — (Optional) Set up a service user with key-pair auth
+## 7 — (Optional) Set up a service user with key-pair auth
 
 If you want to push scan data into the app from CI/CD or external orchestration, create a dedicated service user with key-pair auth. Template: [`auth_keypair_setup.sql`](../../deploy/snowflake/native-app/scripts/auth_keypair_setup.sql).
 
@@ -101,7 +135,7 @@ export SNOWFLAKE_ACCOUNT=<your_account>
 agent-bom snowflake test-connection
 ```
 
-## 7 — Trigger your first scan
+## 8 — Trigger your first scan
 
 ```sql
 -- Manual scan
@@ -111,7 +145,7 @@ CALL agent_bom.core.trigger_scan();
 ALTER TASK agent_bom.core.auto_scan_task RESUME;
 ```
 
-## 8 — Open the dashboard
+## 9 — Open the dashboard
 
 The dashboard URL is exposed via the Native App's service endpoint. From Snowsight:
 
@@ -122,6 +156,11 @@ The dashboard URL is exposed via the Native App's service endpoint. From Snowsig
 ## What to verify after install
 
 ```sql
+-- Confirm the app installed and Phase 4 services remain default-off
+CALL agent_bom.core.health_check();
+-- Expected: status=ok, scanner_service_enabled=false,
+-- mcp_runtime_service_enabled=false, advisory_egress_enabled=false
+
 -- Confirm zero account-level grants leaked through
 USE ROLE agent_bom.app_user;
 SHOW GRANTS TO APPLICATION ROLE agent_bom.app_user;
@@ -131,6 +170,9 @@ SHOW GRANTS ON DATABASE YOUR_DB;  -- should show NO grants to APPLICATION agent_
 
 -- Confirm EAI scope (only the four advisory feeds)
 SHOW EXTERNAL ACCESS INTEGRATIONS LIKE 'AGENT_BOM_%';
+
+-- Confirm no scanner egress until explicit opt-in
+SHOW SERVICES LIKE 'AGENT_BOM_SCANNER' IN SCHEMA agent_bom.core;
 ```
 
 ## Uninstall
@@ -147,4 +189,5 @@ This removes the app's compute pool, services, schemas, and all data agent-bom c
 - [Identity and naming contract](../IDENTITY_AND_NAMING_CONTRACT.md) — what's fixed vs customer-controlled
 - [Policy precedence](../POLICY_PRECEDENCE.md) — firewall / gateway / proxy / CLI layering
 - [Runtime reference](../RUNTIME_REFERENCE.md) — five runtime surfaces map
+- [Marketplace release lane](MARKETPLACE.md) — dry-run packaging and listing proof
 - Native App epic: [#2214](https://github.com/msaad00/agent-bom/issues/2214)

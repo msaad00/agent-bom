@@ -17,6 +17,8 @@ artifacts:
     images:
       - /db/schema/agent_bom_repo/agent-bom:latest
       - /db/schema/agent_bom_repo/agent-bom-ui:latest
+      - /db/schema/agent_bom_repo/agent-bom-scanner:latest
+      - /db/schema/agent_bom_repo/agent-bom-mcp-runtime:latest
   service_roles:
     - name: api
       comment: >-
@@ -26,6 +28,16 @@ artifacts:
       comment: >-
         Grants USAGE on the Next.js dashboard service endpoint (port 3000).
         Assign to roles that need browser-based access to the agent-bom UI.
+    - name: scanner
+      comment: >-
+        Grants USAGE on the opt-in scanner service endpoint (port 8424).
+        Assign only after core.enable_scanner_service() has created the
+        service in the consumer account.
+    - name: mcp_runtime
+      comment: >-
+        Grants USAGE on the optional MCP runtime service endpoint (port 8423).
+        Assign only after core.enable_mcp_runtime_service() has created the
+        bearer-token protected runtime service.
 
 privileges:
   - CREATE COMPUTE POOL:
@@ -54,6 +66,18 @@ configuration:
   retention_days:
     type: NUMBER
     default: 90
+  enable_scanner_service:
+    type: BOOLEAN
+    default: false
+  enable_mcp_runtime_service:
+    type: BOOLEAN
+    default: false
+  scanner_service_name:
+    type: STRING
+    default: core.agent_bom_scanner
+  mcp_runtime_service_name:
+    type: STRING
+    default: core.agent_bom_mcp_runtime
 
 references:
   - cloud_asset_tables:

@@ -21,6 +21,8 @@ NATIVE_APP_DIR = Path(__file__).resolve().parents[1] / "deploy" / "snowflake" / 
 MANIFEST_PATH = NATIVE_APP_DIR / "manifest.yml"
 SETUP_SQL_PATH = NATIVE_APP_DIR / "scripts" / "setup.sql"
 DCM_DIR = NATIVE_APP_DIR / "dcm"
+SERVICE_SPECS_DIR = NATIVE_APP_DIR / "service-specs"
+RELEASE_WORKFLOW_PATH = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "release-snowflake.yml"
 
 
 @pytest.fixture(scope="module")
@@ -31,6 +33,11 @@ def manifest() -> dict:
 @pytest.fixture(scope="module")
 def setup_sql() -> str:
     return SETUP_SQL_PATH.read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def service_specs() -> dict[str, dict]:
+    return {path.name: yaml.safe_load(path.read_text(encoding="utf-8")) for path in SERVICE_SPECS_DIR.glob("*.yaml")}
 
 
 # ─── Customer-approved references contract ──────────────────────────────────
@@ -88,6 +95,14 @@ def test_manifest_declares_advisory_feed_eais(manifest: dict):
     assert not missing, f"manifest missing required EAIs: {missing}"
 
 
+def test_advisory_feed_eais_are_default_off(manifest: dict):
+    """Phase 4 scanner enrichment must stay opt-in. A future manifest change
+    that enables outbound vulnerability feeds during install is a regression."""
+    for eai in manifest.get("external_access_integrations", []):
+        name, body = next(iter(eai.items()))
+        assert body.get("enabled") is False, f"EAI {name!r} must be disabled by default"
+
+
 def test_no_eai_egresses_to_unexpected_destinations(manifest: dict):
     """Every EAI's egress destination list must match a known advisory feed.
     A future PR adding a fifth destination would surface here so we can
@@ -141,6 +156,79 @@ def test_setup_sql_grants_only_target_application_role(setup_sql: str):
         assert phrase not in setup_sql.upper(), f"setup.sql contains {phrase!r} — grants must only target APPLICATION ROLE app_user"
 
 
+# ─── Phase 4 service contract ───────────────────────────────────────────────
+
+
+def test_manifest_declares_phase4_services_default_off(manifest: dict):
+    config = manifest.get("configuration", {})
+    assert config["enable_scanner_service"]["default"] is False
+    assert config["enable_mcp_runtime_service"]["default"] is False
+
+    images = set(manifest.get("artifacts", {}).get("container_services", {}).get("images", []))
+    assert "/db/schema/agent_bom_repo/agent-bom-scanner:latest" in images
+    assert "/db/schema/agent_bom_repo/agent-bom-mcp-runtime:latest" in images
+
+
+def test_phase4_service_specs_are_packaged_and_internal(service_specs: dict[str, dict]):
+    expected = {"scanner-service.yaml", "mcp-runtime-service.yaml"}
+    assert expected <= set(service_specs)
+
+    for spec_name in expected:
+        spec = service_specs[spec_name]["spec"]
+        assert spec.get("containers"), f"{spec_name} must declare at least one container"
+        for endpoint in spec.get("endpoints", []):
+            assert endpoint.get("public") is False, f"{spec_name}:{endpoint.get('name')} must be internal-only"
+
+
+def test_scanner_service_spec_uses_scanner_entrypoint_and_not_mcp_runtime(service_specs: dict[str, dict]):
+    scanner = service_specs["scanner-service.yaml"]["spec"]["containers"][0]
+    assert scanner["name"] == "agent-bom-scanner"
+    assert scanner["env"]["AGENT_BOM_MCP_MODE"] == "0"
+    assert scanner["env"]["AGENT_BOM_ENABLE_ADVISORY_EGRESS"] == "1"
+    assert scanner["command"][:4] == ["agent-bom", "agents", "--snowflake", "--snowflake-authenticator"]
+
+
+def test_mcp_runtime_spec_requires_bearer_token_and_has_no_advisory_egress(service_specs: dict[str, dict]):
+    runtime = service_specs["mcp-runtime-service.yaml"]["spec"]["containers"][0]
+    assert runtime["name"] == "agent-bom-mcp-runtime"
+    assert runtime["env"]["AGENT_BOM_MCP_MODE"] == "1"
+    assert runtime["env"]["AGENT_BOM_MCP_BEARER_TOKEN"] == "{{ mcp_bearer_token }}"
+    assert "AGENT_BOM_ENABLE_ADVISORY_EGRESS" not in runtime["env"]
+    assert runtime["command"][:4] == ["agent-bom", "mcp", "server", "--transport"]
+
+
+def test_setup_sql_only_creates_phase4_services_from_opt_in_procedures(setup_sql: str):
+    upper = setup_sql.upper()
+    assert "CREATE OR REPLACE PROCEDURE CORE.ENABLE_SCANNER_SERVICE()" in upper
+    assert "CREATE OR REPLACE PROCEDURE CORE.ENABLE_MCP_RUNTIME_SERVICE(MCP_BEARER_TOKEN VARCHAR)" in upper
+    assert "CORE.AGENT_BOM_SCANNER" in upper
+    assert "CORE.AGENT_BOM_MCP_RUNTIME" in upper
+    assert "LENGTH(TRIM(MCP_BEARER_TOKEN)) < 32" in upper
+
+
+def test_setup_sql_exposes_customer_health_check(setup_sql: str):
+    upper = setup_sql.upper()
+    assert "CREATE OR REPLACE PROCEDURE CORE.HEALTH_CHECK()" in upper
+    assert "'SCANNER_SERVICE_ENABLED'" in upper
+    assert "'MCP_RUNTIME_SERVICE_ENABLED'" in upper
+    assert "'ADVISORY_EGRESS_ENABLED'" in upper
+    assert "GRANT USAGE ON PROCEDURE CORE.HEALTH_CHECK()" in upper
+
+
+def test_scanner_service_creation_is_eai_gated(setup_sql: str):
+    scanner_section = setup_sql.split("CREATE OR REPLACE PROCEDURE core.enable_scanner_service()", 1)[1].split(
+        "CREATE OR REPLACE PROCEDURE core.enable_mcp_runtime_service", 1
+    )[0]
+    assert "EXTERNAL_ACCESS_INTEGRATIONS" in scanner_section
+    for eai_name in ("osv_dev", "cisa_kev", "first_epss", "github_ghsa"):
+        assert f"reference('{eai_name}')" in scanner_section
+
+
+def test_mcp_runtime_service_creation_has_no_eai_clause(setup_sql: str):
+    mcp_section = setup_sql.split("CREATE OR REPLACE PROCEDURE core.enable_mcp_runtime_service", 1)[1]
+    assert "EXTERNAL_ACCESS_INTEGRATIONS" not in mcp_section
+
+
 # ─── DCM project contract ──────────────────────────────────────────────────
 
 
@@ -169,3 +257,12 @@ def test_dcm_v001_no_write_grants_on_customer_data():
     # against a customer-named DB would be a privilege escalation.
     assert "GRANT INSERT ON TABLE" not in v001 or "core." in v001
     assert "YOUR_DB." not in v001
+
+
+def test_release_workflow_derives_version_from_pyproject_when_unset():
+    workflow = RELEASE_WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "required: false" in workflow
+    assert 'project = tomllib.loads(Path("pyproject.toml").read_text())["project"]' in workflow
+    assert 'version = "v" + str(project["version"]).replace(".", "_")' in workflow
+    assert "package_version: ${{ steps.version.outputs.version }}" in workflow
+    assert "inputs.version" not in workflow.split("Build Snowflake Native App artifact", 1)[1]

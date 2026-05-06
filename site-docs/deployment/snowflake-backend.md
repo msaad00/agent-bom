@@ -199,8 +199,10 @@ applies here. Snowflake-specific signals worth alerting on:
   graph, and the full HMAC-chained `audit_log` are not yet on
   `SnowflakeStore`. Run Postgres alongside for these.
 - The scanner CronJob still runs in-cluster; it does not run inside
-  Snowpark. Cortex / Snowpark-native discovery is a separate capability
-  ([`src/agent_bom/cloud/snowflake.py`](https://github.com/msaad00/agent-bom/blob/main/src/agent_bom/cloud/snowflake.py)).
+  Snowpark for the Helm deployment mode. The Native App package now includes
+  an opt-in SPCS scanner service spec for customers who want scanner execution
+  inside Snowflake; it is default-off and attaches advisory-feed EAIs only when
+  `core.enable_scanner_service()` is called.
 - Time Travel + Fail-safe provide durability, but configure a retention
   window that matches your compliance retention policy.
 

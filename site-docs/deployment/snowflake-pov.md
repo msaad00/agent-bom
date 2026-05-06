@@ -18,6 +18,12 @@ The POV does not include automatic patching or draft PR remediation. Today
 agent-bom produces remediation plans and evidence that can be routed into an
 existing Dependabot, Renovate, Jira, or AppSec workflow.
 
+For Native App evaluations, the packaged SPCS scanner and MCP runtime service
+specs are opt-in. API/UI install first; scanner egress to OSV, CISA KEV, FIRST
+EPSS, and GHSA is enabled only after the customer binds the EAI references and
+calls `core.enable_scanner_service()`. The MCP runtime service is also
+default-off and requires a caller-provided bearer token.
+
 ## Database options
 
 agent-bom needs a transactional Postgres-compatible control-plane database for

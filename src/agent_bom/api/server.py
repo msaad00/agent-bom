@@ -628,12 +628,16 @@ configure_api_from_env()
 
 # ─── Scan Pipeline (extracted to api/pipeline.py) ────────────────────────────
 from agent_bom.api.pipeline import (  # noqa: E402
+    PIPELINE_DAG_EDGES,  # noqa: F401 — re-exported for tests/artifact consumers
+    PIPELINE_DAG_EVENT_SCHEMA,  # noqa: F401 — re-exported for tests/artifact consumers
     PIPELINE_STEPS,  # noqa: F401 — re-exported for tests
     ScanPipeline,  # noqa: F401 — re-exported for tests
     _executor,  # noqa: F401 — re-exported for tests (may be replaced on shutdown; use get_executor() for new submissions)
     _run_scan_sync,  # noqa: F401 — re-exported for backward compat
     _sync_scan_agents_to_fleet,  # noqa: F401 — re-exported for tests
     get_executor,  # noqa: F401 — re-exported for tests
+    iter_pipeline_dag_event_records,  # noqa: F401 — re-exported for tests/artifact consumers
+    pipeline_dag_events_jsonl,  # noqa: F401 — re-exported for tests/artifact consumers
 )
 
 # ─── Route modules ────────────────────────────────────────────────────────

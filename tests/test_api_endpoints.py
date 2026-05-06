@@ -376,6 +376,46 @@ def test_get_scan_status_omits_large_result_payload():
     assert len(status.content) < len(full.content) / 100
 
 
+def test_get_scan_redacts_result_findings_replay_only_fields():
+    """Full scan job reads must not expose replay-only text in result.findings."""
+    client, store = _fresh_client()
+    job = ScanJob(
+        job_id="job-finding-redaction",
+        tenant_id="default",
+        status=JobStatus.DONE,
+        created_at="2026-01-01T00:00:00Z",
+        completed_at="2026-01-01T00:00:13Z",
+        request=ScanRequest(),
+        result={
+            "findings": [
+                {
+                    "id": "finding-1",
+                    "title": "Unsafe package",
+                    "description": "Copied workspace details",
+                    "remediation_guidance": "Patch using local runbook",
+                    "package": "pillow",
+                    "package_version": "10.0.0",
+                    "severity": "high",
+                }
+            ],
+        },
+    )
+    store.put(job)
+
+    response = client.get("/v1/scan/job-finding-redaction")
+
+    assert response.status_code == 200
+    finding = response.json()["result"]["findings"][0]
+    assert finding == {
+        "id": "finding-1",
+        "title": "Unsafe package",
+        "package": "pillow",
+        "package_version": "10.0.0",
+        "severity": "high",
+    }
+    assert store.get("job-finding-redaction").result["findings"][0]["description"] == "Copied workspace details"
+
+
 # ---------------------------------------------------------------------------
 # 8. DELETE scan
 # ---------------------------------------------------------------------------

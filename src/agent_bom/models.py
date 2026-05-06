@@ -380,11 +380,30 @@ class Package:
     @property
     def lookup_names(self) -> list[str]:
         """Candidate package names for vulnerability matching."""
-        names = [self.name]
+        names: list[str] = []
+
+        def add_name(candidate: str | None) -> None:
+            candidate = (candidate or "").strip()
+            if not candidate:
+                return
+            norm_candidate = normalize_package_name(candidate, self.ecosystem)
+            if all(normalize_package_name(existing, self.ecosystem) != norm_candidate for existing in names):
+                names.append(candidate)
+
+        add_name(self.name)
+        if self.ecosystem.lower() == "maven" and self.purl:
+            try:
+                from packageurl import PackageURL
+
+                parsed = PackageURL.from_string(self.purl)
+            except Exception:
+                parsed = None
+            if parsed is not None and (parsed.type or "").lower() == "maven" and parsed.namespace and parsed.name:
+                add_name(f"{parsed.namespace}:{parsed.name}")
         if self.source_package:
             source_name = self.source_package.strip()
             if source_name and normalize_package_name(source_name, self.ecosystem) != normalize_package_name(self.name, self.ecosystem):
-                names.append(source_name)
+                add_name(source_name)
         return names
 
     @property

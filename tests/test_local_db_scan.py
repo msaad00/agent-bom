@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from agent_bom.models import Package, Severity
+from agent_bom.sbom import parse_cyclonedx
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -202,6 +203,55 @@ def test_scan_packages_local_db_finds_vulns(tmp_path):
     assert count == 1
     assert len(pkg.vulnerabilities) == 1
     assert pkg.vulnerabilities[0].id == "CVE-2024-2222"
+
+
+def test_cyclonedx_maven_purl_matches_groupid_artifact_advisories(tmp_path):
+    """CycloneDX Maven purls should match local DB groupId:artifactId advisories."""
+    from agent_bom.scanners import _scan_packages_local_db
+
+    packages = parse_cyclonedx(
+        {
+            "bomFormat": "CycloneDX",
+            "components": [
+                {
+                    "type": "library",
+                    "name": "log4j-core",
+                    "version": "2.14.1",
+                    "purl": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
+                }
+            ],
+        }
+    )
+    pkg = packages[0]
+    db_file = tmp_path / "scan.db"
+    db_file.write_text("placeholder", encoding="utf-8")
+    conn = MagicMock()
+    lv = _make_local_vuln("CVE-2021-44228", "critical", 10.0)
+    lookup_calls: list[tuple[str, str, str]] = []
+
+    def lookup_package_side_effect(_conn, ecosystem: str, name: str, version: str):
+        lookup_calls.append((ecosystem, name, version))
+        if (ecosystem, name, version) == ("maven", "org.apache.logging.log4j:log4j-core", "2.14.1"):
+            return [lv]
+        return []
+
+    def package_in_db_side_effect(_conn, ecosystem: str, name: str) -> bool:
+        return ecosystem == "maven" and name == "org.apache.logging.log4j:log4j-core"
+
+    with (
+        patch("agent_bom.db.schema.db_freshness_days", return_value=1),
+        patch("agent_bom.db.schema.DB_PATH", db_file),
+        patch("agent_bom.db.schema.open_existing_db_readonly", return_value=conn),
+        patch("agent_bom.db.lookup.package_in_db", side_effect=package_in_db_side_effect),
+        patch("agent_bom.db.lookup_package", side_effect=lookup_package_side_effect),
+    ):
+        count, covered = _scan_packages_local_db(packages)
+
+    assert pkg.lookup_names == ["log4j-core", "org.apache.logging.log4j:log4j-core"]
+    assert ("maven", "org.apache.logging.log4j:log4j-core", "2.14.1") in lookup_calls
+    assert count == 1
+    assert covered == {"maven:log4j-core@2.14.1"}
+    assert [v.id for v in pkg.vulnerabilities] == ["CVE-2021-44228"]
 
 
 def test_scan_packages_local_db_no_duplicates(tmp_path):

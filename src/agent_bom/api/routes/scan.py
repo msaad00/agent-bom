@@ -457,6 +457,25 @@ def _job_for_request(request: Request, job_id: str) -> ScanJob:
     return job
 
 
+def _redact_scan_result_for_response(result: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Drop replay-only fields from top-level scan findings before API return."""
+    if not isinstance(result, dict):
+        return result
+    findings = result.get("findings")
+    if not isinstance(findings, list):
+        return result
+    redacted = dict(result)
+    redacted["findings"] = redact_for_persistence(findings, EvidenceTier.SAFE_TO_STORE)
+    return redacted
+
+
+def _job_response_payload(job: ScanJob) -> ScanJob:
+    redacted_result = _redact_scan_result_for_response(job.result)
+    if redacted_result is job.result:
+        return job
+    return job.model_copy(update={"result": redacted_result})
+
+
 def enqueue_scan_job(
     *,
     tenant_id: str,
@@ -516,7 +535,7 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
 @router.get("/v1/scan/{job_id}", response_model=ScanJob, tags=["scan"])
 async def get_scan(request: Request, job_id: str) -> ScanJob:
     """Fetch scan status and full results."""
-    return _job_for_request(request, job_id)
+    return _job_response_payload(_job_for_request(request, job_id))
 
 
 @router.get("/v1/scan/{job_id}/status", tags=["scan"])

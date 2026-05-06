@@ -23,6 +23,7 @@ SETUP_SQL_PATH = NATIVE_APP_DIR / "scripts" / "setup.sql"
 DCM_DIR = NATIVE_APP_DIR / "dcm"
 SERVICE_SPECS_DIR = NATIVE_APP_DIR / "service-specs"
 RELEASE_WORKFLOW_PATH = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "release-snowflake.yml"
+SNOWFLAKE_PACKAGE_IMAGE_TAG = "v0_86_0"
 
 
 @pytest.fixture(scope="module")
@@ -165,8 +166,20 @@ def test_manifest_declares_phase4_services_default_off(manifest: dict):
     assert config["enable_mcp_runtime_service"]["default"] is False
 
     images = set(manifest.get("artifacts", {}).get("container_services", {}).get("images", []))
-    assert "/db/schema/agent_bom_repo/agent-bom-scanner:latest" in images
-    assert "/db/schema/agent_bom_repo/agent-bom-mcp-runtime:latest" in images
+    assert f"/db/schema/agent_bom_repo/agent-bom-scanner:{SNOWFLAKE_PACKAGE_IMAGE_TAG}" in images
+    assert f"/db/schema/agent_bom_repo/agent-bom-mcp-runtime:{SNOWFLAKE_PACKAGE_IMAGE_TAG}" in images
+
+
+def test_native_app_container_images_are_release_pinned(manifest: dict, service_specs: dict[str, dict]):
+    image_refs = list(manifest.get("artifacts", {}).get("container_services", {}).get("images", []))
+    for spec in service_specs.values():
+        image_refs.extend(
+            container["image"] for container in spec.get("spec", {}).get("containers", []) if isinstance(container.get("image"), str)
+        )
+
+    assert image_refs
+    assert all(":latest" not in image for image in image_refs)
+    assert all(image.endswith(f":{SNOWFLAKE_PACKAGE_IMAGE_TAG}") for image in image_refs)
 
 
 def test_phase4_service_specs_are_packaged_and_internal(service_specs: dict[str, dict]):
@@ -266,3 +279,17 @@ def test_release_workflow_derives_version_from_pyproject_when_unset():
     assert 'version = "v" + str(project["version"]).replace(".", "_")' in workflow
     assert "package_version: ${{ steps.version.outputs.version }}" in workflow
     assert "inputs.version" not in workflow.split("Build Snowflake Native App artifact", 1)[1]
+
+
+def test_release_workflow_pins_actions_and_rejects_latest_native_app_images():
+    workflow = RELEASE_WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "actions/checkout@v4" in workflow
+    assert "actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5" in workflow
+    assert "actions/setup-python@v5" in workflow
+    assert "actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065" in workflow
+    assert "actions/upload-artifact@v4" in workflow
+    assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in workflow
+    assert "actions/download-artifact@v4" in workflow
+    assert "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093" in workflow
+    assert 'assert ":latest" not in text' in workflow
+    assert 'assert f":{version}" in text' in workflow

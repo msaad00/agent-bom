@@ -1,7 +1,7 @@
 spec:
   containers:
     - name: agent-bom-mcp-runtime
-      image: /db/schema/agent_bom_repo/agent-bom-mcp-runtime:latest
+      image: /db/schema/agent_bom_repo/agent-bom-mcp-runtime:v0_86_0
       env:
         SNOWFLAKE_ACCOUNT: "{{ snowflake_account }}"
         SNOWFLAKE_DATABASE: "{{ database }}"

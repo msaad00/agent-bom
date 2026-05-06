@@ -34,7 +34,7 @@ single source of truth that every other surface serializes from.
 | `PermissionProfile` | What an MCP server can touch | `can_read_files`, `can_write_files`, `can_execute_commands`, `network_access`, `requires_credentials` |
 | `MCPServer` | One discovered server | `name`, `command`, `transport`, `surface`, `packages`, `tools`, `resources`, `permissions`, `verified`, `runs_as_root`, `env` |
 | `Agent` | One discovered agent | `name`, `agent_type`, `source`, `mcp_servers`, `config_path`, `version`, `metadata` |
-| `BlastRadius` | The chain CVE → package → server → agent → credentials → tools | `vulnerability`, `package`, `affected_servers`, `affected_agents`, `exposed_credentials`, `exposed_tools`, `risk_score`, `compliance_tags`, `*_tags` (15 framework-specific tag fields) |
+| `BlastRadius` | The chain package → vulnerability finding → MCP server (exposed tools + credential env names) → connected agents | `vulnerability`, `package`, `affected_servers`, `affected_agents`, `exposed_credentials`, `exposed_tools`, `risk_score`, `compliance_tags`, `*_tags` (15 framework-specific tag fields) |
 | `AIBOMReport` | Top-level scan output | `scan_id`, `agents`, `blast_radius`, `summary`, `framework_catalogs`, `scan_sources`, `tenant_id` |
 
 ### Compliance tag fields on `BlastRadius`

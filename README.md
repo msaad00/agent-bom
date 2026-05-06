@@ -21,22 +21,22 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-dark.svg">
-    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="agent-bom blast-radius drilldown — package → CVE → MCP server → agent → credentials → tools" width="900" />
+    <img src="https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/blast-radius-light.svg" alt="agent-bom blast-radius drilldown — package → CVE → MCP server (tools + credential env names) → connected agents" width="900" />
   </picture>
 </p>
 
 ```text
-CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
-  |── better-sqlite3@9.0.0  (npm)
-       |── sqlite-mcp  (MCP Server · unverified · root)
-            |── Cursor IDE  (Agent · 4 servers · 12 tools)
-            |── ANTHROPIC_KEY, DB_URL, AWS_SECRET  (Credentials exposed)
-            |── query_db, read_file, write_file, run_shell  (Tools at risk)
+better-sqlite3@9.0.0  (npm package)
+  |── CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
+  |── sqlite-mcp  (MCP Server · unverified · root)
+       |── Cursor IDE  (Agent · 4 servers · 12 tools)
+       |── ANTHROPIC_KEY, DB_URL, AWS_SECRET  (Credential env names visible)
+       |── query_db, read_file, write_file, run_shell  (Tools at risk)
 
  Fix: upgrade better-sqlite3 → 11.7.0
 ```
 
-Blast radius is the core idea: `CVE -> package -> MCP server -> agent -> credentials -> tools`. CWE-aware impact keeps a DoS from being reported like credential compromise.
+Blast radius is the core idea: `package -> vulnerability finding -> MCP server (tools + credential env names) -> connected agents`. You can search by CVE, package, server, tool, credential name, or agent, but the evidence graph keeps the vulnerable package instance as the source of the reachable exposure path. CWE-aware impact keeps a DoS from being reported like credential compromise.
 
 ## Try the demo
 

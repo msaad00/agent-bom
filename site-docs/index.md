@@ -7,17 +7,17 @@ Scan agents, MCP, packages, containers, Kubernetes, cloud, and GPU workloads wit
 ## What it does
 
 ```
-CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
-  └─ better-sqlite3@9.0.0  (npm)
-       └─ sqlite-mcp  (MCP Server · unverified)
-            ├─ Cursor IDE  (Agent · 4 servers · 12 tools)
-            ├─ ANTHROPIC_KEY, DB_URL, AWS_SECRET  (Credentials exposed)
-            └─ query_db, read_file, write_file  (Tools at risk)
+better-sqlite3@9.0.0  (npm package)
+  ├─ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
+  └─ sqlite-mcp  (MCP Server · unverified)
+       ├─ Cursor IDE  (Agent · 4 servers · 12 tools)
+       ├─ ANTHROPIC_KEY, DB_URL, AWS_SECRET  (Credential env names visible)
+       └─ query_db, read_file, write_file  (Tools at risk)
 
  Fix: upgrade better-sqlite3 → 11.7.0
 ```
 
-Package risk is only the start. agent-bom maps what it can reach across MCP servers, agents, credentials, tools, and runtime context.
+Package risk is only the start. agent-bom maps the reachable path from a vulnerable package instance to MCP servers, agents, credential names, tools, and runtime context.
 
 ## Quick start
 
@@ -37,7 +37,7 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 |---|---|
 | **Discovery** | Auto-detect 29 first-class MCP client types plus dynamic/project surfaces |
 | **CVE scanning** | OSV + NVD CVSS v4 + EPSS + CISA KEV + GHSA |
-| **Blast radius** | Map CVE impact: package → server → agent → credentials → tools |
+| **Blast radius** | Map CVE impact: package → vulnerability finding → MCP server (tools + credential env names) → connected agents |
 | **Registry** | 427+ MCP server security metadata entries |
 | **Compliance** | OWASP LLM/Agentic/MCP Top 10, MITRE ATLAS, EU AI Act, NIST AI RMF, CIS |
 | **Runtime proxy** | Policy enforcement, credential leak detection, audit logging |

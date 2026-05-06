@@ -11,12 +11,22 @@ from typing import Any, Iterable, Iterator, Sequence
 from agent_bom.api.graph_store import _escape_like_query, _node_search_text, decode_graph_cursor, encode_graph_cursor
 from agent_bom.api.storage_schema import ensure_postgres_schema_version
 from agent_bom.config import POSTGRES_GRAPH_SEARCH_TIMEOUT_MS, POSTGRES_STATEMENT_TIMEOUT_MS
+from agent_bom.db.graph_store import DEFAULT_GRAPH_TENANT_ID, normalize_graph_tenant_id
 from agent_bom.graph import EntityType
 
-from .postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
+from .postgres_common import _apply_tenant_session, _ensure_tenant_rls, _get_pool, _tenant_connection, bypass_tenant_rls
 
 _ALLOWED_ENTITY_TYPES = {entity_type.value for entity_type in EntityType}
 _DEFAULT_GRAPH_WRITE_BATCH_SIZE = 1000
+_GRAPH_TENANT_TABLE_KEYS: dict[str, tuple[str, ...]] = {
+    "graph_nodes": ("id", "scan_id"),
+    "graph_edges": ("source_id", "target_id", "relationship", "scan_id"),
+    "graph_snapshots": ("scan_id",),
+    "attack_paths": ("source_node", "target_node", "scan_id"),
+    "interaction_risks": ("pattern", "agents", "scan_id"),
+    "graph_filter_presets": ("name",),
+    "graph_node_search": ("node_id", "scan_id"),
+}
 
 
 def _graph_write_batch_size() -> int:
@@ -85,6 +95,28 @@ def _assert_allowed_entity_types(entity_types: set[str] | None) -> None:
     invalid = sorted(entity_types - _ALLOWED_ENTITY_TYPES)
     if invalid:
         raise ValueError(f"Unsupported graph entity type: {invalid[0]}")
+
+
+def _backfill_empty_tenant_ids(conn) -> None:
+    for table, key_columns in _GRAPH_TENANT_TABLE_KEYS.items():
+        key_match = " AND ".join(f"existing.{column} = legacy.{column}" for column in key_columns)
+        conn.execute(
+            f"""
+            DELETE FROM {table} legacy
+            WHERE legacy.tenant_id = ''
+              AND EXISTS (
+                SELECT 1
+                FROM {table} existing
+                WHERE existing.tenant_id = %s
+                  AND {key_match}
+              )
+            """,  # nosec B608 - table/key names are static internal schema metadata
+            (DEFAULT_GRAPH_TENANT_ID,),
+        )
+        conn.execute(
+            f"UPDATE {table} SET tenant_id = %s WHERE tenant_id = ''",  # nosec B608 - table names are static internal schema metadata
+            (DEFAULT_GRAPH_TENANT_ID,),
+        )
 
 
 class PostgresGraphStore:
@@ -246,6 +278,10 @@ class PostgresGraphStore:
                 ON graph_node_search(tenant_id, scan_id, severity)
                 """
             )
+            with bypass_tenant_rls():
+                _apply_tenant_session(conn)
+                _backfill_empty_tenant_ids(conn)
+            _apply_tenant_session(conn)
             try:
                 conn.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
                 conn.execute(
@@ -267,6 +303,7 @@ class PostgresGraphStore:
             conn.commit()
 
     def latest_snapshot_id(self, *, tenant_id: str = "") -> str:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             row = conn.execute(
                 """
@@ -304,6 +341,7 @@ class PostgresGraphStore:
         )
 
     def previous_snapshot_id(self, *, tenant_id: str = "", before_scan_id: str = "") -> str:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         if not before_scan_id:
             return ""
         with _tenant_connection(self._pool) as conn:
@@ -327,6 +365,7 @@ class PostgresGraphStore:
 
     def delete_tenant(self, *, tenant_id: str = "") -> int:
         """Delete graph rows for one tenant and return the number of rows removed."""
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         total = 0
         with _tenant_connection(self._pool) as conn:
             for table in (
@@ -347,7 +386,7 @@ class PostgresGraphStore:
         from agent_bom.graph import RelationshipType
 
         scan = graph.scan_id or ""
-        tenant = graph.tenant_id or "default"
+        tenant = normalize_graph_tenant_id(graph.tenant_id)
         now = graph.created_at or datetime.now(timezone.utc).isoformat()
         batch_size = _graph_write_batch_size()
 
@@ -570,6 +609,7 @@ class PostgresGraphStore:
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
     ):
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         _assert_allowed_entity_types(entity_types)
         from agent_bom.graph import (
             SEVERITY_RANK,
@@ -686,6 +726,7 @@ class PostgresGraphStore:
         scan_id: str = "",
         node_ids: set[str],
     ) -> list[Any]:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         if not node_ids:
             return []
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
@@ -715,6 +756,7 @@ class PostgresGraphStore:
         max_depth: int = 4,
         traversable_only: bool = True,
     ) -> tuple[list[list[str]], set[str]]:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
         if not graph.has_node(source):
             return [], set()
@@ -735,6 +777,7 @@ class PostgresGraphStore:
         node_id: str,
         max_depth: int = 4,
     ) -> dict[str, Any] | None:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
         if not graph.has_node(node_id):
             return None
@@ -757,6 +800,7 @@ class PostgresGraphStore:
         dynamic_only: bool = False,
         include_roots: bool = True,
     ) -> tuple[Any, dict[str, int], bool]:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
         return graph.traverse_subgraph(
             roots,
@@ -779,6 +823,7 @@ class PostgresGraphStore:
         scan_id: str = "",
         source_ids: set[str],
     ) -> list[Any]:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         if not source_ids:
             return []
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
@@ -822,6 +867,7 @@ class PostgresGraphStore:
         offset: int = 0,
         limit: int = 100,
     ) -> tuple[str, str, list[Any], int]:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
         if not effective_scan_id:
             return scan_id, "", [], 0
@@ -876,6 +922,7 @@ class PostgresGraphStore:
         scan_id: str = "",
         node_id: str,
     ) -> dict[str, Any] | None:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
         node = graph.get_node(node_id)
         if not node:
@@ -896,6 +943,7 @@ class PostgresGraphStore:
         scan_id: str = "",
         framework: str = "",
     ) -> dict[str, Any]:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         from collections import defaultdict
 
         graph = self.load_graph(tenant_id=tenant_id, scan_id=scan_id)
@@ -944,6 +992,7 @@ class PostgresGraphStore:
         }
 
     def diff_snapshots(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             old_nodes = {
                 row[0]: {"severity": row[1], "risk_score": row[2]}
@@ -983,6 +1032,7 @@ class PostgresGraphStore:
             }
 
     def list_snapshots(self, *, tenant_id: str = "", limit: int = 50) -> list[dict[str, Any]]:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
                 """
@@ -1028,6 +1078,7 @@ class PostgresGraphStore:
         entity_types: set[str] | None = None,
         min_severity_rank: int = 0,
     ) -> dict[str, Any]:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         _assert_allowed_entity_types(entity_types)
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
         if not effective_scan_id:
@@ -1125,6 +1176,7 @@ class PostgresGraphStore:
         offset: int = 0,
         limit: int = 500,
     ) -> tuple[str, str, list[Any], int, str | None]:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         _assert_allowed_entity_types(entity_types)
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
         if not effective_scan_id:
@@ -1193,6 +1245,7 @@ class PostgresGraphStore:
         scan_id: str = "",
         node_ids: set[str],
     ) -> list[Any]:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         if not node_ids:
             return []
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
@@ -1242,6 +1295,7 @@ class PostgresGraphStore:
         offset: int = 0,
         limit: int = 50,
     ):
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         _assert_allowed_entity_types(entity_types)
         effective_scan_id = scan_id or self.latest_snapshot_id(tenant_id=tenant_id)
         if not effective_scan_id:
@@ -1323,6 +1377,7 @@ class PostgresGraphStore:
             return nodes, total, next_cursor
 
     def save_preset(self, *, tenant_id: str, name: str, description: str, filters: dict[str, Any], created_at: str) -> None:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             conn.execute(
                 """
@@ -1338,6 +1393,7 @@ class PostgresGraphStore:
             conn.commit()
 
     def list_presets(self, *, tenant_id: str) -> list[dict[str, Any]]:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             rows = conn.execute(
                 "SELECT name, description, filters, created_at FROM graph_filter_presets WHERE tenant_id = %s ORDER BY name",
@@ -1354,6 +1410,7 @@ class PostgresGraphStore:
             ]
 
     def delete_preset(self, *, tenant_id: str, name: str) -> bool:
+        tenant_id = normalize_graph_tenant_id(tenant_id)
         with _tenant_connection(self._pool) as conn:
             cursor = conn.execute(
                 "DELETE FROM graph_filter_presets WHERE name = %s AND tenant_id = %s",

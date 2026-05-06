@@ -7,17 +7,17 @@
 Start with the demo, then choose the entrypoint that matches your first job: repo scan, image scan, cloud posture, fix plan, dashboard, or runtime review.
 
 ```text
-CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
-  |── better-sqlite3@9.0.0  (npm)
-       |── sqlite-mcp  (MCP Server · unverified · root)
-            |── Cursor IDE  (Agent · 4 servers · 12 tools)
-            |── ANTHROPIC_KEY, DB_URL, AWS_SECRET  (Credentials exposed)
-            |── query_db, read_file, write_file, run_shell  (Tools at risk)
+better-sqlite3@9.0.0  (npm package)
+  |── CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
+  |── sqlite-mcp  (MCP Server · unverified · root)
+       |── Cursor IDE  (Agent · 4 servers · 12 tools)
+       |── ANTHROPIC_KEY, DB_URL, AWS_SECRET  (Credential env names visible)
+       |── query_db, read_file, write_file, run_shell  (Tools at risk)
 
  Fix: upgrade better-sqlite3 → 11.7.0
 ```
 
-Blast radius is the core idea: `CVE -> package -> MCP server -> agent -> credentials -> tools`.
+Blast radius is the core idea: `package -> vulnerability finding -> MCP server (tools + credential env names) -> connected agents`.
 
 Scan local agent configs, MCP servers, instruction files, lockfiles, containers, cloud posture, GPU surfaces, and runtime evidence.
 
@@ -99,7 +99,7 @@ helm upgrade --install agent-bom deploy/helm/agent-bom \
 
 ## Key features
 
-- **Blast radius mapping** — CVE → package → MCP server → agent → credentials → tools
+- **Blast radius mapping** — package → vulnerability finding → MCP server (tools + credential env names) → connected agents
 - **CWE-aware impact** — RCE shows credential exposure, DoS does not
 - **Portable outputs** — SARIF, CycloneDX, SPDX, HTML, graph, JSON, ZIP evidence bundles, and more
 - **MCP server mode** — expose `agent-bom` capabilities directly to MCP clients like Claude, Cursor, Windsurf, and Cortex CoCo / Cortex Code

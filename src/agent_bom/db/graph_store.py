@@ -36,8 +36,16 @@ logger = logging.getLogger(__name__)
 # Schema DDL — scan_id is part of every PK for per-scan isolation
 # ═══════════════════════════════════════════════════════════════════════════
 
+DEFAULT_GRAPH_TENANT_ID = "default"
 _GRAPH_SCHEMA_VERSION = 2
 _DEFAULT_GRAPH_WRITE_BATCH_SIZE = 1000
+_GRAPH_TENANT_TABLE_KEYS: dict[str, tuple[str, ...]] = {
+    "graph_nodes": ("id", "scan_id"),
+    "graph_edges": ("source_id", "target_id", "relationship", "scan_id"),
+    "graph_snapshots": ("scan_id",),
+    "attack_paths": ("source_node", "target_node", "scan_id"),
+    "interaction_risks": ("pattern", "agents", "scan_id"),
+}
 
 _CREATE_TABLES = """\
 -- ── Graph nodes (one row per node per scan) ──
@@ -62,7 +70,7 @@ CREATE TABLE IF NOT EXISTS graph_nodes (
     data_sources    TEXT DEFAULT '[]',
     dimensions      TEXT DEFAULT '{}',
     scan_id         TEXT NOT NULL,
-    tenant_id       TEXT DEFAULT '',
+    tenant_id       TEXT NOT NULL DEFAULT 'default',
     PRIMARY KEY (id, scan_id, tenant_id)
 );
 
@@ -85,7 +93,7 @@ CREATE TABLE IF NOT EXISTS graph_edges (
     evidence        TEXT DEFAULT '{}',
     activity_id     INTEGER DEFAULT 1,
     scan_id         TEXT NOT NULL,
-    tenant_id       TEXT DEFAULT '',
+    tenant_id       TEXT NOT NULL DEFAULT 'default',
     PRIMARY KEY (source_id, target_id, relationship, scan_id, tenant_id)
 );
 
@@ -98,7 +106,7 @@ CREATE INDEX IF NOT EXISTS idx_ge_tenant_scan ON graph_edges(tenant_id, scan_id)
 -- ── Snapshots ──
 CREATE TABLE IF NOT EXISTS graph_snapshots (
     scan_id         TEXT NOT NULL,
-    tenant_id       TEXT DEFAULT '',
+    tenant_id       TEXT NOT NULL DEFAULT 'default',
     created_at      TEXT NOT NULL,
     node_count      INTEGER DEFAULT 0,
     edge_count      INTEGER DEFAULT 0,
@@ -120,7 +128,7 @@ CREATE TABLE IF NOT EXISTS attack_paths (
     tool_exposure   TEXT DEFAULT '[]',
     vuln_ids        TEXT DEFAULT '[]',
     scan_id         TEXT NOT NULL,
-    tenant_id       TEXT DEFAULT '',
+    tenant_id       TEXT NOT NULL DEFAULT 'default',
     computed_at     TEXT NOT NULL,
     PRIMARY KEY (source_node, target_node, scan_id, tenant_id)
 );
@@ -136,7 +144,7 @@ CREATE TABLE IF NOT EXISTS interaction_risks (
     description     TEXT DEFAULT '',
     owasp_agentic_tag TEXT DEFAULT NULL,
     scan_id         TEXT NOT NULL,
-    tenant_id       TEXT DEFAULT '',
+    tenant_id       TEXT NOT NULL DEFAULT 'default',
     PRIMARY KEY (pattern, agents, scan_id, tenant_id)
 );
 
@@ -150,6 +158,48 @@ CREATE TABLE IF NOT EXISTS graph_schema_version (
 # ═══════════════════════════════════════════════════════════════════════════
 # Connection helpers
 # ═══════════════════════════════════════════════════════════════════════════
+
+
+def normalize_graph_tenant_id(tenant_id: str | None) -> str:
+    """Map legacy blank graph tenants into the canonical default bucket."""
+
+    return (tenant_id or "").strip() or DEFAULT_GRAPH_TENANT_ID
+
+
+def _backfill_empty_tenant_ids(conn: sqlite3.Connection, table_keys: dict[str, tuple[str, ...]] | None = None) -> None:
+    """Move legacy ``tenant_id = ''`` rows into the default graph tenant.
+
+    When a default-tenant row already exists for the same graph key, keep the
+    explicit default row and drop the duplicate legacy row before updating.
+    """
+
+    specs = table_keys or _GRAPH_TENANT_TABLE_KEYS
+    for table, key_columns in specs.items():
+        table_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'virtual') AND name = ?",
+            (table,),
+        ).fetchone()
+        if table_exists is None:
+            continue
+        if key_columns:
+            key_match = " AND ".join(f"existing.{column} = {table}.{column}" for column in key_columns)
+            conn.execute(
+                f"""
+                DELETE FROM {table}
+                WHERE tenant_id = ''
+                  AND EXISTS (
+                    SELECT 1
+                    FROM {table} existing
+                    WHERE existing.tenant_id = ?
+                      AND {key_match}
+                  )
+                """,  # nosec B608 - table/key names are static internal schema metadata
+                (DEFAULT_GRAPH_TENANT_ID,),
+            )
+        conn.execute(
+            f"UPDATE {table} SET tenant_id = ? WHERE tenant_id = ''",  # nosec B608 - table names are static internal schema metadata
+            (DEFAULT_GRAPH_TENANT_ID,),
+        )
 
 
 def default_graph_db_path() -> Path:
@@ -166,7 +216,7 @@ def default_graph_db_path() -> Path:
     return Path.home() / ".agent-bom" / "db" / "graph.db"
 
 
-def _init_db(conn: sqlite3.Connection) -> None:
+def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) -> None:
     """Ensure tables exist and schema is current."""
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -183,6 +233,8 @@ def _init_db(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE attack_paths ADD COLUMN summary TEXT DEFAULT ''")
     if "tool_exposure" not in existing_columns:
         conn.execute("ALTER TABLE attack_paths ADD COLUMN tool_exposure TEXT DEFAULT '[]'")
+    if backfill_legacy_tenants:
+        _backfill_empty_tenant_ids(conn)
     conn.commit()
 
 
@@ -233,6 +285,7 @@ def open_graph_db(db_path: str | Path) -> Generator[sqlite3.Connection, None, No
 
 def latest_snapshot_id(conn: sqlite3.Connection, *, tenant_id: str = "") -> str:
     """Return the newest snapshot ID for a tenant, or ``""`` when absent."""
+    tenant_id = normalize_graph_tenant_id(tenant_id)
     row = conn.execute(
         """\
         SELECT scan_id
@@ -248,6 +301,7 @@ def latest_snapshot_id(conn: sqlite3.Connection, *, tenant_id: str = "") -> str:
 
 def previous_snapshot_id(conn: sqlite3.Connection, *, tenant_id: str = "", before_scan_id: str = "") -> str:
     """Return the snapshot immediately before ``before_scan_id`` for a tenant."""
+    tenant_id = normalize_graph_tenant_id(tenant_id)
     if not before_scan_id:
         return ""
     current = conn.execute(
@@ -276,6 +330,7 @@ def _resolve_snapshot(
     scan_id: str = "",
 ) -> tuple[str, str]:
     """Resolve the requested or latest snapshot and return ``(scan_id, created_at)``."""
+    tenant_id = normalize_graph_tenant_id(tenant_id)
     effective_scan_id = scan_id or latest_snapshot_id(conn, tenant_id=tenant_id)
     if not effective_scan_id:
         return "", ""
@@ -293,7 +348,7 @@ def _resolve_snapshot(
 
 def save_graph(conn: sqlite3.Connection, graph: UnifiedGraph) -> None:
     """Persist a UnifiedGraph as an immutable per-scan snapshot."""
-    tenant = graph.tenant_id
+    tenant = normalize_graph_tenant_id(graph.tenant_id)
     scan = graph.scan_id
     now = _now_iso()
     batch_size = _graph_write_batch_size()
@@ -438,6 +493,7 @@ def load_graph(
     min_severity_rank: int = 0,
 ) -> UnifiedGraph:
     """Load a UnifiedGraph from a specific scan snapshot."""
+    tenant_id = normalize_graph_tenant_id(tenant_id)
     effective_scan_id, created_at = _resolve_snapshot(conn, tenant_id=tenant_id, scan_id=scan_id)
     graph = UnifiedGraph(scan_id=effective_scan_id, tenant_id=tenant_id, created_at=created_at)
     if not effective_scan_id:
@@ -543,6 +599,7 @@ def diff_snapshots(
     tenant_id: str = "",
 ) -> dict[str, Any]:
     """Compute the diff between two scan snapshots."""
+    tenant_id = normalize_graph_tenant_id(tenant_id)
     old_nodes: dict[str, dict] = {}
     for row in conn.execute(
         "SELECT id, severity, risk_score FROM graph_nodes WHERE scan_id = ? AND tenant_id = ?",
@@ -589,6 +646,7 @@ def list_snapshots(
     limit: int = 50,
 ) -> list[dict[str, Any]]:
     """List recent graph snapshots ordered by creation time desc."""
+    tenant_id = normalize_graph_tenant_id(tenant_id)
     rows = conn.execute(
         """\
         SELECT scan_id, created_at, node_count, edge_count, risk_summary

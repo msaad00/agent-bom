@@ -40,7 +40,7 @@ OpenSSF Scorecard (enrichment)       maintainer quality signal
 ```
 
 **CVSS parsing**: v3.1 and v4.0 implemented from spec, not from a library.
-**Blast radius**: CVE → packages → servers → agents → tools → credentials → risk score.
+**Blast radius**: package → vulnerability finding → MCP servers (tools + credential env names) → connected agents → risk score.
 **Risk score formula**: base_severity + agent_reach + cred_exposure + tool_count + AI_boost + KEV_boost + EPSS_boost + scorecard_boost (all configurable via env vars).
 **Compliance tagging**: 14 frameworks on every blast radius — OWASP LLM, OWASP MCP, OWASP Agentic, ATLAS, NIST AI RMF, EU AI Act, NIST CSF, ISO 27001, SOC 2, CIS Controls, CMMC.
 **Toxic combos**: 8 patterns — CRED_BLAST, KEV_WITH_CREDS, EXECUTE_EXPLOIT, MULTI_AGENT_CVE, TRANSITIVE_CRITICAL, LATERAL_CHAIN, CACHE_POISON, CROSS_AGENT_POISON.
@@ -266,7 +266,7 @@ Enrichment (optional, --enrich flag)
         |
         v
 Blast Radius Analysis (agent-bom's core intelligence)
-├── CVE → package → server → agent reachability graph
+├── package → vulnerability finding → MCP server reachability graph
 ├── Tool exposure: what tools are reachable through the vulnerable path
 ├── Credential exposure: what secrets are at risk
 ├── Risk score: CVSS + reach + AI context + KEV + EPSS + Scorecard

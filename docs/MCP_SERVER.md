@@ -161,7 +161,7 @@ agent-bom proxy-bootstrap \
 |----------|-------|-------------|
 | **Scan** | `scan`, `code_scan`, `vector_db_scan`, `gpu_infra_scan`, `ai_inventory_scan` | Discover agents, scan packages, code, vector stores, GPU infra, and AI usage |
 | **Check** | `check`, `verify`, `marketplace_check`, `license_compliance_scan` | Pre-install CVE gate, integrity verification, marketplace trust, and license policy |
-| **Blast Radius** | `blast_radius` | Map CVE → package → MCP server → agent → credentials → tools |
+| **Blast Radius** | `blast_radius` | Map package → vulnerability finding → MCP server (tools + credential env names) → connected agents |
 | **Registry** | `registry_lookup`, `inventory`, `where`, `fleet_scan` | Query the MCP registry, inspect discovery paths, and summarize fleet inventories |
 | **Compliance** | `compliance`, `cis_benchmark`, `aisvs_benchmark` | Run OWASP, NIST, MITRE ATLAS, CIS, and AISVS-aligned posture checks |
 | **Policy** | `policy_check`, `remediate` | Evaluate policies and generate guided remediation plans |

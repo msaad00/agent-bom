@@ -7,17 +7,17 @@ Scan agents, MCP, packages, containers, Kubernetes, cloud, and GPU workloads wit
 ## What it does
 
 ```
-CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
-  └─ better-sqlite3@9.0.0  (npm)
-       └─ sqlite-mcp  (MCP Server · unverified)
-            ├─ Cursor IDE  (Agent · 4 servers · 12 tools)
-            ├─ ANTHROPIC_KEY, DB_URL, AWS_SECRET  (Credentials exposed)
-            └─ query_db, read_file, write_file  (Tools at risk)
+better-sqlite3@9.0.0  (npm package)
+  ├─ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
+  └─ sqlite-mcp  (MCP Server · unverified)
+       ├─ Cursor IDE  (Agent · 4 servers · 12 tools)
+       ├─ ANTHROPIC_KEY, DB_URL, AWS_SECRET  (Credential env names visible)
+       └─ query_db, read_file, write_file  (Tools at risk)
 
  Fix: upgrade better-sqlite3 → 11.7.0
 ```
 
-Package risk is only the start. agent-bom maps what it can reach across MCP servers, agents, credentials, tools, and runtime context.
+Package risk is only the start. agent-bom maps the reachable path from a vulnerable package instance to MCP servers, agents, credential names, tools, and runtime context.
 
 ## Quick start
 

@@ -1,4 +1,4 @@
-# EKS preset — KEDA-driven autoscaling on the control-plane API tier.
+# EKS preset — KEDA-driven autoscaling on API and gateway tiers.
 #
 # Use this preset when:
 #   * Scanner traffic is bursty (queue-depth / job-completion-rate spikes)
@@ -12,9 +12,12 @@
 # What this preset does
 # ─────────────────────
 #   * Replaces the default CPU-only HPA on `agent-bom-api` with a KEDA
-#     ScaledObject driven by two Prometheus queries:
+#     ScaledObject driven by Prometheus queries:
 #       - rate-limit pressure (saturation precursor)
 #       - API p99 latency (request-servicing health)
+#       - active scan jobs (queue depth)
+#   * Enables the same KEDA path for the gateway when `gateway.enabled=true`,
+#     driven by forwarded relay rate plus relay pressure signals.
 #   * Floors at 3 replicas so a single-AZ blip cannot drop us under quorum.
 #   * Caps at 12 replicas to keep Postgres connection-pool usage bounded.
 #   * 30s poll, 5min cooldown — fast enough for scan-burst patterns,
@@ -77,3 +80,39 @@ controlPlane:
                     value: 4
                     periodSeconds: 30
                 selectPolicy: Max
+
+gateway:
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 12
+    keda:
+      enabled: true
+      pollingIntervalSeconds: 30
+      cooldownSeconds: 300
+      prometheus:
+        serverAddress: http://prometheus.monitoring.svc:9090
+        relayRateThreshold: "25"
+        pressureRateThreshold: "1"
+      fallback:
+        failureThreshold: 3
+        replicas: 3
+      advanced:
+        horizontalPodAutoscalerConfig:
+          behavior:
+            scaleDown:
+              stabilizationWindowSeconds: 300
+              policies:
+                - type: Percent
+                  value: 25
+                  periodSeconds: 60
+            scaleUp:
+              stabilizationWindowSeconds: 30
+              policies:
+                - type: Percent
+                  value: 100
+                  periodSeconds: 30
+                - type: Pods
+                  value: 4
+                  periodSeconds: 30
+              selectPolicy: Max

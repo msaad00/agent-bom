@@ -1,0 +1,59 @@
+{{- /*
+KEDA-driven autoscaling for the gateway tier.
+
+When ``gateway.autoscaling.keda.enabled`` is true, KEDA's ScaledObject
+takes over from the static CPU/memory HPA. The default trigger set uses
+gateway relay metrics exported by ``agent_bom.api.metrics``:
+
+* Forwarded relay rate scales out on healthy traffic growth.
+* Pressure rate scales out before clients see sustained throttling or
+  upstream-circuit saturation.
+
+Operators can replace the defaults with ``gateway.autoscaling.keda.triggers``.
+*/ -}}
+{{- if and .Values.gateway.enabled .Values.gateway.autoscaling.enabled .Values.gateway.autoscaling.keda.enabled }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "agent-bom.name" . }}-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "agent-bom.name" . }}-gateway
+  minReplicaCount: {{ .Values.gateway.autoscaling.minReplicas }}
+  maxReplicaCount: {{ .Values.gateway.autoscaling.maxReplicas }}
+  pollingInterval: {{ .Values.gateway.autoscaling.keda.pollingIntervalSeconds | default 30 }}
+  cooldownPeriod: {{ .Values.gateway.autoscaling.keda.cooldownSeconds | default 300 }}
+  fallback:
+    failureThreshold: {{ .Values.gateway.autoscaling.keda.fallback.failureThreshold | default 3 }}
+    replicas: {{ .Values.gateway.autoscaling.keda.fallback.replicas | default .Values.gateway.autoscaling.minReplicas }}
+  {{- with .Values.gateway.autoscaling.keda.advanced }}
+  advanced:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  triggers:
+    {{- $defaults := .Values.gateway.autoscaling.keda }}
+    {{- if $defaults.triggers }}
+    {{- toYaml $defaults.triggers | nindent 4 }}
+    {{- else }}
+    - type: prometheus
+      metadata:
+        serverAddress: {{ required "gateway.keda.prometheus.serverAddress is required when gateway keda.enabled is true and triggers is empty" $defaults.prometheus.serverAddress | quote }}
+        metricName: agent_bom_gateway_forwarded_relays
+        threshold: {{ $defaults.prometheus.relayRateThreshold | default "25" | quote }}
+        query: |
+          sum(rate(agent_bom_gateway_relays_total{outcome="forwarded"}[1m]))
+    - type: prometheus
+      metadata:
+        serverAddress: {{ $defaults.prometheus.serverAddress | quote }}
+        metricName: agent_bom_gateway_pressure
+        threshold: {{ $defaults.prometheus.pressureRateThreshold | default "1" | quote }}
+        query: |
+          sum(rate(agent_bom_gateway_relays_total{outcome=~"rate_limited|upstream_timeout|upstream_error|circuit_open"}[1m]))
+    {{- end }}
+{{- end }}

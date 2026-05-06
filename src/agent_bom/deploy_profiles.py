@@ -54,6 +54,16 @@ def helm_validation_profiles(repo_root: Path) -> list[HelmValidationProfile]:
             values_files=(examples / "eks-production-values.yaml",),
         ),
         HelmValidationProfile(
+            name="keda-autoscaling",
+            description="Production EKS defaults with KEDA-backed API and gateway autoscaling.",
+            values_files=(
+                examples / "eks-production-values.yaml",
+                examples / "eks-keda-values.yaml",
+            ),
+            set_arguments=("gateway.enabled=true",),
+            set_file_arguments=(("gateway.upstreamsYaml", examples / "gateway-upstreams.example.yaml"),),
+        ),
+        HelmValidationProfile(
             name="eks-vanilla",
             description="Production EKS profile using ALB, IRSA, Kubernetes Secrets, and RDS/Postgres.",
             values_files=(examples / "eks-vanilla-values.yaml",),

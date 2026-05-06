@@ -147,6 +147,22 @@ gateway:
     targetCPUUtilizationPercentage: 70
     targetMemoryUtilizationPercentage: null
     behavior: {}
+    # KEDA-driven autoscaling for gateway relay traffic. When enabled, the
+    # static CPU/memory HPA is suppressed and a ScaledObject is rendered
+    # instead. KEDA generates its own internal HPA.
+    keda:
+      enabled: false
+      pollingIntervalSeconds: 30
+      cooldownSeconds: 300
+      prometheus:
+        serverAddress: ""  # e.g. http://prometheus.monitoring.svc:9090
+        relayRateThreshold: "25"       # forwarded relay requests/sec
+        pressureRateThreshold: "1"     # rate-limited/error/circuit events/sec
+      triggers: []  # set non-empty to fully replace the default Prometheus triggers
+      fallback:
+        failureThreshold: 3
+        replicas: 2
+      advanced: {}
   image:
     repository: agentbom/agent-bom
     # tag defaults to Chart.AppVersion

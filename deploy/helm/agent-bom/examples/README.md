@@ -12,6 +12,7 @@ product split.
 | `focused-pilot` | `eks-mcp-pilot-values.yaml` | Narrow EKS pilot with control plane, scanner, and tightened ingress |
 | `byo-postgres` | `byo-postgres-values.yaml` | Overlay for operator-owned Postgres-compatible databases, including Snowflake Postgres candidates |
 | `production` | `eks-production-values.yaml` | Postgres-backed production EKS rollout with autoscaling, backup, and ExternalSecrets |
+| `keda-autoscaling` | `eks-production-values.yaml` + `eks-keda-values.yaml` + `gateway-upstreams.example.yaml` | Production overlay with KEDA-backed API and gateway autoscaling |
 | `eks-vanilla` | `eks-vanilla-values.yaml` | Postgres-backed production EKS rollout with ALB, IRSA, Kubernetes Secrets, and no service mesh / ESO / cert-manager requirement |
 | `mesh-hardening` | `eks-istio-kyverno-values.yaml` | Overlay for Istio mTLS/authz and Kyverno policy-controller packaging |
 | `snowflake-backend` | `eks-snowflake-values.yaml` | Overlay for Snowflake governance and selected store parity, not a claim of full control-plane replacement |

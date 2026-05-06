@@ -248,6 +248,7 @@ def test_helm_templates_exist():
         "controlplane-ui-hpa.yaml",
         "controlplane-ui-service.yaml",
         "gateway-hpa.yaml",
+        "gateway-keda-scaledobject.yaml",
         "gateway-pdb.yaml",
         "sidecar-injector-cert.yaml",
         "sidecar-injector-deployment.yaml",
@@ -278,6 +279,7 @@ def test_helm_examples_readme_is_shipped():
     assert "sqlite-pilot" in body
     assert "eks-vanilla" in body
     assert "gateway-runtime" in body
+    assert "keda-autoscaling" in body
     assert "install_helm_profile.py" in body
 
 
@@ -475,6 +477,20 @@ def test_helm_gateway_autoscaling_defaults():
     assert autoscaling["targetCPUUtilizationPercentage"] == 70
     assert autoscaling["targetMemoryUtilizationPercentage"] is None
     assert autoscaling["behavior"] == {}
+    assert autoscaling["keda"]["enabled"] is False
+    assert autoscaling["keda"]["prometheus"]["relayRateThreshold"] == "25"
+    assert autoscaling["keda"]["prometheus"]["pressureRateThreshold"] == "1"
+
+
+def test_helm_gateway_keda_template_suppresses_static_hpa():
+    """Gateway KEDA must own autoscaling when enabled, not stack with a static HPA."""
+    hpa_template = (HELM_DIR / "templates" / "gateway-hpa.yaml").read_text()
+    scaled_object = (HELM_DIR / "templates" / "gateway-keda-scaledobject.yaml").read_text()
+
+    assert "(not .Values.gateway.autoscaling.keda.enabled)" in hpa_template
+    assert "kind: ScaledObject" in scaled_object
+    assert "agent_bom_gateway_relays_total" in scaled_object
+    assert "gateway.autoscaling.keda.triggers" in scaled_object
 
 
 def test_helm_control_plane_api_extra_volume_defaults():

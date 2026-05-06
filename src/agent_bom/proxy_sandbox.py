@@ -17,6 +17,8 @@ _DEFAULT_SANDBOX_MEMORY = "512m"
 _DEFAULT_SANDBOX_PIDS_LIMIT = 256
 _DEFAULT_SANDBOX_TMPFS_SIZE = "64m"
 _DEFAULT_SANDBOX_TIMEOUT_SECONDS = 300
+_SANDBOX_ENABLE_VALUES = {"1", "true", "yes", "on", "container", "isolate"}
+_SANDBOX_DISABLE_VALUES = {"0", "false", "no", "off", "disabled", "none"}
 
 _SENSITIVE_EXACT_MOUNT_SOURCES = (Path("/"),)
 
@@ -61,7 +63,7 @@ class SandboxMount:
 class SandboxConfig:
     """Process isolation posture for a proxied MCP server."""
 
-    enabled: bool = False
+    enabled: bool = True
     runtime: SandboxRuntime = "auto"
     image: str | None = None
     image_pin_policy: SandboxImagePinPolicy = "warn"
@@ -168,7 +170,7 @@ def sandbox_config_from_env(
     """Build sandbox config from CLI values and AGENT_BOM_MCP_SANDBOX_* env vars."""
     if enabled is None:
         env_enabled = os.environ.get("AGENT_BOM_MCP_SANDBOX")
-        enabled = bool(env_enabled and env_enabled.strip().lower() in {"1", "true", "yes", "on", "container"})
+        enabled = _sandbox_enabled_from_env(env_enabled)
     else:
         enabled = bool(enabled)
     requested_runtime = (runtime or os.environ.get("AGENT_BOM_MCP_SANDBOX_RUNTIME") or "auto").strip().lower()
@@ -211,6 +213,17 @@ def sandbox_config_from_env(
         tmpfs_size=requested_tmpfs_size,
         timeout_seconds=requested_timeout,
     )
+
+
+def _sandbox_enabled_from_env(value: str | None) -> bool:
+    if value is None:
+        return True
+    normalized = value.strip().lower()
+    if normalized in _SANDBOX_DISABLE_VALUES:
+        return False
+    if normalized in _SANDBOX_ENABLE_VALUES:
+        return True
+    return bool(normalized)
 
 
 def resolve_container_runtime(runtime: SandboxRuntime) -> str:

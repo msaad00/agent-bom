@@ -159,7 +159,7 @@ def _resolve_server_command(server: str) -> list[str]:
 )
 @click.option(
     "--isolate/--no-isolate",
-    default=False,
+    default=True,
     envvar="AGENT_BOM_MCP_SANDBOX",
     help="Run the MCP server through a hardened Docker/Podman container.",
 )

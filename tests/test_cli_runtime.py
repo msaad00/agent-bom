@@ -47,6 +47,30 @@ def test_proxy_cmd_runs_proxy(tmp_path):
         assert result.exit_code == 0
 
 
+def test_proxy_cmd_sandbox_is_enabled_by_default():
+    runner = CliRunner()
+    with (
+        patch("agent_bom.proxy.run_proxy", new_callable=AsyncMock, return_value=0) as mock_run,
+        patch("agent_bom.project_config.load_project_config", return_value=None),
+    ):
+        result = runner.invoke(proxy_cmd, ["--", "echo", "hello"])
+
+    assert result.exit_code == 0
+    assert mock_run.await_args.kwargs["sandbox_config"].enabled is True
+
+
+def test_proxy_cmd_no_isolate_opts_out():
+    runner = CliRunner()
+    with (
+        patch("agent_bom.proxy.run_proxy", new_callable=AsyncMock, return_value=0) as mock_run,
+        patch("agent_bom.project_config.load_project_config", return_value=None),
+    ):
+        result = runner.invoke(proxy_cmd, ["--no-isolate", "--", "echo", "hello"])
+
+    assert result.exit_code == 0
+    assert mock_run.await_args.kwargs["sandbox_config"].enabled is False
+
+
 def test_proxy_cmd_invalid_metrics_port_is_usage_error():
     runner = CliRunner()
     result = runner.invoke(proxy_cmd, ["--metrics-port", "99999", "--", "echo", "hello"])

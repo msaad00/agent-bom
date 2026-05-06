@@ -37,7 +37,7 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 |---|---|
 | **Discovery** | Auto-detect 29 first-class MCP client types plus dynamic/project surfaces |
 | **CVE scanning** | OSV + NVD CVSS v4 + EPSS + CISA KEV + GHSA |
-| **Blast radius** | Map CVE impact: package → server → agent → credentials → tools |
+| **Blast radius** | Map CVE impact: package → vulnerability finding → MCP server (tools + credential env names) → connected agents |
 | **Registry** | 427+ MCP server security metadata entries |
 | **Compliance** | OWASP LLM/Agentic/MCP Top 10, MITRE ATLAS, EU AI Act, NIST AI RMF, CIS |
 | **Runtime proxy** | Policy enforcement, credential leak detection, audit logging |

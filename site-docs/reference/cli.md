@@ -24,6 +24,7 @@
 |---------|-------------|
 | `proxy` | Run an MCP server through the agent-bom security proxy |
 | `audit` | View and analyze a proxy audit JSONL log |
+| `audit-drain-dlq` | Replay or inspect proxy audit dead-letter queue entries |
 
 ### MCP
 

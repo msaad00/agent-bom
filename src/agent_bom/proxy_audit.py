@@ -309,6 +309,90 @@ class AuditSpilloverStore:
                 handle.write(line + "\n")
 
 
+@dataclass(frozen=True)
+class AuditDlqDrainResult:
+    """Summary returned after draining proxy audit DLQ records."""
+
+    dlq_path: Path
+    output_path: Path
+    records_written: int
+    invalid_lines: int
+    remaining_lines: int
+    deleted_drained: bool
+
+
+def drain_proxy_audit_dlq(
+    dlq_path: Path,
+    output_path: Path,
+    *,
+    max_records: int | None = None,
+    delete_drained: bool = False,
+) -> AuditDlqDrainResult:
+    """Append valid proxy audit DLQ records to ``output_path``.
+
+    Invalid JSONL lines are counted and left in place when ``delete_drained``
+    is set, so operators can inspect them separately.
+    """
+    if max_records is not None and max_records <= 0:
+        raise ValueError("max_records must be greater than zero")
+
+    records_to_write: list[str] = []
+    remaining_lines: list[str] = []
+    invalid_lines = 0
+    drained = 0
+
+    with dlq_path.open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.rstrip("\n")
+            stripped = line.strip()
+            if not stripped:
+                if delete_drained:
+                    remaining_lines.append(raw_line)
+                continue
+            try:
+                payload = json.loads(stripped)
+            except json.JSONDecodeError:
+                invalid_lines += 1
+                if delete_drained:
+                    remaining_lines.append(raw_line)
+                continue
+            if not isinstance(payload, dict):
+                invalid_lines += 1
+                if delete_drained:
+                    remaining_lines.append(raw_line)
+                continue
+            if max_records is not None and drained >= max_records:
+                if delete_drained:
+                    remaining_lines.append(raw_line)
+                continue
+            records_to_write.append(json.dumps(payload, separators=(",", ":")))
+            drained += 1
+
+    if records_to_write:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("a", encoding="utf-8") as output:
+            for record in records_to_write:
+                output.write(record + "\n")
+
+    if delete_drained and drained:
+        if remaining_lines:
+            tmp_path = dlq_path.with_name(f"{dlq_path.name}.tmp")
+            with tmp_path.open("w", encoding="utf-8") as tmp:
+                tmp.writelines(remaining_lines)
+            tmp_path.replace(dlq_path)
+        else:
+            dlq_path.unlink()
+
+    return AuditDlqDrainResult(
+        dlq_path=dlq_path,
+        output_path=output_path,
+        records_written=drained,
+        invalid_lines=invalid_lines,
+        remaining_lines=len(remaining_lines) if delete_drained else 0,
+        deleted_drained=delete_drained,
+    )
+
+
 class ProxyMetricsServer:
     """Lightweight HTTP server exposing Prometheus text exposition format on /metrics."""
 

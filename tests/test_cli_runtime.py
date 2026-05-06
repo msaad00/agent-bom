@@ -8,6 +8,7 @@ from click.testing import CliRunner
 
 from agent_bom.cli._runtime import (
     _NoOpDetector,
+    audit_drain_dlq_cmd,
     audit_replay_cmd,
     protect_cmd,
     proxy_bootstrap_cmd,
@@ -402,3 +403,24 @@ def test_audit_replay_cmd_alerts_only(tmp_path):
     runner = CliRunner()
     result = runner.invoke(audit_replay_cmd, [str(log_file), "--alerts-only"])
     assert result.exit_code == 0
+
+
+def test_audit_drain_dlq_cmd_writes_json_summary_and_deletes_drained(tmp_path):
+    import json
+
+    dlq = tmp_path / "audit.dlq.jsonl"
+    output = tmp_path / "drained.jsonl"
+    dlq.write_text('{"event":"one"}\nnot-json\n{"event":"two"}\n', encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        audit_drain_dlq_cmd,
+        [str(dlq), "--output", str(output), "--max-records", "1", "--delete-drained", "--json"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["records_written"] == 1
+    assert payload["invalid_lines"] == 1
+    assert output.read_text(encoding="utf-8") == '{"event":"one"}\n'
+    assert dlq.read_text(encoding="utf-8") == 'not-json\n{"event":"two"}\n'

@@ -19,6 +19,7 @@ GLAMA_SERVER = ROOT / "integrations" / "glama" / "server.json"
 DOCKER_README = ROOT / "DOCKER_HUB_README.md"
 TOP_DOCKERFILE = ROOT / "Dockerfile"
 PYPROJECT = ROOT / "pyproject.toml"
+MCP_REGISTRY = ROOT / "src" / "agent_bom" / "mcp_registry.json"
 MANAGED_IMAGE_REFS: list[tuple[Path, re.Pattern[str]]] = [
     (ROOT / "deploy" / "docker-compose.pilot.yml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)")),
     (ROOT / "deploy" / "docker-compose.runtime.yml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)")),
@@ -143,6 +144,16 @@ def _fail(message: str) -> None:
     raise SystemExit(1)
 
 
+def _assert_mcp_registry_serialization_stable() -> None:
+    sys.path.insert(0, str(ROOT / "src"))
+    from agent_bom.mcp_registry_text import dumps_registry_json
+
+    current = MCP_REGISTRY.read_text(encoding="utf-8")
+    normalized = dumps_registry_json(json.loads(current))
+    if normalized != current:
+        _fail("src/agent_bom/mcp_registry.json is not in canonical registry serialization. Run the registry formatter before tagging.")
+
+
 def _server_card_list(variable_name: str) -> list[dict[str, object]]:
     metadata = ROOT / "src" / "agent_bom" / "mcp_server_metadata.py"
     module = ast.parse(metadata.read_text())
@@ -253,8 +264,8 @@ def main() -> int:
                 if marker in text:
                     _fail(f"{file.relative_to(ROOT)} contains stale toy runtime path: {marker}")
 
-    if len(description) > 120:
-        _fail("pyproject.toml description must stay concise for PyPI storefront rendering")
+    if len(description) > 100:
+        _fail("pyproject.toml description must be <=100 chars for Docker Hub short-description publishing")
     stale_description_markers = [
         "Security scanner for AI infrastructure and supply chain.",
         "19 output formats",
@@ -264,6 +275,8 @@ def main() -> int:
     for marker in stale_description_markers:
         if marker in description:
             _fail(f"pyproject.toml description contains stale storefront phrase: {marker}")
+
+    _assert_mcp_registry_serialization_stable()
 
     if f"## [{version}]" not in changelog:
         _fail(f"CHANGELOG.md must include a {version} release entry before tagging")

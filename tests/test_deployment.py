@@ -333,8 +333,12 @@ def test_docs_workflow_never_deploys_pages_from_release_tags():
 def test_release_registry_gate_is_deterministic_without_live_sync():
     """Tag releases should not mutate the bundled registry from live catalogs."""
     workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text()
+    release_check = (ROOT / "scripts" / "check_release_consistency.py").read_text()
     assert "agent-bom registry status --stale-after-days 14 --fail-on-stale" in workflow
     assert "dumps_registry_json" in workflow
+    assert "dumps_registry_json" in release_check
+    assert "canonical registry " in release_check
+    assert "serialization. Run the registry formatter before tagging." in release_check
     assert "agent-bom registry sync-all" not in workflow
 
 

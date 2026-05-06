@@ -79,6 +79,25 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("docs/PUBLISHING.md", re.compile(r"(git push origin v)\S+", re.M), r"\g<1>{v}"),
     ("ui/tests/nav.test.tsx", re.compile(r"(version:\s*')\d+\.\d+\.\d+(')"), r"\g<1>{v}\g<2>"),
     ("site-docs/deployment/docker.md", re.compile(r"(agentbom/agent-bom:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
+    (
+        "site-docs/deployment/airgapped-image-bundle.md",
+        re.compile(
+            r"(?:"
+            r"(--version\s+)|"
+            r"(agent-bom-airgap-)|"
+            r"(VERSION=)|"
+            r"(tag:\s*\")|"
+            r"(agent-bom-ui:\")"
+            r")\d+\.\d+\.\d+"
+        ),
+        r"\g<1>\g<2>\g<3>\g<4>\g<5>{v}",
+    ),
+    (
+        "site-docs/deployment/aws-company-rollout.md",
+        re.compile(r"((?:--version\s+|refs/tags/v))\d+\.\d+\.\d+"),
+        r"\g<1>{v}",
+    ),
+    ("site-docs/reference/remediate-output.md", re.compile(r'("version":\s*")\d+\.\d+\.\d+(")'), r"\g<1>{v}\g<2>"),
     ("docs/RUNTIME_MONITORING.md", re.compile(r"(agentbom/agent-bom:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     # cve-freshness.yml — SARIF fallback template version
     (".github/workflows/cve-freshness.yml", re.compile(r'("version":")\d+\.\d+\.\d+(")'), r"\g<1>{v}\g<2>"),

@@ -90,10 +90,10 @@ docker run --rm \
 ## Runtime proxy sidecar
 
 ```bash
-docker pull agentbom/agent-bom:0.86.0
+docker pull agentbom/agent-bom:0.86.1
 docker run --rm -i \
   -v ./audit-logs:/var/log/agent-bom \
-  agentbom/agent-bom:0.86.0 \
+  agentbom/agent-bom:0.86.1 \
   --log /var/log/agent-bom/audit.jsonl \
   --block-undeclared \
   -- npx -y @modelcontextprotocol/server-filesystem /workspace

@@ -11,6 +11,17 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.86.1] – 2026-05-06
+
+Patch release alignment after the `v0.86.0` tag failed before publish at the MCP registry serialization gate.
+
+### Fixed
+- **MCP registry release serialization** — reformatted the bundled registry with the canonical Unicode-preserving serializer so the release gate no longer mutates `src/agent_bom/mcp_registry.json` at tag time.
+- **Pre-tag registry serialization guard** — `scripts/check_release_consistency.py` now verifies MCP registry serialization stability during normal CI/pre-release checks, preventing this class of failure from reaching the tag workflow again.
+- **Short-description limit guard** — release consistency now enforces the 100-character publish limit for the package short description before release workflows reach registry publication.
+
+---
+
 ## [0.86.0] – 2026-05-03
 
 AI-infra and supply-chain breadth release: ATLAS catalog wired through to dashboard, Snowflake Native App Phases 1–3 with DCM as a first-class IaC type, GPU cloud + driver/firmware coverage (AMD/Intel/NVIDIA, Lambda Labs / RunPod / Vast.ai / Crusoe / Nebius), Compliance Hub closed end-to-end (#1044), plus two new content scanners (SPDX licenses, dataset PII/PHI).
@@ -1108,7 +1119,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.86.0...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.86.1...HEAD
+[0.86.1]: https://github.com/msaad00/agent-bom/compare/v0.86.0...v0.86.1
 [0.86.0]: https://github.com/msaad00/agent-bom/compare/v0.85.0...v0.86.0
 [0.85.0]: https://github.com/msaad00/agent-bom/compare/v0.84.6...v0.85.0
 [0.84.6]: https://github.com/msaad00/agent-bom/compare/v0.84.5...v0.84.6

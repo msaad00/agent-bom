@@ -1222,6 +1222,77 @@ def test_graph_store_init_adds_query_indexes(mock_pool):
     assert any("idx_pg_attack_paths_scan_risk" in sql for sql, _ in mock_pool._conn.executed)
 
 
+def test_graph_store_init_backfills_empty_tenant_rows(mock_pool):
+    from agent_bom.api.postgres_store import PostgresGraphStore
+
+    PostgresGraphStore(pool=mock_pool)
+
+    expected_tables = {
+        "graph_nodes",
+        "graph_edges",
+        "graph_snapshots",
+        "attack_paths",
+        "interaction_risks",
+        "graph_filter_presets",
+        "graph_node_search",
+    }
+    update_tables = {
+        sql.strip().split()[1]
+        for sql, params in mock_pool._conn.executed
+        if sql.strip().startswith("UPDATE ") and "SET tenant_id = %s WHERE tenant_id = ''" in sql and params == ("default",)
+    }
+    delete_tables = {
+        sql.strip().split()[2]
+        for sql, params in mock_pool._conn.executed
+        if sql.strip().startswith("DELETE FROM ") and "legacy.tenant_id = ''" in sql and params == ("default",)
+    }
+
+    assert expected_tables.issubset(update_tables)
+    assert expected_tables.issubset(delete_tables)
+
+
+def test_graph_store_init_backfills_empty_tenant_rows_with_rls_bypass(mock_pool):
+    from agent_bom.api.postgres_store import PostgresGraphStore
+
+    PostgresGraphStore(pool=mock_pool)
+
+    executed = mock_pool._conn.executed
+    bypass_on_index = next(
+        index for index, (sql, params) in enumerate(executed) if "set_config('app.bypass_rls'" in sql and params == ("1",)
+    )
+    first_backfill_index = next(
+        index
+        for index, (sql, _params) in enumerate(executed)
+        if "legacy.tenant_id = ''" in sql or "SET tenant_id = %s WHERE tenant_id = ''" in sql
+    )
+    bypass_off_after_backfill = any(
+        index > first_backfill_index and "set_config('app.bypass_rls'" in sql and params == ("0",)
+        for index, (sql, params) in enumerate(executed)
+    )
+
+    assert bypass_on_index < first_backfill_index
+    assert bypass_off_after_backfill
+
+
+def test_graph_store_save_graph_normalizes_empty_tenant_to_default(mock_pool):
+    from agent_bom.api.postgres_store import PostgresGraphStore
+    from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode
+
+    store = PostgresGraphStore(pool=mock_pool)
+    graph = UnifiedGraph(scan_id="scan-default")
+    graph.add_node(UnifiedNode(id="agent:default", entity_type=EntityType.AGENT, label="Default Agent"))
+
+    store.save_graph(graph)
+
+    graph_node_rows = [
+        rows for sql, rows in mock_pool._conn.executemany_calls if "INSERT INTO graph_nodes" in sql and "graph_node_search" not in sql
+    ]
+    graph_search_rows = [rows for sql, rows in mock_pool._conn.executemany_calls if "INSERT INTO graph_node_search" in sql]
+
+    assert graph_node_rows[-1][0][17] == "default"
+    assert graph_search_rows[-1][0][1] == "default"
+
+
 def test_graph_store_nodes_by_ids_uses_node_table(mock_pool, monkeypatch):
     from agent_bom.api.postgres_store import PostgresGraphStore
     from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode

@@ -14,7 +14,7 @@ from agent_bom.api.graph_store import SQLiteGraphStore
 from agent_bom.api.routes import graph as graph_routes
 from agent_bom.api.server import app
 from agent_bom.api.stores import set_graph_store
-from agent_bom.db.graph_store import _init_db, load_graph, save_graph
+from agent_bom.db.graph_store import DEFAULT_GRAPH_TENANT_ID, _init_db, load_graph, save_graph
 from agent_bom.graph import (
     AttackPath,
     EntityType,
@@ -73,6 +73,14 @@ def _build_persisted_graph(db, scan_id="test-scan-001"):
     )
     save_graph(db, g)
     return g
+
+
+def _sqlite_tenant_defaults(conn: sqlite3.Connection, tables: tuple[str, ...]) -> dict[str, str | None]:
+    defaults: dict[str, str | None] = {}
+    for table in tables:
+        tenant_row = next(row for row in conn.execute(f"PRAGMA table_info({table})") if row["name"] == "tenant_id")
+        defaults[table] = tenant_row["dflt_value"]
+    return defaults
 
 
 @pytest.fixture
@@ -180,6 +188,139 @@ class TestScanPipelineWiring:
         assert "agent:latest" in latest.nodes
         assert "agent:a" not in latest.nodes
 
+    def test_sqlite_graph_schema_defaults_tenant_to_default(self, graph_db):
+        defaults = _sqlite_tenant_defaults(
+            graph_db,
+            (
+                "graph_nodes",
+                "graph_edges",
+                "graph_snapshots",
+                "attack_paths",
+                "interaction_risks",
+            ),
+        )
+
+        assert defaults
+        assert all(default == "'default'" for default in defaults.values())
+
+    def test_low_level_sqlite_graph_empty_tenant_rows_are_backfilled_to_default(self, tmp_path):
+        db_path = tmp_path / "legacy-low-level-graph.db"
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            _init_db(conn)
+            conn.execute(
+                """
+                INSERT INTO graph_nodes (
+                    id, entity_type, label, first_seen, last_seen, attributes,
+                    compliance_tags, data_sources, dimensions, scan_id, tenant_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "agent:legacy",
+                    "agent",
+                    "Legacy Agent",
+                    "2026-05-01T00:00:00Z",
+                    "2026-05-01T00:00:00Z",
+                    "{}",
+                    "[]",
+                    "[]",
+                    "{}",
+                    "legacy-scan",
+                    "",
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO graph_nodes (
+                    id, entity_type, label, first_seen, last_seen, attributes,
+                    compliance_tags, data_sources, dimensions, scan_id, tenant_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "server:legacy",
+                    "server",
+                    "Legacy Server",
+                    "2026-05-01T00:00:00Z",
+                    "2026-05-01T00:00:00Z",
+                    "{}",
+                    "[]",
+                    "[]",
+                    "{}",
+                    "legacy-scan",
+                    "",
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO graph_edges (
+                    source_id, target_id, relationship, first_seen, last_seen,
+                    evidence, scan_id, tenant_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "agent:legacy",
+                    "server:legacy",
+                    "uses",
+                    "2026-05-01T00:00:00Z",
+                    "2026-05-01T00:00:00Z",
+                    "{}",
+                    "legacy-scan",
+                    "",
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO graph_snapshots (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                ("legacy-scan", "", "2026-05-01T00:00:00Z", 2, 1, "{}"),
+            )
+            conn.execute(
+                """
+                INSERT INTO attack_paths (
+                    source_node, target_node, hop_count, composite_risk, summary,
+                    path_nodes, path_edges, credential_exposure, tool_exposure,
+                    vuln_ids, scan_id, tenant_id, computed_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "agent:legacy",
+                    "server:legacy",
+                    1,
+                    4.2,
+                    "legacy path",
+                    '["agent:legacy", "server:legacy"]',
+                    '["uses"]',
+                    "[]",
+                    "[]",
+                    "[]",
+                    "legacy-scan",
+                    "",
+                    "2026-05-01T00:00:00Z",
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO interaction_risks (pattern, agents, risk_score, description, scan_id, tenant_id)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                ("legacy-pattern", '["agent:legacy"]', 3.5, "legacy risk", "legacy-scan", ""),
+            )
+            conn.commit()
+            _init_db(conn)
+
+            loaded = load_graph(conn, tenant_id=DEFAULT_GRAPH_TENANT_ID, scan_id="legacy-scan")
+            assert sorted(loaded.nodes) == ["agent:legacy", "server:legacy"]
+            assert [(edge.source, edge.target) for edge in loaded.edges] == [("agent:legacy", "server:legacy")]
+            assert [path.summary for path in loaded.attack_paths] == ["legacy path"]
+            assert [risk.pattern for risk in loaded.interaction_risks] == ["legacy-pattern"]
+
+            for table in ("graph_nodes", "graph_edges", "graph_snapshots", "attack_paths", "interaction_risks"):
+                assert conn.execute(f"SELECT COUNT(*) FROM {table} WHERE tenant_id = ''").fetchone()[0] == 0
+        finally:
+            conn.close()
+
 
 class TestGraphEndpointLogic:
     """Test the endpoint logic directly (no HTTP, just function calls)."""
@@ -266,6 +407,105 @@ class TestGraphEndpointLogic:
         assert total == 1
         assert [node.id for node in results] == ["server:acme:vector"]
         assert next_cursor is None
+
+    def test_sqlite_graph_store_empty_tenant_rows_query_under_default(self, tmp_path):
+        store = SQLiteGraphStore(tmp_path / "legacy-api-graph.db")
+        conn = store._open_rw_conn()
+        try:
+            conn.execute(
+                """
+                INSERT INTO graph_nodes (
+                    id, entity_type, label, first_seen, last_seen, attributes,
+                    compliance_tags, data_sources, dimensions, scan_id, tenant_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "agent:legacy-api",
+                    "agent",
+                    "Legacy API Agent",
+                    "2026-05-01T00:00:00Z",
+                    "2026-05-01T00:00:00Z",
+                    "{}",
+                    "[]",
+                    "[]",
+                    "{}",
+                    "legacy-api-scan",
+                    "",
+                ),
+            )
+            conn.execute(
+                """
+                INSERT INTO graph_snapshots (scan_id, tenant_id, created_at, node_count, edge_count, risk_summary)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                ("legacy-api-scan", "", "2026-05-01T00:00:00Z", 1, 0, "{}"),
+            )
+            conn.execute(
+                """
+                INSERT INTO graph_filter_presets (name, tenant_id, description, filters, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                ("legacy-filter", "", "legacy filter", '{"entity_types":["agent"]}', "2026-05-01T00:00:00Z"),
+            )
+            conn.execute(
+                """
+                INSERT INTO graph_node_search (
+                    tenant_id, scan_id, node_id, entity_type, severity, compliance_tags, data_sources, search_text
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("", "legacy-api-scan", "agent:legacy-api", "agent", "", "", "", "legacy api agent"),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        loaded = store.load_graph(tenant_id="default", scan_id="legacy-api-scan")
+        search_results, search_total, _ = store.search_nodes(
+            tenant_id="default",
+            scan_id="legacy-api-scan",
+            query="legacy",
+            limit=10,
+        )
+        presets = store.list_presets(tenant_id="default")
+
+        assert list(loaded.nodes) == ["agent:legacy-api"]
+        assert search_total == 1
+        assert [node.id for node in search_results] == ["agent:legacy-api"]
+        assert [preset["name"] for preset in presets] == ["legacy-filter"]
+
+        conn = sqlite3.connect(tmp_path / "legacy-api-graph.db")
+        try:
+            for table in ("graph_nodes", "graph_snapshots", "graph_filter_presets", "graph_node_search"):
+                assert conn.execute(f"SELECT COUNT(*) FROM {table} WHERE tenant_id = ''").fetchone()[0] == 0
+        finally:
+            conn.close()
+
+    def test_sqlite_graph_store_read_path_does_not_run_legacy_backfill(self, tmp_path, monkeypatch):
+        store = SQLiteGraphStore(tmp_path / "read-path-graph.db")
+        graph = UnifiedGraph(scan_id="read-scan", tenant_id="tenant-alpha")
+        graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        store.save_graph(graph)
+
+        def fail_backfill(*_args, **_kwargs):
+            raise sqlite3.OperationalError("database is locked")
+
+        monkeypatch.setattr("agent_bom.api.graph_store.sqlite_graph_store._backfill_empty_tenant_ids", fail_backfill)
+
+        loaded = store.load_graph(tenant_id="tenant-alpha", scan_id="read-scan")
+
+        assert "agent:a" in loaded.nodes
+
+    def test_sqlite_graph_store_new_api_tables_do_not_default_to_empty_tenant(self, tmp_path):
+        store = SQLiteGraphStore(tmp_path / "schema-defaults.db")
+        conn = store._open_rw_conn()
+        try:
+            defaults = _sqlite_tenant_defaults(conn, ("graph_filter_presets",))
+            search_tenant = next(row for row in conn.execute("PRAGMA table_info(graph_node_search)") if row["name"] == "tenant_id")
+        finally:
+            conn.close()
+
+        assert defaults["graph_filter_presets"] == "'default'"
+        assert search_tenant["dflt_value"] is None
 
     def test_sqlite_graph_store_search_applies_slice_filters(self, tmp_path):
         store = SQLiteGraphStore(tmp_path / "graph.db")

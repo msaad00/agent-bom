@@ -1251,6 +1251,29 @@ def test_graph_store_init_backfills_empty_tenant_rows(mock_pool):
     assert expected_tables.issubset(delete_tables)
 
 
+def test_graph_store_init_backfills_empty_tenant_rows_with_rls_bypass(mock_pool):
+    from agent_bom.api.postgres_store import PostgresGraphStore
+
+    PostgresGraphStore(pool=mock_pool)
+
+    executed = mock_pool._conn.executed
+    bypass_on_index = next(
+        index for index, (sql, params) in enumerate(executed) if "set_config('app.bypass_rls'" in sql and params == ("1",)
+    )
+    first_backfill_index = next(
+        index
+        for index, (sql, _params) in enumerate(executed)
+        if "legacy.tenant_id = ''" in sql or "SET tenant_id = %s WHERE tenant_id = ''" in sql
+    )
+    bypass_off_after_backfill = any(
+        index > first_backfill_index and "set_config('app.bypass_rls'" in sql and params == ("0",)
+        for index, (sql, params) in enumerate(executed)
+    )
+
+    assert bypass_on_index < first_backfill_index
+    assert bypass_off_after_backfill
+
+
 def test_graph_store_save_graph_normalizes_empty_tenant_to_default(mock_pool):
     from agent_bom.api.postgres_store import PostgresGraphStore
     from agent_bom.graph import EntityType, UnifiedGraph, UnifiedNode

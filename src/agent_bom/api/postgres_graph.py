@@ -14,7 +14,7 @@ from agent_bom.config import POSTGRES_GRAPH_SEARCH_TIMEOUT_MS, POSTGRES_STATEMEN
 from agent_bom.db.graph_store import DEFAULT_GRAPH_TENANT_ID, normalize_graph_tenant_id
 from agent_bom.graph import EntityType
 
-from .postgres_common import _ensure_tenant_rls, _get_pool, _tenant_connection
+from .postgres_common import _apply_tenant_session, _ensure_tenant_rls, _get_pool, _tenant_connection, bypass_tenant_rls
 
 _ALLOWED_ENTITY_TYPES = {entity_type.value for entity_type in EntityType}
 _DEFAULT_GRAPH_WRITE_BATCH_SIZE = 1000
@@ -278,7 +278,10 @@ class PostgresGraphStore:
                 ON graph_node_search(tenant_id, scan_id, severity)
                 """
             )
-            _backfill_empty_tenant_ids(conn)
+            with bypass_tenant_rls():
+                _apply_tenant_session(conn)
+                _backfill_empty_tenant_ids(conn)
+            _apply_tenant_session(conn)
             try:
                 conn.execute("CREATE EXTENSION IF NOT EXISTS pg_trgm")
                 conn.execute(

@@ -1,6 +1,6 @@
 """Fleet scan — batch registry lookup + risk scoring for MCP server inventories.
 
-Accepts a list of MCP server names (e.g. from CrowdStrike, SIEM, CSV export)
+Accepts a list of MCP server names (e.g. from EDR, SIEM, CSV export)
 and returns per-server risk assessments using the local registry.
 
 Every field is traceable to a source:
@@ -148,7 +148,7 @@ def fleet_scan(
     """Scan a list of MCP server names against the registry.
 
     Args:
-        server_names: List of server names (e.g. from CrowdStrike endpoint data,
+        server_names: List of server names (e.g. from endpoint security data,
             CSV export, SIEM query). Can include npm-style scoped packages
             (@org/name), plain names, or command names.
         registry: Optional pre-loaded registry dict. Loaded from disk if None.

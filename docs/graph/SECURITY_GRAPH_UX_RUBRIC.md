@@ -5,9 +5,8 @@ standard. Use it when changing `/graph`, `/security-graph`, `/mesh`,
 graph APIs, screenshots, or graph documentation.
 
 The target is a security-operator graph, not a generic node canvas. It should
-feel closer to the investigation workflows in products such as Wiz, Orca, and
-CrowdStrike: start with what to fix, explain why it matters, show the path to
-the impacted asset, and let the operator expand context only when needed.
+start with what to fix, explain why it matters, show the path to the impacted
+asset, and let the operator expand context only when needed.
 
 ## North Star
 

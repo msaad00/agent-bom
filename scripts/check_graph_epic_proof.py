@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PROOF = ROOT / "docs" / "graph" / "WIZ_CLASS_GRAPH_PROOF.md"
+PROOF = ROOT / "docs" / "graph" / "SECURITY_GRAPH_EPIC_PROOF.md"
 EDGE_COUNTS = ROOT / "tests" / "fixtures" / "graph_edge_counts.json"
 GRAPH_SNAPSHOT = ROOT / "tests" / "fixtures" / "graph-snapshots" / "security-graph.json"
 EFFECTIVE_REACH = ROOT / "tests" / "fixtures" / "effective_reach_snapshots.json"

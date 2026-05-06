@@ -779,7 +779,7 @@ async def get_fix_first_graph_view(
 
     This endpoint is intentionally more product-shaped than `/v1/graph`: it
     ranks persisted attack paths and attaches the operator context needed for
-    a Wiz/Orca-style remediation cockpit. The full topology remains available
+    a fix-first remediation cockpit. The full topology remains available
     through `/v1/graph`; this view answers "what should I inspect first?"
     """
 

@@ -1,4 +1,4 @@
-# Wiz-Class Graph Epic Closure Proof
+# Best-In-Class Graph Epic Closure Proof
 
 This proof is the closure artifact for #2254. It records what is now guaranteed by the repo, where the deterministic evidence lives, and what remains outside the current guarantee.
 

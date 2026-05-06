@@ -89,7 +89,7 @@ those require a published external corpus.
 ## Inspect graph epic proof
 
 Graph release claims are backed by the closure artifact in
-[`docs/graph/WIZ_CLASS_GRAPH_PROOF.md`](graph/WIZ_CLASS_GRAPH_PROOF.md):
+[`docs/graph/SECURITY_GRAPH_EPIC_PROOF.md`](graph/SECURITY_GRAPH_EPIC_PROOF.md):
 
 ```bash
 python scripts/check_graph_epic_proof.py

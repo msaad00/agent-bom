@@ -326,7 +326,7 @@ def register_operator_tools(
     ) -> str:
         """Batch-scan a list of MCP server names against the security metadata registry.
 
-        Designed for fleet inventory data (CrowdStrike, SIEM, CSV exports) where
+        Designed for fleet inventory data (EDR, SIEM, CSV exports) where
         you have server names but not versions. Returns per-server risk assessment
         with registry match status, risk category, tools, credentials, known CVEs,
         and a verdict (known-high-risk, known-medium, known-low, unknown-unvetted).

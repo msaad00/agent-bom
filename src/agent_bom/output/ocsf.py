@@ -1,7 +1,7 @@
 """OCSF v1.1 audit log format for agent-bom runtime alerts.
 
 Converts runtime alerts to Open Cybersecurity Schema Framework (OCSF) v1.1
-format for enterprise SIEM integration (Splunk, CrowdStrike, Elastic, etc.).
+format for enterprise SIEM and detection-platform integration.
 
 OCSF event class: Security Finding (2001)
 Category: Findings (2)

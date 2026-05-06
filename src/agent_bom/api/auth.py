@@ -336,13 +336,30 @@ def create_api_key(
     and should be given to the user. Only the scrypt-derived hash is stored.
     """
     raw_key = f"abom_{secrets.token_urlsafe(32)}"
+    return raw_key, create_api_key_record(
+        raw_key,
+        name=name,
+        role=role,
+        expires_at=expires_at,
+        scopes=scopes,
+        tenant_id=tenant_id,
+    )
+
+
+def create_api_key_record(
+    raw_key: str,
+    name: str,
+    role: Role,
+    expires_at: str | None = None,
+    scopes: list[str] | None = None,
+    tenant_id: str = "default",
+) -> ApiKey:
+    """Create a stored API key record for an operator-supplied raw key."""
     salt = os.urandom(16)
     key_hash = _derive_key(raw_key, salt)
-    key_id = secrets.token_hex(8)
-
     normalized_expiry = normalize_api_key_expiry(expires_at)
-    api_key = ApiKey(
-        key_id=key_id,
+    return ApiKey(
+        key_id=secrets.token_hex(8),
         key_hash=key_hash,
         key_salt=salt.hex(),
         key_prefix=raw_key[:12],
@@ -352,7 +369,6 @@ def create_api_key(
         scopes=scopes or [],
         tenant_id=tenant_id,
     )
-    return raw_key, api_key
 
 
 def verify_api_key(raw_key: str, stored_keys: list[ApiKey]) -> ApiKey | None:

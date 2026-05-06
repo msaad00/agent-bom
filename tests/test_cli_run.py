@@ -194,6 +194,20 @@ def test_run_passes_sandbox_config_to_run_proxy():
     mock_asyncio_run.assert_called_once()
 
 
+def test_run_no_isolate_opts_out():
+    runner = CliRunner()
+
+    with (
+        patch("agent_bom.cli.run.asyncio.run") as mock_asyncio_run,
+        patch("agent_bom.project_config.load_project_config", return_value=None),
+    ):
+        mock_asyncio_run.side_effect = _consume_coroutine_and_return()
+        result = runner.invoke(run_cmd, ["uvx/mcp-server-git", "--quiet", "--no-isolate"])
+
+    assert result.exit_code == 0
+    mock_asyncio_run.assert_called_once()
+
+
 def test_run_command_not_found_handled(tmp_path):
     """When asyncio.run raises FileNotFoundError the error surfaces cleanly."""
     runner = CliRunner()

@@ -67,7 +67,7 @@ from agent_bom.cli._common import OPTIONAL_PORT_RANGE, PORT_RANGE
 )
 @click.option(
     "--isolate/--no-isolate",
-    default=False,
+    default=True,
     envvar="AGENT_BOM_MCP_SANDBOX",
     help="Run the stdio MCP server through a hardened Docker/Podman container.",
 )

@@ -209,8 +209,8 @@ def sandbox_posture_warning(sandbox_evidence: Mapping[str, object]) -> str | Non
         return None
     return (
         "agent-bom proxy warning: sandbox isolation is disabled; the MCP server "
-        "runs as the current host user. Set AGENT_BOM_MCP_SANDBOX=1 or pass "
-        "--isolate to run the server in a restricted container."
+        "runs as the current host user. Remove --no-isolate or set "
+        "AGENT_BOM_MCP_SANDBOX=1 to run the server in a restricted container."
     )
 
 

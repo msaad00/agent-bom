@@ -92,6 +92,23 @@ def test_sandbox_config_from_env_parses_operator_values(monkeypatch, tmp_path):
     assert config.mounts[0].target == "/workspace"
 
 
+def test_sandbox_config_defaults_to_enabled(monkeypatch):
+    monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX", raising=False)
+
+    config = sandbox_config_from_env()
+
+    assert config.enabled is True
+
+
+@pytest.mark.parametrize("value", ["0", "false", "no", "off", "disabled", "none"])
+def test_sandbox_config_env_false_values_opt_out(monkeypatch, value):
+    monkeypatch.setenv("AGENT_BOM_MCP_SANDBOX", value)
+
+    config = sandbox_config_from_env()
+
+    assert config.enabled is False
+
+
 def test_sandbox_config_defaults_are_bounded_and_network_none(monkeypatch):
     monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX_EGRESS", raising=False)
     monkeypatch.delenv("AGENT_BOM_MCP_SANDBOX_CPUS", raising=False)

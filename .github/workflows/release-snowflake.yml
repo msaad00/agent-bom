@@ -38,9 +38,11 @@ jobs:
     outputs:
       package_version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      # actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
-      - uses: actions/setup-python@v5
+      # actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
         with:
           python-version: "3.11"
 
@@ -67,12 +69,22 @@ jobs:
           PY
 
       - name: Validate manifest and service specs
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           python - <<'PY'
           from pathlib import Path
           import yaml
+          import os
 
           root = Path("deploy/snowflake/native-app")
+          version = os.environ["PACKAGE_VERSION"]
+          documents = [root / "manifest.yml", *sorted((root / "service-specs").glob("*.yaml"))]
+          for path in documents:
+              text = path.read_text()
+              assert ":latest" not in text, f"{path} uses a mutable :latest image tag"
+              assert f":{version}" in text, f"{path} does not reference package image tag {version}"
+
           yaml.safe_load((root / "manifest.yml").read_text())
           for spec in sorted((root / "service-specs").glob("*.yaml")):
               data = yaml.safe_load(spec.read_text())
@@ -85,7 +97,8 @@ jobs:
           tar -czf "dist/agent-bom-snowflake-${{ steps.version.outputs.version }}.tgz" \
             -C deploy/snowflake/native-app .
 
-      - uses: actions/upload-artifact@v4
+      # actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: agent-bom-snowflake-${{ steps.version.outputs.version }}
           path: dist/agent-bom-snowflake-${{ steps.version.outputs.version }}.tgz
@@ -99,7 +112,8 @@ jobs:
     if: ${{ inputs.dry_run == false }}
     environment: snowflake-marketplace
     steps:
-      - uses: actions/download-artifact@v4
+      # actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           name: agent-bom-snowflake-${{ needs.package.outputs.package_version }}
           path: dist

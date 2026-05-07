@@ -214,6 +214,16 @@ gateway:
     create: true
     name: ""
     annotations: {}
+  # Gateway-specific default-deny egress. Kubernetes NetworkPolicy cannot
+  # portably express FQDNs from upstream URLs, so operators should translate
+  # configured upstream MCPs/control-plane discovery targets into ipBlock or
+  # pod/namespace selectors here. With gateway.enabled=true this policy keeps
+  # gateway egress closed except DNS and the explicit rules below.
+  networkPolicy:
+    enabled: true
+    allowDns: true
+    egress: []
+    additionalEgress: []
   extraVolumes: []
   extraVolumeMounts: []
   resources:

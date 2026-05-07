@@ -1,0 +1,38 @@
+{{- if and .Values.gateway.enabled .Values.gateway.networkPolicy.enabled }}
+{{- $egress := .Values.gateway.networkPolicy.egress | default list }}
+{{- $additionalEgress := .Values.gateway.networkPolicy.additionalEgress | default list }}
+{{- $hasEgress := or .Values.gateway.networkPolicy.allowDns (gt (len $egress) 0) (gt (len $additionalEgress) 0) }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "agent-bom.name" . }}-gateway
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "agent-bom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "agent-bom.name" . }}
+      app.kubernetes.io/component: gateway
+  policyTypes:
+    - Egress
+  {{- if not $hasEgress }}
+  egress: []
+  {{- else }}
+  egress:
+    {{- if .Values.gateway.networkPolicy.allowDns }}
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- end }}
+    {{- with $egress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with $additionalEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+{{- end }}

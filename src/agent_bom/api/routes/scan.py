@@ -532,6 +532,23 @@ async def create_scan(request: Request, body: ScanRequest) -> ScanJob:
     )
 
 
+@router.get("/v1/scan/drivers", tags=["scan"])
+async def list_scan_drivers(include_planned: bool = True) -> dict:
+    """List scanner driver contracts and orchestration semantics."""
+
+    from agent_bom.scanners.registry import (
+        list_registered_scanners,
+        scanner_registry_summary,
+        scanner_registry_warnings,
+    )
+
+    return {
+        "drivers": [registration.to_dict() for registration in list_registered_scanners(include_planned=include_planned)],
+        "summary": scanner_registry_summary(),
+        "warnings": scanner_registry_warnings(),
+    }
+
+
 @router.get("/v1/scan/{job_id}", response_model=ScanJob, tags=["scan"])
 async def get_scan(request: Request, job_id: str) -> ScanJob:
     """Fetch scan status and full results."""

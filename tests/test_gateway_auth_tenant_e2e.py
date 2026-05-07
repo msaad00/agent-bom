@@ -90,7 +90,7 @@ def pilot_fleet():
         store,
         "tenant-alpha",
         servers=[
-            {"name": "jira", "url": "https://mcp.jira.example.com/sse", "transport": "sse"},
+            {"name": "jira", "url": "https://mcp.jira.example.com/mcp", "transport": "streamable-http"},
             {"name": "internal", "url": "http://mcp.internal.svc.cluster.local:8100", "transport": "http"},
         ],
     )
@@ -149,7 +149,7 @@ def test_full_pilot_flow_auth_tenant_discovery_relay_policy_audit_metrics(pilot_
             [
                 UpstreamConfig(
                     name="jira",
-                    url="https://mcp.jira.example.com/sse",
+                    url="https://mcp.jira.example.com/mcp",
                     auth="bearer",
                     token_env="JIRA_MCP_TOKEN",
                 )

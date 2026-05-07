@@ -25,6 +25,7 @@ from fastapi.responses import JSONResponse, Response
 
 from agent_bom.api.models import EvaluateRequest, JobStatus, PolicyCreate, PolicyUpdate
 from agent_bom.api.stores import _get_policy_store, _get_store
+from agent_bom.gateway_upstreams import is_gateway_compatible_upstream_transport
 from agent_bom.rbac import require_authenticated_permission
 
 if TYPE_CHECKING:
@@ -331,9 +332,11 @@ async def discovered_upstreams(request: Request) -> dict:
 
     Aggregates every MCP server surfaced by the fleet-scan path (pushed
     via ``/v1/fleet/sync`` or returned from in-cluster scans) that has a
-    real HTTP(S) URL — i.e. something a multi-MCP gateway can actually
-    front. stdio servers are excluded because they only make sense as a
-    per-workload sidecar / wrapper (``agent-bom proxy -- <cmd>``).
+    streamable HTTP URL — i.e. something this multi-MCP gateway can
+    relay with JSON-RPC-over-HTTP POST. stdio servers are excluded because
+    they only make sense as a per-workload sidecar / wrapper
+    (``agent-bom proxy -- <cmd>``); legacy SSE endpoints are excluded
+    because the gateway does not maintain persistent upstream SSE clients.
 
     Response shape matches the ``upstreams.yaml`` the gateway consumes,
     so a gateway pod can pull this endpoint at startup and every N
@@ -348,7 +351,7 @@ async def discovered_upstreams(request: Request) -> dict:
           "tenant_id": "...",
           "source": "fleet_scan_aggregate",
           "upstreams": [
-            {"name": "jira", "url": "https://...", "transport": "sse",
+            {"name": "jira", "url": "https://...", "transport": "streamable-http",
              "auth": "none", "source_agents": ["agent-a", ...]},
             ...
           ]
@@ -378,20 +381,22 @@ async def discovered_upstreams(request: Request) -> dict:
             agent_name = agent.get("name") or agent.get("agent_name") or ""
             for server in agent.get("servers") or []:
                 url = server.get("url") or ""
-                if not url.startswith(("http://", "https://")):
-                    # Skip stdio MCPs — they're per-workload sidecar territory.
-                    continue
                 name = server.get("name") or ""
                 if not name:
                     continue
                 transport = server.get("transport") or "http"
+                if not is_gateway_compatible_upstream_transport(transport, url):
+                    # Skip stdio and SSE MCPs. The gateway upstream relay is
+                    # streamable-http only; SSE requires a persistent upstream
+                    # event client that this relay intentionally does not run.
+                    continue
                 key = (name, url)
                 record = by_key.setdefault(
                     key,
                     {
                         "name": name,
                         "url": url,
-                        "transport": transport,
+                        "transport": "streamable-http",
                         "auth": "none",
                         "source_agents": [],
                     },

@@ -29,8 +29,10 @@ That endpoint aggregates tenant-scoped remote MCP servers already surfaced by:
 
 Important boundaries:
 
-- only remote `http` / `https` / `sse` upstreams are returned
+- only remote streamable HTTP upstreams are returned
 - `stdio` MCPs are intentionally excluded
+- legacy SSE `/sse` upstreams are intentionally excluded because the gateway
+  POSTs JSON-RPC upstream and does not run a persistent SSE upstream client
 - discovered upstreams always come back with `auth: "none"`
 - credentials stay in Secrets and are overlaid locally through `--upstreams`
 
@@ -40,7 +42,7 @@ You need:
 
 1. a control plane with discovered MCP servers for the tenant
 2. a gateway bearer token or API key that can read the discovery endpoint
-3. remote MCPs that actually expose HTTP/SSE transport
+3. remote MCPs that expose streamable HTTP transport
 
 ## Minimal worked example
 
@@ -70,7 +72,8 @@ Example overlay:
 ```yaml
 upstreams:
   - name: github
-    url: https://mcp.github.example.com/sse
+    url: https://mcp.github.example.com/mcp
+    transport: streamable-http
     auth: bearer
     token_env: GITHUB_MCP_TOKEN
 ```
@@ -95,7 +98,7 @@ Expected response shape:
     {
       "name": "jira",
       "url": "https://mcp.example.internal/jira",
-      "transport": "sse",
+      "transport": "streamable-http",
       "auth": "none",
       "source_agents": ["mac-laptop-1", "windows-laptop-3"]
     }

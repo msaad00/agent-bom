@@ -355,7 +355,7 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign API image
         run: cosign sign --yes "agentbom/agent-bom@${{ steps.build-api-image.outputs.digest }}"
@@ -549,7 +549,7 @@ jobs:
           rm -f "$RESPONSE_FILE"
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign UI image
         run: cosign sign --yes "agentbom/agent-bom-ui@${{ steps.build-ui-image.outputs.digest }}"
@@ -876,7 +876,7 @@ jobs:
           path: dist/
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@cad07c2e89fa2edd6e2d7bab4c1aa38e53f76003 # v4.1.1
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
 
       - name: Sign wheels and sdist
         run: |

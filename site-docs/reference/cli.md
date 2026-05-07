@@ -17,6 +17,7 @@
 | `verify` | Verify package integrity / provenance or self-verify `agent-bom` |
 | `secrets` | Scan a directory for hardcoded secrets and PII |
 | `code` | Analyze source code for AI components, prompts, guardrails, and tools |
+| `scanners` | List scanner driver capabilities, inputs, outputs, and failure semantics |
 
 ### Runtime
 

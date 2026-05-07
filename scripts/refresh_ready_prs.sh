@@ -21,8 +21,12 @@ MIN_AGE_MINUTES="${MIN_AGE_MINUTES:-3}"
 REQUIRE_AUTO_MERGE="${REQUIRE_AUTO_MERGE:-true}"
 DRY_RUN="${DRY_RUN:-false}"
 REQUIRED_CHECK="${REQUIRED_CHECK:-Lint and Type Check}"
+REQUIRED_CHECKS="${REQUIRED_CHECKS:-${REQUIRED_CHECK}}"
 MAX_POLLS="${MAX_POLLS:-12}"
 POLL_SECONDS="${POLL_SECONDS:-5}"
+AUTOMATION_SSH_SIGNING_KEY="${AUTOMATION_SSH_SIGNING_KEY:-}"
+AUTOMATION_COMMIT_EMAIL="${AUTOMATION_COMMIT_EMAIL:-34316639+msaad00@users.noreply.github.com}"
+AUTOMATION_COMMIT_NAME="${AUTOMATION_COMMIT_NAME:-github-actions[bot]}"
 
 if ! command -v gh >/dev/null 2>&1; then
   echo "gh is required" >&2
@@ -66,6 +70,68 @@ commits_missing_from_head() {
   local head_sha="$1"
   local base_sha="$2"
   gh api "repos/${REPO}/compare/${head_sha}...${base_sha}" --jq .ahead_by
+}
+
+push_url() {
+  if [ -n "${GIT_PUSH_URL:-}" ]; then
+    printf '%s\n' "${GIT_PUSH_URL}"
+  elif [ -n "${GH_TOKEN:-}" ]; then
+    printf 'https://x-access-token:%s@github.com/%s.git\n' "${GH_TOKEN}" "${REPO}"
+  else
+    printf 'git@github.com:%s.git\n' "${REPO}"
+  fi
+}
+
+configure_signed_commits() {
+  local repo_dir="$1"
+  local pubkey_path
+
+  if [ -z "${AUTOMATION_SSH_SIGNING_KEY}" ]; then
+    echo "AUTOMATION_SSH_SIGNING_KEY is required to refresh protected PR branches without creating unsigned commits." >&2
+    return 1
+  fi
+
+  eval "$(ssh-agent -s)" >/dev/null
+  ssh-add - <<< "${AUTOMATION_SSH_SIGNING_KEY}" >/dev/null
+  pubkey_path="${RUNNER_TEMP:-/tmp}/automation_signing_key.pub"
+  ssh-keygen -y -f <(printf '%s\n' "${AUTOMATION_SSH_SIGNING_KEY}") > "${pubkey_path}"
+  git -C "${repo_dir}" config user.name "${AUTOMATION_COMMIT_NAME}"
+  git -C "${repo_dir}" config user.email "${AUTOMATION_COMMIT_EMAIL}"
+  git -C "${repo_dir}" config gpg.format ssh
+  git -C "${repo_dir}" config user.signingkey "${pubkey_path}"
+  git -C "${repo_dir}" config commit.gpgsign true
+}
+
+refresh_pr_with_signed_merge() {
+  local pr="$1"
+  local head_ref="$2"
+  local head_sha="$3"
+  local tmp_dir remote_url actual_head
+
+  tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "${tmp_dir}"' RETURN
+  remote_url="$(push_url)"
+
+  git -C "${tmp_dir}" init -q
+  git -C "${tmp_dir}" remote add origin "${remote_url}"
+  git -C "${tmp_dir}" fetch --no-tags origin \
+    "refs/heads/${BASE_BRANCH}:refs/remotes/origin/${BASE_BRANCH}" \
+    "refs/heads/${head_ref}:refs/remotes/origin/${head_ref}"
+  git -C "${tmp_dir}" switch -q --detach "origin/${head_ref}"
+
+  actual_head="$(git -C "${tmp_dir}" rev-parse HEAD)"
+  if [ "${actual_head}" != "${head_sha}" ]; then
+    echo "PR #${pr}: head changed while preparing refresh (${head_sha} -> ${actual_head}); next run will retry."
+    return 0
+  fi
+
+  configure_signed_commits "${tmp_dir}"
+  git -C "${tmp_dir}" merge --no-ff -S -m "Merge branch '${BASE_BRANCH}' into ${head_ref}" "origin/${BASE_BRANCH}"
+  git -C "${tmp_dir}" verify-commit HEAD
+  git -C "${tmp_dir}" push \
+    --force-with-lease="refs/heads/${head_ref}:${head_sha}" \
+    origin \
+    "HEAD:refs/heads/${head_ref}"
 }
 
 poll_head_change() {
@@ -137,7 +203,7 @@ refresh_pr() {
   missing="$(commits_missing_from_head "${head_sha}" "$(base_sha)")"
   if [ "${missing}" -eq 0 ]; then
     echo "PR #${pr}: already contains current ${BASE_BRANCH}; checking for stranded CI."
-    REQUIRED_CHECK="${REQUIRED_CHECK}" scripts/retrigger_stranded_pr.sh "${pr}"
+    REQUIRED_CHECKS="${REQUIRED_CHECKS}" scripts/retrigger_stranded_pr.sh "${pr}"
     return 0
   fi
 
@@ -147,16 +213,7 @@ refresh_pr() {
     return 0
   fi
 
-  if output="$(gh pr update-branch "${pr}" --repo "${REPO}" 2>&1)"; then
-    printf '%s\n' "${output}"
-  else
-    if grep -qi "update.*already.*progress" <<< "${output}"; then
-      echo "PR #${pr}: branch update already in progress; next run will verify CI."
-      return 0
-    fi
-    printf '%s\n' "${output}" >&2
-    return 1
-  fi
+  refresh_pr_with_signed_merge "${pr}" "${head_ref}" "${head_sha}"
 
   updated_sha="$(poll_head_change "${pr}" "${head_sha}")"
   if [ "${updated_sha}" = "${head_sha}" ]; then
@@ -165,7 +222,7 @@ refresh_pr() {
   fi
 
   echo "PR #${pr}: head advanced ${head_sha} -> ${updated_sha}; ensuring required checks attach."
-  REQUIRED_CHECK="${REQUIRED_CHECK}" scripts/retrigger_stranded_pr.sh "${pr}"
+  REQUIRED_CHECKS="${REQUIRED_CHECKS}" scripts/retrigger_stranded_pr.sh "${pr}"
 
   if [ "${review}" != "APPROVED" ]; then
     echo "PR #${pr}: refreshed, but review decision is ${review}; auto-merge will wait for review."

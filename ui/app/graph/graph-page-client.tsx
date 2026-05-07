@@ -33,9 +33,7 @@ import {
   type FilterState,
 } from "@/components/lineage-filter";
 import {
-  lineageNodeTypes,
-  lineageNodeTypesCluster,
-  lineageNodeTypesSummary,
+  lineageNodeTypesAdaptive,
   type LineageNodeData,
   type LineageNodeType,
 } from "@/components/lineage-nodes";
@@ -867,6 +865,17 @@ function GraphPageInner() {
       .filter(Boolean)
       .join(" ") || "";
 
+  // Levels-of-detail (#2257). Hook reads `viewport.zoom` from the
+  // xyflow store provided by the wrapping `<ReactFlowProvider>` and
+  // returns "cluster" | "summary" | "detail". The chosen render band
+  // keeps dense graphs readable without changing node positions or data.
+  const lodBand = useLodBand();
+  const effectiveLodBand = effectiveLodBandForGraph(lodBand, {
+    sourceNodeCount: flow.nodes.length,
+    renderedNodeCount: aggregated.nodes.length,
+    clusterCount: aggregated.clusters.size,
+  });
+
   const displayNodes = useMemo(() => {
     if (attackPathNodeIds) {
       return layoutNodes.map((node) => {
@@ -876,13 +885,22 @@ function GraphPageInner() {
           className: composeFocusClass(node.className, inPath, !inPath),
           data: {
             ...node.data,
+            renderBand: effectiveLodBand,
             dimmed: !inPath,
             highlighted: inPath,
           },
         };
       });
     }
-    if (!localNeighborhoodIds) return layoutNodes;
+    if (!localNeighborhoodIds) {
+      return layoutNodes.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          renderBand: effectiveLodBand,
+        },
+      }));
+    }
     return layoutNodes.map((node) => {
       const isFocused = node.id === activeFocusId;
       const isConnected = localNeighborhoodIds.has(node.id);
@@ -892,12 +910,13 @@ function GraphPageInner() {
         className: composeFocusClass(node.className, isFocused, dimmed),
         data: {
           ...node.data,
+          renderBand: effectiveLodBand,
           dimmed,
           highlighted: isConnected,
         },
       };
     });
-  }, [layoutNodes, localNeighborhoodIds, attackPathNodeIds, activeFocusId]);
+  }, [layoutNodes, localNeighborhoodIds, attackPathNodeIds, activeFocusId, effectiveLodBand]);
 
   const displayEdges = useMemo(() => {
     if (attackPathEdgeKeys) {
@@ -990,23 +1009,6 @@ function GraphPageInner() {
   const onNodeMouseLeave = useCallback(() => {
     setHoveredNodeId(null);
   }, []);
-
-  // Levels-of-detail (#2257). Hook reads `viewport.zoom` from the
-  // xyflow store provided by the wrapping `<ReactFlowProvider>` and
-  // returns "cluster" | "summary" | "detail". The chosen registry
-  // swaps node renderers without touching node positions or data.
-  const lodBand = useLodBand();
-  const effectiveLodBand = effectiveLodBandForGraph(lodBand, {
-    sourceNodeCount: flow.nodes.length,
-    renderedNodeCount: aggregated.nodes.length,
-    clusterCount: aggregated.clusters.size,
-  });
-  const nodeTypesForBand =
-    effectiveLodBand === "cluster"
-      ? lineageNodeTypesCluster
-      : effectiveLodBand === "summary"
-        ? lineageNodeTypesSummary
-        : lineageNodeTypes;
 
   const selectFindingCard = useCallback((id: string, data: LineageNodeData) => {
     setSelectedNode({
@@ -1567,6 +1569,7 @@ function GraphPageInner() {
             <GraphFindingsFallback
               nodes={findingNodes}
               onSelect={selectFindingCard}
+              scanId={selectedScanId || undefined}
               onExpandScope={() =>
                 setFilters(createExpandedGraphFilters(filters.agentName ?? flow.agentNames[0] ?? null))
               }
@@ -1575,7 +1578,7 @@ function GraphPageInner() {
             <ReactFlow
               nodes={displayNodes}
               edges={displayEdges}
-              nodeTypes={nodeTypesForBand}
+              nodeTypes={lineageNodeTypesAdaptive}
               fitView
               fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
               minZoom={0.16}

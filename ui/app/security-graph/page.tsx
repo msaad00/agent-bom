@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 import { ApiOfflineState } from "@/components/api-offline-state";
-import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
+import { ApiAuthError, ApiForbiddenError, userFacingApiErrorMessage } from "@/lib/api-errors";
 
 function _classifyGraphErrorKind(err: unknown): "network" | "auth" | "forbidden" {
   if (err instanceof ApiAuthError) return "auth";
@@ -35,6 +35,7 @@ import {
 import {
   attackPathKey,
   attackPathSequenceLabels,
+  buildFindingsHref,
   buildGraphInvestigationHref,
   buildSecurityGraphHref,
   investigationRootForAttackPath,
@@ -100,7 +101,7 @@ function SecurityGraphPageContent() {
         setGraphLoadError(null);
       } catch (error) {
         if (cancelled) return;
-        setApiError(error instanceof Error ? error.message : "Failed to load graph snapshots");
+        setApiError(userFacingApiErrorMessage(error, "Failed to load graph snapshots"));
         setApiErrorKind(_classifyGraphErrorKind(error));
         setSnapshots([]);
         setGraphData(null);
@@ -153,7 +154,7 @@ function SecurityGraphPageContent() {
         if (cancelled) return;
         setGraphData(null);
         setFixFirstView(null);
-        setGraphLoadError(error instanceof Error ? error.message : "Failed to load security graph");
+        setGraphLoadError(userFacingApiErrorMessage(error, "Failed to load security graph"));
         setApiErrorKind(_classifyGraphErrorKind(error));
       } finally {
         if (!cancelled) setLoadingGraph(false);
@@ -261,9 +262,9 @@ function SecurityGraphPageContent() {
   const selectedPathActions = useMemo(
     () =>
       selectedAttackPath
-        ? recommendedAttackPathActions(selectedAttackPath, graphNodeById)
+        ? recommendedAttackPathActions(selectedAttackPath, graphNodeById, { scanId: selectedScanId || undefined })
         : [],
-    [graphNodeById, selectedAttackPath],
+    [graphNodeById, selectedAttackPath, selectedScanId],
   );
 
   const interactionRiskSummary = useMemo(
@@ -537,7 +538,7 @@ function SecurityGraphPageContent() {
               <GitBranch className="h-3.5 w-3.5" />
             </Link>
             <Link
-              href="/findings"
+              href={buildFindingsHref({ scanId: selectedScanId || undefined })}
               className="inline-flex items-center gap-2 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-3 py-1.5 text-xs text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
             >
               Review findings
@@ -583,7 +584,7 @@ function SecurityGraphPageContent() {
                     <GitBranch className="h-3 w-3" />
                   </Link>
                   <Link
-                    href="/findings"
+                    href={buildFindingsHref({ scanId: selectedScanId || undefined })}
                     className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-2.5 py-1 text-[11px] text-[color:var(--text-secondary)] transition hover:border-[color:var(--border-strong)] hover:text-[color:var(--foreground)]"
                   >
                     Findings
@@ -736,7 +737,7 @@ function SecurityGraphPageContent() {
                     label="Findings"
                     tags={selectedAttackPath.vuln_ids}
                     emptyLabel="No linked findings"
-                    hrefForTag={(tag) => `/findings?cve=${encodeURIComponent(tag)}`}
+                    hrefForTag={(tag) => buildFindingsHref({ scanId: selectedScanId || undefined, cve: tag })}
                   />
                   <TagList
                     label="Agents"
@@ -818,7 +819,7 @@ function SecurityGraphPageContent() {
                           </div>
                           {risk.agents.length > 0 && (
                             <div className="mt-3 flex flex-wrap gap-2">
-                              {risk.agents.slice(0, 4).map((agent) => (
+                              {Array.from(new Set(risk.agents)).slice(0, 4).map((agent) => (
                                 <Link
                                   key={agent}
                                   href={`/agents?name=${encodeURIComponent(agent)}`}
@@ -934,12 +935,13 @@ function TagList({
   emptyLabel: string;
   hrefForTag?: (tag: string) => string;
 }) {
+  const uniqueTags = useMemo(() => Array.from(new Set(tags.filter((tag) => tag.trim()))), [tags]);
   return (
     <div className="rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-4">
       <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">{label}</div>
-      {tags.length > 0 ? (
+      {uniqueTags.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">
-          {tags.map((tag) => (
+          {uniqueTags.map((tag) => (
             hrefForTag ? (
               <Link
                 key={tag}

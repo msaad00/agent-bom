@@ -112,6 +112,14 @@ export function buildSecurityGraphHref(focus: AttackPathFocus): string {
   return query ? `/security-graph?${query}` : "/security-graph";
 }
 
+export function buildFindingsHref(focus: Pick<AttackPathFocus, "cve" | "scanId">): string {
+  const params = new URLSearchParams();
+  if (focus.scanId) params.set("scan", focus.scanId);
+  if (focus.cve) params.set("cve", focus.cve);
+  const query = params.toString();
+  return query ? `/findings?${query}` : "/findings";
+}
+
 export function buildGraphInvestigationHref(
   request: GraphInvestigationRequest & Pick<AttackPathFocus, "scanId" | "agentName">,
 ): string {
@@ -209,6 +217,7 @@ export function investigationRootForAttackPath(
 export function recommendedAttackPathActions(
   path: AttackPath,
   nodeById: Map<string, UnifiedNode>,
+  focus: Pick<AttackPathFocus, "scanId"> = {},
 ): AttackPathAction[] {
   const actions: AttackPathAction[] = [];
   const leadingFinding = path.vuln_ids[0];
@@ -218,7 +227,7 @@ export function recommendedAttackPathActions(
     actions.push({
       title: "Validate the lead finding",
       detail: "Open the primary CVE evidence first so the exploit chain has a confirmed root cause.",
-      href: `/findings?cve=${encodeURIComponent(leadingFinding)}`,
+      href: buildFindingsHref({ scanId: focus.scanId, cve: leadingFinding }),
     });
   }
 

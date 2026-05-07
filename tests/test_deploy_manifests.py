@@ -447,6 +447,24 @@ def test_helm_gateway_service_account_defaults():
     assert gateway["allowVisualLeakBestEffort"] is False
 
 
+def test_helm_gateway_network_policy_defaults_to_explicit_egress_allowlist():
+    """Gateway pods should get a component-specific egress policy when enabled."""
+    doc = yaml.safe_load((HELM_DIR / "values.yaml").read_text())
+    policy = doc["gateway"]["networkPolicy"]
+    assert policy["enabled"] is True
+    assert policy["allowDns"] is True
+    assert policy["egress"] == []
+    assert policy["additionalEgress"] == []
+
+    template = (HELM_DIR / "templates" / "gateway-networkpolicy.yaml").read_text()
+    assert "kind: NetworkPolicy" in template
+    assert "app.kubernetes.io/component: gateway" in template
+    assert ".Values.gateway.networkPolicy.enabled" in template
+    assert ".Values.gateway.networkPolicy.egress" in template
+    assert ".Values.gateway.networkPolicy.additionalEgress" in template
+    assert "egress: []" in template
+
+
 def test_helm_gateway_template_wires_control_plane_and_runtime_flags():
     """Gateway deployment should expose the CLI's deploy-time control knobs."""
     template = (HELM_DIR / "templates" / "gateway-deployment.yaml").read_text()

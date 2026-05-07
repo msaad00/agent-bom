@@ -45,6 +45,17 @@ VERSION_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     # Frontend package — UI version tracks the platform release so the docker image and
     # the Next.js build manifest agree on what version is shipping
     ("ui/package.json", re.compile(r'^(\s*"version":\s*")[^"]+(",?)', re.M), r"\g<1>{v}\g<2>"),
+    (
+        "ui/package-lock.json",
+        re.compile(r'(\A\{\n  "name": "ui",\n  "version": ")[^"]+(")', re.M),
+        r"\g<1>{v}\g<2>",
+    ),
+    (
+        "ui/package-lock.json",
+        re.compile(r'(\n    "": \{\n      "name": "ui",\n      "version": ")[^"]+(")', re.M),
+        r"\g<1>{v}\g<2>",
+    ),
+    ("uv.lock", re.compile(r'(\[\[package\]\]\nname = "agent-bom"\nversion = ")[^"]+(")', re.M), r"\g<1>{v}\g<2>"),
 ]
 
 OPENCLAW_SKILL_PATTERNS: list[tuple[str, re.Pattern, str]] = [
@@ -69,6 +80,22 @@ DOC_TEST_LOCATIONS: list[tuple[str, re.Pattern, str]] = [
     ("site-docs/deployment/control-plane-helm.md", re.compile(r"(--version\s+)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     ("deploy/k8s/sidecar-example.yaml", re.compile(r"(agentbom/agent-bom:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
     ("deploy/k8s/proxy-sidecar-pilot.yaml", re.compile(r"(agentbom/agent-bom:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
+    ("deploy/k8s/cronjob.yaml", re.compile(r"(agentbom/agent-bom:)\d+\.\d+\.\d+"), r"\g<1>{v}"),
+    (
+        "deploy/snowflake/native-app/manifest.yml",
+        re.compile(r"(:v)\d+_\d+_\d+"),
+        r"\g<1>{v_underscore}",
+    ),
+    (
+        "deploy/snowflake/native-app/service-specs/scanner-service.yaml",
+        re.compile(r"(:v)\d+_\d+_\d+"),
+        r"\g<1>{v_underscore}",
+    ),
+    (
+        "deploy/snowflake/native-app/service-specs/mcp-runtime-service.yaml",
+        re.compile(r"(:v)\d+_\d+_\d+"),
+        r"\g<1>{v_underscore}",
+    ),
     ("docs/PRODUCT_METRICS.md", re.compile(r"(- Version: `)\d+\.\d+\.\d+(`)"), r"\g<1>{v}\g<2>"),
     ("docs/PRODUCT_METRICS.json", re.compile(r'("version":\s*")\d+\.\d+\.\d+(")'), r"\g<1>{v}\g<2>"),
     ("docs/RELEASE_VERIFICATION.md", re.compile(r"^(TAG=v)\d+\.\d+\.\d+$", re.M), r"\g<1>{v}"),
@@ -113,6 +140,7 @@ def bump(new_version: str, *, dry_run: bool = False, check: bool = False) -> int
     if not re.match(r"^\d+\.\d+\.\d+$", new_version):
         print(f"ERROR: Invalid semver: {new_version}", file=sys.stderr)
         return 1
+    underscore_version = new_version.replace(".", "_")
 
     all_locations = VERSION_LOCATIONS + DOC_TEST_LOCATIONS
     for glob_pattern, pattern, template in OPENCLAW_SKILL_PATTERNS:
@@ -129,7 +157,7 @@ def bump(new_version: str, *, dry_run: bool = False, check: bool = False) -> int
             continue
 
         text = path.read_text()
-        replacement = template.format(v=new_version)
+        replacement = template.format(v=new_version, v_underscore=underscore_version)
         new_text, count = pattern.subn(replacement, text)
 
         if count == 0:

@@ -11,6 +11,27 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.86.2] - 2026-05-07
+
+Audit-readiness patch for the live dashboard/API release pass. This release closes the scan-contract, graph-serialization, gateway-transport, CI refresh, image tarball, API extras, MCP/HTTP contract, and gateway NetworkPolicy hardening items validated after `v0.86.1`.
+
+### Added
+- **Airgap image tarball entry point** - `agent-bom image --tar <path>` now scans local OCI/Docker tarballs without requiring a Docker daemon or registry pull path (#2327).
+- **MCP-to-HTTP scan contract coverage** - regression coverage now asserts MCP scan output shape stays aligned with the HTTP scan path for shared scan internals (#2326).
+- **Gateway component NetworkPolicy** - Helm now renders a gateway-specific default-deny egress policy with explicit DNS/upstream allowlist hooks instead of relying only on global policy coverage (#2328).
+
+### Fixed
+- **Strict scan request validation** - direct and source-triggered scan requests now reject unknown fields with 422 errors instead of silently dropping typoed inputs (#2319).
+- **Dashboard protected-view UX** - protected graph/dashboard views now turn empty API-key and browser authorization-header failures into sign-in/forbidden states instead of raw DOM exceptions (#2319).
+- **Graph API serialization readiness** - graph edges, attack paths, node detail relationships, diff metadata, and path query aliases now serialize consistently for dense graph consumers (#2323).
+- **Gateway upstream transport guardrails** - SSE upstreams are rejected with an explicit configuration error instead of being relayed through an incompatible POST path; streamable HTTP upstreams keep working (#2322).
+- **SQLite graph schema initialization race** - graph schema marker initialization is idempotent, preventing concurrent initializer failures in CI and tenant graph persistence (#2320).
+- **First-run sample flag alias** - the first-run sample CLI now accepts the documented target alias consistently (#2321).
+- **API extras diagnostics** - API startup dependency checks now report the missing import details instead of over-collapsing into a misleading extras message (#2325).
+- **Ready-PR refresh loop** - stranded approved PRs now have a safer refresh path so branch updates do not freeze behind stale checks (#2324).
+
+---
+
 ## [0.86.1] – 2026-05-06
 
 Patch release alignment after the `v0.86.0` tag failed before publish at the MCP registry serialization gate.
@@ -1119,7 +1140,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.86.1...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.86.2...HEAD
+[0.86.2]: https://github.com/msaad00/agent-bom/compare/v0.86.1...v0.86.2
 [0.86.1]: https://github.com/msaad00/agent-bom/compare/v0.86.0...v0.86.1
 [0.86.0]: https://github.com/msaad00/agent-bom/compare/v0.85.0...v0.86.0
 [0.85.0]: https://github.com/msaad00/agent-bom/compare/v0.84.6...v0.85.0

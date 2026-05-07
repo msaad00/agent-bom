@@ -2181,6 +2181,20 @@ def test_api_import():
     assert app.title == "agent-bom API"
 
 
+def test_api_extra_import_error_message_names_missing_runtime_dependency():
+    """API import diagnostics should distinguish missing modules from install metadata drift."""
+    pytest.importorskip("fastapi", reason="fastapi not installed")
+    from agent_bom.api.server import _api_extra_import_error_message
+
+    message = _api_extra_import_error_message(ModuleNotFoundError("No module named 'sse_starlette'", name="sse_starlette"))
+
+    assert "sse_starlette" in message
+    assert "pip install 'agent-bom[api]'" in message
+    assert "same Python environment" in message
+    assert "fastapi" in message
+    assert "uvicorn" in message
+
+
 def test_api_health_endpoint():
     """GET /health returns {status: ok}."""
     pytest.importorskip("fastapi", reason="fastapi not installed")

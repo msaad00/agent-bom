@@ -225,7 +225,7 @@ def _init_db(conn: sqlite3.Connection, *, backfill_legacy_tenants: bool = True) 
     row = conn.execute("SELECT version FROM graph_schema_version ORDER BY version DESC LIMIT 1").fetchone()
     if row is None:
         conn.execute(
-            "INSERT INTO graph_schema_version (version) VALUES (?)",
+            "INSERT OR IGNORE INTO graph_schema_version (version) VALUES (?)",
             (_GRAPH_SCHEMA_VERSION,),
         )
     existing_columns = {row["name"] for row in conn.execute("PRAGMA table_info(attack_paths)").fetchall()}

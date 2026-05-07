@@ -50,6 +50,18 @@ from agent_bom.scanners.osv import enrich_results_if_needed as _enrich_results_i
 from agent_bom.scanners.osv import is_valid_fix_version as _is_valid_fix_version
 from agent_bom.scanners.osv import package_lookup_names as _package_lookup_names
 from agent_bom.scanners.osv import parse_fixed_version, query_osv_batch_impl
+from agent_bom.scanners.registry import (  # noqa: F401
+    ScannerExecutionState,
+    ScannerFailureMode,
+    ScannerPhase,
+    ScannerRegistration,
+    builtin_scanner_registrations,
+    get_scanner_registration,
+    list_registered_scanners,
+    register_scanner,
+    scanner_registry_summary,
+    scanner_registry_warnings,
+)
 from agent_bom.scanners.risk import (
     _parse_cvss4_vector,
     advisory_id_severity_fallback,

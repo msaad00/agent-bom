@@ -703,7 +703,14 @@ def _run_scan_sync(job: ScanJob) -> None:
             pipeline.skip_step("enrichment", "Skipped")
             pipeline.skip_step("analysis", "Skipped")
             pipeline.skip_step("output", "No results")
-            job.result = {"agents": [], "vulnerabilities": [], "blast_radius": [], "warnings": warnings_all}
+            job.result = {
+                "status": "no_agents_found",
+                "agents": [],
+                "vulnerabilities": [],
+                "blast_radius": [],
+                "blast_radii": [],
+                "warnings": warnings_all,
+            }
             job.status = JobStatus.DONE
             job.completed_at = _now()
             return

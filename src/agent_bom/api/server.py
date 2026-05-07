@@ -72,6 +72,19 @@ _DASHBOARD_CSP_META_RE = re.compile(
 
 # ─── Dependency check ─────────────────────────────────────────────────────────
 
+
+def _api_extra_import_error_message(exc: ImportError) -> str:
+    missing = getattr(exc, "name", None)
+    missing_line = f"\nMissing import: {missing!r}" if missing else ""
+    return (
+        "agent-bom API could not import its runtime dependencies."
+        f"{missing_line}\n"
+        "Install with:  pip install 'agent-bom[api]'\n"
+        "If those packages are already installed, verify that `agent-bom api` is running in the same Python "
+        "environment that contains fastapi, uvicorn, sse-starlette, pydantic, and starlette."
+    )
+
+
 try:
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
@@ -79,7 +92,7 @@ try:
     from pydantic import BaseModel  # noqa: F401 — presence check for [api] extra
     from starlette.middleware import Middleware
 except ImportError as exc:  # pragma: no cover
-    raise ImportError("agent-bom API requires extra dependencies.\nInstall with:  pip install 'agent-bom[api]'") from exc
+    raise ImportError(_api_extra_import_error_message(exc)) from exc
 
 # ─── App ──────────────────────────────────────────────────────────────────────
 

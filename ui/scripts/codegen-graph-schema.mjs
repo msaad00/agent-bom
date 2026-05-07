@@ -17,6 +17,8 @@
 // Env:
 //   AGENT_BOM_GRAPH_SCHEMA_URL  override URL
 //                               (default http://127.0.0.1:8422/v1/graph/schema)
+//   AGENT_BOM_GRAPH_SCHEMA_API_KEY, AGENT_BOM_CODEGEN_API_KEY, or AGENT_BOM_API_KEY
+//                               bearer token for auth-on API instances
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -28,6 +30,11 @@ const OUT_PATH = resolve(UI_ROOT, "lib/graph-schema.generated.ts");
 
 const DEFAULT_URL = "http://127.0.0.1:8422/v1/graph/schema";
 const URL_ENV = process.env.AGENT_BOM_GRAPH_SCHEMA_URL || DEFAULT_URL;
+const API_KEY_ENV =
+  process.env.AGENT_BOM_GRAPH_SCHEMA_API_KEY ||
+  process.env.AGENT_BOM_CODEGEN_API_KEY ||
+  process.env.AGENT_BOM_API_KEY ||
+  "";
 
 const checkOnly = process.argv.includes("--check");
 
@@ -45,10 +52,17 @@ function jsonStringify(value) {
   return JSON.stringify(value, null, 2);
 }
 
+function schemaRequestHeaders() {
+  return {
+    accept: "application/json",
+    ...(API_KEY_ENV.trim() ? { Authorization: `Bearer ${API_KEY_ENV.trim()}` } : {}),
+  };
+}
+
 async function fetchSchema() {
   let resp;
   try {
-    resp = await fetch(URL_ENV, { headers: { accept: "application/json" } });
+    resp = await fetch(URL_ENV, { headers: schemaRequestHeaders() });
   } catch (err) {
     fail(
       `failed to GET ${URL_ENV}: ${err?.message ?? err}\n` +
@@ -57,7 +71,11 @@ async function fetchSchema() {
     );
   }
   if (!resp.ok) {
-    fail(`GET ${URL_ENV} returned ${resp.status} ${resp.statusText}`);
+    const authHint =
+      resp.status === 401 || resp.status === 403
+        ? "\nSet AGENT_BOM_GRAPH_SCHEMA_API_KEY, AGENT_BOM_CODEGEN_API_KEY, or AGENT_BOM_API_KEY for auth-on API instances."
+        : "";
+    fail(`GET ${URL_ENV} returned ${resp.status} ${resp.statusText}${authHint}`);
   }
   let data;
   try {

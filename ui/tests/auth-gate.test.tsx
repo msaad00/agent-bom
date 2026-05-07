@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, afterEach } from "vitest";
 
 import { AuthGate } from "@/components/auth-gate";
@@ -66,5 +66,28 @@ describe("AuthGate", () => {
 
     await waitFor(() => expect(screen.getByText("Control-plane authentication required")).toBeInTheDocument());
     expect(screen.getByLabelText("API key")).toHaveValue("");
+  });
+
+  it("keeps the browser session submit disabled until an API key is entered", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      json: () => Promise.resolve({ detail: "Unauthorized — invalid API key" }),
+    }) as typeof fetch;
+
+    render(
+      <AuthProvider>
+        <AuthGate>
+          <div>protected surface</div>
+        </AuthGate>
+      </AuthProvider>,
+    );
+
+    const unlock = await screen.findByRole("button", { name: "Unlock dashboard" });
+    expect(unlock).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "abk_test" } });
+    expect(unlock).toBeEnabled();
   });
 });

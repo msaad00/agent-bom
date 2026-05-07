@@ -5,6 +5,7 @@ import { KeyRound, Loader2, Lock, ShieldCheck } from "lucide-react";
 
 import { useAuthState } from "@/components/auth-provider";
 import { api } from "@/lib/api";
+import { userFacingApiErrorMessage } from "@/lib/api-errors";
 import { clearSessionApiKey } from "@/lib/auth";
 
 function isAuthFailure(message: string): boolean {
@@ -63,11 +64,16 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               onSubmit={async (event) => {
                 event.preventDefault();
                 setFormError(null);
+                const trimmedApiKey = apiKey.trim();
+                if (!trimmedApiKey) {
+                  setFormError("Enter an API key before unlocking the dashboard.");
+                  return;
+                }
                 try {
-                  await api.createAuthSession(apiKey);
+                  await api.createAuthSession(trimmedApiKey);
                   clearSessionApiKey();
                 } catch (nextError) {
-                  const message = nextError instanceof Error ? nextError.message : "Failed to create browser session";
+                  const message = userFacingApiErrorMessage(nextError, "Failed to create browser session");
                   if (message.includes("404") || message.includes("405")) {
                     clearSessionApiKey();
                     setFormError("Browser session endpoint unavailable; update the API before using browser API-key exchange.");
@@ -105,7 +111,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
               <div className="mt-4 flex gap-3">
                 <button
                   type="submit"
-                  className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-emerald-400"
+                  disabled={!apiKey.trim()}
+                  className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-medium text-zinc-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500"
                 >
                   Unlock dashboard
                 </button>
@@ -132,7 +139,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
           {error ? (
             <div className="mt-5 rounded-2xl border border-red-900/50 bg-red-950/20 px-4 py-3 text-sm text-red-300">
-              {error}
+              {userFacingApiErrorMessage(error, "Failed to load auth session")}
             </div>
           ) : null}
           {formError ? (
@@ -148,7 +155,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-10">
       <div className="max-w-xl rounded-2xl border border-red-900/50 bg-red-950/20 p-6 text-sm text-red-300">
-        {error}
+        {userFacingApiErrorMessage(error, "Failed to load auth session")}
       </div>
     </div>
   );

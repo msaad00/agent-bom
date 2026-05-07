@@ -24,7 +24,16 @@ SETUP_SQL_PATH = NATIVE_APP_DIR / "scripts" / "setup.sql"
 DCM_DIR = NATIVE_APP_DIR / "dcm"
 SERVICE_SPECS_DIR = NATIVE_APP_DIR / "service-specs"
 RELEASE_WORKFLOW_PATH = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "release-snowflake.yml"
-SNOWFLAKE_PACKAGE_IMAGE_TAG = "v0_86_0"
+PYPROJECT_PATH = Path(__file__).resolve().parents[1] / "pyproject.toml"
+
+
+def _snowflake_image_tag_from_pyproject() -> str:
+    match = re.search(r'^version\s*=\s*"([^"]+)"', PYPROJECT_PATH.read_text(encoding="utf-8"), re.MULTILINE)
+    assert match, "pyproject.toml must declare the package version"
+    return "v" + match.group(1).replace(".", "_")
+
+
+SNOWFLAKE_PACKAGE_IMAGE_TAG = _snowflake_image_tag_from_pyproject()
 
 
 @pytest.fixture(scope="module")

@@ -3,16 +3,16 @@
 import { Fragment, Suspense, useCallback, useEffect, useState, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { api, Vulnerability, ScanJob, ScanResult, severityColor, severityDot, JobListItem, RemediationItem } from "@/lib/api";
+import { api, Vulnerability, ScanJob, ScanResult, severityColor, severityDot, JobListItem, RemediationItem, type UnifiedGraphResponse } from "@/lib/api";
 import { ApiOfflineState } from "@/components/api-offline-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
+import { Bug, Download, ExternalLink, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, Loader2, Package, Server, ShieldOff, Radar, FileSearch, ShieldAlert } from "lucide-react";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
   if (err instanceof ApiAuthError) return "auth";
   if (err instanceof ApiForbiddenError) return "forbidden";
   return "network";
 }
-import { Bug, Download, ExternalLink, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, Loader2, Package, Server, ShieldOff, Radar, FileSearch, ShieldAlert } from "lucide-react";
 
 function downloadJson(data: unknown, filename: string) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -134,6 +134,90 @@ function mergeRemediationItems(existing: RemediationSummary[], incoming: Remedia
   return Array.from(merged.values());
 }
 
+type GraphNode = UnifiedGraphResponse["nodes"][number];
+
+function graphNodeKind(node: GraphNode): string {
+  return String(node.entity_type).toLowerCase();
+}
+
+function attrString(node: GraphNode, key: string): string | undefined {
+  const value = node.attributes?.[key];
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function attrNumber(node: GraphNode, key: string): number | undefined {
+  const value = node.attributes?.[key];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function normalizedSeverity(value: string | undefined): Vulnerability["severity"] {
+  const normalized = (value ?? "").toLowerCase();
+  return normalized === "critical" || normalized === "high" || normalized === "medium" || normalized === "low" || normalized === "none"
+    ? normalized
+    : "none";
+}
+
+function collectGraphVulns(graph: UnifiedGraphResponse): EnrichedVuln[] {
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const packagesByFinding = new Map<string, Set<string>>();
+  const agentsByFinding = new Map<string, Set<string>>();
+
+  for (const edge of graph.edges) {
+    const source = nodeById.get(edge.source);
+    const target = nodeById.get(edge.target);
+    if (!source || !target) continue;
+    const sourceKind = graphNodeKind(source);
+    const targetKind = graphNodeKind(target);
+    const finding = sourceKind === "vulnerability" ? source : targetKind === "vulnerability" ? target : null;
+    const other = finding?.id === source.id ? target : source;
+    if (!finding || !other) continue;
+    const otherKind = graphNodeKind(other);
+    if (otherKind === "package") {
+      const values = packagesByFinding.get(finding.id) ?? new Set<string>();
+      values.add(other.label);
+      packagesByFinding.set(finding.id, values);
+    } else if (otherKind === "agent") {
+      const values = agentsByFinding.get(finding.id) ?? new Set<string>();
+      values.add(other.label);
+      agentsByFinding.set(finding.id, values);
+    }
+  }
+
+  return graph.nodes
+    .filter((node) => graphNodeKind(node) === "vulnerability")
+    .map((node): EnrichedVuln => ({
+      id: node.label,
+      severity: normalizedSeverity(node.severity),
+      summary: attrString(node, "summary") ?? attrString(node, "description"),
+      description: attrString(node, "description") ?? attrString(node, "summary"),
+      references: [],
+      advisory_sources: [],
+      aliases: [],
+      cvss_score: attrNumber(node, "cvss_score") ?? attrNumber(node, "cvss"),
+      epss_score: attrNumber(node, "epss_score") ?? attrNumber(node, "epss"),
+      is_kev: Boolean(node.attributes?.is_kev ?? node.attributes?.cisa_kev),
+      cisa_kev: Boolean(node.attributes?.cisa_kev ?? node.attributes?.is_kev),
+      fixed_version: attrString(node, "fixed_version"),
+      packages: Array.from(packagesByFinding.get(node.id) ?? []),
+      agents: Array.from(agentsByFinding.get(node.id) ?? []),
+      sources: node.data_sources.length > 0 ? node.data_sources : [`graph:${graph.scan_id.slice(0, 8)}`],
+      affected_servers: [],
+      exposed_credentials: [],
+      reachable_tools: [],
+      attack_vector_summary: attrString(node, "attack_vector_summary"),
+      impact_category: attrString(node, "impact_category"),
+      risk_score: node.risk_score,
+      remediation_items: [],
+      graph_reachable: null,
+      graph_min_hop_distance: null,
+    }));
+}
+
 function SortButton({
   label,
   field,
@@ -181,6 +265,7 @@ function VulnsPage() {
   const paramSeverity = searchParams.get("severity");
   const paramCve = searchParams.get("cve");
   const paramAgent = searchParams.get("agent");
+  const paramScan = searchParams.get("scan") ?? searchParams.get("scan_id");
 
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [vulns, setVulns] = useState<EnrichedVuln[]>([]);
@@ -334,6 +419,31 @@ function VulnsPage() {
   useEffect(() => {
     async function loadDetails() {
       if (loading) return;
+      if (paramScan) {
+        setDetailLoading(true);
+        setError("");
+        try {
+          const graph = await api.getGraph({ scanId: paramScan, limit: 2500 });
+          setVulns(collectGraphVulns(graph));
+        } catch (graphError) {
+          try {
+            const selectedJob = await api.getScan(paramScan);
+            setVulns(collectVulns([selectedJob]));
+          } catch (jobError) {
+            setError(
+              jobError instanceof Error
+                ? jobError.message
+                : graphError instanceof Error
+                  ? graphError.message
+                  : "Failed to load selected scan",
+            );
+            setErrorKind(_classifyApiErrorKind(jobError));
+          }
+        } finally {
+          setDetailLoading(false);
+        }
+        return;
+      }
       if (jobs.length === 0) {
         setVulns([]);
         setDetailLoading(false);
@@ -359,7 +469,7 @@ function VulnsPage() {
     }
 
     void loadDetails();
-  }, [jobs, scope, loading, collectVulns]);
+  }, [jobs, scope, loading, collectVulns, paramScan]);
 
   function handleSort(field: SortKey) {
     if (sortKey === field) {
@@ -460,7 +570,9 @@ function VulnsPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Findings</h1>
           <p className="text-zinc-400 text-sm mt-1">
             {scope === "latest"
-              ? `${vulns.length} vulnerability findings from the latest completed scan.`
+              ? paramScan
+                ? `${vulns.length} vulnerability findings from scan ${paramScan.slice(0, 8)}.`
+                : `${vulns.length} vulnerability findings from the latest completed scan.`
               : `${vulns.length} vulnerability findings aggregated across all completed scans.`}{" "}
             This surface is vulnerability-first today and will expand to broader finding types over time. CVSS and EPSS appear only when the underlying advisory includes them.
           </p>

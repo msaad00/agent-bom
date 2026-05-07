@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { api, type AuthMeResponse } from "@/lib/api";
+import { userFacingApiErrorMessage } from "@/lib/api-errors";
 
 interface AuthContextValue {
   session: AuthMeResponse | null;
@@ -35,7 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(next);
     } catch (nextError) {
       setSession(null);
-      setError(nextError instanceof Error ? nextError.message : "Failed to load auth session");
+      setError(userFacingApiErrorMessage(nextError, "Failed to load auth session"));
     } finally {
       setLoading(false);
     }

@@ -121,6 +121,21 @@ export class ApiNetworkError extends ApiError {
   }
 }
 
+export function userFacingApiErrorMessage(err: unknown, fallback: string): string {
+  const message = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  const normalized = message.toLowerCase();
+  if (
+    normalized.includes("the string did not match the expected pattern") ||
+    normalized.includes("xmlhttprequest") ||
+    normalized.includes("failed to execute 'setrequestheader'") ||
+    normalized.includes("invalid character in header content")
+  ) {
+    return "Sign in with a valid API key before opening protected control-plane views.";
+  }
+  if (!message.trim()) return fallback;
+  return message;
+}
+
 export function classifyApiResponse(
   res: Response,
   parsedBody: unknown,

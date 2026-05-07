@@ -12,6 +12,7 @@
       "type": "string"
     },
     "ScanRequest": {
+      "additionalProperties": false,
       "description": "Options accepted by POST /v1/scan \u2014 mirrors agent-bom scan CLI flags.",
       "properties": {
         "agent_projects": {

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ExternalLink, Route, SearchX } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { buildFindingsHref } from "@/lib/attack-paths";
 import { getOsvVulnerabilityUrl } from "@/lib/vulnerabilities";
 import type { LineageNodeData } from "./lineage-nodes";
 
@@ -120,9 +121,11 @@ export function GraphFindingsFallback({
   nodes,
   onSelect,
   onExpandScope,
+  scanId,
 }: {
   nodes: Array<{ id: string; data: LineageNodeData }>;
   onSelect: (id: string, data: LineageNodeData) => void;
+  scanId?: string | undefined;
   // Optional: when provided, a "Show full graph" button replaces the dead
   // "relax the scope to recover the graph" prose with an actual click target
   // that swaps the active filters to the expanded preset. The graph page
@@ -162,11 +165,11 @@ export function GraphFindingsFallback({
       </div>
 
       {shouldVirtualize ? (
-        <VirtualizedFindingList nodes={nodes} onSelect={onSelect} />
+        <VirtualizedFindingList nodes={nodes} onSelect={onSelect} scanId={scanId} />
       ) : (
         <div className="grid flex-1 gap-3 overflow-y-auto p-4 lg:grid-cols-2">
           {nodes.map(({ id, data }) => (
-            <FindingCard key={id} id={id} data={data} onSelect={onSelect} />
+            <FindingCard key={id} id={id} data={data} onSelect={onSelect} scanId={scanId} />
           ))}
         </div>
       )}
@@ -177,9 +180,11 @@ export function GraphFindingsFallback({
 function VirtualizedFindingList({
   nodes,
   onSelect,
+  scanId,
 }: {
   nodes: Array<{ id: string; data: LineageNodeData }>;
   onSelect: (id: string, data: LineageNodeData) => void;
+  scanId?: string | undefined;
 }) {
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
@@ -227,7 +232,7 @@ function VirtualizedFindingList({
         >
           {visibleNodes.map(({ id, data }) => (
             <div key={id} style={{ minHeight: FINDING_ROW_HEIGHT - 12 }}>
-              <FindingCard id={id} data={data} onSelect={onSelect} />
+              <FindingCard id={id} data={data} onSelect={onSelect} scanId={scanId} />
             </div>
           ))}
         </div>
@@ -240,10 +245,12 @@ function FindingCard({
   id,
   data,
   onSelect,
+  scanId,
 }: {
   id: string;
   data: LineageNodeData;
   onSelect: (id: string, data: LineageNodeData) => void;
+  scanId?: string | undefined;
 }) {
   const severity = data.severity?.toUpperCase() ?? "UNKNOWN";
   const cvss = typeof data.cvssScore === "number" ? data.cvssScore.toFixed(1) : "N/A";
@@ -292,7 +299,7 @@ function FindingCard({
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Link
-          href={`/findings?cve=${encodeURIComponent(data.label)}`}
+          href={buildFindingsHref({ scanId, cve: data.label })}
           className="inline-flex items-center gap-1 rounded-lg border border-emerald-800 bg-emerald-950/40 px-3 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-950/70"
         >
           <Route className="h-3 w-3" />

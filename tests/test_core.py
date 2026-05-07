@@ -1275,6 +1275,36 @@ def test_cli_scan_has_image_flag():
     assert "--image" in result.output
 
 
+def test_cli_image_accepts_tarball_without_image_ref(monkeypatch):
+    seen = []
+
+    def fake_scan(**kwargs):
+        seen.append(kwargs)
+
+    monkeypatch.setattr("agent_bom.cli.agents.scan.callback", fake_scan)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["image", "--tar", "image.tar", "--quiet"])
+
+    assert result.exit_code == 0
+    assert seen[0]["images"] == ()
+    assert seen[0]["image_tars"] == ("image.tar",)
+    assert seen[0]["_image_only"] is True
+
+
+def test_cli_image_rejects_reference_and_tarball_together(monkeypatch):
+    def fake_scan(**_kwargs):
+        raise AssertionError("scan should not run when image input mode is ambiguous")
+
+    monkeypatch.setattr("agent_bom.cli.agents.scan.callback", fake_scan)
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["image", "nginx:latest", "--tar", "image.tar"])
+
+    assert result.exit_code != 0
+    assert "Provide exactly one image reference or --tar/--image-tar path" in result.output
+
+
 def test_cli_scan_has_k8s_flags():
     runner = CliRunner()
     result = runner.invoke(main, ["scan", "--help"])

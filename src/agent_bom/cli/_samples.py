@@ -16,8 +16,10 @@ def samples_group() -> None:
 
 @samples_group.command("first-run")
 @click.option(
+    "--target",
     "--output",
     "-o",
+    "output",
     type=click.Path(file_okay=False, path_type=Path),
     default=Path("agent-bom-first-run"),
     show_default=True,

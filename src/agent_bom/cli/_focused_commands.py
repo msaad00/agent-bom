@@ -42,7 +42,14 @@ def _has_finding_at_or_above(findings, threshold: str = "high") -> bool:
 
 
 @click.command("image")
-@click.argument("image_ref")
+@click.argument("image_ref", required=False)
+@click.option(
+    "--tar",
+    "--image-tar",
+    "image_tar",
+    type=click.Path(exists=False, dir_okay=True, file_okay=True, path_type=str),
+    help="Scan a docker save / OCI image tarball without a Docker daemon.",
+)
 @click.option("--platform", help="Target platform (e.g. linux/amd64)")
 @click.option("-f", "--format", "output_format", default="console", help="Output format")
 @click.option("-o", "--output", "output_path", help="Output file path")
@@ -52,7 +59,8 @@ def _has_finding_at_or_above(findings, threshold: str = "high") -> bool:
 @click.option("--quiet", "-q", is_flag=True, help="Minimal output")
 @click.option("--fixable-only", "fixable_only", is_flag=True, default=False, help="Show only vulnerabilities with available fixes.")
 def image_cmd(
-    image_ref: str,
+    image_ref: str | None,
+    image_tar: str | None,
     platform: Optional[str],
     output_format: str,
     output_path: Optional[str],
@@ -67,15 +75,20 @@ def image_cmd(
     \b
     Examples:
       agent-bom image nginx:latest
+      agent-bom image --tar image.tar
       agent-bom image myapp:v2.1 --enrich --fail-on-severity high
       agent-bom image ghcr.io/org/app:sha256-abc -f sarif -o results.sarif
     """
     from agent_bom.cli.agents import scan
 
+    if bool(image_ref) == bool(image_tar):
+        raise click.UsageError("Provide exactly one image reference or --tar/--image-tar path.")
+
     ctx = click.get_current_context()
     ctx.invoke(
         scan,
-        images=(image_ref,),
+        images=(image_ref,) if image_ref else (),
+        image_tars=(image_tar,) if image_tar else (),
         _image_only=True,
         image_platform=platform,
         output_format=output_format,

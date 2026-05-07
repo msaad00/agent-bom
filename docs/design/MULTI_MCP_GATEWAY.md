@@ -19,7 +19,7 @@ Add a new CLI mode: `agent-bom gateway serve`.
 
 One FastAPI service that:
 
-1. Accepts MCP client connections (HTTP + SSE, Streamable HTTP transport).
+1. Accepts MCP client connections over HTTP JSON-RPC / streamable HTTP request-response.
 2. Routes each client connection to one of N configured upstream MCP servers (local or remote), keyed by server name.
 3. Applies gateway policy (from the existing `/v1/gateway/policies` store) inline, on every `tools/call`, `tools/list`, `resources/read`, `prompts/get`.
 4. Pushes every call into the existing HMAC-chained audit log via the existing `/v1/proxy/audit` contract.
@@ -27,7 +27,7 @@ One FastAPI service that:
 
 Non-goals (explicitly):
 
-- Proxying **stdio** MCPs — clients that only speak stdio still use per-MCP `agent-bom proxy` wrappers. This gateway is HTTP/SSE-only.
+- Proxying **stdio** MCPs — clients that only speak stdio still use per-MCP `agent-bom proxy` wrappers. This gateway is HTTP/streamable-http only.
 - A new transport or policy language. Re-uses `GatewayPolicy` + `check_policy` from [`src/agent_bom/gateway.py`](../../src/agent_bom/gateway.py).
 - Replacing the sidecar mode. Both modes coexist; teams pick per workload.
 
@@ -52,16 +52,24 @@ agent-bom gateway serve \
 upstreams:
   - name: jira
     url: https://snowflake.example.internal/mcp/jira
+    transport: streamable-http
     auth: oauth2_client_credentials
     scopes: ["jira.read"]
   - name: github
-    url: https://mcp.github.example.com/sse
+    url: https://mcp.github.example.com/mcp
+    transport: streamable-http
     auth: bearer
     token_env: GITHUB_MCP_TOKEN
   - name: filesystem-review-env
     url: http://review-fs.agent-bom-workloads.svc.cluster.local:8100
+    transport: streamable-http
     auth: none
 ```
+
+The upstream transport field defaults to `streamable-http`. `http` and `https`
+are accepted as legacy aliases. `sse` and URLs whose path ends in `/sse` are
+rejected at gateway config load because the relay POSTs JSON-RPC and does not
+maintain a persistent SSE upstream client.
 
 ### Client config
 
@@ -72,7 +80,7 @@ Laptop editors point at **one** URL for every MCP, using the gateway's server-ro
 {
   "mcpServers": {
     "gateway": {
-      "transport": "sse",
+      "transport": "http",
       "url": "https://agent-bom-gateway.example.com/mcp/{server-name}",
       "headers": { "Authorization": "Bearer ${AGENT_BOM_USER_TOKEN}" }
     }
@@ -102,7 +110,7 @@ flowchart LR
     fs["Filesystem MCP in EKS"]
   end
 
-  Laptops -- SSE / Streamable HTTP --> gw
+  Laptops -- Streamable HTTP --> gw
   gw -. pull every 30s .- policy
   gw -. push every 10s .- audit
   gw -. scrape .- metrics
@@ -127,7 +135,7 @@ flowchart LR
 
 Net new code:
 
-- `src/agent_bom/gateway_server.py` — the FastAPI app, upstream registry, per-connection SSE relay
+- `src/agent_bom/gateway_server.py` — the FastAPI app, upstream registry, HTTP JSON-RPC relay
 - `src/agent_bom/cli/gateway.py` — `agent-bom gateway serve` entry point
 - `src/agent_bom/gateway_upstreams.py` — upstream config loader + auth injector
 - `tests/test_gateway_server.py` — real upstream + real policy + TestClient integration
@@ -147,17 +155,18 @@ Net new code:
 |---|---|---|
 | p50 added latency per `tools/call` | < 15 ms | existing proxy benchmarks |
 | p99 added latency | < 60 ms | |
-| Concurrent clients per pod | 500 SSE connections | FastAPI + uvloop |
+| Concurrent clients per pod | 500 request-response clients | FastAPI + uvloop |
 | Policy refresh staleness | < 45 s (30 s pull + 15 s slack) | `policy_refresh_seconds` |
 | Audit push queue backlog | alerts at > 10k events | `AuditDeliveryController` DLQ |
 
-Horizontal scale via HPA; session affinity needed on ingress (SSE is long-lived).
+Horizontal scale via HPA; no upstream SSE stickiness is required because the
+gateway relay is streamable-http request/response only.
 
 ## Rollout plan
 
 1. **Day 1 (merge of this doc):** design published; pilot team can read the target architecture.
 2. **Day 2–3:** extract policy-fetch + audit-push helpers from `run_proxy` into shared modules. Land with existing proxy still working (regression guard).
-3. **Day 4–5:** `agent-bom gateway serve` MVP — HTTP/SSE, 1 upstream, policy + audit + metrics wired.
+3. **Day 4–5:** `agent-bom gateway serve` MVP — streamable HTTP, 1 upstream, policy + audit + metrics wired.
 4. **Day 6:** N upstreams, per-upstream auth injection, upstream config hot-reload.
 5. **Day 7:** Helm chart `gateway` Deployment + HPA + NetworkPolicy + PrometheusRule + Grafana panel.
 6. **Day 8:** pilot team installs, points editors at the gateway URL, validates policy enforcement on a SaaS MCP (Jira or GitHub) and a Snowflake-hosted MCP (Cortex function).
@@ -168,4 +177,4 @@ Every stage is behind a flag until the gateway-serve tests and the pilot team si
 
 - **Upstream auth refresh**: OAuth2 client-credentials token rotation schedule. Day-1 answer: per-upstream auth policy in the config; background refresher with 80% jitter.
 - **Client authentication**: do we require a per-user token (OIDC), a per-tenant API key, or both? Day-1 answer: per-user OIDC for laptop traffic, per-service API key for machine-to-machine.
-- **Snowflake-hosted MCP specifics**: Snowflake MCPs today expose HTTP/SSE endpoints via Cortex functions or container services, authenticated against the Snowflake IdP. We assume stock MCP over HTTPS and support OAuth2 client-credentials at the gateway — the `snowflake` example in `gateway-upstreams.example.yaml` is the shape.
+- **Snowflake-hosted MCP specifics**: Snowflake MCPs should expose streamable HTTP endpoints via Cortex functions or container services, authenticated against the Snowflake IdP. We assume stock MCP over HTTPS and support OAuth2 client-credentials at the gateway — the `snowflake` example in `gateway-upstreams.example.yaml` is the shape. Legacy SSE upstream endpoints are not supported by this gateway relay.

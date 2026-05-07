@@ -81,7 +81,7 @@ def gateway_group() -> None:
     help=(
         "Pull auto-discovered upstreams from this agent-bom control plane URL "
         "(hits /v1/gateway/upstreams/discovered). Fleet scans surface remote "
-        "HTTP/SSE MCPs into this endpoint — the gateway registers whatever the "
+        "streamable HTTP MCPs into this endpoint — the gateway registers whatever the "
         "fleet has discovered, so pilot teams don't start from a blank YAML."
     ),
 )

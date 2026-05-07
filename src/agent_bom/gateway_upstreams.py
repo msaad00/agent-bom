@@ -21,6 +21,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -32,6 +33,8 @@ class UpstreamConfigError(ValueError):
 
 
 SUPPORTED_AUTH_MODES: tuple[str, ...] = ("none", "bearer", "oauth2_client_credentials")
+SUPPORTED_UPSTREAM_TRANSPORTS: tuple[str, ...] = ("streamable-http",)
+_STREAMABLE_HTTP_ALIASES: frozenset[str] = frozenset({"http", "https", "streamable-http"})
 
 
 # Process-wide cache for OAuth2 client-credentials access tokens. Keyed by
@@ -85,7 +88,12 @@ class UpstreamConfig:
     name:
         Stable identifier used in request routing (``/mcp/{name}``).
     url:
-        Base URL of the upstream MCP server. Must be HTTPS in production.
+        Streamable HTTP JSON-RPC endpoint of the upstream MCP server. Must be
+        HTTPS in production. Legacy SSE ``/sse`` event endpoints are not
+        supported by the gateway relay.
+    transport:
+        Upstream transport. The gateway currently supports only
+        ``streamable-http``; ``http``/``https`` are accepted as legacy aliases.
     auth:
         One of ``SUPPORTED_AUTH_MODES`` — ``none``, ``bearer``, or
         ``oauth2_client_credentials``.
@@ -104,6 +112,7 @@ class UpstreamConfig:
 
     name: str
     url: str
+    transport: str = "streamable-http"
     tenant_id: str | None = None
     auth: str = "none"
     token_env: str | None = None
@@ -112,6 +121,15 @@ class UpstreamConfig:
     oauth_client_secret_env: str | None = None
     oauth_scopes: tuple[str, ...] = ()
     headers: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        transport = normalize_gateway_upstream_transport(
+            self.transport,
+            url=self.url,
+            source="upstream config",
+            name=self.name,
+        )
+        object.__setattr__(self, "transport", transport)
 
     def resolved_static_headers(self) -> dict[str, str]:
         """Return the per-upstream static headers with bearer tokens resolved from env.
@@ -345,6 +363,50 @@ def fetch_discovered_upstreams(
     return response.json()
 
 
+def _is_sse_endpoint_url(url: str) -> bool:
+    path = urlsplit(url).path.rstrip("/")
+    return bool(path) and path.rsplit("/", 1)[-1].lower() == "sse"
+
+
+def normalize_gateway_upstream_transport(
+    raw_transport: Any,
+    *,
+    url: str,
+    source: str,
+    name: str,
+) -> str:
+    """Normalize and validate gateway upstream transport declarations."""
+    raw_value = getattr(raw_transport, "value", raw_transport)
+    transport = "streamable-http" if raw_value is None else str(raw_value).strip().lower()
+    if transport in _STREAMABLE_HTTP_ALIASES:
+        if _is_sse_endpoint_url(url):
+            raise UpstreamConfigError(
+                f"{source}: upstream {name!r} points at SSE endpoint {url!r}; "
+                "gateway upstream relay supports streamable-http JSON-RPC endpoints only. "
+                "Use the upstream's streamable-http /mcp endpoint, or run a per-MCP proxy for SSE."
+            )
+        return "streamable-http"
+    if transport == "sse":
+        raise UpstreamConfigError(
+            f"{source}: upstream {name!r} uses transport='sse'; gateway upstream relay supports "
+            "streamable-http JSON-RPC endpoints only and does not maintain persistent SSE upstream clients."
+        )
+    raise UpstreamConfigError(
+        f"{source}: upstream {name!r} has unsupported transport={transport!r} — supported: {', '.join(SUPPORTED_UPSTREAM_TRANSPORTS)}"
+    )
+
+
+def is_gateway_compatible_upstream_transport(transport: Any, url: str) -> bool:
+    """Return True when a discovered remote MCP can be relayed by the gateway."""
+    if not isinstance(url, str) or not url.startswith(("http://", "https://")):
+        return False
+    try:
+        normalize_gateway_upstream_transport(transport, url=url, source="gateway discovery", name="upstream")
+    except UpstreamConfigError:
+        return False
+    return True
+
+
 def _parse_upstream(raw: Any, *, source: str, default_tenant_id: str | None = None) -> UpstreamConfig:
     if not isinstance(raw, dict):
         raise UpstreamConfigError(f"{source}: every upstream entry must be a mapping, got {type(raw).__name__}")
@@ -356,6 +418,14 @@ def _parse_upstream(raw: Any, *, source: str, default_tenant_id: str | None = No
     url = raw.get("url")
     if not isinstance(url, str) or not url.startswith(("http://", "https://")):
         raise UpstreamConfigError(f"{source}: upstream {name!r} requires an http(s) 'url'")
+    url = url.rstrip("/")
+
+    transport = normalize_gateway_upstream_transport(
+        raw.get("transport"),
+        url=url,
+        source=source,
+        name=name,
+    )
 
     auth = raw.get("auth", "none")
     if auth not in SUPPORTED_AUTH_MODES:
@@ -377,7 +447,8 @@ def _parse_upstream(raw: Any, *, source: str, default_tenant_id: str | None = No
 
     return UpstreamConfig(
         name=name,
-        url=url.rstrip("/"),
+        url=url,
+        transport=transport,
         tenant_id=tenant_id,
         auth=auth,
         token_env=raw.get("token_env"),

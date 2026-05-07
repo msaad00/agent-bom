@@ -11,6 +11,7 @@ from agent_bom.gateway_upstreams import (
     UpstreamConfigError,
     UpstreamRegistry,
 )
+from agent_bom.models import TransportType
 
 
 def _write_yaml(tmp_path: Path, content: str) -> Path:
@@ -44,7 +45,7 @@ def test_from_yaml_multiple_upstreams_routable_by_name(tmp_path: Path) -> None:
           - name: jira
             url: https://snowflake.example.internal/mcp/jira
           - name: github
-            url: https://mcp.github.example.com/sse
+            url: https://mcp.github.example.com/mcp
             auth: bearer
             token_env: GITHUB_MCP_TOKEN
         """,
@@ -62,7 +63,7 @@ def test_bearer_auth_resolves_token_from_env(tmp_path: Path, monkeypatch: pytest
         """
         upstreams:
           - name: github
-            url: https://mcp.github.example.com/sse
+            url: https://mcp.github.example.com/mcp
             auth: bearer
             token_env: GITHUB_MCP_TOKEN
         """,
@@ -81,7 +82,7 @@ def test_bearer_auth_missing_token_env_raises(tmp_path: Path, monkeypatch: pytes
         """
         upstreams:
           - name: github
-            url: https://mcp.github.example.com/sse
+            url: https://mcp.github.example.com/mcp
             auth: bearer
             token_env: MISSING_TOKEN_VAR
         """,
@@ -140,13 +141,66 @@ def test_unsupported_auth_rejected(tmp_path: Path) -> None:
         UpstreamRegistry.from_yaml(path)
 
 
+def test_sse_transport_rejected_with_clear_gateway_error(tmp_path: Path) -> None:
+    path = _write_yaml(
+        tmp_path,
+        """
+        upstreams:
+          - name: legacy-sse
+            url: https://mcp.example.com/sse
+            transport: sse
+        """,
+    )
+    with pytest.raises(UpstreamConfigError, match="streamable-http JSON-RPC endpoints only"):
+        UpstreamRegistry.from_yaml(path)
+
+
+def test_sse_endpoint_path_rejected_even_without_transport_field(tmp_path: Path) -> None:
+    path = _write_yaml(
+        tmp_path,
+        """
+        upstreams:
+          - name: legacy-sse
+            url: https://mcp.example.com/sse
+        """,
+    )
+    with pytest.raises(UpstreamConfigError, match="points at SSE endpoint"):
+        UpstreamRegistry.from_yaml(path)
+
+
+def test_direct_upstream_config_rejects_sse_endpoint_before_relay() -> None:
+    with pytest.raises(UpstreamConfigError, match="points at SSE endpoint"):
+        UpstreamConfig(name="legacy-sse", url="https://mcp.example.com/sse")
+
+
+def test_http_transport_alias_normalizes_to_streamable_http(tmp_path: Path) -> None:
+    path = _write_yaml(
+        tmp_path,
+        """
+        upstreams:
+          - name: github
+            url: https://mcp.github.example.com/mcp
+            transport: http
+        """,
+    )
+    registry = UpstreamRegistry.from_yaml(path)
+    upstream = registry.get("github")
+    assert upstream is not None
+    assert upstream.transport == "streamable-http"
+
+
+def test_transport_enum_normalizes_to_streamable_http() -> None:
+    upstream = UpstreamConfig(name="github", url="https://mcp.github.example.com/mcp", transport=TransportType.STREAMABLE_HTTP)
+    assert upstream.transport == "streamable-http"
+
+
 def test_static_headers_resolved_alongside_bearer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     path = _write_yaml(
         tmp_path,
         """
         upstreams:
           - name: github
-            url: https://mcp.github.example.com/sse
+            url: https://mcp.github.example.com/mcp
             auth: bearer
             token_env: GH_TOKEN
             headers:
@@ -171,12 +225,13 @@ def test_from_discovery_response_builds_registry_with_none_auth() -> None:
         "source": "fleet_scan_aggregate",
         "upstreams": [
             {"name": "jira", "url": "https://snowflake.example.internal/mcp/jira", "auth": "none"},
-            {"name": "github", "url": "https://mcp.github.example.com/sse", "auth": "none"},
+            {"name": "github", "url": "https://mcp.github.example.com/mcp", "transport": "streamable-http", "auth": "none"},
         ],
     }
     registry = UpstreamRegistry.from_discovery_response(payload)
     assert registry.names() == ["github", "jira"]
     assert registry.get("jira").auth == "none"  # type: ignore[union-attr]
+    assert registry.get("github").transport == "streamable-http"  # type: ignore[union-attr]
     # Discovery doesn't know bearer tokens — operator overlays them
     assert registry.get("jira").token_env is None  # type: ignore[union-attr]
 

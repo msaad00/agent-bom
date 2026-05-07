@@ -28,6 +28,13 @@
 #                           header on every upstream request
 #   auth: oauth2_client_credentials  (roadmap — see MULTI_MCP_GATEWAY.md)
 #
+# ── Supported upstream transport ─────────────────────────────────────────────
+#   transport: streamable-http  — JSON-RPC over HTTP POST. This is the only
+#                                 upstream relay transport the gateway supports.
+#   Legacy SSE `/sse` upstream endpoints are intentionally rejected; use the
+#   upstream server's streamable-http `/mcp` endpoint, or run a per-MCP proxy
+#   for SSE.
+#
 # Replace the three examples below with your real MCP inventory.
 
 upstreams:
@@ -35,7 +42,8 @@ upstreams:
   # vendor) behind an internal ingress. The gateway injects the bearer
   # token from a Secret; the laptop never holds it.
   - name: jira
-    url: https://mcp.jira.example.com/sse
+    url: https://mcp.jira.example.com/mcp
+    transport: streamable-http
     auth: bearer
     token_env: JIRA_MCP_TOKEN
 
@@ -45,6 +53,7 @@ upstreams:
   # Snowflake's IdP automatically.
   - name: snowflake
     url: https://snowflake.example.internal/mcp/cortex
+    transport: streamable-http
     auth: oauth2_client_credentials
     oauth_token_url: https://snowflake.example.internal/oauth/token
     oauth_client_id_env: SNOWFLAKE_OAUTH_CLIENT_ID
@@ -53,7 +62,8 @@ upstreams:
 
   # EXAMPLE 3 — A remote GitHub MCP server behind an internal ingress.
   - name: github
-    url: https://mcp.github.example.com/sse
+    url: https://mcp.github.example.com/mcp
+    transport: streamable-http
     auth: bearer
     token_env: GITHUB_MCP_TOKEN
 

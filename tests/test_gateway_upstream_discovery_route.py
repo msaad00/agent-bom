@@ -3,10 +3,10 @@
 The gateway auto-discovery path — pilot teams don't hand-author a blank
 upstreams.yaml; they let fleet scans surface remote MCPs and the gateway
 pulls them from this endpoint. This test seeds real ScanJob results
-with mixed local (stdio) + remote (HTTP/SSE) MCPs and verifies that:
+with mixed local (stdio) + remote MCPs and verifies that:
 
-- Only HTTP/SSE servers come back (stdio excluded — those are per-MCP
-  sidecar territory).
+- Only streamable HTTP servers come back (stdio and SSE excluded — those
+  are per-MCP sidecar/proxy territory).
 - Each discovered upstream reports the agents that surfaced it.
 - Tenant scoping holds — tenant-alpha never sees tenant-beta's
   discoveries.
@@ -69,7 +69,7 @@ def fleet_seeded():
         "tenant-alpha",
         agent_name="mac-laptop-1",
         servers=[
-            {"name": "jira", "url": "https://snowflake.example.internal/mcp/jira", "transport": "sse"},
+            {"name": "jira", "url": "https://snowflake.example.internal/mcp/jira", "transport": "streamable-http"},
             {"name": "filesystem", "url": None, "transport": "stdio"},  # stdio — excluded
         ],
     )
@@ -78,8 +78,8 @@ def fleet_seeded():
         "tenant-alpha",
         agent_name="windows-laptop-3",
         servers=[
-            {"name": "jira", "url": "https://snowflake.example.internal/mcp/jira", "transport": "sse"},
-            {"name": "github", "url": "https://mcp.github.example.com/sse", "transport": "sse"},
+            {"name": "jira", "url": "https://snowflake.example.internal/mcp/jira", "transport": "streamable-http"},
+            {"name": "github", "url": "https://mcp.github.example.com/mcp", "transport": "http"},
         ],
     )
 
@@ -117,6 +117,7 @@ def test_discovered_upstreams_returns_remote_mcps_only(fleet_seeded) -> None:
     assert sorted(names) == ["github", "jira"]  # filesystem (stdio) excluded
     for u in body["upstreams"]:
         assert u["url"].startswith(("http://", "https://"))
+        assert u["transport"] == "streamable-http"
         assert u["auth"] == "none"
 
 
@@ -154,7 +155,7 @@ def test_discovered_upstreams_reports_name_collisions_and_renames(monkeypatch: p
         store,
         "tenant-alpha",
         agent_name="team-a-laptop",
-        servers=[{"name": "jira", "url": "https://mcp.jira.example.com/sse", "transport": "sse"}],
+        servers=[{"name": "jira", "url": "https://mcp.jira.example.com/mcp", "transport": "http"}],
     )
     _seed_scan_with_servers(
         store,
@@ -199,6 +200,28 @@ def test_discovered_upstreams_returns_empty_when_fleet_has_no_remote_mcps() -> N
     set_job_store(store)
     try:
         resp = _client_for("tenant-stdio-only").get("/v1/gateway/upstreams/discovered")
+        assert resp.status_code == 200
+        assert resp.json()["upstreams"] == []
+    finally:
+        _stores._store = prev
+
+
+def test_discovered_upstreams_excludes_sse_endpoints() -> None:
+    """SSE upstreams would 405 on POST; discovery must not feed them to the gateway."""
+    store = InMemoryJobStore()
+    _seed_scan_with_servers(
+        store,
+        "tenant-sse-only",
+        agent_name="laptop",
+        servers=[
+            {"name": "legacy-sse", "url": "https://mcp.example.com/sse", "transport": "sse"},
+            {"name": "sse-path", "url": "https://mcp.example.com/sse", "transport": "http"},
+        ],
+    )
+    prev = _stores._store
+    set_job_store(store)
+    try:
+        resp = _client_for("tenant-sse-only").get("/v1/gateway/upstreams/discovered")
         assert resp.status_code == 200
         assert resp.json()["upstreams"] == []
     finally:

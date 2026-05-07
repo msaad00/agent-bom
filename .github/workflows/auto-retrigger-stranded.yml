@@ -1,42 +1,57 @@
 name: Auto-Retrigger Stranded PRs
 
-# Permanent fix for the recurring "PR frozen after Update branch" pattern.
+# Permanent fix for the recurring "approved PR frozen behind main" and
+# "PR frozen after Update branch" patterns.
 #
-# When auto-merge or the "Update branch" button advances a PR's head SHA,
-# the resulting commit is authored by GITHUB_TOKEN. GitHub Actions
-# intentionally does NOT trigger pull_request workflows from
-# GITHUB_TOKEN-authored events (anti-loop guard), so the PR ends up with
-# zero check-runs on the current head and stays mergeable_state=blocked
-# forever. Background: docs/operations/CI_RUNBOOK.md.
+# Branch protection requires PR heads to include current main. When main moves,
+# approved auto-merge PRs can sit behind base until someone clicks Update
+# branch. If that update is performed by automation, the resulting commit can be
+# authored by GITHUB_TOKEN; GitHub Actions intentionally does NOT trigger
+# pull_request workflows from GITHUB_TOKEN-authored events (anti-loop guard), so
+# the PR can then end up with missing or stale check-runs on the current head.
+# Background: docs/operations/CI_RUNBOOK.md.
 #
-# This workflow polls regularly (or on demand), finds PRs whose current head
-# SHA is missing or has a stale required check, and runs
-# scripts/retrigger_stranded_pr.sh (close + reopen) which fires the
-# pull_request workflows from scratch.
+# This workflow polls regularly, runs immediately after main advances, and can
+# be dispatched on demand. It first refreshes same-repo auto-merge PRs that are
+# behind main, then retriggers any PR whose current head SHA is missing or has a
+# stale required check.
 #
 # Triggered from a workflow (not GITHUB_TOKEN's push), the close/reopen
 # events are properly recorded and our pull_request hooks fire on the
 # new head SHA — exactly the result a manual retrigger gives.
 
 on:
+  push:
+    branches: [main]
   schedule:
     # GitHub-hosted schedules are best-effort and can be delayed during busy
     # windows. Odd-minute slots avoid the most contended top-of-hour queue.
-    - cron: "3,18,33,48 * * * *"
+    - cron: "3,8,13,18,23,28,33,38,43,48,53,58 * * * *"
   workflow_dispatch:
     inputs:
       pr_number:
-        description: "Optional PR number to retrigger immediately"
+        description: "Optional PR number to refresh/retrigger immediately"
         required: false
         type: string
       min_age_minutes:
-        description: "Minimum PR age before scheduled scans retrigger"
+        description: "Minimum PR age before scheduled scans refresh/retrigger"
         required: false
-        default: "6"
+        default: "3"
         type: string
+      require_auto_merge:
+        description: "Only refresh PRs with auto-merge enabled"
+        required: false
+        default: true
+        type: boolean
+      refresh_ready_prs:
+        description: "Refresh approved auto-merge PRs that are behind main"
+        required: false
+        default: true
+        type: boolean
 
 permissions:
-  contents: read
+  contents: write
+  issues: write
   pull-requests: write
 
 concurrency:
@@ -58,10 +73,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REQUIRED_CHECK: "Lint and Type Check"
-          MIN_AGE_MINUTES: ${{ inputs.min_age_minutes || '6' }}
+          MIN_AGE_MINUTES: ${{ inputs.min_age_minutes || '3' }}
           PR_NUMBER: ${{ inputs.pr_number || '' }}
+          REQUIRE_AUTO_MERGE: ${{ github.event_name != 'workflow_dispatch' || inputs.require_auto_merge }}
+          REFRESH_READY_PRS: ${{ github.event_name != 'workflow_dispatch' || inputs.refresh_ready_prs }}
         run: |
           set -euo pipefail
+          if [ "${REFRESH_READY_PRS}" = "true" ]; then
+            scripts/refresh_ready_prs.sh
+          fi
+
           if [ -n "${PR_NUMBER}" ]; then
             echo "Manual retrigger requested for PR #${PR_NUMBER}."
             scripts/retrigger_stranded_pr.sh "${PR_NUMBER}"

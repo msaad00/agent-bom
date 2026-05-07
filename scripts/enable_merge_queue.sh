@@ -11,10 +11,11 @@
 #
 # For the recurring stranded-CI pain that motivated wanting merge queue,
 # `.github/workflows/auto-retrigger-stranded.yml` is the practical fix:
-# it polls open PRs every 5 minutes and runs scripts/retrigger_stranded_pr.sh
-# against any whose current head SHA has zero check-runs. That neutralises
-# the GITHUB_TOKEN-authored-merge anti-loop guard without needing
-# repo-settings changes.
+# it runs after main advances, polls open PRs every 5 minutes, refreshes
+# ready auto-merge PRs that are behind main, and runs
+# scripts/retrigger_stranded_pr.sh against any whose current head SHA has zero
+# or stale check-runs. That neutralises both strict-branch staleness and the
+# GITHUB_TOKEN-authored-merge anti-loop guard without needing settings changes.
 #
 # Usage:
 #   scripts/enable_merge_queue.sh         # print steps
@@ -60,8 +61,9 @@ Verify with:
 
   scripts/enable_merge_queue.sh --check
 
-Until the toggle is on, the practical fix for stranded PRs is the
-scheduled workflow at .github/workflows/auto-retrigger-stranded.yml,
-which auto-runs scripts/retrigger_stranded_pr.sh every 5 minutes. No
-operator action needed once it's on the default branch.
+Until the toggle is on, the practical fix for stale/stranded PRs is the
+workflow at .github/workflows/auto-retrigger-stranded.yml, which refreshes
+ready auto-merge PRs after main advances and auto-runs
+scripts/retrigger_stranded_pr.sh every 5 minutes. No operator action needed
+once it's on the default branch.
 EOF

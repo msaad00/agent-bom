@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 
 const root = process.cwd();
 const packageJson = JSON.parse(
@@ -30,6 +31,7 @@ const reactDomDeclared = packageJson.dependencies?.["react-dom"];
 const nodeEngines = packageJson.engines?.node;
 const packageManager = packageJson.packageManager;
 const expectedPackageManager = "npm@10.9.7";
+const expectedNpmVersion = expectedPackageManager.split("@").at(-1);
 
 if (!nextDeclared || !eslintConfigNextDeclared || !eslintDeclared || !nodeEngines || !packageManager) {
   fail("UI toolchain contract is incomplete: next, eslint-config-next, eslint, engines.node, and packageManager must all be declared.");
@@ -37,6 +39,17 @@ if (!nextDeclared || !eslintConfigNextDeclared || !eslintDeclared || !nodeEngine
 
 if (packageManager !== expectedPackageManager) {
   fail(`UI packageManager must stay pinned to ${expectedPackageManager}; found ${packageManager}.`);
+}
+
+let actualNpmVersion = "";
+try {
+  actualNpmVersion = execFileSync("npm", ["--version"], { encoding: "utf8" }).trim();
+} catch (error) {
+  fail(`Could not execute npm --version: ${error instanceof Error ? error.message : String(error)}`);
+}
+
+if (actualNpmVersion !== expectedNpmVersion) {
+  fail(`UI workflows must run npm ${expectedNpmVersion}; found npm ${actualNpmVersion}.`);
 }
 
 if (normalizeVersionRange(nextDeclared) !== normalizeVersionRange(eslintConfigNextDeclared)) {
@@ -82,5 +95,5 @@ if (!Number.isInteger(nodeMajor) || nodeMajor < 22 || nodeMajor > 24) {
 }
 
 console.log(
-  `UI toolchain contract verified: next ${nextInstalled}, eslint-config-next ${eslintConfigNextInstalled}, eslint ${eslintInstalled}, node ${process.versions.node}, package manager ${packageManager}.`,
+  `UI toolchain contract verified: next ${nextInstalled}, eslint-config-next ${eslintConfigNextInstalled}, eslint ${eslintInstalled}, node ${process.versions.node}, npm ${actualNpmVersion}, package manager ${packageManager}.`,
 );

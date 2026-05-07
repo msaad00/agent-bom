@@ -80,3 +80,12 @@ def test_samples_first_run_cli_writes_next_command(tmp_path: Path) -> None:
     assert result.exit_code == 0
     assert "agent-bom agents --inventory" in result.output
     assert (target / "inventory.json").exists()
+
+
+def test_samples_first_run_cli_accepts_target_alias(tmp_path: Path) -> None:
+    target = tmp_path / "sample"
+    result = CliRunner().invoke(main, ["samples", "first-run", "--target", str(target)])
+
+    assert result.exit_code == 0
+    assert "agent-bom agents --inventory" in result.output
+    assert (target / "inventory.json").exists()

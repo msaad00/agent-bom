@@ -25,6 +25,13 @@ updates:
       - "dependencies"
       - "docker"
     open-pull-requests-limit: 5
+    ignore:
+      # ui/package.json and ui/Dockerfile intentionally pin the supported UI
+      # runtime to Node 24 LTS (`engines.node`: >=22 <25). Dependabot should
+      # not keep opening Node 25/26 base-image PRs that CI is designed to
+      # reject.
+      - dependency-name: "node"
+        versions: [">=25"]
 
   - package-ecosystem: "pip"
     directory: "/"
@@ -43,6 +50,16 @@ updates:
       - "dependencies"
       - "javascript"
     open-pull-requests-limit: 5
+    groups:
+      next-stack:
+        patterns:
+          - "next"
+          - "eslint-config-next"
+          - "@next/eslint-plugin-next"
+      react-stack:
+        patterns:
+          - "react"
+          - "react-dom"
 
   - package-ecosystem: "npm"
     directory: "/sdks/typescript"

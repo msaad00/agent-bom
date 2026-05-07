@@ -7,9 +7,9 @@
 #
 # This script:
 #   1. Reads the PR's current head SHA.
-#   2. Checks whether the canonical required check ("Lint and Type Check") is
-#      attached to that SHA and is either pending/running/successful.
-#   3. If missing or terminally stale, closes + reopens the PR — the
+#   2. Checks whether all canonical required checks are attached to that SHA
+#      and are either pending/running/successful.
+#   3. If any are missing or terminally stale, closes + reopens the PR — the
 #      `reopened` action fires `pull_request` workflows again from scratch.
 #
 # Usage:
@@ -26,6 +26,7 @@ fi
 
 PR="$1"
 REQUIRED_CHECK="${REQUIRED_CHECK:-Lint and Type Check}"
+REQUIRED_CHECKS="${REQUIRED_CHECKS:-${REQUIRED_CHECK}}"
 REPO="${GH_REPO:-$(gh repo view --json nameWithOwner --jq .nameWithOwner)}"
 
 HEAD_SHA="$(gh api "repos/${REPO}/pulls/${PR}" --jq .head.sha)"
@@ -34,47 +35,67 @@ if [ -z "${HEAD_SHA}" ]; then
   exit 1
 fi
 
-CHECK_STATE="$(
-  gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs" \
-    --jq "[
-      .check_runs[]
-      | select(.name == \"${REQUIRED_CHECK}\")
-      | {status, conclusion}
-    ]" || printf '[]'
+CHECK_RUNS="$(
+  gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?per_page=100" --jq '.check_runs' || printf '[]'
 )"
-if [ -z "${CHECK_STATE}" ]; then
-  CHECK_STATE="[]"
+if [ -z "${CHECK_RUNS}" ]; then
+  CHECK_RUNS="[]"
 fi
 
-CHECK_HITS="$(jq 'length' <<< "${CHECK_STATE}")"
-ACTIVE_HITS="$(jq '[.[] | select(.status != "completed")] | length' <<< "${CHECK_STATE}")"
-SUCCESS_HITS="$(jq '[.[] | select(.conclusion == "success")] | length' <<< "${CHECK_STATE}")"
-STALE_HITS="$(jq '[.[] | select(.conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "startup_failure" or .conclusion == "stale" or .conclusion == "skipped")] | length' <<< "${CHECK_STATE}")"
-FAILED_HITS="$(jq '[.[] | select(.conclusion == "failure")] | length' <<< "${CHECK_STATE}")"
+IFS=',' read -r -a REQUIRED_CHECK_LIST <<< "${REQUIRED_CHECKS}"
+missing=()
+stale=()
+active=()
+successful=()
+failed=()
 
-if [ "${ACTIVE_HITS}" -gt 0 ]; then
-  echo "PR #${PR}: '${REQUIRED_CHECK}' is already active on head ${HEAD_SHA}. No retrigger needed."
+for raw_check in "${REQUIRED_CHECK_LIST[@]}"; do
+  check="$(xargs <<< "${raw_check}")"
+  [ -n "${check}" ] || continue
+
+  check_state="$(jq --arg name "${check}" '[.[] | select(.name == $name) | {status, conclusion}]' <<< "${CHECK_RUNS}")"
+  check_hits="$(jq 'length' <<< "${check_state}")"
+  active_hits="$(jq '[.[] | select(.status != "completed")] | length' <<< "${check_state}")"
+  success_hits="$(jq '[.[] | select(.conclusion == "success" or .conclusion == "neutral")] | length' <<< "${check_state}")"
+  stale_hits="$(jq '[.[] | select(.conclusion == "cancelled" or .conclusion == "timed_out" or .conclusion == "startup_failure" or .conclusion == "stale" or .conclusion == "skipped")] | length' <<< "${check_state}")"
+  failed_hits="$(jq '[.[] | select(.conclusion == "failure" or .conclusion == "action_required")] | length' <<< "${check_state}")"
+
+  if [ "${active_hits}" -gt 0 ]; then
+    active+=("${check}")
+  elif [ "${success_hits}" -gt 0 ]; then
+    successful+=("${check}")
+  elif [ "${failed_hits}" -gt 0 ] && [ "${stale_hits}" -eq 0 ]; then
+    failed+=("${check}")
+  elif [ "${check_hits}" -eq 0 ]; then
+    missing+=("${check}")
+  else
+    stale+=("${check}")
+  fi
+done
+
+if [ "${#failed[@]}" -gt 0 ]; then
+  printf "PR #%s: required check(s) failed on head %s: %s. Not retriggering real failures.\n" \
+    "${PR}" "${HEAD_SHA}" "$(IFS=', '; echo "${failed[*]}")"
   exit 0
 fi
 
-if [ "${SUCCESS_HITS}" -gt 0 ]; then
-  echo "PR #${PR}: head ${HEAD_SHA} already has successful '${REQUIRED_CHECK}'. No retrigger needed."
+if [ "${#missing[@]}" -eq 0 ] && [ "${#stale[@]}" -eq 0 ]; then
+  printf "PR #%s: required checks are attached on head %s (%s successful, %s active). No retrigger needed.\n" \
+    "${PR}" "${HEAD_SHA}" "${#successful[@]}" "${#active[@]}"
   exit 0
 fi
 
-if [ "${FAILED_HITS}" -gt 0 ] && [ "${STALE_HITS}" -eq 0 ]; then
-  echo "PR #${PR}: '${REQUIRED_CHECK}' failed on head ${HEAD_SHA}. Not retriggering a real failure."
-  exit 0
+reason_parts=()
+if [ "${#missing[@]}" -gt 0 ]; then
+  reason_parts+=("missing: $(IFS=', '; echo "${missing[*]}")")
 fi
-
-if [ "${CHECK_HITS}" -eq 0 ]; then
-  reason="required CI did not attach"
-else
-  reason="required CI is terminally stale (${STALE_HITS}/${CHECK_HITS} stale runs)"
+if [ "${#stale[@]}" -gt 0 ]; then
+  reason_parts+=("stale: $(IFS=', '; echo "${stale[*]}")")
 fi
+reason="$(IFS='; '; echo "${reason_parts[*]}")"
 
-echo "PR #${PR}: ${reason} for '${REQUIRED_CHECK}' on head ${HEAD_SHA}. Closing + reopening to retrigger required workflows."
-gh pr close "${PR}" --comment "auto-retrigger: ${reason} for '${REQUIRED_CHECK}' on head ${HEAD_SHA} (likely a GITHUB_TOKEN-authored 'Update branch' merge or cancelled required context). Reopening to re-run checks."
+echo "PR #${PR}: required CI is stranded on head ${HEAD_SHA} (${reason}). Closing + reopening to retrigger required workflows."
+gh pr close "${PR}" --comment "auto-retrigger: required CI is stranded on head ${HEAD_SHA} (${reason}). Reopening to re-run checks."
 
 # `gh pr close` returns before GitHub has propagated the state change to
 # the PR resource. Reopening too soon races: the reopen API call lands

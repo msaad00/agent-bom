@@ -72,7 +72,8 @@ jobs:
       - name: Find and retrigger stranded PRs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REQUIRED_CHECK: "Lint and Type Check"
+          AUTOMATION_SSH_SIGNING_KEY: ${{ secrets.AUTOMATION_SSH_SIGNING_KEY }}
+          REQUIRED_CHECKS: "Lint and Type Check,Test (Python 3.11),Test (Python 3.13),Build Package,Security Scan,CodeQL,Test (Python 3.14)"
           MIN_AGE_MINUTES: ${{ inputs.min_age_minutes || '3' }}
           PR_NUMBER: ${{ inputs.pr_number || '' }}
           REQUIRE_AUTO_MERGE: ${{ github.event_name != 'workflow_dispatch' || inputs.require_auto_merge }}

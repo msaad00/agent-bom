@@ -507,6 +507,30 @@ class TestGraphEndpointLogic:
         assert defaults["graph_filter_presets"] == "'default'"
         assert search_tenant["dflt_value"] is None
 
+    def test_sqlite_graph_schema_version_insert_tolerates_concurrent_initializer(self, tmp_path):
+        conn = sqlite3.connect(tmp_path / "schema-race.db")
+        conn.row_factory = sqlite3.Row
+        try:
+            conn.execute("CREATE TABLE graph_schema_version (version INTEGER PRIMARY KEY)")
+            conn.execute(
+                """
+                CREATE TRIGGER concurrent_schema_initializer
+                BEFORE INSERT ON graph_schema_version
+                WHEN NOT EXISTS (SELECT 1 FROM graph_schema_version WHERE version = NEW.version)
+                BEGIN
+                  INSERT INTO graph_schema_version (version) VALUES (NEW.version);
+                END
+                """
+            )
+
+            _init_db(conn)
+
+            rows = conn.execute("SELECT version FROM graph_schema_version").fetchall()
+        finally:
+            conn.close()
+
+        assert len(rows) == 1
+
     def test_sqlite_graph_store_search_applies_slice_filters(self, tmp_path):
         store = SQLiteGraphStore(tmp_path / "graph.db")
         graph = UnifiedGraph(scan_id="search-scan", tenant_id="default")

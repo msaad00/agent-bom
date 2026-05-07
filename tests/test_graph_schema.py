@@ -615,8 +615,8 @@ class TestGraphStore:
         save_graph(db, g2)
 
         diff = diff_snapshots(db, "s1", "s2")
-        assert "agent:b" in diff["nodes_added"]
-        assert "server:a" in diff["nodes_removed"]
+        assert {node["id"] for node in diff["nodes_added"]} == {"agent:b"}
+        assert {node["id"] for node in diff["nodes_removed"]} == {"server:a"}
         assert len(diff["edges_added"]) >= 1
         assert len(diff["edges_removed"]) >= 1
 
@@ -1045,10 +1045,8 @@ class TestRegressionPerScanHistory:
         save_graph(db, g2)
 
         diff = diff_snapshots(db, "s1", "s2")
-        assert "agent:c" in diff["nodes_added"]
-        assert "agent:b" in diff["nodes_removed"]
-        assert "agent:a" not in diff["nodes_added"]
-        assert "agent:a" not in diff["nodes_removed"]
+        assert {node["id"] for node in diff["nodes_added"]} == {"agent:c"}
+        assert {node["id"] for node in diff["nodes_removed"]} == {"agent:b"}
 
 
 class TestGraphFilterOptions:

@@ -600,19 +600,39 @@ def diff_snapshots(
 ) -> dict[str, Any]:
     """Compute the diff between two scan snapshots."""
     tenant_id = normalize_graph_tenant_id(tenant_id)
+
+    def node_metadata(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "entity_type": row["entity_type"],
+            "label": row["label"],
+            "severity": row["severity"] or "",
+            "severity_id": int(row["severity_id"] or 0),
+            "risk_score": float(row["risk_score"] or 0.0),
+            "status": row["status"] or "",
+        }
+
     old_nodes: dict[str, dict] = {}
     for row in conn.execute(
-        "SELECT id, severity, risk_score FROM graph_nodes WHERE scan_id = ? AND tenant_id = ?",
+        """
+        SELECT id, entity_type, label, status, severity, severity_id, risk_score
+        FROM graph_nodes
+        WHERE scan_id = ? AND tenant_id = ?
+        """,
         (scan_id_old, tenant_id),
     ):
-        old_nodes[row["id"]] = {"severity": row["severity"], "risk_score": row["risk_score"]}
+        old_nodes[row["id"]] = node_metadata(row)
 
     new_nodes: dict[str, dict] = {}
     for row in conn.execute(
-        "SELECT id, severity, risk_score FROM graph_nodes WHERE scan_id = ? AND tenant_id = ?",
+        """
+        SELECT id, entity_type, label, status, severity, severity_id, risk_score
+        FROM graph_nodes
+        WHERE scan_id = ? AND tenant_id = ?
+        """,
         (scan_id_new, tenant_id),
     ):
-        new_nodes[row["id"]] = {"severity": row["severity"], "risk_score": row["risk_score"]}
+        new_nodes[row["id"]] = node_metadata(row)
 
     old_ids, new_ids = set(old_nodes), set(new_nodes)
 
@@ -631,8 +651,8 @@ def diff_snapshots(
         new_edges.add((row["source_id"], row["target_id"], row["relationship"]))
 
     return {
-        "nodes_added": sorted(new_ids - old_ids),
-        "nodes_removed": sorted(old_ids - new_ids),
+        "nodes_added": [new_nodes[nid] for nid in sorted(new_ids - old_ids)],
+        "nodes_removed": [old_nodes[nid] for nid in sorted(old_ids - new_ids)],
         "nodes_changed": sorted(nid for nid in (old_ids & new_ids) if old_nodes[nid] != new_nodes[nid]),
         "edges_added": sorted(new_edges - old_edges),
         "edges_removed": sorted(old_edges - new_edges),

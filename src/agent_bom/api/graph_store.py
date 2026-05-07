@@ -1290,8 +1290,7 @@ class SQLiteGraphStore:
                 SELECT source_id, target_id, relationship, direction, weight, traversable, first_seen, last_seen, evidence, activity_id
                 FROM graph_edges
                 WHERE tenant_id = ? AND scan_id = ?
-                  AND source_id IN ({placeholders})
-                  AND target_id IN ({placeholders})
+                  AND (source_id IN ({placeholders}) OR target_id IN ({placeholders}))
                 """,  # nosec B608 - placeholders are generated solely from "?" markers
                 [tenant_id, effective_scan_id, *node_ids, *node_ids],
             ).fetchall()

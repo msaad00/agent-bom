@@ -993,18 +993,38 @@ class PostgresGraphStore:
 
     def diff_snapshots(self, scan_id_old: str, scan_id_new: str, *, tenant_id: str = "") -> dict[str, Any]:
         tenant_id = normalize_graph_tenant_id(tenant_id)
+
+        def node_metadata(row) -> dict[str, Any]:
+            return {
+                "id": row[0],
+                "entity_type": row[1],
+                "label": row[2],
+                "status": row[3] or "",
+                "severity": row[4] or "",
+                "severity_id": int(row[5] or 0),
+                "risk_score": float(row[6] or 0.0),
+            }
+
         with _tenant_connection(self._pool) as conn:
             old_nodes = {
-                row[0]: {"severity": row[1], "risk_score": row[2]}
+                row[0]: node_metadata(row)
                 for row in conn.execute(
-                    "SELECT id, severity, risk_score FROM graph_nodes WHERE scan_id = %s AND tenant_id = %s",
+                    """
+                    SELECT id, entity_type, label, status, severity, severity_id, risk_score
+                    FROM graph_nodes
+                    WHERE scan_id = %s AND tenant_id = %s
+                    """,
                     (scan_id_old, tenant_id),
                 ).fetchall()
             }
             new_nodes = {
-                row[0]: {"severity": row[1], "risk_score": row[2]}
+                row[0]: node_metadata(row)
                 for row in conn.execute(
-                    "SELECT id, severity, risk_score FROM graph_nodes WHERE scan_id = %s AND tenant_id = %s",
+                    """
+                    SELECT id, entity_type, label, status, severity, severity_id, risk_score
+                    FROM graph_nodes
+                    WHERE scan_id = %s AND tenant_id = %s
+                    """,
                     (scan_id_new, tenant_id),
                 ).fetchall()
             }
@@ -1024,8 +1044,8 @@ class PostgresGraphStore:
                 ).fetchall()
             }
             return {
-                "nodes_added": sorted(new_ids - old_ids),
-                "nodes_removed": sorted(old_ids - new_ids),
+                "nodes_added": [new_nodes[nid] for nid in sorted(new_ids - old_ids)],
+                "nodes_removed": [old_nodes[nid] for nid in sorted(old_ids - new_ids)],
                 "nodes_changed": sorted(nid for nid in (old_ids & new_ids) if old_nodes[nid] != new_nodes[nid]),
                 "edges_added": sorted(new_edges - old_edges),
                 "edges_removed": sorted(old_edges - new_edges),
@@ -1258,8 +1278,7 @@ class PostgresGraphStore:
                 SELECT source_id, target_id, relationship, direction, weight, traversable, first_seen, last_seen, evidence, activity_id
                 FROM graph_edges
                 WHERE tenant_id = %s AND scan_id = %s
-                  AND source_id IN ({placeholders})
-                  AND target_id IN ({placeholders})
+                  AND (source_id IN ({placeholders}) OR target_id IN ({placeholders}))
                 """,  # nosec B608 - placeholders are generated solely from "%s" markers
                 [tenant_id, effective_scan_id, *node_ids, *node_ids],
             ).fetchall()

@@ -5,6 +5,53 @@ stuck, a workflow fails unexpectedly, or you need to retrigger checks.
 
 ---
 
+## Ready PRs blocked behind `main`
+
+### Symptom
+
+A PR is approved, auto-merge is enabled, and all current checks are green, but
+GitHub still says **This branch is out-of-date with the base branch** or
+**branch update already in progress**. This becomes common when several small
+readiness PRs are stacked behind a strict `main` branch protection rule.
+
+### Root cause
+
+`main` advanced after the PR checks started. Branch protection has
+`required_status_checks.strict = true`, so GitHub requires the PR head to
+include the latest `main` before it can merge. Clicking **Update branch** fixes
+the base mismatch, but the resulting synthetic merge commit can produce stale
+or canceled check state.
+
+### Permanent fix: auto-refresh ready PRs
+
+`.github/workflows/auto-retrigger-stranded.yml` now runs on every push to
+`main`, on a 5-minute schedule, and on manual dispatch. It first runs:
+
+```sh
+scripts/refresh_ready_prs.sh
+```
+
+The script only refreshes same-repo, non-draft PRs targeting `main`. By default
+it further limits writes to PRs with auto-merge already enabled, so exploratory
+branches are left alone. After updating a PR branch, it runs the stranded-check
+retrigger below so required checks attach to the new head.
+
+Manual one-shot refresh:
+
+```sh
+PR_NUMBER=<PR_NUMBER> scripts/refresh_ready_prs.sh
+```
+
+Dry-run inspection:
+
+```sh
+DRY_RUN=true scripts/refresh_ready_prs.sh
+```
+
+If the workflow reports "branch update already in progress", leave it alone; the
+next scheduled run will verify whether the head advanced and retrigger checks if
+needed.
+
 ## Stranded PRs (zero check runs on the current head SHA)
 
 ### Symptom
@@ -47,15 +94,16 @@ run on any PR.
 ### Permanent fix: scheduled auto-retrigger (recommended, already on)
 
 `.github/workflows/auto-retrigger-stranded.yml` runs `scripts/retrigger_stranded_pr.sh`
-against every open PR whose current head SHA has zero `Lint and Type Check`
-runs. Cron is `*/5 * * * *`, plus `workflow_dispatch` for on-demand. Once
-this workflow is on the default branch, stranded PRs unstrand themselves
-within five minutes — no operator action required.
+against every open PR whose current head SHA has zero or stale
+`Lint and Type Check` runs. It runs after `main` advances, every five minutes,
+and through `workflow_dispatch` for on-demand. Once this workflow is on the
+default branch, stranded PRs unstrand themselves within five minutes — no
+operator action required.
 
 Operator-side troubleshooting if a strand persists past ~10 minutes:
 
 - Did the workflow itself run? `gh run list --workflow=auto-retrigger-stranded.yml --limit 5`
-- Was the PR younger than `MIN_AGE_MINUTES` (10 min)? It's intentionally
+- Was the PR younger than `MIN_AGE_MINUTES` (3 min by default)? It's intentionally
   skipped to give the initial `pull_request` workflow a chance to start.
 - Did `gh api commits/{sha}/check-runs` return zero, or is there a
   different check name now? Update `REQUIRED_CHECK` in the workflow if
@@ -63,7 +111,7 @@ Operator-side troubleshooting if a strand persists past ~10 minutes:
 
 ### Permanent fix alternatives (settings change required)
 
-The auto-retrigger workflow above is the cheapest path. The following
+The auto-refresh/retrigger workflow above is the cheapest path. The following
 alternatives still apply if you prefer settings-level fixes; pick one.
 
 | Option | Where | Tradeoff |

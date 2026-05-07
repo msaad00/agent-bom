@@ -40,8 +40,11 @@ CHECK_STATE="$(
       .check_runs[]
       | select(.name == \"${REQUIRED_CHECK}\")
       | {status, conclusion}
-    ]"
+    ]" || printf '[]'
 )"
+if [ -z "${CHECK_STATE}" ]; then
+  CHECK_STATE="[]"
+fi
 
 CHECK_HITS="$(jq 'length' <<< "${CHECK_STATE}")"
 ACTIVE_HITS="$(jq '[.[] | select(.status != "completed")] | length' <<< "${CHECK_STATE}")"

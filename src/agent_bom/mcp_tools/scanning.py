@@ -73,9 +73,14 @@ async def scan_impl(
         )
         scan_warnings = [*pre_warnings, *scan_warnings]
         if not agents:
-            result: dict[str, object] = {"status": "no_agents_found", "agents": [], "blast_radii": []}
-            if scan_warnings:
-                result["warnings"] = scan_warnings
+            result: dict[str, object] = {
+                "status": "no_agents_found",
+                "agents": [],
+                "vulnerabilities": [],
+                "blast_radius": [],
+                "blast_radii": [],
+                "warnings": scan_warnings,
+            }
             return _truncate_response(json.dumps(result))
         from agent_bom.vex import active_blast_radii
 

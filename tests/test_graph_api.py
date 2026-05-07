@@ -348,8 +348,10 @@ class TestGraphEndpointLogic:
         save_graph(graph_db, g2)
 
         diff = diff_snapshots(graph_db, "s1", "s2")
-        assert "agent:new" in diff["nodes_added"]
-        assert "agent:b" in diff["nodes_removed"]
+        assert diff["nodes_added"][0]["id"] == "agent:new"
+        assert diff["nodes_added"][0]["entity_type"] == "agent"
+        assert diff["nodes_added"][0]["label"] == "new-agent"
+        assert {node["id"] for node in diff["nodes_removed"]} >= {"agent:b"}
 
     def test_bfs_from_persisted_graph(self, graph_db):
         _build_persisted_graph(graph_db)
@@ -725,6 +727,23 @@ class TestGraphEndpointLogic:
         assert sourced[0].summary == path.summary
         assert sourced[0].tool_exposure == ["run_shell"]
 
+    def test_sqlite_graph_store_edges_for_node_ids_returns_incident_edges(self, tmp_path):
+        store = SQLiteGraphStore(tmp_path / "graph.db")
+        graph = UnifiedGraph(scan_id="incident-edge-scan", tenant_id="default")
+        graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        graph.add_node(UnifiedNode(id="tool:t", entity_type=EntityType.TOOL, label="tool-t"))
+        graph.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+        graph.add_edge(UnifiedEdge(source="server:s", target="tool:t", relationship=RelationshipType.PROVIDES_TOOL))
+        store.save_graph(graph)
+
+        edges = store.edges_for_node_ids(tenant_id="default", scan_id="incident-edge-scan", node_ids={"agent:a", "tool:t"})
+
+        assert {(edge.source, edge.target) for edge in edges} == {
+            ("agent:a", "server:s"),
+            ("server:s", "tool:t"),
+        }
+
     def test_sqlite_graph_store_node_context_preserves_bidirectional_neighbors(self, tmp_path):
         store = SQLiteGraphStore(tmp_path / "graph.db")
         graph = UnifiedGraph(scan_id="node-context-scan", tenant_id="default")
@@ -907,7 +926,7 @@ class _RecordingGraphStore:
 
     def edges_for_node_ids(self, *, tenant_id: str = "", scan_id: str = "", node_ids: set[str]):
         self.calls.append(("edges_for_node_ids", tenant_id, scan_id, tuple(sorted(node_ids))))
-        return [edge for edge in self.graph.edges if edge.source in node_ids and edge.target in node_ids]
+        return [edge for edge in self.graph.edges if edge.source in node_ids or edge.target in node_ids]
 
     def search_nodes(
         self,
@@ -1256,6 +1275,12 @@ class TestGraphStoreBackendSelection:
         assert queue["pagination"]["total"] == 1
         assert queue["stats"]["attack_path_count"] == 1
         assert queue["attack_paths"][0]["hops"] == ["agent:a", "server:a:fs", "pkg:npm:form-data", "vuln:cve"]
+        assert queue["attack_paths"][0]["edges"] == ["uses", "depends_on", "vulnerable_to"]
+        assert {(edge["source_id"], edge["target_id"]) for edge in queue["edges"]} >= {
+            ("agent:a", "server:a:fs"),
+            ("server:a:fs", "pkg:npm:form-data"),
+            ("pkg:npm:form-data", "vuln:cve"),
+        }
 
     def test_graph_overview_filtered_page_stays_store_backed(self, recording_graph_store):
         recording_graph_store.graph.add_node(
@@ -1280,6 +1305,23 @@ class TestGraphStoreBackendSelection:
         assert helper_calls.count("edges_for_node_ids") == 1
         assert helper_calls.count("snapshot_stats") == 1
         assert "load_graph" not in helper_calls
+
+    def test_graph_overview_accepts_scan_alias_and_returns_incident_edges(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+        client = TestClient(app)
+
+        response = client.get("/v1/graph", params={"scan": "store-scan", "limit": 1})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["scan_id"] == "store-scan"
+        assert len(body["nodes"]) == 1
+        assert body["edges"][0]["source_id"] == "agent:a"
+        assert body["edges"][0]["target_id"] == "server:s"
+        assert ("page_nodes", "default", "store-scan", None, 0, None, 0, 1) in recording_graph_store.calls
 
     def test_graph_overview_rejects_unknown_entity_type(self, recording_graph_store):
         client = TestClient(app)
@@ -1520,6 +1562,26 @@ class TestGraphStoreBackendSelection:
         assert any(call[0] == "bfs_paths" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
 
+    def test_graph_paths_prefers_source_id_parameter_in_schema(self, recording_graph_store):
+        recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
+        recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        recording_graph_store.graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        recording_graph_store.graph.add_edge(
+            UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES, traversable=True)
+        )
+        client = TestClient(app)
+
+        response = client.get("/v1/graph/paths", params={"source_id": "agent:a", "scan": "store-scan"})
+
+        assert response.status_code == 200
+        assert response.json()["source_id"] == "agent:a"
+        assert ("bfs_paths", "default", "store-scan", "agent:a", 4, True) in recording_graph_store.calls
+        parameter_names = {
+            param["name"] for param in app.openapi()["paths"]["/v1/graph/paths"]["get"]["parameters"] if param["in"] == "query"
+        }
+        assert "source_id" in parameter_names
+        assert "source" not in parameter_names
+
     def test_graph_impact_uses_store_native_traversal(self, recording_graph_store):
         recording_graph_store.graph = UnifiedGraph(scan_id="store-scan", tenant_id="default")
         recording_graph_store.graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
@@ -1689,6 +1751,8 @@ class TestGraphStoreBackendSelection:
         body = response.json()
         assert body["node"]["id"] == "server:s"
         assert body["sources"] == ["agent:a"]
+        assert body["edges_in"][0]["source_id"] == "agent:a"
+        assert body["edges_in"][0]["target_id"] == "server:s"
         assert any(call[0] == "node_context" for call in recording_graph_store.calls)
         assert not any(call[0] == "load_graph" for call in recording_graph_store.calls)
 

@@ -130,6 +130,12 @@ def _parse_relationship_filter(raw: str | None) -> set[RelationshipType]:
     return parsed
 
 
+def _coalesce_alias(primary: str | None, alias: str | None, *, primary_name: str, alias_name: str) -> str:
+    if primary and alias and primary != alias:
+        raise HTTPException(status_code=422, detail=f"Conflicting query parameters: {primary_name} and {alias_name}")
+    return primary or alias or ""
+
+
 def _validate_relationship_list(values: list[str]) -> set[RelationshipType] | None:
     if not values:
         return None
@@ -381,6 +387,31 @@ def _rel_value(edge) -> str:
     return edge.relationship.value if hasattr(edge.relationship, "value") else str(edge.relationship)
 
 
+def _edge_relationships_for_hops(hops: list[str], edges) -> list[str]:
+    """Return relationship names for consecutive hop pairs when topology is available."""
+    if len(hops) < 2:
+        return []
+    by_pair: dict[tuple[str, str], str] = {}
+    for edge in edges:
+        rel = _rel_value(edge)
+        by_pair.setdefault((edge.source, edge.target), rel)
+        if edge.is_bidirectional:
+            by_pair.setdefault((edge.target, edge.source), rel)
+    relationships: list[str] = []
+    for source, target in zip(hops, hops[1:], strict=False):
+        relationship = by_pair.get((source, target))
+        if relationship:
+            relationships.append(relationship)
+    return relationships
+
+
+def _serialize_attack_path(path: AttackPath, edges=None) -> dict:
+    data = path.to_dict()
+    if not data.get("edges") and edges is not None:
+        data["edges"] = _edge_relationships_for_hops(path.hops, edges)
+    return data
+
+
 def _node_type_value(node) -> str:
     return node.entity_type.value if hasattr(node.entity_type, "value") else str(node.entity_type)
 
@@ -464,6 +495,7 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                     if vulnerable_source.id != server_id:
                         hop_ids.append(vulnerable_source.id)
                     hop_ids.append(finding.id)
+                    path_edges = _edge_relationships_for_hops(hop_ids, graph.edges)
                     key = (agent_id, server_id, vulnerable_source.id, finding.id)
                     if key in seen:
                         continue
@@ -477,7 +509,7 @@ def _derived_attack_paths(graph: UnifiedGraph) -> list[AttackPath]:
                             source=agent_id,
                             target=finding.id,
                             hops=hop_ids,
-                            edges=[],
+                            edges=path_edges,
                             composite_risk=round(min(100.0, risk), 2),
                             summary=(
                                 "Derived from graph topology: vulnerable package/server is reachable from an agent "
@@ -652,6 +684,7 @@ def _filtered_query_graph(
 async def get_graph(
     request: Request,
     scan_id: Optional[str] = Query(None, description="Filter by scan ID"),
+    scan: Optional[str] = Query(None, description="Alias for scan_id"),
     entity_types: Optional[str] = Query(None, description="Comma-separated entity types"),
     min_severity: Optional[str] = Query(None, description="Minimum severity (critical/high/medium/low)"),
     relationships: Optional[str] = Query(None, description="Comma-separated relationship types"),
@@ -671,7 +704,7 @@ async def get_graph(
 
     tenant = _tenant(request)
     graph_store = _get_graph_store_or_503()
-    requested_scan_id = scan_id or ""
+    requested_scan_id = _coalesce_alias(scan_id, scan, primary_name="scan_id", alias_name="scan")
 
     if not requested_scan_id and not await _graph_store_call(graph_store.latest_snapshot_id, tenant_id=tenant):
         raise HTTPException(status_code=503, detail="Graph snapshots not found. Run a scan first.")
@@ -704,7 +737,11 @@ async def get_graph(
         paged_nodes, pagination = _paginate(all_nodes, offset, limit)
         paged_ids = {n.id for n in paged_nodes}
         paged_edges = [e for e in graph.edges if e.source in paged_ids and e.target in paged_ids]
-        attack_paths = [p.to_dict() for p in _derived_attack_paths(graph) if p.hops and all(hop in paged_ids for hop in p.hops)]
+        attack_paths = [
+            _serialize_attack_path(p, graph.edges)
+            for p in _derived_attack_paths(graph)
+            if p.hops and all(hop in paged_ids for hop in p.hops)
+        ]
         interaction_risks = [
             r.to_dict() for r in graph.interaction_risks if r.agents and all(f"agent:{agent_name}" in paged_ids for agent_name in r.agents)
         ]
@@ -753,7 +790,7 @@ async def get_graph(
         "created_at": created_at,
         "nodes": [n.to_dict() for n in paged_nodes],
         "edges": [e.to_dict() for e in paged_edges],
-        "attack_paths": [path.to_dict() for path in source_attack_paths],
+        "attack_paths": [_serialize_attack_path(path, paged_edges) for path in source_attack_paths],
         "interaction_risks": [],
         "stats": await _graph_store_call(
             graph_store.snapshot_stats,
@@ -875,6 +912,12 @@ async def get_graph_attack_paths(
         tenant_id=tenant,
         node_ids=hop_ids,
     )
+    path_edges = await _graph_store_call(
+        graph_store.edges_for_node_ids,
+        scan_id=effective_scan_id,
+        tenant_id=tenant,
+        node_ids=hop_ids,
+    )
     stats = await _graph_store_call(
         graph_store.snapshot_stats,
         scan_id=effective_scan_id,
@@ -891,8 +934,8 @@ async def get_graph_attack_paths(
         "tenant_id": tenant,
         "created_at": created_at,
         "nodes": [node.to_dict() for node in nodes],
-        "edges": [],
-        "attack_paths": [path.to_dict() for path in paths],
+        "edges": [edge.to_dict() for edge in path_edges],
+        "attack_paths": [_serialize_attack_path(path, path_edges) for path in paths],
         "interaction_risks": [],
         "stats": stats,
         "pagination": _page_meta(total, offset, limit),
@@ -902,41 +945,56 @@ async def get_graph_attack_paths(
 @router.get("/v1/graph/paths", tags=["graph"])
 async def get_graph_paths(
     request: Request,
-    source: str = Query(..., description="Source node ID (e.g. agent:claude-desktop)"),
+    source_id: Optional[str] = Query(None, description="Source node ID (e.g. agent:claude-desktop)"),
+    source: Optional[str] = Query(None, include_in_schema=False),
     scan_id: Optional[str] = Query(None, description="Scan ID"),
+    scan: Optional[str] = Query(None, include_in_schema=False),
     max_depth: int = Query(4, ge=1, le=10, description="Maximum BFS depth"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     limit: int = Query(100, ge=1, le=1000, description="Max paths"),
 ) -> dict:
     """Find all attack paths from a source node via BFS."""
     graph_store = _get_graph_store_or_503()
-    source_nodes = await _graph_store_call(graph_store.nodes_by_ids, scan_id=scan_id or "", tenant_id=_tenant(request), node_ids={source})
+    source_node_id = _coalesce_alias(source_id, source, primary_name="source_id", alias_name="source")
+    if not source_node_id:
+        raise HTTPException(status_code=422, detail="Missing required query parameter: source_id")
+    requested_scan_id = _coalesce_alias(scan_id, scan, primary_name="scan_id", alias_name="scan")
+    tenant = _tenant(request)
+    source_nodes = await _graph_store_call(graph_store.nodes_by_ids, scan_id=requested_scan_id, tenant_id=tenant, node_ids={source_node_id})
     if not source_nodes:
-        raise HTTPException(status_code=404, detail=f"Node '{source}' not found in graph")
+        raise HTTPException(status_code=404, detail=f"Node '{source_node_id}' not found in graph")
 
     all_paths, reachable = await _graph_store_call(
         graph_store.bfs_paths,
-        scan_id=scan_id or "",
-        tenant_id=_tenant(request),
-        source=source,
+        scan_id=requested_scan_id,
+        tenant_id=tenant,
+        source=source_node_id,
         max_depth=max_depth,
         traversable_only=True,
     )
     paged_paths, pagination = _paginate(all_paths, offset, limit)
     attack_paths = await _graph_store_call(
         graph_store.attack_paths_for_sources,
-        scan_id=scan_id or "",
-        tenant_id=_tenant(request),
-        source_ids={source},
+        scan_id=requested_scan_id,
+        tenant_id=tenant,
+        source_ids={source_node_id},
+    )
+    path_node_ids = {source_node_id, *reachable}
+    path_edges = await _graph_store_call(
+        graph_store.edges_for_node_ids,
+        scan_id=requested_scan_id,
+        tenant_id=tenant,
+        node_ids=path_node_ids,
     )
 
     return {
-        "source": source,
+        "source": source_node_id,
+        "source_id": source_node_id,
         "max_depth": max_depth,
         "reachable_count": len(reachable),
         "reachable_nodes": sorted(reachable),
         "paths": [{"target": p[-1], "hops": p, "depth": len(p) - 1} for p in paged_paths],
-        "attack_paths": [ap.to_dict() for ap in attack_paths if ap.source == source],
+        "attack_paths": [_serialize_attack_path(ap, path_edges) for ap in attack_paths if ap.source == source_node_id],
         "pagination": pagination,
     }
 
@@ -1126,7 +1184,9 @@ async def query_graph(request: Request, body: GraphQueryRequest) -> dict:
             source_ids=set(body.roots),
         )
         attack_paths = [
-            ap.to_dict() for ap in root_attack_paths if ap.source in body.roots and all(hop in filtered_graph.nodes for hop in ap.hops)
+            _serialize_attack_path(ap, filtered_graph.edges)
+            for ap in root_attack_paths
+            if ap.source in body.roots and all(hop in filtered_graph.nodes for hop in ap.hops)
         ]
 
     return {

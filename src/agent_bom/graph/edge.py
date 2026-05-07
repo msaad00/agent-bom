@@ -57,6 +57,8 @@ class UnifiedEdge:
             "id": self.id,
             "source": self.source,
             "target": self.target,
+            "source_id": self.source,
+            "target_id": self.target,
             "relationship": self.relationship.value if isinstance(self.relationship, RelationshipType) else self.relationship,
             "direction": self.direction,
             "weight": self.weight,

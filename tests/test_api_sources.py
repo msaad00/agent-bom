@@ -225,6 +225,26 @@ def test_running_source_queues_source_linked_job(source_client: TestClient, monk
     assert jobs_body["jobs"][0]["source_id"] == source_id
 
 
+def test_source_run_rejects_unknown_scan_request_fields(source_client: TestClient) -> None:
+    created = source_client.post(
+        "/v1/sources",
+        headers=ANALYST_HEADERS,
+        json={
+            "display_name": "Typoed repo source",
+            "kind": "scan.repo",
+            "config": {"scan_request": {"project_path": "."}},
+        },
+    )
+    source_id = created.json()["source_id"]
+
+    resp = source_client.post(f"/v1/sources/{source_id}/run", headers=ANALYST_HEADERS)
+
+    assert resp.status_code == 422
+    body = resp.json()
+    assert "project_path" in str(body)
+    assert "extra_forbidden" in str(body)
+
+
 def test_push_and_runtime_sources_reject_run_now(source_client: TestClient) -> None:
     for kind in ("ingest.trace_push", "runtime.gateway"):
         created = source_client.post(

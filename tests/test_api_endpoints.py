@@ -308,6 +308,17 @@ def test_create_scan_with_options():
     assert body["request"]["format"] == "cyclonedx"
 
 
+def test_create_scan_rejects_unknown_fields():
+    """POST /v1/scan rejects typoed request fields instead of dropping them."""
+    client, _ = _fresh_client()
+    resp = client.post("/v1/scan", json={"project_path": "."})
+
+    assert resp.status_code == 422
+    body = resp.json()
+    assert "project_path" in str(body)
+    assert "extra_forbidden" in str(body)
+
+
 # ---------------------------------------------------------------------------
 # 6. GET scan — not found
 # ---------------------------------------------------------------------------

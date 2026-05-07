@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, FileText, PlayCircle, Server } from "lucide-react";
 
 import type { ScanResult } from "@/lib/api";
+import { userFacingApiErrorMessage } from "@/lib/api-errors";
 import { getDisplayApiUrl } from "@/lib/runtime-config";
 import { checkFileSize, validateScanReport } from "@/lib/validators";
 
@@ -36,6 +37,7 @@ export function ApiOfflineState({
   const [importError, setImportError] = useState<string | null>(null);
   const apiUrl = getDisplayApiUrl();
   const resolvedTitle = title ?? KIND_TITLES[kind];
+  const resolvedDetail = detail ? userFacingApiErrorMessage(detail, "The API request failed.") : null;
 
   const handleFile = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -95,9 +97,9 @@ export function ApiOfflineState({
               tab that fits your current role.
             </p>
           )}
-          {detail ? (
+          {resolvedDetail ? (
             <p className="mt-3 text-xs text-zinc-500">
-              Current error: <span className="font-mono text-zinc-400">{detail}</span>
+              Current error: <span className="font-mono text-zinc-400">{resolvedDetail}</span>
             </p>
           ) : null}
         </div>

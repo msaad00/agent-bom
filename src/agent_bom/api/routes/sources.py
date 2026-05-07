@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import ValidationError
 
 from agent_bom.api.audit_log import log_action
 from agent_bom.api.models import (
@@ -78,6 +79,7 @@ def _request_for_source(source: SourceRecord) -> ScanRequest:
         connector_name = source.connector_name or str(config.get("connector_name") or "").strip()
         if not connector_name:
             raise HTTPException(status_code=409, detail="Connector-backed sources require connector_name to run")
+        config.pop("connector_name", None)
         config.setdefault("connectors", [connector_name])
 
     if source.kind in (SourceKind.INGEST_FLEET_SYNC, SourceKind.INGEST_TRACE_PUSH, SourceKind.INGEST_RESULT_PUSH):
@@ -86,7 +88,10 @@ def _request_for_source(source: SourceRecord) -> ScanRequest:
     if source.kind in (SourceKind.RUNTIME_PROXY, SourceKind.RUNTIME_GATEWAY):
         raise HTTPException(status_code=409, detail="Runtime sources are audited by proxy/gateway traffic, not by direct scan jobs")
 
-    return ScanRequest.model_validate(config)
+    try:
+        return ScanRequest.model_validate(config)
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail=exc.errors()) from exc
 
 
 @router.post("/v1/sources", tags=["sources"], status_code=201)

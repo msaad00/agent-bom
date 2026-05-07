@@ -15,6 +15,7 @@ import {
   ApiServerError,
   ApiValidationError,
   classifyApiResponse,
+  userFacingApiErrorMessage,
 } from "../lib/api-errors";
 
 function _resp(status: number, body: unknown, extraHeaders: Record<string, string> = {}): Response {
@@ -87,5 +88,12 @@ describe("classifyApiResponse", () => {
     expect(err.status).toBe(0);
     expect(err.statusText).toBe("network_error");
     expect((err as { cause?: unknown }).cause).toBe(cause);
+  });
+
+  it("maps raw browser header exceptions to a user-facing auth message", () => {
+    const err = new Error("The string did not match the expected pattern.");
+    expect(userFacingApiErrorMessage(err, "fallback")).toBe(
+      "Sign in with a valid API key before opening protected control-plane views.",
+    );
   });
 });

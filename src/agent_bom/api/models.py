@@ -51,6 +51,8 @@ class _BoundedProgress(list[str]):
 class ScanRequest(BaseModel):
     """Options accepted by POST /v1/scan — mirrors agent-bom scan CLI flags."""
 
+    model_config = ConfigDict(extra="forbid")
+
     inventory: str | None = None
     """Path to agents.json inventory file."""
 

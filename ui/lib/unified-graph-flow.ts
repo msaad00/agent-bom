@@ -186,10 +186,14 @@ export function buildUnifiedFlowGraph(
   const incoming = buildAdjacency(graph.edges, "target");
   const undirected = buildUndirectedAdjacency(graph.edges);
 
-  const agentNames = graph.nodes
-    .filter((node) => node.entity_type === EntityType.AGENT)
-    .map((node) => node.label)
-    .sort((a, b) => a.localeCompare(b));
+  const agentNames = Array.from(
+    new Set(
+      graph.nodes
+        .filter((node) => node.entity_type === EntityType.AGENT)
+        .map((node) => node.label)
+        .filter((label) => label.trim()),
+    ),
+  ).sort((a, b) => a.localeCompare(b));
 
   const visibleIds = deriveVisibleNodeIds(graph, filters, undirected);
 

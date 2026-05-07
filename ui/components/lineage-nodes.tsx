@@ -99,6 +99,7 @@ export type LineageNodeData = {
   evidenceTier?: "safe_to_store" | "replay_only" | undefined;
   evidenceCaptureReplay?: boolean | undefined;
   evidenceNotAfter?: string | undefined;
+  renderBand?: "detail" | "summary" | "cluster" | undefined;
 };
 
 type CardProps = {
@@ -134,8 +135,16 @@ function NodeCard({
         data.dimmed ? "opacity-25" : ""
       } ${data.highlighted ? `ring-2 ${ringClass}` : ""}`}
     >
-      {target && <Handle type="target" position={Position.Left} className="!w-2 !h-2 !bg-current" />}
-      {source && <Handle type="source" position={Position.Right} className="!w-2 !h-2 !bg-current" />}
+      <Handle
+        type="target"
+        position={Position.Left}
+        className={`!w-2 !h-2 !bg-current ${target ? "" : "!opacity-0"}`}
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className={`!w-2 !h-2 !bg-current ${source ? "" : "!opacity-0"}`}
+      />
       <div className="flex items-center gap-1.5 mb-0.5">
         <Icon className={`w-3.5 h-3.5 shrink-0 ${iconClass}`} />
         <span className="text-xs font-semibold text-zinc-100 truncate">{data.label}</span>
@@ -747,6 +756,58 @@ const CLUSTER_BUBBLE_COLORS: Record<LineageNodeType, string> = {
   container: "#6366f1",
   cloudResource: "#0ea5e9",
   misconfiguration: "#f97316",
+};
+
+const DETAIL_RENDERERS: Record<LineageNodeType, ComponentType<{ data: LineageNodeData }>> = {
+  provider: ProviderNode,
+  agent: AgentNode,
+  user: UserNode,
+  group: GroupNode,
+  serviceAccount: ServiceAccountNode,
+  environment: EnvironmentNode,
+  fleet: FleetNode,
+  cluster: ClusterNode,
+  server: ServerNode,
+  sharedServer: SharedServerNode,
+  package: PackageNode,
+  vulnerability: VulnNode,
+  misconfiguration: MisconfigNode,
+  credential: CredentialNode,
+  tool: ToolNode,
+  model: ModelNode,
+  dataset: DatasetNode,
+  container: ContainerNode,
+  cloudResource: CloudResourceNode,
+};
+
+function AdaptiveLineageNode({ data }: { data: LineageNodeData }) {
+  if (data.renderBand === "cluster") return <ClusterBubbleNode data={data} />;
+  if (data.renderBand === "summary") return <SummaryNode data={data} />;
+  const Renderer = DETAIL_RENDERERS[data.nodeType] ?? SummaryNode;
+  return <Renderer data={data} />;
+}
+
+export const lineageNodeTypesAdaptive = {
+  providerNode: AdaptiveLineageNode,
+  agentNode: AdaptiveLineageNode,
+  userNode: AdaptiveLineageNode,
+  groupNode: AdaptiveLineageNode,
+  serviceAccountNode: AdaptiveLineageNode,
+  environmentNode: AdaptiveLineageNode,
+  fleetNode: AdaptiveLineageNode,
+  clusterNode: AdaptiveLineageNode,
+  serverNode: AdaptiveLineageNode,
+  packageNode: AdaptiveLineageNode,
+  vulnNode: AdaptiveLineageNode,
+  misconfigNode: AdaptiveLineageNode,
+  credentialNode: AdaptiveLineageNode,
+  toolNode: AdaptiveLineageNode,
+  modelNode: AdaptiveLineageNode,
+  datasetNode: AdaptiveLineageNode,
+  containerNode: AdaptiveLineageNode,
+  cloudResourceNode: AdaptiveLineageNode,
+  sharedServerNode: AdaptiveLineageNode,
+  clusterPillNode: ClusterPillNode,
 };
 
 /**

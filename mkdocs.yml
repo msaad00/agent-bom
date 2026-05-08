@@ -111,6 +111,7 @@ nav:
       - Operations Reference:
           - Packaged API + UI Control Plane: deployment/control-plane-helm.md
           - Postgres Provisioning Workflow: deployment/postgres-provisioning.md
+          - LLM Key Exposure Drill: deployment/llm-key-exposure-drill.md
           - Backup and Restore Runbook: deployment/backup-restore.md
           - Air-Gapped Image Bundle: deployment/airgapped-image-bundle.md
           - Performance, Sizing, and Benchmarks: deployment/performance-and-sizing.md

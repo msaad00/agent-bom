@@ -457,6 +457,9 @@ see value and where enterprises wire agent-bom into existing controls.
 For cloud, IaC, GPU, skills, and runtime boundaries, use the
 [AI infrastructure coverage matrix](site-docs/architecture/ai-infrastructure.md#coverage-matrix)
 to pick the command and artifact before making a release or buyer-facing claim.
+If an AI-provider key may have leaked, use the
+[LLM key exposure drill](site-docs/deployment/llm-key-exposure-drill.md) to
+map agent, MCP, CI, cloud, and runtime rotation scope.
 
 Three copy-paste workflows cover the common agentic adoption paths:
 

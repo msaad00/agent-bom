@@ -506,7 +506,9 @@ MCP and skills setup is documented in the client guides, not in repo-local
 assistant launch files: [Claude](docs/CLAUDE_INTEGRATION.md),
 [Codex CLI](docs/CODEX_CLI.md), [Cortex Code](docs/CORTEX_CODE.md),
 [MCP client matrix](docs/MCP_CLIENT_GUIDES.md), and
-[agent-bom skills](docs/CONTRIBUTING_SKILLS.md).
+[agent-bom skills](docs/CONTRIBUTING_SKILLS.md). The published docs keep the
+buyer-facing integration matrix at
+[Agentic Workflow Matrix](site-docs/reference/agentic-workflows.md).
 
 Backend choices stay explicit and optional:
 

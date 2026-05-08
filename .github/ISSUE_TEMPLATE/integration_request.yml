@@ -1,0 +1,50 @@
+name: Integration Request
+description: Request support for an MCP client, agent workflow, registry, cloud, CI, or security tool.
+labels: ["enhancement", "area/dx"]
+body:
+  - type: input
+    id: integration
+    attributes:
+      label: Integration target
+      placeholder: "e.g. Cursor MCP config, GitLab SARIF, Databricks workspace, W&B registry"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: family
+    attributes:
+      label: Integration family
+      options:
+        - MCP client or coding agent
+        - Skill or registry
+        - CI/CD or developer workflow
+        - Cloud or AI infrastructure
+        - Runtime or app framework
+        - Governance or observability
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: first-command
+    attributes:
+      label: First command or API flow
+      description: What command, config path, API call, webhook, or deployment step should agent-bom support first?
+      placeholder: "agent-bom agents --config-dir ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: artifact
+    attributes:
+      label: Expected artifact
+      description: What should be produced, blocked, uploaded, or displayed?
+      placeholder: "SARIF, SBOM, graph JSON, audit JSONL, fleet sync payload, dashboard view..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Credential and data boundary
+      description: Note required tokens, tenant/workspace scope, customer-cloud boundary, and any data that must stay local.

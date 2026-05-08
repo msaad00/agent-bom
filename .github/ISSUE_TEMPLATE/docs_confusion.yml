@@ -1,0 +1,42 @@
+name: Docs Confusion
+description: Report unclear, stale, or conflicting documentation.
+labels: ["documentation", "area/docs"]
+body:
+  - type: input
+    id: page
+    attributes:
+      label: Page or section
+      description: Link to the README, docs page, or heading that caused confusion.
+      placeholder: "https://github.com/msaad00/agent-bom/blob/main/README.md#..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: confusion
+    attributes:
+      label: What was confusing?
+      description: Describe what you tried and where the docs sent you off track.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should the docs say?
+      description: Include the command, artifact, next step, or wording that would have helped.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - First run / quickstart
+        - CLI output or finding interpretation
+        - Docker or GitHub Action
+        - API / dashboard / Helm
+        - Runtime proxy / gateway / MCP
+        - Skills / integrations
+        - Release or version surface
+        - Other
+    validations:
+      required: true

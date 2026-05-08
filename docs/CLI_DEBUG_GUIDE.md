@@ -36,6 +36,12 @@ agent-bom agents --quiet --no-scan
 - Use `agent-bom agents -f sarif -o results.sarif` for file output.
 - Use `agent-bom agents -f sarif -o -` when you need SARIF JSON on stdout.
 
+If a finding looks inaccurate, open an
+[Inaccurate Finding](https://github.com/msaad00/agent-bom/issues/new?template=inaccurate_finding.yml)
+report with the exact command, agent-bom version, sanitized finding JSON/SARIF
+snippet, and public advisory or package evidence. Do not include secrets,
+private source code, private package names, or customer data in public issues.
+
 ## Verification flows
 
 ```bash
@@ -59,9 +65,9 @@ agent-bom verify @modelcontextprotocol/server-filesystem@2025.1.14 -e npm
 ## Contributor setup
 
 ```bash
-pip install -e ".[dev-all]"
-pytest tests/ -x -q
+uv sync --extra dev-all
+uv run pytest tests/ -x -q
 ```
 
-- `.[dev-all]` is the supported full-suite contributor environment.
+- `dev-all` is the supported full-suite contributor environment.
 - The `graph` extra includes the numeric dependencies required for PageRank and centrality tests.

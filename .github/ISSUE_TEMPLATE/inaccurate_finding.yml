@@ -1,0 +1,63 @@
+name: Inaccurate Finding
+description: Report a false positive, false negative, or misleading remediation.
+labels: ["bug", "area/scanning"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for public accuracy reports only. Do not include secrets, private source code, private package names, or customer data.
+
+  - type: input
+    id: version
+    attributes:
+      label: agent-bom version
+      description: Run `agent-bom --version`.
+      placeholder: "e.g. 0.86.3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: finding-type
+    attributes:
+      label: Finding type
+      options:
+        - False positive
+        - False negative
+        - Wrong severity or advisory mapping
+        - Misleading remediation
+        - Missing blast-radius or context
+        - Other accuracy issue
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command and sanitized output
+      description: Include the exact command and the smallest redacted output that shows the issue.
+      render: shell
+      placeholder: |
+        agent-bom agents -p . -f json -o report.json
+        # paste the relevant sanitized finding here
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+      description: What should agent-bom have reported instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Link to public advisory, package metadata, lockfile snippet, SBOM excerpt, or scanner output that supports the correction.
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, install method, and whether the scan used `--offline`, `--enrich`, an SBOM, or a registry.

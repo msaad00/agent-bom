@@ -1,0 +1,57 @@
+name: Runtime / Proxy Bug
+description: Report a proxy, gateway, Shield SDK, MCP server, or runtime audit issue.
+labels: ["bug", "area/runtime"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: agent-bom version
+      description: Run `agent-bom --version`.
+      placeholder: "e.g. 0.86.3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Runtime surface
+      options:
+        - MCP server
+        - Proxy
+        - Gateway
+        - Shield SDK
+        - Runtime detector
+        - Audit log / metrics
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: command
+    attributes:
+      label: Command or deployment snippet
+      description: Include sanitized CLI flags, Helm values, Docker command, or SDK snippet.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: Say whether the behavior should fail closed, fail open, audit only, or block.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and logs
+      description: Paste sanitized JSON-RPC responses, audit JSONL records, metrics, or stack traces.
+      render: shell
+
+  - type: textarea
+    id: policy
+    attributes:
+      label: Policy, tenant, and auth context
+      description: Note policy files, tenant headers, bearer auth mode, sandbox mode, and upstream transport.

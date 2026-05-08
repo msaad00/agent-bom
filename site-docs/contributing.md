@@ -12,18 +12,14 @@ Please read and follow our [Code of Conduct](https://github.com/msaad00/agent-bo
 git clone https://github.com/msaad00/agent-bom.git
 cd agent-bom
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install in development mode
-pip install -e ".[dev]"
+uv sync --extra dev-all
+uv run agent-bom --version
 ```
 
 ## Running Tests
 
 ```bash
-pytest tests/ -v
+uv run pytest tests/ -x -q
 ```
 
 ## Code Style
@@ -31,8 +27,8 @@ pytest tests/ -v
 We use `ruff` for linting:
 
 ```bash
-ruff check src/
-ruff format src/
+uv run ruff check src tests
+uv run ruff format --check src tests
 ```
 
 ## Areas to Contribute
@@ -47,8 +43,8 @@ ruff format src/
 
 1. Fork the repo and create your branch from `main`
 2. Add tests for any new functionality
-3. Ensure all tests pass: `pytest tests/ -x -q`
-4. Ensure linting passes: `ruff check src/`
+3. Ensure all tests pass: `uv run pytest tests/ -x -q`
+4. Ensure linting passes: `uv run ruff check src tests`
 5. Update the README if needed
 6. Submit your PR with a clear description
 

@@ -29,14 +29,13 @@ The best ways to help:
 ```bash
 git clone https://github.com/msaad00/agent-bom.git
 cd agent-bom
-python3 -m venv venv && source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -e ".[dev-all]"
-pre-commit install                                  # wires ruff + ruff-format hooks
-pytest tests/ -x -q                                # must be green before you start
+uv sync --extra dev-all
+uv run pre-commit install                          # wires ruff + ruff-format hooks
+uv run pytest tests/ -x -q                         # must be green before you start
 ```
 
 That's it. `agent-bom agents` now runs from your local checkout.
-Use `.[dev]` only for a lighter core workflow; `.[dev-all]` is the supported full-suite contributor setup.
+Use `uv sync --extra dev` only for a lighter core workflow; `dev-all` is the supported full-suite contributor setup.
 
 ---
 
@@ -83,9 +82,9 @@ that should be applied alongside this contributor guide.
 git checkout -b feat/your-feature   # or fix/your-fix
 
 # Make your changes, then run:
-ruff check src/ --fix               # lint + autofix
-ruff format src/                    # formatting
-pytest tests/ -x -q                 # full suite must stay green
+uv run ruff check src tests --fix   # lint + autofix
+uv run ruff format src tests        # formatting
+uv run pytest tests/ -x -q          # full suite must stay green
 
 # Pre-commit hooks do this automatically on commit
 git add -p                          # stage intentionally
@@ -136,9 +135,9 @@ git push --force-with-lease origin your-branch
 ## Tests
 
 ```bash
-pytest tests/ -x -q                 # all tests, stop on first fail
-pytest tests/ -k "scanner" -v       # run matching tests only
-pytest tests/test_core.py -v        # specific file
+uv run pytest tests/ -x -q          # all tests, stop on first fail
+uv run pytest tests/ -k "scanner" -v
+uv run pytest tests/test_core.py -v
 ```
 
 **Rules:**
@@ -198,8 +197,8 @@ This keeps update history readable for operators and makes package maintenance l
 ## Submitting a PR
 
 1. **Branch from main** and name it `feat/`, `fix/`, `docs/`, or `chore/`.
-2. **All tests pass:** `pytest tests/ -x -q`
-3. **Lint clean:** `ruff check src/ && ruff format --check src/`
+2. **All tests pass:** `uv run pytest tests/ -x -q`
+3. **Lint clean:** `uv run ruff check src tests && uv run ruff format --check src tests`
 4. **PR description:** one-sentence summary, what changed, how to test it. If the PR resolves a GitHub issue, include `Closes #<issue-number>` in the PR body — GitHub will auto-close the issue when the PR merges.
 5. **One review required** — a maintainer will review within a few days.
 

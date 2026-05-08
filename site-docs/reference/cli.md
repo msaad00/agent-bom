@@ -135,6 +135,13 @@ The `--self-scan` flag is on the `agents` subcommand (not top-level). It walks t
 
 See [CLI Debug Guide](cli-debug.md) for quiet/logging behavior, stdout vs file output, discovery triage, and package verification workflows.
 
+Use the
+[Inaccurate Finding](https://github.com/msaad00/agent-bom/issues/new?template=inaccurate_finding.yml)
+template for false positives, false negatives, wrong severity/advisory mapping,
+or misleading remediation. Include sanitized JSON/SARIF output and public
+evidence; do not post secrets, private source code, private package names, or
+customer data.
+
 For the JSON contract behind `agent-bom remediate`, see [`remediate` Output
 Contract](remediate-output.md).
 

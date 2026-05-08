@@ -720,9 +720,9 @@ def write_audit_record(log_file: "IO[str] | RotatingAuditLog", record: dict) -> 
         payload["record_hash_algorithm"] = "aes-cmac-128"
         payload["record_hash"] = _record_digest(payload)
         _assert_tier_a_audit_payload(payload)
-        # lgtm[py/clear-text-storage-sensitive-data] The durable audit line is tier-A validated;
-        # replay-only evidence is written only to the separate TTL-gated replay store above.
-        log_file.write(json.dumps(payload, separators=(",", ":")) + "\n")
+        # The durable audit line is tier-A validated; replay-only evidence is
+        # written only to the separate TTL-gated replay store above.
+        log_file.write(json.dumps(payload, separators=(",", ":")) + "\n")  # lgtm[py/clear-text-storage-sensitive-data]
         _AUDIT_CHAIN_STATE[log_key] = payload["record_hash"]
         return payload
 

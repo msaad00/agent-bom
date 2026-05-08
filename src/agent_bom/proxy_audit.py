@@ -722,7 +722,8 @@ def write_audit_record(log_file: "IO[str] | RotatingAuditLog", record: dict) -> 
         _assert_tier_a_audit_payload(payload)
         # The durable audit line is tier-A validated; replay-only evidence is
         # written only to the separate TTL-gated replay store above.
-        log_file.write(json.dumps(payload, separators=(",", ":")) + "\n")  # lgtm[py/clear-text-storage-sensitive-data]
+        # codeql[py/clear-text-storage-sensitive-data]
+        log_file.write(json.dumps(payload, separators=(",", ":")) + "\n")
         _AUDIT_CHAIN_STATE[log_key] = payload["record_hash"]
         return payload
 

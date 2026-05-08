@@ -805,7 +805,10 @@ function GraphPageInner() {
       }),
     [flow.nodes, flow.edges, aggregationThreshold, expandedClusterIds],
   );
-
+  const aggregatedClusterNodes = useMemo(
+    () => aggregated.nodes.filter((node) => isClusterPillNode(node as Node<LineageNodeData>)),
+    [aggregated.nodes],
+  );
   const graphIdentityKey = useMemo(
     () =>
       JSON.stringify({
@@ -917,6 +920,18 @@ function GraphPageInner() {
       };
     });
   }, [layoutNodes, localNeighborhoodIds, attackPathNodeIds, activeFocusId, effectiveLodBand]);
+
+  const compressedGroupCount = aggregatedClusterNodes.length;
+  const compressedNodeCount = useMemo(
+    () =>
+      aggregatedClusterNodes.reduce((total, node) => {
+        const count = (node.data as LineageNodeData & { count?: unknown }).count;
+        return total + (typeof count === "number" && Number.isFinite(count) ? count : 0);
+      }, 0),
+    [aggregatedClusterNodes],
+  );
+  const sourceNodeCount = graphData?.nodes.length ?? flow.nodes.length;
+  const renderedNodeCount = displayNodes.length;
 
   const displayEdges = useMemo(() => {
     if (attackPathEdgeKeys) {
@@ -1279,6 +1294,18 @@ function GraphPageInner() {
                 </span>
               )}
             </GraphControlGroup>
+            {sourceNodeCount > 0 && (
+              <GraphControlGroup label="Scale">
+                <span
+                  data-testid="graph-compression-summary"
+                  className="rounded-lg border border-sky-500/20 bg-sky-500/10 px-2.5 py-1 text-sky-200"
+                >
+                  {compressedGroupCount > 0
+                    ? `compressed ${compressedGroupCount} groups / ${compressedNodeCount} nodes`
+                    : `rendered ${renderedNodeCount} / ${sourceNodeCount} nodes`}
+                </span>
+              </GraphControlGroup>
+            )}
           </div>
 
           <div className="mt-2 text-xs text-zinc-500">

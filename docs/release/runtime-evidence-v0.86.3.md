@@ -10,6 +10,12 @@ uv run python scripts/generate_runtime_evidence_pack.py \
   --output docs/release/runtime-evidence-v0.86.3.json
 ```
 
+Release guard:
+
+```bash
+uv run pytest -q tests/test_runtime_evidence_pack.py
+```
+
 This evidence pack covers:
 
 - gateway `/healthz`

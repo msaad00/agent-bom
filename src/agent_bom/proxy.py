@@ -214,6 +214,13 @@ def sandbox_posture_warning(sandbox_evidence: Mapping[str, object]) -> str | Non
     )
 
 
+def _command_name_for_validation(command: str, sandbox_evidence: Mapping[str, object]) -> str:
+    """Validate sandbox-generated container runtimes by name, not resolved path."""
+    if sandbox_evidence.get("enabled") and sandbox_evidence.get("mode") in {"wrap_command_in_image", "harden_existing_container"}:
+        return Path(command).name
+    return command
+
+
 # ─── Proxy core ──────────────────────────────────────────────────────────────
 
 
@@ -1486,7 +1493,7 @@ async def run_proxy(
         logger.warning(warning)
 
     # Validate the effective server command before spawning
-    validate_command(server_cmd[0])
+    validate_command(_command_name_for_validation(server_cmd[0], sandbox_evidence))
     if len(server_cmd) > 1:
         validate_arguments(list(server_cmd[1:]))
 

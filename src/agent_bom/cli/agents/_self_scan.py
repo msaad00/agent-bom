@@ -20,8 +20,17 @@ def _build_self_scan_inventory() -> dict[str, list[dict[str, object]]]:
     seen: set[tuple[str, str, str]] = set()
 
     for dist in metadata.distributions():
-        name = (dist.metadata["Name"] or "").strip()
-        version = (dist.version or "").strip()
+        metadata_payload = getattr(dist.metadata, "json", None)
+        if isinstance(metadata_payload, dict):
+            name = str(metadata_payload.get("name") or "").strip()
+            version = str(metadata_payload.get("version") or "").strip()
+        else:
+            try:
+                dist_name = dist.metadata["Name"]
+            except KeyError:
+                dist_name = ""
+            name = str(dist_name or "").strip()
+            version = str(dist.version or "").strip()
         if not name or not version:
             continue
         # Skip agent-bom itself -- it's the running tool, not a dep.

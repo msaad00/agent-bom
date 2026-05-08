@@ -402,8 +402,9 @@ for the full split-vs-single-image guidance.
 
 ## Choose Your Path
 
-Start with one lane. The dashboard, API, gateway, proxy, and SDK are optional
-extensions around the same evidence model.
+Start with one lane. Each lane feeds the same evidence model, so local scans,
+fleet inventory, graph findings, compliance evidence, and runtime decisions can
+roll up into the same self-hosted control plane when you need it.
 
 ```text
 agent-bom
@@ -412,17 +413,17 @@ agent-bom
 │  └─ findings, SARIF, SBOM, HTML, graph exports
 ├─ send evidence to a control plane
 │  ├─ fleet sync / REST API / Helm / dashboard
-│  └─ inventory, scan jobs, graph state, compliance, governance
-└─ enforce runtime behavior
-   ├─ MCP server / proxy / gateway / Shield SDK
-   └─ tool-call audit, policy blocks, runtime alerts
+│  └─ inventory, scan jobs, graph state, compliance, audit, governance
+└─ govern runtime behavior
+   ├─ assistant tools / proxy / gateway / Shield SDK
+   └─ read-only MCP tools, tool-call audit, policy blocks, runtime alerts
 ```
 
 | Lane | Start with | Produces | Move up to |
 |------|------------|----------|------------|
-| **Scan locally** | `agent-bom agents --demo --offline`, then `agent-bom agents -p .` | terminal findings, SARIF, SBOM, HTML, graph exports | Docker or GitHub Action |
-| **Send evidence to a control plane** | `agent-bom agents --push-url https://agent-bom.example.com/v1/fleet/sync` | fleet inventory, scan jobs, graph state, compliance exports | REST API, pilot compose, Helm/EKS |
-| **Enforce runtime behavior** | `agent-bom mcp server` for assistants, `agent-bom proxy` for MCP traffic, `Shield` for in-process checks | MCP tools, audit JSONL, policy blocks, runtime alerts | gateway/proxy sidecars, Shield SDK integration |
+| **Scan locally** | `agent-bom agents --demo --offline`, then `agent-bom agents -p .` | terminal findings, SARIF, SBOM, HTML reports, graph exports | Docker, GitHub Action, scheduled scans |
+| **Send evidence to a control plane** | `agent-bom agents --preset enterprise --push-url https://agent-bom.example.com/v1/fleet/sync` | fleet inventory, scan results, graph state, compliance evidence | REST API, pilot compose, Helm/EKS |
+| **Govern runtime behavior** | `agent-bom mcp server` for assistant access; `agent-bom proxy` for local MCP traffic; Shield SDK for in-process checks | read-only MCP tools, audit JSONL, policy decisions, runtime alerts | shared gateway, proxy sidecars, Shield SDK integration |
 
 ### Product Modes
 
@@ -430,8 +431,8 @@ agent-bom
 |------|----------|---------------|------------------|
 | CLI (`agent-bom agents`) | local audit + project scan | `agent-bom agents -p .` | console, JSON, SARIF, SBOM, HTML |
 | Endpoint fleet (`--push-url .../v1/fleet/sync`) | employee laptops pushing into self-hosted fleet | `agent-bom agents --preset enterprise --push-url https://agent-bom.example.com/v1/fleet/sync` | fleet inventory + trust factors |
-| GitHub Action (`uses: msaad00/agent-bom@v0.86.2`) | CI/CD + SARIF | `uses: msaad00/agent-bom@v0.86.2` | `agent-bom-results.sarif` |
-| Docker (`agentbom/agent-bom`) | isolated CLI/API jobs and non-browser self-hosted entrypoints | `docker run --rm agentbom/agent-bom:0.86.2 agents --demo` | same artifacts as CLI |
+| GitHub Action (`uses: msaad00/agent-bom@v0.86.3`) | CI/CD + SARIF | `uses: msaad00/agent-bom@v0.86.3` | `agent-bom-results.sarif` |
+| Docker (`agentbom/agent-bom`) | isolated CLI/API jobs and non-browser self-hosted entrypoints | `docker run --rm agentbom/agent-bom:0.86.3 agents --demo` | same artifacts as CLI |
 | Browser UI image (`agentbom/agent-bom-ui`) | browser dashboard paired with the same API/control plane | `docker compose -f docker-compose.pilot.yml up -d` | dashboard at `http://localhost:3000` |
 | Kubernetes / Helm | self-hosted API + dashboard, scheduled discovery | `helm upgrade --install agent-bom deploy/helm/agent-bom --set controlPlane.enabled=true` | API, UI, jobs, optional gateway/proxy |
 | REST API (`agent-bom api` / `agent-bom serve`) | platform integration and self-hosted control plane | `agent-bom serve --port 8422 --persist jobs.db` | `/docs`, `/health`, `/v1/scan`, `/v1/fleet` |
@@ -480,7 +481,7 @@ References: [PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) · [PRODUCT_METRICS.md](do
 <summary><b>CI/CD in 60 seconds</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.86.2
+- uses: msaad00/agent-bom@v0.86.3
   with:
     scan-type: scan
     severity-threshold: high

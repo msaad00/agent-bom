@@ -11,6 +11,51 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.86.3] - 2026-05-08
+
+Patch release for the OpenSSF Scorecard regression and post-`v0.86.2` release
+readiness fixes. This release keeps the public security posture evidence aligned
+with the live `main` branch after the scorecard, CI/runtime toolchain, scanner
+registry, graph serialization, demo remediation, and dependency-refresh work.
+
+### Added
+- **Scanner driver registry** - scanner driver metadata is now centralized so
+  CLI/API/docs surfaces can reason about scanner capabilities without drifting
+  across hand-maintained lists (#2337).
+
+### Fixed
+- **OpenSSF Scorecard regression** - tightened scorecard workflow permissions
+  and README positioning so the badge and scorecard run stay aligned with the
+  least-privilege release posture (#2359).
+- **CI runtime toolchains** - aligned runtime/toolchain setup after main CI
+  failures, including Alpine build prerequisites for native dependencies
+  (#2339, #2348).
+- **Signed PR refresh automation** - hardened the ready-PR refresh path used to
+  recover approved branches without weakening signed-commit expectations
+  (#2338).
+- **Demo remediation trust** - tightened demo remediation output so first-run
+  evidence remains reproducible and does not overstate unverified fixes (#2351).
+- **Self-scan malformed metadata tolerance** - `--self-scan` now skips local
+  distributions with incomplete package metadata instead of crashing on a
+  malformed `.dist-info` entry.
+- **Proxy sandbox runtime validation** - validates sandbox runtimes by command
+  name so runtime enforcement errors fail on the intended executable boundary
+  (#2349).
+- **Graph live-edge serialization guard** - added regression coverage for live
+  graph edge serialization so dense graph consumers keep stable relationship
+  payloads (#2358).
+- **Product path and monorepo scanning copy** - clarified scan/control
+  plane/runtime positioning and monorepo scanning paths in public surfaces
+  (#2357).
+
+### CI
+- **UI and SDK dependency refresh** - updated Next/React support packages,
+  CodeQL action pins, and TypeScript SDK Node typings with green PR checks and
+  current `main` CI evidence (#2330, #2331, #2340, #2341, #2342, #2343, #2346,
+  #2360).
+
+---
+
 ## [0.86.2] - 2026-05-07
 
 Audit-readiness patch for the live dashboard/API release pass. This release closes the scan-contract, graph-serialization, gateway-transport, CI refresh, image tarball, API extras, MCP/HTTP contract, and gateway NetworkPolicy hardening items validated after `v0.86.1`.
@@ -1140,7 +1185,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.86.2...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.86.3...HEAD
+[0.86.3]: https://github.com/msaad00/agent-bom/compare/v0.86.2...v0.86.3
 [0.86.2]: https://github.com/msaad00/agent-bom/compare/v0.86.1...v0.86.2
 [0.86.1]: https://github.com/msaad00/agent-bom/compare/v0.86.0...v0.86.1
 [0.86.0]: https://github.com/msaad00/agent-bom/compare/v0.85.0...v0.86.0

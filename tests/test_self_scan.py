@@ -87,6 +87,25 @@ class TestSelfScanInventory:
             {"name": "urllib3", "version": "2.0.0", "ecosystem": "pypi"},
         ]
 
+    def test_self_scan_skips_malformed_distributions(self):
+        """Malformed local dist-info metadata should not crash self-scan."""
+
+        class _FakeDist:
+            def __init__(self, metadata: dict[str, str], version: str) -> None:
+                self.metadata = metadata
+                self.version = version
+
+        fake_dists = [
+            _FakeDist({}, "1.0.0"),
+            _FakeDist({"Name": "requests"}, "2.33.0"),
+        ]
+
+        with patch("importlib.metadata.distributions", return_value=fake_dists):
+            inventory = _build_self_scan_inventory()
+
+        packages = inventory["agents"][0]["mcp_servers"][0]["packages"]
+        assert packages == [{"name": "requests", "version": "2.33.0", "ecosystem": "pypi"}]
+
 
 class TestSelfScanCLI:
     """Integration tests for --self-scan via CLI runner."""

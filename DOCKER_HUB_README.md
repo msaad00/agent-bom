@@ -199,7 +199,7 @@ Focused graph:
 | Tag | Description |
 |-----|-------------|
 | `latest` | Most recent stable release |
-| `0.86.2` | Current stable version (pinned) |
+| `0.86.3` | Current stable version (pinned) |
 
 Published images:
 

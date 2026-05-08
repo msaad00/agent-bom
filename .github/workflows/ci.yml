@@ -683,13 +683,13 @@ jobs:
       - name: Install build deps (Alpine)
         run: |
           for attempt in 1 2 3; do
-            if apk add --no-cache bash gcc musl-dev libffi-dev openssl-dev git curl; then
+            if apk add --no-cache bash gcc g++ musl-dev libffi-dev openssl-dev git curl; then
               exit 0
             fi
             echo "apk add failed on attempt ${attempt}; retrying after transient package-index/network failure..."
             sleep $((attempt * 5))
           done
-          apk add --no-cache bash gcc musl-dev libffi-dev openssl-dev git curl
+          apk add --no-cache bash gcc g++ musl-dev libffi-dev openssl-dev git curl
 
       - name: Install uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0

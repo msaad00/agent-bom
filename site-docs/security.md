@@ -27,8 +27,12 @@ Across all modes, agent-bom never stores credential values — only their names 
 
 For the product-wide local, endpoint, cloud, API/UI, and proxy data boundary,
 see [Data Access Boundaries and Operator Control](deployment/data-access-boundaries.md).
+
 For incident response when LLM provider keys may have been exposed, use the
 [LLM Key Exposure Drill](deployment/llm-key-exposure-drill.md).
+
+For copied shell commands and assistant-generated installer prompts, use
+[Assistant Command Safety](reference/assistant-command-safety.md).
 
 ## Release trust and dependency controls
 

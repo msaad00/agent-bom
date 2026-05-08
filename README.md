@@ -461,6 +461,9 @@ If an AI-provider key may have leaked, use the
 [LLM key exposure drill](site-docs/deployment/llm-key-exposure-drill.md) to
 map agent, MCP, CI, cloud, and runtime rotation scope.
 
+For copied shell commands or assistant-generated installer prompts, start with
+[Assistant Command Safety](site-docs/reference/assistant-command-safety.md).
+
 Three copy-paste workflows cover the common agentic adoption paths:
 
 **Local developer scan**

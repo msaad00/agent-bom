@@ -147,6 +147,7 @@ nav:
   - Reference:
       - MCP Tools: reference/mcp-tools.md
       - Agentic Workflow Matrix: reference/agentic-workflows.md
+      - Assistant Command Safety: reference/assistant-command-safety.md
       - CLI Commands: reference/cli.md
       - CLI Debug Guide: reference/cli-debug.md
       - CLI Exit Codes and HTTP Status Mapping: reference/exit-codes.md

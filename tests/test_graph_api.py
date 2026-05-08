@@ -1357,6 +1357,65 @@ class TestGraphStoreBackendSelection:
         assert any(call[0] == "attack_paths" for call in recording_graph_store.calls)
         assert any(call[0] == "nodes_by_ids" for call in recording_graph_store.calls)
 
+    def test_persisted_graph_routes_return_incident_edges_for_dense_finding_pages(self, tmp_path):
+        store = SQLiteGraphStore(tmp_path / "dense-live-graph.db")
+        graph = UnifiedGraph(scan_id="dense-live-scan", tenant_id="default")
+        graph.add_node(UnifiedNode(id="agent:a", entity_type=EntityType.AGENT, label="agent-a"))
+        graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        graph.add_edge(UnifiedEdge(source="agent:a", target="server:s", relationship=RelationshipType.USES))
+        graph.add_edge(UnifiedEdge(source="server:s", target="pkg:npm:p1", relationship=RelationshipType.DEPENDS_ON))
+        for index in range(250):
+            package_id = f"pkg:npm:p{index}"
+            vuln_id = f"vuln:CVE-2026-{index}"
+            graph.add_node(UnifiedNode(id=package_id, entity_type=EntityType.PACKAGE, label=f"p{index}"))
+            graph.add_node(
+                UnifiedNode(
+                    id=vuln_id,
+                    entity_type=EntityType.VULNERABILITY,
+                    label=f"CVE-2026-{index}",
+                    severity="critical",
+                    severity_id=5,
+                    risk_score=9.8,
+                )
+            )
+            graph.add_edge(UnifiedEdge(source=package_id, target=vuln_id, relationship=RelationshipType.VULNERABLE_TO))
+        graph.attack_paths.append(
+            AttackPath(
+                source="agent:a",
+                target="vuln:CVE-2026-1",
+                hops=["agent:a", "server:s", "pkg:npm:p1", "vuln:CVE-2026-1"],
+                edges=[],
+                composite_risk=9.8,
+            )
+        )
+        store.save_graph(graph)
+
+        original = api_stores._graph_store
+        set_graph_store(store)
+        try:
+            client = TestClient(app)
+            overview = client.get("/v1/graph", params={"scan": "dense-live-scan", "limit": 200})
+            attack_paths = client.get("/v1/graph/attack-paths", params={"scan_id": "dense-live-scan", "limit": 10})
+        finally:
+            set_graph_store(original)
+
+        assert overview.status_code == 200
+        overview_body = overview.json()
+        assert len(overview_body["nodes"]) == 200
+        assert overview_body["stats"]["total_edges"] >= 250
+        assert len(overview_body["edges"]) >= 200
+        assert all(edge["source_id"] and edge["target_id"] for edge in overview_body["edges"])
+
+        assert attack_paths.status_code == 200
+        attack_body = attack_paths.json()
+        assert attack_body["attack_paths"][0]["hops"] == ["agent:a", "server:s", "pkg:npm:p1", "vuln:CVE-2026-1"]
+        assert attack_body["attack_paths"][0]["edges"] == ["uses", "depends_on", "vulnerable_to"]
+        assert {(edge["source_id"], edge["target_id"]) for edge in attack_body["edges"]} >= {
+            ("agent:a", "server:s"),
+            ("server:s", "pkg:npm:p1"),
+            ("pkg:npm:p1", "vuln:CVE-2026-1"),
+        }
+
     def test_graph_presets_use_pluggable_store(self, recording_graph_store):
         client = TestClient(app)
 

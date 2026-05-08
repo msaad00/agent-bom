@@ -21,7 +21,7 @@ The runtime proxy (`agent-bom proxy`) intercepts MCP JSON-RPC messages between c
 
 | Mode | Command | Use case |
 |------|---------|----------|
-| Local sidecar | `agent-bom proxy -- npx server` | Dev/testing |
+| Local sidecar | `agent-bom proxy --no-isolate -- npx server` | Dev/testing audit and policy without process containment |
 | Docker sidecar | See [Docker](docker.md) | Production |
 | K8s sidecar | See [Kubernetes](kubernetes.md) | Fleet |
 | Optional node-wide monitor | Helm `monitor.enabled=true` | Broad runtime coverage only when a team explicitly accepts a DaemonSet |

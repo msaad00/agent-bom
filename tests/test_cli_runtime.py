@@ -44,7 +44,7 @@ def test_proxy_cmd_runs_proxy(tmp_path):
         patch("agent_bom.proxy.run_proxy", new_callable=AsyncMock, return_value=0),
         patch("agent_bom.project_config.load_project_config", return_value=None),
     ):
-        result = runner.invoke(proxy_cmd, ["--", "echo", "hello"])
+        result = runner.invoke(proxy_cmd, ["--no-isolate", "--", "echo", "hello"])
         assert result.exit_code == 0
 
 
@@ -54,10 +54,20 @@ def test_proxy_cmd_sandbox_is_enabled_by_default():
         patch("agent_bom.proxy.run_proxy", new_callable=AsyncMock, return_value=0) as mock_run,
         patch("agent_bom.project_config.load_project_config", return_value=None),
     ):
-        result = runner.invoke(proxy_cmd, ["--", "echo", "hello"])
+        result = runner.invoke(proxy_cmd, ["--sandbox-image", "ghcr.io/acme/mcp-sandbox:1", "--", "echo", "hello"])
 
     assert result.exit_code == 0
     assert mock_run.await_args.kwargs["sandbox_config"].enabled is True
+
+
+def test_proxy_cmd_plain_isolated_command_requires_sandbox_image():
+    runner = CliRunner()
+    with patch("agent_bom.project_config.load_project_config", return_value=None):
+        result = runner.invoke(proxy_cmd, ["--", "echo", "hello"])
+
+    assert result.exit_code == 2
+    assert "requires --sandbox-image" in result.output
+    assert "--no-isolate" in result.output
 
 
 def test_proxy_cmd_no_isolate_opts_out():
@@ -97,7 +107,7 @@ def test_proxy_cmd_with_project_config():
         patch("agent_bom.project_config.load_project_config", return_value={"policy": "test.json"}),
         patch("agent_bom.project_config.get_policy_path", return_value=None),
     ):
-        result = runner.invoke(proxy_cmd, ["--", "echo"])
+        result = runner.invoke(proxy_cmd, ["--no-isolate", "--", "echo"])
         assert result.exit_code == 0
 
 
@@ -118,6 +128,7 @@ def test_proxy_cmd_passes_control_plane_settings():
                 "45",
                 "--audit-push-interval",
                 "15",
+                "--no-isolate",
                 "--",
                 "echo",
                 "hello",

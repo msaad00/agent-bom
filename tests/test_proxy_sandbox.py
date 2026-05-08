@@ -9,6 +9,7 @@ from agent_bom.proxy_sandbox import (
     build_sandboxed_command,
     parse_sandbox_mount,
     sandbox_config_from_env,
+    sandbox_requires_image_for_command,
 )
 
 PINNED_IMAGE = "ghcr.io/acme/mcp-sandbox:1@sha256:" + "a" * 64
@@ -259,3 +260,22 @@ def test_build_sandboxed_command_requires_image_for_plain_commands(monkeypatch):
 
     with pytest.raises(RuntimeError, match="requires --sandbox-image"):
         build_sandboxed_command(["python", "-m", "server"], SandboxConfig(enabled=True))
+
+
+def test_sandbox_requires_image_for_plain_isolated_commands():
+    assert sandbox_requires_image_for_command(["npx", "@mcp/server"], SandboxConfig(enabled=True)) is True
+    assert (
+        sandbox_requires_image_for_command(
+            ["npx", "@mcp/server"],
+            SandboxConfig(enabled=True, image=PINNED_IMAGE),
+        )
+        is False
+    )
+    assert sandbox_requires_image_for_command(["npx", "@mcp/server"], SandboxConfig(enabled=False)) is False
+    assert (
+        sandbox_requires_image_for_command(
+            ["docker", "run", "--rm", "-i", "ghcr.io/acme/server:1"],
+            SandboxConfig(enabled=True),
+        )
+        is False
+    )

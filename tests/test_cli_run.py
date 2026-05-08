@@ -135,7 +135,7 @@ def test_run_delegates_to_run_proxy():
     ):
         mock_asyncio_run.side_effect = _consume_coroutine_and_return()
         # CliRunner catches SystemExit — check exit_code instead
-        result = runner.invoke(run_cmd, ["uvx/mcp-server-git", "--quiet"])
+        result = runner.invoke(run_cmd, ["uvx/mcp-server-git", "--quiet", "--no-isolate"])
         assert result.exit_code == 0
         mock_asyncio_run.assert_called_once()
 
@@ -160,7 +160,7 @@ def test_run_passes_policy_to_run_proxy():
             mock_asyncio_run.side_effect = _consume_coroutine_and_return()
             result = runner.invoke(
                 run_cmd,
-                ["uvx/mcp-server-git", "--policy", policy_path, "--quiet"],
+                ["uvx/mcp-server-git", "--policy", policy_path, "--quiet", "--no-isolate"],
             )
         assert result.exit_code == 0
         mock_asyncio_run.assert_called_once()
@@ -208,6 +208,17 @@ def test_run_no_isolate_opts_out():
     mock_asyncio_run.assert_called_once()
 
 
+def test_run_plain_isolated_command_requires_sandbox_image():
+    runner = CliRunner()
+
+    with patch("agent_bom.project_config.load_project_config", return_value=None):
+        result = runner.invoke(run_cmd, ["uvx/mcp-server-git", "--quiet"])
+
+    assert result.exit_code == 2
+    assert "requires --sandbox-image" in result.output
+    assert "--no-isolate" in result.output
+
+
 def test_run_command_not_found_handled(tmp_path):
     """When asyncio.run raises FileNotFoundError the error surfaces cleanly."""
     runner = CliRunner()
@@ -216,7 +227,7 @@ def test_run_command_not_found_handled(tmp_path):
         patch("agent_bom.cli.run.asyncio.run", side_effect=_consume_coroutine_and_raise(FileNotFoundError("no such"))),
         patch("agent_bom.project_config.load_project_config", return_value=None),
     ):
-        result = runner.invoke(run_cmd, ["nonexistent-server-xyz-abc"])
+        result = runner.invoke(run_cmd, ["nonexistent-server-xyz-abc", "--no-isolate"])
     # Should exit non-zero or have an exception recorded
     assert result.exit_code != 0 or result.exception is not None
 
@@ -229,7 +240,7 @@ def test_run_quiet_flag_suppresses_stderr():
         patch("agent_bom.cli.run.asyncio.run", side_effect=_consume_coroutine_and_return()),
         patch("agent_bom.project_config.load_project_config", return_value=None),
     ):
-        result = runner.invoke(run_cmd, ["uvx/mcp-server-git", "--quiet"])
+        result = runner.invoke(run_cmd, ["uvx/mcp-server-git", "--quiet", "--no-isolate"])
     assert result.exit_code == 0
 
 

@@ -34,12 +34,16 @@ MCP Server (filesystem, postgres, etc.)
 ## Usage
 
 ```bash
-# Basic audit logging
-agent-bom proxy --log audit.jsonl \
+# Basic audit and policy for one stdio server, without process containment.
+agent-bom proxy --no-isolate --log audit.jsonl \
   -- npx @modelcontextprotocol/server-filesystem /workspace
 
-# Recommended hardened proxy
+# Process-contained stdio proxy. The sandbox image must contain the server
+# runtime, such as Node for npx-based MCP servers.
 agent-bom proxy \
+  --sandbox-image ghcr.io/your-org/mcp-runtime:node20@sha256:<64-hex-digest> \
+  --sandbox-image-pin-policy enforce \
+  --sandbox-mount "$PWD:/workspace:ro" \
   --policy policy.json \
   --log audit.jsonl \
   --detect-credentials \
@@ -53,6 +57,21 @@ Recommended minimum hardening for developer workstations:
 - `--detect-credentials` to inspect responses for leaked secrets
 - `--block-undeclared` to stop tools that were never declared in `tools/list`
 - `--policy` when you want explicit allowlist/blocklist/read-only enforcement
+- `--sandbox-image` plus `--sandbox-image-pin-policy enforce` when you want
+  Docker/Podman process containment for stdio MCP servers
+
+Important containment limits:
+
+- `--no-isolate` is audit and policy only; it does not contain the MCP server
+  process.
+- `--isolate` is the default for stdio proxy mode. For plain commands such as
+  `npx ...`, isolation requires `--sandbox-image` or
+  `AGENT_BOM_MCP_SANDBOX_IMAGE`.
+- Existing `docker run ...` or `podman run ...` server commands can be hardened
+  directly by the proxy; conflicting weaker flags such as host networking are
+  stripped before launch.
+- `--url` SSE/HTTP proxy mode and the shared gateway govern remote MCP traffic
+  but do not containerize the upstream server.
 
 ## Audit JSONL example
 
@@ -78,6 +97,7 @@ backlog fields. The complete field guide lives in
       "command": "agent-bom",
       "args": [
         "proxy",
+        "--no-isolate",
         "--log", "audit.jsonl",
         "--policy", "policy.json",
         "--detect-credentials",

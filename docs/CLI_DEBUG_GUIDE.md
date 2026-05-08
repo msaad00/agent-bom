@@ -41,6 +41,8 @@ If a finding looks inaccurate, open an
 report with the exact command, agent-bom version, sanitized finding JSON/SARIF
 snippet, and public advisory or package evidence. Do not include secrets,
 private source code, private package names, or customer data in public issues.
+Use the [sanitized inaccurate-finding report example](INACCURATE_FINDING_REPORT.md)
+when you need a copy-paste-safe shape.
 
 ## Verification flows
 

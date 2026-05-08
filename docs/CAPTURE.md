@@ -10,6 +10,9 @@ that does not happen again.
 The canonical published web UI is the packaged Next.js dashboard served by
 `agent-bom serve`. Do not publish README or docs screenshots from archived
 pre-Next.js views or from the Snowflake Streamlit compatibility surface.
+For release PRs, use the operational checklist in
+[`docs/release/SCREENSHOT_REFRESH_CHECKLIST.md`](release/SCREENSHOT_REFRESH_CHECKLIST.md)
+before replacing any published product image.
 
 ## Canonical capture environment
 

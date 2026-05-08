@@ -196,15 +196,18 @@ Blocked calls receive a JSON-RPC error response (`code: -32600`) and are recorde
 
 Every tool call is appended to the JSONL log file as a single-line JSON object:
 
-```json
-{"ts": "2026-02-26T12:00:00Z", "type": "tools/call", "tool": "read_file", "args": {"path": "/etc/passwd"}, "policy": "blocked", "reason": "Argument 'path' matches blocked pattern '/etc/(passwd|shadow)'"}
+```jsonl
+{"ts":"2026-05-08T18:56:05.635108+00:00","type":"tools/call","tool":"read_file","agent_id":"anonymous","tenant_id":"default","policy":"blocked","event_relationships":{"normalization_version":"1","source":"proxy_tool_call","targets":[{"type":"tool","id":"read_file","role":"invoked_tool","source_field":"tool"}],"resources":[{"type":"path","id":"<path:passwd>","role":"referenced_input","source_field":"path"}]},"prev_hash":"","record_hash_algorithm":"aes-cmac-128","record_hash":"be865de2cfeef8d0f1056cbc8b40ad36"}
 ```
 
 When the proxy shuts down, it writes a summary record:
 
-```json
-{"ts": "2026-02-26T12:05:00Z", "type": "proxy_summary", "uptime_seconds": 300.0, "total_tool_calls": 42, "total_blocked": 3, "calls_by_tool": {"read_file": 30, "write_file": 12}, "blocked_by_reason": {"policy": 2, "undeclared": 1}, "latency": {"min_ms": 1.2, "max_ms": 450.0, "avg_ms": 23.5, "p50_ms": 15.0, "p95_ms": 120.0, "count": 42}, "messages_client_to_server": 50, "messages_server_to_client": 48}
+```jsonl
+{"ts":"2026-05-08T18:58:00.000000+00:00","type":"proxy_summary","uptime_seconds":300.0,"total_tool_calls":42,"total_blocked":3,"calls_by_tool":{"read_file":30,"write_file":12},"blocked_by_reason":{"policy":2,"undeclared":1},"latency":{"min_ms":1.2,"max_ms":450.0,"avg_ms":23.5,"p50_ms":15.0,"p95_ms":120.0,"count":42},"messages_client_to_server":50,"messages_server_to_client":48,"replay_rejections":0,"relay_errors":0,"audit_buffer_bytes":0,"audit_spillover_bytes":0,"audit_dlq_bytes":0,"policy_fetch_failures":0,"audit_push_failures":0,"audit_push_backoff_seconds":0,"audit_circuit_open":0}
 ```
+
+See [`RUNTIME_PROXY_AUDIT_JSONL.md`](RUNTIME_PROXY_AUDIT_JSONL.md) for the
+field guide, redaction boundary, and operator `jq` checks.
 
 ### Webhook Alerts
 

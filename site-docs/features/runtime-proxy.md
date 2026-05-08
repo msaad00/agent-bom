@@ -54,6 +54,21 @@ Recommended minimum hardening for developer workstations:
 - `--block-undeclared` to stop tools that were never declared in `tools/list`
 - `--policy` when you want explicit allowlist/blocklist/read-only enforcement
 
+## Audit JSONL example
+
+The proxy writes one sanitized JSON object per line. Durable records keep the
+safe policy and relationship fields needed for runtime correlation without
+storing raw tool arguments or response bodies.
+
+```jsonl
+{"ts":"2026-05-08T18:56:05.635108+00:00","type":"tools/call","tool":"read_file","agent_id":"anonymous","tenant_id":"default","policy":"blocked","event_relationships":{"normalization_version":"1","source":"proxy_tool_call","targets":[{"type":"tool","id":"read_file","role":"invoked_tool","source_field":"tool"}],"resources":[{"type":"path","id":"<path:passwd>","role":"referenced_input","source_field":"path"}]},"prev_hash":"","record_hash_algorithm":"aes-cmac-128","record_hash":"be865de2cfeef8d0f1056cbc8b40ad36"}
+```
+
+At shutdown, the proxy appends a `proxy_summary` record with call counts,
+blocked counts, latency, replay rejections, relay errors, and audit delivery
+backlog fields. The complete field guide lives in
+[`docs/RUNTIME_PROXY_AUDIT_JSONL.md`](https://github.com/msaad00/agent-bom/blob/main/docs/RUNTIME_PROXY_AUDIT_JSONL.md).
+
 ## Claude Desktop integration
 
 ```json

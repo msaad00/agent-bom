@@ -1147,12 +1147,76 @@ def test_metadata_no_frontmatter_skips_metadata_checks():
     metadata_cats = {
         "missing_source",
         "missing_license",
+        "missing_capability_declaration",
+        "incomplete_capability_declaration",
         "undeclared_dependency",
         "limited_install",
         "unverifiable_claim",
         "undocumented_network",
     }
     findings = [f for f in audit.findings if f.category in metadata_cats]
+    assert len(findings) == 0
+
+
+def test_metadata_missing_capability_declaration_warns():
+    """Complete metadata without a capability map warns for sandbox readiness."""
+    meta = SkillMetadata(
+        name="my-tool",
+        version="1.0.0",
+        homepage="https://github.com/example/my-tool",
+        source="https://github.com/example/my-tool",
+        license="Apache-2.0",
+        install_methods=["uv", "pip"],
+        raw_frontmatter=(
+            "name: my-tool\n"
+            "version: 1.0.0\n"
+            "homepage: https://github.com/example/my-tool\n"
+            "source: https://github.com/example/my-tool\n"
+            "license: Apache-2.0\n"
+        ),
+    )
+    result = _make_metadata_result(metadata=meta)
+    audit = audit_skill_result(result)
+    findings = [f for f in audit.findings if f.category == "missing_capability_declaration"]
+    assert len(findings) == 1
+    assert findings[0].severity == "low"
+
+
+def test_metadata_complete_capability_declaration_passes():
+    """A full capability map satisfies skill sandbox readiness metadata."""
+    meta = SkillMetadata(
+        name="my-tool",
+        version="1.0.0",
+        homepage="https://github.com/example/my-tool",
+        source="https://github.com/example/my-tool",
+        license="Apache-2.0",
+        install_methods=["uv", "pip"],
+        raw_frontmatter=(
+            "name: my-tool\n"
+            "version: 1.0.0\n"
+            "homepage: https://github.com/example/my-tool\n"
+            "source: https://github.com/example/my-tool\n"
+            "license: Apache-2.0\n"
+            "capabilities:\n"
+            "  read_findings: true\n"
+            "  read_inventory: true\n"
+            "  read_audit_log: false\n"
+            "  write_findings: false\n"
+            "  outbound_http: false\n"
+            "  shell_exec: false\n"
+        ),
+    )
+    result = _make_metadata_result(metadata=meta)
+    audit = audit_skill_result(result)
+    findings = [
+        f
+        for f in audit.findings
+        if f.category
+        in {
+            "missing_capability_declaration",
+            "incomplete_capability_declaration",
+        }
+    ]
     assert len(findings) == 0
 
 
@@ -1167,6 +1231,20 @@ def test_metadata_complete_skill_passes():
         required_bins=["my-tool"],
         optional_bins=["docker", "grype"],
         install_methods=["uv", "pip", "pipx"],
+        raw_frontmatter=(
+            "name: my-tool\n"
+            "version: 1.0.0\n"
+            "homepage: https://github.com/example/my-tool\n"
+            "source: https://github.com/example/my-tool\n"
+            "license: Apache-2.0\n"
+            "capabilities:\n"
+            "  read_findings: true\n"
+            "  read_inventory: true\n"
+            "  read_audit_log: false\n"
+            "  write_findings: false\n"
+            "  outbound_http: true\n"
+            "  shell_exec: false\n"
+        ),
     )
     result = _make_metadata_result(
         metadata=meta,
@@ -1184,6 +1262,8 @@ def test_metadata_complete_skill_passes():
     metadata_cats = {
         "missing_source",
         "missing_license",
+        "missing_capability_declaration",
+        "incomplete_capability_declaration",
         "undeclared_dependency",
         "limited_install",
         "unverifiable_claim",

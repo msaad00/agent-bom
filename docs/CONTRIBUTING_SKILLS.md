@@ -34,6 +34,24 @@ metadata. For the OpenClaw package format, that metadata currently lives under
 Each `network_endpoints` entry must name the endpoint, purpose, and whether
 authentication is used. Use an empty list when no network call is made.
 
+Every bundled skill must also declare an explicit capability map. This keeps
+CLI, MCP, sandboxed runtime, and Snowflake Native App invocation paths aligned
+on the same least-privilege contract.
+
+```yaml
+capabilities:
+  read_findings: true
+  read_inventory: true
+  read_audit_log: false
+  write_findings: false
+  outbound_http: false
+  shell_exec: false
+```
+
+Use `false` instead of omitting a capability. Omitted keys are treated as a
+readiness gap because policy generators cannot distinguish "not needed" from
+"not reviewed."
+
 ## Required body sections
 
 Every bundled skill must include:

@@ -6,6 +6,17 @@ Skills are agentic invocation layers over the same `agent-bom` CLI, API, MCP,
 normalization, scanning, graph, and export contracts. See
 [Agentic Skills Architecture](../architecture/agentic-skills-architecture.md)
 for the layered model, subagent delegation rules, and OSV/GHSA guardrails.
+The repo also maintains a
+[skill capability contract](https://github.com/msaad00/agent-bom/blob/main/docs/skills/CAPABILITIES.md)
+for CLI, MCP, sandbox, and Snowflake Native App readiness.
+
+## Readiness Lanes
+
+| Lane | Required evidence | Promotion gate |
+|------|-------------------|----------------|
+| OSS CLI/API | First command, output artifact, schema or validation path | `agent-bom` smoke plus targeted skill audit |
+| MCP / assistant invocation | Same artifact contract plus delegated-agent guardrails | MCP tool listing and strict argument behavior |
+| Snowflake Native App | Complete capability map, credential boundary, no hidden local state | Customer-account install path and audit evidence |
 
 | Skill | File | Use case |
 |-------|------|----------|

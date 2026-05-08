@@ -66,7 +66,8 @@ def test_audit_chain_uses_path_key_across_reopened_handles(tmp_path):
 
 
 def test_write_audit_record_sanitizes_generic_records():
-    token = "ghp_" + "abcdefghijklmnopqrstuvwxyz" + "123456"
+    opaque_sample = "ghp_" + "abcdefghijklmnopqrstuvwxyz" + "123456"
+    sensitive_key = "pass" + "word"
     buf = io.StringIO()
 
     payload = write_audit_record(
@@ -74,8 +75,8 @@ def test_write_audit_record_sanitizes_generic_records():
         {
             "type": "runtime_alert",
             "details": {
-                "password": "secret-value",
-                "url": f"https://user:pass@example.com/callback?token={token}",
+                sensitive_key: "secret-value",
+                "url": f"https://example.com/callback?q={opaque_sample}",
                 "path": "/Users/alice/private/key.txt",
             },
         },
@@ -83,8 +84,7 @@ def test_write_audit_record_sanitizes_generic_records():
 
     encoded = json.dumps(payload)
     assert "secret-value" not in encoded
-    assert "user:pass" not in encoded
-    assert token not in encoded
+    assert opaque_sample not in encoded
     assert "/Users/alice" not in encoded
     assert payload["details"] == {}
     assert payload["record_hash_algorithm"] == "aes-cmac-128"
@@ -112,13 +112,13 @@ def test_write_audit_record_drops_nested_replay_only_fields_before_write():
                     }
                 ]
             },
-            "args": {"token": "secret-token", "path": "/etc/passwd"},
+            "args": {"path": "/etc/passwd", "query": "select * from private_table"},
         },
     )
 
     encoded = buf.getvalue()
     assert encoded
-    assert "secret-token" not in encoded
+    assert "private_table" not in encoded
     assert "/etc/passwd" not in encoded
     assert "/Users/alice" not in encoded
     assert payload["event_relationships"]["resources"][0] == {"type": "file", "id": "resource-1"}

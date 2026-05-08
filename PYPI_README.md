@@ -2,22 +2,22 @@
 
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
-**Open security scanner for AI supply chain — agents, MCP servers, packages, containers, cloud, GPU, and runtime.**
+**Open security scanner for AI supply chain and runtime infrastructure — agents, MCP servers, packages, containers, cloud, GPU, and enforcement paths.**
 
 Start with the demo, then choose the entrypoint that matches your first job: repo scan, image scan, cloud posture, fix plan, dashboard, or runtime review.
 
 ```text
 better-sqlite3@9.0.0  (npm package)
-  |── CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
+  |── OSV/GHSA finding  (critical · advisory-backed)
   |── sqlite-mcp  (MCP Server · unverified · root)
        |── Cursor IDE  (Agent · 4 servers · 12 tools)
        |── ANTHROPIC_KEY, DB_URL, AWS_SECRET  (Credential env names visible)
-       |── query_db, read_file, write_file, run_shell  (Tools at risk)
+       |── query_db, read_file, write_file, run_shell  (Reachable tools)
 
  Fix: upgrade better-sqlite3 → 11.7.0
 ```
 
-Blast radius is the core idea: `package -> vulnerability finding -> MCP server (tools + credential env names) -> connected agents`.
+Blast radius is the core idea: `package -> vulnerability finding -> MCP server (tools + credential env names) -> connected agents`. This schematic explains the model; emitted findings are backed by the configured advisory sources.
 
 Scan local agent configs, MCP servers, instruction files, lockfiles, containers, cloud posture, GPU surfaces, and runtime evidence.
 

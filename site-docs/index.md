@@ -8,7 +8,7 @@ Scan agents, MCP, packages, containers, Kubernetes, cloud, and GPU workloads wit
 
 ```
 better-sqlite3@9.0.0  (npm package)
-  ├─ CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
+  ├─ OSV/GHSA finding  (critical · advisory-backed)
   └─ sqlite-mcp  (MCP Server · unverified)
        ├─ Cursor IDE  (Agent · 4 servers · 12 tools)
        ├─ ANTHROPIC_KEY, DB_URL, AWS_SECRET  (Credential env names visible)

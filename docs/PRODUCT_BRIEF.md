@@ -1,9 +1,9 @@
 # Product Brief
 
 `agent-bom` is an open security scanner and self-hosted control plane for
-AI-era infrastructure — local scans, CI evidence, fleet inventory, MCP/runtime
-enforcement, and governance surfaces that run in the operator's own
-environment.
+AI supply chain and runtime infrastructure — local scans, CI evidence, fleet
+inventory, MCP/runtime enforcement, and governance surfaces that run in the
+operator's own environment.
 
 It is built around a simple thesis: security and visibility for AI infrastructure should be open, transparent, and accessible, not reserved for teams with enterprise budgets.
 

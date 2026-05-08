@@ -89,8 +89,8 @@
   <rect x="186" y="186" width="130" height="64" rx="10" fill="#18181b" stroke="#27272a" stroke-width="1"/>
   <rect x="186" y="186" width="4" height="64" rx="2" fill="#ef4444"/>
   <text x="206" y="204" class="node-type" fill="#ef4444">CVE</text>
-  <text x="206" y="220" class="node-label" fill="#fca5a5">CVE-2025-1234</text>
-  <text x="206" y="236" class="node-detail">Critical 9.8 · CISA KEV</text>
+  <text x="206" y="220" class="node-label" fill="#fca5a5">OSV/GHSA finding</text>
+  <text x="206" y="236" class="node-detail">Critical · advisory-backed</text>
 
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <!-- NODE: Server A (sqlite-mcp)                                             -->
@@ -176,7 +176,7 @@
   <!-- Dangerous tool highlighted -->
   <rect x="732" y="278" width="100" height="24" rx="6" fill="#2d1215" stroke="#ef4444" stroke-width="1.5"/>
   <text x="782" y="294" text-anchor="middle" class="tool-label" fill="#fca5a5">run_shell</text>
-  <text x="845" y="294" font-size="8" font-weight="700" fill="#ef4444" font-family="system-ui, sans-serif">RCE RISK</text>
+  <text x="845" y="294" font-size="8" font-weight="700" fill="#ef4444" font-family="system-ui, sans-serif">EXECUTION TOOL</text>
 
   <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <!-- SHARED PATH HIGHLIGHT (the "aha" moment)                                -->
@@ -209,7 +209,7 @@
   <rect x="380" y="424" width="1" height="48" rx="0.5" fill="#27272a"/>
 
   <text x="440" y="440" text-anchor="middle" class="impact-num" fill="#ef4444">1</text>
-  <text x="440" y="458" text-anchor="middle" class="impact-label">RCE-capable</text>
+  <text x="440" y="458" text-anchor="middle" class="impact-label">exec-capable</text>
   <text x="440" y="472" text-anchor="middle" class="impact-label">tool exposed</text>
 
   <!-- Fix recommendation -->

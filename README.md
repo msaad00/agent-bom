@@ -14,9 +14,9 @@
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
-<p align="center"><b>Open security scanner and control plane for AI-era infrastructure — local scans, CI evidence, fleet inventory, MCP/runtime enforcement, and self-hosted governance.</b></p>
+<p align="center"><b>Open security scanner and control plane for AI supply chain and runtime infrastructure — local scans, CI evidence, fleet inventory, MCP enforcement, and self-hosted governance.</b></p>
 
-<p align="center">Every CVE in your AI stack is a credential leak waiting to happen. <code>agent-bom</code> follows the chain end-to-end and tells you exactly which fix collapses it.</p>
+<p align="center"><code>agent-bom</code> follows vulnerable packages, MCP servers, tools, credentials, agents, and runtime paths so teams can prioritize the fix that removes the most reachable risk.</p>
 
 <p align="center">
   <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
@@ -37,16 +37,16 @@
 
 ```text
 better-sqlite3@9.0.0  (npm package)
-  |── CVE-2025-1234  (CRITICAL · CVSS 9.8 · CISA KEV)
+  |── OSV/GHSA finding  (critical · advisory-backed)
   |── sqlite-mcp  (MCP Server · unverified · root)
        |── Cursor IDE  (Agent · 4 servers · 12 tools)
        |── ANTHROPIC_KEY, DB_URL, AWS_SECRET  (Credential env names visible)
-       |── query_db, read_file, write_file, run_shell  (Tools at risk)
+       |── query_db, read_file, write_file, run_shell  (Reachable tools)
 
  Fix: upgrade better-sqlite3 → 11.7.0
 ```
 
-Blast radius is the core idea: `package -> vulnerability finding -> MCP server (tools + credential env names) -> connected agents`. You can search by CVE, package, server, tool, credential name, or agent, but the evidence graph keeps the vulnerable package instance as the source of the reachable exposure path. CWE-aware impact keeps a DoS from being reported like credential compromise.
+Blast radius is the core idea: `package -> vulnerability finding -> MCP server (tools + credential env names) -> connected agents`. You can search by CVE, package, server, tool, credential name, or agent, but the evidence graph keeps the vulnerable package instance as the source of the reachable exposure path. CWE-aware impact keeps a DoS from being reported like credential compromise. The image above is a schematic; the bundled demo findings are backed by real OSV/GHSA advisories.
 
 ## Try the demo
 
@@ -139,7 +139,7 @@ They are captured from the packaged Next.js dashboard served by `agent-bom serve
 
 ### Dashboard — Risk overview
 
-The landing page is the **Risk overview**: a letter-grade gauge, the four headline counters (actively exploited · credentials exposed · reachable tools · top attack-path risk), the security-posture grade with sub-scores (policy + controls, open evidence, packages + CVEs, reach + exposure, MCP configuration), and the score breakdown for each driver.
+The landing page is the **Risk overview**: a letter-grade gauge, the four headline counters (actively exploited · credential scopes reachable · reachable tools · top attack-path risk), the security-posture grade with sub-scores (policy + controls, open evidence, packages + CVEs, reach + exposure, MCP configuration), and the score breakdown for each driver.
 
 ![agent-bom dashboard overview](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png)
 

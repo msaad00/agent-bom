@@ -170,6 +170,7 @@ postgres = [
     { name = "psycopg-pool" },
 ]
 runtime = [
+    { name = "cryptography" },
     { name = "psutil" },
 ]
 saml = [
@@ -222,6 +223,7 @@ requires-dist = [
     { name = "boto3", marker = "extra == 'aws'", specifier = ">=1.34" },
     { name = "click", specifier = ">=8.0" },
     { name = "cryptography", marker = "extra == 'oidc'", specifier = ">=46.0.7" },
+    { name = "cryptography", marker = "extra == 'runtime'", specifier = ">=46.0.7" },
     { name = "cyclonedx-python-lib", specifier = ">=11.6" },
     { name = "databricks-sdk", marker = "extra == 'databricks'", specifier = ">=0.20" },
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115" },

@@ -102,7 +102,10 @@ graph = [
 pdf = []
 postgres = ["psycopg[binary]>=3.1", "psycopg-pool>=3.1"]
 watch = ["watchdog>=4.0"]
-runtime = ["psutil>=5.9"]  # Process + container discovery (--include-processes)
+runtime = [
+    "psutil>=5.9",  # Process + container discovery (--include-processes)
+    "cryptography>=46.0.7",  # Proxy audit hash chain + response signing
+]
 visual = [
     # Visual-leak detection on MCP screenshot/image tool responses.
     # Opt-in because OCR is CPU-heavy — pilots without screen-capture MCPs

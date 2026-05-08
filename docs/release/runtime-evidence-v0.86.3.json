@@ -1,0 +1,131 @@
+{
+  "docker_runtime_proxy_smoke": {
+    "audit_contains_blocked_call": true,
+    "audit_contains_execution_posture": true,
+    "audit_record_count": 3,
+    "build_returncode": 0,
+    "command": [
+      "docker",
+      "run",
+      "--rm",
+      "-i",
+      "-v",
+      "<tmpdir>:/evidence",
+      "-e",
+      "AGENT_BOM_RUNTIME_SMOKE_ONESHOT=1",
+      "agent-bom-runtime-evidence:0.86.3",
+      "--no-isolate",
+      "--log",
+      "/evidence/audit.jsonl",
+      "--block-undeclared",
+      "--",
+      "python",
+      "-m",
+      "agent_bom.runtime_smoke_mcp"
+    ],
+    "image": "agent-bom-runtime-evidence:0.86.3",
+    "ran": true,
+    "run_returncode": 0,
+    "stderr_tail": [
+      "agent-bom proxy warning: sandbox isolation is disabled; the MCP server runs as the current host user. Remove --no-isolate or set AGENT_BOM_MCP_SANDBOX=1 to run the server in a restricted container."
+    ],
+    "stdout_lines": [
+      "{\"jsonrpc\": \"2.0\", \"id\": 2, \"error\": {\"code\": -32600, \"message\": \"Tool 'blocked_tool' blocked because no tools/list declarations are available\"}}",
+      "{\"jsonrpc\": \"2.0\", \"id\": 1, \"result\": {\"tools\": [{\"name\": \"allowed_tool\", \"inputSchema\": {\"type\": \"object\"}}]}}"
+    ]
+  },
+  "gateway": {
+    "bearer_auth": {
+      "missing_token_status_code": 401,
+      "valid_token_forwarded_status_code": 200
+    },
+    "gateway_limit": {
+      "not_supported_in_gateway": [
+        "persistent SSE relay",
+        "stdio relay"
+      ],
+      "source": "src/agent_bom/gateway_server.py MVP scope and docs/design/MULTI_MCP_GATEWAY.md",
+      "stdio_path": "use per-MCP agent-bom proxy wrappers",
+      "supported_upstream_transport": "streamable-http request/response JSON-RPC over HTTP POST"
+    },
+    "healthz": {
+      "incoming_token_required": true,
+      "policy_source_kind": "inline",
+      "status": "ok",
+      "status_code": 200,
+      "upstreams": [
+        "jira"
+      ]
+    },
+    "metrics": {
+      "content_type": "text/plain; version=0.0.4; charset=utf-8",
+      "relay_lines": [
+        "# HELP agent_bom_gateway_relays_total Multi-MCP gateway relay events by upstream and outcome",
+        "# TYPE agent_bom_gateway_relays_total counter",
+        "agent_bom_gateway_relays_total{upstream=\"jira\",outcome=\"blocked\"} 1",
+        "agent_bom_gateway_relays_total{upstream=\"jira\",outcome=\"forwarded\"} 1"
+      ],
+      "status_code": 200
+    },
+    "policy_block": {
+      "audit_actions": [
+        "gateway.policy_blocked",
+        "gateway.tool_call"
+      ],
+      "jsonrpc_error_code": -32001,
+      "status_code": 200
+    },
+    "upstream_auth": {
+      "bearer_header_resolved_from_env": true,
+      "traceparent_forwarded": true
+    }
+  },
+  "generated_at": "2026-05-08T16:53:33.593759+00:00",
+  "git_branch": "test/runtime-evidence-pack",
+  "git_commit": "199f6cce1b57e89ef90e3dc831674c24f7dcc838",
+  "proxy_sandbox": {
+    "audit_chain": {
+      "first_record_hash_present": true,
+      "records_written": 2,
+      "second_prev_hash_matches_first": true,
+      "tampered": 0,
+      "verified": 2
+    },
+    "sandbox_command_prefix": [
+      "/usr/local/bin/docker",
+      "run",
+      "--rm",
+      "-i",
+      "--read-only",
+      "--security-opt",
+      "no-new-privileges",
+      "--cap-drop",
+      "ALL",
+      "--network",
+      "none",
+      "--cpus"
+    ],
+    "sandbox_evidence": {
+      "cpus": "1",
+      "drop_capabilities": true,
+      "egress_policy": "deny",
+      "enabled": true,
+      "image": "ghcr.io/acme/mcp-sandbox:1@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "image_pin_policy": "enforce",
+      "image_pin_warning": null,
+      "image_pinned": true,
+      "memory": "512m",
+      "mode": "wrap_command_in_image",
+      "mounts": [],
+      "network": "none",
+      "no_new_privileges": true,
+      "pids_limit": 256,
+      "read_only_rootfs": true,
+      "runtime": "/usr/local/bin/docker",
+      "timeout_seconds": 300,
+      "tmpfs_size": "64m",
+      "user": null
+    }
+  },
+  "schema": "agent-bom-runtime-release-evidence/v1"
+}

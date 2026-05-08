@@ -96,3 +96,7 @@ agent-bom agents -f csv      # CSV export
 agent-bom check requests@2.33.0 -e pypi -f json   # single-package JSON verdict
 agent-bom report history -f json                  # saved scan metadata for CI
 ```
+
+If a GitHub Action produces SARIF but no Code Scanning alert appears, check the
+[SARIF upload troubleshooting guide](https://github.com/msaad00/agent-bom/blob/main/docs/GITHUB_ACTION_SARIF_TROUBLESHOOTING.md)
+for token permissions, fork PR behavior, report paths, and category settings.

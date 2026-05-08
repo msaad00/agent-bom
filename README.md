@@ -482,6 +482,9 @@ Cortex, Cursor, Windsurf, or another MCP client.
 Artifact: `agent-bom-results.sarif`, optional pull-request summary, and GitHub
 code-scanning evidence. Next step: add `iac`, `ai-inventory`, `gpu-scan`, or
 skills checks only for the surfaces the repository actually owns.
+If the action runs but Code Scanning stays empty, use the
+[SARIF upload troubleshooting guide](docs/GITHUB_ACTION_SARIF_TROUBLESHOOTING.md)
+to check token permissions, fork PR behavior, report paths, and upload category.
 
 **Hosted gateway/proxy review**
 
@@ -536,6 +539,8 @@ References: [PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) · [PRODUCT_METRICS.md](do
 ```
 
 Container image gate, IaC gate, air-gapped CI, MCP scan, and the SARIF / SBOM examples are documented in [site-docs/getting-started/quickstart.md](site-docs/getting-started/quickstart.md).
+SARIF upload failures are usually GitHub token or repository-setting issues;
+see [GitHub Action SARIF troubleshooting](docs/GITHUB_ACTION_SARIF_TROUBLESHOOTING.md).
 
 </details>
 

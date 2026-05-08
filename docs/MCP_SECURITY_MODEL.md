@@ -252,6 +252,11 @@ blast_radius        — blast radius for a specific CVE
     ignore-file: .agent-bom-ignore.yaml
 ```
 
+If findings are generated but do not appear in GitHub Code Scanning, check
+[`GITHUB_ACTION_SARIF_TROUBLESHOOTING.md`](GITHUB_ACTION_SARIF_TROUBLESHOOTING.md)
+for the required `security-events: write` permission, fork PR limitations,
+SARIF path checks, and category guidance.
+
 ### Local developer workflow
 
 ```bash

@@ -454,6 +454,51 @@ see value and where enterprises wire agent-bom into existing controls.
 | Runtime and app frameworks | MCP proxy/gateway, Shield SDK, Anthropic/OpenAI SDK patterns, LangChain, CrewAI | enforces policy on live tool calls and lets applications add in-process allow/block decisions |
 | Governance and observability | Postgres/Supabase, ClickHouse, Snowflake paths, OTEL, SIEM/export hooks, compliance bundles | persists evidence, trends, audit, graph state, and control mappings without requiring a hosted vendor plane |
 
+Three copy-paste workflows cover the common agentic adoption paths:
+
+**Local developer scan**
+
+```bash
+agent-bom agents -p . -f html -o agent-bom-report.html
+agent-bom agents -p . -f sarif -o agent-bom-results.sarif
+```
+
+Artifact: local findings, HTML review, SARIF, SBOM-ready evidence, and graph
+exports when requested. Next step: add the MCP server guide for Claude, Codex,
+Cortex, Cursor, Windsurf, or another MCP client.
+
+**CI security review**
+
+```yaml
+- uses: msaad00/agent-bom@v0.86.3
+  with:
+    scan-type: agents
+    severity-threshold: high
+    format: sarif
+    upload-sarif: true
+    pr-comment: true
+```
+
+Artifact: `agent-bom-results.sarif`, optional pull-request summary, and GitHub
+code-scanning evidence. Next step: add `iac`, `ai-inventory`, `gpu-scan`, or
+skills checks only for the surfaces the repository actually owns.
+
+**Hosted gateway/proxy review**
+
+```bash
+agent-bom proxy --log audit.jsonl --block-undeclared -- npx @modelcontextprotocol/server-filesystem /workspace
+
+agent-bom gateway serve \
+  --from-control-plane https://agent-bom.example.com \
+  --control-plane-token "$AGENT_BOM_CONTROL_PLANE_TOKEN" \
+  --bearer-token "$AGENT_BOM_GATEWAY_BEARER_TOKEN"
+```
+
+Artifact: local proxy audit JSONL for stdio MCP traffic, gateway policy
+decisions for shared remote MCP traffic, and control-plane evidence when those
+surfaces are connected. Next step: run the runtime evidence pack before claiming
+gateway/proxy release sign-off.
+
 MCP and skills setup is documented in the client guides, not in repo-local
 assistant launch files: [Claude](docs/CLAUDE_INTEGRATION.md),
 [Codex CLI](docs/CODEX_CLI.md), [Cortex Code](docs/CORTEX_CODE.md),

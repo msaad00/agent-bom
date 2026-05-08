@@ -12,10 +12,10 @@ The proxied entry replaces:
 with:
 
     "command": "agent-bom",
-    "args": ["proxy", "--", "npx", "@modelcontextprotocol/server-fs", "/tmp"]
+    "args": ["proxy", "--no-isolate", "--", "npx", "@modelcontextprotocol/server-fs", "/tmp"]
 
 Optionally enriches the proxy args with --log, --policy, --detect-credentials,
-and --block-undeclared flags.
+--block-undeclared, and sandbox flags.
 """
 
 from __future__ import annotations
@@ -79,6 +79,9 @@ def auto_configure_proxies(
     control_plane_token: Optional[str] = None,
     policy_refresh_seconds: Optional[int] = None,
     audit_push_interval: Optional[int] = None,
+    sandbox_image: Optional[str] = None,
+    sandbox_image_pin_policy: Optional[str] = None,
+    sandbox_mounts: tuple[str, ...] = (),
 ) -> list[ProxyConfig]:
     """Generate proxy-wrapped configs for all eligible STDIO MCP servers.
 
@@ -96,6 +99,11 @@ def auto_configure_proxies(
             even if they are not explicitly requested by the caller.
         detect_credentials: Pass ``--detect-credentials`` to each proxy.
         block_undeclared: Pass ``--block-undeclared`` to each proxy.
+        sandbox_image: Optional Docker/Podman image for containing plain stdio
+            MCP commands. When omitted, generated configs pass ``--no-isolate``
+            so audit/policy-only configs remain runnable.
+        sandbox_image_pin_policy: Optional sandbox image pin policy.
+        sandbox_mounts: Optional sandbox bind mounts.
 
     Returns:
         List of ProxyConfig objects, one per eligible server.
@@ -133,6 +141,15 @@ def auto_configure_proxies(
 
             if secure_defaults or block_undeclared:
                 proxy_flags.append("--block-undeclared")
+
+            if sandbox_image:
+                proxy_flags += ["--sandbox-image", sandbox_image]
+                if sandbox_image_pin_policy:
+                    proxy_flags += ["--sandbox-image-pin-policy", sandbox_image_pin_policy]
+                for mount in sandbox_mounts:
+                    proxy_flags += ["--sandbox-mount", mount]
+            else:
+                proxy_flags.append("--no-isolate")
 
             proxied_args = [*proxy_flags, "--", server.command, *server.args]
 

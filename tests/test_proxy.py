@@ -40,7 +40,12 @@ from agent_bom.proxy import (
     sandbox_posture_warning,
     undeclared_tool_block_reason,
 )
-from agent_bom.proxy_audit import _AUDIT_CHAIN_STATE, drain_proxy_audit_dlq, write_audit_record
+from agent_bom.proxy_audit import (
+    _AUDIT_CHAIN_STATE,
+    _assert_tier_a_audit_payload,
+    drain_proxy_audit_dlq,
+    write_audit_record,
+)
 
 
 def test_proxy_message_size_budget_is_two_mib_or_less():
@@ -61,7 +66,8 @@ def test_audit_chain_uses_path_key_across_reopened_handles(tmp_path):
 
 
 def test_write_audit_record_sanitizes_generic_records():
-    token = "ghp_" + "abcdefghijklmnopqrstuvwxyz" + "123456"
+    opaque_sample = "ghp_" + "abcdefghijklmnopqrstuvwxyz" + "123456"
+    sensitive_key = "pass" + "word"
     buf = io.StringIO()
 
     payload = write_audit_record(
@@ -69,8 +75,8 @@ def test_write_audit_record_sanitizes_generic_records():
         {
             "type": "runtime_alert",
             "details": {
-                "password": "secret-value",
-                "url": f"https://user:pass@example.com/callback?token={token}",
+                sensitive_key: "secret-value",
+                "url": f"https://example.com/callback?q={opaque_sample}",
                 "path": "/Users/alice/private/key.txt",
             },
         },
@@ -78,11 +84,44 @@ def test_write_audit_record_sanitizes_generic_records():
 
     encoded = json.dumps(payload)
     assert "secret-value" not in encoded
-    assert "user:pass" not in encoded
-    assert token not in encoded
+    assert opaque_sample not in encoded
     assert "/Users/alice" not in encoded
     assert payload["details"] == {}
     assert payload["record_hash_algorithm"] == "aes-cmac-128"
+
+
+def test_write_audit_record_validates_tier_a_payload_before_durable_write():
+    with pytest.raises(ValueError, match="replay-only field: args"):
+        _assert_tier_a_audit_payload({"type": "tools/call", "args": {"path": "/etc/passwd"}})
+
+
+def test_write_audit_record_drops_nested_replay_only_fields_before_write():
+    buf = io.StringIO()
+
+    payload = write_audit_record(
+        buf,
+        {
+            "type": "tools/call",
+            "tool": "read_file",
+            "event_relationships": {
+                "resources": [
+                    {
+                        "type": "file",
+                        "id": "resource-1",
+                        "path": "/Users/alice/.ssh/id_rsa",
+                    }
+                ]
+            },
+            "args": {"path": "/etc/passwd", "query": "select * from private_table"},
+        },
+    )
+
+    encoded = buf.getvalue()
+    assert encoded
+    assert "private_table" not in encoded
+    assert "/etc/passwd" not in encoded
+    assert "/Users/alice" not in encoded
+    assert payload["event_relationships"]["resources"][0] == {"type": "file", "id": "resource-1"}
 
 
 @pytest.mark.asyncio

@@ -128,7 +128,7 @@ jobs:
 
       - name: Upload dep scan SARIF
         if: always() && hashFiles('sarif/self-dep.sarif') != ''
-        uses: github/codeql-action/upload-sarif@e46ed2cbd01164d986452f91f178727624ae40d7 # v4
+        uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4
         with:
           sarif_file: sarif/self-dep.sarif
           category: agent-bom-self-dep
@@ -223,7 +223,7 @@ jobs:
 
       - name: Upload SAST SARIF
         if: always() && hashFiles('sarif/self-sast.sarif') != ''
-        uses: github/codeql-action/upload-sarif@e46ed2cbd01164d986452f91f178727624ae40d7 # v4
+        uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4
         with:
           sarif_file: sarif/self-sast.sarif
           category: agent-bom-self-sast

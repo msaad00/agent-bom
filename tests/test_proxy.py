@@ -19,6 +19,7 @@ from agent_bom.proxy import (
     AuditSpilloverStore,
     ProxyMetrics,
     ReplayDetector,
+    _command_name_for_validation,
     _control_plane_headers,
     _extract_jsonrpc_trace_meta,
     _gateway_policy_cache_path,
@@ -196,6 +197,15 @@ def test_sandbox_posture_warning_is_visible_when_disabled():
     assert "--no-isolate" in warning
     assert "--sandbox" not in warning
     assert sandbox_posture_warning({"enabled": True}) is None
+
+
+def test_sandbox_generated_runtime_validates_by_basename():
+    evidence = {"enabled": True, "mode": "wrap_command_in_image"}
+    assert _command_name_for_validation("/usr/local/bin/docker", evidence) == "docker"
+
+
+def test_user_supplied_absolute_command_stays_strict():
+    assert _command_name_for_validation("/usr/local/bin/docker", {"enabled": False}) == "/usr/local/bin/docker"
 
 
 # ── extract_tool_name ────────────────────────────────────────────────────────

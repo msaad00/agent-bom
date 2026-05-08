@@ -145,6 +145,7 @@ nav:
       - Canonical Model vs OCSF: architecture/canonical-vs-ocsf.md
   - Reference:
       - MCP Tools: reference/mcp-tools.md
+      - Agentic Workflow Matrix: reference/agentic-workflows.md
       - CLI Commands: reference/cli.md
       - CLI Debug Guide: reference/cli-debug.md
       - CLI Exit Codes and HTTP Status Mapping: reference/exit-codes.md

@@ -15,7 +15,7 @@ from collections import Counter, OrderedDict, defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import IO, Optional
+from typing import IO, Any, Optional
 
 from agent_bom.agent_identity import ANONYMOUS
 from agent_bom.audit_integrity import compute_audit_record_mac
@@ -641,6 +641,38 @@ def _sanitize_audit_record(record: dict) -> dict:
     return sanitized if isinstance(sanitized, dict) else {}
 
 
+def _assert_tier_a_audit_payload(payload: Any, *, parent_key: str = "") -> None:
+    """Fail closed if a durable proxy audit payload still has tier-B fields."""
+    from agent_bom.evidence.policy import TIER_A_COUNT_MAP_FIELDS, EvidenceTier, classify_field
+
+    if isinstance(payload, dict):
+        parent = parent_key.strip().lower()
+        if parent in TIER_A_COUNT_MAP_FIELDS:
+            for bucket, count in payload.items():
+                if isinstance(count, bool) or not isinstance(count, (int, float)):
+                    raise ValueError(f"proxy audit tier-A count map has non-numeric value for {bucket!r}")
+            return
+        for key, value in payload.items():
+            key_text = str(key)
+            if classify_field(key_text) is not EvidenceTier.SAFE_TO_STORE:
+                raise ValueError(f"proxy audit tier-A payload contains replay-only field: {key_text}")
+            _assert_tier_a_audit_payload(value, parent_key=key_text)
+        return
+    if isinstance(payload, list):
+        for item in payload:
+            _assert_tier_a_audit_payload(item, parent_key=parent_key)
+        return
+    if isinstance(payload, tuple):
+        for item in payload:
+            _assert_tier_a_audit_payload(item, parent_key=parent_key)
+
+
+def _append_durable_audit_payload(log_file: "IO[str] | RotatingAuditLog", payload: dict[str, Any]) -> None:
+    _assert_tier_a_audit_payload(payload)
+    json.dump(payload, log_file, separators=(",", ":"))
+    log_file.write("\n")
+
+
 def _audit_chain_key(log_file: "IO[str] | RotatingAuditLog") -> str:
     path = getattr(log_file, "_path", None) or getattr(log_file, "name", None)
     if path:
@@ -693,7 +725,9 @@ def write_audit_record(log_file: "IO[str] | RotatingAuditLog", record: dict) -> 
         payload["prev_hash"] = prev_hash
         payload["record_hash_algorithm"] = "aes-cmac-128"
         payload["record_hash"] = _record_digest(payload)
-        log_file.write(json.dumps(payload) + "\n")
+        # The durable audit line is tier-A validated; replay-only evidence is
+        # written only to the separate TTL-gated replay store above.
+        _append_durable_audit_payload(log_file, payload)
         _AUDIT_CHAIN_STATE[log_key] = payload["record_hash"]
         return payload
 

@@ -117,6 +117,7 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         "payload_sha256",
         "record_hash",
         "prev_hash",
+        "record_hash_algorithm",
         "hmac_signature",
         "prev_signature",
         # Compliance metadata

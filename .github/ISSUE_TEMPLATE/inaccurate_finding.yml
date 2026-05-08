@@ -39,6 +39,7 @@ body:
       placeholder: |
         agent-bom agents -p . -f json -o report.json
         # paste the relevant sanitized finding here
+        # example: https://github.com/msaad00/agent-bom/blob/main/docs/INACCURATE_FINDING_REPORT.md
     validations:
       required: true
 
@@ -54,7 +55,7 @@ body:
     id: evidence
     attributes:
       label: Evidence
-      description: Link to public advisory, package metadata, lockfile snippet, SBOM excerpt, or scanner output that supports the correction.
+      description: Link to public advisory, package metadata, lockfile snippet, SBOM excerpt, or scanner output that supports the correction. See docs/INACCURATE_FINDING_REPORT.md for a safe public example.
 
   - type: textarea
     id: environment

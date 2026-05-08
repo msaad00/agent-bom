@@ -141,6 +141,9 @@ template for false positives, false negatives, wrong severity/advisory mapping,
 or misleading remediation. Include sanitized JSON/SARIF output and public
 evidence; do not post secrets, private source code, private package names, or
 customer data.
+The repository includes a
+[sanitized inaccurate-finding report example](https://github.com/msaad00/agent-bom/blob/main/docs/INACCURATE_FINDING_REPORT.md)
+with a copy-paste-safe issue body.
 
 For the JSON contract behind `agent-bom remediate`, see [`remediate` Output
 Contract](remediate-output.md).

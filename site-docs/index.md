@@ -2,7 +2,9 @@
 
 **Open security scanner and graph for AI supply chain and infrastructure — discover agents and MCP, map blast radius, and inspect runtime.**
 
-Scan agents, MCP, packages, containers, Kubernetes, cloud, and GPU workloads with blast-radius context.
+Scan agents, MCP, packages, containers, Kubernetes, cloud, and GPU workloads
+with blast-radius context. For source-by-source boundaries, see the
+[AI infrastructure coverage matrix](architecture/ai-infrastructure.md#coverage-matrix).
 
 ## What it does
 

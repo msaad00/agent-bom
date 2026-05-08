@@ -454,6 +454,10 @@ see value and where enterprises wire agent-bom into existing controls.
 | Runtime and app frameworks | MCP proxy/gateway, Shield SDK, Anthropic/OpenAI SDK patterns, LangChain, CrewAI | enforces policy on live tool calls and lets applications add in-process allow/block decisions |
 | Governance and observability | Postgres/Supabase, ClickHouse, Snowflake paths, OTEL, SIEM/export hooks, compliance bundles | persists evidence, trends, audit, graph state, and control mappings without requiring a hosted vendor plane |
 
+For cloud, IaC, GPU, skills, and runtime boundaries, use the
+[AI infrastructure coverage matrix](site-docs/architecture/ai-infrastructure.md#coverage-matrix)
+to pick the command and artifact before making a release or buyer-facing claim.
+
 Three copy-paste workflows cover the common agentic adoption paths:
 
 **Local developer scan**

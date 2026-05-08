@@ -1,0 +1,28 @@
+{
+  "shared": {
+    "setupScript": "uv sync --all-extras && cd ui && npm ci",
+    "devCommand": "agent-bom serve --port 8422",
+    "devTerminalDescription": "agent-bom API/control-plane development server"
+  },
+  "mcpServers": {
+    "agent-bom-local": {
+      "transport": "stdio",
+      "command": "agent-bom",
+      "args": ["mcp", "server"]
+    }
+  },
+  "claude": {
+    "settings": {}
+  },
+  "cursor": {
+    "environment": {
+      "agentCanUpdateSnapshot": false
+    }
+  },
+  "codex": {
+    "environment": {
+      "version": 1,
+      "name": "agent-bom"
+    }
+  }
+}

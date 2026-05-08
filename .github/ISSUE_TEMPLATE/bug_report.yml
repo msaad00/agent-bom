@@ -24,6 +24,9 @@ body:
         - pip
         - Docker
         - GitHub Action
+        - MCP client / coding agent
+        - Self-hosted API / dashboard
+        - Kubernetes / Helm
         - From source
     validations:
       required: true
@@ -74,3 +77,9 @@ body:
     attributes:
       label: Python version
       placeholder: "e.g. 3.12.4"
+
+  - type: textarea
+    id: contribution-interest
+    attributes:
+      label: Are you interested in contributing a fix?
+      description: Optional. If yes, say whether you want guidance on a code, docs, integration, or test change.

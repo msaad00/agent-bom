@@ -6,6 +6,7 @@ import textwrap
 
 from agent_bom.parsers import (
     parse_conda_environment,
+    parse_npm_packages,
     parse_pip_packages,
     parse_pnpm_lock,
     parse_poetry_lock,
@@ -289,6 +290,51 @@ class TestPnpmLock:
 
     def test_missing_file_returns_empty(self, tmp_path):
         assert parse_pnpm_lock(tmp_path) == []
+
+
+def test_package_json_resolves_workspace_dependencies(tmp_path):
+    (tmp_path / "pnpm-workspace.yaml").write_text(
+        textwrap.dedent("""\
+            packages:
+              - "packages/**"
+              - "web"
+        """)
+    )
+    shared = tmp_path / "packages" / "shared"
+    eslint = tmp_path / "packages" / "config-eslint"
+    web = tmp_path / "web"
+    shared.mkdir(parents=True)
+    eslint.mkdir(parents=True)
+    web.mkdir()
+    (shared / "package.json").write_text('{"name": "@langfuse/shared", "version": "1.0.0"}')
+    (eslint / "package.json").write_text('{"name": "@repo/eslint-config", "version": "0.0.0"}')
+    (web / "package.json").write_text(
+        textwrap.dedent("""\
+            {
+              "name": "web",
+              "dependencies": {
+                "@langfuse/shared": "workspace:*",
+                "next": "16.2.6"
+              },
+              "devDependencies": {
+                "@repo/eslint-config": "workspace:*",
+                "typescript": "^5.9.3"
+              }
+            }
+        """)
+    )
+
+    by_name = {pkg.name: pkg for pkg in parse_npm_packages(web)}
+
+    assert by_name["@langfuse/shared"].version == "1.0.0"
+    assert by_name["@langfuse/shared"].version_source == "workspace"
+    assert by_name["@langfuse/shared"].declared_version == "workspace:*"
+    assert by_name["@langfuse/shared"].resolved_version == "1.0.0"
+    assert by_name["@langfuse/shared"].version_confidence == "workspace_manifest"
+    assert by_name["@langfuse/shared"].reachability_evidence == "workspace_manifest"
+    assert by_name["@repo/eslint-config"].version == "0.0.0"
+    assert by_name["next"].version == "16.2.6"
+    assert by_name["typescript"].version == "5.9.3"
 
 
 # ── ECOSYSTEM_MAP includes conda ──────────────────────────────────────────────

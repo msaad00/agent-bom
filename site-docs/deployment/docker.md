@@ -39,7 +39,7 @@ Compose file into production.
 ## Quick scan
 
 ```bash
-docker run --rm agentbom/agent-bom:latest scan
+docker run --rm agentbom/agent-bom:latest agents --demo
 ```
 
 ## With host config access
@@ -50,7 +50,7 @@ Mount your MCP client configs for auto-discovery:
 docker run --rm \
   -v "$HOME/.config:/home/abom/.config:ro" \
   -v "$HOME/Library/Application Support:/home/abom/Library/Application Support:ro" \
-  agentbom/agent-bom:latest scan
+  agentbom/agent-bom:latest agents
 ```
 
 ## Self-hosted SSE server
@@ -87,17 +87,22 @@ docker run --rm \
   agentbom/agent-bom:latest --version
 ```
 
-## Runtime proxy sidecar
+## Runtime proxy against a remote MCP endpoint
 
 ```bash
 docker pull agentbom/agent-bom:0.86.2
 docker run --rm -i \
   -v ./audit-logs:/var/log/agent-bom \
   agentbom/agent-bom:0.86.2 \
+  proxy \
   --log /var/log/agent-bom/audit.jsonl \
   --block-undeclared \
-  -- npx -y @modelcontextprotocol/server-filesystem /workspace
+  --url http://host.docker.internal:3000
 ```
+
+For stdio MCP wrapping, prefer the repo's runtime compose example or run
+`agent-bom proxy` on the host where the target MCP command and its runtime
+(`node`, `uvx`, `python`, etc.) are installed.
 
 ## Images
 

@@ -1,6 +1,6 @@
 # agent-bom-ui
 
-Dashboard image for `agent-bom`.
+Dashboard image for the self-hosted `agent-bom` control plane.
 
 `agent-bom` is one product with two deployable images:
 
@@ -10,6 +10,11 @@ Dashboard image for `agent-bom`.
 This image is not a separate product and it is not meant to be the first thing a
 pilot user reasons about. Use the packaged pilot or Helm chart so both images are
 pulled for you.
+
+Use the UI when you are in the **send evidence to a control plane** lane:
+endpoint fleet sync, REST API jobs, Helm/EKS, scheduled discovery, graph state,
+findings, compliance, and governance all converge here. Local-only CLI/Docker
+scans and runtime proxy enforcement can run without the browser image.
 
 ## Run This First
 

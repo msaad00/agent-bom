@@ -42,6 +42,7 @@ body:
         - Dashboard / UI
         - Compliance / policy
         - Cloud providers
+        - Integrations / skills / MCP clients
         - Container / K8s scanning
         - SBOM / output formats
         - Runtime (proxy / protect / watch)

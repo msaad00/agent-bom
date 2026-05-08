@@ -1,6 +1,9 @@
 # Product Brief
 
-`agent-bom` is an open security scanner for AI supply chain and infrastructure — agents, MCP, packages, containers, cloud, GPU, and runtime.
+`agent-bom` is an open security scanner and self-hosted control plane for
+AI-era infrastructure — local scans, CI evidence, fleet inventory, MCP/runtime
+enforcement, and governance surfaces that run in the operator's own
+environment.
 
 It is built around a simple thesis: security and visibility for AI infrastructure should be open, transparent, and accessible, not reserved for teams with enterprise budgets.
 
@@ -10,6 +13,58 @@ Package risk is only the start. `agent-bom` follows what it can reach across MCP
 
 Current repo-derived counts live in [PRODUCT_METRICS.md](PRODUCT_METRICS.md). This brief intentionally keeps volatile metrics out of the main narrative.
 
+## Positioning contract
+
+The product should converge curious users into real adoption by answering four
+persona questions quickly:
+
+| Persona | Question they need answered | Product proof |
+|---|---|---|
+| Product manager | "Is the first run valuable and obvious?" | deterministic demo, fix-first output, clear next step |
+| Sales engineer | "Can I prove this in the buyer's environment?" | CLI/Docker/Action smoke, control-plane pilot, gateway/proxy evidence |
+| Account executive | "Who buys this and why now?" | AI/MCP supply-chain risk, self-hosted deployment, evidence for governance teams |
+| Software/security engineer | "Can I trust and operate it?" | signed releases, tests, strict auth defaults, Postgres tenancy, audit chain, scoped runtime controls |
+
+Do not present the product as ten equal entry points. Present it as three
+adoption lanes that share one evidence model:
+
+```text
+agent-bom
+├─ scan locally
+│  └─ CLI, Docker, GitHub Action -> findings, SARIF, SBOM, HTML, graph exports
+├─ send evidence to a control plane
+│  └─ fleet sync, REST API, Helm/EKS, UI -> inventory, graph, compliance, governance
+└─ enforce runtime behavior
+   └─ MCP server, proxy/gateway, Shield SDK -> audit, policy blocks, runtime alerts
+```
+
+1. **Scan locally** — CLI, Docker, and GitHub Action produce findings, SARIF,
+   SBOMs, HTML reports, and graph exports.
+2. **Send evidence to a control plane** — endpoint fleet, REST API, Helm/EKS,
+   and the browser UI centralize inventory, graph state, compliance, and
+   governance.
+3. **Enforce runtime behavior** — MCP server mode, proxy/gateway, and Shield
+   SDK turn the same model into agentic workflow controls.
+
+This framing does not narrow the deployment story. It makes "deploy in your
+own cloud / infrastructure" the production form of lane 2, with runtime
+controls from lane 3 added where the customer needs inline enforcement.
+
+Integrations should be described as distribution and workflow fit, not as a
+miscellaneous compatibility list. The strongest story is:
+
+- **coding agents and MCP clients**: Claude, Cursor, Windsurf, VS Code, Cortex
+  Code, and similar clients can invoke agent-bom as a read-only security tool
+  surface.
+- **skills and registries**: OpenClaw skills, Cortex Code skill packaging, MCP
+  Registry, Smithery, Glama, and Docker MCP registry make repeatable
+  agent-bom workflows available where agent users already discover tools.
+- **developer controls**: CLI, Docker, GitHub Action, SARIF, SBOM, and
+  pre-install checks make local and CI adoption useful without the dashboard.
+- **enterprise data paths**: REST API, fleet sync, Helm/EKS, Postgres,
+  ClickHouse, Snowflake paths, OTEL, SIEM/export hooks, and compliance bundles
+  let security teams centralize evidence inside their own infrastructure.
+
 ## Deployment truth
 
 The product should be framed deployment-first:
@@ -17,6 +72,9 @@ The product should be framed deployment-first:
 - **self-hosted operator plane** in the customer's own infrastructure
 - **entry points** through CLI, GitHub Action, fleet ingest, proxy, and gateway
 - **pilot** as a narrower rollout profile of the same architecture, not a separate product shape
+- **Fortune-500 deployment readiness** as customer-controlled infrastructure,
+  explicit auth/tenant/storage choices, and evidence-backed operations, not as
+  a hosted SaaS claim
 
 That keeps the repo story aligned with the actual code: one shared graph, one
 policy model, multiple entry points, no mandatory hosted control plane.

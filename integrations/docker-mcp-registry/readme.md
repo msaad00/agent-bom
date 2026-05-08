@@ -10,13 +10,13 @@ Package risk is only the start. agent-bom maps what it can reach across MCP serv
 
 ```bash
 # Scan your AI agent environment
-docker run --rm agentbom/agent-bom scan
+docker run --rm agentbom/agent-bom agents
 
 # Pre-install CVE gate
 docker run --rm agentbom/agent-bom check flask@2.0.0
 
 # Generate CycloneDX SBOM
-docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom scan -p /workspace -f cyclonedx -o /workspace/sbom.json
+docker run --rm -v "$(pwd):/workspace" agentbom/agent-bom agents -p /workspace -f cyclonedx -o /workspace/sbom.json
 ```
 
 ## What it scans

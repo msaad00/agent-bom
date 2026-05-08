@@ -2,6 +2,14 @@
 
 agent-bom has 7,000+ monthly installs. Every contribution directly improves security for real AI agent deployments. This guide gets you from zero to merged PR.
 
+The best ways to help:
+
+- Try the demo and open issues for confusing output, missing context, or weak remediation.
+- Request integrations for MCP clients, coding agents, CI systems, cloud providers, and security workflows you actually use.
+- Pick a `good first issue` or `help wanted` task and comment before starting.
+- Improve docs, screenshots, diagrams, and first-run examples when something is unclear.
+- Star, share, or recommend the project when agent-bom gives you useful evidence; community signal helps security teams trust an open tool.
+
 ## Table of contents
 
 - [Quick start (5 minutes)](#quick-start)
@@ -27,7 +35,7 @@ pre-commit install                                  # wires ruff + ruff-format h
 pytest tests/ -x -q                                # must be green before you start
 ```
 
-That's it. `agent-bom scan` now runs from your local checkout.
+That's it. `agent-bom agents` now runs from your local checkout.
 Use `.[dev]` only for a lighter core workflow; `.[dev-all]` is the supported full-suite contributor setup.
 
 ---
@@ -65,6 +73,10 @@ See [open issues labeled P1](https://github.com/msaad00/agent-bom/issues?q=is%3A
 ---
 
 ## Development workflow
+
+Start with [`AGENTS.md`](AGENTS.md) when using assistant or agent workflows in
+this repo. It captures the product, security, verification, and release lenses
+that should be applied alongside this contributor guide.
 
 ```bash
 # Create a branch

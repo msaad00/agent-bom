@@ -1,6 +1,6 @@
 # agent-bom
 
-**Open security scanner for AI supply chain — agents, MCP servers, packages, containers, cloud, GPU, and runtime.**
+**Open security scanner and control plane for AI-era infrastructure — local scans, CI evidence, fleet inventory, MCP/runtime enforcement, and self-hosted governance.**
 
 Every CVE in your AI stack is a credential leak waiting to happen. `agent-bom`
 follows the chain end-to-end and tells you which fix collapses it first.
@@ -48,6 +48,17 @@ References:
 - GitHub README: https://github.com/msaad00/agent-bom/blob/main/README.md
 - Product brief: https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_BRIEF.md
 - Verified metrics: https://github.com/msaad00/agent-bom/blob/main/docs/PRODUCT_METRICS.md
+
+## Choose Your Path
+
+Start with one lane. The scanner, API, UI, gateway, proxy, and MCP tools all
+feed the same evidence model.
+
+| Lane | Start with | Produces |
+|------|------------|----------|
+| **Scan locally** | `docker run --rm agentbom/agent-bom:latest agents --demo` | findings, SARIF, SBOM, HTML, graph exports |
+| **Send evidence to a control plane** | `docker compose -f docker-compose.pilot.yml up -d` | fleet inventory, scan jobs, graph state, compliance exports |
+| **Enforce runtime behavior** | `agent-bom proxy` or `agent-bom mcp server` from this image | MCP tools, audit JSONL, policy blocks, runtime alerts |
 
 ## CLI And Runtime Quick Start
 

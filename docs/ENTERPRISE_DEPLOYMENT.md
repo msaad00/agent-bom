@@ -174,7 +174,7 @@ agent-bom serve --port 8422 --persist jobs.db
 
 **Endpoints:**
 - `POST /v1/scan` — submit scans from any source
-- `GET /v1/fleet/list` — view all discovered agents across the org
+- `GET /v1/fleet` — view all discovered agents across the org
 - `GET /v1/fleet/stats` — fleet-wide trust scores and posture
 - `POST /v1/fleet/sync` — ingest endpoint scan results
 - `GET /v1/compliance` — 15-framework compliance posture plus AISVS benchmark summary

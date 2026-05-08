@@ -14,9 +14,19 @@
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
-<p align="center"><b>Open security scanner for AI supply chain and infrastructure — agents, MCP servers, packages, containers, cloud (AWS, Azure, GCP, Snowflake, Databricks, CoreWeave, Nebius), GPU, and runtime.</b></p>
+<p align="center"><b>Open security scanner and control plane for AI-era infrastructure — local scans, CI evidence, fleet inventory, MCP/runtime enforcement, and self-hosted governance.</b></p>
 
 <p align="center">Every CVE in your AI stack is a credential leak waiting to happen. <code>agent-bom</code> follows the chain end-to-end and tells you exactly which fix collapses it.</p>
+
+<p align="center">
+  <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
+  <a href="docs/FIRST_RUN.md">Demo</a> ·
+  <a href="site-docs/deployment/overview.md">Self-host</a> ·
+  <a href="https://github.com/marketplace/actions/agent-bom">GitHub Action</a> ·
+  <a href="https://hub.docker.com/r/agentbom/agent-bom">Docker</a> ·
+  <a href="https://github.com/msaad00/agent-bom/issues/new/choose">Report Bug / Feature Request</a> ·
+  <a href="https://github.com/msaad00/agent-bom/releases">Changelog</a>
+</p>
 
 <p align="center">
   <picture>
@@ -251,7 +261,7 @@ Backend defaults:
 
 | Layer | Default | Add later only if needed |
 |---|---|---|
-| **control plane** | Postgres | Snowflake only when the published backend parity is the reason to choose it |
+| **control plane** | Postgres / Supabase | Snowflake only for published warehouse-native governance and selected store paths |
 | **analytics / archive** | none required | ClickHouse, OTEL, S3 |
 
 ## Start here by scenario
@@ -390,18 +400,58 @@ For published containers, the packaging model is:
 See [docs/ENTERPRISE_DEPLOYMENT.md § Container images — do I need both?](docs/ENTERPRISE_DEPLOYMENT.md#container-images--do-i-need-both)
 for the full split-vs-single-image guidance.
 
-| Mode | Best for |
-|------|----------|
-| CLI (`agent-bom agents`) | local audit + project scan |
-| Endpoint fleet (`--push-url …/v1/fleet/sync`) | employee laptops pushing into self-hosted fleet |
-| GitHub Action (`uses: msaad00/agent-bom@v0.86.2`) | CI/CD + SARIF |
-| Docker (`agentbom/agent-bom`) | isolated scans, API jobs, and non-browser self-hosted entrypoints |
-| Browser UI image (`agentbom/agent-bom-ui`) | the dashboard image paired with the same self-hosted control plane |
-| Kubernetes / Helm (`helm install agent-bom deploy/helm/agent-bom`) | self-hosted API + dashboard, scheduled discovery |
-| REST API (`agent-bom api`) | platform integration, self-hosted control plane |
-| MCP server (`agent-bom mcp server`) | Claude Desktop, Claude Code, Cursor, Codex, Windsurf, Cortex |
-| Runtime proxy (`agent-bom proxy`) | MCP traffic enforcement |
-| Shield SDK (`from agent_bom.shield import Shield`) | in-process protection |
+## Choose Your Path
+
+Start with one lane. The dashboard, API, gateway, proxy, and SDK are optional
+extensions around the same evidence model.
+
+```text
+agent-bom
+├─ scan locally
+│  ├─ CLI / Docker / GitHub Action
+│  └─ findings, SARIF, SBOM, HTML, graph exports
+├─ send evidence to a control plane
+│  ├─ fleet sync / REST API / Helm / dashboard
+│  └─ inventory, scan jobs, graph state, compliance, governance
+└─ enforce runtime behavior
+   ├─ MCP server / proxy / gateway / Shield SDK
+   └─ tool-call audit, policy blocks, runtime alerts
+```
+
+| Lane | Start with | Produces | Move up to |
+|------|------------|----------|------------|
+| **Scan locally** | `agent-bom agents --demo --offline`, then `agent-bom agents -p .` | terminal findings, SARIF, SBOM, HTML, graph exports | Docker or GitHub Action |
+| **Send evidence to a control plane** | `agent-bom agents --push-url https://agent-bom.example.com/v1/fleet/sync` | fleet inventory, scan jobs, graph state, compliance exports | REST API, pilot compose, Helm/EKS |
+| **Enforce runtime behavior** | `agent-bom mcp server` for assistants, `agent-bom proxy` for MCP traffic, `Shield` for in-process checks | MCP tools, audit JSONL, policy blocks, runtime alerts | gateway/proxy sidecars, Shield SDK integration |
+
+### Product Modes
+
+| Mode | Best for | First command | Primary artifact |
+|------|----------|---------------|------------------|
+| CLI (`agent-bom agents`) | local audit + project scan | `agent-bom agents -p .` | console, JSON, SARIF, SBOM, HTML |
+| Endpoint fleet (`--push-url .../v1/fleet/sync`) | employee laptops pushing into self-hosted fleet | `agent-bom agents --preset enterprise --push-url https://agent-bom.example.com/v1/fleet/sync` | fleet inventory + trust factors |
+| GitHub Action (`uses: msaad00/agent-bom@v0.86.2`) | CI/CD + SARIF | `uses: msaad00/agent-bom@v0.86.2` | `agent-bom-results.sarif` |
+| Docker (`agentbom/agent-bom`) | isolated CLI/API jobs and non-browser self-hosted entrypoints | `docker run --rm agentbom/agent-bom:0.86.2 agents --demo` | same artifacts as CLI |
+| Browser UI image (`agentbom/agent-bom-ui`) | browser dashboard paired with the same API/control plane | `docker compose -f docker-compose.pilot.yml up -d` | dashboard at `http://localhost:3000` |
+| Kubernetes / Helm | self-hosted API + dashboard, scheduled discovery | `helm upgrade --install agent-bom deploy/helm/agent-bom --set controlPlane.enabled=true` | API, UI, jobs, optional gateway/proxy |
+| REST API (`agent-bom api` / `agent-bom serve`) | platform integration and self-hosted control plane | `agent-bom serve --port 8422 --persist jobs.db` | `/docs`, `/health`, `/v1/scan`, `/v1/fleet` |
+| MCP server (`agent-bom mcp server`) | Claude Desktop, Claude Code, Cursor, Codex, Windsurf, Cortex | `agent-bom mcp server` | 36 read-only MCP security tools |
+| Runtime proxy (`agent-bom proxy`) | MCP traffic enforcement | `agent-bom proxy --log audit.jsonl --block-undeclared -- ...` | audit JSONL, metrics, policy decisions |
+| Shield SDK (`from agent_bom.shield import Shield`) | in-process protection | `from agent_bom.shield import Shield` | allow/block decisions and redacted alerts |
+
+### Integrations and Agentic Workflows
+
+Integrations are product surfaces, not extras. They decide where users first
+see value and where enterprises wire agent-bom into existing controls.
+
+| Integration surface | Examples | What agent-bom does |
+|---|---|---|
+| MCP and coding agents | Claude Desktop / Code, Cursor, Windsurf, VS Code, Cortex Code, OpenAI Codex CLI | discovers configured MCP servers, exposes 36 read-only security tools, and returns findings to the assistant workflow |
+| Skills and plugins | OpenClaw skills, Cortex Code skill, MCP Registry, Smithery, Glama, Docker MCP registry | packages repeatable scan, compliance, registry, runtime, and Snowflake discovery workflows where agent users already work |
+| CI/CD and developer workflow | GitHub Action, SARIF, pre-install `check`, Docker, local CLI | blocks unsafe packages, uploads code-scanning evidence, and keeps SBOM/remediation output scriptable |
+| Cloud, warehouse, and AI infra | AWS, Azure, GCP, Snowflake, Databricks, CoreWeave, Nebius, Hugging Face, OpenAI, W&B, MLflow, Ollama | pulls read-only inventory and posture evidence with operator-controlled credentials |
+| Runtime and app frameworks | MCP proxy/gateway, Shield SDK, Anthropic/OpenAI SDK patterns, LangChain, CrewAI | enforces policy on live tool calls and lets applications add in-process allow/block decisions |
+| Governance and observability | Postgres/Supabase, ClickHouse, Snowflake paths, OTEL, SIEM/export hooks, compliance bundles | persists evidence, trends, audit, graph state, and control mappings without requiring a hosted vendor plane |
 
 MCP and skills setup is documented in the client guides, not in repo-local
 assistant launch files: [Claude](docs/CLAUDE_INTEGRATION.md),
@@ -414,14 +464,15 @@ Backend choices stay explicit and optional:
 - `SQLite` for local and single-node use
 - `Postgres` / `Supabase` for the primary transactional control plane
 - `ClickHouse` for analytics and event-scale persistence
-- `Snowflake` for warehouse-native governance and selected backend paths
+- `Snowflake` for warehouse-native governance and selected backend paths that
+  can coexist with a Postgres-backed control plane
 
-Six ways to run agent-bom — locally, in CI, self-hosted, cloud-read-only,
-pushed inventory, or through your AI agent — chosen by your security boundary,
-not ours. agent-bom holds only the credentials your chosen mode requires and
-reaches only the systems your chosen mode permits. The discovery skills work
-standalone too: use them for inventory, and route to agent-bom only when you
-want findings, graph, policy, or exports.
+Run agent-bom locally, in CI, self-hosted, cloud-read-only, pushed inventory,
+or through your AI agent. Pick the path by security boundary: agent-bom holds
+only the credentials your chosen mode requires and reaches only the systems
+your chosen mode permits. Discovery skills work standalone too: use them for
+inventory, and route to agent-bom when you want findings, graph, policy, or
+exports.
 
 References: [PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) · [PRODUCT_METRICS.md](docs/PRODUCT_METRICS.md) · [ENTERPRISE.md](docs/ENTERPRISE.md) · [How agent-bom works](site-docs/architecture/how-agent-bom-works.md).
 

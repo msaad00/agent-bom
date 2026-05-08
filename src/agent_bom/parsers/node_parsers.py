@@ -11,6 +11,7 @@ import logging
 import os
 import re
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from urllib.parse import quote
 
@@ -18,6 +19,9 @@ from agent_bom.models import MCPServer, Package
 from agent_bom.parsers.file_limits import read_json_limited, read_text_limited
 
 logger = logging.getLogger(__name__)
+
+_WORKSPACE_PROTOCOL_PREFIXES = ("workspace:", "file:", "link:", "portal:")
+_MAX_WORKSPACE_PACKAGE_JSONS = 500
 
 
 def _npm_purl(name: str, version: str) -> str:
@@ -55,6 +59,113 @@ def _resolve_npx_cached_version(name: str) -> tuple[str, Path] | None:
         return None
     _, version, path = max(matches, key=lambda item: item[0])
     return version, path
+
+
+def _coerce_workspace_patterns(value: object) -> list[str]:
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, dict):
+        packages = value.get("packages")
+        if isinstance(packages, list):
+            return [str(item).strip() for item in packages if str(item).strip()]
+    return []
+
+
+def _workspace_root_for(directory: Path) -> Path | None:
+    for candidate in (directory, *directory.parents):
+        if (candidate / "pnpm-workspace.yaml").exists():
+            return candidate
+        pkg_json = candidate / "package.json"
+        if pkg_json.exists():
+            try:
+                data = read_json_limited(pkg_json)
+            except Exception:
+                continue
+            if _coerce_workspace_patterns(data.get("workspaces")):
+                return candidate
+    return None
+
+
+@lru_cache(maxsize=128)
+def _workspace_package_versions(root: str) -> dict[str, str]:
+    workspace_root = Path(root)
+    patterns: list[str] = []
+
+    pnpm_workspace = workspace_root / "pnpm-workspace.yaml"
+    if pnpm_workspace.exists():
+        try:
+            import yaml
+
+            data = yaml.safe_load(read_text_limited(pnpm_workspace)) or {}
+            if isinstance(data, dict):
+                packages = data.get("packages")
+                if isinstance(packages, list):
+                    patterns.extend(str(item).strip() for item in packages if str(item).strip())
+        except Exception as exc:
+            logger.debug("Failed to parse pnpm workspace at %s: %s", pnpm_workspace, exc)
+
+    root_pkg_json = workspace_root / "package.json"
+    if root_pkg_json.exists():
+        try:
+            data = read_json_limited(root_pkg_json)
+            patterns.extend(_coerce_workspace_patterns(data.get("workspaces")))
+        except Exception as exc:
+            logger.debug("Failed to inspect npm workspace package.json at %s: %s", root_pkg_json, exc)
+
+    versions: dict[str, str] = {}
+    seen_dirs: set[Path] = set()
+    for pattern in dict.fromkeys(patterns):
+        if pattern.startswith("!"):
+            continue
+
+        package_jsons: list[Path] = []
+        if "**" in pattern:
+            recursive_suffix = "/**"
+            if pattern.endswith(recursive_suffix) and pattern.count("**") == 1:
+                base = workspace_root / pattern[: -len(recursive_suffix)].rstrip("/")
+                if base.is_dir():
+                    package_jsons.extend(
+                        pkg_json
+                        for pkg_json in base.rglob("package.json")
+                        if "node_modules" not in pkg_json.parts and ".git" not in pkg_json.parts
+                    )
+            else:
+                logger.debug("Skipping unsupported recursive workspace pattern %s in %s", pattern, workspace_root)
+                continue
+        else:
+            package_jsons.extend(pkg_dir / "package.json" for pkg_dir in workspace_root.glob(pattern) if pkg_dir.is_dir())
+
+        for pkg_json in package_jsons[:_MAX_WORKSPACE_PACKAGE_JSONS]:
+            pkg_dir = pkg_json.parent
+            if "node_modules" in pkg_dir.parts or ".git" in pkg_dir.parts or pkg_dir in seen_dirs:
+                continue
+            seen_dirs.add(pkg_dir)
+            if not pkg_json.exists():
+                continue
+            try:
+                data = read_json_limited(pkg_json)
+            except Exception as exc:
+                logger.debug("Failed to inspect workspace package %s: %s", pkg_json, exc)
+                continue
+            name = str(data.get("name") or "").strip()
+            version = str(data.get("version") or "").strip()
+            if name and version:
+                versions[name] = version
+    return versions
+
+
+def _resolve_workspace_dependency(directory: Path, name: str, version_spec: object) -> tuple[str, str] | None:
+    spec = str(version_spec or "").strip()
+    root = _workspace_root_for(directory)
+    if root is None:
+        return None
+    workspace_versions = _workspace_package_versions(str(root))
+    version = workspace_versions.get(name)
+    if not version:
+        return None
+    if spec.startswith(_WORKSPACE_PROTOCOL_PREFIXES) or spec in {"*", ""}:
+        return version, spec
+    return None
 
 
 def parse_npm_packages(directory: Path) -> list[Package]:
@@ -103,11 +214,30 @@ def parse_npm_packages(directory: Path) -> list[Package]:
             pkg_data = read_json_limited(directory / "package.json")
             for dep_type in ("dependencies", "devDependencies"):
                 for name, version_spec in pkg_data.get(dep_type, {}).items():
-                    version = version_spec.lstrip("^~>=< ")
-                    # Validate: must look like a semver (at least major.minor.patch)
-                    # Otherwise mark as "latest" for resolver to handle
-                    if not re.match(r"^\d+\.\d+\.\d+", version):
-                        version = "latest"
+                    declared_version = str(version_spec)
+                    workspace_resolution = _resolve_workspace_dependency(directory, name, declared_version)
+                    version_source = "manifest"
+                    resolved_version = None
+                    version_confidence = None
+                    version_evidence: list[dict] = []
+                    if workspace_resolution:
+                        version, declared_version = workspace_resolution
+                        version_source = "workspace"
+                        resolved_version = version
+                        version_confidence = "workspace_manifest"
+                        version_evidence.append(
+                            {
+                                "source": "workspace_manifest",
+                                "declared_version": declared_version,
+                                "resolved_version": version,
+                            }
+                        )
+                    else:
+                        version = declared_version.lstrip("^~>=< ")
+                        # Validate: must look like a semver (at least major.minor.patch)
+                        # Otherwise mark as "latest" for resolver to handle
+                        if not re.match(r"^\d+\.\d+\.\d+", version):
+                            version = "latest"
                     packages.append(
                         Package(
                             name=name,
@@ -115,6 +245,12 @@ def parse_npm_packages(directory: Path) -> list[Package]:
                             ecosystem="npm",
                             purl=_npm_purl(name, version),
                             is_direct=True,
+                            reachability_evidence="workspace_manifest" if workspace_resolution else "declaration_only",
+                            version_source=version_source,
+                            declared_version=declared_version,
+                            resolved_version=resolved_version,
+                            version_confidence=version_confidence,
+                            version_evidence=version_evidence,
                         )
                     )
         except (json.JSONDecodeError, KeyError) as exc:

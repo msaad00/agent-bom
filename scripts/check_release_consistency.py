@@ -15,6 +15,7 @@ PYPI_README = ROOT / "PYPI_README.md"
 CHANGELOG = ROOT / "CHANGELOG.md"
 DEMO_TAPE = ROOT / "docs" / "demo.tape"
 DEMO_LATEST = ROOT / "docs" / "images" / "demo-latest.gif"
+PRODUCT_SCREENSHOTS = ROOT / "docs" / "images" / "product-screenshots.json"
 GLAMA_SERVER = ROOT / "integrations" / "glama" / "server.json"
 DOCKER_README = ROOT / "DOCKER_HUB_README.md"
 TOP_DOCKERFILE = ROOT / "Dockerfile"
@@ -186,6 +187,44 @@ def _assert_versions(path: Path, pattern: re.Pattern[str], expected: str, label:
         _fail(f"{path.relative_to(ROOT)} has stale {label}: {sorted(versions)} != {expected}")
 
 
+def _assert_product_screenshots_current(expected_version: str) -> None:
+    if not PRODUCT_SCREENSHOTS.exists():
+        _fail("docs/images/product-screenshots.json is missing from release surface")
+    try:
+        manifest = json.loads(PRODUCT_SCREENSHOTS.read_text())
+    except json.JSONDecodeError as exc:
+        _fail(f"docs/images/product-screenshots.json is invalid JSON: {exc}")
+
+    if manifest.get("release_version") != expected_version:
+        _fail(f"docs/images/product-screenshots.json has stale release_version: {manifest.get('release_version')!r} != {expected_version}")
+
+    required = {
+        "dashboard-live.png",
+        "dashboard-paths-live.png",
+        "mesh-live.png",
+        "remediation-live.png",
+    }
+    screenshots = manifest.get("screenshots")
+    if not isinstance(screenshots, list):
+        _fail("docs/images/product-screenshots.json must contain a screenshots list")
+    paths = {entry.get("path") for entry in screenshots if isinstance(entry, dict)}
+    missing = sorted(required - paths)
+    if missing:
+        _fail(f"docs/images/product-screenshots.json is missing screenshot entries: {missing}")
+
+    for entry in screenshots:
+        if not isinstance(entry, dict):
+            _fail("docs/images/product-screenshots.json screenshots entries must be objects")
+        rel_path = entry.get("path")
+        if not isinstance(rel_path, str):
+            _fail("docs/images/product-screenshots.json screenshot entry is missing path")
+        image = ROOT / "docs" / "images" / rel_path
+        if not image.exists():
+            _fail(f"docs/images/product-screenshots.json references missing image: docs/images/{rel_path}")
+        if entry.get("visible_version") != expected_version:
+            _fail(f"docs/images/{rel_path} manifest visible_version is stale: {entry.get('visible_version')!r} != {expected_version}")
+
+
 def main() -> int:
     version = _load_version()
     description = _load_description()
@@ -240,6 +279,7 @@ def main() -> int:
         _fail("docs/demo.tape must render to docs/images/demo-latest.gif")
     if not DEMO_LATEST.exists():
         _fail("docs/images/demo-latest.gif is missing")
+    _assert_product_screenshots_current(version)
     stale_path_markers = [
         "npx @mcp/server-filesystem /tmp",
         "npx -y @modelcontextprotocol/server-filesystem /tmp",

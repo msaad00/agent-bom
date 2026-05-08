@@ -1,0 +1,31 @@
+{
+  "release_version": "0.86.3",
+  "captured_at": "2026-05-08T18:25:00Z",
+  "capture_note": "Captured from the current Next.js dashboard against agent-bom serve API with bundled demo data pushed through /v1/results/push.",
+  "screenshots": [
+    {
+      "path": "dashboard-live.png",
+      "page": "/?capture=1",
+      "scope": "Risk overview top frame with headline KPIs, posture grade, and start of attack paths",
+      "visible_version": "0.86.3"
+    },
+    {
+      "path": "dashboard-paths-live.png",
+      "page": "/?capture=1",
+      "scope": "Risk overview mid-frame with attack paths and exposure KPIs",
+      "visible_version": "0.86.3"
+    },
+    {
+      "path": "mesh-live.png",
+      "page": "/mesh",
+      "scope": "Agent mesh scoped to cursor demo agent with packages, findings, tools, and credentials visible",
+      "visible_version": "0.86.3"
+    },
+    {
+      "path": "remediation-live.png",
+      "page": "/remediation",
+      "scope": "Fix-first remediation table with prioritized packages and framework context",
+      "visible_version": "0.86.3"
+    }
+  ]
+}

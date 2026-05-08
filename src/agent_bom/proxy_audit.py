@@ -667,6 +667,15 @@ def _assert_tier_a_audit_payload(payload: Any, *, parent_key: str = "") -> None:
             _assert_tier_a_audit_payload(item, parent_key=parent_key)
 
 
+def _durable_audit_jsonl(payload: dict[str, Any]) -> str:
+    _assert_tier_a_audit_payload(payload)
+    return json.dumps(payload, separators=(",", ":")) + "\n"
+
+
+def _append_durable_audit_line(log_file: "IO[str] | RotatingAuditLog", line: str) -> None:
+    print(line, end="", file=log_file)
+
+
 def _audit_chain_key(log_file: "IO[str] | RotatingAuditLog") -> str:
     path = getattr(log_file, "_path", None) or getattr(log_file, "name", None)
     if path:
@@ -719,11 +728,9 @@ def write_audit_record(log_file: "IO[str] | RotatingAuditLog", record: dict) -> 
         payload["prev_hash"] = prev_hash
         payload["record_hash_algorithm"] = "aes-cmac-128"
         payload["record_hash"] = _record_digest(payload)
-        _assert_tier_a_audit_payload(payload)
         # The durable audit line is tier-A validated; replay-only evidence is
         # written only to the separate TTL-gated replay store above.
-        # codeql[py/clear-text-storage-sensitive-data]
-        log_file.write(json.dumps(payload, separators=(",", ":")) + "\n")
+        _append_durable_audit_line(log_file, _durable_audit_jsonl(payload))
         _AUDIT_CHAIN_STATE[log_key] = payload["record_hash"]
         return payload
 

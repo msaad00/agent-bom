@@ -403,6 +403,27 @@ def test_demo_scan_hides_synthetic_project_temp_path():
     assert "Scanning 1 path(s) for IaC misconfigurations" not in result.output
 
 
+def test_demo_scan_preserves_curated_inventory_without_registry_fallback(monkeypatch):
+    captured: dict[str, int] = {}
+
+    def _extract_packages(*args, **kwargs):
+        raise AssertionError("demo mode should not add registry fallback packages")
+
+    def _scan_agents_sync(agents, *args, **kwargs):
+        captured["packages"] = sum(len(server.packages) for agent in agents for server in agent.mcp_servers)
+        return []
+
+    monkeypatch.setattr("agent_bom.cli.agents.extract_packages", _extract_packages)
+    monkeypatch.setattr("agent_bom.cli.agents.scan_agents_sync", _scan_agents_sync)
+
+    result = _run(["scan", "--demo", "--offline", "--no-auto-update-db"])
+
+    assert result.exit_code == 0
+    assert captured["packages"] == 12
+    assert "12 packages" in result.output
+    assert "PARTIAL COVERAGE" not in result.output
+
+
 def test_scan_format_sarif(tmp_path):
     """--format sarif should produce a SARIF file."""
     out = tmp_path / "results.sarif"

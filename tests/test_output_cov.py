@@ -818,6 +818,20 @@ def test_build_remediation_plan_no_downgrade():
     assert plan[0]["fix"] == "3.2.14"
 
 
+def test_build_remediation_plan_chooses_highest_forward_fix():
+    """Grouped remediation should not recommend a lower fix when a higher fix is needed."""
+    pkg = Package(name="pillow", version="9.0.0", ecosystem="pypi", vulnerabilities=[])
+    lower = Vulnerability(id="CVE-2026-0001", severity=Severity.HIGH, summary="Pillow issue", fixed_version="9.0.1")
+    higher = Vulnerability(id="CVE-2026-0002", severity=Severity.CRITICAL, summary="Pillow issue", fixed_version="10.2.0")
+    br1 = BlastRadius(vulnerability=lower, package=pkg, affected_agents=[], affected_servers=[], exposed_credentials=[], exposed_tools=[])
+    br2 = BlastRadius(vulnerability=higher, package=pkg, affected_agents=[], affected_servers=[], exposed_credentials=[], exposed_tools=[])
+
+    plan = build_remediation_plan([br1, br2])
+
+    assert len(plan) == 1
+    assert plan[0]["fix"] == "10.2.0"
+
+
 def test_build_remediation_plan_skips_prerelease_downgrade_for_npm():
     """npm canary/pre-release branches should not be emitted as a downgrade fix."""
     pkg = Package(name="next", version="16.2.1", ecosystem="npm", vulnerabilities=[])

@@ -893,13 +893,14 @@ def scan(
                         con.print(f"    [yellow]⚠ {server.name}: blocked — {warnings}[/yellow]")
                     continue
                 pre_populated = list(server.packages)
-                if self_scan and pre_populated:
+                if (self_scan or demo) and pre_populated:
                     server.packages = pre_populated
                     total_packages += len(server.packages)
                     if verbose and server.packages:
+                        inventory_label = "demo inventory" if demo else "self-scan inventory"
                         con.print(
                             f"  [green]✓[/green] {server.name}: {len(server.packages)} package(s) "
-                            f"({server.packages[0].ecosystem}) [dim](self-scan inventory)[/dim]"
+                            f"({server.packages[0].ecosystem}) [dim]({inventory_label})[/dim]"
                         )
                     continue
                 _smithery_tok = smithery_token if smithery_flag else None

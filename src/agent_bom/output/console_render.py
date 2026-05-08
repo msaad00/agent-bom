@@ -1142,7 +1142,7 @@ def build_remediation_plan(blast_radii: list[BlastRadius]) -> list[dict]:
             if is_prerelease_version(fv, br.package.ecosystem):
                 g["suppressed_prerelease_fixes"].add(fv)
             elif compare_versions(br.package.version, fv, br.package.ecosystem):
-                if g["fix"] is None or compare_versions(fv, g["fix"], br.package.ecosystem):
+                if g["fix"] is None or compare_versions(g["fix"], fv, br.package.ecosystem):
                     g["fix"] = fv
         g["vulns"].append(br.vulnerability.id)
         for a in br.affected_agents:

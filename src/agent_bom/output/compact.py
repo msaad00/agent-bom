@@ -65,6 +65,27 @@ def _compact_detail(text: str, limit: int = 88) -> str:
     return clean[: limit - 1].rstrip() + "…"
 
 
+def _forward_fix_version(br: object) -> str | None:
+    """Return a fix version only when it is a forward upgrade for this package."""
+    fixed = getattr(getattr(br, "vulnerability", None), "fixed_version", None)
+    if not fixed:
+        return None
+    package = getattr(br, "package", None)
+    current = str(getattr(package, "version", "") or "")
+    if current in ("", "unknown", "latest"):
+        return str(fixed)
+    ecosystem = str(getattr(package, "ecosystem", "") or "")
+    try:
+        from agent_bom.version_utils import compare_version_order
+
+        order = compare_version_order(current, str(fixed), ecosystem)
+    except Exception:  # noqa: BLE001
+        order = None
+    if order is not None and order >= 0:
+        return None
+    return str(fixed)
+
+
 def _agent_display_name(agent) -> str:
     """Return a human-readable agent label for compact tables."""
     name = str(getattr(agent, "name", "") or "").strip()
@@ -344,9 +365,9 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
     priority = [br for br in active_findings if br.is_actionable]
     rest_count = len(active_findings) - len(priority)
     if fixable_only:
-        priority = [br for br in priority if br.vulnerability.fixed_version]
+        priority = [br for br in priority if _forward_fix_version(br)]
     if not priority:
-        display_list = [br for br in active_findings if br.vulnerability.fixed_version] if fixable_only else active_findings
+        display_list = [br for br in active_findings if _forward_fix_version(br)] if fixable_only else active_findings
     else:
         display_list = priority
     shown = display_list[:limit]
@@ -385,7 +406,8 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
     table.add_column("Fix", ratio=1)
 
     for br in shown:
-        fix = f"[green]{br.vulnerability.fixed_version}[/green]" if br.vulnerability.fixed_version else "[dim]no fix[/dim]"
+        forward_fix = _forward_fix_version(br)
+        fix = f"[green]{forward_fix}[/green]" if forward_fix else "[dim]no fix[/dim]"
         # Exploit-likelihood (issue #486) — KEV wins; elevated EPSS-only
         # levels still surface a muted hint so the operator knows why
         # the row is flagged even when it's not in CISA KEV.
@@ -471,8 +493,9 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
             console.print(f"\n  [{style}]{br.vulnerability.id}[/{style}] · {pkg_ref} · [{style}]{sev_label}[/{style}]")
             if summary:
                 console.print(f"  {summary}")
-            if br.vulnerability.fixed_version:
-                console.print(f"  Fix: [green]upgrade to ≥ {br.vulnerability.fixed_version}[/green]")
+            forward_fix = _forward_fix_version(br)
+            if forward_fix:
+                console.print(f"  Fix: [green]upgrade to ≥ {forward_fix}[/green]")
             if has_blast_context and (br.affected_agents or br.exposed_credentials):
                 agent_str = ", ".join(a.name for a in br.affected_agents[:3])
                 cred_str = ", ".join(br.exposed_credentials[:3])
@@ -488,7 +511,7 @@ def print_compact_blast_radius(report: AIBOMReport, limit: int = 10, fixable_onl
 
     # Status bar
     console.print()
-    fixable = sum(1 for br in report.blast_radii if br.vulnerability.fixed_version)
+    fixable = sum(1 for br in report.blast_radii if _forward_fix_version(br))
     kev_count = sum(1 for br in report.blast_radii if br.vulnerability.is_kev)
     unknown_sev = sum(1 for br in report.blast_radii if br.vulnerability.severity == Severity.NONE)
     hints = ["[dim]--verbose[/dim] full details", "[dim]-f html[/dim] interactive report"]

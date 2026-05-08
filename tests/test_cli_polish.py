@@ -16,6 +16,7 @@ from agent_bom.models import (
     Severity,
     Vulnerability,
 )
+from agent_bom.output.compact import _forward_fix_version
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -108,6 +109,24 @@ def test_fixable_only_all_fixed_shows_all():
     actionable = [br for br in brs if br.is_actionable]
     filtered = [br for br in actionable if br.vulnerability.fixed_version]
     assert len(filtered) == 2
+
+
+def test_forward_fix_version_hides_non_forward_advisory_fix():
+    br = _make_blast_radius(
+        pkg=_make_pkg(name="pillow", version="9.0.0", ecosystem="pypi"),
+        vuln=_make_vuln("CVE-2023-4863", Severity.HIGH, "0.1.8"),
+    )
+
+    assert _forward_fix_version(br) is None
+
+
+def test_forward_fix_version_keeps_forward_advisory_fix():
+    br = _make_blast_radius(
+        pkg=_make_pkg(name="pillow", version="9.0.0", ecosystem="pypi"),
+        vuln=_make_vuln("CVE-2023-50447", Severity.CRITICAL, "10.2.0"),
+    )
+
+    assert _forward_fix_version(br) == "10.2.0"
 
 
 # ── Phase 6b: CI detection ────────────────────────────────────────────────────

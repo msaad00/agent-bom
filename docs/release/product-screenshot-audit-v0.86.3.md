@@ -1,6 +1,6 @@
 # Product Screenshot Audit v0.86.3
 
-Date: 2026-05-08
+Date: 2026-05-09
 
 ## Capture Path
 
@@ -17,6 +17,14 @@ Date: 2026-05-08
 | `docs/images/dashboard-paths-live.png` | `/?capture=1` | `0.86.3` |
 | `docs/images/remediation-live.png` | `/remediation` | `0.86.3` |
 | `docs/images/mesh-live.png` | `/mesh` | `0.86.3` |
+| `docs/images/mesh-path-live.png` | `/mesh?capture=1` | `0.86.3` |
+
+The mesh refresh preserves `mesh-live.png` as the full graph-backed product
+surface. `mesh-path-live.png` adds a bounded triage view for the same evidence
+model, showing agent -> MCP server -> package/tool -> finding flow before an
+operator opens the full graph canvas. The packaged dashboard route was also
+validated so `/mesh` serves the real mesh page rather than the root SPA
+fallback.
 
 ## Guardrail
 

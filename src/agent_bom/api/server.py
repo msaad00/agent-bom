@@ -879,9 +879,16 @@ def _mount_dashboard(application: FastAPI) -> None:
             raise _HTTPException(status_code=404)
         # Look up the pre-resolved path — user input is only a dict key,
         # never used in any filesystem operation (no path-injection risk).
-        resolved = _static_file_map.get(path)
+        normalized_path = path.strip("/")
+        resolved = (
+            _static_file_map.get(path)
+            or (normalized_path and _static_file_map.get(f"{normalized_path}.html"))
+            or (normalized_path and _static_file_map.get(f"{normalized_path}/index.html"))
+        )
         if resolved:
             if path.lower().endswith(".html"):
+                return _dashboard_html_response(resolved)
+            if resolved.lower().endswith(".html"):
                 return _dashboard_html_response(resolved)
             return FileResponse(resolved)
         # SPA fallback — serve index.html for client-side routing

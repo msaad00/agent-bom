@@ -209,6 +209,43 @@ def test_direct_dashboard_html_static_file_strips_csp_meta(tmp_path: Path, monke
     assert "sha256-bad" not in resp.text
 
 
+def test_dashboard_extensionless_route_serves_static_export_page(tmp_path: Path, monkeypatch):
+    """Next static-export routes such as /mesh should serve mesh.html, not index.html."""
+    package_root = tmp_path / "agent_bom"
+    api_dir = package_root / "api"
+    api_dir.mkdir(parents=True)
+    server_file = api_dir / "server.py"
+    server_file.write_text("", encoding="utf-8")
+    ui_dist = package_root / "ui_dist"
+    nested = ui_dist / "agents"
+    nested.mkdir(parents=True)
+    (ui_dist / "index.html").write_text("<html><body>root dashboard</body></html>", encoding="utf-8")
+    (ui_dist / "mesh.html").write_text("<html><body>agent mesh route</body></html>", encoding="utf-8")
+    (nested / "index.html").write_text("<html><body>agents route</body></html>", encoding="utf-8")
+
+    from fastapi import FastAPI
+
+    import agent_bom.api.server as server_module
+    from agent_bom.api.server import _mount_dashboard
+
+    monkeypatch.setattr(server_module, "__file__", str(server_file))
+    test_app = FastAPI()
+    _mount_dashboard(test_app)
+    client = TestClient(test_app, raise_server_exceptions=False)
+
+    mesh_resp = client.get("/mesh")
+    agents_resp = client.get("/agents")
+    root_resp = client.get("/")
+
+    assert mesh_resp.status_code == 200
+    assert "agent mesh route" in mesh_resp.text
+    assert "root dashboard" not in mesh_resp.text
+    assert agents_resp.status_code == 200
+    assert "agents route" in agents_resp.text
+    assert root_resp.status_code == 200
+    assert "root dashboard" in root_resp.text
+
+
 def test_hsts_preload_is_operator_opt_in(monkeypatch):
     client, _ = _fresh_client()
     resp = client.get("/health")

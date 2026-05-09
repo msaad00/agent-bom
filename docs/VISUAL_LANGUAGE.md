@@ -36,7 +36,8 @@ Current PNG inventory:
 |---|---|---|
 | `dashboard-live.png` | Packaged Next.js dashboard risk overview | Product views |
 | `dashboard-paths-live.png` | Packaged Next.js attack paths and exposure view | Product views |
-| `mesh-live.png` | Agent mesh graph surface | Product views |
+| `mesh-live.png` | Full agent mesh graph across agents, MCP servers, packages, tools, credentials, and findings | Product views |
+| `mesh-path-live.png` | Bounded agent mesh path view for first-pass triage before opening the full graph canvas | Product views |
 | `remediation-live.png` | Fix-first remediation surface | Product views |
 
 ## Mermaid — for code-true flows that evolve

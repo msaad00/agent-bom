@@ -98,8 +98,9 @@ class TestInventoryIsolation:
         discovery_path = Path("src/agent_bom/cli/agents/_discovery.py")
         content = discovery_path.read_text()
 
-        # Both auto-detection blocks must check for inventory
-        lockfile_guard = re.search(r"if not filesystem_paths.*and not inventory", content)
+        # Both auto-detection blocks must check for inventory. Match across
+        # formatter-inserted line breaks so this guard tracks behavior, not style.
+        lockfile_guard = re.search(r"if\s*\(.*not filesystem_paths.*and not inventory", content, re.DOTALL)
         iac_guard = re.search(r"if not iac_paths.*and not inventory", content)
 
         assert lockfile_guard, "Lockfile auto-detection must check 'and not inventory'"

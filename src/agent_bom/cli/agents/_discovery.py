@@ -355,14 +355,9 @@ def run_local_discovery(
     # Skip auto-detect when explicitly scanning images or an external SBOM — avoid mixing local
     # CWD packages (e.g. uv.lock transitive deps) with the targeted scan surface.
     if (
-        not no_discover
-        and not filesystem_paths
-        and not project
-        and not skill_only
-        and not images
-        and not image_tars
-        and not sbom_file
+        not filesystem_paths
         and not inventory
+        and (not no_discover and not project and not skill_only and not images and not image_tars and not sbom_file)
     ):
         cwd = Path.cwd()
         _lockfile_patterns = [
@@ -384,7 +379,7 @@ def run_local_discovery(
             filesystem_paths = (str(cwd),)
             con.print(f"\n[bold blue]Auto-detected lockfiles in {cwd}[/bold blue]")
 
-    if not no_discover and not iac_paths and not skill_only and not images and not image_tars and not sbom_file and not inventory:
+    if not iac_paths and not inventory and (not no_discover and not skill_only and not images and not image_tars and not sbom_file):
         cwd = Path(project) if project else Path.cwd()
         _auto_iac: list[str] = []
         for name in ["Dockerfile", "docker-compose.yml", "docker-compose.yaml"]:

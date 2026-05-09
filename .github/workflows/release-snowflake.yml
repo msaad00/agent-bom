@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Optional Snowflake Native App version label, for example v0_86_0. Defaults to pyproject.toml.
+        description: Optional Snowflake Native App version label, for example v0_86_3. Defaults to pyproject.toml.
         required: false
         default: ""
         type: string

@@ -27,7 +27,7 @@ are configured.
   bearer token.
 - The release workflow is manually dispatched and defaults to `dry_run: true`.
 - If no version input is supplied, the workflow derives the Snowflake package
-  label from `pyproject.toml` (`0.86.0` -> `v0_86_0`) so package labels do not
+  label from `pyproject.toml` (`0.86.3` -> `v0_86_3`) so package labels do not
   drift from the release version.
 - Live publish requires the protected `snowflake-marketplace` environment plus
   `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PRIVATE_KEY`, and
@@ -48,7 +48,7 @@ for spec in sorted((root / "service-specs").glob("*.yaml")):
 PY
 
 mkdir -p dist
-tar -czf dist/agent-bom-snowflake-v0_86_0.tgz -C deploy/snowflake/native-app .
+tar -czf dist/agent-bom-snowflake-v0_86_3.tgz -C deploy/snowflake/native-app .
 ```
 
 ## Customer smoke checklist

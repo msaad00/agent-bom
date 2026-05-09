@@ -6,7 +6,8 @@ invocations, compares actual usage against declared capabilities, and
 optionally enforces security policy in real-time.
 
 Usage:
-    agent-bom proxy [--policy policy.json] [--log audit.jsonl] -- npx @mcp/server-filesystem /tmp
+    agent-bom proxy --no-isolate [--policy policy.json] [--log audit.jsonl] -- npx @mcp/server-filesystem /tmp
+    agent-bom proxy --sandbox-image ghcr.io/acme/mcp-runtime@sha256:<digest> -- npx @mcp/server-filesystem /tmp
 """
 
 from __future__ import annotations

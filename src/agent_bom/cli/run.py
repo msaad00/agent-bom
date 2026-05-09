@@ -272,7 +272,7 @@ def run_cmd(
     from agent_bom.api.proxy_replay_store import set_capture_replay
     from agent_bom.project_config import get_policy_path, load_project_config
     from agent_bom.proxy import run_proxy
-    from agent_bom.proxy_sandbox import sandbox_config_from_env
+    from agent_bom.proxy_sandbox import sandbox_config_from_env, sandbox_requires_image_for_command
 
     # Activate tier-B (replay-only) capture for this process if --capture-replay
     # is set. Without it, tier-B fields are dropped at the redaction layer.
@@ -317,6 +317,13 @@ def run_cmd(
         )
     except ValueError as exc:
         raise click.UsageError(str(exc)) from exc
+
+    if sandbox_requires_image_for_command(cmd, sandbox_config):
+        raise click.UsageError(
+            "MCP sandbox isolation for plain stdio commands requires --sandbox-image "
+            "or AGENT_BOM_MCP_SANDBOX_IMAGE. Use --no-isolate for audit/policy only, "
+            "or pass an existing docker/podman run command for the proxy to harden."
+        )
 
     # Build env for child process — no mutation of current env needed here;
     # run_proxy spawns the subprocess itself and inherits os.environ.

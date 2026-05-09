@@ -59,7 +59,16 @@ events, and key-usage billing records before making incident-scope claims.
   provider supports it.
 - Put local stdio MCP servers that touch files, shell, network, or secrets
   behind `agent-bom proxy` when runtime evidence matters.
+- Treat proxy containment as a separate setting from proxy audit. `agent-bom
+  proxy --no-isolate` gives audit and policy evidence without process
+  containment. Container isolation applies to stdio MCP servers when Docker or
+  Podman is available and the proxy is given a sandbox image with
+  `--sandbox-image` or `AGENT_BOM_MCP_SANDBOX_IMAGE`; production deployments
+  should also set `--sandbox-image-pin-policy enforce`.
 - Use gateway policy for shared remote MCPs and central tenant audit.
+- Do not claim the gateway containerizes remote MCP upstreams. It centralizes
+  auth, tenancy, routing, policy decisions, relay metrics, and audit evidence;
+  upstream runtime containment remains in the upstream workload or sidecar.
 - Keep SARIF and HTML packets attached to the incident record.
 - Add the rotation owner, timestamp, and verification command to the release or
   incident notes.

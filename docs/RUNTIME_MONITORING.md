@@ -161,7 +161,7 @@ The proxy supports two operational modes:
 All tool calls are allowed through. Every invocation is recorded in the JSONL audit log with full metadata (tool name, truncated arguments, timestamp). Use this mode to build a baseline of normal behavior before enabling enforcement.
 
 ```bash
-agent-bom proxy --log audit.jsonl -- npx @mcp/server-filesystem /workspace
+agent-bom proxy --no-isolate --log audit.jsonl -- npx @mcp/server-filesystem /workspace
 ```
 
 For Claude Desktop, Claude Code, and Cortex JSON configs, you can auto-wrap eligible stdio servers:
@@ -183,6 +183,7 @@ Add `--block-undeclared` and/or `--policy policy.json` to actively block tool ca
 
 ```bash
 agent-bom proxy \
+  --no-isolate \
   --log audit.jsonl \
   --policy policy.json \
   --block-undeclared \
@@ -218,7 +219,7 @@ Use the `agent-bom watch` command alongside the proxy to route alerts to Slack, 
 
 ```bash
 # In one terminal: run the proxy
-agent-bom proxy --log audit.jsonl -- npx @mcp/server-filesystem /workspace
+agent-bom proxy --no-isolate --log audit.jsonl -- npx @mcp/server-filesystem /workspace
 
 # In another terminal: watch the audit log and send alerts
 agent-bom watch --webhook https://hooks.slack.com/services/T.../B.../xxx --log alerts.jsonl
@@ -483,7 +484,7 @@ kubectl apply -f deploy/k8s/sidecar-example.yaml
 The proxy exposes Prometheus-compatible metrics on port 8422 (configurable via `--metrics-port`):
 
 ```bash
-agent-bom proxy --metrics-port 8422 --log audit.jsonl -- npx @mcp/server-filesystem /workspace
+agent-bom proxy --no-isolate --metrics-port 8422 --log audit.jsonl -- npx @mcp/server-filesystem /workspace
 ```
 
 ### Metrics endpoint

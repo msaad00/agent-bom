@@ -279,6 +279,17 @@ def build_sandboxed_command(server_cmd: list[str], config: SandboxConfig) -> tup
     return command, evidence
 
 
+def sandbox_requires_image_for_command(server_cmd: list[str], config: SandboxConfig) -> bool:
+    """Return true when isolated stdio execution needs a sandbox image.
+
+    Existing ``docker run`` / ``podman run`` commands already name the image
+    they execute and can be hardened directly. Plain commands such as
+    ``npx ...`` or ``python -m ...`` need an operator-provided image so the
+    proxy can run them inside Docker/Podman instead of on the host.
+    """
+    return config.enabled and not config.image and not _is_container_run(server_cmd)
+
+
 def _sandbox_docker_args(config: SandboxConfig) -> list[str]:
     args = ["--rm", "-i"]
     if config.read_only_rootfs:

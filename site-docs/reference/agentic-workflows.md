@@ -11,7 +11,7 @@ plane or runtime enforcement rollout.
 | GitHub Actions | `uses: msaad00/agent-bom@v0.86.3` with SARIF upload enabled | Runs in CI with repository-scoped token permissions. Fork PR behavior depends on GitHub security policy. | `agent-bom-results.sarif`, pull-request summary, code-scanning alert category. | Branch protection, required code scanning, artifact retention. |
 | Skills and instruction files | `agent-bom skills scan .` | Reads repo-local instructions such as `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, and `skills/*.md`. | Skill trust findings, referenced package and MCP inventory, credential-env names. | Signed skills, provenance verification, registry publishing. |
 | Cloud and AI infrastructure | `agent-bom agents --preset enterprise` plus provider-specific flags only where credentials are approved. | Uses read-only provider APIs or local inventory files. Keep provider secrets in the operator boundary, not in repo docs. | Cloud, warehouse, GPU, model, dataset, and runtime package evidence. | Fleet sync, compliance exports, graph-backed findings. |
-| Runtime proxy | `agent-bom proxy --log audit.jsonl --block-undeclared -- ...` | Wraps selected local MCP traffic. Policy can block before an upstream tool receives the call. | Tier-A audit JSONL, policy decisions, runtime alerts, metrics. | Sidecar proxy, gateway policy pull, SIEM export. |
+| Runtime proxy | `agent-bom proxy --no-isolate --log audit.jsonl --block-undeclared -- ...` | Wraps selected local MCP traffic. Policy can block before an upstream tool receives the call. Container containment requires a stdio MCP path plus a configured sandbox image or an existing container command. | Tier-A audit JSONL, policy decisions, runtime alerts, metrics, and sandbox posture when isolation is enabled. | Sidecar proxy, gateway policy pull, SIEM export. |
 | Shared gateway | `agent-bom gateway serve --from-control-plane ...` | Centralizes auth, tenancy, routing, and policy for remote MCP upstreams. | Gateway health, policy evaluation, relay metrics, audit relay. | Helm/EKS gateway, tenant policies, autoscaling. |
 | Shield SDK | `from agent_bom.shield import Shield` | Enforces allow/block decisions in-process where the application already sees tool calls. | Redacted alerts and application-local decisions. | Shared policy model, proxy/gateway parity, runtime monitoring. |
 
@@ -46,7 +46,17 @@ SARIF troubleshooting guide before changing scanner behavior.
 ### Hosted Gateway Or Proxy Review
 
 ```bash
-agent-bom proxy --log audit.jsonl --block-undeclared -- npx @modelcontextprotocol/server-filesystem /workspace
+# Audit/policy only for a selected stdio MCP server.
+agent-bom proxy --no-isolate --log audit.jsonl --block-undeclared -- npx @modelcontextprotocol/server-filesystem /workspace
+
+# Add process containment by running the stdio MCP inside a pinned sandbox image.
+agent-bom proxy \
+  --sandbox-image ghcr.io/your-org/mcp-runtime:node20@sha256:<64-hex-digest> \
+  --sandbox-image-pin-policy enforce \
+  --sandbox-mount "$PWD:/workspace:ro" \
+  --log audit.jsonl \
+  --block-undeclared \
+  -- npx @modelcontextprotocol/server-filesystem /workspace
 
 agent-bom gateway serve \
   --from-control-plane https://agent-bom.example.com \
@@ -56,7 +66,8 @@ agent-bom gateway serve \
 
 Produces runtime audit and policy evidence for selected traffic. This is not a
 claim that all MCP traffic is governed; it proves the selected proxy or gateway
-path.
+path. Gateway policy governs remote MCP traffic; it does not containerize the
+upstream server.
 
 ## Guardrails
 

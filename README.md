@@ -348,7 +348,13 @@ The dashboard UI under `ui/` is TypeScript / Next.js / React 19 — that's the o
 
 ## Trust & transparency
 
-agent-bom is a **read-only scanner**. It never writes configs, never executes MCP servers, never stores credential values. No telemetry. No analytics. Releases are [Sigstore-signed](docs/PERMISSIONS.md) with SLSA provenance and self-published SBOMs.
+The scanner path is **read-only**: `agent-bom agents`, `fs`, `check`, and
+related scan commands never write configs, never execute MCP servers, and never
+store credential values. Runtime commands are separate: `agent-bom proxy` and
+`agent-bom gateway` intentionally sit in live traffic so they can audit or
+enforce policy on selected MCP paths. No telemetry. No analytics. Releases are
+[Sigstore-signed](docs/PERMISSIONS.md) with SLSA provenance and self-published
+SBOMs.
 
 | When | What's sent | Where | Opt out |
 |---|---|---|---|
@@ -499,7 +505,18 @@ to check token permissions, fork PR behavior, report paths, and upload category.
 **Hosted gateway/proxy review**
 
 ```bash
-agent-bom proxy --log audit.jsonl --block-undeclared -- npx @modelcontextprotocol/server-filesystem /workspace
+# Audit and policy for one stdio MCP path, without process containment.
+agent-bom proxy --no-isolate --log audit.jsonl --block-undeclared -- npx @modelcontextprotocol/server-filesystem /workspace
+
+# Add process containment for stdio MCPs by providing a Docker/Podman image
+# that contains the server runtime, and replace the digest with your image digest.
+agent-bom proxy \
+  --sandbox-image ghcr.io/your-org/mcp-runtime:node20@sha256:<64-hex-digest> \
+  --sandbox-image-pin-policy enforce \
+  --sandbox-mount "$PWD:/workspace:ro" \
+  --log audit.jsonl \
+  --block-undeclared \
+  -- npx @modelcontextprotocol/server-filesystem /workspace
 
 agent-bom gateway serve \
   --from-control-plane https://agent-bom.example.com \
@@ -509,8 +526,9 @@ agent-bom gateway serve \
 
 Artifact: local proxy audit JSONL for stdio MCP traffic, gateway policy
 decisions for shared remote MCP traffic, and control-plane evidence when those
-surfaces are connected. Next step: run the runtime evidence pack before claiming
-gateway/proxy release sign-off.
+surfaces are connected. Gateway policy governs remote MCP traffic; it does not
+containerize the upstream server. Next step: run the runtime evidence pack before
+claiming gateway/proxy release sign-off.
 
 MCP and skills setup is documented in the client guides, not in repo-local
 assistant launch files: [Claude](docs/CLAUDE_INTEGRATION.md),

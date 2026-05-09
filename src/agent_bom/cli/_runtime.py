@@ -224,12 +224,15 @@ def proxy_cmd(
       to the remote MCP endpoint so it can enforce policy on live traffic
 
     \b
-    Usage (stdio — subprocess):
-      agent-bom proxy -- npx @modelcontextprotocol/server-filesystem /tmp
-      agent-bom proxy --log audit.jsonl -- npx @mcp/server-github
-      agent-bom proxy --policy policy.json --detect-credentials --block-undeclared -- npx @mcp/server-postgres
-      agent-bom proxy --detect-credentials --log-only -- npx @mcp/server-github
-      agent-bom proxy --log audit.jsonl --response-sign-key $MY_SECRET -- npx @mcp/server-github
+    Usage (stdio — audit/policy without process containment):
+      agent-bom proxy --no-isolate --log audit.jsonl -- npx @mcp/server-github
+      agent-bom proxy --no-isolate --policy policy.json --detect-credentials --block-undeclared -- npx @mcp/server-postgres
+
+    \b
+    Usage (stdio — Docker/Podman containment):
+      agent-bom proxy --sandbox-image ghcr.io/acme/mcp-runtime@sha256:<digest> --log audit.jsonl -- npx @mcp/server-github
+      agent-bom proxy --sandbox-image ghcr.io/acme/mcp-runtime@sha256:<digest> \\
+        --sandbox-image-pin-policy enforce --block-undeclared -- npx @mcp/server-postgres
 
     \b
     Usage (SSE/HTTP — remote server):
@@ -280,7 +283,7 @@ def proxy_cmd(
         raise click.UsageError("Provide a server command (e.g. -- npx @mcp/server-filesystem /tmp) or --url for SSE/HTTP mode.")
 
     from agent_bom.proxy import run_proxy
-    from agent_bom.proxy_sandbox import sandbox_config_from_env
+    from agent_bom.proxy_sandbox import sandbox_config_from_env, sandbox_requires_image_for_command
 
     try:
         sandbox_config = sandbox_config_from_env(
@@ -298,6 +301,13 @@ def proxy_cmd(
         )
     except ValueError as exc:
         raise click.UsageError(str(exc)) from exc
+
+    if sandbox_requires_image_for_command(list(server_cmd), sandbox_config):
+        raise click.UsageError(
+            "MCP sandbox isolation for plain stdio commands requires --sandbox-image "
+            "or AGENT_BOM_MCP_SANDBOX_IMAGE. Use --no-isolate for audit/policy only, "
+            "or pass an existing docker/podman run command for the proxy to harden."
+        )
 
     exit_code = asyncio.run(
         run_proxy(

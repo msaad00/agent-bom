@@ -159,6 +159,7 @@ def _proxy_sandbox_evidence() -> dict[str, Any]:
     command, sandbox_evidence = build_sandboxed_command(
         ["python", "-c", "print('ok')"],
         SandboxConfig(enabled=True, runtime="docker", image=pinned_image, image_pin_policy="enforce"),
+        resolve_runtime=False,
     )
 
     with tempfile.TemporaryDirectory() as tmp:

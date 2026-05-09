@@ -1,13 +1,15 @@
 # Product Brief
 
-`agent-bom` is an open security scanner and self-hosted control plane for
-AI supply chain and runtime infrastructure — local scans, CI evidence, fleet
-inventory, MCP/runtime enforcement, and governance surfaces that run in the
-operator's own environment.
+`agent-bom` is an open security scanner and AI BOM for the AI stack, with a
+self-hosted control plane for teams that need fleet inventory, graph-backed
+findings, MCP/runtime enforcement, and governance evidence inside their own
+environment.
 
 It is built around a simple thesis: security and visibility for AI infrastructure should be open, transparent, and accessible, not reserved for teams with enterprise budgets.
 
-Package risk is only the start. `agent-bom` follows what it can reach across MCP servers, agents, credentials, tools, runtime behavior, and trust posture. That is the core product value.
+Package risk is only the start. `agent-bom` follows what it can reach across
+MCP servers, agents, credential environment names, tools, runtime behavior, and
+trust posture. That reachability-backed AI BOM is the core product value.
 
 `agent-bom` is a released OSS product with a working CLI, GitHub Action, Docker images, authenticated API and MCP deployment paths, report formats, a dashboard, and a growing enterprise-hardening track.
 
@@ -25,12 +27,13 @@ persona questions quickly:
 | Account executive | "Who buys this and why now?" | AI/MCP supply-chain risk, self-hosted deployment, evidence for governance teams |
 | Software/security engineer | "Can I trust and operate it?" | signed releases, tests, strict auth defaults, Postgres tenancy, audit chain, scoped runtime controls |
 
-Do not present the product as ten equal entry points. Present it as three
-adoption lanes that share one evidence model:
+Do not present the product as ten equal entry points. Present it as one wedge
+with three adoption lanes: generate an AI BOM for the stack, send that evidence
+to a customer-controlled plane, then enforce selected runtime paths.
 
 ```text
 agent-bom
-├─ scan locally
+├─ generate an AI BOM locally
 │  └─ CLI, Docker, GitHub Action -> findings, SARIF, SBOM, HTML, graph exports
 ├─ send evidence to a control plane
 │  └─ fleet sync, REST API, Helm/EKS, UI -> inventory, graph, compliance, governance
@@ -38,8 +41,8 @@ agent-bom
    └─ MCP server, proxy/gateway, Shield SDK -> audit, policy blocks, runtime alerts
 ```
 
-1. **Scan locally** — CLI, Docker, and GitHub Action produce findings, SARIF,
-   SBOMs, HTML reports, and graph exports.
+1. **Generate an AI BOM locally** — CLI, Docker, and GitHub Action produce
+   findings, SARIF, SBOMs, HTML reports, and graph exports.
 2. **Send evidence to a control plane** — endpoint fleet, REST API, Helm/EKS,
    and the browser UI centralize inventory, graph state, compliance, and
    governance.
@@ -175,7 +178,8 @@ This is the right path because it improves product trust without diluting the MC
 
 Good external phrasing:
 
-- Open security scanner and graph for AI supply chain and infrastructure — discover agents and MCP, map blast radius, and inspect runtime
+- Open security scanner and AI BOM for the AI stack
+- Generate a reachability-backed AI BOM across agents, MCP, packages, credentials, cloud, and runtime
 - Context-aware security for agents, MCP, runtime, and AI supply chain and infrastructure
 - Blast radius from package risk to agents, credentials, tools, and runtime
 

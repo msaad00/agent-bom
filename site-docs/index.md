@@ -1,10 +1,11 @@
 # agent-bom
 
-**Open security scanner and graph for AI supply chain and infrastructure — discover agents and MCP, map blast radius, and inspect runtime.**
+**Open security scanner and AI BOM for the AI stack.**
 
-Scan agents, MCP, packages, containers, Kubernetes, cloud, and GPU workloads
-with blast-radius context. For source-by-source boundaries, see the
-[AI infrastructure coverage matrix](architecture/ai-infrastructure.md#coverage-matrix).
+Inventory agents, MCP servers, tools, packages, credential environment names,
+cloud and runtime evidence, then map the reachable blast radius behind each
+finding. For source-by-source boundaries, see the [AI infrastructure coverage
+matrix](architecture/ai-infrastructure.md#coverage-matrix).
 
 ## What it does
 
@@ -32,6 +33,16 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 
 [Get started](getting-started/install.md){ .md-button .md-button--primary }
 [View on GitHub](https://github.com/msaad00/agent-bom){ .md-button }
+
+## Start with one lane
+
+| Lane | First command | Artifact |
+|---|---|---|
+| **Local AI BOM** | `agent-bom agents --demo --offline` | terminal findings and graph-ready inventory |
+| **Repository scan** | `agent-bom agents -p . -f html -o agent-bom-report.html` | local HTML review plus exportable evidence |
+| **CI evidence** | `uses: msaad00/agent-bom@v0.86.3` | SARIF, pull-request summary, optional code scanning |
+| **Assistant tools** | `agent-bom mcp server` | read-only security tools for MCP clients |
+| **Self-hosted control plane** | `docker compose -f docker-compose.pilot.yml up -d` | API and dashboard in your infrastructure |
 
 ## Key capabilities
 

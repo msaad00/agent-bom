@@ -14,9 +14,9 @@
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
-<p align="center"><b>Open security scanner and control plane for AI supply chain and runtime infrastructure — local scans, CI evidence, fleet inventory, MCP enforcement, and self-hosted governance.</b></p>
+<p align="center"><b>Open security scanner and AI BOM for the AI stack.</b></p>
 
-<p align="center"><code>agent-bom</code> follows vulnerable packages, MCP servers, tools, credentials, agents, and runtime paths so teams can prioritize the fix that removes the most reachable risk.</p>
+<p align="center"><code>agent-bom</code> inventories agents, MCP servers, tools, packages, credential environment names, cloud and runtime evidence, then maps the reachable blast radius behind each finding.</p>
 
 <p align="center">
   <a href="https://msaad00.github.io/agent-bom/">Docs</a> ·
@@ -54,7 +54,12 @@ Blast radius is the core idea: `package -> vulnerability finding -> MCP server (
 agent-bom agents --demo --offline
 ```
 
-The demo uses a curated sample so the output stays reproducible across releases. Every CVE shown is a real OSV/GHSA match against a genuinely vulnerable package version — no fabricated findings (locked in by [`tests/test_demo_inventory_accuracy.py`](tests/test_demo_inventory_accuracy.py)). For a real scan, run `agent-bom agents`, or add `-p .` to fold project manifests and lockfiles into the same result.
+The demo produces a terminal finding set and graph-ready inventory without
+touching your source tree. Every CVE shown is a real OSV/GHSA match against a
+genuinely vulnerable package version — no fabricated findings (locked in by
+[`tests/test_demo_inventory_accuracy.py`](tests/test_demo_inventory_accuracy.py)).
+For a real scan, run `agent-bom agents`, or add `-p .` to fold project
+manifests and lockfiles into the same result.
 
 Want an inspectable sample before scanning your own repo? Run the bundled
 first-run AI stack:
@@ -74,6 +79,17 @@ dashboard.
 </p>
 
 ## Quick start
+
+Start with the surface you already use. Each path produces evidence that can
+later roll into the same self-hosted control plane.
+
+| Start here | Command | First artifact |
+|---|---|---|
+| **CLI** | `agent-bom agents --demo --offline` | terminal findings + graph-ready inventory |
+| **Your repo** | `agent-bom agents -p . -f html -o agent-bom-report.html` | local HTML review, JSON/SARIF/SBOM/graph exports when requested |
+| **CI** | `uses: msaad00/agent-bom@v0.86.3` | SARIF, PR summary, optional code-scanning upload |
+| **Assistant / MCP** | `agent-bom mcp server` | read-only security tools for Claude, Cursor, Codex, Windsurf, Cortex, and other MCP clients |
+| **Self-hosted control plane** | `docker compose -f docker-compose.pilot.yml up -d` | API + dashboard in your infrastructure |
 
 ```bash
 pip install agent-bom                  # CLI
@@ -408,13 +424,13 @@ for the full split-vs-single-image guidance.
 
 ## Choose Your Path
 
-Start with one lane. Each lane feeds the same evidence model, so local scans,
-fleet inventory, graph findings, compliance evidence, and runtime decisions can
-roll up into the same self-hosted control plane when you need it.
+Start with one lane. Each lane feeds the same AI BOM evidence model, so local
+scans, fleet inventory, graph findings, compliance evidence, and runtime
+decisions can roll up into the same self-hosted control plane when you need it.
 
 ```text
 agent-bom
-├─ scan locally
+├─ generate an AI BOM locally
 │  ├─ CLI / Docker / GitHub Action
 │  └─ findings, SARIF, SBOM, HTML, graph exports
 ├─ send evidence to a control plane

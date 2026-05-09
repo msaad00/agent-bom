@@ -230,4 +230,62 @@ describe("buildMeshGraph", () => {
       .sort();
     expect(packageLabels).toEqual(["server-filesystem@1.0.0", "server-filesystem@2.0.0"]);
   });
+
+  it("caps dense findings and reports omitted nodes for readable defaults", () => {
+    const result: ScanResult = {
+      agents: [
+        {
+          name: "cursor",
+          agent_type: "desktop",
+          mcp_servers: [
+            {
+              name: "dense-server",
+              env: {
+                OPENAI_API_KEY: "",
+                ANTHROPIC_API_KEY: "",
+                AWS_SECRET_ACCESS_KEY: "",
+                GITHUB_TOKEN: "",
+                DATABASE_PASSWORD: "",
+              },
+              packages: Array.from({ length: 6 }, (_, packageIndex) => ({
+                name: `pkg-${packageIndex}`,
+                version: "1.0.0",
+                ecosystem: "npm",
+                vulnerabilities: Array.from({ length: 4 }, (_, vulnIndex) => ({
+                  id: `CVE-2026-${packageIndex}${vulnIndex}`,
+                  severity: vulnIndex === 0 ? "critical" : "high",
+                })),
+              })),
+              tools: Array.from({ length: 6 }, (_, index) => ({
+                name: `tool_${index}`,
+                description: `Tool ${index}`,
+              })),
+            },
+          ],
+        },
+      ],
+      blast_radius: [],
+    };
+
+    const { nodes, stats } = buildMeshGraph(
+      result,
+      { packages: true, vulnerabilities: true, credentials: true, tools: true },
+      "high",
+      { vulnerableOnly: true },
+    );
+
+    expect(nodes.filter((node) => node.data.nodeType === "package")).toHaveLength(4);
+    expect(nodes.filter((node) => node.data.nodeType === "vulnerability")).toHaveLength(8);
+    expect(nodes.filter((node) => node.data.nodeType === "tool")).toHaveLength(3);
+    expect(nodes.filter((node) => node.data.nodeType === "credential")).toHaveLength(4);
+    expect(stats.omittedPackages).toBe(2);
+    expect(stats.omittedVulnerabilities).toBe(8);
+    expect(stats.omittedTools).toBe(3);
+    expect(stats.omittedCredentials).toBe(1);
+    expect(
+      nodes
+        .filter((node) => node.data.nodeType === "credential")
+        .every((node) => String(node.data.serverName).includes("env-var reference")),
+    ).toBe(true);
+  });
 });

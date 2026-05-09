@@ -31,6 +31,7 @@ export function ScanMeshView({ id }: { id: string }) {
     const empty: MeshStatsData = {
       totalAgents: 0, sharedServers: 0, uniqueCredentials: 0, toolOverlap: 0,
       credentialBlast: [], totalPackages: 0, totalVulnerabilities: 0,
+      omittedCredentials: 0, omittedTools: 0, omittedPackages: 0, omittedVulnerabilities: 0,
       criticalCount: 0, highCount: 0, mediumCount: 0, lowCount: 0, kevCount: 0,
     };
     if (!job?.result) return { rawNodes: [] as Node[], rawEdges: [] as Edge[], stats: empty };

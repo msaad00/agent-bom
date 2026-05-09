@@ -17,6 +17,10 @@ export interface MeshStatsData {
   credentialBlast: string[];
   totalPackages: number;
   totalVulnerabilities: number;
+  omittedCredentials: number;
+  omittedTools: number;
+  omittedPackages: number;
+  omittedVulnerabilities: number;
   criticalCount: number;
   highCount: number;
   mediumCount: number;
@@ -51,6 +55,11 @@ type VulnerabilitySeverity = Vulnerability["severity"];
 export interface MeshGraphScope {
   selectedAgents?: string[] | undefined;
   vulnerableOnly?: boolean | undefined;
+  maxCredentialNodesPerServer?: number | undefined;
+  maxToolNodesPerServer?: number | undefined;
+  maxVulnerablePackagesPerServer?: number | undefined;
+  maxCleanPackagesPerServer?: number | undefined;
+  maxVulnerabilitiesPerPackage?: number | undefined;
 }
 
 // ─── Credential detection ───────────────────────────────────────────────────
@@ -283,6 +292,11 @@ export function buildMeshGraph(
   const sevFilter = severityFilter ?? "all";
   const selectedAgents = scope?.selectedAgents ?? [];
   const vulnerableOnly = scope?.vulnerableOnly ?? false;
+  const maxCredentialNodesPerServer = scope?.maxCredentialNodesPerServer ?? 4;
+  const maxToolNodesPerServer = scope?.maxToolNodesPerServer ?? 3;
+  const maxVulnerablePackagesPerServer = scope?.maxVulnerablePackagesPerServer ?? (vulnerableOnly ? 4 : 5);
+  const maxCleanPackagesPerServer = scope?.maxCleanPackagesPerServer ?? (vulnerableOnly ? 0 : 2);
+  const maxVulnerabilitiesPerPackage = scope?.maxVulnerabilitiesPerPackage ?? (vulnerableOnly ? 2 : 3);
   const scopedAgents =
     selectedAgents.length > 0
       ? result.agents.filter((agent) => selectedAgents.includes(getMeshAgentKey(agent)) || selectedAgents.includes(agent.name))
@@ -343,6 +357,10 @@ export function buildMeshGraph(
   // View stats
   let totalPackages = 0;
   let totalVulnerabilities = 0;
+  let omittedCredentials = 0;
+  let omittedTools = 0;
+  let omittedPackages = 0;
+  let omittedVulnerabilities = 0;
   let criticalCount = 0;
   let highCount = 0;
   let mediumCount = 0;
@@ -446,7 +464,9 @@ export function buildMeshGraph(
 
     // ── Credential nodes ──
     if (showCreds) {
-      for (const cred of group.credNames) {
+      const visibleCreds = [...group.credNames].sort().slice(0, maxCredentialNodesPerServer);
+      omittedCredentials += Math.max(0, group.credNames.size - visibleCreds.length);
+      for (const cred of visibleCreds) {
         const credId = `cred:${serverId}:${cred}`;
         if (!seen.has(credId)) {
           seen.add(credId);
@@ -458,7 +478,7 @@ export function buildMeshGraph(
             data: {
               label: cred,
               nodeType: "credential",
-              serverName: group.name,
+              serverName: `${group.name} · env-var reference`,
               sharedBy: credAgentMap.get(cred)?.size,
             } satisfies LineageNodeData,
           });
@@ -482,7 +502,10 @@ export function buildMeshGraph(
     // ── Tool nodes (limit 5 per server) ──
     if (showTools) {
       const allTools = group.servers.flatMap((s) => s.tools ?? []);
-      const uniqueTools = [...new Map(allTools.map((t) => [t.name, t])).values()].slice(0, 5);
+      const allUniqueTools = [...new Map(allTools.map((t) => [t.name, t])).values()]
+        .sort((left, right) => left.name.localeCompare(right.name));
+      const uniqueTools = allUniqueTools.slice(0, maxToolNodesPerServer);
+      omittedTools += Math.max(0, allUniqueTools.length - uniqueTools.length);
       for (const tool of uniqueTools) {
         const toolId = `tool:${serverId}:${tool.name}`;
         if (!seen.has(toolId)) {
@@ -554,8 +577,10 @@ export function buildMeshGraph(
         });
       const cleanPkgs = rankedPackages
         .filter((entry) => entry.matchingVulns.length === 0)
-        .slice(0, vulnerableOnly ? 0 : 2);
-      const displayPkgs = [...vulnPkgs.slice(0, vulnerableOnly ? 8 : 6), ...cleanPkgs];
+        .slice(0, maxCleanPackagesPerServer);
+      const visibleVulnPkgs = vulnPkgs.slice(0, maxVulnerablePackagesPerServer);
+      omittedPackages += Math.max(0, vulnPkgs.length - visibleVulnPkgs.length);
+      const displayPkgs = [...visibleVulnPkgs, ...cleanPkgs];
 
       for (const { pkg, serverId: packageServerId, matchingVulns } of displayPkgs) {
         const pkgId = `pkg:${packageServerId}:${pkg.ecosystem}:${pkg.name}@${pkg.version}`;
@@ -597,7 +622,9 @@ export function buildMeshGraph(
 
         // ── Vulnerability nodes ──
         if (showVulns && matchingVulns.length > 0) {
-          for (const vuln of matchingVulns.slice(0, vulnerableOnly ? 6 : 5)) {
+          const visibleVulns = matchingVulns.slice(0, maxVulnerabilitiesPerPackage);
+          omittedVulnerabilities += Math.max(0, matchingVulns.length - visibleVulns.length);
+          for (const vuln of visibleVulns) {
             const vulnId = `vuln:${pkg.name}:${vuln.id}`;
             if (seen.has(vulnId)) continue;
             seen.add(vulnId);
@@ -660,6 +687,10 @@ export function buildMeshGraph(
     credentialBlast,
     totalPackages,
     totalVulnerabilities,
+    omittedCredentials,
+    omittedTools,
+    omittedPackages,
+    omittedVulnerabilities,
     criticalCount,
     highCount,
     mediumCount,

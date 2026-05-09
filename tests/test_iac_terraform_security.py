@@ -8,6 +8,8 @@ import pytest
 
 from agent_bom.iac.terraform_security import scan_terraform_security
 
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
 
 @pytest.fixture()
 def tmp_tf(tmp_path: Path):
@@ -97,6 +99,22 @@ resource "aws_s3_bucket" "private" {
         findings = scan_terraform_security(tmp_tf(content))
         tf002 = [f for f in findings if f.rule_id == "TF-SEC-002"]
         assert len(tf002) == 0
+
+    def test_public_storage_fixture_records_actionable_evidence(self):
+        fixture = FIXTURES / "iac" / "terraform" / "public-s3-bucket" / "main.tf"
+
+        findings = scan_terraform_security(fixture)
+
+        tf002 = [f for f in findings if f.rule_id == "TF-SEC-002"]
+        assert len(tf002) == 1
+        finding = tf002[0]
+        assert finding.severity == "critical"
+        assert finding.category == "terraform"
+        assert finding.file_path.endswith("tests/fixtures/iac/terraform/public-s3-bucket/main.tf")
+        assert finding.line_number == 1
+        assert "CIS-AWS-2.1.2" in finding.compliance
+        assert "NIST-AC-3" in finding.compliance
+        assert "Use private ACL" in finding.message
 
 
 class TestSecurityGroupCIDR:

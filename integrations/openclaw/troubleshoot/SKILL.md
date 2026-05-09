@@ -59,7 +59,7 @@ on the health of the agent-bom installation and connected database.
 ```bash
 pipx install agent-bom
 agent-bom doctor             # check prerequisites and installation health
-agent-bom validate           # validate configuration files
+agent-bom mcp validate inventory.json  # validate inventory files
 agent-bom db status          # check database connection status
 ```
 
@@ -80,7 +80,7 @@ agent-bom db status          # check database connection status
 agent-bom doctor
 
 # Validate configuration
-agent-bom validate
+agent-bom mcp validate inventory.json
 
 # Check database status
 agent-bom db status

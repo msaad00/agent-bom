@@ -66,8 +66,8 @@ file trust, and run pre-install marketplace checks.
 
 ```bash
 pipx install agent-bom
-agent-bom registry-lookup brave-search
-agent-bom marketplace-check @anthropic/server-filesystem
+agent-bom mcp scan @modelcontextprotocol/server-brave-search --ecosystem npm
+agent-bom mcp scan @modelcontextprotocol/server-filesystem --ecosystem npm
 ```
 
 ## Tools (7)

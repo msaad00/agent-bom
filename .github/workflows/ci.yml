@@ -255,6 +255,9 @@ jobs:
         # in ~1 min instead of burning 6-8 min on the Test matrix.
         run: uv run python scripts/check_cli_reference_alignment.py
 
+      - name: Skill CLI citation alignment
+        run: uv run python scripts/check_skill_cli_citations.py
+
   ui:
     name: UI Validate
     runs-on: ubuntu-latest

@@ -85,7 +85,7 @@ The default path is local validation plus local scan/export.
 Validate first:
 
 ```bash
-agent-bom inventory validate inventory.json
+agent-bom mcp validate inventory.json
 ```
 
 Scan locally:

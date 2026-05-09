@@ -20,7 +20,7 @@ Check if the server is in agent-bom's curated registry (427+ servers, 375 verifi
 
 ```bash
 # Via CLI
-agent-bom registry-lookup <server-name>
+agent-bom mcp scan <server-name>
 
 # Via MCP tool
 registry_lookup(server_name="<server-name>")

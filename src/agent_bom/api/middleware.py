@@ -660,7 +660,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         {
             "/",
             "/health",
+            "/healthz",
+            "/livez",
+            "/ping",
             "/readyz",
+            "/status",
             "/version",
             "/docs",
             "/redoc",
@@ -674,7 +678,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         else {
             "/",
             "/health",
+            "/healthz",
+            "/livez",
+            "/ping",
             "/readyz",
+            "/status",
             "/version",
             "/v1/auth/session",
             "/v1/auth/saml/metadata",

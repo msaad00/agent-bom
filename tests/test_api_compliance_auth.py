@@ -101,6 +101,17 @@ def test_aisvs_compliance_accepts_trusted_proxy_headers() -> None:
     assert body["representation"] == "benchmark"
 
 
+def test_compliance_summary_does_not_route_as_framework_slug() -> None:
+    client = TestClient(app)
+    resp = client.get("/v1/compliance/summary", headers=_proxy_headers())
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "overall_score" in body
+    assert "summary" in body
+    assert "frameworks" in body
+    assert "owasp_llm_top10" in body["frameworks"]
+
+
 def test_compliance_export_end_to_end_returns_real_evidence() -> None:
     """Full stack: seed a real ScanJob, hit the FastAPI route, verify evidence wires.
 

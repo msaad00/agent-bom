@@ -798,6 +798,12 @@ async def health() -> HealthResponse:
     )
 
 
+@app.get("/healthz", response_model=HealthResponse, tags=["meta"])
+async def healthz() -> HealthResponse:
+    """Kubernetes-style liveness probe alias for /health."""
+    return await health()
+
+
 @app.get("/version", response_model=VersionInfo, tags=["meta"])
 async def version() -> VersionInfo:
     """Version information."""
@@ -815,6 +821,24 @@ async def readiness() -> JSONResponse:
     if _shutting_down:
         return JSONResponse(status_code=503, content={"status": "draining"})
     return JSONResponse(status_code=200, content={"status": "ready"})
+
+
+@app.get("/livez", response_model=HealthResponse, tags=["meta"])
+async def liveness() -> HealthResponse:
+    """Kubernetes-style liveness probe alias for /health."""
+    return await health()
+
+
+@app.get("/ping", tags=["meta"])
+async def ping() -> dict[str, str]:
+    """Minimal ping endpoint for load balancers and smoke checks."""
+    return {"status": "ok"}
+
+
+@app.get("/status", response_model=HealthResponse, tags=["meta"])
+async def status() -> HealthResponse:
+    """Operator status alias for the health payload."""
+    return await health()
 
 
 # ── Dashboard static file serving ────────────────────────────────────────────

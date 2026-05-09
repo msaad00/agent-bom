@@ -9,7 +9,7 @@
     .card { fill: #fafafa; stroke: #d4d4d8; stroke-width: 1.2; }
     .name { font-size: 15px; font-weight: 750; fill: #27272a; }
     .scope { font-size: 11px; font-weight: 600; fill: #71717a; }
-    .count { font-size: 28px; font-weight: 800; }
+    .count { font-size: 22px; font-weight: 800; }
     .unit { font-size: 11px; font-weight: 700; fill: #71717a; }
     .bar-bg { fill: #e4e4e7; }
     .summary { fill: #fafafa; stroke: #d4d4d8; stroke-width: 1.2; }
@@ -27,100 +27,100 @@
   <rect x="48" y="124" width="320" height="88" rx="10" class="card"/>
   <text x="72" y="154" class="name">OWASP LLM Top 10</text>
   <text x="72" y="175" class="scope">Prompt injection, data poisoning, supply chain</text>
-  <rect x="72" y="188" width="272" height="6" rx="3" class="bar-bg"/>
-  <rect x="72" y="188" width="272" height="6" rx="3" fill="#3b82f6"/>
-  <text x="72" y="204" class="count" fill="#2563eb">10</text>
-  <text x="120" y="203" class="unit">controls</text>
+  <rect x="72" y="204" width="272" height="6" rx="3" class="bar-bg"/>
+  <rect x="72" y="204" width="272" height="6" rx="3" fill="#3b82f6"/>
+  <text x="72" y="202" class="count" fill="#2563eb">10</text>
+  <text x="116" y="201" class="unit">controls</text>
 
   <rect x="400" y="124" width="320" height="88" rx="10" class="card"/>
   <text x="424" y="154" class="name">OWASP MCP Top 10</text>
   <text x="424" y="175" class="scope">Tool poisoning, auth bypass, rug pull risk</text>
-  <rect x="424" y="188" width="272" height="6" rx="3" class="bar-bg"/>
-  <rect x="424" y="188" width="272" height="6" rx="3" fill="#3b82f6"/>
-  <text x="424" y="204" class="count" fill="#2563eb">10</text>
-  <text x="472" y="203" class="unit">controls</text>
+  <rect x="424" y="204" width="272" height="6" rx="3" class="bar-bg"/>
+  <rect x="424" y="204" width="272" height="6" rx="3" fill="#3b82f6"/>
+  <text x="424" y="202" class="count" fill="#2563eb">10</text>
+  <text x="468" y="201" class="unit">controls</text>
 
   <rect x="752" y="124" width="320" height="88" rx="10" class="card"/>
   <text x="776" y="154" class="name">OWASP Agentic Top 10</text>
   <text x="776" y="175" class="scope">Excessive agency, unsafe output, autonomy risk</text>
-  <rect x="776" y="188" width="272" height="6" rx="3" class="bar-bg"/>
-  <rect x="776" y="188" width="272" height="6" rx="3" fill="#3b82f6"/>
-  <text x="776" y="204" class="count" fill="#2563eb">10</text>
-  <text x="824" y="203" class="unit">controls</text>
+  <rect x="776" y="204" width="272" height="6" rx="3" class="bar-bg"/>
+  <rect x="776" y="204" width="272" height="6" rx="3" fill="#3b82f6"/>
+  <text x="776" y="202" class="count" fill="#2563eb">10</text>
+  <text x="820" y="201" class="unit">controls</text>
 
   <rect x="48" y="236" width="320" height="88" rx="10" class="card"/>
   <text x="72" y="266" class="name">MITRE ATLAS</text>
   <text x="72" y="287" class="scope">Adversarial machine learning tactics</text>
-  <rect x="72" y="300" width="272" height="6" rx="3" class="bar-bg"/>
-  <rect x="72" y="300" width="208" height="6" rx="3" fill="#f59e0b"/>
-  <text x="72" y="316" class="count" fill="#d97706">14</text>
-  <text x="120" y="315" class="unit">techniques</text>
+  <rect x="72" y="316" width="272" height="6" rx="3" class="bar-bg"/>
+  <rect x="72" y="316" width="208" height="6" rx="3" fill="#f59e0b"/>
+  <text x="72" y="314" class="count" fill="#d97706">14</text>
+  <text x="116" y="313" class="unit">techniques</text>
 
   <rect x="400" y="236" width="320" height="88" rx="10" class="card"/>
   <text x="424" y="266" class="name">NIST AI RMF</text>
   <text x="424" y="287" class="scope">Govern, map, measure, and manage</text>
-  <rect x="424" y="300" width="272" height="6" rx="3" class="bar-bg"/>
-  <rect x="424" y="300" width="214" height="6" rx="3" fill="#10b981"/>
-  <text x="424" y="316" class="count" fill="#059669">19</text>
-  <text x="472" y="315" class="unit">subcategories</text>
+  <rect x="424" y="316" width="272" height="6" rx="3" class="bar-bg"/>
+  <rect x="424" y="316" width="214" height="6" rx="3" fill="#10b981"/>
+  <text x="424" y="314" class="count" fill="#059669">19</text>
+  <text x="468" y="313" class="unit">subcategories</text>
 
   <rect x="752" y="236" width="320" height="88" rx="10" class="card"/>
   <text x="776" y="266" class="name">EU AI Act</text>
   <text x="776" y="287" class="scope">Risk management and human oversight</text>
-  <rect x="776" y="300" width="272" height="6" rx="3" class="bar-bg"/>
-  <rect x="776" y="300" width="164" height="6" rx="3" fill="#a78bfa"/>
-  <text x="776" y="316" class="count" fill="#7c3aed">12</text>
-  <text x="824" y="315" class="unit">articles</text>
+  <rect x="776" y="316" width="272" height="6" rx="3" class="bar-bg"/>
+  <rect x="776" y="316" width="164" height="6" rx="3" fill="#a78bfa"/>
+  <text x="776" y="314" class="count" fill="#7c3aed">12</text>
+  <text x="820" y="313" class="unit">articles</text>
 
   <text x="48" y="366" class="section">ENTERPRISE CONTROL FRAMEWORKS</text>
 
   <rect x="48" y="386" width="320" height="88" rx="10" class="card"/>
   <text x="72" y="416" class="name">NIST CSF 2.0</text>
   <text x="72" y="437" class="scope">Identify, protect, detect, respond, recover</text>
-  <rect x="72" y="450" width="272" height="6" rx="3" class="bar-bg"/>
-  <rect x="72" y="450" width="215" height="6" rx="3" fill="#10b981"/>
-  <text x="72" y="466" class="count" fill="#059669">23</text>
-  <text x="120" y="465" class="unit">subcategories</text>
+  <rect x="72" y="466" width="272" height="6" rx="3" class="bar-bg"/>
+  <rect x="72" y="466" width="215" height="6" rx="3" fill="#10b981"/>
+  <text x="72" y="464" class="count" fill="#059669">23</text>
+  <text x="116" y="463" class="unit">subcategories</text>
 
   <rect x="400" y="386" width="320" height="88" rx="10" class="card"/>
   <text x="424" y="416" class="name">NIST 800-53 Rev. 5</text>
   <text x="424" y="437" class="scope">Federal information system controls</text>
-  <rect x="424" y="450" width="272" height="6" rx="3" class="bar-bg"/>
-  <rect x="424" y="450" width="218" height="6" rx="3" fill="#10b981"/>
-  <text x="424" y="466" class="count" fill="#059669">29</text>
-  <text x="472" y="465" class="unit">controls</text>
+  <rect x="424" y="466" width="272" height="6" rx="3" class="bar-bg"/>
+  <rect x="424" y="466" width="218" height="6" rx="3" fill="#10b981"/>
+  <text x="424" y="464" class="count" fill="#059669">29</text>
+  <text x="468" y="463" class="unit">controls</text>
 
   <rect x="752" y="386" width="320" height="88" rx="10" class="card"/>
   <text x="776" y="416" class="name">FedRAMP</text>
   <text x="776" y="437" class="scope">Low, Moderate, and High baselines</text>
-  <rect x="776" y="450" width="272" height="6" rx="3" class="bar-bg"/>
-  <rect x="776" y="450" width="126" height="6" rx="3" fill="#0ea5e9"/>
-  <text x="776" y="466" class="count" fill="#0284c7">3</text>
-  <text x="808" y="465" class="unit">baselines</text>
+  <rect x="776" y="466" width="272" height="6" rx="3" class="bar-bg"/>
+  <rect x="776" y="466" width="126" height="6" rx="3" fill="#0ea5e9"/>
+  <text x="776" y="464" class="count" fill="#0284c7">3</text>
+  <text x="804" y="463" class="unit">baselines</text>
 
   <rect x="48" y="498" width="320" height="88" rx="10" class="card"/>
   <text x="72" y="528" class="name">ISO 27001 / SOC 2</text>
   <text x="72" y="549" class="scope">Security controls and trust criteria</text>
-  <rect x="72" y="562" width="272" height="6" rx="3" class="bar-bg"/>
-  <rect x="72" y="562" width="166" height="6" rx="3" fill="#f43f5e"/>
-  <text x="72" y="578" class="count" fill="#e11d48">18</text>
-  <text x="120" y="577" class="unit">mapped controls</text>
+  <rect x="72" y="578" width="272" height="6" rx="3" class="bar-bg"/>
+  <rect x="72" y="578" width="166" height="6" rx="3" fill="#f43f5e"/>
+  <text x="72" y="576" class="count" fill="#e11d48">18</text>
+  <text x="116" y="575" class="unit">mapped controls</text>
 
   <rect x="400" y="498" width="320" height="88" rx="10" class="card"/>
   <text x="424" y="528" class="name">CIS Controls v8 / CMMC 2.0</text>
   <text x="424" y="549" class="scope">Hardening checks and contractor practices</text>
-  <rect x="424" y="562" width="272" height="6" rx="3" class="bar-bg"/>
-  <rect x="424" y="562" width="256" height="6" rx="3" fill="#34d399"/>
-  <text x="424" y="578" class="count" fill="#059669">217+</text>
-  <text x="492" y="577" class="unit">checks + practices</text>
+  <rect x="424" y="578" width="272" height="6" rx="3" class="bar-bg"/>
+  <rect x="424" y="578" width="256" height="6" rx="3" fill="#34d399"/>
+  <text x="424" y="576" class="count" fill="#059669">217+</text>
+  <text x="484" y="575" class="unit">checks + practices</text>
 
   <rect x="752" y="498" width="320" height="88" rx="10" class="card"/>
   <text x="776" y="528" class="name">MITRE ATT&amp;CK / PCI DSS</text>
   <text x="776" y="549" class="scope">Technique mapping and payment-card controls</text>
-  <rect x="776" y="562" width="272" height="6" rx="3" class="bar-bg"/>
-  <rect x="776" y="562" width="238" height="6" rx="3" fill="#fb7185"/>
-  <text x="776" y="578" class="count" fill="#be123c">600+</text>
-  <text x="858" y="577" class="unit">techniques + requirements</text>
+  <rect x="776" y="578" width="272" height="6" rx="3" class="bar-bg"/>
+  <rect x="776" y="578" width="238" height="6" rx="3" fill="#fb7185"/>
+  <text x="776" y="576" class="count" fill="#be123c">600+</text>
+  <text x="846" y="575" class="unit">techniques + requirements</text>
 
   <rect x="48" y="620" width="1024" height="46" rx="10" class="summary"/>
   <text x="96" y="651" class="summary-num" fill="#2563eb">15</text>

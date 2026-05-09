@@ -75,6 +75,33 @@ def test_scan_help():
     assert "graph (raw graph JSON)" not in normalized
 
 
+def test_scan_external_scan_invalid_json_exits_nonzero(tmp_path):
+    inventory = {
+        "schema_version": "1",
+        "generated_at": "2026-05-09T00:00:00Z",
+        "agents": [{"name": "fixture-agent", "agent_type": "custom", "mcp_servers": []}],
+    }
+    inventory_file = tmp_path / "inventory.json"
+    inventory_file.write_text(json.dumps(inventory), encoding="utf-8")
+    bad_external_scan = tmp_path / "bad-external-scan.json"
+    bad_external_scan.write_text("{bad", encoding="utf-8")
+
+    result = _run(
+        [
+            "scan",
+            "--inventory",
+            str(inventory_file),
+            "--external-scan",
+            str(bad_external_scan),
+            "--offline",
+            "--no-auto-update-db",
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "External scan error:" in result.output
+
+
 # ---------------------------------------------------------------------------
 # scan — zero-config dry run (no network, no real discovery)
 # ---------------------------------------------------------------------------

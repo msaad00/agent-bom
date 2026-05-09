@@ -963,6 +963,30 @@ def test_db_status_freshness_stale(tmp_path):
     assert "Stale" in result.output or "20d" in result.output or "ago" in result.output
 
 
+def test_db_status_freshness_aging_at_daily_boundary(tmp_path):
+    """db status marks a one-day-old DB as aging, not fresh."""
+    from datetime import datetime, timedelta, timezone
+
+    from agent_bom.db.schema import init_db
+
+    db_file = tmp_path / "aging.db"
+    conn = init_db(db_file)
+    old_iso = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_meta(source, last_synced, record_count) VALUES (?, ?, ?)",
+        ("osv", old_iso, 100),
+    )
+    conn.commit()
+    conn.close()
+
+    result = _run(["db", "status", "--path", str(db_file)])
+    assert result.exit_code == 0
+    assert "Aging" in result.output
+    assert "daily" in result.output
+    assert "freshness" in result.output
+    assert "Fresh (" not in result.output
+
+
 def test_db_status_no_sync_meta(tmp_path):
     """db status with empty sync_meta shows 'No sync data' message."""
     from agent_bom.db.schema import init_db

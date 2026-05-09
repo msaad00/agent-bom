@@ -142,10 +142,10 @@ def db_status(db_path: str | None) -> None:
         age = db_freshness_days(db_file)
         if age is None:
             freshness_msg = "[yellow]Never synced — run agent-bom db update[/yellow]"
-        elif age <= 7:
+        elif age < 1:
             freshness_msg = f"[green]Fresh ({age}d ago)[/green]"
-        elif age <= 14:
-            freshness_msg = f"[yellow]Aging ({age}d ago) — consider running db update[/yellow]"
+        elif age <= 7:
+            freshness_msg = f"[yellow]Aging ({age}d ago) — run agent-bom db update for daily security freshness[/yellow]"
         else:
             freshness_msg = f"[red]Stale ({age}d ago) — run agent-bom db update[/red]"
         con.print(f"  Freshness       : {freshness_msg}")

@@ -568,7 +568,7 @@ def scan(
 
         freshness = db_freshness_days()
         source_list = [s.strip() for s in db_sources.split(",")] if db_sources else None
-        if freshness is None or freshness > 7 or source_list:
+        if freshness is None or freshness >= 1 or source_list:
             if not quiet and not no_scan:
                 src_msg = f" (sources: {', '.join(source_list)})" if source_list else ""
                 con.print(f"[dim]Refreshing local vuln DB{src_msg} …[/dim]")
@@ -637,18 +637,18 @@ def scan(
                         "Falling back to OSV API (slower). "
                         "Run [bold]agent-bom db update[/bold] to build a local cache."
                     )
-            elif _db_age > 14:
+            elif _db_age > 7:
                 if not quiet:
                     con.print(
                         f"[red]⚠ Local vulnerability DB is {_db_age} days old.[/red] "
                         "Scan results may be incomplete. "
                         "Run [bold]agent-bom db update[/bold] before scanning."
                     )
-            elif _db_age > 7:
+            elif _db_age >= 1:
                 if not quiet:
                     con.print(
                         f"[yellow]⚠ Local vulnerability DB is {_db_age} days old.[/yellow] "
-                        "Consider running [bold]agent-bom db update[/bold]."
+                        "Run [bold]agent-bom db update[/bold] for daily security freshness."
                     )
         except Exception:
             pass  # Never block a scan due to freshness check failure

@@ -15,10 +15,10 @@ def _invoke(*args):
     return runner.invoke(scan, list(args), catch_exceptions=False)
 
 
-def test_auto_update_db_flag_triggers_sync_when_stale():
-    """When DB freshness is >7 days, sync_db() must be called."""
+def test_auto_update_db_flag_triggers_sync_when_aging():
+    """When DB freshness misses the daily target, sync_db() must be called."""
     with (
-        patch("agent_bom.db.schema.db_freshness_days", return_value=10) as mock_fresh,
+        patch("agent_bom.db.schema.db_freshness_days", return_value=1) as mock_fresh,
         patch("agent_bom.db.sync.sync_db") as mock_sync,
         patch("agent_bom.cli.agents.discover_all", return_value=[]),
         patch("agent_bom.cli.agents.scan_agents_sync", return_value=[]),
@@ -30,9 +30,9 @@ def test_auto_update_db_flag_triggers_sync_when_stale():
 
 
 def test_auto_update_db_skips_when_fresh():
-    """When DB freshness is <=7 days, sync_db() must NOT be called."""
+    """When DB freshness is inside the daily target, sync_db() must NOT be called."""
     with (
-        patch("agent_bom.db.schema.db_freshness_days", return_value=3) as mock_fresh,
+        patch("agent_bom.db.schema.db_freshness_days", return_value=0) as mock_fresh,
         patch("agent_bom.db.sync.sync_db") as mock_sync,
         patch("agent_bom.cli.agents.discover_all", return_value=[]),
         patch("agent_bom.cli.agents.scan_agents_sync", return_value=[]),

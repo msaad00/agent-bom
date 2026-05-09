@@ -413,7 +413,7 @@ def create_mcp_server(*, host: str = "127.0.0.1", port: int = 8000, bearer_token
         ] = None,
         auto_update_db: Annotated[
             bool,
-            Field(description="Explicitly refresh the local vuln DB if stale (>7 days) before scanning."),
+            Field(description="Explicitly refresh the local vuln DB when older than the daily freshness target before scanning."),
         ] = False,
         db_sources: Annotated[
             str | None,

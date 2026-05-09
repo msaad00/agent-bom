@@ -55,7 +55,7 @@ async def scan_impl(
 
                 freshness = db_freshness_days()
                 source_list = [s.strip() for s in db_sources.split(",")] if db_sources else None
-                if freshness is None or freshness > 7 or source_list:
+                if freshness is None or freshness >= 1 or source_list:
                     sync_db(sources=source_list)
             except Exception as exc:
                 logger.warning("Auto DB refresh failed: %s", exc)

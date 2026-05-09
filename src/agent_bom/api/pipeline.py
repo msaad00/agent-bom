@@ -505,7 +505,7 @@ def _run_scan_sync(job: ScanJob) -> None:
 
                 source_list = [s.strip() for s in req.db_sources.split(",") if s.strip()] if req.db_sources else None
                 freshness = db_freshness_days()
-                if freshness is None or freshness > 7 or source_list:
+                if freshness is None or freshness >= 1 or source_list:
                     sync_db(sources=source_list)
             except Exception as db_exc:  # noqa: BLE001
                 _logger.warning("API auto DB refresh failed: %s", sanitize_error(db_exc))

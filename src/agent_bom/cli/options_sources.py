@@ -272,7 +272,7 @@ def enrichment_options(fn):
                 default=True,
                 envvar="AGENT_BOM_AUTO_UPDATE_DB",
                 show_default=True,
-                help="Auto-refresh local vuln DB if stale (>7 days). --no-auto-update-db to disable.",
+                help="Auto-refresh local vuln DB when older than the daily freshness target. --no-auto-update-db to disable.",
             ),
             click.option(
                 "--db-source",

@@ -10,6 +10,8 @@ It is built around a simple thesis: security and visibility for AI infrastructur
 Package risk is only the start. `agent-bom` follows what it can reach across
 MCP servers, agents, credential environment names, tools, runtime behavior, and
 trust posture. That reachability-backed AI BOM is the core product value.
+The public AI-BOM coverage map is the source of truth for which AI-BOM layers
+are strong today, which are partial, and which next PRs close the gaps.
 
 `agent-bom` is a released OSS product with a working CLI, GitHub Action, Docker images, authenticated API and MCP deployment paths, report formats, a dashboard, and a growing enterprise-hardening track.
 
@@ -208,3 +210,4 @@ When comparing the product, prefer language like:
 - [MCP security model](MCP_SECURITY_MODEL.md)
 - [Architecture](ARCHITECTURE.md)
 - [Threat model](THREAT_MODEL.md)
+- [AI-BOM coverage map](../site-docs/architecture/ai-bom-coverage.md)

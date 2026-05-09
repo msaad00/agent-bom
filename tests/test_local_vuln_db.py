@@ -687,6 +687,37 @@ def test_parse_osv_entry_with_cvss_severity_type():
     assert vuln_row["cvss_vector"] is not None
 
 
+def test_parse_osv_entry_derives_cvss_score_from_vector():
+    data = {
+        "id": "DEBIAN-CVE-2014-6271",
+        "summary": "CVSS vector test",
+        "published": "2024-01-01T00:00:00Z",
+        "modified": "2024-01-02T00:00:00Z",
+        "severity": [{"type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}],
+        "affected": [],
+    }
+    result = _parse_osv_entry(data)
+    assert result is not None
+    vuln_row, _ = result
+    assert vuln_row["cvss_score"] == pytest.approx(9.8)
+    assert vuln_row["severity"] == "critical"
+
+
+def test_parse_osv_entry_normalizes_debian_important_severity():
+    data = {
+        "id": "DEBIAN-CVE-2024-0001",
+        "summary": "Debian important advisory",
+        "published": "2024-01-01T00:00:00Z",
+        "modified": "2024-01-02T00:00:00Z",
+        "database_specific": {"severity": "important"},
+        "affected": [],
+    }
+    result = _parse_osv_entry(data)
+    assert result is not None
+    vuln_row, _ = result
+    assert vuln_row["severity"] == "high"
+
+
 def test_parse_alpine_secfix_tokens_splits_compound_entries():
     assert _parse_alpine_secfix_tokens("CVE-2022-42333 CVE-2022-43334 XSA-428") == [
         "CVE-2022-42333",

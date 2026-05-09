@@ -8,13 +8,33 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Optional, cast
+from typing import Any, Optional, cast
 
 from agent_bom.models import Severity
 
 _logger = logging.getLogger(__name__)
 
 _OSV_MEDIUM_FALLBACK_PREFIXES = ("OSV-", "PYSEC-", "RUSTSEC-", "GO-", "MAL-", "GSD-")
+_SEVERITY_LABELS = {
+    "CRITICAL": Severity.CRITICAL,
+    "HIGH": Severity.HIGH,
+    "IMPORTANT": Severity.HIGH,
+    "MODERATE": Severity.MEDIUM,
+    "MEDIUM": Severity.MEDIUM,
+    "LOW": Severity.LOW,
+    "MINOR": Severity.LOW,
+    "NEGLIGIBLE": Severity.LOW,
+    "UNIMPORTANT": Severity.LOW,
+    "NONE": Severity.NONE,
+}
+
+
+def severity_from_label(raw: Any) -> Severity:
+    """Normalize scanner/vendor severity labels without inflating unknown data."""
+    if raw is None:
+        return Severity.UNKNOWN
+    normalized = str(raw).strip().replace("-", "_").replace(" ", "_").upper()
+    return _SEVERITY_LABELS.get(normalized, Severity.UNKNOWN)
 
 
 def advisory_id_severity_fallback(advisory_id: str) -> tuple[Severity, Optional[str]]:
@@ -150,6 +170,43 @@ def parse_cvss_vector(vector: str) -> Optional[float]:
         return None
 
 
+def _normalize_cvss_score(value: Any) -> Optional[float]:
+    """Extract a 0-10 CVSS score from common OSV/vendor record shapes."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        score = float(value)
+        return score if 0.0 <= score <= 10.0 else None
+    if isinstance(value, str):
+        try:
+            score = float(value)
+            return score if 0.0 <= score <= 10.0 else None
+        except ValueError:
+            computed = parse_cvss_vector(value)
+            return computed if computed is not None and 0.0 <= computed <= 10.0 else None
+    if isinstance(value, dict):
+        for key in ("score", "baseScore", "base_score", "cvss", "vector", "vectorString"):
+            nested_score = _normalize_cvss_score(value.get(key))
+            if nested_score is not None:
+                return nested_score
+    if isinstance(value, list):
+        scores = [_normalize_cvss_score(item) for item in value]
+        valid_scores = [score for score in scores if score is not None]
+        if valid_scores:
+            return max(valid_scores)
+    return None
+
+
+def _first_vendor_severity(*blocks: Any) -> tuple[Severity, Optional[str]]:
+    for source, block in blocks:
+        if not isinstance(block, dict):
+            continue
+        severity = severity_from_label(block.get("severity"))
+        if severity != Severity.UNKNOWN:
+            return severity, source
+    return Severity.UNKNOWN, None
+
+
 def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float], Optional[str]]:
     """Extract severity, CVSS score, and severity source from OSV data."""
     cvss_score = None
@@ -158,30 +215,42 @@ def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float], Opti
 
     for sev in vuln_data.get("severity", []):
         if sev.get("type") in ("CVSS_V3", "CVSS_V3_1", "CVSS_V4"):
-            score_str = sev.get("score", "")
-            try:
-                parsed = float(score_str)
-                if 0.0 <= parsed <= 10.0:
-                    cvss_score = parsed
-            except ValueError:
-                computed = parse_cvss_vector(score_str)
-                if computed is not None and 0.0 <= computed <= 10.0:
-                    cvss_score = computed
+            score = _normalize_cvss_score(sev.get("score"))
+            if score is not None:
+                cvss_score = score
 
     db_specific = vuln_data.get("database_specific", {})
-    if "severity" in db_specific:
-        sev_str = db_specific["severity"].upper()
-        severity_map = {
-            "CRITICAL": Severity.CRITICAL,
-            "HIGH": Severity.HIGH,
-            "MODERATE": Severity.MEDIUM,
-            "MEDIUM": Severity.MEDIUM,
-            "LOW": Severity.LOW,
-        }
-        resolved = severity_map.get(sev_str, Severity.UNKNOWN)
-        if resolved != Severity.UNKNOWN:
-            severity = resolved
-            severity_source = "osv_database"
+    severity, severity_source = _first_vendor_severity(("osv_database", db_specific))
+
+    if cvss_score is None and isinstance(db_specific, dict):
+        for key in ("cvss", "cvss_score", "cvss_v3", "severity_vectors"):
+            score = _normalize_cvss_score(db_specific.get(key))
+            if score is not None:
+                cvss_score = score
+                break
+
+    if cvss_score is None:
+        score = _normalize_cvss_score(vuln_data.get("severity_vectors"))
+        if score is not None:
+            cvss_score = score
+
+    if cvss_score is None:
+        for affected in vuln_data.get("affected", []):
+            if not isinstance(affected, dict):
+                continue
+            for block_name in ("database_specific", "ecosystem_specific"):
+                block = affected.get(block_name)
+                if not isinstance(block, dict):
+                    continue
+                for key in ("cvss", "cvss_score", "cvss_v3", "severity_vectors"):
+                    score = _normalize_cvss_score(block.get(key))
+                    if score is not None:
+                        cvss_score = score
+                        break
+                if cvss_score is not None:
+                    break
+            if cvss_score is not None:
+                break
 
     if cvss_score is not None:
         severity = cvss_to_severity(cvss_score)
@@ -189,19 +258,18 @@ def parse_osv_severity(vuln_data: dict) -> tuple[Severity, Optional[float], Opti
 
     if severity == Severity.UNKNOWN:
         eco_specific = vuln_data.get("ecosystem_specific", {})
-        if isinstance(eco_specific, dict) and "severity" in eco_specific:
-            sev_str = str(eco_specific["severity"]).upper()
-            severity_map = {
-                "CRITICAL": Severity.CRITICAL,
-                "HIGH": Severity.HIGH,
-                "MODERATE": Severity.MEDIUM,
-                "MEDIUM": Severity.MEDIUM,
-                "LOW": Severity.LOW,
-            }
-            resolved = severity_map.get(sev_str, severity)
-            if resolved != Severity.UNKNOWN:
-                severity = resolved
-                severity_source = "osv_ecosystem"
+        severity, severity_source = _first_vendor_severity(("osv_ecosystem", eco_specific))
+
+    if severity == Severity.UNKNOWN:
+        for affected in vuln_data.get("affected", []):
+            if not isinstance(affected, dict):
+                continue
+            severity, severity_source = _first_vendor_severity(
+                ("osv_affected_database", affected.get("database_specific")),
+                ("osv_affected_ecosystem", affected.get("ecosystem_specific")),
+            )
+            if severity != Severity.UNKNOWN:
+                break
 
     if severity == Severity.UNKNOWN:
         advisory_id = str(vuln_data.get("id", "")).upper()

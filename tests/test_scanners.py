@@ -219,6 +219,38 @@ def test_parse_osv_severity_moderate():
     assert sev == Severity.MEDIUM
 
 
+def test_parse_osv_severity_debian_affected_vendor_severity():
+    vuln = {
+        "id": "DEBIAN-CVE-2024-0001",
+        "affected": [
+            {
+                "package": {"ecosystem": "Debian:12", "name": "openssl"},
+                "database_specific": {"severity": "important"},
+            }
+        ],
+    }
+    sev, score, sev_src = parse_osv_severity(vuln)
+    assert sev == Severity.HIGH
+    assert score is None
+    assert sev_src == "osv_affected_database"
+
+
+def test_parse_osv_severity_affected_cvss_vector():
+    vuln = {
+        "id": "DEBIAN-CVE-2024-0002",
+        "affected": [
+            {
+                "package": {"ecosystem": "Debian:12", "name": "bash"},
+                "ecosystem_specific": {"severity_vectors": ["CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"]},
+            }
+        ],
+    }
+    sev, score, sev_src = parse_osv_severity(vuln)
+    assert sev == Severity.CRITICAL
+    assert score is not None
+    assert sev_src == "cvss"
+
+
 def test_parse_osv_severity_no_data():
     sev, score, _sev_src = parse_osv_severity({})
     assert sev == Severity.UNKNOWN  # no data must not inflate to MEDIUM

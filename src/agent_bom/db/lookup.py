@@ -34,6 +34,7 @@ class LocalVuln:
     severity: str
     cvss_score: Optional[float]
     fixed_version: Optional[str]
+    cvss_vector: Optional[str] = None
     epss_probability: Optional[float] = None
     epss_percentile: Optional[float] = None
     is_kev: bool = False
@@ -139,7 +140,8 @@ def lookup_package(
         rows = conn.execute(
             """
             SELECT
-                v.id, v.summary, v.severity, v.cvss_score, v.fixed_version, v.cwe_ids, COALESCE(v.aliases, '') AS aliases, v.source,
+                v.id, v.summary, v.severity, v.cvss_score, v.cvss_vector, v.fixed_version, v.cwe_ids,
+                COALESCE(v.aliases, '') AS aliases, v.source,
                 v.published, v.modified,
                 a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
                 e.probability AS epss_prob, e.percentile AS epss_pct,
@@ -170,6 +172,7 @@ def lookup_package(
                     summary=row["summary"],
                     severity=row["severity"],
                     cvss_score=row["cvss_score"],
+                    cvss_vector=row["cvss_vector"],
                     fixed_version=row["fixed_version"] or row["fixed"],
                     epss_probability=epss_prob,
                     epss_percentile=epss_pct,
@@ -347,7 +350,8 @@ def lookup_packages_batch(
             # placeholders is only "(?, ?)" repeated — no user data in the SQL string.
             query = f"""
                 SELECT
-                    v.id, v.summary, v.severity, v.cvss_score, v.fixed_version, v.cwe_ids, COALESCE(v.aliases, '') AS aliases, v.source,
+                    v.id, v.summary, v.severity, v.cvss_score, v.cvss_vector, v.fixed_version, v.cwe_ids,
+                    COALESCE(v.aliases, '') AS aliases, v.source,
                     v.published, v.modified,
                     a.ecosystem, a.package_name, a.introduced, a.fixed, a.last_affected,
                     e.probability AS epss_prob, e.percentile AS epss_pct,
@@ -389,6 +393,7 @@ def lookup_packages_batch(
                         summary=row["summary"],
                         severity=row["severity"],
                         cvss_score=row["cvss_score"],
+                        cvss_vector=row["cvss_vector"],
                         fixed_version=row["fixed_version"] or row["fixed"],
                         epss_probability=epss_prob,
                         epss_percentile=epss_pct,

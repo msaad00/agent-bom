@@ -27,8 +27,10 @@ import sqlite3
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import urljoin, urlparse
+
+from agent_bom.scanners.risk import parse_cvss_vector
 
 _logger = logging.getLogger(__name__)
 
@@ -158,6 +160,52 @@ def _cvss_to_severity(score: Optional[float]) -> str:
     return "unknown"
 
 
+def _normalize_sync_cvss_score(value: Any) -> Optional[float]:
+    """Extract a 0-10 CVSS score from numeric fields or vector strings."""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        score = float(value)
+        return score if 0.0 <= score <= 10.0 else None
+    if isinstance(value, str):
+        try:
+            score = float(value)
+            return score if 0.0 <= score <= 10.0 else None
+        except ValueError:
+            return parse_cvss_vector(value)
+    if isinstance(value, dict):
+        for key in ("score", "baseScore", "base_score", "cvss", "vector", "vectorString"):
+            nested_score = _normalize_sync_cvss_score(value.get(key))
+            if nested_score is not None:
+                return nested_score
+    if isinstance(value, list):
+        scores = [_normalize_sync_cvss_score(item) for item in value]
+        valid_scores = [score for score in scores if score is not None]
+        if valid_scores:
+            return max(valid_scores)
+    return None
+
+
+def _normalize_sync_severity_label(value: Any) -> Optional[str]:
+    """Normalize distro/vendor severity labels to DB severity strings."""
+    if value is None:
+        return None
+    label = str(value).strip().replace("-", "_").replace(" ", "_").upper()
+    mapping = {
+        "CRITICAL": "critical",
+        "HIGH": "high",
+        "IMPORTANT": "high",
+        "MODERATE": "medium",
+        "MEDIUM": "medium",
+        "LOW": "low",
+        "MINOR": "low",
+        "NEGLIGIBLE": "low",
+        "UNIMPORTANT": "low",
+        "NONE": "none",
+    }
+    return mapping.get(label)
+
+
 def _now_utc() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -190,39 +238,30 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
     for sev in data.get("severity", []):
         sev_type = sev.get("type", "")
         sev_score = sev.get("score", "")
-        if sev_type in ("CVSS_V3", "CVSS_V4") and sev_score:
+        if sev_type in ("CVSS_V3", "CVSS_V3_1", "CVSS_V4") and sev_score:
             cvss_vector = sev_score
-            # Extract base score from CVSS vector string (e.g. "CVSS:3.1/AV:N/AC:L/...")
             if cvss_score is None:
-                import re
-
-                m = re.search(r"/AV:[NALP]/AC:[LH]", sev_score)
-                if m and sev_score.startswith("CVSS:"):
-                    # Parse base score from vector using cvss lib or approximate
-                    _parts = sev_score.split("/")
-                    # Simple heuristic: count High-impact metrics
-                    _high = sum(1 for p in _parts if p.endswith(":H") or p.endswith(":N") and "UI" in p)
-                    # For accuracy, prefer database_specific score below
+                cvss_score = _normalize_sync_cvss_score(sev_score)
 
     # Pull from database_specific (most reliable source for severity + score)
     db_specific = data.get("database_specific", {})
     if isinstance(db_specific, dict):
         # Severity string (CRITICAL, HIGH, etc.)
-        raw_sev = db_specific.get("severity", "")
-        if isinstance(raw_sev, str) and raw_sev.upper() in ("CRITICAL", "HIGH", "MEDIUM", "LOW"):
-            db_severity = raw_sev.upper()
+        db_severity = _normalize_sync_severity_label(db_specific.get("severity"))
 
-        # Numeric CVSS score
-        raw_cvss = db_specific.get("cvss") or db_specific.get("cvss_score")
-        if raw_cvss is not None:
-            try:
-                cvss_score = float(raw_cvss)
-            except (ValueError, TypeError):
-                pass
+        # Numeric CVSS score or CVSS vector, depending on source.
+        for key in ("cvss", "cvss_score", "cvss_v3", "severity_vectors"):
+            raw_cvss = db_specific.get(key)
+            parsed_score = _normalize_sync_cvss_score(raw_cvss)
+            if parsed_score is not None:
+                cvss_score = parsed_score
+                if cvss_vector is None and isinstance(raw_cvss, str) and raw_cvss.startswith("CVSS:"):
+                    cvss_vector = raw_cvss
+                break
 
     # Determine severity: prefer database_specific string, then derive from CVSS
     if db_severity:
-        severity = db_severity.lower()
+        severity = db_severity
     elif cvss_score is not None:
         severity = _cvss_to_severity(cvss_score)
     else:
@@ -732,13 +771,10 @@ def _ingest_ghsa_advisory(
     cvss_vector: Optional[str] = None
     cvss_obj = advisory.get("cvss") or {}
     if cvss_obj:
-        raw_score = cvss_obj.get("score")
-        if raw_score is not None:
-            try:
-                cvss_score = float(raw_score)
-            except (TypeError, ValueError):
-                pass
         cvss_vector = cvss_obj.get("vector_string")
+        cvss_score = _normalize_sync_cvss_score(cvss_obj.get("score"))
+        if cvss_score is None:
+            cvss_score = _normalize_sync_cvss_score(cvss_vector)
 
     # If CVSS score present but severity not, derive it
     if severity == "unknown" and cvss_score is not None:

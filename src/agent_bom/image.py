@@ -36,6 +36,7 @@ from typing import Optional
 
 from agent_bom.models import Package, PermissionProfile, Severity, Vulnerability
 from agent_bom.sbom import parse_cyclonedx
+from agent_bom.scanners.risk import cvss_to_severity, severity_from_label
 from agent_bom.security import validate_image_ref
 
 _logger = logging.getLogger(__name__)
@@ -161,12 +162,6 @@ def _scan_with_grype(
         if not vuln_id:
             continue
 
-        raw_sev = vuln_data.get("severity", "unknown").upper()
-        try:
-            severity = Severity[raw_sev]
-        except KeyError:
-            severity = Severity.NONE
-
         # Extract CVSS score from Grype's cvss array
         cvss_score: Optional[float] = None
         for cvss in vuln_data.get("cvss", []):
@@ -175,6 +170,9 @@ def _scan_with_grype(
             if score is not None:
                 cvss_score = float(score)
                 break
+        severity = severity_from_label(vuln_data.get("severity"))
+        if severity == Severity.UNKNOWN and cvss_score is not None:
+            severity = cvss_to_severity(cvss_score)
 
         # Fixed version
         fix_info = vuln_data.get("fix", {})

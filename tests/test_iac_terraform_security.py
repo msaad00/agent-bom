@@ -111,7 +111,7 @@ resource "aws_s3_bucket" "private" {
         assert finding.severity == "critical"
         assert finding.category == "terraform"
         assert finding.file_path.endswith("tests/fixtures/iac/terraform/public-s3-bucket/main.tf")
-        assert finding.line_number == 1
+        assert finding.line_number == 4
         assert "CIS-AWS-2.1.2" in finding.compliance
         assert "NIST-AC-3" in finding.compliance
         assert "Use private ACL" in finding.message

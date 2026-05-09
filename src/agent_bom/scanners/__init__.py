@@ -68,6 +68,7 @@ from agent_bom.scanners.risk import (
     cvss_to_severity,
     parse_cvss_vector,
     parse_osv_severity,
+    severity_from_label,
 )
 from agent_bom.scanners.state import (
     _bump_scan_perf,
@@ -503,14 +504,15 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
 
     Canonicalizes ID to CVE when available (prefer CVE-xxxx over GHSA/PYSEC).
     """
-    sev_map = {
-        "critical": Severity.CRITICAL,
-        "high": Severity.HIGH,
-        "medium": Severity.MEDIUM,
-        "low": Severity.LOW,
-    }
-    severity = sev_map.get((lv.severity or "").lower(), Severity.UNKNOWN)
+    severity = severity_from_label(getattr(lv, "severity", None))
     severity_source = None
+    cvss_score = getattr(lv, "cvss_score", None)
+    cvss_vector = getattr(lv, "cvss_vector", None)
+    if cvss_score is None and isinstance(cvss_vector, str) and cvss_vector:
+        cvss_score = parse_cvss_vector(cvss_vector)
+    if severity == Severity.UNKNOWN and cvss_score is not None:
+        severity = cvss_to_severity(cvss_score)
+        severity_source = "cvss"
 
     # Canonicalize: prefer CVE ID over GHSA/PYSEC for consistency with Trivy/NVD
     raw_id = lv.id
@@ -539,7 +541,7 @@ def _local_vuln_to_vulnerability(lv: "Any") -> Vulnerability:
         summary=lv.summary or "No description available",
         severity=severity,
         severity_source=severity_source,
-        cvss_score=lv.cvss_score,
+        cvss_score=cvss_score,
         fixed_version=lv.fixed_version if _is_valid_fix_version(lv.fixed_version or "") else None,
         epss_score=lv.epss_probability,
         epss_percentile=lv.epss_percentile,

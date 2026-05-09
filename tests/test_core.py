@@ -2354,6 +2354,7 @@ def test_grype_scan_mock(monkeypatch, tmp_path):
     assert len(pkgs[0].vulnerabilities) == 1
     vuln = pkgs[0].vulnerabilities[0]
     assert vuln.id == "CVE-2023-32681"
+    assert vuln.severity == Severity.MEDIUM
     assert vuln.cvss_score == 6.1
     assert vuln.fixed_version == "2.31.0"
 

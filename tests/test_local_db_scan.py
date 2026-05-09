@@ -29,6 +29,7 @@ def _make_local_vuln(vuln_id: str = "CVE-2024-1111", severity: str = "high", cvs
     lv.summary = f"Test vuln {vuln_id}"
     lv.severity = severity
     lv.cvss_score = cvss
+    lv.cvss_vector = None
     lv.fixed_version = "2.32.0"
     lv.epss_probability = 0.12
     lv.epss_percentile = 0.75
@@ -60,6 +61,17 @@ def test_local_vuln_to_vulnerability_unknown_severity():
     lv = _make_local_vuln(severity="", cvss=None)
     v = _local_vuln_to_vulnerability(lv)
     assert v.severity == Severity.UNKNOWN  # unknown severity must not silently inflate to MEDIUM
+
+
+def test_local_vuln_to_vulnerability_derives_severity_from_cvss_vector():
+    from agent_bom.scanners import _local_vuln_to_vulnerability
+
+    lv = _make_local_vuln(vuln_id="DEBIAN-CVE-2014-6271", severity="unknown", cvss=None)
+    lv.cvss_vector = "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+    v = _local_vuln_to_vulnerability(lv)
+    assert v.severity == Severity.CRITICAL
+    assert v.severity_source == "cvss"
+    assert v.cvss_score == 9.8
 
 
 def test_local_vuln_to_vulnerability_osv_id_without_score_uses_medium_fallback():

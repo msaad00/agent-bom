@@ -12,7 +12,7 @@ from typing import Optional
 import click
 from rich.console import Console
 
-from agent_bom.cli._common import _make_console, read_json_file_for_cli
+from agent_bom.cli._common import _build_agents_from_inventory, _make_console, read_json_file_for_cli
 from agent_bom.discovery import discover_all
 from agent_bom.inventory import _inventory_schema_path, _inventory_validator
 from agent_bom.mcp_blocklist import flag_blocklisted_mcp_servers
@@ -38,9 +38,11 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
 
     discovery_stdout = redirect_stdout(StringIO()) if as_json else nullcontext()
     discovery_stderr = redirect_stderr(StringIO()) if as_json else nullcontext()
+    inventory_source: Optional[str] = None
     with discovery_stdout, discovery_stderr:
         if config:
             config_path = Path(config)
+            inventory_source = str(config_path)
             try:
                 config_data = read_json_file_for_cli(config_path, label="MCP config")
                 from agent_bom.discovery import parse_mcp_config
@@ -64,11 +66,22 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
             except Exception as e:
                 raise click.ClickException(f"Error parsing MCP config {config_path}: {e}") from e
         else:
-            agents = discover_all(project_dir=project)
+            project_inventory = _project_inventory_path(project)
+            if project_inventory is not None:
+                inventory_source = str(project_inventory)
+                from agent_bom.inventory import load_inventory
+
+                try:
+                    inventory_data = load_inventory(str(project_inventory))
+                except (OSError, ValueError) as exc:
+                    raise click.ClickException(f"Error loading project inventory {project_inventory}: {exc}") from exc
+                agents = _build_agents_from_inventory(inventory_data, str(project_inventory))
+            else:
+                agents = discover_all(project_dir=project)
 
     if not agents:
         if as_json:
-            _print_inventory_json(agents, config)
+            _print_inventory_json(agents, inventory_source)
             return
         con.print("\n[yellow]No MCP configurations found.[/yellow]")
         sys.exit(0)
@@ -84,15 +97,27 @@ def inventory(config: Optional[str], project: Optional[str], transitive: bool, m
         for server in agent.mcp_servers:
             if server.security_blocked:
                 continue  # Don't extract from security-blocked servers
+            if server.packages:
+                continue
             server.packages = extract_packages(server, resolve_transitive=transitive, max_depth=max_depth)
 
     if as_json:
-        _print_inventory_json(agents, config)
+        _print_inventory_json(agents, inventory_source)
         return
 
     report = AIBOMReport(agents=agents)
     print_summary(report)
     print_agent_tree(report)
+
+
+def _project_inventory_path(project: Optional[str]) -> Path | None:
+    if not project:
+        return None
+    project_path = Path(project)
+    if not project_path.is_dir():
+        return None
+    inventory_path = project_path / "inventory.json"
+    return inventory_path if inventory_path.is_file() else None
 
 
 def _print_inventory_json(agents, config: Optional[str]) -> None:

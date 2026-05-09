@@ -76,6 +76,53 @@ def test_inventory_json_with_config_reports_completeness(tmp_path):
         assert completeness["sources"][0]["status"] == "present"
 
 
+def test_inventory_prefers_project_inventory_json(tmp_path):
+    runner = CliRunner()
+    project_inventory = {
+        "schema_version": "1",
+        "generated_at": "2026-05-09T00:00:00Z",
+        "agents": [
+            {
+                "name": "operator-agent",
+                "agent_type": "custom",
+                "mcp_servers": [
+                    {
+                        "name": "declared-server",
+                        "command": "npx",
+                        "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+                        "packages": [{"name": "left-pad", "version": "1.3.0", "ecosystem": "npm"}],
+                    }
+                ],
+            }
+        ],
+    }
+    (tmp_path / "inventory.json").write_text(json.dumps(project_inventory), encoding="utf-8")
+    (tmp_path / ".cursor").mkdir()
+    (tmp_path / ".cursor" / "mcp.json").write_text(
+        json.dumps({"mcpServers": {"runtime-only": {"command": "node", "args": ["server.js"]}}}),
+        encoding="utf-8",
+    )
+
+    with (
+        patch("agent_bom.cli._inventory.discover_all") as mock_discover,
+        patch("agent_bom.cli._inventory.extract_packages") as mock_extract,
+    ):
+        result = runner.invoke(inventory, ["-p", str(tmp_path), "--json"])
+
+    assert result.exit_code == 0
+    mock_discover.assert_not_called()
+    mock_extract.assert_not_called()
+    data = json.loads(result.output)
+    assert data["summary"]["total_agents"] == 1
+    assert data["summary"]["total_mcp_servers"] == 1
+    assert data["summary"]["total_packages"] == 1
+    assert data["agents"][0]["name"] == "operator-agent"
+    server = data["agents"][0]["mcp_servers"][0]
+    assert server["name"] == "declared-server"
+    assert server["packages"][0]["name"] == "left-pad"
+    assert data["discovery_completeness"]["sources"][0]["expanded"].endswith("inventory.json")
+
+
 def test_inventory_with_bad_config(tmp_path):
     runner = CliRunner()
     config_file = tmp_path / "bad.json"

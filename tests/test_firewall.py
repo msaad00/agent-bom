@@ -6,7 +6,9 @@ import json
 from pathlib import Path
 
 import pytest
+from click.testing import CliRunner
 
+from agent_bom.cli._firewall import firewall_group
 from agent_bom.firewall import (
     AgentFirewallPolicy,
     FirewallDecision,
@@ -222,3 +224,70 @@ def test_role_only_prefix_does_not_match():
         source_roles={"trusted"},
     )
     assert result.decision == FirewallDecision.ALLOW
+
+
+def test_firewall_check_command_uses_scriptable_exit_codes(tmp_path: Path):
+    policy_path = tmp_path / "firewall.json"
+    policy_path.write_text(
+        json.dumps(
+            {
+                "default_decision": "deny",
+                "rules": [
+                    {"source": "cursor", "target": "github-mcp", "decision": "allow"},
+                    {"source": "cursor", "target": "snowflake-cli", "decision": "warn"},
+                ],
+            }
+        )
+    )
+    runner = CliRunner()
+
+    allow = runner.invoke(firewall_group, ["check", str(policy_path), "cursor", "github-mcp"])
+    warn = runner.invoke(firewall_group, ["check", str(policy_path), "cursor", "snowflake-cli"])
+    deny = runner.invoke(firewall_group, ["check", str(policy_path), "cursor", "prod-db"])
+
+    assert allow.exit_code == 0, allow.output
+    assert warn.exit_code == 1, warn.output
+    assert deny.exit_code == 2, deny.output
+    assert "ALLOW" in allow.output
+    assert "WARN" in warn.output
+    assert "DENY" in deny.output
+
+
+def test_firewall_check_command_json_output(tmp_path: Path):
+    policy_path = tmp_path / "firewall.json"
+    policy_path.write_text(
+        json.dumps(
+            {
+                "enforcement_mode": "dry_run",
+                "rules": [
+                    {
+                        "source": "role:untrusted",
+                        "target": "role:data-plane",
+                        "decision": "deny",
+                        "description": "shadow deny before enforcement",
+                    }
+                ],
+            }
+        )
+    )
+    result = CliRunner().invoke(
+        firewall_group,
+        [
+            "check",
+            str(policy_path),
+            "claude-desktop",
+            "snowflake-cli",
+            "--source-role",
+            "untrusted",
+            "--target-role",
+            "data-plane",
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 1, result.output
+    body = json.loads(result.output)
+    assert body["decision"] == "deny"
+    assert body["effective_decision"] == "warn"
+    assert body["matched_rule"]["description"] == "shadow deny before enforcement"
+    assert body["policy"]["enforcement_mode"] == "dry_run"

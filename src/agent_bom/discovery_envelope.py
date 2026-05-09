@@ -1,4 +1,4 @@
-"""Per-run discovery envelope (#2083 PR A).
+"""Per-run discovery envelope (#2083).
 
 The envelope is the **per-run trust contract** for an Agent. It records
 *what the scan actually did* on this run: which mode it ran in, what scope
@@ -18,8 +18,9 @@ Operators running agent-bom locally, on endpoints, or inside cloud / SaaS
 infrastructure get a code-backed answer for "what did this scan do" without
 having to read the provider source.
 
-Scope (PR A): the canonical model. AWS is wired as the first producer.
-Other providers and connectors follow in subsequent PRs (#2083 series).
+Supported cloud, SaaS, and local providers attach this envelope when they
+return provider-backed Agents. Generic local discovery and older persisted
+records may not have one, so consumers must treat the field as optional.
 """
 
 from __future__ import annotations

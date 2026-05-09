@@ -25,67 +25,26 @@ Operational consequences:
 pip install agent-bom    → shared core engine plus focused CLI entry points
 ```
 
+Read the architecture in one direction: collect evidence, normalize it into one
+AI-BOM/security model, then use that same model for local scans, the
+self-hosted control plane, runtime enforcement, and audit/compliance outputs.
+This diagram is intentionally a product map, not a full module graph.
+
 ```mermaid
-graph TB
-    subgraph ScanSurface["Scan surface"]
-        Scan["agents\nDiscovery + scan pipeline"]
-        Check_Cmd["check\nPre-install CVE gate"]
-        Image_Cmd["image / fs / sbom\nContainer + filesystem"]
-        Graph_Cmd["graph\nGraphML / Neo4j / DOT"]
-        MCP_Cmd["mcp\ninventory / introspect / registry"]
-    end
+flowchart TB
+    Sources["1. Evidence sources\nRepos, lockfiles, SBOMs\nAgents, MCP servers, tools\nCloud, IaC, containers, GPUs\nRuntime proxy and gateway events"]
+    Model["2. Shared evidence model\nInventory\nFindings + enrichment\nSecurity graph\nAudit + provenance"]
+    Surfaces["3. Product surfaces\nLocal scan: CLI, Docker, GitHub Action\nControl plane: REST API, UI, fleet, Helm\nRuntime enforcement: MCP server, proxy, gateway, Shield"]
+    Outputs["4. Decisions and artifacts\nDeveloper gates: terminal, SARIF, HTML\nSecurity triage: blast radius, graph paths\nGovernance: compliance evidence, audit trail\nOperations: fleet state, runtime blocks"]
 
-    subgraph RuntimeSurface["Runtime surface"]
-        ShieldProxy["proxy\nMCP proxy + audit"]
-        Protect["protect --shield\n8 detectors + deep defense"]
-        Run_Cmd["run\nZero-config proxy"]
-    end
-
-    subgraph CloudSurface["Cloud posture surface"]
-        AWS["aws / azure / gcp\nCIS benchmarks"]
-        Platforms["snowflake / databricks\nhuggingface / ollama"]
-        Posture["posture\nCross-cloud summary"]
-    end
-
-    subgraph IACSurface["IaC surface"]
-        IaCScan["scan\n138 rules × 5 formats"]
-        Policy["policy\ntemplate / apply"]
-    end
-
-    subgraph OpsSurface["Fleet + control-plane surface"]
-        Fleet["fleet\nsync / list / stats"]
-        Serve["serve / api\nDashboard + REST"]
-        Report["report\nhistory / analytics"]
-    end
-
-    subgraph Core["Core Engine"]
-        Discovery["Discovery\n29 first-class clients"]
-        Parser["Package Parser\n15 ecosystems"]
-        Scanner["CVE Scanner\nOSV + NVD + GHSA"]
-        Blast["Blast Radius\npackage → finding → server → credential → tool"]
-        IaC["IaC Engine\n138 rules"]
-        CIS["CIS Benchmarks\nAWS / Azure / GCP"]
-    end
-
-    subgraph Output["Output"]
-        Console["Console\nTable / verbose"]
-        Formats["Formats\nJSON / SARIF / HTML / CycloneDX"]
-        API["REST API + MCP\n36 tools"]
-        RuntimeProxy["Runtime Proxy\n7 inline detectors"]
-    end
-
-    Scan & MCP_Cmd --> Discovery
-    Image_Cmd --> Parser
-    IaCScan --> IaC
-    AWS & Platforms --> CIS
-    Check_Cmd --> Scanner
-    Run_Cmd --> RuntimeProxy
-    ShieldProxy --> RuntimeProxy
-
-    Discovery --> Parser --> Scanner --> Blast
-    Blast --> Console & Formats & API
-    IaC & CIS --> Console
+    Sources --> Model --> Surfaces --> Outputs
 ```
+
+| Surface | First command | Primary artifact | Production move |
+|---|---|---|---|
+| Local scan | `agent-bom agents -p .` | findings, SBOM, SARIF, HTML, graph export | GitHub Action or Docker scan in CI |
+| Control plane | `agent-bom agents -p . --push-url ...` | fleet inventory, scan jobs, graph state | Helm/EKS with Postgres and tenant auth |
+| Runtime enforcement | `agent-bom proxy ...` or `agent-bom mcp server` | audit JSONL, policy decisions, blocks | gateway/proxy sidecars and Shield SDK |
 
 ---
 

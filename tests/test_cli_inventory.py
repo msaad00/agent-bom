@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
+from agent_bom.cli import main
 from agent_bom.cli._inventory import _inventory_schema_path, completions_cmd, inventory, validate, where
 
 # ---------------------------------------------------------------------------
@@ -32,6 +33,16 @@ def test_inventory_json_no_agents_includes_completeness():
         assert data["agents"] == []
         assert data["discovery_completeness"]["path_count"] >= 1
         assert "actual_server_count" in data["discovery_completeness"]
+
+
+def test_mcp_validate_invalid_json_exits_nonzero(tmp_path):
+    bad = tmp_path / "bad.json"
+    bad.write_text("{bad", encoding="utf-8")
+
+    result = CliRunner().invoke(main, ["mcp", "validate", str(bad)])
+
+    assert result.exit_code != 0
+    assert "Error:" in result.output
 
 
 def test_inventory_with_agents():

@@ -73,6 +73,7 @@ def test_scan_help():
     assert "--format" in result.output
     assert "--no-discover" in result.output
     assert "--inventory-only" in result.output
+    assert "--no-follow-symlinks" in result.output
     assert "graph (Cytoscape.js graph JSON)" in normalized
     assert "graph (raw graph JSON)" not in normalized
 

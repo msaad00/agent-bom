@@ -248,11 +248,18 @@ def resolve_container_runtime(runtime: SandboxRuntime) -> str:
     raise RuntimeError("MCP sandbox isolation requires Docker or Podman on PATH")
 
 
-def build_sandboxed_command(server_cmd: list[str], config: SandboxConfig) -> tuple[list[str], dict[str, object]]:
+def build_sandboxed_command(
+    server_cmd: list[str],
+    config: SandboxConfig,
+    *,
+    resolve_runtime: bool = True,
+) -> tuple[list[str], dict[str, object]]:
     """Return the command used to run the MCP server under container isolation."""
     if not config.enabled:
         return server_cmd, config.evidence()
-    runtime = resolve_container_runtime(config.runtime)
+    runtime = resolve_container_runtime(config.runtime) if resolve_runtime else config.runtime
+    if runtime == "auto":
+        runtime = "docker"
     docker_args = _sandbox_docker_args(config)
 
     if _is_container_run(server_cmd):

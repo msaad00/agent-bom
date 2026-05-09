@@ -1,9 +1,15 @@
 # Discovery envelope (`#2083`)
 
-The **discovery envelope** is the per-run trust contract attached to every
-`Agent` that agent-bom discovers. It records *what the scan actually did*
-this run: the scan mode, the explicit scope, the IAM/API permissions
-exercised, and whether sensitive values were redacted or never collected.
+The **discovery envelope** is the per-run trust contract attached to
+provider-backed `Agent` records when the provider supports the contract. It
+records *what the scan actually did* this run: the scan mode, the explicit
+scope, the IAM/API permissions exercised, and whether sensitive values were
+redacted or never collected.
+
+The field is intentionally optional. Generic local discovery paths and older
+persisted records can still return an `Agent` without `discovery_envelope`.
+Consumers should display the envelope when present and avoid treating a missing
+envelope as proof that discovery was unsafe.
 
 This is distinct from `discovery_provenance` (sanitized record of *where the
 asset came from*). Both can coexist on the same `Agent`:
@@ -67,9 +73,9 @@ forward-compatible producer doesn't crash an older consumer.
 
 ## Producers
 
-Every cloud / SaaS / local provider populates the envelope at the end of
-its `discover()` and attaches it to every returned `Agent` via
-`attach_envelope_to_agents(...)`. As of PR B the wired set is:
+Supported cloud / SaaS / local providers populate the envelope at the end of
+`discover()` and attach it to returned `Agent` records via
+`attach_envelope_to_agents(...)`. The current wired set is:
 
 | Provider | `scan_mode` |
 |---|---|
@@ -78,6 +84,10 @@ its `discover()` and attaches it to every returned `Agent` via
 | `azure` | `cloud_read_only` |
 | `coreweave` | `cloud_read_only` |
 | `nebius` | `cloud_read_only` |
+| `lambda_labs` | `cloud_read_only` |
+| `runpod` | `cloud_read_only` |
+| `vastai` | `cloud_read_only` |
+| `crusoe` | `cloud_read_only` |
 | `snowflake` | `saas_read_only` |
 | `databricks` | `saas_read_only` |
 | `mlflow_provider` | `saas_read_only` |
@@ -86,10 +96,12 @@ its `discover()` and attaches it to every returned `Agent` via
 | `openai_provider` | `saas_read_only` |
 | `ollama` | `local_only` |
 
-A parametric test in `tests/test_discovery_envelope.py` enforces that each
-of these providers references the canonical envelope type and uses its
-declared `ScanMode`, so a future refactor can't quietly reclass a SaaS
-provider as `cloud_read_only` (or vice versa) without the test catching it.
+Parametric tests in `tests/test_discovery_envelope.py` and
+`tests/test_discovery_envelope_lock_in.py` enforce that these providers
+reference the canonical envelope type, use their declared `ScanMode`, declare
+the expected redaction posture, and only list read-style permissions. A future
+refactor cannot quietly reclass a SaaS provider as `cloud_read_only`, skip the
+central sanitizer, or add a write permission without the tests catching it.
 
 ```python
 from agent_bom.discovery_envelope import DiscoveryEnvelope, RedactionStatus, ScanMode
@@ -118,9 +130,9 @@ TypeScript types in `ui/lib/api-types.ts` carry the canonical
 The agents page renders a `DiscoveryEnvelopeCard` on each agent's expanded
 detail view (mounted only when the envelope is present). The card shows:
 
-- a clear data-residency note ("scan ran inside your environment with
-  read-only roles, no findings are sent to agent-bom") so operators
-  understand the trust posture without reading docs,
+- a clear data-residency note explaining that provider reads run from the
+  operator's local or self-hosted deployment boundary, not from an external
+  agent-bom SaaS service,
 - `scan_mode` + `redaction_status` chips,
 - the `discovery_scope` list as compact mono-styled tags,
 - the `permissions_used` list collapsed by default with a `<details>`
@@ -156,13 +168,13 @@ verifies every module declaring `permissions_used` is also in the matrix
 table — so a new provider added in a follow-up PR-B-style change can't
 silently bypass the least-privilege check.
 
-## Roadmap
+## Merge history
 
 - **PR A (merged)** — schema + Agent model field + AWS producer + tests.
 - **PR B (merged)** — provider parity: every cloud / SaaS / local provider
   populates the envelope.
 - **PR C (merged)** — API + UI surface; envelope visible in the dashboard.
-- **PR D (this PR)** — cross-provider redaction + least-privilege lock-in
+- **PR D (merged)** — cross-provider redaction + least-privilege lock-in
   matrix.
 
-#2083 closes with PR D.
+#2083 is closed by the merged PR A-D series.

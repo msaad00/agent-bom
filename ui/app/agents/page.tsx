@@ -1425,7 +1425,7 @@ export default function AgentsPage() {
   );
 }
 
-// ─── Discovery envelope card (#2083 PR C) ─────────────────────────────────
+// ─── Discovery envelope card (#2083) ──────────────────────────────────────
 
 const SCAN_MODE_LABEL: Record<string, string> = {
   local_only: "local only",
@@ -1456,7 +1456,7 @@ function DiscoveryEnvelopeCard({ envelope }: { envelope: DiscoveryEnvelope }) {
         Scan trust contract
       </div>
       <p className="mb-2 text-[11px] text-emerald-200/80">
-        Scan ran inside your environment with read-only roles. No findings, inventory, or credentials are sent to agent-bom — everything stays in your deployment.
+        Scan ran from your local or self-hosted deployment boundary with read-only roles. Sensitive values are never collected or are redacted before storage.
       </p>
       <div className="mb-2 flex flex-wrap gap-1.5">
         <span className="rounded border border-emerald-800 bg-emerald-950/60 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.14em] text-emerald-300">

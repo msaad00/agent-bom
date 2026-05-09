@@ -228,6 +228,10 @@ def test_attach_envelope_helper_skips_agents_with_existing_envelope() -> None:
         ("agent_bom.cloud.azure", ScanMode.CLOUD_READ_ONLY),
         ("agent_bom.cloud.coreweave", ScanMode.CLOUD_READ_ONLY),
         ("agent_bom.cloud.nebius", ScanMode.CLOUD_READ_ONLY),
+        ("agent_bom.cloud.lambda_labs", ScanMode.CLOUD_READ_ONLY),
+        ("agent_bom.cloud.runpod", ScanMode.CLOUD_READ_ONLY),
+        ("agent_bom.cloud.vastai", ScanMode.CLOUD_READ_ONLY),
+        ("agent_bom.cloud.crusoe", ScanMode.CLOUD_READ_ONLY),
         ("agent_bom.cloud.snowflake", ScanMode.SAAS_READ_ONLY),
         ("agent_bom.cloud.databricks", ScanMode.SAAS_READ_ONLY),
         ("agent_bom.cloud.mlflow_provider", ScanMode.SAAS_READ_ONLY),
@@ -238,8 +242,8 @@ def test_attach_envelope_helper_skips_agents_with_existing_envelope() -> None:
     ],
 )
 def test_provider_imports_envelope_and_attach_helper(module_path, expected_mode):
-    """Every PR-B-wired provider imports the envelope helpers + uses the
-    right ScanMode for its surface.
+    """Every envelope-wired provider imports the helpers and uses the right
+    ScanMode for its surface.
 
     Guards against regressions where a provider drops the import or quietly
     switches surfaces (e.g. SaaS reclassed as cloud_read_only).

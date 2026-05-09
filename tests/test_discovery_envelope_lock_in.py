@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import importlib
 import re
+from pathlib import Path
 
 import pytest
 
@@ -390,3 +391,20 @@ def test_provider_table_covers_every_wired_provider() -> None:
             assert full in declared, (
                 f"{full} declares permissions_used but is missing from the PROVIDERS table in test_discovery_envelope_lock_in.py"
             )
+
+
+def test_docs_provider_table_matches_lock_in_matrix() -> None:
+    """Keep the public provider table aligned with the enforced provider set."""
+
+    repo_root = Path(__file__).resolve().parents[1]
+    docs = (repo_root / "docs" / "DISCOVERY_ENVELOPE.md").read_text()
+    documented = {
+        match.group(1)
+        for match in re.finditer(
+            r"^\| `([^`]+)` \| `(?:cloud_read_only|saas_read_only|local_only)` \|$",
+            docs,
+            re.MULTILINE,
+        )
+    }
+    expected = {module_path.rsplit(".", 1)[-1] for module_path, _, _ in PROVIDERS}
+    assert documented == expected

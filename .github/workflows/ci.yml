@@ -30,6 +30,7 @@ jobs:
     outputs:
       action: ${{ steps.classify.outputs.action }}
       alpine: ${{ steps.classify.outputs.alpine }}
+      endpoint: ${{ steps.classify.outputs.endpoint }}
       postgres: ${{ steps.classify.outputs.postgres }}
       ui: ${{ steps.classify.outputs.ui }}
     steps:
@@ -45,6 +46,7 @@ jobs:
           changed="$(git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}")"
           action=false
           alpine=false
+          endpoint=false
           postgres=false
           # UI Validate boots a real Next.js standalone container and runs a
           # Playwright e2e suite — slow, occasionally cold-runner flaky, and
@@ -62,11 +64,15 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(src/agent_bom/api/postgres_|src/agent_bom/api/storage_schema\.py|tests/test_postgres_|\.github/workflows/ci\.yml$)'; then
             postgres=true
           fi
+          if printf '%s\n' "$changed" | grep -Eq '^(deploy/endpoints/|scripts/(build-[^/]+|render_homebrew_formula\.py)|src/agent_bom/cli/_runtime\.py|tests/test_cli_runtime\.py|pyproject\.toml|uv\.lock|\.github/actions/setup-python/|\.github/workflows/ci\.yml$|site-docs/deployment/aws-company-rollout\.md$)'; then
+            endpoint=true
+          fi
           if printf '%s\n' "$changed" | grep -Eq '^(ui/|action\.yml|contracts/|src/agent_bom/(api/(routes/|models\.py|server\.py)|graph/|context_graph\.py|graph_schema\.py)|src/agent_bom/models\.py|\.github/workflows/ci\.yml$)'; then
             ui=true
           fi
           echo "action=${action}" >> "$GITHUB_OUTPUT"
           echo "alpine=${alpine}" >> "$GITHUB_OUTPUT"
+          echo "endpoint=${endpoint}" >> "$GITHUB_OUTPUT"
           echo "postgres=${postgres}" >> "$GITHUB_OUTPUT"
           echo "ui=${ui}" >> "$GITHUB_OUTPUT"
           {
@@ -74,6 +80,7 @@ jobs:
             echo ""
             echo "- GitHub Action dogfood required: \`${action}\`"
             echo "- Alpine/musl compatibility required: \`${alpine}\`"
+            echo "- Endpoint packaging required: \`${endpoint}\`"
             echo "- Real Postgres integration required: \`${postgres}\`"
             echo "- UI Validate (lint + test + build + e2e) required: \`${ui}\`"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -442,6 +449,8 @@ jobs:
     name: Endpoint Packaging (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    needs: changes
+    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.endpoint == 'true')
     permissions:
       contents: read
     strategy:

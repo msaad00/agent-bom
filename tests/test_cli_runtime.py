@@ -311,6 +311,29 @@ def test_proxy_configure_passes_control_plane_settings():
     assert mock_auto_configure.call_args.kwargs["audit_push_interval"] == 15
 
 
+def test_proxy_configure_passes_sandbox_settings():
+    runner = CliRunner()
+    with (
+        patch("agent_bom.discovery.discover_all", return_value=[]),
+        patch("agent_bom.proxy_configure.auto_configure_proxies", return_value=[]) as mock_auto_configure,
+    ):
+        result = runner.invoke(
+            proxy_configure_cmd,
+            [
+                "--sandbox-image",
+                "ghcr.io/acme/mcp-runtime@sha256:" + "a" * 64,
+                "--sandbox-image-pin-policy",
+                "enforce",
+                "--sandbox-mount",
+                "/workspace:/workspace:ro",
+            ],
+        )
+        assert result.exit_code == 0
+    assert mock_auto_configure.call_args.kwargs["sandbox_image"].startswith("ghcr.io/acme/mcp-runtime@sha256:")
+    assert mock_auto_configure.call_args.kwargs["sandbox_image_pin_policy"] == "enforce"
+    assert mock_auto_configure.call_args.kwargs["sandbox_mounts"] == ("/workspace:/workspace:ro",)
+
+
 def test_proxy_bootstrap_writes_bundle(tmp_path):
     runner = CliRunner()
     result = runner.invoke(

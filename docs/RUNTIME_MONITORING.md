@@ -170,7 +170,10 @@ For Claude Desktop, Claude Code, and Cortex JSON configs, you can auto-wrap elig
 agent-bom proxy-configure --log-dir ~/.agent-bom/logs --detect-credentials
 ```
 
-Add `--apply` to persist the wrapped config entries.
+Add `--apply` to persist the wrapped config entries. Generated configs include
+`--no-isolate` unless you pass `--sandbox-image`; that keeps audit/policy mode
+explicit and avoids implying process containment without an operator-provided
+Docker/Podman runtime image.
 
 If you need cross-agent correlation and the broader 8-detector runtime engine, use `agent-bom runtime protect --shield` alongside or upstream of the proxy pipeline.
 

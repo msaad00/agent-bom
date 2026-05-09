@@ -93,7 +93,11 @@ args = ["proxy", "--log", "~/.agent-bom/logs/filesystem.jsonl", "--", "npx", "@m
 ## Runtime proxy notes
 
 - `agent-bom proxy` is best when the client talks to a third-party stdio server and you want runtime inspection.
-- `agent-bom proxy-configure --apply` targets JSON MCP configs and can now stamp control-plane policy/audit settings into the wrapped proxy command.
+- `agent-bom proxy-configure --apply` targets JSON MCP configs and can now
+  stamp control-plane policy/audit settings into the wrapped proxy command.
+  Generated configs include `--no-isolate` unless `--sandbox-image` is supplied,
+  so process containment is never implied without an operator-provided
+  Docker/Podman runtime image.
 - `agent-bom proxy-bootstrap --bundle-dir ./endpoint-bundle --control-plane-url https://agent-bom.example.com --push-url https://agent-bom.example.com/v1/fleet/sync` writes managed rollout artifacts for macOS/Linux and Windows without hand-editing JSON on every machine.
 - the bundle now also includes Jamf, Intune, and Kandji wrappers plus repo-shipped `.pkg` / `.msi` build scripts for IT-owned rollout
 - stdio transports have no native HTTP header channel. When a client or upstream includes W3C trace context in JSON-RPC `_meta.traceparent`, `_meta.tracestate`, or `_meta.baggage`, the proxy preserves those fields and rehydrates them onto the paired response when the upstream does not echo them back.

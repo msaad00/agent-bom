@@ -8,6 +8,8 @@ Tests cover:
 - log_dir injects --log flag with slugified filename
 - detect_credentials injects --detect-credentials flag
 - block_undeclared injects --block-undeclared flag
+- no sandbox image injects --no-isolate so generated configs stay runnable
+- sandbox image injects sandbox flags for contained stdio proxy configs
 - ProxyConfig.as_json_entry() structure
 - apply_proxy_configs() dry_run=True returns 0, no file changes
 - apply_proxy_configs() patches mcpServers in JSON config file
@@ -68,6 +70,7 @@ def test_generates_config_for_stdio_server():
     assert "@modelcontextprotocol/server-fs" in cfg.proxied_args
     assert "--detect-credentials" in cfg.proxied_args
     assert "--block-undeclared" in cfg.proxied_args
+    assert "--no-isolate" in cfg.proxied_args
 
 
 def test_skips_sse_server():
@@ -127,6 +130,7 @@ def test_all_flags_together():
     assert "--log" in args
     assert "--detect-credentials" in args
     assert "--block-undeclared" in args
+    assert "--no-isolate" in args
 
 
 def test_control_plane_flags_injected():
@@ -158,8 +162,8 @@ def test_no_flags_minimal_proxied_args():
     agents = [_agent([server])]
     configs = auto_configure_proxies(agents, secure_defaults=False)
     cfg = configs[0]
-    # Should be: ["--", "uvx", "mcp-server-git"]
-    assert cfg.proxied_args == ["--", "uvx", "mcp-server-git"]
+    # Should be explicit audit/policy-only mode when no sandbox image is provided.
+    assert cfg.proxied_args == ["--no-isolate", "--", "uvx", "mcp-server-git"]
 
 
 def test_secure_defaults_can_be_disabled():
@@ -168,6 +172,26 @@ def test_secure_defaults_can_be_disabled():
     args = configs[0].proxied_args
     assert "--detect-credentials" not in args
     assert "--block-undeclared" not in args
+    assert "--no-isolate" in args
+
+
+def test_sandbox_flags_injected_when_image_provided():
+    agents = [_agent([_stdio()])]
+    configs = auto_configure_proxies(
+        agents,
+        sandbox_image="ghcr.io/acme/mcp-runtime@sha256:" + "a" * 64,
+        sandbox_image_pin_policy="enforce",
+        sandbox_mounts=("/workspace:/workspace:ro",),
+    )
+    args = configs[0].proxied_args
+
+    assert "--no-isolate" not in args
+    assert "--sandbox-image" in args
+    assert args[args.index("--sandbox-image") + 1].startswith("ghcr.io/acme/mcp-runtime@sha256:")
+    assert "--sandbox-image-pin-policy" in args
+    assert args[args.index("--sandbox-image-pin-policy") + 1] == "enforce"
+    assert "--sandbox-mount" in args
+    assert args[args.index("--sandbox-mount") + 1] == "/workspace:/workspace:ro"
 
 
 def test_original_command_and_args_preserved():

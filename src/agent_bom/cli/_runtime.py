@@ -351,6 +351,25 @@ def proxy_cmd(
 @click.option("--detect-credentials", is_flag=True, help="Enable credential leak detection in each proxy")
 @click.option("--block-undeclared", is_flag=True, help="Block undeclared tools in each proxy")
 @click.option(
+    "--sandbox-image",
+    default=None,
+    envvar="AGENT_BOM_MCP_SANDBOX_IMAGE",
+    help="Container image for generated stdio proxy configs. Omit to generate --no-isolate audit/policy configs.",
+)
+@click.option(
+    "--sandbox-image-pin-policy",
+    default=None,
+    envvar="AGENT_BOM_MCP_SANDBOX_IMAGE_PIN_POLICY",
+    type=click.Choice(["off", "warn", "enforce"]),
+    help="Image pin policy for generated sandboxed proxy configs.",
+)
+@click.option(
+    "--sandbox-mount",
+    multiple=True,
+    metavar="HOST:CONTAINER[:ro|rw]",
+    help="Bind mount to include in generated sandboxed proxy configs.",
+)
+@click.option(
     "--control-plane-url",
     default=None,
     envvar="AGENT_BOM_API_URL",
@@ -388,6 +407,9 @@ def proxy_configure_cmd(
     secure_defaults,
     detect_credentials,
     block_undeclared,
+    sandbox_image,
+    sandbox_image_pin_policy,
+    sandbox_mount,
     control_plane_url,
     control_plane_token,
     policy_refresh_seconds,
@@ -413,11 +435,14 @@ def proxy_configure_cmd(
     - secure defaults already inject --detect-credentials and --block-undeclared
     - --log-dir for auditable JSONL logs
     - --policy for explicit allowlist/blocklist/read-only enforcement
+    - --sandbox-image for Docker/Podman process containment; without it the
+      generated config includes --no-isolate so audit/policy mode stays explicit
 
     \b
     Example:
       agent-bom proxy-configure --log-dir ~/.agent-bom/logs
       agent-bom proxy-configure --policy policy.json --log-dir ~/.agent-bom/logs --apply
+      agent-bom proxy-configure --sandbox-image ghcr.io/acme/mcp-runtime@sha256:<digest> --sandbox-image-pin-policy enforce --apply
       agent-bom proxy-configure --control-plane-url https://agent-bom.example.com --control-plane-token "$TOKEN" --apply
       agent-bom proxy-configure --no-secure-defaults --apply
     """
@@ -434,6 +459,9 @@ def proxy_configure_cmd(
         secure_defaults=secure_defaults,
         detect_credentials=detect_credentials,
         block_undeclared=block_undeclared,
+        sandbox_image=sandbox_image,
+        sandbox_image_pin_policy=sandbox_image_pin_policy,
+        sandbox_mounts=tuple(sandbox_mount),
         control_plane_url=control_plane_url,
         control_plane_token=control_plane_token,
         policy_refresh_seconds=policy_refresh_seconds,

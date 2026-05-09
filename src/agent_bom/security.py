@@ -426,6 +426,8 @@ def _key_looks_like_cloud_identity(key: object) -> bool:
 def sanitize_path_label(value: object) -> str:
     """Return a non-revealing label for local filesystem paths."""
     text = sanitize_log_label(value, max_len=1000)
+    if re.fullmatch(r"<path:[^<>]+>", text):
+        return text
     basename = re.split(r"[\\/]+", text.rstrip("/\\"))[-1] if text else ""
     basename = sanitize_text(basename or "path", max_len=80)
     if not basename or _key_looks_sensitive(basename) or _looks_sensitive_value(basename):

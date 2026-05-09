@@ -106,6 +106,12 @@ def _validate_inventory_payload(data: Any) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("Inventory JSON root must be an object with an 'agents' array")
 
+    if "inventory_snapshot" in data and "document_type" in data:
+        snapshot = data.get("inventory_snapshot")
+        if not isinstance(snapshot, dict):
+            raise ValueError("Inventory snapshot in scan report must be an object")
+        data = snapshot
+
     errors = sorted(_inventory_validator().iter_errors(data), key=lambda e: list(e.path))
     if errors:
         first = errors[0]

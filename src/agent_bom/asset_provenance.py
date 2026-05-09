@@ -165,6 +165,12 @@ def sanitize_discovery_provenance(value: Any, defaults: dict[str, Any] | None = 
         if raw.get(field_name) is not None:
             result[field_name] = bool(raw.get(field_name))
 
+    version_provenance = raw.get("version_provenance")
+    if isinstance(version_provenance, dict):
+        sanitized_version_provenance = _sanitize_version_provenance(version_provenance)
+        if sanitized_version_provenance:
+            result["version_provenance"] = sanitized_version_provenance
+
     return {key: val for key, val in result.items() if val not in (None, "", [])}
 
 

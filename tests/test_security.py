@@ -16,6 +16,7 @@ from agent_bom.security import (
     sanitize_env_vars,
     sanitize_error,
     sanitize_log_label,
+    sanitize_path_label,
     sanitize_url,
     validate_arguments,
     validate_command,
@@ -215,6 +216,10 @@ def test_sanitize_command_args_redacts_secret_values_and_urls():
 
 def test_sanitize_url_strips_credentials_query_and_fragment():
     assert sanitize_url("https://user:pass@example.com/path?token=secret#frag") == "https://example.com/path"
+
+
+def test_sanitize_path_label_is_idempotent_for_existing_safe_labels():
+    assert sanitize_path_label("<path:mcp.json>") == "<path:mcp.json>"
 
 
 # ---------------------------------------------------------------------------

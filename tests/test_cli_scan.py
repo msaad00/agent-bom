@@ -298,6 +298,105 @@ def test_scan_inventory_no_discover_does_not_merge_project_or_skill_state(tmp_pa
     assert "Scanning 1 skill file" not in result.output
 
 
+def test_scan_inventory_only_round_trips_scan_report_snapshot_without_accretion(tmp_path):
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "generated_at": "2026-05-09T00:00:00Z",
+                "agents": [
+                    {
+                        "name": "declared-agent",
+                        "agent_type": "custom",
+                        "config_path": "<path:mcp.json>",
+                        "mcp_servers": [
+                            {
+                                "name": "declared-server",
+                                "command": "python",
+                                "config_path": "<path:mcp.json>",
+                                "security_intelligence": [
+                                    {
+                                        "entry_id": "MCP-TEST-1",
+                                        "title": "Fixture intelligence",
+                                        "severity": "high",
+                                        "confidence": "heuristic",
+                                        "default_recommendation": "review",
+                                        "source_type": "heuristic",
+                                        "source": "fixture",
+                                        "match_type": "package",
+                                        "matched_value": "declared-server",
+                                    }
+                                ],
+                                "packages": [
+                                    {
+                                        "name": "requests",
+                                        "version": "2.31.0",
+                                        "ecosystem": "pypi",
+                                        "discovery_provenance": {
+                                            "source_type": "operator_pushed_inventory",
+                                            "version_provenance": {
+                                                "version_source": "lockfile",
+                                                "confidence": "high",
+                                                "evidence": [{"package_path": "<path:mcp.json>"}],
+                                            },
+                                        },
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    first = tmp_path / "first.json"
+    second = tmp_path / "second.json"
+
+    first_result = _run(
+        [
+            "scan",
+            "--inventory",
+            str(inventory),
+            "--inventory-only",
+            "--no-scan",
+            "--format",
+            "json",
+            "--output",
+            str(first),
+        ]
+    )
+    second_result = _run(
+        [
+            "scan",
+            "--inventory",
+            str(first),
+            "--inventory-only",
+            "--no-scan",
+            "--format",
+            "json",
+            "--output",
+            str(second),
+        ]
+    )
+
+    assert first_result.exit_code == 0, first_result.output
+    assert second_result.exit_code == 0, second_result.output
+
+    first_snapshot = json.loads(first.read_text(encoding="utf-8"))["inventory_snapshot"]
+    second_snapshot = json.loads(second.read_text(encoding="utf-8"))["inventory_snapshot"]
+    first_snapshot.pop("generated_at", None)
+    second_snapshot.pop("generated_at", None)
+
+    assert first_snapshot == second_snapshot
+    server = second_snapshot["agents"][0]["mcp_servers"][0]
+    assert server["config_path"] == "<path:mcp.json>"
+    assert "collector" not in server["security_intelligence"][0]
+    evidence = server["packages"][0]["discovery_provenance"]["version_provenance"]["evidence"]
+    assert evidence == [{"package_path": "<path:mcp.json>"}]
+
+
 def test_scan_bad_ignore_file_yaml_exits_one(tmp_path):
     ignore_file = tmp_path / ".agent-bom-ignore.yaml"
     ignore_file.write_text("ignores:\n  - id: [unterminated\n", encoding="utf-8")

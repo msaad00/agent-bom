@@ -671,7 +671,6 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
 
     return {
         "schema_version": "1",
-        "source": "agent-bom",
         "generated_at": report.generated_at.isoformat(),
         "agents": agents,
     }

@@ -48,7 +48,8 @@ before replacing any published product image.
 |---|---|---|---|
 | `dashboard-live.png` | `/?capture=1` (Risk overview) | All agents · top crop showing the gauge, posture sub-scores, score breakdown, and the start of the attack-path list | The published README should not use one tall stitched dashboard asset when two shorter frames tell the story more clearly |
 | `dashboard-paths-live.png` | `/?capture=1` (Risk overview) | All agents · mid-page crop showing the attack-path list, exposure KPI band, and the first backlog charts | Keeps the fix-first path list readable in GitHub while still proving the KPI / backlog context lives on the same page |
-| `mesh-live.png` | `/mesh` | Filter to the highest-signal demo agent, currently `cursor`; if another agent is used, note why in the PR | Keeps the mesh dense enough to show servers, tools, credentials, package versions, and vulnerability edges without becoming a full-tenant hairball |
+| `mesh-live.png` | `/mesh` | Capture the full agent mesh graph across selected agents, shared MCP servers, tools, packages, credentials, and findings | Preserves the graph-backed product moat; do not replace this with a summary card view |
+| `mesh-path-live.png` | `/mesh?capture=1` | Capture the bounded agent mesh path view showing selected agent -> MCP servers -> reachable packages/tools -> prioritized findings | Keeps a first-pass triage view readable before operators drill into the full graph canvas |
 | `remediation-live.png` | `/remediation` | All frameworks tab | Shows the full prioritized fix list |
 
 ### Dashboard layout (current)
@@ -68,9 +69,12 @@ dashboard asset unless the layout materially changes again.
 
 The `cursor` agent in `src/agent_bom/demo.py` is the best mesh hero shot in
 the current demo inventory — it brings the filesystem and database servers,
-multiple tools, reachable credentials, and the densest CVE cluster
+multiple tools, reachable packages, and the densest CVE cluster
 (`pillow@9.0.0`, `cryptography@39.0.0`, `werkzeug@2.2.2`). Capturing under
-an unscoped or lower-signal agent risks a flatter graph.
+an unscoped or lower-signal agent risks a flatter graph. Use
+`/mesh` for the full product graph and `/mesh?capture=1` for the bounded
+triage view. The bounded view can sit next to the moat graph, but it should not
+replace the graph screenshot.
 
 ## Accuracy guardrail
 

@@ -173,9 +173,13 @@ Risk, reach, fix version, and framework context in one review table — operator
 
 ### Agent mesh
 
-Agent-centered shared-infrastructure graph — selected agents, their shared MCP servers, tools, packages, and findings.
+Agent-centered shared-infrastructure graph — selected agents, their MCP servers, tools, packages, credentials, and findings.
 
 ![agent-bom agent mesh](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
+
+Bounded path view for first-pass triage — the same evidence model scoped to one risky agent before opening the full graph canvas.
+
+![agent-bom bounded agent path](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-path-live.png)
 
 </details>
 

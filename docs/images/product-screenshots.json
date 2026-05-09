@@ -1,6 +1,6 @@
 {
   "release_version": "0.86.3",
-  "captured_at": "2026-05-08T18:25:00Z",
+  "captured_at": "2026-05-09T23:15:45Z",
   "capture_note": "Captured from the current Next.js dashboard against agent-bom serve API with bundled demo data pushed through /v1/results/push.",
   "screenshots": [
     {
@@ -18,7 +18,13 @@
     {
       "path": "mesh-live.png",
       "page": "/mesh",
-      "scope": "Agent mesh scoped to cursor demo agent with packages, findings, tools, and credentials visible",
+      "scope": "Full agent mesh graph across selected agents, shared MCP servers, packages, tools, credentials, and findings",
+      "visible_version": "0.86.3"
+    },
+    {
+      "path": "mesh-path-live.png",
+      "page": "/mesh?capture=1",
+      "scope": "Bounded agent mesh path view across selected agent, MCP servers, packages/tools, and prioritized findings",
       "visible_version": "0.86.3"
     },
     {

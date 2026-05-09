@@ -16,15 +16,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import threading
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
 from agent_bom.api.models import EvaluateRequest, JobStatus, PolicyCreate, PolicyUpdate
-from agent_bom.api.stores import _get_policy_store, _get_store
+from agent_bom.api.stores import _get_firewall_decision_store, _get_policy_store, _get_store
 from agent_bom.gateway_upstreams import is_gateway_compatible_upstream_transport
 from agent_bom.rbac import require_authenticated_permission
 
@@ -33,6 +36,13 @@ if TYPE_CHECKING:
 
 router = APIRouter()
 _REPLAY_ONLY_ARGUMENT_VALUE = "[replay-only]"
+_FIREWALL_POLICY_CACHE_LOCK = threading.RLock()
+_FIREWALL_POLICY_CACHE: dict[str, Any] = {
+    "path": None,
+    "mtime_ns": None,
+    "policy": None,
+    "loaded_at": None,
+}
 
 
 def _dep(permission: str) -> Any:
@@ -65,6 +75,92 @@ def _build_arguments_preview(arguments: dict[str, Any]) -> dict[str, Any]:
             safe_value = safe_value[:256] + "…"
         preview[key_text] = safe_value
     return preview
+
+
+def _firewall_policy_path() -> Path | None:
+    """Return the configured control-plane firewall policy path, if any."""
+    raw = (os.environ.get("AGENT_BOM_API_FIREWALL_POLICY") or os.environ.get("AGENT_BOM_GATEWAY_FIREWALL_POLICY") or "").strip()
+    if not raw:
+        return None
+    return Path(raw).expanduser()
+
+
+def _load_control_plane_firewall_policy() -> tuple[Any, dict[str, Any]]:
+    """Load the central inter-agent firewall policy for the API decision route.
+
+    No configured policy intentionally means a default-allow policy so pilots
+    can turn on the endpoint without blocking traffic. A configured but missing
+    or malformed policy fails closed at the HTTP layer, leaving the proxy's
+    fail-open/fail-closed mode to make the runtime availability choice.
+    """
+    from agent_bom.firewall import AgentFirewallPolicy, FirewallPolicyError, load_firewall_policy_file
+
+    policy_path = _firewall_policy_path()
+    if policy_path is None:
+        return AgentFirewallPolicy(), {
+            "source": "default-allow",
+            "path": None,
+            "loaded_at": None,
+            "default_decision": "allow",
+            "enforcement_mode": "enforce",
+            "tenant_id": None,
+        }
+
+    try:
+        stat = policy_path.stat()
+    except OSError as exc:
+        raise HTTPException(status_code=503, detail=f"Firewall policy unavailable: {policy_path}") from exc
+
+    path_text = str(policy_path)
+    with _FIREWALL_POLICY_CACHE_LOCK:
+        if (
+            _FIREWALL_POLICY_CACHE["path"] == path_text
+            and _FIREWALL_POLICY_CACHE["mtime_ns"] == stat.st_mtime_ns
+            and _FIREWALL_POLICY_CACHE["policy"] is not None
+        ):
+            policy = _FIREWALL_POLICY_CACHE["policy"]
+            loaded_at = _FIREWALL_POLICY_CACHE["loaded_at"]
+        else:
+            try:
+                policy = load_firewall_policy_file(policy_path)
+            except FirewallPolicyError as exc:
+                raise HTTPException(status_code=503, detail=f"Firewall policy invalid: {exc}") from exc
+            loaded_at = datetime.now(timezone.utc).isoformat()
+            _FIREWALL_POLICY_CACHE.update(
+                {
+                    "path": path_text,
+                    "mtime_ns": stat.st_mtime_ns,
+                    "policy": policy,
+                    "loaded_at": loaded_at,
+                }
+            )
+    return policy, {
+        "source": "file",
+        "path": path_text,
+        "loaded_at": loaded_at,
+        "default_decision": policy.default_decision.value,
+        "enforcement_mode": policy.enforcement_mode.value,
+        "tenant_id": policy.tenant_id,
+    }
+
+
+def _firewall_rule_payload(rule: Any) -> dict[str, Any] | None:
+    if rule is None:
+        return None
+    return {
+        "source": rule.source,
+        "target": rule.target,
+        "decision": rule.decision.value,
+        "description": rule.description,
+    }
+
+
+def _firewall_string_list(value: Any, field_name: str) -> set[str]:
+    if value is None:
+        return set()
+    if not isinstance(value, list) or any(not isinstance(role, str) for role in value):
+        raise HTTPException(status_code=400, detail=f"{field_name} must be a list of strings")
+    return {role for role in value if role}
 
 
 @router.get("/v1/gateway/policies", tags=["gateway"], dependencies=[_dep("policy_read")])
@@ -441,7 +537,6 @@ async def discovered_upstreams(request: Request) -> dict:
 @router.get("/v1/gateway/stats", tags=["gateway"], dependencies=[_dep("audit_read")])
 async def gateway_stats(request: Request):
     """Gateway-wide statistics."""
-    from agent_bom.api.stores import _get_firewall_decision_store
     from agent_bom.gateway import summarize_gateway_policies
 
     tenant_id = getattr(request.state, "tenant_id", "default")
@@ -470,6 +565,74 @@ async def gateway_stats(request: Request):
         "alerted_count": alerted,
         "policy_runtime": policy_runtime,
         "firewall_runtime": firewall_runtime,
+    }
+
+
+@router.post("/v1/firewall/check", tags=["gateway"], dependencies=[_dep("scan")])
+async def firewall_check(request: Request):
+    """Evaluate a source -> target agent decision through the control plane.
+
+    This is the centralized policy endpoint used by `agent-bom proxy
+    --firewall-gateway-url`. It mirrors the standalone gateway route but stores
+    every decision in the control-plane firewall tally so operators can see
+    allow/warn/deny trends and recent denials from the dashboard.
+    """
+    from agent_bom.firewall import evaluate
+
+    try:
+        payload = await request.json()
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="invalid JSON body") from exc
+
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="firewall check body must be a JSON object")
+
+    source_agent = payload.get("source_agent")
+    target_agent = payload.get("target_agent")
+    if not isinstance(source_agent, str) or not source_agent.strip():
+        raise HTTPException(status_code=400, detail="source_agent is required")
+    if not isinstance(target_agent, str) or not target_agent.strip():
+        raise HTTPException(status_code=400, detail="target_agent is required")
+
+    source_agent = source_agent.strip()
+    target_agent = target_agent.strip()
+    source_roles = _firewall_string_list(payload.get("source_roles"), "source_roles")
+    target_roles = _firewall_string_list(payload.get("target_roles"), "target_roles")
+    policy, policy_meta = _load_control_plane_firewall_policy()
+    result = evaluate(
+        policy,
+        source_agent=source_agent,
+        target_agent=target_agent,
+        source_roles=source_roles,
+        target_roles=target_roles,
+    )
+    tenant_id = getattr(request.state, "tenant_id", "default")
+    now = datetime.now(timezone.utc).timestamp()
+    matched_rule = _firewall_rule_payload(result.matched_rule)
+    event = {
+        "action": "gateway.firewall_decision",
+        "source_agent": source_agent,
+        "target_agent": target_agent,
+        "source_roles": sorted(source_roles),
+        "target_roles": sorted(target_roles),
+        "decision": result.decision.value,
+        "effective_decision": result.effective_decision.value,
+        "matched_rule": matched_rule,
+        "tenant_id": tenant_id,
+        "enforcement_mode": policy.enforcement_mode.value,
+        "timestamp": now,
+        "policy": policy_meta,
+    }
+    _get_firewall_decision_store().record(tenant_id=tenant_id, event=event)
+    return {
+        "source_agent": source_agent,
+        "target_agent": target_agent,
+        "source_roles": sorted(source_roles),
+        "target_roles": sorted(target_roles),
+        "decision": result.decision.value,
+        "effective_decision": result.effective_decision.value,
+        "matched_rule": matched_rule,
+        "policy": policy_meta,
     }
 
 

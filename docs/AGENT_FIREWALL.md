@@ -96,7 +96,13 @@ agent-bom firewall list ./firewall.json --json
 agent-bom firewall check ./firewall.json cursor snowflake-cli
 agent-bom firewall check ./firewall.json cursor snowflake-cli \
     --source-role trusted-orchestrator
+agent-bom firewall check ./firewall.json cursor snowflake-cli --json
 ```
+
+`firewall check` is safe to use in CI gates: it exits `0` for allow, `1` for
+warn, and `2` for deny or an invalid policy. Under `dry_run`, a deny is
+reported as `decision: "deny"` and `effective_decision: "warn"`, so the command
+exits `1` instead of blocking the deployment.
 
 ## Gateway integration
 
@@ -118,6 +124,17 @@ the previous good policy stays loaded.
 
 Server-authoritative decision endpoint. The proxy fast-path will call this
 when its local cache is cold or stale; operators can also hit it directly.
+
+There are two server surfaces:
+
+- `agent-bom gateway serve --firewall-policy ./firewall.json` serves this route
+  from the standalone gateway process with hot reload and audit-sink fanout.
+- the self-hosted control-plane API serves the same route from
+  `AGENT_BOM_API_FIREWALL_POLICY=/path/to/firewall.json` (falling back to
+  `AGENT_BOM_GATEWAY_FIREWALL_POLICY` for shared deployments). If no policy is
+  configured it intentionally returns default-allow for pilots; if a configured
+  policy is missing or invalid the route returns `503` so the proxy's
+  `--firewall-fail-mode` decides whether runtime traffic fails open or closed.
 
 Request:
 
@@ -156,6 +173,10 @@ or `deny → warn` under dry-run) emits a `gateway.firewall_decision` audit even
 through the configured audit sink. In a normal cluster install that sink fans
 out to `/v1/proxy/audit`, so denies and warns flow into the same HMAC-chained
 audit table the proxy already writes to.
+
+The control-plane API route records every decision directly into
+`/v1/firewall/stats`, including allow decisions, so the runtime dashboard has a
+denominator for allow/warn/deny trends.
 
 ### `GET /healthz`
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -221,3 +222,83 @@ def test_gateway_stats_includes_firewall_runtime(api_client) -> None:  # noqa: A
     assert body["firewall_runtime"]["total_decisions"] == 2
     assert body["firewall_runtime"]["deny"] == 1
     assert body["firewall_runtime"]["warn"] == 1
+
+
+def test_firewall_check_endpoint_evaluates_policy_file_and_records(api_client, monkeypatch, tmp_path) -> None:  # noqa: ANN001
+    policy_path = tmp_path / "firewall.json"
+    policy_path.write_text(
+        json.dumps(
+            {
+                "tenant_id": "default",
+                "rules": [
+                    {
+                        "source": "cursor",
+                        "target": "snowflake-cli",
+                        "decision": "deny",
+                        "description": "No direct production data-plane access",
+                    }
+                ],
+            }
+        )
+    )
+    monkeypatch.setenv("AGENT_BOM_API_FIREWALL_POLICY", str(policy_path))
+
+    response = api_client.post(
+        "/v1/firewall/check",
+        headers=_AUTH_HEADERS,
+        json={"source_agent": "cursor", "target_agent": "snowflake-cli"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["decision"] == "deny"
+    assert body["effective_decision"] == "deny"
+    assert body["matched_rule"]["description"] == "No direct production data-plane access"
+    assert body["policy"]["source"] == "file"
+
+    stats = api_client.get("/v1/firewall/stats", headers=_AUTH_HEADERS).json()
+    assert stats["total_decisions"] == 1
+    assert stats["deny"] == 1
+    assert stats["recent"][0]["source_agent"] == "cursor"
+
+
+def test_firewall_check_endpoint_default_allows_and_records(api_client, monkeypatch) -> None:  # noqa: ANN001
+    monkeypatch.delenv("AGENT_BOM_API_FIREWALL_POLICY", raising=False)
+    monkeypatch.delenv("AGENT_BOM_GATEWAY_FIREWALL_POLICY", raising=False)
+
+    response = api_client.post(
+        "/v1/firewall/check",
+        headers=_AUTH_HEADERS,
+        json={"source_agent": "cursor", "target_agent": "github-mcp"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["effective_decision"] == "allow"
+    assert body["policy"]["source"] == "default-allow"
+
+    stats = api_client.get("/v1/firewall/stats", headers=_AUTH_HEADERS).json()
+    assert stats["total_decisions"] == 1
+    assert stats["allow"] == 1
+
+
+def test_firewall_check_endpoint_rejects_invalid_payload(api_client) -> None:  # noqa: ANN001
+    response = api_client.post(
+        "/v1/firewall/check",
+        headers=_AUTH_HEADERS,
+        json={"source_agent": "cursor", "source_roles": "trusted"},
+    )
+    assert response.status_code == 400
+    assert "target_agent" in response.json()["detail"]
+
+
+def test_firewall_check_endpoint_fails_closed_for_invalid_configured_policy(api_client, monkeypatch, tmp_path) -> None:  # noqa: ANN001
+    policy_path = tmp_path / "firewall.json"
+    policy_path.write_text("{not json")
+    monkeypatch.setenv("AGENT_BOM_API_FIREWALL_POLICY", str(policy_path))
+
+    response = api_client.post(
+        "/v1/firewall/check",
+        headers=_AUTH_HEADERS,
+        json={"source_agent": "cursor", "target_agent": "github-mcp"},
+    )
+    assert response.status_code == 503
+    assert "Firewall policy invalid" in response.json()["detail"]

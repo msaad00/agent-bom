@@ -7,20 +7,25 @@ export type { MeshStatsData };
 
 export function MeshStats({ stats }: { stats: MeshStatsData }) {
   const totalSev = stats.criticalCount + stats.highCount + stats.mediumCount + stats.lowCount;
+  const omittedTotal =
+    stats.omittedCredentials +
+    stats.omittedTools +
+    stats.omittedPackages +
+    stats.omittedVulnerabilities;
 
   return (
-    <div className="flex items-center gap-4 px-4 py-2 border-b border-zinc-800 text-xs flex-wrap">
+    <div className="flex items-center gap-4 px-4 py-2 border-b border-[var(--border-subtle)] text-xs flex-wrap">
       <Stat icon={ShieldAlert} label="Agents" value={stats.totalAgents} color="text-emerald-400" />
       <Stat icon={Server} label="Shared Servers" value={stats.sharedServers} color="text-cyan-400" />
       <Stat icon={Package} label="Packages" value={stats.totalPackages} color="text-zinc-400" />
       <Stat icon={Bug} label="Vulns" value={stats.totalVulnerabilities} color="text-red-400" />
-      <Stat icon={KeyRound} label="Credentials" value={stats.uniqueCredentials} color="text-amber-400" />
+      <Stat icon={KeyRound} label="Credential refs" value={stats.uniqueCredentials} color="text-amber-400" />
       <Stat icon={Wrench} label="Tool Overlap" value={stats.toolOverlap} color="text-purple-400" />
 
       {/* Severity breakdown mini-bar */}
       {totalSev > 0 && (
         <div className="flex items-center gap-1.5 ml-2">
-          <span className="text-zinc-500">Severity:</span>
+          <span className="text-[var(--text-secondary)]">Severity:</span>
           <div className="flex h-2.5 rounded-full overflow-hidden w-24 bg-zinc-800">
             {stats.criticalCount > 0 && (
               <div
@@ -68,6 +73,13 @@ export function MeshStats({ stats }: { stats: MeshStatsData }) {
         </div>
       )}
 
+      {omittedTotal > 0 && (
+        <div className="flex items-center gap-1 rounded border border-[var(--border-subtle)] bg-[var(--surface-muted)] px-2 py-0.5 text-[10px] text-[var(--text-secondary)]">
+          <span className="font-semibold text-foreground">{omittedTotal}</span>
+          <span>lower-priority nodes hidden</span>
+        </div>
+      )}
+
       {/* Credential blast */}
       {stats.credentialBlast.length > 0 && (
         <div className="ml-auto flex items-center gap-1.5 text-amber-400">
@@ -96,8 +108,8 @@ function Stat({
   return (
     <div className="flex items-center gap-1.5">
       <Icon className={`w-3.5 h-3.5 ${color}`} />
-      <span className="text-zinc-500">{label}</span>
-      <span className="font-semibold text-zinc-200">{value}</span>
+      <span className="text-[var(--text-secondary)]">{label}</span>
+      <span className="font-semibold text-foreground">{value}</span>
     </div>
   );
 }

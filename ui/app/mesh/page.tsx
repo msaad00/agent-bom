@@ -180,7 +180,7 @@ export default function MeshPage() {
   const [selectedNode, setSelectedNode] = useState<LineageNodeData | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [activeJob, setActiveJob] = useState<ScanJob | null>(null);
-  const [layoutMode, setLayoutMode] = useState<MeshLayoutMode>("radial");
+  const [layoutMode, setLayoutMode] = useState<MeshLayoutMode>("topology");
 
   // Filters
   const [nodeFilter, setNodeFilter] = useState<NodeTypeFilter>({
@@ -288,6 +288,7 @@ export default function MeshPage() {
     const empty: MeshStatsData = {
       totalAgents: 0, sharedServers: 0, uniqueCredentials: 0, toolOverlap: 0,
       credentialBlast: [], totalPackages: 0, totalVulnerabilities: 0,
+      omittedCredentials: 0, omittedTools: 0, omittedPackages: 0, omittedVulnerabilities: 0,
       criticalCount: 0, highCount: 0, mediumCount: 0, lowCount: 0, kevCount: 0,
     };
     if (!activeResult) return { rawNodes: [] as Node[], rawEdges: [] as Edge[], stats: empty };
@@ -306,8 +307,8 @@ export default function MeshPage() {
     dagre: {
       nodeWidth: 200,
       nodeHeight: 70,
-      rankSep: 140,
-      nodeSep: 25,
+      rankSep: 95,
+      nodeSep: 18,
     },
   });
 
@@ -409,16 +410,16 @@ export default function MeshPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-3.5rem)] flex flex-col">
+    <div className="h-[calc(100vh-3.5rem)] flex flex-col bg-background text-foreground">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border-subtle)]">
         <div>
-          <h1 className="text-lg font-semibold text-zinc-100">Agent Mesh</h1>
-          <p className="text-xs text-zinc-500">
-            Agent-centered shared infrastructure across MCP servers, packages, tools, and findings
+          <h1 className="text-lg font-semibold text-foreground">Agent Mesh</h1>
+          <p className="text-xs text-[var(--text-secondary)]">
+            Evidence-scoped path view across agents, MCP servers, tools, packages, credential references, and findings
           </p>
-          <p className="mt-1 text-[11px] text-zinc-600">
-            Default scope stays on the highest-risk agent first so the mesh is readable before you expand it.
+          <p className="mt-1 text-[11px] text-[var(--text-tertiary)]">
+            Default view ranks the highest-risk agent first and hides lower-priority nodes until you expand filters.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -490,7 +491,7 @@ export default function MeshPage() {
           edges={displayEdges}
           nodeTypes={lineageNodeTypes}
           fitView
-          fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
+          fitViewOptions={{ padding: 0.08, maxZoom: 1.45 }}
           minZoom={0.16}
           maxZoom={2.5}
           zoomOnScroll={false}

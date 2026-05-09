@@ -8,6 +8,13 @@ The target is a security-operator graph, not a generic node canvas. It should
 start with what to fix, explain why it matters, show the path to the impacted
 asset, and let the operator expand context only when needed.
 
+This is also the product standard for AI-infrastructure visibility. Graphs
+should make agent, MCP, model, RAG, package, credential-reference, runtime,
+cloud, container, GPU, and compliance relationships readable enough for a live
+buyer proof. A graph is not acceptable because it is visually impressive; it is
+acceptable when it is accurate, bounded, sentence-readable, and tied to a
+decision.
+
 ## North Star
 
 The graph should answer six questions without requiring the user to manually
@@ -21,6 +28,13 @@ decode a dense canvas:
 5. Was the path observed at runtime, statically inferred, or both?
 6. What should be blocked, patched, isolated, monitored, or reviewed first?
 
+For executive and portfolio views, the graph should also answer:
+
+7. Where is risk concentrated across agents, applications, cloud accounts, and
+   runtime paths?
+8. What changed since the last scan or runtime window?
+9. Which coverage gaps are known, not guessed?
+
 ## Product Maturity Targets
 
 | Target | Minimum bar | Best-in-class bar |
@@ -32,6 +46,85 @@ decode a dense canvas:
 | Evidence | Node detail shows source metadata. | Every claim is marked as static scan, gateway/proxy runtime, imported evidence, or replay-only evidence, with retention tier shown. |
 | Remediation | Findings link to generic fix guidance. | The UI shows the lowest-cost choke point: patch package, disable tool, rotate credential, narrow scope, block gateway rule, or isolate asset. |
 | Safety | Redaction exists in backend policies. | Durable views only show safe-to-store evidence; replay-only fields are named but not persisted or displayed raw. |
+
+## Graph Product Families
+
+Each graph should declare its family in code, API responses, screenshots, and
+docs. Do not reuse one renderer mode for all jobs if it makes the operator
+infer the meaning.
+
+| Family | First question | Default shape | Must show | Must not imply |
+|---|---|---|---|---|
+| Agent Mesh | Which agents share risky MCP infrastructure? | Selected agent or workload in the center, then shared MCP servers, tools, packages, credential env-var references, and findings. | Omitted counts, shared chokepoints, evidence source, affected agents. | Complete tenant inventory when nodes are capped or clustered. |
+| Security Graph | What path should I break first? | Ranked attack path or selected finding neighborhood. | Remediation choke point, path reason, static vs runtime evidence, asset criticality. | Runtime causality when only static reachability exists. |
+| Compliance Evidence Graph | Which findings support this control or evidence packet? | Finding -> framework/control -> evidence artifact. | Framework subset scope, evidence packet command, control count, export status. | Full-framework catalog coverage where mappings are curated. |
+| AI Visibility Flow | Who used which AI app/model/provider and what was detected? | Bounded Sankey or layered flow: actor -> app -> agent/orchestrator -> model/provider -> policy detection. | Time window, event counts, policy detections, collector/source. | Secret values, conversation contents, or complete monitoring without collectors. |
+| RAG/MCP Architecture | Where can prompt, retrieval, tool, and data risks enter? | Layered architecture: enterprise zone, application layer, MCP/runtime boundary, RAG/data layer, third-party services. | Boundary controls, monitored links, AI TTPs, runtime collection point. | Enforcement on links that have no proxy/gateway/sensor coverage. |
+| Cloud/Container/GPU AI Infra | Which workload or identity exposes AI runtime infrastructure? | Layered asset map: cloud account -> workload/identity -> container -> package/model/GPU/data. | Owner, environment, identity, image/package findings, GPU/model provenance. | Cross-cloud trust or multi-region stitching beyond implemented graph edges. |
+| Executive Portfolio | Where should leadership focus this week? | Rollup cards plus drill-down graph entry points. | KPIs, trending risk, breached SLA, coverage across scan/runtime/cloud surfaces. | Raw scanner completeness as business risk without normalization. |
+
+## Visual Readability Rules
+
+These rules are mandatory for screenshots, docs images, and shipped graph UI.
+
+- The first frame must fit its text. Labels, counts, badges, and legends must
+  not overflow cards, controls, chips, side panels, or graph nodes at the
+  documented desktop and mobile widths.
+- Dense views must use ranked subgraphs, clustering, pagination, or progressive
+  expansion. Do not publish a whole-tenant graph that reads as edge spaghetti.
+- Long names must use truncation plus detail-on-hover or side-panel expansion.
+  Truncation must preserve the security-significant prefix or suffix where
+  possible, such as CVE ID, package name, provider, environment, or credential
+  env-var key.
+- Edge thickness and color must encode one clear thing each. If thickness means
+  event count, color should not also imply severity unless the legend makes the
+  distinction obvious.
+- Layouts should prefer layered flows when the relationship has direction:
+  actor -> application -> agent/MCP host -> server/tool -> package/model/data
+  -> finding/control. Free-force layouts are for exploratory neighborhoods,
+  not default executive or screenshot views.
+- Side panels should carry the detail load. The canvas should show enough to
+  navigate; the side panel should show evidence, timestamps, policy decisions,
+  raw IDs, and remediation.
+- Every collapsed group must show `visible_count` and `omitted_count`, and the
+  expansion control must make clear whether it expands the current scope or
+  runs a new query.
+- Every screenshot used in public docs must be checked for overlap, unreadable
+  text, blank canvas regions, and misleading stale data before release.
+
+## Evidence Fields
+
+Graph APIs and UI view models should prefer explicit evidence fields over
+display-only inference. When a field does not exist yet, the UI should omit the
+claim or mark it unavailable.
+
+| Field | Purpose |
+|---|---|
+| `evidence_source` | Names the scanner, runtime, import, or operator source. |
+| `evidence_tier` | Separates static scan, runtime observed, imported, replay-only, and synthetic demo evidence. |
+| `confidence` | Lets heuristics differ from exact parser/runtime evidence. |
+| `first_seen`, `last_seen` | Supports change detection and investigation windows. |
+| `runtime_trace_id` | Links runtime edges to proxy/gateway audit records. |
+| `policy_decision`, `policy_rule_id` | Explains allow/block/audit decisions. |
+| `safe_to_store` | Prevents replay-only or sensitive fields from leaking into durable views. |
+| `visible_count`, `omitted_count` | Makes truncation honest. |
+| `relationship_reason` | Makes each edge sentence-readable. |
+| `asset_criticality`, `owner`, `environment` | Turns technical exposure into prioritised business risk. |
+| `recommended_action` | Connects the graph to the fix queue. |
+
+## Operator Skill Pattern
+
+Graph work should support three repeatable operator lanes instead of forcing
+every user through raw graph output.
+
+| Lane | Scope | Output |
+|---|---|---|
+| Domain graph | One program or surface: MCP runtime, repo scanning, cloud AI infra, RAG/data, containers/GPU, compliance. | Accurate local findings, evidence, and drill-down. |
+| Domain graph | A second surface that shares entities with the first, such as code scanning plus runtime tool calls. | Comparable findings and shared asset IDs. |
+| Orchestrator view | Portfolio synthesis across domains. | KPIs, trend, SLA breach, concentration of risk, and a drill-down path into the underlying evidence. |
+
+The orchestrator view must not invent new evidence. It summarizes evidence from
+domain graphs and names which surfaces are missing.
 
 ## Required Graph Layers
 

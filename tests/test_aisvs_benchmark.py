@@ -310,6 +310,24 @@ def test_check_ai_7_1_clean_environment():
     assert result.status == CheckStatus.PASS
 
 
+def test_check_ai_7_1_skips_distributions_without_name_metadata():
+    import importlib.metadata as _meta
+
+    class NamelessDist:
+        @property
+        def metadata(self):
+            return {}
+
+    class NamedDist:
+        @property
+        def metadata(self):
+            return {"Name": "torch"}
+
+    with patch.object(_meta, "distributions", return_value=[NamelessDist(), NamedDist()]):
+        result = _check_ai_7_1()
+    assert result.status == CheckStatus.PASS
+
+
 # ---------------------------------------------------------------------------
 # run_benchmark
 # ---------------------------------------------------------------------------

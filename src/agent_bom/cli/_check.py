@@ -165,9 +165,18 @@ def _check_result_payload(
                 "severity": vuln.severity.value,
                 "fixed_version": vuln.fixed_version,
                 "is_kev": vuln.is_kev,
+                "kev_date_added": vuln.kev_date_added,
+                "kev_due_date": vuln.kev_due_date,
+                "cvss_score": vuln.cvss_score,
+                "epss_score": vuln.epss_score,
+                "epss_percentile": vuln.epss_percentile,
+                "nvd_status": vuln.nvd_status,
+                "published_at": vuln.published_at,
+                "modified_at": vuln.modified_at,
                 "cwe_ids": list(vuln.cwe_ids),
                 "aliases": list(vuln.aliases),
                 "references": list(vuln.references),
+                "advisory_sources": list(vuln.advisory_sources),
             }
         )
 
@@ -323,6 +332,8 @@ def _exit_model_verification(
     is_flag=True,
     help="Exit 0 even when vulnerabilities are found (useful for exploratory or parallel checks)",
 )
+@click.option("--enrich", is_flag=True, help="Add NVD CVSS, EPSS, and CISA KEV enrichment to matched vulnerabilities.")
+@click.option("--nvd-api-key", envvar="NVD_API_KEY", default=None, help="NVD API key for higher rate limits when using --enrich.")
 def check(
     package_spec: str,
     ecosystem: Optional[str],
@@ -331,6 +342,8 @@ def check(
     output_format: str,
     output_path: str | None,
     exit_zero: bool,
+    enrich: bool,
+    nvd_api_key: str | None,
 ):
     """Check a package for known vulnerabilities before installing.
 
@@ -351,6 +364,8 @@ def check(
     Notes:
       `check` supports terminal output by default and `--format json`
       for machine-readable pre-install verdicts.
+      Use `--enrich` when the verdict needs CVSS, EPSS, KEV, or NVD
+      status evidence for triage or CI policy.
       For SARIF, HTML, PDF, or SBOM output, use `agent-bom agents`
       (or `agent-bom scan`) with `--format/--output`.
       Use --exit-zero for exploratory or parallel workflows where findings
@@ -476,6 +491,25 @@ def check(
 
     matched_pkg = next((p for p in pkgs if p.vulnerabilities), pkgs[0])
     vulns = matched_pkg.vulnerabilities
+
+    if enrich and any(pkg.vulnerabilities for pkg in pkgs):
+        from agent_bom.enrichment import enrich_vulnerabilities
+
+        all_vulns = [vuln for pkg in pkgs for vuln in pkg.vulnerabilities]
+        try:
+            asyncio.run(
+                enrich_vulnerabilities(
+                    all_vulns,
+                    nvd_api_key=nvd_api_key,
+                    enable_nvd=True,
+                    enable_epss=True,
+                    enable_kev=True,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            scan_warnings.append(f"External enrichment skipped: {exc}")
+            if not quiet and not structured_output:
+                console.print(f"  [yellow]⚠[/yellow] External enrichment skipped: {exc}")
 
     if not vulns and matched_pkg.ecosystem in {"deb", "apk", "rpm"} and not os_context_complete:
         message = (

@@ -47,6 +47,79 @@ def test_check_vulns_exit_one_by_default(monkeypatch):
     assert "do not install without review" in result.output
 
 
+def test_check_enriches_matched_vulnerabilities(monkeypatch):
+    vuln = Vulnerability(
+        id="CVE-2023-30861",
+        summary="Session cookie disclosure",
+        severity=Severity.HIGH,
+        fixed_version="2.3.2",
+    )
+    _patch_check_scan(monkeypatch, [vuln])
+    calls = []
+
+    async def _enrich_vulnerabilities(vulns, **kwargs):
+        calls.append((vulns, kwargs))
+        vulns[0].epss_score = 0.91
+        vulns[0].epss_percentile = 99.0
+        vulns[0].is_kev = True
+        vulns[0].cwe_ids.append("CWE-200")
+        vulns[0].advisory_sources.append("epss")
+        return 1
+
+    monkeypatch.setattr("agent_bom.enrichment.enrich_vulnerabilities", _enrich_vulnerabilities)
+
+    result = CliRunner().invoke(
+        main,
+        [
+            "check",
+            "flask@2.2.0",
+            "--ecosystem",
+            "pypi",
+            "--enrich",
+            "--nvd-api-key",
+            "test-key",
+            "--format",
+            "json",
+            "--quiet",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert calls
+    assert calls[0][1]["nvd_api_key"] == "test-key"
+    payload = json.loads(result.output)
+    finding = payload["vulnerabilities"][0]
+    assert finding["epss_score"] == 0.91
+    assert finding["epss_percentile"] == 99.0
+    assert finding["is_kev"] is True
+    assert finding["cwe_ids"] == ["CWE-200"]
+    assert finding["advisory_sources"] == ["epss"]
+
+
+def test_check_does_not_enrich_without_flag(monkeypatch):
+    _patch_check_scan(
+        monkeypatch,
+        [
+            Vulnerability(
+                id="CVE-2023-30861",
+                summary="Session cookie disclosure",
+                severity=Severity.HIGH,
+                fixed_version="2.3.2",
+            )
+        ],
+    )
+
+    async def _enrich_vulnerabilities(_vulns, **_kwargs):
+        raise AssertionError("check should not enrich unless --enrich is set")
+
+    monkeypatch.setattr("agent_bom.enrichment.enrich_vulnerabilities", _enrich_vulnerabilities)
+
+    result = CliRunner().invoke(main, ["check", "flask@2.2.0", "--ecosystem", "pypi", "--quiet"])
+
+    assert result.exit_code == 1
+    assert "1 vulnerability found" in result.output
+
+
 def test_check_exit_zero_reports_without_failing(monkeypatch):
     _patch_check_scan(
         monkeypatch,

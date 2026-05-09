@@ -2,6 +2,7 @@
 
 Endpoints:
     GET  /v1/compliance                      15-framework compliance posture + AISVS benchmark
+    GET  /v1/compliance/summary              aggregate compliance summary
     GET  /v1/compliance/aisvs                OWASP AISVS benchmark posture
     GET  /v1/compliance/narrative            full compliance narrative (all frameworks)
     GET  /v1/compliance/narrative/{framework} single-framework narrative
@@ -910,6 +911,40 @@ async def get_compliance_verification_key(request: Request) -> dict:
 async def get_aisvs_compliance(request: Request) -> dict:
     """Return the latest tenant-scoped OWASP AISVS benchmark result from completed scans."""
     return _latest_aisvs_benchmark_from_jobs(_tenant_jobs(request))
+
+
+@router.get("/v1/compliance/summary", tags=["compliance"])
+async def get_compliance_summary(request: Request) -> dict:
+    """Return aggregate compliance score and per-framework status counts.
+
+    Keep this literal route above /v1/compliance/{framework}; otherwise FastAPI
+    correctly treats "summary" as a framework slug.
+    """
+    full = await get_compliance(request)
+    summary_keys = {
+        "overall_score",
+        "overall_status",
+        "scan_count",
+        "latest_scan",
+        "has_mcp_context",
+        "has_agent_context",
+        "scan_sources",
+        "summary",
+    }
+    response = {key: full.get(key) for key in summary_keys if key in full}
+    response["frameworks"] = {}
+    for key, value in full.items():
+        if isinstance(value, list):
+            pass_count = sum(1 for item in value if item.get("status") == "pass")
+            warn_count = sum(1 for item in value if item.get("status") == "warning")
+            fail_count = sum(1 for item in value if item.get("status") == "fail")
+            response["frameworks"][key] = {
+                "controls": len(value),
+                "pass": pass_count,
+                "warning": warn_count,
+                "fail": fail_count,
+            }
+    return response
 
 
 @router.get("/v1/compliance/{framework}", tags=["compliance"])

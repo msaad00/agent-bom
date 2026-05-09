@@ -45,6 +45,21 @@ def test_health_no_auth():
     assert resp.status_code == 200
 
 
+def test_kubernetes_probe_aliases_no_auth():
+    """Kubernetes-style probe aliases should be reachable without credentials."""
+    client = TestClient(app)
+    expected_statuses = {
+        "/healthz": "ok",
+        "/livez": "ok",
+        "/ping": "ok",
+        "/status": "ok",
+    }
+    for path, status in expected_statuses.items():
+        resp = client.get(path)
+        assert resp.status_code == 200
+        assert resp.json()["status"] == status
+
+
 def test_direct_asgi_import_configures_static_api_key_from_env(monkeypatch):
     """Raw uvicorn imports must honor AGENT_BOM_API_KEY without the CLI wrapper."""
     raw_key = "raw-uvicorn-static-key"
@@ -214,6 +229,30 @@ def test_api_key_middleware_blocks_without_key():
     client = TestClient(test_app)
     resp = client.get("/v1/test")
     assert resp.status_code == 401
+
+
+def test_api_key_middleware_exempts_probe_aliases_without_key():
+    """Auth middleware must not block configured liveness/status aliases."""
+    from starlette.applications import Starlette
+    from starlette.responses import JSONResponse as StarletteJSONResponse
+    from starlette.routing import Route
+
+    async def dummy(request):
+        return StarletteJSONResponse({"ok": True})
+
+    test_app = Starlette(
+        routes=[
+            Route("/healthz", dummy),
+            Route("/livez", dummy),
+            Route("/ping", dummy),
+            Route("/status", dummy),
+        ]
+    )
+    test_app.add_middleware(APIKeyMiddleware, api_key="test-key-123")
+
+    client = TestClient(test_app)
+    for path in ("/healthz", "/livez", "/ping", "/status"):
+        assert client.get(path).status_code == 200
 
 
 def test_api_key_middleware_exempts_cors_preflight():

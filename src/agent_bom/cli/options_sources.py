@@ -26,6 +26,16 @@ def input_options(fn):
                 ),
             ),
             click.option(
+                "--follow-symlinks/--no-follow-symlinks",
+                "follow_symlinks",
+                default=False,
+                show_default=True,
+                help=(
+                    "Allow project package discovery to descend into symlinked directories that remain inside the "
+                    "project root. Cross-root symlinks are always skipped with a warning."
+                ),
+            ),
+            click.option(
                 "--sbom",
                 "sbom_file",
                 type=click.Path(exists=True),

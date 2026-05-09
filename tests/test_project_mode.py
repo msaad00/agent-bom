@@ -60,6 +60,39 @@ class TestScanProjectDirectory:
         names = {p.name for p in result[subdir]}
         assert "flask" in names
 
+    def test_skips_symlinked_directory_by_default(self, tmp_path):
+        outside = tmp_path.parent / f"{tmp_path.name}-outside"
+        outside.mkdir()
+        (outside / "requirements.txt").write_text("flask==3.0.0\n")
+        link = tmp_path / "linked-outside"
+        try:
+            link.symlink_to(outside, target_is_directory=True)
+        except OSError as exc:
+            pytest.skip(f"symlinks unavailable: {exc}")
+
+        warnings: list[str] = []
+        result = scan_project_directory(tmp_path, warnings=warnings)
+
+        assert not result
+        assert any("skipping symlinked directory" in warning for warning in warnings)
+
+    def test_follow_symlinks_stays_inside_project_root(self, tmp_path):
+        skipped_target = tmp_path / "node_modules"
+        skipped_target.mkdir()
+        (skipped_target / "requirements.txt").write_text("flask==3.0.0\n")
+        link = tmp_path / "linked-inside"
+        try:
+            link.symlink_to(skipped_target, target_is_directory=True)
+        except OSError as exc:
+            pytest.skip(f"symlinks unavailable: {exc}")
+
+        warnings: list[str] = []
+        result = scan_project_directory(tmp_path, follow_symlinks=True, warnings=warnings)
+
+        assert link in result
+        assert any(pkg.name == "flask" for pkg in result[link])
+        assert warnings == []
+
     def test_skips_node_modules(self, tmp_path):
         node_modules = tmp_path / "node_modules"
         node_modules.mkdir()

@@ -791,6 +791,9 @@ def summarize_project_inventory(
 def scan_project_directory(
     root: Path,
     max_depth: int = 5,
+    *,
+    follow_symlinks: bool = False,
+    warnings: list[str] | None = None,
 ) -> dict[Path, list[Package]]:
     """Recursively walk *root* for package manifests and parse all packages.
 
@@ -802,6 +805,8 @@ def scan_project_directory(
     Args:
         root: Project root directory to scan.
         max_depth: Maximum directory depth to descend (default 5).
+        follow_symlinks: Whether to descend into symlinked directories.
+        warnings: Optional list populated with skipped or cross-boundary paths.
 
     Returns:
         Dict mapping each manifest-bearing directory to its parsed packages.
@@ -812,10 +817,25 @@ def scan_project_directory(
 
     visited_real: set[str] = set()
 
+    def _warn(message: str) -> None:
+        if warnings is not None:
+            warnings.append(message)
+
+    def _is_within_root(path: Path) -> bool:
+        try:
+            path.relative_to(root)
+            return True
+        except ValueError:
+            return False
+
     def _walk(directory: Path, depth: int) -> None:
         if depth > max_depth:
             return
-        real = str(directory.resolve())
+        resolved_dir = directory.resolve()
+        if not _is_within_root(resolved_dir):
+            _warn(f"skipping path outside project root: {directory} -> {resolved_dir}")
+            return
+        real = str(resolved_dir)
         if real in visited_real:
             return
         visited_real.add(real)
@@ -853,9 +873,19 @@ def scan_project_directory(
 
         # Recurse into subdirectories
         try:
-            subdirs = [
-                d for d in directory.iterdir() if d.is_dir() and d.name not in _SKIP_DIRS and not (d.name.startswith(".") and depth > 0)
-            ]
+            subdirs = []
+            for candidate in directory.iterdir():
+                if candidate.name in _SKIP_DIRS or (candidate.name.startswith(".") and depth > 0):
+                    continue
+                if candidate.is_symlink():
+                    if not follow_symlinks:
+                        _warn(f"skipping symlinked directory: {candidate}")
+                        continue
+                    resolved_candidate = candidate.resolve()
+                    if not _is_within_root(resolved_candidate):
+                        _warn(f"following symlink outside project root: {candidate} -> {resolved_candidate}")
+                if candidate.is_dir():
+                    subdirs.append(candidate)
         except PermissionError:
             return
 

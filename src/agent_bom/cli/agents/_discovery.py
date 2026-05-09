@@ -47,6 +47,7 @@ def run_local_discovery(
     inventory: Any,
     skill_only: bool,
     no_discover: bool = False,
+    follow_symlinks: bool = False,
     dynamic_discovery: bool,
     dynamic_max_depth: int,
     include_processes: bool,
@@ -627,7 +628,10 @@ def run_local_discovery(
         is_synthetic_demo_project = proj_root.name.startswith("agent-bom-demo-dir-")
         if not is_synthetic_demo_project:
             con.print(f"\n[bold blue]Scanning project directory for package manifests: {proj_root.name}[/bold blue]\n")
-        dir_map = scan_project_directory(proj_root)
+        package_warnings: list[str] = []
+        dir_map = scan_project_directory(proj_root, follow_symlinks=follow_symlinks, warnings=package_warnings)
+        for warning in package_warnings:
+            con.print(f"  [yellow]⚠[/yellow] {warning}")
         if dir_map:
             project_inventory = summarize_project_inventory(proj_root, dir_map)
             ctx.project_inventory_data = project_inventory
@@ -646,7 +650,12 @@ def run_local_discovery(
             proj_servers: list[MCPServer] = []
             for manifest_dir, pkgs in dir_map.items():
                 manifest_dir_resolved = manifest_dir.resolve()
-                rel = manifest_dir_resolved.relative_to(proj_root_resolved) if manifest_dir_resolved != proj_root_resolved else Path(".")
+                try:
+                    rel = (
+                        manifest_dir_resolved.relative_to(proj_root_resolved) if manifest_dir_resolved != proj_root_resolved else Path(".")
+                    )
+                except ValueError:
+                    rel = Path(manifest_dir_resolved.name)
                 server_name = str(rel) if str(rel) != "." else proj_root.name
                 proj_server = MCPServer(
                     name=server_name,

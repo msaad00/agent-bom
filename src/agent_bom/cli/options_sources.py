@@ -15,6 +15,17 @@ def input_options(fn):
             click.option("--config-dir", type=click.Path(exists=True), help="Custom agent config directory to scan"),
             click.option("--inventory", type=str, default=None, help="Inventory file (JSON or CSV). Use '-' for stdin."),
             click.option(
+                "--no-discover",
+                "--inventory-only",
+                "no_discover",
+                is_flag=True,
+                default=False,
+                help=(
+                    "Use only explicit input artifacts such as --inventory, --sbom, --external-scan, --image, "
+                    "or --filesystem; do not merge ambient project, cwd, skill, model, dataset, or secret discovery."
+                ),
+            ),
+            click.option(
                 "--sbom",
                 "sbom_file",
                 type=click.Path(exists=True),

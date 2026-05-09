@@ -41,6 +41,7 @@ def emit_dry_run_plan(
     con: Any,
     *,
     inventory: str | None,
+    no_discover: bool,
     project: str | None,
     config_dir: str | None,
     code_paths: tuple,
@@ -91,6 +92,8 @@ def emit_dry_run_plan(
         reads.append(f"  [green]Would read:[/green]   {project}  (agent configs)")
     if config_dir:
         reads.append(f"  [green]Would read:[/green]   {config_dir}  (config directory)")
+    if no_discover:
+        reads.append("  [dim]Ambient discovery:[/dim] disabled (--no-discover)")
     if not reads:
         for client, path in get_all_discovery_paths():
             reads.append(f"  [green]Would read:[/green]   {path}  ({client})")
@@ -117,7 +120,7 @@ def emit_dry_run_plan(
         reads.append(f"  [green]Would read:[/green]   {sp}  (skill/instruction file)")
     if no_skill:
         reads.append("  [dim]Skill scanning:[/dim]   disabled (--no-skill)")
-    elif not skill_paths:
+    elif not skill_paths and not no_discover:
         reads.append("  [green]Would discover:[/green] skill files (CLAUDE.md, .cursorrules, etc.)")
     if skill_only:
         reads.append("  [bold cyan]Mode:[/bold cyan]           skill-only (skipping agent/package/CVE scanning)")

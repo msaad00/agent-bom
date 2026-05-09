@@ -142,3 +142,6 @@ agent-bom agents -p .
 
 Add `--inventory <file>` when you already have agent/server inventory from a
 fleet collector, SIEM export, or manually curated source of truth.
+Add `--inventory-only` when that file is the complete evidence boundary and
+you do not want project, cwd, skill, model, dataset, or secret auto-discovery
+merged into the result.

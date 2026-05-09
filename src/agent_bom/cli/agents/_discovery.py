@@ -46,6 +46,7 @@ def run_local_discovery(
     config_dir: Any,
     inventory: Any,
     skill_only: bool,
+    no_discover: bool = False,
     dynamic_discovery: bool,
     dynamic_max_depth: int,
     include_processes: bool,
@@ -123,6 +124,8 @@ def run_local_discovery(
             raise click.BadParameter(str(exc), param_hint="--inventory") from exc
         ctx.agents = _build_agents_from_inventory(inventory_data, inventory)
         con.print(f"\n  [green]✓[/green] {len(ctx.agents)} agent(s) from {label}")
+    elif no_discover:
+        ctx.agents = []
     elif config_dir:
         con.print(f"\n[bold blue]Scanning config directory: {config_dir}...[/bold blue]\n")
         with con.status("[bold]Discovering agents and MCP servers...[/bold]", spinner="dots"):
@@ -158,6 +161,7 @@ def run_local_discovery(
     any_cloud = kwargs.get("_any_cloud", False)
     if (
         not skill_only
+        and not no_discover
         and not scan_prompts
         and not browser_extensions
         and not ctx.agents
@@ -350,7 +354,16 @@ def run_local_discovery(
     # Auto-detect: scan current directory for lockfiles and IaC (always, not just when no MCP)
     # Skip auto-detect when explicitly scanning images or an external SBOM — avoid mixing local
     # CWD packages (e.g. uv.lock transitive deps) with the targeted scan surface.
-    if not filesystem_paths and not project and not skill_only and not images and not image_tars and not sbom_file and not inventory:
+    if (
+        not no_discover
+        and not filesystem_paths
+        and not project
+        and not skill_only
+        and not images
+        and not image_tars
+        and not sbom_file
+        and not inventory
+    ):
         cwd = Path.cwd()
         _lockfile_patterns = [
             "requirements.txt",
@@ -371,7 +384,7 @@ def run_local_discovery(
             filesystem_paths = (str(cwd),)
             con.print(f"\n[bold blue]Auto-detected lockfiles in {cwd}[/bold blue]")
 
-    if not iac_paths and not skill_only and not images and not image_tars and not sbom_file and not inventory:
+    if not no_discover and not iac_paths and not skill_only and not images and not image_tars and not sbom_file and not inventory:
         cwd = Path(project) if project else Path.cwd()
         _auto_iac: list[str] = []
         for name in ["Dockerfile", "docker-compose.yml", "docker-compose.yaml"]:
@@ -415,7 +428,7 @@ def run_local_discovery(
 
             # Auto-discover MCP configs inside directory (VM snapshots, mounts)
             fs_dir = Path(fs_path)
-            if fs_dir.is_dir():
+            if fs_dir.is_dir() and not no_discover:
                 from agent_bom.discovery import discover_filesystem_mcps
 
                 fs_mcp_agents = discover_filesystem_mcps(fs_dir)
@@ -610,7 +623,7 @@ def run_local_discovery(
         }
 
     # Step 1d4: Project package scan
-    if not skill_only and project and not images and not code_paths and not sbom_file:
+    if not skill_only and not no_discover and project and not images and not code_paths and not sbom_file:
         from agent_bom.models import Agent, AgentType, MCPServer, ServerSurface, TransportType
         from agent_bom.parsers import scan_project_directory, summarize_project_inventory
 
@@ -728,12 +741,13 @@ def run_local_discovery(
                 skill_file_list.extend(discover_skill_files(p))
             else:
                 skill_file_list.append(p)
-        # Auto-discover skill files in project directory
-        search_dir = Path(project) if project else Path.cwd()
-        auto_skills = discover_skill_files(search_dir)
-        for sf in auto_skills:
-            if sf not in skill_file_list:
-                skill_file_list.append(sf)
+        if not no_discover:
+            # Auto-discover skill files in project directory
+            search_dir = Path(project) if project else Path.cwd()
+            auto_skills = discover_skill_files(search_dir)
+            for sf in auto_skills:
+                if sf not in skill_file_list:
+                    skill_file_list.append(sf)
 
         if skill_file_list:
             skill_result = scan_skill_files(skill_file_list)

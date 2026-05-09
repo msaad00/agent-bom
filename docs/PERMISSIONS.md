@@ -187,7 +187,8 @@ Users can restrict or bypass auto-discovery entirely:
 | Flag | Effect |
 |------|--------|
 | `--dry-run` | Shows exactly which files, APIs, and data would be accessed, then exits without reading anything |
-| `--inventory <file>` | Scans only the agents/packages defined in a JSON inventory file — skips all config discovery |
+| `--inventory <file>` | Reads agents/packages from a JSON inventory file |
+| `--inventory-only` / `--no-discover` | Uses only explicit input artifacts and suppresses ambient project, cwd, skill, model, dataset, and secret discovery |
 | `--project <dir>` | Restricts discovery to MCP configs in a specific project directory (does not include machine-wide configs) |
 | `--config-dir <dir>` | Reads MCP configs from a single custom directory only |
 | `--no-skill` | Disables skill/instruction file scanning |

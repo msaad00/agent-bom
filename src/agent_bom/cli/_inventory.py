@@ -163,7 +163,7 @@ def validate(inventory_file: str):
         total_servers = sum(len(a.get("mcp_servers", [])) for a in agents)
         total_packages = sum(len(s.get("packages", [])) for a in agents for s in a.get("mcp_servers", []))
         console.print(f"\n  [green]✓ Valid[/green] — {len(agents)} agent(s), {total_servers} server(s), {total_packages} package(s)")
-        console.print(f"\n  [dim]Scan with:[/dim] agent-bom scan --inventory {inventory_file}")
+        console.print(f"\n  [dim]Scan exact inventory with:[/dim] agent-bom scan --inventory {inventory_file} --inventory-only")
     else:
         console.print(f"\n  [red]✗ Invalid — {len(errors)} error(s):[/red]\n")
         for err in errors:

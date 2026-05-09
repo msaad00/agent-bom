@@ -202,6 +202,7 @@ def scan(
     project: Optional[str],
     config_dir: Optional[str],
     inventory: Optional[str],
+    no_discover: bool,
     output: Optional[str],
     output_format: str,
     dry_run: bool,
@@ -580,6 +581,7 @@ def scan(
         emit_dry_run_plan(
             con,
             inventory=inventory,
+            no_discover=no_discover,
             project=project,
             config_dir=config_dir,
             code_paths=code_paths,
@@ -717,6 +719,7 @@ def scan(
         config_dir=config_dir,
         inventory=inventory,
         skill_only=skill_only,
+        no_discover=no_discover,
         dynamic_discovery=dynamic_discovery,
         dynamic_max_depth=dynamic_max_depth,
         include_processes=include_processes,
@@ -1770,7 +1773,7 @@ def scan(
 
     # ── Step 1i: Model binary file scan ─────────────────────────────
     # Auto-detect: if no --model-dirs given, check project dir for model files
-    if not skill_only and not model_dirs and project:
+    if not skill_only and not no_discover and not model_dirs and project:
         from pathlib import Path as _MPath
 
         _project_path = _MPath(project)
@@ -1837,7 +1840,7 @@ def scan(
 
     # ── Step 1k: Dataset card scan ──────────────────────────────────
     # Auto-detect: check project for dataset_info.json or .dvc files
-    if not skill_only and not dataset_dirs and project:
+    if not skill_only and not no_discover and not dataset_dirs and project:
         from pathlib import Path as _DPath
 
         _proj = _DPath(project)
@@ -1901,7 +1904,7 @@ def scan(
 
     # ── Step 1l: Training pipeline scan ──────────────────────────────
     # Auto-detect: check project for MLmodel, wandb-metadata.json, pipeline YAML
-    if not skill_only and not training_dirs and project:
+    if not skill_only and not no_discover and not training_dirs and project:
         from pathlib import Path as _TPath
 
         _tproj = _TPath(project)
@@ -1943,7 +1946,7 @@ def scan(
             con.print(f"  [yellow]⚠[/yellow] {w}")
 
     # ── Step 1m: AST source code analysis (auto-detect Python AI code) ──
-    if not skill_only and project and not dry_run:
+    if not skill_only and not no_discover and project and not dry_run:
         from pathlib import Path as _APath
 
         _aproj = _APath(project)
@@ -1971,7 +1974,7 @@ def scan(
                 pass  # AST analysis not available
 
     # ── Step 1n: Secret scanning (auto-detect in project) ──────────
-    if not skill_only and project and not dry_run:
+    if not skill_only and not no_discover and project and not dry_run:
         try:
             from agent_bom.secret_scanner import scan_secrets as _scan_secrets
 

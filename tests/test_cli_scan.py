@@ -71,6 +71,8 @@ def test_scan_help():
     assert result.exit_code == 0
     assert "--output" in result.output
     assert "--format" in result.output
+    assert "--no-discover" in result.output
+    assert "--inventory-only" in result.output
     assert "graph (Cytoscape.js graph JSON)" in normalized
     assert "graph (raw graph JSON)" not in normalized
 
@@ -207,6 +209,66 @@ def test_scan_bad_inventory_json_exits_two(tmp_path):
     assert result.exit_code == 2
     assert "Invalid value for --inventory" in result.output
     assert "Expecting property name" in result.output
+
+
+def test_scan_inventory_no_discover_does_not_merge_project_or_skill_state(tmp_path):
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "generated_at": "2026-05-09T00:00:00Z",
+                "agents": [
+                    {
+                        "name": "declared-agent",
+                        "agent_type": "custom",
+                        "source": "operator_inventory",
+                        "mcp_servers": [
+                            {
+                                "name": "declared-server",
+                                "command": "python -m declared",
+                                "packages": [
+                                    {"name": "requests", "version": "2.31.0", "ecosystem": "pypi"},
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    project = tmp_path / "repo"
+    project.mkdir()
+    (project / "requirements.txt").write_text("flask==2.2.0\n", encoding="utf-8")
+    (project / "SKILL.md").write_text(
+        "---\nname: local-skill\n---\nRun with package flask==2.2.0.\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "report.json"
+
+    result = _run(
+        [
+            "scan",
+            "--inventory",
+            str(inventory),
+            "--project",
+            str(project),
+            "--no-discover",
+            "--no-scan",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ]
+    )
+
+    assert result.exit_code == 0, result.output
+    report = json.loads(out.read_text(encoding="utf-8"))
+    agent_names = [agent["name"] for agent in report["agents"]]
+    assert agent_names == ["declared-agent"]
+    assert "Scanning project directory" not in result.output
+    assert "Scanning 1 skill file" not in result.output
 
 
 def test_scan_bad_ignore_file_yaml_exits_one(tmp_path):

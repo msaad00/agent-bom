@@ -95,7 +95,8 @@ Operators can narrow or disable major data paths:
 | Control | Effect |
 |---|---|
 | `agent-bom agents --dry-run` | preview planned file/API access before scanning |
-| `--inventory <file>` | scan only the provided inventory |
+| `--inventory <file>` | read agents/packages from a provided inventory |
+| `--inventory-only` / `--no-discover` | use only explicit input artifacts; suppress ambient project, cwd, skill, model, dataset, and secret discovery |
 | `--project <dir>` | restrict project-oriented discovery to the requested directory |
 | `--config-dir <dir>` | read MCP configs from one operator-selected directory |
 | `--no-scan` | inventory only; skip vulnerability lookups |
@@ -151,7 +152,7 @@ to escalate access.
 For endpoint teams, the safe rollout model is explicit and inspectable:
 
 - use MDM or an endpoint manager to run a known command
-- start with `--dry-run`, `--no-scan`, or inventory-only modes when piloting
+- start with `--dry-run`, `--no-scan`, or `--inventory-only` modes when piloting
 - scope project scans to managed developer workspaces or approved paths
 - avoid collecting unrelated home-directory content
 - push only the inventory and evidence classes the operator chooses

@@ -68,13 +68,19 @@ def _print_startup_banner() -> None:
     context_settings={"help_option_names": ["-h", "--help"]},
     invoke_without_command=True,
 )
+@click.option(
+    "--profile",
+    envvar="AGENT_BOM_PROFILE",
+    metavar="NAME",
+    help="Use a named CLI profile from ~/.agent-bom/config.toml.",
+)
 @click.version_option(
     version=__version__,
     prog_name="agent-bom",
     message=(f"agent-bom {__version__}\nPython {sys.version.split()[0]} · {sys.platform}\nDocs:  https://github.com/msaad00/agent-bom"),
 )
 @click.pass_context
-def main(ctx: click.Context):
+def main(ctx: click.Context, profile: str | None):
     """agent-bom — Security scanner for AI infrastructure.
 
     \b
@@ -101,6 +107,10 @@ def main(ctx: click.Context):
     \b
     Docs:  https://github.com/msaad00/agent-bom
     """
+    if profile:
+        import os as _os
+
+        _os.environ["AGENT_BOM_PROFILE"] = profile
     if ctx.invoked_subcommand is None:
         _print_startup_banner()
 
@@ -260,6 +270,10 @@ main.add_command(db_cmd, "db")
 from agent_bom.cli._samples import samples_group  # noqa: E402
 
 main.add_command(samples_group)
+
+from agent_bom.cli._profiles import profiles_group  # noqa: E402
+
+main.add_command(profiles_group)
 
 # ---------------------------------------------------------------------------
 # MCP command group — `agent-bom mcp [inventory|introspect|registry|server]`

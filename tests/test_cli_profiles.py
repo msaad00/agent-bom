@@ -1,0 +1,103 @@
+from __future__ import annotations
+
+import click
+from click.testing import CliRunner
+
+from agent_bom.cli import main
+from agent_bom.cli._profiles import apply_scan_profile_defaults, load_active_profile, set_current_profile
+
+
+def test_profile_loader_uses_current_profile(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+current_profile = "prod"
+
+[profiles.prod]
+tenant_id = "team-a"
+format = "json"
+output = "reports/prod.json"
+push_api_key_env = "AGENT_BOM_PUSH_TOKEN_PROD"
+"""
+    )
+    monkeypatch.setenv("AGENT_BOM_CONFIG", str(config_path))
+    monkeypatch.setenv("AGENT_BOM_PUSH_TOKEN_PROD", "secret-token")
+
+    name, profile = load_active_profile()
+
+    assert name == "prod"
+    assert profile["tenant_id"] == "team-a"
+
+
+def test_scan_profile_defaults_do_not_override_explicit_cli_flags(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+current_profile = "prod"
+
+[profiles.prod]
+format = "json"
+output = "profile.json"
+push_url = "https://control-plane.example"
+push_api_key_env = "AGENT_BOM_PUSH_TOKEN_PROD"
+"""
+    )
+    monkeypatch.setenv("AGENT_BOM_CONFIG", str(config_path))
+    monkeypatch.setenv("AGENT_BOM_PUSH_TOKEN_PROD", "secret-token")
+
+    @click.command()
+    @click.option("--output")
+    @click.option("--format", "output_format", default="console")
+    def _profile_default_test(output: str | None, output_format: str) -> None:
+        values = apply_scan_profile_defaults(
+            output=output,
+            output_format=output_format,
+            preset=None,
+            nvd_api_key=None,
+            push_url=None,
+            push_api_key=None,
+            clickhouse_url=None,
+        )
+        assert values == (
+            "explicit.sarif",
+            "sarif",
+            None,
+            None,
+            "https://control-plane.example",
+            "secret-token",
+            None,
+        )
+
+    result = CliRunner().invoke(_profile_default_test, ["--output", "explicit.sarif", "--format", "sarif"])
+
+    assert result.exit_code == 0, result.output
+
+
+def test_profiles_group_lists_and_switches_current_profile(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+current_profile = "dev"
+
+[profiles.dev]
+tenant_id = "default"
+format = "console"
+
+[profiles.prod]
+tenant_id = "team-a"
+format = "json"
+"""
+    )
+    monkeypatch.setenv("AGENT_BOM_CONFIG", str(config_path))
+
+    list_result = CliRunner().invoke(main, ["profiles", "list"])
+    assert list_result.exit_code == 0
+    assert "* dev" in list_result.output
+    assert "  prod" in list_result.output
+
+    set_current_profile(config_path, "prod")
+    show_result = CliRunner().invoke(main, ["profiles", "show"])
+
+    assert show_result.exit_code == 0
+    assert "[prod]" in show_result.output
+    assert "tenant_id = team-a" in show_result.output

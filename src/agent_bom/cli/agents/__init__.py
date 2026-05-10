@@ -429,6 +429,26 @@ def scan(
 
     _scan_start = _time.monotonic()
 
+    from agent_bom.cli._profiles import apply_scan_profile_defaults
+
+    (
+        output,
+        output_format,
+        preset,
+        nvd_api_key,
+        push_url,
+        push_api_key,
+        clickhouse_url,
+    ) = apply_scan_profile_defaults(
+        output=output,
+        output_format=output_format,
+        preset=preset,
+        nvd_api_key=nvd_api_key,
+        push_url=push_url,
+        push_api_key=push_api_key,
+        clickhouse_url=clickhouse_url,
+    )
+
     # Configure logging — explicit --log-level overrides --verbose
     if quiet and log_level is None and not verbose and not log_json and not log_file:
         _log_level = "ERROR"

@@ -40,3 +40,22 @@ def test_duplicate_artifact_guard_cli_returns_failure_for_duplicates(tmp_path: P
     assert main(["--paths-file", str(paths)]) == 1
     captured = capsys.readouterr()
     assert "model_advisories 2.py" in captured.err
+
+
+def test_duplicate_artifact_guard_working_tree_mode_detects_untracked_copies(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    duplicate = tmp_path / "ui" / "components" / "command-palette 2.tsx"
+    duplicate.parent.mkdir(parents=True)
+    duplicate.write_text("export {}\n", encoding="utf-8")
+    ignored = tmp_path / "node_modules" / "package 2" / "index.js"
+    ignored.parent.mkdir(parents=True)
+    ignored.write_text("", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    assert main(["--working-tree"]) == 1
+    captured = capsys.readouterr()
+    assert "ui/components/command-palette 2.tsx" in captured.err
+    assert "node_modules/package 2/index.js" not in captured.err

@@ -48,7 +48,7 @@
 |---------|-------------|
 | `graph` | Export the transitive dependency graph from a scan report |
 | `mesh` | Show lightweight agent/MCP topology without CVE scanning |
-| `report` | History, diff, pipeline-event artifacts, analytics, dashboard, and compliance narrative workflows |
+| `report` | History, diff, pipeline-event artifacts, local queries, analytics, dashboard, and compliance narrative workflows |
 
 ### Governance And Operations
 
@@ -84,6 +84,7 @@
 - `check` supports terminal output by default plus `--format json` for machine-readable pre-install verdicts.
 - `report history` and `report diff` support `--format json` for CI and automation.
 - `report pipeline-events <scan-job.json>` exports structured scan progress as JSONL for DAG/dashboard consumers.
+- `report query "SELECT ..."` runs read-only SQL against the local scan analytics store.
 - `remediate` supports `--format json` as the machine-readable remediation contract.
 - Use `agent-bom agents -f <format> -o <path>` for SARIF, HTML, SBOM, and richer environment exports.
 - Use `agent-bom agents -f sarif -o -` when you need SARIF on stdout for piping.
@@ -101,6 +102,7 @@ agent-bom agents -o report.json
 agent-bom check requests@2.33.0 -e pypi -f json -o check.json
 agent-bom report diff before.json after.json -f json -o diff.json
 agent-bom report pipeline-events scan-job.json -o pipeline-events.jsonl
+agent-bom report query "SELECT severity, COUNT(*) AS count FROM scan_findings GROUP BY severity" --format json
 
 # Compliance
 agent-bom agents --compliance owasp-llm,eu-ai-act,all

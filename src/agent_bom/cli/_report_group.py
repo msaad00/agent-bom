@@ -6,6 +6,7 @@ Usage::
     agent-bom report diff <a> <b>        # diff two scan reports or SBOMs
     agent-bom report rescan              # re-scan to verify remediation
     agent-bom report compliance-narrative report.json
+    agent-bom report query "SELECT ..."  # query the local scan analytics store
     agent-bom report analytics           # query vulnerability trends
     agent-bom serve                      # launch bundled API + Next.js dashboard
     agent-bom report dashboard           # legacy Streamlit compatibility dashboard
@@ -15,6 +16,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import click
 
@@ -33,6 +35,7 @@ def report_group(ctx: click.Context) -> None:
       rescan      Re-scan vulnerable packages to verify remediation
       compliance-narrative  Generate auditor-facing compliance narrative from a saved scan report
       pipeline-events  Export scan pipeline DAG events as JSONL
+      query       Run read-only SQL against the local scan analytics store
       analytics   Query vulnerability trends (ClickHouse)
       dashboard   Launch legacy Streamlit compatibility dashboard; use `agent-bom serve` for the bundled Next.js UI
     """
@@ -63,3 +66,51 @@ def pipeline_events_cmd(scan_job_json: str, output_path: str | None) -> None:
         return
     if jsonl:
         click.echo(jsonl)
+
+
+@click.command("query")
+@click.argument("sql")
+@click.option(
+    "--db",
+    "db_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Local analytics database path. Defaults to AGENT_BOM_LOCAL_ANALYTICS_DB or ~/.agent-bom/local-analytics.sqlite.",
+)
+@click.option("--format", "output_format", type=click.Choice(["table", "json"]), default="table", show_default=True)
+def local_query_cmd(sql: str, db_path: Path | None, output_format: str) -> None:
+    """Run read-only SQL against the local scan analytics store."""
+    from agent_bom.db.local_analytics import LocalAnalyticsStore, local_analytics_path
+
+    resolved_db = db_path or local_analytics_path()
+    store = LocalAnalyticsStore(resolved_db)
+    try:
+        rows = store.query(sql)
+    except Exception as exc:  # noqa: BLE001
+        raise click.ClickException(f"Could not query local analytics store: {exc}") from exc
+
+    if output_format == "json":
+        click.echo(json.dumps({"db_path": str(resolved_db), "count": len(rows), "rows": rows}, indent=2))
+        return
+
+    _echo_rows_as_table(rows)
+
+
+def _echo_rows_as_table(rows: list[dict[str, Any]]) -> None:
+    if not rows:
+        click.echo("No rows.")
+        return
+
+    columns = list(rows[0].keys())
+    widths = {column: max(len(column), *(len(_stringify(row.get(column))) for row in rows)) for column in columns}
+    header = "  ".join(column.ljust(widths[column]) for column in columns)
+    divider = "  ".join("-" * widths[column] for column in columns)
+    click.echo(header)
+    click.echo(divider)
+    for row in rows:
+        click.echo("  ".join(_stringify(row.get(column)).ljust(widths[column]) for column in columns))
+
+
+def _stringify(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value)

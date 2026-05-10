@@ -70,6 +70,7 @@ def test_local_analytics_store_records_scan_summary_findings_and_packages(tmp_pa
 
     assert scan_id == "scan-1"
     runs = store.list_scan_runs()
+    assert runs[0]["run_id"].startswith("local-run-")
     assert runs[0]["scan_id"] == "scan-1"
     assert runs[0]["total_packages"] == 2
     assert runs[0]["critical_findings"] == 1
@@ -82,7 +83,7 @@ def test_local_analytics_store_records_scan_summary_findings_and_packages(tmp_pa
     assert package_rows == [{"package_name": "fastapi"}, {"package_name": "uvicorn"}]
 
 
-def test_local_analytics_store_upserts_scan_without_changing_existing_json_artifact(tmp_path):
+def test_local_analytics_store_records_repeated_artifact_as_distinct_runs(tmp_path):
     report = _report()
     store = LocalAnalyticsStore(tmp_path / "local.sqlite")
 
@@ -98,8 +99,48 @@ def test_local_analytics_store_upserts_scan_without_changing_existing_json_artif
     )
     store.record_scan_report(report, source="cli")
 
-    assert store.query("SELECT total_vulnerabilities FROM scan_runs WHERE scan_id = ?", ("scan-1",)) == [{"total_vulnerabilities": 3}]
-    assert store.query("SELECT COUNT(*) AS count FROM scan_findings WHERE scan_id = ?", ("scan-1",)) == [{"count": 3}]
+    runs = store.query("SELECT run_id, total_vulnerabilities FROM scan_runs WHERE scan_id = ? ORDER BY rowid", ("scan-1",))
+    assert [row["total_vulnerabilities"] for row in runs] == [2, 3]
+    assert len({row["run_id"] for row in runs}) == 2
+    assert store.query("SELECT COUNT(*) AS count FROM scan_findings WHERE scan_id = ?", ("scan-1",)) == [{"count": 5}]
+
+
+def test_local_analytics_store_records_unified_non_cve_findings(tmp_path):
+    store = LocalAnalyticsStore(tmp_path / "local.sqlite")
+    report = _report()
+    report.pop("blast_radius")
+    report["findings"] = [
+        {
+            "schema_version": "1",
+            "id": "prompt-risk-1",
+            "finding_type": "PROMPT_SECURITY",
+            "source": "PROMPT_SCAN",
+            "asset": {
+                "name": "system.prompt",
+                "asset_type": "prompt_template",
+                "identifier": "prompts/system.prompt",
+            },
+            "severity": "high",
+            "title": "Prompt injection pattern",
+            "description": "Prompt contains override language.",
+        }
+    ]
+
+    store.record_scan_report(report, source="cli")
+
+    rows = store.query(
+        """
+        SELECT finding_key, vulnerability_id, finding_type, source, schema_version, title, asset_json
+        FROM scan_findings
+        """
+    )
+    assert rows[0]["finding_key"] == "prompt-risk-1"
+    assert rows[0]["vulnerability_id"] == ""
+    assert rows[0]["finding_type"] == "PROMPT_SECURITY"
+    assert rows[0]["source"] == "PROMPT_SCAN"
+    assert rows[0]["schema_version"] == "1"
+    assert rows[0]["title"] == "Prompt injection pattern"
+    assert '"asset_type": "prompt_template"' in rows[0]["asset_json"]
 
 
 def test_history_save_dual_writes_local_analytics(monkeypatch, tmp_path):
@@ -116,3 +157,68 @@ def test_history_save_dual_writes_local_analytics(monkeypatch, tmp_path):
     with sqlite3.connect(analytics_path) as conn:
         rows = conn.execute("SELECT scan_id, source, artifact_path FROM scan_runs").fetchall()
     assert rows == [("saved-scan", "cli", str(saved_path))]
+
+
+def test_local_analytics_store_migrates_initial_scan_id_keyed_schema(tmp_path):
+    db_path = tmp_path / "local.sqlite"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript(
+            """
+            CREATE TABLE scan_runs (
+                scan_id TEXT PRIMARY KEY,
+                generated_at TEXT NOT NULL,
+                recorded_at TEXT NOT NULL,
+                tenant_id TEXT NOT NULL DEFAULT 'default',
+                source TEXT NOT NULL,
+                artifact_path TEXT,
+                total_agents INTEGER NOT NULL DEFAULT 0,
+                total_packages INTEGER NOT NULL DEFAULT 0,
+                total_vulnerabilities INTEGER NOT NULL DEFAULT 0,
+                critical_findings INTEGER NOT NULL DEFAULT 0,
+                high_findings INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE scan_findings (
+                scan_id TEXT NOT NULL,
+                finding_key TEXT NOT NULL,
+                vulnerability_id TEXT NOT NULL,
+                package_name TEXT NOT NULL,
+                package_version TEXT NOT NULL,
+                package_ref TEXT NOT NULL,
+                ecosystem TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                risk_score REAL NOT NULL DEFAULT 0,
+                affected_agents_json TEXT NOT NULL DEFAULT '[]',
+                affected_servers_json TEXT NOT NULL DEFAULT '[]',
+                PRIMARY KEY (scan_id, finding_key)
+            );
+            CREATE TABLE scan_packages (
+                scan_id TEXT NOT NULL,
+                agent_name TEXT NOT NULL,
+                server_name TEXT NOT NULL,
+                package_name TEXT NOT NULL,
+                package_version TEXT NOT NULL,
+                ecosystem TEXT NOT NULL,
+                purl TEXT,
+                PRIMARY KEY (scan_id, agent_name, server_name, package_name, package_version, ecosystem)
+            );
+            INSERT INTO scan_runs(scan_id, generated_at, recorded_at, source)
+            VALUES ('legacy-scan', '2026-05-10T16:00:00+00:00', '2026-05-10T16:01:00+00:00', 'cli');
+            INSERT INTO scan_findings(
+                scan_id, finding_key, vulnerability_id, package_name, package_version,
+                package_ref, ecosystem, severity, risk_score
+            )
+            VALUES ('legacy-scan', 'CVE-2026-0001|pkg|pypi', 'CVE-2026-0001', 'pkg', '1.0', 'pkg@1.0', 'pypi', 'high', 7.1);
+            INSERT INTO scan_packages(scan_id, agent_name, server_name, package_name, package_version, ecosystem)
+            VALUES ('legacy-scan', 'agent', 'server', 'pkg', '1.0', 'pypi');
+            """
+        )
+
+    store = LocalAnalyticsStore(db_path)
+
+    assert store.list_scan_runs()[0]["run_id"] == "legacy-scan"
+    assert store.query("SELECT run_id, scan_id, source FROM scan_findings") == [
+        {"run_id": "legacy-scan", "scan_id": "legacy-scan", "source": ""}
+    ]
+    assert store.query("SELECT run_id, scan_id, package_name FROM scan_packages") == [
+        {"run_id": "legacy-scan", "scan_id": "legacy-scan", "package_name": "pkg"}
+    ]

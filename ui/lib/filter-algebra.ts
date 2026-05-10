@@ -444,8 +444,8 @@ export function encodeFiltersToParams(filters: FilterState): URLSearchParams {
   if (filters.relationshipScope !== "all") {
     params.set("relationships", filters.relationshipScope);
   }
-  if (filters.maxDepth !== 3) params.set("depth", String(filters.maxDepth));
-  if (filters.pageSize !== 250) params.set("pageSize", String(filters.pageSize));
+  if (filters.maxDepth !== 2) params.set("depth", String(filters.maxDepth));
+  if (filters.pageSize !== 50) params.set("pageSize", String(filters.pageSize));
   if (filters.vulnOnly) params.set("vulnOnly", "1");
 
   // Encode layers as a compact CSV of enabled keys, but only when the
@@ -500,13 +500,13 @@ export function decodeFiltersFromParams(
   const depth = get("depth");
   if (depth) {
     const n = Number(depth);
-    if (Number.isFinite(n) && n > 0 && n <= 20) patch.maxDepth = n;
+    if (Number.isFinite(n) && n > 0) patch.maxDepth = Math.min(n, 4);
   }
 
   const pageSize = get("pageSize");
   if (pageSize) {
     const n = Number(pageSize);
-    if (Number.isFinite(n) && n > 0 && n <= 50000) patch.pageSize = n;
+    if (Number.isFinite(n) && n > 0) patch.pageSize = Math.min(n, 500);
   }
 
   const vulnOnly = get("vulnOnly");

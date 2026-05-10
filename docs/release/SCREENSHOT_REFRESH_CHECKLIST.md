@@ -23,8 +23,9 @@ PR clearly explains why an asset is unchanged.
 |---|---|
 | `dashboard-live.png` | Risk overview top frame, visible version, headline KPIs, posture grade, and start of attack paths. |
 | `dashboard-paths-live.png` | Risk overview mid-frame, attack paths, exposure KPIs, severity/source charts, and backlog context. |
-| `mesh-live.png` | Full agent mesh graph with selected agents, shared MCP servers, tools, packages, credentials, and findings. |
-| `mesh-path-live.png` | Bounded agent mesh path view with selected agent, MCP servers, reachable packages/tools, prioritized findings, and readable relationship flow. |
+| `mesh-live.png` | Full light-theme agent mesh graph with selected agents, MCP servers, tools, packages, credentials, and findings. |
+| `mesh-dark-live.png` | Full dark-theme agent mesh graph from the real `/mesh` product route. |
+| `mesh-light-live.png` | Full light-theme agent mesh graph from the real `/mesh` product route. |
 | `remediation-live.png` | Fix-first remediation table with prioritized packages and framework context. |
 
 ## Manifest

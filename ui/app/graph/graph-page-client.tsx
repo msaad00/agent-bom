@@ -782,7 +782,7 @@ function GraphPageInner() {
   const validValues = filterAlgebra.validValues;
 
   const handleResetFilters = useCallback(() => {
-    setFilters(createExpandedGraphFilters(null));
+    setFilters(DEFAULT_FILTERS);
   }, []);
 
   const flowNodeDataById = useMemo(

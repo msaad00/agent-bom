@@ -14,6 +14,13 @@ function renderFilterPanel(agentNames: string[], filters: FilterState = DEFAULT_
 }
 
 describe("FilterPanel", () => {
+  it("defaults to a bounded, readable graph scope", () => {
+    expect(DEFAULT_FILTERS.maxDepth).toBe(2);
+    expect(DEFAULT_FILTERS.pageSize).toBe(50);
+    expect(DEFAULT_FILTERS.vulnOnly).toBe(true);
+    expect(DEFAULT_FILTERS.severity).toBe("high");
+  });
+
   it("windows large agent lists instead of rendering every agent option", () => {
     const agents = Array.from({ length: 5000 }, (_, index) => `agent-${index.toString().padStart(4, "0")}`);
     renderFilterPanel(agents);

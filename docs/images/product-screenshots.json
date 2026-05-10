@@ -1,7 +1,7 @@
 {
   "release_version": "0.86.3",
-  "captured_at": "2026-05-09T23:15:45Z",
-  "capture_note": "Captured from the current Next.js dashboard against agent-bom serve API with bundled demo data pushed through /v1/results/push.",
+  "captured_at": "2026-05-10T01:22:20Z",
+  "capture_note": "Captured from the packaged Next.js dashboard served by agent-bom serve with bundled demo data pushed through /v1/results/push. Mesh screenshots are real product graph views in dark and light themes; no docs-only slide route is used.",
   "screenshots": [
     {
       "path": "dashboard-live.png",
@@ -18,13 +18,19 @@
     {
       "path": "mesh-live.png",
       "page": "/mesh",
-      "scope": "Full agent mesh graph across selected agents, shared MCP servers, packages, tools, credentials, and findings",
+      "scope": "Full agent mesh graph across selected agents, MCP servers, packages, tools, credentials, and findings",
       "visible_version": "0.86.3"
     },
     {
-      "path": "mesh-path-live.png",
-      "page": "/mesh?capture=1",
-      "scope": "Bounded agent mesh path view across selected agent, MCP servers, packages/tools, and prioritized findings",
+      "path": "mesh-dark-live.png",
+      "page": "/mesh",
+      "scope": "Dark-theme agent mesh graph with the same scoped evidence model",
+      "visible_version": "0.86.3"
+    },
+    {
+      "path": "mesh-light-live.png",
+      "page": "/mesh",
+      "scope": "Light-theme agent mesh graph with the same scoped evidence model",
       "visible_version": "0.86.3"
     },
     {

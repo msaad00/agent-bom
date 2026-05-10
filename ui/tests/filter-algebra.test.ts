@@ -395,4 +395,11 @@ describe("URL state codec", () => {
     expect(patch.maxDepth).toBeUndefined();
     expect(patch.pageSize).toBeUndefined();
   });
+
+  it("clamps deep shared URLs to bounded graph scopes", () => {
+    const params = new URLSearchParams("depth=6&pageSize=1000");
+    const patch = decodeFiltersFromParams(params);
+    expect(patch.maxDepth).toBe(4);
+    expect(patch.pageSize).toBe(500);
+  });
 });

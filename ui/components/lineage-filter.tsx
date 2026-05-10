@@ -69,8 +69,8 @@ export function createFocusedGraphFilters(agentName: string | null = null): Filt
     vulnOnly: true,
     runtimeMode: "all",
     relationshipScope: "all",
-    maxDepth: 3,
-    pageSize: 250,
+    maxDepth: 2,
+    pageSize: 50,
   };
 }
 
@@ -82,8 +82,8 @@ export function createExpandedGraphFilters(agentName: string | null = null): Fil
     vulnOnly: false,
     runtimeMode: "all",
     relationshipScope: "all",
-    maxDepth: 6,
-    pageSize: 1000,
+    maxDepth: 3,
+    pageSize: 250,
   };
 }
 
@@ -182,10 +182,10 @@ const AGENT_OVERSCAN_ROWS = 4;
 
 export function FilterPanel({ filters, onChange, agentNames, validValues, onReset }: FilterPanelProps) {
   const [openSections, setOpenSections] = useState({
-    layers: true,
+    layers: false,
     severity: true,
     edges: false,
-    traversal: true,
+    traversal: false,
     agent: true,
     pageSize: false,
   });
@@ -227,11 +227,11 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
           <button
             type="button"
             onClick={onReset}
-            title="Reset to wide — show every layer, every severity, every relationship"
+            title="Reset to the bounded graph scope"
             className="flex items-center gap-1 rounded border border-zinc-800 bg-zinc-900/80 px-2 py-1 text-[10px] text-zinc-400 transition hover:border-emerald-600/40 hover:text-emerald-200"
           >
             <RotateCcw className="h-3 w-3" />
-            Reset to wide
+            Reset scope
           </button>
         )}
       </div>
@@ -367,9 +367,6 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
             <option value="2">Depth 2</option>
             <option value="3">Depth 3</option>
             <option value="4">Depth 4</option>
-            <option value="6">Depth 6</option>
-            <option value="8">Depth 8</option>
-            <option value="10">Depth 10</option>
           </select>
         </div>
       </FilterSection>
@@ -413,11 +410,10 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
           onChange={(e) => onChange({ ...filters, pageSize: Number(e.target.value) })}
           className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
         >
+          <option value="50">50 nodes</option>
+          <option value="100">100 nodes</option>
           <option value="250">250 nodes</option>
           <option value="500">500 nodes</option>
-          <option value="1000">1,000 nodes</option>
-          <option value="2500">2,500 nodes</option>
-          <option value="5000">5,000 nodes</option>
         </select>
       </FilterSection>
     </div>

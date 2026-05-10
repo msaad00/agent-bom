@@ -173,13 +173,11 @@ Risk, reach, fix version, and framework context in one review table — operator
 
 ### Agent mesh
 
-Agent-centered shared-infrastructure graph — selected agents, their MCP servers, tools, packages, credentials, and findings.
+Agent-centered shared-infrastructure graph — selected agents, their MCP servers, tools, packages, credentials, and findings. The same evidence model renders in dark and light themes.
 
-![agent-bom agent mesh](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
-
-Bounded path view for first-pass triage — the same evidence model scoped to one risky agent before opening the full graph canvas.
-
-![agent-bom bounded agent path](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-path-live.png)
+| Dark theme | Light theme |
+|---|---|
+| ![agent-bom agent mesh dark theme](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-dark-live.png) | ![agent-bom agent mesh light theme](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-light-live.png) |
 
 </details>
 

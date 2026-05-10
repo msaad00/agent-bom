@@ -54,16 +54,8 @@ CATEGORY_DESCRIPTIONS: dict[str, str] = {
 }
 
 
-class GroupedGroup(click.Group):
-    """A Click group that displays commands organized by category.
-
-    Pass ``command_categories`` to override the default category mapping.
-    Each product (agent-bom, agent-shield, etc.) provides its own categories.
-    """
-
-    def __init__(self, *args, command_categories=None, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._command_categories = command_categories or COMMAND_CATEGORIES
+class SuggestingGroup(click.Group):
+    """A Click group that suggests nearby subcommands on typos."""
 
     def resolve_command(self, ctx: click.Context, args: list[str]):
         try:
@@ -84,6 +76,18 @@ class GroupedGroup(click.Group):
             visible_commands.append(name)
         matches = get_close_matches(command_name, visible_commands, n=1, cutoff=0.62)
         return matches[0] if matches else None
+
+
+class GroupedGroup(SuggestingGroup):
+    """A Click group that displays commands organized by category.
+
+    Pass ``command_categories`` to override the default category mapping.
+    Each product (agent-bom, agent-shield, etc.) provides its own categories.
+    """
+
+    def __init__(self, *args, command_categories=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._command_categories = command_categories or COMMAND_CATEGORIES
 
     def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         # Collect all available commands

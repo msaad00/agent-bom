@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import click
 
+from agent_bom.cli._grouped_help import SuggestingGroup
 
-@click.group("db")
+
+@click.group("db", cls=SuggestingGroup)
 def db_cmd() -> None:
     """Manage the local vulnerability database."""
 

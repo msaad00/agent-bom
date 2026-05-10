@@ -15,7 +15,7 @@ import click
 
 from agent_bom import __version__
 from agent_bom.cli._entry import make_entry_point
-from agent_bom.cli._grouped_help import GroupedGroup
+from agent_bom.cli._grouped_help import GroupedGroup, SuggestingGroup
 
 # ── Help categories ──────────────────────────────────────────────────────────
 
@@ -67,7 +67,7 @@ def claw():
 # ── Fleet command group (new) ────────────────────────────────────────────────
 
 
-@click.group("fleet", invoke_without_command=True)
+@click.group("fleet", cls=SuggestingGroup, invoke_without_command=True)
 @click.pass_context
 def fleet_group(ctx: click.Context) -> None:
     """Manage AI agent fleet — discovery, lifecycle, trust scoring.

@@ -16,6 +16,7 @@ from pathlib import Path
 import click
 
 from agent_bom.cli._common import read_json_file_for_cli
+from agent_bom.cli._grouped_help import SuggestingGroup
 from agent_bom.cli._server import _is_loopback_host
 
 logger = logging.getLogger(__name__)
@@ -56,7 +57,7 @@ def _enforce_gateway_auth_defaults(host: str, bearer_token: str | None, allow_in
     )
 
 
-@click.group(help="Multi-MCP gateway commands.")
+@click.group(cls=SuggestingGroup, help="Multi-MCP gateway commands.")
 def gateway_group() -> None:
     """Entry point for gateway subcommands."""
 

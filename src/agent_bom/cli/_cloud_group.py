@@ -16,8 +16,10 @@ from typing import Optional
 
 import click
 
+from agent_bom.cli._grouped_help import SuggestingGroup
 
-@click.group("cloud", invoke_without_command=True)
+
+@click.group("cloud", cls=SuggestingGroup, invoke_without_command=True)
 @click.pass_context
 def cloud_group(ctx: click.Context) -> None:
     """Scan cloud infrastructure — AWS, Azure, GCP.

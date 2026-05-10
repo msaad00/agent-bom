@@ -10,8 +10,10 @@ from typing import Optional
 import click
 from rich.console import Console
 
+from agent_bom.cli._grouped_help import SuggestingGroup
 
-@click.group()
+
+@click.group(cls=SuggestingGroup)
 def schedule():
     """Manage recurring scan schedules."""
 
@@ -102,7 +104,7 @@ def schedule_remove(schedule_id: str):
         sys.exit(1)
 
 
-@click.group()
+@click.group(cls=SuggestingGroup)
 def registry():
     """Manage the MCP server registry."""
 

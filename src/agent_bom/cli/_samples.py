@@ -6,10 +6,11 @@ from pathlib import Path
 
 import click
 
+from agent_bom.cli._grouped_help import SuggestingGroup
 from agent_bom.samples import write_first_run_sample
 
 
-@click.group(name="samples")
+@click.group(name="samples", cls=SuggestingGroup)
 def samples_group() -> None:
     """Create bundled sample inputs for demos and first-run scans."""
 

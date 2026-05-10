@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import click
 
+from agent_bom.cli._grouped_help import SuggestingGroup
 
-@click.group("runtime", invoke_without_command=True)
+
+@click.group("runtime", cls=SuggestingGroup, invoke_without_command=True)
 @click.pass_context
 def runtime_group(ctx: click.Context) -> None:
     """Runtime enforcement — proxy and audit MCP traffic.

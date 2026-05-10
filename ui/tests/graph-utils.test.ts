@@ -6,6 +6,7 @@ import {
   legendItemsForVisibleNodes,
   minimapNodeColor,
   NODE_COLOR_MAP,
+  readableGraphEdges,
 } from "@/lib/graph-utils";
 
 describe("graph utility metadata", () => {
@@ -45,5 +46,34 @@ describe("graph utility metadata", () => {
         shape: "square",
       },
     ]);
+  });
+
+  it("de-emphasizes dense default edges and restores contrast for focused paths", () => {
+    const edges = readableGraphEdges([
+      {
+        id: "a-b",
+        source: "a",
+        target: "b",
+        data: { relationship: "uses" },
+        style: { strokeWidth: 3 },
+        animated: true,
+      },
+      {
+        id: "b-c",
+        source: "b",
+        target: "c",
+        data: { relationship: "vulnerable_to" },
+        style: { strokeWidth: 2 },
+      },
+    ]);
+
+    expect(edges[0]!.animated).toBe(false);
+    expect(edges[0]!.style?.opacity).toBeLessThan(edges[1]!.style?.opacity as number);
+    expect(edges[0]!.style?.strokeWidth).toBeLessThanOrEqual(1.5);
+
+    const focused = readableGraphEdges(edges, new Set(["b", "c"]));
+    expect(focused[0]!.style?.opacity).toBeLessThan(0.1);
+    expect(focused[1]!.style?.opacity).toBeGreaterThan(0.9);
+    expect(focused[1]!.style?.strokeWidth).toBeGreaterThanOrEqual(2.6);
   });
 });

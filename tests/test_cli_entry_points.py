@@ -25,6 +25,14 @@ class TestAgentBom:
         assert "Core readiness" not in r.output
         assert "Navigation tips:" in r.output
 
+    def test_unknown_command_suggests_nearest_command(self):
+        from agent_bom.cli import main
+
+        r = CliRunner().invoke(main, ["scna"])
+        assert r.exit_code != 0
+        assert "No such command 'scna'" in r.output
+        assert "Did you mean 'scan'?" in r.output
+
     def test_version(self):
         from agent_bom.cli import main
 

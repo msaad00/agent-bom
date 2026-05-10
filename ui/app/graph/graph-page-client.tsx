@@ -65,6 +65,7 @@ import {
   MINIMAP_CLASS,
   MINIMAP_MASK,
   minimapNodeColor,
+  readableGraphEdges,
 } from "@/lib/graph-utils";
 import {
   api,
@@ -824,11 +825,18 @@ function GraphPageInner() {
     setHoveredNodeId(null);
   }, [graphIdentityKey]);
 
-  const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout("force", aggregated.nodes, aggregated.edges, {
+  const graphLayoutKind = filters.agentName || filters.vulnOnly || selectedAttackPath ? "dagre-lr" : "force";
+  const { nodes: layoutNodes, edges: layoutEdges } = useGraphLayout(graphLayoutKind, aggregated.nodes, aggregated.edges, {
     force: {
       idealEdgeLength: filters.agentName ? 168 : 196,
       nodeRepulsion: filters.agentName ? 3600 : 4400,
       preservePinnedPositions: true,
+    },
+    dagreLr: {
+      nodeWidth: 230,
+      nodeHeight: 84,
+      rankSep: filters.agentName ? 160 : 190,
+      nodeSep: filters.agentName ? 44 : 58,
     },
   });
 
@@ -951,15 +959,12 @@ function GraphPageInner() {
         };
       });
     }
-    if (!localNeighborhoodIds) return layoutEdges;
-    return layoutEdges.map((edge) => ({
-      ...edge,
-      style: {
-        ...edge.style,
-        opacity: localNeighborhoodIds.has(edge.source) && localNeighborhoodIds.has(edge.target) ? 1 : 0.12,
-      },
-    }));
-  }, [layoutEdges, localNeighborhoodIds, attackPathEdgeKeys]);
+    return readableGraphEdges(layoutEdges, localNeighborhoodIds, {
+      baseOpacity: graphLayoutKind === "dagre-lr" ? 0.34 : 0.26,
+      highSignalOpacity: graphLayoutKind === "dagre-lr" ? 0.6 : 0.48,
+      inactiveOpacity: 0.06,
+    });
+  }, [layoutEdges, localNeighborhoodIds, attackPathEdgeKeys, graphLayoutKind]);
 
   const legendItems = useMemo(
     () => legendItemsForVisibleGraph(displayNodes, displayEdges),

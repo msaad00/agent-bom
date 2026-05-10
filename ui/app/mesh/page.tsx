@@ -51,6 +51,7 @@ import {
   BACKGROUND_GAP,
   legendItemsForVisibleGraph,
   minimapNodeColor,
+  readableGraphEdges,
 } from "@/lib/graph-utils";
 import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
@@ -301,7 +302,7 @@ function MeshCaptureView({
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700">Agent mesh</p>
             <h1 className="mt-2 text-3xl font-semibold tracking-normal text-slate-950">
-              Readable AI supply-chain path, scoped to the riskiest agent
+              AI supply-chain path, scoped to the riskiest agent
             </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
               The mesh starts with a bounded path view so teams can see which agent, MCP servers, packages, tools, and findings are driving risk before opening the full graph canvas.
@@ -508,14 +509,11 @@ export default function MeshPage() {
     const { nodes, edges, stats } = buildMeshGraph(activeResult, nodeFilter, severityFilter, {
       selectedAgents,
       vulnerableOnly,
-      ...(captureMode
-        ? {
-            maxCredentialNodesPerServer: 2,
-            maxToolNodesPerServer: 2,
-            maxVulnerablePackagesPerServer: 3,
-            maxVulnerabilitiesPerPackage: 1,
-          }
-        : {}),
+      maxCredentialNodesPerServer: 2,
+      maxToolNodesPerServer: 2,
+      maxVulnerablePackagesPerServer: 3,
+      maxCleanPackagesPerServer: vulnerableOnly ? 0 : 1,
+      maxVulnerabilitiesPerPackage: 1,
     });
     return { rawNodes: nodes, rawEdges: edges, stats };
   }, [activeResult, captureMode, nodeFilter, severityFilter, selectedAgents, vulnerableOnly]);
@@ -526,10 +524,10 @@ export default function MeshPage() {
       ringSpacing: 220,
     },
     dagre: {
-      nodeWidth: 200,
-      nodeHeight: 70,
-      rankSep: 95,
-      nodeSep: 18,
+      nodeWidth: 230,
+      nodeHeight: 84,
+      rankSep: 140,
+      nodeSep: 34,
     },
   });
 
@@ -570,14 +568,11 @@ export default function MeshPage() {
 
   const displayEdges = useMemo(() => {
     const activeSet = searchMatches && searchMatches.size > 0 ? searchMatches : connectedIds;
-    if (!activeSet) return visibleEdges;
-    return visibleEdges?.map((e) => ({
-      ...e,
-      style: {
-        ...e.style,
-        opacity: activeSet.has(e.source) && activeSet.has(e.target) ? 1 : 0.12,
-      },
-    }));
+    return readableGraphEdges(visibleEdges, activeSet, {
+      baseOpacity: 0.3,
+      highSignalOpacity: 0.58,
+      inactiveOpacity: 0.06,
+    });
   }, [visibleEdges, connectedIds, searchMatches]);
 
   const legendItems = useMemo(
@@ -650,8 +645,8 @@ export default function MeshPage() {
         <div className="flex items-center gap-3">
           <div className="flex items-center overflow-hidden rounded-lg border border-zinc-700 bg-zinc-800">
             {[
-              { key: "radial" as const, label: "Radial", icon: Orbit },
-              { key: "topology" as const, label: "Topology", icon: Network },
+              { key: "radial" as const, label: "Risk Map", icon: Orbit },
+              { key: "topology" as const, label: "Dependency Flow", icon: Network },
               { key: "spawn-tree" as const, label: "Spawn Tree", icon: GitBranch },
             ].map(({ key, label, icon: Icon }) => (
               <button

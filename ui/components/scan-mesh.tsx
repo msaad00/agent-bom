@@ -13,7 +13,7 @@ import { lineageNodeTypes, type LineageNodeData } from "@/components/lineage-nod
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import { MeshStats } from "@/components/mesh-stats";
 import { buildMeshGraph, getConnectedIds, type MeshStatsData } from "@/lib/mesh-graph";
-import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, legendItemsForVisibleNodes, minimapNodeColor } from "@/lib/graph-utils";
+import { CONTROLS_CLASS, MINIMAP_CLASS, BACKGROUND_COLOR, BACKGROUND_GAP, legendItemsForVisibleNodes, minimapNodeColor, readableGraphEdges } from "@/lib/graph-utils";
 import { GraphLegend } from "@/components/graph-chrome";
 
 export function ScanMeshView({ id }: { id: string }) {
@@ -56,8 +56,11 @@ export function ScanMeshView({ id }: { id: string }) {
   }, [layoutNodes, connectedIds]);
 
   const displayEdges = useMemo(() => {
-    if (!connectedIds) return layoutEdges;
-    return layoutEdges?.map((e) => ({ ...e, style: { ...e.style, opacity: connectedIds.has(e.source) && connectedIds.has(e.target) ? 1 : 0.12 } }));
+    return readableGraphEdges(layoutEdges, connectedIds, {
+      baseOpacity: 0.3,
+      highSignalOpacity: 0.58,
+      inactiveOpacity: 0.06,
+    });
   }, [layoutEdges, connectedIds]);
 
   const legendItems = useMemo(() => legendItemsForVisibleNodes(displayNodes), [displayNodes]);

@@ -48,6 +48,7 @@ import {
   BACKGROUND_GAP,
   legendItemsForVisibleNodes,
   minimapNodeColor,
+  readableGraphEdges,
 } from "@/lib/graph-utils";
 import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
@@ -351,15 +352,11 @@ export default function ContextPage() {
   const displayEdges = useMemo(() => {
     const activeSet =
       searchMatches && searchMatches.size > 0 ? searchMatches : connectedIds;
-    if (!activeSet) return layoutEdges;
-    return layoutEdges?.map((e) => ({
-      ...e,
-      style: {
-        ...e.style,
-        opacity:
-          activeSet.has(e.source) && activeSet.has(e.target) ? 1 : 0.12,
-      },
-    }));
+    return readableGraphEdges(layoutEdges, activeSet, {
+      baseOpacity: 0.32,
+      highSignalOpacity: 0.56,
+      inactiveOpacity: 0.06,
+    });
   }, [layoutEdges, connectedIds, searchMatches]);
 
   const legendItems = useMemo(() => {

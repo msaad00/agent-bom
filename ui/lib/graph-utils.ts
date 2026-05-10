@@ -4,6 +4,7 @@
  */
 
 import type { LineageNodeData, LineageNodeType } from "@/components/lineage-nodes";
+import type { Edge } from "@xyflow/react";
 import {
   GRAPH_NODE_KIND_META,
   type GraphNodeKindKey,
@@ -257,6 +258,64 @@ export const STANDARD_LEGEND: LegendItem[] = [
   { label: "Cred", color: "#f59e0b", kind: "node", shape: "dot" },
   { label: "Tool", color: "#a855f7", kind: "node", shape: "pill" },
 ];
+
+const HIGH_SIGNAL_RELATIONSHIPS = new Set([
+  "vulnerable_to",
+  "exposes_cred",
+  "shares_cred",
+  "lateral_path",
+  "exploitable_via",
+  "accessed",
+  "invoked",
+]);
+
+function numericStrokeWidth(edge: Edge, fallback = 1.4): number {
+  const width = edge.style?.strokeWidth;
+  return typeof width === "number" && Number.isFinite(width) ? width : fallback;
+}
+
+function edgeRelationship(edge: Edge): string {
+  const relationship = (edge.data as { relationship?: unknown } | undefined)?.relationship;
+  return typeof relationship === "string" ? relationship : "";
+}
+
+export function readableGraphEdges(
+  edges: Edge[],
+  activeNodeIds?: Set<string> | null,
+  options: {
+    baseOpacity?: number;
+    highSignalOpacity?: number;
+    inactiveOpacity?: number;
+    activeOpacity?: number;
+    quietAnimation?: boolean;
+  } = {},
+): Edge[] {
+  const {
+    baseOpacity = 0.32,
+    highSignalOpacity = 0.54,
+    inactiveOpacity = 0.08,
+    activeOpacity = 0.96,
+    quietAnimation = true,
+  } = options;
+
+  return edges.map((edge): Edge => {
+    const relationship = edgeRelationship(edge);
+    const highSignal = HIGH_SIGNAL_RELATIONSHIPS.has(relationship);
+    const active = activeNodeIds ? activeNodeIds.has(edge.source) && activeNodeIds.has(edge.target) : false;
+    const opacity = activeNodeIds ? (active ? activeOpacity : inactiveOpacity) : highSignal ? highSignalOpacity : baseOpacity;
+    const width = numericStrokeWidth(edge);
+
+    return {
+      ...edge,
+      animated: quietAnimation ? Boolean(activeNodeIds && active && edge.animated) : Boolean(edge.animated),
+      style: {
+        ...edge.style,
+        opacity,
+        strokeWidth: active ? Math.max(width, 2.6) : Math.max(Math.min(width, highSignal ? 2 : 1.5), 1),
+      },
+    };
+  });
+}
 
 export const MESH_LEGEND: LegendItem[] = [
   { label: "Agent", color: "#10b981", kind: "node", shape: "dot" },

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from difflib import get_close_matches
 
 import click
 
@@ -63,6 +64,26 @@ class GroupedGroup(click.Group):
     def __init__(self, *args, command_categories=None, **kwargs):
         super().__init__(*args, **kwargs)
         self._command_categories = command_categories or COMMAND_CATEGORIES
+
+    def resolve_command(self, ctx: click.Context, args: list[str]):
+        try:
+            return super().resolve_command(ctx, args)
+        except click.UsageError as exc:
+            if args:
+                suggestion = self._suggest_command(ctx, args[0])
+                if suggestion and "No such command" in exc.message:
+                    exc.message = f"{exc.message}\n\nDid you mean '{suggestion}'?"
+            raise
+
+    def _suggest_command(self, ctx: click.Context, command_name: str) -> str | None:
+        visible_commands = []
+        for name in self.list_commands(ctx):
+            command = self.get_command(ctx, name)
+            if command is None:
+                continue
+            visible_commands.append(name)
+        matches = get_close_matches(command_name, visible_commands, n=1, cutoff=0.62)
+        return matches[0] if matches else None
 
     def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         # Collect all available commands

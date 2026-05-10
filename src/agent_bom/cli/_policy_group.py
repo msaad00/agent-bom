@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import click
 
+from agent_bom.cli._grouped_help import SuggestingGroup
 
-@click.group("policy", invoke_without_command=True)
+
+@click.group("policy", cls=SuggestingGroup, invoke_without_command=True)
 @click.pass_context
 def policy_group(ctx: click.Context) -> None:
     """Policy management — install guards, templates, and remediation.

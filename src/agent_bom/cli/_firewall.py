@@ -11,6 +11,7 @@ from pathlib import Path
 
 import click
 
+from agent_bom.cli._grouped_help import SuggestingGroup
 from agent_bom.firewall import (
     FirewallDecision,
     FirewallPolicyError,
@@ -20,7 +21,7 @@ from agent_bom.firewall import (
 )
 
 
-@click.group("firewall", invoke_without_command=False)
+@click.group("firewall", cls=SuggestingGroup, invoke_without_command=False)
 def firewall_group() -> None:
     """Inter-agent firewall policy tooling.
 

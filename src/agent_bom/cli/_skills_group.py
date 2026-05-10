@@ -11,6 +11,7 @@ import click
 from rich.console import Console
 from rich.table import Table
 
+from agent_bom.cli._grouped_help import SuggestingGroup
 from agent_bom.skills_service import rescan_skill_catalog, scan_skill_targets, verify_skill_targets
 
 _VERDICT_ORDER = {"benign": 0, "suspicious": 1, "malicious": 2}
@@ -25,7 +26,7 @@ def _display_path(path: str) -> str:
         return p.name or str(p)
 
 
-@click.group("skills", invoke_without_command=True)
+@click.group("skills", cls=SuggestingGroup, invoke_without_command=True)
 @click.pass_context
 def skills_group(ctx: click.Context) -> None:
     """Scan, verify, and rescan AI instruction files, skills, and agent prompts.

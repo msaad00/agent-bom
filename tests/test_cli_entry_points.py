@@ -33,6 +33,14 @@ class TestAgentBom:
         assert "No such command 'scna'" in r.output
         assert "Did you mean 'scan'?" in r.output
 
+    def test_nested_unknown_command_suggests_nearest_command(self):
+        from agent_bom.cli import main
+
+        r = CliRunner().invoke(main, ["mcp", "valdte"])
+        assert r.exit_code != 0
+        assert "No such command 'valdte'" in r.output
+        assert "Did you mean 'validate'?" in r.output
+
     def test_version(self):
         from agent_bom.cli import main
 

@@ -18,8 +18,10 @@ from pathlib import Path
 
 import click
 
+from agent_bom.cli._grouped_help import SuggestingGroup
 
-@click.group("report", invoke_without_command=True)
+
+@click.group("report", cls=SuggestingGroup, invoke_without_command=True)
 @click.pass_context
 def report_group(ctx: click.Context) -> None:
     """Reports — history, diff, analytics, and dashboard helpers.

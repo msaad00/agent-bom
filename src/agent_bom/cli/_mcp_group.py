@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import click
 
+from agent_bom.cli._grouped_help import SuggestingGroup
 
-@click.group("mcp", invoke_without_command=True)
+
+@click.group("mcp", cls=SuggestingGroup, invoke_without_command=True)
 @click.pass_context
 def mcp_group(ctx: click.Context) -> None:
     """Discover, scan, and manage MCP agents and servers.

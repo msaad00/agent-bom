@@ -410,6 +410,56 @@ def test_sync_nvd_stores_cwe_ids() -> None:
     assert cwes == {"CWE-79", "CWE-89"}
 
 
+def test_sync_nvd_derives_canonical_cve_for_debian_advisory() -> None:
+    """DEBIAN-CVE rows should inherit NVD CVSS from the canonical CVE ID."""
+    conn = _make_conn()
+    _insert_vuln(conn, "DEBIAN-CVE-2014-6271", severity="unknown")
+    requested: list[str] = []
+
+    def fetch_json(url: str, *, timeout: int = 30, headers: dict | None = None):
+        from urllib.parse import parse_qs, urlparse
+
+        cve_id = parse_qs(urlparse(url).query).get("cveId", [""])[0]
+        requested.append(cve_id)
+        return json.loads(_nvd_response_with_cwes(cve_id, score=9.8, severity="CRITICAL", cwes=["CWE-78"]))
+
+    with patch("agent_bom.http_client.fetch_json", side_effect=fetch_json):
+        with patch("time.sleep"):
+            count = sync_nvd(conn, url="https://services.nvd.nist.gov/rest/json/cves/2.0", max_entries=10)
+
+    assert count == 1
+    assert requested == ["CVE-2014-6271"]
+    row = conn.execute("SELECT severity, cvss_score, cwe_ids FROM vulns WHERE id = 'DEBIAN-CVE-2014-6271'").fetchone()
+    assert row["severity"] == "critical"
+    assert row["cvss_score"] == pytest.approx(9.8)
+    assert row["cwe_ids"] == "CWE-78"
+
+
+def test_sync_nvd_uses_cve_alias_for_non_cve_advisory() -> None:
+    conn = _make_conn()
+    _insert_vuln(conn, "OSV-2026-0001", severity="unknown")
+    conn.execute("UPDATE vulns SET aliases='CVE-2026-99010' WHERE id='OSV-2026-0001'")
+    conn.commit()
+    requested: list[str] = []
+
+    def fetch_json(url: str, *, timeout: int = 30, headers: dict | None = None):
+        from urllib.parse import parse_qs, urlparse
+
+        cve_id = parse_qs(urlparse(url).query).get("cveId", [""])[0]
+        requested.append(cve_id)
+        return json.loads(_nvd_response_with_cwes(cve_id, score=7.5, severity="HIGH", cwes=[]))
+
+    with patch("agent_bom.http_client.fetch_json", side_effect=fetch_json):
+        with patch("time.sleep"):
+            count = sync_nvd(conn, url="https://services.nvd.nist.gov/rest/json/cves/2.0", max_entries=10)
+
+    assert count == 1
+    assert requested == ["CVE-2026-99010"]
+    row = conn.execute("SELECT severity, cvss_score FROM vulns WHERE id = 'OSV-2026-0001'").fetchone()
+    assert row["severity"] == "high"
+    assert row["cvss_score"] == pytest.approx(7.5)
+
+
 def test_sync_nvd_merges_cwe_ids_with_existing() -> None:
     """NVD CWE IDs should be merged with existing ones from OSV/GHSA."""
     conn = _make_conn()

@@ -374,9 +374,9 @@ def compute_exit_code(
             report_data = to_json(report)
             ok = _push(push_url, report_data, api_key=push_api_key)
             if ok and not quiet:
-                con.print(f"\n  [green]Results pushed to {push_url}[/green]")
+                con.print("\n  [green]Results pushed to configured endpoint[/green]")
             elif not ok and not quiet:
-                con.print(f"\n  [yellow]Push to {push_url} failed[/yellow]")
+                con.print("\n  [yellow]Push to configured endpoint failed[/yellow]")
         except Exception as push_err:
             if not quiet:
                 con.print(f"\n  [yellow]Push failed: {push_err}[/yellow]")

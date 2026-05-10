@@ -170,8 +170,7 @@ async def _push_async(
 
                 last_error = f"{type(exc).__name__}: {sanitize_error(exc)}"
                 logger.warning(
-                    "Push to %s attempt %d/%d failed with %s",
-                    sanitize_url(push_url),
+                    "Push attempt %d/%d failed with %s",
                     attempt,
                     max_attempts,
                     last_error,
@@ -180,24 +179,21 @@ async def _push_async(
                 last_status = resp.status_code
                 if resp.status_code < 300:
                     logger.info(
-                        "Results pushed to %s (status=%d, attempt=%d)",
-                        sanitize_url(push_url),
+                        "Results pushed to configured endpoint (status=%d, attempt=%d)",
                         resp.status_code,
                         attempt,
                     )
                     return True
                 if resp.status_code not in retryable_status:
                     logger.warning(
-                        "Push to %s rejected with non-retryable status %d — %s",
-                        sanitize_url(push_url),
+                        "Push rejected with non-retryable status %d — %s",
                         resp.status_code,
                         sanitize_text(resp.text[:200]),
                     )
                     return False
                 last_error = sanitize_text(resp.text[:200])
                 logger.warning(
-                    "Push to %s attempt %d/%d returned retryable status %d",
-                    sanitize_url(push_url),
+                    "Push attempt %d/%d returned retryable status %d",
                     attempt,
                     max_attempts,
                     resp.status_code,
@@ -207,8 +203,7 @@ async def _push_async(
                 await asyncio.sleep(_push_retry_delay(attempt, base_delay_seconds, max_delay_seconds))
 
     logger.error(
-        "Push to %s failed after %d attempts (last_status=%s, last_error=%s)",
-        push_url,
+        "Push failed after %d attempts (last_status=%s, last_error=%s)",
         max_attempts,
         last_status,
         last_error,

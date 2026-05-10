@@ -15,6 +15,7 @@ from typing import Optional
 # Stable namespace for agent-bom deterministic UUIDs
 # Using a fixed UUID so IDs are reproducible across machines and versions
 _AGENT_BOM_NS = uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
+FINDING_SCHEMA_VERSION = "1"
 
 
 def _stable_id(*parts: str) -> str:
@@ -291,6 +292,7 @@ class Finding:
     def to_dict(self) -> dict:
         """Return a JSON-serializable finding payload."""
         return {
+            "schema_version": FINDING_SCHEMA_VERSION,
             "id": self.id,
             "finding_type": self.finding_type.value,
             "source": self.source.value,

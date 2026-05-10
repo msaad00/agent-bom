@@ -288,6 +288,7 @@ export function readableGraphEdges(
     inactiveOpacity?: number;
     activeOpacity?: number;
     quietAnimation?: boolean;
+    captureMode?: boolean;
   } = {},
 ): Edge[] {
   const {
@@ -296,22 +297,36 @@ export function readableGraphEdges(
     inactiveOpacity = 0.08,
     activeOpacity = 0.96,
     quietAnimation = true,
+    captureMode = false,
   } = options;
 
   return edges.map((edge): Edge => {
     const relationship = edgeRelationship(edge);
     const highSignal = HIGH_SIGNAL_RELATIONSHIPS.has(relationship);
     const active = activeNodeIds ? activeNodeIds.has(edge.source) && activeNodeIds.has(edge.target) : false;
-    const opacity = activeNodeIds ? (active ? activeOpacity : inactiveOpacity) : highSignal ? highSignalOpacity : baseOpacity;
+    const captureBaseOpacity = captureMode ? Math.max(baseOpacity, 0.42) : baseOpacity;
+    const captureHighSignalOpacity = captureMode ? Math.max(highSignalOpacity, 0.68) : highSignalOpacity;
+    const captureInactiveOpacity = captureMode ? Math.max(inactiveOpacity, 0.18) : inactiveOpacity;
+    const opacity = activeNodeIds
+      ? active
+        ? activeOpacity
+        : captureInactiveOpacity
+      : highSignal
+        ? captureHighSignalOpacity
+        : captureBaseOpacity;
     const width = numericStrokeWidth(edge);
 
     return {
       ...edge,
-      animated: quietAnimation ? Boolean(activeNodeIds && active && edge.animated) : Boolean(edge.animated),
+      animated: captureMode ? false : quietAnimation ? Boolean(activeNodeIds && active && edge.animated) : Boolean(edge.animated),
       style: {
         ...edge.style,
         opacity,
-        strokeWidth: active ? Math.max(width, 2.6) : Math.max(Math.min(width, highSignal ? 2 : 1.5), 1),
+        strokeWidth: active
+          ? Math.max(width, captureMode ? 3 : 2.6)
+          : captureMode
+            ? Math.max(Math.min(width, highSignal ? 2.2 : 1.6), 1.25)
+            : Math.max(Math.min(width, highSignal ? 2 : 1.5), 1),
       },
     };
   });

@@ -47,6 +47,7 @@ import {
   moveAttackPathSelection,
   toAttackCardNodes,
 } from "@/lib/attack-paths";
+import { useCaptureMode } from "@/lib/use-capture-mode";
 
 const ATTACK_PATH_QUEUE_LIMIT = 75;
 const FIX_FIRST_CARD_LIMIT = 12;
@@ -65,6 +66,7 @@ function SecurityGraphPageContent() {
   const [apiErrorKind, setApiErrorKind] = useState<"network" | "auth" | "forbidden">("network");
   const [selectedAttackPathKey, setSelectedAttackPathKey] = useState<string | null>(null);
   const [focusApplied, setFocusApplied] = useState(false);
+  const captureMode = useCaptureMode();
 
   const focus = useMemo(
     () => ({
@@ -647,6 +649,7 @@ function SecurityGraphPageContent() {
                     <AttackPathCard
                       nodes={pathNodes}
                       riskScore={path.composite_risk}
+                      captureMode={captureMode}
                       onClick={() => setSelectedAttackPathKey(key)}
                     />
                     {card && card.risk_reasons.length > 0 && (

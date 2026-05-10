@@ -55,6 +55,7 @@ import { GraphEmptyState, GraphPanelSkeleton } from "@/components/graph-state-pa
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
+import { useCaptureMode } from "@/lib/use-capture-mode";
 
 // ─── Stats Bar ──────────────────────────────────────────────────────────────
 
@@ -225,6 +226,7 @@ export default function ContextPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeJob, setActiveJob] = useState<ScanJob | null>(null);
   const { counts } = useDeploymentContext();
+  const captureMode = useCaptureMode();
 
   // Load completed jobs
   useEffect(() => {
@@ -357,8 +359,9 @@ export default function ContextPage() {
       baseOpacity: 0.32,
       highSignalOpacity: 0.56,
       inactiveOpacity: 0.06,
+      captureMode,
     });
-  }, [layoutEdges, connectedIds, searchMatches]);
+  }, [layoutEdges, connectedIds, searchMatches, captureMode]);
 
   const legendItems = useMemo(() => {
     const extras =
@@ -380,13 +383,13 @@ export default function ContextPage() {
   );
   const showMiniMap = useMemo(
     () =>
-      shouldShowGraphMiniMap({
+      !captureMode && shouldShowGraphMiniMap({
         nodeCount: displayNodes.length,
         edgeCount: displayEdges.length,
         selectedNode: Boolean(selectedNode),
         mode: "context",
       }),
-    [displayEdges.length, displayNodes.length, selectedNode],
+    [captureMode, displayEdges.length, displayNodes.length, selectedNode],
   );
 
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
@@ -503,7 +506,7 @@ export default function ContextPage() {
           </div>
 
           <FullscreenButton />
-          <GraphLegend items={legendItems} />
+          <GraphLegend items={legendItems} defaultOpen={captureMode} />
         </div>
       </div>
 

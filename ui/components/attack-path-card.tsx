@@ -15,6 +15,7 @@ interface AttackPathCardProps {
   riskScore: number;
   onClick?: () => void;
   href?: string | undefined;
+  captureMode?: boolean | undefined;
 }
 
 const NODE_META: Record<AttackPathNode["type"], { icon: LucideIcon; tint: string; ring: string }> = {
@@ -25,7 +26,7 @@ const NODE_META: Record<AttackPathNode["type"], { icon: LucideIcon; tint: string
   credential: { icon: KeyRound, tint: "text-fuchsia-300 bg-fuchsia-500/12", ring: "border-fuchsia-500/25" },
 };
 
-export function AttackPathCard({ nodes, riskScore, onClick, href }: AttackPathCardProps) {
+export function AttackPathCard({ nodes, riskScore, onClick, href, captureMode = false }: AttackPathCardProps) {
   const riskTone =
     riskScore >= 8
       ? "border-red-500/25 bg-red-500/10 text-red-200"
@@ -67,7 +68,13 @@ export function AttackPathCard({ nodes, riskScore, onClick, href }: AttackPathCa
               <div className={`flex items-center gap-2 rounded-xl border px-2.5 py-1.5 ${severityRing} ${meta.tint}`}>
                 <Icon className="h-3.5 w-3.5 shrink-0" />
                 <div className="min-w-0">
-                  <p className="max-w-[120px] truncate text-[11px] font-medium text-[color:var(--foreground)]">{node.label}</p>
+                  <p
+                    className={`text-[11px] font-medium text-[color:var(--foreground)] ${
+                      captureMode ? "max-w-[13rem] whitespace-normal break-words leading-4" : "max-w-[120px] truncate"
+                    }`}
+                  >
+                    {node.label}
+                  </p>
                   <p className="text-[9px] uppercase tracking-[0.16em] text-[color:var(--text-tertiary)]">{node.type}</p>
                 </div>
               </div>
@@ -93,7 +100,9 @@ export function AttackPathCard({ nodes, riskScore, onClick, href }: AttackPathCa
   );
 
   const className =
-    "group block w-full rounded-2xl border border-[color:var(--border-subtle)] bg-[linear-gradient(135deg,var(--surface),var(--surface-elevated))] px-4 py-3 text-left shadow-lg transition-all hover:-translate-y-0.5 hover:border-[color:var(--border-strong)] hover:shadow-xl hover:shadow-emerald-500/5";
+    `group block w-full rounded-2xl border border-[color:var(--border-subtle)] bg-[linear-gradient(135deg,var(--surface),var(--surface-elevated))] px-4 py-3 text-left shadow-lg transition-all hover:border-[color:var(--border-strong)] hover:shadow-xl hover:shadow-emerald-500/5 ${
+      captureMode ? "" : "hover:-translate-y-0.5"
+    }`;
 
   if (href && !onClick) {
     return (

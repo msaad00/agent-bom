@@ -90,6 +90,7 @@ import {
   decodeFiltersFromParams,
   encodeFiltersToParams,
 } from "@/lib/filter-algebra";
+import { useCaptureMode } from "@/lib/use-capture-mode";
 
 function PulseStyles() {
   return (
@@ -531,6 +532,7 @@ function GraphPageInner() {
       : null,
   );
   const firstScanSelectionRef = useRef(true);
+  const captureMode = useCaptureMode();
 
   useEffect(() => {
     setLoadingSnapshots(true);
@@ -980,7 +982,7 @@ function GraphPageInner() {
         const inPath = attackPathEdgeKeys.has(`${edge.source}=>${edge.target}`);
         return {
           ...edge,
-          animated: Boolean(inPath || edge.animated),
+          animated: captureMode ? false : Boolean(inPath || edge.animated),
           style: {
             ...edge.style,
             opacity: inPath ? 1 : 0.08,
@@ -999,7 +1001,7 @@ function GraphPageInner() {
           reachabilitySummary.edgeKeys.has(`${edge.target}=>${edge.source}`);
         return {
           ...edge,
-          animated: Boolean(inReach || edge.animated),
+          animated: captureMode ? false : Boolean(inReach || edge.animated),
           style: {
             ...edge.style,
             opacity: inReach ? 0.95 : 0.07,
@@ -1015,8 +1017,9 @@ function GraphPageInner() {
       baseOpacity: graphLayoutKind === "dagre-lr" ? 0.34 : 0.26,
       highSignalOpacity: graphLayoutKind === "dagre-lr" ? 0.6 : 0.48,
       inactiveOpacity: 0.06,
+      captureMode,
     });
-  }, [layoutEdges, localNeighborhoodIds, attackPathEdgeKeys, reachabilitySummary, graphLayoutKind]);
+  }, [layoutEdges, localNeighborhoodIds, attackPathEdgeKeys, reachabilitySummary, graphLayoutKind, captureMode]);
 
   const legendItems = useMemo(
     () => legendItemsForVisibleGraph(displayNodes, displayEdges),
@@ -1034,13 +1037,13 @@ function GraphPageInner() {
   );
   const showMiniMap = useMemo(
     () =>
-      shouldShowGraphMiniMap({
+      !captureMode && shouldShowGraphMiniMap({
         nodeCount: displayNodes.length,
         edgeCount: displayEdges.length,
         selectedNode: Boolean(selectedNode),
         mode: "lineage",
       }),
-    [displayEdges.length, displayNodes.length, selectedNode],
+    [captureMode, displayEdges.length, displayNodes.length, selectedNode],
   );
 
   const hasContextualGraph = useMemo(
@@ -1679,6 +1682,7 @@ function GraphPageInner() {
                     <AttackPathCard
                       nodes={pathNodes}
                       riskScore={path.composite_risk}
+                      captureMode={captureMode}
                       onClick={() => {
                         setReachabilitySummary(null);
                         setReachabilityError(null);
@@ -1811,14 +1815,14 @@ function GraphPageInner() {
               {/* Dock legend on the canvas itself so node-color -> entity-type
                   is one glance away. */}
               <Panel position="top-right" className="!m-2">
-                <details className="rounded-xl border border-zinc-800 bg-zinc-950/85 backdrop-blur p-2 group">
+                <details open={captureMode || undefined} className="rounded-xl border border-zinc-800 bg-zinc-950/85 backdrop-blur p-2 group">
                   <summary className="flex items-center gap-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden text-[10px] uppercase tracking-[0.2em] text-zinc-400">
                     <span>Legend</span>
                     <span className="text-zinc-600 group-open:hidden">▸</span>
                     <span className="text-zinc-600 hidden group-open:inline">▾</span>
                   </summary>
                   <div className="mt-2">
-                    <GraphLegend items={legendItems} embedded />
+                    <GraphLegend items={legendItems} embedded defaultOpen={captureMode} />
                   </div>
                 </details>
               </Panel>

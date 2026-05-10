@@ -51,6 +51,7 @@ import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
+import { useCaptureMode } from "@/lib/use-capture-mode";
 
 // ─── Filter Toolbar ─────────────────────────────────────────────────────────
 
@@ -205,6 +206,7 @@ export default function MeshPage() {
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const { counts } = useDeploymentContext();
+  const captureMode = useCaptureMode();
 
   useEffect(() => {
     api
@@ -369,8 +371,9 @@ export default function MeshPage() {
       baseOpacity: 0.3,
       highSignalOpacity: 0.58,
       inactiveOpacity: 0.06,
+      captureMode,
     });
-  }, [visibleEdges, connectedIds, searchMatches]);
+  }, [visibleEdges, connectedIds, searchMatches, captureMode]);
 
   const legendItems = useMemo(
     () => legendItemsForVisibleGraph(displayNodes, displayEdges),
@@ -388,13 +391,13 @@ export default function MeshPage() {
   );
   const showMiniMap = useMemo(
     () =>
-      shouldShowGraphMiniMap({
+      !captureMode && shouldShowGraphMiniMap({
         nodeCount: displayNodes.length,
         edgeCount: displayEdges.length,
         selectedNode: Boolean(selectedNode),
         mode: "mesh",
       }),
-    [displayEdges.length, displayNodes.length, selectedNode],
+    [captureMode, displayEdges.length, displayNodes.length, selectedNode],
   );
 
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
@@ -489,7 +492,7 @@ export default function MeshPage() {
             ))}
           </select>
           <FullscreenButton />
-          <GraphLegend items={legendItems} />
+          <GraphLegend items={legendItems} defaultOpen={captureMode} />
         </div>
       </div>
 

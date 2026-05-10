@@ -5,7 +5,7 @@
  * Used across all graph views for consistent UX.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Brain,
   Boxes,
@@ -69,12 +69,17 @@ export function GraphLegend({
   defaultOpen?: boolean;
   embedded?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
+
+  useEffect(() => {
+    if (defaultOpen) setOpen(true);
+  }, [defaultOpen]);
 
   if (items.length === 0) return null;
 
   const nodeItems = items.filter((item) => item.kind !== "edge");
   const edgeItems = items.filter((item) => item.kind === "edge");
+  const visible = open || defaultOpen || embedded;
 
   return (
     <div className="relative">
@@ -82,14 +87,14 @@ export function GraphLegend({
         type="button"
         onClick={() => setOpen((current) => !current)}
         className={`${embedded ? "hidden" : "flex"} items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800/80 px-2.5 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-700 backdrop-blur-sm`}
-        aria-expanded={open}
-        aria-label={open ? "Hide legend" : "Show legend"}
+        aria-expanded={visible}
+        aria-label={visible ? "Hide legend" : "Show legend"}
       >
         <span className="font-medium">Legend</span>
         <span className="rounded-full bg-zinc-900 px-1.5 py-0.5 text-[10px] text-zinc-400">{items.length}</span>
-        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${visible ? "rotate-180" : ""}`} />
       </button>
-      {(open || defaultOpen || embedded) && (
+      {visible && (
         <div className={`${embedded ? "relative w-[min(30rem,calc(100vw-2rem))] shadow-none" : "absolute right-0 top-full z-20 mt-2 w-[min(30rem,calc(100vw-2rem))] shadow-2xl shadow-black/30"} max-h-[60vh] overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-900/95 p-3 backdrop-blur-md`}>
           {nodeItems.length > 0 && <LayeredLegendSections items={nodeItems} />}
           {edgeItems.length > 0 && (

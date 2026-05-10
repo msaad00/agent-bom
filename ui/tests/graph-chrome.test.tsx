@@ -30,6 +30,22 @@ describe("GraphLegend", () => {
     expect(screen.getByText("Relationships")).toBeInTheDocument();
     expect(screen.getByText("Uses")).toBeInTheDocument();
   });
+
+  it("opens the legend by default for capture-ready graph views", () => {
+    render(
+      <GraphLegend
+        defaultOpen
+        items={[
+          { label: "Agent", color: "#10b981", layer: "orchestration", kind: "node", shape: "dot" },
+          { label: "Uses", color: "#10b981", kind: "edge", lineStyle: "solid" },
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /hide legend/i })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Orchestration")).toBeInTheDocument();
+    expect(screen.getByText("Relationships")).toBeInTheDocument();
+  });
 });
 
 describe("GraphEvidenceExportButton", () => {

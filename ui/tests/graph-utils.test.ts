@@ -76,4 +76,34 @@ describe("graph utility metadata", () => {
     expect(focused[1]!.style?.opacity).toBeGreaterThan(0.9);
     expect(focused[1]!.style?.strokeWidth).toBeGreaterThanOrEqual(2.6);
   });
+
+  it("uses a stable non-animated edge profile for capture mode", () => {
+    const captured = readableGraphEdges(
+      [
+        {
+          id: "a-b",
+          source: "a",
+          target: "b",
+          data: { relationship: "uses" },
+          animated: true,
+          style: { strokeWidth: 1 },
+        },
+        {
+          id: "b-c",
+          source: "b",
+          target: "c",
+          data: { relationship: "vulnerable_to" },
+          animated: true,
+          style: { strokeWidth: 1 },
+        },
+      ],
+      new Set(["b"]),
+      { inactiveOpacity: 0.04, captureMode: true },
+    );
+
+    expect(captured.every((edge) => edge.animated === false)).toBe(true);
+    expect(captured[0]!.style?.opacity).toBeGreaterThanOrEqual(0.18);
+    expect(captured[1]!.style?.opacity).toBeGreaterThanOrEqual(0.18);
+    expect(captured[1]!.style?.strokeWidth).toBeGreaterThanOrEqual(1.25);
+  });
 });

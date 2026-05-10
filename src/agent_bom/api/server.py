@@ -15,6 +15,7 @@ import logging
 import os
 import re
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -758,23 +759,50 @@ async def _cleanup_loop():
 # ─── Meta Routes ─────────────────────────────────────────────────────────────
 
 
-def _dashboard_index_file() -> str | None:
+@dataclass(frozen=True)
+class _DashboardFile:
+    path: Path
+    relative_path: str
+
+
+def _dashboard_dist_dir() -> Path:
+    return Path(__file__).resolve().parents[1] / "ui_dist"
+
+
+def _validated_dashboard_file(ui_dist: Path, relative_path: str) -> _DashboardFile | None:
+    ui_root = ui_dist.resolve()
+    raw_path = relative_path.strip()
+    if not raw_path:
+        return None
+    if Path(raw_path).is_absolute():
+        return None
+    rel = raw_path.strip("/")
+    if not rel:
+        return None
+    rel_path = Path(rel)
+    candidate = (ui_root / rel_path).resolve()
+    try:
+        normalized = candidate.relative_to(ui_root).as_posix()
+    except ValueError:
+        return None
+    if not candidate.is_file():
+        return None
+    return _DashboardFile(path=candidate, relative_path=normalized)
+
+
+def _dashboard_index_file() -> _DashboardFile | None:
     """Return the packaged dashboard index path when bundled UI assets exist."""
-    from pathlib import Path as _DashPath  # noqa: N814
 
-    index_file = _DashPath(__file__).resolve().parents[1] / "ui_dist" / "index.html"
-    if index_file.is_file():
-        return str(index_file)
-    return None
+    return _validated_dashboard_file(_dashboard_dist_dir(), "index.html")
 
 
-def _dashboard_html_response(path: str):
+def _dashboard_html_response(dashboard_file: _DashboardFile):
     from fastapi.responses import HTMLResponse
 
     try:
-        html = Path(path).read_text(encoding="utf-8")
+        html = dashboard_file.path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
-        html = Path(path).read_text(encoding="utf-8", errors="replace")
+        html = dashboard_file.path.read_text(encoding="utf-8", errors="replace")
     return HTMLResponse(_DASHBOARD_CSP_META_RE.sub("", html))
 
 
@@ -847,11 +875,9 @@ async def status() -> HealthResponse:
 
 def _mount_dashboard(application: FastAPI) -> None:
     """Mount pre-built Next.js dashboard if ui_dist/ exists in the package."""
-    from pathlib import Path as _DashPath  # noqa: N814
-
     from fastapi import HTTPException as _HTTPException
 
-    ui_dist = _DashPath(__file__).resolve().parents[1] / "ui_dist"
+    ui_dist = _dashboard_dist_dir()
     if not ui_dist.is_dir() or not (ui_dist / "index.html").exists():
         return
 
@@ -863,13 +889,21 @@ def _mount_dashboard(application: FastAPI) -> None:
     if next_static.is_dir():
         application.mount("/_next", StaticFiles(directory=str(next_static)), name="next-static")
 
-    # Pre-build a whitelist of static files at startup so the catch-all
-    # handler never constructs filesystem paths from user input.
-    _static_file_map: dict[str, str] = {}
+    # Pre-build a bounded static file map at startup so request paths are
+    # resolved only as lookup keys.
+    _static_file_map: dict[str, _DashboardFile] = {}
     for _f in ui_dist.rglob("*"):
-        if _f.is_file() and not str(_f.relative_to(ui_dist)).startswith("_next"):
-            _static_file_map[str(_f.relative_to(ui_dist))] = str(_f.resolve())
-    _index_html = str((ui_dist / "index.html").resolve())
+        if not _f.is_file():
+            continue
+        relative = _f.relative_to(ui_dist).as_posix()
+        if relative.startswith("_next"):
+            continue
+        dashboard_file = _validated_dashboard_file(ui_dist, relative)
+        if dashboard_file is not None:
+            _static_file_map[dashboard_file.relative_path] = dashboard_file
+    _index_html = _validated_dashboard_file(ui_dist, "index.html")
+    if _index_html is None:
+        return
 
     # SPA catch-all for client-side routing
     @application.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
@@ -888,9 +922,9 @@ def _mount_dashboard(application: FastAPI) -> None:
         if resolved:
             if path.lower().endswith(".html"):
                 return _dashboard_html_response(resolved)
-            if resolved.lower().endswith(".html"):
+            if resolved.relative_path.lower().endswith(".html"):
                 return _dashboard_html_response(resolved)
-            return FileResponse(resolved)
+            return FileResponse(resolved.path)
         # SPA fallback — serve index.html for client-side routing
         return _dashboard_html_response(_index_html)
 

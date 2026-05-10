@@ -10,7 +10,16 @@ import pytest
 from starlette.testclient import TestClient
 
 from agent_bom import __version__
-from agent_bom.api.server import JobStatus, ScanJob, ScanRequest, _jobs, app, set_job_store
+from agent_bom.api.server import (
+    JobStatus,
+    ScanJob,
+    ScanRequest,
+    _DashboardFile,
+    _jobs,
+    _validated_dashboard_file,
+    app,
+    set_job_store,
+)
 from agent_bom.api.store import InMemoryJobStore
 
 
@@ -108,7 +117,7 @@ def test_root_serves_dashboard_when_bundled(tmp_path: Path, monkeypatch):
     """GET / serves the packaged dashboard when UI assets are present."""
     index_file = tmp_path / "index.html"
     index_file.write_text("<html><body>agent-bom dashboard</body></html>", encoding="utf-8")
-    monkeypatch.setattr("agent_bom.api.server._dashboard_index_file", lambda: str(index_file))
+    monkeypatch.setattr("agent_bom.api.server._dashboard_index_file", lambda: _DashboardFile(index_file, "index.html"))
 
     client, _ = _fresh_client()
     resp = client.get("/", follow_redirects=False)
@@ -122,8 +131,8 @@ def test_root_uses_dashboard_friendly_csp_when_bundled(tmp_path: Path, monkeypat
     """Dashboard HTML keeps inline compatibility when no generated hash manifest exists."""
     index_file = tmp_path / "index.html"
     index_file.write_text("<html><body>agent-bom dashboard</body></html>", encoding="utf-8")
-    monkeypatch.setattr("agent_bom.api.server._dashboard_index_file", lambda: str(index_file))
-    monkeypatch.delenv("AGENT_BOM_DASHBOARD_CSP_HASH_MANIFEST", raising=False)
+    monkeypatch.setattr("agent_bom.api.server._dashboard_index_file", lambda: _DashboardFile(index_file, "index.html"))
+    monkeypatch.setenv("AGENT_BOM_DASHBOARD_CSP_HASH_MANIFEST", str(tmp_path / "missing-csp-hashes.json"))
 
     client, _ = _fresh_client()
     resp = client.get("/", follow_redirects=False)
@@ -144,7 +153,7 @@ def test_root_strips_packaged_dashboard_csp_meta(tmp_path: Path, monkeypatch):
         "<body>agent-bom dashboard</body></html>",
         encoding="utf-8",
     )
-    monkeypatch.setattr("agent_bom.api.server._dashboard_index_file", lambda: str(index_file))
+    monkeypatch.setattr("agent_bom.api.server._dashboard_index_file", lambda: _DashboardFile(index_file, "index.html"))
 
     client, _ = _fresh_client()
     resp = client.get("/", follow_redirects=False)
@@ -153,6 +162,22 @@ def test_root_strips_packaged_dashboard_csp_meta(tmp_path: Path, monkeypatch):
     assert "content-security-policy" in resp.headers
     assert "http-equiv" not in resp.text
     assert "sha256-bad" not in resp.text
+
+
+def test_dashboard_file_validation_rejects_escaped_paths(tmp_path: Path):
+    ui_dist = tmp_path / "ui_dist"
+    ui_dist.mkdir()
+    (ui_dist / "index.html").write_text("<html><body>dashboard</body></html>", encoding="utf-8")
+    outside = tmp_path / "secret.txt"
+    outside.write_text("secret", encoding="utf-8")
+
+    valid = _validated_dashboard_file(ui_dist, "index.html")
+
+    assert valid is not None
+    assert valid.path == (ui_dist / "index.html").resolve()
+    assert _validated_dashboard_file(ui_dist, "../secret.txt") is None
+    assert _validated_dashboard_file(ui_dist, "/index.html") is None
+    assert _validated_dashboard_file(ui_dist, str(outside)) is None
 
 
 def test_root_uses_hash_manifest_csp_when_bundled(tmp_path: Path, monkeypatch):
@@ -164,7 +189,7 @@ def test_root_uses_hash_manifest_csp_when_bundled(tmp_path: Path, monkeypatch):
         json.dumps({"script_hashes": ["sha256-abc123"], "style_hashes": ["sha256-style123"]}),
         encoding="utf-8",
     )
-    monkeypatch.setattr("agent_bom.api.server._dashboard_index_file", lambda: str(index_file))
+    monkeypatch.setattr("agent_bom.api.server._dashboard_index_file", lambda: _DashboardFile(index_file, "index.html"))
     monkeypatch.setenv("AGENT_BOM_DASHBOARD_CSP_HASH_MANIFEST", str(manifest))
 
     client, _ = _fresh_client()
@@ -284,7 +309,7 @@ def test_root_allows_head_when_dashboard_is_bundled(tmp_path: Path, monkeypatch)
     """Packaged dashboard should answer HEAD like a normal static site root."""
     index_file = tmp_path / "index.html"
     index_file.write_text("<html><body>agent-bom dashboard</body></html>", encoding="utf-8")
-    monkeypatch.setattr("agent_bom.api.server._dashboard_index_file", lambda: str(index_file))
+    monkeypatch.setattr("agent_bom.api.server._dashboard_index_file", lambda: _DashboardFile(index_file, "index.html"))
 
     client, _ = _fresh_client()
     resp = client.head("/", follow_redirects=False)

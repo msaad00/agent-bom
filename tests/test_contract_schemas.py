@@ -63,6 +63,58 @@ def test_scan_report_serializer_matches_contract_schema() -> None:
     assert agent_payload["type"] == "claude-desktop"
 
 
+def test_scan_report_helper_findings_match_contract_schema() -> None:
+    """Prompt and browser helper findings must stay inside the v1 finding contract."""
+    report = AIBOMReport(
+        generated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        scan_id="scan-contract-helper-findings",
+        tool_version="0.81.3",
+        prompt_scan_data={
+            "files_scanned": 1,
+            "prompt_files": ["system.prompt"],
+            "findings": [
+                {
+                    "source_file": "system.prompt",
+                    "line_number": 1,
+                    "title": "Prompt injection pattern",
+                    "category": "prompt_injection",
+                    "severity": "high",
+                    "detail": "Prompt contains override language.",
+                    "matched_text": "ignore previous instructions",
+                    "recommendation": "Remove override instructions from the prompt.",
+                }
+            ],
+            "passed": False,
+        },
+        browser_extensions={
+            "extensions": [
+                {
+                    "id": "risk-ext",
+                    "name": "Risk Extension",
+                    "version": "1.0.0",
+                    "browser": "chrome",
+                    "permissions": ["debugger"],
+                    "host_permissions": ["<all_urls>"],
+                    "risk_level": "critical",
+                    "risk_reasons": ["Critical permission: debugger"],
+                    "path": "/tmp/risk-ext",
+                }
+            ],
+            "total": 1,
+            "critical_count": 1,
+            "high_count": 0,
+        },
+    )
+
+    payload = to_json(report)
+    jsonschema.validate(payload, _load(CONTRACTS / "scan-report.schema.json"))
+
+    helper_sources = {"PROMPT_SCAN", "BROWSER_EXTENSION_SCAN"}
+    helper_findings = [finding for finding in payload["findings"] if finding.get("source") in helper_sources]
+    assert {finding["source"] for finding in helper_findings} == helper_sources
+    assert all(finding["schema_version"] == "1" for finding in helper_findings)
+
+
 def test_scan_report_contract_accepts_agent_type_without_legacy_type() -> None:
     payload = _load(CONTRACTS / "examples" / "scan-report.minimal.json")
     payload["agents"][0].pop("type")

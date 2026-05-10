@@ -3,8 +3,9 @@
   "$id": "https://agent-bom.dev/contracts/v1/scan-report.schema.json",
   "title": "agent-bom scan report v1",
   "type": "object",
-  "required": ["document_type", "spec_version", "scan_id", "generated_at", "summary", "agents"],
+  "required": ["schema_version", "document_type", "spec_version", "scan_id", "generated_at", "summary", "agents"],
   "properties": {
+    "schema_version": { "type": "string", "pattern": "^1(\\.\\d+)?$" },
     "document_type": { "const": "AI-BOM" },
     "spec_version": { "type": "string", "pattern": "^1(\\.\\d+)?$" },
     "scan_id": { "type": "string", "minLength": 1 },
@@ -53,8 +54,46 @@
         "additionalProperties": true
       }
     },
-    "blast_radius": { "type": "array" },
-    "inventory_snapshot": { "type": "object" }
+    "scan_run": {
+      "type": "object",
+      "required": ["schema_version", "scan_id", "generated_at"],
+      "properties": {
+        "schema_version": { "type": "string", "pattern": "^1(\\.\\d+)?$" },
+        "scan_id": { "type": "string" },
+        "generated_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    },
+    "blast_radius": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["schema_version"],
+        "properties": {
+          "schema_version": { "type": "string", "pattern": "^1(\\.\\d+)?$" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["schema_version"],
+        "properties": {
+          "schema_version": { "type": "string", "pattern": "^1(\\.\\d+)?$" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "inventory_snapshot": {
+      "type": "object",
+      "required": ["schema_version"],
+      "properties": {
+        "schema_version": { "type": "string", "pattern": "^1(\\.\\d+)?$" }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

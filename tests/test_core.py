@@ -525,8 +525,14 @@ def test_sarif_exclude_unfixable():
 
 def test_json_output_structure(sample_report):
     data = to_json(sample_report)
+    assert data["schema_version"] == "1.0"
+    assert data["scan_run"]["schema_version"] == "1"
+    assert data["scan_run"]["scan_id"] == sample_report.scan_id
     assert "agents" in data
     assert "blast_radius" in data
+    assert data["blast_radius"][0]["schema_version"] == "1"
+    assert data["findings"][0]["schema_version"] == "1"
+    assert data["inventory_snapshot"]["schema_version"] == "1"
     assert data["summary"]["total_vulnerabilities"] == 1
     assert data["ai_bom_version"] == sample_report.tool_version
 

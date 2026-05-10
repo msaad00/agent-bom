@@ -70,6 +70,7 @@ import {
   minimapNodeColor,
   readableGraphEdges,
 } from "@/lib/graph-utils";
+import { graphFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
 import {
   prettifyReachabilityType,
   summarizeReachability,
@@ -1021,6 +1022,26 @@ function GraphPageInner() {
     () => legendItemsForVisibleGraph(displayNodes, displayEdges),
     [displayEdges, displayNodes],
   );
+  const viewportOptions = useMemo(
+    () =>
+      graphFitViewOptions({
+        nodeCount: displayNodes.length,
+        edgeCount: displayEdges.length,
+        selectedNode: Boolean(selectedNode),
+        mode: "lineage",
+      }),
+    [displayEdges.length, displayNodes.length, selectedNode],
+  );
+  const showMiniMap = useMemo(
+    () =>
+      shouldShowGraphMiniMap({
+        nodeCount: displayNodes.length,
+        edgeCount: displayEdges.length,
+        selectedNode: Boolean(selectedNode),
+        mode: "lineage",
+      }),
+    [displayEdges.length, displayNodes.length, selectedNode],
+  );
 
   const hasContextualGraph = useMemo(
     () => displayNodes.some((node) => {
@@ -1749,7 +1770,7 @@ function GraphPageInner() {
               edges={displayEdges}
               nodeTypes={lineageNodeTypesAdaptive}
               fitView
-              fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
+              fitViewOptions={viewportOptions}
               minZoom={0.16}
               maxZoom={2.5}
               zoomOnScroll={false}
@@ -1775,12 +1796,14 @@ function GraphPageInner() {
             >
               <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
               <Controls className={CONTROLS_CLASS} />
-              <MiniMap
-                nodeColor={minimapNodeColor}
-                className={MINIMAP_CLASS}
-                bgColor={MINIMAP_BG}
-                maskColor={MINIMAP_MASK}
-              />
+              {showMiniMap && (
+                <MiniMap
+                  nodeColor={minimapNodeColor}
+                  className={MINIMAP_CLASS}
+                  bgColor={MINIMAP_BG}
+                  maskColor={MINIMAP_MASK}
+                />
+              )}
               {/* Dock legend on the canvas itself so node-color -> entity-type
                   is one glance away. */}
               <Panel position="top-right" className="!m-2">

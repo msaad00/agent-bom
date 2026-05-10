@@ -4,6 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_FILTERS,
   FilterPanel,
+  createExpandedGraphFilters,
+  createImmediateGraphFilters,
+  graphScopeLabelForFilters,
+  graphScopePresetForFilters,
   type FilterState,
 } from "@/components/lineage-filter";
 
@@ -19,6 +23,20 @@ describe("FilterPanel", () => {
     expect(DEFAULT_FILTERS.pageSize).toBe(50);
     expect(DEFAULT_FILTERS.vulnOnly).toBe(true);
     expect(DEFAULT_FILTERS.severity).toBe("high");
+    expect(graphScopePresetForFilters(DEFAULT_FILTERS)).toBe("relevant");
+    expect(graphScopeLabelForFilters(DEFAULT_FILTERS)).toBe("Relevant paths");
+  });
+
+  it("names graph scope presets by operator workflow instead of raw depth", () => {
+    const immediate = createImmediateGraphFilters("cursor");
+    const expanded = createExpandedGraphFilters();
+
+    expect(immediate.maxDepth).toBe(1);
+    expect(immediate.pageSize).toBe(25);
+    expect(graphScopeLabelForFilters(immediate)).toBe("Immediate");
+    expect(expanded.maxDepth).toBe(3);
+    expect(expanded.pageSize).toBe(250);
+    expect(graphScopeLabelForFilters(expanded)).toBe("Expanded");
   });
 
   it("windows large agent lists instead of rendering every agent option", () => {

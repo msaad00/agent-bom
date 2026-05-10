@@ -61,6 +61,33 @@ export const EXPANDED_LAYER_DEFAULTS: Record<LineageNodeType, boolean> = {
   tool: true,
 };
 
+export type GraphScopePreset = "immediate" | "relevant" | "expanded";
+
+export const GRAPH_SCOPE_LABELS: Record<GraphScopePreset, string> = {
+  immediate: "Immediate",
+  relevant: "Relevant paths",
+  expanded: "Expanded",
+};
+
+export const GRAPH_SCOPE_DESCRIPTIONS: Record<GraphScopePreset, string> = {
+  immediate: "One-hop triage around a selected agent.",
+  relevant: "Default fix-first graph with bounded path context.",
+  expanded: "Broader topology review with lower-priority context included.",
+};
+
+export function createImmediateGraphFilters(agentName: string | null = null): FilterState {
+  return {
+    layers: { ...FOCUSED_LAYER_DEFAULTS },
+    severity: "high",
+    agentName,
+    vulnOnly: true,
+    runtimeMode: "all",
+    relationshipScope: "all",
+    maxDepth: 1,
+    pageSize: 25,
+  };
+}
+
 export function createFocusedGraphFilters(agentName: string | null = null): FilterState {
   return {
     layers: { ...FOCUSED_LAYER_DEFAULTS },
@@ -89,13 +116,25 @@ export function createExpandedGraphFilters(agentName: string | null = null): Fil
 
 export const DEFAULT_FILTERS: FilterState = createFocusedGraphFilters();
 
+export function graphScopePresetForFilters(filters: FilterState): GraphScopePreset {
+  if (filters.maxDepth <= 1 && filters.pageSize <= 25 && filters.vulnOnly) return "immediate";
+  if (filters.maxDepth <= 2 && filters.pageSize <= 50 && filters.vulnOnly && filters.severity === "high") {
+    return "relevant";
+  }
+  return "expanded";
+}
+
+export function graphScopeLabelForFilters(filters: FilterState): string {
+  return GRAPH_SCOPE_LABELS[graphScopePresetForFilters(filters)];
+}
+
 interface FilterPanelProps {
   filters: FilterState;
   onChange: (f: FilterState) => void;
   agentNames: string[];
   /** Constraint-propagation valid values from filter-algebra. When omitted, every value is enabled. */
   validValues?: FilterValidValues;
-  /** Click handler for the "Reset to wide" button at the panel header. */
+  /** Click handler for the reset button at the panel header. */
   onReset?: () => void;
 }
 
@@ -231,7 +270,7 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
             className="flex items-center gap-1 rounded border border-zinc-800 bg-zinc-900/80 px-2 py-1 text-[10px] text-zinc-400 transition hover:border-emerald-600/40 hover:text-emerald-200"
           >
             <RotateCcw className="h-3 w-3" />
-            Reset scope
+            Reset
           </button>
         )}
       </div>
@@ -336,7 +375,7 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
         title="Traversal"
         open={openSections.traversal}
         onToggle={() => toggleSection("traversal")}
-        summary={`${filters.runtimeMode === "all" ? "static + runtime" : filters.runtimeMode} · depth ${filters.maxDepth}`}
+        summary={`${filters.runtimeMode === "all" ? "static + runtime" : filters.runtimeMode} · ${graphScopeLabelForFilters(filters)}`}
       >
         <div className="space-y-2">
           <select
@@ -364,6 +403,7 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
             }
             className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
           >
+            <option value="1">Depth 1</option>
             <option value="2">Depth 2</option>
             <option value="3">Depth 3</option>
             <option value="4">Depth 4</option>
@@ -410,6 +450,7 @@ export function FilterPanel({ filters, onChange, agentNames, validValues, onRese
           onChange={(e) => onChange({ ...filters, pageSize: Number(e.target.value) })}
           className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-emerald-600"
         >
+          <option value="25">25 nodes</option>
           <option value="50">50 nodes</option>
           <option value="100">100 nodes</option>
           <option value="250">250 nodes</option>

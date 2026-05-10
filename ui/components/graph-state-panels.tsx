@@ -31,10 +31,12 @@ export function GraphEmptyState({
   title,
   detail,
   suggestions,
+  command,
 }: {
   title: string;
   detail: string;
   suggestions: string[];
+  command?: string | undefined;
 }) {
   return (
     <div className="flex h-full items-center justify-center">
@@ -56,6 +58,12 @@ export function GraphEmptyState({
             </li>
           ))}
         </ul>
+        {command ? (
+          <div className="mt-4 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2">
+            <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">First command</div>
+            <code className="mt-1 block overflow-x-auto whitespace-nowrap text-xs text-[color:var(--foreground)]">{command}</code>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -145,7 +153,7 @@ export function GraphFindingsFallback({
             <h3 className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">This filter currently resolves to findings only</h3>
             <p className="mt-1 max-w-3xl text-xs leading-5 text-[color:var(--text-secondary)]">
               You are looking at the vulnerability slice without enough surrounding package, server, or agent context to form a topology.
-              Use this list for evidence and remediation, or relax the scope to recover the graph.
+              Use this list for evidence and remediation, or switch to the expanded topology scope.
             </p>
             {onExpandScope ? (
               <button
@@ -153,8 +161,7 @@ export function GraphFindingsFallback({
                 onClick={onExpandScope}
                 className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20 hover:border-emerald-400 transition-colors"
               >
-                Show full graph
-                <span className="text-[10px] text-emerald-400/70">(expand scope)</span>
+                Show expanded topology
               </button>
             ) : null}
           </div>

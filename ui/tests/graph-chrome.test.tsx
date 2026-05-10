@@ -1,7 +1,12 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GraphLegend } from "@/components/graph-chrome";
+import { GraphEvidenceExportButton, GraphLegend } from "@/components/graph-chrome";
+import { api } from "@/lib/api";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("GraphLegend", () => {
   it("groups entity legend rows by semantic layer and keeps relationships separate", () => {
@@ -24,5 +29,32 @@ describe("GraphLegend", () => {
     expect(screen.getByText("Findings")).toBeInTheDocument();
     expect(screen.getByText("Relationships")).toBeInTheDocument();
     expect(screen.getByText("Uses")).toBeInTheDocument();
+  });
+});
+
+describe("GraphEvidenceExportButton", () => {
+  it("downloads the selected scan graph in the chosen evidence format", async () => {
+    const downloadSpy = vi
+      .spyOn(api, "downloadScanGraph")
+      .mockResolvedValue(new Blob(["graph"], { type: "application/json" }));
+    const createObjectUrlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:graph");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const anchorClickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    render(<GraphEvidenceExportButton scanId="scan-123" filenamePrefix="selected-graph" />);
+
+    fireEvent.change(screen.getByLabelText("Graph evidence format"), { target: { value: "mermaid" } });
+    fireEvent.click(screen.getByRole("button", { name: /download graph evidence/i }));
+
+    await waitFor(() => expect(downloadSpy).toHaveBeenCalledWith("scan-123", "mermaid"));
+    expect(createObjectUrlSpy).toHaveBeenCalled();
+    expect(anchorClickSpy).toHaveBeenCalled();
+    expect(revokeObjectUrlSpy).toHaveBeenCalledWith("blob:graph");
+  });
+
+  it("stays disabled until a scan is selected", () => {
+    render(<GraphEvidenceExportButton />);
+
+    expect(screen.getByRole("button", { name: /download graph evidence/i })).toBeDisabled();
   });
 });

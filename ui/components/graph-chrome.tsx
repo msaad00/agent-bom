@@ -16,6 +16,7 @@ import {
   Download,
   FolderTree,
   KeyRound,
+  Loader2,
   Maximize2,
   Minimize2,
   Server,
@@ -23,6 +24,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { useReactFlow } from "@xyflow/react";
+import { api, type GraphExportFormat } from "@/lib/api";
 import type { LegendItem } from "@/lib/graph-utils";
 
 // ─── Legend Bar ──────────────────────────────────────────────────────────────
@@ -256,5 +258,74 @@ export function GraphExportButton({ filename }: { filename?: string }) {
       <Download className="w-3.5 h-3.5" />
       Export
     </button>
+  );
+}
+
+const GRAPH_EVIDENCE_FORMATS: GraphExportFormat[] = ["json", "mermaid", "graphml"];
+
+function extensionForGraphFormat(format: GraphExportFormat): string {
+  return format === "json" ? "json" : format;
+}
+
+export function GraphEvidenceExportButton({
+  scanId,
+  formats = GRAPH_EVIDENCE_FORMATS,
+  filenamePrefix,
+}: {
+  scanId?: string | undefined;
+  formats?: GraphExportFormat[];
+  filenamePrefix?: string | undefined;
+}) {
+  const [format, setFormat] = useState<GraphExportFormat>(formats[0] ?? "json");
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleDownload = useCallback(async () => {
+    if (!scanId) return;
+    setExporting(true);
+    setError("");
+    try {
+      const blob = await api.downloadScanGraph(scanId, format);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${filenamePrefix ?? `scan-${scanId}-graph`}.${extensionForGraphFormat(format)}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to export graph evidence");
+    } finally {
+      setExporting(false);
+    }
+  }, [filenamePrefix, format, scanId]);
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select
+        aria-label="Graph evidence format"
+        value={format}
+        onChange={(event) => setFormat(event.target.value as GraphExportFormat)}
+        className="rounded-lg border border-zinc-700 bg-zinc-900/90 px-2.5 py-1.5 text-xs text-zinc-300 focus:border-sky-600 focus:outline-none"
+      >
+        {formats.map((item) => (
+          <option key={item} value={item}>
+            {item.toUpperCase()}
+          </option>
+        ))}
+      </select>
+      <button
+        type="button"
+        onClick={() => void handleDownload()}
+        disabled={!scanId || exporting}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-900/60 bg-cyan-950/30 px-2.5 py-1.5 text-xs font-medium text-cyan-200 transition-colors hover:border-cyan-800 hover:bg-cyan-950/50 disabled:cursor-not-allowed disabled:opacity-50"
+        title="Download the selected scan graph in an evidence format for review, import, or audit handoff."
+      >
+        {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+        Download graph evidence
+      </button>
+      {error ? <span className="text-xs text-red-300">{error}</span> : null}
+    </div>
   );
 }

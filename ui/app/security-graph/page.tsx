@@ -22,6 +22,7 @@ function _classifyGraphErrorKind(err: unknown): "network" | "auth" | "forbidden"
   return "network";
 }
 import { AttackPathCard } from "@/components/attack-path-card";
+import { GraphEvidenceExportButton } from "@/components/graph-chrome";
 import { GraphEmptyState } from "@/components/graph-state-panels";
 import {
   api,
@@ -380,6 +381,10 @@ function SecurityGraphPageContent() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <GraphEvidenceExportButton
+              scanId={selectedScanId || undefined}
+              filenamePrefix={selectedScanId ? `scan-${selectedScanId}-security-graph` : undefined}
+            />
             <Link
               href={fullGraphHref}
               className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] px-4 py-2 text-sm font-medium text-[color:var(--foreground)] transition hover:border-[color:var(--border-strong)]"

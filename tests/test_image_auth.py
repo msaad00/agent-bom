@@ -19,6 +19,7 @@ from agent_bom.image import (
     detect_multi_arch,
     scan_image,
 )
+from agent_bom.models import Severity
 from agent_bom.security import SecurityError
 
 # ─── _build_scanner_env ─────────────────────────────────────────────────────
@@ -142,6 +143,47 @@ def test_external_scanner_helpers_validate_image_ref():
         assert False, "Expected SecurityError"
     except SecurityError as exc:
         assert "Invalid image reference" in str(exc)
+
+
+def test_grype_debian_cve_uses_related_canonical_cve_score(monkeypatch):
+    """Debian advisories without scores inherit severity from related CVE data."""
+    grype_payload = {
+        "matches": [
+            {
+                "artifact": {"type": "deb", "name": "bash", "version": "5.2"},
+                "vulnerability": {
+                    "id": "DEBIAN-CVE-2014-6271",
+                    "severity": "Unknown",
+                    "description": "Debian advisory without a direct score",
+                    "cvss": [],
+                },
+                "relatedVulnerabilities": [
+                    {
+                        "id": "CVE-2014-6271",
+                        "severity": "Unknown",
+                        "cvss": [{"metrics": {"baseScore": 9.8}}],
+                    }
+                ],
+            }
+        ]
+    }
+
+    def fake_run(cmd, **kwargs):
+        class R:
+            returncode = 0
+            stdout = json.dumps(grype_payload)
+            stderr = ""
+
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    packages = _scan_with_grype("debian:bookworm")
+
+    vuln = packages[0].vulnerabilities[0]
+    assert vuln.id == "DEBIAN-CVE-2014-6271"
+    assert vuln.cvss_score == 9.8
+    assert vuln.severity == Severity.CRITICAL
 
 
 def test_external_scanner_helpers_validate_platform():

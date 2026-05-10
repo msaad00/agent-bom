@@ -16,7 +16,7 @@ import "@xyflow/react/dist/style.css";
 import { AlertTriangle, Loader2, Route, ShieldAlert } from "lucide-react";
 
 import { AttackPathCard } from "@/components/attack-path-card";
-import { GraphLegend, FullscreenButton } from "@/components/graph-chrome";
+import { GraphEvidenceExportButton, GraphLegend, FullscreenButton } from "@/components/graph-chrome";
 import { LineageDetailPanel } from "@/components/lineage-detail";
 import {
   GraphControlGroup,
@@ -1371,6 +1371,10 @@ function GraphPageInner() {
               ))}
             </select>
 
+            <GraphEvidenceExportButton
+              scanId={selectedScanId || undefined}
+              filenamePrefix={selectedScanId ? `scan-${selectedScanId}-graph` : undefined}
+            />
             <FullscreenButton />
           </div>
         </div>

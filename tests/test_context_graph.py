@@ -524,6 +524,8 @@ class TestAPIContextGraph:
         assert "nodes" in data
         assert "stats" in data
         assert data["stats"]["agent_count"] == 2
+        assert {node["entity_type"] for node in data["nodes"]} >= {"agent", "server"}
+        assert {edge["relationship"] for edge in data["edges"]} >= {"uses", "shares_server"}
 
     def test_api_agent_filter(self):
         """GET /v1/scan/{id}/context-graph?agent=a1 filters lateral paths."""

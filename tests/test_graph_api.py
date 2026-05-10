@@ -727,6 +727,31 @@ class TestGraphEndpointLogic:
         assert sourced[0].summary == path.summary
         assert sourced[0].tool_exposure == ["run_shell"]
 
+    def test_sqlite_graph_store_edge_budget_counts_only_traversed_direction(self, tmp_path):
+        store = SQLiteGraphStore(tmp_path / "graph.db")
+        graph = UnifiedGraph(scan_id="budget-scan", tenant_id="default")
+        graph.add_node(UnifiedNode(id="server:s", entity_type=EntityType.SERVER, label="server-s"))
+        graph.add_node(UnifiedNode(id="tool:t", entity_type=EntityType.TOOL, label="tool-t"))
+        for index in range(3):
+            graph.add_node(UnifiedNode(id=f"agent:in-{index}", entity_type=EntityType.AGENT, label=f"in-{index}"))
+            graph.add_edge(UnifiedEdge(source=f"agent:in-{index}", target="server:s", relationship=RelationshipType.USES))
+        graph.add_edge(UnifiedEdge(source="server:s", target="tool:t", relationship=RelationshipType.PROVIDES_TOOL))
+        store.save_graph(graph)
+
+        subgraph, depth_by_node, truncated = store.traverse_subgraph(
+            roots=["server:s"],
+            direction="forward",
+            max_depth=1,
+            max_edges=1,
+        )
+
+        assert truncated is False
+        assert set(subgraph.nodes) == {"server:s", "tool:t"}
+        assert [(edge.source, edge.target, edge.relationship) for edge in subgraph.edges] == [
+            ("server:s", "tool:t", RelationshipType.PROVIDES_TOOL)
+        ]
+        assert depth_by_node["tool:t"] == 1
+
     def test_sqlite_graph_store_edges_for_node_ids_returns_incident_edges(self, tmp_path):
         store = SQLiteGraphStore(tmp_path / "graph.db")
         graph = UnifiedGraph(scan_id="incident-edge-scan", tenant_id="default")

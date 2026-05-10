@@ -575,10 +575,6 @@ class SQLiteGraphStore:
                 dynamic_only=dynamic_only,
             ):
                 edge = self._edge_from_row(row)
-                edge_count += 1
-                if edge_count > max_edges:
-                    truncated = True
-                    break
                 candidates: list[str] = []
                 if direction in {"forward", "both"}:
                     if edge.source == current:
@@ -592,6 +588,11 @@ class SQLiteGraphStore:
                         candidates.append(edge.target)
                 if not candidates:
                     continue
+
+                edge_count += 1
+                if edge_count > max_edges:
+                    truncated = True
+                    break
 
                 rel = edge.relationship.value if isinstance(edge.relationship, RelationshipType) else str(edge.relationship)
                 traversed_edges.setdefault((edge.source, edge.target, rel), edge)

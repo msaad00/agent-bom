@@ -65,6 +65,81 @@ class FindingSource(str, Enum):
     FILESYSTEM = "FILESYSTEM"  # filesystem mount scan
 
 
+@dataclass(frozen=True)
+class ControlTag:
+    """Normalized framework control attached to a finding.
+
+    Legacy finding payloads expose framework-specific arrays such as
+    ``owasp_tags`` and ``soc2_tags``. ``ControlTag`` gives new consumers one
+    structured list while those legacy arrays remain serialized for backward
+    compatibility.
+    """
+
+    framework: str
+    control: str
+    version: Optional[str] = None
+    confidence: Optional[float] = None
+    source: Optional[str] = None
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "framework": self.framework,
+            "control": self.control,
+            "version": self.version,
+            "confidence": self.confidence,
+            "source": self.source,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, object]) -> "ControlTag":
+        raw_confidence = payload.get("confidence")
+        confidence: Optional[float] = None
+        if isinstance(raw_confidence, (int, float, str)):
+            try:
+                confidence = float(raw_confidence)
+            except ValueError:
+                confidence = None
+        raw_source = payload.get("source") or payload.get("via")
+
+        return cls(
+            framework=str(payload.get("framework") or ""),
+            control=str(payload.get("control") or ""),
+            version=str(payload["version"]) if payload.get("version") is not None else None,
+            confidence=confidence,
+            source=str(raw_source) if raw_source else None,
+        )
+
+
+LEGACY_CONTROL_FIELDS: tuple[tuple[str, str], ...] = (
+    ("compliance_tags", "generic"),
+    ("owasp_tags", "owasp_llm"),
+    ("atlas_tags", "mitre_atlas"),
+    ("attack_tags", "mitre_attack"),
+    ("nist_ai_rmf_tags", "nist_ai_rmf"),
+    ("owasp_mcp_tags", "owasp_mcp"),
+    ("owasp_agentic_tags", "owasp_agentic"),
+    ("eu_ai_act_tags", "eu_ai_act"),
+    ("nist_csf_tags", "nist_csf"),
+    ("iso_27001_tags", "iso_27001"),
+    ("soc2_tags", "soc2"),
+    ("cis_tags", "cis"),
+)
+
+
+def _dedupe_control_tags(tags: list[ControlTag]) -> list[ControlTag]:
+    seen: set[tuple[str, str]] = set()
+    out: list[ControlTag] = []
+    for tag in tags:
+        if not tag.framework or not tag.control:
+            continue
+        key = (tag.framework, tag.control)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(tag)
+    return out
+
+
 @dataclass
 class Asset:
     """What is affected by this finding."""
@@ -121,6 +196,7 @@ class Finding:
     # Framework slugs that govern this finding (set by compliance_hub.apply_hub_classification).
     # Distinct from the per-framework `*_tags` fields below, which hold control codes.
     applicable_frameworks: list[str] = field(default_factory=list)
+    controls: list[ControlTag] = field(default_factory=list)
     owasp_tags: list[str] = field(default_factory=list)
     atlas_tags: list[str] = field(default_factory=list)
     attack_tags: list[str] = field(default_factory=list)
@@ -146,6 +222,12 @@ class Finding:
 
     def __post_init__(self) -> None:
         """Compute stable ID from finding content if not explicitly set."""
+        self.controls = _dedupe_control_tags(
+            [
+                *(tag if isinstance(tag, ControlTag) else ControlTag.from_dict(tag) for tag in self.controls),
+                *self._legacy_control_tags(),
+            ]
+        )
         if not self.id:
             # Deterministic ID: same CVE on same asset always same ID
             cve_part = self.cve_id or self.title
@@ -164,6 +246,20 @@ class Finding:
                 pkg_version,
             )
 
+    def _legacy_control_tags(self) -> list[ControlTag]:
+        """Return normalized controls derived from legacy tag arrays."""
+        tags: list[ControlTag] = []
+        for field_name, framework in LEGACY_CONTROL_FIELDS:
+            values = getattr(self, field_name)
+            for value in values:
+                if value:
+                    tags.append(ControlTag(framework=framework, control=str(value), source=f"legacy:{field_name}"))
+        return tags
+
+    def normalized_controls(self) -> list[ControlTag]:
+        """Return deduplicated structured controls for this finding."""
+        return _dedupe_control_tags([*self.controls, *self._legacy_control_tags()])
+
     def all_compliance_tags(self) -> list[str]:
         """Return deduplicated union of all compliance tag lists."""
         seen: set[str] = set()
@@ -181,6 +277,7 @@ class Finding:
             + self.iso_27001_tags
             + self.soc2_tags
             + self.cis_tags
+            + [tag.control for tag in self.normalized_controls()]
         ):
             if tag not in seen:
                 seen.add(tag)
@@ -219,6 +316,7 @@ class Finding:
             "remediation_guidance": self.remediation_guidance,
             "compliance_tags": self.all_compliance_tags(),
             "applicable_frameworks": list(self.applicable_frameworks),
+            "controls": [tag.to_dict() for tag in self.normalized_controls()],
             "owasp_tags": self.owasp_tags,
             "atlas_tags": self.atlas_tags,
             "attack_tags": self.attack_tags,

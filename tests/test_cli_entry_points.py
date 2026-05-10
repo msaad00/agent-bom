@@ -92,7 +92,11 @@ class TestAgentBom:
         r = CliRunner().invoke(main, ["runtime", "--help"])
         assert r.exit_code == 0
         assert "proxy" in r.output
-        assert "watch" in r.output
+        assert "watch" not in r.output
+
+        watch_result = CliRunner().invoke(main, ["runtime", "watch", "--help"])
+        assert watch_result.exit_code == 0
+        assert "Watch MCP configs" in watch_result.output
 
     def test_backward_compat_cloud_group(self):
         from agent_bom.cli import main

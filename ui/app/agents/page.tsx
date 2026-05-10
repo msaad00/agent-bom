@@ -55,6 +55,7 @@ import {
   X,
 } from "lucide-react";
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
+import { PageEmptyState, PageErrorState, PageLoadingState } from "@/components/states/page-state";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
 
@@ -311,12 +312,24 @@ function AgentsList() {
       )}
 
       {loading && (
-        <div className="flex items-center justify-center py-20 text-zinc-400">
-          <Loader2 className="h-6 w-6 animate-spin mr-2" />
-          Discovering agents...
-        </div>
+        <PageLoadingState
+          title="Discovering agents"
+          detail="Loading configured agents, MCP servers, packages, credentials, and inventory metadata from the API."
+          data-testid="agents-loading-state"
+        />
       )}
-      {error && <p className="text-red-400 text-sm">{error}</p>}
+      {error && (
+        <PageErrorState
+          title="Could not load agents"
+          detail={error}
+          suggestions={[
+            "Confirm the API is reachable for this dashboard session.",
+            "Run a local discovery scan if this is a first-run environment.",
+            "Use the scan page to generate a fresh inventory artifact.",
+          ]}
+          command="agent-bom agents --demo --offline"
+        />
+      )}
 
       {/* Summary stats bar */}
       {!loading && agents.length > 0 && (
@@ -360,17 +373,23 @@ function AgentsList() {
         </div>
       )}
 
-      {!loading && agents.length === 0 &&
+      {!loading && !error && agents.length === 0 &&
         (counts && !isDeploymentSurfaceAvailable("agents", counts) ? (
           <DeploymentSurfaceRequiredState surface="agents" counts={counts} detail={error || null} />
         ) : (
-          <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
-            <Server className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-            <p className="text-zinc-500 text-sm">No agents discovered locally.</p>
-            <p className="text-zinc-600 text-xs mt-1">
-              Install Claude Desktop, Cursor, or Windsurf and configure MCP servers.
-            </p>
-          </div>
+          <PageEmptyState
+            title="No agents discovered yet"
+            detail="Run discovery against this workspace or load a demo scan to populate configured agents, MCP servers, packages, and credentials."
+            icon={Server}
+            suggestions={[
+              "Start with the offline demo if you need a reproducible sample.",
+              "Run a local scan from the same environment where MCP clients are configured.",
+              "Open the mesh view after discovery to inspect agent and server relationships.",
+            ]}
+            command="agent-bom agents --demo --offline"
+            action={{ label: "Open scan", href: "/scan" }}
+            data-testid="agents-empty-state"
+          />
         ))}
 
       {/* Configured agents — row-virtualized for large estates */}
@@ -540,9 +559,15 @@ function AgentsList() {
         </div>
       </div>
       {!loading && filteredConfigured.length === 0 && configured.length > 0 && (
-        <div className="rounded-xl border border-dashed border-zinc-800 py-12 text-center">
-          <p className="text-sm text-zinc-500">No configured agents match the current search.</p>
-        </div>
+        <PageEmptyState
+          title="No configured agents match"
+          detail="The current search filtered out every configured agent in this inventory."
+          icon={Search}
+          suggestions={[
+            "Clear the search to return to the full configured list.",
+            "Search by exact agent name, source, or agent type.",
+          ]}
+        />
       )}
 
       {/* Installed but not configured — virtualized for parity with the configured list */}

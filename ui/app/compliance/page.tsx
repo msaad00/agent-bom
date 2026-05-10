@@ -34,16 +34,15 @@ import {
   Server,
   ChevronDown,
   ChevronRight,
-  Loader2,
   Scan,
   Grid3X3,
   List,
   Search,
 } from "lucide-react";
-import Link from "next/link";
 import { ComplianceHeatmap } from "@/components/compliance-heatmap";
 import { ComplianceMatrix } from "@/components/compliance-matrix";
 import { ApiOfflineState } from "@/components/api-offline-state";
+import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
 
 function _classifyApiErrorKind(err: unknown): "network" | "auth" | "forbidden" {
@@ -424,9 +423,11 @@ function CompliancePageContent() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-[60vh]">
-        <Loader2 className="w-6 h-6 text-zinc-500 animate-spin" />
-      </div>
+      <PageLoadingState
+        title="Loading compliance posture"
+        detail="Fetching framework coverage, catalog metadata, and hub posture evidence from the API."
+        data-testid="compliance-loading-state"
+      />
     );
   }
 
@@ -914,22 +915,19 @@ function CompliancePageContent() {
 
       {/* ── Empty state ───────────────────────────────────────────────── */}
       {data.scan_count === 0 && (
-        <div className="text-center py-12 space-y-4">
-          <Scan className="w-12 h-12 text-zinc-600 mx-auto" />
-          <h3 className="text-lg font-medium text-zinc-300">No scans yet</h3>
-          <p className="text-sm text-zinc-500 max-w-md mx-auto">
-            Run a scan to populate the compliance posture dashboard.
-            Compliance scores are computed from OWASP, ATLAS, and NIST
-            framework tags on your blast radius findings.
-          </p>
-          <Link
-            href="/scan"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium transition-colors"
-          >
-            <Scan className="w-4 h-4" />
-            Start a Scan
-          </Link>
-        </div>
+        <PageEmptyState
+          title="No compliance scans yet"
+          detail="Run a scan to populate framework coverage, control status, affected packages, and governance evidence."
+          icon={Scan}
+          suggestions={[
+            "Start with a local scan to generate compliance-tagged findings.",
+            "Open findings after the scan to verify the evidence behind failed controls.",
+            "Use the matrix view once multiple frameworks have populated control coverage.",
+          ]}
+          command="agent-bom agents --demo --offline"
+          action={{ label: "Start a scan", href: "/scan" }}
+          data-testid="compliance-empty-state"
+        />
       )}
     </div>
   );
@@ -939,10 +937,10 @@ export default function CompliancePage() {
   return (
     <Suspense
       fallback={
-        <div className="flex items-center justify-center py-20 text-zinc-400">
-          <Loader2 className="mr-2 h-6 w-6 animate-spin" />
-          Loading compliance posture...
-        </div>
+        <PageLoadingState
+          title="Loading compliance posture"
+          detail="Preparing framework controls and scan-derived posture summaries."
+        />
       }
     >
       <CompliancePageContent />

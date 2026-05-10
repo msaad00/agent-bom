@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 let mockedPathname = '/'
@@ -162,6 +162,17 @@ describe('Nav', () => {
     fireEvent.click(screen.getByRole('button', { name: /protect/i }))
     const links = screen.getAllByRole('link', { name: /audit log/i })
     expect(links.some((l) => l.getAttribute('href') === '/audit')).toBe(true)
+  })
+
+  it('opens the command palette with page links and actions', () => {
+    render(<Nav />)
+
+    fireEvent.keyDown(window, { key: 'k', metaKey: true })
+
+    const palette = screen.getByRole('dialog', { name: /command palette/i })
+    expect(palette).toBeInTheDocument()
+    expect(within(palette).getByRole('button', { name: /refresh current view/i })).toBeInTheDocument()
+    expect(within(palette).getByRole('link', { name: /dashboard/i })).toHaveAttribute('href', '/')
   })
 
   it('renders the agent-bom brand text', () => {

@@ -11,10 +11,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
-  Loader2,
-  AlertTriangle,
   Search,
-  ShieldAlert,
   SlidersHorizontal,
   Network,
   GitBranch,
@@ -48,6 +45,7 @@ import {
 } from "@/lib/graph-utils";
 import { graphFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
 import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
+import { GraphEmptyState, GraphPanelSkeleton, GraphRefreshOverlay } from "@/components/graph-state-panels";
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
@@ -415,19 +413,28 @@ export default function MeshPage() {
 
   if (loading || (detailLoading && !activeResult)) {
     return (
-      <div className="flex items-center justify-center h-[80vh] text-zinc-400">
-        <Loader2 className="w-5 h-5 animate-spin mr-2" />
-        Loading mesh view...
+      <div className="h-[80vh]">
+        <GraphPanelSkeleton
+          title="Loading agent mesh"
+          detail="Fetching completed scans and preparing the bounded agent-centered topology."
+        />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
-        <AlertTriangle className="w-8 h-8 text-amber-500" />
-        <p className="text-sm">Could not connect to agent-bom API</p>
-        <p className="text-xs text-zinc-500">Make sure the API is running at localhost:8422</p>
+      <div className="h-[80vh]">
+        <GraphEmptyState
+          title="Cannot load agent mesh"
+          detail={error || "The API did not return scan evidence for the agent mesh view."}
+          suggestions={[
+            "Confirm the API is reachable before reopening the mesh view.",
+            "Run a fresh scan when the control plane has no completed job history.",
+            "Use the security graph once graph snapshots are persisted.",
+          ]}
+          command="agent-bom serve --api"
+        />
       </div>
     );
   }
@@ -437,10 +444,17 @@ export default function MeshPage() {
       return <DeploymentSurfaceRequiredState surface="mesh" counts={counts} detail={error} />;
     }
     return (
-      <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
-        <ShieldAlert className="w-8 h-8 text-zinc-600" />
-        <p className="text-sm">No completed scans found</p>
-        <p className="text-xs text-zinc-500">Run a scan first to visualize the agent mesh</p>
+      <div className="h-[80vh]">
+        <GraphEmptyState
+          title="No completed scans found"
+          detail="Run a scan first so the agent mesh can show selected agents, shared MCP servers, tools, packages, credentials, and findings."
+          suggestions={[
+            "Use a demo scan for a local proof point.",
+            "Keep the first mesh view scoped to the highest-risk agent.",
+            "Open the full graph after the scan persists graph evidence.",
+          ]}
+          command="agent-bom agents --demo --offline"
+        />
       </div>
     );
   }
@@ -517,41 +531,51 @@ export default function MeshPage() {
       {/* Graph */}
       <div className="flex-1 relative">
         {detailLoading && activeResult && (
-          <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-center py-2 text-xs text-zinc-400 bg-zinc-950/70 backdrop-blur-sm">
-            <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />
-            Updating mesh...
-          </div>
+          <GraphRefreshOverlay label="Updating agent mesh" />
         )}
-        <ReactFlow
-          nodes={displayNodes}
-          edges={displayEdges}
-          nodeTypes={lineageNodeTypes}
-          fitView
-          fitViewOptions={viewportOptions}
-          minZoom={0.16}
-          maxZoom={2.5}
-          zoomOnScroll={false}
-          panOnScroll={false}
-          preventScrolling={false}
-          onlyRenderVisibleElements
-          defaultEdgeOptions={{ type: "smoothstep" }}
-          proOptions={{ hideAttribution: true }}
-          onNodeClick={onNodeClick}
-          onNodeMouseEnter={onNodeMouseEnter}
-          onNodeMouseLeave={onNodeMouseLeave}
-          onPaneClick={() => { setSelectedNode(null); setHoveredNodeId(null); }}
-        >
-          <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
-          <Controls className={CONTROLS_CLASS} />
-          {showMiniMap && (
-            <MiniMap
-              nodeColor={minimapNodeColor}
-              className={MINIMAP_CLASS}
-              bgColor={MINIMAP_BG}
-              maskColor={MINIMAP_MASK}
-            />
-          )}
-        </ReactFlow>
+        {displayNodes.length === 0 ? (
+          <GraphEmptyState
+            title="No mesh relationships match this scope"
+            detail="The selected scan loaded, but the current agent, severity, or vulnerable-only filters removed the relationships needed to draw an agent mesh."
+            suggestions={[
+              "Choose another agent from the scope selector.",
+              "Lower the severity filter or disable vulnerable-only mode.",
+              "Switch to dependency flow after expanding the scope.",
+            ]}
+            command="agent-bom scan -p . -f graph"
+          />
+        ) : (
+          <ReactFlow
+            nodes={displayNodes}
+            edges={displayEdges}
+            nodeTypes={lineageNodeTypes}
+            fitView
+            fitViewOptions={viewportOptions}
+            minZoom={0.16}
+            maxZoom={2.5}
+            zoomOnScroll={false}
+            panOnScroll={false}
+            preventScrolling={false}
+            onlyRenderVisibleElements
+            defaultEdgeOptions={{ type: "smoothstep" }}
+            proOptions={{ hideAttribution: true }}
+            onNodeClick={onNodeClick}
+            onNodeMouseEnter={onNodeMouseEnter}
+            onNodeMouseLeave={onNodeMouseLeave}
+            onPaneClick={() => { setSelectedNode(null); setHoveredNodeId(null); }}
+          >
+            <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
+            <Controls className={CONTROLS_CLASS} />
+            {showMiniMap && (
+              <MiniMap
+                nodeColor={minimapNodeColor}
+                className={MINIMAP_CLASS}
+                bgColor={MINIMAP_BG}
+                maskColor={MINIMAP_MASK}
+              />
+            )}
+          </ReactFlow>
+        )}
 
         {selectedNode && (
           <LineageDetailPanel

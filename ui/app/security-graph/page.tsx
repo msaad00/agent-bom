@@ -23,7 +23,7 @@ function _classifyGraphErrorKind(err: unknown): "network" | "auth" | "forbidden"
 }
 import { AttackPathCard } from "@/components/attack-path-card";
 import { GraphEvidenceExportButton } from "@/components/graph-chrome";
-import { GraphEmptyState } from "@/components/graph-state-panels";
+import { GraphEmptyState, GraphPanelSkeleton } from "@/components/graph-state-panels";
 import {
   api,
   formatDate,
@@ -449,8 +449,17 @@ function SecurityGraphPageContent() {
               </div>
             ) : (
               !loadingSnapshots && (
-                <div className="mt-4 rounded-2xl border border-dashed border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-5 text-sm text-[color:var(--text-secondary)]">
-                  No persisted graph snapshots yet. Run a scan first so the security graph can build historical attack-path views.
+                <div className="mt-4">
+                  <GraphEmptyState
+                    title="No persisted graph snapshots yet"
+                    detail="Run a scan first so the security graph can build historical attack-path views from persisted graph evidence."
+                    suggestions={[
+                      "Run a local scan with graph output enabled.",
+                      "Confirm the graph persistence backend is enabled.",
+                      "Open the full graph after the first snapshot appears.",
+                    ]}
+                    command="agent-bom scan -p . -f graph"
+                  />
                 </div>
               )
             )}
@@ -502,9 +511,11 @@ function SecurityGraphPageContent() {
       </section>
 
       {loadingGraph ? (
-        <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-8 text-center text-sm text-[color:var(--text-secondary)]">
-          <Loader2 className="mx-auto mb-3 h-6 w-6 animate-spin text-sky-400" />
-          {loadingGraphMessage}
+        <section className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-4">
+          <GraphPanelSkeleton
+            title="Loading security graph"
+            detail={loadingGraphMessage}
+          />
         </section>
       ) : graphLoadError ? (
         <section className="rounded-3xl border border-red-900/60 bg-red-950/10 p-4">

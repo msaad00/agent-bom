@@ -17,8 +17,6 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
-  Loader2,
-  AlertTriangle,
   Search,
   Waypoints,
   ChevronDown,
@@ -51,7 +49,7 @@ import {
 } from "@/lib/graph-utils";
 import { graphFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
 import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
-import { GraphEmptyState, GraphPanelSkeleton } from "@/components/graph-state-panels";
+import { GraphEmptyState, GraphPanelSkeleton, GraphRefreshOverlay } from "@/components/graph-state-panels";
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
@@ -410,21 +408,28 @@ export default function ContextPage() {
 
   if (loading || (detailLoading && !graphData)) {
     return (
-      <div className="flex items-center justify-center h-[80vh] text-zinc-400">
-        <Loader2 className="w-5 h-5 animate-spin mr-2" />
-        Loading context view...
+      <div className="h-[80vh]">
+        <GraphPanelSkeleton
+          title="Loading context graph"
+          detail="Fetching the selected scan and preparing a focused lateral-movement window."
+        />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
-        <AlertTriangle className="w-8 h-8 text-amber-500" />
-        <p className="text-sm">Could not connect to agent-bom API</p>
-        <p className="text-xs text-zinc-500">
-          Make sure the API is running at localhost:8422
-        </p>
+      <div className="h-[80vh]">
+        <GraphEmptyState
+          title="Cannot load context graph"
+          detail={error || "The API did not return scan evidence for the context graph view."}
+          suggestions={[
+            "Confirm the API is reachable before reopening the context graph.",
+            "Run a fresh scan when the control plane has no completed job history.",
+            "Open the agent mesh after scan evidence is available.",
+          ]}
+          command="agent-bom serve --api"
+        />
       </div>
     );
   }
@@ -518,10 +523,7 @@ export default function ContextPage() {
         {/* Graph */}
         <div className="flex-1 relative">
           {detailLoading && graphData && (
-            <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-center py-2 text-xs text-zinc-400 bg-zinc-950/70 backdrop-blur-sm">
-              <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" />
-              Updating context graph...
-            </div>
+            <GraphRefreshOverlay label="Updating context graph" />
           )}
           {!graphData ? (
             <GraphPanelSkeleton

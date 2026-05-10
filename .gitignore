@@ -43,7 +43,15 @@ docs/CAPTURE [0-9].md
 docs/images/* [0-9].png
 docs/images/* [0-9].gif
 docs/images/* [0-9].svg
+docs/**/* [0-9].md
+site-docs/**/* [0-9].md
 src/agent_bom/**/* [0-9].py
 tests/**/* [0-9].py
+ui/**/* [0-9].js
+ui/**/* [0-9].jsx
+ui/**/* [0-9].json
+ui/**/* [0-9].md
+ui/**/* [0-9].ts
+ui/**/* [0-9].tsx
 deploy/helm/agent-bom/**/* [0-9].yaml
 .github/workflows/* [0-9].yml

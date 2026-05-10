@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Fail when Finder-style duplicate artifacts are tracked.
+"""Fail when Finder-style duplicate artifacts are present.
 
 macOS Finder copies such as ``foo 2.py`` and duplicated directories such as
 ``contracts/v1 2`` are easy to miss in reviews but can be included in source
-distributions and release archives. This guard checks tracked paths only, so
-local virtualenvs, node_modules, and generated build output do not create noise.
+distributions and release archives. CI checks tracked paths. Local operators can
+use ``--working-tree`` to catch untracked copies that would still be collected by
+tools such as pytest.
 """
 
 from __future__ import annotations
@@ -19,11 +20,31 @@ _DUPLICATE_COMPONENT_RE = re.compile(r"^.+ [2-9](?:\.[^.\\/]+)?$")
 _IGNORED_PREFIXES = (
     ".git/",
     ".venv/",
+    "venv/",
+    "dist/",
+    "build/",
     "node_modules/",
+    ".mypy_cache/",
+    ".pytest_cache/",
+    ".ruff_cache/",
     "ui/node_modules/",
+    "ui/.next/",
     "ui/out/",
     "site/",
 )
+_IGNORED_DIR_NAMES = {
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+    "site",
+    "venv",
+}
 
 
 def _tracked_paths() -> list[str]:
@@ -35,6 +56,20 @@ def _tracked_paths() -> list[str]:
         text=False,
     )
     return [part.decode("utf-8", errors="replace") for part in result.stdout.split(b"\0") if part]
+
+
+def _working_tree_paths(root: Path) -> list[str]:
+    paths: list[str] = []
+    for path in root.rglob("*"):
+        try:
+            relative = path.relative_to(root)
+        except ValueError:
+            continue
+        parts = relative.parts
+        if any(part in _IGNORED_DIR_NAMES for part in parts):
+            continue
+        paths.append(relative.as_posix())
+    return paths
 
 
 def _load_paths(path: Path) -> list[str]:
@@ -62,15 +97,27 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         help="Optional newline-delimited path list for tests; defaults to git ls-files.",
     )
+    parser.add_argument(
+        "--working-tree",
+        action="store_true",
+        help="Scan the local working tree, including untracked files, while skipping build/cache directories.",
+    )
     args = parser.parse_args(argv)
 
-    paths = _load_paths(args.paths_file) if args.paths_file else _tracked_paths()
+    if args.paths_file:
+        paths = _load_paths(args.paths_file)
+    elif args.working_tree:
+        paths = _working_tree_paths(Path.cwd())
+    else:
+        paths = _tracked_paths()
     duplicates = find_duplicate_artifacts(paths)
     if not duplicates:
-        print("No tracked Finder-style duplicate artifacts found.")
+        scope = "working-tree" if args.working_tree else "tracked"
+        print(f"No {scope} Finder-style duplicate artifacts found.")
         return 0
 
-    print("Tracked Finder-style duplicate artifacts found:", file=sys.stderr)
+    scope = "Working-tree" if args.working_tree else "Tracked"
+    print(f"{scope} Finder-style duplicate artifacts found:", file=sys.stderr)
     for path in duplicates:
         print(f"- {path}", file=sys.stderr)
     print(

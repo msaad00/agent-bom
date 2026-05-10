@@ -49,6 +49,7 @@ import {
   minimapNodeColor,
   readableGraphEdges,
 } from "@/lib/graph-utils";
+import { graphFitViewOptions, shouldShowGraphMiniMap } from "@/lib/graph-viewport";
 import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
 import { GraphEmptyState, GraphPanelSkeleton } from "@/components/graph-state-panels";
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
@@ -367,6 +368,27 @@ export default function ContextPage() {
     return legendItemsForVisibleNodes(displayNodes, extras);
   }, [displayEdges, displayNodes]);
 
+  const viewportOptions = useMemo(
+    () =>
+      graphFitViewOptions({
+        nodeCount: displayNodes.length,
+        edgeCount: displayEdges.length,
+        selectedNode: Boolean(selectedNode),
+        mode: "context",
+      }),
+    [displayEdges.length, displayNodes.length, selectedNode],
+  );
+  const showMiniMap = useMemo(
+    () =>
+      shouldShowGraphMiniMap({
+        nodeCount: displayNodes.length,
+        edgeCount: displayEdges.length,
+        selectedNode: Boolean(selectedNode),
+        mode: "context",
+      }),
+    [displayEdges.length, displayNodes.length, selectedNode],
+  );
+
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
     setSelectedNode(node.data as LineageNodeData);
     setHoveredNodeId(null);
@@ -520,7 +542,7 @@ export default function ContextPage() {
               edges={displayEdges}
               nodeTypes={lineageNodeTypes}
               fitView
-              fitViewOptions={{ padding: 0.18, maxZoom: 1.05 }}
+              fitViewOptions={viewportOptions}
               minZoom={0.16}
               maxZoom={2.5}
               onlyRenderVisibleElements
@@ -536,12 +558,14 @@ export default function ContextPage() {
             >
               <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
               <Controls className={CONTROLS_CLASS} />
-              <MiniMap
-                nodeColor={minimapNodeColor}
-                className={MINIMAP_CLASS}
-                bgColor={MINIMAP_BG}
-                maskColor={MINIMAP_MASK}
-              />
+              {showMiniMap && (
+                <MiniMap
+                  nodeColor={minimapNodeColor}
+                  className={MINIMAP_CLASS}
+                  bgColor={MINIMAP_BG}
+                  maskColor={MINIMAP_MASK}
+                />
+              )}
             </ReactFlow>
           )}
 

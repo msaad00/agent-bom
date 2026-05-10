@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Scan,
   Server,
@@ -28,10 +28,15 @@ import {
   Search,
   LayoutDashboard,
   Wrench,
+  RefreshCw,
+  Focus,
+  Copy,
+  SunMoon,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuthState } from "@/components/auth-provider";
 import { BrandMark } from "@/components/brand-mark";
+import { CommandPalette, type CommandPaletteAction } from "@/components/command-palette";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
   deploymentModeLabel,
@@ -240,6 +245,59 @@ export function Nav() {
     })
     .filter((group) => group.visibleLinks.length > 0 || group.hiddenLinks.length > 0);
   const commandLinks = navGroups.flatMap((group) => group.visibleLinks.map((link) => ({ ...link, group: group.label })));
+  const commandActions = useMemo<CommandPaletteAction[]>(
+    () => [
+      {
+        id: "refresh-view",
+        label: "Refresh current view",
+        group: "Action",
+        icon: RefreshCw,
+        keywords: ["reload", "update"],
+        run: () => window.location.reload(),
+      },
+      {
+        id: "focus-main",
+        label: "Focus main content",
+        group: "Action",
+        icon: Focus,
+        keywords: ["skip", "content"],
+        run: () => {
+          const main = document.getElementById("main-content");
+          if (!main) return;
+          if (!main.hasAttribute("tabindex")) {
+            main.setAttribute("tabindex", "-1");
+          }
+          main.focus();
+        },
+      },
+      {
+        id: "copy-url",
+        label: "Copy current URL",
+        group: "Action",
+        icon: Copy,
+        keywords: ["share", "link"],
+        run: () => {
+          void navigator.clipboard?.writeText(window.location.href);
+        },
+      },
+      {
+        id: "toggle-theme",
+        label: "Toggle theme",
+        group: "Action",
+        icon: SunMoon,
+        keywords: ["dark", "light"],
+        run: () => {
+          const current = document.documentElement.dataset.theme === "light" ? "light" : "dark";
+          const next = current === "dark" ? "light" : "dark";
+          document.documentElement.dataset.theme = next;
+          document.documentElement.style.colorScheme = next;
+          window.localStorage.setItem("agent-bom-theme", next);
+          window.dispatchEvent(new Event("agent-bom-theme-change"));
+        },
+      },
+    ],
+    []
+  );
 
   const sidebarContent = (
     <>
@@ -523,6 +581,7 @@ export function Nav() {
         <CommandPalette
           query={searchQuery}
           links={commandLinks}
+          actions={commandActions}
           setQuery={setSearchQuery}
           onClose={() => { setSearchOpen(false); setSearchQuery(""); }}
         />
@@ -578,73 +637,6 @@ function SessionStatus({
       <p className="mt-1 text-[11px] text-[color:var(--text-secondary)]">
         {session.role_summary?.display_name ?? session.role ?? "Unknown"} · tenant {session.tenant_id}
       </p>
-    </div>
-  );
-}
-
-// ─── Command Palette ────────────────────────────────────────────────────────
-
-function CommandPalette({
-  query,
-  links,
-  setQuery,
-  onClose,
-}: {
-  query: string;
-  links: Array<NavLink & { group: string }>;
-  setQuery: (q: string) => void;
-  onClose: () => void;
-}) {
-  const filtered = query
-    ? links.filter(
-        (l) =>
-          l.label.toLowerCase().includes(query.toLowerCase()) ||
-          l.group.toLowerCase().includes(query.toLowerCase())
-      )
-    : links;
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onClose]);
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh]">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg bg-[color:var(--surface)] border border-[color:var(--border-subtle)] rounded-xl shadow-2xl overflow-hidden">
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-[color:var(--border-subtle)]">
-          <Search className="w-4 h-4 text-[color:var(--text-secondary)] shrink-0" />
-          <input
-            autoFocus
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search pages, commands..."
-            className="flex-1 bg-transparent text-sm text-[color:var(--foreground)] placeholder:text-[color:var(--text-secondary)] outline-none"
-          />
-          <kbd className="text-[10px] font-mono bg-[color:var(--surface-elevated)] border border-[color:var(--border-subtle)] rounded px-1.5 py-0.5 text-[color:var(--text-secondary)]">ESC</kbd>
-        </div>
-        <div className="max-h-[50vh] overflow-y-auto py-2">
-          {filtered.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-[color:var(--text-secondary)]">No results found</div>
-          ) : (
-            filtered.map(({ href, label, icon: Icon, group }) => (
-              <Link
-                key={href}
-                href={href}
-                onClick={onClose}
-                className="flex items-center gap-3 px-4 py-2.5 text-sm text-[color:var(--foreground)] hover:bg-[color:var(--surface-elevated)] transition-colors"
-              >
-                <Icon className="w-4 h-4 text-[color:var(--text-secondary)]" />
-                <span className="flex-1">{label}</span>
-                <span className="text-[10px] text-[color:var(--text-tertiary)] uppercase tracking-wider">{group}</span>
-              </Link>
-            ))
-          )}
-        </div>
-      </div>
     </div>
   );
 }

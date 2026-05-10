@@ -196,6 +196,21 @@ def _output_format_was_explicit() -> bool:
     return ctx.get_parameter_source("output_format") is click.core.ParameterSource.COMMANDLINE
 
 
+def _reproducible_generated_at(enabled: bool):
+    """Return a pinned report timestamp when reproducible output is requested."""
+    import os
+    from datetime import datetime, timezone
+
+    raw_epoch = os.environ.get("SOURCE_DATE_EPOCH")
+    if raw_epoch is None and not enabled:
+        return None
+    epoch = 0 if raw_epoch is None else raw_epoch
+    try:
+        return datetime.fromtimestamp(int(epoch), tz=timezone.utc)
+    except (OverflowError, OSError, ValueError) as exc:
+        raise click.ClickException("SOURCE_DATE_EPOCH must be an integer Unix timestamp.") from exc
+
+
 @click.command()
 @scan_options
 def scan(
@@ -373,6 +388,7 @@ def scan(
     log_json: bool,
     log_file: Optional[str],
     no_color: bool,
+    reproducible: bool,
     preset: Optional[str],
     open_report: bool,
     compliance_export: Optional[str],
@@ -1546,12 +1562,15 @@ def scan(
     _scan_fingerprint = "|".join(_pkg_fingerprints) or "empty"
     _scan_id = str(_uuid.uuid5(_scan_ns, f"scan:{_scan_fingerprint}"))
 
+    _generated_at = _reproducible_generated_at(reproducible)
+    _report_kwargs = {"generated_at": _generated_at} if _generated_at is not None else {}
     report = AIBOMReport(
         agents=agents,
         blast_radii=blast_radii,
         findings=_findings,
         scan_sources=_scan_sources,
         scan_id=_scan_id,
+        **_report_kwargs,
     )
     from agent_bom.advisory_sources import summarize_advisory_coverage
 

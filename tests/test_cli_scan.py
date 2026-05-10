@@ -221,6 +221,74 @@ def test_scan_output_to_file(tmp_path):
     assert result.exit_code == 0
 
 
+def test_scan_reproducible_pins_report_and_inventory_timestamps(tmp_path):
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "generated_at": "2026-05-09T00:00:00Z",
+                "agents": [{"name": "fixture-agent", "agent_type": "custom", "mcp_servers": []}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "report.json"
+    result = _run(
+        [
+            "scan",
+            "--inventory",
+            str(inventory),
+            "--inventory-only",
+            "--no-scan",
+            "--reproducible",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ]
+    )
+
+    assert result.exit_code == 0, result.output
+    report = json.loads(out.read_text(encoding="utf-8"))
+    assert report["generated_at"] == "1970-01-01T00:00:00+00:00"
+    assert report["inventory_snapshot"]["generated_at"] == "1970-01-01T00:00:00+00:00"
+
+
+def test_scan_honors_source_date_epoch_for_reproducible_outputs(tmp_path):
+    inventory = tmp_path / "inventory.json"
+    inventory.write_text(
+        json.dumps(
+            {
+                "schema_version": "1",
+                "generated_at": "2026-05-09T00:00:00Z",
+                "agents": [{"name": "fixture-agent", "agent_type": "custom", "mcp_servers": []}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "report.json"
+    result = _run(
+        [
+            "scan",
+            "--inventory",
+            str(inventory),
+            "--inventory-only",
+            "--no-scan",
+            "--format",
+            "json",
+            "--output",
+            str(out),
+        ],
+        env={"SOURCE_DATE_EPOCH": "1700000000"},
+    )
+
+    assert result.exit_code == 0, result.output
+    report = json.loads(out.read_text(encoding="utf-8"))
+    assert report["generated_at"] == "2023-11-14T22:13:20+00:00"
+    assert report["inventory_snapshot"]["generated_at"] == "2023-11-14T22:13:20+00:00"
+
+
 def test_scan_unknown_output_extension_fails(tmp_path):
     out = tmp_path / "report.ocsf"
     result = _run(["scan", "--demo", "--output", str(out), "--no-scan"])

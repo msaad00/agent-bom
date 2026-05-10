@@ -192,6 +192,12 @@ def output_options(fn):
             click.option("--log-json", "log_json", is_flag=True, help="Emit structured JSON logs to stderr (for SIEM ingestion)"),
             click.option("--log-file", "log_file", type=click.Path(), default=None, help="Write JSON logs to file"),
             click.option("--no-color", is_flag=True, help="Disable colored output (useful for piping, CI logs, accessibility)"),
+            click.option(
+                "--reproducible",
+                is_flag=True,
+                default=False,
+                help="Use a stable generated_at timestamp for reproducible artifacts. SOURCE_DATE_EPOCH overrides the timestamp.",
+            ),
             click.option("--quiet", "-q", is_flag=True, help="Suppress all output except results (for scripting)"),
             click.option(
                 "--exclude-unfixable",

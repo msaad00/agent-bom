@@ -45,6 +45,53 @@ def test_jobs_get_missing_returns_none():
     assert _jobs_get("nonexistent") is None
 
 
+def test_compact_terminal_job_preserves_scan_timestamp_metadata():
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
+    from agent_bom.api.stores import _compact_terminal_job
+
+    job = ScanJob(job_id="compact-time", created_at="2025-01-01T00:00:00Z", request=ScanRequest())
+    job.status = JobStatus.DONE
+    job.result = {
+        "summary": {"total_agents": 1},
+        "generated_at": "2026-01-01T00:00:00+00:00",
+        "scan_run": {
+            "scan_id": "scan-123",
+            "generated_at": "2026-01-01T00:00:00+00:00",
+        },
+        "agents": [{"name": "large payload"}],
+    }
+
+    compact = _compact_terminal_job(job)
+
+    assert compact.result is not None
+    assert compact.result["generated_at"] == "2026-01-01T00:00:00+00:00"
+    assert compact.result["scan_timestamp"] == "2026-01-01T00:00:00+00:00"
+    assert compact.result["scan_run"]["scan_id"] == "scan-123"
+    assert "agents" not in compact.result
+
+
+def test_job_summary_payload_aliases_generated_at_to_scan_timestamp():
+    from agent_bom.api.routes.scan import _job_summary_payload
+    from agent_bom.api.server import JobStatus, ScanJob, ScanRequest
+
+    job = ScanJob(job_id="summary-time", created_at="2025-01-01T00:00:00Z", request=ScanRequest())
+    job.status = JobStatus.DONE
+    job.result = {
+        "summary": {"total_agents": 1},
+        "generated_at": "2026-01-01T00:00:00+00:00",
+        "scan_run": {
+            "scan_id": "scan-123",
+            "generated_at": "2026-01-01T00:00:00+00:00",
+        },
+    }
+
+    payload = _job_summary_payload(job)
+
+    assert payload["generated_at"] == "2026-01-01T00:00:00+00:00"
+    assert payload["scan_timestamp"] == "2026-01-01T00:00:00+00:00"
+    assert payload["scan_run"]["scan_id"] == "scan-123"
+
+
 def test_jobs_bounded_eviction():
     """When _jobs exceeds _MAX_IN_MEMORY_JOBS, oldest completed jobs are evicted."""
     from agent_bom.api import stores as _stores

@@ -17,7 +17,6 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import {
-  ShieldAlert,
   Loader2,
   AlertTriangle,
   Search,
@@ -51,6 +50,7 @@ import {
   readableGraphEdges,
 } from "@/lib/graph-utils";
 import { FullscreenButton, GraphLegend } from "@/components/graph-chrome";
+import { GraphEmptyState, GraphPanelSkeleton } from "@/components/graph-state-panels";
 import { DeploymentSurfaceRequiredState } from "@/components/deployment-surface-required-state";
 import { useDeploymentContext } from "@/hooks/use-deployment-context";
 import { isDeploymentSurfaceAvailable } from "@/lib/deployment-context";
@@ -409,12 +409,17 @@ export default function ContextPage() {
       return <DeploymentSurfaceRequiredState surface="context" counts={counts} detail={error} />;
     }
     return (
-      <div className="flex flex-col items-center justify-center h-[80vh] text-zinc-400 gap-3">
-        <ShieldAlert className="w-8 h-8 text-zinc-600" />
-        <p className="text-sm">No completed scans found</p>
-        <p className="text-xs text-zinc-500">
-          Run a scan first to visualize the context graph
-        </p>
+      <div className="h-[80vh]">
+        <GraphEmptyState
+          title="No completed scans found"
+          detail="Run a scan first so the context map can show agents, MCP servers, shared credentials, and lateral paths from a real snapshot."
+          suggestions={[
+            "Use a demo scan for a local proof point.",
+            "Open the Security Graph after the scan persists graph evidence.",
+            "Keep the first context view scoped to one agent before expanding.",
+          ]}
+          command="agent-bom agents --demo --offline"
+        />
       </div>
     );
   }
@@ -494,10 +499,21 @@ export default function ContextPage() {
             </div>
           )}
           {!graphData ? (
-            <div className="flex items-center justify-center h-full text-zinc-400">
-              <Loader2 className="w-5 h-5 animate-spin mr-2" />
-              Loading context graph...
-            </div>
+            <GraphPanelSkeleton
+              title="Loading context map"
+              detail="Fetching the selected scan and preparing the focused agent-to-server context."
+            />
+          ) : displayNodes.length === 0 ? (
+            <GraphEmptyState
+              title="No context relationships match this scope"
+              detail="The selected scan loaded, but this agent scope does not have enough server, credential, or lateral path evidence to draw a context map."
+              suggestions={[
+                "Choose another agent from the scope selector.",
+                "Switch to all agents to inspect shared infrastructure.",
+                "Run a broader scan when you expect MCP server or credential relationships.",
+              ]}
+              command="agent-bom scan -p . -f graph"
+            />
           ) : (
             <ReactFlow
               nodes={displayNodes}

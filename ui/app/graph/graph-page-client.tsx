@@ -30,6 +30,9 @@ import {
   DEFAULT_FILTERS,
   createExpandedGraphFilters,
   createFocusedGraphFilters,
+  createImmediateGraphFilters,
+  graphScopeLabelForFilters,
+  graphScopePresetForFilters,
   type FilterState,
 } from "@/components/lineage-filter";
 import {
@@ -387,7 +390,7 @@ function graphErrorState(message: string): { title: string; detail: string; sugg
       detail: message,
       suggestions: [
         "Reduce depth or page size before retrying.",
-        "Switch back to Focused view for operator triage.",
+        "Switch back to Relevant paths for operator triage.",
         "Narrow the graph by agent, severity, or relationship scope.",
       ],
     };
@@ -780,10 +783,11 @@ function GraphPageInner() {
     [graphData, filters],
   );
   const validValues = filterAlgebra.validValues;
+  const activeScopePreset = graphScopePresetForFilters(filters);
 
   const handleResetFilters = useCallback(() => {
-    setFilters(DEFAULT_FILTERS);
-  }, []);
+    setFilters(createFocusedGraphFilters(flow.agentNames[0] ?? null));
+  }, [flow.agentNames]);
 
   const flowNodeDataById = useMemo(
     () => new Map(flow.nodes.map((node) => [node.id, node.data])),
@@ -1265,18 +1269,28 @@ function GraphPageInner() {
           </form>
 
           <div className="mt-3 flex flex-wrap gap-4 text-[11px]">
-            <GraphControlGroup label="View">
+            <GraphControlGroup label="Scope preset">
+              <button
+                type="button"
+                onClick={() => setFilters(createImmediateGraphFilters(filters.agentName ?? flow.agentNames[0] ?? null))}
+                className={scopeButtonClass(activeScopePreset === "immediate")}
+                title="One-hop triage around the selected agent"
+              >
+                Immediate
+              </button>
               <button
                 type="button"
                 onClick={() => setFilters(createFocusedGraphFilters(filters.agentName ?? flow.agentNames[0] ?? null))}
-                className="rounded-lg border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-sky-200 transition hover:border-sky-400/60"
+                className={scopeButtonClass(activeScopePreset === "relevant")}
+                title="Default fix-first graph with bounded path context"
               >
-                Focused
+                Relevant paths
               </button>
               <button
                 type="button"
                 onClick={() => setFilters(createExpandedGraphFilters(null))}
-                className="rounded-lg border border-zinc-700 bg-zinc-900/80 px-2.5 py-1 text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100"
+                className={scopeButtonClass(activeScopePreset === "expanded")}
+                title="Broader topology review with lower-priority context included"
               >
                 Expanded
               </button>
@@ -1291,7 +1305,7 @@ function GraphPageInner() {
                 {filters.severity ? `${filters.severity}+` : "all severities"}
               </span>
               <span className="rounded-lg border border-zinc-800 bg-zinc-900/80 px-2.5 py-1 text-zinc-400">
-                depth {filters.maxDepth}
+                {graphScopeLabelForFilters(filters)}
               </span>
               {filters.vulnOnly && (
                 <span className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-emerald-200">
@@ -1320,7 +1334,7 @@ function GraphPageInner() {
                 ? "This scope currently resolves to findings without surrounding context. Relax filters or expand the view to recover package, server, and agent relationships."
                 : filters.agentName
                   ? `Focused on ${filters.agentName}. Expand only when you need more of the surrounding graph.`
-                  : "Focused view keeps the graph scoped. Use Expanded when you need broader topology."}
+                  : "Relevant paths keeps the first view bounded. Use Expanded only when you need broader topology."}
           </div>
 
           {investigationMode && (
@@ -1459,7 +1473,7 @@ function GraphPageInner() {
             <li>Each snapshot is a persisted control-plane view of entities, edges, attack paths, and relationship counts at one capture time.</li>
             <li>Node IDs are stable identifiers inside the graph model; the detail panel shows the node ID, first seen, last seen, sources, and edge counts.</li>
             <li>Pagination changes the visible canvas, not the persisted snapshot itself. Narrow the scope when the graph gets large; page when you need broader coverage.</li>
-            <li>Focused view is for operator triage. Expanded view is for topology review. Attack-path cards are the fix-first shortlist, not the whole graph.</li>
+            <li>Relevant paths is for operator triage. Expanded is for topology review. Attack-path cards are the fix-first shortlist, not the whole graph.</li>
           </ul>
         </details>
 
@@ -1579,7 +1593,7 @@ function GraphPageInner() {
           {loadingGraph && !graphData ? (
             <GraphPanelSkeleton
               title="Loading graph window"
-              detail="Fetching the selected snapshot with the current layer, severity, depth, and relationship filters."
+              detail={`Fetching the selected snapshot with the ${graphScopeLabelForFilters(filters).toLowerCase()} scope and active layer filters.`}
             />
           ) : graphPanelError ? (
             <GraphEmptyState
@@ -1593,9 +1607,10 @@ function GraphPageInner() {
               detail="The current combination of layers, severity, agent, depth, and runtime scope filtered everything out."
               suggestions={[
                 "Drop the severity threshold or turn off vulnerable-only.",
-                "Switch from Focused to Expanded when you need broader topology.",
+                "Switch from Relevant paths to Expanded when you need broader topology.",
                 "Re-enable the package or server layers to recover the path context.",
               ]}
+              command="agent-bom agents --demo --offline"
             />
           ) : graphOnlyFindings ? (
             <GraphFindingsFallback
@@ -1699,6 +1714,12 @@ function MetricCard({
       <span className="font-mono text-zinc-100">{value}</span> {label}
     </div>
   );
+}
+
+function scopeButtonClass(active: boolean): string {
+  return active
+    ? "rounded-lg border border-sky-500/40 bg-sky-500/15 px-2.5 py-1 text-sky-100 transition hover:border-sky-400/70"
+    : "rounded-lg border border-zinc-700 bg-zinc-900/80 px-2.5 py-1 text-zinc-300 transition hover:border-zinc-500 hover:text-zinc-100";
 }
 
 function PathStat({

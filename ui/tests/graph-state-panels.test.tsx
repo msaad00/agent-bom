@@ -1,6 +1,16 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { GraphFindingsFallback, GraphPanelSkeleton, GraphRefreshOverlay } from '@/components/graph-state-panels'
+
+vi.mock('next/link', () => ({
+  default: ({ href, children, ...props }: { href: string; children: ReactNode }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}))
+
+import { GraphEmptyState, GraphFindingsFallback, GraphPanelSkeleton, GraphRefreshOverlay } from '@/components/graph-state-panels'
 import type { LineageNodeData } from '@/components/lineage-nodes'
 
 function finding(index: number): { id: string; data: LineageNodeData } {
@@ -51,6 +61,20 @@ describe('GraphFindingsFallback', () => {
 })
 
 describe('Graph loading states', () => {
+  it('renders first command guidance in graph empty states', () => {
+    render(
+      <GraphEmptyState
+        title="No graph snapshots found"
+        detail="Run a scan first."
+        suggestions={["Use demo data."]}
+        command="agent-bom agents --demo --offline"
+      />,
+    )
+
+    expect(screen.getByText('First command')).toBeInTheDocument()
+    expect(screen.getByText('agent-bom agents --demo --offline')).toBeInTheDocument()
+  })
+
   it('renders a bounded graph panel skeleton', () => {
     render(<GraphPanelSkeleton title="Loading graph window" detail="Fetching a bounded graph window." />)
 

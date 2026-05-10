@@ -48,6 +48,9 @@ import {
   toAttackCardNodes,
 } from "@/lib/attack-paths";
 
+const ATTACK_PATH_QUEUE_LIMIT = 75;
+const FIX_FIRST_CARD_LIMIT = 12;
+
 function SecurityGraphPageContent() {
   const searchParams = useSearchParams();
   const [snapshots, setSnapshots] = useState<GraphSnapshot[]>([]);
@@ -135,14 +138,14 @@ function SecurityGraphPageContent() {
         const [graph, view] = await Promise.all([
           api.getGraphAttackPaths({
             scanId: selectedScanId,
-            limit: 250,
+            limit: ATTACK_PATH_QUEUE_LIMIT,
           }),
           api.getFixFirstGraphView({
             scanId: selectedScanId,
             cve: focus.cve || undefined,
             packageName: focus.packageName || undefined,
             agentName: focus.agentName || undefined,
-            limit: 12,
+            limit: FIX_FIRST_CARD_LIMIT,
           }),
         ]);
         if (cancelled) return;
@@ -502,6 +505,7 @@ function SecurityGraphPageContent() {
             title={graphErrorState.title}
             detail={graphErrorState.detail}
             suggestions={graphErrorState.suggestions}
+            command="agent-bom serve --api"
           />
           <div className="mt-4 flex flex-wrap gap-3 border-t border-red-900/40 pt-4">
             <Link
@@ -528,6 +532,7 @@ function SecurityGraphPageContent() {
             title={emptyGraphState.title}
             detail={emptyGraphState.detail}
             suggestions={emptyGraphState.suggestions}
+            command="agent-bom scan -p . -f graph"
           />
           <div className="mt-4 flex flex-wrap gap-3 border-t border-[color:var(--border-subtle)] pt-4">
             <Link

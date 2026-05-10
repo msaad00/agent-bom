@@ -213,13 +213,13 @@ runtime_group.add_command(protect_cmd, "protect")
 runtime_group.add_command(watch_cmd, "watch")
 runtime_group.commands["configure"].hidden = True
 runtime_group.commands["protect"].hidden = True
-runtime_group.commands["watch"].hidden = True
 main.add_command(runtime_group)
 main.commands["runtime"].hidden = True  # Use proxy/audit directly
 
 # Top-level shortcuts for primary runtime commands
 main.add_command(proxy_cmd, "proxy")
 main.add_command(proxy_bootstrap_cmd, "proxy-bootstrap")
+main.add_command(watch_cmd, "watch")
 main.add_command(audit_replay_cmd, "audit")
 main.add_command(audit_drain_dlq_cmd, "audit-drain-dlq")
 

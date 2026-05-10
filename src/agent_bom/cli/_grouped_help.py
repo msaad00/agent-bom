@@ -17,7 +17,7 @@ COMMAND_CATEGORIES: OrderedDict[str, list[str]] = OrderedDict(
         ),
         (
             "Runtime",
-            ["proxy", "audit"],
+            ["proxy", "watch", "audit"],
         ),
         (
             "MCP",

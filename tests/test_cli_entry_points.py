@@ -75,12 +75,24 @@ class TestAgentBom:
         r = CliRunner().invoke(main, ["check", "--help"])
         assert r.exit_code == 0
 
+    def test_watch_is_visible_runtime_workflow(self):
+        from agent_bom.cli import main
+
+        help_result = CliRunner().invoke(main, ["--help"])
+        assert help_result.exit_code == 0
+        assert "watch" in help_result.output
+
+        watch_result = CliRunner().invoke(main, ["watch", "--help"])
+        assert watch_result.exit_code == 0
+        assert "Watch MCP configs" in watch_result.output
+
     def test_backward_compat_runtime_group(self):
         from agent_bom.cli import main
 
         r = CliRunner().invoke(main, ["runtime", "--help"])
         assert r.exit_code == 0
         assert "proxy" in r.output
+        assert "watch" in r.output
 
     def test_backward_compat_cloud_group(self):
         from agent_bom.cli import main

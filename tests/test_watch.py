@@ -139,6 +139,20 @@ def test_watch_cli_help():
     from agent_bom.cli import main
 
     runner = CliRunner()
+    result = runner.invoke(main, ["watch", "--help"])
+
+    assert result.exit_code == 0
+    assert "Watch MCP configs" in result.output
+    assert "agent-bom watch --log alerts.jsonl" in result.output
+
+
+def test_runtime_watch_remains_available():
+    """``agent-bom runtime watch`` remains available for existing operators."""
+    from click.testing import CliRunner
+
+    from agent_bom.cli import main
+
+    runner = CliRunner()
     result = runner.invoke(main, ["runtime", "watch", "--help"])
 
     assert result.exit_code == 0

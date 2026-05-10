@@ -250,15 +250,16 @@ main.add_command(mesh_cmd, "mesh")
 # introspect is under `mcp introspect` — no top-level duplicate
 
 # ---------------------------------------------------------------------------
-# Report command group — `agent-bom report [history|diff|rescan|analytics|dashboard]`
+# Report command group — `agent-bom report [history|diff|rescan|query|analytics|dashboard]`
 # ---------------------------------------------------------------------------
-from agent_bom.cli._report_group import pipeline_events_cmd, report_group  # noqa: E402
+from agent_bom.cli._report_group import local_query_cmd, pipeline_events_cmd, report_group  # noqa: E402
 
 report_group.add_command(history_cmd, "history")
 report_group.add_command(diff_cmd, "diff")
 report_group.add_command(rescan_command, "rescan")
 report_group.add_command(compliance_narrative_cmd, "compliance-narrative")
 report_group.add_command(pipeline_events_cmd, "pipeline-events")
+report_group.add_command(local_query_cmd, "query")
 report_group.add_command(analytics_cmd, "analytics")
 report_group.add_command(dashboard_cmd, "dashboard")
 main.add_command(report_group)

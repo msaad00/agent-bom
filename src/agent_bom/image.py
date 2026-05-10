@@ -97,6 +97,45 @@ def _build_scanner_env(
     return env
 
 
+def _cvss_score_from_grype_vulnerability(vuln_data: dict) -> Optional[float]:
+    for cvss in vuln_data.get("cvss", []):
+        metrics = cvss.get("metrics", {})
+        score = metrics.get("baseScore")
+        if score is not None:
+            return float(score)
+    return None
+
+
+def _severity_from_grype_vulnerability(vuln_data: dict, cvss_score: Optional[float]) -> Severity:
+    severity = severity_from_label(vuln_data.get("severity"))
+    if severity == Severity.UNKNOWN and cvss_score is not None:
+        return cvss_to_severity(cvss_score)
+    return severity
+
+
+def _related_grype_vulnerabilities(match: dict, vuln_data: dict) -> list[dict]:
+    related: list[dict] = []
+    for source in (match.get("relatedVulnerabilities"), vuln_data.get("relatedVulnerabilities")):
+        if isinstance(source, list):
+            related.extend(item for item in source if isinstance(item, dict))
+    return related
+
+
+def _debian_related_cve_fallback(match: dict, vuln_data: dict) -> tuple[Optional[Severity], Optional[float]]:
+    vuln_id = str(vuln_data.get("id") or "")
+    if not vuln_id.startswith("DEBIAN-CVE-"):
+        return None, None
+    for related in _related_grype_vulnerabilities(match, vuln_data):
+        related_id = str(related.get("id") or "")
+        if not related_id.startswith("CVE-"):
+            continue
+        related_score = _cvss_score_from_grype_vulnerability(related)
+        related_severity = _severity_from_grype_vulnerability(related, related_score)
+        if related_severity != Severity.UNKNOWN or related_score is not None:
+            return related_severity, related_score
+    return None, None
+
+
 def _scan_with_grype(
     image_ref: str,
     registry_user: Optional[str] = None,
@@ -162,17 +201,15 @@ def _scan_with_grype(
         if not vuln_id:
             continue
 
-        # Extract CVSS score from Grype's cvss array
-        cvss_score: Optional[float] = None
-        for cvss in vuln_data.get("cvss", []):
-            metrics = cvss.get("metrics", {})
-            score = metrics.get("baseScore")
-            if score is not None:
-                cvss_score = float(score)
-                break
-        severity = severity_from_label(vuln_data.get("severity"))
-        if severity == Severity.UNKNOWN and cvss_score is not None:
-            severity = cvss_to_severity(cvss_score)
+        # Extract CVSS score from Grype's cvss array.
+        cvss_score = _cvss_score_from_grype_vulnerability(vuln_data)
+        severity = _severity_from_grype_vulnerability(vuln_data, cvss_score)
+        if severity == Severity.UNKNOWN and cvss_score is None:
+            fallback_severity, fallback_score = _debian_related_cve_fallback(match, vuln_data)
+            if fallback_score is not None:
+                cvss_score = fallback_score
+            if fallback_severity is not None:
+                severity = fallback_severity
 
         # Fixed version
         fix_info = vuln_data.get("fix", {})

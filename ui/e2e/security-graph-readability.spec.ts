@@ -214,7 +214,7 @@ async function routeGraphPage(page: Page) {
 
 async function captureGraphScreenshot(page: Page, testInfo: TestInfo, theme: "dark" | "light") {
   await expect(page.getByRole("heading", { name: "Security Graph" })).toBeVisible();
-  await expect(page.getByText("Relevant paths", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Relevant paths", exact: true })).toBeVisible();
   await expect(page.getByText("Attack paths", { exact: true })).toBeVisible();
   await expect(page.locator('[data-testid="cluster-pill"]').first()).toBeVisible();
   await expect(page.getByTestId("graph-compression-summary")).toContainText(/compressed|rendered/);

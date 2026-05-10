@@ -56,3 +56,9 @@ repos:
         language: system
         pass_filenames: false
         files: ^(src/agent_bom/.*\.py|src/agent_bom/config\.py|scripts/env_var_allowlist\.txt|docs/operations/ENV_VARS\.md)$
+      - id: duplicate-artifact-guard
+        name: Finder duplicate artifact guard
+        entry: python3 scripts/check_duplicate_artifacts.py
+        language: system
+        pass_filenames: false
+        files: ^(src/|tests/|docs/|site-docs/|ui/|contracts/|deploy/|\.github/workflows/)

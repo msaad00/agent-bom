@@ -48,9 +48,9 @@ before replacing any published product image.
 |---|---|---|---|
 | `dashboard-live.png` | `/?capture=1` (Risk overview) | All agents · top crop showing the gauge, posture sub-scores, score breakdown, and the start of the attack-path list | The published README should not use one tall stitched dashboard asset when two shorter frames tell the story more clearly |
 | `dashboard-paths-live.png` | `/?capture=1` (Risk overview) | All agents · mid-page crop showing the attack-path list, exposure KPI band, and the first backlog charts | Keeps the fix-first path list readable in GitHub while still proving the KPI / backlog context lives on the same page |
-| `mesh-live.png` | `/mesh` | Capture the full light-theme agent mesh graph across selected agents, MCP servers, tools, packages, credentials, and findings | Preserves the graph-backed product surface; do not replace this with a summary card or slide view |
-| `mesh-dark-live.png` | `/mesh` | Capture the same real product graph in dark theme | Proves theme parity without using a docs-only route |
-| `mesh-light-live.png` | `/mesh` | Capture the same real product graph in light theme | Keeps dependency paths and finding edges readable in GitHub docs |
+| `mesh-live.png` | `/mesh?capture=1` | Capture the full light-theme agent mesh graph across selected agents, MCP servers, tools, packages, credentials, and findings | Preserves the graph-backed product surface; capture mode tightens graph framing and hides minimap controls |
+| `mesh-dark-live.png` | `/mesh?capture=1` | Capture the same real product graph in dark theme | Proves theme parity without using a docs-only route |
+| `mesh-light-live.png` | `/mesh?capture=1` | Capture the same real product graph in light theme | Keeps dependency paths and finding edges readable in GitHub docs |
 | `remediation-live.png` | `/remediation` | All frameworks tab | Shows the full prioritized fix list |
 
 ### Dashboard layout (current)
@@ -72,9 +72,10 @@ The `cursor` agent in `src/agent_bom/demo.py` is the best mesh hero shot in
 the current demo inventory — it brings the filesystem and database servers,
 multiple tools, reachable packages, and the densest CVE cluster
 (`pillow@9.0.0`, `cryptography@39.0.0`, `werkzeug@2.2.2`). Capturing under
-an unscoped or lower-signal agent risks a flatter graph. Use `/mesh` for the
-full product graph in both dark and light themes. Do not publish a docs-only
-slide or card view in place of the graph screenshot.
+an unscoped or lower-signal agent risks a flatter graph. Use
+`/mesh?capture=1` for the full product graph in both dark and light themes so
+the graph is framed for README-scale evidence. Do not publish a docs-only slide
+or card view in place of the graph screenshot.
 
 ## Accuracy guardrail
 

@@ -376,8 +376,9 @@ export default function ContextPage() {
         edgeCount: displayEdges.length,
         selectedNode: Boolean(selectedNode),
         mode: "context",
+        captureMode,
       }),
-    [displayEdges.length, displayNodes.length, selectedNode],
+    [captureMode, displayEdges.length, displayNodes.length, selectedNode],
   );
   const showMiniMap = useMemo(
     () =>
@@ -543,6 +544,7 @@ export default function ContextPage() {
             />
           ) : (
             <ReactFlow
+              key={captureMode ? "context-capture" : "context-interactive"}
               nodes={displayNodes}
               edges={displayEdges}
               nodeTypes={lineageNodeTypes}

@@ -1032,8 +1032,9 @@ function GraphPageInner() {
         edgeCount: displayEdges.length,
         selectedNode: Boolean(selectedNode),
         mode: "lineage",
+        captureMode,
       }),
-    [displayEdges.length, displayNodes.length, selectedNode],
+    [captureMode, displayEdges.length, displayNodes.length, selectedNode],
   );
   const showMiniMap = useMemo(
     () =>
@@ -1774,6 +1775,7 @@ function GraphPageInner() {
             />
           ) : (
             <ReactFlow
+              key={captureMode ? "lineage-capture" : "lineage-interactive"}
               nodes={displayNodes}
               edges={displayEdges}
               nodeTypes={lineageNodeTypesAdaptive}

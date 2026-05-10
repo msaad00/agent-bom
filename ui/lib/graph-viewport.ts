@@ -5,6 +5,7 @@ export type GraphViewportInput = {
   edgeCount?: number;
   selectedNode?: boolean;
   mode?: GraphViewportMode;
+  captureMode?: boolean;
 };
 
 export type GraphFitViewOptions = {
@@ -61,10 +62,15 @@ export function graphFitViewOptions(input: GraphViewportInput): GraphFitViewOpti
     maxZoom -= 0.04;
   }
 
+  if (input.captureMode) {
+    padding -= input.mode === "mesh" ? 0.04 : 0.02;
+    maxZoom += input.mode === "mesh" ? 0.18 : 0.1;
+  }
+
   return {
     padding: clamp(padding, 0.08, 0.24),
     maxZoom: clamp(maxZoom + selectedBoost, 0.82, 1.82),
-    duration: 240,
+    duration: input.captureMode ? 0 : 240,
   };
 }
 

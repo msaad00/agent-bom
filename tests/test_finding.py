@@ -6,6 +6,7 @@ import pytest
 
 from agent_bom.finding import (
     Asset,
+    ControlTag,
     Finding,
     FindingSource,
     FindingType,
@@ -227,6 +228,77 @@ def test_finding_all_compliance_tags_deduplicates():
     tags = finding.all_compliance_tags()
     assert tags.count("LLM05") == 1
     assert "AML.T0010" in tags
+
+
+def test_finding_normalizes_legacy_control_tags():
+    finding = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.MCP_SCAN,
+        asset=Asset(name="pkg", asset_type="package"),
+        severity="HIGH",
+        owasp_tags=["LLM05"],
+        soc2_tags=["CC7.1"],
+    )
+
+    payload = finding.to_dict()
+
+    assert payload["controls"] == [
+        {
+            "framework": "owasp_llm",
+            "control": "LLM05",
+            "version": None,
+            "confidence": None,
+            "source": "legacy:owasp_tags",
+        },
+        {
+            "framework": "soc2",
+            "control": "CC7.1",
+            "version": None,
+            "confidence": None,
+            "source": "legacy:soc2_tags",
+        },
+    ]
+    assert payload["owasp_tags"] == ["LLM05"]
+    assert payload["soc2_tags"] == ["CC7.1"]
+
+
+def test_finding_deduplicates_explicit_and_legacy_controls():
+    finding = Finding(
+        finding_type=FindingType.CVE,
+        source=FindingSource.MCP_SCAN,
+        asset=Asset(name="pkg", asset_type="package"),
+        severity="HIGH",
+        controls=[ControlTag(framework="owasp_llm", control="LLM05", version="2025", confidence=0.9, source="hub")],
+        owasp_tags=["LLM05"],
+        atlas_tags=["AML.T0010"],
+    )
+
+    controls = finding.to_dict()["controls"]
+
+    assert controls == [
+        {
+            "framework": "owasp_llm",
+            "control": "LLM05",
+            "version": "2025",
+            "confidence": 0.9,
+            "source": "hub",
+        },
+        {
+            "framework": "mitre_atlas",
+            "control": "AML.T0010",
+            "version": None,
+            "confidence": None,
+            "source": "legacy:atlas_tags",
+        },
+    ]
+    assert "LLM05" in finding.all_compliance_tags()
+    assert "AML.T0010" in finding.all_compliance_tags()
+
+
+def test_control_tag_from_dict_accepts_via_alias():
+    tag = ControlTag.from_dict({"framework": "nist_csf", "control": "ID.RA-01", "via": "legacy"})
+
+    assert tag == ControlTag(framework="nist_csf", control="ID.RA-01", source="legacy")
 
 
 # ---------------------------------------------------------------------------

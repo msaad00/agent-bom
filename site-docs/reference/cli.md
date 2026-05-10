@@ -71,6 +71,7 @@
 | `db` | Manage the local vulnerability database |
 | `doctor` | Check environment readiness for scanning |
 | `gateway` | Multi-MCP gateway commands |
+| `interactive` | Start an interactive command shell for repeated CLI workflows |
 | `profiles` | Manage named CLI profiles for repeatable scan contexts |
 | `proxy-bootstrap` | Generate managed endpoint onboarding material |
 | `samples` | Create bundled sample inputs for demos and first runs |

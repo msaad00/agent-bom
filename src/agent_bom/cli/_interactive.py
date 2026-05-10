@@ -51,7 +51,7 @@ def _print_interactive_help(output: Callable[[str], None]) -> None:
     output("")
     output("Run normal commands without the program name, for example:")
     output("  agents --demo --offline")
-    output("  profiles list")
+    output("  doctor")
     output("  report history")
 
 

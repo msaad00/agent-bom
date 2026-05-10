@@ -23,7 +23,6 @@ def runtime_group(ctx: click.Context) -> None:
     Subcommands:
       proxy       Run MCP server through security proxy
       audit       View and analyze proxy audit log
-      watch       Watch MCP configs for drift and alert
 
     Hidden compatibility commands:
       protect     Runtime protection engine (8 behavioral detectors)

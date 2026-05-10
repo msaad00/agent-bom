@@ -44,7 +44,7 @@ The `watch` command supports webhook alerts to:
 - Custom webhook URLs
 
 ```bash
-agent-bom watch --webhook-url https://hooks.slack.com/... --watch-interval 60
+agent-bom watch --webhook https://hooks.slack.com/... --interval 60
 ```
 
 ## Operator guides

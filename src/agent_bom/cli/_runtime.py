@@ -851,9 +851,10 @@ def watch_cmd(webhook, alert_log, interval):
 
     \b
     Usage:
+      agent-bom watch
+      agent-bom watch --webhook https://hooks.slack.com/services/...
+      agent-bom watch --log alerts.jsonl
       agent-bom runtime watch
-      agent-bom runtime watch --webhook https://hooks.slack.com/services/...
-      agent-bom runtime watch --log alerts.jsonl
     """
     from agent_bom.watch import (
         AlertSink,

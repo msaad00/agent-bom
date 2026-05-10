@@ -198,6 +198,13 @@ GHSA_UNAUTH_PACKAGE_BUDGET = _int("AGENT_BOM_GHSA_UNAUTH_PACKAGE_BUDGET", 25)
 SCAN_CACHE_MAX_ENTRIES = _int("AGENT_BOM_SCAN_CACHE_MAX_ENTRIES", 100_000)
 
 
+# ── Local Analytics ─────────────────────────────────────────────────────────
+# Optional path override for the local scan analytics SQL mirror. Empty string
+# means use ~/.agent-bom/local-analytics.sqlite.
+
+LOCAL_ANALYTICS_DB = _str("AGENT_BOM_LOCAL_ANALYTICS_DB", "")
+
+
 # ── AI Enrichment ─────────────────────────────────────────────────────────
 # Used by ai_enrich.py for LLM-powered risk narratives.
 #

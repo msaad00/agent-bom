@@ -30,6 +30,12 @@ def save_report(report_json: dict, label: Optional[str] = None) -> Path:
     stem = f"{ts}-{label}" if label else ts
     path = history_dir() / f"{stem}.json"
     path.write_text(json.dumps(report_json, indent=2))
+    try:
+        from agent_bom.db.local_analytics import record_scan_report_best_effort
+
+        record_scan_report_best_effort(report_json, source="cli", artifact_path=path)
+    except Exception:
+        pass
     return path
 
 

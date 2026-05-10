@@ -88,6 +88,11 @@ so they cannot regress silently, but they are not part of this reference.
 | `AGENT_BOM_HTTP_MAX_BACKOFF` | `float` | `30.0` | — |
 | `AGENT_BOM_HTTP_MAX_RETRIES` | `int` | `3` | Used by http_client.create_client() and request_with_retry().  Defaults: 3 retries with 1s initial backoff (doubles each retry, capped at 30s).  30s per-request timeout covers most external APIs; NVD can be slow so operators may raise this. |
 
+## Local Analytics
+| Env var | Type | Default | Description |
+|---|---|---|---|
+| `AGENT_BOM_LOCAL_ANALYTICS_DB` | `str` | `''` | Optional path override for the local scan analytics SQL mirror. Empty string means use ~/.agent-bom/local-analytics.sqlite. |
+
 ## MCP Server Limits
 | Env var | Type | Default | Description |
 |---|---|---|---|

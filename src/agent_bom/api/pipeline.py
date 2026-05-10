@@ -877,6 +877,20 @@ def _run_scan_sync(job: ScanJob) -> None:
                 _logger.warning("Asset tracker persistence failed: %s", asset_exc)
                 with lock:
                     job.progress.append(f"Asset tracker skipped: {sanitize_error(asset_exc)}")
+
+            try:
+                from agent_bom.db.local_analytics import record_scan_report_best_effort
+
+                recorded_scan_id = record_scan_report_best_effort(
+                    report_json,
+                    source="api",
+                    tenant_id=str(getattr(job, "tenant_id", None) or "default"),
+                )
+                if recorded_scan_id:
+                    with lock:
+                        job.progress.append(f"Local analytics synced scan {recorded_scan_id}")
+            except Exception as local_analytics_exc:  # noqa: BLE001
+                _logger.debug("Local analytics persistence skipped: %s", local_analytics_exc)
         else:
             with lock:
                 job.progress.append("Result side-effect persistence skipped by request")

@@ -13,7 +13,7 @@ import {
   type Node,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { AlertTriangle, Loader2, ShieldAlert } from "lucide-react";
+import { AlertTriangle, Loader2, Route, ShieldAlert } from "lucide-react";
 
 import { AttackPathCard } from "@/components/attack-path-card";
 import { GraphLegend, FullscreenButton } from "@/components/graph-chrome";
@@ -70,6 +70,11 @@ import {
   minimapNodeColor,
   readableGraphEdges,
 } from "@/lib/graph-utils";
+import {
+  prettifyReachabilityType,
+  summarizeReachability,
+  type ReachabilitySummary,
+} from "@/lib/graph-reachability";
 import {
   api,
   type GraphDiffResponse,
@@ -488,6 +493,9 @@ function GraphPageInner() {
   const [searchResults, setSearchResults] = useState<UnifiedNode[]>([]);
   const [searching, setSearching] = useState(false);
   const [investigationMode, setInvestigationMode] = useState<InvestigationMode | null>(null);
+  const [reachabilitySummary, setReachabilitySummary] = useState<ReachabilitySummary | null>(null);
+  const [loadingReachability, setLoadingReachability] = useState(false);
+  const [reachabilityError, setReachabilityError] = useState<string | null>(null);
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [pinnedFocusId, setPinnedFocusId] = useState<string | null>(null);
   const [expandedClusterIds, setExpandedClusterIds] = useState<Set<string>>(() => new Set());
@@ -570,6 +578,8 @@ function GraphPageInner() {
     setExpandedClusterIds(new Set());
     setPinnedFocusId(null);
     setHoveredNodeId(null);
+    setReachabilitySummary(null);
+    setReachabilityError(null);
   }, [serverFilterKey]);
 
   useEffect(() => {
@@ -577,6 +587,8 @@ function GraphPageInner() {
     setSearchQuery("");
     setSelectedAttackPathKey(null);
     setInvestigationMode(null);
+    setReachabilitySummary(null);
+    setReachabilityError(null);
     if (firstScanSelectionRef.current) {
       firstScanSelectionRef.current = false;
       if (seededFromUrlRef.current) {
@@ -907,6 +919,22 @@ function GraphPageInner() {
         };
       });
     }
+    if (reachabilitySummary) {
+      return layoutNodes.map((node) => {
+        const inReach = reachabilitySummary.nodeIds.has(node.id);
+        const isRoot = node.id === reachabilitySummary.rootId;
+        return {
+          ...node,
+          className: composeFocusClass(node.className, isRoot, !inReach),
+          data: {
+            ...node.data,
+            renderBand: effectiveLodBand,
+            dimmed: !inReach,
+            highlighted: inReach,
+          },
+        };
+      });
+    }
     if (!localNeighborhoodIds) {
       return layoutNodes.map((node) => ({
         ...node,
@@ -931,7 +959,7 @@ function GraphPageInner() {
         },
       };
     });
-  }, [layoutNodes, localNeighborhoodIds, attackPathNodeIds, activeFocusId, effectiveLodBand]);
+  }, [layoutNodes, localNeighborhoodIds, attackPathNodeIds, reachabilitySummary, activeFocusId, effectiveLodBand]);
 
   const compressedGroupCount = aggregatedClusterNodes.length;
   const compressedNodeCount = useMemo(
@@ -963,12 +991,31 @@ function GraphPageInner() {
         };
       });
     }
+    if (reachabilitySummary) {
+      return layoutEdges.map((edge): Edge => {
+        const inReach =
+          reachabilitySummary.edgeKeys.has(`${edge.source}=>${edge.target}`) ||
+          reachabilitySummary.edgeKeys.has(`${edge.target}=>${edge.source}`);
+        return {
+          ...edge,
+          animated: Boolean(inReach || edge.animated),
+          style: {
+            ...edge.style,
+            opacity: inReach ? 0.95 : 0.07,
+            strokeWidth: inReach
+              ? Math.max(typeof edge.style?.strokeWidth === "number" ? edge.style.strokeWidth : 2, 3)
+              : 1,
+            ...(inReach ? { filter: "drop-shadow(0 0 6px rgba(244,63,94,0.5))" } : {}),
+          },
+        };
+      });
+    }
     return readableGraphEdges(layoutEdges, localNeighborhoodIds, {
       baseOpacity: graphLayoutKind === "dagre-lr" ? 0.34 : 0.26,
       highSignalOpacity: graphLayoutKind === "dagre-lr" ? 0.6 : 0.48,
       inactiveOpacity: 0.06,
     });
-  }, [layoutEdges, localNeighborhoodIds, attackPathEdgeKeys, graphLayoutKind]);
+  }, [layoutEdges, localNeighborhoodIds, attackPathEdgeKeys, reachabilitySummary, graphLayoutKind]);
 
   const legendItems = useMemo(
     () => legendItemsForVisibleGraph(displayNodes, displayEdges),
@@ -996,6 +1043,48 @@ function GraphPageInner() {
     [displayNodes],
   );
 
+  const loadReachabilityDrillIn = useCallback(
+    async (rootId: string, rootLabel?: string) => {
+      if (!selectedScanId) return;
+
+      setLoadingReachability(true);
+      setReachabilityError(null);
+      try {
+        const response = await api.queryGraph({
+          roots: [rootId],
+          scan_id: selectedScanId,
+          direction: "forward",
+          max_depth: 4,
+          max_nodes: 350,
+          max_edges: 2200,
+          timeout_ms: 2000,
+          traversable_only: true,
+          static_only: filters.runtimeMode === "static",
+          dynamic_only: filters.runtimeMode === "dynamic",
+          include_roots: true,
+          include_attack_paths: false,
+          relationship_types: serverRelationships,
+        });
+        setReachabilitySummary(
+          summarizeReachability({
+            rootId,
+            rootLabel,
+            nodes: response.nodes,
+            edges: response.edges,
+            depthByNode: response.depth_by_node,
+            truncated: response.truncated,
+          }),
+        );
+      } catch (error) {
+        setReachabilitySummary(null);
+        setReachabilityError(error instanceof Error ? error.message : "Reachability query failed");
+      } finally {
+        setLoadingReachability(false);
+      }
+    },
+    [filters.runtimeMode, selectedScanId, serverRelationships],
+  );
+
   const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
     // Cluster-pill click → restore the absorbed siblings in place. We
     // never open the detail panel for a synthetic cluster node.
@@ -1019,12 +1108,13 @@ function GraphPageInner() {
     });
     setSelectedNodeId(node.id);
     setSelectedAttackPathKey(null);
+    void loadReachabilityDrillIn(node.id, data.label);
     // Click pin (#2257): toggle a "pinned focus" on the clicked node.
     // Re-clicking the same node clears the pin. Hover state is reset
     // because the pin replaces hover as the focus source.
     setPinnedFocusId((current) => (current === node.id ? null : node.id));
     setHoveredNodeId(null);
-  }, []);
+  }, [loadReachabilityDrillIn]);
 
   const onNodeMouseEnter = useCallback((_event: React.MouseEvent, node: Node) => {
     setHoveredNodeId(node.id);
@@ -1044,7 +1134,9 @@ function GraphPageInner() {
     });
     setSelectedNodeId(id);
     setHoveredNodeId(id);
-  }, []);
+    setSelectedAttackPathKey(null);
+    void loadReachabilityDrillIn(id, data.label);
+  }, [loadReachabilityDrillIn]);
 
   const runSearch = useCallback(async () => {
     const query = searchQuery.trim();
@@ -1090,6 +1182,8 @@ function GraphPageInner() {
       setPinnedFocusId(null);
       setHoveredNodeId(request.rootId);
       setSelectedAttackPathKey(null);
+      setReachabilitySummary(null);
+      setReachabilityError(null);
       setSearchResults([]);
       setSearchQuery(request.rootLabel ?? request.node?.label ?? request.rootId);
       setLoadingGraph(true);
@@ -1121,6 +1215,16 @@ function GraphPageInner() {
           nodeCount: response.nodes.length,
           edgeCount: response.edges.length,
         });
+        setReachabilitySummary(
+          summarizeReachability({
+            rootId: request.rootId,
+            rootLabel: rootNode?.label ?? request.rootLabel ?? request.rootId,
+            nodes: response.nodes,
+            edges: response.edges,
+            depthByNode: response.depth_by_node,
+            truncated: response.truncated,
+          }),
+        );
         setError(null);
       } catch (e) {
         setError(e instanceof Error ? e.message : "Failed to load root-centered graph");
@@ -1154,6 +1258,8 @@ function GraphPageInner() {
     setPinnedFocusId(null);
     setHoveredNodeId(null);
     setSelectedAttackPathKey(null);
+    setReachabilitySummary(null);
+    setReachabilityError(null);
   }, []);
 
   const pageStart = graphData && graphData.pagination.total > 0 ? graphData.pagination.offset + 1 : 0;
@@ -1353,6 +1459,18 @@ function GraphPageInner() {
             </div>
           )}
 
+          {(reachabilitySummary || loadingReachability || reachabilityError) && (
+            <ReachabilityDrillInPanel
+              summary={reachabilitySummary}
+              loading={loadingReachability}
+              error={reachabilityError}
+              onClear={() => {
+                setReachabilitySummary(null);
+                setReachabilityError(null);
+              }}
+            />
+          )}
+
           {searchResults.length > 0 && (
             <div className="mt-2 rounded-2xl border border-zinc-800 bg-zinc-950/90 p-2">
               <div className="mb-2 px-1 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
@@ -1536,7 +1654,11 @@ function GraphPageInner() {
                     <AttackPathCard
                       nodes={pathNodes}
                       riskScore={path.composite_risk}
-                      onClick={() => setSelectedAttackPathKey((current) => (current === key ? null : key))}
+                      onClick={() => {
+                        setReachabilitySummary(null);
+                        setReachabilityError(null);
+                        setSelectedAttackPathKey((current) => (current === key ? null : key));
+                      }}
                     />
                   </div>
                 );
@@ -1647,6 +1769,8 @@ function GraphPageInner() {
                 // so the operator always has a single deterministic
                 // gesture to "stop focusing".
                 setPinnedFocusId(null);
+                setReachabilitySummary(null);
+                setReachabilityError(null);
               }}
             >
               <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
@@ -1712,6 +1836,99 @@ function MetricCard({
   return (
     <div className={`rounded-xl border px-3 py-1.5 text-xs ${accentClass}`}>
       <span className="font-mono text-zinc-100">{value}</span> {label}
+    </div>
+  );
+}
+
+function ReachabilityDrillInPanel({
+  summary,
+  loading,
+  error,
+  onClear,
+}: {
+  summary: ReachabilitySummary | null;
+  loading: boolean;
+  error: string | null;
+  onClear: () => void;
+}) {
+  const affectedCount = summary ? Math.max(0, summary.nodeIds.size - 1) : 0;
+  return (
+    <div className="mt-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-100">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-2">
+          <Route className="mt-0.5 h-4 w-4 text-rose-300" />
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.24em] text-rose-300">Reachability drill-in</p>
+            <p className="mt-1 text-sm font-medium text-rose-50">
+              {summary ? `${summary.rootLabel} can reach ${affectedCount} node${affectedCount === 1 ? "" : "s"}` : "Loading reachable graph"}
+            </p>
+            {summary?.truncated && (
+              <p className="mt-1 text-[11px] text-amber-200">Traversal budget reached; narrow the graph or inspect a smaller root.</p>
+            )}
+            {error && <p className="mt-1 text-[11px] text-amber-200">{error}</p>}
+            {loading && (
+              <p className="mt-1 flex items-center gap-1 text-[11px] text-rose-200">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Refreshing reachability
+              </p>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClear}
+          className="rounded-lg border border-rose-400/30 bg-rose-950/60 px-2.5 py-1 text-rose-100 transition hover:border-rose-300"
+        >
+          Clear reachability
+        </button>
+      </div>
+
+      {summary && (
+        <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+          <div className="rounded-xl border border-rose-400/20 bg-zinc-950/45 p-2">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-rose-300">Affected by type</p>
+            {Object.keys(summary.countsByType).length === 0 ? (
+              <p className="mt-2 text-zinc-400">No downstream nodes returned for this root.</p>
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {Object.entries(summary.countsByType)
+                  .sort((left, right) => right[1] - left[1])
+                  .map(([type, count]) => (
+                    <span
+                      key={type}
+                      className="rounded border border-rose-400/20 bg-rose-950/60 px-1.5 py-0.5 text-[10px] text-rose-100"
+                    >
+                      {prettifyReachabilityType(type)}: {count}
+                    </span>
+                  ))}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-rose-400/20 bg-zinc-950/45 p-2">
+            <p className="text-[10px] uppercase tracking-[0.2em] text-rose-300">Bounded paths</p>
+            {summary.pathPreviews.length === 0 ? (
+              <p className="mt-2 text-zinc-400">No path preview is available for this root.</p>
+            ) : (
+              <div className="mt-2 grid gap-1.5">
+                {summary.pathPreviews.map((path) => (
+                  <div key={`${path.targetId}:${path.hops.join(">")}`} className="rounded-lg bg-zinc-950/70 px-2 py-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-medium text-rose-50">{path.targetLabel}</span>
+                      <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                        {prettifyReachabilityType(path.targetType)} · {path.depth} hop{path.depth === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <p className="mt-1 truncate font-mono text-[10px] text-zinc-400">
+                      {path.labels.join(" -> ")}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

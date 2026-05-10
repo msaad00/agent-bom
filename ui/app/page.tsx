@@ -447,10 +447,11 @@ export default function Dashboard() {
   // so all downstream useMemo aggregators work without changes.
   const effectiveJobs = useMemo<ScanJob[]>(() => {
     if (!apiError || !importedReport) return detailJobs;
+    const importedGeneratedAt = importedReport.scan_timestamp ?? importedReport.generated_at ?? new Date().toISOString();
     return [{
       job_id: "imported",
       status: "done",
-      created_at: importedReport.scan_timestamp ?? new Date().toISOString(),
+      created_at: importedGeneratedAt,
       request: {} as ScanJob["request"],
       progress: [],
       result: importedReport as unknown as Record<string, unknown>,
@@ -459,13 +460,16 @@ export default function Dashboard() {
 
   const effectiveRecentJobs = useMemo<JobListItem[]>(() => {
     if (!apiError || !importedReport) return jobs;
+    const importedGeneratedAt = importedReport.scan_timestamp ?? importedReport.generated_at ?? new Date().toISOString();
     return [{
       job_id: "imported",
       status: "done",
-      created_at: importedReport.scan_timestamp ?? new Date().toISOString(),
+      created_at: importedGeneratedAt,
       request: {},
       summary: importedReport.summary,
-      scan_timestamp: importedReport.scan_timestamp,
+      scan_timestamp: importedReport.scan_timestamp ?? importedGeneratedAt,
+      generated_at: importedReport.generated_at ?? importedGeneratedAt,
+      scan_run: importedReport.scan_run,
       pushed: false,
     }];
   }, [jobs, apiError, importedReport]);

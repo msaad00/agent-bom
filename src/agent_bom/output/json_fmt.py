@@ -13,6 +13,7 @@ from agent_bom.asset_provenance import (
     sanitize_discovery_provenance,
 )
 from agent_bom.compliance_utils import effective_blast_radius_tags
+from agent_bom.finding import FINDING_SCHEMA_VERSION
 from agent_bom.mcp_blocklist import sanitize_security_intelligence_entry
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
 from agent_bom.security import (
@@ -23,6 +24,11 @@ from agent_bom.security import (
     sanitize_text,
     sanitize_url,
 )
+
+SCAN_REPORT_SCHEMA_VERSION = "1.0"
+SCAN_RUN_SCHEMA_VERSION = "1"
+BLAST_RADIUS_SCHEMA_VERSION = "1"
+INVENTORY_SNAPSHOT_SCHEMA_VERSION = "1"
 
 
 def _severity_state(severity: Severity) -> str:
@@ -82,6 +88,7 @@ def _prompt_scan_findings(prompt_scan: dict) -> list[dict[str, object]]:
         severity = str(item.get("severity") or "unknown").lower()
         findings.append(
             {
+                "schema_version": FINDING_SCHEMA_VERSION,
                 "id": _stable_report_finding_id("prompt_scan", source_file, line_number, title, item.get("matched_text")),
                 "finding_type": "PROMPT_SECURITY",
                 "source": "PROMPT_SCAN",
@@ -118,6 +125,7 @@ def _browser_extension_findings(browser_extensions: dict) -> list[dict[str, obje
         severity = str(item.get("risk_level") or "unknown").lower()
         findings.append(
             {
+                "schema_version": FINDING_SCHEMA_VERSION,
                 "id": _stable_report_finding_id("browser_extension", browser, extension_id, item.get("version")),
                 "finding_type": "BROWSER_EXTENSION_RISK",
                 "source": "BROWSER_EXTENSION_SCAN",
@@ -670,7 +678,7 @@ def _build_inventory_snapshot(report: AIBOMReport) -> dict:
         )
 
     return {
-        "schema_version": "1",
+        "schema_version": INVENTORY_SNAPSHOT_SCHEMA_VERSION,
         "generated_at": report.generated_at.isoformat(),
         "agents": agents,
     }
@@ -785,11 +793,18 @@ def to_json(report: AIBOMReport) -> dict:
 
     all_packages = [pkg for agent in report.agents for server in agent.mcp_servers for pkg in server.packages]
     result = {
+        "schema_version": SCAN_REPORT_SCHEMA_VERSION,
         "document_type": "AI-BOM",
-        "spec_version": "1.0",
+        "spec_version": SCAN_REPORT_SCHEMA_VERSION,
         "scan_id": report.scan_id,
         "ai_bom_version": report.tool_version,
         "generated_at": report.generated_at.isoformat(),
+        "scan_run": {
+            "schema_version": SCAN_RUN_SCHEMA_VERSION,
+            "scan_id": report.scan_id,
+            "generated_at": report.generated_at.isoformat(),
+            "source_count": len(report.scan_sources),
+        },
         "scan_sources": report.scan_sources,
         "has_mcp_context": report.has_mcp_context,
         "has_agent_context": report.has_agent_context,
@@ -1003,6 +1018,7 @@ def to_json(report: AIBOMReport) -> dict:
         ],
         "blast_radius": [
             {
+                "schema_version": BLAST_RADIUS_SCHEMA_VERSION,
                 **({"package_name": br.package.name, "package_version": br.package.version, "package_stable_id": br.package.stable_id}),
                 **effective_blast_radius_tags(br),
                 "risk_score": br.risk_score,

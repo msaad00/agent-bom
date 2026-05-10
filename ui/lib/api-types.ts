@@ -71,6 +71,8 @@ export interface ScanResult {
   summary?: Summary | undefined;
   warnings?: string[] | undefined;
   scan_timestamp?: string | undefined;
+  generated_at?: string | undefined;
+  scan_run?: Record<string, unknown> | undefined;
   tool_version?: string | undefined;
   /** Context metadata — auto-detected from scan sources */
   has_mcp_context?: boolean | undefined;
@@ -1210,6 +1212,8 @@ export interface JobListItem {
   request?: ScanRequest | undefined;
   summary?: Summary | undefined;
   scan_timestamp?: string | undefined;
+  generated_at?: string | undefined;
+  scan_run?: Record<string, unknown> | undefined;
   pushed?: boolean | undefined;
   error?: string | undefined;
 }

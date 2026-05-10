@@ -427,6 +427,9 @@ def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
 
     result = job.result if isinstance(job.result, dict) else {}
     summary = result.get("summary") if isinstance(result.get("summary"), dict) else None
+    scan_run = result.get("scan_run") if isinstance(result.get("scan_run"), dict) else None
+    generated_at = result.get("generated_at") or (scan_run or {}).get("generated_at")
+    scan_timestamp = result.get("scan_timestamp") or generated_at
     request_payload = sanitize_sensitive_payload(job.request.model_dump(exclude_defaults=True, exclude_none=True))
     return {
         "job_id": job.job_id,
@@ -436,7 +439,9 @@ def _job_summary_payload(job: ScanJob) -> dict[str, Any]:
         "completed_at": job.completed_at,
         "request": request_payload if isinstance(request_payload, dict) else {},
         "summary": summary,
-        "scan_timestamp": result.get("scan_timestamp"),
+        "scan_timestamp": scan_timestamp,
+        "generated_at": generated_at,
+        "scan_run": scan_run,
         "pushed": bool(result.get("pushed")),
         "error": job.error,
     }

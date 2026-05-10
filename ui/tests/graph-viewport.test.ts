@@ -30,4 +30,13 @@ describe("graph viewport framing", () => {
     expect(shouldShowGraphMiniMap({ nodeCount: 24, edgeCount: 40, selectedNode: true })).toBe(false);
     expect(shouldShowGraphMiniMap({ nodeCount: 90, edgeCount: 160 })).toBe(true);
   });
+
+  it("tightens capture-mode framing for published mesh screenshots", () => {
+    const interactive = graphFitViewOptions({ nodeCount: 18, edgeCount: 24, mode: "mesh" });
+    const capture = graphFitViewOptions({ nodeCount: 18, edgeCount: 24, mode: "mesh", captureMode: true });
+
+    expect(capture.maxZoom).toBeGreaterThan(interactive.maxZoom);
+    expect(capture.padding).toBeLessThan(interactive.padding);
+    expect(capture.duration).toBe(0);
+  });
 });

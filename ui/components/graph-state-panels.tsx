@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink, Route, SearchX } from "lucide-react";
+import { ExternalLink, Route } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { buildFindingsHref } from "@/lib/attack-paths";
 import { getOsvVulnerabilityUrl } from "@/lib/vulnerabilities";
+import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
 import type { LineageNodeData } from "./lineage-nodes";
 
 const FINDINGS_VIRTUALIZE_THRESHOLD = 80;
@@ -39,33 +40,12 @@ export function GraphEmptyState({
   command?: string | undefined;
 }) {
   return (
-    <div className="flex h-full items-center justify-center">
-      <div className="max-w-xl rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-6 text-left shadow-lg">
-        <div className="flex items-start gap-3">
-          <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-elevated)] p-2">
-            <SearchX className="h-5 w-5 text-[color:var(--text-secondary)]" />
-          </div>
-          <div>
-            <h3 className="text-base font-semibold text-[color:var(--foreground)]">{title}</h3>
-            <p className="mt-2 text-sm leading-6 text-[color:var(--text-secondary)]">{detail}</p>
-          </div>
-        </div>
-        <ul className="mt-4 space-y-2 text-sm text-[color:var(--text-secondary)]">
-          {suggestions.map((suggestion) => (
-            <li key={suggestion} className="flex items-start gap-2">
-              <span className="mt-1 h-1.5 w-1.5 rounded-full bg-[color:var(--text-tertiary)]" />
-              <span>{suggestion}</span>
-            </li>
-          ))}
-        </ul>
-        {command ? (
-          <div className="mt-4 rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] px-3 py-2">
-            <div className="text-[10px] uppercase tracking-[0.18em] text-[color:var(--text-tertiary)]">First command</div>
-            <code className="mt-1 block overflow-x-auto whitespace-nowrap text-xs text-[color:var(--foreground)]">{command}</code>
-          </div>
-        ) : null}
-      </div>
-    </div>
+    <PageEmptyState
+      title={title}
+      detail={detail}
+      suggestions={suggestions}
+      command={command}
+    />
   );
 }
 
@@ -77,23 +57,7 @@ export function GraphPanelSkeleton({
   detail?: string;
 }) {
   return (
-    <div className="flex h-full items-center justify-center p-6" data-testid="graph-panel-skeleton">
-      <div className="w-full max-w-4xl rounded-2xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5 shadow-lg">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <div className="h-3 w-28 animate-pulse rounded-full bg-[color:var(--surface-elevated)]" />
-            <h3 className="mt-3 text-base font-semibold text-[color:var(--foreground)]">{title}</h3>
-            <p className="mt-2 max-w-xl text-sm leading-6 text-[color:var(--text-secondary)]">{detail}</p>
-          </div>
-          <div className="h-10 w-24 animate-pulse rounded-xl bg-[color:var(--surface-elevated)]" />
-        </div>
-        <div className="mt-6 grid gap-4 md:grid-cols-3">
-          <SkeletonColumn bars={4} />
-          <SkeletonColumn bars={5} />
-          <SkeletonColumn bars={4} />
-        </div>
-      </div>
-    </div>
+    <PageLoadingState title={title} detail={detail} data-testid="graph-panel-skeleton" />
   );
 }
 
@@ -104,23 +68,6 @@ export function GraphRefreshOverlay({ label = "Refreshing graph window" }: { lab
       data-testid="graph-refresh-overlay"
     >
       {label}
-    </div>
-  );
-}
-
-function SkeletonColumn({ bars }: { bars: number }) {
-  return (
-    <div className="rounded-xl border border-[color:var(--border-subtle)] bg-[color:var(--surface-muted)] p-4">
-      <div className="h-4 w-24 animate-pulse rounded-full bg-[color:var(--surface-elevated)]" />
-      <div className="mt-4 space-y-3">
-        {Array.from({ length: bars }, (_, index) => (
-          <div
-            key={index}
-            className="h-3 animate-pulse rounded-full bg-[color:var(--surface-elevated)]"
-            style={{ width: `${92 - index * 11}%` }}
-          />
-        ))}
-      </div>
     </div>
   );
 }

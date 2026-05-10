@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { api, Vulnerability, ScanJob, ScanResult, severityColor, severityDot, JobListItem, RemediationItem, type UnifiedGraphResponse } from "@/lib/api";
 import { ApiOfflineState } from "@/components/api-offline-state";
+import { PageEmptyState, PageLoadingState } from "@/components/states/page-state";
 import { ApiAuthError, ApiForbiddenError } from "@/lib/api-errors";
 import { Bug, Download, ExternalLink, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Layers, Loader2, Package, Server, ShieldOff, Radar, FileSearch, ShieldAlert } from "lucide-react";
 
@@ -250,10 +251,10 @@ function SortButton({
 export default function VulnsPageWrapper() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center py-20 text-zinc-400">
-        <Loader2 className="h-6 w-6 animate-spin mr-2" />
-        Loading vulnerabilities...
-      </div>
+      <PageLoadingState
+        title="Loading findings"
+        detail="Preparing scan summaries and vulnerability evidence for the findings view."
+      />
     }>
       <VulnsPage />
     </Suspense>
@@ -590,16 +591,17 @@ function VulnsPage() {
       </div>
 
       {loading && (
-        <div className="flex items-center justify-center py-20 text-zinc-400">
-          <Loader2 className="h-6 w-6 animate-spin mr-2" />
-          Loading scan summaries...
-        </div>
+        <PageLoadingState
+          title="Loading scan summaries"
+          detail="Fetching completed scan jobs before loading vulnerability and graph-backed finding evidence."
+          data-testid="findings-loading-state"
+        />
       )}
       {!loading && detailLoading && vulns.length === 0 && (
-        <div className="flex items-center justify-center py-20 text-zinc-400">
-          <Loader2 className="h-6 w-6 animate-spin mr-2" />
-          {scope === "latest" ? "Loading latest scan..." : "Aggregating completed scans..."}
-        </div>
+        <PageLoadingState
+          title={scope === "latest" ? "Loading latest scan" : "Aggregating completed scans"}
+          detail="Resolving vulnerability records, affected packages, agents, reachability, and remediation links."
+        />
       )}
       {!loading && error && (
         <ApiOfflineState
@@ -610,13 +612,19 @@ function VulnsPage() {
       )}
 
       {!loading && !error && vulns.length === 0 && (
-          <div className="text-center py-16 border border-dashed border-zinc-800 rounded-xl">
-          <Bug className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
-          <p className="text-zinc-500 text-sm">No findings found.</p>
-          <p className="text-zinc-600 text-xs mt-1">
-            Run a scan with enrichment enabled to see CVE-backed findings here.
-          </p>
-        </div>
+        <PageEmptyState
+          title="No findings found"
+          detail="Run a scan with vulnerability enrichment enabled to populate CVE-backed findings, affected packages, agents, and remediation evidence."
+          icon={Bug}
+          suggestions={[
+            "Start with the offline demo if you want predictable sample data.",
+            "Run a project scan with graph output to connect findings to packages and agents.",
+            "Use all completed scans when you need aggregate evidence across jobs.",
+          ]}
+          command="agent-bom agents --demo --offline"
+          action={{ label: "Open scan", href: "/scan" }}
+          data-testid="findings-empty-state"
+        />
       )}
 
       {!error && vulns.length > 0 && (

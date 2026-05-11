@@ -92,7 +92,7 @@ huggingface = ["huggingface-hub>=0.20"]
 wandb = ["wandb>=0.16"]
 # Temporarily unbundled from agent-bom extras until upstream MLflow CVEs are fixed.
 # MLflow discovery still works if users install `mlflow` separately.
-openai = ["openai>=1.12"]
+openai = ["openai>=2.36.0"]
 ai-enrich = ["litellm>=1.83.7"]
 graph = [
     "networkx>=3.0",

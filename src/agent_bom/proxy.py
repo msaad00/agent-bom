@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import hmac
 import json
 import logging
 import os
@@ -1887,11 +1888,23 @@ async def run_proxy(
                 # inline scanning may modify msg (tamper detection must sign
                 # the server's actual response, not a scanner-modified version).
                 if response_signing_key and log_file:
-                    sig = compute_response_hmac(msg, response_signing_key)
+                    # The proxy persists a sha256 of the canonical response
+                    # alongside an HMAC-of-hash so an offline verifier (the
+                    # `agent-bom audit --verify-hmac --sign-key` flow) can
+                    # recompute the HMAC without needing the original wire
+                    # response body. Any byte-level tamper of the response
+                    # changes the hash and therefore the HMAC.
+                    response_hash = compute_payload_hash(msg)
+                    sig = hmac.new(
+                        response_signing_key.encode("utf-8"),
+                        response_hash.encode("utf-8"),
+                        hashlib.sha256,
+                    ).hexdigest()
                     sig_entry = {
                         "ts": datetime.now(timezone.utc).isoformat(),
                         "type": "response_hmac",
                         "id": msg.get("id"),
+                        "response_sha256": response_hash,
                         "hmac_sha256": sig,
                     }
                     write_audit_record(

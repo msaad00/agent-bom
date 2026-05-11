@@ -414,7 +414,10 @@ def test_audit_replay_cmd_blocked(tmp_path):
 
     runner = CliRunner()
     result = runner.invoke(audit_replay_cmd, [str(log_file), "--blocked-only"])
-    assert result.exit_code == 0
+    # Per the documented contract (--help: "Exits 1 when the log contains
+    # blocked calls"), --blocked-only on a log with blocked entries returns 1
+    # so CI gates can fail closed.
+    assert result.exit_code == 1
 
 
 def test_audit_replay_cmd_json(tmp_path):

@@ -18,7 +18,11 @@ from pathlib import Path
 from typing import IO, Any, Optional
 
 from agent_bom.agent_identity import ANONYMOUS
-from agent_bom.audit_integrity import compute_audit_record_mac
+from agent_bom.audit_integrity import (
+    audit_chain_key,
+    compute_audit_record_mac,
+    persist_ephemeral_chain_key,
+)
 from agent_bom.event_normalization import build_proxy_event_relationships
 
 logger = logging.getLogger(__name__)
@@ -701,6 +705,19 @@ def write_audit_record(log_file: "IO[str] | RotatingAuditLog", record: dict) -> 
     log_key = _audit_chain_key(log_file)
     with _AUDIT_CHAIN_LOCK:
         prev_hash = _AUDIT_CHAIN_STATE.get(log_key, "")
+        # On first write to a real on-disk log path with no operator-configured
+        # chain key, persist the ephemeral key alongside the log so a separate
+        # `agent-bom audit --verify-chain` process can validate the chain.
+        # Without this, default-config CI sees every clean chain as tampered
+        # because writer and verifier each mint independent ephemeral keys.
+        if not prev_hash and not (os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY") or "").strip():
+            try:
+                if log_key and not log_key.startswith(("sink:", "fd:")):
+                    persist_ephemeral_chain_key(log_key, audit_chain_key())
+            except FileExistsError:
+                pass
+            except OSError as exc:  # pragma: no cover — sidecar write failure should not block audit
+                logger.warning("Failed to persist audit chain sidecar for %s: %s", log_key, exc)
         sanitized = _sanitize_audit_record(record)
         # Tier-B opt-in capture: if --capture-replay is set, persist the
         # un-redacted (but secret-sanitized) record to the replay store

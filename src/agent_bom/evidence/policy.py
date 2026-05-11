@@ -120,6 +120,8 @@ TIER_A_FIELDS: frozenset[str] = frozenset(
         "record_hash_algorithm",
         "hmac_signature",
         "prev_signature",
+        "hmac_sha256",
+        "response_sha256",
         # Compliance metadata
         "framework",
         "applicable_frameworks",

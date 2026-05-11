@@ -9,8 +9,11 @@
 #   1. Reads the PR's current head SHA.
 #   2. Checks whether all canonical required checks are attached to that SHA
 #      and are either pending/running/successful.
-#   3. If any are missing or terminally stale, closes + reopens the PR — the
-#      `reopened` action fires `pull_request` workflows again from scratch.
+#   3. If any required checks are still active, waits for the current run
+#      instead of retriggering while downstream jobs have not been created yet.
+#   4. If checks are missing or terminally stale after the run is idle, closes
+#      + reopens the PR. This must use a GitHub App token or PAT; GITHUB_TOKEN
+#      close/reopen events do not start pull_request workflows.
 #
 # Usage:
 #   scripts/retrigger_stranded_pr.sh <PR_NUMBER>
@@ -76,6 +79,12 @@ done
 if [ "${#failed[@]}" -gt 0 ]; then
   printf "PR #%s: required check(s) failed on head %s: %s. Not retriggering real failures.\n" \
     "${PR}" "${HEAD_SHA}" "$(IFS=', '; echo "${failed[*]}")"
+  exit 0
+fi
+
+if [ "${#active[@]}" -gt 0 ]; then
+  printf "PR #%s: required checks are active on head %s (%s active, %s successful, %s missing, %s stale). Not retriggering an in-flight run.\n" \
+    "${PR}" "${HEAD_SHA}" "${#active[@]}" "${#successful[@]}" "${#missing[@]}" "${#stale[@]}"
   exit 0
 fi
 

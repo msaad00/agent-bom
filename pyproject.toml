@@ -34,7 +34,7 @@ dependencies = [
     "httpx>=0.28.1",  # Requires urllib3>=2.6.3 (CVE-2025-66418, CVE-2025-66471, CVE-2026-21441)
     "pydantic>=2.0",
     "cyclonedx-python-lib>=11.6",  # Updated for better CycloneDX 1.6 support
-    "packageurl-python>=0.17",
+    "packageurl-python>=0.17.6",
     "packaging>=24.0",
     "toml>=0.10",
     "pyyaml>=6.0",

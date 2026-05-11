@@ -62,6 +62,20 @@ def _profiles(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return profiles
 
 
+def _available_profiles_message(profiles: dict[str, dict[str, Any]]) -> str:
+    if not profiles:
+        return "No profiles are configured."
+    return f"Available profiles: {', '.join(sorted(profiles))}."
+
+
+def _missing_profile_message(name: str, path: Path, profiles: dict[str, dict[str, Any]]) -> str:
+    return (
+        f"Profile {name!r} was not found in {path}. "
+        f"{_available_profiles_message(profiles)} "
+        "Run `agent-bom profiles list` to inspect configured profiles."
+    )
+
+
 def _reject_inline_secrets(name: str, profile: dict[str, Any]) -> None:
     for key in profile:
         key_lower = str(key).lower()
@@ -94,9 +108,7 @@ def load_active_profile(explicit: str | None = None) -> tuple[str | None, dict[s
         return None, {}
     profiles = _profiles(data)
     if name not in profiles:
-        raise click.ClickException(
-            f"Profile {name!r} was not found in {default_config_path()}. Run `agent-bom profiles list` to inspect configured profiles."
-        )
+        raise click.ClickException(_missing_profile_message(name, default_config_path(), profiles))
     return name, profiles[name]
 
 
@@ -225,8 +237,9 @@ def set_current_profile(path: Path, name: str) -> None:
     if not _PROFILE_NAME_RE.match(name):
         raise click.ClickException(f"Invalid profile name: {name!r}")
     data = load_profiles_config(path)
-    if name not in _profiles(data):
-        raise click.ClickException(f"Profile {name!r} was not found in {path}.")
+    profiles = _profiles(data)
+    if name not in profiles:
+        raise click.ClickException(_missing_profile_message(name, path, profiles))
     text = path.read_text()
     line = f'current_profile = "{name}"'
     if re.search(r"(?m)^current_profile\s*=", text):
@@ -283,7 +296,7 @@ def profiles_show_cmd(name: str | None) -> None:
         raise click.ClickException("No profile selected. Pass NAME or set current_profile.")
     profiles = _profiles(data)
     if resolved not in profiles:
-        raise click.ClickException(f"Profile {resolved!r} was not found in {default_config_path()}.")
+        raise click.ClickException(_missing_profile_message(resolved, default_config_path(), profiles))
     click.echo(f"[{resolved}]")
     for key, value in sorted(profiles[resolved].items()):
         if str(key).endswith("_env"):

@@ -293,15 +293,22 @@ def completions_cmd(shell: str):
     Permanent setup (zsh):
       agent-bom completions zsh >> ~/.zshrc
     """
-    import os as _os
-    import subprocess as _sp
-
-    env = {**_os.environ, "_AGENT_BOM_COMPLETE": f"{shell}_source"}
+    # Use Click's completion API directly so the script is generated from
+    # the in-process command tree. The previous implementation shelled out to
+    # `agent-bom` via subprocess, which silently emitted an empty script when
+    # the binary was not on PATH (breaking `eval "$(agent-bom completions zsh)"`).
     try:
-        result = _sp.run(["agent-bom"], env=env, capture_output=True, text=True)
-        click.echo(result.stdout, nl=False)
+        from click.shell_completion import get_completion_class
+
+        from agent_bom.cli import main as _root_cli
+
+        completion_cls = get_completion_class(shell)
+        if completion_cls is None:
+            raise RuntimeError(f"Click does not support completion for shell {shell!r}")
+        comp = completion_cls(_root_cli, {}, "agent-bom", "_AGENT_BOM_COMPLETE")
+        click.echo(comp.source(), nl=False)
     except Exception:  # noqa: BLE001
-        # Fallback: print activation instructions
+        # Fallback: print activation instructions so the user can wire it up by hand.
         if shell == "bash":
             click.echo('eval "$(_AGENT_BOM_COMPLETE=bash_source agent-bom)"')
         elif shell == "zsh":

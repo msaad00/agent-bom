@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from importlib import resources
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from click.testing import CliRunner
 
@@ -280,17 +280,17 @@ def test_discovery_completeness_counts_parse_errors(tmp_path):
 
 def test_completions_bash():
     runner = CliRunner()
-    with patch("subprocess.run") as mock_run:
-        mock_result = MagicMock()
-        mock_result.stdout = "# bash completion"
-        mock_run.return_value = mock_result
-        result = runner.invoke(completions_cmd, ["bash"])
-        assert result.exit_code == 0
+    result = runner.invoke(completions_cmd, ["bash"])
+    assert result.exit_code == 0
+    # In-process generation must emit a real bash completion script, not zero bytes.
+    assert len(result.output) > 0
+    assert "_AGENT_BOM_COMPLETE=bash_complete" in result.output
 
 
 def test_completions_zsh_fallback():
     runner = CliRunner()
-    with patch("subprocess.run", side_effect=Exception("fail")):
+    # If Click's completion API errors, the fallback prints activation instructions.
+    with patch("click.shell_completion.get_completion_class", side_effect=Exception("fail")):
         result = runner.invoke(completions_cmd, ["zsh"])
         assert result.exit_code == 0
         assert "zsh_source" in result.output
@@ -298,7 +298,7 @@ def test_completions_zsh_fallback():
 
 def test_completions_fish_fallback():
     runner = CliRunner()
-    with patch("subprocess.run", side_effect=Exception("fail")):
+    with patch("click.shell_completion.get_completion_class", side_effect=Exception("fail")):
         result = runner.invoke(completions_cmd, ["fish"])
         assert result.exit_code == 0
         assert "fish_source" in result.output

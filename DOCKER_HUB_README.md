@@ -1,6 +1,6 @@
 # agent-bom
 
-**Open security scanner and control plane for AI-era infrastructure — local scans, CI evidence, fleet inventory, MCP/runtime enforcement, and self-hosted governance.**
+**Open security scanner and self-hosted control plane for AI-era infrastructure.**
 
 Every CVE in your AI stack is a credential leak waiting to happen. `agent-bom`
 follows the chain end-to-end and tells you which fix collapses it first.

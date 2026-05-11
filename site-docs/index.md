@@ -1,6 +1,6 @@
 # agent-bom
 
-**Open security scanner and AI BOM for the AI stack.**
+**Open security scanner and self-hosted control plane for AI-era infrastructure.**
 
 Inventory agents, MCP servers, tools, packages, credential environment names,
 cloud and runtime evidence, then map the reachable blast radius behind each

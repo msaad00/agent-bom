@@ -13,6 +13,8 @@
 # `# reason` comments are stripped by the loader.
 
 AGENT_BOM_AI_MODEL_ADVISORY_FEED
+# CLI machine-readable envelope toggle; read by the entrypoint before config is loaded.
+AGENT_BOM_AGENT_MODE
 AGENT_BOM_ALERT_WEBHOOK
 AGENT_BOM_ALLOW_PRIVATE_EGRESS_URLS
 AGENT_BOM_ANALYTICS_BACKEND

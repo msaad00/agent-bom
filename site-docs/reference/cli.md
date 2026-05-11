@@ -86,6 +86,7 @@
 - `report pipeline-events <scan-job.json>` exports structured scan progress as JSONL for DAG/dashboard consumers.
 - `report query "SELECT ..."` runs read-only SQL against the local scan analytics store.
 - `remediate` supports `--format json` as the machine-readable remediation contract.
+- `agents --agent-mode` emits a stable JSON envelope for assistant and automation callers. It defaults to JSON stdout, reports `ok`, `exit_code`, summary counts, confidence signals, truncation metadata, and the full scan payload under `data`.
 - Use `agent-bom agents -f <format> -o <path>` for SARIF, HTML, SBOM, and richer environment exports.
 - Use `agent-bom agents -f sarif -o -` when you need SARIF on stdout for piping.
 - `where` is available both as `agent-bom where` and `agent-bom mcp where`.
@@ -103,6 +104,10 @@ agent-bom check requests@2.33.0 -e pypi -f json -o check.json
 agent-bom report diff before.json after.json -f json -o diff.json
 agent-bom report pipeline-events scan-job.json -o pipeline-events.jsonl
 agent-bom report query "SELECT severity, COUNT(*) AS count FROM scan_findings GROUP BY severity" --format json
+
+# Assistant / automation envelope
+agent-bom agents --agent-mode
+agent-bom agents --agent-mode --agent-token-budget 4000
 
 # Compliance
 agent-bom agents --compliance owasp-llm,eu-ai-act,all

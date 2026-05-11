@@ -12,6 +12,7 @@ import sys
 import click
 
 from agent_bom import __version__
+from agent_bom.cli._agent_mode import AGENT_MODE_ENV_VAR
 from agent_bom.cli._common import (
     BANNER,  # noqa: F401 — re-export for backward compatibility
     SEVERITY_ORDER,
@@ -74,13 +75,19 @@ def _print_startup_banner() -> None:
     metavar="NAME",
     help="Use a named CLI profile from ~/.agent-bom/config.toml.",
 )
+@click.option(
+    "--agent-mode",
+    is_flag=True,
+    envvar=AGENT_MODE_ENV_VAR,
+    help="Emit stable machine-readable JSON for assistant and automation callers.",
+)
 @click.version_option(
     version=__version__,
     prog_name="agent-bom",
     message=(f"agent-bom {__version__}\nPython {sys.version.split()[0]} · {sys.platform}\nDocs:  https://github.com/msaad00/agent-bom"),
 )
 @click.pass_context
-def main(ctx: click.Context, profile: str | None):
+def main(ctx: click.Context, profile: str | None, agent_mode: bool):
     """agent-bom — Security scanner for AI infrastructure.
 
     \b

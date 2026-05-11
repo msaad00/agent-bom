@@ -117,7 +117,7 @@ mcp-server = [
     "mcp>=1.26",
     "smithery>=0.4",
 ]
-dashboard = ["streamlit>=1.55.0", "plotly>=5.18.0", "pandas>=2.0.0"]
+dashboard = ["streamlit>=1.55.0", "plotly>=5.18.0", "pandas>=3.0.2"]
 snyk = []  # Uses existing httpx dependency, no additional packages needed
 interactive = ["prompt-toolkit>=3.0"]
 oidc = [

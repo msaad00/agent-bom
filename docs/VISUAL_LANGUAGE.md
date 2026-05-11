@@ -39,6 +39,9 @@ Current PNG inventory:
 | `mesh-live.png` | Full light-theme agent mesh graph across agents, MCP servers, packages, tools, credentials, and findings | Product views |
 | `mesh-dark-live.png` | Full dark-theme agent mesh graph across the same scoped evidence model | Product views |
 | `mesh-light-live.png` | Full light-theme agent mesh graph across the same scoped evidence model | Product views |
+| `security-graph-live.png` | Fix-first attack-path queue with export controls and remediation handoff | Product views |
+| `lineage-graph-live.png` | Root-centered lineage investigation with bounded paths and reachability summary | Product views |
+| `dependency-map-live.png` | Supply chain dependency map with scan pipeline counts and package risk distribution | Product views |
 | `remediation-live.png` | Fix-first remediation surface | Product views |
 
 ## Mermaid — for code-true flows that evolve

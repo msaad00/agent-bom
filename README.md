@@ -183,6 +183,24 @@ Agent-centered shared-infrastructure graph — selected agents, their MCP server
 
 ![agent-bom agent mesh light theme](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-light-live.png)
 
+### Security graph
+
+Fix-first attack paths stay explicit: the page starts with the highest-risk path queue, snapshot pressure, export controls, and the next remediation handoff instead of dropping operators into a dense raw topology.
+
+![agent-bom security graph attack path queue](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/security-graph-live.png)
+
+### Lineage investigation
+
+Root-centered graph drilldown keeps traversal bounded and readable: reachable node counts, affected entity types, bounded paths, filters, and evidence export are visible before broader topology review.
+
+![agent-bom lineage graph root investigation](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/lineage-graph-live.png)
+
+### Dependency map
+
+The Insights surface rolls scan pipeline counts into the supply-chain map so vulnerable packages stay expanded while clean inventory stays summarized.
+
+![agent-bom dependency risk map](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dependency-map-live.png)
+
 </details>
 
 <details>

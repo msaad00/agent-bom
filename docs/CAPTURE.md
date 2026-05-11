@@ -4,8 +4,8 @@ Published screenshots in `docs/images/` must come from the live product
 running against the bundled demo data, with the agent and scope chosen so
 the resulting graph is actually informative. PR #1445 regressed
 `mesh-live.png` to a near-empty graph because the captured agent
-(`claude-code`) had no servers in the local data — this protocol exists so
-that does not happen again.
+had no servers in the local data — this protocol exists so that does not
+happen again.
 
 The canonical published web UI is the packaged Next.js dashboard served by
 `agent-bom serve`. Do not publish README or docs screenshots from archived
@@ -51,6 +51,9 @@ before replacing any published product image.
 | `mesh-live.png` | `/mesh?capture=1` | Capture the full light-theme agent mesh graph across selected agents, MCP servers, tools, packages, credentials, and findings | Preserves the graph-backed product surface; capture mode tightens graph framing and hides minimap controls |
 | `mesh-dark-live.png` | `/mesh?capture=1` | Capture the same real product graph in dark theme | Proves theme parity without using a docs-only route |
 | `mesh-light-live.png` | `/mesh?capture=1` | Capture the same real product graph in light theme | Keeps dependency paths and finding edges readable in GitHub docs |
+| `security-graph-live.png` | `/security-graph?capture=1` | Capture the fix-first attack-path queue with snapshot pressure, graph evidence export, and remediation handoff | Shows the operator workflow before raw topology so the public image is readable and action oriented |
+| `lineage-graph-live.png` | `/graph?capture=1&investigate=1&root=agent:analyst-agent&q=analyst-agent` | Capture the root-centered lineage investigation with reachability summary, bounded paths, filters, and export controls | Uses a shipped graph drilldown workflow instead of an unreadable expanded topology capture |
+| `dependency-map-live.png` | `/insights?capture=1` | Capture the supply chain dependency map with scan pipeline counts and package risk distribution | Proves package risk visualization from the same pushed scan payload |
 | `remediation-live.png` | `/remediation` | All frameworks tab | Shows the full prioritized fix list |
 
 ### Dashboard layout (current)
@@ -68,14 +71,19 @@ A capture set that misses either frame is incomplete. Re-shoot from the
 packaged UI and crop deliberately; do not publish another full-page stitched
 dashboard asset unless the layout materially changes again.
 
-The `cursor` agent in `src/agent_bom/demo.py` is the best mesh hero shot in
-the current demo inventory — it brings the filesystem and database servers,
-multiple tools, reachable packages, and the densest CVE cluster
+Use the agent with filesystem and database servers as the graph hero shot in
+the current demo inventory. It brings multiple tools, reachable packages, and
+the densest CVE cluster
 (`pillow@9.0.0`, `cryptography@39.0.0`, `werkzeug@2.2.2`). Capturing under
 an unscoped or lower-signal agent risks a flatter graph. Use
 `/mesh?capture=1` for the full product graph in both dark and light themes so
 the graph is framed for README-scale evidence. Do not publish a docs-only slide
 or card view in place of the graph screenshot.
+
+For public release screenshots, sanitize demo agent labels before pushing the
+payload to the capture API. Keep the generated inventory, findings,
+relationships, and traversal shape intact, but use generic agent names in the
+visible UI.
 
 ## Accuracy guardrail
 

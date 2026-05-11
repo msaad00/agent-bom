@@ -26,6 +26,9 @@ PR clearly explains why an asset is unchanged.
 | `mesh-live.png` | Full light-theme agent mesh graph with selected agents, MCP servers, tools, packages, credentials, and findings. |
 | `mesh-dark-live.png` | Full dark-theme agent mesh graph from the real `/mesh` product route. |
 | `mesh-light-live.png` | Full light-theme agent mesh graph from the real `/mesh` product route. |
+| `security-graph-live.png` | Fix-first attack path queue with snapshot pressure, graph evidence export, and remediation handoff. |
+| `lineage-graph-live.png` | Root-centered lineage investigation with reachable node counts, bounded paths, filters, and graph evidence export. |
+| `dependency-map-live.png` | Supply chain dependency map with scan pipeline counts and package risk distribution. |
 | `remediation-live.png` | Fix-first remediation table with prioritized packages and framework context. |
 
 ## Manifest
@@ -46,6 +49,8 @@ Before opening the PR, inspect every refreshed image:
   terminal windows, or dev overlays are visible
 - no empty graph, nearly empty graph, or unreadable dense graph is published as
   product evidence
+- graph evidence starts from an operator-readable workflow; raw expanded
+  topology is acceptable only as a drilldown, not as the default public image
 - text and critical UI affordances are readable at GitHub README scale
 - light/dark theme claims are backed by captured evidence when the PR says so
 - the image shows shipped product behavior, not roadmap copy or mock data that

@@ -147,6 +147,8 @@ _CVSS_SEVERITY = {
     (4.0, 6.9): "medium",
     (0.1, 3.9): "low",
 }
+_CVE_ID_RE = re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE)
+_DEBIAN_CVE_ID_RE = re.compile(r"^DEBIAN-(CVE-\d{4}-\d{4,})$", re.IGNORECASE)
 
 
 def _cvss_to_severity(score: Optional[float]) -> str:
@@ -158,6 +160,25 @@ def _cvss_to_severity(score: Optional[float]) -> str:
         if lo <= score <= hi:
             return sev
     return "unknown"
+
+
+def _nvd_cve_candidates(vuln_id: str, raw_aliases: str = "") -> list[str]:
+    """Return canonical CVE IDs that NVD can resolve for a local DB row."""
+
+    candidates: list[str] = []
+
+    def add(value: Any) -> None:
+        candidate = str(value or "").strip().upper()
+        debian_match = _DEBIAN_CVE_ID_RE.match(candidate)
+        if debian_match:
+            candidate = debian_match.group(1)
+        if _CVE_ID_RE.match(candidate) and candidate not in candidates:
+            candidates.append(candidate)
+
+    add(vuln_id)
+    for alias in (raw_aliases or "").split(","):
+        add(alias)
+    return candidates
 
 
 def _normalize_sync_cvss_score(value: Any) -> Optional[float]:
@@ -976,8 +997,10 @@ def sync_nvd(
 ) -> int:
     """Enrich local DB entries missing CVSS data using the NVD API.
 
-    Queries the DB for CVEs with unknown severity, then fetches CVSS v3.1
-    data from NVD and updates the ``vulns`` table in-place.
+    Queries the DB for CVE-backed rows with unknown severity, then fetches
+    CVSS v3.1 data from NVD and updates the ``vulns`` table in-place. Distro
+    advisory rows such as ``DEBIAN-CVE-*`` are resolved through their embedded
+    or aliased canonical CVE ID so native image scans do not stay unknown.
 
     Rate limiting:
         - Without key: 5 requests / 30s (sleep 6s between requests)
@@ -1004,28 +1027,35 @@ def sync_nvd(
     # Rate limit: 5 req/30s without key → 6s between; 50 req/30s with key → 0.6s between
     sleep_seconds = 0.6 if api_key else 6.0
 
-    # Find CVEs in our DB that are missing CVSS data
+    # Find CVE-backed rows in our DB that are missing CVSS data. Some OSV
+    # distro advisories use IDs such as DEBIAN-CVE-2014-6271 but still map to
+    # the canonical CVE in aliases or in the ID suffix.
     rows = conn.execute(
         """
-        SELECT id FROM vulns
+        SELECT id, COALESCE(aliases, '') AS aliases FROM vulns
         WHERE (severity = 'unknown' OR cvss_score IS NULL)
-          AND id LIKE 'CVE-%'
+          AND (id LIKE '%CVE-%' OR aliases LIKE '%CVE-%')
         LIMIT :max_entries
         """,
         {"max_entries": max_entries},
     ).fetchall()
 
-    if not rows:
+    row_targets: list[tuple[str, str]] = []
+    for row in rows:
+        candidates = _nvd_cve_candidates(row["id"], row["aliases"])
+        if candidates:
+            row_targets.append((row["id"], candidates[0]))
+
+    if not row_targets:
         _logger.info("NVD enrichment: no CVEs missing CVSS data — nothing to do")
         _update_sync_meta(conn, "nvd", 0)
         return 0
 
-    cve_ids = [row[0] for row in rows]
-    _logger.info("NVD enrichment: fetching CVSS data for %d CVEs …", len(cve_ids))
+    _logger.info("NVD enrichment: fetching CVSS data for %d CVE-backed rows …", len(row_targets))
 
     enriched = 0
 
-    for cve_id in cve_ids:
+    for row_id, cve_id in row_targets:
         params = {"cveId": cve_id}
         if api_key:
             params["apiKey"] = api_key
@@ -1085,7 +1115,7 @@ def sync_nvd(
 
         # Merge NVD CWE IDs with any existing ones (from OSV/GHSA)
         if nvd_cwes:
-            existing_cwes_raw = conn.execute("SELECT cwe_ids FROM vulns WHERE id=?", (cve_id,)).fetchone()
+            existing_cwes_raw = conn.execute("SELECT cwe_ids FROM vulns WHERE id=?", (row_id,)).fetchone()
             existing_cwes = set((existing_cwes_raw[0] or "").split(",")) if existing_cwes_raw and existing_cwes_raw[0] else set()
             existing_cwes.discard("")
             merged = list(existing_cwes | set(nvd_cwes))
@@ -1097,17 +1127,17 @@ def sync_nvd(
             if merged_str is not None:
                 conn.execute(
                     "UPDATE vulns SET cvss_score=?, cvss_vector=?, severity=?, cwe_ids=? WHERE id=?",
-                    (cvss_score, cvss_vector, severity, merged_str, cve_id),
+                    (cvss_score, cvss_vector, severity, merged_str, row_id),
                 )
             else:
                 conn.execute(
                     "UPDATE vulns SET cvss_score=?, cvss_vector=?, severity=? WHERE id=?",
-                    (cvss_score, cvss_vector, severity, cve_id),
+                    (cvss_score, cvss_vector, severity, row_id),
                 )
         elif merged_str is not None:
             conn.execute(
                 "UPDATE vulns SET cwe_ids=? WHERE id=?",
-                (merged_str, cve_id),
+                (merged_str, row_id),
             )
         enriched += 1
 

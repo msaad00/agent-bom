@@ -93,7 +93,7 @@ wandb = ["wandb>=0.16"]
 # Temporarily unbundled from agent-bom extras until upstream MLflow CVEs are fixed.
 # MLflow discovery still works if users install `mlflow` separately.
 openai = ["openai>=1.12"]
-ai-enrich = ["litellm>=1.83.7"]
+ai-enrich = ["litellm>=1.83.14"]
 graph = [
     "networkx>=3.0",
     "numpy>=1.26",
@@ -193,7 +193,11 @@ Documentation = "https://github.com/msaad00/agent-bom#readme"
 # which break on Python 3.14 and bloat CI/container builds.
 default-groups = []
 # Override litellm's stale exact transitive pin to avoid CVE-2026-28684.
-override-dependencies = ["python-dotenv>=1.2.2"]
+override-dependencies = [
+    "python-dotenv>=1.2.2",
+    "aiohttp>=3.13.4",
+    "openai>=2.30.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

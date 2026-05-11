@@ -33,8 +33,10 @@ scripts/refresh_ready_prs.sh
 
 The script only refreshes same-repo, non-draft PRs targeting `main`. By default
 it further limits writes to PRs with auto-merge already enabled, so exploratory
-branches are left alone. After updating a PR branch, it runs the stranded-check
-retrigger below so required checks attach to the new head.
+branches are left alone. The workflow must use `AUTOMATION_GITHUB_TOKEN`, a
+dedicated GitHub App token or PAT with repo pull-request/write access. Do not
+fall back to `GITHUB_TOKEN` for refresh or retrigger events: GitHub suppresses
+workflows triggered by that token, which recreates the frozen-check loop.
 
 Manual one-shot refresh:
 
@@ -84,9 +86,11 @@ The script:
 1. Resolves the PR's current head SHA.
 2. Checks whether the canonical required check (`Lint and Type Check`) ran
    against that SHA via `repos/.../commits/<sha>/check-runs`.
-3. If not, closes the PR and immediately reopens it. The `pull_request
-   reopened` event always fires `pull_request` workflows, so all required
-   checks restart on the up-to-date head.
+3. If any required check is still active, exits without retriggering. Downstream
+   jobs such as package build are not created until prerequisite jobs finish.
+4. If checks are missing or stale after the run is idle, closes the PR and
+   immediately reopens it. This starts `pull_request` workflows only when the
+   token is not `GITHUB_TOKEN`.
 
 The script no-ops when the required check is already present, so it is safe to
 run on any PR.
@@ -97,12 +101,14 @@ run on any PR.
 against every open PR whose current head SHA has zero or stale
 `Lint and Type Check` runs. It runs after `main` advances, every five minutes,
 and through `workflow_dispatch` for on-demand. Once this workflow is on the
-default branch, stranded PRs unstrand themselves within five minutes — no
-operator action required.
+default branch and `AUTOMATION_GITHUB_TOKEN` is configured, stranded PRs
+unstrand themselves within five minutes — no operator action required.
 
 Operator-side troubleshooting if a strand persists past ~10 minutes:
 
 - Did the workflow itself run? `gh run list --workflow=auto-retrigger-stranded.yml --limit 5`
+- Is `AUTOMATION_GITHUB_TOKEN` configured? Without it the workflow intentionally
+  skips write actions because `GITHUB_TOKEN` cannot start required PR checks.
 - Was the PR younger than `MIN_AGE_MINUTES` (3 min by default)? It's intentionally
   skipped to give the initial `pull_request` workflow a chance to start.
 - Did `gh api commits/{sha}/check-runs` return zero, or is there a

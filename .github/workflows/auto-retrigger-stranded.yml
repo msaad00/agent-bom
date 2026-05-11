@@ -16,9 +16,10 @@ name: Auto-Retrigger Stranded PRs
 # behind main, then retriggers any PR whose current head SHA is missing or has a
 # stale required check.
 #
-# Triggered from a workflow (not GITHUB_TOKEN's push), the close/reopen
-# events are properly recorded and our pull_request hooks fire on the
-# new head SHA — exactly the result a manual retrigger gives.
+# The refresh/retrigger token must be a dedicated GitHub App token or PAT.
+# GITHUB_TOKEN-authored pushes and close/reopen events do not recursively
+# trigger pull_request workflows, so falling back to GITHUB_TOKEN recreates the
+# frozen-PR loop this workflow is meant to break.
 
 on:
   push:
@@ -50,9 +51,8 @@ on:
         type: boolean
 
 permissions:
-  contents: write
-  issues: write
-  pull-requests: write
+  contents: read
+  pull-requests: read
 
 concurrency:
   group: auto-retrigger-stranded
@@ -71,7 +71,7 @@ jobs:
 
       - name: Find and retrigger stranded PRs
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.AUTOMATION_GITHUB_TOKEN }}
           AUTOMATION_SSH_SIGNING_KEY: ${{ secrets.AUTOMATION_SSH_SIGNING_KEY }}
           REQUIRED_CHECKS: "Lint and Type Check,Test (Python 3.11),Test (Python 3.13),Build Package,Security Scan,CodeQL,Test (Python 3.14)"
           MIN_AGE_MINUTES: ${{ inputs.min_age_minutes || '3' }}
@@ -80,6 +80,11 @@ jobs:
           REFRESH_READY_PRS: ${{ github.event_name != 'workflow_dispatch' || inputs.refresh_ready_prs }}
         run: |
           set -euo pipefail
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning::AUTOMATION_GITHUB_TOKEN is not configured; skipping auto refresh/retrigger. GITHUB_TOKEN-authored events cannot start PR checks."
+            exit 0
+          fi
+
           if [ "${REFRESH_READY_PRS}" = "true" ]; then
             scripts/refresh_ready_prs.sh
           fi

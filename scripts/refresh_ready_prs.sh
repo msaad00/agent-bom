@@ -5,7 +5,8 @@
 # auto-merge does not always refresh queued PRs promptly, and the UI "Update
 # branch" path can leave canceled or missing checks. This script updates stale
 # same-repo PR heads and then invokes the stranded-check retrigger so required
-# checks attach to the new head.
+# checks attach to the new head. Refresh pushes must use a non-GITHUB_TOKEN
+# credential; GITHUB_TOKEN-authored pushes do not trigger pull_request checks.
 #
 # Usage:
 #   scripts/refresh_ready_prs.sh
@@ -221,8 +222,7 @@ refresh_pr() {
     return 0
   fi
 
-  echo "PR #${pr}: head advanced ${head_sha} -> ${updated_sha}; ensuring required checks attach."
-  REQUIRED_CHECKS="${REQUIRED_CHECKS}" scripts/retrigger_stranded_pr.sh "${pr}"
+  echo "PR #${pr}: head advanced ${head_sha} -> ${updated_sha}; pull_request checks should attach from the automation token push."
 
   if [ "${review}" != "APPROVED" ]; then
     echo "PR #${pr}: refreshed, but review decision is ${review}; auto-merge will wait for review."

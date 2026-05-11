@@ -389,6 +389,8 @@ def scan(
     log_file: Optional[str],
     no_color: bool,
     reproducible: bool,
+    agent_mode: bool,
+    agent_token_budget: int,
     preset: Optional[str],
     open_report: bool,
     compliance_export: Optional[str],
@@ -429,7 +431,10 @@ def scan(
 
     _scan_start = _time.monotonic()
 
+    from agent_bom.cli._agent_mode import agent_mode_requested
     from agent_bom.cli._profiles import apply_scan_profile_defaults
+
+    agent_mode = agent_mode or agent_mode_requested()
 
     (
         output,
@@ -448,6 +453,19 @@ def scan(
         push_api_key=push_api_key,
         clickhouse_url=clickhouse_url,
     )
+
+    if agent_token_budget < 0:
+        raise click.ClickException("--agent-token-budget must be greater than or equal to 0.")
+    if agent_mode:
+        if _output_format_was_explicit() and output_format != "json":
+            raise click.ClickException("--agent-mode requires --format json.")
+        output_format = "json"
+        click_ctx = click.get_current_context(silent=True)
+        output_source = click_ctx.get_parameter_source("output") if click_ctx is not None else None
+        explicit_output = output_source in {click.core.ParameterSource.COMMANDLINE, click.core.ParameterSource.ENVIRONMENT}
+        output = output if explicit_output and output else "-"
+        quiet = True
+        no_color = True
 
     # Configure logging — explicit --log-level overrides --verbose
     if quiet and log_level is None and not verbose and not log_json and not log_file:
@@ -2264,7 +2282,7 @@ def scan(
     # Step 5: Output
     _step_t0 = _time.monotonic()
     _posture_console_only = posture and output_format == "console" and not output
-    if not _posture_console_only:
+    if not _posture_console_only and not agent_mode:
         render_output(
             ctx,
             output=output,
@@ -2282,6 +2300,8 @@ def scan(
             verbose=verbose,
             exclude_unfixable=exclude_unfixable,
             fixable_only=fixable_only,
+            agent_mode=agent_mode,
+            agent_token_budget=agent_token_budget,
         )
 
     # ── Posture summary mode (--posture) ──────────────────────────────────────
@@ -2395,6 +2415,28 @@ def scan(
         push_api_key=push_api_key,
         quiet=quiet,
     )
+
+    if agent_mode:
+        render_output(
+            ctx,
+            output=output,
+            output_format=output_format,
+            no_tree=no_tree,
+            quiet=quiet,
+            no_color=no_color,
+            open_report=open_report,
+            compliance_export=compliance_export,
+            mermaid_mode=mermaid_mode,
+            push_gateway=push_gateway,
+            otel_endpoint=otel_endpoint,
+            baseline=baseline,
+            delta_mode=delta_mode,
+            verbose=verbose,
+            exclude_unfixable=exclude_unfixable,
+            fixable_only=fixable_only,
+            agent_mode=agent_mode,
+            agent_token_budget=agent_token_budget,
+        )
 
     if exit_code:
         sys.exit(exit_code)

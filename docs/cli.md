@@ -9,6 +9,8 @@ The canonical command reference lives in
 - `agent-bom agents -f <format> -o <path>` validates output suffixes and
   appends the canonical suffix when `<path>` has no extension.
 - JSON reports include `posture_scorecard` and root `posture_grade`.
+- `agent-bom agents --agent-mode` writes a stable JSON envelope for assistant
+  and automation callers.
 - `agent-bom profiles ...` manages named contexts in
   `~/.agent-bom/config.toml`; unknown profiles fail with the available profile
   list.

@@ -1,0 +1,52 @@
+{
+  "schema_version": "1",
+  "mode": "agent",
+  "ok": true,
+  "command": "agents",
+  "exit_code": 0,
+  "summary": {
+    "agents": 1,
+    "servers": 1,
+    "packages": 1,
+    "vulnerabilities": 0,
+    "findings": 0,
+    "severity_counts": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0,
+      "unknown": 0
+    },
+    "posture_grade": "A"
+  },
+  "confidence": {
+    "level": "medium",
+    "signals": [
+      { "name": "schema_version", "present": true },
+      { "name": "scan_sources", "present": true },
+      { "name": "advisory_backing", "present": false }
+    ]
+  },
+  "truncated": false,
+  "truncation": {
+    "enabled": false,
+    "truncated": false,
+    "token_budget": null,
+    "approx_tokens": null,
+    "removed": {}
+  },
+  "data": {
+    "schema_version": "1.0",
+    "document_type": "AI-BOM",
+    "spec_version": "1.0",
+    "scan_id": "scan-demo-001",
+    "generated_at": "2026-04-25T00:00:00Z",
+    "summary": {
+      "total_agents": 1,
+      "total_mcp_servers": 1,
+      "total_packages": 1,
+      "total_vulnerabilities": 0
+    },
+    "agents": []
+  }
+}

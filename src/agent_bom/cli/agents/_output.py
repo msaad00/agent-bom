@@ -9,6 +9,7 @@ from typing import Any
 
 import click
 
+from agent_bom.cli._agent_mode import dumps_envelope, success_envelope
 from agent_bom.cli.agents._context import ScanContext
 from agent_bom.models import AIBOMReport
 from agent_bom.output import (
@@ -114,6 +115,8 @@ def render_output(
     verbose: bool = False,
     exclude_unfixable: bool = False,
     fixable_only: bool = False,
+    agent_mode: bool = False,
+    agent_token_budget: int = 0,
     **kwargs: Any,
 ) -> None:
     """Step 5: render report to console/file. Also Steps 5b, 5c, 5d."""
@@ -170,6 +173,14 @@ def render_output(
         elif output_format == "graph-html":
             click.echo("Error: --format graph-html requires --output/-o (cannot write HTML to stdout)", err=True)
             sys.exit(2)
+        elif agent_mode:
+            payload = success_envelope(
+                command="agents",
+                report_json=to_json(report),
+                exit_code=ctx.exit_code,
+                token_budget=agent_token_budget,
+            )
+            sys.stdout.write(dumps_envelope(payload))
         else:
             sys.stdout.write(json.dumps(to_json(report), indent=2))
         sys.stdout.write("\n")

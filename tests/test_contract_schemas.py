@@ -6,6 +6,7 @@ from pathlib import Path
 
 import jsonschema
 
+from agent_bom.cli._agent_mode import error_envelope, success_envelope
 from agent_bom.models import Agent, AgentStatus, AgentType, AIBOMReport
 from agent_bom.output import to_json
 
@@ -61,6 +62,20 @@ def test_scan_report_serializer_matches_contract_schema() -> None:
     agent_payload = payload["agents"][0]
     assert agent_payload["agent_type"] == "claude-desktop"
     assert agent_payload["type"] == "claude-desktop"
+
+
+def test_agent_mode_envelopes_match_contract_schema() -> None:
+    schema = _load(CONTRACTS / "agent-mode-envelope.schema.json")
+    report = _load(CONTRACTS / "examples" / "scan-report.minimal.json")
+
+    jsonschema.validate(
+        success_envelope(command="agents", report_json=report, exit_code=0),
+        schema,
+    )
+    jsonschema.validate(
+        error_envelope(command="agents", message="invalid command", exit_code=2, error_type="usage"),
+        schema,
+    )
 
 
 def test_scan_report_helper_findings_match_contract_schema() -> None:

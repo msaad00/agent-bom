@@ -15,6 +15,8 @@ Compatibility policy:
 
 Published schemas:
 
+- `agent-mode-envelope.schema.json` - machine-readable CLI envelope returned
+  by `--agent-mode` for assistant and automation callers.
 - `scan-report.schema.json` - top-level AI-BOM JSON scan output.
 - `graph-export.schema.json` - graph nodes, edges, and materialized attack
   paths.

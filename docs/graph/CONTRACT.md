@@ -86,8 +86,8 @@ The graph renderer ships deterministic focused and expanded modes. Operators can
 
 | Mode / size | Default behaviour | Why |
 |---|---|---|
-| Focused default | 3-hop neighbourhood, 250-node page size, sibling fan-outs of 5+ collapsed into expandable cluster pills. | Starts every investigation readable, even on the 244-node self-scan. |
-| Expanded mode | 6-hop neighbourhood, 1000-node page size, sibling fan-outs of 20+ collapsed. | Lets operators widen context deliberately without losing the map. |
+| Relevant paths default | 2-hop neighbourhood, 50-node page size, high-severity vulnerable scope, sibling fan-outs of 5+ collapsed into expandable cluster pills. | Starts every investigation readable, even on dense self-scans. |
+| Expanded mode | 3-hop neighbourhood, 250-node page size, sibling fan-outs of 20+ collapsed. | Lets operators widen context deliberately without turning the first view into a whole-tenant canvas. |
 | Zoomed out | Level-of-detail renderer swaps detail cards for summary cards and cluster bubbles below the zoom thresholds. | Dense snapshots stay navigable instead of turning into unreadable labels. |
 | Large snapshots | Snapshot selector, search, filters, pagination, and graph query endpoints bound the visible canvas. | Large tenants navigate by scope, not by rendering the whole tenant in one frame. |
 

@@ -746,6 +746,7 @@ def to_serializable(
             {
                 "id": n.id,
                 "kind": n.kind.value,
+                "entity_type": (_NODE_KIND_TO_ENTITY.get(n.kind.value, EntityType.SERVER)).value,
                 "label": n.label,
                 "metadata": n.metadata,
             }
@@ -756,6 +757,7 @@ def to_serializable(
                 "source": e.source,
                 "target": e.target,
                 "kind": e.kind.value,
+                "relationship": (_EDGE_KIND_TO_RELATIONSHIP.get(e.kind.value) or e.kind).value,
                 "weight": e.weight,
                 "metadata": e.metadata,
             }

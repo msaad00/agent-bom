@@ -1343,7 +1343,7 @@ function GraphPageInner() {
         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <p className="text-[10px] uppercase tracking-[0.24em] text-sky-400">Unified graph</p>
-            <h1 className="mt-1 text-lg font-semibold text-zinc-100">Security Graph</h1>
+            <h1 className="mt-1 text-lg font-semibold text-zinc-100">Lineage Graph</h1>
             <p className="text-xs text-zinc-500">
               Focused agent-to-finding graph with packages, credentials, tools, and runtime links.
             </p>
@@ -1469,7 +1469,7 @@ function GraphPageInner() {
                 ? "This scope currently resolves to findings without surrounding context. Relax filters or expand the view to recover package, server, and agent relationships."
                 : filters.agentName
                   ? `Focused on ${filters.agentName}. Expand only when you need more of the surrounding graph.`
-                  : "Relevant paths keeps the first view bounded. Use Expanded only when you need broader topology."}
+                  : "Relevant paths keeps the first view bounded by hop depth, layers, severity, and page size. Use Expanded only when you need broader topology."}
           </div>
 
           {investigationMode && (
@@ -1621,6 +1621,7 @@ function GraphPageInner() {
             <li>Node IDs are stable identifiers inside the graph model; the detail panel shows the node ID, first seen, last seen, sources, and edge counts.</li>
             <li>Pagination changes the visible canvas, not the persisted snapshot itself. Narrow the scope when the graph gets large; page when you need broader coverage.</li>
             <li>Relevant paths is for operator triage. Expanded is for topology review. Attack-path cards are the fix-first shortlist, not the whole graph.</li>
+            <li>Hop depth controls how far traversal can move from the selected agent or root. Entity layers control what kinds of nodes can render, without changing the persisted graph.</li>
           </ul>
         </details>
 

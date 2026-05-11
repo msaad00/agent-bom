@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * Context Graph page — agent interaction graph with lateral movement analysis.
- * Shows reachability between agents, servers, credentials, tools, and
- * vulnerabilities.  Selecting an agent highlights lateral movement paths.
+ * Context Map page — static agent interaction context with lateral reachability
+ * analysis. Shows reachability between agents, servers, credentials, tools, and
+ * vulnerabilities without implying observed runtime causality.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -462,10 +462,10 @@ export default function ContextPage() {
         <div>
           <h1 className="text-lg font-semibold text-zinc-100 flex items-center gap-2">
             <Waypoints className="w-5 h-5 text-orange-400" />
-            Context Graph
+            Context Map
           </h1>
           <p className="text-xs text-zinc-500">
-            Focused lateral-movement map for one agent scope at a time
+            Static reachability map for one agent scope at a time; runtime evidence is shown only when scans provide it.
           </p>
         </div>
         <div className="flex items-center gap-3">

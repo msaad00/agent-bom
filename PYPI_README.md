@@ -83,9 +83,9 @@ helm upgrade --install agent-bom deploy/helm/agent-bom \
 
 ![agent-bom dashboard overview](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png)
 
-### Focused graph
+### Agent mesh graph
 
-![agent-bom focused graph](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
+![agent-bom agent mesh graph](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
 
 ## What it scans
 

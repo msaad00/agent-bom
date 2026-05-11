@@ -84,20 +84,20 @@ function edge(source: string, target: string, relationship: string, weight = 1):
 
 function buildDenseGraph() {
   const nodes: GraphNode[] = [
-    node("agent:claude", "agent", "Claude Desktop", "high", 8.8, { agent_type: "desktop" }),
+    node("agent:desktop", "agent", "Desktop Agent", "high", 8.8, { agent_type: "desktop" }),
     node("server:filesystem", "server", "filesystem MCP", "high", 8.2, { command: "npx @modelcontextprotocol/server-filesystem" }),
-    node("server:github", "server", "github MCP", "high", 7.9, { command: "npx @modelcontextprotocol/server-github" }),
-    node("cred:github-token", "credential", "GitHub token", "high", 8.4),
+    node("server:repo", "server", "repository MCP", "high", 7.9, { command: "npx @modelcontextprotocol/server-repository" }),
+    node("cred:repo-token", "credential", "Repository token", "high", 8.4),
     node("tool:write-file", "tool", "write_file", "medium", 5.8),
   ];
   const edges: GraphEdge[] = [
-    edge("agent:claude", "server:filesystem", "uses"),
-    edge("agent:claude", "server:github", "uses"),
-    edge("server:github", "cred:github-token", "exposes_cred"),
-    edge("cred:github-token", "tool:write-file", "reaches_tool"),
+    edge("agent:desktop", "server:filesystem", "uses"),
+    edge("agent:desktop", "server:repo", "uses"),
+    edge("server:repo", "cred:repo-token", "exposes_cred"),
+    edge("cred:repo-token", "tool:write-file", "reaches_tool"),
   ];
 
-  for (const server of ["filesystem", "github"]) {
+  for (const server of ["filesystem", "repo"]) {
     const serverId = `server:${server}`;
     for (let index = 1; index <= 8; index += 1) {
       const packageId = `pkg:${server}:${index}`;
@@ -118,16 +118,16 @@ function buildDenseGraph() {
     edges,
     attack_paths: [
       {
-        source: "agent:claude",
+        source: "agent:desktop",
         target: "cve:filesystem:3",
-        hops: ["agent:claude", "server:filesystem", "pkg:filesystem:3", "cve:filesystem:3"],
+        hops: ["agent:desktop", "server:filesystem", "pkg:filesystem:3", "cve:filesystem:3"],
         edges: [
-          "agent:claude->server:filesystem:uses",
+          "agent:desktop->server:filesystem:uses",
           "server:filesystem->pkg:filesystem:3:depends_on",
           "pkg:filesystem:3->cve:filesystem:3:vulnerable_to",
         ],
         composite_risk: 9.4,
-        summary: "Claude Desktop can reach a critical vulnerable package through filesystem MCP.",
+        summary: "Desktop Agent can reach a critical vulnerable package through filesystem MCP.",
         credential_exposure: [],
         tool_exposure: ["write_file"],
         vuln_ids: ["CVE-2026-103"],
@@ -199,9 +199,9 @@ async function routeGraphPage(page: Page) {
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
-        nodes_added: ["cve:filesystem:3", "cve:github:3"],
+        nodes_added: ["cve:filesystem:3", "cve:repo:3"],
         nodes_removed: [],
-        nodes_changed: ["agent:claude"],
+        nodes_changed: ["agent:desktop"],
         edges_added: [["pkg:filesystem:3", "cve:filesystem:3", "vulnerable_to"]],
         edges_removed: [],
       }),
@@ -213,20 +213,20 @@ async function routeGraphPage(page: Page) {
 }
 
 async function captureGraphScreenshot(page: Page, testInfo: TestInfo, theme: "dark" | "light") {
-  await expect(page.getByRole("heading", { name: "Security Graph" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Lineage Graph" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Relevant paths", exact: true })).toBeVisible();
   await expect(page.getByText("Attack paths", { exact: true })).toBeVisible();
   await expect(page.locator('[data-testid="cluster-pill"]').first()).toBeVisible();
   await expect(page.getByTestId("graph-compression-summary")).toContainText(/compressed|rendered/);
   await expect(page.locator("summary").filter({ hasText: "Legend" })).toBeVisible();
   await page.screenshot({
-    path: testInfo.outputPath(`security-graph-dense-${theme}.png`),
+    path: testInfo.outputPath(`lineage-graph-dense-${theme}.png`),
     fullPage: true,
   });
 }
 
 for (const theme of ["dark", "light"] as const) {
-  test(`security graph dense ${theme} view stays focused and screenshot-ready`, async ({ page }, testInfo) => {
+  test(`lineage graph dense ${theme} view stays focused and screenshot-ready`, async ({ page }, testInfo) => {
     await routeGraphPage(page);
     await page.addInitScript((selectedTheme) => {
       window.localStorage.setItem("agent-bom-theme", selectedTheme);

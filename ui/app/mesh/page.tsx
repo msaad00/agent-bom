@@ -507,7 +507,7 @@ export default function MeshPage() {
             ))}
           </select>
           <FullscreenButton />
-          <GraphLegend items={legendItems} defaultOpen={captureMode} />
+          <GraphLegend items={legendItems} />
         </div>
       </div>
 

@@ -15,6 +15,7 @@ import pytest
 from click.testing import CliRunner
 
 from agent_bom.cli import cli_main, main
+from agent_bom.cli._agent_mode import dumps_envelope, success_envelope
 from agent_bom.models import Agent, AgentType, BlastRadius, MCPServer, Package, Severity, Vulnerability
 from agent_bom.scanners import IncompleteScanError
 
@@ -129,6 +130,43 @@ def test_scan_agent_mode_token_budget_reports_truncation(monkeypatch):
     assert payload["truncated"] is True
     assert payload["truncation"]["truncated"] is True
     assert payload["truncation"]["removed"]
+
+
+def test_agent_mode_token_budget_bounds_large_envelope():
+    report = _minimal_report_json(80)
+    report.update(
+        {
+            "schema_version": "1.0",
+            "spec_version": "1.0",
+            "posture_grade": "F",
+            "summary": {"total_vulnerabilities": 80, "agents": 30, "servers": 0},
+            "agents": [{"name": f"agent-{idx}", "mcp_servers": []} for idx in range(30)],
+            "findings": [{"id": f"finding-{idx}", "details": "x" * 200} for idx in range(80)],
+            "blast_radius": [
+                {
+                    "vulnerability_id": f"CVE-2026-{idx:04d}",
+                    "severity": "high",
+                    "package": "pkg",
+                    "details": "x" * 200,
+                }
+                for idx in range(80)
+            ],
+            "inventory_snapshot": {"agents": [{"name": f"agent-{idx}"} for idx in range(30)], "details": "x" * 2000},
+            "remediation_plan": [{"id": f"fix-{idx}", "details": "x" * 200} for idx in range(80)],
+            "ai_bom_entities": {"details": "x" * 2000},
+        }
+    )
+
+    payload = success_envelope(command="agents", report_json=report, exit_code=0, token_budget=500)
+    output = dumps_envelope(payload)
+
+    assert len(output) < 500 * 10
+    assert payload["truncated"] is True
+    assert payload["truncation"]["truncated"] is True
+    assert payload["truncation"]["approx_tokens"] <= 500
+    assert payload["truncation"]["removed"]
+    assert payload["summary"]["agents"] >= 30
+    assert payload["data"]["document_type"] == "AI-BOM"
 
 
 def test_agent_mode_entry_wraps_usage_errors(monkeypatch, capsys):

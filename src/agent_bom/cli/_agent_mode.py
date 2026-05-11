@@ -94,6 +94,39 @@ def _truncate_report(report_json: dict[str, Any], token_budget: int) -> tuple[di
         while approx_tokens() > token_budget and isinstance(payload.get(key), list) and len(payload[key]) > 1:
             trim_list(key)
 
+    def record_removed(key: str, value: Any) -> None:
+        removed[key] = removed.get(key, 0) + (len(value) if isinstance(value, list) else 1)
+
+    for key in (
+        "ai_bom_entities",
+        "inventory_snapshot",
+        "remediation_plan",
+        "compliance_bundle",
+        "graph",
+        "lineage_graph",
+        "attack_paths",
+        "findings",
+        "blast_radius",
+        "agents",
+    ):
+        if approx_tokens() <= token_budget:
+            break
+        if key in payload:
+            record_removed(key, payload.pop(key))
+
+    if approx_tokens() > token_budget:
+        compact_keys = (
+            "schema_version",
+            "document_type",
+            "spec_version",
+            "generated_at",
+            "posture_grade",
+            "posture_scorecard",
+            "summary",
+        )
+        payload = {key: report_json[key] for key in compact_keys if key in report_json}
+        removed["payload_compacted"] = 1
+
     final_tokens = approx_tokens()
     return payload, {
         "enabled": True,
@@ -146,4 +179,4 @@ def error_envelope(*, command: str | None, message: str, exit_code: int, error_t
 
 
 def dumps_envelope(payload: dict[str, Any]) -> str:
-    return json.dumps(payload, indent=2, sort_keys=True, default=str)
+    return json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str)

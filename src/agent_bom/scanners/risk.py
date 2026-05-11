@@ -15,6 +15,7 @@ from agent_bom.models import Severity
 _logger = logging.getLogger(__name__)
 
 _OSV_MEDIUM_FALLBACK_PREFIXES = ("OSV-", "PYSEC-", "RUSTSEC-", "GO-", "MAL-", "GSD-")
+_DISTRO_MEDIUM_FALLBACK_PREFIXES = ("DEBIAN-CVE-",)
 _SEVERITY_LABELS = {
     "CRITICAL": Severity.CRITICAL,
     "HIGH": Severity.HIGH,
@@ -50,6 +51,8 @@ def advisory_id_severity_fallback(advisory_id: str) -> tuple[Severity, Optional[
         return Severity.MEDIUM, "ghsa_heuristic"
     if normalized.startswith(_OSV_MEDIUM_FALLBACK_PREFIXES):
         return Severity.MEDIUM, "osv_heuristic"
+    if normalized.startswith(_DISTRO_MEDIUM_FALLBACK_PREFIXES):
+        return Severity.MEDIUM, "distro_advisory_heuristic"
     return Severity.UNKNOWN, None
 
 

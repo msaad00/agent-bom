@@ -93,6 +93,15 @@ def test_local_vuln_to_vulnerability_osv_alias_without_score_uses_medium_fallbac
     assert v.severity_source == "osv_heuristic"
 
 
+def test_local_vuln_to_vulnerability_debian_id_without_score_uses_medium_fallback():
+    from agent_bom.scanners import _local_vuln_to_vulnerability
+
+    lv = _make_local_vuln(vuln_id="DEBIAN-CVE-2026-0001", severity="", cvss=None)
+    v = _local_vuln_to_vulnerability(lv)
+    assert v.severity == Severity.MEDIUM
+    assert v.severity_source == "distro_advisory_heuristic"
+
+
 def test_local_vuln_to_vulnerability_kev_flag():
     from agent_bom.scanners import _local_vuln_to_vulnerability
 

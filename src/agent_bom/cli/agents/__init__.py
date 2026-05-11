@@ -158,11 +158,13 @@ def _exit_incomplete_scan_with_partial_summary(
         },
     )
     ctx.con.print(f"  [yellow]⚠[/yellow] {exc}")
-    if output_format == "console" and not output and not quiet:
+    profile_defaulted_output = not _scan_output_target_was_explicit()
+    should_render_console_summary = (output_format == "console" and not output) or profile_defaulted_output
+    if should_render_console_summary and not quiet:
         render_output(
             ctx,
-            output=output,
-            output_format=output_format,
+            output=None,
+            output_format="console",
             no_tree=no_tree,
             quiet=quiet,
             no_color=no_color,
@@ -194,6 +196,15 @@ def _output_format_was_explicit() -> bool:
     if ctx is None:
         return False
     return ctx.get_parameter_source("output_format") is click.core.ParameterSource.COMMANDLINE
+
+
+def _scan_output_target_was_explicit() -> bool:
+    """Return true when the caller explicitly selected a machine output target."""
+    ctx = click.get_current_context(silent=True)
+    if ctx is None:
+        return False
+    explicit_sources = {click.core.ParameterSource.COMMANDLINE, click.core.ParameterSource.ENVIRONMENT}
+    return ctx.get_parameter_source("output") in explicit_sources or ctx.get_parameter_source("output_format") in explicit_sources
 
 
 def _reproducible_generated_at(enabled: bool):

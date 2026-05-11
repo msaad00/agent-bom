@@ -932,18 +932,19 @@ async def get_compliance_summary(request: Request) -> dict:
         "summary",
     }
     response = {key: full.get(key) for key in summary_keys if key in full}
-    response["frameworks"] = {}
+    framework_summary: dict[str, dict[str, int]] = {}
     for key, value in full.items():
         if isinstance(value, list):
             pass_count = sum(1 for item in value if item.get("status") == "pass")
             warn_count = sum(1 for item in value if item.get("status") == "warning")
             fail_count = sum(1 for item in value if item.get("status") == "fail")
-            response["frameworks"][key] = {
+            framework_summary[key] = {
                 "controls": len(value),
                 "pass": pass_count,
                 "warning": warn_count,
                 "fail": fail_count,
             }
+    response["frameworks"] = framework_summary
     return response
 
 

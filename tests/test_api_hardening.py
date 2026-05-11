@@ -23,6 +23,8 @@ from agent_bom.api.browser_session import (
 from agent_bom.api.middleware import InMemoryRateLimitStore
 from agent_bom.api.oidc import OIDCConfig
 from agent_bom.api.server import (
+    DEFAULT_RATE_LIMIT_RPM,
+    MAX_RATE_LIMIT_RPM,
     APIKeyMiddleware,
     MaxBodySizeMiddleware,
     RateLimitMiddleware,
@@ -212,6 +214,31 @@ def test_configure_api_refreshes_cors_policy():
     resp = client.get("/health", headers={"Origin": "http://127.0.0.1:3001"})
     assert resp.status_code == 200
     assert resp.headers.get("access-control-allow-origin") is None
+
+
+def test_configure_api_defaults_to_release_safe_rate_limit():
+    """The packaged API should not default to a tiny demo-only rate limit."""
+    configure_api(api_key=None)
+    rate_limit = next(m for m in app.user_middleware if m.cls is RateLimitMiddleware)
+    assert rate_limit.kwargs["scan_rpm"] == DEFAULT_RATE_LIMIT_RPM
+    assert rate_limit.kwargs["read_rpm"] == DEFAULT_RATE_LIMIT_RPM * 5
+
+
+@pytest.mark.parametrize("value", [0, -1, MAX_RATE_LIMIT_RPM + 1])
+def test_configure_api_rejects_invalid_rate_limit(value: int):
+    """Invalid operator-provided rate limits should fail at configuration time."""
+    with pytest.raises(ValueError):
+        configure_api(api_key=None, rate_limit_rpm=value)
+
+
+def test_rate_limit_middleware_rejects_invalid_limits():
+    """Direct middleware use should get the same bounded operator inputs."""
+    from starlette.applications import Starlette
+
+    with pytest.raises(ValueError):
+        RateLimitMiddleware(Starlette(), scan_rpm=0)
+    with pytest.raises(ValueError):
+        RateLimitMiddleware(Starlette(), read_rpm=MAX_RATE_LIMIT_RPM * 5 + 1)
 
 
 def test_api_key_middleware_blocks_without_key():
@@ -1044,6 +1071,18 @@ def test_rate_limit_middleware():
     resp = client.post("/v1/scan")
     assert resp.status_code == 429
     assert "Retry-After" in resp.headers
+
+
+def test_audit_and_gateway_limits_are_validated():
+    """High-volume audit surfaces must reject invalid limits instead of forwarding them."""
+    configure_api(api_key=None, rate_limit_rpm=1000)
+    client = TestClient(app)
+
+    assert client.get("/v1/audit?limit=0").status_code == 422
+    assert client.get("/v1/audit?limit=1001").status_code == 422
+    assert client.get("/v1/audit/integrity?limit=0").status_code == 422
+    assert client.get("/v1/audit/export?limit=10001").status_code == 422
+    assert client.get("/v1/gateway/audit?limit=1001").status_code == 422
 
 
 def test_rate_limit_middleware_uses_postgres_store_when_available(monkeypatch):

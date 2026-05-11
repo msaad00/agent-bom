@@ -24,6 +24,8 @@ from agent_bom.api import stores as _stores
 from agent_bom.api.audit_log import get_audit_log
 from agent_bom.api.auth import Role, create_api_key_record, get_key_store
 from agent_bom.api.middleware import (
+    DEFAULT_SCAN_RATE_LIMIT_RPM,
+    MAX_RATE_LIMIT_RPM,
     APIKeyMiddleware,
     MaxBodySizeMiddleware,
     RateLimitMiddleware,
@@ -481,7 +483,8 @@ _default_origins = [
 _cors_env = os.environ.get("CORS_ORIGINS")
 _cors_origins: list[str] = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else _default_origins
 _api_key: str | None = None
-_rate_limit_rpm: int = 60
+DEFAULT_RATE_LIMIT_RPM = DEFAULT_SCAN_RATE_LIMIT_RPM
+_rate_limit_rpm: int = DEFAULT_RATE_LIMIT_RPM
 _env_api_keys_seeded = False
 
 
@@ -544,6 +547,18 @@ def _replace_middleware(middleware_cls: object, /, **kwargs: object) -> None:
     app.user_middleware.insert(0, Middleware(cast(Any, middleware_cls), **kwargs))
 
 
+def _validated_rate_limit_rpm(value: int) -> int:
+    try:
+        rpm = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("rate_limit_rpm must be an integer") from exc
+    if rpm < 1:
+        raise ValueError("rate_limit_rpm must be at least 1")
+    if rpm > MAX_RATE_LIMIT_RPM:
+        raise ValueError(f"rate_limit_rpm must be <= {MAX_RATE_LIMIT_RPM}")
+    return rpm
+
+
 # CORS: defaults to localhost; configure via configure_api() before startup
 _apply_cors_middleware(_cors_origins)
 
@@ -558,13 +573,15 @@ def configure_api(
     cors_origins: list[str] | None = None,
     cors_allow_all: bool = False,
     api_key: str | None = None,
-    rate_limit_rpm: int = 60,
+    rate_limit_rpm: int = DEFAULT_RATE_LIMIT_RPM,
 ) -> None:
     """Configure API hardening before server startup.
 
     Call this before uvicorn.run() to set CORS, auth, and rate limiting.
     """
     global _cors_origins, _api_key, _rate_limit_rpm
+
+    validated_rate_limit_rpm = _validated_rate_limit_rpm(rate_limit_rpm)
 
     if cors_allow_all:
         _cors_origins = ["*"]
@@ -574,7 +591,7 @@ def configure_api(
     _apply_cors_middleware(_cors_origins)
 
     _api_key = api_key
-    _rate_limit_rpm = rate_limit_rpm
+    _rate_limit_rpm = validated_rate_limit_rpm
 
     env_key_store_configured = _seed_api_key_store_from_env()
 
@@ -602,7 +619,7 @@ def configure_api(
     # Refresh runtime-configurable middleware. _replace_middleware inserts at
     # the front; this call order keeps body-size outermost, auth before rate
     # limiting, and rate limiting able to read tenant/auth state.
-    _replace_middleware(RateLimitMiddleware, scan_rpm=rate_limit_rpm, read_rpm=rate_limit_rpm * 5)
+    _replace_middleware(RateLimitMiddleware, scan_rpm=_rate_limit_rpm, read_rpm=_rate_limit_rpm * 5)
     if auth_required:
         _replace_middleware(APIKeyMiddleware, api_key=api_key)
     else:
@@ -633,7 +650,7 @@ def configure_api_from_env() -> None:
         cors_origins=origins,
         cors_allow_all=allow_all,
         api_key=api_key,
-        rate_limit_rpm=60,
+        rate_limit_rpm=DEFAULT_RATE_LIMIT_RPM,
     )
 
 

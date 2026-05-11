@@ -876,8 +876,8 @@ async def list_audit_entries(
     action: str | None = None,
     resource: str | None = None,
     since: str | None = None,
-    limit: int = 100,
-    offset: int = 0,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> dict:
     """List audit log entries with optional filters."""
     from agent_bom.api.audit_log import get_audit_log
@@ -888,11 +888,13 @@ async def list_audit_entries(
     return {
         "entries": [e.to_dict() for e in entries],
         "total": store.count(action=action, tenant_id=tenant_id),
+        "limit": limit,
+        "offset": offset,
     }
 
 
 @router.get("/v1/audit/integrity", tags=["enterprise"])
-async def audit_integrity(request: Request, limit: int = 1000) -> dict:
+async def audit_integrity(request: Request, limit: Annotated[int, Query(ge=1, le=10_000)] = 1000) -> dict:
     """Verify HMAC integrity of audit log entries."""
     from agent_bom.api.audit_log import get_audit_log
 
@@ -907,8 +909,8 @@ async def export_audit_entries(
     action: str | None = None,
     resource: str | None = None,
     since: str | None = None,
-    limit: int = 1000,
-    offset: int = 0,
+    limit: Annotated[int, Query(ge=1, le=10_000)] = 1000,
+    offset: Annotated[int, Query(ge=0)] = 0,
     format: str = "json",
 ):
     """Export audit entries as a signed evidence packet."""

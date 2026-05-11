@@ -1275,13 +1275,35 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 reset_current_tenant(tenant_token)
 
 
+DEFAULT_SCAN_RATE_LIMIT_RPM = 600
+DEFAULT_READ_RATE_LIMIT_RPM = DEFAULT_SCAN_RATE_LIMIT_RPM * 5
+MAX_RATE_LIMIT_RPM = 60_000
+
+
+def _validate_rate_limit(name: str, value: int, *, max_rpm: int) -> int:
+    try:
+        rpm = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+    if rpm < 1:
+        raise ValueError(f"{name} must be at least 1")
+    if rpm > max_rpm:
+        raise ValueError(f"{name} must be <= {max_rpm}")
+    return rpm
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """Tenant-aware sliding window rate limiter with bounded memory."""
 
-    def __init__(self, app: ASGIApp, scan_rpm: int = 60, read_rpm: int = 300):
+    def __init__(
+        self,
+        app: ASGIApp,
+        scan_rpm: int = DEFAULT_SCAN_RATE_LIMIT_RPM,
+        read_rpm: int = DEFAULT_READ_RATE_LIMIT_RPM,
+    ):
         super().__init__(app)
-        self._scan_rpm = scan_rpm
-        self._read_rpm = read_rpm
+        self._scan_rpm = _validate_rate_limit("scan_rpm", scan_rpm, max_rpm=MAX_RATE_LIMIT_RPM)
+        self._read_rpm = _validate_rate_limit("read_rpm", read_rpm, max_rpm=MAX_RATE_LIMIT_RPM * 5)
         self._window = 60
         self._store = self._build_store()
 

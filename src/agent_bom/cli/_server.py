@@ -446,9 +446,9 @@ def serve_cmd(
 @click.option(
     "--rate-limit",
     "rate_limit_rpm",
-    default=60,
+    default=600,
     show_default=True,
-    type=int,
+    type=click.IntRange(1, 60_000),
     metavar="RPM",
     help="Rate limit for scan endpoints (requests/minute per IP).",
 )

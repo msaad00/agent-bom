@@ -900,7 +900,20 @@ def test_scan_save_flag(tmp_path):
     assert result.exit_code == 0
 
 
-def test_scan_incomplete_offline_scan_exits_two(monkeypatch):
+def test_scan_incomplete_offline_scan_exits_two(monkeypatch, tmp_path):
+    profile_output = tmp_path / "profile-report.json"
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        f"""
+current_profile = "local"
+
+[profiles.local]
+format = "json"
+output = "{profile_output}"
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AGENT_BOM_CONFIG", str(config_path))
     monkeypatch.setattr("agent_bom.cli.agents.discover_all", lambda *args, **kwargs: [])
 
     def _scan_agents_sync(*args, **kwargs):
@@ -919,6 +932,7 @@ def test_scan_incomplete_offline_scan_exits_two(monkeypatch):
     assert "PARTIAL COVERAGE" in result.output
     assert "CLEAN" not in result.output
     assert "agents" in result.output.lower()
+    assert not profile_output.exists()
 
 
 def test_scan_expands_local_docker_mcp_image():

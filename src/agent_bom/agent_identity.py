@@ -8,7 +8,9 @@ Two supported token formats:
 - **JWT** (three base64url parts): payload decoded, ``sub`` claim used as
   ``agent_id``.  When ``jwks_uri`` is set in policy, the signature is
   cryptographically verified (RS256/ES256/RS384/ES384).  Expiry (``exp``) is
-  always checked.  The ``none`` algorithm is always rejected.
+  always checked.  The ``none`` algorithm is always rejected.  Enforced
+  identity mode requires JWT verification; unsigned JWTs are only accepted in
+  non-blocking audit mode.
 - **Opaque token**: looked up in ``policy.agent_tokens`` dict
   (``{token: agent_id}``).
 
@@ -241,12 +243,15 @@ def resolve_agent_id(token: str, policy: dict) -> tuple[str, str | None]:
             except (TypeError, ValueError):
                 return ANONYMOUS, "Invalid JWT exp claim"
 
-        # Cryptographic signature verification when JWKS is configured
+        # Cryptographic signature verification when JWKS is configured. In
+        # enforced mode, a JWT without verification policy is not an identity.
         jwks_uri = _resolve_jwks_uri(policy)
         if jwks_uri:
             verified, sig_err = _verify_jwt_signature(token, jwks_uri)
             if not verified:
                 return ANONYMOUS, f"JWT signature invalid: {sig_err}"
+        elif policy.get("require_agent_identity"):
+            return ANONYMOUS, "JWT signature verification required: configure jwks_uri or oidc_issuer"
 
         agent_id = claims.get("sub") or claims.get("agent_id") or claims.get("name")
         if not agent_id or not isinstance(agent_id, str):

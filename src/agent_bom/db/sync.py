@@ -227,6 +227,23 @@ def _normalize_sync_severity_label(value: Any) -> Optional[str]:
     return mapping.get(label)
 
 
+def _first_sync_cvss_vector(value: Any) -> Optional[str]:
+    """Return the first CVSS vector string from common OSV/vendor shapes."""
+    if isinstance(value, str) and value.startswith("CVSS:"):
+        return value
+    if isinstance(value, dict):
+        for key in ("score", "baseScore", "base_score", "cvss", "vector", "vectorString"):
+            vector = _first_sync_cvss_vector(value.get(key))
+            if vector is not None:
+                return vector
+    if isinstance(value, list):
+        for item in value:
+            vector = _first_sync_cvss_vector(item)
+            if vector is not None:
+                return vector
+    return None
+
+
 def _now_utc() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -276,9 +293,34 @@ def _parse_osv_entry(data: dict) -> Optional[tuple[dict, list[dict]]]:
             parsed_score = _normalize_sync_cvss_score(raw_cvss)
             if parsed_score is not None:
                 cvss_score = parsed_score
-                if cvss_vector is None and isinstance(raw_cvss, str) and raw_cvss.startswith("CVSS:"):
-                    cvss_vector = raw_cvss
+                if cvss_vector is None:
+                    cvss_vector = _first_sync_cvss_vector(raw_cvss)
                 break
+
+    # Debian and other distro OSV advisories often carry their vendor
+    # severity/CVSS on affected entries instead of the top-level record.
+    for aff in data.get("affected", []):
+        if not isinstance(aff, dict):
+            continue
+        for block_name in ("database_specific", "ecosystem_specific"):
+            block = aff.get(block_name)
+            if not isinstance(block, dict):
+                continue
+            if db_severity is None:
+                db_severity = _normalize_sync_severity_label(block.get("severity"))
+            if cvss_score is None:
+                for key in ("cvss", "cvss_score", "cvss_v3", "severity_vectors"):
+                    raw_cvss = block.get(key)
+                    parsed_score = _normalize_sync_cvss_score(raw_cvss)
+                    if parsed_score is not None:
+                        cvss_score = parsed_score
+                        if cvss_vector is None:
+                            cvss_vector = _first_sync_cvss_vector(raw_cvss)
+                        break
+            if db_severity is not None and cvss_score is not None:
+                break
+        if db_severity is not None and cvss_score is not None:
+            break
 
     # Determine severity: prefer database_specific string, then derive from CVSS
     if db_severity:

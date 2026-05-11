@@ -718,6 +718,49 @@ def test_parse_osv_entry_normalizes_debian_important_severity():
     assert vuln_row["severity"] == "high"
 
 
+def test_parse_osv_entry_uses_debian_affected_vendor_severity():
+    data = {
+        "id": "DEBIAN-CVE-2024-0002",
+        "summary": "Debian affected-level severity",
+        "published": "2024-01-01T00:00:00Z",
+        "modified": "2024-01-02T00:00:00Z",
+        "affected": [
+            {
+                "package": {"ecosystem": "Debian:12", "name": "openssl"},
+                "database_specific": {"severity": "important"},
+                "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}, {"fixed": "3.0.11-1~deb12u2"}]}],
+            }
+        ],
+    }
+    result = _parse_osv_entry(data)
+    assert result is not None
+    vuln_row, affected_rows = result
+    assert vuln_row["severity"] == "high"
+    assert affected_rows[0]["ecosystem"] == "debian:12"
+
+
+def test_parse_osv_entry_uses_debian_affected_cvss_vector():
+    data = {
+        "id": "DEBIAN-CVE-2024-0003",
+        "summary": "Debian affected-level CVSS",
+        "published": "2024-01-01T00:00:00Z",
+        "modified": "2024-01-02T00:00:00Z",
+        "affected": [
+            {
+                "package": {"ecosystem": "Debian:12", "name": "bash"},
+                "ecosystem_specific": {"severity_vectors": ["CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"]},
+                "ranges": [{"type": "ECOSYSTEM", "events": [{"introduced": "0"}]}],
+            }
+        ],
+    }
+    result = _parse_osv_entry(data)
+    assert result is not None
+    vuln_row, _ = result
+    assert vuln_row["severity"] == "critical"
+    assert vuln_row["cvss_score"] == pytest.approx(9.8)
+    assert vuln_row["cvss_vector"] == "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+
+
 def test_parse_alpine_secfix_tokens_splits_compound_entries():
     assert _parse_alpine_secfix_tokens("CVE-2022-42333 CVE-2022-43334 XSA-428") == [
         "CVE-2022-42333",

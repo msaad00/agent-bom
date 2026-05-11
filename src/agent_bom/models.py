@@ -104,7 +104,7 @@ class Vulnerability:
     id: str  # CVE or OSV ID
     summary: str
     severity: Severity
-    severity_source: Optional[str] = None  # "cvss", "osv_database", "osv_ecosystem", "ghsa_heuristic"
+    severity_source: Optional[str] = None  # "cvss", "osv_database", "osv_ecosystem", "ghsa_heuristic", etc.
     confidence: float | None = None  # Data quality confidence score (0.0-1.0)
     cvss_score: Optional[float] = None
     fixed_version: Optional[str] = None

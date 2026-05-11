@@ -175,9 +175,13 @@ Risk, reach, fix version, and framework context in one review table — operator
 
 Agent-centered shared-infrastructure graph — selected agents, their MCP servers, tools, packages, credentials, and findings. The same evidence model renders in dark and light themes.
 
-| Dark theme | Light theme |
-|---|---|
-| ![agent-bom agent mesh dark theme](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-dark-live.png) | ![agent-bom agent mesh light theme](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-light-live.png) |
+**Dark theme**
+
+![agent-bom agent mesh dark theme](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-dark-live.png)
+
+**Light theme**
+
+![agent-bom agent mesh light theme](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-light-live.png)
 
 </details>
 

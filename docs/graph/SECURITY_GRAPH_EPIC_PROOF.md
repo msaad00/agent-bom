@@ -43,7 +43,7 @@ Readability is split into deterministic controls:
 - Zoom levels resolve to `cluster`, `summary`, or `detail` bands in `ui/lib/lod-renderer.ts`.
 - Low-zoom cluster rendering only activates when aggregation materially reduces node count, avoiding unlabeled dot fields.
 - Sibling fan-outs render as cluster pills in `ui/components/lineage-nodes.tsx`.
-- Focused graph filters default to bounded depth/hops through `GraphFilterOptions` and `lineage-filter`.
+- Relevant paths filters default to bounded hop depth and visible layers through `GraphFilterOptions` and `lineage-filter`.
 
 `ui/tests/lod-renderer.test.ts` pins the zoom thresholds and the aggregation fallback.
 

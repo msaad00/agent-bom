@@ -384,8 +384,9 @@ export default function MeshPage() {
         edgeCount: displayEdges.length,
         selectedNode: Boolean(selectedNode),
         mode: "mesh",
+        captureMode,
       }),
-    [displayEdges.length, displayNodes.length, selectedNode],
+    [captureMode, displayEdges.length, displayNodes.length, selectedNode],
   );
   const showMiniMap = useMemo(
     () =>
@@ -546,6 +547,7 @@ export default function MeshPage() {
           />
         ) : (
           <ReactFlow
+            key={captureMode ? "mesh-capture" : "mesh-interactive"}
             nodes={displayNodes}
             edges={displayEdges}
             nodeTypes={lineageNodeTypes}
@@ -565,7 +567,7 @@ export default function MeshPage() {
             onPaneClick={() => { setSelectedNode(null); setHoveredNodeId(null); }}
           >
             <Background color={BACKGROUND_COLOR} gap={BACKGROUND_GAP} />
-            <Controls className={CONTROLS_CLASS} />
+            {!captureMode && <Controls className={CONTROLS_CLASS} />}
             {showMiniMap && (
               <MiniMap
                 nodeColor={minimapNodeColor}

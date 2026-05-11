@@ -190,9 +190,9 @@ Attack paths and exposure:
 
 ![agent-bom dashboard attack paths and exposure](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-paths-live.png)
 
-Focused graph:
+Agent mesh graph:
 
-![agent-bom focused graph](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
+![agent-bom agent mesh graph](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
 
 ## Tags
 

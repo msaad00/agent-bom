@@ -221,6 +221,38 @@ def test_scan_output_to_file(tmp_path):
     assert result.exit_code == 0
 
 
+def test_scan_output_appends_format_extension_for_extensionless_path(tmp_path):
+    """Explicit formats should create artifacts with the expected suffix."""
+    out = tmp_path / "scan-report"
+    expected = tmp_path / "scan-report.sarif"
+    with (
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
+    ):
+        result = _run(["scan", "--demo", "--format", "sarif", "--output", str(out), "--no-scan"])
+
+    assert result.exit_code == 0, result.output
+    assert expected.exists()
+    assert not out.exists()
+    assert "SARIF report:" in result.output
+    assert "scan-report.sarif" in result.output
+
+
+def test_scan_output_rejects_mismatched_format_extension(tmp_path):
+    """A selected format should not silently write to a misleading file name."""
+    out = tmp_path / "scan-report.json"
+    with (
+        patch("agent_bom.cli.agents.scan_agents_sync", return_value=([], [])),
+        patch("agent_bom.cli.agents.resolve_all_versions_sync", return_value=[]),
+    ):
+        result = _run(["scan", "--demo", "--format", "sarif", "--output", str(out), "--no-scan"])
+
+    assert result.exit_code == 2
+    assert "--format sarif cannot write" in result.output
+    assert ".sarif" in result.output
+    assert not out.exists()
+
+
 def test_scan_reproducible_pins_report_and_inventory_timestamps(tmp_path):
     inventory = tmp_path / "inventory.json"
     inventory.write_text(

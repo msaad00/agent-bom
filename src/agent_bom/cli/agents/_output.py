@@ -51,6 +51,50 @@ from agent_bom.output import (
     to_spdx,
 )
 
+_FORMAT_OUTPUT_RULES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "json": ("agent-bom-report.json", (".json",)),
+    "cyclonedx": ("agent-bom.cdx.json", (".cdx.json", ".json")),
+    "sarif": ("agent-bom.sarif", (".sarif", ".sarif.json")),
+    "spdx": ("agent-bom.spdx.json", (".spdx.json", ".json")),
+    "junit": ("agent-bom-results.xml", (".xml",)),
+    "csv": ("agent-bom-results.csv", (".csv",)),
+    "markdown": ("agent-bom-report.md", (".md", ".markdown")),
+    "html": ("agent-bom-report.html", (".html", ".htm")),
+    "pdf": ("agent-bom-report.pdf", (".pdf",)),
+    "prometheus": ("agent-bom-metrics.prom", (".prom", ".txt")),
+    "graph": ("agent-bom-graph.json", (".json",)),
+    "mermaid": ("agent-bom-diagram.mmd", (".mmd", ".md")),
+    "svg": ("agent-bom-supply-chain.svg", (".svg",)),
+    "graph-html": ("agent-bom-graph.html", (".html", ".htm")),
+    "badge": ("agent-bom-badge.json", (".json",)),
+    "plain": ("agent-bom-report.txt", (".txt", ".text", ".log")),
+    "text": ("agent-bom-report.txt", (".txt", ".text", ".log")),
+}
+
+
+def _resolve_output_path(output: Any, output_format: str) -> str:
+    """Return an output path whose suffix matches the selected format."""
+    default_name, allowed_suffixes = _FORMAT_OUTPUT_RULES[output_format]
+    if not output:
+        return default_name
+
+    raw_path = str(output)
+    lower_path = raw_path.lower()
+    if any(lower_path.endswith(suffix) for suffix in allowed_suffixes):
+        return raw_path
+
+    path = Path(raw_path)
+    if not path.suffix:
+        default_suffix = "".join(Path(default_name).suffixes)
+        return f"{raw_path}{default_suffix}"
+
+    suffix_list = ", ".join(allowed_suffixes)
+    click.echo(
+        f"--format {output_format} cannot write to '{raw_path}' because the file extension does not match. Use one of: {suffix_list}.",
+        err=True,
+    )
+    raise SystemExit(2)
+
 
 def render_output(
     ctx: ScanContext,
@@ -206,37 +250,37 @@ def render_output(
     elif output_format in ("text", "plain") and not output:
         _print_text(report, blast_radii)
     elif output_format == "json":
-        out_path = output or "agent-bom-report.json"
+        out_path = _resolve_output_path(output, output_format)
         export_json(report, out_path)
         con.print(f"\n  [green]✓[/green] JSON report: {out_path}")
     elif output_format == "cyclonedx":
-        out_path = output or "agent-bom.cdx.json"
+        out_path = _resolve_output_path(output, output_format)
         export_cyclonedx(report, out_path)
         con.print(f"\n  [green]✓[/green] CycloneDX BOM: {out_path}")
     elif output_format == "sarif":
-        out_path = output or "agent-bom.sarif"
+        out_path = _resolve_output_path(output, output_format)
         export_sarif(report, out_path, exclude_unfixable=exclude_unfixable)
         con.print(f"\n  [green]✓[/green] SARIF report: {out_path}")
         if not quiet:
             con.print("  [dim]SARIF includes enrichment context when available: CVSS/CWE, EPSS, and CISA KEV.[/dim]")
     elif output_format == "spdx":
-        out_path = output or "agent-bom.spdx.json"
+        out_path = _resolve_output_path(output, output_format)
         export_spdx(report, out_path)
         con.print(f"\n  [green]✓[/green] SPDX 3.0 BOM: {out_path}")
     elif output_format == "junit":
-        out_path = output or "agent-bom-results.xml"
+        out_path = _resolve_output_path(output, output_format)
         export_junit(report, out_path, blast_radii)
         con.print(f"\n  [green]✓[/green] JUnit XML: {out_path}")
     elif output_format == "csv":
-        out_path = output or "agent-bom-results.csv"
+        out_path = _resolve_output_path(output, output_format)
         export_csv(report, out_path, blast_radii)
         con.print(f"\n  [green]✓[/green] CSV report: {out_path}")
     elif output_format == "markdown":
-        out_path = output or "agent-bom-report.md"
+        out_path = _resolve_output_path(output, output_format)
         export_markdown(report, out_path, blast_radii)
         con.print(f"\n  [green]✓[/green] Markdown report: {out_path}")
     elif output_format == "html":
-        out_path = output or "agent-bom-report.html"
+        out_path = _resolve_output_path(output, output_format)
         export_html(report, out_path, blast_radii)
         con.print(f"\n  [green]✓[/green] HTML report: {out_path}")
         if open_report:
@@ -247,24 +291,24 @@ def render_output(
         else:
             con.print(f"  [dim]Open with:[/dim] open {out_path}")
     elif output_format == "pdf":
-        out_path = output or "agent-bom-report.pdf"
+        out_path = _resolve_output_path(output, output_format)
         export_pdf(report, out_path, blast_radii)
         con.print(f"\n  [green]✓[/green] PDF report: {out_path}")
     elif output_format == "prometheus":
-        out_path = output or "agent-bom-metrics.prom"
+        out_path = _resolve_output_path(output, output_format)
         export_prometheus(report, out_path, blast_radii)
         con.print(f"\n  [green]✓[/green] Prometheus metrics: {out_path}")
         con.print("  [dim]Scrape with node_exporter textfile or push via --push-gateway[/dim]")
     elif output_format == "graph":
         from agent_bom.output.graph import build_graph_elements
 
-        out_path = output or "agent-bom-graph.json"
+        out_path = _resolve_output_path(output, output_format)
         elements = build_graph_elements(report, blast_radii)
         Path(out_path).write_text(json.dumps({"elements": elements, "format": "cytoscape"}, indent=2))
         con.print(f"\n  [green]✓[/green] Graph JSON: {out_path}")
         con.print("  [dim]Cytoscape.js-compatible element list — open with Cytoscape desktop or any JS graph library[/dim]")
     elif output_format == "mermaid":
-        out_path = output or "agent-bom-diagram.mmd"
+        out_path = _resolve_output_path(output, output_format)
         if mermaid_mode == "attack-flow":
             from agent_bom.output.mermaid import to_mermaid
 
@@ -282,14 +326,14 @@ def render_output(
     elif output_format == "svg":
         from agent_bom.output.svg import export_svg
 
-        out_path = output or "agent-bom-supply-chain.svg"
+        out_path = _resolve_output_path(output, output_format)
         export_svg(report, blast_radii, out_path)
         con.print(f"\n  [green]✓[/green] SVG diagram: {out_path}")
         con.print("  [dim]Open in any browser or image viewer[/dim]")
     elif output_format == "graph-html":
         from agent_bom.output.graph import export_graph_html
 
-        out_path = output or "agent-bom-graph.html"
+        out_path = _resolve_output_path(output, output_format)
         export_graph_html(report, blast_radii, out_path)
         con.print(f"\n  [green]✓[/green] Interactive graph: {out_path}")
         if open_report:
@@ -300,13 +344,14 @@ def render_output(
         else:
             con.print(f"  [dim]Open with:[/dim] open {out_path}")
     elif output_format == "badge":
-        out_path = output or "agent-bom-badge.json"
+        out_path = _resolve_output_path(output, output_format)
         export_badge(report, out_path)
         con.print(f"\n  [green]✓[/green] Badge JSON: {out_path}")
         con.print("  [dim]Use with: https://img.shields.io/endpoint?url=<public-url-to-badge-json>[/dim]")
     elif output_format in ("text", "plain") and output:
-        Path(output).write_text(_format_text(report, blast_radii))
-        con.print(f"\n  [green]✓[/green] Plain text report: {output}")
+        out_path = _resolve_output_path(output, output_format)
+        Path(out_path).write_text(_format_text(report, blast_radii))
+        con.print(f"\n  [green]✓[/green] Plain text report: {out_path}")
     elif output:
         if output.endswith(".cdx.json"):
             export_cyclonedx(report, output)

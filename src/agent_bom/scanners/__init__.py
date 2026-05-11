@@ -1328,6 +1328,7 @@ async def scan_agents_with_enrichment(
                 enable_nvd=True,
                 enable_epss=True,
                 enable_kev=True,
+                offline=offline_mode,
             )
 
             # Refresh CVE-level compliance tags now that CWE/KEV/EPSS data is populated

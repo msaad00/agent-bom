@@ -2,7 +2,7 @@
 
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
-**Open security scanner for AI supply chain and runtime infrastructure — agents, MCP servers, packages, containers, cloud, GPU, and enforcement paths.**
+**Open security scanner and self-hosted control plane for AI-era infrastructure.**
 
 Start with the demo, then choose the entrypoint that matches your first job: repo scan, image scan, cloud posture, fix plan, dashboard, or runtime review.
 

@@ -50,10 +50,9 @@ jobs:
           postgres=false
           # UI Validate boots a real Next.js standalone container and runs a
           # Playwright e2e suite — slow, occasionally cold-runner flaky, and
-          # meaningful only when a PR actually changes UI code or its
-          # immediate API contracts. PRs that touch only deploy/, helm,
-          # docs, or compose used to block on a downstream UI/main
-          # regression they had nothing to do with. Opt in via path filter.
+          # meaningful only when a PR actually changes UI code or API surfaces
+          # the dashboard consumes live. Contract-only schema/docs changes stay
+          # covered by Python contract tests and should not boot Next.js.
           ui=false
           if printf '%s\n' "$changed" | grep -Eq '^(action\.yml|\.github/actions/|tests/fixtures/test-(sbom|policy)\.json$)'; then
             action=true
@@ -67,7 +66,7 @@ jobs:
           if printf '%s\n' "$changed" | grep -Eq '^(deploy/endpoints/|scripts/(build-[^/]+|render_homebrew_formula\.py)|src/agent_bom/cli/_runtime\.py|tests/test_cli_runtime\.py|pyproject\.toml|uv\.lock|\.github/actions/setup-python/|\.github/workflows/ci\.yml$|site-docs/deployment/aws-company-rollout\.md$)'; then
             endpoint=true
           fi
-          if printf '%s\n' "$changed" | grep -Eq '^(ui/|action\.yml|contracts/|src/agent_bom/(api/(routes/|models\.py|server\.py)|graph/|context_graph\.py|graph_schema\.py)|src/agent_bom/models\.py|\.github/workflows/ci\.yml$)'; then
+          if printf '%s\n' "$changed" | grep -Eq '^(ui/|action\.yml|src/agent_bom/(api/(routes/|models\.py|server\.py)|graph/|context_graph\.py|graph_schema\.py)|src/agent_bom/models\.py|\.github/workflows/ci\.yml$)'; then
             ui=true
           fi
           echo "action=${action}" >> "$GITHUB_OUTPUT"

@@ -14,7 +14,7 @@
 </p>
 <!-- mcp-name: io.github.msaad00/agent-bom -->
 
-<p align="center"><b>Open security scanner and AI BOM for the AI stack.</b></p>
+<p align="center"><b>Open security scanner and self-hosted control plane for AI-era infrastructure.</b></p>
 
 <p align="center"><code>agent-bom</code> inventories agents, MCP servers, tools, packages, credential environment names, cloud and runtime evidence, then maps the reachable blast radius behind each finding.</p>
 

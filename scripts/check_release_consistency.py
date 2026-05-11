@@ -8,6 +8,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 ROOT = Path(__file__).resolve().parent.parent
 README = ROOT / "README.md"
@@ -18,9 +19,18 @@ DEMO_LATEST = ROOT / "docs" / "images" / "demo-latest.gif"
 PRODUCT_SCREENSHOTS = ROOT / "docs" / "images" / "product-screenshots.json"
 GLAMA_SERVER = ROOT / "integrations" / "glama" / "server.json"
 DOCKER_README = ROOT / "DOCKER_HUB_README.md"
+SITE_INDEX = ROOT / "site-docs" / "index.md"
 TOP_DOCKERFILE = ROOT / "Dockerfile"
 PYPROJECT = ROOT / "pyproject.toml"
 MCP_REGISTRY = ROOT / "src" / "agent_bom" / "mcp_registry.json"
+CANONICAL_TAGLINE = "Open security scanner and self-hosted control plane for AI-era infrastructure."
+CANONICAL_TAGLINE_SURFACES: list[Path] = [
+    README,
+    PYPI_README,
+    DOCKER_README,
+    SITE_INDEX,
+    ROOT / "docs" / "PRODUCT_BRIEF.md",
+]
 MANAGED_IMAGE_REFS: list[tuple[Path, re.Pattern[str]]] = [
     (ROOT / "deploy" / "docker-compose.pilot.yml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)")),
     (ROOT / "deploy" / "docker-compose.runtime.yml", re.compile(r"agentbom/agent-bom(?:-ui)?:([0-9]+\.[0-9]+\.[0-9]+)")),
@@ -140,7 +150,7 @@ def _load_description() -> str:
     return match.group(1)
 
 
-def _fail(message: str) -> None:
+def _fail(message: str) -> NoReturn:
     print(f"ERROR: {message}", file=sys.stderr)
     raise SystemExit(1)
 
@@ -185,6 +195,14 @@ def _assert_versions(path: Path, pattern: re.Pattern[str], expected: str, label:
         _fail(f"{path.relative_to(ROOT)} has no managed {label}")
     if versions != {expected}:
         _fail(f"{path.relative_to(ROOT)} has stale {label}: {sorted(versions)} != {expected}")
+
+
+def _assert_canonical_tagline(description: str) -> None:
+    if description != CANONICAL_TAGLINE:
+        _fail(f"pyproject.toml description must match the canonical tagline: {CANONICAL_TAGLINE!r}")
+    for path in CANONICAL_TAGLINE_SURFACES:
+        if CANONICAL_TAGLINE not in path.read_text():
+            _fail(f"{path.relative_to(ROOT)} is missing the canonical tagline: {CANONICAL_TAGLINE!r}")
 
 
 def _assert_product_screenshots_current(expected_version: str) -> None:
@@ -232,6 +250,8 @@ def main() -> int:
     pypi_readme = PYPI_README.read_text()
     changelog = CHANGELOG.read_text()
     demo_tape = DEMO_TAPE.read_text()
+
+    _assert_canonical_tagline(description)
 
     required_github_markers = [
         "img.shields.io/github/actions/workflow/status",
@@ -334,8 +354,8 @@ def main() -> int:
             if file.suffix.lower() in {".gif", ".png", ".jpg", ".jpeg", ".svg", ".ico"}:
                 continue
             text = file.read_text(errors="ignore")
-            for pattern in leaked_patterns:
-                if re.search(pattern, text):
+            for leaked_pattern in leaked_patterns:
+                if re.search(leaked_pattern, text):
                     _fail(f"personal/local path leak found in {file.relative_to(ROOT)}")
 
     if f"agent-bom v{version}" not in demo_tape:
@@ -348,13 +368,13 @@ def main() -> int:
         _fail(f"DOCKER_HUB_README.md must mark {version} as the current stable version")
     if f"ARG VERSION={version}" not in TOP_DOCKERFILE.read_text():
         _fail(f"Dockerfile ARG VERSION must be {version}")
-    for path, pattern in MANAGED_IMAGE_REFS:
+    for path, image_pattern in MANAGED_IMAGE_REFS:
         text = path.read_text()
-        versions = {match.group(1) for match in pattern.finditer(text)}
+        versions = {match.group(1) for match in image_pattern.finditer(text)}
         if versions and versions != {version}:
             _fail(f"{path.relative_to(ROOT)} contains stale managed image version(s): {sorted(versions)} != {version}")
-    for path, pattern, label in MANAGED_VERSION_REFS:
-        _assert_versions(path, pattern, version, label)
+    for path, version_pattern, label in MANAGED_VERSION_REFS:
+        _assert_versions(path, version_pattern, version, label)
     ui_lock = json.loads((ROOT / "ui" / "package-lock.json").read_text())
     ui_lock_versions = {ui_lock.get("version"), ui_lock.get("packages", {}).get("", {}).get("version")}
     if ui_lock_versions != {version}:

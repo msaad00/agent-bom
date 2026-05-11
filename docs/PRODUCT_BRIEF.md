@@ -180,7 +180,7 @@ This is the right path because it improves product trust without diluting the MC
 
 Good external phrasing:
 
-- Open security scanner and AI BOM for the AI stack
+- Open security scanner and self-hosted control plane for AI-era infrastructure.
 - Generate a reachability-backed AI BOM across agents, MCP, packages, credentials, cloud, and runtime
 - Context-aware security for agents, MCP, runtime, and AI supply chain and infrastructure
 - Blast radius from package risk to agents, credentials, tools, and runtime

@@ -93,6 +93,7 @@ def test_scan_agent_mode_emits_machine_envelope(monkeypatch):
     assert payload["exit_code"] == 0
     assert payload["summary"]["agents"] >= 1
     assert payload["confidence"]["level"] in {"high", "medium", "low"}
+    assert payload["truncated"] is False
     assert payload["truncation"]["truncated"] is False
     assert payload["data"]["document_type"] == "AI-BOM"
 
@@ -125,6 +126,7 @@ def test_scan_agent_mode_token_budget_reports_truncation(monkeypatch):
     payload = json.loads(result.output)
     assert payload["truncation"]["enabled"] is True
     assert payload["truncation"]["token_budget"] == 200
+    assert payload["truncated"] is True
     assert payload["truncation"]["truncated"] is True
     assert payload["truncation"]["removed"]
 
@@ -140,7 +142,9 @@ def test_agent_mode_entry_wraps_usage_errors(monkeypatch, capsys):
     assert payload["mode"] == "agent"
     assert payload["ok"] is False
     assert payload["exit_code"] == 2
+    assert payload["truncated"] is False
     assert payload["error"]["type"] == "usage"
+    assert payload["errors"][0]["type"] == "usage"
 
 
 def test_scan_external_scan_invalid_json_exits_nonzero(tmp_path):

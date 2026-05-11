@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-bom.dev/contracts/v1/agent-mode-envelope.schema.json",
+  "title": "agent-bom agent mode CLI envelope v1",
+  "type": "object",
+  "required": ["schema_version", "mode", "ok", "command", "exit_code", "truncated"],
+  "properties": {
+    "schema_version": { "type": "string", "pattern": "^1(\\.\\d+)?$" },
+    "mode": { "const": "agent" },
+    "ok": { "type": "boolean" },
+    "command": { "type": ["string", "null"] },
+    "exit_code": { "type": "integer", "minimum": 0 },
+    "summary": {
+      "type": "object",
+      "required": ["agents", "vulnerabilities", "findings", "severity_counts"],
+      "properties": {
+        "agents": { "type": "integer", "minimum": 0 },
+        "servers": { "type": ["integer", "null"], "minimum": 0 },
+        "packages": { "type": ["integer", "null"], "minimum": 0 },
+        "vulnerabilities": { "type": "integer", "minimum": 0 },
+        "findings": { "type": "integer", "minimum": 0 },
+        "severity_counts": {
+          "type": "object",
+          "required": ["critical", "high", "medium", "low", "unknown"],
+          "properties": {
+            "critical": { "type": "integer", "minimum": 0 },
+            "high": { "type": "integer", "minimum": 0 },
+            "medium": { "type": "integer", "minimum": 0 },
+            "low": { "type": "integer", "minimum": 0 },
+            "unknown": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "posture_grade": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "confidence": {
+      "type": "object",
+      "required": ["level", "signals"],
+      "properties": {
+        "level": { "enum": ["low", "medium", "high"] },
+        "signals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "present"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "present": { "type": "boolean" }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "truncated": { "type": "boolean" },
+    "truncation": {
+      "type": "object",
+      "required": ["enabled", "truncated", "token_budget", "approx_tokens", "removed"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "truncated": { "type": "boolean" },
+        "token_budget": { "type": ["integer", "null"], "minimum": 0 },
+        "approx_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "removed": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "additionalProperties": true
+    },
+    "data": {
+      "type": "object",
+      "description": "Underlying command payload. For agent-bom agents this is the AI-BOM scan report."
+    },
+    "error": { "$ref": "#/$defs/error" },
+    "errors": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/error" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "ok": { "const": true } }, "required": ["ok"] },
+      "then": { "required": ["summary", "confidence", "truncation", "data"] }
+    },
+    {
+      "if": { "properties": { "ok": { "const": false } }, "required": ["ok"] },
+      "then": { "required": ["error", "errors"] }
+    }
+  ],
+  "$defs": {
+    "error": {
+      "type": "object",
+      "required": ["type", "message"],
+      "properties": {
+        "type": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

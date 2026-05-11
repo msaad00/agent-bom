@@ -121,6 +121,7 @@ def success_envelope(
         "exit_code": exit_code,
         "summary": _summary(report_json),
         "confidence": _confidence(report_json),
+        "truncated": bool(truncation["truncated"]),
         "truncation": truncation,
         "data": payload,
     }
@@ -128,16 +129,19 @@ def success_envelope(
 
 def error_envelope(*, command: str | None, message: str, exit_code: int, error_type: str) -> dict[str, Any]:
     """Build the stable agent-mode error envelope."""
+    error = {
+        "type": error_type,
+        "message": message,
+    }
     return {
         "schema_version": AGENT_MODE_SCHEMA_VERSION,
         "mode": "agent",
         "ok": False,
         "command": command,
         "exit_code": exit_code,
-        "error": {
-            "type": error_type,
-            "message": message,
-        },
+        "truncated": False,
+        "error": error,
+        "errors": [error],
     }
 
 

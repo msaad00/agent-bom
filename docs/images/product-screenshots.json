@@ -1,5 +1,5 @@
 {
-  "release_version": "0.86.4",
+  "release_version": "0.86.5",
   "captured_at": "2026-05-11T00:43:55Z",
   "capture_note": "Captured from the packaged Next.js dashboard served by agent-bom serve with bundled demo data pushed through /v1/results/push. Graph screenshots are real product routes in capture mode; no docs-only slide route is used.",
   "screenshots": [
@@ -7,55 +7,55 @@
       "path": "dashboard-live.png",
       "page": "/?capture=1",
       "scope": "Risk overview top frame with headline KPIs, posture grade, and start of attack paths",
-      "visible_version": "0.86.4"
+      "visible_version": "0.86.5"
     },
     {
       "path": "dashboard-paths-live.png",
       "page": "/?capture=1",
       "scope": "Risk overview mid-frame with attack paths and exposure KPIs",
-      "visible_version": "0.86.4"
+      "visible_version": "0.86.5"
     },
     {
       "path": "mesh-live.png",
       "page": "/mesh?capture=1",
       "scope": "Full agent mesh graph across selected agents, MCP servers, packages, tools, credentials, and findings",
-      "visible_version": "0.86.4"
+      "visible_version": "0.86.5"
     },
     {
       "path": "mesh-dark-live.png",
       "page": "/mesh?capture=1",
       "scope": "Dark-theme agent mesh graph with the same scoped evidence model",
-      "visible_version": "0.86.4"
+      "visible_version": "0.86.5"
     },
     {
       "path": "mesh-light-live.png",
       "page": "/mesh?capture=1",
       "scope": "Light-theme agent mesh graph with the same scoped evidence model",
-      "visible_version": "0.86.4"
+      "visible_version": "0.86.5"
     },
     {
       "path": "security-graph-live.png",
       "page": "/security-graph?capture=1",
       "scope": "Fix-first attack path queue with snapshot pressure, graph evidence export, and remediation handoff",
-      "visible_version": "0.86.4"
+      "visible_version": "0.86.5"
     },
     {
       "path": "lineage-graph-live.png",
       "page": "/graph?capture=1&investigate=1&root=agent:analyst-agent&q=analyst-agent",
       "scope": "Root-centered lineage investigation with reachable node counts, bounded paths, filters, and graph evidence export",
-      "visible_version": "0.86.4"
+      "visible_version": "0.86.5"
     },
     {
       "path": "dependency-map-live.png",
       "page": "/insights?capture=1",
       "scope": "Supply chain dependency map with scan pipeline counts and package risk distribution",
-      "visible_version": "0.86.4"
+      "visible_version": "0.86.5"
     },
     {
       "path": "remediation-live.png",
       "page": "/remediation",
       "scope": "Fix-first remediation table with prioritized packages and framework context",
-      "visible_version": "0.86.4"
+      "visible_version": "0.86.5"
     }
   ]
 }

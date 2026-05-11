@@ -1,6 +1,6 @@
 {
   "name": "ui",
-  "version": "0.86.4",
+  "version": "0.86.5",
   "private": true,
   "packageManager": "npm@10.9.7",
   "engines": {

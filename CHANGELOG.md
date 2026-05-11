@@ -11,6 +11,18 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.86.5] - 2026-05-11
+
+Release-gate patch for the `v0.86.4` train. This release keeps the same
+product scope and updates the locked `urllib3` dependency to clear the
+shipping dependency audit before publishing signed artifacts.
+
+### Fixed
+- **Release dependency audit** - `urllib3` is locked to `2.7.0`, clearing the
+  high-severity findings that blocked the release self-scan gate.
+
+---
+
 ## [0.86.4] - 2026-05-11
 
 Patch release for the post-`v0.86.3` release train. This release tightens the
@@ -1222,7 +1234,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.86.4...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.86.5...HEAD
+[0.86.5]: https://github.com/msaad00/agent-bom/compare/v0.86.4...v0.86.5
 [0.86.4]: https://github.com/msaad00/agent-bom/compare/v0.86.3...v0.86.4
 [0.86.3]: https://github.com/msaad00/agent-bom/compare/v0.86.2...v0.86.3
 [0.86.2]: https://github.com/msaad00/agent-bom/compare/v0.86.1...v0.86.2

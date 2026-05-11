@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agent-bom"
-version = "0.86.4"
+version = "0.86.5"
 description = "Open security scanner and self-hosted control plane for AI-era infrastructure."
 readme = "PYPI_README.md"
 license = "Apache-2.0"

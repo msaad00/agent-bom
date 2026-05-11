@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   api,
   ScanJob,
-  ScanResult,
   Agent,
   BlastRadius,
 } from "@/lib/api";
@@ -15,72 +14,12 @@ import {
   PipelineFlow,
   EpssVsCvssChart,
   VulnTrendChart,
-  type PipelineStats,
-  type EpssVsCvssPoint,
   type TrendDataPoint,
 } from "@/components/charts";
+import { buildEpssVsCvss, buildPipelineStats, effectiveBlastRadius } from "@/lib/insights-risk";
 import { BarChart3, RefreshCw, AlertTriangle } from "lucide-react";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-function buildPipelineStats(result: ScanResult): PipelineStats {
-  let servers = 0;
-  let packages = 0;
-  for (const agent of result.agents) {
-    servers += agent.mcp_servers.length;
-    for (const srv of agent.mcp_servers) {
-      packages += srv.packages.length;
-    }
-  }
-
-  const blasts = result.blast_radius ?? [];
-  let critical = 0;
-  let high = 0;
-  let vulnerabilities = 0;
-  let kev = 0;
-
-  // Deduplicate vuln IDs across all packages
-  const seen = new Set<string>();
-  for (const br of blasts) {
-    if (!seen.has(br.vulnerability_id)) {
-      seen.add(br.vulnerability_id);
-      vulnerabilities++;
-      if (br.severity === "critical") critical++;
-      if (br.severity === "high") high++;
-      if (br.is_kev ?? br.cisa_kev) kev++;
-    }
-  }
-
-  return {
-    agents: result.agents.length,
-    servers,
-    packages,
-    vulnerabilities,
-    critical,
-    high,
-    kev,
-  };
-}
-
-function buildEpssVsCvss(blasts: BlastRadius[]): EpssVsCvssPoint[] {
-  const seen = new Set<string>();
-  const out: EpssVsCvssPoint[] = [];
-  for (const br of blasts) {
-    if (seen.has(br.vulnerability_id)) continue;
-    seen.add(br.vulnerability_id);
-    if (!br.cvss_score && !br.epss_score) continue;
-    out.push({
-      cve: br.vulnerability_id,
-      cvss: br.cvss_score ?? 0,
-      epss: br.epss_score ?? 0,
-      blast: br.risk_score ?? br.blast_score,
-      severity: br.severity ?? "low",
-      kev: !!(br.is_kev ?? br.cisa_kev),
-      package: br.package,
-    });
-  }
-  return out;
-}
 
 function buildTrendData(jobs: ScanJob[]): TrendDataPoint[] {
   return jobs
@@ -155,7 +94,7 @@ export default function InsightsPage() {
   const latest = latestJob;
   const result = latest?.result ?? null;
   const agents: Agent[] = result?.agents ?? [];
-  const blasts = useMemo<BlastRadius[]>(() => result?.blast_radius ?? [], [result]);
+  const blasts = useMemo<BlastRadius[]>(() => effectiveBlastRadius(result), [result]);
 
   const pipelineStats = useMemo(
     () => (result ? buildPipelineStats(result) : null),
@@ -225,21 +164,22 @@ export default function InsightsPage() {
       {/* Pipeline flow — full width */}
       {pipelineStats && <PipelineFlow stats={pipelineStats} />}
 
-      {/* Supply chain treemap — full width; click a package → /vulns */}
-      {agents.length > 0 && (
-        <div>
-          <SupplyChainTreemap
-            agents={agents}
-            onPackageClick={(pkg) => router.push(`/vulns?search=${encodeURIComponent(pkg)}`)}
-          />
-          <p className="text-[10px] text-zinc-700 mt-1 text-right">Click a package to drill down → Vulns</p>
-        </div>
-      )}
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)] gap-4">
+        {/* Supply chain treemap; click a package → /vulns */}
+        {agents.length > 0 && (
+          <div>
+            <SupplyChainTreemap
+              agents={agents}
+              onPackageClick={(pkg) => router.push(`/vulns?search=${encodeURIComponent(pkg)}`)}
+            />
+            <p className="text-[10px] text-zinc-700 mt-1 text-right">Click a package to drill down → Vulns</p>
+          </div>
+        )}
 
-      {/* 2-col: blast radius radial + EPSS×CVSS scatter */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {blasts.length > 0 && <BlastRadiusRadial data={blasts} />}
-        {epssVsCvss.length > 0 && <EpssVsCvssChart data={epssVsCvss} />}
+        <div className="grid gap-4">
+          {blasts.length > 0 && <BlastRadiusRadial data={blasts} />}
+          {epssVsCvss.length > 0 && <EpssVsCvssChart data={epssVsCvss} />}
+        </div>
       </div>
 
       {/* Trend (multi-scan history) — full width */}

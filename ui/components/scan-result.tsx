@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { api, type ScanJob, type ScanJobStatus, type ScanResult, type BlastRadius, type RemediationItem, type GraphExportFormat, formatDate, OWASP_LLM_TOP10, MITRE_ATLAS, severityColor } from "@/lib/api";
-import type { StepEvent, SSEEvent } from "@/lib/api";
+import { useScanStream } from "@/lib/use-scan-stream";
 import { ScanPipeline } from "@/components/scan-pipeline";
 import { SeverityBadge } from "@/components/severity-badge";
 import {
@@ -13,88 +13,67 @@ import {
 
 // ─── Scan Result View ───────────────────────────────────────────────────────
 
+function mergeScanStatus(prev: ScanJob | null, status: ScanJobStatus): ScanJob {
+  return {
+    job_id: status.job_id,
+    tenant_id: status.tenant_id ?? prev?.tenant_id,
+    status: status.status,
+    created_at: status.created_at,
+    completed_at: status.completed_at ?? prev?.completed_at,
+    request: status.request ?? prev?.request ?? {},
+    progress: prev?.progress ?? [],
+    result: prev?.result,
+    error: status.error ?? prev?.error,
+  };
+}
+
 export function ScanResultView({ id }: { id: string }) {
   const [job, setJob] = useState<ScanJob | null>(null);
-  const [messages, setMessages] = useState<string[]>([]);
-  const [streaming, setStreaming] = useState(true);
-  const [pipelineSteps, setPipelineSteps] = useState<Map<string, StepEvent>>(new Map());
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   const logRef = useRef<HTMLDivElement>(null);
   const fetchedResultRef = useRef(false);
   const fetchingResultRef = useRef(false);
+  const activeJobIdRef = useRef(id);
+
+  const fetchFullResultOnce = useCallback(async () => {
+    if (fetchedResultRef.current || fetchingResultRef.current) return;
+    fetchingResultRef.current = true;
+    try {
+      const fullJob = await api.getScan(id);
+      if (activeJobIdRef.current === id) {
+        setJob(fullJob);
+        fetchedResultRef.current = true;
+      }
+    } finally {
+      fetchingResultRef.current = false;
+    }
+  }, [id]);
+
+  const refreshStatus = useCallback(async () => {
+    const status = await api.getScanStatus(id);
+    if (activeJobIdRef.current !== id) return;
+    setJob((prev) => mergeScanStatus(prev, status));
+    if (status.status === "done" || status.status === "failed" || status.status === "cancelled") {
+      await fetchFullResultOnce();
+    }
+  }, [fetchFullResultOnce, id]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    function mergeStatus(prev: ScanJob | null, status: ScanJobStatus): ScanJob {
-      return {
-        job_id: status.job_id,
-        tenant_id: status.tenant_id ?? prev?.tenant_id,
-        status: status.status,
-        created_at: status.created_at,
-        completed_at: status.completed_at ?? prev?.completed_at,
-        request: status.request ?? prev?.request ?? {},
-        progress: prev?.progress ?? [],
-        result: prev?.result,
-        error: status.error ?? prev?.error,
-      };
-    }
-
-    async function fetchFullResultOnce() {
-      if (fetchedResultRef.current || fetchingResultRef.current) return;
-      fetchingResultRef.current = true;
-      try {
-        const fullJob = await api.getScan(id);
-        if (!cancelled) {
-          setJob(fullJob);
-          fetchedResultRef.current = true;
-        }
-      } finally {
-        fetchingResultRef.current = false;
-      }
-    }
-
-    async function refreshStatus() {
-      const status = await api.getScanStatus(id);
-      if (cancelled) return;
-      setJob((prev) => mergeStatus(prev, status));
-      if (status.status === "done" || status.status === "failed" || status.status === "cancelled") {
-        await fetchFullResultOnce();
-      }
-    }
-
+    activeJobIdRef.current = id;
     fetchedResultRef.current = false;
     fetchingResultRef.current = false;
     refreshStatus().catch(() => {});
+  }, [id, refreshStatus]);
 
-    const cleanup = api.streamScan(
-      id,
-      (data: SSEEvent) => {
-        if (data.type === "step") {
-          const step = data as StepEvent;
-          setPipelineSteps((prev) => {
-            const next = new Map(prev);
-            next.set(step.step_id, step);
-            return next;
-          });
-          setMessages((m) => [...m, step.message]);
-        } else if (data.type === "progress") {
-          const d = data as { message?: string };
-          if (d.message) setMessages((m) => [...m, d.message!]);
-        }
-        refreshStatus().catch(() => {});
-      },
-      () => {
-        setStreaming(false);
-        refreshStatus().catch(() => {});
-      }
-    );
-    return () => {
-      cancelled = true;
-      cleanup();
-    };
-  }, [id]);
+  const handleStreamUpdate = useCallback(() => {
+    refreshStatus().catch(() => {});
+  }, [refreshStatus]);
+
+  const { messages, pipelineSteps, streaming } = useScanStream(id, {
+    onDone: handleStreamUpdate,
+    onEvent: handleStreamUpdate,
+  });
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;

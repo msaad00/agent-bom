@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from click.testing import CliRunner
 
 from agent_bom.cli import main
 from agent_bom.skill_bundles import build_skill_bundle
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 def test_skills_scan_json(tmp_path):
@@ -45,6 +48,24 @@ Environment:
     assert data["files"][0]["bundle"]["sha256"]
     assert data["files"][0]["trust"]["review_verdict"] in {"trusted", "review", "high_risk", "blocked"}
     assert "behavioral_summary" in data["files"][0]["audit"]
+
+
+def test_skills_scan_missing_guardrail_fixture_reports_contract_gap():
+    """Release fixture for skill files that omit declared capability guardrails."""
+    fixture = FIXTURES / "skills" / "missing-guardrail"
+
+    runner = CliRunner()
+    result = runner.invoke(main, ["skills", "scan", str(fixture), "--format", "json"])
+    assert result.exit_code == 0, result.output
+
+    data = json.loads(result.output)
+    findings = data["files"][0]["audit"]["findings"]
+    categories = {finding["category"] for finding in findings}
+
+    assert data["summary"]["files_scanned"] == 1
+    assert "missing_capability_declaration" in categories
+    assert "prompt_coercion" in categories
+    assert data["files"][0]["audit"]["behavioral_summary"]["high_or_critical"] >= 1
 
 
 def test_skills_scan_json_with_catalog_and_intel(tmp_path):

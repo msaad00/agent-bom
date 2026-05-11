@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from agent_bom.parsers import scan_project_directory, summarize_project_inventory
 from agent_bom.sbom import detect_sbom_resource_name, load_sbom
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 # ── scan_project_directory ────────────────────────────────────────────────────
 
@@ -189,6 +192,30 @@ class TestScanProjectDirectory:
         assert summary["ecosystems"] == {"npm": 2}
         assert summary["directories"][0]["lockfile_files"] == ["package-lock.json"]
         assert summary["directories"][0]["advisory_evidence"] == "lockfile_backed"
+
+    def test_workspace_package_lock_fixture_keeps_nested_manifest_context(self):
+        fixture_root = FIXTURES / "npm-workspace-package-lock"
+        web_dir = fixture_root / "apps" / "web"
+
+        result = scan_project_directory(fixture_root)
+        assert web_dir in result
+
+        packages = {package.name: package for package in result[web_dir]}
+        assert packages["react"].version == "18.2.0"
+        assert packages["react"].is_direct is True
+        assert packages["@sample/ui"].version == "1.0.0"
+        assert packages["@sample/ui"].is_direct is True
+        assert packages["vite"].version == "5.4.0"
+        assert packages["vite"].is_direct is True
+        assert packages["rollup"].version == "4.24.0"
+        assert packages["rollup"].is_direct is False
+
+        summary = summarize_project_inventory(fixture_root, result)
+        directory = next(item for item in summary["directories"] if item["path"] == "apps/web")
+        assert set(directory["manifest_files"]) == {"package.json", "package-lock.json"}
+        assert directory["lockfile_files"] == ["package-lock.json"]
+        assert directory["advisory_evidence"] == "lockfile_backed"
+        assert summary["ecosystems"] == {"npm": 4}
 
     def test_summarize_project_inventory_marks_manifest_only_depth(self, tmp_path):
         (tmp_path / "requirements.txt").write_text("requests==2.31.0\nflask==3.0.0\n")

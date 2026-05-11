@@ -63,13 +63,13 @@ export function graphFitViewOptions(input: GraphViewportInput): GraphFitViewOpti
   }
 
   if (input.captureMode) {
-    padding -= input.mode === "mesh" ? 0.04 : 0.02;
-    maxZoom += input.mode === "mesh" ? 0.18 : 0.1;
+    padding -= input.mode === "mesh" ? 0.06 : 0.02;
+    maxZoom += input.mode === "mesh" ? 0.44 : 0.1;
   }
 
   return {
     padding: clamp(padding, 0.08, 0.24),
-    maxZoom: clamp(maxZoom + selectedBoost, 0.82, 1.82),
+    maxZoom: clamp(maxZoom + selectedBoost, 0.82, 2.25),
     duration: input.captureMode ? 0 : 240,
   };
 }

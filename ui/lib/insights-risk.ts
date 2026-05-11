@@ -142,3 +142,61 @@ export function buildEpssVsCvss(blasts: BlastRadius[]): EpssVsCvssPoint[] {
     return severityDelta || b.blast - a.blast;
   });
 }
+
+export interface BlastRadiusSummary {
+  name: string;
+  score: number;
+  severity: string;
+  vulnerability_count: number;
+  agent_count: number;
+  server_count: number;
+}
+
+export function buildBlastRadiusSummary(blasts: BlastRadius[], limit = 8): BlastRadiusSummary[] {
+  const grouped = new Map<
+    string,
+    {
+      score: number;
+      severity: string;
+      vulnerabilities: Set<string>;
+      agents: Set<string>;
+      servers: Set<string>;
+    }
+  >();
+
+  for (const blast of blasts) {
+    const name = blast.package ?? blast.vulnerability_id;
+    const entry = grouped.get(name) ?? {
+      score: 0,
+      severity: "low",
+      vulnerabilities: new Set<string>(),
+      agents: new Set<string>(),
+      servers: new Set<string>(),
+    };
+    const severity = normalizeSeverity(blast.severity);
+    if ((SEVERITY_RANK[severity] ?? 0) > (SEVERITY_RANK[entry.severity] ?? 0)) {
+      entry.severity = severity;
+    }
+    entry.score = Math.max(entry.score, blastPriority(blast));
+    entry.vulnerabilities.add(blast.vulnerability_id);
+    for (const agent of blast.affected_agents ?? []) {
+      entry.agents.add(agent);
+    }
+    for (const server of blast.affected_servers ?? []) {
+      entry.servers.add(server);
+    }
+    grouped.set(name, entry);
+  }
+
+  return [...grouped.entries()]
+    .map(([name, entry]) => ({
+      name,
+      score: entry.score,
+      severity: entry.severity,
+      vulnerability_count: entry.vulnerabilities.size,
+      agent_count: entry.agents.size,
+      server_count: entry.servers.size,
+    }))
+    .sort((left, right) => right.score - left.score || right.vulnerability_count - left.vulnerability_count || left.name.localeCompare(right.name))
+    .slice(0, limit);
+}

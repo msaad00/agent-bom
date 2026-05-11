@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Agent, BlastRadius, ScanResult } from "@/lib/api";
-import { blastPriority, buildDerivedBlastRadius, buildEpssVsCvss, buildPipelineStats, effectiveBlastRadius } from "@/lib/insights-risk";
+import { blastPriority, buildBlastRadiusSummary, buildDerivedBlastRadius, buildEpssVsCvss, buildPipelineStats, effectiveBlastRadius } from "@/lib/insights-risk";
 
 const agents = [
   {
@@ -73,5 +73,43 @@ describe("insights risk helpers", () => {
 
     expect(blastPriority(blast)).toBe(85);
     expect(buildEpssVsCvss([{ ...blast, cvss_score: 8.1, epss_score: 0.2 }])[0]!.blast).toBe(85);
+  });
+
+  it("groups blast radius summary by package so charts do not repeat one package per CVE", () => {
+    const rows = [
+      {
+        vulnerability_id: "CVE-2022-0001",
+        package: "pillow",
+        severity: "critical",
+        affected_agents: ["desktop-agent"],
+        affected_servers: ["filesystem"],
+        exposed_credentials: [],
+        reachable_tools: [],
+        risk_score: 10,
+        blast_score: 100,
+      },
+      {
+        vulnerability_id: "CVE-2023-0002",
+        package: "pillow",
+        severity: "high",
+        affected_agents: ["desktop-agent"],
+        affected_servers: ["filesystem"],
+        exposed_credentials: [],
+        reachable_tools: [],
+        risk_score: 8,
+        blast_score: 80,
+      },
+    ] as BlastRadius[];
+
+    expect(buildBlastRadiusSummary(rows)).toEqual([
+      expect.objectContaining({
+        name: "pillow",
+        severity: "critical",
+        vulnerability_count: 2,
+        agent_count: 1,
+        server_count: 1,
+        score: 100,
+      }),
+    ]);
   });
 });

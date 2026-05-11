@@ -22,7 +22,7 @@ import {
   RadialBar,
 } from "recharts";
 import type { Agent, BlastRadius } from "@/lib/api";
-import { blastPriority } from "@/lib/insights-risk";
+import { buildBlastRadiusSummary } from "@/lib/insights-risk";
 
 // ─── Shared ──────────────────────────────────────────────────────────────────
 
@@ -417,30 +417,34 @@ interface RadialPoint {
   name: string;
   value: number;
   score: number;
+  vulnerabilityCount: number;
+  agentCount: number;
+  serverCount: number;
   fill: string;
 }
 
 export function BlastRadiusRadial({ data }: { data: BlastRadius[] }) {
-  const top = [...data]
-    .sort((a, b) => blastPriority(b) - blastPriority(a))
-    .slice(0, 8);
+  const top = buildBlastRadiusSummary(data, 8);
 
   if (top.length === 0) return null;
 
-  const maxScore = Math.max(...top.map(blastPriority), 1);
+  const maxScore = Math.max(...top.map((entry) => entry.score), 1);
 
-  const radialData: RadialPoint[] = top?.map((br) => {
-    const sev = br.severity?.toLowerCase() ?? "low";
-    const score = blastPriority(br);
+  const radialData: RadialPoint[] = top?.map((entry) => {
+    const sev = entry.severity?.toLowerCase() ?? "low";
+    const score = entry.score;
     const fill =
       sev === "critical" ? "#ef4444"
       : sev === "high" ? "#f97316"
       : sev === "medium" ? "#eab308"
       : "#3b82f6";
     return {
-      name: br.package ?? br.vulnerability_id,
+      name: entry.name,
       value: Math.round((score / maxScore) * 100),
       score,
+      vulnerabilityCount: entry.vulnerability_count,
+      agentCount: entry.agent_count,
+      serverCount: entry.server_count,
       fill,
     };
   });
@@ -449,7 +453,7 @@ export function BlastRadiusRadial({ data }: { data: BlastRadius[] }) {
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 shadow-lg shadow-zinc-950/50">
       <h3 className="text-sm font-semibold text-zinc-300 mb-1">Blast Radius</h3>
       <p className="text-[10px] text-zinc-600 mb-2">
-        Top reachable or vulnerable packages by relative priority
+        Top reachable packages by highest priority, grouped by package
       </p>
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
@@ -480,6 +484,14 @@ export function BlastRadiusRadial({ data }: { data: BlastRadius[] }) {
                   >
                     <div className="font-mono text-zinc-300 mb-1 truncate max-w-[160px]">{d.name}</div>
                     <div className="flex justify-between gap-4">
+                      <span className="text-zinc-500">Findings</span>
+                      <span className="font-mono text-zinc-300">{d.vulnerabilityCount}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
+                      <span className="text-zinc-500">Agents</span>
+                      <span className="font-mono text-zinc-300">{d.agentCount || "n/a"}</span>
+                    </div>
+                    <div className="flex justify-between gap-4">
                       <span className="text-zinc-500">Priority</span>
                       <span className="font-mono" style={{ color: d.fill }}>{d.score.toFixed(1)}</span>
                     </div>
@@ -499,6 +511,7 @@ export function BlastRadiusRadial({ data }: { data: BlastRadius[] }) {
           <div key={d.name} className="flex items-center gap-2 text-[10px]">
             <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: d.fill }} />
             <span className="text-zinc-400 font-mono truncate flex-1">{d.name}</span>
+            <span className="text-zinc-600 font-mono">{d.vulnerabilityCount} findings</span>
             <span className="text-zinc-600 font-mono">{d.score.toFixed(0)}</span>
           </div>
         ))}

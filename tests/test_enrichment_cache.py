@@ -8,6 +8,7 @@ import time
 import pytest
 
 import agent_bom.enrichment as enrichment
+from agent_bom.models import Severity, Vulnerability
 
 
 @pytest.fixture(autouse=True)
@@ -17,6 +18,9 @@ def _reset_enrichment_cache(tmp_path, monkeypatch):
     monkeypatch.setattr(enrichment, "_nvd_file_cache", {})
     monkeypatch.setattr(enrichment, "_epss_file_cache", {})
     monkeypatch.setattr(enrichment, "_enrichment_cache_loaded", False)
+    monkeypatch.setattr(enrichment, "_KEV_CACHE_FILE", tmp_path / "kev_cache.json")
+    monkeypatch.setattr(enrichment, "_kev_cache", None)
+    monkeypatch.setattr(enrichment, "_kev_cache_time", None)
 
 
 class TestNVDCache:
@@ -102,3 +106,49 @@ class TestSaveCacheIdempotent:
         enrichment._nvd_file_cache["CVE-X"] = {"_cached_at": time.time()}
         enrichment._save_enrichment_cache()
         assert (sub / "nvd_cache.json").exists()
+
+
+@pytest.mark.asyncio
+async def test_offline_enrichment_joins_epss_and_kev_caches(tmp_path, monkeypatch):
+    now = time.time()
+    (tmp_path / "epss_cache.json").write_text(
+        json.dumps(
+            {
+                "CVE-2025-9999": {
+                    "score": 0.81,
+                    "percentile": 96.0,
+                    "date": "2026-05-10",
+                    "_cached_at": now - 999_999,
+                }
+            }
+        )
+    )
+    (tmp_path / "kev_cache.json").write_text(
+        json.dumps(
+            {
+                "_cached_at": now - 999_999,
+                "data": {
+                    "CVE-2025-9999": {
+                        "date_added": "2026-05-01",
+                        "due_date": "2026-05-22",
+                    }
+                },
+            }
+        )
+    )
+
+    async def _no_network(*_args, **_kwargs):
+        raise AssertionError("offline cache join must not perform network requests")
+
+    monkeypatch.setattr(enrichment, "request_with_retry", _no_network)
+
+    vuln = Vulnerability(id="CVE-2025-9999", summary="cached", severity=Severity.HIGH)
+    enriched = await enrichment.enrich_vulnerabilities([vuln], offline=True)
+
+    assert enriched == 1
+    assert vuln.epss_score == 0.81
+    assert vuln.epss_percentile == 96.0
+    assert vuln.exploitability == "HIGH"
+    assert vuln.is_kev is True
+    assert vuln.kev_date_added == "2026-05-01"
+    assert vuln.kev_due_date == "2026-05-22"

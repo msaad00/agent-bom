@@ -29,6 +29,7 @@ _FIELD_TO_VULN_KEY: dict[str, str] = {
     "cmmc_tags": "cmmc",
     "nist_800_53_tags": "nist_800_53",
     "fedramp_tags": "fedramp",
+    "pci_dss_tags": "pci_dss",
 }
 
 

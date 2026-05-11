@@ -41,6 +41,7 @@ _MOCK_TECHNIQUES: dict[str, dict] = {
     # Execution
     "T1059": {"name": "Command and Scripting Interpreter", "tactics": ["execution"], "description": "", "platforms": []},
     "T1059.004": {"name": "Unix Shell", "tactics": ["execution"], "description": "", "platforms": []},
+    "T1203": {"name": "Exploitation for Client Execution", "tactics": ["execution"], "description": "", "platforms": []},
     # Initial Access
     "T1078": {
         "name": "Valid Accounts",
@@ -52,6 +53,7 @@ _MOCK_TECHNIQUES: dict[str, dict] = {
     "T1195": {"name": "Supply Chain Compromise", "tactics": ["initial-access"], "description": "", "platforms": []},
     "T1195.002": {"name": "Compromise Software Supply Chain", "tactics": ["initial-access"], "description": "", "platforms": []},
     # Credential Access
+    "T1003.001": {"name": "LSASS Memory", "tactics": ["credential-access"], "description": "", "platforms": []},
     "T1552": {"name": "Unsecured Credentials", "tactics": ["credential-access"], "description": "", "platforms": []},
     "T1556": {
         "name": "Modify Authentication Process",
@@ -63,6 +65,7 @@ _MOCK_TECHNIQUES: dict[str, dict] = {
     "T1562": {"name": "Impair Defenses", "tactics": ["defense-evasion"], "description": "", "platforms": []},
     "T1562.008": {"name": "Disable Cloud Logs", "tactics": ["defense-evasion"], "description": "", "platforms": []},
     # Collection / Exfiltration
+    "T1040": {"name": "Network Sniffing", "tactics": ["credential-access", "collection"], "description": "", "platforms": []},
     "T1530": {"name": "Data from Cloud Storage", "tactics": ["collection"], "description": "", "platforms": []},
     "T1537": {"name": "Transfer Data to Cloud Account", "tactics": ["exfiltration"], "description": "", "platforms": []},
     # Privilege Escalation
@@ -91,6 +94,7 @@ _MOCK_CWE_TO_ATTACK: dict[str, list[str]] = {
     "CWE-502": ["T1059", "T1190"],
     "CWE-400": ["T1499"],
     "CWE-494": ["T1195.002"],
+    "CWE-787": ["T1203"],
 }
 
 
@@ -359,6 +363,16 @@ def test_high_severity_without_direct_cwe_mapping_falls_back_to_initial_access()
     with _mock_catalog():
         tags = tag_blast_radius(_br(cwe_ids=["CWE-99999"], severity=Severity.HIGH))
     assert len(tags) > 0
+
+
+def test_heap_overflow_cwe_does_not_broadcast_unrelated_attack_tactics():
+    with _mock_catalog():
+        tags = tag_blast_radius(_br(cwe_ids=["CWE-787"], severity=Severity.CRITICAL, tools=[], creds=[]))
+
+    assert "T1203" in tags
+    assert "T1003.001" not in tags
+    assert "T1059.004" not in tags
+    assert "T1040" not in tags
 
 
 # ─── tag_blast_radius — context-based signals ─────────────────────────────────

@@ -8,15 +8,19 @@ remediation-compliance bridges.
 Supported frameworks (slug → display name):
     owasp-llm         OWASP Top 10 for LLM
     owasp-mcp         OWASP MCP Top 10
-    atlas             MITRE ATLAS
-    nist              NIST AI RMF
     owasp-agentic     OWASP Agentic Top 10
+    nist-800-53       NIST SP 800-53
+    fedramp           FedRAMP Moderate
+    atlas             MITRE ATLAS
+    attack            MITRE ATT&CK Enterprise
+    nist              NIST AI RMF
     eu-ai-act         EU AI Act
     nist-csf          NIST CSF 2.0
     iso-27001         ISO 27001:2022
     soc2              SOC 2 TSC
     cis               CIS Controls v8
     cmmc              CMMC 2.0
+    pci-dss           PCI DSS v4.0
 """
 
 from __future__ import annotations
@@ -31,53 +35,48 @@ if TYPE_CHECKING:
 # ─── Catalogue lookups ────────────────────────────────────────────────────────
 # Imported lazily where needed to keep top-level import cost low.
 
+_DISPLAY_NAME_OVERRIDES: dict[str, str] = {
+    "owasp-llm": "OWASP Top 10 for LLM",
+    "owasp-mcp": "OWASP MCP Top 10",
+    "owasp-agentic": "OWASP Agentic Top 10",
+    "nist": "NIST AI RMF",
+    "nist-csf": "NIST CSF 2.0",
+    "nist-800-53": "NIST 800-53",
+    "fedramp": "FedRAMP",
+    "atlas": "MITRE ATLAS",
+    "attack": "MITRE ATT&CK",
+    "iso-27001": "ISO 27001:2022",
+    "soc2": "SOC 2 TSC",
+    "cis": "CIS Controls v8",
+    "cmmc": "CMMC 2.0",
+}
+
 
 def _get_catalog(slug: str) -> tuple[dict[str, str], str, str]:
     """Return (catalog_dict, tag_field_on_blast_radius, display_name) for a framework slug."""
-    from agent_bom.atlas import ATLAS_TECHNIQUES
-    from agent_bom.cis_controls import CIS_CONTROLS
-    from agent_bom.cmmc import CMMC_PRACTICES
-    from agent_bom.eu_ai_act import EU_AI_ACT
-    from agent_bom.iso_27001 import ISO_27001
-    from agent_bom.nist_ai_rmf import NIST_AI_RMF
-    from agent_bom.nist_csf import NIST_CSF
-    from agent_bom.owasp import OWASP_LLM_TOP10
-    from agent_bom.owasp_agentic import OWASP_AGENTIC_TOP10
-    from agent_bom.owasp_mcp import OWASP_MCP_TOP10
-    from agent_bom.soc2 import SOC2_TSC
+    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
 
-    framework_map: dict[str, tuple[dict[str, str], str, str]] = {
-        "owasp-llm": (OWASP_LLM_TOP10, "owasp_tags", "OWASP Top 10 for LLM"),
-        "owasp-mcp": (OWASP_MCP_TOP10, "owasp_mcp_tags", "OWASP MCP Top 10"),
-        "atlas": (ATLAS_TECHNIQUES, "atlas_tags", "MITRE ATLAS"),
-        "nist": (NIST_AI_RMF, "nist_ai_rmf_tags", "NIST AI RMF"),
-        "owasp-agentic": (OWASP_AGENTIC_TOP10, "owasp_agentic_tags", "OWASP Agentic Top 10"),
-        "eu-ai-act": (EU_AI_ACT, "eu_ai_act_tags", "EU AI Act"),
-        "nist-csf": (NIST_CSF, "nist_csf_tags", "NIST CSF 2.0"),
-        "iso-27001": (ISO_27001, "iso_27001_tags", "ISO 27001:2022"),
-        "soc2": (SOC2_TSC, "soc2_tags", "SOC 2 TSC"),
-        "cis": (CIS_CONTROLS, "cis_tags", "CIS Controls v8"),
-        "cmmc": (CMMC_PRACTICES, "cmmc_tags", "CMMC 2.0"),
-    }
+    framework_map: dict[str, tuple[dict[str, str], str, str]] = {}
+    for metadata in TAG_MAPPED_FRAMEWORKS:
+        catalog = dict(metadata.catalog)
+        if metadata.slug == "attack":
+            from agent_bom.mitre_attack import get_attack_techniques
+
+            catalog = get_attack_techniques()
+        framework_map[metadata.slug] = (catalog, metadata.tag_field, _DISPLAY_NAME_OVERRIDES.get(metadata.slug, metadata.report_label))
     entry = framework_map.get(slug)
     if entry is None:
         raise ValueError(f"Unknown framework '{slug}'. Supported: {', '.join(framework_map.keys())}")
     return entry
 
 
-ALL_FRAMEWORK_SLUGS: list[str] = [
-    "owasp-llm",
-    "owasp-mcp",
-    "atlas",
-    "nist",
-    "owasp-agentic",
-    "eu-ai-act",
-    "nist-csf",
-    "iso-27001",
-    "soc2",
-    "cis",
-    "cmmc",
-]
+def _all_framework_slugs() -> list[str]:
+    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
+
+    return [metadata.slug for metadata in TAG_MAPPED_FRAMEWORKS]
+
+
+ALL_FRAMEWORK_SLUGS: list[str] = _all_framework_slugs()
 
 
 # ─── Dataclasses ─────────────────────────────────────────────────────────────
@@ -384,56 +383,11 @@ def _build_remediation_impact(
     Groups blast radius entries by (package, current_version, fix_version),
     collects all framework control codes triggered, and generates a narrative.
     """
-    from agent_bom.atlas import ATLAS_TECHNIQUES
-    from agent_bom.cis_controls import CIS_CONTROLS
-    from agent_bom.cmmc import CMMC_PRACTICES
-    from agent_bom.eu_ai_act import EU_AI_ACT
-    from agent_bom.iso_27001 import ISO_27001
-    from agent_bom.nist_ai_rmf import NIST_AI_RMF
-    from agent_bom.nist_csf import NIST_CSF
-    from agent_bom.owasp import OWASP_LLM_TOP10
-    from agent_bom.owasp_agentic import OWASP_AGENTIC_TOP10
-    from agent_bom.owasp_mcp import OWASP_MCP_TOP10
-    from agent_bom.soc2 import SOC2_TSC
+    from agent_bom.compliance_coverage import TAG_MAPPED_FRAMEWORKS
 
-    # Map control code → framework display name for narrative generation
-    control_to_framework: dict[str, str] = {}
-    for code in OWASP_LLM_TOP10:
-        control_to_framework[code] = "OWASP Top 10 for LLM"
-    for code in OWASP_MCP_TOP10:
-        control_to_framework[code] = "OWASP MCP Top 10"
-    for code in ATLAS_TECHNIQUES:
-        control_to_framework[code] = "MITRE ATLAS"
-    for code in NIST_AI_RMF:
-        control_to_framework[code] = "NIST AI RMF"
-    for code in OWASP_AGENTIC_TOP10:
-        control_to_framework[code] = "OWASP Agentic Top 10"
-    for code in EU_AI_ACT:
-        control_to_framework[code] = "EU AI Act"
-    for code in NIST_CSF:
-        control_to_framework[code] = "NIST CSF 2.0"
-    for code in ISO_27001:
-        control_to_framework[code] = "ISO 27001:2022"
-    for code in SOC2_TSC:
-        control_to_framework[code] = "SOC 2 TSC"
-    for code in CIS_CONTROLS:
-        control_to_framework[code] = "CIS Controls v8"
-    for code in CMMC_PRACTICES:
-        control_to_framework[code] = "CMMC 2.0"
-
-    tag_fields = [
-        "owasp_tags",
-        "owasp_mcp_tags",
-        "atlas_tags",
-        "nist_ai_rmf_tags",
-        "owasp_agentic_tags",
-        "eu_ai_act_tags",
-        "nist_csf_tags",
-        "iso_27001_tags",
-        "soc2_tags",
-        "cis_tags",
-        "cmmc_tags",
-    ]
+    field_to_framework = {
+        metadata.tag_field: _DISPLAY_NAME_OVERRIDES.get(metadata.slug, metadata.report_label) for metadata in TAG_MAPPED_FRAMEWORKS
+    }
 
     # Group: key = (pkg_name_version, fix_version)
     # value = {controls: set, frameworks: set}
@@ -460,12 +414,10 @@ def _build_remediation_impact(
                 "frameworks": set(),
             }
 
-        for tag_field in tag_fields:
+        for tag_field, framework_label in field_to_framework.items():
             for tag in br.get(tag_field, []):
                 groups[key]["controls"].add(tag)
-                fw = control_to_framework.get(tag)
-                if fw:
-                    groups[key]["frameworks"].add(fw)
+                groups[key]["frameworks"].add(framework_label)
 
     impacts: list[RemediationImpact] = []
     for _key, data in groups.items():
@@ -648,8 +600,8 @@ def generate_compliance_narrative(
         report: The AIBOMReport to analyse.
         framework: Optional framework slug to generate a single-framework
             narrative.  When None (default), all frameworks are included.
-            Supported slugs: owasp-llm, owasp-mcp, atlas, nist, owasp-agentic,
-            eu-ai-act, nist-csf, iso-27001, soc2, cis, cmmc.
+            Supported slugs are the tag-mapped slugs in
+            agent_bom.compliance_coverage.TAG_MAPPED_FRAMEWORKS.
 
     Returns:
         A ComplianceNarrative dataclass suitable for JSON serialisation.
@@ -686,6 +638,10 @@ def generate_compliance_narrative(
                 "soc2_tags": br.soc2_tags,
                 "cis_tags": br.cis_tags,
                 "cmmc_tags": br.cmmc_tags,
+                "attack_tags": getattr(br, "attack_tags", []),
+                "nist_800_53_tags": getattr(br, "nist_800_53_tags", []),
+                "fedramp_tags": getattr(br, "fedramp_tags", []),
+                "pci_dss_tags": getattr(br, "pci_dss_tags", []),
             }
         )
 

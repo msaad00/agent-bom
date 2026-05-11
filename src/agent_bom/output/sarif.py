@@ -59,6 +59,9 @@ _FRAMEWORK_TAXONOMY_META: dict[str, tuple[str, str, str]] = {
     ),
     "cis_tags": ("cis-controls", "CIS Controls", "https://www.cisecurity.org/controls"),
     "cmmc_tags": ("cmmc", "Cybersecurity Maturity Model Certification", "https://dodcio.defense.gov/CMMC/"),
+    "nist_800_53_tags": ("nist-800-53", "NIST SP 800-53", "https://csrc.nist.gov/publications/detail/sp/800-53/rev-5/final"),
+    "fedramp_tags": ("fedramp", "FedRAMP", "https://www.fedramp.gov/"),
+    "pci_dss_tags": ("pci-dss", "PCI DSS", "https://www.pcisecuritystandards.org/"),
 }
 
 
@@ -134,6 +137,28 @@ def _build_run_taxonomies(results: list[dict]) -> list[dict]:
             }
         )
     return taxonomies
+
+
+def _framework_taxa_references(properties: dict[str, Any]) -> list[dict]:
+    """Build result-level SARIF taxa references for declared framework taxonomies."""
+    refs: list[dict] = []
+    seen: set[tuple[str, str]] = set()
+    for property_name, (taxonomy_name, _full_name, _uri) in _FRAMEWORK_TAXONOMY_META.items():
+        raw_tags = properties.get(property_name) or []
+        if isinstance(raw_tags, str):
+            raw_tags = [raw_tags]
+        if not isinstance(raw_tags, list):
+            continue
+        for raw_tag in raw_tags:
+            tag = str(raw_tag).strip()
+            if not tag:
+                continue
+            key = (taxonomy_name, tag)
+            if key in seen:
+                continue
+            seen.add(key)
+            refs.append({"id": tag, "toolComponent": {"name": taxonomy_name}})
+    return refs
 
 
 def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
@@ -259,6 +284,7 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
         if (
             br.owasp_tags
             or br.atlas_tags
+            or getattr(br, "attack_tags", [])
             or br.nist_ai_rmf_tags
             or br.owasp_mcp_tags
             or br.owasp_agentic_tags
@@ -268,6 +294,9 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
             or br.soc2_tags
             or br.cis_tags
             or br.cmmc_tags
+            or getattr(br, "nist_800_53_tags", [])
+            or getattr(br, "fedramp_tags", [])
+            or getattr(br, "pci_dss_tags", [])
         ):
             result_properties.update(
                 {
@@ -283,9 +312,15 @@ def to_sarif(report: AIBOMReport, *, exclude_unfixable: bool = False) -> dict:
                     "soc2_tags": br.soc2_tags,
                     "cis_tags": br.cis_tags,
                     "cmmc_tags": br.cmmc_tags,
+                    "nist_800_53_tags": getattr(br, "nist_800_53_tags", []),
+                    "fedramp_tags": getattr(br, "fedramp_tags", []),
+                    "pci_dss_tags": getattr(br, "pci_dss_tags", []),
                 }
             )
         result["properties"] = result_properties
+        taxa_refs = _framework_taxa_references(result_properties)
+        if taxa_refs:
+            result["taxa"] = taxa_refs
         results.append(result)
 
     # Unified non-CVE findings, including MCP intelligence/blocklist matches.

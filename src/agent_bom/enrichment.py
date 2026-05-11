@@ -121,6 +121,60 @@ def _save_enrichment_cache() -> None:
             _logger.warning("Failed to persist %s enrichment cache to disk", name)
 
 
+def _cached_epss_scores(cve_ids: list[str], *, allow_stale: bool = False) -> dict[str, dict]:
+    """Return EPSS entries already present in the local cache."""
+    if not cve_ids:
+        return {}
+    _load_enrichment_cache()
+    raw_cache = dict(_epss_file_cache)
+    if allow_stale:
+        cache_file = _ENRICHMENT_CACHE_DIR / "epss_cache.json"
+        if cache_file.exists():
+            try:
+                raw = json.loads(cache_file.read_text())
+                if isinstance(raw, dict):
+                    raw_cache.update({k: v for k, v in raw.items() if isinstance(v, dict)})
+            except (OSError, json.JSONDecodeError, ValueError) as exc:
+                _logger.warning("Failed to load EPSS disk cache: %s", exc)
+    max_age_secs = 30 * 86400
+    now = time.time()
+    scores: dict[str, dict] = {}
+    for cve_id in cve_ids:
+        cached = raw_cache.get(cve_id)
+        if not isinstance(cached, dict):
+            continue
+        cached_at = cached.get("_cached_at", 0)
+        if allow_stale or now - cached_at < max_age_secs:
+            scores[cve_id] = {k: v for k, v in cached.items() if k != "_cached_at"}
+            record_enrichment_source("epss", "cache")
+    return scores
+
+
+def _cached_kev_catalog(*, allow_stale: bool = False) -> dict:
+    """Return the persisted KEV catalog without making network requests."""
+    global _kev_cache, _kev_cache_time
+    if _kev_cache and _kev_cache_time:
+        age = datetime.now(timezone.utc) - _kev_cache_time
+        if allow_stale or age.total_seconds() < _KEV_CACHE_TTL_SECONDS:
+            record_enrichment_source("cisa_kev", "cache")
+            return _kev_cache
+
+    if not _KEV_CACHE_FILE.exists():
+        return {}
+    try:
+        disk_data = json.loads(_KEV_CACHE_FILE.read_text())
+        cached_at = disk_data.get("_cached_at", 0)
+        data = disk_data.get("data") or {}
+        if data and (allow_stale or (time.time() - cached_at) < _KEV_CACHE_TTL_SECONDS):
+            _kev_cache = data
+            _kev_cache_time = datetime.fromtimestamp(cached_at, tz=timezone.utc)
+            record_enrichment_source("cisa_kev", "cache")
+            return data
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        _logger.warning("Failed to load KEV disk cache: %s", exc)
+    return {}
+
+
 async def fetch_nvd_data(cve_id: str, client: httpx.AsyncClient, api_key: Optional[str] = None) -> Optional[dict]:
     """Fetch CVE data from NVD API (with persistent file cache).
 
@@ -203,19 +257,9 @@ async def fetch_epss_scores(cve_ids: list[str], client: httpx.AsyncClient) -> di
     scores: dict[str, dict] = {}
     uncached: list[str] = []
 
-    # Check persistent cache first — reject entries older than 30 days
-    _max_age_secs = 30 * 86400  # 30 days
-    now = time.time()
+    scores.update(_cached_epss_scores(cve_ids))
     for cve_id in cve_ids:
-        if cve_id in _epss_file_cache:
-            cached = _epss_file_cache[cve_id]
-            cached_at = cached.get("_cached_at", 0)
-            if now - cached_at < _max_age_secs:
-                scores[cve_id] = {k: v for k, v in cached.items() if k != "_cached_at"}
-                record_enrichment_source("epss", "cache")
-            else:
-                uncached.append(cve_id)  # Stale — refetch
-        else:
+        if cve_id not in scores:
             uncached.append(cve_id)
 
     if not uncached:
@@ -299,17 +343,9 @@ async def fetch_cisa_kev_catalog(client: httpx.AsyncClient) -> dict:
             return _kev_cache
 
     # Try loading from disk cache if in-memory cache is stale
-    if not _kev_cache and _KEV_CACHE_FILE.exists():
-        try:
-            disk_data = json.loads(_KEV_CACHE_FILE.read_text())
-            cached_at = disk_data.get("_cached_at", 0)
-            if (time.time() - cached_at) < _KEV_CACHE_TTL_SECONDS:
-                _kev_cache = disk_data.get("data") or {}
-                _kev_cache_time = datetime.fromtimestamp(cached_at, tz=timezone.utc)
-                record_enrichment_source("cisa_kev", "cache")
-                return _kev_cache  # type: ignore[return-value]  # dict from disk cache
-        except (OSError, json.JSONDecodeError, ValueError) as exc:
-            _logger.warning("Failed to load KEV disk cache: %s", exc)
+    disk_cache = _cached_kev_catalog()
+    if disk_cache:
+        return disk_cache
 
     response = await request_with_retry(client, "GET", CISA_KEV_URL)
 
@@ -412,6 +448,7 @@ async def enrich_vulnerabilities(
     enable_nvd: bool = True,
     enable_epss: bool = True,
     enable_kev: bool = True,
+    offline: bool = False,
 ) -> int:
     """Enrich vulnerabilities with NVD, EPSS, and CISA KEV data.
 
@@ -440,21 +477,28 @@ async def enrich_vulnerabilities(
         # ── Parallel enrichment: EPSS + KEV + NVD run concurrently ──
         # EPSS and KEV are single-call fetches. NVD needs CWE pre-check
         # (local, no network) then batched fetch. All three are independent.
-        console.print("  [cyan]→[/cyan] Fetching EPSS + KEV + NVD in parallel...")
+        if offline:
+            console.print("  [cyan]→[/cyan] Joining EPSS + KEV from local offline caches...")
+        else:
+            console.print("  [cyan]→[/cyan] Fetching EPSS + KEV + NVD in parallel...")
 
         async def _fetch_epss() -> dict:
             if not enable_epss:
                 return {}
+            if offline:
+                return _cached_epss_scores(cve_ids, allow_stale=True)
             data = await fetch_epss_scores(cve_ids, client)
             return data or {}
 
         async def _fetch_kev() -> dict:
             if not enable_kev:
                 return {}
+            if offline:
+                return _cached_kev_catalog(allow_stale=True)
             return await fetch_cisa_kev_catalog(client)
 
         async def _fetch_nvd() -> tuple[dict[str, dict], int, int]:
-            if not enable_nvd or not cve_ids:
+            if offline or not enable_nvd or not cve_ids:
                 return {}, 0, 0
             # Build set of CVE IDs that already have CWE data (local check)
             cves_with_cwes: set[str] = set()
@@ -608,6 +652,7 @@ def enrich_vulnerabilities_sync(
     enable_nvd: bool = True,
     enable_epss: bool = True,
     enable_kev: bool = True,
+    offline: bool = False,
 ) -> int:
     """Synchronous wrapper for enrich_vulnerabilities."""
     return asyncio.run(
@@ -617,5 +662,6 @@ def enrich_vulnerabilities_sync(
             enable_nvd,
             enable_epss,
             enable_kev,
+            offline,
         )
     )

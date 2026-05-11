@@ -783,6 +783,7 @@ class BlastRadius:
     cmmc_tags: list[str] = field(default_factory=list)  # CMMC 2.0 Level 2, e.g. ["RA.L2-3.11.2"]
     nist_800_53_tags: list[str] = field(default_factory=list)  # NIST 800-53 Rev 5, e.g. ["RA-5", "SI-2"]
     fedramp_tags: list[str] = field(default_factory=list)  # FedRAMP Moderate baseline, e.g. ["RA-5"]
+    pci_dss_tags: list[str] = field(default_factory=list)  # PCI DSS v4.0, e.g. ["Req-6.3"]
     ai_summary: Optional[str] = None  # LLM-generated contextual risk narrative
     suppressed: bool = False  # True when a tenant suppression/feedback rule covers this finding
     suppression_id: Optional[str] = None

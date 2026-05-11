@@ -81,6 +81,7 @@ class ControlTag:
     version: Optional[str] = None
     confidence: Optional[float] = None
     source: Optional[str] = None
+    via: Optional[str] = None
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -89,6 +90,7 @@ class ControlTag:
             "version": self.version,
             "confidence": self.confidence,
             "source": self.source,
+            "via": self.via,
         }
 
     @classmethod
@@ -101,6 +103,7 @@ class ControlTag:
             except ValueError:
                 confidence = None
         raw_source = payload.get("source") or payload.get("via")
+        raw_via = payload.get("via")
 
         return cls(
             framework=str(payload.get("framework") or ""),
@@ -108,6 +111,7 @@ class ControlTag:
             version=str(payload["version"]) if payload.get("version") is not None else None,
             confidence=confidence,
             source=str(raw_source) if raw_source else None,
+            via=str(raw_via) if raw_via else None,
         )
 
 
@@ -124,7 +128,30 @@ LEGACY_CONTROL_FIELDS: tuple[tuple[str, str], ...] = (
     ("iso_27001_tags", "iso_27001"),
     ("soc2_tags", "soc2"),
     ("cis_tags", "cis"),
+    ("cmmc_tags", "cmmc"),
+    ("nist_800_53_tags", "nist_800_53"),
+    ("fedramp_tags", "fedramp"),
+    ("pci_dss_tags", "pci_dss"),
 )
+
+_LEGACY_CONTROL_VERSION_BY_FRAMEWORK: dict[str, str] = {
+    "generic": "legacy",
+    "owasp_llm": "2025",
+    "mitre_atlas": "bundled",
+    "mitre_attack": "enterprise-bundled",
+    "nist_ai_rmf": "1.0",
+    "owasp_mcp": "2025",
+    "owasp_agentic": "2026",
+    "eu_ai_act": "2024",
+    "nist_csf": "2.0",
+    "iso_27001": "2022",
+    "soc2": "2017",
+    "cis": "v8",
+    "cmmc": "2.0",
+    "nist_800_53": "rev5",
+    "fedramp": "moderate",
+    "pci_dss": "4.0",
+}
 
 
 def _dedupe_control_tags(tags: list[ControlTag]) -> list[ControlTag]:
@@ -209,6 +236,10 @@ class Finding:
     iso_27001_tags: list[str] = field(default_factory=list)
     soc2_tags: list[str] = field(default_factory=list)
     cis_tags: list[str] = field(default_factory=list)
+    cmmc_tags: list[str] = field(default_factory=list)
+    nist_800_53_tags: list[str] = field(default_factory=list)
+    fedramp_tags: list[str] = field(default_factory=list)
+    pci_dss_tags: list[str] = field(default_factory=list)
 
     # Graph / correlation
     related_findings: list[str] = field(default_factory=list)  # IDs of related findings
@@ -254,7 +285,16 @@ class Finding:
             values = getattr(self, field_name)
             for value in values:
                 if value:
-                    tags.append(ControlTag(framework=framework, control=str(value), source=f"legacy:{field_name}"))
+                    tags.append(
+                        ControlTag(
+                            framework=framework,
+                            control=str(value),
+                            version=_LEGACY_CONTROL_VERSION_BY_FRAMEWORK.get(framework, "legacy"),
+                            confidence=0.75,
+                            source=f"legacy:{field_name}",
+                            via=field_name,
+                        )
+                    )
         return tags
 
     def normalized_controls(self) -> list[ControlTag]:
@@ -278,6 +318,10 @@ class Finding:
             + self.iso_27001_tags
             + self.soc2_tags
             + self.cis_tags
+            + self.cmmc_tags
+            + self.nist_800_53_tags
+            + self.fedramp_tags
+            + self.pci_dss_tags
             + [tag.control for tag in self.normalized_controls()]
         ):
             if tag not in seen:
@@ -330,6 +374,10 @@ class Finding:
             "iso_27001_tags": self.iso_27001_tags,
             "soc2_tags": self.soc2_tags,
             "cis_tags": self.cis_tags,
+            "cmmc_tags": self.cmmc_tags,
+            "nist_800_53_tags": self.nist_800_53_tags,
+            "fedramp_tags": self.fedramp_tags,
+            "pci_dss_tags": self.pci_dss_tags,
             "related_findings": self.related_findings,
             "evidence": self.evidence,
             "risk_score": self.risk_score,
@@ -547,6 +595,10 @@ def blast_radius_to_finding(br: object) -> "Finding":
         iso_27001_tags=list(br.iso_27001_tags),
         soc2_tags=list(br.soc2_tags),
         cis_tags=list(br.cis_tags),
+        cmmc_tags=list(getattr(br, "cmmc_tags", [])),
+        nist_800_53_tags=list(getattr(br, "nist_800_53_tags", [])),
+        fedramp_tags=list(getattr(br, "fedramp_tags", [])),
+        pci_dss_tags=list(getattr(br, "pci_dss_tags", [])),
         evidence=evidence,
         risk_score=br.risk_score,
     )

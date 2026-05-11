@@ -246,16 +246,18 @@ def test_finding_normalizes_legacy_control_tags():
         {
             "framework": "owasp_llm",
             "control": "LLM05",
-            "version": None,
-            "confidence": None,
+            "version": "2025",
+            "confidence": 0.75,
             "source": "legacy:owasp_tags",
+            "via": "owasp_tags",
         },
         {
             "framework": "soc2",
             "control": "CC7.1",
-            "version": None,
-            "confidence": None,
+            "version": "2017",
+            "confidence": 0.75,
             "source": "legacy:soc2_tags",
+            "via": "soc2_tags",
         },
     ]
     assert payload["owasp_tags"] == ["LLM05"]
@@ -282,13 +284,15 @@ def test_finding_deduplicates_explicit_and_legacy_controls():
             "version": "2025",
             "confidence": 0.9,
             "source": "hub",
+            "via": None,
         },
         {
             "framework": "mitre_atlas",
             "control": "AML.T0010",
-            "version": None,
-            "confidence": None,
+            "version": "bundled",
+            "confidence": 0.75,
             "source": "legacy:atlas_tags",
+            "via": "atlas_tags",
         },
     ]
     assert "LLM05" in finding.all_compliance_tags()
@@ -298,7 +302,7 @@ def test_finding_deduplicates_explicit_and_legacy_controls():
 def test_control_tag_from_dict_accepts_via_alias():
     tag = ControlTag.from_dict({"framework": "nist_csf", "control": "ID.RA-01", "via": "legacy"})
 
-    assert tag == ControlTag(framework="nist_csf", control="ID.RA-01", source="legacy")
+    assert tag == ControlTag(framework="nist_csf", control="ID.RA-01", source="legacy", via="legacy")
 
 
 # ---------------------------------------------------------------------------

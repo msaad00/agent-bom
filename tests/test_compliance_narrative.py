@@ -408,18 +408,38 @@ def test_multi_framework_tags_affect_multiple_frameworks():
 
 
 def test_all_framework_slugs_covered():
-    """Ensure ALL_FRAMEWORK_SLUGS matches the expected set of 14 frameworks."""
+    """Ensure ALL_FRAMEWORK_SLUGS matches the tag-mapped compliance framework set."""
     expected = {
         "owasp-llm",
         "owasp-mcp",
-        "atlas",
-        "nist",
         "owasp-agentic",
-        "eu-ai-act",
+        "nist",
         "nist-csf",
+        "nist-800-53",
+        "fedramp",
+        "atlas",
+        "attack",
+        "eu-ai-act",
         "iso-27001",
         "soc2",
         "cis",
         "cmmc",
+        "pci-dss",
     }
     assert set(ALL_FRAMEWORK_SLUGS) == expected
+
+
+def test_same_control_id_does_not_bleed_between_frameworks():
+    br = _make_blast_radius(vuln=_make_vuln(severity=Severity.HIGH), owasp_tags=[])
+    br.owasp_tags = []
+    br.nist_800_53_tags = ["RA-5"]
+    br.fedramp_tags = []
+    report = _make_report(blast_radii=[br])
+
+    result = generate_compliance_narrative(report)
+    status_by_slug = {fn.slug: fn.status for fn in result.framework_narratives}
+
+    assert status_by_slug["nist-800-53"] == "failing"
+    assert status_by_slug["fedramp"] == "passing"
+    assert result.remediation_impact
+    assert result.remediation_impact[0].frameworks_impacted == ["NIST 800-53"]

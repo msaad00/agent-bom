@@ -128,6 +128,19 @@ _CHECK_KEYWORD_TACTICS: list[tuple[tuple[str, ...], list[str]]] = [
     (("encryption", "kms", "tls", "ssl", "crypto"), ["credential-access"]),
 ]
 
+_BROAD_TACTIC_FALLBACK_LIMIT = 3
+_PREFERRED_TACTIC_TECHNIQUES: dict[str, tuple[str, ...]] = {
+    "initial-access": ("T1190", "T1195", "T1078"),
+    "credential-access": ("T1552", "T1556", "T1110"),
+    "execution": ("T1059", "T1204", "T1129"),
+    "command-and-control": ("T1090", "T1105", "T1071"),
+    "collection": ("T1005", "T1530", "T1119"),
+    "exfiltration": ("T1041", "T1048", "T1537"),
+    "defense-evasion": ("T1562", "T1027", "T1036"),
+    "privilege-escalation": ("T1548", "T1068", "T1134"),
+    "impact": ("T1499", "T1485", "T1565"),
+}
+
 
 def _techniques_for_tactics(tactic_phases: list[str]) -> list[str]:
     """Return technique IDs from the catalog that belong to any of the given tactic phases."""
@@ -138,6 +151,27 @@ def _techniques_for_tactics(tactic_phases: list[str]) -> list[str]:
     for tid, meta in all_techniques.items():
         if any(t in tactic_phases for t in meta.get("tactics", [])):
             result.append(tid)
+    return result
+
+
+def _bounded_techniques_for_tactics(tactic_phases: list[str]) -> list[str]:
+    """Return a small representative set for broad context-only tactic signals."""
+    from agent_bom.mitre_fetch import get_techniques
+
+    all_techniques = get_techniques()
+    result: list[str] = []
+    seen: set[str] = set()
+    for tactic in sorted(set(tactic_phases)):
+        preferred = [
+            tid
+            for tid in _PREFERRED_TACTIC_TECHNIQUES.get(tactic, ())
+            if tid in all_techniques and tactic in all_techniques[tid].get("tactics", [])
+        ]
+        fallback = sorted(tid for tid, meta in all_techniques.items() if tid not in preferred and tactic in meta.get("tactics", []))
+        for tid in [*preferred, *fallback][:_BROAD_TACTIC_FALLBACK_LIMIT]:
+            if tid not in seen:
+                seen.add(tid)
+                result.append(tid)
     return result
 
 
@@ -292,8 +326,9 @@ def tag_blast_radius(br: BlastRadius) -> list[str]:
     if is_high and not mapped_from_cwe:
         tactic_phases.add("initial-access")
 
-    # Resolve tactic phases to catalog techniques
-    for tech in _techniques_for_tactics(list(tactic_phases)):
+    # Resolve broad context signals to a bounded representative set. Direct
+    # CWE->ATT&CK mappings above remain per-finding and are not tactic-expanded.
+    for tech in _bounded_techniques_for_tactics(list(tactic_phases)):
         techniques.add(tech)
 
     return sorted(techniques)

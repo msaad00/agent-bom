@@ -8,11 +8,13 @@ no network or filesystem side-effects escape the test.
 from __future__ import annotations
 
 import json
+import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
 from click.testing import CliRunner
 
-from agent_bom.cli import main
+from agent_bom.cli import cli_main, main
 from agent_bom.models import Agent, AgentType, BlastRadius, MCPServer, Package, Severity, Vulnerability
 from agent_bom.scanners import IncompleteScanError
 
@@ -76,6 +78,73 @@ def test_scan_help():
     assert "--no-follow-symlinks" in result.output
     assert "graph (Cytoscape.js graph JSON)" in normalized
     assert "graph (raw graph JSON)" not in normalized
+
+
+def test_scan_agent_mode_emits_machine_envelope(monkeypatch):
+    monkeypatch.delenv("AGENT_BOM_CONFIG", raising=False)
+    result = _run(["agents", "--agent-mode", "--demo", "--no-scan", "--offline", "--no-auto-update-db"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["schema_version"] == "1"
+    assert payload["mode"] == "agent"
+    assert payload["ok"] is True
+    assert payload["command"] == "agents"
+    assert payload["exit_code"] == 0
+    assert payload["summary"]["agents"] >= 1
+    assert payload["confidence"]["level"] in {"high", "medium", "low"}
+    assert payload["truncated"] is False
+    assert payload["truncation"]["truncated"] is False
+    assert payload["data"]["document_type"] == "AI-BOM"
+
+
+def test_scan_agent_mode_ignores_profile_output_default(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+current_profile = "prod"
+
+[profiles.prod]
+format = "json"
+output = "profile-report.json"
+"""
+    )
+    monkeypatch.setenv("AGENT_BOM_CONFIG", str(config_path))
+
+    result = _run(["agents", "--agent-mode", "--demo", "--no-scan", "--offline", "--no-auto-update-db"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["mode"] == "agent"
+
+
+def test_scan_agent_mode_token_budget_reports_truncation(monkeypatch):
+    monkeypatch.delenv("AGENT_BOM_CONFIG", raising=False)
+    result = _run(["agents", "--agent-mode", "--agent-token-budget", "200", "--demo", "--no-scan", "--offline", "--no-auto-update-db"])
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["truncation"]["enabled"] is True
+    assert payload["truncation"]["token_budget"] == 200
+    assert payload["truncated"] is True
+    assert payload["truncation"]["truncated"] is True
+    assert payload["truncation"]["removed"]
+
+
+def test_agent_mode_entry_wraps_usage_errors(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["agent-bom", "--agent-mode", "not-a-command"])
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli_main()
+
+    assert excinfo.value.code == 2
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["mode"] == "agent"
+    assert payload["ok"] is False
+    assert payload["exit_code"] == 2
+    assert payload["truncated"] is False
+    assert payload["error"]["type"] == "usage"
+    assert payload["errors"][0]["type"] == "usage"
 
 
 def test_scan_external_scan_invalid_json_exits_nonzero(tmp_path):

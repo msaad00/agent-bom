@@ -200,6 +200,20 @@ def output_options(fn):
             ),
             click.option("--quiet", "-q", is_flag=True, help="Suppress all output except results (for scripting)"),
             click.option(
+                "--agent-mode",
+                is_flag=True,
+                envvar="AGENT_BOM_AGENT_MODE",
+                help="Emit stable machine-readable JSON for assistant and automation callers.",
+            ),
+            click.option(
+                "--agent-token-budget",
+                type=int,
+                default=0,
+                show_default=True,
+                metavar="TOKENS",
+                help="Approximate JSON token budget for --agent-mode output. 0 keeps the full report.",
+            ),
+            click.option(
                 "--exclude-unfixable",
                 is_flag=True,
                 default=False,

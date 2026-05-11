@@ -40,7 +40,7 @@ agent-bom check flask@2.0.0 --ecosystem pypi   # check a specific package
 |---|---|---|
 | **Local AI BOM** | `agent-bom agents --demo --offline` | terminal findings and graph-ready inventory |
 | **Repository scan** | `agent-bom agents -p . -f html -o agent-bom-report.html` | local HTML review plus exportable evidence |
-| **CI evidence** | `uses: msaad00/agent-bom@v0.86.3` | SARIF, pull-request summary, optional code scanning |
+| **CI evidence** | `uses: msaad00/agent-bom@v0.86.4` | SARIF, pull-request summary, optional code scanning |
 | **Assistant tools** | `agent-bom mcp server` | read-only security tools for MCP clients |
 | **Self-hosted control plane** | `docker compose -f docker-compose.pilot.yml up -d` | API and dashboard in your infrastructure |
 

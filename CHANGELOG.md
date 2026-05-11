@@ -11,6 +11,43 @@ Versions follow [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.86.4] - 2026-05-11
+
+Patch release for the post-`v0.86.3` release train. This release tightens the
+CLI contract for automation, refreshes graph/dashboard release evidence,
+hardens CI retrigger behavior, and closes the final pre-release identity and
+fixture gaps before tagging.
+
+### Added
+- **Agent-mode CLI output contract** - `--agent-mode` now gives automation a
+  stable output envelope with bounded confidence fields, token-budget handling,
+  and deterministic error structure (#2479).
+- **Reusable scan progress streaming hook** - the dashboard can consume the
+  existing scan stream path through shared UI plumbing instead of one-off page
+  code (#2477).
+
+### Fixed
+- **Release output contracts** - output paths now align with the requested
+  format, stdout behavior is explicit, and JSON output exposes the release
+  posture grade consistently (#2474).
+- **Native Debian severity fallback** - native image scans derive missing
+  Debian severity data from related canonical CVE records where available
+  (#2473).
+- **Audit and API guardrails** - audit integrity now fails closed without a
+  configured HMAC key, API rate limits use release-ready defaults, pagination
+  bounds are explicit, and agent identity enforcement requires verifiable JWT
+  policy instead of accepting unsigned identity claims (#2470, #2480).
+- **Graph and dashboard release polish** - graph labels, defaults, evidence
+  export controls, blast-radius panels, and release screenshot contracts were
+  aligned with the shipped graph surfaces (#2469, #2472, #2475).
+
+### CI
+- **PR retrigger automation** - ready-PR refresh now avoids the frozen-check
+  loop by using a dedicated automation token path and not disturbing active
+  runs (#2478).
+
+---
+
 ## [0.86.3] - 2026-05-08
 
 Patch release for the OpenSSF Scorecard regression and post-`v0.86.2` release
@@ -1185,7 +1222,8 @@ Two new product surfaces (inter-agent firewall + per-run discovery envelope) plu
 
 ---
 
-[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.86.3...HEAD
+[Unreleased]: https://github.com/msaad00/agent-bom/compare/v0.86.4...HEAD
+[0.86.4]: https://github.com/msaad00/agent-bom/compare/v0.86.3...v0.86.4
 [0.86.3]: https://github.com/msaad00/agent-bom/compare/v0.86.2...v0.86.3
 [0.86.2]: https://github.com/msaad00/agent-bom/compare/v0.86.1...v0.86.2
 [0.86.1]: https://github.com/msaad00/agent-bom/compare/v0.86.0...v0.86.1

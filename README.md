@@ -87,7 +87,7 @@ later roll into the same self-hosted control plane.
 |---|---|---|
 | **CLI** | `agent-bom agents --demo --offline` | terminal findings + graph-ready inventory |
 | **Your repo** | `agent-bom agents -p . -f html -o agent-bom-report.html` | local HTML review, JSON/SARIF/SBOM/graph exports when requested |
-| **CI** | `uses: msaad00/agent-bom@v0.86.3` | SARIF, PR summary, optional code-scanning upload |
+| **CI** | `uses: msaad00/agent-bom@v0.86.4` | SARIF, PR summary, optional code-scanning upload |
 | **Assistant / MCP** | `agent-bom mcp server` | read-only security tools for Claude, Cursor, Codex, Windsurf, Cortex, and other MCP clients |
 | **Self-hosted control plane** | `docker compose -f docker-compose.pilot.yml up -d` | API + dashboard in your infrastructure |
 
@@ -477,7 +477,7 @@ agent-bom
 |------|----------|---------------|------------------|
 | CLI (`agent-bom agents`) | local audit + project scan | `agent-bom agents -p .` | console, JSON, SARIF, SBOM, HTML |
 | Endpoint fleet (`--push-url .../v1/fleet/sync`) | employee laptops pushing into self-hosted fleet | `agent-bom agents --preset enterprise --push-url https://agent-bom.example.com/v1/fleet/sync` | fleet inventory + trust factors |
-| GitHub Action (`uses: msaad00/agent-bom@v0.86.3`) | CI/CD + SARIF | `uses: msaad00/agent-bom@v0.86.3` | `agent-bom-results.sarif` |
+| GitHub Action (`uses: msaad00/agent-bom@v0.86.4`) | CI/CD + SARIF | `uses: msaad00/agent-bom@v0.86.4` | `agent-bom-results.sarif` |
 | Docker (`agentbom/agent-bom`) | isolated CLI/API jobs and non-browser self-hosted entrypoints | `docker run --rm agentbom/agent-bom:0.86.3 agents --demo` | same artifacts as CLI |
 | Browser UI image (`agentbom/agent-bom-ui`) | browser dashboard paired with the same API/control plane | `docker compose -f docker-compose.pilot.yml up -d` | dashboard at `http://localhost:3000` |
 | Kubernetes / Helm | self-hosted API + dashboard, scheduled discovery | `helm upgrade --install agent-bom deploy/helm/agent-bom --set controlPlane.enabled=true` | API, UI, jobs, optional gateway/proxy |
@@ -526,7 +526,7 @@ Cortex, Cursor, Windsurf, or another MCP client.
 **CI security review**
 
 ```yaml
-- uses: msaad00/agent-bom@v0.86.3
+- uses: msaad00/agent-bom@v0.86.4
   with:
     scan-type: agents
     severity-threshold: high
@@ -599,7 +599,7 @@ References: [PRODUCT_BRIEF.md](docs/PRODUCT_BRIEF.md) · [PRODUCT_METRICS.md](do
 <summary><b>CI/CD in 60 seconds</b></summary>
 
 ```yaml
-- uses: msaad00/agent-bom@v0.86.3
+- uses: msaad00/agent-bom@v0.86.4
   with:
     scan-type: scan
     severity-threshold: high

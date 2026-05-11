@@ -202,8 +202,8 @@ def test_check_identity_jwks_required_blocks_on_no_jwks_key():
     assert block is not None
 
 
-def test_check_identity_no_jwks_configured_passes_as_before():
-    """Without jwks_uri, identity check passes for well-formed JWT — no regression."""
+def test_check_identity_no_jwks_configured_audit_mode_passes_as_before():
+    """Without jwks_uri, non-enforcing audit mode still resolves a well-formed JWT."""
 
     def _msg(token):
         return {
@@ -215,3 +215,19 @@ def test_check_identity_no_jwks_configured_passes_as_before():
     agent_id, block = check_identity(_msg(token), {})
     assert agent_id == "agent-ok"
     assert block is None
+
+
+def test_check_identity_required_jwt_without_verification_policy_blocks():
+    """Enforced identity mode must not trust an unsigned JWT identity claim."""
+
+    def _msg(token):
+        return {
+            "method": "tools/call",
+            "params": {"name": "x", "arguments": {}, "_meta": {"agent_identity": token}},
+        }
+
+    token = _make_jwt({"sub": "agent-claimed"})
+    agent_id, block = check_identity(_msg(token), {"require_agent_identity": True})
+    assert agent_id == ANONYMOUS
+    assert block is not None
+    assert "signature verification required" in block

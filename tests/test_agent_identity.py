@@ -187,13 +187,14 @@ def test_check_identity_valid_jwt_passes():
     assert block is None
 
 
-def test_check_identity_valid_jwt_required_passes():
+def test_check_identity_unsigned_jwt_required_blocks_without_verification_policy():
     token = _make_jwt({"sub": "agent-diana"})
     msg = _msg_with_identity(token)
     policy = {"require_agent_identity": True}
     agent_id, block = check_identity(msg, policy)
-    assert agent_id == "agent-diana"
-    assert block is None
+    assert agent_id == ANONYMOUS
+    assert block is not None
+    assert "signature verification required" in block
 
 
 def test_check_identity_expired_jwt_required_blocks():

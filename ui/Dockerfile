@@ -6,7 +6,7 @@
 # Tracking: #1961.
 
 # ── Stage 1: Install dependencies ─────────────────────────────────────────────
-FROM node:24-bookworm-slim@sha256:03eae3ef7e88a9de535496fb488d67e02b9d96a063a8967bae657744ecd513f2 AS deps
+FROM node:24-bookworm-slim@sha256:24dc26ef1e3c3690f27ebc4136c9c186c3133b25563ae4d7f0692e4d1fe5db0e AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci --ignore-scripts
@@ -26,7 +26,7 @@ RUN set -eux; \
     npm install --no-save --ignore-scripts "$pkg"
 
 # ── Stage 2: Build ────────────────────────────────────────────────────────────
-FROM node:24-bookworm-slim@sha256:03eae3ef7e88a9de535496fb488d67e02b9d96a063a8967bae657744ecd513f2 AS builder
+FROM node:24-bookworm-slim@sha256:24dc26ef1e3c3690f27ebc4136c9c186c3133b25563ae4d7f0692e4d1fe5db0e AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -38,7 +38,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ── Stage 3: Run ──────────────────────────────────────────────────────────────
-FROM node:24-bookworm-slim@sha256:03eae3ef7e88a9de535496fb488d67e02b9d96a063a8967bae657744ecd513f2 AS runner
+FROM node:24-bookworm-slim@sha256:24dc26ef1e3c3690f27ebc4136c9c186c3133b25563ae4d7f0692e4d1fe5db0e AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

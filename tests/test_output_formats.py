@@ -7,6 +7,7 @@ import io
 import json
 import xml.etree.ElementTree as ET
 from datetime import datetime
+from pathlib import Path
 
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType
 from agent_bom.models import (
@@ -24,6 +25,8 @@ from agent_bom.models import (
 )
 from agent_bom.output import to_csv, to_json, to_junit, to_markdown
 from agent_bom.output.html import to_html
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -441,6 +444,13 @@ class TestMarkdown:
         md = to_markdown(report, brs)
         assert "4.17.21" in md
         assert "2.31.0" in md
+
+    def test_demo_markdown_export_matches_golden_fixture(self):
+        report, brs = _report_with_vulns()
+        golden = (FIXTURES / "output" / "demo-markdown-golden.md").read_text(encoding="utf-8")
+        rendered = to_markdown(report, brs).replace("  \n", "\n")
+
+        assert rendered == golden
 
     def test_footer(self):
         report, brs = _report_with_vulns()

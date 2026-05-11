@@ -406,6 +406,7 @@ def scan(
     posture: bool = False,
     _iac_only: bool = False,
     _image_only: bool = False,
+    _apply_profile_defaults: bool = True,
     k8s_live: bool = False,
     k8s_live_namespace: str = "default",
     k8s_live_all_namespaces: bool = False,
@@ -436,23 +437,24 @@ def scan(
 
     agent_mode = agent_mode or agent_mode_requested()
 
-    (
-        output,
-        output_format,
-        preset,
-        nvd_api_key,
-        push_url,
-        push_api_key,
-        clickhouse_url,
-    ) = apply_scan_profile_defaults(
-        output=output,
-        output_format=output_format,
-        preset=preset,
-        nvd_api_key=nvd_api_key,
-        push_url=push_url,
-        push_api_key=push_api_key,
-        clickhouse_url=clickhouse_url,
-    )
+    if _apply_profile_defaults:
+        (
+            output,
+            output_format,
+            preset,
+            nvd_api_key,
+            push_url,
+            push_api_key,
+            clickhouse_url,
+        ) = apply_scan_profile_defaults(
+            output=output,
+            output_format=output_format,
+            preset=preset,
+            nvd_api_key=nvd_api_key,
+            push_url=push_url,
+            push_api_key=push_api_key,
+            clickhouse_url=clickhouse_url,
+        )
 
     if agent_token_budget < 0:
         raise click.ClickException("--agent-token-budget must be greater than or equal to 0.")

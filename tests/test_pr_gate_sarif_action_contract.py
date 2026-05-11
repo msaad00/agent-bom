@@ -54,13 +54,27 @@ def test_focused_secrets_and_code_reject_sarif_format(tmp_path: Path) -> None:
     assert not (tmp_path / "code.sarif").exists()
 
 
-def test_iac_sarif_output_path_writes_valid_sarif(tmp_path: Path) -> None:
+def test_iac_sarif_output_path_writes_valid_sarif(monkeypatch, tmp_path: Path) -> None:
     (tmp_path / "Dockerfile").write_text("FROM python:latest\nUSER root\n", encoding="utf-8")
     output = tmp_path / "iac-results.sarif"
+    profile_output = tmp_path / "profile-report.json"
+    profile_config = tmp_path / "config.toml"
+    profile_config.write_text(
+        f"""
+current_profile = "prod"
+
+[profiles.prod]
+format = "json"
+output = "{profile_output}"
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AGENT_BOM_CONFIG", str(profile_config))
 
     result = CliRunner().invoke(main, ["iac", str(tmp_path), "-f", "sarif", "-o", str(output), "--quiet"])
 
     assert result.exit_code == 0, result.output
+    assert not profile_output.exists()
     data = json.loads(output.read_text(encoding="utf-8"))
     assert data["version"] == "2.1.0"
     assert data["runs"][0]["tool"]["driver"]["name"] == "agent-bom"

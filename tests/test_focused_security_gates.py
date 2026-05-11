@@ -84,7 +84,21 @@ def test_iac_command_exits_one_for_high_findings_by_default(tmp_path: Path):
     assert "1 finding" in " ".join(result.output.split())
 
 
-def test_iac_command_json_exits_one_for_high_findings_by_default(tmp_path: Path):
+def test_iac_command_json_exits_one_for_high_findings_by_default(monkeypatch, tmp_path: Path):
+    profile_config = tmp_path / "config.toml"
+    profile_output = tmp_path / "profile-report.json"
+    profile_config.write_text(
+        f"""
+current_profile = "prod"
+
+[profiles.prod]
+format = "json"
+output = "{profile_output}"
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AGENT_BOM_CONFIG", str(profile_config))
+
     finding = IaCFinding(
         rule_id="TF-TEST",
         severity="high",
@@ -101,6 +115,7 @@ def test_iac_command_json_exits_one_for_high_findings_by_default(tmp_path: Path)
 
     assert result.exit_code == 1
     assert '"rule_id": "TF-TEST"' in result.output
+    assert not profile_output.exists()
 
 
 def test_iac_command_exits_zero_when_clean(tmp_path: Path):

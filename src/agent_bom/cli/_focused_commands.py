@@ -190,6 +190,7 @@ def iac_cmd(
         iac_paths=paths,
         no_scan=True,  # IaC command: skip CVE scanning, package extraction, MCP agent discovery
         _iac_only=True,  # Internal: triggers IaC fast path (skip all discovery)
+        _apply_profile_defaults=False,  # Focused IaC flags are already resolved; scan profiles must not rewrite them.
         output_format=output_format,
         output=output_path,
         fail_on_severity=effective_fail_on_severity,

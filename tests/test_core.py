@@ -535,6 +535,7 @@ def test_json_output_structure(sample_report):
     assert data["inventory_snapshot"]["schema_version"] == "1"
     assert data["summary"]["total_vulnerabilities"] == 1
     assert data["ai_bom_version"] == sample_report.tool_version
+    assert data["posture_grade"] == data["posture_scorecard"]["grade"]
 
 
 def test_json_output_includes_canonical_publish_dates(sample_report):

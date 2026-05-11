@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import click
+import pytest
 from click.testing import CliRunner
 
 from agent_bom.cli import main
@@ -27,6 +28,28 @@ push_api_key_env = "AGENT_BOM_PUSH_TOKEN_PROD"
 
     assert name == "prod"
     assert profile["tenant_id"] == "team-a"
+
+
+def test_missing_active_profile_lists_available_profiles(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[profiles.dev]
+tenant_id = "default"
+
+[profiles.prod]
+tenant_id = "team-a"
+"""
+    )
+    monkeypatch.setenv("AGENT_BOM_CONFIG", str(config_path))
+    monkeypatch.setenv("AGENT_BOM_PROFILE", "missing")
+
+    with pytest.raises(click.ClickException) as excinfo:
+        load_active_profile()
+
+    message = str(excinfo.value)
+    assert "Profile 'missing' was not found" in message
+    assert "Available profiles: dev, prod" in message
 
 
 def test_scan_profile_defaults_do_not_override_explicit_cli_flags(monkeypatch, tmp_path):
@@ -167,3 +190,23 @@ format = "json"
     assert show_result.exit_code == 0
     assert "[prod]" in show_result.output
     assert "tenant_id = team-a" in show_result.output
+
+
+def test_profiles_use_missing_profile_lists_available(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+[profiles.dev]
+tenant_id = "default"
+
+[profiles.prod]
+tenant_id = "team-a"
+"""
+    )
+    monkeypatch.setenv("AGENT_BOM_CONFIG", str(config_path))
+
+    result = CliRunner().invoke(main, ["profiles", "use", "missing"])
+
+    assert result.exit_code != 0
+    assert "Profile 'missing' was not found" in result.output
+    assert "Available profiles: dev, prod" in result.output

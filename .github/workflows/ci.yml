@@ -473,10 +473,11 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           VERSION=$(uv run python -c "from agent_bom import __version__; print(__version__)")
+          SHA256="$(python -c "print('a' * 64)")"
           python scripts/render_homebrew_formula.py \
             --version "$VERSION" \
             --url "https://example.invalid/agent-bom-${VERSION}.tar.gz" \
-            --sha256 "$(python -c 'print(\"a\" * 64)')"
+            --sha256 "$SHA256"
 
       - name: Validate macOS pkg builder
         if: matrix.os == 'macos-latest'

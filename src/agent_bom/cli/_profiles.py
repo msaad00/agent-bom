@@ -170,9 +170,21 @@ def apply_scan_profile_defaults(
         return output, output_format, preset, nvd_api_key, push_url, push_api_key, clickhouse_url
     apply_profile_environment(profile)
     ctx = click.get_current_context(silent=True)
+    output_source = ctx.get_parameter_source("output") if ctx is not None else None
+    format_source = ctx.get_parameter_source("output_format") if ctx is not None else None
+    explicit_output = output_source in {click.core.ParameterSource.COMMANDLINE, click.core.ParameterSource.ENVIRONMENT}
+    explicit_format = format_source in {click.core.ParameterSource.COMMANDLINE, click.core.ParameterSource.ENVIRONMENT}
+
+    profile_output = output if explicit_format and not explicit_output else profile_default(ctx, profile, "output", output, "output")
+    profile_format = (
+        output_format
+        if explicit_output and not explicit_format
+        else profile_default(ctx, profile, "output_format", output_format, "format", "output_format")
+    )
+
     return (
-        profile_default(ctx, profile, "output", output, "output"),
-        profile_default(ctx, profile, "output_format", output_format, "format", "output_format"),
+        profile_output,
+        profile_format,
         profile_default(ctx, profile, "preset", preset, "preset"),
         profile_env_default(ctx, profile, "nvd_api_key", nvd_api_key, "nvd_api_key_env"),
         profile_default(ctx, profile, "push_url", push_url, "push_url"),

@@ -73,6 +73,72 @@ push_api_key_env = "AGENT_BOM_PUSH_TOKEN_PROD"
     assert result.exit_code == 0, result.output
 
 
+def test_scan_profile_output_does_not_shadow_explicit_format(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+current_profile = "prod"
+
+[profiles.prod]
+format = "json"
+output = "profile.json"
+"""
+    )
+    monkeypatch.setenv("AGENT_BOM_CONFIG", str(config_path))
+
+    @click.command()
+    @click.option("--output")
+    @click.option("--format", "output_format", default="console")
+    def _profile_default_test(output: str | None, output_format: str) -> None:
+        values = apply_scan_profile_defaults(
+            output=output,
+            output_format=output_format,
+            preset=None,
+            nvd_api_key=None,
+            push_url=None,
+            push_api_key=None,
+            clickhouse_url=None,
+        )
+        assert values[:2] == (None, "sarif")
+
+    result = CliRunner().invoke(_profile_default_test, ["--format", "sarif"])
+
+    assert result.exit_code == 0, result.output
+
+
+def test_scan_profile_format_does_not_shadow_explicit_output(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        """
+current_profile = "prod"
+
+[profiles.prod]
+format = "json"
+output = "profile.json"
+"""
+    )
+    monkeypatch.setenv("AGENT_BOM_CONFIG", str(config_path))
+
+    @click.command()
+    @click.option("--output")
+    @click.option("--format", "output_format", default="console")
+    def _profile_default_test(output: str | None, output_format: str) -> None:
+        values = apply_scan_profile_defaults(
+            output=output,
+            output_format=output_format,
+            preset=None,
+            nvd_api_key=None,
+            push_url=None,
+            push_api_key=None,
+            clickhouse_url=None,
+        )
+        assert values[:2] == ("report.sarif", "console")
+
+    result = CliRunner().invoke(_profile_default_test, ["--output", "report.sarif"])
+
+    assert result.exit_code == 0, result.output
+
+
 def test_profiles_group_lists_and_switches_current_profile(monkeypatch, tmp_path):
     config_path = tmp_path / "config.toml"
     config_path.write_text(

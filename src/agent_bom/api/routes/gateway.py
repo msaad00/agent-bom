@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
 
 from agent_bom.api.models import EvaluateRequest, JobStatus, PolicyCreate, PolicyUpdate
@@ -405,7 +405,7 @@ async def list_gateway_audit(
     request: Request,
     policy_id: str | None = None,
     agent_name: str | None = None,
-    limit: int = 100,
+    limit: int = Query(100, ge=1, le=1000),
 ):
     """Query the gateway policy audit log."""
     tenant_id = getattr(request.state, "tenant_id", "default")

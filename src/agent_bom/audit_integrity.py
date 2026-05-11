@@ -3,19 +3,42 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import secrets
 from typing import Any
 
 from cryptography.hazmat.primitives.ciphers import algorithms
 from cryptography.hazmat.primitives.cmac import CMAC
 
-_AUDIT_CHAIN_FALLBACK_KEY = b"agent-bom-audit-chain-v1"
+_logger = logging.getLogger(__name__)
+_AUDIT_CHAIN_EPHEMERAL_KEY: bytes | None = None
+
+
+def _env_truthy(name: str) -> bool:
+    return (os.environ.get(name) or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def audit_chain_key() -> bytes:
-    """Return the operator HMAC key, or a deterministic local fallback."""
+    """Return the operator audit-chain key.
+
+    Development runs may use a per-process ephemeral key, but production can
+    opt into fail-closed startup with AGENT_BOM_REQUIRE_AUDIT_HMAC=1.
+    """
+    global _AUDIT_CHAIN_EPHEMERAL_KEY
+
     configured = (os.environ.get("AGENT_BOM_AUDIT_HMAC_KEY") or "").strip()
-    return configured.encode("utf-8") if configured else _AUDIT_CHAIN_FALLBACK_KEY
+    if configured:
+        return configured.encode("utf-8")
+    if _env_truthy("AGENT_BOM_REQUIRE_AUDIT_HMAC"):
+        raise RuntimeError("AGENT_BOM_REQUIRE_AUDIT_HMAC is enabled but AGENT_BOM_AUDIT_HMAC_KEY is not set")
+    if _AUDIT_CHAIN_EPHEMERAL_KEY is None:
+        _AUDIT_CHAIN_EPHEMERAL_KEY = secrets.token_bytes(32)
+        _logger.warning(
+            "AGENT_BOM_AUDIT_HMAC_KEY not set — audit-chain CMAC uses an ephemeral key "
+            "(signatures will not survive process restart; set env var for production)"
+        )
+    return _AUDIT_CHAIN_EPHEMERAL_KEY
 
 
 def _audit_chain_cmac_key() -> bytes:

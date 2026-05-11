@@ -6,6 +6,9 @@ import json
 import tempfile
 from pathlib import Path
 
+import pytest
+
+from agent_bom import audit_integrity
 from agent_bom.audit_integrity import compute_audit_record_mac
 from agent_bom.audit_replay import (
     AlertEntry,
@@ -116,6 +119,28 @@ PROXY_SUMMARY = {
     "blocked_runtime_alerts": 0,
     "latest_runtime_alert_at": "2026-03-09T10:00:02.000000+00:00",
 }
+
+
+def test_audit_chain_key_uses_ephemeral_fallback(monkeypatch):
+    monkeypatch.delenv("AGENT_BOM_AUDIT_HMAC_KEY", raising=False)
+    monkeypatch.delenv("AGENT_BOM_REQUIRE_AUDIT_HMAC", raising=False)
+    monkeypatch.setattr(audit_integrity, "_AUDIT_CHAIN_EPHEMERAL_KEY", None)
+
+    first = audit_integrity.audit_chain_key()
+    second = audit_integrity.audit_chain_key()
+
+    assert first == second
+    assert len(first) == 32
+    assert first != b"agent-bom-audit-chain-v1"
+
+
+def test_audit_chain_key_can_fail_closed(monkeypatch):
+    monkeypatch.delenv("AGENT_BOM_AUDIT_HMAC_KEY", raising=False)
+    monkeypatch.setenv("AGENT_BOM_REQUIRE_AUDIT_HMAC", "1")
+    monkeypatch.setattr(audit_integrity, "_AUDIT_CHAIN_EPHEMERAL_KEY", None)
+
+    with pytest.raises(RuntimeError, match="AGENT_BOM_REQUIRE_AUDIT_HMAC"):
+        audit_integrity.audit_chain_key()
 
 
 # ── parse_audit_log ──────────────────────────────────────────────────────────

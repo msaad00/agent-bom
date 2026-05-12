@@ -448,6 +448,7 @@ def test_sync_uses_batch_put():
     mock_store.batch_put.assert_called_once()
     call_args = mock_store.batch_put.call_args[0][0]
     assert len(call_args) == 3
+    assert all(isinstance(agent.canonical_id, str) for agent in call_args)
 
 
 def test_sync_batch_put_with_existing():
@@ -489,6 +490,7 @@ def test_sync_batch_put_with_existing():
     mock_store.batch_put.assert_called_once()
     call_args = mock_store.batch_put.call_args[0][0]
     assert len(call_args) == 2
+    assert all(isinstance(agent.canonical_id, str) for agent in call_args)
     # No individual put calls
     mock_store.put.assert_not_called()
 

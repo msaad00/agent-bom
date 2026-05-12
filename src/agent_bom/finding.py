@@ -7,14 +7,12 @@ Later phases will add cloud CIS, proxy alerts, SAST, and skill findings.
 from __future__ import annotations
 
 import re
-import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
-# Stable namespace for agent-bom deterministic UUIDs
-# Using a fixed UUID so IDs are reproducible across machines and versions
-_AGENT_BOM_NS = uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
+from agent_bom.canonical_ids import canonical_finding_id, canonical_id, source_ids
+
 FINDING_SCHEMA_VERSION = "1"
 
 
@@ -24,8 +22,7 @@ def _stable_id(*parts: str) -> str:
     Same inputs always produce the same UUID. Use this for asset IDs
     and finding IDs so the same entity is tracked consistently across scans.
     """
-    fingerprint = ":".join(p.lower().strip() for p in parts if p)
-    return str(uuid.uuid5(_AGENT_BOM_NS, fingerprint))
+    return canonical_id(*parts)
 
 
 def stable_id(*parts: str) -> str:
@@ -187,6 +184,16 @@ class Asset:
         identifier = self.identifier or f"{self.name}:{self.location or ''}"
         return _stable_id(self.asset_type, identifier)
 
+    @property
+    def canonical_id(self) -> str:
+        """Canonical alias for stable_id used by reports and graph joins."""
+        return self.stable_id
+
+    @property
+    def source_ids(self) -> dict[str, str]:
+        """Original source identifiers retained as provenance."""
+        return source_ids(identifier=self.identifier, location=self.location)
+
 
 @dataclass
 class Finding:
@@ -271,12 +278,17 @@ class Finding:
                 pkg_part = purl.split("/")[-1] if "/" in purl else purl
                 if "@" in pkg_part:
                     pkg_name, pkg_version = pkg_part.rsplit("@", 1)
-            self.id = _stable_id(
+            self.id = canonical_finding_id(
                 self.asset.stable_id,
                 cve_part,
                 pkg_name,
                 pkg_version,
             )
+
+    @property
+    def canonical_id(self) -> str:
+        """Canonical alias for id used by report and graph consumers."""
+        return self.id
 
     def _legacy_control_tags(self) -> list[ControlTag]:
         """Return normalized controls derived from legacy tag arrays."""
@@ -338,6 +350,7 @@ class Finding:
         return {
             "schema_version": FINDING_SCHEMA_VERSION,
             "id": self.id,
+            "canonical_id": self.canonical_id,
             "finding_type": self.finding_type.value,
             "source": self.source.value,
             "asset": {
@@ -346,6 +359,8 @@ class Finding:
                 "identifier": self.asset.identifier,
                 "location": self.asset.location,
                 "stable_id": self.asset.stable_id,
+                "canonical_id": self.asset.canonical_id,
+                "source_ids": self.asset.source_ids,
             },
             "severity": self.severity,
             "effective_severity": self.effective_severity(),

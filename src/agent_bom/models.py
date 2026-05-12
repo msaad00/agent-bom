@@ -12,12 +12,19 @@ if TYPE_CHECKING:
     from agent_bom.finding import Finding
 
 from agent_bom.advisory_sources import merge_advisory_sources
-from agent_bom.package_utils import (
-    canonical_package_key,
-    normalize_package_name,
+from agent_bom.canonical_ids import (
+    canonical_agent_id,
+    canonical_mcp_prompt_id,
+    canonical_mcp_resource_id,
+    canonical_mcp_server_id,
+    canonical_mcp_tool_id,
+    canonical_package_id,
 )
 from agent_bom.package_utils import (
     host_matches_domain as _host_matches_domain,
+)
+from agent_bom.package_utils import (
+    normalize_package_name,
 )
 from agent_bom.package_utils import parse_debian_source_name as parse_debian_source_name  # noqa: F401
 from agent_bom.package_utils import (
@@ -371,11 +378,12 @@ class Package:
         Same ecosystem/name/version (or purl when available) always produces
         the same ID across scans — enables first-seen/last-seen tracking.
         """
-        import uuid as _uuid
+        return canonical_package_id(self.name, self.version, self.ecosystem, self.purl)
 
-        _ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
-        fingerprint = f"package:{canonical_package_key(self.name, self.version, self.ecosystem, self.purl)}"
-        return str(_uuid.uuid5(_ns, fingerprint))
+    @property
+    def canonical_id(self) -> str:
+        """Canonical alias for stable_id used by report and graph consumers."""
+        return self.stable_id
 
     @property
     def lookup_names(self) -> list[str]:
@@ -449,12 +457,12 @@ class MCPTool:
     @property
     def stable_id(self) -> str:
         """Deterministic ID for this MCP tool."""
-        import uuid as _uuid
+        return canonical_mcp_tool_id(self.name, self.input_schema)
 
-        _ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
-        schema = json.dumps(self.input_schema or {}, sort_keys=True, separators=(",", ":"))
-        fingerprint = f"mcp_tool:{self.name.lower().strip()}:{schema}"
-        return str(_uuid.uuid5(_ns, fingerprint))
+    @property
+    def canonical_id(self) -> str:
+        """Canonical alias for stable_id used by report and graph consumers."""
+        return self.stable_id
 
     @property
     def fingerprint(self) -> str:
@@ -489,11 +497,12 @@ class MCPResource:
     @property
     def stable_id(self) -> str:
         """Deterministic ID for this MCP resource."""
-        import uuid as _uuid
+        return canonical_mcp_resource_id(self.uri, self.mime_type)
 
-        _ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
-        fingerprint = f"mcp_resource:{self.uri.lower().strip()}:{(self.mime_type or '').lower().strip()}"
-        return str(_uuid.uuid5(_ns, fingerprint))
+    @property
+    def canonical_id(self) -> str:
+        """Canonical alias for stable_id used by report and graph consumers."""
+        return self.stable_id
 
     @property
     def fingerprint(self) -> str:
@@ -525,12 +534,12 @@ class MCPPrompt:
     @property
     def stable_id(self) -> str:
         """Deterministic ID for this MCP prompt descriptor."""
-        import uuid as _uuid
+        return canonical_mcp_prompt_id(self.name, self.arguments)
 
-        _ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
-        args = json.dumps(self.arguments, sort_keys=True, separators=(",", ":"))
-        fingerprint = f"mcp_prompt:{self.name.lower().strip()}:{args}"
-        return str(_uuid.uuid5(_ns, fingerprint))
+    @property
+    def canonical_id(self) -> str:
+        """Canonical alias for stable_id used by report and graph consumers."""
+        return self.stable_id
 
     @property
     def fingerprint(self) -> str:
@@ -614,12 +623,12 @@ class MCPServer:
         Uses registry_id when available (most stable identifier), otherwise
         falls back to name+command so the same server is always the same ID.
         """
-        import uuid as _uuid
+        return canonical_mcp_server_id(self.name, self.command, registry_id=self.registry_id)
 
-        _ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
-        identifier = self.registry_id or f"{self.name}:{self.command}"
-        fingerprint = f"mcp_server:{identifier.lower().strip()}"
-        return str(_uuid.uuid5(_ns, fingerprint))
+    @property
+    def canonical_id(self) -> str:
+        """Canonical alias for stable_id used by report and graph consumers."""
+        return self.stable_id
 
     @property
     def auth_mode(self) -> str:
@@ -734,11 +743,12 @@ class Agent:
         Canonical identity: agent_type + name. Same agent configuration
         always resolves to the same ID across scans.
         """
-        import uuid as _uuid
+        return canonical_agent_id(self.agent_type.value, self.name)
 
-        _ns = _uuid.UUID("7f3e4b2a-9c1d-5f8e-a0b4-12c3d4e5f6a7")
-        fingerprint = f"agent:{self.agent_type.value}:{self.name.lower().strip()}"
-        return str(_uuid.uuid5(_ns, fingerprint))
+    @property
+    def canonical_id(self) -> str:
+        """Canonical alias for stable_id used by report and graph consumers."""
+        return self.stable_id
 
     @property
     def total_packages(self) -> int:

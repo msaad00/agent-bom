@@ -7,6 +7,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+from agent_bom.canonical_ids import canonical_graph_node_id
 from agent_bom.graph.ocsf import ENTITY_OCSF_MAP
 from agent_bom.graph.severity import (
     OCSF_SEVERITY_NAMES,
@@ -120,9 +121,19 @@ class UnifiedNode:
         if not self.last_seen:
             self.last_seen = self.first_seen
 
+    @property
+    def canonical_id(self) -> str:
+        """Stable identity used for cross-scan joins without changing graph IDs."""
+        candidate = self.attributes.get("canonical_id") or self.attributes.get("stable_id")
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate
+        entity_type = self.entity_type.value if isinstance(self.entity_type, EntityType) else str(self.entity_type)
+        return canonical_graph_node_id(entity_type, self.id)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
+            "canonical_id": self.canonical_id,
             "entity_type": self.entity_type.value if isinstance(self.entity_type, EntityType) else self.entity_type,
             "label": self.label,
             "category_uid": self.category_uid,
@@ -143,6 +154,9 @@ class UnifiedNode:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> UnifiedNode:
         dims = data.get("dimensions", {})
+        attributes = dict(data.get("attributes", {}))
+        if data.get("canonical_id") and not attributes.get("canonical_id"):
+            attributes["canonical_id"] = data["canonical_id"]
         return cls(
             id=data["id"],
             entity_type=EntityType(data["entity_type"]),
@@ -156,7 +170,7 @@ class UnifiedNode:
             severity_id=data.get("severity_id", OCSFSeverity.UNKNOWN),
             first_seen=data.get("first_seen", ""),
             last_seen=data.get("last_seen", ""),
-            attributes=data.get("attributes", {}),
+            attributes=attributes,
             compliance_tags=data.get("compliance_tags", []),
             data_sources=data.get("data_sources", []),
             dimensions=NodeDimensions.from_dict(dims) if isinstance(dims, dict) else NodeDimensions(),

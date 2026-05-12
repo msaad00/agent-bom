@@ -14,6 +14,7 @@ from typing import Any
 
 from agent_bom.api.tracing import get_tracer
 from agent_bom.asset_provenance import package_version_provenance, sanitize_discovery_provenance
+from agent_bom.canonical_ids import canonical_agent_id, canonical_graph_node_id, source_ids
 from agent_bom.graph.container import UnifiedGraph
 from agent_bom.graph.edge import UnifiedEdge
 from agent_bom.graph.node import NodeDimensions, UnifiedNode
@@ -96,7 +97,10 @@ def build_unified_graph_from_report(
                 id=provider_id,
                 entity_type=EntityType.PROVIDER,
                 label=provider_name,
-                attributes={"provider": provider_name},
+                attributes={
+                    "provider": provider_name,
+                    "canonical_id": canonical_graph_node_id(EntityType.PROVIDER.value, provider_id),
+                },
                 data_sources=[data_source_tag],
             )
         )
@@ -110,6 +114,13 @@ def build_unified_graph_from_report(
                 last_seen=str(agent_dict.get("last_seen") or agent_dict.get("discovered_at") or ""),
                 attributes={
                     "agent_type": agent_type,
+                    "canonical_id": agent_dict.get("canonical_id")
+                    or (
+                        canonical_agent_id(agent_type, agent_name, source_id=agent_scope)
+                        if agent_scope
+                        else agent_dict.get("stable_id") or canonical_agent_id(agent_type, agent_name)
+                    ),
+                    "source_ids": source_ids(source_id=agent_scope, stable_id=agent_dict.get("stable_id")),
                     "status": agent_dict.get("status", ""),
                     "stable_id": agent_dict.get("stable_id", ""),
                     "config_path": agent_dict.get("config_path", ""),
@@ -178,6 +189,10 @@ def build_unified_graph_from_report(
                         ],
                         "security_intelligence_count": len(srv_dict.get("security_intelligence", []) or []),
                         "agent": agent_name,
+                        "canonical_id": srv_dict.get("canonical_id")
+                        or srv_dict.get("stable_id")
+                        or canonical_graph_node_id(EntityType.SERVER.value, srv_id),
+                        "source_ids": source_ids(stable_id=srv_dict.get("stable_id"), registry_id=srv_dict.get("registry_id")),
                         "stable_id": srv_dict.get("stable_id", ""),
                         "fingerprint": srv_dict.get("fingerprint", ""),
                     },
@@ -219,6 +234,10 @@ def build_unified_graph_from_report(
                             "version": pkg_version,
                             "ecosystem": ecosystem,
                             "purl": pkg_dict.get("purl", ""),
+                            "canonical_id": pkg_dict.get("canonical_id")
+                            or pkg_dict.get("stable_id")
+                            or canonical_graph_node_id(EntityType.PACKAGE.value, pkg_id),
+                            "source_ids": source_ids(stable_id=pkg_dict.get("stable_id"), purl=pkg_dict.get("purl")),
                             "is_direct": pkg_dict.get("is_direct", True),
                             "parent_package": pkg_dict.get("parent_package", ""),
                             "dependency_depth": pkg_dict.get("dependency_depth", 0),
@@ -277,6 +296,10 @@ def build_unified_graph_from_report(
                         label=tool_name,
                         attributes={
                             "description": tool_dict.get("description", ""),
+                            "canonical_id": tool_dict.get("canonical_id")
+                            or tool_dict.get("stable_id")
+                            or canonical_graph_node_id(EntityType.TOOL.value, tool_id),
+                            "source_ids": source_ids(stable_id=tool_dict.get("stable_id")),
                             "stable_id": tool_dict.get("stable_id", ""),
                             "fingerprint": tool_dict.get("fingerprint", ""),
                             "risk_score": tool_dict.get("risk_score", 0),
@@ -313,7 +336,11 @@ def build_unified_graph_from_report(
                         id=cred_id,
                         entity_type=EntityType.CREDENTIAL,
                         label=env_key,
-                        attributes={"servers": [srv_id]},
+                        attributes={
+                            "canonical_id": canonical_graph_node_id(EntityType.CREDENTIAL.value, cred_id),
+                            "source_ids": source_ids(env_key=env_key),
+                            "servers": [srv_id],
+                        },
                         data_sources=[data_source_tag],
                     )
                 )
@@ -374,6 +401,8 @@ def build_unified_graph_from_report(
                 severity=severity,
                 risk_score=br_dict.get("risk_score", 0),
                 attributes={
+                    "canonical_id": canonical_graph_node_id(EntityType.VULNERABILITY.value, vuln_node_id),
+                    "source_ids": source_ids(vulnerability_id=vuln_id_str),
                     "cvss_score": br_dict.get("cvss_score"),
                     "epss_score": br_dict.get("epss_score"),
                     "is_kev": br_dict.get("is_kev", False),
@@ -992,6 +1021,8 @@ def _add_vuln_node(
             label=vuln_id_str,
             severity=severity,
             attributes={
+                "canonical_id": canonical_graph_node_id(EntityType.VULNERABILITY.value, vuln_node_id),
+                "source_ids": source_ids(vulnerability_id=vuln_id_str),
                 "cvss_score": vuln_dict.get("cvss_score"),
                 "epss_score": vuln_dict.get("epss_score"),
                 "is_kev": vuln_dict.get("is_kev", False),

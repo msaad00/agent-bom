@@ -1,7 +1,7 @@
 """Tests for deterministic UUID v5 stable IDs on assets and findings (issue: stable IDs)."""
 
 from agent_bom.finding import Asset, Finding, FindingSource, FindingType, stable_id
-from agent_bom.models import Agent, AgentType, MCPServer, Package, TransportType
+from agent_bom.models import Agent, AgentType, MCPServer, MCPTool, Package, TransportType
 
 # ---------------------------------------------------------------------------
 # Finding determinism
@@ -94,6 +94,7 @@ def test_asset_stable_id_is_deterministic():
     a1 = Asset(name="requests", asset_type="package", identifier="pkg:pypi/requests@2.0.0")
     a2 = Asset(name="requests", asset_type="package", identifier="pkg:pypi/requests@2.0.0")
     assert a1.stable_id == a2.stable_id
+    assert a1.canonical_id == a1.stable_id
     assert len(a1.stable_id) == 36
 
 
@@ -137,6 +138,16 @@ def test_package_stable_id_uses_canonical_package_identity():
     p_dot = Package(name="Torch.Audio", version="1.0.0", ecosystem="PyPI", purl="pkg:pypi/Torch.Audio@1.0.0")
 
     assert p_hyphen.stable_id == p_under.stable_id == p_dot.stable_id
+    assert p_hyphen.canonical_id == p_hyphen.stable_id
+
+
+def test_tool_canonical_id_ignores_schema_key_order():
+    """Non-semantic JSON schema key order must not split tool identity."""
+    t1 = MCPTool(name="search", description="Search", input_schema={"b": 2, "a": {"z": True, "m": False}})
+    t2 = MCPTool(name="search", description="Search docs", input_schema={"a": {"m": False, "z": True}, "b": 2})
+
+    assert t1.stable_id == t2.stable_id
+    assert t1.canonical_id == t1.stable_id
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +180,15 @@ def test_mcpserver_stable_id_uses_registry_id_when_available():
     assert s_with_registry.stable_id != s_without_registry.stable_id
 
 
+def test_mcpserver_canonical_id_survives_registry_rename():
+    """Registry IDs are authoritative so display-name changes do not split history."""
+    s1 = MCPServer(name="filesystem", command="npx @modelcontextprotocol/server-filesystem", registry_id="modelcontextprotocol/filesystem")
+    s2 = MCPServer(name="File System", command="uvx filesystem-server", registry_id="modelcontextprotocol/filesystem")
+
+    assert s1.stable_id == s2.stable_id
+    assert s1.canonical_id == s1.stable_id
+
+
 # ---------------------------------------------------------------------------
 # Agent stable_id
 # ---------------------------------------------------------------------------
@@ -179,6 +199,7 @@ def test_agent_stable_id_deterministic():
     a1 = Agent(name="Claude Desktop", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/path/a")
     a2 = Agent(name="Claude Desktop", agent_type=AgentType.CLAUDE_DESKTOP, config_path="/path/b")
     assert a1.stable_id == a2.stable_id
+    assert a1.canonical_id == a1.stable_id
     assert len(a1.stable_id) == 36
 
 

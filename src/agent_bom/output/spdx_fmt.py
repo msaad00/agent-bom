@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from agent_bom.asset_provenance import package_version_provenance
+from agent_bom.compliance_utils import framework_qualified_blast_radius_tags
 from agent_bom.models import AIBOMReport
 
 
@@ -50,6 +51,7 @@ def to_spdx(report: AIBOMReport) -> dict:
     }
 
     pkg_ref_map: dict[str, str] = {}
+    vuln_compliance_tags = _blast_radius_compliance_tags(report)
 
     for agent in report.agents:
         agent_id = _next_id("SPDXRef-Agent")
@@ -179,6 +181,13 @@ def to_spdx(report: AIBOMReport) -> dict:
                         "description": vuln.summary or "",
                         "externalIdentifier": [{"type": "cve", "identifier": vuln.id}] if vuln.id.startswith("CVE-") else [],
                     }
+                    vuln_annotations = _vulnerability_annotations(
+                        vuln,
+                        vuln_element_id,
+                        compliance_tags=vuln_compliance_tags.get(_vulnerability_key(pkg, vuln), []),
+                    )
+                    if vuln_annotations:
+                        vuln_element["annotation"] = vuln_annotations
                     if vuln.cvss_score is not None:
                         vuln_element["assessedElement"] = pkg_id
                         vuln_element["score"] = {
@@ -223,3 +232,63 @@ def export_spdx(report: AIBOMReport, output_path: str) -> None:
     """Export report as SPDX 3.0 JSON-LD file."""
     data = to_spdx(report)
     Path(output_path).write_text(json.dumps(data, indent=2))
+
+
+def _vulnerability_annotations(vuln: Any, subject: str, *, compliance_tags: list[str] | None = None) -> list[dict[str, object]]:
+    """Encode non-core vulnerability enrichments as SPDX annotations."""
+    statements: list[str] = []
+    if vuln.severity_source:
+        statements.append(f"agent-bom:severity-source={vuln.severity_source}")
+    if vuln.epss_score is not None:
+        statements.append(f"agent-bom:epss-score={vuln.epss_score:.4f}")
+    if vuln.epss_percentile is not None:
+        statements.append(f"agent-bom:epss-percentile={vuln.epss_percentile:.4f}")
+    statements.append(f"agent-bom:kev={'true' if vuln.is_kev else 'false'}")
+    if vuln.kev_date_added:
+        statements.append(f"agent-bom:kev-date-added={vuln.kev_date_added}")
+    if vuln.kev_due_date:
+        statements.append(f"agent-bom:kev-due-date={vuln.kev_due_date}")
+    for cwe_id in vuln.cwe_ids:
+        statements.append(f"agent-bom:cwe={cwe_id}")
+    for tag in [*list(compliance_tags or []), *_vulnerability_compliance_tags(vuln)]:
+        statements.append(f"agent-bom:compliance-tag={tag}")
+
+    return [
+        {
+            "type": "Annotation",
+            "annotationType": "OTHER",
+            "subject": subject,
+            "statement": statement,
+        }
+        for statement in statements
+    ]
+
+
+def _vulnerability_compliance_tags(vuln: Any) -> list[str]:
+    """Return framework-qualified vulnerability compliance tags."""
+    raw_tags = getattr(vuln, "compliance_tags", None) or {}
+    if isinstance(raw_tags, dict):
+        tags: list[str] = []
+        for framework, controls in sorted(raw_tags.items()):
+            if isinstance(controls, str):
+                controls = [controls]
+            for control in controls or []:
+                tags.append(f"{framework}:{control}")
+        return tags
+    if isinstance(raw_tags, list | tuple | set):
+        return [str(tag) for tag in raw_tags if tag]
+    return []
+
+
+def _blast_radius_compliance_tags(report: AIBOMReport) -> dict[tuple[str, str, str | None, str], list[str]]:
+    """Return framework-qualified compliance tags keyed by package vulnerability."""
+    by_vuln: dict[tuple[str, str, str | None, str], list[str]] = {}
+    for br in report.blast_radii:
+        tags = framework_qualified_blast_radius_tags(br)
+        if tags:
+            by_vuln[_vulnerability_key(br.package, br.vulnerability)] = tags
+    return by_vuln
+
+
+def _vulnerability_key(pkg: Any, vuln: Any) -> tuple[str, str, str | None, str]:
+    return (pkg.ecosystem, pkg.name, pkg.version, vuln.id)

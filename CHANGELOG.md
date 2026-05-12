@@ -24,6 +24,9 @@ Versions follow [Semantic Versioning](https://semver.org/).
   `agent-bom-report.json`). The profile default is now applied only when the
   caller value is empty, preserving wrapper-command behavior while still
   honoring profile defaults for bare `agent-bom agents` invocations.
+- **Auditor export parity** - CSV, Markdown, and SPDX outputs now preserve
+  severity provenance, EPSS percentile, KEV dates, CWE IDs, and framework
+  compliance tags instead of dropping enrichment metadata outside JSON/SARIF.
 
 ---
 

@@ -5,6 +5,7 @@ Produces a self-contained Markdown report with summary table and detailed findin
 
 from __future__ import annotations
 
+from agent_bom.compliance_utils import framework_qualified_blast_radius_tags
 from agent_bom.finding import Finding, FindingType
 from agent_bom.models import AIBOMReport, BlastRadius, Severity
 
@@ -85,16 +86,24 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
     if brs:
         lines.append("## Findings")
         lines.append("")
-        lines.append("| Severity | CVE | Package | Version | Fix | CVSS | Agents |")
-        lines.append("|----------|-----|---------|---------|-----|------|--------|")
+        lines.append("| Severity | CVE | Package | Version | Fix | CVSS | EPSS | KEV | CWE | Tags | Source | Agents |")
+        lines.append("|----------|-----|---------|---------|-----|------|------|-----|-----|------|--------|--------|")
 
         for br in sorted(brs, key=lambda b: _sev_order(b.vulnerability.severity)):
             v = br.vulnerability
             sev_badge = _severity_badge(v.severity)
             cvss = f"{v.cvss_score}" if v.cvss_score is not None else "-"
+            epss = f"{v.epss_score:.4f}" if v.epss_score is not None else "-"
+            kev = "Yes" if v.is_kev else "-"
+            cwe = _md_cell(", ".join(v.cwe_ids) if v.cwe_ids else "-")
+            tags = _md_cell(_compliance_tags_text(br) or "-")
+            source = _md_cell(v.severity_source or "-")
             fix = v.fixed_version or "-"
             agents = str(len(br.affected_agents))
-            lines.append(f"| {sev_badge} | {v.id} | {br.package.name} | {br.package.version or '-'} | {fix} | {cvss} | {agents} |")
+            lines.append(
+                f"| {sev_badge} | {v.id} | {br.package.name} | {br.package.version or '-'} | {fix} | {cvss} | "
+                f"{epss} | {kev} | {cwe} | {tags} | {source} | {agents} |"
+            )
 
         lines.append("")
 
@@ -111,16 +120,27 @@ def to_markdown(report: AIBOMReport, blast_radii: list[BlastRadius] | None = Non
                 lines.append(f"> {v.summary}")
                 lines.append("")
             lines.append(f"- **Severity**: {v.severity.value.upper()}")
+            if v.severity_source:
+                lines.append(f"- **Severity source**: {v.severity_source}")
             if v.cvss_score is not None:
                 lines.append(f"- **CVSS**: {v.cvss_score}")
             if v.epss_score is not None:
                 lines.append(f"- **EPSS**: {v.epss_score:.4f}")
+            if v.epss_percentile is not None:
+                lines.append(f"- **EPSS percentile**: {v.epss_percentile:.4f}")
             if v.is_kev:
                 lines.append("- **KEV**: Yes (CISA Known Exploited)")
+            if v.kev_date_added:
+                lines.append(f"- **KEV date added**: {v.kev_date_added}")
+            if v.kev_due_date:
+                lines.append(f"- **KEV due date**: {v.kev_due_date}")
             if v.fixed_version:
                 lines.append(f"- **Fix**: Upgrade to {v.fixed_version}")
             if v.cwe_ids:
                 lines.append(f"- **CWE**: {', '.join(v.cwe_ids)}")
+            compliance_tags = _compliance_tags_text(br)
+            if compliance_tags:
+                lines.append(f"- **Compliance tags**: {compliance_tags}")
             if br.affected_agents:
                 lines.append(f"- **Affected agents**: {', '.join(a.name for a in br.affected_agents)}")
             if br.exposed_credentials:
@@ -180,3 +200,8 @@ def _severity_text(sev: str) -> str:
 def _md_cell(value: object) -> str:
     """Escape Markdown table separators without hiding human-readable context."""
     return str(value).replace("|", "\\|")
+
+
+def _compliance_tags_text(br: BlastRadius) -> str:
+    """Return framework-qualified tags for compact Markdown rendering."""
+    return ", ".join(framework_qualified_blast_radius_tags(br))

@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import io
 
+from agent_bom.compliance_utils import framework_qualified_blast_radius_tags
 from agent_bom.models import AIBOMReport, BlastRadius
 
 _COLUMNS = [
@@ -28,6 +29,11 @@ _COLUMNS = [
     "affected_servers",
     "exposed_credentials",
     "summary",
+    "severity_source",
+    "epss_percentile",
+    "kev_date_added",
+    "kev_due_date",
+    "compliance_tags",
 ]
 
 
@@ -62,10 +68,20 @@ def to_csv(report: AIBOMReport, blast_radii: list[BlastRadius] | None = None) ->
                 "affected_servers": ";".join(s.name for s in br.affected_servers),
                 "exposed_credentials": str(len(br.exposed_credentials)),
                 "summary": v.summary or "",
+                "severity_source": v.severity_source or "",
+                "epss_percentile": f"{v.epss_percentile:.4f}" if v.epss_percentile is not None else "",
+                "kev_date_added": v.kev_date_added or "",
+                "kev_due_date": v.kev_due_date or "",
+                "compliance_tags": _compliance_tags_cell(br),
             }
         )
 
     return buf.getvalue()
+
+
+def _compliance_tags_cell(br: BlastRadius) -> str:
+    """Return framework-qualified tags for one spreadsheet cell."""
+    return ";".join(framework_qualified_blast_radius_tags(br))
 
 
 def export_csv(report: AIBOMReport, output_path: str, blast_radii: list[BlastRadius] | None = None) -> None:

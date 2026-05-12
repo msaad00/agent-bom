@@ -62,3 +62,12 @@ def apply_effective_blast_radius_tags(br: BlastRadius) -> BlastRadius:
     for field, tags in effective_blast_radius_tags(br).items():
         setattr(br, field, tags)
     return br
+
+
+def framework_qualified_blast_radius_tags(br: BlastRadius) -> list[str]:
+    """Return merged tags as stable framework:control strings."""
+    tags: list[str] = []
+    for field, values in effective_blast_radius_tags(br).items():
+        framework = _FIELD_TO_VULN_KEY.get(field, field.removesuffix("_tags"))
+        tags.extend(f"{framework}:{value}" for value in values)
+    return tags

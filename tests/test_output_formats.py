@@ -23,7 +23,7 @@ from agent_bom.models import (
     TransportType,
     Vulnerability,
 )
-from agent_bom.output import to_csv, to_json, to_junit, to_markdown
+from agent_bom.output import to_csv, to_json, to_junit, to_markdown, to_spdx
 from agent_bom.output.html import to_html
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
@@ -95,6 +95,23 @@ def _make_vuln(
         cvss_score=cvss_score,
         fixed_version=fixed_version,
         cwe_ids=cwe_ids or [],
+    )
+
+
+def _make_enriched_vuln() -> Vulnerability:
+    return Vulnerability(
+        id="CVE-2026-4242",
+        severity=Severity.HIGH,
+        severity_source="nvd:cvss_v3",
+        summary="Enriched vulnerability",
+        cvss_score=8.8,
+        epss_score=0.812345,
+        epss_percentile=99.1234,
+        fixed_version="2.0.0",
+        is_kev=True,
+        kev_date_added="2026-01-15",
+        kev_due_date="2026-02-05",
+        cwe_ids=["CWE-79", "CWE-352"],
     )
 
 
@@ -306,6 +323,26 @@ class TestCSV:
         assert rows[0]["published_at"] == "2026-03-21T12:00:00Z"
         assert rows[0]["modified_at"] == "2026-03-23T09:00:00Z"
 
+    def test_enrichment_and_compliance_metadata_are_appended(self):
+        br = _make_blast_radius(pkg=_make_pkg("web-lib", "1.0.0"), vuln=_make_enriched_vuln())
+        br.owasp_tags = ["LLM05"]
+        br.soc2_tags = ["CC7.1"]
+        report = _make_report(blast_radii=[br])
+
+        csv_str = to_csv(report, [br])
+        reader = csv.DictReader(io.StringIO(csv_str.lstrip("\ufeff")))
+        row = next(reader)
+
+        assert row["cwe_ids"] == "CWE-79;CWE-352"
+        assert row["epss_score"] == "0.8123"
+        assert row["is_kev"] == "yes"
+        assert row["severity_source"] == "nvd:cvss_v3"
+        assert row["epss_percentile"] == "99.1234"
+        assert row["kev_date_added"] == "2026-01-15"
+        assert row["kev_due_date"] == "2026-02-05"
+        assert "owasp_llm:LLM05" in row["compliance_tags"]
+        assert "soc2:CC7.1" in row["compliance_tags"]
+
 
 class TestJSON:
     def test_nested_package_vulnerability_count_present(self):
@@ -473,6 +510,48 @@ class TestMarkdown:
         assert "snowflake-cortex-service" in md
         assert "Suspicious credential exfiltration MCP server" in md
         assert "No vulnerabilities found" not in md
+
+    def test_findings_table_preserves_enrichment_and_compliance_metadata(self):
+        br = _make_blast_radius(pkg=_make_pkg("web-lib", "1.0.0"), vuln=_make_enriched_vuln())
+        br.owasp_tags = ["LLM05"]
+        br.soc2_tags = ["CC7.1"]
+        report = _make_report(blast_radii=[br])
+
+        md = to_markdown(report, [br])
+
+        assert "| Severity | CVE | Package | Version | Fix | CVSS | EPSS | KEV | CWE | Tags | Source | Agents |" in md
+        assert "0.8123" in md
+        assert "Yes" in md
+        assert "CWE-79, CWE-352" in md
+        assert "owasp_llm:LLM05" in md
+        assert "soc2:CC7.1" in md
+        assert "nvd:cvss_v3" in md
+        assert "- **EPSS percentile**: 99.1234" in md
+        assert "- **KEV date added**: 2026-01-15" in md
+
+
+def test_spdx_vulnerability_annotations_preserve_enrichment_and_compliance_metadata():
+    vuln = _make_enriched_vuln()
+    pkg = _make_pkg("web-lib", "1.0.0")
+    pkg.vulnerabilities = [vuln]
+    br = _make_blast_radius(pkg=pkg, vuln=vuln)
+    br.owasp_tags = ["LLM05"]
+    br.soc2_tags = ["CC7.1"]
+    report = _make_report(agents=[_make_agent(servers=[_make_server(packages=[pkg])])], blast_radii=[br])
+
+    spdx = to_spdx(report)
+    vuln_element = next(element for element in spdx["elements"] if element.get("type") == "security/Vulnerability")
+    statements = {annotation["statement"] for annotation in vuln_element["annotation"]}
+
+    assert "agent-bom:severity-source=nvd:cvss_v3" in statements
+    assert "agent-bom:epss-score=0.8123" in statements
+    assert "agent-bom:epss-percentile=99.1234" in statements
+    assert "agent-bom:kev=true" in statements
+    assert "agent-bom:kev-date-added=2026-01-15" in statements
+    assert "agent-bom:cwe=CWE-79" in statements
+    assert "agent-bom:cwe=CWE-352" in statements
+    assert "agent-bom:compliance-tag=owasp_llm:LLM05" in statements
+    assert "agent-bom:compliance-tag=soc2:CC7.1" in statements
 
 
 def test_html_renders_unified_non_cve_findings_with_asset_context():

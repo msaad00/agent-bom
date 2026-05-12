@@ -115,7 +115,7 @@ def _gateway_evidence() -> dict[str, Any]:
                 "params": {"name": "query_issues", "arguments": {"jql": "project = AGENTBOM"}},
             },
         )
-        metrics = client.get("/metrics")
+        metrics = client.get("/metrics", headers={"Authorization": f"Bearer {GATEWAY_TOKEN}"})
 
     os.environ.pop(UPSTREAM_TOKEN_ENV, None)
     metric_lines = [line for line in metrics.text.splitlines() if "agent_bom_gateway_relays_total" in line]

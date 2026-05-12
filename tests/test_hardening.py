@@ -292,7 +292,7 @@ def test_list_jobs_pagination():
 
 
 def test_list_jobs_clamps_limit():
-    """Limit is clamped to max 200."""
+    """GET /v1/jobs accepts the shared 1000-row list ceiling."""
     from unittest.mock import patch
 
     from starlette.testclient import TestClient
@@ -306,7 +306,7 @@ def test_list_jobs_clamps_limit():
         client = TestClient(app)
         resp = client.get("/v1/jobs?limit=999")
         assert resp.status_code == 200
-        assert resp.json()["limit"] == 200
+        assert resp.json()["limit"] == 999
 
 
 def test_list_fleet_pagination():

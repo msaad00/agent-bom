@@ -362,7 +362,7 @@ YAML.
 
 ![agent-bom dashboard](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/dashboard-live.png)
 
-**Fleet and graph visibility**
+**Focused fleet and graph visibility**
 
 ![agent-bom agent mesh](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
 

@@ -23,9 +23,7 @@ PR clearly explains why an asset is unchanged.
 |---|---|
 | `dashboard-live.png` | Risk overview top frame, visible version, headline KPIs, posture grade, and start of attack paths. |
 | `dashboard-paths-live.png` | Risk overview mid-frame, attack paths, exposure KPIs, severity/source charts, and backlog context. |
-| `mesh-live.png` | Full light-theme agent mesh graph with selected agents, MCP servers, tools, packages, credentials, and findings. |
-| `mesh-dark-live.png` | Full dark-theme agent mesh graph from the real `/mesh` product route. |
-| `mesh-light-live.png` | Full light-theme agent mesh graph from the real `/mesh` product route. |
+| `mesh-live.png` | Focused agent mesh graph with selected agents, MCP servers, tools, packages, credentials, findings, and no large empty canvas. |
 | `security-graph-live.png` | Fix-first attack path queue with snapshot pressure, graph evidence export, and remediation handoff. |
 | `lineage-graph-live.png` | Root-centered lineage investigation with reachable node counts, bounded paths, filters, and graph evidence export. |
 | `dependency-map-live.png` | Supply chain dependency map with scan pipeline counts and package risk distribution. |
@@ -49,6 +47,9 @@ Before opening the PR, inspect every refreshed image:
   terminal windows, or dev overlays are visible
 - no empty graph, nearly empty graph, or unreadable dense graph is published as
   product evidence
+- no public README, Docker Hub, or marketplace section repeats the same graph as
+  separate dark/light theme screenshots unless the PR is specifically proving
+  theme behavior
 - graph evidence starts from an operator-readable workflow; raw expanded
   topology is acceptable only as a drilldown, not as the default public image
 - text and critical UI affordances are readable at GitHub README scale

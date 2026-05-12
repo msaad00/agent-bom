@@ -1,7 +1,7 @@
 {
   "release_version": "0.86.5",
   "captured_at": "2026-05-11T00:43:55Z",
-  "capture_note": "Captured from the packaged Next.js dashboard served by agent-bom serve with bundled demo data pushed through /v1/results/push. Graph screenshots are real product routes in capture mode; no docs-only slide route is used.",
+  "capture_note": "Captured from the packaged Next.js dashboard served by agent-bom serve with bundled demo data pushed through /v1/results/push. Graph screenshots are real product routes in capture mode; README/Docker proof uses one focused graph capture rather than duplicate dark/light theme copies.",
   "screenshots": [
     {
       "path": "dashboard-live.png",
@@ -18,19 +18,7 @@
     {
       "path": "mesh-live.png",
       "page": "/mesh?capture=1",
-      "scope": "Full agent mesh graph across selected agents, MCP servers, packages, tools, credentials, and findings",
-      "visible_version": "0.86.5"
-    },
-    {
-      "path": "mesh-dark-live.png",
-      "page": "/mesh?capture=1",
-      "scope": "Dark-theme agent mesh graph with the same scoped evidence model",
-      "visible_version": "0.86.5"
-    },
-    {
-      "path": "mesh-light-live.png",
-      "page": "/mesh?capture=1",
-      "scope": "Light-theme agent mesh graph with the same scoped evidence model",
+      "scope": "Focused agent mesh graph across selected agents, MCP servers, packages, tools, credentials, and findings",
       "visible_version": "0.86.5"
     },
     {

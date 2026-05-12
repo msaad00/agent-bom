@@ -48,9 +48,7 @@ before replacing any published product image.
 |---|---|---|---|
 | `dashboard-live.png` | `/?capture=1` (Risk overview) | All agents · top crop showing the gauge, posture sub-scores, score breakdown, and the start of the attack-path list | The published README should not use one tall stitched dashboard asset when two shorter frames tell the story more clearly |
 | `dashboard-paths-live.png` | `/?capture=1` (Risk overview) | All agents · mid-page crop showing the attack-path list, exposure KPI band, and the first backlog charts | Keeps the fix-first path list readable in GitHub while still proving the KPI / backlog context lives on the same page |
-| `mesh-live.png` | `/mesh?capture=1` | Capture the full light-theme agent mesh graph across selected agents, MCP servers, tools, packages, credentials, and findings | Preserves the graph-backed product surface; capture mode tightens graph framing and hides minimap controls |
-| `mesh-dark-live.png` | `/mesh?capture=1` | Capture the same real product graph in dark theme | Proves theme parity without using a docs-only route |
-| `mesh-light-live.png` | `/mesh?capture=1` | Capture the same real product graph in light theme | Keeps dependency paths and finding edges readable in GitHub docs |
+| `mesh-live.png` | `/mesh?capture=1` | Focused agent mesh graph across selected agents, MCP servers, tools, packages, credentials, and findings | Public README, Docker Hub, and marketplace surfaces should show one readable graph proof, not duplicate dark/light theme captures |
 | `security-graph-live.png` | `/security-graph?capture=1` | Capture the fix-first attack-path queue with snapshot pressure, graph evidence export, and remediation handoff | Shows the operator workflow before raw topology so the public image is readable and action oriented |
 | `lineage-graph-live.png` | `/graph?capture=1&investigate=1&root=agent:analyst-agent&q=analyst-agent` | Capture the root-centered lineage investigation with reachability summary, bounded paths, filters, and export controls | Uses a shipped graph drilldown workflow instead of an unreadable expanded topology capture |
 | `dependency-map-live.png` | `/insights?capture=1` | Capture the supply chain dependency map with scan pipeline counts and package risk distribution | Proves package risk visualization from the same pushed scan payload |
@@ -71,14 +69,17 @@ A capture set that misses either frame is incomplete. Re-shoot from the
 packaged UI and crop deliberately; do not publish another full-page stitched
 dashboard asset unless the layout materially changes again.
 
-Use the agent with filesystem and database servers as the graph hero shot in
+Use the agent with filesystem and database servers as the graph proof shot in
 the current demo inventory. It brings multiple tools, reachable packages, and
 the densest CVE cluster
 (`pillow@9.0.0`, `cryptography@39.0.0`, `werkzeug@2.2.2`). Capturing under
 an unscoped or lower-signal agent risks a flatter graph. Use
-`/mesh?capture=1` for the full product graph in both dark and light themes so
-the graph is framed for README-scale evidence. Do not publish a docs-only slide
-or card view in place of the graph screenshot.
+`/mesh?capture=1` for the product graph, then crop deliberately so the visible
+frame contains the graph controls, legend, nodes, and dependency/finding edges
+without the left navigation or a large empty canvas. Do not publish duplicate
+dark/light theme copies in the public README or Docker Hub description unless
+the section is specifically proving a theme bug fix. Do not publish a docs-only
+slide or card view in place of the graph screenshot.
 
 For public release screenshots, sanitize demo agent labels before pushing the
 payload to the capture API. Keep the generated inventory, findings,

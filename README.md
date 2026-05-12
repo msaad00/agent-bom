@@ -173,15 +173,9 @@ Risk, reach, fix version, and framework context in one review table — operator
 
 ### Agent mesh
 
-Agent-centered shared-infrastructure graph — selected agents, their MCP servers, tools, packages, credentials, and findings. The same evidence model renders in dark and light themes.
+Agent-centered shared-infrastructure graph — selected agents, their MCP servers, tools, packages, credentials, and findings. The public product proof uses one focused live capture so the dependency path, vulnerable packages, and CVE edges stay readable in GitHub, Docker Hub, and marketplace README surfaces.
 
-**Dark theme**
-
-![agent-bom agent mesh dark theme](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-dark-live.png)
-
-**Light theme**
-
-![agent-bom agent mesh light theme](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-light-live.png)
+![agent-bom focused agent mesh dependency graph](https://raw.githubusercontent.com/msaad00/agent-bom/main/docs/images/mesh-live.png)
 
 ### Security graph
 

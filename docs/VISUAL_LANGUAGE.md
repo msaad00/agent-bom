@@ -36,13 +36,16 @@ Current PNG inventory:
 |---|---|---|
 | `dashboard-live.png` | Packaged Next.js dashboard risk overview | Product views |
 | `dashboard-paths-live.png` | Packaged Next.js attack paths and exposure view | Product views |
-| `mesh-live.png` | Full light-theme agent mesh graph across agents, MCP servers, packages, tools, credentials, and findings | Product views |
-| `mesh-dark-live.png` | Full dark-theme agent mesh graph across the same scoped evidence model | Product views |
-| `mesh-light-live.png` | Full light-theme agent mesh graph across the same scoped evidence model | Product views |
+| `mesh-live.png` | Focused agent mesh graph across agents, MCP servers, packages, tools, credentials, and findings | Product views |
 | `security-graph-live.png` | Fix-first attack-path queue with export controls and remediation handoff | Product views |
 | `lineage-graph-live.png` | Root-centered lineage investigation with bounded paths and reachability summary | Product views |
 | `dependency-map-live.png` | Supply chain dependency map with scan pipeline counts and package risk distribution | Product views |
 | `remediation-live.png` | Fix-first remediation surface | Product views |
+
+Public README, Docker Hub, and marketplace screenshots should not duplicate the
+same graph in dark and light themes. Use one focused, readable product capture
+for graph proof; keep theme-specific screenshots in release QA notes only when a
+theme regression is being verified.
 
 ## Mermaid — for code-true flows that evolve
 

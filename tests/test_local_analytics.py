@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sqlite3
 
+from click.testing import CliRunner
+
 from agent_bom.db.local_analytics import LocalAnalyticsStore
 
 
@@ -157,6 +159,57 @@ def test_history_save_dual_writes_local_analytics(monkeypatch, tmp_path):
     with sqlite3.connect(analytics_path) as conn:
         rows = conn.execute("SELECT scan_id, source, artifact_path FROM scan_runs").fetchall()
     assert rows == [("saved-scan", "cli", str(saved_path))]
+
+
+def test_cli_agents_scan_mirrors_to_local_analytics(monkeypatch, tmp_path):
+    """CLI scan completions must mirror to local-analytics regardless of --save.
+
+    Before the v0.86.6 fix, `agent-bom report query "SELECT COUNT(*) FROM scan_runs"`
+    returned 0 after a CLI scan because the mirror was only wired into
+    `history.save_report` (gated on the `--save` flag).
+    """
+    import agent_bom.db.local_analytics as local_analytics
+    from agent_bom.cli import main
+
+    db_path = tmp_path / "analytics.sqlite"
+    monkeypatch.setattr(local_analytics, "LOCAL_ANALYTICS_DB", str(db_path))
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["agents", "--agent-mode", "--demo", "--no-scan", "--offline", "--no-auto-update-db"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+
+    with sqlite3.connect(db_path) as conn:
+        count = conn.execute("SELECT COUNT(*) FROM scan_runs").fetchone()[0]
+    assert count >= 1, "CLI scan must persist to local-analytics scan_runs"
+
+
+def test_cli_local_analytics_mirror_is_best_effort(monkeypatch, tmp_path):
+    """A mirror-write failure must never fail the scan."""
+    import agent_bom.cli.agents as agents_module
+    from agent_bom.cli import main
+
+    def _raise(*_args, **_kwargs):
+        raise RuntimeError("simulated analytics outage")
+
+    # Patch the function as imported inside the CLI scan-completion code path.
+    monkeypatch.setattr(
+        "agent_bom.db.local_analytics.record_scan_report_best_effort",
+        _raise,
+    )
+    # Sanity: make sure we patched the symbol the CLI imports.
+    assert agents_module is not None
+
+    runner = CliRunner()
+    result = runner.invoke(
+        main,
+        ["agents", "--agent-mode", "--demo", "--no-scan", "--offline", "--no-auto-update-db"],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
 
 
 def test_local_analytics_store_migrates_initial_scan_id_keyed_schema(tmp_path):

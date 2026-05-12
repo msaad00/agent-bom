@@ -2323,6 +2323,18 @@ def scan(
         return
 
     # Step 6: Save report to history + asset tracking
+    # Mirror every CLI scan to the local analytics store so `agent-bom report query`
+    # sees CLI-tier scans (not only --save'd or API-tier writes). Best-effort: a
+    # write failure must never fail the scan.
+    try:
+        import logging as _logging
+
+        from agent_bom.db.local_analytics import record_scan_report_best_effort
+
+        record_scan_report_best_effort(current_report_json, source="cli")
+    except Exception as _local_analytics_exc:  # noqa: BLE001
+        _logging.getLogger(__name__).debug("Local analytics mirror failed: %s", _local_analytics_exc, exc_info=True)
+
     if save_report:
         from agent_bom.history import save_report as _save
 

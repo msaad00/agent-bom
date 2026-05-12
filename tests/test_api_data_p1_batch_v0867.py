@@ -45,6 +45,20 @@ def fresh_client():
     _stores._exception_store = None
 
 
+@pytest.fixture(autouse=True)
+def reset_proxy_runtime_state():
+    """Keep proxy audit regressions from leaking process-global alert state."""
+    proxy_routes._reset_audit_dedupe_for_tests()
+    proxy_routes._proxy_alerts.clear()
+    proxy_routes._proxy_metrics = None
+    proxy_routes._proxy_metrics_by_tenant.clear()
+    yield
+    proxy_routes._reset_audit_dedupe_for_tests()
+    proxy_routes._proxy_alerts.clear()
+    proxy_routes._proxy_metrics = None
+    proxy_routes._proxy_metrics_by_tenant.clear()
+
+
 # ── P1-16: schema_version on terminal list responses ───────────────────────────
 
 

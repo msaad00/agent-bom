@@ -15,6 +15,7 @@ import {
   recommendedAttackPathActions,
   summarizeInteractionRisks,
   toAttackCardNodes,
+  toExposurePathFromAttackPath,
 } from "@/lib/attack-paths";
 import { EntityType, type AttackPath, type UnifiedNode } from "@/lib/graph-schema";
 
@@ -236,6 +237,37 @@ describe("attack path helpers", () => {
     expect(investigationRootForAttackPath(path, nodes, { packageName: "flask" })?.id).toBe("pkg-1");
     expect(investigationRootForAttackPath(path, nodes, { agentName: "Claude Desktop" })?.id).toBe("agent-1");
     expect(investigationRootForAttackPath(path, nodes, {})?.id).toBe("cve-1");
+  });
+
+  it("adapts persisted attack paths into the shared exposure path contract", () => {
+    const path: AttackPath = {
+      source: "cve-1",
+      target: "agent-1",
+      hops: ["cve-1", "pkg-1", "server-1", "agent-1"],
+      edges: ["edge:cve-pkg", "edge:pkg-server", "edge:server-agent"],
+      composite_risk: 9.4,
+      summary: "CVE reaches an agent through a shared server",
+      credential_exposure: ["DATABASE_URL"],
+      tool_exposure: ["execute_sql"],
+      vuln_ids: ["CVE-2026-0002"],
+    };
+    const nodes = new Map<string, UnifiedNode>([
+      ["cve-1", graphNode("cve-1", EntityType.VULNERABILITY, "CVE-2026-0002")],
+      ["pkg-1", graphNode("pkg-1", EntityType.PACKAGE, "werkzeug")],
+      ["server-1", graphNode("server-1", EntityType.SERVER, "database")],
+      ["agent-1", graphNode("agent-1", EntityType.AGENT, "analyst-agent")],
+    ]);
+
+    const exposure = toExposurePathFromAttackPath(path, nodes, { rank: 1, scanId: "scan-1" });
+
+    expect(exposure.rank).toBe(1);
+    expect(exposure.riskScore).toBe(9.4);
+    expect(exposure.findings).toEqual(["CVE-2026-0002"]);
+    expect(exposure.dependencyContext).toMatchObject({ packageName: "werkzeug", serverName: "database" });
+    expect(exposure.affectedAgents).toEqual(["analyst-agent"]);
+    expect(exposure.reachableTools).toEqual(["execute_sql"]);
+    expect(exposure.exposedCredentials).toEqual(["DATABASE_URL"]);
+    expect(exposure.provenance).toEqual({ source: "graph_attack_path", scanId: "scan-1" });
   });
 
   it("matches a focused attack path by cve, package, and agent labels", () => {

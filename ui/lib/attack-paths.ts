@@ -1,4 +1,13 @@
 import { EntityType, type AttackPath, type UnifiedNode } from "./graph-schema";
+import {
+  normalizeExposureSeverity,
+  uniqueExposureValues,
+  type ExposureEntityRef,
+  type ExposureEntityRole,
+  type ExposurePath,
+  type ExposureRelationshipRef,
+  exposureSeverityRank,
+} from "./exposure-path";
 
 export type AttackPathCardNode = {
   type: "cve" | "package" | "server" | "agent" | "credential";
@@ -93,6 +102,120 @@ export function toAttackCardNodes(path: AttackPath, nodeById: Map<string, Unifie
     });
   }
   return nodes;
+}
+
+function exposureRoleForEntityType(entityType: string): ExposureEntityRole {
+  switch (entityType) {
+    case EntityType.VULNERABILITY:
+    case EntityType.MISCONFIGURATION:
+      return "finding";
+    case EntityType.PACKAGE:
+      return "package";
+    case EntityType.SERVER:
+    case EntityType.CONTAINER:
+    case EntityType.CLOUD_RESOURCE:
+      return "server";
+    case EntityType.AGENT:
+    case EntityType.USER:
+    case EntityType.GROUP:
+    case EntityType.SERVICE_ACCOUNT:
+      return "agent";
+    case EntityType.CREDENTIAL:
+      return "credential";
+    case EntityType.TOOL:
+      return "tool";
+    case EntityType.ENVIRONMENT:
+      return "environment";
+    default:
+      return "unknown";
+  }
+}
+
+function exposureRefFromUnifiedNode(node: UnifiedNode): ExposureEntityRef {
+  return {
+    id: node.id,
+    label: node.label,
+    role: exposureRoleForEntityType(String(node.entity_type)),
+    severity: node.severity,
+    riskScore: node.risk_score,
+  };
+}
+
+function fallbackExposureRef(id: string, role: ExposureEntityRole): ExposureEntityRef {
+  return {
+    id,
+    label: id,
+    role,
+  };
+}
+
+function highestNodeSeverity(hops: ExposureEntityRef[], fallback: string): string {
+  return hops.reduce(
+    (highest, hop) => (exposureSeverityRank(hop.severity) > exposureSeverityRank(highest) ? String(hop.severity) : highest),
+    fallback,
+  );
+}
+
+export function toExposurePathFromAttackPath(
+  path: AttackPath,
+  nodeById: Map<string, UnifiedNode>,
+  options: { rank?: number | undefined; scanId?: string | undefined } = {},
+): ExposurePath {
+  const hops = path.hops.map((hop) => {
+    const node = nodeById.get(hop);
+    return node ? exposureRefFromUnifiedNode(node) : fallbackExposureRef(hop, "unknown");
+  });
+  const source = nodeById.get(path.source)
+    ? exposureRefFromUnifiedNode(nodeById.get(path.source)!)
+    : hops[0] ?? fallbackExposureRef(path.source, "unknown");
+  const target = nodeById.get(path.target)
+    ? exposureRefFromUnifiedNode(nodeById.get(path.target)!)
+    : hops[hops.length - 1] ?? fallbackExposureRef(path.target, "unknown");
+  const relationships: ExposureRelationshipRef[] = path.edges.map((edgeId, index) => ({
+    id: edgeId,
+    source: path.hops[index] ?? source.id,
+    target: path.hops[index + 1] ?? target.id,
+    relationship: edgeId.includes(":") ? edgeId.split(":")[0] ?? "related" : "related",
+    direction: "directed",
+    traversable: true,
+  }));
+  const packages = hops.filter((hop) => hop.role === "package");
+  const servers = hops.filter((hop) => hop.role === "server");
+  const affectedAgents = uniqueExposureValues(labelsForAttackPathType(path, nodeById, "agent"));
+  const exposedCredentials = uniqueExposureValues(path.credential_exposure);
+  const reachableTools = uniqueExposureValues(path.tool_exposure);
+
+  return {
+    id: attackPathKey(path),
+    rank: options.rank,
+    label: path.summary || `${source.label} -> ${target.label}`,
+    summary: path.summary,
+    riskScore: path.composite_risk,
+    severity: normalizeExposureSeverity(highestNodeSeverity(hops, path.composite_risk >= 9 ? "critical" : "high")),
+    source,
+    target,
+    hops,
+    relationships,
+    nodeIds: path.hops,
+    edgeIds: path.edges,
+    findings: uniqueExposureValues(path.vuln_ids),
+    affectedAgents,
+    affectedServers: uniqueExposureValues(servers.map((server) => server.label)),
+    reachableTools,
+    exposedCredentials,
+    dependencyContext: {
+      packageName: packages[0]?.label,
+      serverName: servers[0]?.label,
+    },
+    evidence: {
+      isKev: hops.some((hop) => String(hop.label).toLowerCase().includes("kev")),
+      source: "graph_attack_path",
+    },
+    provenance: {
+      source: "graph_attack_path",
+      scanId: options.scanId,
+    },
+  };
 }
 
 export function attackPathSequenceLabels(path: AttackPath, nodeById: Map<string, UnifiedNode>): string[] {

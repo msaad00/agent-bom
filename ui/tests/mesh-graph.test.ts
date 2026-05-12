@@ -86,6 +86,13 @@ describe("buildMeshGraph", () => {
 
     expect(stats.totalAgents).toBe(2);
     expect(stats.topExposurePath?.vulnerabilityId).toBe("CVE-2026-0001");
+    expect(stats.topExposurePath?.findings).toEqual(["CVE-2026-0001"]);
+    expect(stats.topExposurePath?.dependencyContext).toMatchObject({
+      packageName: "server-filesystem",
+      packageVersion: "1.0.0",
+      ecosystem: "npm",
+      serverName: "filesystem",
+    });
     expect(stats.topExposurePath?.nodeIds).toEqual(
       expect.arrayContaining([
         "agent:claude-desktop",
@@ -174,6 +181,13 @@ describe("buildMeshGraph", () => {
     expect(stats.topExposurePath?.vulnerabilityId).toBe("CVE-2023-25577");
     expect(stats.topExposurePath?.riskScore).toBe(96);
     expect(stats.topExposurePath?.fixedVersion).toBe("2.2.3");
+    expect(stats.topExposurePath?.fix).toEqual({
+      label: "Upgrade werkzeug",
+      version: "2.2.3",
+    });
+    expect(stats.topExposurePath?.relationships.map((edge) => edge.relationship)).toEqual(
+      expect.arrayContaining(["uses", "depends_on", "vulnerable_to", "provides_tool", "exposes_cred"]),
+    );
     expect(stats.topExposurePath?.impactCategory).toBe("code-execution");
     expect(stats.topExposurePath?.nodeIds).toEqual(
       expect.arrayContaining([

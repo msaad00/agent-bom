@@ -22,6 +22,7 @@ function _classifyGraphErrorKind(err: unknown): "network" | "auth" | "forbidden"
   return "network";
 }
 import { AttackPathCard } from "@/components/attack-path-card";
+import { ExposurePathStrip } from "@/components/exposure-path-strip";
 import { GraphEvidenceExportButton } from "@/components/graph-chrome";
 import { GraphEmptyState, GraphPanelSkeleton } from "@/components/graph-state-panels";
 import {
@@ -47,6 +48,7 @@ import {
   summarizeInteractionRisks,
   moveAttackPathSelection,
   toAttackCardNodes,
+  toExposurePathFromAttackPath,
 } from "@/lib/attack-paths";
 import { useCaptureMode } from "@/lib/use-capture-mode";
 
@@ -247,6 +249,16 @@ function SecurityGraphPageContent() {
   const selectedFixFirstCard = useMemo(
     () => (selectedAttackPath ? cardByPathKey.get(attackPathKey(selectedAttackPath)) ?? null : null),
     [cardByPathKey, selectedAttackPath],
+  );
+  const selectedExposurePath = useMemo(
+    () =>
+      selectedAttackPath
+        ? toExposurePathFromAttackPath(selectedAttackPath, graphNodeById, {
+            scanId: selectedScanId || undefined,
+            rank: selectedFixFirstCard?.rank,
+          })
+        : null,
+    [graphNodeById, selectedAttackPath, selectedFixFirstCard?.rank, selectedScanId],
   );
 
   const selectedPathAgents = useMemo(
@@ -690,6 +702,11 @@ function SecurityGraphPageContent() {
           {selectedAttackPath && (
             <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
               <div className="rounded-3xl border border-[color:var(--border-subtle)] bg-[color:var(--surface)] p-5">
+                {selectedExposurePath && (
+                  <div className="-mx-5 -mt-5 mb-5 overflow-hidden rounded-t-3xl">
+                    <ExposurePathStrip path={selectedExposurePath} />
+                  </div>
+                )}
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <p className="text-[10px] uppercase tracking-[0.2em] text-orange-400">Selected path</p>

@@ -1,6 +1,7 @@
 "use client";
 
-import { Crosshair, Server, KeyRound, Wrench, ShieldAlert, Package, Bug, AlertTriangle } from "lucide-react";
+import { Server, KeyRound, Wrench, ShieldAlert, Package, Bug, AlertTriangle } from "lucide-react";
+import { ExposurePathStrip } from "@/components/exposure-path-strip";
 import type { MeshStatsData } from "@/lib/mesh-graph";
 
 export type { MeshStatsData };
@@ -24,52 +25,12 @@ export function MeshStats({
   return (
     <div className="border-b border-[var(--border-subtle)]">
       {stats.topExposurePath && (
-        <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border-subtle)] bg-red-950/20 px-4 py-2.5 text-xs">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <span className="inline-flex items-center gap-1 rounded border border-red-500/40 bg-red-500/10 px-2 py-1 font-semibold uppercase text-red-200">
-              <Crosshair className="h-3.5 w-3.5" />
-              Top exposed path
-            </span>
-            <span className="rounded bg-red-500/15 px-2 py-0.5 font-mono text-[11px] uppercase text-red-200">
-              {stats.topExposurePath.severity}
-            </span>
-            <span className="min-w-0 truncate text-[var(--text-secondary)]" title={stats.topExposurePath.label}>
-              {stats.topExposurePath.label}
-            </span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-secondary)]">
-            <span>
-              risk <b className="text-foreground">{Math.round(stats.topExposurePath.riskScore * 10) / 10}</b>
-            </span>
-            <span>
-              agents <b className="text-foreground">{stats.topExposurePath.affectedAgents.length}</b>
-            </span>
-            {stats.topExposurePath.reachableTools.length > 0 && (
-              <span>
-                tools <b className="text-foreground">{stats.topExposurePath.reachableTools.length}</b>
-              </span>
-            )}
-            {stats.topExposurePath.exposedCredentials.length > 0 && (
-              <span>
-                creds <b className="text-foreground">{stats.topExposurePath.exposedCredentials.length}</b>
-              </span>
-            )}
-            {stats.topExposurePath.fixedVersion && (
-              <span>
-                fix <b className="text-emerald-300">{stats.topExposurePath.fixedVersion}</b>
-              </span>
-            )}
-            {onTogglePathFocus && (
-              <button
-                type="button"
-                onClick={onTogglePathFocus}
-                className="rounded border border-red-500/30 px-2 py-1 text-red-200 transition hover:border-red-400 hover:bg-red-500/10"
-              >
-                {pathFocusActive ? "Show all" : "Focus path"}
-              </button>
-            )}
-          </div>
-        </div>
+        <ExposurePathStrip
+          path={stats.topExposurePath}
+          active={pathFocusActive}
+          actionLabel="Focus path"
+          onAction={onTogglePathFocus}
+        />
       )}
 
       <div className="flex items-center gap-4 px-4 py-2 text-xs flex-wrap">

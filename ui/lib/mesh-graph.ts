@@ -6,6 +6,12 @@
 import { type Node, type Edge, MarkerType } from "@xyflow/react";
 import type { ScanResult, MCPServer, Agent, Vulnerability, Package as AIBOMPackage } from "@/lib/api";
 import type { LineageNodeData } from "@/components/lineage-nodes";
+import {
+  uniqueExposureValues,
+  type ExposureEntityRef,
+  type ExposurePath,
+  type ExposureRelationshipRef,
+} from "@/lib/exposure-path";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -29,7 +35,7 @@ export interface MeshStatsData {
   topExposurePath?: MeshExposurePath | undefined;
 }
 
-export interface MeshExposurePath {
+export interface MeshExposurePath extends ExposurePath {
   label: string;
   vulnerabilityId: string;
   severity: VulnerabilitySeverity;
@@ -286,7 +292,7 @@ function compareVulnerabilities(left: Vulnerability, right: Vulnerability): numb
 }
 
 function uniqueStrings(values: (string | undefined)[]): string[] {
-  return [...new Set(values.filter((value): value is string => Boolean(value)))];
+  return uniqueExposureValues(values);
 }
 
 function blastRiskScore(vuln: Vulnerability, blast: ScanResult["blast_radius"][number] | undefined): number {
@@ -752,7 +758,94 @@ export function buildMeshGraph(
             ]);
             const affectedAgents = pathAgentKeys.map((agentKey) => group.agentLabels.get(agentKey) ?? agentKey);
             const riskScore = blastRiskScore(vuln, br);
+            const agentRefs: ExposureEntityRef[] = pathAgentKeys.map((agentKey) => ({
+              id: meshAgentNodeId(agentKey),
+              label: group.agentLabels.get(agentKey) ?? agentKey,
+              role: "agent",
+            }));
+            const serverRef: ExposureEntityRef = {
+              id: serverId,
+              label: group.name,
+              role: "server",
+            };
+            const packageRef: ExposureEntityRef = {
+              id: pkgId,
+              label: `${pkg.name}@${pkg.version}`,
+              role: "package",
+              severity: vuln.severity,
+            };
+            const vulnRef: ExposureEntityRef = {
+              id: vulnId,
+              label: vuln.id,
+              role: "finding",
+              severity: vuln.severity,
+              riskScore,
+            };
+            const toolRefs: ExposureEntityRef[] = reachableTools.slice(0, 2).map((tool) => ({
+              id: `tool:${serverId}:${tool}`,
+              label: tool,
+              role: "tool" as const,
+            })).filter((ref) => seen.has(ref.id));
+            const credentialRefs: ExposureEntityRef[] = exposedCredentials.slice(0, 2).map((credential) => ({
+              id: `cred:${serverId}:${credential}`,
+              label: credential,
+              role: "credential" as const,
+            }));
+            const relationships: ExposureRelationshipRef[] = [
+              ...pathAgentKeys.map((agentKey) => ({
+                id: `${meshAgentNodeId(agentKey)}->${serverId}`,
+                source: meshAgentNodeId(agentKey),
+                target: serverId,
+                relationship: "uses",
+                direction: "directed" as const,
+                traversable: true,
+                confidence: "observed",
+                evidenceCount: 1,
+              })),
+              {
+                id: `${serverId}->${pkgId}`,
+                source: serverId,
+                target: pkgId,
+                relationship: "depends_on",
+                direction: "directed",
+                traversable: true,
+                confidence: packageVersionConfidence(pkg) || "observed",
+                evidenceCount: 1,
+              },
+              {
+                id: `${pkgId}->${vulnId}`,
+                source: pkgId,
+                target: vulnId,
+                relationship: "vulnerable_to",
+                direction: "directed",
+                traversable: true,
+                confidence: "scanner",
+                evidenceCount: 1,
+              },
+              ...toolRefs.map((tool) => ({
+                id: `${serverId}->${tool.id}`,
+                source: serverId,
+                target: tool.id,
+                relationship: "provides_tool",
+                direction: "directed" as const,
+                traversable: true,
+                confidence: "observed",
+                evidenceCount: 1,
+              })),
+              ...credentialRefs.map((credential) => ({
+                id: `${serverId}->${credential.id}`,
+                source: serverId,
+                target: credential.id,
+                relationship: "exposes_cred",
+                direction: "directed" as const,
+                traversable: true,
+                confidence: "redacted_reference",
+                evidenceCount: 1,
+              })),
+            ];
+            const exposureHops = [...agentRefs, serverRef, packageRef, vulnRef, ...toolRefs, ...credentialRefs];
             topExposurePath = betterExposurePath(topExposurePath, {
+              id: `mesh:${vuln.id}:${pkg.ecosystem}:${pkg.name}@${pkg.version}:${serverId}`,
               label: `${affectedAgents.slice(0, 2).join(", ")} -> ${group.name} -> ${pkg.name}@${pkg.version} -> ${vuln.id}`,
               vulnerabilityId: vuln.id,
               severity: vuln.severity,
@@ -771,8 +864,36 @@ export function buildMeshGraph(
               fixedVersion: vuln.fixed_version,
               impactCategory: br?.impact_category,
               attackVectorSummary: br?.attack_vector_summary,
+              source: agentRefs[0] ?? serverRef,
+              target: vulnRef,
+              hops: exposureHops,
+              relationships,
               nodeIds: pathNodeIds,
               edgeIds: pathEdgeIds,
+              findings: [vuln.id],
+              dependencyContext: {
+                packageName: pkg.name,
+                packageVersion: pkg.version,
+                ecosystem: pkg.ecosystem,
+                serverName: group.name,
+              },
+              fix: vuln.fixed_version
+                ? {
+                    label: `Upgrade ${pkg.name}`,
+                    version: vuln.fixed_version,
+                  }
+                : undefined,
+              evidence: {
+                cvssScore: vuln.cvss_score,
+                epssScore: vuln.epss_score,
+                isKev: Boolean(vuln.cisa_kev || vuln.is_kev),
+                impactCategory: br?.impact_category,
+                attackVectorSummary: br?.attack_vector_summary,
+                source: "scan_blast_radius",
+              },
+              provenance: {
+                source: "mesh_scan_result",
+              },
             });
           }
         }
